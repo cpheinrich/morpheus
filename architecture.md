@@ -131,9 +131,45 @@ packages/shared/
 └── messaging.json          # taglines, mission, audience — imported by web (§15.2)
 ```
 
-The schema pipeline mirrors the token pipeline: one source of truth, generated bindings per
-surface, generated output never hand-edited. Firestore security rules are generated from the same
-schema, so rules cannot drift from the shape they guard.
+### Firestore schema — staged, not built all at once
+
+**Firestore has no native schema.** It is schemaless by design, so "the canonical way" is a
+convention you pick. The realistic options, in ascending cost:
+
+1. Nothing — the schema lives implicitly in whatever code touches the collection. This is what most
+   projects do and it is exactly how web and iOS drift apart.
+2. TypeScript types plus `withConverter` — web only, no help for Swift.
+3. **Zod schemas in one file, TypeScript types inferred from them** — validation at boundaries and
+   types for free.
+4. Zod as source, plus a generator emitting Swift structs and Firestore rules.
+
+**Recommendation: do 3 now, add 4 when iOS actually starts.**
+
+The key point is that **most of the value comes from having one file, not from the codegen.** A
+single `packages/shared/schema/user.schema.ts` that both surfaces are required to conform to
+already prevents the Polycam-style drift, because there is an unambiguous answer to "what shape is
+this document." Codegen removes the manual transcription step, which matters once a second
+consumer exists — and not before.
+
+```ts
+// packages/shared/schema/entry.schema.ts — the source of truth
+export const Entry = z.object({
+  id: z.string(),
+  userId: z.string(),
+  imageKey: z.string(),          // R2/Storage object key, never a URL
+  calories: z.number().int(),
+  loggedAt: z.string().datetime(),
+});
+export type Entry = z.infer<typeof Entry>;
+```
+
+Stage 1 gives you `Entry` as a TypeScript type and runtime validation at every write. Stage 2 adds
+`generated/ios/Models.swift` and `infra/firebase/firestore.rules` emitted from the same file, so
+rules cannot drift from the shape they guard.
+
+On "real work": the cost is not effort — it is **complexity you have to live with**. A codegen
+pipeline is another CI step that can break and another thing to update when Firebase or Swift
+changes. Deferring stage 2 until iOS exists means you never pay for a generator with one consumer.
 
 ---
 
@@ -363,34 +399,84 @@ shared components, and data fetching."
 use.** Firebase App Hosting listing Angular support first is a signal about its origins, not about
 what you should build.
 
-### The complete picture
+### Runtime architecture
 
-```
-                     ┌──────────────────────────────────────────┐
-   Browser  ────────►│  Vercel — Next.js (apps/web)             │
-                     │  public site · /hq dashboard · /brand    │
-                     └───────────┬──────────────────────────────┘
-                                 │  Firebase Admin SDK
-   iOS app  ─────────────────────┤
-   (App Store / TestFlight)      │
-                                 ▼
-                     ┌──────────────────────────────────────────┐
-                     │  Firebase / Google Cloud                 │
-                     │  Auth · Firestore · Storage · FCM        │
-                     │  Cloud Functions (2nd gen) · Secret Mgr  │
-                     │  BigQuery (warehouse)                    │
-                     └───────────┬──────────────────────────────┘
-                                 │
-        ┌────────────────────────┼─────────────────────┐
-        ▼                        ▼                     ▼
-   PostHog Cloud           Cloudflare              Chatwoot
-   analytics · flags       DNS · R2 media          support.<domain>
-   replay · errors         cdn.<domain>            (self-hosted VPS)
+```mermaid
+flowchart TB
+    subgraph clients [Clients]
+        WEB[Browser]
+        IOS[iOS app<br/>App Store / TestFlight]
+    end
+
+    subgraph vercel [Vercel]
+        NEXT["Next.js — apps/web<br/>public site · /brand<br/>/hq dashboard<br/>route handlers"]
+    end
+
+    subgraph gcp [Firebase / Google Cloud — one project per company]
+        AUTH[Firebase Auth<br/>custom claims: employee/investor]
+        FS[(Firestore<br/>app data · review queue)]
+        ST[(Firebase Storage<br/>user-generated content)]
+        FN[Cloud Functions 2nd gen]
+        SM[Secret Manager]
+        BQ[(BigQuery<br/>shared company warehouse)]
+    end
+
+    subgraph cf [Cloudflare]
+        DNS[DNS]
+        R2[(R2 — cdn.domain<br/>public media)]
+    end
+
+    PH[PostHog Cloud<br/>analytics · replay · flags]
+    CW[Chatwoot<br/>support.domain]
+    ST2[Stripe]
+
+    WEB --> NEXT
+    IOS --> AUTH
+    IOS --> FS
+    IOS --> FN
+    NEXT --> AUTH
+    NEXT --> FS
+    NEXT --> FN
+    NEXT --> SM
+    FN --> ST2
+    FS -.export.-> BQ
+    PH -.export.-> BQ
+    WEB --> R2
+    IOS --> R2
+    WEB --> PH
+    IOS --> PH
+    DNS --> NEXT
+    DNS --> CW
+    NEXT -.API.-> CW
+    NEXT -.API.-> PH
 ```
 
 Both surfaces talk to the same Firebase backend. The web app additionally does server-side work in
-Next.js route handlers (using the Firebase Admin SDK) for anything that needs a secret. The iOS app
-talks to Firebase directly via its SDKs, and to Cloud Functions for privileged operations.
+Next.js route handlers (Firebase Admin SDK) for anything needing a secret. The iOS app talks to
+Firebase directly and to Cloud Functions for privileged operations. `/hq` reads PostHog and
+Chatwoot over their REST APIs to render summary tiles, linking out for depth.
+
+### The development and review loop
+
+```mermaid
+flowchart LR
+    RM["company/product/<br/>roadmap.md"] --> AG[Agent<br/>Claude / Codex]
+    AG --> BR["branch<br/>rm-014-slug"]
+    BR --> CI["CI — reusable workflow<br/>lint · typecheck · unit · morpheus check pr"]
+    CI --> PREV[Vercel preview]
+    CI --> SIM["iOS simulator build<br/>screenshots + video"]
+    PREV --> PR[Pull request]
+    SIM --> PR
+    PR --> Q["/hq/review<br/>Firestore queue"]
+    Q --> H{Human<br/>1–2x per day}
+    H -->|anchored comments<br/>on preview| PR
+    H -->|approve| MERGE[Merge → deploy]
+    PR -->|comments sync| AG
+    MERGE --> J[".agent/journal/"]
+```
+
+The critical property: human feedback re-enters as PR comments the agent already knows how to
+read, so review never requires a separate system or a handoff.
 
 ### Hosting decision: Vercel
 
@@ -443,10 +529,47 @@ inherits the domain, auth, and deploy pipeline. Shipped as `@morpheus/kit/hq`.
 /hq/investors           Restricted subset, second allowlist
 ```
 
-Auth: Auth.js + Google OAuth, allowlist from `morpheus.json`. `darwin` already implements `/hq`
-with `financials`, `suppliers`, `legal`, and `/api/hq` — that is the prototype this generalizes.
-
 Public counterpart: `<domain>/brand` — see §15.3.
+
+### 10.1 Access control: Firebase Auth with custom claims
+
+**Canonical: Firebase Auth + custom claims. Not Auth.js, not Cloudflare Zero Trust.**
+
+Firebase is already the identity system for the product, so adding a second one for internal pages
+means two session models, two logout paths, and two places to revoke someone. Custom claims collapse
+that: staff are ordinary Firebase users carrying a role claim.
+
+```jsonc
+// custom claims on the Firebase user
+{ "role": "employee" }        // employee | investor | admin
+```
+
+The decisive advantage over both Auth.js and Cloudflare Zero Trust: **the same claim gates the
+route and the data.** Zero Trust is a network-layer gate — it can stop someone loading `/hq`, but it
+cannot stop a Firestore read, so you would still need a second rule system underneath. With claims,
+one fact does both jobs:
+
+```js
+// infra/firebase/firestore.rules
+allow read: if request.auth.token.role in ["employee", "admin"];
+```
+
+```ts
+// apps/web/middleware.ts — same claim, route layer
+if (!["employee", "admin"].includes(claims.role)) return redirect("/sign-in");
+```
+
+**Access as code.** The allowlist in `morpheus.json` stays the declarative source of truth — it is
+in git, reviewable in a PR, and diffable. `morpheus sync-access` reads it and applies the claims via
+the Admin SDK. Granting someone access is a pull request, not a console click, and revocation is
+the same.
+
+**Migration note.** `darwin` currently uses Auth.js v5 with a hardcoded email allowlist, and
+`heinrichbros.com` uses Google SSO with a GCP-approved audience plus Cloudflare Zero Trust. Both
+should move to this model. Since you are actively building Darwin's `/hq` now, this is the piece to
+settle first — retrofitting auth after internal tooling exists is materially harder than starting
+with it. Keep Zero Trust only where you want defense-in-depth on genuinely sensitive infrastructure
+(the Chatwoot admin panel, for example); it is redundant in front of `/hq`.
 
 ---
 
@@ -571,14 +694,58 @@ the agent will read it back from. No separate approval system.
 
 ---
 
-## 13. Distribution: templates vs packages
+## 13. Distribution: three mechanisms
 
-**Templates are copied at `init` and then owned by the project.** They will diverge — correct.
+Morpheus reaches a project three ways, and the difference matters:
 
-**The kit is a dependency and stays under Morpheus's control.** A fix propagates on version bump.
+| Mechanism | Reaches projects by | Updates | Use for |
+|---|---|---|---|
+| **Templates** | Copied at `init` / `add` | Never automatically | Scaffolding that should diverge |
+| **The kit** | npm dependency | Version bump | Runtime code that should not diverge |
+| **Reusable workflows** | Referenced by ref | Instantly, on ref | CI logic |
 
-The test: *if I improve this, do I want every existing project to get the improvement?* Yes → kit.
-No → template.
+The test for the first two: *if I improve this, do I want every existing project to get the
+improvement?* Yes → kit. No → template.
+
+### 13.1 Reusable GitHub workflows
+
+Your instinct is right and it is a real GitHub feature. Workflows with an `on: workflow_call`
+trigger live in Morpheus; each project keeps a thin delegator that supplies project-specific
+inputs.
+
+```yaml
+# morpheus/.github/workflows/web-ci.yml
+on:
+  workflow_call:
+    inputs:
+      node-version: { type: string, default: "22" }
+      run-e2e:      { type: boolean, default: true }
+    secrets:
+      VERCEL_TOKEN: { required: true }
+```
+
+```yaml
+# acme/.github/workflows/ci.yml — the whole file
+name: CI
+on: [push, pull_request]
+jobs:
+  ci:
+    uses: cpheinrich/morpheus/.github/workflows/web-ci.yml@v1
+    with:
+      run-e2e: true
+    secrets: inherit
+```
+
+Improving CI for every project becomes one commit in Morpheus. Projects pin a tag (`@v1`) so a
+change does not break twelve repos simultaneously; moving the tag is the deliberate rollout step.
+
+**One setup requirement:** because Morpheus is private, cross-repo workflow access is not on by
+default. In Morpheus's **Settings → Actions → Access**, the policy must be set to allow access from
+your other repositories. Without it, calling repos fail with a permissions error that does not
+obviously point at this setting.
+
+Planned shared workflows: `web-ci`, `ios-ci`, `deploy`, `pr-check` (the `morpheus check pr` gate),
+`agent-triage`, `agent-analytics-review`, `release-kit`.
 
 ### `morpheus add` — bolt-on templates
 
@@ -718,13 +885,59 @@ company/brand/
 Assets live in git: they are small, versioned, diffable (SVG), and needed at build time. Large
 media does not — see §19.
 
-Design *system* is code, not documents: `@morpheus/kit/design` supplies semantic tokens and
-components; `packages/shared/` runs the Style Dictionary pipeline turning brand primitives into
-`tokens.css`, `tokens.js`, and `Tokens.swift`. Token prefix is a two-letter project code, as with
-`--lk-` in Lakina.
+### 15.1a How the design system is actually split
 
-The flow: `company/brand/tokens.json` (primitives) → `packages/shared/generated/` (per-surface) →
-`@morpheus/kit/design` (semantic names and components) → `apps/*`.
+The design system is not one thing in one place. It is **reusable structure in the kit, and
+project-specific values in the project.** Three layers:
+
+| Layer | What it is | Where it lives | Project-specific? |
+|---|---|---|---|
+| **Primitives** | The raw palette, type scale, spacing ramp | `company/brand/tokens.json` | **Yes** — owned by the project |
+| **Semantic mapping** | `action.primary → electricRed` | `packages/shared/tokens/semantic.json` | **Yes** |
+| **Generated bindings** | CSS vars, JS consts, Swift enum | `packages/shared/generated/` | **Yes** — derived, never hand-edited |
+| **Components** | `Button`, `Card`, `DataTable` — structure, variants, states, a11y | `@morpheus/kit/design` | **No** — reusable |
+| **Showcase renderer** | The code that draws a palette grid, type specimen, component gallery | `@morpheus/kit/design/showcase` | **No** — reusable |
+| **Showcase route** | The page that mounts it | `apps/web/app/brand/page.tsx` | Yes, but ~5 lines |
+| **One-off components** | Things only this product has | `apps/web/components/` | **Yes** |
+
+The mechanism that makes this work: **kit components never hardcode a color, font, or radius.**
+They reference CSS custom properties that the project defines.
+
+```tsx
+// in @morpheus/kit/design — ships once, used everywhere
+export function Button({ variant = "primary", ...props }) {
+  return <button className={styles[variant]} {...props} />;
+}
+// styles.primary → background: var(--ac-color-action-primary);
+```
+
+```css
+/* in the project — packages/shared/generated/web/tokens.css */
+:root { --ac-color-action-primary: #e63946; }
+```
+
+Same `Button` component; it looks like Evo in Evo and like Lakina in Lakina, with no forking, no
+theme prop threading, and no per-project component copies. Token prefix is a two-letter project
+code, as with `--lk-` in Lakina.
+
+**So there is no "populated design system" as a separate artifact.** The populated design system is
+the kit's components rendered in the browser with the project's token CSS loaded. It only exists at
+runtime — which is exactly why the showcase page (§15.3) is worth having: it is the only place you
+can *see* it.
+
+The full flow:
+
+```mermaid
+flowchart LR
+    A["company/brand/tokens.json<br/>primitives"] --> B["packages/shared/<br/>Style Dictionary"]
+    B --> C["generated/web/tokens.css"]
+    B --> D["generated/ios/Tokens.swift"]
+    E["@morpheus/kit/design<br/>components + showcase"] --> F["apps/web"]
+    C --> F
+    D --> G["apps/ios"]
+    E --> H["apps/web/app/brand/page.tsx<br/>public showcase route"]
+    C --> H
+```
 
 ### 15.2 Import, don't sync
 
@@ -745,13 +958,41 @@ current voice and visual system — rather than copying strings.
 
 ### 15.3 Public design system route
 
-`<domain>/brand` — a public, unauthenticated page rendering the live design system: palette,
-type scale, components, logo downloads, and usage rules. Generated from the same tokens the
-product uses, so it cannot go stale.
+`<domain>/brand` — a public, unauthenticated page rendering the live design system: palette, type
+scale, component gallery, logo downloads, and usage rules.
+
+**The rendering code is in the kit; the route is in the project.** `@morpheus/kit/design/showcase`
+exports the components that introspect tokens and draw the gallery. The project mounts them:
+
+```tsx
+// apps/web/app/brand/page.tsx — the entire file
+import { BrandShowcase } from "@morpheus/kit/design/showcase";
+import tokens from "@acme/shared/tokens.json";
+import { assets, usage } from "@acme/shared/brand";
+
+export default function Page() {
+  return <BrandShowcase tokens={tokens} assets={assets} usage={usage} />;
+}
+```
+
+Because it reads the same tokens the product renders with, it cannot go stale — there is no
+separate design-system site to keep in sync, and improvements to the showcase itself arrive with a
+kit upgrade for every project at once.
 
 This is the link you send a hardware vendor or contractor. It deliberately excludes strategy,
 audiences, and positioning, which stay internal in `company/brand/strategy.md`. `/hq/design` is the
 internal counterpart and may include the strategic material.
+
+### 15.4 `/hq` inherits the project brand
+
+Confirmed as intended: `/hq` uses the same kit components and the same token CSS as the public
+site, so each project's dashboard is themed by that project's brand with no per-project styling
+work.
+
+One refinement — dashboards want higher information density than marketing pages. The kit defines a
+small set of `--hq-*` semantic tokens (density, table row height, muted surface) that default
+sensibly and *derive from* brand colors rather than introducing a parallel palette. A project can
+override them, but is not expected to.
 
 ---
 
@@ -794,11 +1035,41 @@ qa/
 
 ### The human review artifact
 
-Every PR must carry: a Vercel preview link, screenshots of changed screens (captured in CI, not by
-hand), a per-change "what to test" list generated from the acceptance criteria, and for iOS a
-TestFlight or Firebase App Distribution build link. Feedback comes back as Vercel comments anchored
-to page elements, synced into the PR (§9), which is what makes it unambiguous to the agent which
-note refers to which part of the page.
+Every PR carries: a Vercel preview link, screenshots of changed screens captured in CI, a per-change
+"what to test" list generated from the acceptance criteria, and for iOS a simulator recording plus a
+build link.
+
+**Web feedback** comes back as Vercel comments anchored to page elements, synced into the PR (§9),
+which is what makes it unambiguous which note refers to which part of the page.
+
+### 16.1 iOS: agents can build, run, and QA their own work
+
+Yes — this works today with the standard Xcode toolchain, no special infrastructure:
+
+| Capability | Mechanism |
+|---|---|
+| Build | `xcodebuild -scheme Evo -destination 'platform=iOS Simulator,name=iPhone 16'` |
+| Boot a simulator | `xcrun simctl boot`, `xcrun simctl install`, `xcrun simctl launch` |
+| Drive the UI | **XCUITest** — the agent writes UI tests and they double as the QA script |
+| Screenshot | `xcrun simctl io booted screenshot shot.png` |
+| Record video | `xcrun simctl io booted recordVideo demo.mp4` |
+| Distribute a real build | Firebase App Distribution or TestFlight via `fastlane` |
+
+So the agent can implement a change, build it, launch it in a simulator, drive the flow with
+XCUITest, capture a screenshot per step and a video of the whole flow, and attach all of it to the
+PR. It genuinely QAs its own work before asking for review.
+
+Running on a **physical device** additionally needs a provisioning profile and a connected device,
+so simulator is the default for the review loop and device builds go through App Distribution when
+you want to hold the real thing.
+
+**Feedback convention.** Since iOS has no anchored-comment equivalent, screenshots are emitted with
+stable numbered names tied to the test step that produced them —
+`RM-014-03-paywall-presented.png` — so a PR comment saying "03 — the CTA is too low" is
+unambiguous to the agent. The kit's `ios-ci` workflow enforces the naming.
+
+This is deliberately lower-tech than Vercel Comments and good enough. Building an in-app feedback
+overlay is possible later if numbered screenshots prove insufficient in practice.
 
 ---
 
@@ -894,15 +1165,33 @@ TLS, environment variables, backups, and updates behind a consistent API — whi
 server an agent must reason about" into "a managed surface an agent can operate." An agent can
 perform the entire setup: provision, deploy, configure channels, and wire webhooks.
 
-### Integration
+### One instance, many inboxes
 
-Chatwoot runs at **`support.<domain>`**, not embedded in `/hq`. Embedding a full Rails app in an
-iframe means fighting two auth systems and two design languages.
+**"Shared" means one self-hosted deployment on one VPS**, serving every company through separate
+accounts and inboxes. One server to patch and back up instead of five, and each project's `/hq`
+reads only its own inbox via a scoped API token. The alternative — one Chatwoot per company — buys
+a stronger security boundary at roughly 5× the operating cost, which is not worth it for projects
+that share an operator.
 
-`/hq/support` follows the same pattern as analytics: summary KPIs pulled from the Chatwoot API
-(open conversations, first-response time, backlog, common topics), with links out to the full
-Chatwoot UI for real work. Agents use the REST API and webhooks to triage, draft replies, and
-queue them for approval.
+Custom domains still work per company (`support.evo.med`, `support.darwin.health`) by pointing
+multiple hostnames at the same instance.
+
+### Integration with `/hq`
+
+Confirmed viable: Chatwoot's **Application API** is account-scoped REST with full CRUD over
+conversations, contacts, messages, and agents, plus built-in reporting covering first-response
+time, resolution time, conversation volume, agent performance, and CSAT. Everything needed for
+`/hq/support` tiles is available programmatically — it is not GUI-only.
+
+So `/hq/support` renders live summary metrics (open conversations, first-response time, backlog,
+common labels) and links out to `support.<domain>` for actual conversation work. Agents use the
+same API plus webhooks to triage incoming messages, draft replies, and queue them for approval.
+
+Worth knowing about for later: Chatwoot also supports **Dashboard Apps**, which embed *your* app
+inside Chatwoot's agent view with the current conversation and contact passed in as context. That
+is the reverse direction — it would let an agent handling a ticket see the customer's Firestore
+record, subscription state, and recent events inline. Not needed on day one, but it is the reason
+not to plan on replacing Chatwoot's UI.
 
 **Reconsider if:** volume stays trivially low for a year, in which case the VPS is waste — but the
 cost of being wrong in that direction is $30/month, versus a migration in the other.
@@ -972,7 +1261,90 @@ cost and lead time. Large CAD files go to R2, not git.
 
 ---
 
-## 24. What Morpheus is not
+## 24. Build plan
+
+The risk is building Morpheus as a speculative platform. The counter-rule:
+
+> **Extract on the second use, never the first.** Nothing enters the kit until a second project
+> needs it. Until then it lives in the project that needs it and is allowed to be specific.
+
+This inverts the usual scaffolder failure mode, where someone designs a framework, then discovers
+the abstractions were wrong once real projects arrive. Here, real projects come first and Morpheus
+is the residue of what they had in common.
+
+### Stage 0 — Documentation only ✅
+
+`architecture.md`. Done. No code. The value is that decisions are settled before anything encodes
+them.
+
+### Stage 1 — Extract what you already need twice (next)
+
+Driven strictly by your stated near-term needs — analytics on Evo *and* Darwin, project management
+across multiple projects — each item already has two consumers:
+
+| Ship | Why now | Consumers |
+|---|---|---|
+| **Reusable workflows** (`web-ci`, `pr-check`) | Highest value per hour; no package publishing needed | All four repos |
+| **`@morpheus/kit/pm`** — roadmap/goal format + parser | You want agents working off roadmaps across projects | Darwin, Evo |
+| **`@morpheus/kit/analytics`** — PostHog setup + event schema | You want analytics on both, and the wrong event schema is expensive to fix later | Darwin, Evo |
+| **`@morpheus/kit/hq`** — shell, auth, nav, first tiles | You are building Darwin's `/hq` now | Darwin, then Evo |
+
+Publishing infrastructure (GitHub Packages, release workflow) comes with this stage since the kit
+needs somewhere to go.
+
+**The `/hq` auth model (§10.1) should land first within this stage**, because everything else in
+`/hq` sits behind it and retrofitting auth is materially harder than starting with it.
+
+### Stage 2 — Retrofit by hand, then codify
+
+**Retrofit Evo manually before writing `morpheus init`.** Move it to `apps/` + `company/`, wire the
+kit, switch auth, adopt the workflows. Do it by hand and take notes.
+
+That retrofit *is* the specification for `init`. Writing the initializer first would encode guesses
+about a structure no project has actually lived in. Writing it second turns it into transcription.
+
+Darwin follows as the second retrofit, which is where the templates get validated — anything that
+needed hand-editing the second time is a template bug.
+
+### Stage 3 — The CLI
+
+`morpheus init` and `morpheus add`, built from stage 2's notes. Then `doctor`, then `upgrade`.
+`init` earns its keep on the *third* project; before that, retrofitting by hand is faster than
+building the tool.
+
+### Stage 4 — Extract on encounter, indefinitely
+
+Firebase setup helpers, Stripe adapters, design system components, Chatwoot integration, schema
+codegen. Each enters the kit the second time you need it, not before. There is no completion date;
+Morpheus is a permanent byproduct of building companies.
+
+### How Morpheus uses itself
+
+It should — but only where dogfooding is real, not ceremonial:
+
+| Uses itself for | How | Why it is genuine |
+|---|---|---|
+| Project management | `company/product/roadmap.md` in this repo | Morpheus has a roadmap; proves the format immediately |
+| Documentation | `docs/` with Mermaid | Already true of this file |
+| Agent memory | `.agent/journal/` | Multi-session work starts now |
+| CI | Calls its own reusable workflows | Genuine test: if they break, they break here first |
+| Conventions | Its own `AGENTS.md` + `morpheus check pr` | The gate must survive contact with its author |
+
+**What it should *not* do yet: have a web surface.** A `/hq` for a repo with no customers, no
+revenue, and no analytics would render empty tiles — a worse test of the dashboard than Darwin,
+which has real data and real stakes. **Dogfood `/hq` in Darwin, not in Morpheus.**
+
+The honest case for a Morpheus web surface arrives later and is narrower than it sounds: somewhere
+to host the kit's *own* design system showcase and rendered docs, once the design system exists and
+is worth looking at. That is a stage 4 concern. Buying a domain now would be buying a placeholder.
+
+Morpheus also has no `company/brand`, `marketing`, `finance`, or `support` — it is not a company.
+Its structure is legitimately a subset, and `morpheus.json` records that with
+`"kind": "internal-tool"` so `doctor` does not report the missing directories as drift.
+
+---
+
+## 25. What Morpheus is not
 
 - Not multi-tenant, not a product, not sold.
 - Not a way to avoid choosing a stack — it *is* the choice, made once.
@@ -981,7 +1353,7 @@ cost and lead time. Large CAD files go to R2, not git.
 
 ---
 
-## 25. Resolved since draft 1
+## 26. Resolved
 
 | Question | Resolution |
 |---|---|
@@ -996,36 +1368,41 @@ cost and lead time. Large CAD files go to R2, not git.
 | Support | Chatwoot self-hosted from day one, via Coolify, at `support.<domain>` |
 | Staging | Vercel preview per PR; no permanent staging environment |
 | Review queue | Firestore, with GitHub PRs synced in |
+| Design system split | Components + showcase in the kit; tokens and route in the project (§15.1a) |
+| `/hq` auth | Firebase Auth custom claims; allowlist in `morpheus.json` applied by `sync-access` |
+| `/hq` theming | Inherits project brand automatically; `--hq-*` tokens for density only |
+| Shared CI | GitHub reusable workflows in Morpheus, thin delegators in projects |
+| iOS review | Agent builds, runs in simulator, drives XCUITest, attaches numbered screenshots + video |
+| Firestore schema | Zod source of truth now; Swift + rules codegen deferred until iOS starts |
+| Chatwoot topology | One instance, per-company inboxes, custom domains per company |
+| Kit versioning | Semver, projects pin a tag, `doctor --outdated` surfaces drift |
+| Codex/Claude split | Conventions in `AGENTS.md` prose so both benefit; skills are a Claude bonus |
+| Morpheus web surface | Deferred — dogfood `/hq` in Darwin, which has real data |
 
 ---
 
-## 26. Open questions
+## 27. Open questions
 
-**Q1 — iOS review artifacts.** Vercel Comments solve web review elegantly. iOS has no equivalent:
-TestFlight feedback is clumsy and does not sync to PRs. Firebase App Distribution supports tester
-feedback with screenshots. Is that good enough, or do we build a lightweight in-app feedback
-overlay in debug builds that posts directly to the PR?
+**Q1 — Event schema design.** Analytics is stage 1 and the event schema is the expensive thing to
+get wrong. Do we define a small canonical set every project emits (`signup`, `activation`,
+`purchase`, `retention_ping`) so cross-project dashboards work, and let projects extend it? Or is
+each project's schema fully its own?
 
-**Q2 — Codex and `AGENTS.md`.** Claude reads `CLAUDE.md`, Codex reads `AGENTS.md`, and the symlink
-handles that. But skills are Claude-specific. Does Codex get an equivalent, do we keep conventions
-in plain `AGENTS.md` prose so both benefit, or do we accept asymmetric capability?
+**Q2 — Roadmap format across projects.** If Morpheus, Darwin, and Evo all keep `roadmap.md`, should
+there be a rollup view — one place showing what agents are doing across every project? That implies
+either a shared Firestore or an aggregator reading several repos. Useful, or premature?
 
-**Q3 — Kit versioning across many projects.** With one package and a dozen projects, a breaking
-change means a dozen upgrades. Do we commit to strict semver with long deprecation windows, or
-accept that projects pin and lag, and add `morpheus doctor --outdated` to surface drift?
+**Q3 — Which agent does what.** You noted Codex is better at image asset generation. Should
+`AGENTS.md` encode a division of labor (Codex for asset generation and bulk mechanical edits, Claude
+for architecture and review), or stay agent-agnostic and let you route by hand?
 
-**Q4 — Chatwoot host.** One shared Chatwoot serving all companies with separate inboxes, or one
-per company? Shared is cheaper and less to maintain; separate keeps a security boundary and lets
-each company have its own domain. Leaning shared, with per-company inboxes.
+**Q4 — `company/` for non-software businesses.** The structure assumes a software product. If a
+company is purely hardware or services, `apps/` is nearly empty. Support it, or explicitly out of
+scope?
 
-**Q5 — Firestore schema as source of truth.** §3 proposes generating types and security rules from
-`packages/shared/schema/`. This is high-leverage but real work. Build it in v1, or start with
-hand-written rules and add codegen once the pattern is proven?
+**Q5 — Journal growth.** `.agent/journal/` grows monotonically. When does it need compaction, and
+should a scheduled agent fold old entries into `learned.md`?
 
-**Q6 — `company/` for non-software businesses.** The structure assumes a software product. If a
-company is purely hardware or services, `apps/` is nearly empty and the shape is odd. Worth
-supporting, or explicitly out of scope?
-
-**Q7 — Journal growth.** `.agent/journal/` grows monotonically. At what point does it need
-pruning, summarizing, or moving out of the repo — and should there be a scheduled agent that
-compacts old entries into `learned.md`?
+**Q6 — Secrets bootstrap ordering.** `morpheus init` needs credentials to create the GCP project
+that will hold the credentials. What is the minimum set you hold personally (a `gcloud` login and a
+GitHub PAT?) before the CLI can bootstrap everything else?
