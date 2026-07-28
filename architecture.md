@@ -311,7 +311,7 @@ The CLI is exposed as a `bin` from the same package, installed globally:
 | Project management | Goals/roadmap/requests as markdown in git beats any API |
 | QA tracking | Checklists next to the code they check |
 | Automations | GitHub Actions + skills; no Zapier |
-| Review queue | Firestore + GitHub PR sync (§12.3) |
+| Review queue | GitHub PRs + `decision` issues (§12.3) |
 | Investor reporting | A view over the same data, gated differently |
 
 ### Self-hosted
@@ -414,7 +414,7 @@ flowchart TB
 
     subgraph gcp [Firebase / Google Cloud — one project per company]
         AUTH[Firebase Auth<br/>custom claims: employee/investor]
-        FS[(Firestore<br/>app data · review queue)]
+        FS[(Firestore<br/>app data · runtime flags)]
         ST[(Firebase Storage<br/>user-generated content)]
         FN[Cloud Functions 2nd gen]
         SM[Secret Manager]
@@ -460,14 +460,14 @@ Chatwoot over their REST APIs to render summary tiles, linking out for depth.
 
 ```mermaid
 flowchart LR
-    RM["company/product/<br/>roadmap.md"] --> AG[Agent<br/>Claude / Codex]
+    RM["company/product/<br/>roadmap/RM-014.md"] --> AG[Agent<br/>Claude / Codex]
     AG --> BR["branch<br/>rm-014-slug"]
     BR --> CI["CI — reusable workflow<br/>lint · typecheck · unit · morpheus check pr"]
     CI --> PREV[Vercel preview]
     CI --> SIM["iOS simulator build<br/>screenshots + video"]
     PREV --> PR[Pull request]
     SIM --> PR
-    PR --> Q["/hq/review<br/>Firestore queue"]
+    PR --> Q["/hq/review<br/>view over GitHub API"]
     Q --> H{Human<br/>1–2x per day}
     H -->|anchored comments<br/>on preview| PR
     H -->|approve| MERGE[Merge → deploy]
@@ -632,7 +632,7 @@ Instructions get ignored eventually. A failing check does not.
 
 ### 12.3 The work loop and review queue
 
-1. Agents pull work from `company/product/roadmap.md` and `qa/`.
+1. Agents pull work from `company/product/roadmap/` and `qa/`.
 2. Work happens on a branch named `rm-<id>-<slug>`. Never on `main`.
 3. Push triggers CI and a Vercel preview deploy.
 4. The PR is registered in the review queue with a summary, staging link, screenshots, and a test
@@ -641,11 +641,28 @@ Instructions get ignored eventually. A failing check does not.
 6. Comments sync to the PR; the agent ingests them and iterates.
 7. Approval merges and deploys.
 
-**Queue storage.** To clarify the earlier note: "GitHub API" meant *pull requests*, not issues —
-deriving the queue from open PRs is free but can only ever represent code changes. Since agents
-also need to queue non-code decisions (spending approval, copy sign-off, vendor selection), the
-queue is a **Firestore collection**, with open PRs synced in as one item type by a scheduled
-Action. Lightweight, and it gives one place to look.
+**Queue storage — revised from draft 2.** The earlier answer (Firestore, with PRs synced in) was
+wrong, and asking "where does Morpheus itself host this?" is what exposed it. Any design requiring
+a sync job between GitHub and Firestore has two copies of the same state and a job that can fail.
+
+**The queue is GitHub.** Two item types, one source of truth each:
+
+| Item | Lives as | Why |
+|---|---|---|
+| Code awaiting review | **Pull request** | Already the source of truth; never duplicate it |
+| Non-code decision | **Issue labeled `decision`** | Structured body, state, assignee, comments, API |
+
+Spending approvals, copy sign-off, and vendor selection are all fine as issues — they have a title,
+a body with structured frontmatter, open/closed state, and a comment thread. Agents create them via
+the API; you close them to approve.
+
+`/hq/review` becomes a **read-only view over the GitHub API**, not a separate store. Nothing to
+sync, nothing to reconcile, and it degrades gracefully: with no `/hq` deployed, the GitHub PR and
+issue lists *are* the queue, which is exactly how Morpheus itself operates (§24).
+
+**Firestore is reserved for state the running application must read** — a launch-approval flag the
+web app checks at request time, for example. That is a genuinely different need from "a human owes
+me a decision," and conflating them was the error.
 
 **Never-blocked rule:** when the queue is full, agents must have a backlog needing no approval —
 tests, docs, refactors, research written to `.agent/`. An idle agent is a design failure.
@@ -686,10 +703,10 @@ Scheduled agent runs (GitHub Actions cron) that read the world and propose chang
 | Support sweep | Daily | Chatwoot API | Draft replies queued for approval |
 | Finance sync | Weekly | Stripe, Mercury | `/hq/finance` update |
 | Market research | Monthly | Semrush, web | `company/marketing/research/` |
-| Roadmap proposal | Weekly | All of the above | **A PR against `roadmap.md`** |
+| Roadmap proposal | Weekly | All of the above | **A PR adding/editing `roadmap/*.md`** |
 
 The critical design choice: **agent proposals arrive as pull requests against
-`company/product/roadmap.md`.** Review is a diff. The human edits the proposal in the same place
+`company/product/roadmap/`.** Review is a diff. The human edits the proposal in the same place
 the agent will read it back from. No separate approval system.
 
 ---
@@ -1200,27 +1217,108 @@ cost of being wrong in that direction is $30/month, versus a migration in the ot
 
 ## 21. Project management as files
 
-No Jira, no Linear. Three artifacts, all markdown, all in git, all rendered by `/hq/product`:
+No Jira, no Linear. Markdown in git, with a validated schema.
 
-| File | Contents |
-|---|---|
-| `company/product/goals.md` | Annual and quarterly goals with measurable targets |
-| `company/product/roadmap.md` | Ordered work items with status and linked PRs |
-| `company/product/requests/` | One file per feature request, with source and status |
+### 21.1 Layout — one file per item
 
-Roadmap items use fixed frontmatter so `/hq` and agents parse the same thing:
+```
+company/product/
+├── goals/
+│   ├── README.md              # GENERATED index table
+│   └── G-2026-Q3-01.md
+├── roadmap/
+│   ├── README.md              # GENERATED index table
+│   ├── RM-014.md
+│   └── RM-015.md
+└── requests/
+    ├── README.md              # GENERATED index table
+    └── FR-007.md
+```
 
-```yaml
+**One file per item, not one big `roadmap.md`.** Revised from draft 2 for a concrete reason: you
+plan to run several agents concurrently, and two agents updating status in a single `roadmap.md`
+produce a merge conflict every time. One file per item makes concurrent writes conflict-free, gives
+each item exactly one frontmatter block to validate, and keeps diffs readable.
+
+The cost — you can no longer read the whole roadmap in one file open — is paid back by the
+**generated `README.md`** in each directory, rebuilt by CI on every merge. GitHub renders a
+directory's README automatically, so navigating to `company/product/roadmap/` shows a sortable table
+of every item, its status, and its PRs. The index is derived, never hand-edited.
+
+### 21.2 Schemas
+
+The source of truth for the *shape* is Zod, exported from `@morpheus/kit/pm`. The same schemas
+validate frontmatter in CI (`morpheus check pm`), parse files for `/hq`, and generate the index
+tables — so there is one definition, not three.
+
+```ts
+// @morpheus/kit/pm/schema.ts
+export const RoadmapItem = z.object({
+  id:         z.string().regex(/^RM-\d{3,}$/),
+  title:      z.string().min(3),
+  status:     z.enum(["backlog", "in-progress", "review", "shipped", "dropped"]),
+  priority:   z.enum(["P0", "P1", "P2", "P3"]).default("P2"),
+  goal:       z.string().regex(/^G-\d{4}-(Q[1-4]|ANNUAL)-\d{2}$/).optional(),
+  owner:      z.enum(["agent", "human"]).default("agent"),
+  prs:        z.array(z.number().int()).default([]),
+  acceptance: z.string().optional(),        // path into qa/acceptance/
+  created:    z.iso.date(),
+  updated:    z.iso.date(),
+});
+
+export const Goal = z.object({
+  id:      z.string().regex(/^G-\d{4}-(Q[1-4]|ANNUAL)-\d{2}$/),
+  title:   z.string(),
+  horizon: z.enum(["annual", "quarterly"]),
+  period:  z.string(),                      // "2026" | "2026-Q3"
+  metric:  z.string(),                      // what is measured
+  target:  z.string(),                      // the number to hit
+  current: z.string().optional(),           // updated by the analytics loop
+  status:  z.enum(["on-track", "at-risk", "missed", "achieved"]),
+});
+
+export const Request = z.object({
+  id:      z.string().regex(/^FR-\d{3,}$/),
+  title:   z.string(),
+  source:  z.enum(["support", "analytics", "investor", "founder", "agent"]),
+  status:  z.enum(["new", "triaged", "accepted", "declined", "duplicate"]),
+  roadmap: z.string().optional(),           // RM-id once promoted
+  created: z.iso.date(),
+});
+
+export const JournalEntry = z.object({
+  date:    z.iso.date(),
+  agent:   z.enum(["claude", "codex", "human"]),
+  roadmap: z.string().optional(),
+  outcome: z.enum(["shipped", "abandoned", "blocked", "research"]),
+  summary: z.string(),
+});
+```
+
+An item file is frontmatter plus free prose — the schema constrains the metadata, never the body:
+
+```markdown
 ---
 id: RM-014
 title: Ship calorie estimation pipeline
-status: in-progress        # backlog | in-progress | review | shipped | dropped
+status: in-progress
+priority: P1
 goal: G-2026-Q3-01
 owner: agent
 prs: [42, 47]
 acceptance: qa/acceptance/RM-014.md
+created: 2026-07-20
+updated: 2026-07-28
 ---
+
+Users photograph a meal; the pipeline returns a calorie estimate.
+
+## Context
+...
 ```
+
+This is the same validation approach used for Firestore documents (§3) — **one way to describe a
+shape, whether it lands in a markdown file or a database row.**
 
 Branch names derive from the id (`rm-014-calorie-pipeline`), which is how `morpheus check pr` knows
 which item to verify status on.
@@ -1324,7 +1422,7 @@ It should — but only where dogfooding is real, not ceremonial:
 
 | Uses itself for | How | Why it is genuine |
 |---|---|---|
-| Project management | `company/product/roadmap.md` in this repo | Morpheus has a roadmap; proves the format immediately |
+| Project management | `company/product/roadmap/` in this repo | Morpheus has a roadmap; proves the format immediately |
 | Documentation | `docs/` with Mermaid | Already true of this file |
 | Agent memory | `.agent/journal/` | Multi-session work starts now |
 | CI | Calls its own reusable workflows | Genuine test: if they break, they break here first |
@@ -1334,9 +1432,37 @@ It should — but only where dogfooding is real, not ceremonial:
 revenue, and no analytics would render empty tiles — a worse test of the dashboard than Darwin,
 which has real data and real stakes. **Dogfood `/hq` in Darwin, not in Morpheus.**
 
-The honest case for a Morpheus web surface arrives later and is narrower than it sounds: somewhere
-to host the kit's *own* design system showcase and rendered docs, once the design system exists and
-is worth looking at. That is a stage 4 concern. Buying a domain now would be buying a placeholder.
+### 24.1 Where Morpheus's own data lives and how you read it
+
+The apparent contradiction — "it uses itself for roadmap and docs, but has no web surface" —
+dissolves once you notice **GitHub is already a hosted, authenticated, searchable web view of
+exactly this data.**
+
+| Data | Source of truth | How you view it | How an agent reads it |
+|---|---|---|---|
+| Roadmap | `company/product/roadmap/*.md` | GitHub renders the generated `README.md` as a table when you open the directory | Reads the directory |
+| Goals | `company/product/goals/*.md` | Same | Same |
+| Docs | `docs/**.md` | GitHub renders markdown **and Mermaid diagrams** natively | Same |
+| Journal | `.agent/journal/*.md` | GitHub, or `grep` | Same |
+| Code review queue | Open pull requests | GitHub PR list | GitHub API |
+| Decision queue | Issues labeled `decision` | GitHub issue list, filtered | GitHub API |
+
+Nothing here needs Firebase, a deployment, or a domain. GitHub gives you rendering, auth, full-text
+search, mobile apps, and notifications for free, on a private repo, today.
+
+**`/hq` is a nicer view of the same files, not a different source of truth.** That is the whole
+point of keeping state in markdown and GitHub rather than in a product's database — the data is
+readable with or without the dashboard, and the dashboard is an optimization you add when a project
+has enough going on to justify it.
+
+**The trigger for building a Morpheus web surface** is therefore not "Morpheus needs a dashboard" —
+it is *cross-project rollup*. Once four or five projects each have their own roadmap, you will want
+one page showing what every agent is working on everywhere, and GitHub cannot span repositories.
+That is a genuinely different product from a per-project `/hq`: an aggregator that reads several
+repos via the GitHub API and renders one table. It is worth building at that point, and it is the
+natural home for the kit's design system showcase and rendered docs as well.
+
+Until then, buying a domain would be buying a placeholder.
 
 Morpheus also has no `company/brand`, `marketing`, `finance`, or `support` — it is not a company.
 Its structure is legitimately a subset, and `morpheus.json` records that with
@@ -1367,7 +1493,10 @@ Its structure is legitimately a subset, and `morpheus.json` records that with
 | Repo per company | One repo per product; `company` field groups them; shared BigQuery for cross-project `/hq` |
 | Support | Chatwoot self-hosted from day one, via Coolify, at `support.<domain>` |
 | Staging | Vercel preview per PR; no permanent staging environment |
-| Review queue | Firestore, with GitHub PRs synced in |
+| Review queue | **GitHub** — PRs for code, `decision`-labeled issues for the rest. Firestore only for state the app reads at runtime |
+| PM file layout | One file per item + generated `README.md` index, to avoid concurrent-agent merge conflicts |
+| PM schemas | Zod in `@morpheus/kit/pm`; same shape definition validates CI, parses `/hq`, generates indexes |
+| Viewing Morpheus's own data | GitHub renders it. Web surface deferred until cross-project rollup is needed |
 | Design system split | Components + showcase in the kit; tokens and route in the project (§15.1a) |
 | `/hq` auth | Firebase Auth custom claims; allowlist in `morpheus.json` applied by `sync-access` |
 | `/hq` theming | Inherits project brand automatically; `--hq-*` tokens for density only |
@@ -1388,7 +1517,7 @@ get wrong. Do we define a small canonical set every project emits (`signup`, `ac
 `purchase`, `retention_ping`) so cross-project dashboards work, and let projects extend it? Or is
 each project's schema fully its own?
 
-**Q2 — Roadmap format across projects.** If Morpheus, Darwin, and Evo all keep `roadmap.md`, should
+**Q2 — Cross-project rollup.** If Morpheus, Darwin, and Evo each keep their own `roadmap/`, should
 there be a rollup view — one place showing what agents are doing across every project? That implies
 either a shared Firestore or an aggregator reading several repos. Useful, or premature?
 
