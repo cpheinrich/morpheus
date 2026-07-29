@@ -14,5 +14,6 @@ item files, not this table.
 | [RM-007](./RM-007.md) | Retrofit Evo to the Morpheus structure | backlog | P1 | G-2026-Q3-01 | — |
 | [RM-008](./RM-008.md) | morpheus init | backlog | P2 | G-2026-Q3-01 | — |
 | [RM-009](./RM-009.md) | Retrofit Darwin | backlog | P2 | G-2026-Q3-01 | — |
+| [RM-010](./RM-010.md) | Simplify architecture.md for first-time readers | backlog | P2 | G-2026-Q3-01 | — |
 | [RM-001](./RM-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | G-2026-Q3-01 | — |
 <!-- morpheus:end -->
