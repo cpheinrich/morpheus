@@ -24,8 +24,8 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `tests/` | Vitest, mirroring `src/` |
 | `.agent/journal/` | What was attempted and learned, including dead ends |
 | `.agent/decisions.md` | Settled choices and why — **read this first** |
-| `.agent/status/` | Archived status reports with Chris's inline replies |
-| `hq/status/<person>.md` | Live status inboxes — one per person, replied to inline |
+| `.agent/standup/` | Archived standups with Chris's inline replies |
+| `hq/standup/<person>.md` | Live standups — one per person, replied to inline |
 
 ## Commands
 
@@ -73,9 +73,9 @@ what you learned, especially dead ends that produced no code — git history can
 **At the start of a session** read `.agent/decisions.md` and `.agent/learned.md`. Decisions are
 settled choices — if one looks wrong, say so and ask rather than quietly working around it.
 
-## The status cycle
+## The standup cycle
 
-`hq/status/<person>.md` is how a human and their agents exchange state. These are the only
+`hq/standup/<person>.md` is how a human and their agents exchange state. These are the only
 files a human is expected to edit.
 
 **One inbox per person, not per session.** A person's file collects items from every agent
@@ -83,31 +83,35 @@ working for them, each heading tagged with the agent that raised it (`` `claude`
 `` `codex` ``). Two agents share a working copy so writes serialise; two *people* never touch
 the same file, so git never merges a status.
 
-1. I write it at the end of a working session. Everything needing his input goes in a single
-   **Needs you** section, numbered, each item followed by a `~` on its own line.
+1. I write it at the end of a working session: **a prose summary of what got done first**, then
+   numbered items, each ending in a `~`. Summary-before-blockers is the standup order, and it is
+   the order a human expects.
 2. He replies inline after the `~`, leaving the marker in place.
 3. On my next turn I: read the replies, act on them, promote anything durable to
    `.agent/decisions.md`, archive the whole exchange to
-   `.agent/status/<person>-YYYY-MM-DD-HHMM.md`, and write a fresh inbox.
+   `.agent/standup/<person>-YYYY-MM-DD-HHMM.md`, and write a fresh inbox.
 
 **Markers.** Three, and the distinction matters because Chris scans rather than reads:
 
 **Every item is either closed or open. Never both, never neither.**
 
+**The state lives in the heading**, not inline — `❗` and `✅` carry colour, so scanning does not
+depend on the renderer's text colour. Items are `##` with no wrapping section header, because
+Nimbalyst dims each descending heading level.
+
 | State | Shape |
 |---|---|
-| **Closed** | `~` his reply → `✅` my answer. **No new slot.** |
-| **Open** | `~` his reply → `!!` my answer → **`~` on its own line** for him to reply into |
+| **Closed** | `## ✅ 2. Title · \`claude\`` → answer, **no reply slot** |
+| **Open** | `## ❗ 1. Title · \`claude\`` → answer → **`~` on its own line** to reply into |
 
 Two mistakes to avoid, both made in the first round:
 
-1. **`!!` without a following `~`.** He has nowhere to answer. Every `!!` needs an empty reply
-   slot beneath it — the `~` at the top of an item is his *previous* reply, not a fresh one.
-2. **`✅` on an item that still asks a question.** If there is a question, it is open. Marking
-   it closed makes the `✅` meaningless as a scan signal.
+1. **`❗` without a following `~`.** He has nowhere to answer. The `~` at the top of an item is
+   his *previous* reply, not a fresh one.
+2. **`✅` on an item that still asks a question.** If there is a question, it is open.
 
-Use `!!` once, at the start of the answer, rather than repeating it at the end — the trailing
-`~` is what marks where to reply.
+`morpheus standup validate` enforces both, plus dense numbering and a summary before the first
+item. Run it before finishing; CI runs it too.
 
 **Link roadmap items with relative markdown paths** — `[RM-011](product/roadmap/RM-011.md)`
 from `hq/STATUS.md`. These resolve in Obsidian *and* render on GitHub, unlike `[[wikilinks]]`

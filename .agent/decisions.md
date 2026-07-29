@@ -96,7 +96,7 @@ deploys fail. Sequence accordingly.
 ownership begins when work begins. The remote branch (`rm-014-*`) *is* the claim — no assignee
 field, no lock file, no new concept. Merging releases it by deleting the branch.
 
-**Status is per person, not per session** — 2026-07-29. The point of the file is one place to
+**Standups are per person, not per session** — 2026-07-29. The point of the file is one place to
 look; per-session would mean reading N files to find what needs you. Sessions are covered by
 `.agent/journal/`. Split to `hq/status/<person>.md` done immediately, since Alex is already a
 Lakina collaborator. Items are tagged with the agent that raised them, so Claude and Codex land
@@ -105,3 +105,14 @@ in one inbox rather than two.
 **One git worktree per parallel session** — subagents fan out within a task and return;
 parallel sessions hold independent workstreams with their own context and git state. Worktrees
 stop two simultaneous sessions colliding in one checkout.
+
+**"Standup", not "status"** — 2026-07-29. The document is a mix of progress report and request
+for input; "status" names only the reporting half. "Standup" mirrors the familiar ritual (done,
+next, blocked), so the name teaches the format and implies summary-before-blockers.
+
+**State markers live in the heading, not inline** — `❗`/`✅` in an `##` heading carry colour, so
+scanning does not depend on the renderer's text colour. Nimbalyst dims each descending heading
+level, which is why items are `##` with no wrapping section header.
+
+**Standup items link a roadmap id optionally, never mandatorily** — some items are prerequisites,
+decisions, or credentials rather than tasks. Requiring an id would mean inventing fake ones.

@@ -1,69 +1,33 @@
-# Status — 2026-07-29
-
-> **Whose:** Chris. One inbox per person; see [README](README.md).
->
-> **Markers.** Every item is either **closed** or **open** — never both:
->
-> - `✅` — settled. Nothing further, no reply slot.
-> - `!!` — my answer, still needs you. **Always followed by an empty `~` to reply into.**
->
-> `~` is always a reply slot: filled ones are yours from last round, the empty one at the
-> bottom of an open item is where you reply next. Scan for `!!`.
->
-> Previous exchange archived to `.agent/status/2026-07-29-0400.md`.
-
+---
+person: chris
+date: 2026-07-29
+agents: [claude]
+previous: .agent/standup/chris-2026-07-29-0400.md
 ---
 
-## Needs you
+# Standup — 2026-07-29
 
-### 1. Staging URL in the PR description  `claude`
+Since the last check-in: shipped the **claim mechanism** (`pm claim` / `pm claims` — the remote
+branch is the lock, so two agents cannot start the same item), split inboxes **per person**
+rather than per session, and renamed this document from *status* to *standup*.
 
-~ *(previous: CI was erroring; wanted the site published to a staging URL linked from the PR)*
+Earlier: **Evo is retrofitted and green** — [evo#6](https://github.com/darwin-health/evo/pull/6)
+is rebased onto main with all four checks passing, staging at
+[web-jbfhjsdlp](https://web-jbfhjsdlp-darwin-health.vercel.app). Vercel's root directory is
+fixed, and Codex's 18 tests pass in their new location.
 
-✅ Done. Root cause was the Vercel root directory (item 2). All four checks now pass and the
-staging link is at the top of [evo#6](https://github.com/darwin-health/evo/pull/6):
+60 tests, CI green on both repos. **Nothing is unblocked** — everything below needs you, which
+is why there is no "working next" line.
 
-**https://web-jbfhjsdlp-darwin-health.vercel.app**
+> `❗` needs you and ends in an empty `~`. `✅` is settled. `~` is a reply slot — reply after
+> the empty one at the bottom of an open item. `morpheus standup validate` enforces this.
 
-Sign in with Vercel — previews sit behind team protection, so it works for you but is not
-publicly viewable. The description also carries a spot-check list. Clicking any element in the
-Vercel toolbar leaves a comment that syncs back to the PR.
 
-Automating the description patch is queued as [RM-011](product/roadmap/RM-011.md); for now the
-Vercel bot comments the URL and I paste it into the description.
-
-### 2. Vercel Root Directory  `claude`
-
-~ *(previous: authorized me to change it for Evo)*
-
-✅ Changed from `web` to `apps/web` via the Vercel API using your CLI token. Preview now
-deploys green.
-
-**One thing to know:** root directory is a project-level setting, not per-branch. **A push to
-`main` will fail to deploy until evo#6 merges.** The live site is unaffected — the existing
-production deployment keeps serving — but do not push to `main` expecting a deploy before
-merging.
-
-### 3. Merge ordering — rebase done  `claude`
-
-~ *(previous: you merged #5; told me to update the refactor PR)*
-
-✅ Rebased onto the new `main`. Three conflicts, all resolved keeping both sides:
-
-- **`apps/web/package.json`** — kept Codex's `test` script *and* the `typecheck` script this PR
-  adds
-- **`tool-calculations.ts` / `.test.mjs`** — moved into `apps/web/`, **all 18 tests pass** in
-  the new location
-- **`deploy.yml`** — deleted; `ci.yml` supersedes it, and the delegated `web-ci` runs lint,
-  test, and build
-
-All checks green. Ready to merge.
-
-### 4. `gcloud auth login` — where and how  `claude`
+## ❗ 1. `gcloud auth login` — where and how · `claude`
 
 ~ *(previous: does it matter where I run it? how do I handle multiple accounts?)*
 
-!! **It does not matter what directory you run it from** — gcloud credentials are global to
+**It does not matter what directory you run it from** — gcloud credentials are global to
 your user account, stored in `~/.config/gcloud`, not per-project.
 
 Multiple accounts are handled by **named configurations**. Run this once per identity:
@@ -99,11 +63,12 @@ designed, or something else.
 
 ~
 
-### 5. PostHog — API key and per-project MCP  `claude`
+
+## ❗ 2. PostHog — API key and per-project MCP · `claude`
 
 ~ *(previous: add instructions; want per-project setup with full MCP access)*
 
-!! Here is the whole path. Two separate credentials, which is the part that trips people up.
+Here is the whole path. Two separate credentials, which is the part that trips people up.
 
 **Step 1 — create a project.** Sign up at [posthog.com](https://posthog.com), pick **US Cloud**
 (matches your GCP region and keeps latency sane). Create one project per product: `evo`,
@@ -142,11 +107,12 @@ here (or better, once item 4 lands, straight into Secret Manager and I will neve
 
 ~
 
-### 6. Licence and npm — you are right, and the mechanism is not the licence  `claude`
+
+## ❗ 3. Licence and npm — you are right, and the mechanism is not the licence · `claude`
 
 ~ *(previous: prefer not to publish; want minimal public footprint and minimal external use; is PolyForm Strict the most restrictive?)*
 
-!! Three answers.
+Three answers.
 
 **On npm: agreed, do not publish.** No real upside for you. The CI workaround already works, and
 for local use it is just:
@@ -189,11 +155,12 @@ way if you ever wanted to hand a copy to a friend.
 
 ~
 
-### 7. Event schema — deferred, Evo brand fundamentals first  `claude`
+
+## ❗ 4. Event schema — deferred, Evo brand fundamentals first · `claude`
 
 ~ *(previous: do not build the schema yet; Evo needs brand fundamentals, strategy, and business goals in place first)*
 
-!! Agreed and reprioritized. [RM-006](product/roadmap/RM-006.md) stays in backlog.
+Agreed and reprioritized. [RM-006](product/roadmap/RM-006.md) stays in backlog.
 
 I deliberately did **not** add brand work to evo#6 — that PR is advertised as structural-only
 and should stay reviewable as such. `hq/brand/` is currently an empty scaffold while the real
@@ -210,11 +177,12 @@ before writing it down.
 
 ~
 
-### 8. Editor — use Nimbalyst, keep our PM suite  `claude`
+
+## ❗ 5. Editor — use Nimbalyst, keep our PM suite · `claude`
 
 ~ *(previous: could we scrap our roadmap tooling for theirs? worried we're rebuilding what they have)*
 
-!! Your two screenshots answered this better than the docs did.
+Your two screenshots answered this better than the docs did.
 
 **Zed is out.** WYSIWYG markdown has been open since 2024
 ([#15066](https://github.com/zed-industries/zed/issues/15066),
@@ -264,11 +232,12 @@ would be trading the `/hq` requirement for it.
 
 ~
 
-### 9. Collaboration — claims, not assignees  `claude`
+
+## ❗ 6. Collaboration — claims, not assignees · `claude`
 
 ~ *(previous: few collaborators, git as the interface; need to stop two agents grabbing the same item; no upfront human assignee)*
 
-!! Agreed on the framing. Three parts, and I disagree with one of them.
+Agreed on the framing. Three parts, and I disagree with one of them.
 
 **The claim problem is real, and git already solves it — the remote branch *is* the claim.**
 
@@ -315,11 +284,12 @@ It is small — one `ls-remote`, one branch create, one status write.
 
 ~
 
-### 10. Parallel sessions — Claude and Codex  `claude`
+
+## ❗ 7. Parallel sessions — Claude and Codex · `claude`
 
 ~ *(previous: Claude on frontend, Codex on image generation; will one markdown file handle that? is there value in parallel Claude sessions given subagents?)*
 
-!! **One file handles it, with attribution.** Every item now carries the agent that raised it —
+**One file handles it, with attribution.** Every item now carries the agent that raised it —
 see the `` `claude` `` tags on these headings. Two agents finishing at once write to the same
 working copy, so writes serialise naturally; you still get one place to look.
 
@@ -354,34 +324,42 @@ claimed items and tell me where it chafes — that is the only way to find the n
 
 ~
 
----
+## ❗ 8. Naming and format · `claude`
 
-## Shipped
+~ *(previous: is "status" the right word? should items be schematized? headings render grey in Nimbalyst)*
 
-| Item | What |
-| --- | --- |
-| [RM-001](product/roadmap/RM-001.md) | `morpheus pm` — schemas, parser, index generator, CLI |
-| [RM-002](product/roadmap/RM-002.md) | `morpheus check pr` + four reusable workflows |
-| [RM-007](product/roadmap/RM-007.md) | Evo retrofit — rebased, all checks green, ready to merge |
+**"Standup" over "status".** You described it exactly: *"a mix of a brief, status update, and a
+request for input."* That is a standup — done, next, blocked. "Status" only names the reporting
+half and is silent on the asking half, which is the half that actually blocks work.
 
-New: [RM-011](product/roadmap/RM-011.md) staging URL automation,
-[RM-012](product/roadmap/RM-012.md) go private.
+It also earns its keep by teaching the format: an engineer reading `hq/standup/chris.md` knows
+what is inside without opening it, and knows summary comes before blockers. Runner-up was
+`checkin`, which you used naturally twice — but it collides faintly with the SVN sense of
+"check-in" inside a git repo, and it does not imply structure.
 
-42 tests, Morpheus CI green, Evo CI green.
+**Summary first, then blockers** — adopted, exactly the standup order you asked for.
 
----
+**The grey headings fix turned out to be the restructure.** Nimbalyst dims each heading level as
+it descends, so `##` was grey and `###` greyer. Items are now `##` with no wrapping section
+header, so they render bright. Better still, **the state marker moved into the heading** — `❗`
+and `✅` carry colour, so scanning no longer depends on the theme's text colour at all. That
+also removed the redundancy of having `!!` inline *and* a state.
 
-## Next, in order
+**Yes to a schema, and it is built.** `morpheus standup validate` enforces:
 
-1. You merge [evo#6](https://github.com/darwin-health/evo/pull/6)
-2. Item 6 → flip Morpheus private, credential pass ([RM-012](product/roadmap/RM-012.md))
-3. Item 4 → `gcloud auth login` → [RM-004](product/roadmap/RM-004.md) `/hq` auth, the gateway
-   to the infra half
-4. Evo brand promotion out of `local/` (pending item 7's answer)
-5. [RM-008](product/roadmap/RM-008.md) `morpheus init`
+| Rule | Why |
+|---|---|
+| Frontmatter: person, date, agents, previous | Machine-readable provenance |
+| `❗` must end in an empty `~` | The mistake I made by hand — an answer with nowhere to reply |
+| `✅` must **not** offer a slot | Otherwise the check mark means nothing |
+| Numbering dense and ascending | So "item 6" means the same to both of us |
+| A summary must precede the first item | It is a standup, not a ticket list |
+| Optional `RM-###` link per item | Some items are tasks; some are decisions or credentials |
 
----
+**On tying items to roadmap tasks: optional, not required.** Item 4 (gcloud) is a prerequisite,
+item 8 is a naming decision — neither is a roadmap task, and forcing an id would mean inventing
+fake ones. The link is there when it is real.
 
-## Anything else
+Nine tests cover the parser. It runs in CI, so this cannot rot.
 
 ~

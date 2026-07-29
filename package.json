@@ -14,7 +14,8 @@
   },
   "exports": {
     ".": "./dist/index.js",
-    "./pm": "./dist/pm/index.js"
+    "./pm": "./dist/pm/index.js",
+    "./standup": "./dist/standup/index.js"
   },
   "files": [
     "dist"
