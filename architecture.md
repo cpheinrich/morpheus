@@ -266,6 +266,7 @@ canonical and lives in this document. Only *deviations* are recorded.
   "description": "One-sentence description.",
   "surfaces": { "web": true, "ios": true, "hardware": false },
   "integrations": ["firebase", "stripe", "posthog", "github", "slack", "semrush"],
+  "accounts": { /* which identity per service — see §14.2 */ },
   "hq": {
     "route": "/hq",
     "allowlist": ["you@example.com"],
@@ -986,6 +987,119 @@ the override behavior this needs. Project-scoped servers require one-time approv
 a freshly cloned repo they stay pending until you trust the workspace — worth knowing so it does
 not look like a bug.
 
+**Terminology.** There is no such thing as an "MCP token." MCP is a transport; the credential is
+whatever the underlying service already uses — a Cloudflare API token, a Google OAuth grant, a
+GCP service account key. The MCP server just carries it. So "configure MCP for this project" always
+reduces to "get this project's normal API credentials into the environment."
+
+### 14.2 Credential bootstrap
+
+**The principle is right: generate credentials once, broadly, at setup — then let the agent run.**
+Every mid-project token request is a stall that costs more than the marginal security a narrow
+token buys.
+
+What makes broad tokens defensible here is that **isolation happens at the account boundary, not
+the token boundary.** Each company already has its own Cloudflare account, its own GCP project, and
+its own GitHub org. A deliberately broad Darwin token still cannot touch Lakina, because it is
+scoped to an account that has no Lakina resources in it. Narrow per-resource tokens would add
+friction without adding a boundary that isn't already there.
+
+The bootstrap set is smaller than it looks, and most of it is **per identity, not per project**:
+
+| Tier | What | How often | Who |
+|---|---|---|---|
+| **0** | `gh auth login`; install `gcloud`, `wrangler`, `firebase-tools`, `op` | Once, ever | You |
+| **1** | `gcloud auth login` + named configuration per Google identity | Once per Google account | You |
+| **2** | Cloudflare API token (broad), Vercel token | Once per account | You — paste into wizard |
+| **3** | Semrush, Stripe, Slack, PostHog | Optional, skippable | You — or skip |
+| **4** | GCP projects, service accounts, Firebase projects, PostHog projects, R2 buckets, DNS records, Vercel projects, GitHub repos, Chatwoot inboxes | Continuously | **Agent** |
+
+#### Per service
+
+**Google Cloud and Firebase — no separate token needed.** This answers the question directly: you
+do not need a Firebase token. `gcloud auth login` as a user with Owner is sufficient, because the
+Firebase CLI reads Application Default Credentials and Firebase projects are creatable through the
+Firebase Management API via `gcloud`. From one interactive login the agent can create projects,
+enable APIs, mint service accounts, configure IAM, and write Secret Manager entries.
+
+Multiple Google identities are handled by **named `gcloud` configurations** rather than by
+re-authenticating:
+
+```sh
+gcloud config configurations create darwin
+gcloud config configurations activate darwin
+gcloud auth login you@your-company.com
+```
+
+The project selects one via `CLOUDSDK_ACTIVE_CONFIG_NAME` in `.env.local`, so opening a repo puts
+the agent on the right account automatically with no switching ritual.
+
+**Cloudflare — one broad token per account, the only genuinely manual step.** The first token has to
+be created in the dashboard, because minting a token through the API requires a token. Create one
+per account with a wide permission set (Zone:Edit, DNS:Edit, Workers Scripts:Edit, R2:Edit, Account
+Settings:Read) and the agent handles DNS, Workers, R2, and cache from then on — including minting
+narrower tokens later if a specific need ever arises. Darwin's token is reused by both `darwin` and
+`evo`, so this is once per *account*, not once per repo.
+
+**Vercel — one token, scoped per invocation.** A single personal token reaches every team you
+belong to; `vercel --scope acme-team-slug` selects the right one. No need for a token per
+team.
+
+**GitHub — one identity covers everything.** Your repos live under three owners (`cpheinrich`,
+`darwin-health`, `lakinacapital`) but all under one authenticated user, so a single `gh auth login`
+covers all of them.
+
+> **One real wrinkle.** `@morpheus/kit` will be published under `cpheinrich`, but `darwin-health`
+> and `lakinacapital` repos need to install it. GitHub Packages permissions are owner-scoped, and
+> the `GITHUB_TOKEN` that Actions provides automatically only reaches packages owned by the same
+> account as the repo. **Cross-org consumption requires an explicit PAT with `read:packages`** in
+> each consuming repo's Actions secrets. Worth knowing before the first cross-org CI run fails.
+> Your current token has `gist, read:org, repo, workflow` — it needs `write:packages` and
+> `read:packages` added.
+
+**Google Drive per project — use a service account, not the connector.** The claude.ai Drive
+connector authenticates one Google account, so it cannot give personal projects your personal Drive
+and Darwin its own. The clean answer reuses infrastructure you already have: **create a service
+account in that company's GCP project and share the relevant Drive folders with its email address.**
+No OAuth, no account switching, and the agent authenticates with credentials it already holds.
+
+**Granola and similar consumer tools** have no service-account path and stay account-scoped. That is
+a genuine limitation rather than a design choice — flagged in §27 Q7.
+
+#### Bootstrap ordering
+
+This resolves the chicken-and-egg problem of needing credentials to create the store that holds
+credentials:
+
+```mermaid
+flowchart TB
+    A["1. gcloud auth login<br/>(human, per Google identity)"] --> B["2. Agent creates GCP project<br/>enables APIs, creates Secret Manager"]
+    B --> C["3. Human pastes Cloudflare token<br/>(the only manual paste)"]
+    C --> D["4. Agent writes it to GSM"]
+    D --> E["5. Agent provisions everything else<br/>Firebase · DNS · R2 · Vercel · GitHub · PostHog"]
+    E --> F["6. morpheus secrets pull<br/>populates .env.local"]
+    F --> G["7. .mcp.json resolves — agent fully enabled"]
+```
+
+**Net: one interactive login per Google identity, one pasted token per Cloudflare account, and
+nothing else.** Everything downstream is agent-created.
+
+#### Recorded in the manifest
+
+```jsonc
+"accounts": {
+  "gcloud":     "darwin",                  // gcloud configuration name
+  "gcpProject": "acme-prod",
+  "cloudflare": "darwin-health",           // account name; token in GSM
+  "vercel":     "acme-team-slug",    // --scope value
+  "github":     "darwin-health"            // repo owner
+}
+```
+
+The manifest names *which* identity a project uses; the values live in GSM. An agent opening the
+repo reads this and knows which account it is operating as, which is the thing that most often goes
+wrong when one person runs several companies.
+
 ---
 
 ## 15. Brand and design
@@ -1443,7 +1557,7 @@ which item to verify status on.
 3. **Surfaces** — web (assumed), iOS, hardware
 4. **Brand** — generate skeletons, or point at an existing `brand/`
 5. **Integrations** — which canonical services to wire
-6. **Secrets** — prompt for each required credential, write to GSM, never to disk
+6. **Credentials** — tier 2 and 3 tokens, each individually skippable (§14.2); written to GSM, never to disk
 7. **Access** — `/hq` allowlist
 
 Then: create the directory, scaffold from templates, install `@morpheus/kit`, init git, create the
@@ -1610,6 +1724,11 @@ Its structure is legitimately a subset, and `morpheus.json` records that with
 | `company/` renamed | **`hq/`** — not every project is a company, and it makes `hq/` → `/hq` → `kit/hq` coherent |
 | Project kinds | `company` \| `personal` \| `internal`, set by the wizard, drives which `hq/` subtrees exist |
 | MCP credentials | `.mcp.json` committed with `${VAR}` refs; values in `.env.local` from GSM. claude.ai connectors need no token but are account-scoped |
+| Credential breadth | Broad tokens, deliberately — isolation is at the *account* boundary, which already exists per company |
+| Firebase token | Not needed. `gcloud auth login` covers Firebase via ADC + Management API |
+| Multi-account Google | Named `gcloud` configurations, selected per repo via `CLOUDSDK_ACTIVE_CONFIG_NAME` |
+| Per-project Google Drive | Service account per company with folders shared to it — not the claude.ai connector |
+| Bootstrap manual steps | One `gcloud auth login` per Google identity; one pasted Cloudflare token per account |
 | Design system split | Components + showcase in the kit; tokens and route in the project (§15.1a) |
 | `/hq` auth | Firebase Auth custom claims; allowlist in `morpheus.json` applied by `sync-access` |
 | `/hq` theming | Inherits project brand automatically; `--hq-*` tokens for density only |
@@ -1645,6 +1764,11 @@ scope?
 **Q5 — Journal growth.** `.agent/journal/` grows monotonically. When does it need compaction, and
 should a scheduled agent fold old entries into `learned.md`?
 
-**Q6 — Secrets bootstrap ordering.** `morpheus init` needs credentials to create the GCP project
-that will hold the credentials. What is the minimum set you hold personally (a `gcloud` login and a
-GitHub PAT?) before the CLI can bootstrap everything else?
+**Q6 — Cloudflare account consolidation.** You have three Cloudflare accounts. Each needs its own
+manually created token, and that is the only recurring manual step in setup. Is keeping them
+separate deliberate (billing, isolation), or would consolidating to one account with multiple zones
+remove a per-company chore? Separate accounts do give real isolation, so this is a genuine tradeoff.
+
+**Q7 — Account-scoped consumer connectors.** Granola, and any other claude.ai connector without a
+service-account path, cannot be made per-project. Accept one identity across all projects, or route
+those through a per-project integration where the vendor offers an API key?
