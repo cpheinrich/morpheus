@@ -745,10 +745,18 @@ Deliberately minimal: markdown in git, no vector database, no external store.
 
 ```
 .agent/
-├── journal/
+├── journal/                       # per task: what was attempted and learned
 │   └── 2026-07-28-calorie-pipeline.md
-└── learned.md
+├── status/                        # archived status exchanges, with replies
+│   └── 2026-07-29-2145.md
+├── decisions.md                   # distilled: settled choices and why
+└── learned.md                     # technical facts and gotchas
 ```
+
+`hq/STATUS.md` is the live status report — the one file the human is expected to edit. Items
+needing input are numbered with a `~` reply slot beneath each; replies are answered, distilled
+into `decisions.md`, and the exchange archived to `status/`. The archive is raw and prunable;
+`decisions.md` is the part meant to be read.
 
 Journal entries carry frontmatter (`agent`, `date`, `roadmap-id`, `outcome`) and a short body: what
 was attempted, what happened, what was learned — **including dead ends that produced no code**,

@@ -23,6 +23,9 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `.github/workflows/` | Reusable workflows called by every project |
 | `tests/` | Vitest, mirroring `src/` |
 | `.agent/journal/` | What was attempted and learned, including dead ends |
+| `.agent/decisions.md` | Settled choices and why — **read this first** |
+| `.agent/status/` | Archived status reports with Chris's inline replies |
+| `hq/STATUS.md` | The live status report Chris replies to |
 
 ## Commands
 
@@ -54,7 +57,25 @@ any index changes. CI runs the same checks and will fail otherwise.
 
 **Append a journal entry** to `.agent/journal/YYYY-MM-DD-slug.md` before opening a PR. Record
 what you learned, especially dead ends that produced no code — git history cannot capture those.
-Read `.agent/learned.md` at the start of a session.
+
+**At the start of a session** read `.agent/decisions.md` and `.agent/learned.md`. Decisions are
+settled choices — if one looks wrong, say so and ask rather than quietly working around it.
+
+## The status cycle
+
+`hq/STATUS.md` is how Chris and I exchange state. It is the only file he is expected to edit.
+
+1. I write it at the end of a working session. Everything needing his input goes in a single
+   **Needs you** section, numbered, each item followed by a `~` on its own line.
+2. He replies inline after the `~`, leaving the marker in place.
+3. On my next turn I: read the replies, act on them, promote anything durable to
+   `.agent/decisions.md`, archive the whole exchange to `.agent/status/YYYY-MM-DD-HHMM.md`,
+   and write a fresh `STATUS.md`.
+
+Keep **Needs you** as one list. Splitting "waiting on you" from "blocked" was a false
+distinction — both mean the same thing to the person reading it.
+
+Never let `hq/STATUS.md` accumulate history. It is a snapshot; the archive is the record.
 
 ## Style
 

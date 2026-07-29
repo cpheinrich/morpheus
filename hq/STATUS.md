@@ -1,7 +1,72 @@
 # Status — 2026-07-29
 
-> Ephemeral. Overwritten each working session. The durable record is
-> [`hq/product/roadmap/`](./product/roadmap/) and `.agent/journal/`.
+> **How to reply:** type your answer after the `~` under any item. Leave the `~` in place.
+> On my next turn I read your replies, act on them, promote anything durable to
+> `.agent/decisions.md`, archive this file to `.agent/status/`, and write a fresh one.
+>
+> Items are numbered so you can also just say "3 and 5 are done" if that's easier.
+
+---
+
+## Needs you
+
+Everything that blocks me, in one list.
+
+### 1. Review [darwin-health/evo#6](https://github.com/darwin-health/evo/pull/6) — the retrofit
+
+Structural only: no behaviour, route, or dependency changes. Both CI jobs pass. Install,
+token build, typecheck, lint, and `next build` verified; all 8 calculator routes still
+prerender.
+
+~
+
+### 2. Vercel Root Directory → `apps/web`
+
+The one red check left on evo#6. It's a dashboard setting, about thirty seconds. Your Vercel
+CLI is authenticated as `darwinhealthinc-4781` so I *could* force it, but reconfiguring a live
+deployment unsupervised isn't a call I should make. Say the word and I will.
+
+~
+
+### 3. Merge ordering for evo#6
+
+`codex/tool-tests-ci` has one unmerged commit. A move this wide conflicts with any in-flight
+branch — land that first, or rebase it after. Which?
+
+~
+
+### 4. `gcloud auth login` as yourself
+
+The biggest unblock. No credentialed account since the Polycam revoke, so there's no GCP or
+Firebase project. This gates RM-004 (`/hq` auth) and effectively the entire infrastructure
+half of the roadmap.
+
+~
+
+### 5. PostHog account + API key
+
+Blocks RM-006 and Evo's RM-003. Free tier covers you for a long time.
+
+~
+
+### 6. Publish `morpheus-kit` to npm, or not?
+
+PolyForm Noncommercial plus `private: true` makes this a real question rather than a step. The
+CI workaround (checking out and building the CLI) works fine, so there's no urgency — but
+`morpheus init` for a fresh project would be nicer if the package were installable.
+
+~
+
+### 7. Event schema input for RM-006
+
+The expensive thing to get wrong. What do Darwin and Evo actually need to measure? Even three
+bullet points beats a schema I invent. Specifically: is there a canonical set every project
+emits (signup, activation, purchase) so cross-project dashboards work, or is each project's
+schema its own?
+
+~
+
+---
 
 ## Shipped
 
@@ -9,74 +74,49 @@
 |---|---|
 | **RM-001** | `morpheus pm` — schemas, parser, index generator, CLI |
 | **RM-002** | `morpheus check pr` + four reusable workflows |
-| **RM-007** | Evo retrofit → [darwin-health/evo#6](https://github.com/darwin-health/evo/pull/6) |
+| **RM-007** | Evo retrofit → [evo#6](https://github.com/darwin-health/evo/pull/6) |
 | **RM-010** | Added (architecture.md simplification, deferred by design) |
 
-42 tests, Morpheus CI green, `pnpm audit` clean. Evo CI green on the PR.
+42 tests, Morpheus CI green, `pnpm audit` clean, Evo CI green on the PR.
 
-## Waiting on you
-
-**1. Review [darwin-health/evo#6](https://github.com/darwin-health/evo/pull/6).** Structural
-only — no behaviour, route, or dependency changes. Both CI jobs pass; install, token build,
-typecheck, lint, and `next build` all verified, all 8 calculator routes still prerender.
-
-**2. Vercel Root Directory needs changing to `apps/web`.** The preview deploy is the one
-remaining red check on that PR. It's a dashboard setting, and I didn't want to reconfigure a
-live deployment unsupervised — takes you about thirty seconds.
-
-**3. Merge ordering.** `codex/tool-tests-ci` has an unmerged commit. A move this wide conflicts
-with any in-flight branch: land that first, or rebase it after.
-
-## Blocked
-
-| Blocker | Unblocks | Why |
-|---|---|---|
-| `gcloud auth login` as yourself | RM-004, most infra | No credentialed account since the Polycam revoke — no GCP or Firebase project exists |
-| PostHog account + API key | RM-006, Evo RM-003 | Cannot wire analytics without a project |
-| Decide: publish to npm or not | RM-003 | PolyForm Noncommercial + `private: true` makes this a real question, not a step |
-| Event schema input | RM-006 | What Darwin and Evo actually measure — I'd rather ask than invent |
+---
 
 ## What the retrofit taught us
-
-The point of doing it by hand. All recorded in RM-007 and the journal.
 
 **Two genuine template bugs, both found only by applying the templates to a real project:**
 
 1. **`web-ci` hard-failed on missing scripts.** Evo's `apps/web` had no `typecheck` or `test`.
-   Fixed with `pnpm run --if-present`. The template encoded what *Morpheus* looks like — a repo
-   with full tooling — rather than what a young project looks like.
-2. **`pm-check` assumed the consuming repo had the CLI installed.** It ran `pnpm morpheus`,
-   which only works in a repo depending on morpheus-kit. Evo doesn't and can't until the
-   package is published. Now the workflow checks out `cpheinrich/morpheus` and builds the CLI
-   itself — **only possible because the repo is public, which is a concrete payoff of that
-   decision.**
+   The template encoded what *Morpheus* looks like — a repo with full tooling — rather than
+   what a young project looks like. Fixed with `pnpm run --if-present`.
+2. **`pm-check` assumed the consuming repo had the CLI installed.** Evo doesn't and can't until
+   the package is published. Now the workflow checks out `cpheinrich/morpheus` and builds the
+   CLI — only possible because the repo is public, the first concrete payoff of that decision.
 
-**Three smaller findings:**
+**Three smaller findings:** the move was mechanical (no imports crossed out of `web/`); three
+`.npmrc` files existed only to escape a Polycam registry that no longer exists; package names
+needed scoping to `@evo/*`.
 
-3. The move was mechanical — `web/` had zero imports crossing out of it, so no rewrites.
-   `init` can assume that for a fresh project; `add` against an established repo cannot.
-4. Three `.npmrc` files existed only to escape the Polycam Artifactory registry that no longer
-   exists. Retrofits should hunt for workarounds whose cause is gone.
-5. Package names needed scoping — `web`/`shared` → `@evo/web`/`@evo/shared`.
+**On `@main` pinning:** my `--if-present` fix landed one minute after Evo's CI ran, so the first
+run used a stale workflow. Instant propagation cuts both ways. Related trap — `gh run rerun`
+reuses the *original* workflow resolution, so a reusable-workflow fix needs a fresh trigger.
 
-**And one about the `@main` pinning you chose:** my `--if-present` fix landed one minute after
-Evo's CI ran, so the first run used a stale workflow. Instant propagation cuts both ways. Also
-worth knowing: `gh run rerun` reuses the *original* workflow resolution, so verifying a
-reusable-workflow fix needs a fresh trigger, not a rerun.
+---
 
 ## Next, in order
 
-1. You merge or comment on evo#6, and fix the Vercel root directory
-2. `gcloud auth login` → unblocks RM-004 (`/hq` auth), the gateway to the infra half
+1. evo#6 merged and the Vercel root directory fixed
+2. `gcloud auth login` → RM-004 (`/hq` auth), the gateway to the infra half
 3. RM-008 `morpheus init`, written from the five findings above
 4. RM-009 Darwin retrofit — the real test of the templates
 
 ## Not done, deliberately
 
-**RM-006 analytics.** I could have written an event schema without credentials, but I flagged
-it as the expensive thing to get wrong, and I'd be guessing at what Darwin and Evo measure.
-Three questions from you beats a schema I invented.
+**RM-006 analytics** — see item 7. **RM-009 Darwin retrofit** — Darwin has a live `/hq` with
+`financials`, `suppliers`, and `legal`, materially riskier than Evo, and better done after
+`init` exists so it tests the templates rather than repeating hand work.
 
-**RM-009 Darwin retrofit.** Darwin has a live `/hq` with `financials`, `suppliers`, and `legal`
-— materially riskier than Evo, and better done after `init` exists so it tests the templates
-rather than repeating hand work.
+---
+
+## Anything else
+
+~
