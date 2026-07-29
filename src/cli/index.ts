@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { basename, resolve } from "node:path";
-import { claim, claims, create, index, validate } from "./pm.js";
+import { claim, claims, create, index, ship, validate } from "./pm.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
 import { check as brandCheck, init as brandInit } from "./brand.js";
@@ -17,6 +17,7 @@ Usage
   morpheus pm new <roadmap|goals|requests> <title> [--priority P1] [--goal G-2026-Q3-01]
   morpheus pm claim <RM-014>
   morpheus pm claims
+  morpheus pm ship [<MO-020> ...]  [--check]
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus inbox validate   [--dir <hq/inbox>]
   morpheus brand init | refresh   [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
@@ -180,6 +181,8 @@ async function main(): Promise<number> {
       return claim(dir, rest[0] ?? "", process.cwd());
     case "claims":
       return claims(process.cwd());
+    case "ship":
+      return ship(dir, rest, process.cwd(), flags.check);
     case "new": {
       const [kind, ...titleParts] = rest;
       return create(dir, kind ?? "", titleParts.join(" "), {

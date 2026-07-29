@@ -10,6 +10,7 @@ import {
 import { createItem } from "../pm/new-item.js";
 import { ageInDays, claim as claimItem, ClaimError, listClaims } from "../pm/claim.js";
 import { ARTIFACTS, type ArtifactKind } from "../pm/schema.js";
+import { formatReconcile, markShipped, reconcile } from "../pm/ship.js";
 
 const KINDS = Object.keys(ARTIFACTS) as ArtifactKind[];
 
@@ -212,5 +213,35 @@ export async function claims(cwd: string, staleDays = 7): Promise<number> {
   if (staleCount) {
     console.log(`\n${staleCount} claim(s) with no activity for ${staleDays}+ days (marked !).`);
   }
+  return 0;
+}
+
+/**
+ * Move merged items to shipped.
+ *
+ * With no id, reconciles every `review` item against merged pull requests.
+ * With ids, marks those directly — the escape hatch for work that shipped
+ * without a PR this tool can see.
+ */
+export async function ship(
+  productDir: string,
+  ids: string[],
+  cwd: string,
+  check = false,
+): Promise<number> {
+  if (ids.length) {
+    for (const id of ids) {
+      await markShipped(productDir, id);
+      console.log(`\x1b[32m${id} → shipped\x1b[0m`);
+    }
+    return 0;
+  }
+
+  const result = await reconcile(productDir, cwd, { write: !check });
+  console.log(formatReconcile(result));
+
+  // `--check` is for CI, where a roadmap that disagrees with merged PRs is a
+  // failure. Without it, finding nothing to do is a success.
+  if (check) return result.outcomes.some((o) => o.kind === "shipped") ? 1 : 0;
   return 0;
 }
