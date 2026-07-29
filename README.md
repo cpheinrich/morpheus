@@ -46,14 +46,22 @@ secrets convention. Read that first; this file is only an index.
 
 ## Scope and expectations
 
-Built for my own projects and shared with a few family and friends. It is public because that
-is simpler than keeping it private, not because it is a product.
+Built for my own projects and shared with a few family and friends. The source is public
+because that is simpler than keeping it private, not because it is a product.
 
 There is no support, no roadmap commitment, and no stability guarantee. Conventions are
 deliberately opinionated and mostly non-negotiable — the whole point is trading configurability
-for consistency, which makes it a poor fit for anyone whose stack differs from mine. You are
-welcome to read it, fork it, or take ideas from it.
+for consistency, which makes it a poor fit for anyone whose stack differs from mine.
 
 ## License
 
-MIT — see [`LICENSE`](./LICENSE).
+**[PolyForm Noncommercial 1.0.0](./LICENSE.md)** — source-available, not open source.
+
+Free for any noncommercial purpose: personal projects, hobby work, research, study, and
+evaluation. Reading it, forking it, modifying it, and taking ideas from it are all fine.
+
+**Commercial use requires a separate license.** That includes using Morpheus to build or
+operate anything intended for commercial advantage or monetary compensation. If you want to
+use it commercially, open an issue.
+
+Contributions are not being accepted at this time, so that relicensing stays possible.

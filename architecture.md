@@ -1700,7 +1700,8 @@ Its structure is legitimately a subset, and `morpheus.json` records that with
 
 ## 25. What Morpheus is not
 
-- Not multi-tenant, not a product, not sold.
+- Not multi-tenant, not a product, not currently sold. Licensed PolyForm Noncommercial so that
+  option stays open; commercial use requires a separate licence.
 - Not a way to avoid choosing a stack — it *is* the choice, made once.
 - Not a replacement for Stripe, Firebase, or Gusto. Those moats are real.
 - Not a runtime. It scaffolds and supplies packages; it is not in the request path.
