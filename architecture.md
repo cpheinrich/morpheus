@@ -1283,6 +1283,38 @@ small set of `--hq-*` semantic tokens (density, table row height, muted surface)
 sensibly and *derive from* brand colors rather than introducing a parallel palette. A project can
 override them, but is not expected to.
 
+### 15.5 The brand package has a declared required set
+
+`src/brand/package.ts` declares what a brand package must contain and what it may grow. It is the
+**single source of that list**, and three consumers read it: the design-session prompt tells an
+agent what to produce, `morpheus brand status` reports what is missing, and the generated
+`hq/brand/README.md` documents the contract for a human.
+
+Written separately these would drift, and the drift would be silent — a prompt asking for
+something nothing checks looks exactly like a prompt asking for the right thing.
+
+**Required, and deliberately short:**
+
+| File | Produced by |
+|---|---|
+| `README.md`, `strategy.md`, `voice.md`, `messaging.json` | the wizard |
+| `tokens.json`, `visual-system.md`, `assets/logo.svg` | the design session |
+
+A required list long enough to be thorough is one nobody completes, and a checklist that is never
+green stops being read.
+
+**Existence is not completeness.** The wizard writes an empty `tokens.json` scaffold, and an empty
+scaffold beside a finished design is the exact failure this check exists to catch — it looks done
+in a file listing. So `tokens.json` must carry real values under `color`, `font` and `space`, and
+`visual-system.md` is scanned for the generator's own placeholder sentences, reporting *which*
+section was never written rather than that the file is short.
+
+**Optional entries carry a trigger, not a deadline** — `motion.md` when transitions start being
+invented per screen, `components.md` when the same pattern is rebuilt a third time,
+`accessibility.md` when someone re-derives a contrast ratio already checked once. Nothing optional
+affects the exit code. Treating an unmet trigger as a failure trains people to ignore the output,
+and guessing at a motion system before anything animates produces rules nobody follows.
+
 ---
 
 ## 16. Testing and QA

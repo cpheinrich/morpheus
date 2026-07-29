@@ -1,6 +1,7 @@
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BrandAnswers } from "./questions.js";
+import { OPTIONAL, REQUIRED } from "./package.js";
 
 /**
  * Turn wizard answers into the brand package.
@@ -229,14 +230,26 @@ I was thinking clearly about the whole product; I will be reacting to one screen
 
 ## How to finish
 
-When we have converged, consolidate the result into a working first version of the brand package:
+When we have converged, consolidate the result into the brand package. **These are the required
+outputs, and they are the whole required list** — \`morpheus brand status\` checks exactly this:
 
-- \`hq/brand/tokens.json\` — the palette, type scale, spacing and radius as primitives, using the
-  \`--${prefix}-\` prefix convention
-- \`hq/brand/visual-system.md\` — colour, typography, layout, imagery and logo usage, written so
-  someone can apply it without having been in this session
-- \`hq/brand/assets/\` — any marks or icons produced
-- Update \`hq/brand/README.md\` if the reading order changed
+${REQUIRED.filter((e) => e.source === "session")
+  .map((e) => `- \`hq/brand/${e.path}\` — ${e.purpose}`)
+  .join("\n")}
+
+Two things that check catches, so aim past them rather than at them:
+
+- \`tokens.json\` must carry real values under \`color\`, \`font\` and \`space\` — an empty scaffold
+  beside a finished design is worse than no file, because it looks done in a listing. Use the
+  \`--${prefix}-\` prefix convention.
+- \`visual-system.md\` must have its own sentences. The generated placeholders are detected by
+  name; replace them rather than writing around them.
+
+**Do not produce anything beyond that list in this session.** The package has a deliberate set of
+optional parts — motion, imagery, components, accessibility pairs, reverse logo, social card —
+each added when a specific trigger arrives, and they are listed with their triggers in
+\`hq/brand/README.md\`. A first package that is complete beats a broad one that is thin, and
+guessing at a motion system before anything animates produces rules nobody follows.
 
 **First working version, not final.** Say what is still unresolved rather than papering over it.
 Running \`morpheus brand refresh\` revises the strategy answers later, and this session can be
@@ -256,14 +269,29 @@ ${a.what}
 3. [\`visual-system.md\`](./visual-system.md) — how it looks, and where tokens come from
 4. [\`tokens.json\`](./tokens.json) — the canonical values
 
+## What a complete package contains
+
+**Required.** \`morpheus brand status\` checks these, and nothing else counts as the minimum:
+
+${REQUIRED.map((e) => `- \`${e.path}\` — ${e.purpose}`).join("\n")}
+
+Required is deliberately short. A checklist long enough to be thorough is one nobody finishes, and
+a list that is never green stops being read.
+
+**Optional, added when the trigger arrives.** None of these is overdue until its condition is
+true — that is the point of writing the condition down rather than the deadline:
+
+| File | What | Add it when |
+|---|---|---|
+${OPTIONAL.map((o) => `| \`${o.path}\` | ${o.purpose} | ${o.when} |`).join("\n")}
+
 ## Not finished yet
 
-This package is **starter context**, not a finished identity. A questionnaire can capture the
-constraints a brand must satisfy; it cannot produce a look.
+A questionnaire can capture the constraints a brand must satisfy; it cannot produce a look.
 
-Next: paste [\`explore-prompt.md\`](./explore-prompt.md) into a Claude Code or Codex session and
-work through visual directions interactively. Come back and run \`morpheus brand refresh\` when
-the answers themselves need revising.
+Next: paste [\`explore-prompt.md\`](./explore-prompt.md) into a Claude Code or Codex session. It
+casts the agent as the designer and works through directions interactively, then writes the
+required files above. Run \`morpheus brand refresh\` when the answers themselves need revising.
 
 ## Implementation contract
 
