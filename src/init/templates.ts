@@ -245,10 +245,14 @@ local/
 .env
 .env.local
 
-# Editor-pasted images. Screenshots belong in chat, not in the repo — a
-# 448 KB paste once reached a public repository this way.
-*.png
-*.jpg
-*.jpeg
-!hq/brand/assets/*.png
+# Editor-pasted images, which land at the repo root or in the folder that
+# happens to be open. A 448 KB screenshot reached a public repository that way.
+#
+# Scoped to the root rather than \`*.png\` on purpose: a brand session produces
+# moodboards, mockups and logo exports, and a scaffold that quietly ignores the
+# design work is worse than one that occasionally lets a screenshot through.
+/*.png
+/*.jpg
+/*.jpeg
+local/**/*.png
 `;
