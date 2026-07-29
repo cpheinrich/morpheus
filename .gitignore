@@ -14,3 +14,21 @@ local/
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Editor-pasted images. Screenshots belong in chat, not in the repo — an inbox
+# archive does not need to be complete, and binaries bloat a text repo forever.
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.heic
+*.pdf
+*.mp4
+*.mov
+hq/inbox/assets/
+**/nimbalyst-local/
+
+# Exception: brand assets are small, versioned, and needed at build time.
+!hq/brand/assets/**
+!templates/**/assets/**

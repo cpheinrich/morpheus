@@ -31,3 +31,13 @@ Durable facts worth knowing before starting work here. Append; do not rewrite hi
 
 - **Every abandoned Google Cloud create-project or trial flow leaves a junk project behind.**
   Seven accumulated in one session.
+
+- **`git add -A` sweeps up whatever the editor left behind.** A 448 KB screenshot pasted into
+  Nimbalyst landed in `hq/inbox/assets/` and was committed to a public repo without anyone
+  choosing it. Images are now gitignored with an exception for `hq/brand/assets/`.
+
+  **Screenshots belong in chat, not the repo.** An inbox archive does not need to be complete —
+  the decisions distilled from it are what matter, and a binary in a text repo is permanent
+  weight even after deletion.
+
+  Prefer `git add <paths>` over `git add -A` when an editor with its own scratch state is in use.
