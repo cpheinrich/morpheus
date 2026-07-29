@@ -4,6 +4,7 @@ import { claim, claims, create, index, validate } from "./pm.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
 import { init as brandInit } from "./brand.js";
+import { sync as accessSync } from "./access.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -16,6 +17,7 @@ Usage
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus inbox validate   [--dir <hq/inbox>]
   morpheus brand init       [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
+  morpheus access sync      [--project <firebase-project>] [--dry-run]
 
 Options
   --dir <path>   Product directory (default: hq/product)
@@ -32,6 +34,8 @@ interface Flags {
   name?: string;
   prefix?: string;
   check: boolean;
+  project?: string;
+  dryRun: boolean;
   priority?: string;
   goal?: string;
   positional: string[];
@@ -42,6 +46,7 @@ function parseArgs(argv: string[]): Flags {
     dir: "hq/product",
     base: "origin/main",
     check: false,
+    dryRun: false,
     positional: [],
   };
 
@@ -56,6 +61,12 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--check":
         flags.check = true;
+        break;
+      case "--dry-run":
+        flags.dryRun = true;
+        break;
+      case "--project":
+        flags.project = argv[++i];
         break;
       case "--name":
         flags.name = argv[++i];
@@ -87,6 +98,12 @@ async function main(): Promise<number> {
   const flags = parseArgs(argv);
   const [group, command, ...rest] = flags.positional;
   const dir = resolve(process.cwd(), flags.dir);
+
+  if (group === "access") {
+    if (command === "sync") return accessSync(process.cwd(), flags.project, flags.dryRun);
+    console.error(`Unknown access command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+  }
 
   if (group === "brand") {
     if (command === "init") {
