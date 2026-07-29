@@ -1,5 +1,7 @@
 # Status — 2026-07-29
 
+> **Whose:** Chris. One inbox per person; see [README](README.md).
+>
 > **Markers.** Every item is either **closed** or **open** — never both:
 >
 > - `✅` — settled. Nothing further, no reply slot.
@@ -14,7 +16,7 @@
 
 ## Needs you
 
-### 1. Staging URL in the PR description
+### 1. Staging URL in the PR description  `claude`
 
 ~ *(previous: CI was erroring; wanted the site published to a staging URL linked from the PR)*
 
@@ -30,7 +32,7 @@ Vercel toolbar leaves a comment that syncs back to the PR.
 Automating the description patch is queued as [RM-011](product/roadmap/RM-011.md); for now the
 Vercel bot comments the URL and I paste it into the description.
 
-### 2. Vercel Root Directory
+### 2. Vercel Root Directory  `claude`
 
 ~ *(previous: authorized me to change it for Evo)*
 
@@ -42,7 +44,7 @@ deploys green.
 production deployment keeps serving — but do not push to `main` expecting a deploy before
 merging.
 
-### 3. Merge ordering — rebase done
+### 3. Merge ordering — rebase done  `claude`
 
 ~ *(previous: you merged #5; told me to update the refactor PR)*
 
@@ -57,7 +59,7 @@ merging.
 
 All checks green. Ready to merge.
 
-### 4. `gcloud auth login` — where and how
+### 4. `gcloud auth login` — where and how  `claude`
 
 ~ *(previous: does it matter where I run it? how do I handle multiple accounts?)*
 
@@ -97,7 +99,7 @@ designed, or something else.
 
 ~
 
-### 5. PostHog — API key and per-project MCP
+### 5. PostHog — API key and per-project MCP  `claude`
 
 ~ *(previous: add instructions; want per-project setup with full MCP access)*
 
@@ -140,7 +142,7 @@ here (or better, once item 4 lands, straight into Secret Manager and I will neve
 
 ~
 
-### 6. Licence and npm — you are right, and the mechanism is not the licence
+### 6. Licence and npm — you are right, and the mechanism is not the licence  `claude`
 
 ~ *(previous: prefer not to publish; want minimal public footprint and minimal external use; is PolyForm Strict the most restrictive?)*
 
@@ -187,7 +189,7 @@ way if you ever wanted to hand a copy to a friend.
 
 ~
 
-### 7. Event schema — deferred, Evo brand fundamentals first
+### 7. Event schema — deferred, Evo brand fundamentals first  `claude`
 
 ~ *(previous: do not build the schema yet; Evo needs brand fundamentals, strategy, and business goals in place first)*
 
@@ -208,7 +210,7 @@ before writing it down.
 
 ~
 
-### 8. Editor — use Nimbalyst, keep our PM suite
+### 8. Editor — use Nimbalyst, keep our PM suite  `claude`
 
 ~ *(previous: could we scrap our roadmap tooling for theirs? worried we're rebuilding what they have)*
 
@@ -262,7 +264,7 @@ would be trading the `/hq` requirement for it.
 
 ~
 
-### 9. Collaboration — claims, not assignees
+### 9. Collaboration — claims, not assignees  `claude`
 
 ~ *(previous: few collaborators, git as the interface; need to stop two agents grabbing the same item; no upfront human assignee)*
 
@@ -310,6 +312,45 @@ directory with one file in it. The trigger is clear: **second collaborator joins
 
 **What I need from you:** confirm branch-as-claim and I will build `pm claim` / `pm claims`.
 It is small — one `ls-remote`, one branch create, one status write.
+
+~
+
+### 10. Parallel sessions — Claude and Codex  `claude`
+
+~ *(previous: Claude on frontend, Codex on image generation; will one markdown file handle that? is there value in parallel Claude sessions given subagents?)*
+
+!! **One file handles it, with attribution.** Every item now carries the agent that raised it —
+see the `` `claude` `` tags on these headings. Two agents finishing at once write to the same
+working copy, so writes serialise naturally; you still get one place to look.
+
+Where it would break is two *people*, which is why inboxes are per person. You and Alex never
+touch the same file, so git never has to merge a status.
+
+**On parallel Claude sessions versus subagents — they solve different problems.**
+
+Subagents fan out *within* one task: search several places, review several dimensions, report
+back to a parent that holds the thread. They are ephemeral and they return.
+
+Parallel sessions hold *independent workstreams* with their own context and their own git
+state. Frontend and image generation are exactly that — different files, different domains,
+different branches. A subagent cannot hold a long-running workstream, because it exists to
+return to its parent.
+
+So yes, there is real value, and the mechanism is **git worktrees**: each session gets its own
+checkout, so two agents editing simultaneously cannot collide. Nimbalyst supports parallel
+sessions in isolated worktrees directly, which is another argument for it as the surface.
+
+The combination that makes this work:
+
+| Problem | Mechanism |
+|---|---|
+| Two agents pick the same item | `pm claim` — the remote branch is the lock |
+| Two agents edit the same files | One git worktree per session |
+| Two agents report status | One inbox per person, items tagged by agent |
+| Two people | One inbox each — never a merge conflict |
+
+**What I need from you:** nothing blocking. Try running Claude and Codex on two different
+claimed items and tell me where it chafes — that is the only way to find the next gap.
 
 ~
 

@@ -96,6 +96,12 @@ deploys fail. Sequence accordingly.
 ownership begins when work begins. The remote branch (`rm-014-*`) *is* the claim — no assignee
 field, no lock file, no new concept. Merging releases it by deleting the branch.
 
-**Status is per person, not per session** — the point of the file is one place to look. Sessions
-are covered by `.agent/journal/`. Split to `hq/status/<person>.md` when a second collaborator
-joins a project, not before.
+**Status is per person, not per session** — 2026-07-29. The point of the file is one place to
+look; per-session would mean reading N files to find what needs you. Sessions are covered by
+`.agent/journal/`. Split to `hq/status/<person>.md` done immediately, since Alex is already a
+Lakina collaborator. Items are tagged with the agent that raised them, so Claude and Codex land
+in one inbox rather than two.
+
+**One git worktree per parallel session** — subagents fan out within a task and return;
+parallel sessions hold independent workstreams with their own context and git state. Worktrees
+stop two simultaneous sessions colliding in one checkout.

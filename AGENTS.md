@@ -25,7 +25,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `.agent/journal/` | What was attempted and learned, including dead ends |
 | `.agent/decisions.md` | Settled choices and why — **read this first** |
 | `.agent/status/` | Archived status reports with Chris's inline replies |
-| `hq/STATUS.md` | The live status report Chris replies to |
+| `hq/status/<person>.md` | Live status inboxes — one per person, replied to inline |
 
 ## Commands
 
@@ -41,8 +41,20 @@ pnpm morpheus pm new roadmap "Title here" --priority P1
 
 ## Working conventions
 
-**Pick up work from `hq/product/roadmap/`.** Move an item to `in-progress` when you start and
-`review` when you open the PR. Branch names derive from the id: `rm-014-short-slug`.
+**Claim work before starting it:**
+
+```sh
+morpheus pm claims           # what is already taken
+morpheus pm claim RM-014     # stakes the branch on origin, sets in-progress, pushes
+```
+
+The remote branch **is** the claim — `pm claim` refuses if `origin` already has `rm-014-*`.
+Never start an item without claiming it; another agent, possibly on someone else's machine,
+may be on it. Move the item to `review` when you open the PR. Merging deletes the branch and
+releases the claim.
+
+Run one **git worktree per parallel session** so two agents cannot collide in the same
+checkout.
 
 **Every PR must carry:**
 
@@ -63,14 +75,20 @@ settled choices — if one looks wrong, say so and ask rather than quietly worki
 
 ## The status cycle
 
-`hq/STATUS.md` is how Chris and I exchange state. It is the only file he is expected to edit.
+`hq/status/<person>.md` is how a human and their agents exchange state. These are the only
+files a human is expected to edit.
+
+**One inbox per person, not per session.** A person's file collects items from every agent
+working for them, each heading tagged with the agent that raised it (`` `claude` ``,
+`` `codex` ``). Two agents share a working copy so writes serialise; two *people* never touch
+the same file, so git never merges a status.
 
 1. I write it at the end of a working session. Everything needing his input goes in a single
    **Needs you** section, numbered, each item followed by a `~` on its own line.
 2. He replies inline after the `~`, leaving the marker in place.
 3. On my next turn I: read the replies, act on them, promote anything durable to
-   `.agent/decisions.md`, archive the whole exchange to `.agent/status/YYYY-MM-DD-HHMM.md`,
-   and write a fresh `STATUS.md`.
+   `.agent/decisions.md`, archive the whole exchange to
+   `.agent/status/<person>-YYYY-MM-DD-HHMM.md`, and write a fresh inbox.
 
 **Markers.** Three, and the distinction matters because Chris scans rather than reads:
 
@@ -98,7 +116,7 @@ which only work in Obsidian.
 Keep **Needs you** as one list. Splitting "waiting on you" from "blocked" was a false
 distinction — both mean the same thing to the person reading it.
 
-Never let `hq/STATUS.md` accumulate history. It is a snapshot; the archive is the record.
+Never let an inbox accumulate history. It is a snapshot; the archive is the record.
 
 ## Style
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
-import { create, index, validate } from "./pm.js";
+import { claim, claims, create, index, validate } from "./pm.js";
 import { pr } from "./check.js";
 
 const HELP = `morpheus — an operating system for building and running companies
@@ -9,6 +9,8 @@ Usage
   morpheus pm validate [--dir <hq/product>]
   morpheus pm index    [--dir <hq/product>] [--check]
   morpheus pm new <roadmap|goals|requests> <title> [--priority P1] [--goal G-2026-Q3-01]
+  morpheus pm claim <RM-014>
+  morpheus pm claims
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
 
 Options
@@ -88,6 +90,10 @@ async function main(): Promise<number> {
       return validate(dir);
     case "index":
       return index(dir, flags.check);
+    case "claim":
+      return claim(dir, rest[0] ?? "", process.cwd());
+    case "claims":
+      return claims(process.cwd());
     case "new": {
       const [kind, ...titleParts] = rest;
       return create(dir, kind ?? "", titleParts.join(" "), {

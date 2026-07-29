@@ -13,10 +13,10 @@ item files, not this table.
 | [RM-006](./RM-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | G-2026-Q3-01 | — |
 | [RM-011](./RM-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | G-2026-Q3-01 | — |
 | [RM-012](./RM-012.md) | Make Morpheus private and adjust CI for it | backlog | P1 | G-2026-Q3-01 | — |
-| [RM-013](./RM-013.md) | Claim mechanism: pm claim and pm claims | backlog | P1 | G-2026-Q3-01 | — |
 | [RM-008](./RM-008.md) | morpheus init | backlog | P2 | G-2026-Q3-01 | — |
 | [RM-009](./RM-009.md) | Retrofit Darwin | backlog | P2 | G-2026-Q3-01 | — |
 | [RM-010](./RM-010.md) | Simplify architecture.md for first-time readers | backlog | P2 | G-2026-Q3-01 | — |
 | [RM-001](./RM-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | G-2026-Q3-01 | — |
 | [RM-002](./RM-002.md) | Reusable GitHub workflows | shipped | P0 | G-2026-Q3-01 | — |
+| [RM-013](./RM-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | G-2026-Q3-01 | — |
 <!-- morpheus:end -->

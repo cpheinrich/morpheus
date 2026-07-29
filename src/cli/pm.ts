@@ -7,6 +7,7 @@ import {
   writeIndex,
 } from "../pm/index-gen.js";
 import { createItem } from "../pm/new-item.js";
+import { ageInDays, claim as claimItem, ClaimError, listClaims } from "../pm/claim.js";
 import { ARTIFACTS, type ArtifactKind } from "../pm/schema.js";
 
 const KINDS = Object.keys(ARTIFACTS) as ArtifactKind[];
@@ -137,4 +138,50 @@ export async function create(
   const path = await createItem({ productDir, kind, title, ...opts });
   console.log(`Created ${path}`);
   return index(productDir);
+}
+
+/** Claim a roadmap item by staking its branch on the remote. */
+export async function claim(productDir: string, id: string, cwd: string): Promise<number> {
+  if (!id) {
+    console.error("Usage: morpheus pm claim RM-014");
+    return 1;
+  }
+  try {
+    const r = await claimItem(productDir, id.toUpperCase(), cwd);
+    console.log(`Claimed ${r.id} — ${r.title}`);
+    console.log(`Branch ${r.branch} pushed; status set to in-progress.`);
+    return 0;
+  } catch (err) {
+    if (err instanceof ClaimError) {
+      console.error(err.message);
+      return 1;
+    }
+    throw err;
+  }
+}
+
+/** List live claims, oldest activity flagged as possibly stale. */
+export async function claims(cwd: string, staleDays = 7): Promise<number> {
+  const all = await listClaims(cwd);
+  if (all.length === 0) {
+    console.log("No items are currently claimed.");
+    return 0;
+  }
+
+  const now = new Date();
+  for (const c of all) {
+    const age = c.at ? ageInDays(c.at, now) : undefined;
+    const stale = age !== undefined && age >= staleDays;
+    const when = age === undefined ? "" : age === 0 ? "today" : `${age}d ago`;
+    console.log(
+      `${stale ? "!" : " "} ${c.id.padEnd(8)} ${c.branch.padEnd(40)} ${(c.by ?? "").padEnd(18)} ${when}`,
+    );
+  }
+  const staleCount = all.filter(
+    (c) => c.at && ageInDays(c.at, now) >= staleDays,
+  ).length;
+  if (staleCount) {
+    console.log(`\n${staleCount} claim(s) with no activity for ${staleDays}+ days (marked !).`);
+  }
+  return 0;
 }

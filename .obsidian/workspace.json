@@ -183,8 +183,17 @@
       "bases:Create new base": false
     }
   },
-  "active": "76ec817fcc31e6cf",
+  "active": "1c579eae90e7ef02",
   "lastOpenFiles": [
+    "hq/status/chris.md",
+    "hq/status/README.md",
+    "hq/status",
+    "dist/pm/claim.d.ts",
+    "dist/pm/claim.js",
+    "dist/pm/claim.js.map",
+    "tests/claim.test.ts",
+    "src/pm/claim.ts",
+    "hq/product/roadmap/RM-013.md",
     "hq/product/roadmap/RM-012.md",
     "hq/product/roadmap/RM-011.md",
     "hq/product/roadmap/README.md",
