@@ -26,8 +26,12 @@ on:
         type: string
         default: "22"
       pnpm-version:
+        description: >
+          Leave empty to let package.json's `packageManager` field decide, which
+          is the modern default. Setting both makes pnpm/action-setup fail with
+          "Multiple versions of pnpm specified".
         type: string
-        default: "11.9.0"
+        default: ""
 
 jobs:
   pm:

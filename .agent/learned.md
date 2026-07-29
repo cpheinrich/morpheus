@@ -56,3 +56,8 @@ Durable facts worth knowing before starting work here. Append; do not rewrite hi
 
   **Only enable auto-merge once the branch is complete.** Before that, `gh pr checks --watch`,
   fix, then set `--auto`. Auto-merge is a queue, not a promise to merge whatever arrives later.
+
+- **`pnpm/action-setup` fails if both `version` and `packageManager` are specified.** Reusable
+  workflows must leave `pnpm-version` empty so the lockfile-pinned `packageManager` wins.
+  Evo never hit this because it lacks the field — the repo following the *stricter* practice is
+  the one that broke.
