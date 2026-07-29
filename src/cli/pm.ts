@@ -180,6 +180,11 @@ export async function claim(productDir: string, id: string, cwd: string): Promis
     const r = await claimItem(productDir, id.toUpperCase(), cwd);
     console.log(`Claimed ${r.id} — ${r.title}`);
     console.log(`Branch ${r.branch} pushed; status set to in-progress.`);
+    if (r.shipped?.length) {
+      console.log(
+        `\x1b[2mAlso marked shipped, riding along in this branch: ${r.shipped.join(", ")}\x1b[0m`,
+      );
+    }
     return 0;
   } catch (err) {
     if (err instanceof ClaimError) {
