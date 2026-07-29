@@ -18,6 +18,7 @@ item files, not this table.
 | [MO-008](./MO-008.md) | morpheus init | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-009](./MO-009.md) | Retrofit Darwin | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | backlog | P2 | MO-G-2026-Q3-01 | — |
+| [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-001](./MO-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-002](./MO-002.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-013](./MO-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
