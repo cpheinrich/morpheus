@@ -107,3 +107,52 @@ describe("generateBrand", () => {
     expect(s).toContain("no secondary audience");
   });
 });
+
+
+describe("non-destructive generation", () => {
+  it("never overwrites an existing file", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(dir, "strategy.md"), "MINE — do not clobber\n");
+
+    const { files, skipped } = await generateBrand(dir, "Evo", "ev", ANSWERS);
+
+    expect(await readFile(join(dir, "strategy.md"), "utf8")).toBe("MINE — do not clobber\n");
+    expect(skipped.some((f) => f.endsWith("strategy.md"))).toBe(true);
+    expect(files.some((f) => f.endsWith("strategy.md"))).toBe(false);
+  });
+
+  it("writes no tokens.json when a visual source already exists", async () => {
+    const { files } = await generateBrand(dir, "Evo", "ev", {
+      ...ANSWERS,
+      visualSource: "apps/web/app/brand",
+    });
+    expect(files.some((f) => f.endsWith("tokens.json"))).toBe(false);
+    expect(await readdir(dir)).not.toContain("tokens.json");
+  });
+
+  it("does write tokens.json for a greenfield project", async () => {
+    const { files } = await generateBrand(dir, "Evo", "ev", ANSWERS);
+    expect(files.some((f) => f.endsWith("tokens.json"))).toBe(true);
+  });
+
+  it("records answers so refresh can prefill them", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const saved = JSON.parse(await readFile(join(dir, "answers.json"), "utf8"));
+    expect(saved.never).toEqual(ANSWERS.never);
+    expect(saved.primaryAudience).toBe(ANSWERS.primaryAudience);
+  });
+
+  it("reads answers back for refresh, and returns null when absent", async () => {
+    const { readAnswers } = await import("../src/brand/answers.js");
+    expect(await readAnswers(dir)).toBeNull();
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    expect((await readAnswers(dir))?.mission).toBe(ANSWERS.mission);
+  });
+
+  it("returns null rather than throwing on a corrupt answers file", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const { readAnswers } = await import("../src/brand/answers.js");
+    await writeFile(join(dir, "answers.json"), "{ not json");
+    expect(await readAnswers(dir)).toBeNull();
+  });
+});

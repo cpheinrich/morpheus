@@ -18,7 +18,7 @@ Usage
   morpheus pm claims
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus inbox validate   [--dir <hq/inbox>]
-  morpheus brand init       [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
+  morpheus brand init | refresh   [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
   morpheus access sync      [--project <firebase-project>] [--dry-run]
   morpheus registry list | add [--prefix XX] | remove <name>
   morpheus doctor           [--all]
@@ -125,12 +125,13 @@ async function main(): Promise<number> {
   }
 
   if (group === "brand") {
-    if (command === "init") {
+    if (command === "init" || command === "refresh") {
       const name = flags.name ?? basename(process.cwd());
       return brandInit({
         brandDir: resolve(process.cwd(), flags.dir === "hq/product" ? "hq/brand" : flags.dir),
         name,
         prefix: flags.prefix ?? name.slice(0, 2).toLowerCase(),
+        refresh: command === "refresh",
       });
     }
     console.error(`Unknown brand command "${command ?? ""}".\n\n${HELP}`);

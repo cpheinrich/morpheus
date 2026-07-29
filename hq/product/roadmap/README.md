@@ -7,6 +7,7 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
 | [MO-014](./MO-014.md) | Brand template and wizard | review | P0 | MO-G-2026-Q3-01 | — |
+| [MO-019](./MO-019.md) | Brand refresh, and never clobber an existing token system | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-016](./MO-016.md) | morpheus doctor — report drift without fixing it | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-018](./MO-018.md) | Reusable workflows must not fight packageManager | review | P1 | MO-G-2026-Q3-01 | — |
