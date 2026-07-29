@@ -3,139 +3,129 @@ owner: cpheinrich
 date: 2026-07-29
 agents:
   - claude
-previous: .agent/inbox-archive/2026-07-29-0900-cpheinrich.md
+previous: .agent/inbox-archive/2026-07-29-1330-cpheinrich.md
 ---
 
-# Inbox — 2026-07-29
+# Inbox — 2026-07-29 (afternoon)
 
-**The GCP block cleared.** `dh-darwin` and `dh-evo` exist with Firebase, Firestore in `nam5`, and
-Google sign-in on Evo — all on Spark, no billing. The root cause of that long 403 was unaccepted
-Firebase Terms of Service, not IAM or org policy.
+**`morpheus init` exists, and all five projects now run on Morpheus.** Evo, Darwin,
+cpheinrich.com, heinrichbros.com and Lakina — the last three retrofitted this afternoon with
+`init` rather than by hand, which is what the never-overwrite rule was for.
 
-**Shipped since the last cycle:** the brand wizard ([MO-014](product/roadmap/MO-014.md)) and
-`morpheus access sync` — access declared in `morpheus.json` and applied as Firebase custom
-claims, so granting it is a reviewable commit. **88 tests, CI green on both repos.**
+**Shipped since this morning:** `morpheus init` ([MO-008](product/roadmap/MO-008.md)),
+`morpheus init status` — the onboarding checklist ([MO-030](product/roadmap/MO-030.md)),
+`morpheus pm ship` ([MO-027](product/roadmap/MO-027.md)), `hq/brand/answers.md` as an editable
+file ([MO-028](product/roadmap/MO-028.md)), and the design-session handoff for the brand wizard.
+**221 tests. 34 items shipped.**
 
-Evo is fully retrofitted and has its own inbox now. Two PRs open there, both yours to merge.
+Darwin #1 merged and its Vercel deploy is green, so [MO-009](product/roadmap/MO-009.md) is closed.
 
 > `❗` needs you and ends in an empty `~`. `✅` is settled. Reply after the empty `~`.
 
-## ❗ 1. Working on Evo — yes, use a fresh session · `claude`
+## ❗ 1. Three retrofit PRs waiting on you · `claude`
 
-~ *(previous: should I create a new Claude session for the Evo roadmap work?)*
+All green, all mine to write but not to merge — I have standing authorization in Morpheus and
+Evo, not in these, and each touches build scripts in a repo you have not reviewed.
 
-**Yes, and start it in `~/darwin/evo`.** Two reasons that actually matter:
+- [cpheinrich/cpheinrich.com#1](https://github.com/cpheinrich/cpheinrich.com/pull/1) — brand
+  package moved to `hq/brand/` with history; `npm run verify` passes
+- [heinrichbros/heinrichbros.com#1](https://github.com/heinrichbros/heinrichbros.com/pull/1) —
+  your existing `AGENTS.md` preserved untouched; brand filenames deliberately not renamed
+- [lakinacapital/lakina#3](https://github.com/lakinacapital/lakina/pull/3) — `CLAUDE.md` merged
+  into `AGENTS.md` and symlinked; convention checks appended to the existing Python workflow
 
-**Context relevance.** This session holds twelve hours of Morpheus design argument — naming
-rounds, the Firebase debugging, org policy archaeology. Almost none of it helps someone building
-Evo's brand pages, and it crowds out what does.
-
-**Evo now has its own memory.** I just created `.agent/decisions.md` and `.agent/learned.md`
-there, seeded with what is true about Evo specifically — the educational-only constraint the
-product exists under, that the live surface wins over brand documents, that `apps/web` has no
-Firebase dependency yet, and that the 18 calculator tests run via `node` rather than Vitest. A
-fresh session reads those and starts informed rather than blank.
-
-**Use this session for Morpheus itself** — the kit, `init`, templates. Use Evo's for Evo. Claims
-(`morpheus pm claim`) stop the two from colliding if they ever touch the same item.
-
-**A gap this exposed:** the Evo retrofit produced `hq/product/` but no `hq/inbox/` and no
-`.agent/`, because both conventions postdate it. `morpheus init` has the same hole. Filed as
-[MO-015](product/roadmap/MO-015.md) — and the important half is that `init` must **seed** those
-files from the wizard answers, since an empty `decisions.md` reads as "nothing was decided"
-rather than "nobody wrote it down".
+**One thing to look at rather than trust:** in the first two I moved `brand/` to `hq/brand/` and
+broke their token-generation scripts, because I did not grep for references first. Both were
+green on `main` before me, which I checked rather than assumed. Fixed and re-verified, but it is
+the kind of mistake worth seeing.
 
 ~
 
-## ❗ 2. Two Evo PRs to merge · `claude`
+## ❗ 2. Your Evo brand answers are done but never built · `claude`
 
-~ *(new)*
+`hq/brand/answers.md` in Evo is complete. `morpheus brand build` was never run, so the package
+was never generated — no `strategy.md`, no `messaging.json`, no `explore-prompt.md`.
 
-Both are config, no behaviour change:
+Running `morpheus brand build` in `~/darwin/evo` generates all of it from the answers you already
+wrote, including the design-session prompt. **I have not done it**, since you said to keep Evo
+work in the Evo session.
 
-- **[evo#7](https://github.com/darwin-health/evo/pull/7)** — the `/hq` allowlist, account
-  bindings, `.agent/` memory, `hq/inbox/`, and inbox validation in CI
+This is also how I found today's fourth "check reports clean on nothing" bug: `brand check` said
+*"✓ Every generated file matches answers.md"* because zero files trivially match. Fixed.
 
-[evo#6](https://github.com/darwin-health/evo/pull/6) already merged and is deploying.
-
-Your Evo inbox is at
-[`hq/inbox/cpheinrich.md`](https://github.com/darwin-health/evo/blob/config-hq-access/hq/inbox/cpheinrich.md)
-on that branch — it goes live when you merge.
-
-~
-
-## ❗ 3. Darwin retrofit is up — needs one Vercel click · `claude`
-
-~ *(new)*
-
-[darwin#1](https://github.com/darwin-health/darwin/pull/1) — same structure as Evo. Both GitHub
-checks pass; **Vercel fails because its Root Directory is still `web`.**
-
-Change it to `apps/web` at
-https://vercel.com/darwin-health/darwin/settings?authuser=chris@darwin.health
-
-I could not do this via API: the Vercel CLI refreshes its token internally, so the copy in
-`auth.json` now returns `invalidToken`. The CLI still works but has no command for project
-settings. Worth knowing that this credential path has an expiry the others do not.
-
-**Before you do it:** root directory is project-level, so once changed, `main` will not deploy
-until the PR merges. The live site keeps serving the existing deployment.
-
-**Nothing was lost.** 29 files of uncommitted `/hq` work — a financials page, supplier directory,
-legal document library, Auth.js wiring — are preserved on `wip/uncommitted-hq-scaffolding`. Per
-your call, that is reference rather than gospel; [DW-002](https://github.com/darwin-health/darwin/blob/dw-001-morpheus-structure/hq/product/roadmap/DW-002.md)
-rebuilds `/hq` on Firebase custom claims.
+Minor: you answered `visualSource` with prose — *"apps/web (live at https://evo.med; canonical
+current tokens are in packages/shared/tokens/)"*. It works, but the field expects a path, so
+`brand status` renders it as `→ tokens.json — canonical at apps/web (live at …)`. Trim it to
+`packages/shared/tokens/` if you want it to read cleanly.
 
 ~
 
-## ✅ 4. Three template gaps found by retrofitting Darwin · `claude`
+## ❗ 3. The kit is the next real piece — one decision needed · `claude`
 
-All three share a cause worth stating plainly: **the template encoded what Morpheus looks like
-rather than what a project looks like.**
+Three projects have now independently hand-rolled the same script: turn brand tokens into CSS
+custom properties. `cpheinrich.com/web/scripts/generate-brand-css.mjs`,
+`heinrichbros.com/web/scripts/sync-brand-theme.mjs`, and Lakina's `tokens.css`. That is the
+extract-on-second-use trigger, passed twice over.
 
-1. **`pnpm/action-setup` fails when both `version` and `packageManager` are set.** Darwin declares
-   `packageManager`; Evo does not — so the repo following the *stricter* practice is the one that
-   broke. Fixed upstream and merged; `pnpm-version` now defaults to empty.
-2. **ESLint was scanning build output.** `dist/` alone is 11 MB and produced 8,905 findings,
-   burying 42 real errors in code nobody wrote.
-3. **Stale `.next/types/validator.ts` failed typecheck** by referencing routes that had moved —
-   Next.js route validators survive a restructure as dangling references.
+I want to build `morpheus-kit/design` around the token pipeline first, before components — it is
+the piece every project already needs and already wrote badly.
 
-Also: `apps/web` had no `typecheck` script, the same gap Evo had. **That is twice, and three is
-the trigger** to make `init` write it rather than fixing it by hand again.
+**The decision:** heinrichbros maps tokens to *semantic* names (`--ember` from `color.vermilion`,
+`--forest` from `color.pine`), while cpheinrich.com emits primitives verbatim
+(`--brand-color-ink`). Architecture §15.1a says primitives → semantic → generated, so the
+semantic layer is meant to exist — but only one project has one, and its mapping is bespoke.
 
+Do I generate primitives only and let each project define its own semantic layer, or make the
+semantic layer part of the kit with a per-project mapping file?
 
-## ✅ 5. Firebase, auth, and access — done · `claude`
+~
 
-`dh-darwin` and `dh-evo`: Firebase added, Firestore `nam5` (permanent), Google sign-in enabled on
-Evo with public-facing name "Evo".
+## ✅ 4. Two of your questions, checked rather than guessed · `claude`
 
-`morpheus access sync` applies the `morpheus.json` allowlist as custom claims — you as `admin`,
-Robbie as `employee`. Both report **pending** until first sign-in, which is correct: a Firebase
-Auth user does not exist until then, and re-running completes the grant. Revocation is included,
-so the list is authoritative rather than merely additive.
+**MO-003 was wrong and you were right.** It said "publish the kit to GitHub Packages";
+`.agent/decisions.md` says do not publish. Item dated 07-28, decision 07-29, never reconciled.
 
-**The 403 was unaccepted Firebase Terms of Service.** Not IAM, not OAuth scope, not org policy —
-and the error named none of them. Once you accepted the terms for Darwin, the CLI provisioned Evo
-first try. In `.agent/learned.md` with the general lesson: when a Google API refuses despite
-Owner, check whether the product's terms were ever accepted before touching IAM.
+The word "kit" was hiding three things: the **CLI** (linked locally, built from a checkout in
+CI), the **workflows** (referenced by path from the public repo), and **runtime imports** — the
+only part that needs dependency resolution, because `npm link` does not survive a Vercel build. A
+git dependency covers it with nothing published. **MO-004, MO-005 and MO-006 are therefore not
+blocked.**
 
-You also now hold `organizationAdmin` and `orgpolicy.policyAdmin` on the org — nobody did before,
-and that would have bitten you again with Cloud Run, Cloud Build, or Vertex AI.
+**MO-011 is genuinely not done.** Darwin #1's description does carry the preview URL — because I
+pasted it there by hand, which MO-011's own text says is the interim. Evo's PRs #7, #8 and #9
+mention Vercel zero times in the body; the URL is only in the `vercel` bot comment, which GitHub
+renders directly beneath the description. Whether it is still worth automating is a fair
+question — the only gain is that a description does not scroll away.
 
-## ✅ 6. The committed screenshot — removed · `claude`
+## ✅ 5. The retrofits found four bugs, three of them mine · `claude`
 
-~ *(previous: don't store image assets in git; delete it and move on)*
+**The one worth knowing:** `pm-check` and `pr-check` failed in *every* consuming repo with "No
+pnpm version is specified". `pnpm/action-setup` resolves `packageManager` against the repository
+root — which in a reusable workflow is the *consumer's* root, and Morpheus lives in `.morpheus/`.
+Morpheus passed at home, Evo passed as a pnpm workspace, and it took a static site and a Python
+repo to expose it. **A reusable workflow tested only in the repo that defines it is not tested.**
 
-Deleted, images gitignored repo-wide with an exception for `hq/brand/assets/`. Cause was my
-`git add -A` sweeping up what Nimbalyst wrote to `hq/inbox/assets/`. Recorded, along with the
-rule to prefer explicit paths over `-A` when an editor keeps its own scratch state. Not purging
-history, as you said.
+Then three own-goals: the moved brand directories above; a scaffolded project that failed its own
+`pm index --check`; and hand-naming all three branches without creating the roadmap items, so
+`check pr` failed on ids that did not exist — the **third** time for that one.
+
+That last one is worth changing rather than remembering. The rule is not the problem; recalling
+it at `git checkout -b` is. I would like to make `pm claim` the only documented way to start
+work.
+
+## ✅ 6. Empty files no longer pass as checked · `claude`
+
+You flagged it, and it was in four places — the `goal`, `roadmap` and `inbox` detectors all
+checked for a filename rather than valid content; `agents-md` passed when `CLAUDE.md` was a
+divergent real file rather than a symlink, which is exactly the state Lakina was in.
+
+All four now parse what they find. The rule is in `.agent/learned.md`: **when writing a check,
+ask what it reports when handed nothing at all.**
 
 ## Parked
 
-**Google billing.** No Darwin billing account exists and there is no non-trial path to create
-one; the trial flow fails with `OR_BACR2`. Nothing needs it — Spark covers Auth and Firestore.
-Options when you return: link your personal account (two commands, reversible), or contact sales.
+**Google billing.** Unchanged — no Darwin billing account, trial flow fails with `OR_BACR2`,
+nothing currently needs it.
 
-**PostHog.** Two organizations, one per billing entity. Blocked on nothing.
+**MO-010, simplify `architecture.md`.** It is now ~1,700 lines with sections 15.5–15.10 added
+today. Claimed, not started.
