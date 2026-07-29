@@ -108,7 +108,21 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   }
 
   // --- ci -------------------------------------------------------------------
-  await put(".github/workflows/ci.yml", t.ci());
+  //
+  // Only wire the Node job into a project that is one. `node-ci` runs
+  // `pnpm install --frozen-lockfile`, so adding it to a static site or a Python
+  // repo puts CI in the red on the first push — and a scaffold whose CI fails
+  // immediately teaches people to ignore failing CI.
+  const isNode =
+    (await exists(join(root, "pnpm-lock.yaml"))) ||
+    (await exists(join(root, "pnpm-workspace.yaml")));
+  await put(".github/workflows/ci.yml", t.ci({ node: isNode }));
+  if (!isNode) {
+    notes.push(
+      "No pnpm lockfile here, so CI wires only the convention checks. Add the\n" +
+        "node-ci job to .github/workflows/ci.yml once this is a pnpm project.",
+    );
+  }
 
   // --- gitignore ------------------------------------------------------------
   const ignorePath = join(root, ".gitignore");

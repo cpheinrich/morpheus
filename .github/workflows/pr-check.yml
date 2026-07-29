@@ -13,9 +13,9 @@ on:
       product-dir:
         type: string
         default: "hq/product"
-      base:
+      morpheus-ref:
         type: string
-        default: "origin/main"
+        default: "main"
       node-version:
         type: string
         default: "22"
@@ -38,6 +38,17 @@ jobs:
           # checkPr diffs against the base ref, so it needs the history.
           fetch-depth: 0
 
+      # Build the CLI from a checkout rather than installing it in the consuming
+      # repo. Running `pnpm install` here would require the consumer to be a pnpm
+      # Node project, and PR conventions have nothing to do with what language a
+      # project is written in — the earlier version silently excluded every
+      # static site and Python repo we own.
+      - uses: actions/checkout@v4
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.morpheus-ref }}
+          path: .morpheus
+
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ inputs.pnpm-version }}
@@ -45,10 +56,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: pnpm
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
+      - name: Build the Morpheus CLI
+        working-directory: .morpheus
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
 
       - name: Check PR conventions
-        run: pnpm morpheus check pr --dir ${{ inputs.product-dir }} --base origin/${{ github.base_ref }}
+        run: >
+          node .morpheus/dist/cli/index.js check pr
+          --dir ${{ inputs.product-dir }}
+          --base origin/${{ github.base_ref }}

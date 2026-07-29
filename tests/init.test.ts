@@ -140,6 +140,32 @@ describe("morpheus init", () => {
     });
   });
 
+  describe("CI is matched to what the project is", () => {
+    it("omits the Node job when there is no pnpm lockfile", async () => {
+      await scaffold(dir, SEED);
+      const ci = await read(".github/workflows/ci.yml");
+
+      // node-ci runs `pnpm install --frozen-lockfile`. Wiring it into a static
+      // site or a Python repo puts CI in the red on the first push.
+      expect(ci).not.toContain("node-ci.yml");
+      expect(ci).toContain("pm-check.yml");
+      expect(ci).toContain("pr-check.yml");
+    });
+
+    it("includes the Node job for a pnpm project", async () => {
+      await writeFile(join(dir, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+      await scaffold(dir, SEED);
+
+      expect(await read(".github/workflows/ci.yml")).toContain("node-ci.yml");
+    });
+
+    it("says why the Node job is absent rather than leaving it a mystery", async () => {
+      const { notes } = await scaffold(dir, SEED);
+
+      expect(notes.join(" ")).toMatch(/No pnpm lockfile/);
+    });
+  });
+
   describe("kind", () => {
     it("does not give an internal tool a brand or a finance directory", async () => {
       await scaffold(dir, { ...SEED, kind: "internal" });

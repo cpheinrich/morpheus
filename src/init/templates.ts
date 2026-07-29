@@ -169,7 +169,18 @@ An inbox is a snapshot and never accumulates history. \`morpheus inbox validate\
 shape, and CI runs it too.
 `;
 
-export const ci = (): string => `name: CI
+/**
+ * CI for the project, matched to what the project actually is.
+ *
+ * `node-ci` runs `pnpm install --frozen-lockfile`, so wiring it into a static
+ * site or a Python repo fails on the first push. A scaffold whose CI is red on
+ * day one teaches people to ignore red CI, which costs more than the workflow
+ * was worth.
+ *
+ * The convention checks are toolchain-agnostic — they build the Morpheus CLI
+ * from a checkout — so every project gets those.
+ */
+export const ci = (opts: { node: boolean } = { node: true }): string => `name: CI
 
 # Delegates to the Morpheus reusable workflows, so improving CI for every
 # project is one commit there rather than a change in every repository.
@@ -179,10 +190,14 @@ on:
     branches: [main]
   pull_request:
 
-jobs:
+jobs:${
+  opts.node
+    ? `
   node:
     uses: cpheinrich/morpheus/.github/workflows/node-ci.yml@main
-
+`
+    : ""
+}
   pm:
     uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main
 
