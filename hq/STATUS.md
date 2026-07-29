@@ -1,9 +1,14 @@
 # Status — 2026-07-29
 
-> **Markers:** `~` is your reply slot. `!!` is my answer that still needs you. `✅` means
-> settled, nothing further. Scan for `!!` — that is everything awaiting you.
+> **Markers.** Every item is either **closed** or **open** — never both:
 >
-> Previous exchange archived to [`.agent/status/2026-07-29-0400.md`](../.agent/status/2026-07-29-0400.md).
+> - `✅` — settled. Nothing further, no reply slot.
+> - `!!` — my answer, still needs you. **Always followed by an empty `~` to reply into.**
+>
+> `~` is always a reply slot: filled ones are yours from last round, the empty one at the
+> bottom of an open item is where you reply next. Scan for `!!`.
+>
+> Previous exchange archived to `.agent/status/2026-07-29-0400.md`.
 
 ---
 
@@ -90,7 +95,7 @@ set` ritual, no risk of creating a resource in the wrong account.
 you want one GCP project per company (`darwin` shared by darwin+evo, separate for personal) as
 designed, or something else.
 
-!!
+~
 
 ### 5. PostHog — API key and per-project MCP
 
@@ -133,7 +138,7 @@ PostHog identity per repo.
 **What I need from you:** create the projects and both keys, then paste the personal API keys
 here (or better, once item 4 lands, straight into Secret Manager and I will never see them).
 
-!!
+~
 
 ### 6. Licence and npm — you are right, and the mechanism is not the licence
 
@@ -165,8 +170,8 @@ So if what you actually want is minimal external use, **the mechanism is making 
 again, not a stricter licence.** I flagged going public as a convenience trade, and it is
 reversible. What it costs to reverse:
 
-| | Cost |
-|---|---|
+|  | Cost |
+| --- | --- |
 | `pm-check` checking out the CLI | A PAT with `repo` scope in Evo's and Darwin's Actions secrets |
 | Reusable workflows | One Settings → Actions → Access change |
 | Actions minutes | Come from quota instead of unlimited |
@@ -180,13 +185,13 @@ way if you ever wanted to hand a copy to a friend.
 
 **Say the word and I will flip it private and do the credential pass.**
 
-!!
+~
 
 ### 7. Event schema — deferred, Evo brand fundamentals first
 
 ~ *(previous: do not build the schema yet; Evo needs brand fundamentals, strategy, and business goals in place first)*
 
-✅ Agreed and reprioritized. [RM-006](product/roadmap/RM-006.md) stays in backlog.
+!! Agreed and reprioritized. [RM-006](product/roadmap/RM-006.md) stays in backlog.
 
 I deliberately did **not** add brand work to evo#6 — that PR is advertised as structural-only
 and should stay reviewable as such. `hq/brand/` is currently an empty scaffold while the real
@@ -201,14 +206,65 @@ of alternatives in `local/brand-research/` — electric red, coral, spring green
 clinical edge, grounded. If you have picked, tell me which. If not, that is a decision to make
 before writing it down.
 
-!!
+~
+
+### 8. Editor — Nimbalyst looks like a genuine fit
+
+~ *(previous: Obsidian, Zed, VS Code, or Nimbalyst? want WYSIWYG markdown plus readable code)*
+
+!! **Zed is out on your stated requirement.** WYSIWYG markdown has been an open request since
+2024 ([#15066](https://github.com/zed-industries/zed/issues/15066),
+[#21717](https://github.com/zed-industries/zed/issues/21717)) and no plugin fixes it — Zed's
+extension API cannot do custom document rendering yet, which is itself an open
+[discussion](https://github.com/zed-industries/zed/discussions/37270). You get side-by-side
+preview only.
+
+**Nimbalyst is more relevant than I expected**, because it is not a general editor that happens
+to do markdown — it is purpose-built for exactly your setup: Claude Code *and* Codex, in
+parallel, with visual review. MIT licensed, genuinely open source
+([github.com/nimbalyst/nimbalyst](https://github.com/nimbalyst/nimbalyst)), free for
+individuals, Electron on macOS/Windows/Linux, **with an iOS companion for session management** —
+which is a better answer to the phone-tracking question than the one I gave you earlier.
+
+**On your overlap worry — it is real but convergent, not conflicting.** Their stated design is
+"open storage of content and status in markdown, workflow in slash commands, and plain files on
+disk or in git." That is the same conclusion we reached independently. Breaking it down:
+
+| Layer | Nimbalyst | Morpheus | Verdict |
+|---|---|---|---|
+| WYSIWYG editing, inline diff review | Core | — | **Pure gain** |
+| Parallel agent sessions, kanban, worktrees | Core | — | **Pure gain** |
+| Task state as markdown in git | Yes | Yes | **Overlaps** |
+| Zod-validated schema, CI enforcement | Unlikely | Yes | Keep ours |
+| Repo structure, CI, secrets, brand, infra | — | Core | No overlap |
+
+Roughly 80% is complement, 20% overlaps on task tracking alone.
+
+**My recommendation: adopt it as the editing and review surface, keep our roadmap schema.** Our
+frontmatter is Zod-validated and CI-enforced, which a generic task format will not be.
+
+**The cheap experiment, since you already have it installed:** point Nimbalyst's task board at
+`hq/product/roadmap/` and see whether it reads our existing frontmatter files. If it does, you
+get its kanban over our schema for free and there is no decision left to make. If it insists on
+its own format, keep them separate — use Nimbalyst purely as the editor and let Morpheus own
+task state.
+
+**Honest caveats.** It is young, and the enthusiastic "best markdown editor of 2026" reviews I
+found are largely SEO content, one of them published by Nimbalyst itself — discount the hype and
+trust your own hands-on read. Electron, so heavier than Zed. The multiplayer package is AGPL-3.0
+while the rest is MIT, which is irrelevant solo but worth knowing.
+
+**What I need from you:** run that experiment and tell me what its task board does with
+`hq/product/roadmap/`.
+
+~
 
 ---
 
 ## Shipped
 
 | Item | What |
-|---|---|
+| --- | --- |
 | [RM-001](product/roadmap/RM-001.md) | `morpheus pm` — schemas, parser, index generator, CLI |
 | [RM-002](product/roadmap/RM-002.md) | `morpheus check pr` + four reusable workflows |
 | [RM-007](product/roadmap/RM-007.md) | Evo retrofit — rebased, all checks green, ready to merge |

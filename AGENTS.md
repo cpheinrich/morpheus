@@ -74,15 +74,22 @@ settled choices — if one looks wrong, say so and ask rather than quietly worki
 
 **Markers.** Three, and the distinction matters because Chris scans rather than reads:
 
-| Marker | Meaning |
-|---|---|
-| `~` | His reply slot |
-| `!!` | My answer that **still needs him** — a question, or a decision to confirm |
-| `✅` | Settled. Nothing further needed on this item. |
+**Every item is either closed or open. Never both, never neither.**
 
-Put `!!` on its own line at the end of an item too, so a long answer still surfaces when
-scanning. Never mark something `✅` that has an unanswered question in it, and never leave an
-item unmarked — every item resolves to one or the other.
+| State | Shape |
+|---|---|
+| **Closed** | `~` his reply → `✅` my answer. **No new slot.** |
+| **Open** | `~` his reply → `!!` my answer → **`~` on its own line** for him to reply into |
+
+Two mistakes to avoid, both made in the first round:
+
+1. **`!!` without a following `~`.** He has nowhere to answer. Every `!!` needs an empty reply
+   slot beneath it — the `~` at the top of an item is his *previous* reply, not a fresh one.
+2. **`✅` on an item that still asks a question.** If there is a question, it is open. Marking
+   it closed makes the `✅` meaningless as a scan signal.
+
+Use `!!` once, at the start of the answer, rather than repeating it at the end — the trailing
+`~` is what marks where to reply.
 
 **Link roadmap items with relative markdown paths** — `[RM-011](product/roadmap/RM-011.md)`
 from `hq/STATUS.md`. These resolve in Obsidian *and* render on GitHub, unlike `[[wikilinks]]`
