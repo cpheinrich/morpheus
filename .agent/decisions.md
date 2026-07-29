@@ -60,6 +60,16 @@ public repo.
 it, which is the opposite of the goal. CI checks the repo out and builds the CLI; local use is
 `pnpm build && npm link`.
 
+**Runtime code reaches projects as a git dependency** — 2026-07-29. `npm link` does not survive a
+Vercel build and a workflow reference cannot be imported, so components and token modules need to
+resolve as a real dependency. `"morpheus-kit": "github:cpheinrich/morpheus#main"` does that with no
+registry, no token, and nothing published — the repo is public. The cost is pinning to a ref rather
+than a semver range, which for four projects and one author is simpler, not harder.
+
+Distribution splits three ways and the word "kit" was hiding it: the **CLI** is linked or built from
+a checkout, the **workflows** are referenced by path from the public repo, and only **runtime
+imports** need dependency resolution at all.
+
 **A licence cannot prevent forks of a public repo** — GitHub's Terms of Service grant every
 user forking rights through GitHub's own functionality, regardless of the attached licence. If
 the goal is minimal external use, the mechanism is private visibility, not a stricter licence.
