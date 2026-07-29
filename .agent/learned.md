@@ -41,3 +41,7 @@ Durable facts worth knowing before starting work here. Append; do not rewrite hi
   weight even after deletion.
 
   Prefer `git add <paths>` over `git add -A` when an editor with its own scratch state is in use.
+
+- **Git does not track empty directories.** Scaffolding created with `mkdir` and no file in it
+  ships missing and nobody notices until someone looks. Write a README into every directory the
+  scaffold creates — it explains the directory *and* makes it exist.
