@@ -1359,6 +1359,30 @@ diverge, so a missing `## Rejected` is a real signal rather than a formatting ni
 Scratch mockups live in `local/brand/`, which is gitignored. The decision and its reason are what
 is durable; the artefact is not.
 
+### 15.8 Convergence needs evidence, not a good hero
+
+A hero section flatters almost any direction. Convergence declared on one attractive marketing
+mockup is the failure this step exists to prevent.
+
+Before converging, the session renders the leading direction on **one expressive surface** (the
+case that naturally flatters it) and **one dense functional surface** — real inputs, labels, an
+error state, a result — each at mobile and desktop. That second one is where a palette with no
+quiet neutral, or a display face that cannot set 13px, shows up. *If it holds on both, it is a
+direction. If it only holds on the first, it is a poster.*
+
+Issue #12 proposed a fuller acceptance set — every interactive state, dark mode, contrast, reduced
+motion, imagery provenance, brand-architecture differentiation. That is a design-QA framework, and
+§15.5 argues a checklist long enough to be thorough is one nobody completes. Shipping it whole
+would produce a gate that gets skipped while looking enforced, which is worse than the
+underspecification it replaced. So those are named in the prompt as things to look at, with the
+instruction to **say which ones were not checked** rather than imply they were.
+
+The session ends by writing `## Completion` into `decisions.md`: files written, surfaces reviewed,
+decisions still open, temporary assets needing replacement, departures from the brief and why they
+were accepted, and checks run **and not run**. That last line is what makes "first working version"
+a claim with evidence and named gaps behind it rather than the note a conversation happened to end
+on.
+
 ---
 
 ## 16. Testing and QA

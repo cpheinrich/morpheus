@@ -32,7 +32,7 @@ async function completeSession(dir: string): Promise<void> {
   await writeFile(join(dir, "assets/logo.svg"), "<svg/>");
   await writeFile(
     join(dir, "decisions.md"),
-    "## Settled\n- Ink on warm paper.\n\n## Rejected\n- Direction B, too institutional.\n\n## Open\n- Accent scope.\n",
+    "## Settled\n- Ink on warm paper.\n\n## Rejected\n- Direction B, too institutional.\n\n## Open\n- Accent scope.\n\n## Completion\n- Contrast not checked below 14px.\n",
   );
 }
 
@@ -114,7 +114,7 @@ describe("brand package", () => {
 
     // A session that rejected nothing did not diverge.
     expect(d?.state).toBe("incomplete");
-    expect(d?.detail).toBe("no Rejected and Open section");
+    expect(d?.detail).toBe("no Rejected, Open and Completion section");
   });
 
   it("reports a malformed tokens.json as incomplete instead of throwing", async () => {
@@ -152,6 +152,25 @@ describe("brand package", () => {
 
       expect(prompt).toContain("stable name in round one");
       expect(prompt).toContain("local/brand/");
+    });
+
+    it("requires an expressive and a dense surface before converging", async () => {
+      await generateBrand(dir, "Evo", "ev", ANSWERS);
+      const prompt = (await readFile(join(dir, "explore-prompt.md"), "utf8")).replace(/\s+/g, " ");
+
+      expect(prompt).toContain("one expressive surface");
+      expect(prompt).toContain("one dense functional surface");
+      expect(prompt).toContain("both at mobile and desktop widths");
+      expect(prompt).toContain("it is a poster");
+    });
+
+    it("asks for the checks that were not run, not just the ones that were", async () => {
+      await generateBrand(dir, "Evo", "ev", ANSWERS);
+      const prompt = (await readFile(join(dir, "explore-prompt.md"), "utf8")).replace(/\s+/g, " ");
+
+      expect(prompt).toContain("say plainly which ones you did not check");
+      expect(prompt).toContain("**and checks you did not run**");
+      expect(prompt).toContain("## Completion");
     });
 
     it("tells the session to stop at the required set", async () => {
