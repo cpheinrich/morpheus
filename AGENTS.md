@@ -72,6 +72,22 @@ settled choices — if one looks wrong, say so and ask rather than quietly worki
    `.agent/decisions.md`, archive the whole exchange to `.agent/status/YYYY-MM-DD-HHMM.md`,
    and write a fresh `STATUS.md`.
 
+**Markers.** Three, and the distinction matters because Chris scans rather than reads:
+
+| Marker | Meaning |
+|---|---|
+| `~` | His reply slot |
+| `!!` | My answer that **still needs him** — a question, or a decision to confirm |
+| `✅` | Settled. Nothing further needed on this item. |
+
+Put `!!` on its own line at the end of an item too, so a long answer still surfaces when
+scanning. Never mark something `✅` that has an unanswered question in it, and never leave an
+item unmarked — every item resolves to one or the other.
+
+**Link roadmap items with relative markdown paths** — `[RM-011](product/roadmap/RM-011.md)`
+from `hq/STATUS.md`. These resolve in Obsidian *and* render on GitHub, unlike `[[wikilinks]]`
+which only work in Obsidian.
+
 Keep **Needs you** as one list. Splitting "waiting on you" from "blocked" was a false
 distinction — both mean the same thing to the person reading it.
 

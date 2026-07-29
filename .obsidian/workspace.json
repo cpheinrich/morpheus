@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "hq/STATUS.md",
+                "file": "hq/product/roadmap/RM-001.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "STATUS"
+              "title": "RM-001"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "hq/STATUS.md",
+                "file": "hq/product/roadmap/RM-001.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for STATUS"
+              "title": "Backlinks for RM-001"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "hq/STATUS.md",
+                "file": "hq/product/roadmap/RM-001.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from STATUS"
+              "title": "Outgoing links from RM-001"
             }
           },
           {
@@ -156,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "hq/STATUS.md",
+                "file": "hq/product/roadmap/RM-001.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of STATUS"
+              "title": "Outline of RM-001"
             }
           }
         ]
@@ -185,7 +185,12 @@
   },
   "active": "76ec817fcc31e6cf",
   "lastOpenFiles": [
-    "hq/product/goals/G-2026-Q3-01.md",
-    "hq/STATUS.md"
+    "hq/product/roadmap/RM-012.md",
+    "hq/product/roadmap/RM-011.md",
+    "hq/product/roadmap/README.md",
+    "hq/product/requests/README.md",
+    "hq/STATUS.md",
+    "hq/product/roadmap/RM-006.md",
+    "hq/product/goals/G-2026-Q3-01.md"
   ]
 }

@@ -52,6 +52,16 @@ keeps monetization open. Contributions not accepted, so relicensing stays possib
 **Commit identity is the GitHub noreply address** — the gmail address should not appear in any
 public repo.
 
+## Distribution
+
+**Do not publish `morpheus-kit` to npm** — 2026-07-29. Publishing only helps strangers install
+it, which is the opposite of the goal. CI checks the repo out and builds the CLI; local use is
+`pnpm build && npm link`.
+
+**A licence cannot prevent forks of a public repo** — GitHub's Terms of Service grant every
+user forking rights through GitHub's own functionality, regardless of the attached licence. If
+the goal is minimal external use, the mechanism is private visibility, not a stricter licence.
+
 ## Process
 
 **Extract on the second use, never the first** — nothing enters the kit until a second project
@@ -61,3 +71,11 @@ needs it.
 Building `init` first would encode guesses about a structure no project has lived in.
 
 **Agents do not touch another repo's `main`** — work on a branch, open a PR, let Chris merge.
+
+**Structural PRs stay structural** — 2026-07-29. The Evo retrofit deliberately excluded brand
+content so it stayed reviewable as advertised. Mixing content into a wide structural move makes
+a diff nobody can review.
+
+**Vercel Root Directory is project-level, not per-branch** — changing it for a restructure means
+`main` cannot deploy until the restructure merges. The live deployment keeps serving; only new
+deploys fail. Sequence accordingly.

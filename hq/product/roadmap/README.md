@@ -11,6 +11,8 @@ item files, not this table.
 | [RM-004](./RM-004.md) | /hq auth: Firebase custom claims | backlog | P0 | G-2026-Q3-01 | — |
 | [RM-005](./RM-005.md) | kit/hq: dashboard shell | backlog | P1 | G-2026-Q3-01 | — |
 | [RM-006](./RM-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | G-2026-Q3-01 | — |
+| [RM-011](./RM-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | G-2026-Q3-01 | — |
+| [RM-012](./RM-012.md) | Make Morpheus private and adjust CI for it | backlog | P1 | G-2026-Q3-01 | — |
 | [RM-008](./RM-008.md) | morpheus init | backlog | P2 | G-2026-Q3-01 | — |
 | [RM-009](./RM-009.md) | Retrofit Darwin | backlog | P2 | G-2026-Q3-01 | — |
 | [RM-010](./RM-010.md) | Simplify architecture.md for first-time readers | backlog | P2 | G-2026-Q3-01 | — |
