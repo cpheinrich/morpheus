@@ -102,12 +102,18 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
   }
 
   // A branch naming a roadmap item must move that item to review.
+  //
+  // Both failures below name the command that fixes them. The rule against
+  // hand-naming was already documented when it broke three times — what was
+  // missing was the recovery, at the moment someone is looking at the error.
   const id = roadmapIdFromBranch(branch);
   if (!id) {
     findings.push({
       level: "warning",
       rule: "branch-name",
-      message: `Branch "${branch}" does not reference a roadmap item (expected ev-014-slug).`,
+      message:
+        `Branch "${branch}" does not reference a roadmap item (expected mo-014-slug). ` +
+        `Branches are derived, not typed: \`morpheus pm claim <ID>\` makes one from the id.`,
     });
   } else {
     const { items } = await parseArtifact(productDir, "roadmap");
@@ -117,13 +123,18 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
       findings.push({
         level: "error",
         rule: "roadmap-item-exists",
-        message: `Branch references ${id}, but no such item exists in ${productDir}/roadmap/.`,
+        message:
+          `Branch references ${id}, but no such item exists in ${productDir}/roadmap/. ` +
+          `Create it with \`morpheus pm new roadmap "<title>"\`, then \`morpheus pm claim\` ` +
+          `the id it allocates — claiming derives the branch, so the two cannot disagree.`,
       });
     } else if (!["review", "shipped"].includes(item.data.status)) {
       findings.push({
         level: "error",
         rule: "roadmap-status",
-        message: `${id} is "${item.data.status}" — set it to "review" when opening a PR.`,
+        message:
+          `${id} is "${item.data.status}" — set it to "review" when opening a PR, ` +
+          `so the board does not lag the work.`,
       });
     }
   }

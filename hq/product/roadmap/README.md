@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-040](./MO-040.md) | pm new re-issues an id another session already claimed | review | P1 | — | — |
+| [MO-041](./MO-041.md) | pm claim is the only documented way to start work | review | P2 | — | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -38,6 +38,7 @@ item files, not this table.
 | [MO-031](./MO-031.md) | Checklist detectors accept empty files as done | shipped | P1 | MO-G-2026-Q3-01 | #23 |
 | [MO-033](./MO-033.md) | Scaffolded gitignore hides legitimate design assets | shipped | P1 | MO-G-2026-Q3-01 | #25 |
 | [MO-037](./MO-037.md) | brand check reports clean when nothing has been generated | shipped | P1 | MO-G-2026-Q3-01 | #30 |
+| [MO-040](./MO-040.md) | pm new re-issues an id another session already claimed | shipped | P1 | — | #33 |
 | [MO-008](./MO-008.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
 | [MO-009](./MO-009.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
 | [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | #31 |

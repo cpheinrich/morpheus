@@ -109,8 +109,14 @@ a diff nobody can review.
 deploys fail. Sequence accordingly.
 
 **Claims, not assignees** — 2026-07-29. Any person may point any agent at any roadmap item;
-ownership begins when work begins. The remote branch (`rm-014-*`) *is* the claim — no assignee
+ownership begins when work begins. The remote branch (`mo-014-*`) *is* the claim — no assignee
 field, no lock file, no new concept. Merging releases it by deleting the branch.
+
+**`pm claim` is the only supported way to start work** — 2026-07-29. Hand-naming a branch failed
+`check pr` three times, always the same way: the branch cited an id whose item did not exist yet.
+The rule against it was already written down, so a fourth restatement was not the fix — the
+documentation now describes no other entry point, and `check pr` names the recovery command
+instead of only reporting the violation.
 
 **Inboxes are per person, not per session** — 2026-07-29. The point of the file is one place to
 look; per-session would mean reading N files to find what needs you. Sessions are covered by
