@@ -51,6 +51,10 @@ morpheus pm claim MO-014     # stakes the branch on origin, sets in-progress, pu
 ```
 
 The remote branch **is** the claim — `pm claim` refuses if `origin` already has `mo-014-*`.
+
+**Never create the branch by hand.** `pm claim` derives it from the item id, so the two cannot
+disagree; hand-naming has already failed `check pr` twice by referencing an id that did not exist
+yet.
 Never start an item without claiming it; another agent, possibly on someone else's machine,
 may be on it. Move the item to `review` when you open the PR. Merging deletes the branch and
 releases the claim.

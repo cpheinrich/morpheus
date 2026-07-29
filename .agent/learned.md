@@ -61,3 +61,8 @@ Durable facts worth knowing before starting work here. Append; do not rewrite hi
   workflows must leave `pnpm-version` empty so the lockfile-pinned `packageManager` wins.
   Evo never hit this because it lacks the field — the repo following the *stricter* practice is
   the one that broke.
+
+- **Never hand-name a branch. Use `morpheus pm claim <ID>`.** It creates the branch *from* the
+  item id, so they cannot disagree. Hand-naming produced a `check pr` failure twice in one
+  session — the branch referenced an id that did not exist because the item had not been
+  allocated yet.
