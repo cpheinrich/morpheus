@@ -1,0 +1,19 @@
+{
+  "morpheusVersion": "0.1.0",
+  "name": "morpheus",
+  "prefix": "MO",
+  "kind": "internal",
+  "displayName": "Morpheus",
+  "description": "An operating system for building and running companies.",
+  "surfaces": {
+    "web": false,
+    "ios": false,
+    "hardware": false
+  },
+  "hq": {
+    "route": "/hq",
+    "allowlist": [],
+    "investorAllowlist": [],
+    "admins": []
+  }
+}

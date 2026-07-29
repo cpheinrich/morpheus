@@ -174,3 +174,14 @@ unchangeable after creation, so worth stating: multi-region for durability, and 
 **Use the browser tool to verify UI before giving UI instructions** — 2026-07-29. Three rounds of
 Firebase console directions were wrong because they were inferred rather than observed. If the
 task is "where do I click", look first.
+
+**Ids are namespaced by project prefix** — 2026-07-29. `RM-002` was identical in every repo, so
+it named nothing in particular the moment there were two projects. Now `EV-002` and `MO-002`.
+Roadmap items get the bare prefix because they are the common case — named in conversation,
+derived into branch names, cited in PRs. Goals and requests take an infix (`EV-G-2026-Q3-01`,
+`EV-FR-007`) since they are rarer.
+
+**The registry indexes; the manifest is authoritative** — `~/.morpheus/registry.json` records
+where each project lives and its prefix, and enforces prefix uniqueness at allocation. But a
+fresh clone has no registry entry and must still work, so nothing may depend on it for
+correctness. `morpheus.json` holds the prefix and travels with the repo.

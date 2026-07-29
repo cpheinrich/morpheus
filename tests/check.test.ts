@@ -25,7 +25,7 @@ async function seedRoadmap(id: string, status: string) {
 function goodPr(overrides: Partial<PrContext> = {}): PrContext {
   return {
     body: "## Test plan\n\nRan the suite.\n\n## Open questions\n\nNone.\n",
-    branch: "rm-014-something",
+    branch: "ev-014-something",
     changedFiles: ["src/pm/parse.ts", "tests/pm.test.ts"],
     productDir: product,
     ...overrides,
@@ -34,20 +34,20 @@ function goodPr(overrides: Partial<PrContext> = {}): PrContext {
 
 beforeEach(async () => {
   product = await mkdtemp(join(tmpdir(), "morpheus-check-"));
-  await seedRoadmap("RM-014", "review");
+  await seedRoadmap("EV-014", "review");
 });
 
 describe("roadmapIdFromBranch", () => {
   it("extracts an id from a conventional branch name", () => {
-    expect(roadmapIdFromBranch("rm-014-calorie-pipeline")).toBe("RM-014");
-    expect(roadmapIdFromBranch("RM-002-workflows")).toBe("RM-002");
-    expect(roadmapIdFromBranch("rm-014")).toBe("RM-014");
+    expect(roadmapIdFromBranch("ev-014-calorie-pipeline")).toBe("EV-014");
+    expect(roadmapIdFromBranch("EV-002-workflows")).toBe("EV-002");
+    expect(roadmapIdFromBranch("ev-014")).toBe("EV-014");
   });
 
   it("returns null for a branch that does not reference one", () => {
     expect(roadmapIdFromBranch("main")).toBeNull();
     expect(roadmapIdFromBranch("fix-the-thing")).toBeNull();
-    expect(roadmapIdFromBranch("rm-14-too-short")).toBeNull();
+    expect(roadmapIdFromBranch("ev-14-too-short")).toBeNull();
   });
 });
 
@@ -102,18 +102,18 @@ describe("checkPr", () => {
   });
 
   it("blocks when the roadmap item was not moved to review", async () => {
-    await seedRoadmap("RM-014", "in-progress");
+    await seedRoadmap("EV-014", "in-progress");
     const findings = await checkPr(goodPr());
     expect(findings.find((f) => f.rule === "roadmap-status")?.level).toBe("error");
   });
 
   it("accepts an item already marked shipped", async () => {
-    await seedRoadmap("RM-014", "shipped");
+    await seedRoadmap("EV-014", "shipped");
     expect(await checkPr(goodPr())).toHaveLength(0);
   });
 
   it("blocks a branch referencing an item that does not exist", async () => {
-    const findings = await checkPr(goodPr({ branch: "rm-999-ghost" }));
+    const findings = await checkPr(goodPr({ branch: "ev-999-ghost" }));
     expect(findings.find((f) => f.rule === "roadmap-item-exists")?.level).toBe("error");
   });
 

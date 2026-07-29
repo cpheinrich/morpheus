@@ -8,9 +8,21 @@ import { z } from "zod";
  * tables in each directory's README.md.
  */
 
-export const ROADMAP_ID = /^RM-\d{3,}$/;
-export const GOAL_ID = /^G-\d{4}-(Q[1-4]|ANNUAL)-\d{2}$/;
-export const REQUEST_ID = /^FR-\d{3,}$/;
+/**
+ * Ids are prefixed by project, so `EV-002` is unambiguous across every repo.
+ *
+ * The prefix itself is declared in `morpheus.json` and validated separately —
+ * these patterns only enforce *shape*, so the Zod schemas stay static rather
+ * than being rebuilt per project.
+ */
+export const ROADMAP_ID = /^[A-Z]{2,4}-\d{3,}$/;
+export const GOAL_ID = /^[A-Z]{2,4}-G-\d{4}-(Q[1-4]|ANNUAL)-\d{2}$/;
+export const REQUEST_ID = /^[A-Z]{2,4}-FR-\d{3,}$/;
+
+/** The project prefix an id belongs to, or null if it is malformed. */
+export function prefixOf(id: string): string | null {
+  return /^([A-Z]{2,4})-/.exec(id)?.[1] ?? null;
+}
 
 /**
  * An ISO date (YYYY-MM-DD) tolerant of YAML's date handling.
@@ -36,7 +48,7 @@ export const RoadmapStatus = z.enum([
 export const Priority = z.enum(["P0", "P1", "P2", "P3"]);
 
 export const RoadmapItem = z.object({
-  id: z.string().regex(ROADMAP_ID, "must look like RM-014"),
+  id: z.string().regex(ROADMAP_ID, "must look like EV-014"),
   title: z.string().min(3),
   status: RoadmapStatus,
   priority: Priority.default("P2"),
@@ -49,7 +61,7 @@ export const RoadmapItem = z.object({
 });
 
 export const Goal = z.object({
-  id: z.string().regex(GOAL_ID, "must look like G-2026-Q3-01"),
+  id: z.string().regex(GOAL_ID, "must look like EV-G-2026-Q3-01"),
   title: z.string().min(3),
   horizon: z.enum(["annual", "quarterly"]),
   period: z.string().min(4),
@@ -60,7 +72,7 @@ export const Goal = z.object({
 });
 
 export const Request = z.object({
-  id: z.string().regex(REQUEST_ID, "must look like FR-007"),
+  id: z.string().regex(REQUEST_ID, "must look like EV-FR-007"),
   title: z.string().min(3),
   source: z.enum(["support", "analytics", "investor", "founder", "agent"]),
   status: z.enum(["new", "triaged", "accepted", "declined", "duplicate"]),

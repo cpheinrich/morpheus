@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { parseArtifact } from "./parse.js";
 import { ARTIFACTS, type ArtifactKind } from "./schema.js";
 
-const PREFIX: Record<ArtifactKind, string> = {
-  roadmap: "RM",
-  goals: "G",
-  requests: "FR",
+/** Infix per artifact kind. Roadmap items get the bare project prefix. */
+const INFIX: Record<ArtifactKind, string> = {
+  roadmap: "",
+  goals: "G-",
+  requests: "FR-",
 };
 
 /**
@@ -16,14 +17,18 @@ const PREFIX: Record<ArtifactKind, string> = {
  * Concurrent agents can in principle pick the same number; `pm validate`
  * catches duplicates in CI, which is cheaper than coordinating allocation.
  */
-export async function nextId(productDir: string, kind: ArtifactKind): Promise<string> {
+export async function nextId(
+  productDir: string,
+  kind: ArtifactKind,
+  prefix: string,
+): Promise<string> {
   const { items } = await parseArtifact(productDir, kind);
   const nums = items
     .map((i) => /(\d+)$/.exec((i.data as { id: string }).id)?.[1])
     .filter((n): n is string => Boolean(n))
     .map(Number);
   const next = (nums.length ? Math.max(...nums) : 0) + 1;
-  return `${PREFIX[kind]}-${String(next).padStart(3, "0")}`;
+  return `${prefix}-${INFIX[kind]}${String(next).padStart(3, "0")}`;
 }
 
 function today(): string {
@@ -54,6 +59,8 @@ function frontmatter(fields: Record<string, unknown>): string {
 export interface NewItemOptions {
   productDir: string;
   kind: ArtifactKind;
+  /** Project prefix from morpheus.json. */
+  prefix: string;
   title: string;
   /** Roadmap only. */
   priority?: string;
@@ -62,11 +69,11 @@ export interface NewItemOptions {
 
 /** Create a new item file with valid frontmatter. Returns its path. */
 export async function createItem(opts: NewItemOptions): Promise<string> {
-  const { productDir, kind, title } = opts;
+  const { productDir, kind, prefix, title } = opts;
   const dir = join(productDir, ARTIFACTS[kind].dir);
   await mkdir(dir, { recursive: true });
 
-  const id = await nextId(productDir, kind);
+  const id = await nextId(productDir, kind, prefix);
   const date = today();
 
   let fm: string;

@@ -37,6 +37,7 @@ pnpm build                 # tsc -p tsconfig.build.json
 pnpm morpheus pm validate   # validate hq/product frontmatter
 pnpm morpheus pm index      # regenerate README index tables
 pnpm morpheus pm new roadmap "Title here" --priority P1
+pnpm morpheus registry list        # every Morpheus project on this machine
 ```
 
 ## Working conventions
@@ -45,10 +46,10 @@ pnpm morpheus pm new roadmap "Title here" --priority P1
 
 ```sh
 morpheus pm claims           # what is already taken
-morpheus pm claim RM-014     # stakes the branch on origin, sets in-progress, pushes
+morpheus pm claim MO-014     # stakes the branch on origin, sets in-progress, pushes
 ```
 
-The remote branch **is** the claim — `pm claim` refuses if `origin` already has `rm-014-*`.
+The remote branch **is** the claim — `pm claim` refuses if `origin` already has `mo-014-*`.
 Never start an item without claiming it; another agent, possibly on someone else's machine,
 may be on it. Move the item to `review` when you open the PR. Merging deletes the branch and
 releases the claim.
@@ -113,7 +114,7 @@ Two mistakes to avoid, both made in the first round:
 `morpheus inbox validate` enforces both, plus dense numbering, the GitHub-handle rule, and a
 summary before the first item. Run it before finishing; CI runs it too.
 
-**Link roadmap items with relative markdown paths** — `[RM-011](product/roadmap/RM-011.md)`
+**Link roadmap items with relative markdown paths** — `[MO-011](product/roadmap/MO-011.md)`
 from `hq/STATUS.md`. These resolve in Obsidian *and* render on GitHub, unlike `[[wikilinks]]`
 which only work in Obsidian.
 

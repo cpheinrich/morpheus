@@ -5,6 +5,7 @@ import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
 import { init as brandInit } from "./brand.js";
 import { sync as accessSync } from "./access.js";
+import * as registry from "./registry.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -18,6 +19,7 @@ Usage
   morpheus inbox validate   [--dir <hq/inbox>]
   morpheus brand init       [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
   morpheus access sync      [--project <firebase-project>] [--dry-run]
+  morpheus registry list | add [--prefix XX] | remove <name>
 
 Options
   --dir <path>   Product directory (default: hq/product)
@@ -98,6 +100,14 @@ async function main(): Promise<number> {
   const flags = parseArgs(argv);
   const [group, command, ...rest] = flags.positional;
   const dir = resolve(process.cwd(), flags.dir);
+
+  if (group === "registry") {
+    if (command === "list") return registry.list();
+    if (command === "add") return registry.add(process.cwd(), flags.prefix);
+    if (command === "remove") return registry.remove(rest[0] ?? "");
+    console.error(`Unknown registry command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+  }
 
   if (group === "access") {
     if (command === "sync") return accessSync(process.cwd(), flags.project, flags.dryRun);

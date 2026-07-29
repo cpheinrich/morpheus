@@ -1,7 +1,7 @@
 ---
 date: 2026-07-28
 agent: claude
-roadmap: RM-001
+roadmap: MO-001
 outcome: shipped
 summary: Built the file-based project management layer — schemas, parser, index generator, CLI.
 ---

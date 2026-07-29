@@ -33,7 +33,7 @@ async function git(args: string[], cwd: string): Promise<string> {
   return stdout.trim();
 }
 
-/** Branch prefix for an item: RM-014 -> rm-014- */
+/** Branch prefix for an item: EV-014 -> ev-014- */
 export function branchPrefix(id: string): string {
   return `${id.toLowerCase()}-`;
 }
@@ -79,10 +79,10 @@ export async function listClaims(cwd: string): Promise<Claim[]> {
     const [ref, at, by] = line.split("\t");
     if (!ref) continue;
     const branch = ref.replace(/^origin\//, "");
-    const m = /^(rm-\d{3,})-/i.exec(branch);
+    const m = /^([a-z]{2,4}-\d{3,})-/i.exec(branch);
     if (!m) continue;
     claims.push({
-      id: m[1]!.toUpperCase().replace(/^RM-/, "RM-"),
+      id: m[1]!.toUpperCase(),
       branch,
       ...(by ? { by } : {}),
       ...(at ? { at } : {}),

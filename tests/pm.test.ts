@@ -21,7 +21,7 @@ async function seed(kind: string, id: string, frontmatter: string, body = "Body.
   await writeFile(join(dir, `${id}.md`), `---\n${frontmatter}\n---\n\n${body}\n`);
 }
 
-const VALID_RM = `id: RM-001
+const VALID_RM = `id: MO-001
 title: Ship the parser
 status: in-progress
 priority: P1
@@ -37,7 +37,7 @@ beforeEach(async () => {
 describe("schema", () => {
   it("applies defaults for optional fields", () => {
     const parsed = RoadmapItem.parse({
-      id: "RM-002",
+      id: "MO-002",
       title: "Something",
       status: "backlog",
       created: "2026-07-01",
@@ -50,7 +50,7 @@ describe("schema", () => {
 
   it("rejects a malformed id", () => {
     const r = RoadmapItem.safeParse({
-      id: "RM-1",
+      id: "M-1",
       title: "Too short an id",
       status: "backlog",
       created: "2026-07-01",
@@ -61,7 +61,7 @@ describe("schema", () => {
 
   it("rejects an unknown status", () => {
     const r = RoadmapItem.safeParse({
-      id: "RM-003",
+      id: "MO-003",
       title: "Bad status",
       status: "wip",
       created: "2026-07-01",
@@ -72,7 +72,7 @@ describe("schema", () => {
 
   it("rejects a non-ISO date", () => {
     const r = RoadmapItem.safeParse({
-      id: "RM-004",
+      id: "MO-004",
       title: "Bad date",
       status: "backlog",
       created: "July 1st",
@@ -83,7 +83,7 @@ describe("schema", () => {
 
   it("validates a goal id shape", () => {
     expect(Goal.safeParse({
-      id: "G-2026-Q3-01",
+      id: "MO-G-2026-Q3-01",
       title: "Ship Morpheus v1",
       horizon: "quarterly",
       period: "2026-Q3",
@@ -93,7 +93,7 @@ describe("schema", () => {
     }).success).toBe(true);
 
     expect(Goal.safeParse({
-      id: "G-2026-Q5-01",
+      id: "MO-G-2026-Q5-01",
       title: "Impossible quarter",
       horizon: "quarterly",
       period: "2026-Q5",
@@ -106,7 +106,7 @@ describe("schema", () => {
 
 describe("parse", () => {
   it("parses a valid item and strips frontmatter from the body", async () => {
-    await seed("roadmap", "RM-001", VALID_RM, "## Context\n\nWhy it matters.");
+    await seed("roadmap", "MO-001", VALID_RM, "## Context\n\nWhy it matters.");
     const { items, issues } = await parseArtifact(product, "roadmap");
 
     expect(issues).toHaveLength(0);
@@ -114,11 +114,11 @@ describe("parse", () => {
     expect(items[0]!.data.title).toBe("Ship the parser");
     expect(items[0]!.data.prs).toEqual([12]);
     expect(items[0]!.body).toContain("Why it matters.");
-    expect(items[0]!.body).not.toContain("id: RM-001");
+    expect(items[0]!.body).not.toContain("id: MO-001");
   });
 
   it("returns an issue instead of throwing on invalid frontmatter", async () => {
-    await seed("roadmap", "RM-002", "id: RM-002\ntitle: x\nstatus: nope");
+    await seed("roadmap", "MO-002", "id: MO-002\ntitle: x\nstatus: nope");
     const { items, issues } = await parseArtifact(product, "roadmap");
 
     expect(items).toHaveLength(0);
@@ -126,8 +126,8 @@ describe("parse", () => {
   });
 
   it("reports every invalid file rather than stopping at the first", async () => {
-    await seed("roadmap", "RM-002", "id: RM-002\ntitle: x\nstatus: nope");
-    await seed("roadmap", "RM-003", "id: RM-003\ntitle: y\nstatus: also-nope");
+    await seed("roadmap", "MO-002", "id: MO-002\ntitle: x\nstatus: nope");
+    await seed("roadmap", "MO-003", "id: MO-003\ntitle: y\nstatus: also-nope");
     const { issues } = await parseArtifact(product, "roadmap");
 
     const paths = new Set(issues.map((i) => i.path));
@@ -145,7 +145,7 @@ describe("parse", () => {
   });
 
   it("ignores the generated README", async () => {
-    await seed("roadmap", "RM-001", VALID_RM);
+    await seed("roadmap", "MO-001", VALID_RM);
     await writeFile(join(product, "roadmap", "README.md"), "# Roadmap\n");
 
     const { items, issues } = await parseArtifact(product, "roadmap");
@@ -155,7 +155,7 @@ describe("parse", () => {
 
   it("reports malformed YAML as an issue instead of throwing", async () => {
     // An unquoted colon in a title is the common real-world case.
-    await seed("roadmap", "RM-005", "id: RM-005\ntitle: Package: schemas and parser\nstatus: backlog");
+    await seed("roadmap", "MO-005", "id: MO-005\ntitle: Package: schemas and parser\nstatus: backlog");
     const { items, issues } = await parseArtifact(product, "roadmap");
 
     expect(items).toHaveLength(0);
@@ -164,8 +164,8 @@ describe("parse", () => {
   });
 
   it("keeps parsing valid files when one has malformed YAML", async () => {
-    await seed("roadmap", "RM-001", VALID_RM);
-    await seed("roadmap", "RM-005", "id: RM-005\ntitle: Bad: yaml\nstatus: backlog");
+    await seed("roadmap", "MO-001", VALID_RM);
+    await seed("roadmap", "MO-005", "id: MO-005\ntitle: Bad: yaml\nstatus: backlog");
     const { items, issues } = await parseArtifact(product, "roadmap");
 
     expect(items).toHaveLength(1);
@@ -182,7 +182,7 @@ describe("parse", () => {
     const dir = join(product, "roadmap");
     await mkdir(dir, { recursive: true });
     // Same id, two files — filename check passes for one, so force both valid.
-    await writeFile(join(dir, "RM-001.md"), `---\n${VALID_RM}\n---\n`);
+    await writeFile(join(dir, "MO-001.md"), `---\n${VALID_RM}\n---\n`);
     const { items } = await parseDir(dir, RoadmapItem);
     const doubled = [...items, { ...items[0]!, path: join(dir, "copy.md") }];
 
@@ -192,20 +192,20 @@ describe("parse", () => {
 
 describe("index generation", () => {
   it("orders in-progress before backlog before shipped", async () => {
-    await seed("roadmap", "RM-001", VALID_RM.replace("status: in-progress", "status: shipped"));
-    await seed("roadmap", "RM-002", VALID_RM.replace("RM-001", "RM-002"));
+    await seed("roadmap", "MO-001", VALID_RM.replace("status: in-progress", "status: shipped"));
+    await seed("roadmap", "MO-002", VALID_RM.replace("MO-001", "MO-002"));
     await seed(
       "roadmap",
-      "RM-003",
-      VALID_RM.replace("RM-001", "RM-003").replace("status: in-progress", "status: backlog"),
+      "MO-003",
+      VALID_RM.replace("MO-001", "MO-003").replace("status: in-progress", "status: backlog"),
     );
 
     const { items } = await parseArtifact(product, "roadmap");
     const rows = renderRoadmap(items).split("\n").slice(2);
 
-    expect(rows[0]).toContain("RM-002"); // in-progress
-    expect(rows[1]).toContain("RM-003"); // backlog
-    expect(rows[2]).toContain("RM-001"); // shipped
+    expect(rows[0]).toContain("MO-002"); // in-progress
+    expect(rows[1]).toContain("MO-003"); // backlog
+    expect(rows[2]).toContain("MO-001"); // shipped
   });
 
   it("renders a placeholder when there are no items", () => {
@@ -213,15 +213,15 @@ describe("index generation", () => {
   });
 
   it("escapes pipes so a title cannot break the table", async () => {
-    await seed("roadmap", "RM-001", VALID_RM.replace("Ship the parser", "A | B"));
+    await seed("roadmap", "MO-001", VALID_RM.replace("Ship the parser", "A | B"));
     const { items } = await parseArtifact(product, "roadmap");
     expect(renderRoadmap(items)).toContain("A \\| B");
   });
 
   it("links each id to its own file", async () => {
-    await seed("roadmap", "RM-001", VALID_RM);
+    await seed("roadmap", "MO-001", VALID_RM);
     const { items } = await parseArtifact(product, "roadmap");
-    expect(renderRoadmap(items)).toContain("[RM-001](./RM-001.md)");
+    expect(renderRoadmap(items)).toContain("[MO-001](./MO-001.md)");
   });
 
   it("replaces only the marked block, preserving surrounding prose", () => {
@@ -241,7 +241,7 @@ describe("index generation", () => {
   });
 
   it("reports no change on a second identical write", async () => {
-    await seed("roadmap", "RM-001", VALID_RM);
+    await seed("roadmap", "MO-001", VALID_RM);
     const { items } = await parseArtifact(product, "roadmap");
     const dir = join(product, "roadmap");
     const rendered = renderRoadmap(items);
@@ -252,24 +252,25 @@ describe("index generation", () => {
 });
 
 describe("new item", () => {
-  it("allocates RM-001 in an empty directory", async () => {
-    expect(await nextId(product, "roadmap")).toBe("RM-001");
+  it("allocates MO-001 in an empty directory", async () => {
+    expect(await nextId(product, "roadmap", "MO")).toBe("MO-001");
   });
 
   it("allocates the next id after the highest existing one", async () => {
-    await seed("roadmap", "RM-001", VALID_RM);
-    await seed("roadmap", "RM-009", VALID_RM.replace("RM-001", "RM-009"));
-    expect(await nextId(product, "roadmap")).toBe("RM-010");
+    await seed("roadmap", "MO-001", VALID_RM);
+    await seed("roadmap", "MO-009", VALID_RM.replace("MO-001", "MO-009"));
+    expect(await nextId(product, "roadmap", "MO")).toBe("MO-010");
   });
 
   it("creates a file that passes its own validation", async () => {
     const path = await createItem({
       productDir: product,
       kind: "roadmap",
+      prefix: "MO",
       title: "Wire up analytics",
       priority: "P1",
     });
-    expect(path).toContain("RM-001.md");
+    expect(path).toContain("MO-001.md");
 
     const { items, issues } = await parseArtifact(product, "roadmap");
     expect(issues).toHaveLength(0);
@@ -281,6 +282,7 @@ describe("new item", () => {
     await createItem({
       productDir: product,
       kind: "roadmap",
+      prefix: "MO",
       title: "PM package: schemas, parser, CLI",
     });
 
@@ -290,8 +292,8 @@ describe("new item", () => {
   });
 
   it("omits optional fields it was not given", async () => {
-    await createItem({ productDir: product, kind: "roadmap", title: "No goal" });
-    const raw = await readFile(join(product, "roadmap", "RM-001.md"), "utf8");
+    await createItem({ productDir: product, kind: "roadmap", prefix: "MO", title: "No goal" });
+    const raw = await readFile(join(product, "roadmap", "MO-001.md"), "utf8");
     expect(raw).not.toContain("goal:");
   });
 });

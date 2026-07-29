@@ -9,7 +9,7 @@ Durable facts worth knowing before starting work here. Append; do not rewrite hi
   quotes defensively; the parser reports the failure as an issue rather than throwing.
 - **The parser must never throw on bad input.** `pm validate` is expected to report every problem
   in one run. Anything that can fail per-file returns a `ParseIssue` instead.
-- **`morpheus init` is deliberately not built yet.** The first retrofit (RM-007, Evo) is its
+- **`morpheus init` is deliberately not built yet.** The first retrofit (MO-007, Evo) is its
   specification. Building it first would encode guesses about a structure no project has lived in.
 
 - **Firebase's `addFirebase` returns `403 caller does not have permission` when the account has

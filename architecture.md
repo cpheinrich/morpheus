@@ -532,7 +532,7 @@ Chatwoot over their REST APIs to render summary tiles, linking out for depth.
 
 ```mermaid
 flowchart LR
-    RM["hq/product/<br/>roadmap/RM-014.md"] --> AG[Agent<br/>Claude / Codex]
+    RM["hq/product/<br/>roadmap/MO-014.md"] --> AG[Agent<br/>Claude / Codex]
     AG --> BR["branch<br/>rm-014-slug"]
     BR --> CI["CI — reusable workflow<br/>lint · typecheck · unit · morpheus check pr"]
     CI --> PREV[Vercel preview]
@@ -1281,7 +1281,7 @@ qa/
 │   ├── specs/
 │   └── fixtures/
 ├── test-plans/                # per-feature manual test plans, referenced from PRs
-│   └── RM-014-calorie-pipeline.md
+│   └── MO-014-calorie-pipeline.md
 ├── checklists/
 │   ├── pr-review.md           # what an agent self-checks before requesting review
 │   ├── release.md             # pre-deploy gate
@@ -1332,7 +1332,7 @@ you want to hold the real thing.
 
 **Feedback convention.** Since iOS has no anchored-comment equivalent, screenshots are emitted with
 stable numbered names tied to the test step that produced them —
-`RM-014-03-paywall-presented.png` — so a PR comment saying "03 — the CTA is too low" is
+`MO-014-03-paywall-presented.png` — so a PR comment saying "03 — the CTA is too low" is
 unambiguous to the agent. The kit's `ios-ci` workflow enforces the naming.
 
 This is deliberately lower-tech than Vercel Comments and good enough. Building an in-app feedback
@@ -1475,11 +1475,11 @@ No Jira, no Linear. Markdown in git, with a validated schema.
 hq/product/
 ├── goals/
 │   ├── README.md              # GENERATED index table
-│   └── G-2026-Q3-01.md
+│   └── MO-G-2026-Q3-01.md
 ├── roadmap/
 │   ├── README.md              # GENERATED index table
-│   ├── RM-014.md
-│   └── RM-015.md
+│   ├── MO-014.md
+│   └── MO-015.md
 └── requests/
     ├── README.md              # GENERATED index table
     └── FR-007.md
@@ -1549,14 +1549,14 @@ An item file is frontmatter plus free prose — the schema constrains the metada
 
 ```markdown
 ---
-id: RM-014
+id: MO-014
 title: Ship calorie estimation pipeline
 status: in-progress
 priority: P1
-goal: G-2026-Q3-01
+goal: MO-G-2026-Q3-01
 owner: agent
 prs: [42, 47]
-acceptance: qa/acceptance/RM-014.md
+acceptance: qa/acceptance/MO-014.md
 created: 2026-07-20
 updated: 2026-07-28
 ---

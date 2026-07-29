@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { findDuplicateIds, parseArtifact, type ParseIssue } from "../pm/parse.js";
 import {
   renderGoals,
@@ -119,6 +120,25 @@ export async function index(productDir: string, check = false): Promise<number> 
   return 0;
 }
 
+/**
+ * The project prefix, from morpheus.json beside the product directory.
+ *
+ * Required rather than defaulted: a wrong prefix silently creates ids that
+ * collide with another project, which is worse than refusing.
+ */
+async function projectPrefix(productDir: string): Promise<string | null> {
+  // hq/product -> hq -> repo root
+  const root = dirname(dirname(productDir));
+  try {
+    const raw = JSON.parse(await readFile(join(root, "morpheus.json"), "utf8")) as {
+      prefix?: string;
+    };
+    return raw.prefix ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Create a new item and print its path. */
 export async function create(
   productDir: string,
@@ -135,7 +155,16 @@ export async function create(
     return 1;
   }
 
-  const path = await createItem({ productDir, kind, title, ...opts });
+  const prefix = await projectPrefix(productDir);
+  if (!prefix) {
+    console.error(
+      'No "prefix" in morpheus.json. Add a 2-4 letter uppercase prefix — it namespaces\n' +
+        "every id in this repo so they cannot collide with another project.",
+    );
+    return 1;
+  }
+
+  const path = await createItem({ productDir, kind, prefix, title, ...opts });
   console.log(`Created ${path}`);
   return index(productDir);
 }

@@ -30,10 +30,10 @@ const TEST = /(^tests\/|\.test\.tsx?$)/;
 const DOCS = /^(docs\/|architecture\.md$|README\.md$|AGENTS\.md$)/;
 const GENERATED = /README\.md$/;
 
-/** Extract the roadmap id a branch refers to: rm-014-slug -> RM-014. */
+/** Extract the roadmap id a branch refers to: ev-014-slug -> EV-014. */
 export function roadmapIdFromBranch(branch: string): string | null {
-  const m = /^rm-(\d{3,})(?:-|$)/i.exec(branch);
-  return m ? `RM-${m[1]}` : null;
+  const m = /^([a-z]{2,4})-(\d{3,})(?:-|$)/i.exec(branch);
+  return m ? `${m[1]!.toUpperCase()}-${m[2]}` : null;
 }
 
 /**
@@ -107,7 +107,7 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
     findings.push({
       level: "warning",
       rule: "branch-name",
-      message: `Branch "${branch}" does not reference a roadmap item (expected rm-014-slug).`,
+      message: `Branch "${branch}" does not reference a roadmap item (expected ev-014-slug).`,
     });
   } else {
     const { items } = await parseArtifact(productDir, "roadmap");

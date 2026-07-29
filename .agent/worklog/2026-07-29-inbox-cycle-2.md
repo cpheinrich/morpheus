@@ -24,7 +24,7 @@ externally wrong, and only contact with specifics revealed it.
 ## Settled this cycle
 
 - Staying public with PolyForm Noncommercial — the deciding factor was sharing with friends
-  without minting PATs, which is exactly what going private reintroduces. RM-012 dropped.
+  without minting PATs, which is exactly what going private reintroduces. MO-012 dropped.
 - Nimbalyst is a suggested editor, never a requirement. The property that makes this true is
   that validation runs in CI rather than the editor.
 - Branch-as-claim locked in.

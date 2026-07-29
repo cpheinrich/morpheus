@@ -12,7 +12,7 @@ previous: .agent/inbox-archive/2026-07-29-0900-cpheinrich.md
 Google sign-in on Evo — all on Spark, no billing. The root cause of that long 403 was unaccepted
 Firebase Terms of Service, not IAM or org policy.
 
-**Shipped since the last cycle:** the brand wizard ([RM-014](product/roadmap/RM-014.md)) and
+**Shipped since the last cycle:** the brand wizard ([MO-014](product/roadmap/MO-014.md)) and
 `morpheus access sync` — access declared in `morpheus.json` and applied as Firebase custom
 claims, so granting it is a reviewable commit. **88 tests, CI green on both repos.**
 
@@ -41,7 +41,7 @@ fresh session reads those and starts informed rather than blank.
 
 **A gap this exposed:** the Evo retrofit produced `hq/product/` but no `hq/inbox/` and no
 `.agent/`, because both conventions postdate it. `morpheus init` has the same hole. Filed as
-[RM-015](product/roadmap/RM-015.md) — and the important half is that `init` must **seed** those
+[MO-015](product/roadmap/MO-015.md) — and the important half is that `init` must **seed** those
 files from the wizard answers, since an empty `decisions.md` reads as "nothing was decided"
 rather than "nobody wrote it down".
 

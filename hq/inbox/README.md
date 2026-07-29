@@ -21,7 +21,7 @@ previous: .agent/inbox-archive/2026-07-29-0400-cpheinrich.md
 
 Prose summary of what got done since the last check-in, and what is proceeding unblocked.
 
-## ❗ 1. Something needing a decision · `claude` · [RM-006](../product/roadmap/RM-006.md)
+## ❗ 1. Something needing a decision · `claude` · [MO-006](../product/roadmap/MO-006.md)
 
 ~ *(their previous reply)*
 

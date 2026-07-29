@@ -17,7 +17,8 @@
     "./pm": "./dist/pm/index.js",
     "./inbox": "./dist/inbox/index.js",
     "./brand": "./dist/brand/index.js",
-    "./access": "./dist/access/index.js"
+    "./access": "./dist/access/index.js",
+    "./registry": "./dist/registry/index.js"
   },
   "files": [
     "dist"

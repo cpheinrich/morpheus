@@ -6,20 +6,20 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [RM-014](./RM-014.md) | Brand template and wizard | review | P0 | G-2026-Q3-01 | — |
-| [RM-007](./RM-007.md) | Retrofit Evo to the Morpheus structure | review | P1 | G-2026-Q3-01 | — |
-| [RM-003](./RM-003.md) | Publish the kit to GitHub Packages | backlog | P0 | G-2026-Q3-01 | — |
-| [RM-004](./RM-004.md) | /hq auth: Firebase custom claims | backlog | P0 | G-2026-Q3-01 | — |
-| [RM-005](./RM-005.md) | kit/hq: dashboard shell | backlog | P1 | G-2026-Q3-01 | — |
-| [RM-006](./RM-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | G-2026-Q3-01 | — |
-| [RM-011](./RM-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | G-2026-Q3-01 | — |
-| [RM-015](./RM-015.md) | init must scaffold .agent and hq/inbox | backlog | P1 | G-2026-Q3-01 | — |
-| [RM-016](./RM-016.md) | morpheus doctor — report drift without fixing it | backlog | P1 | G-2026-Q3-01 | — |
-| [RM-008](./RM-008.md) | morpheus init | backlog | P2 | G-2026-Q3-01 | — |
-| [RM-009](./RM-009.md) | Retrofit Darwin | backlog | P2 | G-2026-Q3-01 | — |
-| [RM-010](./RM-010.md) | Simplify architecture.md for first-time readers | backlog | P2 | G-2026-Q3-01 | — |
-| [RM-001](./RM-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | G-2026-Q3-01 | — |
-| [RM-002](./RM-002.md) | Reusable GitHub workflows | shipped | P0 | G-2026-Q3-01 | — |
-| [RM-013](./RM-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | G-2026-Q3-01 | — |
-| [RM-012](./RM-012.md) | Make Morpheus private and adjust CI for it | dropped | P1 | G-2026-Q3-01 | — |
+| [MO-014](./MO-014.md) | Brand template and wizard | review | P0 | MO-G-2026-Q3-01 | — |
+| [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | review | P1 | MO-G-2026-Q3-01 | — |
+| [MO-003](./MO-003.md) | Publish the kit to GitHub Packages | backlog | P0 | MO-G-2026-Q3-01 | — |
+| [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
+| [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-015](./MO-015.md) | init must scaffold .agent and hq/inbox | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-016](./MO-016.md) | morpheus doctor — report drift without fixing it | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-008](./MO-008.md) | morpheus init | backlog | P2 | MO-G-2026-Q3-01 | — |
+| [MO-009](./MO-009.md) | Retrofit Darwin | backlog | P2 | MO-G-2026-Q3-01 | — |
+| [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | backlog | P2 | MO-G-2026-Q3-01 | — |
+| [MO-001](./MO-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — |
+| [MO-002](./MO-002.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — |
+| [MO-013](./MO-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
+| [MO-012](./MO-012.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — |
 <!-- morpheus:end -->

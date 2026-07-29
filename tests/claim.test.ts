@@ -3,12 +3,12 @@ import { ageInDays, branchPrefix, slugify } from "../src/pm/claim.js";
 
 describe("branchPrefix", () => {
   it("lowercases the id and adds a trailing dash", () => {
-    expect(branchPrefix("RM-014")).toBe("rm-014-");
+    expect(branchPrefix("EV-014")).toBe("ev-014-");
   });
 
   it("is a prefix, so it cannot match a longer id", () => {
     // rm-14- must not match rm-140-something
-    expect("rm-140-thing".startsWith(branchPrefix("RM-14"))).toBe(false);
+    expect("ev-140-thing".startsWith(branchPrefix("EV-14"))).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: RM-002
+roadmap: MO-002
 outcome: shipped
 summary: Reusable workflows plus morpheus check pr — the enforcement half of the AGENTS.md conventions.
 ---

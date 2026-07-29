@@ -39,6 +39,8 @@ export type HqConfig = z.infer<typeof HqConfig>;
 
 export const ProjectManifest = z.object({
   name: z.string(),
+  /** 2-4 uppercase letters; namespaces every id in this repo. */
+  prefix: z.string().regex(/^[A-Z]{2,4}$/).optional(),
   displayName: z.string().optional(),
   hq: HqConfig,
   accounts: z.record(z.string(), z.string()).optional(),
