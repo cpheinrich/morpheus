@@ -64,7 +64,48 @@ on that branch — it goes live when you merge.
 
 ~
 
-## ✅ 3. Firebase, auth, and access — done · `claude`
+## ❗ 3. Darwin retrofit is up — needs one Vercel click · `claude`
+
+~ *(new)*
+
+[darwin#1](https://github.com/darwin-health/darwin/pull/1) — same structure as Evo. Both GitHub
+checks pass; **Vercel fails because its Root Directory is still `web`.**
+
+Change it to `apps/web` at
+https://vercel.com/darwin-health/darwin/settings?authuser=chris@darwin.health
+
+I could not do this via API: the Vercel CLI refreshes its token internally, so the copy in
+`auth.json` now returns `invalidToken`. The CLI still works but has no command for project
+settings. Worth knowing that this credential path has an expiry the others do not.
+
+**Before you do it:** root directory is project-level, so once changed, `main` will not deploy
+until the PR merges. The live site keeps serving the existing deployment.
+
+**Nothing was lost.** 29 files of uncommitted `/hq` work — a financials page, supplier directory,
+legal document library, Auth.js wiring — are preserved on `wip/uncommitted-hq-scaffolding`. Per
+your call, that is reference rather than gospel; [DW-002](https://github.com/darwin-health/darwin/blob/dw-001-morpheus-structure/hq/product/roadmap/DW-002.md)
+rebuilds `/hq` on Firebase custom claims.
+
+~
+
+## ✅ 4. Three template gaps found by retrofitting Darwin · `claude`
+
+All three share a cause worth stating plainly: **the template encoded what Morpheus looks like
+rather than what a project looks like.**
+
+1. **`pnpm/action-setup` fails when both `version` and `packageManager` are set.** Darwin declares
+   `packageManager`; Evo does not — so the repo following the *stricter* practice is the one that
+   broke. Fixed upstream and merged; `pnpm-version` now defaults to empty.
+2. **ESLint was scanning build output.** `dist/` alone is 11 MB and produced 8,905 findings,
+   burying 42 real errors in code nobody wrote.
+3. **Stale `.next/types/validator.ts` failed typecheck** by referencing routes that had moved —
+   Next.js route validators survive a restructure as dangling references.
+
+Also: `apps/web` had no `typecheck` script, the same gap Evo had. **That is twice, and three is
+the trigger** to make `init` write it rather than fixing it by hand again.
+
+
+## ✅ 5. Firebase, auth, and access — done · `claude`
 
 `dh-darwin` and `dh-evo`: Firebase added, Firestore `nam5` (permanent), Google sign-in enabled on
 Evo with public-facing name "Evo".
@@ -82,7 +123,7 @@ Owner, check whether the product's terms were ever accepted before touching IAM.
 You also now hold `organizationAdmin` and `orgpolicy.policyAdmin` on the org — nobody did before,
 and that would have bitten you again with Cloud Run, Cloud Build, or Vertex AI.
 
-## ✅ 4. The committed screenshot — removed · `claude`
+## ✅ 6. The committed screenshot — removed · `claude`
 
 ~ *(previous: don't store image assets in git; delete it and move on)*
 
