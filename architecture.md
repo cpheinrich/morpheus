@@ -132,7 +132,7 @@ determines what gets scaffolded and what `doctor` expects to exist.
 
 | | `company` | `personal` | `internal` |
 |---|---|---|---|
-| Example | Darwin, Evo, Lakina | cpheinrich.com | Morpheus |
+| Example | Darwin, Evo, Lakina | cpheinrich.com, heinrich.money | Morpheus |
 | `hq/brand/` | ✅ | ✅ | — |
 | `hq/product/` | ✅ | ✅ | ✅ |
 | `hq/marketing/` | ✅ | ✅ | — |
@@ -142,6 +142,10 @@ determines what gets scaffolded and what `doctor` expects to exist.
 | `hq/identity/` | — | ✅ | — |
 | Chatwoot inbox | ✅ | — | — |
 | `/hq/investors` | ✅ | — | — |
+
+**`personal` is the wizard default.** Most projects here are solo — `cpheinrich.com` today,
+`heinrich.money` next — so the common case should need the fewest answers. `company` is the
+deliberate choice you make when collaborators, revenue, or legal entities are involved.
 
 A **personal** project has no customer support and no corporate legal — a person does not have
 terms of service with themselves. What it does have is `hq/identity/`: the personal equivalent of
@@ -1764,10 +1768,11 @@ scope?
 **Q5 — Journal growth.** `.agent/journal/` grows monotonically. When does it need compaction, and
 should a scheduled agent fold old entries into `learned.md`?
 
-**Q6 — Cloudflare account consolidation.** You have three Cloudflare accounts. Each needs its own
-manually created token, and that is the only recurring manual step in setup. Is keeping them
-separate deliberate (billing, isolation), or would consolidating to one account with multiple zones
-remove a per-company chore? Separate accounts do give real isolation, so this is a genuine tradeoff.
+**Q6 — `personal` projects that handle sensitive data.** `heinrich.money` is `kind: personal` by
+collaborator count but handles financial data, which implies real auth, bank-aggregator
+credentials, and a stricter security posture than `cpheinrich.com` needs. Does `personal` need a
+`sensitive: true` flag that pulls in the security scaffolding a `company` project gets, or is that
+a fourth kind?
 
 **Q7 — Account-scoped consumer connectors.** Granola, and any other claude.ai connector without a
 service-account path, cannot be made per-project. Accept one identity across all projects, or route
