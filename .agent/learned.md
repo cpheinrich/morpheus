@@ -76,6 +76,23 @@ Durable facts worth knowing before starting work here. Append; do not rewrite hi
   The general form: **on-disk state is the merged past, not the present.** Live state is on the
   remote.
 
+- **Vercel project-scoped access is Enterprise-only.** Project-level roles can only be assigned to
+  someone holding the **Contributor** team role, and Pro's RBAC is Owner, Member, Billing and Pro
+  Viewer — Contributor is not among them. So on a Pro team every member sees every project, and
+  "give this person one project" is not purchasable below Enterprise. The answer for a
+  collaborator who must not see everything is **a separate team**, not a narrower role.
+
+  Two things that soften it: **Pro Viewer seats are free** and can comment on preview deployments,
+  which is the whole review loop Vercel was chosen for; and **Sharable Links** (Pro) bypass
+  deployment protection for someone with no Vercel account at all.
+
+  **Hobby has no team collaboration and is non-commercial only** under the fair-use guidelines, so
+  anything commercial needs Pro regardless of who else needs access.
+
+  Sources: [access roles](https://vercel.com/docs/rbac/access-roles),
+  [managing team members](https://vercel.com/docs/rbac/managing-team-members),
+  [Hobby plan](https://vercel.com/docs/plans/hobby).
+
 ## Never let an unanswerable question render as a confident answer
 
 Three occurrences now, so it is a rule rather than a run of bad luck:
