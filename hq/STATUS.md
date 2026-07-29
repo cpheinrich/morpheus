@@ -262,6 +262,57 @@ would be trading the `/hq` requirement for it.
 
 ~
 
+### 9. Collaboration — claims, not assignees
+
+~ *(previous: few collaborators, git as the interface; need to stop two agents grabbing the same item; no upfront human assignee)*
+
+!! Agreed on the framing. Three parts, and I disagree with one of them.
+
+**The claim problem is real, and git already solves it — the remote branch *is* the claim.**
+
+We already require branch names to derive from the item id (`rm-014-slug`). Make that load-bearing
+rather than cosmetic:
+
+```sh
+morpheus pm claim RM-014      # errors if origin already has rm-014-*
+morpheus pm claims            # lists live claims: item, branch age, last committer
+```
+
+`claim` runs `git ls-remote --heads origin "rm-014-*"`, and if nothing is there, creates the
+branch, sets the item to `in-progress`, and pushes immediately to stake it. Another agent
+checking sixty seconds later sees the branch and picks something else.
+
+Why this over a claim field or a lock file:
+
+- **Zero new concepts.** No new file, no new format, no new thing to keep in sync.
+- **The remote is the arbiter**, so it works across machines and across your and Alex's laptops
+  without any shared service.
+- **Release is automatic** — merging the PR deletes the branch, which releases the claim.
+- **No upfront assignee**, exactly as you wanted. Nobody owns anything until they start, and
+  starting *is* claiming. Whoever points an agent at an item first gets it.
+- Stale claims are visible: `pm claims` can flag a branch with no commits in N days.
+
+The race window is the seconds between `ls-remote` and `push`. If two agents genuinely collide,
+the second push is rejected and it retries — git's own conflict detection is the backstop.
+
+**On "status is tied to a session" — I think it is tied to a *person*, not a session.**
+
+You check in once or twice a day and want *one* place to look. If status were per-session you
+would have to read N files to find out what needs you, which is worse than today. Sessions are
+already covered by `.agent/journal/`, one entry per task, which is where "what did this
+particular run do" belongs.
+
+So: `hq/status/<person>.md` — one inbox per human, however many sessions wrote into it.
+
+**But I would not restructure that yet.** Alex is not on Lakina today. It is a `git mv` plus one
+line in `AGENTS.md` the day a second person appears, and doing it now means maintaining a
+directory with one file in it. The trigger is clear: **second collaborator joins → split.**
+
+**What I need from you:** confirm branch-as-claim and I will build `pm claim` / `pm claims`.
+It is small — one `ls-remote`, one branch create, one status write.
+
+~
+
 ---
 
 ## Shipped

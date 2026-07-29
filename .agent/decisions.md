@@ -91,3 +91,11 @@ a diff nobody can review.
 **Vercel Root Directory is project-level, not per-branch** — changing it for a restructure means
 `main` cannot deploy until the restructure merges. The live deployment keeps serving; only new
 deploys fail. Sequence accordingly.
+
+**Claims, not assignees** — 2026-07-29. Any person may point any agent at any roadmap item;
+ownership begins when work begins. The remote branch (`rm-014-*`) *is* the claim — no assignee
+field, no lock file, no new concept. Merging releases it by deleting the branch.
+
+**Status is per person, not per session** — the point of the file is one place to look. Sessions
+are covered by `.agent/journal/`. Split to `hq/status/<person>.md` when a second collaborator
+joins a project, not before.
