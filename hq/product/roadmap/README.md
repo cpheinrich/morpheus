@@ -6,9 +6,8 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-033](./MO-033.md) | Scaffolded gitignore hides legitimate design assets | review | P1 | MO-G-2026-Q3-01 | — |
+| [MO-003](./MO-003.md) | Consume the kit as a git dependency, not a published package | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-009](./MO-009.md) | Retrofit Darwin | review | P2 | MO-G-2026-Q3-01 | — |
-| [MO-003](./MO-003.md) | Publish the kit to GitHub Packages | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -35,6 +34,7 @@ item files, not this table.
 | [MO-028](./MO-028.md) | Brand answers editable as a file, not only a wizard | shipped | P1 | MO-G-2026-Q3-01 | #19 |
 | [MO-029](./MO-029.md) | Reconcile at claim time so ship never orphans a change on main | shipped | P1 | MO-G-2026-Q3-01 | #20 |
 | [MO-031](./MO-031.md) | Checklist detectors accept empty files as done | shipped | P1 | MO-G-2026-Q3-01 | #23 |
+| [MO-033](./MO-033.md) | Scaffolded gitignore hides legitimate design assets | shipped | P1 | MO-G-2026-Q3-01 | #25 |
 | [MO-008](./MO-008.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
 | [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | shipped | P2 | MO-G-2026-Q3-01 | #1, #4 |
 | [MO-025](./MO-025.md) | Convergence requires evidence on more than one surface | shipped | P2 | MO-G-2026-Q3-01 | #16 |
