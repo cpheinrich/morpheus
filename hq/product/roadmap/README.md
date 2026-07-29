@@ -6,30 +6,31 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-014](./MO-014.md) | Brand template and wizard | review | P0 | MO-G-2026-Q3-01 | — |
-| [MO-019](./MO-019.md) | Brand refresh, and never clobber an existing token system | review | P0 | MO-G-2026-Q3-01 | — |
-| [MO-023](./MO-023.md) | Brand refresh leaves derived files stale | review | P0 | MO-G-2026-Q3-01 | — |
-| [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-016](./MO-016.md) | morpheus doctor — report drift without fixing it | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-018](./MO-018.md) | Reusable workflows must not fight packageManager | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-020](./MO-020.md) | Brand wizard hands off to an interactive session | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-021](./MO-021.md) | Brand prompt frames a design session, not a deliverable | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-022](./MO-022.md) | Brand package has a declared required set | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-024](./MO-024.md) | Design sessions keep a durable decision record | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-026](./MO-026.md) | Brand status wrongly requires tokens.json when a visual source is declared | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | review | P2 | MO-G-2026-Q3-01 | — |
-| [MO-025](./MO-025.md) | Convergence requires evidence on more than one surface | review | P2 | MO-G-2026-Q3-01 | — |
+| [MO-027](./MO-027.md) | Nothing moves an item from review to shipped | review | P0 | MO-G-2026-Q3-01 | — |
+| [MO-009](./MO-009.md) | Retrofit Darwin | review | P2 | MO-G-2026-Q3-01 | — |
 | [MO-003](./MO-003.md) | Publish the kit to GitHub Packages | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
-| [MO-015](./MO-015.md) | init must scaffold .agent and hq/inbox | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-008](./MO-008.md) | morpheus init | backlog | P2 | MO-G-2026-Q3-01 | — |
-| [MO-009](./MO-009.md) | Retrofit Darwin | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-001](./MO-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-002](./MO-002.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — |
+| [MO-014](./MO-014.md) | Brand template and wizard | shipped | P0 | MO-G-2026-Q3-01 | — |
+| [MO-019](./MO-019.md) | Brand refresh, and never clobber an existing token system | shipped | P0 | MO-G-2026-Q3-01 | #9 |
+| [MO-023](./MO-023.md) | Brand refresh leaves derived files stale | shipped | P0 | MO-G-2026-Q3-01 | #14 |
+| [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-013](./MO-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
+| [MO-015](./MO-015.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | #2 |
+| [MO-016](./MO-016.md) | morpheus doctor — report drift without fixing it | shipped | P1 | MO-G-2026-Q3-01 | #8 |
+| [MO-018](./MO-018.md) | Reusable workflows must not fight packageManager | shipped | P1 | MO-G-2026-Q3-01 | #7 |
+| [MO-020](./MO-020.md) | Brand wizard hands off to an interactive session | shipped | P1 | MO-G-2026-Q3-01 | #10 |
+| [MO-021](./MO-021.md) | Brand prompt frames a design session, not a deliverable | shipped | P1 | MO-G-2026-Q3-01 | #11 |
+| [MO-022](./MO-022.md) | Brand package has a declared required set | shipped | P1 | MO-G-2026-Q3-01 | #13 |
+| [MO-024](./MO-024.md) | Design sessions keep a durable decision record | shipped | P1 | MO-G-2026-Q3-01 | #15 |
+| [MO-026](./MO-026.md) | Brand status wrongly requires tokens.json when a visual source is declared | shipped | P1 | MO-G-2026-Q3-01 | #17 |
+| [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | shipped | P2 | MO-G-2026-Q3-01 | #1, #4 |
+| [MO-025](./MO-025.md) | Convergence requires evidence on more than one surface | shipped | P2 | MO-G-2026-Q3-01 | #16 |
 | [MO-012](./MO-012.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — |
 <!-- morpheus:end -->

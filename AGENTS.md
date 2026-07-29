@@ -90,6 +90,15 @@ Prefer `--auto` — it hands the merge to GitHub so the session is not held open
 failing check simply leaves the PR unmerged rather than merging something broken. Use `--watch`
 only when the next step depends on the merge having landed.
 
+**After merging, run `morpheus pm ship`.** It reconciles every non-terminal item against merged
+pull requests and records the PR number on the item. Nothing else advances an item to `shipped`, and
+a board that lags reality stops being read — thirteen items had drifted before anyone noticed. It
+also reports merged branches that were never deleted, which read as live claims and would make
+`pm claim` refuse the item forever.
+
+It confirms against a merged PR rather than inferring from a missing branch, and writes nothing when
+`gh` is unavailable. Use `morpheus pm ship <ID>` for work that shipped without a PR it can see.
+
 **Append a worklog entry** to `.agent/worklog/YYYY-MM-DD-slug.md` before opening a PR. Record
 what you learned, especially dead ends that produced no code — git history cannot capture those.
 
