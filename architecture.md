@@ -1404,6 +1404,35 @@ were accepted, and checks run **and not run**. That last line is what makes "fir
 a claim with evidence and named gaps behind it rather than the note a conversation happened to end
 on.
 
+### 15.9 Setup is a checklist, not a wizard
+
+`morpheus init status` reports how far through setup a project is, writing the full list to
+`hq/onboarding.md`.
+
+**Nothing is sequential and nothing is lost.** The defining failure of a setup wizard is that it is
+a transaction: quit at step nine and you begin again at step one. Here the state is a markdown file,
+so closing the terminal costs nothing, steps can be done in any order over as many days as it takes,
+and a note under a task — an account id, who to ask, why it is blocked — survives.
+
+**Anything Morpheus can see, Morpheus checks.** Roughly half the list is detected by reading the
+repository: the manifest, `.agent/` records, registry membership, reusable workflows, branch
+protection via `gh`, a goal, a roadmap item, an inbox, brand answers, brand package completeness, a
+linked Vercel project, a committed `.env.example`. Those checkboxes are rewritten every run and
+ticking one by hand is undone — deliberately, because **a checklist that can be wrong about
+something it could have verified stops being read.** Manual state exists only for work that happens
+outside the repo, where there is nothing to look at.
+
+Detection returns `true`, `false`, or **`null` for "could not check"**, and `null` must never
+collapse into "not done". A missing `gh` rendering as an unprotected branch sends someone to fix
+what was never broken. Unknown steps say so and keep whatever was recorded.
+
+The list is filtered by `kind`, the same as `doctor`'s expectations. Morpheus itself is `internal`
+and is never asked about a brand, a domain, or a billing account — a checklist that is wrong for you
+is one you stop opening.
+
+Optional tasks carry the same weight as optional brand files: they never affect completion. Analytics
+is not missing before launch.
+
 ---
 
 ## 16. Testing and QA

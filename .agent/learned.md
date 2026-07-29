@@ -66,3 +66,17 @@ Durable facts worth knowing before starting work here. Append; do not rewrite hi
   item id, so they cannot disagree. Hand-naming produced a `check pr` failure twice in one
   session — the branch referenced an id that did not exist because the item had not been
   allocated yet.
+
+## Never let an unanswerable question render as a confident answer
+
+Three occurrences now, so it is a rule rather than a run of bad luck:
+
+- GCP project ids reported as "taken" by grepping for `^ERROR`. The real error was a display name
+  under four characters.
+- `mergedPrs` must return `null` when `gh` is missing, not `[]`. "No merged PRs" is evidence; "gh
+  is absent" is not, and collapsing them makes a missing tool look like a clean board.
+- Onboarding detection returns `true | false | null`. A missing `gh` rendering as an unprotected
+  branch sends someone to fix what was never broken.
+
+The shape is always the same: a failure to determine something gets encoded as a determination.
+When a check cannot run, say it did not run.

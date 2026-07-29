@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-029](./MO-029.md) | Reconcile at claim time so ship never orphans a change on main | review | P1 | MO-G-2026-Q3-01 | — |
+| [MO-030](./MO-030.md) | Onboarding checklist: morpheus init status | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-009](./MO-009.md) | Retrofit Darwin | review | P2 | MO-G-2026-Q3-01 | — |
 | [MO-003](./MO-003.md) | Publish the kit to GitHub Packages | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
@@ -32,6 +32,7 @@ item files, not this table.
 | [MO-024](./MO-024.md) | Design sessions keep a durable decision record | shipped | P1 | MO-G-2026-Q3-01 | #15 |
 | [MO-026](./MO-026.md) | Brand status wrongly requires tokens.json when a visual source is declared | shipped | P1 | MO-G-2026-Q3-01 | #17 |
 | [MO-028](./MO-028.md) | Brand answers editable as a file, not only a wizard | shipped | P1 | MO-G-2026-Q3-01 | #19 |
+| [MO-029](./MO-029.md) | Reconcile at claim time so ship never orphans a change on main | shipped | P1 | MO-G-2026-Q3-01 | #20 |
 | [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | shipped | P2 | MO-G-2026-Q3-01 | #1, #4 |
 | [MO-025](./MO-025.md) | Convergence requires evidence on more than one surface | shipped | P2 | MO-G-2026-Q3-01 | #16 |
 | [MO-012](./MO-012.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — |

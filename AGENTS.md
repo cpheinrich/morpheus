@@ -41,6 +41,7 @@ pnpm morpheus pm new roadmap "Title here" --priority P1
 pnpm morpheus registry list        # every Morpheus project on this machine
 pnpm morpheus brand status         # what the brand package still needs
 pnpm morpheus brand build          # regenerate from an edited hq/brand/answers.md
+pnpm morpheus init status          # how far through project setup this repo is
 ```
 
 ## Working conventions
