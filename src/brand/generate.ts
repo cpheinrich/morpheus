@@ -155,6 +155,75 @@ function tokens(prefix: string): string {
   );
 }
 
+/**
+ * A prompt to paste into an interactive Claude or Codex session.
+ *
+ * The wizard's job ends at structured context. Visual direction comes from
+ * exploration with an agent that can generate and iterate on mockups — a
+ * deterministic questionnaire cannot produce a look, only the constraints one
+ * has to satisfy. This file is the handoff between the two.
+ */
+function explorePrompt(a: BrandAnswers, name: string, prefix: string): string {
+  const refs = a.references.length
+    ? `\n**Reference points** (direction, not templates to copy):\n${bullets(a.references)}\n`
+    : "";
+  const source = a.visualSource
+    ? `\n**A visual direction already exists** at \`${a.visualSource}\`. Treat it as canonical — ` +
+      `explore *within* it rather than replacing it, and say explicitly where a proposal departs.\n`
+    : "";
+
+  return `# ${name} — brand exploration prompt
+
+Paste this into a fresh Claude Code or Codex session, in this repository.
+
+---
+
+I am designing the visual identity for **${name}**. Below is the decided strategy — it is settled,
+so treat it as constraint rather than suggestion.
+
+**What it is:** ${a.what}
+
+**Mission:** ${a.mission}
+
+**Primary audience:** ${a.primaryAudience}${
+    a.secondaryAudience ? `\n\n**Secondary audience:** ${a.secondaryAudience}` : ""
+  }
+
+**It must feel:**
+${bullets(a.feels)}
+
+**It must never feel or sound like:**
+${bullets(a.never)}
+
+These boundaries are the hard part. A proposal that trips one is wrong even if it is otherwise
+good.${refs}${source}
+
+## What I want from you
+
+Produce **8 distinct visual directions** as self-contained HTML mockups I can open side by side.
+Distinct means genuinely different bets — not one idea in eight colourways.
+
+For each direction:
+
+1. A name and one sentence on the bet it is making
+2. A palette with hex values, and a note on what each colour is *for*
+3. Type: a display face and a text face, with the reasoning
+4. A representative screen — landing hero or the primary product surface
+5. Which of the "must feel" adjectives it serves best, and which it serves least
+
+Then tell me which two you would take forward and why, including what you would lose by dropping
+the others.
+
+Do not average them into a safe consensus. I would rather have two strong directions and six I
+reject than eight that are all defensible.
+
+## After I choose
+
+Write the winning direction into \`hq/brand/tokens.json\` as primitives, using the \`--${prefix}-\`
+prefix convention, and update \`hq/brand/visual-system.md\` to describe it.
+`;
+}
+
 function readme(a: BrandAnswers, name: string): string {
   return `# ${name} brand
 
@@ -166,6 +235,15 @@ ${a.what}
 2. [\`voice.md\`](./voice.md) — how it writes
 3. [\`visual-system.md\`](./visual-system.md) — how it looks, and where tokens come from
 4. [\`tokens.json\`](./tokens.json) — the canonical values
+
+## Not finished yet
+
+This package is **starter context**, not a finished identity. A questionnaire can capture the
+constraints a brand must satisfy; it cannot produce a look.
+
+Next: paste [\`explore-prompt.md\`](./explore-prompt.md) into a Claude Code or Codex session and
+work through visual directions interactively. Come back and run \`morpheus brand refresh\` when
+the answers themselves need revising.
 
 ## Implementation contract
 
@@ -221,6 +299,7 @@ export async function generateBrand(
     ["voice.md", voice(answers, name)],
     ["visual-system.md", visualSystem(answers, name, prefix)],
     ["messaging.json", messaging(answers)],
+    ["explore-prompt.md", explorePrompt(answers, name, prefix)],
     [
       "assets/README.md",
       "# Assets\n\nlogo.svg, logo-reverse.svg, icon.png, og-image.png.\n\nSmall, versioned, and needed at build time, so they live in git. Large media belongs on the\nCDN, not here.\n",

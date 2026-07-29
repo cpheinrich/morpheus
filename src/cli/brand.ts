@@ -132,6 +132,15 @@ export async function init(opts: BrandInitOptions): Promise<number> {
         "visual system, and a second token file would be a second source of truth.\x1b[0m",
     );
   }
-  console.log("\n\x1b[2mRun \x1b[0mmorpheus brand refresh\x1b[2m to revise any of this.\x1b[0m");
+  console.log(
+    "\n\x1b[1mThis is starter context, not a finished brand.\x1b[0m\n" +
+      "\x1b[2mA questionnaire captures the constraints an identity must satisfy; it\n" +
+      "cannot produce a look. The next step is interactive.\x1b[0m\n" +
+      `\n  1. Open \x1b[1m${opts.brandDir}/explore-prompt.md\x1b[0m\n` +
+      "  2. Paste it into a fresh Claude Code or Codex session in this repo\n" +
+      "  3. It asks for 8 distinct visual directions as HTML mockups\n" +
+      "  4. Pick one; the agent writes it into tokens.json and visual-system.md\n" +
+      "\n\x1b[2mRun \x1b[0mmorpheus brand refresh\x1b[2m any time to revise the answers themselves.\x1b[0m",
+  );
   return 0;
 }

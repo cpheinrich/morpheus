@@ -60,7 +60,10 @@ describe("generateBrand", () => {
     expect(names).toContain("visual-system.md");
     expect(names).toContain("tokens.json");
     expect(names).toContain("messaging.json");
-    expect(files.length).toBe(7);
+    expect(names).toContain("explore-prompt.md");
+    // Assert on names, not a count — a count breaks every time the package
+    // gains a file, which says nothing about whether it is correct.
+    expect(files.length).toBe(names.filter((n) => n !== "answers.json" && n !== "assets").length + 1);
   });
 
   it("writes no TODO placeholders anywhere", async () => {
@@ -154,5 +157,45 @@ describe("non-destructive generation", () => {
     const { readAnswers } = await import("../src/brand/answers.js");
     await writeFile(join(dir, "answers.json"), "{ not json");
     expect(await readAnswers(dir)).toBeNull();
+  });
+});
+
+describe("exploration handoff", () => {
+  it("writes a prompt to paste into an interactive session", async () => {
+    const { files } = await generateBrand(dir, "Evo", "ev", ANSWERS);
+    expect(files.some((f) => f.endsWith("explore-prompt.md"))).toBe(true);
+  });
+
+  it("carries the constraints into the prompt so they are not restated by hand", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const p = await readFile(join(dir, "explore-prompt.md"), "utf8");
+    expect(p).toContain(ANSWERS.mission);
+    expect(p).toContain(ANSWERS.primaryAudience);
+    for (const n of ANSWERS.never) expect(p).toContain(n);
+  });
+
+  it("asks for genuinely distinct directions rather than variations", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const p = await readFile(join(dir, "explore-prompt.md"), "utf8");
+    expect(p).toContain("8 distinct visual directions");
+    expect(p).toMatch(/not one idea in eight colourways/i);
+  });
+
+  it("tells the agent the existing surface is canonical when there is one", async () => {
+    await generateBrand(dir, "Evo", "ev", { ...ANSWERS, visualSource: "apps/web/app/brand" });
+    const p = (await readFile(join(dir, "explore-prompt.md"), "utf8")).replace(/\s+/g, " ");
+    expect(p).toContain("apps/web/app/brand");
+    expect(p).toContain("explore *within* it rather than replacing it");
+  });
+
+  it("omits the existing-surface instruction for a greenfield brand", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const p = await readFile(join(dir, "explore-prompt.md"), "utf8");
+    expect(p).not.toContain("already exists");
+  });
+
+  it("uses the token prefix in the write-back instruction", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    expect(await readFile(join(dir, "explore-prompt.md"), "utf8")).toContain("--ev-");
   });
 });
