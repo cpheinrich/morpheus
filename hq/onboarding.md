@@ -1,4 +1,4 @@
-# T — setup
+# Morpheus — setup
 
 **9 of 9 required steps done.** Regenerate with `morpheus init status`.
 

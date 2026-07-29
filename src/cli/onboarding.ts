@@ -1,7 +1,6 @@
-import { basename } from "node:path";
 import { collectStatus, formatStatus, summarise } from "../onboarding/status.js";
 import { setState, writeOnboarding, type TaskState } from "../onboarding/state.js";
-import { projectKind } from "../onboarding/tasks.js";
+import { projectKind, projectLabel } from "../onboarding/tasks.js";
 
 /**
  * `morpheus init status` — how far through setup this project is.
@@ -15,7 +14,7 @@ export async function status(
   offline = false,
 ): Promise<number> {
   const statuses = await collectStatus(root, { offline });
-  const label = name ?? basename(root);
+  const label = name ?? (await projectLabel(root));
   const path = await writeOnboarding(root, label, statuses, await projectKind(root));
 
   console.log(formatStatus(statuses, label, path));
@@ -36,7 +35,7 @@ export async function mark(
     return 1;
   }
 
-  const label = name ?? basename(root);
+  const label = name ?? (await projectLabel(root));
   await writeOnboarding(root, label, statuses, await projectKind(root));
   const s = summarise(statuses);
   console.log(

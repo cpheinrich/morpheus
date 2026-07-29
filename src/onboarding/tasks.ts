@@ -1,6 +1,6 @@
 import { access, lstat, readFile, readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { packageStatus } from "../brand/package.js";
 import { parseArtifact } from "../pm/parse.js";
@@ -417,4 +417,20 @@ export async function projectKind(root: string): Promise<Kind> {
   const m = await readJson<{ kind?: string }>(join(root, "morpheus.json"));
   const k = m?.kind;
   return k === "company" || k === "personal" || k === "internal" ? k : "personal";
+}
+
+/**
+ * What to call this project in generated output.
+ *
+ * The manifest is authoritative and travels with the repo; the directory name
+ * is incidental and differs per checkout — a worktree for MO-044 sits in
+ * `morpheus-mo-044`. Falling back to the basename let a stray `--name` write
+ * `# T — setup` into a committed file, where it survived two more commits
+ * because nothing regenerated it.
+ */
+export async function projectLabel(root: string): Promise<string> {
+  const m = await readJson<{ displayName?: string; name?: string }>(
+    join(root, "morpheus.json"),
+  );
+  return m?.displayName?.trim() || m?.name?.trim() || basename(root);
 }

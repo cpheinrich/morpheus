@@ -1,10 +1,10 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseOnboarding, renderOnboarding, setState, type TaskStatus } from "../src/onboarding/state.js";
 import { collectStatus, summarise } from "../src/onboarding/status.js";
-import { TASKS, tasksFor, type Task } from "../src/onboarding/tasks.js";
+import { TASKS, projectLabel, tasksFor, type Task } from "../src/onboarding/tasks.js";
 
 const task = (over: Partial<Task> = {}): Task => ({
   id: "cloudflare-token",
@@ -81,6 +81,46 @@ describe("persistence across interruptions", () => {
 
     expect(parseOnboarding(md).has("a")).toBe(true);
     expect(parseOnboarding(md).size).toBe(1);
+  });
+});
+
+describe("projectLabel", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "label-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const manifest = (m: Record<string, unknown>) =>
+    writeFile(join(dir, "morpheus.json"), JSON.stringify(m));
+
+  it("prefers displayName, which is the human-facing one", async () => {
+    await manifest({ displayName: "Morpheus", name: "morpheus" });
+    expect(await projectLabel(dir)).toBe("Morpheus");
+  });
+
+  it("falls back to name when there is no displayName", async () => {
+    await manifest({ name: "morpheus" });
+    expect(await projectLabel(dir)).toBe("morpheus");
+  });
+
+  // The manifest travels with the repo; the directory does not. A worktree for
+  // MO-044 sits in `morpheus-mo-044`, and the heading must not follow it.
+  it("does not use the directory name when the manifest declares one", async () => {
+    await manifest({ displayName: "Morpheus" });
+    expect(await projectLabel(dir)).not.toContain("label-");
+  });
+
+  it("ignores an empty declaration rather than rendering a blank heading", async () => {
+    await manifest({ displayName: "  ", name: "morpheus" });
+    expect(await projectLabel(dir)).toBe("morpheus");
+  });
+
+  it("falls back to the directory when there is no manifest at all", async () => {
+    expect(await projectLabel(dir)).toBe(basename(dir));
   });
 });
 
