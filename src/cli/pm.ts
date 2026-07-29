@@ -146,6 +146,7 @@ export async function create(
   kind: string,
   title: string,
   opts: { priority?: string; goal?: string },
+  cwd: string,
 ): Promise<number> {
   if (!isKind(kind)) {
     console.error(`Unknown kind "${kind}". Expected one of: ${KINDS.join(", ")}`);
@@ -165,8 +166,15 @@ export async function create(
     return 1;
   }
 
-  const path = await createItem({ productDir, kind, prefix, title, ...opts });
+  const { path, id, blind } = await createItem({ productDir, kind, prefix, title, cwd, ...opts });
   console.log(`Created ${path}`);
+  if (blind) {
+    console.warn(
+      `\x1b[33mCould not reach origin, so ${id} was allocated from local files alone.\x1b[0m\n` +
+        `\x1b[2mAnother session may already hold it on a branch. Run \`morpheus pm claims\`\n` +
+        `once you have a connection — \`pm claim\` will refuse the id if it is taken.\x1b[0m`,
+    );
+  }
   return index(productDir);
 }
 

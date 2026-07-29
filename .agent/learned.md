@@ -67,6 +67,15 @@ Durable facts worth knowing before starting work here. Append; do not rewrite hi
   session — the branch referenced an id that did not exist because the item had not been
   allocated yet.
 
+- **Item files only hold ids that have merged.** An id another session has claimed exists solely
+  as a remote branch until its PR lands, so anything reasoning about "which ids are taken" must
+  ask `origin` as well as the disk. `pm new` did not, and would have re-issued MO-038 while a
+  parallel session held it. `pm validate` catches the duplicate, but only after two sessions have
+  each written a different item under one id.
+
+  The general form: **on-disk state is the merged past, not the present.** Live state is on the
+  remote.
+
 ## Never let an unanswerable question render as a confident answer
 
 Three occurrences now, so it is a rule rather than a run of bad luck:
