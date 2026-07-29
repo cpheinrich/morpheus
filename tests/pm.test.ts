@@ -297,3 +297,38 @@ describe("new item", () => {
     expect(raw).not.toContain("goal:");
   });
 });
+
+describe("YAML scalars that are not strings", () => {
+  it("accepts a numeric goal target, because that is what people write", () => {
+    const parsed = Goal.safeParse({
+      id: "EV-G-2026-Q3-01",
+      title: "Ship the first version",
+      horizon: "quarterly",
+      period: "2026-Q3",
+      metric: "Paying users",
+      target: 100,
+      current: 0,
+      status: "on-track",
+    });
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.target).toBe("100");
+      expect(parsed.data.current).toBe("0");
+    }
+  });
+
+  it("still rejects an empty target", () => {
+    const parsed = Goal.safeParse({
+      id: "EV-G-2026-Q3-01",
+      title: "Ship the first version",
+      horizon: "quarterly",
+      period: "2026-Q3",
+      metric: "Paying users",
+      target: "",
+      status: "on-track",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+});

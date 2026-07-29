@@ -124,6 +124,48 @@ describe("detection outranks the file, except when it cannot answer", () => {
     expect(found.find((s) => s.task.id === "domain")?.state).toBe("done");
   });
 
+  it("does not accept an empty goal file as a written goal", async () => {
+    await mkdir(join(dir, "hq/product/goals"), { recursive: true });
+    await writeFile(join(dir, "hq/product/goals/EV-G-2026-Q3-01.md"), "");
+
+    const found = await collectStatus(dir, { offline: true });
+    // Existence is not the step being done — the same mistake tokens.json had.
+    expect(found.find((s) => s.task.id === "goal")?.state).toBe("todo");
+  });
+
+  it("does not accept an inbox that would fail its own validator", async () => {
+    await mkdir(join(dir, "hq/inbox"), { recursive: true });
+    await writeFile(join(dir, "hq/inbox/cpheinrich.md"), "# Just a heading\n");
+
+    const found = await collectStatus(dir, { offline: true });
+    expect(found.find((s) => s.task.id === "inbox")?.state).toBe("todo");
+  });
+
+  it("accepts a goal that actually parses", async () => {
+    await mkdir(join(dir, "hq/product/goals"), { recursive: true });
+    await writeFile(
+      join(dir, "hq/product/goals/EV-G-2026-Q3-01.md"),
+      [
+        "---",
+        "id: EV-G-2026-Q3-01",
+        "title: Ship the first version",
+        "horizon: quarterly",
+        "period: 2026-Q3",
+        "metric: One paying user",
+        "target: 1",
+        "status: on-track",
+        "created: 2026-07-01",
+        "updated: 2026-07-01",
+        "---",
+        "",
+        "Body.",
+      ].join("\n"),
+    );
+
+    const found = await collectStatus(dir, { offline: true });
+    expect(found.find((s) => s.task.id === "goal")?.state).toBe("done");
+  });
+
   it("detects a real manifest", async () => {
     const found = await collectStatus(dir, { offline: true });
     expect(found.find((s) => s.task.id === "manifest")?.state).toBe("done");

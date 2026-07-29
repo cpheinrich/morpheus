@@ -83,13 +83,20 @@ async function tryRun(cmd: string, args: string[], cwd: string): Promise<string 
   }
 }
 
-async function hasFilesIn(dir: string): Promise<boolean> {
-  try {
-    const files = await readdir(dir);
-    return files.some((f) => f.endsWith(".md") && f.toLowerCase() !== "readme.md");
-  } catch {
-    return false;
-  }
+/**
+ * A file existing is not the step being done.
+ *
+ * The first version of these detectors checked for any `.md` that was not a
+ * README, so an empty goal file or a blank inbox read as complete — the same
+ * mistake `tokens.json` had, where an empty scaffold looked finished in a
+ * listing. Every detector below parses what it finds.
+ */
+async function hasValidArtifact(
+  root: string,
+  kind: "roadmap" | "goals" | "requests",
+): Promise<boolean> {
+  const { items, issues } = await parseArtifact(join(root, "hq/product"), kind);
+  return items.length > 0 && issues.length === 0;
 }
 
 /** Read the whole `.github/workflows` directory as one string. */
@@ -216,7 +223,7 @@ export const TASKS: Task[] = [
     title: "At least one goal written down",
     why: "A roadmap with no goal is a list of work nobody can decline.",
     how: 'morpheus pm new goals "Ship the thing by Q4"',
-    detect: async (root) => hasFilesIn(join(root, "hq/product/goals")),
+    detect: async (root) => hasValidArtifact(root, "goals"),
   },
   {
     id: "roadmap",
@@ -224,10 +231,7 @@ export const TASKS: Task[] = [
     title: "At least one roadmap item",
     why: "The board is how agents pick up work without being told what to do.",
     how: 'morpheus pm new roadmap "First thing to build"',
-    detect: async (root) => {
-      const { items } = await parseArtifact(join(root, "hq/product"), "roadmap");
-      return items.length > 0;
-    },
+    detect: async (root) => hasValidArtifact(root, "roadmap"),
   },
   {
     id: "inbox",
@@ -236,7 +240,24 @@ export const TASKS: Task[] = [
     title: "An inbox file for each person",
     why: "Without one there is nowhere for an agent to hand you a question and get an answer back.",
     how: "Create hq/inbox/<github-handle>.md, one per person",
-    detect: async (root) => hasFilesIn(join(root, "hq/inbox")),
+    detect: async (root) => {
+      const dir = join(root, "hq/inbox");
+      let files: string[];
+      try {
+        files = (await readdir(dir)).filter(
+          (f) => f.endsWith(".md") && f.toLowerCase() !== "readme.md",
+        );
+      } catch {
+        return false;
+      }
+      if (!files.length) return false;
+
+      // An inbox that does not validate is not an inbox — it would fail CI on
+      // the first run, which is the opposite of a completed setup step.
+      const { parseInboxFile } = await import("../inbox/parse.js");
+      const parsed = await Promise.all(files.map((f) => parseInboxFile(join(dir, f))));
+      return parsed.every((p) => p.issues.length === 0);
+    },
   },
 
   // --------------------------------------------------------------- brand ---

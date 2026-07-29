@@ -68,7 +68,13 @@ export type ShipOutcome =
    */
   | { kind: "stale"; id: string; branch: string; pr: number }
   /** No branch and no merged PR. Reported, never assumed. */
-  | { kind: "unconfirmed"; id: string };
+  | { kind: "unconfirmed"; id: string }
+  /**
+   * Backlog with a merged PR against its prefix. Reported without writing: the
+   * item may have been reopened on purpose, and reconciliation cannot tell a
+   * deliberate reopen from a status nobody updated.
+   */
+  | { kind: "reopened"; id: string; pr: number };
 
 export interface ReconcileResult {
   outcomes: ShipOutcome[];
@@ -125,6 +131,12 @@ export async function reconcile(
   // passing through review — MO-015 did — and scanning only `review` leaves
   // exactly those sitting in backlog with a merged PR against them, which is
   // the most misleading state on the board.
+  //
+  // But `backlog` is only *reported*, never written. An item sitting in
+  // backlog with a merged PR against it may have been deliberately reopened
+  // because the PR addressed a symptom rather than the item — which is exactly
+  // what happened to MO-015, twice. A tool that re-ships a deliberate reopen is
+  // arguing with its owner.
   const candidates = items.filter(
     (i) => i.data.status !== "shipped" && i.data.status !== "dropped",
   );
@@ -160,6 +172,10 @@ export async function reconcile(
       continue;
     }
 
+    if (item.data.status === "backlog") {
+      outcomes.push({ kind: "reopened", id, pr: pr.number });
+      continue;
+    }
     if (opts.write) await markShipped(productDir, id, pr.number);
     outcomes.push({ kind: "shipped", id, pr: pr.number });
   }
@@ -173,6 +189,9 @@ export function formatReconcile(r: ReconcileResult): string {
   const unconfirmed = r.outcomes.filter((o) => o.kind === "unconfirmed");
   const stale = r.outcomes.filter((o): o is Extract<ShipOutcome, { kind: "stale" }> =>
     o.kind === "stale",
+  );
+  const reopened = r.outcomes.filter((o): o is Extract<ShipOutcome, { kind: "reopened" }> =>
+    o.kind === "reopened",
   );
   const lines: string[] = [];
 
@@ -196,6 +215,10 @@ export function formatReconcile(r: ReconcileResult): string {
   if (open.length) {
     lines.push(`\n\x1b[2mStill open — branch is on origin:\x1b[0m`);
     for (const o of open) lines.push(`  \x1b[2m${o.id}\x1b[0m`);
+  }
+  if (reopened.length) {
+    lines.push("\n\x1b[2mIn backlog with a merged PR — left alone in case the reopen was\ndeliberate:\x1b[0m");
+    for (const o of reopened) lines.push(`  \x1b[2m${o.id} (#${o.pr})\x1b[0m`);
   }
   if (unconfirmed.length) {
     lines.push(

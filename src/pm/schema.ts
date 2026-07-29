@@ -37,6 +37,20 @@ export const isoDate = z.preprocess(
   z.iso.date(),
 );
 
+/**
+ * A scalar that YAML will happily turn into a number.
+ *
+ * `target: 1` is the most natural thing to write for a numeric goal, and
+ * unquoted YAML makes it a number, which a plain `z.string()` rejects with
+ * "expected string, received number" — a message about types, for a mistake
+ * nobody made. Same family as `isoDate`: the file is right and the parser
+ * has to meet it.
+ */
+export const looseString = z.preprocess(
+  (v) => (typeof v === "number" || typeof v === "boolean" ? String(v) : v),
+  z.string().min(1),
+);
+
 export const RoadmapStatus = z.enum([
   "backlog",
   "in-progress",
@@ -65,9 +79,9 @@ export const Goal = z.object({
   title: z.string().min(3),
   horizon: z.enum(["annual", "quarterly"]),
   period: z.string().min(4),
-  metric: z.string().min(1),
-  target: z.string().min(1),
-  current: z.string().optional(),
+  metric: looseString,
+  target: looseString,
+  current: looseString.optional(),
   status: z.enum(["on-track", "at-risk", "missed", "achieved"]),
 });
 
