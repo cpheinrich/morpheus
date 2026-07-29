@@ -37,3 +37,20 @@ without it.
 Branched from `origin/main` rather than the active Codex branch. A structural refactor should
 sit on the mainline, and mixing it with in-flight feature work would produce a diff nobody
 could review. The cost is that the Codex branch now needs a rebase.
+
+## Second round: CI integration
+
+Both reusable workflows failed on first contact with Evo, for different reasons.
+
+`web-ci` ran `pnpm test` unconditionally against a project with no test script. Fixed with
+`--if-present`. Notably my fix landed one minute *after* Evo's CI ran, so the first failure
+was against a stale copy — a live demonstration of the `@main` pinning tradeoff.
+
+`pm-check` ran `pnpm morpheus`, which only resolves in a repo depending on morpheus-kit. Evo
+does not, and cannot until the package is published. Rewrote it to check out cpheinrich/morpheus
+and build the CLI. That only works because the repo is public — the first time that decision
+paid for itself concretely.
+
+Also learned: `gh run rerun` reuses the workflow resolution from the original run, so a fix to
+a reusable workflow cannot be verified by rerunning. Close/reopen the PR, or push, to get a
+fresh resolution. Lost a cycle to this.
