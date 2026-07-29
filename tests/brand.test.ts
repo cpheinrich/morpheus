@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { generateBrand } from "../src/brand/generate.js";
+import { packageStatus } from "../src/brand/package.js";
 import { BrandAnswers, QUESTIONS } from "../src/brand/questions.js";
 
 let dir: string;
@@ -226,5 +227,88 @@ describe("exploration handoff", () => {
   it("uses the token prefix in the write-back instruction", async () => {
     await generateBrand(dir, "Evo", "ev", ANSWERS);
     expect(await readFile(join(dir, "explore-prompt.md"), "utf8")).toContain("--ev-");
+  });
+});
+
+/**
+ * The answers above are the short examples from `questions.ts`. Every bug in
+ * this block survived the suite because the fixture was shaped like the
+ * examples rather than like the answers the prompts ask for: `primaryAudience`
+ * is prompted with "a description beats a demographic", and a considered
+ * `never` entry is a clause with its own commas.
+ */
+const REAL_ANSWERS: BrandAnswers = {
+  what: "Evo is an independent consumer health intelligence platform offering free tools.",
+  mission: "Earn trust through genuine utility by turning evidence into clear next actions.",
+  primaryAudience:
+    "Self-directed adults early in a GLP-1 journey — often first-time health optimizers — who are losing weight and want trustworthy guidance without making health their full-time identity.",
+  secondaryAudience: "Data-literate health optimizers who expect transparent methodology.",
+  feels: ["bright", "intelligent", "kinetic"],
+  never: [
+    "corporate, institutional, or dry",
+    "cold, clinical, hospital-coded, or disease-first",
+    "like a transactional pharmacy, an affiliate content farm, or a sales funnel",
+  ],
+  references: ["Oura", "Stripe"],
+};
+
+describe("prose survives answers that are not two-word examples", () => {
+  it("does not case-fold the audience into a sentence", async () => {
+    await generateBrand(dir, "Evo", "ev", REAL_ANSWERS);
+    const voice = await readFile(join(dir, "voice.md"), "utf8");
+    // Lower-casing a description destroys the proper nouns inside it.
+    expect(voice).toContain("GLP-1");
+    expect(voice).not.toContain("glp-1");
+  });
+
+  it("does not collide the audience's own full stop with template punctuation", async () => {
+    await generateBrand(dir, "Evo", "ev", REAL_ANSWERS);
+    expect(await readFile(join(dir, "voice.md"), "utf8")).not.toContain(".,");
+  });
+
+  it("keeps every boundary separable when entries contain commas", async () => {
+    await generateBrand(dir, "Evo", "ev", REAL_ANSWERS);
+    const readme = await readFile(join(dir, "README.md"), "utf8");
+    // Joined with ", " the three clauses read as one unparseable sentence.
+    for (const n of REAL_ANSWERS.never) expect(readme).toContain(`- ${n}`);
+  });
+
+  it("applies every adjective in the strategy test, not just the first two", async () => {
+    await generateBrand(dir, "Evo", "ev", REAL_ANSWERS);
+    const strategy = await readFile(join(dir, "strategy.md"), "utf8");
+    expect(strategy).toContain("bright, intelligent and kinetic");
+  });
+});
+
+describe("visual system agrees with what was actually written", () => {
+  it("never points at a tokens.json it deliberately did not write", async () => {
+    const answers = { ...REAL_ANSWERS, visualSource: "packages/shared/tokens/" };
+    const { files } = await generateBrand(dir, "Evo", "ev", answers);
+    expect(files.some((f) => f.endsWith("tokens.json"))).toBe(false);
+
+    const visual = await readFile(join(dir, "visual-system.md"), "utf8");
+    expect(visual).not.toContain("tokens.json`](./tokens.json)");
+    expect(visual).toContain("packages/shared/tokens/");
+
+    const readme = await readFile(join(dir, "README.md"), "utf8");
+    expect(readme).toContain("packages/shared/tokens/");
+    expect(readme).not.toContain("[`tokens.json`](./tokens.json)");
+  });
+
+  it("still points at tokens.json for a greenfield project", async () => {
+    await generateBrand(dir, "Evo", "ev", REAL_ANSWERS);
+    const visual = await readFile(join(dir, "visual-system.md"), "utf8");
+    expect(visual).toContain("[`tokens.json`](./tokens.json)");
+  });
+
+  it("stays detectable as scaffold text either way", async () => {
+    // `checkVisualSystem` matches exact generated sentences. Rewording the
+    // token pointer must not make an unwritten section look finished.
+    const answers = { ...REAL_ANSWERS, visualSource: "packages/shared/tokens/" };
+    await generateBrand(dir, "Evo", "ev", answers);
+    const status = await packageStatus(dir);
+    const visual = status.required.find((r) => r.path === "visual-system.md");
+    expect(visual?.state).toBe("incomplete");
+    expect(visual?.detail).toContain("scaffold text");
   });
 });

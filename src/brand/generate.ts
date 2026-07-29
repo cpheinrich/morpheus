@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BrandAnswers } from "./questions.js";
-import { OPTIONAL, REQUIRED } from "./package.js";
+import { list, OPTIONAL, REQUIRED } from "./package.js";
 import { writeAnswers } from "./answers.js";
 
 /**
@@ -10,6 +10,13 @@ import { writeAnswers } from "./answers.js";
  * Every file written here contains the owner's actual answers. Nothing emits
  * a `TODO` — a section that cannot be filled from an answer is omitted, so an
  * empty heading never masquerades as a decision.
+ *
+ * Answers are prose the owner wrote, not tokens to splice into a sentence.
+ * `primaryAudience` is prompted with "a description beats a demographic" and
+ * `never` entries are clauses containing their own commas, so a template that
+ * reads well against the short examples in `questions.ts` can render as
+ * nonsense against a real answer. Interpolate an answer as its own block or
+ * bullet; never mid-sentence, and never case-folded.
  */
 
 const bullets = (xs: string[]): string => xs.map((x) => `- ${x}`).join("\n");
@@ -37,9 +44,9 @@ ${audiences}
 
 ${bullets(a.feels)}
 
-Apply these as a test: if a design or a sentence does not read as ${a.feels
-    .slice(0, 2)
-    .join(" and ")}, it is wrong regardless of whether it is otherwise good.
+Apply these as a test: if a design or a sentence does not read as ${list(
+    a.feels,
+  )}, it is wrong regardless of whether it is otherwise good.
 
 ## Boundaries — what this must never be
 
@@ -74,8 +81,10 @@ ${bullets(a.never.map((n) => `Never sound ${n}.`))}
 
 ## Before publishing
 
-Read it aloud. If a sentence would embarrass you said out loud to ${a.primaryAudience.toLowerCase()},
+Read it aloud. If a sentence would embarrass you said out loud to the person this is for,
 rewrite it.
+
+> ${a.primaryAudience}
 `;
 }
 
@@ -87,6 +96,19 @@ surface wins until someone deliberately changes it.`
     : `No visual direction is decided yet. Fill this in before building UI, not after — retrofitting
 a visual system onto shipped screens is how brands end up incoherent.`;
 
+  // With a declared source there is no `tokens.json` here — `plan()` skips it
+  // rather than write a second token file beside a real one. Prose that still
+  // pointed at it would contradict the package's own resolution, and
+  // `brand status` reports that same file as canonical elsewhere.
+  const tokenHome = a.visualSource ? "the canonical source above" : "`tokens.json`";
+  const tokensIntro = a.visualSource
+    ? `Primitives live in the source declared above, not in this directory. There is deliberately
+no \`tokens.json\` here: a second token file beside a real one is a second source of truth, and
+both look plausible.`
+    : `Primitives live in [\`tokens.json\`](./tokens.json) and are the only place a raw value belongs.
+Style Dictionary generates \`--${prefix}-*\` CSS custom properties, JS constants, and a Swift
+enum from them.`;
+
   return `# ${name} — visual system
 
 ## Source of truth
@@ -95,21 +117,19 @@ ${source}
 
 ## Tokens
 
-Primitives live in [\`tokens.json\`](./tokens.json) and are the only place a raw value belongs.
-Style Dictionary generates \`--${prefix}-*\` CSS custom properties, JS constants, and a Swift
-enum from them.
+${tokensIntro}
 
-**Never hardcode a repeated visual value in a component.** Promote it to \`tokens.json\` and
+**Never hardcode a repeated visual value in a component.** Promote it to ${tokenHome} and
 reference the generated name.
 
 ## Colour
 
-Defined in \`tokens.json\`. Semantic names (\`action.primary\`) map to primitives, and components
+Defined in ${tokenHome}. Semantic names (\`action.primary\`) map to primitives, and components
 reference only semantic names — so a palette change is one file.
 
 ## Typography
 
-Defined in \`tokens.json\`. One display face and one text face unless there is a reason.
+Defined in ${tokenHome}. One display face and one text face unless there is a reason.
 
 ## Layout
 
@@ -333,7 +353,11 @@ ${a.what}
 1. [\`strategy.md\`](./strategy.md) — what this is, who for, and what it must never be
 2. [\`voice.md\`](./voice.md) — how it writes
 3. [\`visual-system.md\`](./visual-system.md) — how it looks, and where tokens come from
-4. [\`tokens.json\`](./tokens.json) — the canonical values
+4. ${
+    a.visualSource
+      ? `\`${a.visualSource}\` — the canonical values, held outside this directory`
+      : "[`tokens.json`](./tokens.json) — the canonical values"
+  }
 
 ## What a complete package contains
 
@@ -361,7 +385,12 @@ required files above. Run \`morpheus brand refresh\` when the answers themselves
 
 ## Implementation contract
 
-- \`tokens.json\` is canonical. Change a visual value there first, never in a component.
+- ${
+    a.visualSource
+      ? `Tokens are canonical at \`${a.visualSource}\`, not in this directory. Change a visual
+  value there first, never in a component.`
+      : "`tokens.json` is canonical. Change a visual value there first, never in a component."
+  }
 - \`messaging.json\` is imported by the web app. Taglines and mission are **not** copied into
   page copy — they are imported, so they cannot drift.
 - Consult this directory before every frontend change and again at review.
@@ -369,7 +398,9 @@ required files above. Run \`morpheus brand refresh\` when the answers themselves
 
 ## The review test
 
-Does this read as ${a.feels.join(", ")}? And does it avoid being ${a.never.join(", ")}?
+Does this read as ${list(a.feels)}? And is it free of every one of these?
+
+${bullets(a.never)}
 `;
 }
 

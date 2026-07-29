@@ -122,7 +122,7 @@ const checkVisualSystem: Check = async (dir) => {
 };
 
 /** "a", "a and b", "a, b and c" — a bare join reads as "a and b and c". */
-function list(xs: string[]): string {
+export function list(xs: string[]): string {
   if (xs.length <= 1) return xs[0] ?? "";
   return `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 }
