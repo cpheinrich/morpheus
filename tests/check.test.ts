@@ -2,7 +2,14 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { checkPr, hasSection, roadmapIdFromBranch, type PrContext } from "../src/check/pr.js";
+import {
+  checkPr,
+  hasNoSubstantiveChange,
+  hasSection,
+  isRecordsOnly,
+  roadmapIdFromBranch,
+  type PrContext,
+} from "../src/check/pr.js";
 
 let product: string;
 
@@ -135,6 +142,109 @@ describe("checkPr", () => {
     const message = findings.find((f) => f.rule === "roadmap-item-exists")?.message ?? "";
     expect(message).toContain("pm new roadmap");
     expect(message).toContain("pm claim");
+  });
+});
+
+describe("isRecordsOnly", () => {
+  it("recognises an inbox cycle", () => {
+    expect(
+      isRecordsOnly(["hq/inbox/cpheinrich.md", ".agent/inbox-archive/2026-07-29-1330-x.md"]),
+    ).toBe(true);
+  });
+
+  it("is false when anything outside the records changed", () => {
+    expect(isRecordsOnly(["hq/inbox/cpheinrich.md", "src/pm/parse.ts"])).toBe(false);
+  });
+
+  // The regression that matters. `every` is vacuously true on an empty array,
+  // so a failed `git diff` would have exempted a PR from every roadmap rule at
+  // once — a check reporting an empty thing as correct.
+  it("is false for no changed files at all, which is a failure to determine", () => {
+    expect(isRecordsOnly([])).toBe(false);
+  });
+});
+
+describe("a PR that only moves records", () => {
+  const cycle = () =>
+    goodPr({
+      branch: "inbox-2026-07-29",
+      changedFiles: ["hq/inbox/cpheinrich.md", ".agent/inbox-archive/2026-07-29-1330-x.md"],
+    });
+
+  it("needs no roadmap item, so a branch staking none is fine", async () => {
+    const findings = await checkPr(cycle());
+    expect(findings.find((f) => f.rule === "branch-name")).toBeUndefined();
+    expect(findings).toHaveLength(0);
+  });
+
+  it("blocks when it borrows a claimed branch, which is how MO-010 shipped unstarted", async () => {
+    await seedRoadmap("EV-014", "in-progress");
+    const findings = await checkPr({ ...cycle(), branch: "ev-014-something" });
+
+    const f = findings.find((x) => x.rule === "no-work-for-claimed-item");
+    expect(f?.level).toBe("error");
+    expect(f?.message).toContain("EV-014");
+  });
+
+  it("still requires a test plan, since a human reads these too", async () => {
+    const findings = await checkPr({ ...cycle(), body: "## Open questions\n\nNone.\n" });
+    expect(findings.find((f) => f.rule === "test-plan")?.level).toBe("error");
+  });
+});
+
+/**
+ * The real file lists from the three PRs the audit turned up. `isRecordsOnly`
+ * misses all of them, because a borrowed branch always carries board files —
+ * which is why `hasNoSubstantiveChange` exists as a second question.
+ */
+describe("a claimed branch that did none of its item's work", () => {
+  const PR31 = [
+    ".agent/inbox-archive/2026-07-29-1330-cpheinrich.md",
+    "hq/inbox/cpheinrich.md",
+    "hq/product/roadmap/MO-010.md",
+    "hq/product/roadmap/MO-037.md",
+    "hq/product/roadmap/README.md",
+  ];
+  const PR2 = [".agent/learned.md", "hq/product/roadmap/MO-015.md"];
+
+  it("sees what isRecordsOnly cannot, on the PR that shipped MO-010", () => {
+    expect(isRecordsOnly(PR31)).toBe(false);
+    expect(hasNoSubstantiveChange(PR31)).toBe(true);
+  });
+
+  it("blocks PR #31's shape", async () => {
+    await seedRoadmap("EV-014", "in-progress");
+    const findings = await checkPr(goodPr({ changedFiles: PR31 }));
+    expect(findings.find((f) => f.rule === "no-work-for-claimed-item")?.level).toBe("error");
+  });
+
+  it("blocks PR #2's shape, a learned.md entry on a claimed branch", async () => {
+    const findings = await checkPr(goodPr({ changedFiles: PR2 }));
+    expect(findings.find((f) => f.rule === "no-work-for-claimed-item")?.level).toBe("error");
+  });
+
+  it("lets a decision item through when the body says the record is the deliverable", async () => {
+    const findings = await checkPr(
+      goodPr({
+        changedFiles: PR2,
+        body: "records-only: the decision is the deliverable\n\n## Test plan\n\nRead it.\n\n## Open questions\n\nNone.\n",
+      }),
+    );
+    expect(findings.find((f) => f.rule === "no-work-for-claimed-item")).toBeUndefined();
+  });
+
+  it("does not fire on a branch that stakes no id", async () => {
+    const findings = await checkPr(goodPr({ branch: "inbox-2026-07-29", changedFiles: PR31 }));
+    expect(findings.find((f) => f.rule === "no-work-for-claimed-item")).toBeUndefined();
+  });
+
+  it("does not fire on an ordinary PR that changes source", async () => {
+    const findings = await checkPr(goodPr());
+    expect(findings.find((f) => f.rule === "no-work-for-claimed-item")).toBeUndefined();
+  });
+
+  it("is false for no changed files, the same vacuous-every trap", () => {
+    expect(hasNoSubstantiveChange([])).toBe(false);
   });
 
   it("ignores generated README files when looking for doc changes", async () => {

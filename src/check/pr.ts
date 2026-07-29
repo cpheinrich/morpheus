@@ -30,6 +30,54 @@ const TEST = /(^tests\/|\.test\.tsx?$)/;
 const DOCS = /^(docs\/|architecture\.md$|README\.md$|AGENTS\.md$)/;
 const GENERATED = /README\.md$/;
 
+/**
+ * Paths that record what happened rather than change what the software does:
+ * an inbox cycle, a worklog entry, a decision.
+ */
+const RECORDS = /^(hq\/inbox\/|\.agent\/)/;
+
+/**
+ * True when every change is a record, so the PR needs no roadmap item.
+ *
+ * An inbox cycle is real work with nothing to claim — it belongs to no feature.
+ * Without this it had to ride someone else's branch, and it did: PR #31 moved
+ * the inbox on `mo-010-simplify-architecture-md`, which marked MO-010 shipped
+ * with a PR that never touched architecture.md.
+ *
+ * The `length > 0` is load-bearing, not defensive. An empty list satisfies
+ * `every` vacuously, so a failed `git diff` would exempt a PR from every
+ * roadmap rule at once — the exact shape `.agent/learned.md` records under *a
+ * check that skips what is absent will report an empty thing as correct*.
+ */
+export function isRecordsOnly(changedFiles: string[]): boolean {
+  return changedFiles.length > 0 && changedFiles.every((f) => RECORDS.test(f));
+}
+
+/** Board bookkeeping: item frontmatter and the generated index tables. */
+const BOARD = /^hq\/product\//;
+
+/**
+ * True when a PR changes nothing but records and board bookkeeping — so
+ * whatever item its branch claims, it did not do that item's work.
+ *
+ * `isRecordsOnly` does not catch this and was wrongly described as doing so.
+ * A borrowed branch always carries board files: claiming reconciles statuses
+ * and `pm index` regenerates the tables, so those ride along in the same
+ * commit. PR #31 shipped MO-010 with exactly that mix, and is `false` under
+ * `isRecordsOnly` for precisely the reason it needed catching.
+ *
+ * Deliberately separate from `isRecordsOnly` rather than a widened `RECORDS`:
+ * the two answer different questions. "Does this need an item at all?" must
+ * not be satisfied by touching the board, or a PR could excuse itself from the
+ * roadmap rules by editing the roadmap.
+ */
+export function hasNoSubstantiveChange(changedFiles: string[]): boolean {
+  return (
+    changedFiles.length > 0 &&
+    changedFiles.every((f) => RECORDS.test(f) || BOARD.test(f))
+  );
+}
+
 /** Extract the roadmap id a branch refers to: ev-014-slug -> EV-014. */
 export function roadmapIdFromBranch(branch: string): string | null {
   const m = /^([a-z]{2,4})-(\d{3,})(?:-|$)/i.exec(branch);
@@ -107,7 +155,32 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
   // hand-naming was already documented when it broke three times — what was
   // missing was the recovery, at the moment someone is looking at the error.
   const id = roadmapIdFromBranch(branch);
-  if (!id) {
+
+  // Merging a branch that stakes an id marks that item shipped. So a PR on one
+  // must have done that item's work — and a PR that changes only records and
+  // board bookkeeping demonstrably has not.
+  //
+  // Waivable, because a few items genuinely deliver a decision rather than
+  // code: MO-003's whole outcome was "do not publish, use a git dependency",
+  // recorded in decisions.md. Stating the reason is cheap; the default must be
+  // refusal, since the cost of a wrong shipped is that nobody looks again.
+  const recordsWaived = /(^|\n)\s*records-only:\s*\S+/i.test(body);
+  if (id && hasNoSubstantiveChange(changedFiles) && !recordsWaived) {
+    findings.push({
+      level: "error",
+      rule: "no-work-for-claimed-item",
+      message:
+        `"${branch}" claims ${id}, but this PR changes only records and board files — ` +
+        `no work on ${id} itself. Merging it would mark ${id} shipped. Move the commits ` +
+        `to a branch that stakes no id (e.g. "inbox-2026-07-29"), or put ` +
+        `"records-only: <reason>" in the body if the deliverable really is the record.`,
+    });
+  }
+
+  if (isRecordsOnly(changedFiles)) {
+    // Nothing to claim, so nothing more to require — the borrowing case is
+    // already covered above.
+  } else if (!id) {
     findings.push({
       level: "warning",
       rule: "branch-name",
