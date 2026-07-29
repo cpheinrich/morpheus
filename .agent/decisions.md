@@ -185,3 +185,7 @@ derived into branch names, cited in PRs. Goals and requests take an infix (`EV-G
 where each project lives and its prefix, and enforces prefix uniqueness at allocation. But a
 fresh clone has no registry entry and must still work, so nothing may depend on it for
 correctness. `morpheus.json` holds the prefix and travels with the repo.
+
+**`main` is protected everywhere; agents merge their own PRs** — 2026-07-29. Branch, PR, and
+merge once checks pass — Chris is not a merge bottleneck. Use `gh pr merge --auto` so GitHub
+merges when checks go green rather than holding a session open polling.

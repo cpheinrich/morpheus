@@ -68,6 +68,22 @@ checkout.
 **Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm morpheus pm index`, and commit
 any index changes. CI runs the same checks and will fail otherwise.
 
+## Branch protection
+
+`main` is protected on Morpheus and every project repo. **Never push to `main`** — work on a
+branch, open a PR, and merge it yourself once checks pass. Chris does not need to merge for you.
+
+Do not wait on checks by polling. Two better options:
+
+```sh
+gh pr merge <n> --squash --auto --delete-branch   # merges itself when checks go green
+gh pr checks <n> --watch --fail-fast              # blocks until they finish, then decide
+```
+
+Prefer `--auto` — it hands the merge to GitHub so the session is not held open waiting, and a
+failing check simply leaves the PR unmerged rather than merging something broken. Use `--watch`
+only when the next step depends on the merge having landed.
+
 **Append a worklog entry** to `.agent/worklog/YYYY-MM-DD-slug.md` before opening a PR. Record
 what you learned, especially dead ends that produced no code — git history cannot capture those.
 
