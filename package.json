@@ -18,7 +18,8 @@
     "./inbox": "./dist/inbox/index.js",
     "./brand": "./dist/brand/index.js",
     "./access": "./dist/access/index.js",
-    "./registry": "./dist/registry/index.js"
+    "./registry": "./dist/registry/index.js",
+    "./doctor": "./dist/doctor/index.js"
   },
   "files": [
     "dist"

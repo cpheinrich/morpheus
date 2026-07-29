@@ -8,6 +8,7 @@ item files, not this table.
 |---|---|---|---|---|---|
 | [MO-014](./MO-014.md) | Brand template and wizard | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | review | P1 | MO-G-2026-Q3-01 | — |
+| [MO-016](./MO-016.md) | morpheus doctor — report drift without fixing it | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-018](./MO-018.md) | Reusable workflows must not fight packageManager | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | review | P2 | MO-G-2026-Q3-01 | — |
 | [MO-003](./MO-003.md) | Publish the kit to GitHub Packages | backlog | P0 | MO-G-2026-Q3-01 | — |
@@ -16,7 +17,6 @@ item files, not this table.
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-015](./MO-015.md) | init must scaffold .agent and hq/inbox | backlog | P1 | MO-G-2026-Q3-01 | — |
-| [MO-016](./MO-016.md) | morpheus doctor — report drift without fixing it | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-008](./MO-008.md) | morpheus init | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-009](./MO-009.md) | Retrofit Darwin | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | backlog | P2 | MO-G-2026-Q3-01 | — |

@@ -143,8 +143,10 @@ export async function claim(
   await git(["checkout", "-b", branch], cwd);
   await setStatusInProgress(productDir, id);
 
-  // Push before doing any work, so the claim is visible rather than local.
-  await git(["add", "-A"], cwd);
+  // Stage only the item file. `add -A` would sweep whatever else is in the
+  // working tree into a commit the author did not intend — including editor
+  // scratch, which is how a screenshot once reached a public repo.
+  await git(["add", "--", item.path], cwd);
   await git(["commit", "-m", `chore(${id}): claim — status to in-progress`], cwd);
   await git(["push", "-u", "origin", branch], cwd);
 
