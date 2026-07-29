@@ -21,9 +21,9 @@ on:
         default: "22"
       pnpm-version:
         description: >
-          Leave empty to let package.json's `packageManager` field decide, which
-          is the modern default. Setting both makes pnpm/action-setup fail with
-          "Multiple versions of pnpm specified".
+          Leave empty to let Morpheus's own `packageManager` field decide.
+          Setting both makes pnpm/action-setup fail with "Multiple versions of
+          pnpm specified".
         type: string
         default: ""
 
@@ -49,9 +49,15 @@ jobs:
           ref: ${{ inputs.morpheus-ref }}
           path: .morpheus
 
+      # Read the version from Morpheus's own manifest, not the consuming
+      # repo's. `pnpm/action-setup` looks at the repository root by default,
+      # and the consumer may have no package.json at all — two of ours do not.
+      # This failed everywhere except Morpheus itself, which is the only place
+      # the workflow was ever exercised before today.
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ inputs.pnpm-version }}
+          package_json_file: .morpheus/package.json
 
       - uses: actions/setup-node@v4
         with:
