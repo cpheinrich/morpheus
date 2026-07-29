@@ -40,6 +40,7 @@ pnpm morpheus pm index      # regenerate README index tables
 pnpm morpheus pm new roadmap "Title here" --priority P1
 pnpm morpheus registry list        # every Morpheus project on this machine
 pnpm morpheus brand status         # what the brand package still needs
+pnpm morpheus brand build          # regenerate from an edited hq/brand/answers.md
 ```
 
 ## Working conventions

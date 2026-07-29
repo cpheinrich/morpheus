@@ -1,10 +1,13 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { readAnswers } from "../brand/answers.js";
-import { BrandAnswers as BrandAnswersSchema } from "../brand/questions.js";
-import { checkDrift } from "../brand/generate.js";
-import { generateBrand } from "../brand/generate.js";
-import { QUESTIONS, type Question } from "../brand/questions.js";
+import {
+  ANSWERS_FILE,
+  readAnswers,
+  readAnswersDetailed,
+  writeAnswers,
+} from "../brand/answers.js";
+import { checkDrift, generateBrand } from "../brand/generate.js";
+import { BrandAnswers, QUESTIONS, type Question } from "../brand/questions.js";
 
 /** Render a previous answer for display as a default. */
 function previous(value: unknown): string | null {
@@ -53,7 +56,7 @@ export interface BrandInitOptions {
 }
 
 /**
- * Report which generated files no longer follow from `answers.json`.
+ * Report which generated files no longer follow from `answers.md`.
  *
  * Writes nothing and asks nothing, so it is safe in CI. Exits non-zero on any
  * drift — a package whose prose disagrees with its own answers is wrong even
@@ -64,17 +67,14 @@ export async function check(opts: {
   name: string;
   prefix: string;
 }): Promise<number> {
-  const prior = await readAnswers(opts.brandDir);
-  if (!prior) {
-    console.error(`No answers.json in ${opts.brandDir} — run \`morpheus brand init\` first.`);
+  const { answers, issues, exists } = await readAnswersDetailed(opts.brandDir);
+  if (!exists) {
+    console.error(`No ${ANSWERS_FILE} in ${opts.brandDir} — run \`morpheus brand init\` first.`);
     return 1;
   }
-  const parsed = BrandAnswersSchema.safeParse(prior);
-  if (!parsed.success) {
-    console.error("answers.json does not validate:");
-    for (const i of parsed.error.issues) {
-      console.error(`  ${i.path.join(".") || "(root)"}: ${i.message}`);
-    }
+  if (!answers) {
+    console.error(`\x1b[33m${ANSWERS_FILE} is not complete:\x1b[0m`);
+    for (const i of issues) console.error(`  ${i}`);
     return 1;
   }
 
@@ -82,10 +82,10 @@ export async function check(opts: {
     opts.brandDir,
     opts.name,
     opts.prefix,
-    parsed.data,
+    answers,
   );
   if (!derived.length && !seeded.length) {
-    console.log("\x1b[32m✓ Every generated file matches answers.json.\x1b[0m");
+    console.log(`\x1b[32m✓ Every generated file matches ${ANSWERS_FILE}.\x1b[0m`);
     return 0;
   }
 
@@ -95,7 +95,7 @@ export async function check(opts: {
     console.error("\x1b[2m  `morpheus brand refresh` regenerates them.\x1b[0m");
   }
   if (seeded.length) {
-    console.error("\n\x1b[33mDisagrees with answers.json — yours to reconcile:\x1b[0m");
+    console.error(`\n\x1b[33mDisagrees with ${ANSWERS_FILE} — yours to reconcile:\x1b[0m`);
     for (const f of seeded) console.error(`  ${f}`);
     console.error(
       "\x1b[2m  These were generated once and are now yours. Morpheus will not\n" +
@@ -115,6 +115,10 @@ export async function init(opts: BrandInitOptions): Promise<number> {
   const rl = createInterface({ input: stdin, output: stdout });
   const prior = opts.refresh ? await readAnswers(opts.brandDir) : null;
 
+  // Write the editable file before asking anything, so quitting the wizard
+  // leaves a usable artefact rather than nothing.
+  const answersPath = await writeAnswers(opts.brandDir, opts.name, prior);
+
   console.log(`\n\x1b[1mBrand — ${opts.name}\x1b[0m`);
   console.log(
     "\x1b[2mEight questions. Answer in a sentence; nothing here writes a TODO, so a\n" +
@@ -122,9 +126,12 @@ export async function init(opts: BrandInitOptions): Promise<number> {
       "one that looks answered and is not.\x1b[0m",
   );
   console.log(
-    "\x1b[2m\nThese answers are not final. Run \x1b[0m\x1b[1mmorpheus brand refresh\x1b[0m" +
-      "\x1b[2m any time to\ngo through again with your previous answers prefilled — so aim for" +
-      " true\nrather than perfect.\x1b[0m",
+    `\n\x1b[1mYou do not have to do this sequentially.\x1b[0m\n` +
+      `\x1b[2mThe answers refer to each other — what it must never be is written\n` +
+      "against how it should feel — and a prompt makes you commit to each one\n" +
+      "before you can see the next.\n\n" +
+      `Quit any time (Ctrl-C) and edit this instead:\n\x1b[0m  ${answersPath}\n` +
+      "\x1b[2mthen run \x1b[0mmorpheus brand build\x1b[2m. Same result, any order, revisable.\x1b[0m",
   );
   if (prior) {
     console.log("\x1b[36m\nPrevious answers loaded. Enter keeps each one.\x1b[0m");
@@ -153,7 +160,7 @@ export async function init(opts: BrandInitOptions): Promise<number> {
     rl.close();
   }
 
-  const parsed = BrandAnswersSchema.safeParse({ references: [], ...raw });
+  const parsed = BrandAnswers.safeParse({ references: [], ...raw });
   if (!parsed.success) {
     console.error("\nSome answers did not validate:");
     for (const i of parsed.error.issues) {
@@ -213,6 +220,70 @@ export async function init(opts: BrandInitOptions): Promise<number> {
       "     and any assets — a first working brand package\n" +
       "\n\x1b[2mExpect several rounds. Run \x1b[0mmorpheus brand status\x1b[2m to see what the\n" +
       "package still needs, and \x1b[0mmorpheus brand refresh\x1b[2m to revise these answers.\x1b[0m",
+  );
+  return 0;
+}
+
+/**
+ * Generate from the edited file, asking nothing.
+ *
+ * The other half of `init`: the wizard is one way to fill `answers.md`, and
+ * this is the path for people who filled it in an editor. Both end in the same
+ * place because there is only one place the answers live.
+ */
+export async function build(opts: {
+  brandDir: string;
+  name: string;
+  prefix: string;
+}): Promise<number> {
+  const { answers, issues, exists } = await readAnswersDetailed(opts.brandDir);
+
+  if (!exists) {
+    console.error(
+      `No ${ANSWERS_FILE} in ${opts.brandDir}.\n` +
+        "Run `morpheus brand init` to write one — quit the wizard immediately if\n" +
+        "you would rather fill it in an editor.",
+    );
+    return 1;
+  }
+  if (!answers) {
+    console.error(`\n\x1b[33m${ANSWERS_FILE} is not ready yet:\x1b[0m`);
+    for (const i of issues) console.error(`  ${i}`);
+    console.error(
+      "\n\x1b[2mEvery problem is listed above rather than one at a time, so you can\n" +
+        "fix them in one pass.\x1b[0m",
+    );
+    return 1;
+  }
+
+  const { files, skipped, stale } = await generateBrand(
+    opts.brandDir,
+    opts.name,
+    opts.prefix,
+    answers,
+    { refresh: true },
+  );
+
+  if (files.length) {
+    console.log(`\n\x1b[32mWrote ${files.length} file(s)\x1b[0m`);
+    for (const f of files) console.log(`  ${f}`);
+  } else if (!stale.length) {
+    console.log("\n\x1b[32m✓ Already current — nothing to write.\x1b[0m");
+  }
+  if (skipped.length) {
+    console.log(`\n\x1b[2mLeft ${skipped.length} existing file(s) untouched.\x1b[0m`);
+  }
+  if (stale.length) {
+    console.log(`\n\x1b[33m${stale.length} file(s) now disagree with your answers:\x1b[0m`);
+    for (const f of stale) console.log(`  ${f}`);
+    console.log(
+      "\x1b[2m\nThese were generated once and are now yours. Morpheus will not revert\n" +
+        "your writing — reconcile by hand, or delete one and re-run.\x1b[0m",
+    );
+  }
+  console.log(
+    "\n\x1b[2mNext: paste \x1b[0mhq/brand/explore-prompt.md\x1b[2m into a Claude or Codex\n" +
+      "session. \x1b[0mmorpheus brand status\x1b[2m shows what the package still needs.\x1b[0m",
   );
   return 0;
 }

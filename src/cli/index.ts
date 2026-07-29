@@ -3,7 +3,7 @@ import { basename, resolve } from "node:path";
 import { claim, claims, create, index, ship, validate } from "./pm.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
-import { check as brandCheck, init as brandInit } from "./brand.js";
+import { build as brandBuild, check as brandCheck, init as brandInit } from "./brand.js";
 import { status as brandStatus } from "./brand-status.js";
 import { sync as accessSync } from "./access.js";
 import * as registry from "./registry.js";
@@ -21,8 +21,9 @@ Usage
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus inbox validate   [--dir <hq/inbox>]
   morpheus brand init | refresh   [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
+  morpheus brand build            regenerate from an edited hq/brand/answers.md
   morpheus brand status           [--dir <hq/brand>] [--name <Acme>]
-  morpheus brand check            [--dir <hq/brand>] — generated files vs answers.json
+  morpheus brand check            [--dir <hq/brand>] — generated files vs answers.md
   morpheus access sync      [--project <firebase-project>] [--dry-run]
   morpheus registry list | add [--prefix XX] | remove <name>
   morpheus doctor           [--all]
@@ -133,6 +134,13 @@ async function main(): Promise<number> {
     const brandName = flags.name ?? basename(process.cwd());
     if (command === "status") {
       return brandStatus(brandDir, brandName);
+    }
+    if (command === "build") {
+      return brandBuild({
+        brandDir,
+        name: brandName,
+        prefix: flags.prefix ?? brandName.slice(0, 2).toLowerCase(),
+      });
     }
     if (command === "check") {
       return brandCheck({

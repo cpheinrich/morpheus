@@ -63,7 +63,7 @@ describe("generateBrand", () => {
     expect(names).toContain("explore-prompt.md");
     // Assert on names, not a count — a count breaks every time the package
     // gains a file, which says nothing about whether it is correct.
-    expect(files.length).toBe(names.filter((n) => n !== "answers.json" && n !== "assets").length + 1);
+    expect(files.length).toBe(names.filter((n) => n !== "answers.md" && n !== "assets").length + 1);
   });
 
   it("writes no TODO placeholders anywhere", async () => {
@@ -138,11 +138,11 @@ describe("non-destructive generation", () => {
     expect(files.some((f) => f.endsWith("tokens.json"))).toBe(true);
   });
 
-  it("records answers so refresh can prefill them", async () => {
+  it("records answers in the editable file so they can be revised", async () => {
     await generateBrand(dir, "Evo", "ev", ANSWERS);
-    const saved = JSON.parse(await readFile(join(dir, "answers.json"), "utf8"));
-    expect(saved.never).toEqual(ANSWERS.never);
-    expect(saved.primaryAudience).toBe(ANSWERS.primaryAudience);
+    const saved = await readFile(join(dir, "answers.md"), "utf8");
+    for (const n of ANSWERS.never) expect(saved).toContain(`- ${n}`);
+    expect(saved).toContain(ANSWERS.primaryAudience);
   });
 
   it("reads answers back for refresh, and returns null when absent", async () => {
@@ -152,10 +152,10 @@ describe("non-destructive generation", () => {
     expect((await readAnswers(dir))?.mission).toBe(ANSWERS.mission);
   });
 
-  it("returns null rather than throwing on a corrupt answers file", async () => {
+  it("returns null rather than throwing when the anchors have been deleted", async () => {
     const { writeFile } = await import("node:fs/promises");
     const { readAnswers } = await import("../src/brand/answers.js");
-    await writeFile(join(dir, "answers.json"), "{ not json");
+    await writeFile(join(dir, "answers.md"), "# Just some prose\n\nNo anchors here.\n");
     expect(await readAnswers(dir)).toBeNull();
   });
 });

@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BrandAnswers } from "./questions.js";
 import { OPTIONAL, REQUIRED } from "./package.js";
+import { writeAnswers } from "./answers.js";
 
 /**
  * Turn wizard answers into the brand package.
@@ -377,8 +378,8 @@ Does this read as ${a.feels.join(", ")}? And does it avoid being ${a.never.join(
  *
  * The original rule — never overwrite anything — was right about not
  * destroying work and wrong about treating every file the same. `refresh`
- * rewrote `answers.json` and skipped the rest, so a changed mission could sit
- * in `answers.json` while the old one stayed in `messaging.json`, which the
+ * rewrote the answers and skipped the rest, so a changed mission could sit
+ * in the answers while the old one stayed in `messaging.json`, which the
  * web app imports. The refresh reported success and shipped the stale value.
  *
  * - `derived` — a pure function of the answers. Nothing hand-written survives
@@ -478,13 +479,9 @@ export async function generateBrand(
 ): Promise<GenerateResult> {
   await mkdir(join(brandDir, "assets"), { recursive: true });
 
-  // The answers themselves, so `brand refresh` can show what was said last
-  // time rather than making the owner reconstruct it.
-  await writeFile(
-    join(brandDir, "answers.json"),
-    JSON.stringify(answers, null, 2) + "\n",
-    "utf8",
-  );
+  // The answers themselves, re-rendered so the editable file always reflects
+  // what the package was generated from.
+  await writeAnswers(brandDir, name, answers);
 
   const written: string[] = [];
   const skipped: string[] = [];
@@ -518,9 +515,9 @@ export async function generateBrand(
 }
 
 /**
- * Report which files disagree with `answers.json`, writing nothing.
+ * Report which files disagree with `answers.md`, writing nothing.
  *
- * Reads the recorded answers rather than asking, so this is safe in CI and
+ * Reads `answers.md` rather than asking, so this is safe in CI and
  * safe to run on a package someone else refreshed.
  */
 export async function checkDrift(

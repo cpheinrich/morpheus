@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { checkDrift, generateBrand } from "../src/brand/generate.js";
+import { writeAnswers } from "../src/brand/answers.js";
 import { OPTIONAL, REQUIRED, packageStatus } from "../src/brand/package.js";
 import type { BrandAnswers } from "../src/brand/questions.js";
 
@@ -254,7 +255,7 @@ describe("refresh keeps derived files honest", () => {
 
   it("reports drift without writing, and goes quiet once refreshed", async () => {
     await generateBrand(dir, "Evo", "ev", ANSWERS);
-    await writeFile(join(dir, "answers.json"), JSON.stringify(CHANGED, null, 2) + "\n");
+    await writeAnswers(dir, "Evo", CHANGED);
 
     const before = await checkDrift(dir, "Evo", "ev", CHANGED);
     expect(before.derived.some((f) => f.endsWith("messaging.json"))).toBe(true);
