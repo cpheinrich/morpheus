@@ -1,15 +1,15 @@
 ---
-person: chris
+owner: cpheinrich
 date: 2026-07-29
 agents: [claude]
-previous: .agent/standup/chris-2026-07-29-0400.md
+previous: .agent/inbox/2026-07-29-0400-cpheinrich.md
 ---
 
-# Standup — 2026-07-29
+# Inbox — 2026-07-29
 
 Since the last check-in: shipped the **claim mechanism** (`pm claim` / `pm claims` — the remote
 branch is the lock, so two agents cannot start the same item), split inboxes **per person**
-rather than per session, and renamed this document from *status* to *standup*.
+rather than per session, and renamed this document from *status* to *inbox*.
 
 Earlier: **Evo is retrofitted and green** — [evo#6](https://github.com/darwin-health/evo/pull/6)
 is rebased onto main with all four checks passing, staging at
@@ -20,7 +20,7 @@ fixed, and Codex's 18 tests pass in their new location.
 is why there is no "working next" line.
 
 > `❗` needs you and ends in an empty `~`. `✅` is settled. `~` is a reply slot — reply after
-> the empty one at the bottom of an open item. `morpheus standup validate` enforces this.
+> the empty one at the bottom of an open item. `morpheus inbox validate` enforces this.
 
 
 ## ❗ 1. `gcloud auth login` — where and how · `claude`
@@ -324,42 +324,32 @@ claimed items and tell me where it chafes — that is the only way to find the n
 
 ~
 
-## ❗ 8. Naming and format · `claude`
+## ✅ 8. Naming and format · `claude`
 
-~ *(previous: is "status" the right word? should items be schematized? headings render grey in Nimbalyst)*
+~ *(previous: "standup/chris.md" does not parse — I'd be the manager in that analogy; prefer inbox; use GitHub handles; how should archives be named?)*
 
-**"Standup" over "status".** You described it exactly: *"a mix of a brief, status update, and a
-request for input."* That is a standup — done, next, blocked. "Status" only names the reporting
-half and is silent on the asking half, which is the half that actually blocks work.
+Settled as **`hq/inbox/cpheinrich.md`**. Naming by recipient is the thing that makes it parse,
+and as you said, an inbox is a todo list in practice.
 
-It also earns its keep by teaching the format: an engineer reading `hq/standup/chris.md` knows
-what is inside without opening it, and knows summary comes before blockers. Runner-up was
-`checkin`, which you used naturally twice — but it collides faintly with the SVN sense of
-"check-in" inside a git repo, and it does not imply structure.
+**Handles, not names** — validated against GitHub's actual rule (alphanumeric, single interior
+hyphens, 39 max), so `owner: cpheinrich` cannot drift into a display name.
 
-**Summary first, then blockers** — adopted, exactly the standup order you asked for.
+**`owner`, not `author` or `manager`.** Author is wrong because the agent did the writing.
+Manager is wrong because it implies a hierarchy that does not exist — on Lakina you and Alex
+are peers, and neither manages the other. Owner works at any scale.
 
-**The grey headings fix turned out to be the restructure.** Nimbalyst dims each heading level as
-it descends, so `##` was grey and `###` greyer. Items are now `##` with no wrapping section
-header, so they render bright. Better still, **the state marker moved into the heading** — `❗`
-and `✅` carry colour, so scanning no longer depends on the theme's text colour at all. That
-also removed the redundancy of having `!!` inline *and* a state.
+**Archives lead with the date**, as you asked, so the record reads as one timeline rather than
+per-person threads:
 
-**Yes to a schema, and it is built.** `morpheus standup validate` enforces:
+```
+.agent/inbox/2026-07-29-0407-cpheinrich.md
+             └── date ──┘ └time┘ └─ owner ─┘
+```
 
-| Rule | Why |
-|---|---|
-| Frontmatter: person, date, agents, previous | Machine-readable provenance |
-| `❗` must end in an empty `~` | The mistake I made by hand — an answer with nowhere to reply |
-| `✅` must **not** offer a slot | Otherwise the check mark means nothing |
-| Numbering dense and ascending | So "item 6" means the same to both of us |
-| A summary must precede the first item | It is a standup, not a ticket list |
-| Optional `RM-###` link per item | Some items are tasks; some are decisions or credentials |
+Sorting the directory sorts chronologically across everyone, which is what you want from a
+historical record — "what happened in July" beats "what happened to Chris." The handle is last,
+purely to keep two people on the same day distinct.
 
-**On tying items to roadmap tasks: optional, not required.** Item 4 (gcloud) is a prerequisite,
-item 8 is a naming decision — neither is a roadmap task, and forcing an id would mean inventing
-fake ones. The link is there when it is real.
-
-Nine tests cover the parser. It runs in CI, so this cannot rot.
-
-~
+**Format from the previous round stands:** summary first, items as `##` with `❗`/`✅` in the
+heading, `~` reply slots, optional roadmap link. `morpheus inbox validate` enforces all of it
+in CI, now including the handle rule.

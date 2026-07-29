@@ -15,10 +15,10 @@ on:
       product-dir:
         type: string
         default: "hq/product"
-      standup-dir:
-        description: Set to "" to skip standup validation.
+      inbox-dir:
+        description: Set to "" to skip inbox validation.
         type: string
-        default: "hq/standup"
+        default: "hq/inbox"
       morpheus-ref:
         type: string
         default: "main"
@@ -66,8 +66,8 @@ jobs:
       - name: Verify indexes are current
         run: node .morpheus/dist/cli/index.js pm index --dir ${{ inputs.product-dir }} --check
 
-      # Enforces the standup invariants — an open item must offer a reply slot,
+      # Enforces the inbox invariants — an open item must offer a reply slot,
       # a closed one must not, numbering must be dense, summary must come first.
-      - name: Validate standups
-        if: ${{ inputs.standup-dir != '' }}
-        run: node .morpheus/dist/cli/index.js standup validate --dir ${{ inputs.standup-dir }}
+      - name: Validate inboxes
+        if: ${{ inputs.inbox-dir != '' }}
+        run: node .morpheus/dist/cli/index.js inbox validate --dir ${{ inputs.inbox-dir }}

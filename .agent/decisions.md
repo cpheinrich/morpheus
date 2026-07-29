@@ -96,7 +96,7 @@ deploys fail. Sequence accordingly.
 ownership begins when work begins. The remote branch (`rm-014-*`) *is* the claim — no assignee
 field, no lock file, no new concept. Merging releases it by deleting the branch.
 
-**Standups are per person, not per session** — 2026-07-29. The point of the file is one place to
+**Inboxes are per person, not per session** — 2026-07-29. The point of the file is one place to
 look; per-session would mean reading N files to find what needs you. Sessions are covered by
 `.agent/journal/`. Split to `hq/status/<person>.md` done immediately, since Alex is already a
 Lakina collaborator. Items are tagged with the agent that raised them, so Claude and Codex land
@@ -106,9 +106,16 @@ in one inbox rather than two.
 parallel sessions hold independent workstreams with their own context and git state. Worktrees
 stop two simultaneous sessions colliding in one checkout.
 
-**"Standup", not "status"** — 2026-07-29. The document is a mix of progress report and request
-for input; "status" names only the reporting half. "Standup" mirrors the familiar ritual (done,
-next, blocked), so the name teaches the format and implies summary-before-blockers.
+**"Inbox", not "status" or "standup"** — 2026-07-29. The file is addressed *to* a person, so it
+must be named by recipient: `inbox/cpheinrich.md` parses without explanation, where
+`standup/chris.md` did not — in that analogy the human is the audience, not the subject. Summary
+before blockers survives from the standup framing because it is the order a human expects.
+
+**Owner, by GitHub handle** — not *author* (the agent wrote it), not *manager* (collaborators are
+peers). Validated against GitHub's handle rule so it cannot drift into a display name.
+
+**Inbox archives lead with the date** — `YYYY-MM-DD-HHMM-<handle>.md`, so the directory sorts as
+one project-wide timeline rather than per-person threads. The handle is last only for uniqueness.
 
 **State markers live in the heading, not inline** — `❗`/`✅` in an `##` heading carry colour, so
 scanning does not depend on the renderer's text colour. Nimbalyst dims each descending heading

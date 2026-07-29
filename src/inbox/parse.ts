@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import matter from "gray-matter";
 import type { ParseIssue } from "../pm/parse.js";
-import { MARK_STATE, Standup, StandupItem } from "./schema.js";
+import { Inbox, InboxItem, MARK_STATE } from "./schema.js";
 
 /**
- * Parse and check a standup document.
+ * Parse and check an inbox document.
  *
  * The invariant this exists to enforce: **every item is either open or done,
  * never both and never neither.** An open item must end in an empty reply slot,
@@ -12,9 +12,9 @@ import { MARK_STATE, Standup, StandupItem } from "./schema.js";
  * hand once already.
  */
 
-export interface ParsedStandup {
-  meta: Standup;
-  items: StandupItem[];
+export interface ParsedInbox {
+  meta: Inbox;
+  items: InboxItem[];
   /** Prose between the title and the first item. */
   summary: string;
   issues: ParseIssue[];
@@ -54,7 +54,7 @@ function splitTail(rest: string): {
   return { title, ...(agent ? { agent } : {}), ...(roadmap ? { roadmap } : {}) };
 }
 
-export function parseStandup(path: string, raw: string): ParsedStandup {
+export function parseInbox(path: string, raw: string): ParsedInbox {
   const issues: ParseIssue[] = [];
 
   let data: unknown;
@@ -66,14 +66,14 @@ export function parseStandup(path: string, raw: string): ParsedStandup {
   } catch (err) {
     const detail = err instanceof Error ? err.message.split("\n")[0] : String(err);
     return {
-      meta: {} as Standup,
+      meta: {} as Inbox,
       items: [],
       summary: "",
       issues: [{ path, message: `invalid YAML frontmatter — ${detail}` }],
     };
   }
 
-  const metaResult = Standup.safeParse(data);
+  const metaResult = Inbox.safeParse(data);
   if (!metaResult.success) {
     for (const i of metaResult.error.issues) {
       issues.push({ path, message: `frontmatter ${i.path.join(".") || "(root)"}: ${i.message}` });
@@ -81,7 +81,7 @@ export function parseStandup(path: string, raw: string): ParsedStandup {
   }
 
   const lines = content.split("\n");
-  const items: StandupItem[] = [];
+  const items: InboxItem[] = [];
   const summaryLines: string[] = [];
 
   let current: { n: number; state: string; title: string; agent?: string; roadmap?: string } | null =
@@ -92,7 +92,7 @@ export function parseStandup(path: string, raw: string): ParsedStandup {
   const flush = () => {
     if (!current) return;
     const hasReplySlot = bodyLines.some((l) => l.trim() === "~");
-    const parsed = StandupItem.safeParse({
+    const parsed = InboxItem.safeParse({
       n: current.n,
       state: MARK_STATE[current.state],
       title: current.title,
@@ -151,18 +151,18 @@ export function parseStandup(path: string, raw: string): ParsedStandup {
   if (seenFirstItem && summary.length === 0) {
     issues.push({
       path,
-      message: "no summary before the first item — a standup leads with what got done",
+      message: "no summary before the first item — an inbox leads with what got done",
     });
   }
 
   return {
-    meta: metaResult.success ? metaResult.data : ({} as Standup),
+    meta: metaResult.success ? metaResult.data : ({} as Inbox),
     items,
     summary,
     issues,
   };
 }
 
-export async function parseStandupFile(path: string): Promise<ParsedStandup> {
-  return parseStandup(path, await readFile(path, "utf8"));
+export async function parseInboxFile(path: string): Promise<ParsedInbox> {
+  return parseInbox(path, await readFile(path, "utf8"));
 }

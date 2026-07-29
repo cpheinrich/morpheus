@@ -1,2 +1,2 @@
 export * from "./pm/index.js";
-export * from "./standup/index.js";
+export * from "./inbox/index.js";

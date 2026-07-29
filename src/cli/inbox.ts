@@ -1,8 +1,8 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { parseStandupFile } from "../standup/parse.js";
+import { parseInboxFile } from "../inbox/parse.js";
 
-/** Validate every standup inbox in a directory. Returns an exit code. */
+/** Validate every inbox in a directory. Returns an exit code. */
 export async function validate(dir: string): Promise<number> {
   let files: string[];
   try {
@@ -10,19 +10,19 @@ export async function validate(dir: string): Promise<number> {
       (f) => f.endsWith(".md") && f.toLowerCase() !== "readme.md",
     );
   } catch {
-    console.error(`No standup directory at ${dir}`);
+    console.error(`No inbox directory at ${dir}`);
     return 1;
   }
 
   if (files.length === 0) {
-    console.log("No standup inboxes found.");
+    console.log("No inboxes found.");
     return 0;
   }
 
   let total = 0;
   for (const f of files.sort()) {
     const path = join(dir, f);
-    const { items, issues, meta } = await parseStandupFile(path);
+    const { items, issues, meta } = await parseInboxFile(path);
     const open = items.filter((i) => i.state === "open").length;
 
     if (issues.length) {

@@ -2,7 +2,7 @@
 import { resolve } from "node:path";
 import { claim, claims, create, index, validate } from "./pm.js";
 import { pr } from "./check.js";
-import { validate as validateStandup } from "./standup.js";
+import { validate as validateInbox } from "./inbox.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -13,7 +13,7 @@ Usage
   morpheus pm claim <RM-014>
   morpheus pm claims
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
-  morpheus standup validate [--dir <hq/standup>]
+  morpheus inbox validate   [--dir <hq/inbox>]
 
 Options
   --dir <path>   Product directory (default: hq/product)
@@ -76,11 +76,11 @@ async function main(): Promise<number> {
   const [group, command, ...rest] = flags.positional;
   const dir = resolve(process.cwd(), flags.dir);
 
-  if (group === "standup") {
+  if (group === "inbox") {
     if (command === "validate") {
-      return validateStandup(resolve(process.cwd(), flags.dir === "hq/product" ? "hq/standup" : flags.dir));
+      return validateInbox(resolve(process.cwd(), flags.dir === "hq/product" ? "hq/inbox" : flags.dir));
     }
-    console.error(`Unknown standup command "${command ?? ""}".\n\n${HELP}`);
+    console.error(`Unknown inbox command "${command ?? ""}".\n\n${HELP}`);
     return 1;
   }
 

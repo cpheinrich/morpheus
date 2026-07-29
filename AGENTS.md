@@ -24,8 +24,8 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `tests/` | Vitest, mirroring `src/` |
 | `.agent/journal/` | What was attempted and learned, including dead ends |
 | `.agent/decisions.md` | Settled choices and why — **read this first** |
-| `.agent/standup/` | Archived standups with Chris's inline replies |
-| `hq/standup/<person>.md` | Live standups — one per person, replied to inline |
+| `.agent/inbox/` | Archived inbox cycles with inline replies, date-first |
+| `hq/inbox/<handle>.md` | Live inboxes — one per person by GitHub handle |
 
 ## Commands
 
@@ -73,9 +73,9 @@ what you learned, especially dead ends that produced no code — git history can
 **At the start of a session** read `.agent/decisions.md` and `.agent/learned.md`. Decisions are
 settled choices — if one looks wrong, say so and ask rather than quietly working around it.
 
-## The standup cycle
+## The inbox cycle
 
-`hq/standup/<person>.md` is how a human and their agents exchange state. These are the only
+`hq/inbox/<handle>.md` is how a human and their agents exchange state. These are the only
 files a human is expected to edit.
 
 **One inbox per person, not per session.** A person's file collects items from every agent
@@ -84,12 +84,11 @@ working for them, each heading tagged with the agent that raised it (`` `claude`
 the same file, so git never merges a status.
 
 1. I write it at the end of a working session: **a prose summary of what got done first**, then
-   numbered items, each ending in a `~`. Summary-before-blockers is the standup order, and it is
-   the order a human expects.
+   numbered items, each ending in a `~`. Summary-before-blockers is the order a human expects.
 2. He replies inline after the `~`, leaving the marker in place.
 3. On my next turn I: read the replies, act on them, promote anything durable to
    `.agent/decisions.md`, archive the whole exchange to
-   `.agent/standup/<person>-YYYY-MM-DD-HHMM.md`, and write a fresh inbox.
+   `.agent/inbox/YYYY-MM-DD-HHMM-<handle>.md` (date first, so the archive reads as one timeline), and write a fresh inbox.
 
 **Markers.** Three, and the distinction matters because Chris scans rather than reads:
 
@@ -110,8 +109,8 @@ Two mistakes to avoid, both made in the first round:
    his *previous* reply, not a fresh one.
 2. **`✅` on an item that still asks a question.** If there is a question, it is open.
 
-`morpheus standup validate` enforces both, plus dense numbering and a summary before the first
-item. Run it before finishing; CI runs it too.
+`morpheus inbox validate` enforces both, plus dense numbering, the GitHub-handle rule, and a
+summary before the first item. Run it before finishing; CI runs it too.
 
 **Link roadmap items with relative markdown paths** — `[RM-011](product/roadmap/RM-011.md)`
 from `hq/STATUS.md`. These resolve in Obsidian *and* render on GitHub, unlike `[[wikilinks]]`
