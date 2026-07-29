@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-032](./MO-032.md) | Convention checks must not require the consumer to be a pnpm project | review | P0 | MO-G-2026-Q3-01 | — |
+| [MO-033](./MO-033.md) | Scaffolded gitignore hides legitimate design assets | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-009](./MO-009.md) | Retrofit Darwin | review | P2 | MO-G-2026-Q3-01 | — |
 | [MO-003](./MO-003.md) | Publish the kit to GitHub Packages | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
@@ -21,6 +21,7 @@ item files, not this table.
 | [MO-023](./MO-023.md) | Brand refresh leaves derived files stale | shipped | P0 | MO-G-2026-Q3-01 | #14 |
 | [MO-027](./MO-027.md) | Nothing moves an item from review to shipped | shipped | P0 | MO-G-2026-Q3-01 | #18 |
 | [MO-030](./MO-030.md) | Onboarding checklist: morpheus init status | shipped | P0 | MO-G-2026-Q3-01 | #21 |
+| [MO-032](./MO-032.md) | Convention checks must not require the consumer to be a pnpm project | shipped | P0 | MO-G-2026-Q3-01 | #24 |
 | [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-013](./MO-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-015](./MO-015.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | #2 |

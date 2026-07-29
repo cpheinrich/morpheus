@@ -122,6 +122,16 @@ describe("morpheus init", () => {
       expect(ignore).toContain("# Morpheus");
     });
 
+    it("does not ignore design assets a brand session will produce", async () => {
+      await scaffold(dir, SEED);
+      const ignore = await read(".gitignore");
+
+      // A blanket *.png would hide moodboards, mockups and logo exports —
+      // exactly the output the brand session is asked to commit.
+      expect(ignore).not.toMatch(/^\*\.png$/m);
+      expect(ignore).toContain("/*.png");
+    });
+
     it("does not append to .gitignore twice", async () => {
       await scaffold(dir, SEED);
       await scaffold(dir, SEED);
