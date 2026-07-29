@@ -208,54 +208,57 @@ before writing it down.
 
 ~
 
-### 8. Editor — Nimbalyst looks like a genuine fit
+### 8. Editor — use Nimbalyst, keep our PM suite
 
-~ *(previous: Obsidian, Zed, VS Code, or Nimbalyst? want WYSIWYG markdown plus readable code)*
+~ *(previous: could we scrap our roadmap tooling for theirs? worried we're rebuilding what they have)*
 
-!! **Zed is out on your stated requirement.** WYSIWYG markdown has been an open request since
-2024 ([#15066](https://github.com/zed-industries/zed/issues/15066),
+!! Your two screenshots answered this better than the docs did.
+
+**Zed is out.** WYSIWYG markdown has been open since 2024
+([#15066](https://github.com/zed-industries/zed/issues/15066),
 [#21717](https://github.com/zed-industries/zed/issues/21717)) and no plugin fixes it — Zed's
-extension API cannot do custom document rendering yet, which is itself an open
-[discussion](https://github.com/zed-industries/zed/discussions/37270). You get side-by-side
-preview only.
+extension API cannot do custom document rendering, itself an open
+[discussion](https://github.com/zed-industries/zed/discussions/37270).
 
-**Nimbalyst is more relevant than I expected**, because it is not a general editor that happens
-to do markdown — it is purpose-built for exactly your setup: Claude Code *and* Codex, in
-parallel, with visual review. MIT licensed, genuinely open source
-([github.com/nimbalyst/nimbalyst](https://github.com/nimbalyst/nimbalyst)), free for
-individuals, Electron on macOS/Windows/Linux, **with an iOS companion for session management** —
-which is a better answer to the phone-tracking question than the one I gave you earlier.
+**Use Nimbalyst as the editor. Do not adopt its Tracker.** Your second screenshot is the whole
+argument: opening `RM-003.md` rendered *our* frontmatter as typed form fields — ID, TITLE,
+STATUS, PRIORITY, GOAL, OWNER, PRS, CREATED, UPDATED — with **zero tracker configuration**.
+You already have the form-editing ergonomics of a task manager, over our schema, for free.
 
-**On your overlap worry — it is real but convergent, not conflicting.** Their stated design is
-"open storage of content and status in markdown, workflow in slash commands, and plain files on
-disk or in git." That is the same conclusion we reached independently. Breaking it down:
+**Why their Tracker specifically does not fit** — three findings from the docs:
 
-| Layer | Nimbalyst | Morpheus | Verdict |
-|---|---|---|---|
-| WYSIWYG editing, inline diff review | Core | — | **Pure gain** |
-| Parallel agent sessions, kanban, worktrees | Core | — | **Pure gain** |
-| Task state as markdown in git | Yes | Yes | **Overlaps** |
-| Zod-validated schema, CI enforcement | Unlikely | Yes | Keep ours |
-| Repo structure, CI, secrets, brand, infra | — | Core | No overlap |
+1. **The scanner only reads `nimbalyst-local/tracker/`.** Their docs state plainly that
+   pointing it at an arbitrary directory is *not documented*. Our `hq/product/roadmap/` would
+   not be seen; files would have to move.
+2. **UI-created items default to Database, no file backing** — exactly what your first
+   screenshot showed. File backing is opt-in, not the default.
+3. **`nimbalyst-local/` is local by default.** Both of those break the hard requirement that
+   `/hq` renders this on a deployed website. Their tracker targets a desktop app reading a
+   local directory; ours targets a web app rendering committed files. That is the fork.
 
-Roughly 80% is complement, 20% overlaps on task tracking alone.
+**On "will ours end up looking like theirs" — no, because we are building far less.** Their
+Tracker is a kanban UI with six item types, custom YAML types, ULID generation, relationships,
+and a sync engine. Ours is ~200 lines: a schema, a parser, and a table generator. We will never
+build a board — `/hq` renders one, and Nimbalyst gives you form editing today.
 
-**My recommendation: adopt it as the editing and review surface, keep our roadmap schema.** Our
-frontmatter is Zod-validated and CI-enforced, which a generic task format will not be.
+**What "Zod-validated and CI-enforced" means**, since I used jargon: Zod is the schema
+declaring `status` must be one of five values, `id` must match `RM-###`, dates must be ISO.
+CI runs `morpheus pm validate` and fails the build on a violation, and `pm index --check` fails
+if the generated table is stale.
 
-**The cheap experiment, since you already have it installed:** point Nimbalyst's task board at
-`hq/product/roadmap/` and see whether it reads our existing frontmatter files. If it does, you
-get its kanban over our schema for free and there is no decision left to make. If it insists on
-its own format, keep them separate — use Nimbalyst purely as the editor and let Morpheus own
-task state.
+**And that just proved itself on your edit.** You changed `priority` to `P0` in Nimbalyst's
+form. Our validator accepted it (valid enum), and `pm index --check` immediately caught that
+the generated table had gone stale — which I have now regenerated. **The schema is what makes
+it safe to let a third-party WYSIWYG editor write to these files.** That is a reason to keep
+it, not scrap it.
 
-**Honest caveats.** It is young, and the enthusiastic "best markdown editor of 2026" reviews I
-found are largely SEO content, one of them published by Nimbalyst itself — discount the hype and
-trust your own hands-on read. Electron, so heavier than Zed. The multiplayer package is AGPL-3.0
-while the rest is MIT, which is irrelevant solo but worth knowing.
+**Their "Decisions" type is convergent thinking, not a reason to adopt.** We independently
+arrived at the same idea; that is reassuring about the idea, and says nothing about whose
+implementation to use.
 
-**What I need from you:** run that experiment and tell me what its task board does with
-`hq/product/roadmap/`.
+**What I need from you:** confirm Nimbalyst as the editor and I will note it in decisions. If
+you want their kanban badly enough to move files into `nimbalyst-local/`, say so — but you
+would be trading the `/hq` requirement for it.
 
 ~
 

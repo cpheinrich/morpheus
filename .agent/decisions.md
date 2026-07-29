@@ -62,6 +62,18 @@ it, which is the opposite of the goal. CI checks the repo out and builds the CLI
 user forking rights through GitHub's own functionality, regardless of the attached licence. If
 the goal is minimal external use, the mechanism is private visibility, not a stricter licence.
 
+## Tooling, continued
+
+**Nimbalyst as the editor; our own PM suite for task state** — 2026-07-29. Nimbalyst renders
+arbitrary frontmatter as typed form fields, so it gives task-manager ergonomics over our schema
+with no adoption cost. Its Tracker was rejected because its scanner only reads
+`nimbalyst-local/tracker/`, UI-created items default to a database with no file backing, and
+that directory is local by default — all three break rendering `/hq` from committed files.
+
+**The schema is what makes third-party editors safe** — a WYSIWYG editor writing to our
+frontmatter is fine precisely because `pm validate` and `pm index --check` catch anything wrong
+in CI. Validation is not bureaucracy; it is what permits the ergonomic surface.
+
 ## Process
 
 **Extract on the second use, never the first** — nothing enters the kit until a second project
