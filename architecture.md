@@ -819,14 +819,16 @@ name: CI
 on: [push, pull_request]
 jobs:
   ci:
-    uses: cpheinrich/morpheus/.github/workflows/web-ci.yml@v1
+    uses: cpheinrich/morpheus/.github/workflows/web-ci.yml@main
     with:
       run-e2e: true
     secrets: inherit
 ```
 
-Improving CI for every project becomes one commit in Morpheus. Projects pin a tag (`@v1`) so a
-change does not break twelve repos simultaneously; moving the tag is the deliberate rollout step.
+Improving CI for every project becomes one commit in Morpheus. **Projects pin `@main`, not a
+tag** — with one operator and a handful of repos, instant propagation is worth more than staged
+rollout, and a broken workflow is noticed and fixed in minutes. Revisit only if the number of
+projects grows enough that a simultaneous CI break becomes expensive.
 
 **One setup requirement:** because Morpheus is private, cross-repo workflow access is not on by
 default. In Morpheus's **Settings → Actions → Access**, the policy must be set to allow access from
@@ -1741,7 +1743,7 @@ Its structure is legitimately a subset, and `morpheus.json` records that with
 | iOS review | Agent builds, runs in simulator, drives XCUITest, attaches numbered screenshots + video |
 | Firestore schema | Zod source of truth now; Swift + rules codegen deferred until iOS starts |
 | Chatwoot topology | One instance, per-company inboxes, custom domains per company |
-| Kit versioning | Semver, projects pin a tag, `doctor --outdated` surfaces drift |
+| Kit versioning | Semver for the package; reusable workflows pin `@main` for instant propagation |
 | Codex/Claude split | Conventions in `AGENTS.md` prose so both benefit; skills are a Claude bonus |
 | Morpheus web surface | Deferred — dogfood `/hq` in Darwin, which has real data |
 
