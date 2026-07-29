@@ -12,6 +12,7 @@ item files, not this table.
 | [MO-016](./MO-016.md) | morpheus doctor — report drift without fixing it | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-018](./MO-018.md) | Reusable workflows must not fight packageManager | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-020](./MO-020.md) | Brand wizard hands off to an interactive session | review | P1 | MO-G-2026-Q3-01 | — |
+| [MO-021](./MO-021.md) | Brand prompt frames a design session, not a deliverable | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | review | P2 | MO-G-2026-Q3-01 | — |
 | [MO-003](./MO-003.md) | Publish the kit to GitHub Packages | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |

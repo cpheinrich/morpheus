@@ -174,18 +174,47 @@ describe("exploration handoff", () => {
     for (const n of ANSWERS.never) expect(p).toContain(n);
   });
 
-  it("asks for genuinely distinct directions rather than variations", async () => {
+  it("casts the agent as designer and the document as a brief", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const p = (await readFile(join(dir, "explore-prompt.md"), "utf8")).replace(/\s+/g, " ");
+    expect(p).toContain("acting as the **brand designer**");
+    expect(p).toContain("your brief, not your output");
+  });
+
+  it("demands mockups rather than descriptions", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const p = (await readFile(join(dir, "explore-prompt.md"), "utf8")).replace(/\s+/g, " ");
+    expect(p).toContain("Show, do not describe");
+    expect(p).toContain("Never ask me to imagine");
+  });
+
+  it("describes iterative rounds rather than a single batch", async () => {
     await generateBrand(dir, "Evo", "ev", ANSWERS);
     const p = await readFile(join(dir, "explore-prompt.md"), "utf8");
-    expect(p).toContain("8 distinct visual directions");
-    expect(p).toMatch(/not one idea in eight colourways/i);
+    for (const stage of ["Diverge", "Ask what landed", "Narrow", "Converge"]) {
+      expect(p).toContain(stage);
+    }
+  });
+
+  it("ends by consolidating into the brand package", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const p = await readFile(join(dir, "explore-prompt.md"), "utf8");
+    expect(p).toContain("hq/brand/tokens.json");
+    expect(p).toContain("hq/brand/visual-system.md");
+    expect(p).toContain("First working version, not final");
+  });
+
+  it("tells the agent to push back when a preference breaks a constraint", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const p = (await readFile(join(dir, "explore-prompt.md"), "utf8")).replace(/\s+/g, " ");
+    expect(p).toContain("violates a constraint I set");
   });
 
   it("tells the agent the existing surface is canonical when there is one", async () => {
     await generateBrand(dir, "Evo", "ev", { ...ANSWERS, visualSource: "apps/web/app/brand" });
     const p = (await readFile(join(dir, "explore-prompt.md"), "utf8")).replace(/\s+/g, " ");
     expect(p).toContain("apps/web/app/brand");
-    expect(p).toContain("explore *within* it rather than replacing it");
+    expect(p).toContain("explore *within* it");
   });
 
   it("omits the existing-surface instruction for a greenfield brand", async () => {
