@@ -87,7 +87,7 @@ acme/
 ├── packages/
 │   └── shared/                # cross-surface: tokens, schema, generated types (§4)
 │
-├── company/                   # the business, as documents
+├── hq/                        # the business layer — rendered at /hq
 │   ├── brand/                 # identity, voice, visual system, messaging, assets
 │   ├── product/               # goals, roadmap, feature requests
 │   ├── marketing/             # SEO, ASO, social, content
@@ -104,13 +104,54 @@ acme/
 └── local/                     # gitignored scratch
 ```
 
-### `apps/` and `company/`
+### `apps/` and `hq/`
 
-Confirmed. The split is: **`apps/` is deployed and has users; `company/` is read, decided, and
-written down.** Existing repos will be retrofitted (§21 Q1 resolved — see changelog).
+The split is: **`apps/` is deployed and has users; `hq/` is read, decided, and written down.**
 
-The concern about `apps/` needing facts from `company/` is real and is solved by importing rather
-than syncing — see §15.2.
+**Renamed from `company/` to `hq/`** for two reasons. First, not every project is a company —
+`cpheinrich.com` is personal and Morpheus itself is an internal tool, so "company" was wrong for a
+meaningful share of projects. Second, and better, it makes the naming coherent across all three
+layers:
+
+```
+hq/               the data          (markdown in the repo)
+/hq               the view          (route in apps/web)
+@morpheus/kit/hq  the renderer      (package)
+```
+
+One word, one concept, and the mapping is obvious in both directions: whatever is in `hq/` is what
+`/hq` shows.
+
+The concern about `apps/` needing facts from `hq/` is real and is solved by importing rather than
+syncing — see §15.2.
+
+### Project kinds
+
+Not every project needs every subtree. `morpheus.json` carries a `kind`, set by the wizard, which
+determines what gets scaffolded and what `doctor` expects to exist.
+
+| | `company` | `personal` | `internal` |
+|---|---|---|---|
+| Example | Darwin, Evo, Lakina | cpheinrich.com | Morpheus |
+| `hq/brand/` | ✅ | ✅ | — |
+| `hq/product/` | ✅ | ✅ | ✅ |
+| `hq/marketing/` | ✅ | ✅ | — |
+| `hq/finance/` | ✅ | — | — |
+| `hq/support/` | ✅ | — | — |
+| `hq/ops/` (legal, contracts, vendors) | ✅ | — | — |
+| `hq/identity/` | — | ✅ | — |
+| Chatwoot inbox | ✅ | — | — |
+| `/hq/investors` | ✅ | — | — |
+
+A **personal** project has no customer support and no corporate legal — a person does not have
+terms of service with themselves. What it does have is `hq/identity/`: the personal equivalent of
+`ops/` holding contact details, professional bio, licence and consent notes for photography, and
+anything else the site needs to state truthfully about a real person.
+
+An **internal** project is the minimal case: a roadmap and nothing else.
+
+`kind` is not a hard constraint — `morpheus add support` can bolt a support inbox onto a personal
+project later if it grows one. It sets defaults, not limits.
 
 ### `packages/shared/`, not `apps/shared/`
 
@@ -191,18 +232,18 @@ changes. Deferring stage 2 until iOS exists means you never pay for a generator 
 | QA checklists, acceptance | `qa/` | Markdown |
 | Security posture | `qa/security.md` | Markdown |
 | Cloud infra | `infra/` | Config + IaC |
-| SEO | `company/marketing/seo/` | Docs + Semrush |
-| ASO | `company/marketing/aso/` | Docs + ASC integration |
-| Marketing content | `company/marketing/content/` | Markdown |
-| Identity, mission, audiences | `company/brand/strategy.md` | Markdown |
-| Finance | `company/finance/` + `/hq/finance` | Config + dashboard |
-| Legal, contracts, ToS | `company/ops/legal/` | Markdown + PDFs |
-| Vendors, procurement | `company/ops/vendors/`, `apps/hardware/` | YAML |
+| SEO | `hq/marketing/seo/` | Docs + Semrush |
+| ASO | `hq/marketing/aso/` | Docs + ASC integration |
+| Marketing content | `hq/marketing/content/` | Markdown |
+| Identity, mission, audiences | `hq/brand/strategy.md` | Markdown |
+| Finance | `hq/finance/` → rendered at `/hq/finance` | Config + dashboard |
+| Legal, contracts, ToS | `hq/ops/legal/` | Markdown + PDFs |
+| Vendors, procurement | `hq/ops/vendors/`, `apps/hardware/` | YAML |
 | Secrets | `secrets.manifest.json` + GSM | Manifest; values external (§14) |
 | Customer support | Chatwoot + `/hq/support` | Self-hosted + dashboard |
 | Agent instructions | `AGENTS.md`, `.claude/skills/` | Markdown |
 | Agent journal | `.agent/journal/` | Markdown |
-| Goals, roadmap, requests | `company/product/` | Markdown |
+| Goals, roadmap, requests | `hq/product/` | Markdown |
 | Engineering docs | `docs/` → `/hq/docs` | Markdown + Mermaid |
 | HR | Google Workspace + Gusto | External |
 | Investors | `/hq/investors` | Dashboard view |
@@ -219,7 +260,8 @@ canonical and lives in this document. Only *deviations* are recorded.
   "morpheusVersion": "0.1.0",
   "name": "evo",
   "displayName": "Evo",
-  "company": "darwin-health",        // groups sibling repos (§11)
+  "kind": "company",                 // company | personal | internal (§3)
+  "org": "darwin-health",            // groups sibling repos (§11); omit for personal/internal
   "domain": "evo.med",
   "description": "One-sentence description.",
   "surfaces": { "web": true, "ios": true, "hardware": false },
@@ -250,7 +292,15 @@ imports only what it uses. One version number, one install, one registry entry.
 morpheus/
 ├── README.md
 ├── architecture.md
+├── AGENTS.md                  # + CLAUDE.md symlink
+├── morpheus.json              # kind: "internal"
 ├── package.json               # the single published package
+│
+├── hq/                        # Morpheus eats its own dog food (§5.1)
+│   └── product/
+│       ├── goals/
+│       └── roadmap/
+│
 ├── src/
 │   ├── cli/                   # init, add, upgrade, doctor, secrets
 │   ├── hq/                    # dashboard routes + components
@@ -258,12 +308,29 @@ morpheus/
 │   ├── agent/                 # AGENTS.md fragments, skills, review tooling
 │   ├── integrations/          # Stripe, Firebase, PostHog, Chatwoot, Slack adapters
 │   ├── analytics/             # event schema + PostHog helpers
-│   ├── pm/                    # roadmap/goal file parsers
+│   ├── pm/                    # roadmap/goal schemas + parsers
 │   └── qa/                    # test harness, CI actions
+│
 ├── templates/
-│   ├── base/  web/  ios/  hardware/  brand/  android/
+│   └── base/  web/  ios/  hardware/  brand/  android/
+├── .github/workflows/         # reusable workflows called by every project (§13.1)
+├── .agent/journal/
+├── tests/
 └── docs/
 ```
+
+### 5.1 Morpheus's own `hq/`
+
+You are right that it needs one. As `kind: "internal"` it gets the minimal subtree — `hq/product/`
+with `goals/` and `roadmap/`, and nothing else. No brand, no marketing, no finance, no support:
+Morpheus has no customers and does not bill anyone.
+
+This is the smallest honest instance of the structure, which makes it a useful test. If the roadmap
+schema is awkward here, it is awkward everywhere.
+
+Note that `src/hq/` (the renderer, shipped in the package) and `hq/` (Morpheus's own data) sit side
+by side in this repo without colliding — one is code the kit exports, the other is content this
+repo owns. Every other project has only the latter.
 
 Consumers import subpaths:
 
@@ -460,7 +527,7 @@ Chatwoot over their REST APIs to render summary tiles, linking out for depth.
 
 ```mermaid
 flowchart LR
-    RM["company/product/<br/>roadmap/RM-014.md"] --> AG[Agent<br/>Claude / Codex]
+    RM["hq/product/<br/>roadmap/RM-014.md"] --> AG[Agent<br/>Claude / Codex]
     AG --> BR["branch<br/>rm-014-slug"]
     BR --> CI["CI — reusable workflow<br/>lint · typecheck · unit · morpheus check pr"]
     CI --> PREV[Vercel preview]
@@ -517,7 +584,7 @@ inherits the domain, auth, and deploy pipeline. Shipped as `@morpheus/kit/hq`.
 ```
 /hq                     Overview — KPIs, what agents did since last check-in
 /hq/review              Review queue: PRs, staging links, decisions awaiting approval
-/hq/product             Goals, roadmap, requests (rendered from company/product/)
+/hq/product             Goals, roadmap, requests (rendered from hq/product/)
 /hq/finance             Revenue, expenses, runway
 /hq/analytics           PostHog KPIs, links out to PostHog dashboards
 /hq/support             Chatwoot summary, links out to support.<domain>
@@ -578,9 +645,9 @@ with it. Keep Zero Trust only where you want defense-in-depth on genuinely sensi
 One repo per product, not per company. Darwin Health operates `darwin` and `evo` as separate
 repos with separate brands and separate analytics, but shared HR and legal.
 
-**Grouping:** `morpheus.json` carries a `company` field. Sibling repos share a value.
+**Grouping:** `morpheus.json` carries an `org` field. Sibling repos share a value.
 
-**Inheritance:** the `inherits` block declares which `company/` subtrees come from the parent
+**Inheritance:** the `inherits` block declares which `hq/` subtrees come from the parent
 rather than being owned locally. `evo` inherits `legal` and `hr` from `darwin`; it owns `brand`,
 `product`, `marketing`, and `support`. The CLI does not copy these — `/hq` resolves them by
 reading the parent repo, and agents are told in `AGENTS.md` where the canonical copy lives.
@@ -632,7 +699,7 @@ Instructions get ignored eventually. A failing check does not.
 
 ### 12.3 The work loop and review queue
 
-1. Agents pull work from `company/product/roadmap/` and `qa/`.
+1. Agents pull work from `hq/product/roadmap/` and `qa/`.
 2. Work happens on a branch named `rm-<id>-<slug>`. Never on `main`.
 3. Push triggers CI and a Vercel preview deploy.
 4. The PR is registered in the review queue with a summary, staging link, screenshots, and a test
@@ -702,11 +769,11 @@ Scheduled agent runs (GitHub Actions cron) that read the world and propose chang
 | Analytics review | Weekly | PostHog MCP | `/hq` KPI notes, roadmap proposals |
 | Support sweep | Daily | Chatwoot API | Draft replies queued for approval |
 | Finance sync | Weekly | Stripe, Mercury | `/hq/finance` update |
-| Market research | Monthly | Semrush, web | `company/marketing/research/` |
+| Market research | Monthly | Semrush, web | `hq/marketing/research/` |
 | Roadmap proposal | Weekly | All of the above | **A PR adding/editing `roadmap/*.md`** |
 
 The critical design choice: **agent proposals arrive as pull requests against
-`company/product/roadmap/`.** Review is a diff. The human edits the proposal in the same place
+`hq/product/roadmap/`.** Review is a diff. The human edits the proposal in the same place
 the agent will read it back from. No separate approval system.
 
 ---
@@ -870,12 +937,54 @@ after that an agent can read and write within that vault.
 `morpheus doctor` verifies every manifest entry resolves in every declared scope, so a missing
 secret fails before deploy rather than at runtime.
 
-### MCP identities
+### 14.1 MCP credentials
 
-Each project needs MCP connections to *its own* Cloudflare account, Google account, and so on.
-Project-scoped `.mcp.json` in the repo references credentials by name; values resolve from that
-company's GSM. Multiple accounts of the same service across companies is therefore the normal
-case, not a special case — the boundary is the GCP project.
+The consumer here is **the agent**, not the application — so this is a third population, distinct
+from both runtime secrets and human-only credentials. There are three cases, and the Semrush
+example lands in the first.
+
+**Case 1 — remote MCP authenticated through claude.ai (no token to manage).** Semrush, Linear,
+Asana, Figma, Slack, and Sentry as currently connected are OAuth connectors: you authorize once in
+claude.ai and the credential lives in Claude's own store, never in the repo and never in GSM.
+There is no `SEMRUSH_API_KEY` anywhere in this system today. The catch is that these are
+**account-scoped, not project-scoped** — one Semrush identity across every project.
+
+**Case 2 — MCP servers needing an API key.** `.mcp.json` at the project root **is designed to be
+committed** and supports environment variable expansion — `${VAR}` and `${VAR:-default}` — in
+`command`, `args`, `env`, `url`, and `headers`. So the file documents *which* servers the project
+uses (valuable, reviewable, diffable) while holding no values:
+
+```jsonc
+// .mcp.json — committed
+{
+  "mcpServers": {
+    "cloudflare": {
+      "type": "http",
+      "url": "https://mcp.cloudflare.com/mcp",
+      "headers": { "Authorization": "Bearer ${CLOUDFLARE_API_TOKEN}" }
+    }
+  }
+}
+```
+
+Values live in gitignored `.env.local`, populated by `morpheus secrets pull` from that org's Secret
+Manager — the same command and the same store as application secrets, so there is one place a
+credential can be and one command to get it. `secrets.manifest.json` gains a `consumers: ["agent"]`
+entry so `doctor` knows to check it.
+
+**Case 3 — per-project identity for the same service.** This is the case you raised earlier
+(multiple Cloudflare or Google accounts), and it is the reason case 2 matters. Because claude.ai
+connectors authenticate per *account*, they cannot give you a different Cloudflare identity per
+project. **When you need per-project scoping, use a project-scoped `.mcp.json` server with a scoped
+API token instead of the claude.ai connector.** The `.mcp.json` in `evo/` then points at Evo's
+Cloudflare token and the one in `lakina/` at Lakina's, with each token stored in its own org's GSM.
+
+Claude Code's scope precedence is local → project → user → plugin → claude.ai connector, and
+duplicates are matched by name for the first three and by endpoint for the last two. So a
+project-scoped entry pointing at the same URL as a claude.ai connector **wins**, which is exactly
+the override behavior this needs. Project-scoped servers require one-time approval per repo, and in
+a freshly cloned repo they stay pending until you trust the workspace — worth knowing so it does
+not look like a bug.
 
 ---
 
@@ -886,7 +995,7 @@ case, not a special case — the boundary is the GCP project.
 ### 15.1 Layout
 
 ```
-company/brand/
+hq/brand/
 ├── README.md              # index, reading order
 ├── strategy.md            # positioning, mission, vision, audiences
 ├── voice.md               # tone, vocabulary, patterns
@@ -909,7 +1018,7 @@ project-specific values in the project.** Three layers:
 
 | Layer | What it is | Where it lives | Project-specific? |
 |---|---|---|---|
-| **Primitives** | The raw palette, type scale, spacing ramp | `company/brand/tokens.json` | **Yes** — owned by the project |
+| **Primitives** | The raw palette, type scale, spacing ramp | `hq/brand/tokens.json` | **Yes** — owned by the project |
 | **Semantic mapping** | `action.primary → electricRed` | `packages/shared/tokens/semantic.json` | **Yes** |
 | **Generated bindings** | CSS vars, JS consts, Swift enum | `packages/shared/generated/` | **Yes** — derived, never hand-edited |
 | **Components** | `Button`, `Card`, `DataTable` — structure, variants, states, a11y | `@morpheus/kit/design` | **No** — reusable |
@@ -946,7 +1055,7 @@ The full flow:
 
 ```mermaid
 flowchart LR
-    A["company/brand/tokens.json<br/>primitives"] --> B["packages/shared/<br/>Style Dictionary"]
+    A["hq/brand/tokens.json<br/>primitives"] --> B["packages/shared/<br/>Style Dictionary"]
     B --> C["generated/web/tokens.css"]
     B --> D["generated/ios/Tokens.swift"]
     E["@morpheus/kit/design<br/>components + showcase"] --> F["apps/web"]
@@ -959,9 +1068,9 @@ flowchart LR
 ### 15.2 Import, don't sync
 
 Your point about brand copy also appearing on the website is the important one. A Claude skill that
-copies text between `company/brand/` and `apps/web/` would drift within weeks.
+copies text between `hq/brand/` and `apps/web/` would drift within weeks.
 
-Instead, facts that appear in both places live once in **`company/brand/messaging.json`**, are
+Instead, facts that appear in both places live once in **`hq/brand/messaging.json`**, are
 re-exported through `packages/shared/`, and are *imported* by the web app:
 
 ```ts
@@ -997,7 +1106,7 @@ separate design-system site to keep in sync, and improvements to the showcase it
 kit upgrade for every project at once.
 
 This is the link you send a hardware vendor or contractor. It deliberately excludes strategy,
-audiences, and positioning, which stay internal in `company/brand/strategy.md`. `/hq/design` is the
+audiences, and positioning, which stay internal in `hq/brand/strategy.md`. `/hq/design` is the
 internal counterpart and may include the strategic material.
 
 ### 15.4 `/hq` inherits the project brand
@@ -1110,7 +1219,7 @@ can edit them. No Figma-export-to-PNG step that goes stale.
 `/hq/docs` renders `docs/` at build time. The markdown is canonical; the web page is a view. There
 is never a second copy.
 
-Company documentation is different in kind — it *is* the `company/` tree, navigated from `/hq`,
+Company documentation is different in kind — it *is* the `hq/` tree, navigated from `/hq`,
 which is why it does not live in `docs/`.
 
 ---
@@ -1222,7 +1331,7 @@ No Jira, no Linear. Markdown in git, with a validated schema.
 ### 21.1 Layout — one file per item
 
 ```
-company/product/
+hq/product/
 ├── goals/
 │   ├── README.md              # GENERATED index table
 │   └── G-2026-Q3-01.md
@@ -1242,7 +1351,7 @@ each item exactly one frontmatter block to validate, and keeps diffs readable.
 
 The cost — you can no longer read the whole roadmap in one file open — is paid back by the
 **generated `README.md`** in each directory, rebuilt by CI on every merge. GitHub renders a
-directory's README automatically, so navigating to `company/product/roadmap/` shows a sortable table
+directory's README automatically, so navigating to `hq/product/roadmap/` shows a sortable table
 of every item, its status, and its PRs. The index is derived, never hand-edited.
 
 ### 21.2 Schemas
@@ -1329,12 +1438,13 @@ which item to verify status on.
 
 `morpheus init <name>` — interactive; answers written to `morpheus.json`.
 
-1. **Identity** — name, display name, domain, one-sentence description, parent company if any
-2. **Surfaces** — web (assumed), iOS, hardware
-3. **Brand** — generate skeletons, or point at an existing `brand/`
-4. **Integrations** — which canonical services to wire
-5. **Secrets** — prompt for each required credential, write to GSM, never to disk
-6. **Access** — `/hq` allowlist
+1. **Kind** — company, personal, or internal. Determines which `hq/` subtrees are scaffolded (§3)
+2. **Identity** — name, display name, domain, one-sentence description, parent org if any
+3. **Surfaces** — web (assumed), iOS, hardware
+4. **Brand** — generate skeletons, or point at an existing `brand/`
+5. **Integrations** — which canonical services to wire
+6. **Secrets** — prompt for each required credential, write to GSM, never to disk
+7. **Access** — `/hq` allowlist
 
 Then: create the directory, scaffold from templates, install `@morpheus/kit`, init git, create the
 private GitHub repo, push, provision the GCP project and Secret Manager entries, create the
@@ -1395,7 +1505,7 @@ needs somewhere to go.
 
 ### Stage 2 — Retrofit by hand, then codify
 
-**Retrofit Evo manually before writing `morpheus init`.** Move it to `apps/` + `company/`, wire the
+**Retrofit Evo manually before writing `morpheus init`.** Move it to `apps/` + `hq/`, wire the
 kit, switch auth, adopt the workflows. Do it by hand and take notes.
 
 That retrofit *is* the specification for `init`. Writing the initializer first would encode guesses
@@ -1422,7 +1532,7 @@ It should — but only where dogfooding is real, not ceremonial:
 
 | Uses itself for | How | Why it is genuine |
 |---|---|---|
-| Project management | `company/product/roadmap/` in this repo | Morpheus has a roadmap; proves the format immediately |
+| Project management | `hq/product/roadmap/` in this repo | Morpheus has a roadmap; proves the format immediately |
 | Documentation | `docs/` with Mermaid | Already true of this file |
 | Agent memory | `.agent/journal/` | Multi-session work starts now |
 | CI | Calls its own reusable workflows | Genuine test: if they break, they break here first |
@@ -1440,8 +1550,8 @@ exactly this data.**
 
 | Data | Source of truth | How you view it | How an agent reads it |
 |---|---|---|---|
-| Roadmap | `company/product/roadmap/*.md` | GitHub renders the generated `README.md` as a table when you open the directory | Reads the directory |
-| Goals | `company/product/goals/*.md` | Same | Same |
+| Roadmap | `hq/product/roadmap/*.md` | GitHub renders the generated `README.md` as a table when you open the directory | Reads the directory |
+| Goals | `hq/product/goals/*.md` | Same | Same |
 | Docs | `docs/**.md` | GitHub renders markdown **and Mermaid diagrams** natively | Same |
 | Journal | `.agent/journal/*.md` | GitHub, or `grep` | Same |
 | Code review queue | Open pull requests | GitHub PR list | GitHub API |
@@ -1464,7 +1574,7 @@ natural home for the kit's design system showcase and rendered docs as well.
 
 Until then, buying a domain would be buying a placeholder.
 
-Morpheus also has no `company/brand`, `marketing`, `finance`, or `support` — it is not a company.
+Morpheus has only `hq/product/` — it is an internal tool, not a company (§5.1).
 Its structure is legitimately a subset, and `morpheus.json` records that with
 `"kind": "internal-tool"` so `doctor` does not report the missing directories as drift.
 
@@ -1483,20 +1593,23 @@ Its structure is legitimately a subset, and `morpheus.json` records that with
 
 | Question | Resolution |
 |---|---|
-| `apps/` + `company/` grouping | Adopted. Solved the cross-reference concern with import-not-sync (§15.2) |
+| `apps/` + `hq/` grouping | Adopted. Solved the cross-reference concern with import-not-sync (§15.2) |
 | Retrofit existing projects | Yes, all four — after Morpheus matures. Lakina moves off Vite to Next.js |
 | Package registry | GitHub Packages. Wipe Artifactory config first |
 | One package or many | **One** — `@morpheus/kit` with subpath exports |
 | Secrets store | GSM for anything code reads; 1Password for human-only credentials |
 | Analytics | PostHog Cloud. Not self-hosted — self-host has fewer features |
 | Hosting | Vercel, decided by preview-comment review loop |
-| Repo per company | One repo per product; `company` field groups them; shared BigQuery for cross-project `/hq` |
+| Repo per company | One repo per product; `org` field groups them; shared BigQuery for cross-project `/hq` |
 | Support | Chatwoot self-hosted from day one, via Coolify, at `support.<domain>` |
 | Staging | Vercel preview per PR; no permanent staging environment |
 | Review queue | **GitHub** — PRs for code, `decision`-labeled issues for the rest. Firestore only for state the app reads at runtime |
 | PM file layout | One file per item + generated `README.md` index, to avoid concurrent-agent merge conflicts |
 | PM schemas | Zod in `@morpheus/kit/pm`; same shape definition validates CI, parses `/hq`, generates indexes |
 | Viewing Morpheus's own data | GitHub renders it. Web surface deferred until cross-project rollup is needed |
+| `company/` renamed | **`hq/`** — not every project is a company, and it makes `hq/` → `/hq` → `kit/hq` coherent |
+| Project kinds | `company` \| `personal` \| `internal`, set by the wizard, drives which `hq/` subtrees exist |
+| MCP credentials | `.mcp.json` committed with `${VAR}` refs; values in `.env.local` from GSM. claude.ai connectors need no token but are account-scoped |
 | Design system split | Components + showcase in the kit; tokens and route in the project (§15.1a) |
 | `/hq` auth | Firebase Auth custom claims; allowlist in `morpheus.json` applied by `sync-access` |
 | `/hq` theming | Inherits project brand automatically; `--hq-*` tokens for density only |
@@ -1525,7 +1638,7 @@ either a shared Firestore or an aggregator reading several repos. Useful, or pre
 `AGENTS.md` encode a division of labor (Codex for asset generation and bulk mechanical edits, Claude
 for architecture and review), or stay agent-agnostic and let you route by hand?
 
-**Q4 — `company/` for non-software businesses.** The structure assumes a software product. If a
+**Q4 — `hq/` for non-software businesses.** The structure assumes a software product. If a
 company is purely hardware or services, `apps/` is nearly empty. Support it, or explicitly out of
 scope?
 
