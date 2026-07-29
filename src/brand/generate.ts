@@ -159,27 +159,37 @@ function tokens(prefix: string): string {
  * A prompt to paste into an interactive Claude or Codex session.
  *
  * The wizard's job ends at structured context. Visual direction comes from
- * exploration with an agent that can generate and iterate on mockups — a
- * deterministic questionnaire cannot produce a look, only the constraints one
- * has to satisfy. This file is the handoff between the two.
+ * iterating on real mockups with an agent — a deterministic questionnaire
+ * cannot produce a look, only the constraints one has to satisfy.
+ *
+ * So this is written as a **brief that casts the agent as the designer** and
+ * describes a session with an arc: diverge, react, narrow, converge, then
+ * consolidate into the brand package. An earlier version asked for eight
+ * mockups in one shot, which is the same mistake in a different place —
+ * a single batch is not a design process, and nobody arrives at an identity
+ * without reacting to something first.
  */
 function explorePrompt(a: BrandAnswers, name: string, prefix: string): string {
   const refs = a.references.length
-    ? `\n**Reference points** (direction, not templates to copy):\n${bullets(a.references)}\n`
+    ? `\n**Reference points** — direction, not templates to copy:\n${bullets(a.references)}\n`
     : "";
   const source = a.visualSource
-    ? `\n**A visual direction already exists** at \`${a.visualSource}\`. Treat it as canonical — ` +
-      `explore *within* it rather than replacing it, and say explicitly where a proposal departs.\n`
+    ? `\n**A visual direction already exists** at \`${a.visualSource}\`, and it is shipping. Treat it ` +
+      `as the starting point rather than a blank page: explore *within* it, and say explicitly ` +
+      `whenever a proposal departs from it and why.\n`
     : "";
 
-  return `# ${name} — brand exploration prompt
+  return `# ${name} — brand design session
 
-Paste this into a fresh Claude Code or Codex session, in this repository.
+Paste everything below into a fresh Claude Code or Codex session, in this repository.
 
 ---
 
-I am designing the visual identity for **${name}**. Below is the decided strategy — it is settled,
-so treat it as constraint rather than suggestion.
+You are acting as the **brand designer** for ${name}. This document is your brief, not your
+output — the strategy below is settled, and your job is to take me from it to a first working
+visual identity.
+
+## The brief
 
 **What it is:** ${a.what}
 
@@ -195,32 +205,42 @@ ${bullets(a.feels)}
 **It must never feel or sound like:**
 ${bullets(a.never)}
 
-These boundaries are the hard part. A proposal that trips one is wrong even if it is otherwise
-good.${refs}${source}
+Those boundaries are the hard constraint. A proposal that trips one is wrong even when it is
+otherwise good.${refs}${source}
 
-## What I want from you
+## How to run this session
 
-Produce **8 distinct visual directions** as self-contained HTML mockups I can open side by side.
-Distinct means genuinely different bets — not one idea in eight colourways.
+**Show, do not describe.** Build actual HTML mockups I can open and look at. Never ask me to
+imagine a direction or to choose between adjectives — I cannot react to a description, and my
+reactions are the most useful signal you will get.
 
-For each direction:
+Work in rounds, and expect several:
 
-1. A name and one sentence on the bet it is making
-2. A palette with hex values, and a note on what each colour is *for*
-3. Type: a display face and a text face, with the reasoning
-4. A representative screen — landing hero or the primary product surface
-5. Which of the "must feel" adjectives it serves best, and which it serves least
+1. **Diverge.** Start with a handful of genuinely different bets — different enough that rejecting
+   one tells you something. Not one idea in several colourways.
+2. **Ask what landed.** After each round, ask me what I responded to and what I did not, and push
+   back if my reasoning contradicts the brief.
+3. **Narrow.** Take what worked forward and go deeper — real screens, real copy from the brief,
+   real states. Vague mockups hide the problems.
+4. **Converge.** Keep going until one direction is clearly right rather than merely acceptable.
 
-Then tell me which two you would take forward and why, including what you would lose by dropping
-the others.
+Tell me plainly when a direction I like violates a constraint I set. I wrote those boundaries when
+I was thinking clearly about the whole product; I will be reacting to one screen.
 
-Do not average them into a safe consensus. I would rather have two strong directions and six I
-reject than eight that are all defensible.
+## How to finish
 
-## After I choose
+When we have converged, consolidate the result into a working first version of the brand package:
 
-Write the winning direction into \`hq/brand/tokens.json\` as primitives, using the \`--${prefix}-\`
-prefix convention, and update \`hq/brand/visual-system.md\` to describe it.
+- \`hq/brand/tokens.json\` — the palette, type scale, spacing and radius as primitives, using the
+  \`--${prefix}-\` prefix convention
+- \`hq/brand/visual-system.md\` — colour, typography, layout, imagery and logo usage, written so
+  someone can apply it without having been in this session
+- \`hq/brand/assets/\` — any marks or icons produced
+- Update \`hq/brand/README.md\` if the reading order changed
+
+**First working version, not final.** Say what is still unresolved rather than papering over it.
+Running \`morpheus brand refresh\` revises the strategy answers later, and this session can be
+repeated against them.
 `;
 }
 
