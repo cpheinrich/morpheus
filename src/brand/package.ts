@@ -77,8 +77,13 @@ const checkTokens: Check = async (dir) => {
 /**
  * A session that rejected nothing did not diverge, so the absence of a
  * `## Rejected` section is a real signal rather than a formatting nit.
+ *
+ * `## Completion` is written last, so it is absent for the whole session and
+ * present only when the session actually ended. That is the intended shape:
+ * `brand status` answers "is the package finished", not "is the session going
+ * well", and a completion report is exactly the evidence that it is.
  */
-const DECISION_SECTIONS = ["## Settled", "## Rejected", "## Open"];
+const DECISION_SECTIONS = ["## Settled", "## Rejected", "## Open", "## Completion"];
 
 const checkDecisions: Check = async (dir) => {
   let text: string;
@@ -172,7 +177,7 @@ export const REQUIRED: PackageEntry[] = [
   {
     path: "decisions.md",
     purpose:
-      "What was settled, what was rejected and why, and what is still open — so a later session resumes instead of restarting",
+      "What was settled, what was rejected and why, what is still open, and a completion report naming the checks that were not run",
     source: "session",
     check: checkDecisions,
   },

@@ -260,6 +260,27 @@ cannot tell an abandoned idea from an unexplored one.
 Record which constraints hardened during review, and mark a preference provisional when it is
 provisional — a guess written as settled is worse than an open question.
 
+## Before you call it converged
+
+A hero section flatters almost any direction. Convergence declared on one attractive marketing
+mockup is the failure this step exists to prevent — the identity has to survive the screens that
+are actually hard.
+
+Render the leading direction on **at least**:
+
+- **one expressive surface** — a landing or editorial page, the case that naturally flatters it
+- **one dense functional surface** — real inputs, labels, an error state, a result. This is where a
+  palette with no quiet neutral, or a display face that cannot set 13px, shows up.
+- **both at mobile and desktop widths**
+
+If it holds on both, it is a direction. If it only holds on the first, it is a poster.
+
+Look at these too, and **say plainly which ones you did not check** rather than implying you did:
+interactive states (hover, focus, disabled, error, success), inverse or dark usage if the direction
+claims to support it, contrast at the smallest type size actually used, long and short copy in the
+same slot, reduced-motion behaviour, imagery provenance and licensing, and differentiation from any
+parent or sibling brand.
+
 ## How to finish
 
 When we have converged, consolidate the result into the brand package. **These are the required
@@ -282,6 +303,18 @@ optional parts — motion, imagery, components, accessibility pairs, reverse log
 each added when a specific trigger arrives, and they are listed with their triggers in
 \`hq/brand/README.md\`. A first package that is complete beats a broad one that is thin, and
 guessing at a motion system before anything animates produces rules nobody follows.
+
+Finally, write a \`## Completion\` section into \`decisions.md\` — last, once the rest is done:
+
+- canonical files written or changed
+- which surfaces you rendered and reviewed
+- decisions still open
+- temporary assets that need replacing — stock imagery, a typeface used without a licence
+- where the result departs from the brief above, and why I accepted it
+- checks you ran, **and checks you did not run**
+
+That last line is the one that makes this honest. "First working version" should be a claim with
+evidence and named gaps behind it, not the note a conversation happened to end on.
 
 **First working version, not final.** Say what is still unresolved rather than papering over it.
 Running \`morpheus brand refresh\` revises the strategy answers later, and this session can be
