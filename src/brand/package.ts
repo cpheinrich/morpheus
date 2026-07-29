@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { readAnswers } from "./answers.js";
 
 /**
  * What a brand package must contain, and what it may grow.
@@ -272,13 +273,9 @@ async function present(dir: string, rel: string): Promise<boolean> {
 
 /** Where tokens live when this project did not start from a blank page. */
 async function declaredVisualSource(brandDir: string): Promise<string | null> {
-  try {
-    const a = JSON.parse(await readFile(join(brandDir, "answers.json"), "utf8"));
-    const v = (a as { visualSource?: unknown }).visualSource;
-    return typeof v === "string" && v.trim() ? v : null;
-  } catch {
-    return null;
-  }
+  const a = await readAnswers(brandDir);
+  const v = a?.visualSource;
+  return typeof v === "string" && v.trim() ? v : null;
 }
 
 export async function packageStatus(brandDir: string): Promise<PackageStatus> {

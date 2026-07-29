@@ -1315,6 +1315,27 @@ invented per screen, `components.md` when the same pattern is rebuilt a third ti
 affects the exit code. Treating an unmet trigger as a failure trains people to ignore the output,
 and guessing at a motion system before anything animates produces rules nobody follows.
 
+### 15.5a The answers are a file, not a wizard transcript
+
+`hq/brand/answers.md` is the single source of the owner's input. The wizard is one way to fill it
+in; editing it directly is the other, and for most projects the better one.
+
+A sequential prompt is the wrong shape for this work. **The answers refer to each other** — `never`
+is written against `feels`, `mission` gets sharper once `primaryAudience` is concrete — and a
+wizard makes you commit to each one before you can see the next. A file lets you write them in any
+order, revise three at once, and leave one blank while you think.
+
+`morpheus brand init` writes the file *before* asking anything, so quitting the wizard leaves a
+usable artefact rather than nothing, and says so on screen. `morpheus brand build` regenerates from
+the edited file and asks nothing.
+
+Questions are anchored by `<!-- morpheus:q <key> -->` rather than by matching heading text, so
+rewording a heading to something clearer does not break parsing. The comment is invisible wherever
+markdown is rendered.
+
+There is no `answers.json`. A JSON record beside the editable file would be a second source of
+truth by another name — the thing this package spends most of its effort avoiding everywhere else.
+
 ### 15.6 Generated, seeded, and authored
 
 The original rule — never overwrite anything — was right about not destroying work and wrong about
