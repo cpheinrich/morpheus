@@ -1,4 +1,4 @@
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, lstat, readFile, readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -134,8 +134,17 @@ export const TASKS: Task[] = [
     title: "AGENTS.md, with CLAUDE.md symlinked to it",
     why: "One file so Claude and Codex read the same instructions rather than two that drift.",
     how: "Write AGENTS.md, then `ln -s AGENTS.md CLAUDE.md`",
-    detect: async (root) => (await exists(join(root, "AGENTS.md")))
-      && (await exists(join(root, "CLAUDE.md"))),
+    detect: async (root) => {
+      if (!(await exists(join(root, "AGENTS.md")))) return false;
+      try {
+        // A symlink specifically, not merely a file that exists. Lakina had
+        // two real files, which is the state this convention prevents — and
+        // an existence check called it done.
+        return (await lstat(join(root, "CLAUDE.md"))).isSymbolicLink();
+      } catch {
+        return false;
+      }
+    },
   },
   {
     id: "agent-records",
