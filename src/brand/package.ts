@@ -75,6 +75,24 @@ const checkTokens: Check = async (dir) => {
 };
 
 /**
+ * A session that rejected nothing did not diverge, so the absence of a
+ * `## Rejected` section is a real signal rather than a formatting nit.
+ */
+const DECISION_SECTIONS = ["## Settled", "## Rejected", "## Open"];
+
+const checkDecisions: Check = async (dir) => {
+  let text: string;
+  try {
+    text = await readFile(join(dir, "decisions.md"), "utf8");
+  } catch {
+    return "missing";
+  }
+  const absent = DECISION_SECTIONS.filter((h) => !text.includes(h)).map((h) => h.slice(3));
+  if (absent.length) return `no ${list(absent)} section`;
+  return null;
+};
+
+/**
  * Sentences the generator writes as placeholders. If one survives, that
  * section was never written — and naming which one is more useful than
  * saying the file is too short.
@@ -150,6 +168,13 @@ export const REQUIRED: PackageEntry[] = [
     purpose: "The primary mark, as vector",
     source: "session",
     check: exists,
+  },
+  {
+    path: "decisions.md",
+    purpose:
+      "What was settled, what was rejected and why, and what is still open — so a later session resumes instead of restarting",
+    source: "session",
+    check: checkDecisions,
   },
 ];
 

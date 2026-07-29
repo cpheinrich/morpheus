@@ -1339,6 +1339,26 @@ version, delete the file and re-run.
 so it is safe in CI. It exits non-zero on any drift: a package whose prose disagrees with its own
 answers is wrong even though every file is present.
 
+### 15.7 A design session records decisions, not just outcomes
+
+`hq/brand/decisions.md` is a required session output — `## Settled`, `## Rejected`, `## Open`, with
+a reason on every line, written **after each round rather than at the end**.
+
+**Scrollback is not a design record.** Brand work spans rounds, context compaction, more than one
+day, and sometimes a different agent. Without a checkpoint, a rejected direction returns in round
+four, the one good fragment inside a rejected direction is lost, and a fresh session cannot tell an
+abandoned idea from an unexplored one.
+
+The negative and compositional entries carry most of the value — *Direction B rejected as too
+institutional, keep its type pairing*. So directions get stable names in round one, or "take the
+type from B and the imagery from D" stops resolving once the mockups are gone.
+
+`brand status` checks all three sections are present. A session that rejected nothing did not
+diverge, so a missing `## Rejected` is a real signal rather than a formatting nit.
+
+Scratch mockups live in `local/brand/`, which is gitignored. The decision and its reason are what
+is durable; the artefact is not.
+
 ---
 
 ## 16. Testing and QA

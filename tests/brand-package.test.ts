@@ -30,6 +30,10 @@ async function completeSession(dir: string): Promise<void> {
     "# Visual system\n\nInk on warm paper. Söhne at three sizes. Nothing else.\n",
   );
   await writeFile(join(dir, "assets/logo.svg"), "<svg/>");
+  await writeFile(
+    join(dir, "decisions.md"),
+    "## Settled\n- Ink on warm paper.\n\n## Rejected\n- Direction B, too institutional.\n\n## Open\n- Accent scope.\n",
+  );
 }
 
 describe("brand package", () => {
@@ -101,6 +105,18 @@ describe("brand package", () => {
     expect(s.optional.find((o) => o.path === "motion.md")?.present).toBe(true);
   });
 
+  it("names which decision sections are missing", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    await completeSession(dir);
+    await writeFile(join(dir, "decisions.md"), "## Settled\n- Ink on warm paper.\n");
+    const s = await packageStatus(dir);
+    const d = s.required.find((r) => r.path === "decisions.md");
+
+    // A session that rejected nothing did not diverge.
+    expect(d?.state).toBe("incomplete");
+    expect(d?.detail).toBe("no Rejected and Open section");
+  });
+
   it("reports a malformed tokens.json as incomplete instead of throwing", async () => {
     await generateBrand(dir, "Evo", "ev", ANSWERS);
     await writeFile(join(dir, "tokens.json"), "{ not json");
@@ -119,6 +135,23 @@ describe("brand package", () => {
       }
       // The wizard's own outputs already exist; asking for them would be noise.
       expect(prompt).not.toContain("hq/brand/messaging.json");
+    });
+
+    it("tells the session to keep the record as it goes, not at the end", async () => {
+      await generateBrand(dir, "Evo", "ev", ANSWERS);
+      const prompt = (await readFile(join(dir, "explore-prompt.md"), "utf8")).replace(/\s+/g, " ");
+
+      expect(prompt).toContain("Scrollback is not a design record");
+      expect(prompt).toContain("after every round — not once at the end");
+      for (const h of ["## Settled", "## Rejected", "## Open"]) expect(prompt).toContain(h);
+    });
+
+    it("asks for stable direction names and a noncanonical scratch space", async () => {
+      await generateBrand(dir, "Evo", "ev", ANSWERS);
+      const prompt = (await readFile(join(dir, "explore-prompt.md"), "utf8")).replace(/\s+/g, " ");
+
+      expect(prompt).toContain("stable name in round one");
+      expect(prompt).toContain("local/brand/");
     });
 
     it("tells the session to stop at the required set", async () => {

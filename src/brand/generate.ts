@@ -228,6 +228,38 @@ Work in rounds, and expect several:
 Tell me plainly when a direction I like violates a constraint I set. I wrote those boundaries when
 I was thinking clearly about the whole product; I will be reacting to one screen.
 
+**Give every direction a stable name in round one and keep it.** "Take the type from B and the
+imagery from D" has to still resolve after the mockups are gone.
+
+Put scratch mockups in \`local/brand/\`, which is gitignored. They are working material, not the
+record.
+
+## Keep the record as you go, not at the end
+
+**Scrollback is not a design record.** This will span rounds, context compaction, probably more
+than one day, and possibly a different agent. Write \`hq/brand/decisions.md\` after every round —
+not once at the end — so a session that resumes tomorrow starts from what we learned rather than
+from the brief again.
+
+\`\`\`md
+## Settled
+- Ink on warm paper, not white. Reads calm; white read clinical. — 2026-07-29
+
+## Rejected
+- Direction B, too institutional. **Keep its type pairing** — that part worked.
+- Direction D's photography. Nothing survives.
+
+## Open
+- Whether the accent appears anywhere outside interactive elements.
+\`\`\`
+
+The negative and compositional entries matter most. Without them a rejected direction comes back
+in round four, the one good fragment inside a rejected direction is lost, and a fresh session
+cannot tell an abandoned idea from an unexplored one.
+
+Record which constraints hardened during review, and mark a preference provisional when it is
+provisional — a guess written as settled is worse than an open question.
+
 ## How to finish
 
 When we have converged, consolidate the result into the brand package. **These are the required
