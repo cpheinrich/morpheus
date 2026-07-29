@@ -14,6 +14,7 @@ item files, not this table.
 | [RM-006](./RM-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | G-2026-Q3-01 | — |
 | [RM-011](./RM-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | G-2026-Q3-01 | — |
 | [RM-015](./RM-015.md) | init must scaffold .agent and hq/inbox | backlog | P1 | G-2026-Q3-01 | — |
+| [RM-016](./RM-016.md) | morpheus doctor — report drift without fixing it | backlog | P1 | G-2026-Q3-01 | — |
 | [RM-008](./RM-008.md) | morpheus init | backlog | P2 | G-2026-Q3-01 | — |
 | [RM-009](./RM-009.md) | Retrofit Darwin | backlog | P2 | G-2026-Q3-01 | — |
 | [RM-010](./RM-010.md) | Simplify architecture.md for first-time readers | backlog | P2 | G-2026-Q3-01 | — |
