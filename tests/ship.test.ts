@@ -108,6 +108,14 @@ describe("formatReconcile", () => {
     expect(out).toContain("git push origin --delete mo-017-branch-protection");
   });
 
+  it("says a backlog item with a merged PR was left alone", () => {
+    const out = result([{ kind: "reopened", id: "MO-015", pr: 2 }]);
+
+    // Re-shipping a deliberate reopen is a tool arguing with its owner.
+    expect(out).toContain("MO-015 (#2)");
+    expect(out).toContain("in case the reopen was");
+  });
+
   it("keeps open items quiet — they are not a problem", () => {
     const out = result([{ kind: "open", id: "MO-027", branch: "mo-027-x" }]);
 
