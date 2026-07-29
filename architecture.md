@@ -164,7 +164,7 @@ consumed by two or more surfaces:
 
 ```
 packages/shared/
-├── tokens/                 # DTCG source (primitives from brand)
+├── tokens/semantic.json    # semantic mapping only — see §15.1a for ownership
 ├── generated/              # Style Dictionary output
 │   ├── web/tokens.css, tokens.js, tokens.json
 │   └── ios/Tokens.swift
@@ -1152,7 +1152,29 @@ hq/brand/
 Assets live in git: they are small, versioned, diffable (SVG), and needed at build time. Large
 media does not — see §19.
 
-### 15.1a How the design system is actually split
+### 15.1a Token ownership — one canonical owner per layer
+
+**This section is authoritative.** An earlier draft described `packages/shared/tokens/` as the
+whole DTCG source, which contradicted the split below and would let a retrofit create a second
+canonical token system. Corrected.
+
+| Layer | Canonical owner | Changes when |
+|---|---|---|
+| **Primitives** — the raw palette and type scale | `hq/brand/tokens.json` | You rebrand |
+| **Semantic mapping** — `action.primary → electricRed` | `packages/shared/tokens/semantic.json` | You redesign |
+| **Generated bindings** — CSS vars, JS, Swift | `packages/shared/generated/` | Never by hand |
+| **Components** | `morpheus-kit/design` | — |
+
+Primitives live with the brand because they *are* the brand. Semantic mapping lives with the
+design system because it is a design decision, not a brand one. Generated output is derived and
+never edited.
+
+**A project that already has a token system keeps it.** `morpheus brand init` writes no
+`tokens.json` when `visualSource` is set, and never overwrites an existing file — so adopting the
+brand format cannot destroy or duplicate a working visual system. Migrating existing tokens into
+this shape is deliberate, reviewed work, not something an initializer does silently.
+
+### How the design system is actually split
 
 The design system is not one thing in one place. It is **reusable structure in the kit, and
 project-specific values in the project.** Three layers:

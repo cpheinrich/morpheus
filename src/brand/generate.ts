@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BrandAnswers } from "./questions.js";
 
@@ -183,9 +183,30 @@ Does this read as ${a.feels.join(", ")}? And does it avoid being ${a.never.join(
 
 export interface GenerateResult {
   files: string[];
+  /** Files left untouched because they already existed. */
+  skipped: string[];
 }
 
-/** Write the brand package. Returns the paths written. */
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Write the brand package.
+ *
+ * **Never overwrites an existing file.** Anything already present is skipped
+ * and reported, so running this on an established project cannot destroy work.
+ *
+ * That matters most for `tokens.json`. Writing an empty scaffold beside a real
+ * token system creates a second canonical source — the worst failure this
+ * command can cause, and the one least likely to be noticed, since both files
+ * look plausible.
+ */
 export async function generateBrand(
   brandDir: string,
   name: string,
@@ -194,22 +215,42 @@ export async function generateBrand(
 ): Promise<GenerateResult> {
   await mkdir(join(brandDir, "assets"), { recursive: true });
 
-  const files: Array<[string, string]> = [
+  const planned: Array<[string, string]> = [
     ["README.md", readme(answers, name)],
     ["strategy.md", strategy(answers, name)],
     ["voice.md", voice(answers, name)],
     ["visual-system.md", visualSystem(answers, name, prefix)],
     ["messaging.json", messaging(answers)],
-    ["tokens.json", tokens(prefix)],
     [
       "assets/README.md",
-      `# Assets\n\nlogo.svg, logo-reverse.svg, icon.png, og-image.png.\n\nSmall, versioned, and needed at build time, so they live in git. Large media belongs on the\nCDN, not here.\n`,
+      "# Assets\n\nlogo.svg, logo-reverse.svg, icon.png, og-image.png.\n\nSmall, versioned, and needed at build time, so they live in git. Large media belongs on the\nCDN, not here.\n",
     ],
   ];
 
-  for (const [rel, content] of files) {
-    await writeFile(join(brandDir, rel), content.endsWith("\n") ? content : `${content}\n`, "utf8");
+  // Scaffold tokens only for a project with no visual system yet. When
+  // `visualSource` is set, the existing tokens are canonical.
+  if (!answers.visualSource) planned.push(["tokens.json", tokens(prefix)]);
+
+  // The answers themselves, so `brand refresh` can show what was said last
+  // time rather than making the owner reconstruct it.
+  await writeFile(
+    join(brandDir, "answers.json"),
+    JSON.stringify(answers, null, 2) + "\n",
+    "utf8",
+  );
+
+  const written: string[] = [];
+  const skipped: string[] = [];
+
+  for (const [rel, content] of planned) {
+    const abs = join(brandDir, rel);
+    if (await fileExists(abs)) {
+      skipped.push(abs);
+      continue;
+    }
+    await writeFile(abs, content.endsWith("\n") ? content : content + "\n", "utf8");
+    written.push(abs);
   }
 
-  return { files: files.map(([rel]) => join(brandDir, rel)) };
+  return { files: written, skipped };
 }
