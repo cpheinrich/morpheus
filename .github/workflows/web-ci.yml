@@ -52,17 +52,20 @@ jobs:
         if: ${{ inputs.build-tokens }}
         run: pnpm run build:tokens
 
+      # --if-present so a surface that has not added a script yet is skipped
+      # rather than failing. Discovered retrofitting Evo, which had neither
+      # typecheck nor test defined.
       - name: Typecheck
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm typecheck
+        run: pnpm run --if-present typecheck
 
       - name: Lint
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm lint
+        run: pnpm run --if-present lint
 
       - name: Unit tests
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm test
+        run: pnpm run --if-present test
 
       - name: Build
         working-directory: ${{ inputs.working-directory }}
