@@ -96,8 +96,21 @@ When a check cannot run, say it did not run.
   only `hq/inbox/` and `.agent/inbox-archive/`. Nobody had started the architecture work.
 
   The board being *ahead* of reality is worse than lagging it: a lagging board gets corrected on
-  sight, and a shipped item is never looked at again. `check pr` now blocks a records-only PR on a
-  branch that stakes an id.
+  sight, and a shipped item is never looked at again.
+
+  An audit of every shipped item against what its PR actually changed found two more: MO-015
+  credited to PR #2 (a `learned.md` entry on `mo-015-empty-dirs`; the work was really PR #22) and
+  MO-003 to PR #26, which is legitimate — that item's deliverable *was* the decision.
+
+  **The first fix for this did not work, for an instructive reason.** It tested "did this PR
+  change only `hq/inbox/` and `.agent/`", which is false for every real instance: a borrowed
+  branch always carries board files too, because claiming reconciles statuses and `pm index`
+  regenerates the tables into the same commit. The test has to be "changed nothing *but* records
+  and board", which is a different question and needs its own predicate.
+
+  **When a rule is written from a remembered example rather than the example's actual diff, it
+  tends to describe a tidier version of the event than the one that happened.** Check the file
+  list.
 
 ## A check that skips what is absent will report an empty thing as correct
 

@@ -81,9 +81,16 @@ checkout.
 
 **Except a PR that only touches records** — `hq/inbox/` and `.agent/`. An inbox cycle belongs to
 no feature and has no item to move. Branch it as `inbox-<YYYY-MM-DD>`, staking no id, and
-`check pr` will not ask for one. **Never borrow an unrelated item's branch for this**: merging
-releases its claim and marks it shipped. That is how MO-010 came to read as shipped against a PR
-that only moved the inbox.
+`check pr` will not ask for one.
+
+**Never borrow an unrelated item's branch for this.** Merging a branch that stakes an id marks
+that item shipped, so a PR which changes only records and `hq/product/` bookkeeping is refused on
+a claimed branch — it demonstrably did not do that item's work. That is how MO-010 came to read as
+shipped against a PR that only moved the inbox, and a shipped item is never looked at again.
+
+When the deliverable genuinely *is* the record — a decision item like MO-003, whose whole outcome
+was "do not publish, use a git dependency" — put `records-only: <reason>` in the PR body, the same
+shape as `skip-tests:`.
 
 **Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm morpheus pm index`, and commit
 any index changes. CI runs the same checks and will fail otherwise.

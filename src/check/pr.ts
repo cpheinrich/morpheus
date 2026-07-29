@@ -53,6 +53,31 @@ export function isRecordsOnly(changedFiles: string[]): boolean {
   return changedFiles.length > 0 && changedFiles.every((f) => RECORDS.test(f));
 }
 
+/** Board bookkeeping: item frontmatter and the generated index tables. */
+const BOARD = /^hq\/product\//;
+
+/**
+ * True when a PR changes nothing but records and board bookkeeping — so
+ * whatever item its branch claims, it did not do that item's work.
+ *
+ * `isRecordsOnly` does not catch this and was wrongly described as doing so.
+ * A borrowed branch always carries board files: claiming reconciles statuses
+ * and `pm index` regenerates the tables, so those ride along in the same
+ * commit. PR #31 shipped MO-010 with exactly that mix, and is `false` under
+ * `isRecordsOnly` for precisely the reason it needed catching.
+ *
+ * Deliberately separate from `isRecordsOnly` rather than a widened `RECORDS`:
+ * the two answer different questions. "Does this need an item at all?" must
+ * not be satisfied by touching the board, or a PR could excuse itself from the
+ * roadmap rules by editing the roadmap.
+ */
+export function hasNoSubstantiveChange(changedFiles: string[]): boolean {
+  return (
+    changedFiles.length > 0 &&
+    changedFiles.every((f) => RECORDS.test(f) || BOARD.test(f))
+  );
+}
+
 /** Extract the roadmap id a branch refers to: ev-014-slug -> EV-014. */
 export function roadmapIdFromBranch(branch: string): string | null {
   const m = /^([a-z]{2,4})-(\d{3,})(?:-|$)/i.exec(branch);
@@ -130,20 +155,31 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
   // hand-naming was already documented when it broke three times — what was
   // missing was the recovery, at the moment someone is looking at the error.
   const id = roadmapIdFromBranch(branch);
+
+  // Merging a branch that stakes an id marks that item shipped. So a PR on one
+  // must have done that item's work — and a PR that changes only records and
+  // board bookkeeping demonstrably has not.
+  //
+  // Waivable, because a few items genuinely deliver a decision rather than
+  // code: MO-003's whole outcome was "do not publish, use a git dependency",
+  // recorded in decisions.md. Stating the reason is cheap; the default must be
+  // refusal, since the cost of a wrong shipped is that nobody looks again.
+  const recordsWaived = /(^|\n)\s*records-only:\s*\S+/i.test(body);
+  if (id && hasNoSubstantiveChange(changedFiles) && !recordsWaived) {
+    findings.push({
+      level: "error",
+      rule: "no-work-for-claimed-item",
+      message:
+        `"${branch}" claims ${id}, but this PR changes only records and board files — ` +
+        `no work on ${id} itself. Merging it would mark ${id} shipped. Move the commits ` +
+        `to a branch that stakes no id (e.g. "inbox-2026-07-29"), or put ` +
+        `"records-only: <reason>" in the body if the deliverable really is the record.`,
+    });
+  }
+
   if (isRecordsOnly(changedFiles)) {
-    // Nothing to claim, so nothing to require — but borrowing a claim is worse
-    // than having none, because merging releases it and reconcile marks the
-    // item shipped against work the PR did not do.
-    if (id) {
-      findings.push({
-        level: "error",
-        rule: "records-on-claimed-branch",
-        message:
-          `This PR only changes records, but "${branch}" claims ${id}. Merging it would ` +
-          `mark ${id} shipped against work it did not do. Move the commits to a branch ` +
-          `that stakes no id, e.g. "inbox-2026-07-29".`,
-      });
-    }
+    // Nothing to claim, so nothing more to require — the borrowing case is
+    // already covered above.
   } else if (!id) {
     findings.push({
       level: "warning",
