@@ -122,6 +122,13 @@ distinction — both mean the same thing to the person reading it.
 
 Never let an inbox accumulate history. It is a snapshot; the archive is the record.
 
+## Sharing Google links
+
+**Always append `?authuser=<email>`** (or `&authuser=`) to any Google or Google Cloud URL —
+console, Firebase, payments, admin. Without it the link opens under whichever identity the
+account switcher last used, and switching loses the link context. Use the email address rather
+than an index.
+
 ## Style
 
 Match the surrounding code. This codebase favours:

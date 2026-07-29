@@ -160,3 +160,17 @@ deliberately changes it. The wizard encodes this when given a `visualSource`.
 **The brand wizard is owner: human** — the answers must come from current thinking, not be
 reverse-engineered from artefacts of different vintages. An agent reading three disagreeing
 sources produces something plausible and subtly wrong.
+
+**Always append `?authuser=<email>` to Google and GCP links** — 2026-07-29. Chris runs several
+Google identities and the account switcher defaults to the wrong one, losing link context. The
+parameter pins the link. Applies to console.cloud.google.com, console.firebase.google.com,
+payments.google.com, admin.google.com — every Google property. Use the email, not an index;
+indexes shift as accounts sign in and out.
+
+**Firestore is `nam5` (US multi-region) on all projects** — 2026-07-29. Permanent and
+unchangeable after creation, so worth stating: multi-region for durability, and it still includes
+`us-central1` so colocation with Cloud Run holds.
+
+**Use the browser tool to verify UI before giving UI instructions** — 2026-07-29. Three rounds of
+Firebase console directions were wrong because they were inferred rather than observed. If the
+task is "where do I click", look first.
