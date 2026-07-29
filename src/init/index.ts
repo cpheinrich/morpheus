@@ -134,6 +134,31 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     written.push(existing ? ".gitignore (appended)" : ".gitignore");
   }
 
+  // Generate the index tables rather than leaving bare markers. The generator
+  // emits a header row even for an empty artifact, so a scaffolded README with
+  // only `<!-- morpheus:begin -->` is already stale — and `pm index --check`
+  // fails on a project nobody has touched yet. Third version of the same rule:
+  // a scaffold whose CI is red on the first push teaches people to ignore CI.
+  if (dirs.includes("hq/product/roadmap")) {
+    const { parseArtifact } = await import("../pm/parse.js");
+    const gen = await import("../pm/index-gen.js");
+    const productDir = join(root, "hq/product");
+    const renderers = {
+      roadmap: gen.renderRoadmap,
+      goals: gen.renderGoals,
+      requests: gen.renderRequests,
+    } as const;
+
+    for (const kind of ["roadmap", "goals", "requests"] as const) {
+      // `internal` projects have a roadmap and nothing else.
+      if (!(await exists(join(productDir, kind)))) continue;
+      const { items } = await parseArtifact(productDir, kind);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rendered = (renderers[kind] as (i: any) => string)(items);
+      await gen.writeIndex(join(productDir, kind), rendered);
+    }
+  }
+
   if (seed.kind !== "internal") {
     notes.push(
       "hq/brand/ is empty until you run `morpheus brand init` — the wizard owns that directory.",

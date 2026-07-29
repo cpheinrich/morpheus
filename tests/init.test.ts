@@ -63,12 +63,34 @@ describe("morpheus init", () => {
     }
   });
 
-  it("writes index markers so pm index has somewhere to splice", async () => {
+  it("writes indexes that are already current, not bare markers", async () => {
     await scaffold(dir, SEED);
     const readme = await read("hq/product/roadmap/README.md");
 
     expect(readme).toContain("<!-- morpheus:begin -->");
     expect(readme).toContain("<!-- morpheus:end -->");
+
+    // The generator writes a placeholder between the markers even for an
+    // empty artifact, so bare markers are already stale and `pm index --check`
+    // fails on a project nobody has touched.
+    expect(readme).toContain("_Nothing here yet._");
+  });
+
+  it("passes pm index --check immediately after scaffolding", async () => {
+    await scaffold(dir, SEED);
+    const productDir = join(dir, "hq/product");
+    const gen = await import("../src/pm/index-gen.js");
+    const { parseArtifact } = await import("../src/pm/parse.js");
+
+    for (const kind of ["roadmap", "goals", "requests"] as const) {
+      const { items } = await parseArtifact(productDir, kind);
+      const render = { roadmap: gen.renderRoadmap, goals: gen.renderGoals, requests: gen.renderRequests }[kind];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const changed = await gen.writeIndex(join(productDir, kind), (render as (i: any) => string)(items));
+      // False means regenerating would not change the file — which is exactly
+      // what `pm index --check` asserts in CI.
+      expect(changed).toBe(false);
+    }
   });
 
   it("carries the project's own prefix into the instructions", async () => {
