@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-039](./MO-039.md) | kit/design: token pipeline — one generator, not three | in-progress | P0 | MO-G-2026-Q3-01 | — |
+| [MO-039](./MO-039.md) | kit/design: token pipeline — one generator, not three | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |

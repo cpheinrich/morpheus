@@ -1459,6 +1459,32 @@ The scaffold was written after two retrofits rather than before, and it shows: e
 exists because Evo or Darwin needed it. Guessing the shape first would have produced something that
 looked right and was wrong in ways nobody could name.
 
+### 15.11 One token generator, not one per project
+
+`morpheus tokens build` reads a DTCG-shaped token file and writes CSS custom properties and a
+typed TS module. Exported from the kit as `morpheus-kit/design`.
+
+It exists because **three projects independently hand-rolled the same twenty lines** —
+`cpheinrich.com/web/scripts/generate-brand-css.mjs`,
+`heinrichbros.com/web/scripts/sync-brand-theme.mjs`, and Lakina's `tokens.css`. That is
+extract-on-second-use passed twice over, and the three differ in ways that matter: one throws on
+arrays, one silently drops them, one hardcodes every variable name so a new token requires editing
+the generator.
+
+Two decisions worth keeping:
+
+**It writes nothing when the source has problems.** A stylesheet built from a half-read token file
+still renders, which is how the mistake survives to production. Every problem is reported at once —
+arrays, name collisions, malformed JSON — rather than throwing on the first.
+
+**It emits a TS module as well as CSS.** A deleted custom property renders as nothing and a
+stylesheet cannot catch it; a deleted key in `token` does not compile.
+
+**It does not decide semantic names.** Only `heinrichbros.com` has a semantic layer
+(`color.vermilion` → `--ember`) and its mapping is bespoke. §15.1a says the layer should exist, but
+inventing a shared vocabulary from a sample of one would be guessing — so the kit emits primitives
+and a project maps them, until there is enough evidence to do better.
+
 ---
 
 ## 16. Testing and QA
