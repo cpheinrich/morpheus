@@ -143,8 +143,8 @@ export async function init(opts: BrandInitOptions): Promise<number> {
       "     diverge into distinct directions, react, narrow, converge\n" +
       "  4. At the end it writes the result back as tokens.json, visual-system.md\n" +
       "     and any assets — a first working brand package\n" +
-      "\n\x1b[2mExpect several rounds. Run \x1b[0mmorpheus brand refresh\x1b[2m any time to revise\n" +
-      "the answers themselves.\x1b[0m",
+      "\n\x1b[2mExpect several rounds. Run \x1b[0mmorpheus brand status\x1b[2m to see what the\n" +
+      "package still needs, and \x1b[0mmorpheus brand refresh\x1b[2m to revise these answers.\x1b[0m",
   );
   return 0;
 }
