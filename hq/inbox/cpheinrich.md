@@ -1,10 +1,10 @@
 ---
 owner: cpheinrich
-date: 2026-07-29
-agents: [claude]
+date: 2026-07-29T00:00:00.000Z
+agents:
+  - claude
 previous: .agent/inbox-archive/2026-07-29-0400-cpheinrich.md
 ---
-
 # Inbox — 2026-07-29
 
 Since the last check-in: shipped the **claim mechanism** (`pm claim` / `pm claims` — the remote
@@ -61,7 +61,7 @@ set` ritual, no risk of creating a resource in the wrong account.
 you want one GCP project per company (`darwin` shared by darwin+evo, separate for personal) as
 designed, or something else.
 
-~
+~ Ok so I want to have on GCP project per project. So for my personal GCP I will have a project for cpheinrich.com and another for heinrichbros.com. I authenticated my personal but I haven't set the project_id yet. For cpheinrich.com project the GCP project id is cpheinrich. For the heinrichbros.com project, the GCP project id is heinrich-bros - you can configure this in the env for each project when its time.   I authenticaterd with my chris@darwin.health google account, but I haven't creatd projects yet - I think I want separate GCP projects for the darwin app and evo app since these would have separate firebase projects, but I'm not sure. What are the pros and cons of having multiple projects? Evo and Darwin apps will have different users and different firebase projects. What should i do?
 
 
 ## ❗ 2. PostHog — API key and per-project MCP · `claude`
@@ -105,7 +105,7 @@ PostHog identity per repo.
 **What I need from you:** create the projects and both keys, then paste the personal API keys
 here (or better, once item 4 lands, straight into Secret Manager and I will never see them).
 
-~
+~ I feel like I should have multiple posthog accounts since they would be billed differently unless you can have per-project billing. darwin and evo apps should be billed to darwin company, personal proejcts billed to my personal accounts. Take this into account and then reply. 
 
 
 ## ❗ 3. Licence and npm — you are right, and the mechanism is not the licence · `claude`
@@ -153,7 +153,7 @@ way if you ever wanted to hand a copy to a friend.
 
 **Say the word and I will flip it private and do the credential pass.**
 
-~
+~ Ok, lets just leave it as public with the NonCommercial license. I want to be able to easily share morpheus with some close friends if I think it will be helpful and I dont want to have to fuck around with making them a PAT.
 
 
 ## ❗ 4. Event schema — deferred, Evo brand fundamentals first · `claude`
@@ -175,7 +175,7 @@ of alternatives in `local/brand-research/` — electric red, coral, spring green
 clinical edge, grounded. If you have picked, tell me which. If not, that is a decision to make
 before writing it down.
 
-~
+~ Yes the brand is largely decided, but its a bit fragmented since codex started workign on it. Some of it is in apps/web/app/brand. So we basically need to consolidate it into the morpheus format, which is why I want to make sure we have the template for the brand right and the wizard for generating it, and then you can pull on the various sources and put them into the right format. 
 
 
 ## ❗ 5. Editor — use Nimbalyst, keep our PM suite · `claude`
@@ -230,7 +230,7 @@ implementation to use.
 you want their kanban badly enough to move files into `nimbalyst-local/`, say so — but you
 would be trading the `/hq` requirement for it.
 
-~
+~ Yes I've decided to use Nimbalyst, but don't want to tie our project managment to it so other people can use a different editor if they want. We can just document this as a suggested editor in the morpheus readme, but not a hard requirement. 
 
 
 ## ❗ 6. Collaboration — claims, not assignees · `claude`
@@ -282,7 +282,7 @@ directory with one file in it. The trigger is clear: **second collaborator joins
 **What I need from you:** confirm branch-as-claim and I will build `pm claim` / `pm claims`.
 It is small — one `ls-remote`, one branch create, one status write.
 
-~
+~ Yes branch as claim works. You can lock that in. 
 
 
 ## ❗ 7. Parallel sessions — Claude and Codex · `claude`
@@ -313,7 +313,7 @@ sessions in isolated worktrees directly, which is another argument for it as the
 The combination that makes this work:
 
 | Problem | Mechanism |
-|---|---|
+| --- | --- |
 | Two agents pick the same item | `pm claim` — the remote branch is the lock |
 | Two agents edit the same files | One git worktree per session |
 | Two agents report status | One inbox per person, items tagged by agent |
@@ -322,7 +322,7 @@ The combination that makes this work:
 **What I need from you:** nothing blocking. Try running Claude and Codex on two different
 claimed items and tell me where it chafes — that is the only way to find the next gap.
 
-~
+~ Lets not solve this for now. I will come back to it when I actually need to use claude and code in parallel
 
 ## ✅ 8. Naming and format · `claude`
 

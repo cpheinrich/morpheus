@@ -484,7 +484,7 @@ flowchart TB
         NEXT["Next.js — apps/web<br/>public site · /brand<br/>/hq dashboard<br/>route handlers"]
     end
 
-    subgraph gcp [Firebase / Google Cloud — one project per company]
+    subgraph gcp [Firebase / Google Cloud — one project per app]
         AUTH[Firebase Auth<br/>custom claims: employee/investor]
         FS[(Firestore<br/>app data · runtime flags)]
         ST[(Firebase Storage<br/>user-generated content)]
@@ -661,12 +661,14 @@ reading the parent repo, and agents are told in `AGENTS.md` where the canonical 
 
 - *Rejected:* Evo exposes an authenticated `/api/hq/export` that Darwin calls. Adds a service
   dependency, an auth surface, and a failure mode.
-- **Chosen:** both projects write metrics to a **shared BigQuery dataset scoped to the company**.
-  `darwin`'s `/hq` queries across both. PostHog projects stay separate (separate products deserve
-  separate funnels) but both export to the same warehouse.
+- **Chosen:** both projects export metrics to a **designated warehouse project** — one GCP
+  project per company holding the BigQuery datasets. `darwin`'s `/hq` queries across both.
+  PostHog projects stay separate (separate products deserve separate funnels) but both export to
+  the same warehouse.
 
-This means the GCP project boundary is per *company*, not per repo — which also makes the secrets
-model in §14 simpler.
+So a company has *n+1* GCP projects: one per app, plus a warehouse. Cross-project BigQuery reads
+are an explicit IAM grant, which is a feature — the rollup is opt-in per dataset rather than
+implicit.
 
 ---
 
@@ -922,10 +924,20 @@ systems for one job.
 
 ### Scoping
 
-One **GCP project per company** (matching §11), so `darwin` and `evo` share a boundary while
-`lakina` is fully isolated. IAM is per-project, and the agent's service account gets
-`roles/secretmanager.secretAccessor` scoped there and nowhere else. Compromise of one project's
-agent credentials cannot reach another company's secrets.
+**One GCP project per app** — corrected from "per company", which was wrong.
+
+**A Firebase project *is* a GCP project**, one-to-one: a GCP project can host at most one
+Firebase project. Darwin and Evo have separate user bases and therefore separate Firebase Auth
+pools and Firestore databases, so they *must* be separate GCP projects. This is not a design
+choice; it falls out of how Firebase is built.
+
+Grouping happens at the **billing account**, not the project. Several projects bill to one
+account, so `darwin` and `evo` roll up to the Darwin billing account while personal projects
+roll up to a personal one — which is the grouping that actually matters.
+
+IAM is per-project, so an agent's service account gets `roles/secretmanager.secretAccessor` on
+its own project and nowhere else. Blast radius is one app rather than one company, which is
+strictly better isolation than the original design.
 
 For 1Password, the equivalent is **one vault per company**, with a 1Password Service Account
 granted read access to only that vault. Agents never hold your personal 1Password credentials —
@@ -1103,7 +1115,8 @@ nothing else.** Everything downstream is agent-created.
 ```jsonc
 "accounts": {
   "gcloud":     "darwin",                  // gcloud configuration name
-  "gcpProject": "acme-prod",
+  "gcpProject": "acme-app",       // one per app; a Firebase project is a GCP project
+  "gcpWarehouse": "acme-warehouse", // shared per company, for cross-app BigQuery
   "cloudflare": "darwin-health",           // account name; token in GSM
   "vercel":     "acme-team-slug",          // --scope value
   "github":     "darwin-health"            // repo owner

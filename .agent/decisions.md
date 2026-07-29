@@ -43,8 +43,10 @@ instant propagation beats staged rollout. Revisit if a simultaneous CI break get
 
 ## Repo and licence
 
-**Public repo** — purely to remove friction (public npm, no cross-org PAT, freely callable
-workflows). Explicitly *not* a product: no marketing, no support, no stability guarantee.
+**Public repo, and staying public** — 2026-07-29 confirmed. Originally for CI friction; the
+deciding reason now is being able to share Morpheus with close friends without minting them a
+PAT. The licence does not prevent forks, and that is an accepted trade rather than an open
+question. Explicitly *not* a product: no marketing, no support, no stability guarantee.
 
 **PolyForm Noncommercial 1.0.0** — source-available, commercial use needs a separate licence,
 keeps monetization open. Contributions not accepted, so relicensing stays possible.
@@ -64,7 +66,11 @@ the goal is minimal external use, the mechanism is private visibility, not a str
 
 ## Tooling, continued
 
-**Nimbalyst as the editor; our own PM suite for task state** — 2026-07-29. Nimbalyst renders
+**Nimbalyst as Chris's editor, but never a requirement** — 2026-07-29. Documented in the README
+as a suggestion so collaborators can use anything. Validation lives in CI, not the editor, which
+is what keeps it optional.
+
+**Nimbalyst's Tracker rejected; our own PM suite keeps task state** — 2026-07-29. Nimbalyst renders
 arbitrary frontmatter as typed form fields, so it gives task-manager ergonomics over our schema
 with no adoption cost. Its Tracker was rejected because its scanner only reads
 `nimbalyst-local/tracker/`, UI-created items default to a database with no file backing, and
@@ -132,3 +138,8 @@ separate record of what was learned — including research that produced nothing
 **Naming stopping rule** — name it well enough that a fresh agent reads it correctly on first
 encounter, then document the rest. Further rounds of renaming solve a documentation problem
 with the more expensive tool.
+
+**One GCP project per app, not per company** — 2026-07-29. Corrects an earlier error. A Firebase
+project *is* a GCP project, one-to-one, so apps with separate user bases must be separate GCP
+projects. Grouping happens at the billing account, which is where it actually matters. A company
+therefore has n+1 projects: one per app, plus a warehouse project for cross-app BigQuery.
