@@ -253,6 +253,27 @@ describe("refresh keeps derived files honest", () => {
     expect(skipped.some((f) => f.endsWith("messaging.json"))).toBe(true);
   });
 
+  it("does not report a package that was never generated as current", async () => {
+    // Answers written, `brand build` never run. Zero files trivially match,
+    // and calling that clean tells someone their package is fine when it does
+    // not exist — which is what happened to Evo.
+    await writeAnswers(dir, "Evo", ANSWERS);
+
+    const { missing, derived, seeded } = await checkDrift(dir, "Evo", "ev", ANSWERS);
+
+    expect(missing.length).toBeGreaterThan(0);
+    expect(missing.some((f) => f.endsWith("messaging.json"))).toBe(true);
+    expect(derived).toEqual([]);
+    expect(seeded).toEqual([]);
+  });
+
+  it("reports nothing missing once the package exists", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const { missing } = await checkDrift(dir, "Evo", "ev", ANSWERS);
+
+    expect(missing).toEqual([]);
+  });
+
   it("reports drift without writing, and goes quiet once refreshed", async () => {
     await generateBrand(dir, "Evo", "ev", ANSWERS);
     await writeAnswers(dir, "Evo", CHANGED);

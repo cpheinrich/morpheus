@@ -78,12 +78,25 @@ export async function check(opts: {
     return 1;
   }
 
-  const { derived, seeded } = await checkDrift(
+  const { derived, seeded, missing } = await checkDrift(
     opts.brandDir,
     opts.name,
     opts.prefix,
     answers,
   );
+
+  // Nothing generated is not the same as nothing stale. Zero files trivially
+  // match the answers, and reporting that as a tick tells someone their brand
+  // package is fine when it does not exist.
+  if (missing.length) {
+    console.error(
+      `\n\x1b[33m${ANSWERS_FILE} is complete, but the package was never generated.\x1b[0m`,
+    );
+    for (const f of missing) console.error(`  ${f}`);
+    console.error("\n\x1b[2mRun \x1b[0mmorpheus brand build\x1b[2m.\x1b[0m");
+    return 1;
+  }
+
   if (!derived.length && !seeded.length) {
     console.log(`\x1b[32m✓ Every generated file matches ${ANSWERS_FILE}.\x1b[0m`);
     return 0;

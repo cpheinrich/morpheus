@@ -525,16 +525,24 @@ export async function checkDrift(
   name: string,
   prefix: string,
   answers: BrandAnswers,
-): Promise<{ derived: string[]; seeded: string[] }> {
+): Promise<{ derived: string[]; seeded: string[]; missing: string[] }> {
   const derived: string[] = [];
   const seeded: string[] = [];
+  const missing: string[] = [];
 
   for (const { path: rel, content, ownership } of plan(answers, name, prefix)) {
     if (ownership === "authored") continue;
     const abs = join(brandDir, rel);
     const existing = await readIfPresent(abs);
-    if (existing === null || existing === normalise(content)) continue;
+
+    // Absent is its own answer. Skipping it made a package that had never been
+    // generated report as fully current — zero files trivially match.
+    if (existing === null) {
+      missing.push(abs);
+      continue;
+    }
+    if (existing === normalise(content)) continue;
     (ownership === "derived" ? derived : seeded).push(abs);
   }
-  return { derived, seeded };
+  return { derived, seeded, missing };
 }

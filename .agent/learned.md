@@ -80,3 +80,21 @@ Three occurrences now, so it is a rule rather than a run of bad luck:
 
 The shape is always the same: a failure to determine something gets encoded as a determination.
 When a check cannot run, say it did not run.
+
+## A check that skips what is absent will report an empty thing as correct
+
+Four instances in one day:
+
+- `tokens.json` existing but empty read as a finished token system
+- `goal` and `inbox` detectors checked for a filename, so an empty file passed
+- `agents-md` checked that both paths exist, so two divergent real files passed where a symlink
+  was required
+- `checkDrift` skipped absent files, so a brand package that had never been generated reported as
+  fully current
+
+The shape is always the same: the loop says `if (!exists) continue`, which reads as "nothing to
+compare" and renders as "nothing wrong". **When writing a check, ask what a false positive looks
+like** — and specifically, what it reports when handed nothing at all.
+
+Related but distinct from *never let an unanswerable question render as a confident answer*: there
+the tool cannot determine the answer, here it can and treats absence as assent.
