@@ -1,0 +1,18 @@
+name: CI
+
+# Morpheus's own CI — it calls the same reusable workflows it ships to projects.
+# If they break, they break here first.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  node:
+    uses: ./.github/workflows/node-ci.yml
+
+  pm:
+    uses: ./.github/workflows/pm-check.yml
+    with:
+      product-dir: hq/product

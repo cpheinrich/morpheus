@@ -1,0 +1,35 @@
+{
+  "name": "@cpheinrich/morpheus-kit",
+  "version": "0.1.0",
+  "description": "An operating system for building and running companies, designed to be operated by agents.",
+  "type": "module",
+  "private": false,
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22" },
+  "packageManager": "pnpm@11.9.0",
+  "bin": { "morpheus": "./dist/cli/index.js" },
+  "exports": {
+    ".": "./dist/index.js",
+    "./pm": "./dist/pm/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "morpheus": "tsx src/cli/index.ts"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

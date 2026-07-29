@@ -1,0 +1,60 @@
+name: Node CI
+
+# Reusable workflow. Projects delegate to this rather than copying CI logic:
+#
+#   jobs:
+#     ci:
+#       uses: cpheinrich/morpheus/.github/workflows/node-ci.yml@main
+#
+# Improving CI for every project is then one commit here.
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        type: string
+        default: "11.9.0"
+      working-directory:
+        type: string
+        default: "."
+      run-lint:
+        type: boolean
+        default: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+          cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        if: ${{ inputs.run-lint }}
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

@@ -1,0 +1,49 @@
+name: PM check
+
+# Reusable workflow. Validates hq/product/ frontmatter against the kit's schemas
+# and verifies the generated README indexes are current.
+#
+#   jobs:
+#     pm:
+#       uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main
+#       with:
+#         product-dir: hq/product
+
+on:
+  workflow_call:
+    inputs:
+      product-dir:
+        type: string
+        default: "hq/product"
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        type: string
+        default: "11.9.0"
+
+jobs:
+  pm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate frontmatter
+        run: pnpm morpheus pm validate --dir ${{ inputs.product-dir }}
+
+      # --check writes nothing; it fails if regenerating would change anything,
+      # so a stale index cannot be merged.
+      - name: Verify indexes are current
+        run: pnpm morpheus pm index --dir ${{ inputs.product-dir }} --check
