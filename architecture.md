@@ -1433,6 +1433,32 @@ is one you stop opening.
 Optional tasks carry the same weight as optional brand files: they never affect completion. Analytics
 is not missing before launch.
 
+### 15.10 `init` scaffolds the repository and nothing else
+
+`morpheus init` writes the manifest, `AGENTS.md` with `CLAUDE.md` symlinked to it, the four
+`.agent/` records, the `hq/` tree for the project's kind, an inbox, a CI workflow delegating to the
+reusable ones, and `.gitignore` entries. Then it registers the prefix and prints `init status`.
+
+**It never overwrites.** Anything present is skipped and reported, which is what makes it safe on an
+established repository — so *initialise a new project* and *bring an old one up to the standard* are
+the same command rather than two that drift apart.
+
+**It provisions nothing.** No GCP, no DNS, no Vercel. Those live in someone else's console, need
+credentials this command should not hold, and are already tracked by §15.9's checklist. Drawing the
+seam there means `init` can never be blocked on a token — which is why it exists at all while the
+infrastructure items sit unstarted.
+
+Two details worth keeping:
+
+- `CLAUDE.md` is a **symlink**, not a copy. Two files would drift, and the drift would be invisible
+  until an agent acted on the stale one.
+- `hq/brand/` gets a `.gitkeep`, not a `README.md`. The brand wizard owns that filename and never
+  overwrites, so a placeholder would block the real file permanently.
+
+The scaffold was written after two retrofits rather than before, and it shows: every template here
+exists because Evo or Darwin needed it. Guessing the shape first would have produced something that
+looked right and was wrong in ways nobody could name.
+
 ---
 
 ## 16. Testing and QA

@@ -9,6 +9,7 @@ import { sync as accessSync } from "./access.js";
 import * as registry from "./registry.js";
 import { run as doctorRun } from "./doctor.js";
 import { mark as initMark, status as initStatus } from "./onboarding.js";
+import { init as initScaffold } from "./init.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -27,6 +28,7 @@ Usage
   morpheus brand check            [--dir <hq/brand>] — generated files vs answers.md
   morpheus access sync      [--project <firebase-project>] [--dry-run]
   morpheus registry list | add [--prefix XX] | remove <name>
+  morpheus init             [--name <Acme>] [--prefix XX] [--kind company|personal|internal]
   morpheus init status      [--offline]
   morpheus init done | doing | todo <task-id>
   morpheus doctor           [--all]
@@ -50,6 +52,8 @@ interface Flags {
   dryRun: boolean;
   all: boolean;
   offline: boolean;
+  kind?: string;
+  owner?: string;
   priority?: string;
   goal?: string;
   positional: string[];
@@ -96,6 +100,12 @@ function parseArgs(argv: string[]): Flags {
       case "--prefix":
         flags.prefix = argv[++i];
         break;
+      case "--kind":
+        flags.kind = argv[++i];
+        break;
+      case "--owner":
+        flags.owner = argv[++i];
+        break;
       case "--priority":
         flags.priority = argv[++i];
         break;
@@ -124,8 +134,17 @@ async function main(): Promise<number> {
   if (group === "doctor") return doctorRun(process.cwd(), flags.all);
 
   if (group === "init") {
-    if (command === "status" || command === undefined) {
+    if (command === "status") {
       return initStatus(process.cwd(), flags.name, flags.offline);
+    }
+    if (command === undefined) {
+      return initScaffold({
+        root: process.cwd(),
+        name: flags.name,
+        prefix: flags.prefix,
+        kind: flags.kind,
+        owner: flags.owner,
+      });
     }
     const states = { done: "done", doing: "in-progress", todo: "todo" } as const;
     const state = states[command as keyof typeof states];
