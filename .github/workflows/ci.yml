@@ -12,10 +12,13 @@ jobs:
   node:
     uses: ./.github/workflows/node-ci.yml
 
+  # Morpheus has the CLI in-tree, so it validates directly rather than via the
+  # reusable workflow (which checks the CLI out of this very repo).
   pm:
     uses: ./.github/workflows/pm-check.yml
     with:
       product-dir: hq/product
+      morpheus-ref: ${{ github.sha }}
 
   pr:
     uses: ./.github/workflows/pr-check.yml

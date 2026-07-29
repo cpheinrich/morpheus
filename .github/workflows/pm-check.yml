@@ -15,6 +15,9 @@ on:
       product-dir:
         type: string
         default: "hq/product"
+      morpheus-ref:
+        type: string
+        default: "main"
       node-version:
         type: string
         default: "22"
@@ -28,6 +31,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The consuming repo does not depend on morpheus-kit — the package is not
+      # published, and a project should not need it installed just to validate
+      # its own markdown. Check the CLI out and build it instead.
+      - uses: actions/checkout@v4
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.morpheus-ref }}
+          path: .morpheus
+
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ inputs.pnpm-version }}
@@ -35,15 +47,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: pnpm
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
+      - name: Build the Morpheus CLI
+        working-directory: .morpheus
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
 
       - name: Validate frontmatter
-        run: pnpm morpheus pm validate --dir ${{ inputs.product-dir }}
+        run: node .morpheus/dist/cli/index.js pm validate --dir ${{ inputs.product-dir }}
 
       # --check writes nothing; it fails if regenerating would change anything,
       # so a stale index cannot be merged.
       - name: Verify indexes are current
-        run: pnpm morpheus pm index --dir ${{ inputs.product-dir }} --check
+        run: node .morpheus/dist/cli/index.js pm index --dir ${{ inputs.product-dir }} --check
