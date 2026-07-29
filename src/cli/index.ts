@@ -8,6 +8,7 @@ import { status as brandStatus } from "./brand-status.js";
 import { sync as accessSync } from "./access.js";
 import * as registry from "./registry.js";
 import { run as doctorRun } from "./doctor.js";
+import { mark as initMark, status as initStatus } from "./onboarding.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -26,6 +27,8 @@ Usage
   morpheus brand check            [--dir <hq/brand>] — generated files vs answers.md
   morpheus access sync      [--project <firebase-project>] [--dry-run]
   morpheus registry list | add [--prefix XX] | remove <name>
+  morpheus init status      [--offline]
+  morpheus init done | doing | todo <task-id>
   morpheus doctor           [--all]
 
 Options
@@ -46,6 +49,7 @@ interface Flags {
   project?: string;
   dryRun: boolean;
   all: boolean;
+  offline: boolean;
   priority?: string;
   goal?: string;
   positional: string[];
@@ -58,6 +62,7 @@ function parseArgs(argv: string[]): Flags {
     check: false,
     dryRun: false,
     all: false,
+    offline: false,
     positional: [],
   };
 
@@ -75,6 +80,9 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--all":
         flags.all = true;
+        break;
+      case "--offline":
+        flags.offline = true;
         break;
       case "--dry-run":
         flags.dryRun = true;
@@ -114,6 +122,23 @@ async function main(): Promise<number> {
   const dir = resolve(process.cwd(), flags.dir);
 
   if (group === "doctor") return doctorRun(process.cwd(), flags.all);
+
+  if (group === "init") {
+    if (command === "status" || command === undefined) {
+      return initStatus(process.cwd(), flags.name, flags.offline);
+    }
+    const states = { done: "done", doing: "in-progress", todo: "todo" } as const;
+    const state = states[command as keyof typeof states];
+    if (state) {
+      if (!rest[0]) {
+        console.error(`Which task? \`morpheus init status\` lists them.`);
+        return 1;
+      }
+      return initMark(process.cwd(), rest[0], state, flags.name);
+    }
+    console.error(`Unknown init command "${command}".\n\n${HELP}`);
+    return 1;
+  }
 
   if (group === "registry") {
     if (command === "list") return registry.list();
