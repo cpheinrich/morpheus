@@ -56,6 +56,11 @@ morpheus pm claim MO-014     # stakes the branch on origin, sets in-progress, pu
 
 The remote branch **is** the claim — `pm claim` refuses if `origin` already has `mo-014-*`.
 
+`pm new` allocates ids against the remote as well as the item files, because the files only hold
+ids that have already merged — an id another session holds sits on its branch and nowhere else.
+If `origin` cannot be reached it still allocates, but says so; treat that id as provisional until
+`pm claim` accepts it.
+
 **Never create the branch by hand.** `pm claim` derives it from the item id, so the two cannot
 disagree; hand-naming has already failed `check pr` twice by referencing an id that did not exist
 yet.

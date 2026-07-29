@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { claimedNumbers } from "./claim.js";
 import { parseArtifact } from "./parse.js";
 import { ARTIFACTS, type ArtifactKind } from "./schema.js";
 
@@ -11,24 +12,46 @@ const INFIX: Record<ArtifactKind, string> = {
   requests: "FR-",
 };
 
+export interface Allocation {
+  id: string;
+  /**
+   * True when the remote could not be consulted, so the id is derived from
+   * local files alone and may already be claimed elsewhere.
+   */
+  blind: boolean;
+}
+
 /**
  * Allocate the next sequential id for an artifact kind.
  *
- * Concurrent agents can in principle pick the same number; `pm validate`
- * catches duplicates in CI, which is cheaper than coordinating allocation.
+ * Two sources, because neither alone is complete: the item files hold every id
+ * that has **merged**, and the remote branch heads hold every id another
+ * session has **claimed** but not yet landed. Reading only the first re-issues
+ * a live claim.
+ *
+ * `blind` is returned rather than swallowed. An unreachable origin cannot tell
+ * us an id is free, and reporting that as a clean allocation is the mistake
+ * `.agent/learned.md` records under *never let an unanswerable question render
+ * as a confident answer*.
  */
 export async function nextId(
   productDir: string,
   kind: ArtifactKind,
   prefix: string,
-): Promise<string> {
+  cwd: string,
+): Promise<Allocation> {
   const { items } = await parseArtifact(productDir, kind);
-  const nums = items
+  const local = items
     .map((i) => /(\d+)$/.exec((i.data as { id: string }).id)?.[1])
     .filter((n): n is string => Boolean(n))
     .map(Number);
+
+  const idPrefix = `${prefix}-${INFIX[kind]}`;
+  const claimed = await claimedNumbers(idPrefix, cwd);
+
+  const nums = [...local, ...(claimed ?? [])];
   const next = (nums.length ? Math.max(...nums) : 0) + 1;
-  return `${prefix}-${INFIX[kind]}${String(next).padStart(3, "0")}`;
+  return { id: `${idPrefix}${String(next).padStart(3, "0")}`, blind: claimed === null };
 }
 
 function today(): string {
@@ -62,18 +85,27 @@ export interface NewItemOptions {
   /** Project prefix from morpheus.json. */
   prefix: string;
   title: string;
+  /** Repo root, so allocation can ask origin which ids are already claimed. */
+  cwd: string;
   /** Roadmap only. */
   priority?: string;
   goal?: string;
 }
 
-/** Create a new item file with valid frontmatter. Returns its path. */
-export async function createItem(opts: NewItemOptions): Promise<string> {
-  const { productDir, kind, prefix, title } = opts;
+export interface NewItem {
+  path: string;
+  id: string;
+  /** True when origin could not be consulted and the id may collide. */
+  blind: boolean;
+}
+
+/** Create a new item file with valid frontmatter. */
+export async function createItem(opts: NewItemOptions): Promise<NewItem> {
+  const { productDir, kind, prefix, title, cwd } = opts;
   const dir = join(productDir, ARTIFACTS[kind].dir);
   await mkdir(dir, { recursive: true });
 
-  const id = await nextId(productDir, kind, prefix);
+  const { id, blind } = await nextId(productDir, kind, prefix, cwd);
   const date = today();
 
   let fm: string;
@@ -120,5 +152,5 @@ export async function createItem(opts: NewItemOptions): Promise<string> {
 
   const path = join(dir, `${id}.md`);
   await writeFile(path, `${fm}\n${body}`, "utf8");
-  return path;
+  return { path, id, blind };
 }

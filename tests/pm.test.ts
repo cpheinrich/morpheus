@@ -1,7 +1,10 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { beforeEach, describe, expect, it } from "vitest";
+import { parseClaimedNumbers } from "../src/pm/claim.js";
 import { findDuplicateIds, parseArtifact, parseDir } from "../src/pm/parse.js";
 import {
   BEGIN,
@@ -12,6 +15,8 @@ import {
 } from "../src/pm/index-gen.js";
 import { createItem, nextId } from "../src/pm/new-item.js";
 import { Goal, RoadmapItem } from "../src/pm/schema.js";
+
+const execFileAsync = promisify(execFile);
 
 let product: string;
 
@@ -252,23 +257,31 @@ describe("index generation", () => {
 });
 
 describe("new item", () => {
+  // `product` is a bare temp directory with no git repo, so the remote lookup
+  // fails and allocation falls back to local files — which is also the blind
+  // case asserted below.
   it("allocates MO-001 in an empty directory", async () => {
-    expect(await nextId(product, "roadmap", "MO")).toBe("MO-001");
+    expect((await nextId(product, "roadmap", "MO", product)).id).toBe("MO-001");
   });
 
   it("allocates the next id after the highest existing one", async () => {
     await seed("roadmap", "MO-001", VALID_RM);
     await seed("roadmap", "MO-009", VALID_RM.replace("MO-001", "MO-009"));
-    expect(await nextId(product, "roadmap", "MO")).toBe("MO-010");
+    expect((await nextId(product, "roadmap", "MO", product)).id).toBe("MO-010");
+  });
+
+  it("reports blind when origin cannot be reached, rather than implying the id is free", async () => {
+    expect((await nextId(product, "roadmap", "MO", product)).blind).toBe(true);
   });
 
   it("creates a file that passes its own validation", async () => {
-    const path = await createItem({
+    const { path } = await createItem({
       productDir: product,
       kind: "roadmap",
       prefix: "MO",
       title: "Wire up analytics",
       priority: "P1",
+      cwd: product,
     });
     expect(path).toContain("MO-001.md");
 
@@ -284,6 +297,7 @@ describe("new item", () => {
       kind: "roadmap",
       prefix: "MO",
       title: "PM package: schemas, parser, CLI",
+      cwd: product,
     });
 
     const { items, issues } = await parseArtifact(product, "roadmap");
@@ -292,9 +306,94 @@ describe("new item", () => {
   });
 
   it("omits optional fields it was not given", async () => {
-    await createItem({ productDir: product, kind: "roadmap", prefix: "MO", title: "No goal" });
+    await createItem({
+      productDir: product,
+      kind: "roadmap",
+      prefix: "MO",
+      title: "No goal",
+      cwd: product,
+    });
     const raw = await readFile(join(product, "roadmap", "MO-001.md"), "utf8");
     expect(raw).not.toContain("goal:");
+  });
+});
+
+/**
+ * The one place this suite builds a real git repo.
+ *
+ * The bug being fixed is precisely that allocation never asked the remote, so a
+ * test that stubs the remote would pass against the broken code too. Nothing
+ * cheaper than a real `ls-remote` proves it.
+ */
+async function originHolding(...branches: string[]): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "morpheus-origin-"));
+  const origin = join(root, "origin.git");
+  const work = join(root, "work");
+  await mkdir(work, { recursive: true });
+
+  const git = (args: string[], cwd = work) => execFileAsync("git", args, { cwd });
+  await execFileAsync("git", ["init", "--bare", "--quiet", origin]);
+  await git(["init", "--quiet"]);
+  await git(["config", "user.email", "test@example.com"]);
+  await git(["config", "user.name", "Test"]);
+  await git(["config", "commit.gpgsign", "false"]);
+  await git(["commit", "--allow-empty", "--quiet", "-m", "init"]);
+  await git(["remote", "add", "origin", origin]);
+  for (const b of ["main", ...branches]) {
+    await git(["push", "--quiet", "origin", `HEAD:refs/heads/${b}`]);
+  }
+  return work;
+}
+
+describe("allocation consults the remote", () => {
+  it("skips an id another session holds on a branch but has not merged", async () => {
+    const cwd = await originHolding("mo-038-brand-prose-templates-break");
+
+    // Nothing on disk — exactly the state a fresh clone is in while MO-038 is
+    // still only a claim. The old behaviour allocated MO-001.
+    const { id, blind } = await nextId(product, "roadmap", "MO", cwd);
+    expect(id).toBe("MO-039");
+    expect(blind).toBe(false);
+  });
+
+  it("takes the higher of what merged and what is claimed", async () => {
+    await seed("roadmap", "MO-040", VALID_RM.replace("MO-001", "MO-040"));
+    const cwd = await originHolding("mo-038-still-open");
+
+    expect((await nextId(product, "roadmap", "MO", cwd)).id).toBe("MO-041");
+  });
+
+  it("does not let a goal branch bump a roadmap id", async () => {
+    const cwd = await originHolding("mo-g-009-a-goal", "mo-fr-009-a-request");
+
+    expect((await nextId(product, "roadmap", "MO", cwd)).id).toBe("MO-001");
+  });
+});
+
+describe("parseClaimedNumbers", () => {
+  const line = (branch: string) => `abc123\trefs/heads/${branch}`;
+
+  it("reads the sequence number out of a claim branch", () => {
+    expect(parseClaimedNumbers(line("mo-038-some-slug"), "MO-")).toEqual([38]);
+  });
+
+  it("ignores the goal and request branches that share the mo- prefix", () => {
+    const out = [line("mo-038-a"), line("mo-g-900-b"), line("mo-fr-900-c")].join("\n");
+    expect(parseClaimedNumbers(out, "MO-")).toEqual([38]);
+  });
+
+  it("matches goal branches when asked for the goal prefix", () => {
+    const out = [line("mo-038-a"), line("mo-g-007-b")].join("\n");
+    expect(parseClaimedNumbers(out, "MO-G-")).toEqual([7]);
+  });
+
+  it("ignores main and any branch that stakes no id", () => {
+    const out = [line("main"), line("fix-the-thing"), line("mo-nope-x")].join("\n");
+    expect(parseClaimedNumbers(out, "MO-")).toEqual([]);
+  });
+
+  it("is empty for empty output, which is a real answer and not a failure", () => {
+    expect(parseClaimedNumbers("", "MO-")).toEqual([]);
   });
 });
 

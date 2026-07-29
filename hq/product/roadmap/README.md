@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-039](./MO-039.md) | kit/design: token pipeline — one generator, not three | review | P0 | MO-G-2026-Q3-01 | — |
+| [MO-040](./MO-040.md) | pm new re-issues an id another session already claimed | review | P1 | — | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -22,6 +22,7 @@ item files, not this table.
 | [MO-032](./MO-032.md) | Convention checks must not require the consumer to be a pnpm project | shipped | P0 | MO-G-2026-Q3-01 | #24 |
 | [MO-035](./MO-035.md) | Reusable checks only worked in the repo that defines them | shipped | P0 | MO-G-2026-Q3-01 | #28 |
 | [MO-036](./MO-036.md) | A freshly scaffolded project fails pm index --check | shipped | P0 | MO-G-2026-Q3-01 | #29 |
+| [MO-039](./MO-039.md) | kit/design: token pipeline — one generator, not three | shipped | P0 | MO-G-2026-Q3-01 | #32 |
 | [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-013](./MO-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-015](./MO-015.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | #2 |

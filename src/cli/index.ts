@@ -267,10 +267,13 @@ async function main(): Promise<number> {
       return ship(dir, rest, process.cwd(), flags.check);
     case "new": {
       const [kind, ...titleParts] = rest;
-      return create(dir, kind ?? "", titleParts.join(" "), {
-        priority: flags.priority,
-        goal: flags.goal,
-      });
+      return create(
+        dir,
+        kind ?? "",
+        titleParts.join(" "),
+        { priority: flags.priority, goal: flags.goal },
+        process.cwd(),
+      );
     }
     default:
       console.error(`Unknown pm command "${command ?? ""}".\n\n${HELP}`);
