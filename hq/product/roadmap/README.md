@@ -8,6 +8,7 @@ item files, not this table.
 |---|---|---|---|---|---|
 | [MO-014](./MO-014.md) | Brand template and wizard | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | review | P1 | MO-G-2026-Q3-01 | — |
+| [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | review | P2 | MO-G-2026-Q3-01 | — |
 | [MO-003](./MO-003.md) | Publish the kit to GitHub Packages | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
