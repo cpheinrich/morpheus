@@ -533,7 +533,7 @@ Chatwoot over their REST APIs to render summary tiles, linking out for depth.
 ```mermaid
 flowchart LR
     RM["hq/product/<br/>roadmap/MO-014.md"] --> AG[Agent<br/>Claude / Codex]
-    AG --> BR["branch<br/>rm-014-slug"]
+    AG --> BR["morpheus pm claim MO-014<br/>branch mo-014-slug"]
     BR --> CI["CI — reusable workflow<br/>lint · typecheck · unit · morpheus check pr"]
     CI --> PREV[Vercel preview]
     CI --> SIM["iOS simulator build<br/>screenshots + video"]
@@ -707,13 +707,24 @@ Instructions get ignored eventually. A failing check does not.
 ### 12.3 The work loop and review queue
 
 1. Agents pull work from `hq/product/roadmap/` and `qa/`.
-2. Work happens on a branch named `rm-<id>-<slug>`. Never on `main`.
+2. `morpheus pm claim <ID>` starts the work — it derives the branch from the id, marks the item
+   in-progress, and pushes. Never on `main`, and never a branch anyone typed (see below).
 3. Push triggers CI and a Vercel preview deploy.
 4. The PR is registered in the review queue with a summary, staging link, screenshots, and a test
    plan.
 5. Human reviews at `/hq/review` or directly on the Vercel preview, leaving anchored comments.
 6. Comments sync to the PR; the agent ingests them and iterates.
 7. Approval merges and deploys.
+
+**`pm claim` is the only supported way to start work.** Not a style preference — three things are
+derived from the item id at claim time and cannot be kept in agreement by anyone remembering to:
+the branch name, the item's `in-progress` status, and the claim itself, which *is* the remote
+branch. Typing `git checkout -b` produces none of them, and the failure surfaces at `check pr`,
+after the work is done and the branch is expensive to rename. That has happened three times.
+
+The recovery, when it does happen, is `morpheus pm claim <ID>` on a fresh branch and a
+cherry-pick — which is why `check pr` names the command in its failure message rather than only
+reporting the violation.
 
 **Queue storage — revised from draft 2.** The earlier answer (Firestore, with PRs synced in) was
 wrong, and asking "where does Morpheus itself host this?" is what exposed it. Any design requiring
@@ -1459,6 +1470,32 @@ The scaffold was written after two retrofits rather than before, and it shows: e
 exists because Evo or Darwin needed it. Guessing the shape first would have produced something that
 looked right and was wrong in ways nobody could name.
 
+### 15.11 One token generator, not one per project
+
+`morpheus tokens build` reads a DTCG-shaped token file and writes CSS custom properties and a
+typed TS module. Exported from the kit as `morpheus-kit/design`.
+
+It exists because **three projects independently hand-rolled the same twenty lines** —
+`cpheinrich.com/web/scripts/generate-brand-css.mjs`,
+`heinrichbros.com/web/scripts/sync-brand-theme.mjs`, and Lakina's `tokens.css`. That is
+extract-on-second-use passed twice over, and the three differ in ways that matter: one throws on
+arrays, one silently drops them, one hardcodes every variable name so a new token requires editing
+the generator.
+
+Two decisions worth keeping:
+
+**It writes nothing when the source has problems.** A stylesheet built from a half-read token file
+still renders, which is how the mistake survives to production. Every problem is reported at once —
+arrays, name collisions, malformed JSON — rather than throwing on the first.
+
+**It emits a TS module as well as CSS.** A deleted custom property renders as nothing and a
+stylesheet cannot catch it; a deleted key in `token` does not compile.
+
+**It does not decide semantic names.** Only `heinrichbros.com` has a semantic layer
+(`color.vermilion` → `--ember`) and its mapping is bespoke. §15.1a says the layer should exist, but
+inventing a shared vocabulary from a sample of one would be guessing — so the kit emits primitives
+and a project maps them, until there is enough evidence to do better.
+
 ---
 
 ## 16. Testing and QA
@@ -1768,8 +1805,9 @@ Users photograph a meal; the pipeline returns a calorie estimate.
 This is the same validation approach used for Firestore documents (§3) — **one way to describe a
 shape, whether it lands in a markdown file or a database row.**
 
-Branch names derive from the id (`rm-014-calorie-pipeline`), which is how `morpheus check pr` knows
-which item to verify status on.
+Branch names derive from the id (`mo-014-calorie-pipeline`), which is how `morpheus check pr` knows
+which item to verify status on. `morpheus pm claim` does the deriving, which is why it is the only
+supported way to start work — see §12.3.
 
 ---
 

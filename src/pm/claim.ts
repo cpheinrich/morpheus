@@ -60,6 +60,58 @@ export async function findClaims(id: string, cwd: string): Promise<string[]> {
     .filter((b): b is string => Boolean(b));
 }
 
+/**
+ * Sequence numbers already staked on the remote under an id prefix, or null
+ * when origin could not be reached.
+ *
+ * Id allocation reads the item files on disk, which only hold ids that have
+ * merged. An id another session claimed lives solely on its remote branch until
+ * then, so allocation cannot see it and re-issues it — which it did, with
+ * MO-038 held by a parallel session while local `main` stopped at MO-037.
+ *
+ * Null rather than an empty array on failure: "origin holds no claims" is
+ * evidence, "origin was unreachable" is not, and collapsing them lets a network
+ * blip render as a free id. Same reason `mergedPrs` returns null.
+ *
+ * @param idPrefix Everything before the digits, e.g. `MO-` or `MO-G-`.
+ */
+export async function claimedNumbers(
+  idPrefix: string,
+  cwd: string,
+): Promise<number[] | null> {
+  try {
+    const out = await git(
+      ["ls-remote", "--heads", "origin", `refs/heads/${idPrefix.toLowerCase()}*`],
+      cwd,
+    );
+    return parseClaimedNumbers(out, idPrefix);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sequence numbers staked by `git ls-remote --heads` output.
+ *
+ * Split out from the lookup because the parsing is where this can quietly go
+ * wrong — `mo-*` also matches the goal and request branches (`mo-g-001-…`,
+ * `mo-fr-007-…`), and a roadmap allocation must not read their numbers as its
+ * own. Requiring a digit immediately after the prefix is what separates them.
+ */
+export function parseClaimedNumbers(lsRemote: string, idPrefix: string): number[] {
+  // Branches are `<id lowercased>-<slug>`, so the digits between the prefix and
+  // the next hyphen are the sequence number.
+  const pattern = new RegExp(`^${idPrefix.toLowerCase()}(\\d+)-`);
+  const numbers: number[] = [];
+  for (const line of lsRemote.split("\n")) {
+    const branch = line.split("refs/heads/")[1];
+    if (!branch) continue;
+    const m = pattern.exec(branch);
+    if (m) numbers.push(Number(m[1]));
+  }
+  return numbers;
+}
+
 /** Every live claim in the repo, newest activity first. */
 export async function listClaims(cwd: string): Promise<Claim[]> {
   await git(["fetch", "origin", "--quiet"], cwd).catch(() => "");

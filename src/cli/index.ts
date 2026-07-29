@@ -10,6 +10,7 @@ import * as registry from "./registry.js";
 import { run as doctorRun } from "./doctor.js";
 import { mark as initMark, status as initStatus } from "./onboarding.js";
 import { init as initScaffold } from "./init.js";
+import { build as tokensBuild } from "./tokens.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -31,6 +32,8 @@ Usage
   morpheus init             [--name <Acme>] [--prefix XX] [--kind company|personal|internal]
   morpheus init status      [--offline]
   morpheus init done | doing | todo <task-id>
+  morpheus tokens build     [--source hq/brand/tokens.json] [--css <path>] [--ts <path>]
+                            [--prefix brand] [--check]
   morpheus doctor           [--all]
 
 Options
@@ -54,6 +57,9 @@ interface Flags {
   offline: boolean;
   kind?: string;
   owner?: string;
+  source?: string;
+  css?: string;
+  ts?: string;
   priority?: string;
   goal?: string;
   positional: string[];
@@ -103,6 +109,15 @@ function parseArgs(argv: string[]): Flags {
       case "--kind":
         flags.kind = argv[++i];
         break;
+      case "--source":
+        flags.source = argv[++i];
+        break;
+      case "--css":
+        flags.css = argv[++i];
+        break;
+      case "--ts":
+        flags.ts = argv[++i];
+        break;
       case "--owner":
         flags.owner = argv[++i];
         break;
@@ -132,6 +147,21 @@ async function main(): Promise<number> {
   const dir = resolve(process.cwd(), flags.dir);
 
   if (group === "doctor") return doctorRun(process.cwd(), flags.all);
+
+  if (group === "tokens") {
+    if (command === "build" || command === undefined) {
+      return tokensBuild({
+        root: process.cwd(),
+        source: flags.source,
+        css: flags.css,
+        ts: flags.ts,
+        prefix: flags.prefix,
+        check: flags.check,
+      });
+    }
+    console.error(`Unknown tokens command "${command}".\n\n${HELP}`);
+    return 1;
+  }
 
   if (group === "init") {
     if (command === "status") {
@@ -237,10 +267,13 @@ async function main(): Promise<number> {
       return ship(dir, rest, process.cwd(), flags.check);
     case "new": {
       const [kind, ...titleParts] = rest;
-      return create(dir, kind ?? "", titleParts.join(" "), {
-        priority: flags.priority,
-        goal: flags.goal,
-      });
+      return create(
+        dir,
+        kind ?? "",
+        titleParts.join(" "),
+        { priority: flags.priority, goal: flags.goal },
+        process.cwd(),
+      );
     }
     default:
       console.error(`Unknown pm command "${command ?? ""}".\n\n${HELP}`);

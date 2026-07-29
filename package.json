@@ -19,7 +19,8 @@
     "./brand": "./dist/brand/index.js",
     "./access": "./dist/access/index.js",
     "./registry": "./dist/registry/index.js",
-    "./doctor": "./dist/doctor/index.js"
+    "./doctor": "./dist/doctor/index.js",
+    "./design": "./dist/design/index.js"
   },
   "files": [
     "dist"
