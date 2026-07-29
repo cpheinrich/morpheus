@@ -122,6 +122,21 @@ describe("checkPr", () => {
     expect(findings.find((f) => f.rule === "branch-name")?.level).toBe("warning");
   });
 
+  // Both of these fire after the work is done, when renaming the branch is
+  // expensive. Reporting the violation without the recovery is what let the
+  // same mistake happen three times.
+  it("names the recovery command when the branch stakes no id", async () => {
+    const findings = await checkPr(goodPr({ branch: "hotfix" }));
+    expect(findings.find((f) => f.rule === "branch-name")?.message).toContain("pm claim");
+  });
+
+  it("names the recovery command when the item does not exist", async () => {
+    const findings = await checkPr(goodPr({ branch: "ev-999-ghost" }));
+    const message = findings.find((f) => f.rule === "roadmap-item-exists")?.message ?? "";
+    expect(message).toContain("pm new roadmap");
+    expect(message).toContain("pm claim");
+  });
+
   it("ignores generated README files when looking for doc changes", async () => {
     const findings = await checkPr(
       goodPr({ changedFiles: ["src/pm/index.ts", "tests/pm.test.ts", "hq/product/roadmap/README.md"] }),
