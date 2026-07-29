@@ -3,133 +3,98 @@ owner: cpheinrich
 date: 2026-07-29
 agents:
   - claude
-previous: .agent/inbox-archive/2026-07-29-0730-cpheinrich.md
+previous: .agent/inbox-archive/2026-07-29-0900-cpheinrich.md
 ---
 
 # Inbox — 2026-07-29
 
-**GCP is done.** `dh-darwin` and `dh-evo` created under your `darwin.health` organization; the
-old `darwin-health-503300` and the auto-created `evident-door-503300-s6` are in the 30-day
-deletion window. Neither had anything but default APIs enabled.
+**The GCP block cleared.** `dh-darwin` and `dh-evo` exist with Firebase, Firestore in `nam5`, and
+Google sign-in on Evo — all on Spark, no billing. The root cause of that long 403 was unaccepted
+Firebase Terms of Service, not IAM or org policy.
 
-**The brand wizard is built** — [RM-014](product/roadmap/RM-014.md), `morpheus brand init`, eight
-questions, 76 tests passing. And [RM-004](https://github.com/darwin-health/evo/blob/rm-007-morpheus-structure/hq/product/roadmap/RM-004.md)
-is on the Evo PR branch as `owner: human`, waiting for you to run it.
+**Shipped since the last cycle:** the brand wizard ([RM-014](product/roadmap/RM-014.md)) and
+`morpheus access sync` — access declared in `morpheus.json` and applied as Firebase custom
+claims, so granting it is a reviewable commit. **88 tests, CI green on both repos.**
 
-**PostHog is not blocking anything** — see item 2. Short version: skip it.
+Evo is fully retrofitted and has its own inbox now. Two PRs open there, both yours to merge.
 
 > `❗` needs you and ends in an empty `~`. `✅` is settled. Reply after the empty `~`.
 
-## ❗ 1. GCP — created, but ids needed a prefix and billing is missing · `claude`
+## ❗ 1. Working on Evo — yes, use a fresh session · `claude`
 
-~ *(previous: create darwin and evo projects under chris@darwin.health; axe the old ones)*
+~ *(previous: should I create a new Claude session for the Evo roadmap work?)*
 
-Done, with two things you should know.
+**Yes, and start it in `~/darwin/evo`.** Two reasons that actually matter:
 
-**Project ids are globally unique across all of GCP**, so `darwin`, `darwin-health`, `evo-med`,
-and `darwin-app` were all unavailable. Settled on an org prefix:
+**Context relevance.** This session holds twelve hours of Morpheus design argument — naming
+rounds, the Firebase debugging, org policy archaeology. Almost none of it helps someone building
+Evo's brand pages, and it crowds out what does.
 
-| Project id | Name | Status |
-|---|---|---|
-| `dh-darwin` | Darwin | Active, under org `darwin.health` |
-| `dh-evo` | Evo Health | Active, under org `darwin.health` |
-| `darwin-health-503300` | — | Deletion requested |
-| `evident-door-503300-s6` | — | Deletion requested |
+**Evo now has its own memory.** I just created `.agent/decisions.md` and `.agent/learned.md`
+there, seeded with what is true about Evo specifically — the educational-only constraint the
+product exists under, that the live surface wins over brand documents, that `apps/web` has no
+Firebase dependency yet, and that the 18 calculator tests run via `node` rather than Vitest. A
+fresh session reads those and starts informed rather than blank.
 
-Both new projects sit under your **`darwin.health` organization** (id `599341441788`), which
-exists because of Google Workspace. That is better than loose projects — org-level IAM and
-policy apply.
+**Use this session for Morpheus itself** — the kit, `init`, templates. Use Evo's for Evo. Claims
+(`morpheus pm claim`) stop the two from colliding if they ever touch the same item.
 
-**I owe you a correction.** I reported several ids as "already taken" that probably were not.
-The actual error on some of them was *"display name must be at least 4 characters"* — I was
-passing "Evo" as the name. I classified the failure by matching on the presence of an error
-rather than reading it, which invented a diagnosis. `dh-evo` worked immediately once the display
-name was "Evo Health". Recorded in the worklog.
-
-**The real blocker: you have no billing account.** `gcloud billing accounts list` returns
-nothing, which means no Firebase Blaze, no Cloud Run, no Secret Manager beyond the free quota.
-That is the one step I cannot do — it needs a payment method.
-
-Create one at [console.cloud.google.com/billing](https://console.cloud.google.com/billing),
-then I can link both projects, enable APIs, and create the Firebase projects. Personal projects
-(`cpheinrich`, `heinrich-bros`) should go on a separate billing account so the split holds.
+**A gap this exposed:** the Evo retrofit produced `hq/product/` but no `hq/inbox/` and no
+`.agent/`, because both conventions postdate it. `morpheus init` has the same hole. Filed as
+[RM-015](product/roadmap/RM-015.md) — and the important half is that `init` must **seed** those
+files from the wizard answers, since an empty `decisions.md` reads as "nothing was decided"
+rather than "nobody wrote it down".
 
 ~
 
-## ❗ 2. PostHog — nothing is blocked, so defer it · `claude`
+## ❗ 2. Two Evo PRs to merge · `claude`
 
-~ *(previous: want one account per org; stuck in the setup wizard after creating the darwin.health account)*
+~ *(new)*
 
-**Direct answer to your question: nothing is blocked.** You deferred the event schema yourself
-last cycle in favour of brand work, and Evo's analytics item is in backlog behind it. PostHog
-is not on the critical path for anything.
+Both are config, no behaviour change:
 
-**So skip it.** I would not spend browser-automation time on it either — the answer is visible in
-your screenshot: there is a **"Skip for now"** button at the bottom right. The install wizard is
-optional onboarding, not a gate. Your project already exists, and both keys live in Settings
-regardless of whether you run it.
+- **[evo#7](https://github.com/darwin-health/evo/pull/7)** — the `/hq` allowlist, account
+  bindings, `.agent/` memory, `hq/inbox/`, and inbox validation in CI
 
-For when you come back to it, the two minutes of it:
+[evo#6](https://github.com/darwin-health/evo/pull/6) already merged and is deploying.
 
-- **`phc_` project key** — Settings → Project → Project API Key. Goes in the app, safe to expose.
-- **`phx_` personal key** — avatar → Personal API keys. Drives the MCP; scope it to specific
-  projects so Evo's key cannot read Darwin's.
-- Do **not** run `npx @posthog/wizard` yet — it edits the repo to wire up the SDK, and Evo's PR
-  is advertised as structural-only.
-
-**On one account per organization: agreed, and it is the better call.** Separate logins mean a
-compromised personal account cannot reach Darwin's analytics, which one login with an org
-switcher does not give you. Recorded.
+Your Evo inbox is at
+[`hq/inbox/cpheinrich.md`](https://github.com/darwin-health/evo/blob/config-hq-access/hq/inbox/cpheinrich.md)
+on that branch — it goes live when you merge.
 
 ~
 
-## ❗ 3. Brand wizard — built, and yours to run · `claude`
+## ✅ 3. Firebase, auth, and access — done · `claude`
 
-~ *(previous: current website visual is canonical; positioning is in ~/darwin/docs; build the wizard then create an Evo task for me to go through it)*
+`dh-darwin` and `dh-evo`: Firebase added, Firestore `nam5` (permanent), Google sign-in enabled on
+Evo with public-facing name "Evo".
 
-Built exactly as you described. `morpheus brand init` asks eight questions and writes
-`hq/brand/` — README, strategy, voice, visual-system, tokens.json, messaging.json, assets/.
+`morpheus access sync` applies the `morpheus.json` allowlist as custom claims — you as `admin`,
+Robbie as `employee`. Both report **pending** until first sign-in, which is correct: a Firebase
+Auth user does not exist until then, and re-running completes the grant. Revocation is included,
+so the list is authoritative rather than merely additive.
 
-**The design constraint that shaped it: nothing emits a `TODO`.** A skipped optional question
-produces an *absent* section rather than an empty heading, because a heading with nothing under
-it reads as answered when it is not. There is a test asserting no output matches
-`TODO|TBD|FIXME|{{`.
+**The 403 was unaccepted Firebase Terms of Service.** Not IAM, not OAuth scope, not org policy —
+and the error named none of them. Once you accepted the terms for Darwin, the CLI provisioned Evo
+first try. In `.agent/learned.md` with the general lesson: when a Google API refuses despite
+Owner, check whether the product's terms were ever accepted before touching IAM.
 
-**The question that earns its place is `never`** — what must this never feel or sound like. It
-is required, and it is the only answer an agent cannot infer from the others. It lands in
-`strategy.md` as a hard rule: *"These are not preferences. They are the failure modes this brand
-drifts toward."*
+You also now hold `organizationAdmin` and `orgpolicy.policyAdmin` on the org — nobody did before,
+and that would have bitten you again with Cloud Run, Cloud Build, or Vertex AI.
 
-**Your authority ordering is encoded.** Given a `visualSource`, `visual-system.md` states that
-where the document and the live surface disagree, **the live surface wins** — correct for Evo,
-where Codex already shipped the design.
+## ✅ 4. The committed screenshot — removed · `claude`
 
-[RM-004 on the Evo branch](https://github.com/darwin-health/evo/blob/rm-007-morpheus-structure/hq/product/roadmap/RM-004.md)
-is `owner: human` and spells out the three sources and their authority. Run it whenever:
+~ *(previous: don't store image assets in git; delete it and move on)*
 
-```sh
-cd ~/darwin/evo && morpheus brand init --name "Evo" --prefix ev
-```
+Deleted, images gitignored repo-wide with an exception for `hq/brand/assets/`. Cause was my
+`git add -A` sweeping up what Nimbalyst wrote to `hq/inbox/assets/`. Recorded, along with the
+rule to prefer explicit paths over `-A` when an editor keeps its own scratch state. Not purging
+history, as you said.
 
-Roughly ten minutes. Then I derive `tokens.json` from what's actually rendering, move the
-assets, and wire `messaging.json` as an import so taglines cannot drift.
+## Parked
 
-**One thing I did not do:** rename `~/darwin` to `~/darwin-health` with `darwin/` and `evo/`
-inside. It is your filesystem and a few CLAUDE.md files reference the old path. Say go and I will
-do it and fix the references — it is a good idea, since the current nesting makes `darwin` mean
-both the company and one of its apps.
+**Google billing.** No Darwin billing account exists and there is no non-trial path to create
+one; the trial flow fails with `OR_BACR2`. Nothing needs it — Spark covers Auth and Firestore.
+Options when you return: link your personal account (two commands, reversible), or contact sales.
 
-~
-
-## ✅ 4. Morpheus is worth it for one project · `claude`
-
-~ *(previous: schematizing the business is useful even for one project — like an outline or a test written first; worth noting in the README)*
-
-Added to the README as **"What to expect"**, framed forward rather than as commentary:
-Morpheus costs more up front, and the return arrives in three waves — agents unblocked
-immediately, structure doing real thinking within weeks, and accumulated memory compounding over
-months.
-
-Kept your strongest point as the load-bearing one: *worth it for a single project on the second
-wave alone.* Schematizing the business is not overhead; it is the thinking, done where it can be
-reused.
+**PostHog.** Two organizations, one per billing entity. Blocked on nothing.
