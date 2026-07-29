@@ -16,3 +16,8 @@ jobs:
     uses: ./.github/workflows/pm-check.yml
     with:
       product-dir: hq/product
+
+  pr:
+    uses: ./.github/workflows/pr-check.yml
+    with:
+      product-dir: hq/product

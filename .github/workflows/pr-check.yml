@@ -1,0 +1,50 @@
+name: PR check
+
+# Reusable workflow enforcing the PR conventions in AGENTS.md.
+# Instructions get ignored eventually; a failing check does not.
+#
+#   jobs:
+#     pr:
+#       uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
+
+on:
+  workflow_call:
+    inputs:
+      product-dir:
+        type: string
+        default: "hq/product"
+      base:
+        type: string
+        default: "origin/main"
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        type: string
+        default: "11.9.0"
+
+jobs:
+  conventions:
+    runs-on: ubuntu-latest
+    # Only meaningful on a pull request — there is no PR body on a push.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # checkPr diffs against the base ref, so it needs the history.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Check PR conventions
+        run: pnpm morpheus check pr --dir ${{ inputs.product-dir }} --base origin/${{ github.base_ref }}

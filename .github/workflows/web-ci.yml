@@ -1,0 +1,73 @@
+name: Web CI
+
+# Reusable workflow for a Next.js surface in apps/web.
+#
+#   jobs:
+#     web:
+#       uses: cpheinrich/morpheus/.github/workflows/web-ci.yml@main
+#       with:
+#         working-directory: apps/web
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        default: "apps/web"
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        type: string
+        default: "11.9.0"
+      run-e2e:
+        type: boolean
+        default: false
+      build-tokens:
+        description: Run the design-token build before the app build.
+        type: boolean
+        default: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Tokens are generated from hq/brand into packages/shared, so the app
+      # cannot typecheck until they exist.
+      - name: Build design tokens
+        if: ${{ inputs.build-tokens }}
+        run: pnpm run build:tokens
+
+      - name: Typecheck
+        working-directory: ${{ inputs.working-directory }}
+        run: pnpm typecheck
+
+      - name: Lint
+        working-directory: ${{ inputs.working-directory }}
+        run: pnpm lint
+
+      - name: Unit tests
+        working-directory: ${{ inputs.working-directory }}
+        run: pnpm test
+
+      - name: Build
+        working-directory: ${{ inputs.working-directory }}
+        run: pnpm build
+
+      - name: E2E
+        if: ${{ inputs.run-e2e }}
+        run: pnpm exec playwright install --with-deps chromium && pnpm exec playwright test

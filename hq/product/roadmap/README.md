@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [RM-002](./RM-002.md) | Reusable GitHub workflows | in-progress | P0 | G-2026-Q3-01 | — |
+| [RM-002](./RM-002.md) | Reusable GitHub workflows | review | P0 | G-2026-Q3-01 | — |
 | [RM-003](./RM-003.md) | Publish the kit to GitHub Packages | backlog | P0 | G-2026-Q3-01 | — |
 | [RM-004](./RM-004.md) | /hq auth: Firebase custom claims | backlog | P0 | G-2026-Q3-01 | — |
 | [RM-005](./RM-005.md) | kit/hq: dashboard shell | backlog | P1 | G-2026-Q3-01 | — |
