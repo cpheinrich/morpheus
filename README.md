@@ -36,6 +36,27 @@ morpheus upgrade       # pull newer templates and kit into an existing project
 morpheus doctor        # verify a project matches current conventions
 ```
 
+## What to expect
+
+Initializing a project with Morpheus costs more up front than starting from a blank repo. You
+answer a wizard, credentials get provisioned, and structure exists before there is anything to
+put in it.
+
+The return is compounding, and it arrives in three waves:
+
+1. **Immediately** — agents are not blocked. Credentials are in place, the repo layout is
+   predictable, and CI works on the first push. Most of the friction in a young project is an
+   agent waiting on an auth step a human has to perform.
+2. **Within weeks** — the structure itself does work. Having to state the audience, the
+   boundaries, and the goals before writing code produces a cleaner result for the same reason
+   an outline does, or a test written first. Schematizing the business is not overhead; it is
+   the thinking, done where it can be reused.
+3. **Over months** — memory accumulates. Decisions, worklogs, and customer data mean an agent
+   starting today knows what was tried in March and why it was abandoned.
+
+Worth it for a single project on point 2 alone. Across several, the reuse makes the first two
+waves nearly free.
+
 ## Editing
 
 Everything Morpheus manages is plain markdown with YAML frontmatter, so **any editor works** —

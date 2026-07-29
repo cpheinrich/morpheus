@@ -6,10 +6,10 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
+| [RM-014](./RM-014.md) | Brand template and wizard | review | P0 | G-2026-Q3-01 | — |
 | [RM-007](./RM-007.md) | Retrofit Evo to the Morpheus structure | review | P1 | G-2026-Q3-01 | — |
 | [RM-003](./RM-003.md) | Publish the kit to GitHub Packages | backlog | P0 | G-2026-Q3-01 | — |
 | [RM-004](./RM-004.md) | /hq auth: Firebase custom claims | backlog | P0 | G-2026-Q3-01 | — |
-| [RM-014](./RM-014.md) | Brand template and wizard | backlog | P0 | G-2026-Q3-01 | — |
 | [RM-005](./RM-005.md) | kit/hq: dashboard shell | backlog | P1 | G-2026-Q3-01 | — |
 | [RM-006](./RM-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | G-2026-Q3-01 | — |
 | [RM-011](./RM-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | G-2026-Q3-01 | — |

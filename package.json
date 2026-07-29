@@ -15,7 +15,8 @@
   "exports": {
     ".": "./dist/index.js",
     "./pm": "./dist/pm/index.js",
-    "./inbox": "./dist/inbox/index.js"
+    "./inbox": "./dist/inbox/index.js",
+    "./brand": "./dist/brand/index.js"
   },
   "files": [
     "dist"

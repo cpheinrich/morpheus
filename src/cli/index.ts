@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { claim, claims, create, index, validate } from "./pm.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
+import { init as brandInit } from "./brand.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -14,10 +15,13 @@ Usage
   morpheus pm claims
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus inbox validate   [--dir <hq/inbox>]
+  morpheus brand init       [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
 
 Options
   --dir <path>   Product directory (default: hq/product)
   --base <ref>   Base ref for the PR diff (default: origin/main)
+  --name <str>   Display name for brand init
+  --prefix <str> Two-letter token prefix for brand init
   --check        Verify indexes are current without writing; exits non-zero if stale
   -h, --help     Show this message
 `;
@@ -25,6 +29,8 @@ Options
 interface Flags {
   dir: string;
   base: string;
+  name?: string;
+  prefix?: string;
   check: boolean;
   priority?: string;
   goal?: string;
@@ -51,6 +57,12 @@ function parseArgs(argv: string[]): Flags {
       case "--check":
         flags.check = true;
         break;
+      case "--name":
+        flags.name = argv[++i];
+        break;
+      case "--prefix":
+        flags.prefix = argv[++i];
+        break;
       case "--priority":
         flags.priority = argv[++i];
         break;
@@ -75,6 +87,19 @@ async function main(): Promise<number> {
   const flags = parseArgs(argv);
   const [group, command, ...rest] = flags.positional;
   const dir = resolve(process.cwd(), flags.dir);
+
+  if (group === "brand") {
+    if (command === "init") {
+      const name = flags.name ?? basename(process.cwd());
+      return brandInit({
+        brandDir: resolve(process.cwd(), flags.dir === "hq/product" ? "hq/brand" : flags.dir),
+        name,
+        prefix: flags.prefix ?? name.slice(0, 2).toLowerCase(),
+      });
+    }
+    console.error(`Unknown brand command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+  }
 
   if (group === "inbox") {
     if (command === "validate") {

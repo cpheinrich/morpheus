@@ -143,3 +143,20 @@ with the more expensive tool.
 project *is* a GCP project, one-to-one, so apps with separate user bases must be separate GCP
 projects. Grouping happens at the billing account, which is where it actually matters. A company
 therefore has n+1 projects: one per app, plus a warehouse project for cross-app BigQuery.
+
+**GCP project ids need an org prefix** — 2026-07-29. Ids are globally unique across all of GCP,
+so `darwin`, `evo`, `darwin-health`, and `evo-med` were all taken. Convention is `<org>-<app>`:
+`dh-darwin`, `dh-evo`. Display names must be at least 4 characters, which is a separate and
+easily-misread failure.
+
+**One PostHog account per organization, not one login with two orgs** — 2026-07-29. Chris does
+not want his personal email associated with Darwin's analytics even though PostHog supports it.
+Separate accounts, separate billing, cleaner boundary.
+
+**Brand: the live surface wins over the brand document** — 2026-07-29. Where `apps/web/app/brand`
+and a strategy doc disagree, what is actually rendering is the decided direction until someone
+deliberately changes it. The wizard encodes this when given a `visualSource`.
+
+**The brand wizard is owner: human** — the answers must come from current thinking, not be
+reverse-engineered from artefacts of different vintages. An agent reading three disagreeing
+sources produces something plausible and subtly wrong.
