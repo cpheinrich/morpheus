@@ -22,9 +22,9 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `hq/product/` | Morpheus's own roadmap and goals — it eats its own dog food |
 | `.github/workflows/` | Reusable workflows called by every project |
 | `tests/` | Vitest, mirroring `src/` |
-| `.agent/journal/` | What was attempted and learned, including dead ends |
+| `.agent/worklog/` | What was attempted and learned per task, including dead ends |
 | `.agent/decisions.md` | Settled choices and why — **read this first** |
-| `.agent/inbox/` | Archived inbox cycles with inline replies, date-first |
+| `.agent/inbox-archive/` | Past inbox cycles with replies, date-first |
 | `hq/inbox/<handle>.md` | Live inboxes — one per person by GitHub handle |
 
 ## Commands
@@ -67,10 +67,11 @@ checkout.
 **Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm morpheus pm index`, and commit
 any index changes. CI runs the same checks and will fail otherwise.
 
-**Append a journal entry** to `.agent/journal/YYYY-MM-DD-slug.md` before opening a PR. Record
+**Append a worklog entry** to `.agent/worklog/YYYY-MM-DD-slug.md` before opening a PR. Record
 what you learned, especially dead ends that produced no code — git history cannot capture those.
 
-**At the start of a session** read `.agent/decisions.md` and `.agent/learned.md`. Decisions are
+**At the start of a session** read `.agent/decisions.md` and `.agent/learned.md` — see
+[`.agent/README.md`](.agent/README.md) for how the four records relate. Decisions are
 settled choices — if one looks wrong, say so and ask rather than quietly working around it.
 
 ## The inbox cycle
@@ -88,7 +89,7 @@ the same file, so git never merges a status.
 2. He replies inline after the `~`, leaving the marker in place.
 3. On my next turn I: read the replies, act on them, promote anything durable to
    `.agent/decisions.md`, archive the whole exchange to
-   `.agent/inbox/YYYY-MM-DD-HHMM-<handle>.md` (date first, so the archive reads as one timeline), and write a fresh inbox.
+   `.agent/inbox-archive/YYYY-MM-DD-HHMM-<handle>.md` (date first, so the archive reads as one timeline), and write a fresh inbox.
 
 **Markers.** Three, and the distinction matters because Chris scans rather than reads:
 

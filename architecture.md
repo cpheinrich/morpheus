@@ -246,7 +246,7 @@ changes. Deferring stage 2 until iOS exists means you never pay for a generator 
 | Secrets | `secrets.manifest.json` + GSM | Manifest; values external (§14) |
 | Customer support | Chatwoot + `/hq/support` | Self-hosted + dashboard |
 | Agent instructions | `AGENTS.md`, `.claude/skills/` | Markdown |
-| Agent journal | `.agent/journal/` | Markdown |
+| Agent journal | `.agent/worklog/` | Markdown |
 | Goals, roadmap, requests | `hq/product/` | Markdown |
 | Engineering docs | `docs/` → `/hq/docs` | Markdown + Mermaid |
 | HR | Google Workspace + Gusto | External |
@@ -319,7 +319,7 @@ morpheus/
 ├── templates/
 │   └── base/  web/  ios/  hardware/  brand/  android/
 ├── .github/workflows/         # reusable workflows called by every project (§13.1)
-├── .agent/journal/
+├── .agent/worklog/
 ├── tests/
 └── docs/
 ```
@@ -544,7 +544,7 @@ flowchart LR
     H -->|anchored comments<br/>on preview| PR
     H -->|approve| MERGE[Merge → deploy]
     PR -->|comments sync| AG
-    MERGE --> J[".agent/journal/"]
+    MERGE --> J[".agent/worklog/"]
 ```
 
 The critical property: human feedback re-enters as PR comments the agent already knows how to
@@ -1662,7 +1662,7 @@ It should — but only where dogfooding is real, not ceremonial:
 |---|---|---|
 | Project management | `hq/product/roadmap/` in this repo | Morpheus has a roadmap; proves the format immediately |
 | Documentation | `docs/` with Mermaid | Already true of this file |
-| Agent memory | `.agent/journal/` | Multi-session work starts now |
+| Agent memory | `.agent/worklog/` | Multi-session work starts now |
 | CI | Calls its own reusable workflows | Genuine test: if they break, they break here first |
 | Conventions | Its own `AGENTS.md` + `morpheus check pr` | The gate must survive contact with its author |
 
@@ -1681,7 +1681,7 @@ exactly this data.**
 | Roadmap | `hq/product/roadmap/*.md` | GitHub renders the generated `README.md` as a table when you open the directory | Reads the directory |
 | Goals | `hq/product/goals/*.md` | Same | Same |
 | Docs | `docs/**.md` | GitHub renders markdown **and Mermaid diagrams** natively | Same |
-| Journal | `.agent/journal/*.md` | GitHub, or `grep` | Same |
+| Journal | `.agent/worklog/*.md` | GitHub, or `grep` | Same |
 | Code review queue | Open pull requests | GitHub PR list | GitHub API |
 | Decision queue | Issues labeled `decision` | GitHub issue list, filtered | GitHub API |
 
@@ -1776,7 +1776,7 @@ for architecture and review), or stay agent-agnostic and let you route by hand?
 company is purely hardware or services, `apps/` is nearly empty. Support it, or explicitly out of
 scope?
 
-**Q5 — Journal growth.** `.agent/journal/` grows monotonically. When does it need compaction, and
+**Q5 — Journal growth.** `.agent/worklog/` grows monotonically. When does it need compaction, and
 should a scheduled agent fold old entries into `learned.md`?
 
 **Q6 — `personal` projects that handle sensitive data.** `heinrich.money` is `kind: personal` by

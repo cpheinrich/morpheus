@@ -2,7 +2,7 @@
 owner: cpheinrich
 date: 2026-07-29
 agents: [claude]
-previous: .agent/inbox/2026-07-29-0400-cpheinrich.md
+previous: .agent/inbox-archive/2026-07-29-0400-cpheinrich.md
 ---
 
 # Inbox — 2026-07-29
@@ -270,7 +270,7 @@ the second push is rejected and it retries — git's own conflict detection is t
 
 You check in once or twice a day and want *one* place to look. If status were per-session you
 would have to read N files to find out what needs you, which is worse than today. Sessions are
-already covered by `.agent/journal/`, one entry per task, which is where "what did this
+already covered by `.agent/worklog/`, one entry per task, which is where "what did this
 particular run do" belongs.
 
 So: `hq/status/<person>.md` — one inbox per human, however many sessions wrote into it.
@@ -342,7 +342,7 @@ are peers, and neither manages the other. Owner works at any scale.
 per-person threads:
 
 ```
-.agent/inbox/2026-07-29-0407-cpheinrich.md
+.agent/inbox-archive/2026-07-29-0407-cpheinrich.md
              └── date ──┘ └time┘ └─ owner ─┘
 ```
 

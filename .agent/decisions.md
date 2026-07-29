@@ -98,7 +98,7 @@ field, no lock file, no new concept. Merging releases it by deleting the branch.
 
 **Inboxes are per person, not per session** — 2026-07-29. The point of the file is one place to
 look; per-session would mean reading N files to find what needs you. Sessions are covered by
-`.agent/journal/`. Split to `hq/status/<person>.md` done immediately, since Alex is already a
+`.agent/worklog/`. Split to `hq/status/<person>.md` done immediately, since Alex is already a
 Lakina collaborator. Items are tagged with the agent that raised them, so Claude and Codex land
 in one inbox rather than two.
 
@@ -123,3 +123,12 @@ level, which is why items are `##` with no wrapping section header.
 
 **Standup items link a roadmap id optionally, never mandatorily** — some items are prerequisites,
 decisions, or credentials rather than tasks. Requiring an id would mean inventing fake ones.
+
+**`.agent/inbox-archive/` and `.agent/worklog/`** — 2026-07-29. The archive shares a stem with
+`hq/inbox/` so the pairing is visible without documentation. `worklog` needs no counterpart
+directory: a roadmap item never moves, it just reaches `status: shipped`, and the worklog is a
+separate record of what was learned — including research that produced nothing.
+
+**Naming stopping rule** — name it well enough that a fresh agent reads it correctly on first
+encounter, then document the rest. Further rounds of renaming solve a documentation problem
+with the more expensive tool.

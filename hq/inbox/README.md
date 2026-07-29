@@ -14,7 +14,7 @@ it can continue — in practice, a todo list.
 owner: cpheinrich
 date: 2026-07-29
 agents: [claude, codex]
-previous: .agent/inbox/2026-07-29-0400-cpheinrich.md
+previous: .agent/inbox-archive/2026-07-29-0400-cpheinrich.md
 ---
 
 # Inbox — 2026-07-29
@@ -54,11 +54,11 @@ A person's file collects items from every agent working for them, tagged by agen
 and Codex running in parallel land in one place. Two agents share a working copy so writes
 serialise; two *people* never touch the same file, so git never merges an inbox.
 
-Sessions are recorded in `.agent/journal/` — one entry per task.
+Work is recorded in `.agent/worklog/` — one entry per task.
 
 ## Archives
 
-Each replied-to cycle is archived to `.agent/inbox/YYYY-MM-DD-HHMM-<handle>.md`. Date leads so
+Each replied-to cycle is archived to `.agent/inbox-archive/YYYY-MM-DD-HHMM-<handle>.md`. Date leads so
 the directory sorts as one project-wide timeline; the handle is last only to keep two people on
 the same day distinct.
 
