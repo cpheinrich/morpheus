@@ -166,6 +166,23 @@ describe("detection outranks the file, except when it cannot answer", () => {
     expect(found.find((s) => s.task.id === "goal")?.state).toBe("done");
   });
 
+  it("does not accept two divergent instruction files as a symlink", async () => {
+    await writeFile(join(dir, "AGENTS.md"), "# Agents\n");
+    await writeFile(join(dir, "CLAUDE.md"), "# Claude, separately and already drifting\n");
+
+    const found = await collectStatus(dir, { offline: true });
+    expect(found.find((s) => s.task.id === "agents-md")?.state).toBe("todo");
+  });
+
+  it("accepts a real symlink", async () => {
+    const { symlink } = await import("node:fs/promises");
+    await writeFile(join(dir, "AGENTS.md"), "# Agents\n");
+    await symlink("AGENTS.md", join(dir, "CLAUDE.md"));
+
+    const found = await collectStatus(dir, { offline: true });
+    expect(found.find((s) => s.task.id === "agents-md")?.state).toBe("done");
+  });
+
   it("detects a real manifest", async () => {
     const found = await collectStatus(dir, { offline: true });
     expect(found.find((s) => s.task.id === "manifest")?.state).toBe("done");
