@@ -31,6 +31,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 
 ```sh
 pnpm install
+pnpm build && npm link      # once — puts `morpheus` on PATH for every project
 pnpm typecheck             # tsc --noEmit
 pnpm test                  # vitest run
 pnpm build                 # tsc -p tsconfig.build.json

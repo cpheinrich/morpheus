@@ -17,10 +17,25 @@ deliberately, since the first hand-retrofit of a real project is meant to be its
 Current work is tracked in [`hq/product/roadmap/`](./hq/product/roadmap/), which Morpheus
 generates with its own tooling.
 
+## Install
+
+```sh
+git clone https://github.com/cpheinrich/morpheus.git ~/morpheus
+cd ~/morpheus && pnpm install && pnpm build && npm link
+```
+
+`npm link` puts `morpheus` on your PATH, so it works from any project directory. There is no
+published package — see the licence below.
+
+Register each project once so ids and prefixes stay unique:
+
+```sh
+cd ~/your-project && morpheus registry add
+```
+
 ## What works today
 
 ```sh
-pnpm install
 
 morpheus pm validate                      # validate hq/product frontmatter against the schemas
 morpheus pm index                         # regenerate the README index tables

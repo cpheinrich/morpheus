@@ -45,3 +45,14 @@ Durable facts worth knowing before starting work here. Append; do not rewrite hi
 - **Git does not track empty directories.** Scaffolding created with `mkdir` and no file in it
   ships missing and nobody notices until someone looks. Write a README into every directory the
   scaffold creates — it explains the directory *and* makes it exist.
+
+- **`tsc` does not preserve the executable bit**, so `dist/cli/index.js` is unrunnable after every
+  build even with a shebang. The build script chmods it. Symptom is `command not found` or
+  `permission denied` from a `npm link`ed binary that clearly exists.
+
+- **`gh pr merge --auto` can fire on a stale head.** Enabled on a PR whose checks were failing,
+  it merged *without* a fix pushed afterwards — the roadmap item that PR added was silently lost
+  from `main`.
+
+  **Only enable auto-merge once the branch is complete.** Before that, `gh pr checks --watch`,
+  fix, then set `--auto`. Auto-merge is a queue, not a promise to merge whatever arrives later.
