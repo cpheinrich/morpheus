@@ -2,7 +2,13 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { checkPr, hasSection, roadmapIdFromBranch, type PrContext } from "../src/check/pr.js";
+import {
+  checkPr,
+  hasSection,
+  isRecordsOnly,
+  roadmapIdFromBranch,
+  type PrContext,
+} from "../src/check/pr.js";
 
 let product: string;
 
@@ -135,6 +141,53 @@ describe("checkPr", () => {
     const message = findings.find((f) => f.rule === "roadmap-item-exists")?.message ?? "";
     expect(message).toContain("pm new roadmap");
     expect(message).toContain("pm claim");
+  });
+});
+
+describe("isRecordsOnly", () => {
+  it("recognises an inbox cycle", () => {
+    expect(
+      isRecordsOnly(["hq/inbox/cpheinrich.md", ".agent/inbox-archive/2026-07-29-1330-x.md"]),
+    ).toBe(true);
+  });
+
+  it("is false when anything outside the records changed", () => {
+    expect(isRecordsOnly(["hq/inbox/cpheinrich.md", "src/pm/parse.ts"])).toBe(false);
+  });
+
+  // The regression that matters. `every` is vacuously true on an empty array,
+  // so a failed `git diff` would have exempted a PR from every roadmap rule at
+  // once — a check reporting an empty thing as correct.
+  it("is false for no changed files at all, which is a failure to determine", () => {
+    expect(isRecordsOnly([])).toBe(false);
+  });
+});
+
+describe("a PR that only moves records", () => {
+  const cycle = () =>
+    goodPr({
+      branch: "inbox-2026-07-29",
+      changedFiles: ["hq/inbox/cpheinrich.md", ".agent/inbox-archive/2026-07-29-1330-x.md"],
+    });
+
+  it("needs no roadmap item, so a branch staking none is fine", async () => {
+    const findings = await checkPr(cycle());
+    expect(findings.find((f) => f.rule === "branch-name")).toBeUndefined();
+    expect(findings).toHaveLength(0);
+  });
+
+  it("blocks when it borrows a claimed branch, which is how MO-010 shipped unstarted", async () => {
+    await seedRoadmap("EV-014", "in-progress");
+    const findings = await checkPr({ ...cycle(), branch: "ev-014-something" });
+
+    const f = findings.find((x) => x.rule === "records-on-claimed-branch");
+    expect(f?.level).toBe("error");
+    expect(f?.message).toContain("EV-014");
+  });
+
+  it("still requires a test plan, since a human reads these too", async () => {
+    const findings = await checkPr({ ...cycle(), body: "## Open questions\n\nNone.\n" });
+    expect(findings.find((f) => f.rule === "test-plan")?.level).toBe("error");
   });
 
   it("ignores generated README files when looking for doc changes", async () => {

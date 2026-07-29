@@ -79,6 +79,12 @@ checkout.
 - Any open questions you could not resolve, stated plainly rather than guessed at
 - The roadmap item moved to `review`
 
+**Except a PR that only touches records** — `hq/inbox/` and `.agent/`. An inbox cycle belongs to
+no feature and has no item to move. Branch it as `inbox-<YYYY-MM-DD>`, staking no id, and
+`check pr` will not ask for one. **Never borrow an unrelated item's branch for this**: merging
+releases its claim and marks it shipped. That is how MO-010 came to read as shipped against a PR
+that only moved the inbox.
+
 **Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm morpheus pm index`, and commit
 any index changes. CI runs the same checks and will fail otherwise.
 
@@ -134,6 +140,8 @@ the same file, so git never merges a status.
 3. On my next turn I: read the replies, act on them, promote anything durable to
    `.agent/decisions.md`, archive the whole exchange to
    `.agent/inbox-archive/YYYY-MM-DD-HHMM-<handle>.md` (date first, so the archive reads as one timeline), and write a fresh inbox.
+
+A cycle goes out on its own `inbox-<YYYY-MM-DD>` branch — see the records exception above.
 
 **Markers.** Three, and the distinction matters because Chris scans rather than reads:
 

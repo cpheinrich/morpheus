@@ -6,11 +6,12 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-041](./MO-041.md) | pm claim is the only documented way to start work | review | P2 | — | — |
+| [MO-042](./MO-042.md) | An inbox cycle has no roadmap item to ride | review | P1 | — | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-001](./MO-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-002](./MO-002.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-003](./MO-003.md) | Consume the kit as a git dependency, not a published package | shipped | P0 | MO-G-2026-Q3-01 | #26 |
@@ -41,9 +42,9 @@ item files, not this table.
 | [MO-040](./MO-040.md) | pm new re-issues an id another session already claimed | shipped | P1 | — | #33 |
 | [MO-008](./MO-008.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
 | [MO-009](./MO-009.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
-| [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | #31 |
 | [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | shipped | P2 | MO-G-2026-Q3-01 | #1, #4 |
 | [MO-025](./MO-025.md) | Convergence requires evidence on more than one surface | shipped | P2 | MO-G-2026-Q3-01 | #16 |
 | [MO-034](./MO-034.md) | agents-md detector passes when CLAUDE.md is a divergent copy | shipped | P2 | MO-G-2026-Q3-01 | #27 |
+| [MO-041](./MO-041.md) | pm claim is the only documented way to start work | shipped | P2 | — | #34 |
 | [MO-012](./MO-012.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — |
 <!-- morpheus:end -->

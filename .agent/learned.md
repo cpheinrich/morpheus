@@ -90,6 +90,15 @@ Three occurrences now, so it is a rule rather than a run of bad luck:
 The shape is always the same: a failure to determine something gets encoded as a determination.
 When a check cannot run, say it did not run.
 
+- **Borrowing a claim to carry unrelated work corrupts the board silently.** An inbox cycle had
+  no roadmap item of its own, so PR #31 went out on `mo-010-simplify-architecture-md`. Merging
+  released that claim and reconcile marked MO-010 **shipped with `prs: [31]`** — a PR that changed
+  only `hq/inbox/` and `.agent/inbox-archive/`. Nobody had started the architecture work.
+
+  The board being *ahead* of reality is worse than lagging it: a lagging board gets corrected on
+  sight, and a shipped item is never looked at again. `check pr` now blocks a records-only PR on a
+  branch that stakes an id.
+
 ## A check that skips what is absent will report an empty thing as correct
 
 Four instances in one day:

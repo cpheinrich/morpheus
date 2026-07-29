@@ -30,6 +30,29 @@ const TEST = /(^tests\/|\.test\.tsx?$)/;
 const DOCS = /^(docs\/|architecture\.md$|README\.md$|AGENTS\.md$)/;
 const GENERATED = /README\.md$/;
 
+/**
+ * Paths that record what happened rather than change what the software does:
+ * an inbox cycle, a worklog entry, a decision.
+ */
+const RECORDS = /^(hq\/inbox\/|\.agent\/)/;
+
+/**
+ * True when every change is a record, so the PR needs no roadmap item.
+ *
+ * An inbox cycle is real work with nothing to claim — it belongs to no feature.
+ * Without this it had to ride someone else's branch, and it did: PR #31 moved
+ * the inbox on `mo-010-simplify-architecture-md`, which marked MO-010 shipped
+ * with a PR that never touched architecture.md.
+ *
+ * The `length > 0` is load-bearing, not defensive. An empty list satisfies
+ * `every` vacuously, so a failed `git diff` would exempt a PR from every
+ * roadmap rule at once — the exact shape `.agent/learned.md` records under *a
+ * check that skips what is absent will report an empty thing as correct*.
+ */
+export function isRecordsOnly(changedFiles: string[]): boolean {
+  return changedFiles.length > 0 && changedFiles.every((f) => RECORDS.test(f));
+}
+
 /** Extract the roadmap id a branch refers to: ev-014-slug -> EV-014. */
 export function roadmapIdFromBranch(branch: string): string | null {
   const m = /^([a-z]{2,4})-(\d{3,})(?:-|$)/i.exec(branch);
@@ -107,7 +130,21 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
   // hand-naming was already documented when it broke three times — what was
   // missing was the recovery, at the moment someone is looking at the error.
   const id = roadmapIdFromBranch(branch);
-  if (!id) {
+  if (isRecordsOnly(changedFiles)) {
+    // Nothing to claim, so nothing to require — but borrowing a claim is worse
+    // than having none, because merging releases it and reconcile marks the
+    // item shipped against work the PR did not do.
+    if (id) {
+      findings.push({
+        level: "error",
+        rule: "records-on-claimed-branch",
+        message:
+          `This PR only changes records, but "${branch}" claims ${id}. Merging it would ` +
+          `mark ${id} shipped against work it did not do. Move the commits to a branch ` +
+          `that stakes no id, e.g. "inbox-2026-07-29".`,
+      });
+    }
+  } else if (!id) {
     findings.push({
       level: "warning",
       rule: "branch-name",
