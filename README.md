@@ -57,8 +57,7 @@ for consistency, which makes it a poor fit for anyone whose stack differs from m
 
 **[PolyForm Noncommercial 1.0.0](./LICENSE.md)** — source-available, not open source.
 
-Free for any noncommercial purpose: personal projects, hobby work, research, study, and
-evaluation. Reading it, forking it, modifying it, and taking ideas from it are all fine.
+Free for any noncommercial purpose: personal projects, hobby work, research, and study.
 
 **Commercial use requires a separate license.** That includes using Morpheus to build or
 operate anything intended for commercial advantage or monetary compensation. If you want to
