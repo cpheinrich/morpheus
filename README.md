@@ -11,26 +11,49 @@ Named for the Greek god who gives shape to formless things — from *morphē*, "
 
 ## Status
 
-Pre-implementation. The design is being worked out in [`architecture.md`](./architecture.md); no code has been written yet.
+Early. The project management layer is built and in use; the initializer is not written yet —
+deliberately, since the first hand-retrofit of a real project is meant to be its specification.
 
-## Usage
+Current work is tracked in [`hq/product/roadmap/`](./hq/product/roadmap/), which Morpheus
+generates with its own tooling.
 
-Not yet implemented. The intended entry point:
+## What works today
 
 ```sh
-morpheus init acme          # interactive wizard → new repo, fully scaffolded
-morpheus upgrade            # pull newer templates + packages into an existing project
-morpheus doctor             # verify a project matches current conventions
+pnpm install
+
+morpheus pm validate                      # validate hq/product frontmatter against the schemas
+morpheus pm index                         # regenerate the README index tables
+morpheus pm new roadmap "Ship analytics" --priority P1
+```
+
+Not yet implemented:
+
+```sh
+morpheus init acme     # interactive wizard → new repo, fully scaffolded
+morpheus add android   # bolt a new surface onto an existing project
+morpheus upgrade       # pull newer templates and kit into an existing project
+morpheus doctor        # verify a project matches current conventions
 ```
 
 ## Documentation
 
 **[`architecture.md`](./architecture.md)** — the complete specification: principles, project
-structure, canonical tool choices, package catalog, agent operating model, and secrets
-convention. Read that first; this file is only an index.
+structure, canonical tool choices, the agent operating model, credential bootstrap, and
+secrets convention. Read that first; this file is only an index.
 
-## Scope
+[`AGENTS.md`](./AGENTS.md) is the entry point for agents working in this repo.
 
-Private. Used by Chris Heinrich and a small number of family and friends for their own
-projects. Conventions here are deliberately opinionated and non-negotiable by default —
-the point is to trade configurability for consistency.
+## Scope and expectations
+
+Built for my own projects and shared with a few family and friends. It is public because that
+is simpler than keeping it private, not because it is a product.
+
+There is no support, no roadmap commitment, and no stability guarantee. Conventions are
+deliberately opinionated and mostly non-negotiable — the whole point is trading configurability
+for consistency, which makes it a poor fit for anyone whose stack differs from mine. You are
+welcome to read it, fork it, or take ideas from it.
+
+## License
+
+MIT — see [`LICENSE`](./LICENSE).

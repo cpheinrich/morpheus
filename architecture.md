@@ -116,7 +116,7 @@ layers:
 ```
 hq/               the data          (markdown in the repo)
 /hq               the view          (route in apps/web)
-@morpheus/kit/hq  the renderer      (package)
+morpheus-kit/hq  the renderer      (package)
 ```
 
 One word, one concept, and the mapping is obvious in both directions: whatever is in `hq/` is what
@@ -290,7 +290,7 @@ canonical and lives in this document. Only *deviations* are recorded.
 
 ## 6. Morpheus's own structure
 
-**One package, not many.** `@morpheus/kit` ships everything, with subpath exports so a project
+**One package, not many.** `morpheus-kit` ships everything, with subpath exports so a project
 imports only what it uses. One version number, one install, one registry entry.
 
 ```
@@ -340,8 +340,8 @@ repo owns. Every other project has only the latter.
 Consumers import subpaths:
 
 ```ts
-import { HqShell } from "@morpheus/kit/hq";
-import { Button } from "@morpheus/kit/design";
+import { HqShell } from "morpheus-kit/hq";
+import { Button } from "morpheus-kit/design";
 ```
 
 Heavy or surface-specific dependencies are declared as **optional peer dependencies**, so a
@@ -350,7 +350,7 @@ later, splitting one package into several is a mechanical change — starting sp
 later is not. Start together.
 
 The CLI is exposed as a `bin` from the same package, installed globally:
-`pnpm add -g @morpheus/kit`.
+`pnpm add -g morpheus-kit`.
 
 ---
 
@@ -584,7 +584,7 @@ equivalent preview commenting.
 ## 10. The `/hq` dashboard
 
 Mounted at `<domain>/hq` in the project's own Next.js app — not a separate deployment — so it
-inherits the domain, auth, and deploy pipeline. Shipped as `@morpheus/kit/hq`.
+inherits the domain, auth, and deploy pipeline. Shipped as `morpheus-kit/hq`.
 
 ```
 /hq                     Overview — KPIs, what agents did since last check-in
@@ -675,7 +675,7 @@ model in §14 simpler.
 ### 12.1 Instruction layering
 
 - **`AGENTS.md` (root)** — canonical, project-wide. `CLAUDE.md` symlinks to it so Claude and Codex
-  read exactly one file. Generated at init from `@morpheus/kit/agent` fragments plus project
+  read exactly one file. Generated at init from `morpheus-kit/agent` fragments plus project
   specifics, with a marked region the CLI can update on `morpheus upgrade`.
 - **`apps/web/AGENTS.md`** — surface-specific. The brand-preflight pattern from
   `cpheinrich.com/web/AGENTS.md` is the model.
@@ -862,10 +862,10 @@ the CLI copies and interpolates them. That supports composition, `add`, and per-
 
 ### Registry
 
-`@morpheus/kit` publishes to **GitHub Packages**. Projects get an `.npmrc`:
+`morpheus-kit` publishes to **GitHub Packages**. Projects get an `.npmrc`:
 
 ```
-@morpheus:registry=https://npm.pkg.github.com
+# published to public npm — no registry config needed
 //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
 ```
 
@@ -1046,14 +1046,14 @@ narrower tokens later if a specific need ever arises. Darwin's token is reused b
 `evo`, so this is once per *account*, not once per repo.
 
 **Vercel — one token, scoped per invocation.** A single personal token reaches every team you
-belong to; `vercel --scope acme-team-slug` selects the right one. No need for a token per
+belong to; `vercel --scope <team-slug>` selects the right one. No need for a token per
 team.
 
 **GitHub — one identity covers everything.** Your repos live under three owners (`cpheinrich`,
 `darwin-health`, `lakinacapital`) but all under one authenticated user, so a single `gh auth login`
 covers all of them.
 
-> **One real wrinkle.** `@morpheus/kit` will be published under `cpheinrich`, but `darwin-health`
+> **One real wrinkle.** `morpheus-kit` will be published under `cpheinrich`, but `darwin-health`
 > and `lakinacapital` repos need to install it. GitHub Packages permissions are owner-scoped, and
 > the `GITHUB_TOKEN` that Actions provides automatically only reaches packages owned by the same
 > account as the repo. **Cross-org consumption requires an explicit PAT with `read:packages`** in
@@ -1095,7 +1095,7 @@ nothing else.** Everything downstream is agent-created.
   "gcloud":     "darwin",                  // gcloud configuration name
   "gcpProject": "acme-prod",
   "cloudflare": "darwin-health",           // account name; token in GSM
-  "vercel":     "acme-team-slug",    // --scope value
+  "vercel":     "acme-team-slug",          // --scope value
   "github":     "darwin-health"            // repo owner
 }
 ```
@@ -1139,8 +1139,8 @@ project-specific values in the project.** Three layers:
 | **Primitives** | The raw palette, type scale, spacing ramp | `hq/brand/tokens.json` | **Yes** — owned by the project |
 | **Semantic mapping** | `action.primary → electricRed` | `packages/shared/tokens/semantic.json` | **Yes** |
 | **Generated bindings** | CSS vars, JS consts, Swift enum | `packages/shared/generated/` | **Yes** — derived, never hand-edited |
-| **Components** | `Button`, `Card`, `DataTable` — structure, variants, states, a11y | `@morpheus/kit/design` | **No** — reusable |
-| **Showcase renderer** | The code that draws a palette grid, type specimen, component gallery | `@morpheus/kit/design/showcase` | **No** — reusable |
+| **Components** | `Button`, `Card`, `DataTable` — structure, variants, states, a11y | `morpheus-kit/design` | **No** — reusable |
+| **Showcase renderer** | The code that draws a palette grid, type specimen, component gallery | `morpheus-kit/design/showcase` | **No** — reusable |
 | **Showcase route** | The page that mounts it | `apps/web/app/brand/page.tsx` | Yes, but ~5 lines |
 | **One-off components** | Things only this product has | `apps/web/components/` | **Yes** |
 
@@ -1148,7 +1148,7 @@ The mechanism that makes this work: **kit components never hardcode a color, fon
 They reference CSS custom properties that the project defines.
 
 ```tsx
-// in @morpheus/kit/design — ships once, used everywhere
+// in morpheus-kit/design — ships once, used everywhere
 export function Button({ variant = "primary", ...props }) {
   return <button className={styles[variant]} {...props} />;
 }
@@ -1176,7 +1176,7 @@ flowchart LR
     A["hq/brand/tokens.json<br/>primitives"] --> B["packages/shared/<br/>Style Dictionary"]
     B --> C["generated/web/tokens.css"]
     B --> D["generated/ios/Tokens.swift"]
-    E["@morpheus/kit/design<br/>components + showcase"] --> F["apps/web"]
+    E["morpheus-kit/design<br/>components + showcase"] --> F["apps/web"]
     C --> F
     D --> G["apps/ios"]
     E --> H["apps/web/app/brand/page.tsx<br/>public showcase route"]
@@ -1205,12 +1205,12 @@ current voice and visual system — rather than copying strings.
 `<domain>/brand` — a public, unauthenticated page rendering the live design system: palette, type
 scale, component gallery, logo downloads, and usage rules.
 
-**The rendering code is in the kit; the route is in the project.** `@morpheus/kit/design/showcase`
+**The rendering code is in the kit; the route is in the project.** `morpheus-kit/design/showcase`
 exports the components that introspect tokens and draw the gallery. The project mounts them:
 
 ```tsx
 // apps/web/app/brand/page.tsx — the entire file
-import { BrandShowcase } from "@morpheus/kit/design/showcase";
+import { BrandShowcase } from "morpheus-kit/design/showcase";
 import tokens from "@acme/shared/tokens.json";
 import { assets, usage } from "@acme/shared/brand";
 
@@ -1474,12 +1474,12 @@ of every item, its status, and its PRs. The index is derived, never hand-edited.
 
 ### 21.2 Schemas
 
-The source of truth for the *shape* is Zod, exported from `@morpheus/kit/pm`. The same schemas
+The source of truth for the *shape* is Zod, exported from `morpheus-kit/pm`. The same schemas
 validate frontmatter in CI (`morpheus check pm`), parse files for `/hq`, and generate the index
 tables — so there is one definition, not three.
 
 ```ts
-// @morpheus/kit/pm/schema.ts
+// morpheus-kit/pm/schema.ts
 export const RoadmapItem = z.object({
   id:         z.string().regex(/^RM-\d{3,}$/),
   title:      z.string().min(3),
@@ -1564,7 +1564,7 @@ which item to verify status on.
 6. **Credentials** — tier 2 and 3 tokens, each individually skippable (§14.2); written to GSM, never to disk
 7. **Access** — `/hq` allowlist
 
-Then: create the directory, scaffold from templates, install `@morpheus/kit`, init git, create the
+Then: create the directory, scaffold from templates, install `morpheus-kit`, init git, create the
 private GitHub repo, push, provision the GCP project and Secret Manager entries, create the
 Firebase project, link the Vercel project, configure DNS in Cloudflare, and set Actions secrets.
 
@@ -1611,9 +1611,9 @@ across multiple projects — each item already has two consumers:
 | Ship | Why now | Consumers |
 |---|---|---|
 | **Reusable workflows** (`web-ci`, `pr-check`) | Highest value per hour; no package publishing needed | All four repos |
-| **`@morpheus/kit/pm`** — roadmap/goal format + parser | You want agents working off roadmaps across projects | Darwin, Evo |
-| **`@morpheus/kit/analytics`** — PostHog setup + event schema | You want analytics on both, and the wrong event schema is expensive to fix later | Darwin, Evo |
-| **`@morpheus/kit/hq`** — shell, auth, nav, first tiles | You are building Darwin's `/hq` now | Darwin, then Evo |
+| **`morpheus-kit/pm`** — roadmap/goal format + parser | You want agents working off roadmaps across projects | Darwin, Evo |
+| **`morpheus-kit/analytics`** — PostHog setup + event schema | You want analytics on both, and the wrong event schema is expensive to fix later | Darwin, Evo |
+| **`morpheus-kit/hq`** — shell, auth, nav, first tiles | You are building Darwin's `/hq` now | Darwin, then Evo |
 
 Publishing infrastructure (GitHub Packages, release workflow) comes with this stage since the kit
 needs somewhere to go.
@@ -1714,7 +1714,7 @@ Its structure is legitimately a subset, and `morpheus.json` records that with
 | `apps/` + `hq/` grouping | Adopted. Solved the cross-reference concern with import-not-sync (§15.2) |
 | Retrofit existing projects | Yes, all four — after Morpheus matures. Lakina moves off Vite to Next.js |
 | Package registry | GitHub Packages. Wipe Artifactory config first |
-| One package or many | **One** — `@morpheus/kit` with subpath exports |
+| One package or many | **One** — `morpheus-kit` with subpath exports |
 | Secrets store | GSM for anything code reads; 1Password for human-only credentials |
 | Analytics | PostHog Cloud. Not self-hosted — self-host has fewer features |
 | Hosting | Vercel, decided by preview-comment review loop |
@@ -1723,7 +1723,7 @@ Its structure is legitimately a subset, and `morpheus.json` records that with
 | Staging | Vercel preview per PR; no permanent staging environment |
 | Review queue | **GitHub** — PRs for code, `decision`-labeled issues for the rest. Firestore only for state the app reads at runtime |
 | PM file layout | One file per item + generated `README.md` index, to avoid concurrent-agent merge conflicts |
-| PM schemas | Zod in `@morpheus/kit/pm`; same shape definition validates CI, parses `/hq`, generates indexes |
+| PM schemas | Zod in `morpheus-kit/pm`; same shape definition validates CI, parses `/hq`, generates indexes |
 | Viewing Morpheus's own data | GitHub renders it. Web surface deferred until cross-project rollup is needed |
 | `company/` renamed | **`hq/`** — not every project is a company, and it makes `hq/` → `/hq` → `kit/hq` coherent |
 | Project kinds | `company` \| `personal` \| `internal`, set by the wizard, drives which `hq/` subtrees exist |
