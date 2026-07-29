@@ -16,6 +16,7 @@ item files, not this table.
 | [MO-021](./MO-021.md) | Brand prompt frames a design session, not a deliverable | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-022](./MO-022.md) | Brand package has a declared required set | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-024](./MO-024.md) | Design sessions keep a durable decision record | review | P1 | MO-G-2026-Q3-01 | — |
+| [MO-026](./MO-026.md) | Brand status wrongly requires tokens.json when a visual source is declared | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | review | P2 | MO-G-2026-Q3-01 | — |
 | [MO-025](./MO-025.md) | Convergence requires evidence on more than one surface | review | P2 | MO-G-2026-Q3-01 | — |
 | [MO-003](./MO-003.md) | Publish the kit to GitHub Packages | backlog | P0 | MO-G-2026-Q3-01 | — |

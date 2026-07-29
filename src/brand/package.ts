@@ -235,7 +235,15 @@ export const OPTIONAL: OptionalEntry[] = [
   },
 ];
 
-export type EntryState = "ok" | "missing" | "incomplete";
+/**
+ * `delegated` — required, and satisfied somewhere else on purpose.
+ *
+ * A project with an existing visual system owns its tokens where they already
+ * live (architecture §15.1a). Reporting `hq/brand/tokens.json` missing there
+ * would be telling the owner to create the second canonical source that the
+ * generator deliberately refuses to scaffold.
+ */
+export type EntryState = "ok" | "missing" | "incomplete" | "delegated";
 
 export interface EntryStatus {
   path: string;
@@ -262,11 +270,28 @@ async function present(dir: string, rel: string): Promise<boolean> {
   }
 }
 
+/** Where tokens live when this project did not start from a blank page. */
+async function declaredVisualSource(brandDir: string): Promise<string | null> {
+  try {
+    const a = JSON.parse(await readFile(join(brandDir, "answers.json"), "utf8"));
+    const v = (a as { visualSource?: unknown }).visualSource;
+    return typeof v === "string" && v.trim() ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function packageStatus(brandDir: string): Promise<PackageStatus> {
   const required: EntryStatus[] = [];
+  const visualSource = await declaredVisualSource(brandDir);
 
   for (const entry of REQUIRED) {
     const base = { path: entry.path, purpose: entry.purpose, source: entry.source };
+
+    if (entry.path === "tokens.json" && visualSource) {
+      required.push({ ...base, state: "delegated", detail: `canonical at ${visualSource}` });
+      continue;
+    }
     if (!(await present(brandDir, entry.path))) {
       required.push({ ...base, state: "missing" });
       continue;
@@ -281,20 +306,27 @@ export async function packageStatus(brandDir: string): Promise<PackageStatus> {
     OPTIONAL.map(async (o) => ({ ...o, present: await present(brandDir, o.path) })),
   );
 
-  return { required, optional, complete: required.every((r) => r.state === "ok") };
+  const satisfied = (r: EntryStatus): boolean => r.state === "ok" || r.state === "delegated";
+  return { required, optional, complete: required.every(satisfied) };
 }
 
 export function formatStatus(s: PackageStatus, name: string): string {
-  const mark = (state: EntryState): string =>
-    state === "ok" ? "\x1b[32m✓\x1b[0m" : state === "missing" ? "\x1b[31m✗\x1b[0m" : "\x1b[33m~\x1b[0m";
+  const MARKS: Record<EntryState, string> = {
+    ok: "\x1b[32m✓\x1b[0m",
+    delegated: "\x1b[36m→\x1b[0m",
+    missing: "\x1b[31m✗\x1b[0m",
+    incomplete: "\x1b[33m~\x1b[0m",
+  };
 
   const lines = [`\n\x1b[1m${name} — brand package\x1b[0m`, "", "\x1b[1mRequired\x1b[0m"];
   for (const r of s.required) {
     const why = r.detail ? ` \x1b[2m— ${r.detail}\x1b[0m` : "";
-    lines.push(`  ${mark(r.state)} ${r.path}${why}`);
+    lines.push(`  ${MARKS[r.state]} ${r.path}${why}`);
   }
 
-  const outstanding = s.required.filter((r) => r.state !== "ok");
+  const outstanding = s.required.filter(
+    (r) => r.state !== "ok" && r.state !== "delegated",
+  );
   lines.push("");
   if (s.complete) {
     lines.push("\x1b[32mThe required set is complete.\x1b[0m");

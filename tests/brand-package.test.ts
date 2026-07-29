@@ -269,3 +269,48 @@ describe("refresh keeps derived files honest", () => {
     expect(after.derived).toEqual([]);
   });
 });
+
+describe("a project that already has a visual system", () => {
+  let dir: string;
+  const WITH_SOURCE: BrandAnswers = { ...ANSWERS, visualSource: "apps/web/app/brand" };
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "brand-src-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("does not ask for a tokens.json that would be a second source of truth", async () => {
+    await generateBrand(dir, "Evo", "ev", WITH_SOURCE);
+    const s = await packageStatus(dir);
+    const tokens = s.required.find((r) => r.path === "tokens.json");
+
+    expect(tokens?.state).toBe("delegated");
+    expect(tokens?.detail).toBe("canonical at apps/web/app/brand");
+  });
+
+  it("can be complete without a local tokens.json", async () => {
+    await generateBrand(dir, "Evo", "ev", WITH_SOURCE);
+    await writeFile(
+      join(dir, "visual-system.md"),
+      "# Visual system\n\nInk on warm paper, derived from the live surface.\n",
+    );
+    await mkdir(join(dir, "assets"), { recursive: true });
+    await writeFile(join(dir, "assets/logo.svg"), "<svg/>");
+    await writeFile(
+      join(dir, "decisions.md"),
+      "## Settled\n- x\n\n## Rejected\n- y\n\n## Open\n- z\n\n## Completion\n- contrast unchecked\n",
+    );
+
+    const s = await packageStatus(dir);
+    expect(s.complete).toBe(true);
+  });
+
+  it("still requires tokens.json when there is no existing system", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const s = await packageStatus(dir);
+
+    expect(s.required.find((r) => r.path === "tokens.json")?.state).toBe("incomplete");
+  });
+});
