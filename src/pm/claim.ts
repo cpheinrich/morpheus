@@ -113,6 +113,13 @@ export interface ClaimResult {
   id: string;
   branch: string;
   title: string;
+  /** Items reconciled to shipped as a side effect of claiming. */
+  shipped?: string[];
+}
+
+/** Where an item file lives, by convention. */
+function itemPath(productDir: string, id: string): string {
+  return `${productDir}/roadmap/${id}.md`;
 }
 
 /**
@@ -124,6 +131,16 @@ export async function claim(
   id: string,
   cwd: string,
 ): Promise<ClaimResult> {
+  // Reconcile before branching, so merged work is marked shipped here and
+  // rides along with this claim's commit.
+  //
+  // Doing it after a merge instead leaves the status change sitting in a dirty
+  // working tree on protected `main`, with nowhere to go — which is exactly
+  // what happened the first time, and is how a housekeeping step gets quietly
+  // dropped.
+  const { reconcile } = await import("./ship.js");
+  const reconciled = await reconcile(productDir, cwd).catch(() => null);
+
   const existing = await findClaims(id, cwd);
   if (existing.length > 0) {
     throw new ClaimError(
@@ -143,12 +160,20 @@ export async function claim(
   await git(["checkout", "-b", branch], cwd);
   await setStatusInProgress(productDir, id);
 
-  // Stage only the item file. `add -A` would sweep whatever else is in the
+  // Stage only the item files. `add -A` would sweep whatever else is in the
   // working tree into a commit the author did not intend — including editor
   // scratch, which is how a screenshot once reached a public repo.
-  await git(["add", "--", item.path], cwd);
-  await git(["commit", "-m", `chore(${id}): claim — status to in-progress`], cwd);
+  const shipped = (reconciled?.outcomes ?? [])
+    .filter((o) => o.kind === "shipped" || o.kind === "stale")
+    .map((o) => o.id);
+  const paths = [item.path, ...shipped.map((sid) => itemPath(productDir, sid))];
+  await git(["add", "--", ...paths], cwd);
+
+  const note = shipped.length
+    ? `chore(${id}): claim — status to in-progress\n\nAlso marks ${shipped.join(", ")} shipped, reconciled against merged PRs.`
+    : `chore(${id}): claim — status to in-progress`;
+  await git(["commit", "-m", note], cwd);
   await git(["push", "-u", "origin", branch], cwd);
 
-  return { id, branch, title: item.data.title };
+  return { id, branch, title: item.data.title, shipped };
 }
