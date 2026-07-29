@@ -6,6 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
+| [MO-038](./MO-038.md) | Brand prose templates break on real answers | review | P1 | — | #32 |
 | [MO-043](./MO-043.md) | A claimed branch can still ship an item it did no work on | review | P1 | — | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
