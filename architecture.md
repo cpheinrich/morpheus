@@ -1315,6 +1315,30 @@ invented per screen, `components.md` when the same pattern is rebuilt a third ti
 affects the exit code. Treating an unmet trigger as a failure trains people to ignore the output,
 and guessing at a motion system before anything animates produces rules nobody follows.
 
+### 15.6 Generated, seeded, and authored
+
+The original rule — never overwrite anything — was right about not destroying work and wrong about
+treating every file the same. `refresh` rewrote `answers.json` and skipped the rest, so a changed
+mission could sit in `answers.json` while the old one stayed in `messaging.json`, which the web app
+imports. The refresh reported success and the stale value shipped.
+
+Every file the generator writes now declares its owner:
+
+| Ownership | Files | On refresh |
+|---|---|---|
+| `derived` | `messaging.json`, `explore-prompt.md`, `README.md`, `assets/README.md` | Regenerated. Nothing hand-written legitimately survives in a pure function of the answers. |
+| `seeded` | `strategy.md`, `voice.md`, `visual-system.md` | Reported as disagreeing. Generated once as a starting point, then yours. |
+| `authored` | `tokens.json`, `assets/*` | Never touched. |
+
+**Morpheus will not revert your prose to close a gap it noticed.** A seeded file that disagrees
+with the answers is named, not rewritten — silently reverting someone's writing is the same class
+of bug as silently keeping a stale mission, just pointed the other way. To take the regenerated
+version, delete the file and re-run.
+
+`morpheus brand check` reports drift and writes nothing, reading `answers.json` rather than asking,
+so it is safe in CI. It exits non-zero on any drift: a package whose prose disagrees with its own
+answers is wrong even though every file is present.
+
 ---
 
 ## 16. Testing and QA

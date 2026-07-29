@@ -1,8 +1,10 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { readAnswers } from "../brand/answers.js";
+import { BrandAnswers as BrandAnswersSchema } from "../brand/questions.js";
+import { checkDrift } from "../brand/generate.js";
 import { generateBrand } from "../brand/generate.js";
-import { BrandAnswers, QUESTIONS, type Question } from "../brand/questions.js";
+import { QUESTIONS, type Question } from "../brand/questions.js";
 
 /** Render a previous answer for display as a default. */
 function previous(value: unknown): string | null {
@@ -46,8 +48,61 @@ export interface BrandInitOptions {
   brandDir: string;
   name: string;
   prefix: string;
-  /** Prefill from previously recorded answers and allow overwriting. */
+  /** Prefill from previously recorded answers and regenerate derived files. */
   refresh?: boolean;
+}
+
+/**
+ * Report which generated files no longer follow from `answers.json`.
+ *
+ * Writes nothing and asks nothing, so it is safe in CI. Exits non-zero on any
+ * drift — a package whose prose disagrees with its own answers is wrong even
+ * though every file is present.
+ */
+export async function check(opts: {
+  brandDir: string;
+  name: string;
+  prefix: string;
+}): Promise<number> {
+  const prior = await readAnswers(opts.brandDir);
+  if (!prior) {
+    console.error(`No answers.json in ${opts.brandDir} — run \`morpheus brand init\` first.`);
+    return 1;
+  }
+  const parsed = BrandAnswersSchema.safeParse(prior);
+  if (!parsed.success) {
+    console.error("answers.json does not validate:");
+    for (const i of parsed.error.issues) {
+      console.error(`  ${i.path.join(".") || "(root)"}: ${i.message}`);
+    }
+    return 1;
+  }
+
+  const { derived, seeded } = await checkDrift(
+    opts.brandDir,
+    opts.name,
+    opts.prefix,
+    parsed.data,
+  );
+  if (!derived.length && !seeded.length) {
+    console.log("\x1b[32m✓ Every generated file matches answers.json.\x1b[0m");
+    return 0;
+  }
+
+  if (derived.length) {
+    console.error("\n\x1b[31mStale — these are pure functions of the answers:\x1b[0m");
+    for (const f of derived) console.error(`  ${f}`);
+    console.error("\x1b[2m  `morpheus brand refresh` regenerates them.\x1b[0m");
+  }
+  if (seeded.length) {
+    console.error("\n\x1b[33mDisagrees with answers.json — yours to reconcile:\x1b[0m");
+    for (const f of seeded) console.error(`  ${f}`);
+    console.error(
+      "\x1b[2m  These were generated once and are now yours. Morpheus will not\n" +
+        "  revert your prose to resolve this.\x1b[0m",
+    );
+  }
+  return 1;
 }
 
 /**
@@ -98,7 +153,7 @@ export async function init(opts: BrandInitOptions): Promise<number> {
     rl.close();
   }
 
-  const parsed = BrandAnswers.safeParse({ references: [], ...raw });
+  const parsed = BrandAnswersSchema.safeParse({ references: [], ...raw });
   if (!parsed.success) {
     console.error("\nSome answers did not validate:");
     for (const i of parsed.error.issues) {
@@ -107,11 +162,12 @@ export async function init(opts: BrandInitOptions): Promise<number> {
     return 1;
   }
 
-  const { files, skipped } = await generateBrand(
+  const { files, skipped, stale } = await generateBrand(
     opts.brandDir,
     opts.name,
     opts.prefix,
     parsed.data,
+    { refresh: opts.refresh },
   );
 
   if (files.length) {
@@ -124,6 +180,18 @@ export async function init(opts: BrandInitOptions): Promise<number> {
     console.log(
       "\x1b[2m\nNothing is overwritten. Delete a file and re-run if you want it\n" +
         "regenerated — your edits are never silently replaced.\x1b[0m",
+    );
+  }
+  if (stale.length) {
+    console.log(
+      `\n\x1b[33m${stale.length} file(s) now disagree with your answers:\x1b[0m`,
+    );
+    for (const f of stale) console.log(`  ${f}`);
+    console.log(
+      "\x1b[2m\nThese were generated once and are now yours. Your answers changed but\n" +
+        "your prose did not, and Morpheus will not revert your writing to close\n" +
+        "the gap — reconcile them by hand, or delete a file and re-run to start\n" +
+        "from the new answers.\x1b[0m",
     );
   }
   if (parsed.data.visualSource) {

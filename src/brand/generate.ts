@@ -1,4 +1,4 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BrandAnswers } from "./questions.js";
 import { OPTIONAL, REQUIRED } from "./package.js";
@@ -307,26 +307,97 @@ Does this read as ${a.feels.join(", ")}? And does it avoid being ${a.never.join(
 `;
 }
 
+/**
+ * Who owns a file once it exists.
+ *
+ * The original rule — never overwrite anything — was right about not
+ * destroying work and wrong about treating every file the same. `refresh`
+ * rewrote `answers.json` and skipped the rest, so a changed mission could sit
+ * in `answers.json` while the old one stayed in `messaging.json`, which the
+ * web app imports. The refresh reported success and shipped the stale value.
+ *
+ * - `derived` — a pure function of the answers. Nothing hand-written survives
+ *   in it legitimately, so refresh regenerates it without asking.
+ * - `seeded` — generated once as a starting point, then human-owned. Refresh
+ *   reports that it disagrees with the answers; it does not resolve it.
+ * - `authored` — the design session's output. Refresh never touches it.
+ */
+export type Ownership = "derived" | "seeded" | "authored";
+
+interface Planned {
+  path: string;
+  content: string;
+  ownership: Ownership;
+}
+
 export interface GenerateResult {
   files: string[];
   /** Files left untouched because they already existed. */
   skipped: string[];
+  /**
+   * `seeded` files whose content no longer follows from the answers. Named
+   * rather than rewritten — the whole point of `seeded` is that a human may
+   * have improved the prose, and silently reverting that is the same class of
+   * bug as silently keeping a stale mission.
+   */
+  stale: string[];
 }
 
-async function fileExists(p: string): Promise<boolean> {
+async function readIfPresent(p: string): Promise<string | null> {
   try {
-    await access(p);
-    return true;
+    return await readFile(p, "utf8");
   } catch {
-    return false;
+    return null;
   }
+}
+
+function plan(answers: BrandAnswers, name: string, prefix: string): Planned[] {
+  const planned: Planned[] = [
+    { path: "README.md", content: readme(answers, name), ownership: "derived" },
+    { path: "messaging.json", content: messaging(answers), ownership: "derived" },
+    {
+      path: "explore-prompt.md",
+      content: explorePrompt(answers, name, prefix),
+      ownership: "derived",
+    },
+    { path: "strategy.md", content: strategy(answers, name), ownership: "seeded" },
+    { path: "voice.md", content: voice(answers, name), ownership: "seeded" },
+    {
+      path: "visual-system.md",
+      content: visualSystem(answers, name, prefix),
+      ownership: "seeded",
+    },
+    {
+      path: "assets/README.md",
+      content:
+        "# Assets\n\nlogo.svg, logo-reverse.svg, icon.png, og-image.png.\n\nSmall, versioned, and needed at build time, so they live in git. Large media belongs on the\nCDN, not here.\n",
+      ownership: "derived",
+    },
+  ];
+
+  // Scaffold tokens only for a project with no visual system yet. When
+  // `visualSource` is set, the existing tokens are canonical.
+  if (!answers.visualSource) {
+    planned.push({ path: "tokens.json", content: tokens(prefix), ownership: "authored" });
+  }
+  return planned;
+}
+
+const normalise = (s: string): string => (s.endsWith("\n") ? s : s + "\n");
+
+export interface GenerateOptions {
+  /**
+   * Regenerate `derived` files rather than skipping them. Off for `init`,
+   * where nothing should exist yet and a surprise overwrite has no upside.
+   */
+  refresh?: boolean;
 }
 
 /**
  * Write the brand package.
  *
- * **Never overwrites an existing file.** Anything already present is skipped
- * and reported, so running this on an established project cannot destroy work.
+ * **Never overwrites an authored or seeded file.** On `init` nothing existing
+ * is touched at all.
  *
  * That matters most for `tokens.json`. Writing an empty scaffold beside a real
  * token system creates a second canonical source — the worst failure this
@@ -338,25 +409,9 @@ export async function generateBrand(
   name: string,
   prefix: string,
   answers: BrandAnswers,
+  opts: GenerateOptions = {},
 ): Promise<GenerateResult> {
   await mkdir(join(brandDir, "assets"), { recursive: true });
-
-  const planned: Array<[string, string]> = [
-    ["README.md", readme(answers, name)],
-    ["strategy.md", strategy(answers, name)],
-    ["voice.md", voice(answers, name)],
-    ["visual-system.md", visualSystem(answers, name, prefix)],
-    ["messaging.json", messaging(answers)],
-    ["explore-prompt.md", explorePrompt(answers, name, prefix)],
-    [
-      "assets/README.md",
-      "# Assets\n\nlogo.svg, logo-reverse.svg, icon.png, og-image.png.\n\nSmall, versioned, and needed at build time, so they live in git. Large media belongs on the\nCDN, not here.\n",
-    ],
-  ];
-
-  // Scaffold tokens only for a project with no visual system yet. When
-  // `visualSource` is set, the existing tokens are canonical.
-  if (!answers.visualSource) planned.push(["tokens.json", tokens(prefix)]);
 
   // The answers themselves, so `brand refresh` can show what was said last
   // time rather than making the owner reconstruct it.
@@ -368,16 +423,56 @@ export async function generateBrand(
 
   const written: string[] = [];
   const skipped: string[] = [];
+  const stale: string[] = [];
 
-  for (const [rel, content] of planned) {
+  for (const { path: rel, content, ownership } of plan(answers, name, prefix)) {
     const abs = join(brandDir, rel);
-    if (await fileExists(abs)) {
-      skipped.push(abs);
+    const existing = await readIfPresent(abs);
+    const next = normalise(content);
+
+    if (existing === null) {
+      await writeFile(abs, next, "utf8");
+      written.push(abs);
       continue;
     }
-    await writeFile(abs, content.endsWith("\n") ? content : content + "\n", "utf8");
-    written.push(abs);
+    if (existing === next) continue; // already current — not a skip worth reporting
+
+    if (opts.refresh && ownership === "derived") {
+      await writeFile(abs, next, "utf8");
+      written.push(abs);
+      continue;
+    }
+    if (opts.refresh && ownership === "seeded") {
+      stale.push(abs);
+      continue;
+    }
+    skipped.push(abs);
   }
 
-  return { files: written, skipped };
+  return { files: written, skipped, stale };
+}
+
+/**
+ * Report which files disagree with `answers.json`, writing nothing.
+ *
+ * Reads the recorded answers rather than asking, so this is safe in CI and
+ * safe to run on a package someone else refreshed.
+ */
+export async function checkDrift(
+  brandDir: string,
+  name: string,
+  prefix: string,
+  answers: BrandAnswers,
+): Promise<{ derived: string[]; seeded: string[] }> {
+  const derived: string[] = [];
+  const seeded: string[] = [];
+
+  for (const { path: rel, content, ownership } of plan(answers, name, prefix)) {
+    if (ownership === "authored") continue;
+    const abs = join(brandDir, rel);
+    const existing = await readIfPresent(abs);
+    if (existing === null || existing === normalise(content)) continue;
+    (ownership === "derived" ? derived : seeded).push(abs);
+  }
+  return { derived, seeded };
 }

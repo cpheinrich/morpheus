@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { generateBrand } from "../src/brand/generate.js";
+import { checkDrift, generateBrand } from "../src/brand/generate.js";
 import { OPTIONAL, REQUIRED, packageStatus } from "../src/brand/package.js";
 import type { BrandAnswers } from "../src/brand/questions.js";
 
@@ -138,5 +138,82 @@ describe("brand package", () => {
         expect(readme).toContain(o.when);
       }
     });
+  });
+});
+
+describe("refresh keeps derived files honest", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "brand-refresh-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const CHANGED: BrandAnswers = { ...ANSWERS, mission: "Make logging food take one second." };
+
+  it("cannot leave the old mission in messaging.json after a refresh", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    await generateBrand(dir, "Evo", "ev", CHANGED, { refresh: true });
+
+    const messaging = JSON.parse(await readFile(join(dir, "messaging.json"), "utf8"));
+    expect(messaging.mission).toBe(CHANGED.mission);
+    expect(messaging.mission).not.toBe(ANSWERS.mission);
+  });
+
+  it("regenerates the session brief so it cannot brief the old answers", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    await generateBrand(dir, "Evo", "ev", CHANGED, { refresh: true });
+
+    const prompt = await readFile(join(dir, "explore-prompt.md"), "utf8");
+    expect(prompt).toContain(CHANGED.mission);
+    expect(prompt).not.toContain(ANSWERS.mission);
+  });
+
+  it("reports seeded prose as stale rather than reverting what a human wrote", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const mine = "# Strategy\n\nMy own words, which I prefer to the generated ones.\n";
+    await writeFile(join(dir, "strategy.md"), mine);
+
+    const { stale } = await generateBrand(dir, "Evo", "ev", CHANGED, { refresh: true });
+
+    expect(stale.some((f) => f.endsWith("strategy.md"))).toBe(true);
+    expect(await readFile(join(dir, "strategy.md"), "utf8")).toBe(mine);
+  });
+
+  it("never touches authored files on refresh", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const real = JSON.stringify({ color: { ink: "#101010" }, font: {}, space: {} });
+    await writeFile(join(dir, "tokens.json"), real);
+
+    await generateBrand(dir, "Evo", "ev", CHANGED, { refresh: true });
+
+    expect(await readFile(join(dir, "tokens.json"), "utf8")).toBe(real);
+  });
+
+  it("leaves everything alone on init, including derived files", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    const { files, skipped } = await generateBrand(dir, "Evo", "ev", CHANGED);
+
+    expect(files).toEqual([]);
+    expect(skipped.some((f) => f.endsWith("messaging.json"))).toBe(true);
+  });
+
+  it("reports drift without writing, and goes quiet once refreshed", async () => {
+    await generateBrand(dir, "Evo", "ev", ANSWERS);
+    await writeFile(join(dir, "answers.json"), JSON.stringify(CHANGED, null, 2) + "\n");
+
+    const before = await checkDrift(dir, "Evo", "ev", CHANGED);
+    expect(before.derived.some((f) => f.endsWith("messaging.json"))).toBe(true);
+    expect(before.seeded.some((f) => f.endsWith("strategy.md"))).toBe(true);
+    // Nothing was written by the check itself.
+    expect(JSON.parse(await readFile(join(dir, "messaging.json"), "utf8")).mission).toBe(
+      ANSWERS.mission,
+    );
+
+    await generateBrand(dir, "Evo", "ev", CHANGED, { refresh: true });
+    const after = await checkDrift(dir, "Evo", "ev", CHANGED);
+    expect(after.derived).toEqual([]);
   });
 });
