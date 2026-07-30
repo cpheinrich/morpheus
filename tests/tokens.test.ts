@@ -68,6 +68,36 @@ describe("parsing a token document", () => {
   });
 });
 
+/**
+ * Decided 2026-07-29: the kit emits primitives and stops. The semantic layer is
+ * per project, in `packages/shared/tokens/semantic.json`.
+ *
+ * Pinned as tests rather than left to the doc comment, because the failure mode
+ * is somebody helpfully adding `--action-primary` one day and every project that
+ * adopts the kit inheriting a vocabulary nobody chose.
+ */
+describe("the generator emits primitives only", () => {
+  const brand = { color: { vermilion: "#e34a33", pine: "#1d4b3a" } };
+
+  it("emits the names the brand file declares and invents none", () => {
+    expect(names(brand)).toEqual(["color-vermilion", "color-pine"]);
+  });
+
+  it("does not map a primitive to a semantic alias like --ember", () => {
+    const css = renderCss(parseTokens(brand).tokens, OPTS);
+
+    expect(css).toContain("--brand-color-vermilion: #e34a33;");
+    expect(css).not.toContain("ember");
+    expect(css).not.toContain("action");
+  });
+
+  it("emits one custom property per declared token, and no more", () => {
+    const css = renderCss(parseTokens(brand).tokens, OPTS);
+
+    expect(css.match(/^\s*--brand-/gm)).toHaveLength(2);
+  });
+});
+
 describe("rendering", () => {
   const { tokens } = parseTokens({ color: { ink: "#101010" }, space: { md: "16px" } });
 

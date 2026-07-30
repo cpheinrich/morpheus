@@ -6,8 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-038](./MO-038.md) | Brand prose templates break on real answers | review | P1 | — | #32 |
-| [MO-044](./MO-044.md) | Onboarding heading comes from the directory name, not the manifest | review | P2 | — | — |
+| [MO-045](./MO-045.md) | Kit generates primitives only; projects own the semantic layer | review | P1 | — | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -40,6 +39,7 @@ item files, not this table.
 | [MO-031](./MO-031.md) | Checklist detectors accept empty files as done | shipped | P1 | MO-G-2026-Q3-01 | #23 |
 | [MO-033](./MO-033.md) | Scaffolded gitignore hides legitimate design assets | shipped | P1 | MO-G-2026-Q3-01 | #25 |
 | [MO-037](./MO-037.md) | brand check reports clean when nothing has been generated | shipped | P1 | MO-G-2026-Q3-01 | #30 |
+| [MO-038](./MO-038.md) | Brand prose templates break on real answers | shipped | P1 | — | #32, #36 |
 | [MO-040](./MO-040.md) | pm new re-issues an id another session already claimed | shipped | P1 | — | #33 |
 | [MO-042](./MO-042.md) | An inbox cycle has no roadmap item to ride | shipped | P1 | — | #35 |
 | [MO-043](./MO-043.md) | A claimed branch can still ship an item it did no work on | shipped | P1 | — | #37 |
@@ -49,5 +49,6 @@ item files, not this table.
 | [MO-025](./MO-025.md) | Convergence requires evidence on more than one surface | shipped | P2 | MO-G-2026-Q3-01 | #16 |
 | [MO-034](./MO-034.md) | agents-md detector passes when CLAUDE.md is a divergent copy | shipped | P2 | MO-G-2026-Q3-01 | #27 |
 | [MO-041](./MO-041.md) | pm claim is the only documented way to start work | shipped | P2 | — | #34 |
+| [MO-044](./MO-044.md) | Onboarding heading comes from the directory name, not the manifest | shipped | P2 | — | #38 |
 | [MO-012](./MO-012.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — |
 <!-- morpheus:end -->
