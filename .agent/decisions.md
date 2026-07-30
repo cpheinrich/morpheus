@@ -95,6 +95,15 @@ in CI. Validation is not bureaucracy; it is what permits the ergonomic surface.
 **Extract on the second use, never the first** — nothing enters the kit until a second project
 needs it.
 
+**The kit generates primitives only; each project owns its semantic layer** — 2026-07-29. Three
+projects had hand-rolled the same tokens-to-CSS script, which is the extraction trigger; the
+semantic layer had exactly **one** use, which is not. `--ember` from `color.vermilion` is a brand
+choice rather than a technical one, so a shared vocabulary extracted from a sample of one would
+be a guess — and a wrong abstraction in a *vocabulary* propagates into every project that adopts
+it, which is worse than a wrong function. Architecture §15.1a already assigns the semantic layer
+to `packages/shared/tokens/semantic.json` per project; this settles that the kit does not take it
+back. Revisit when a second project wants one.
+
 **Retrofit by hand before building the initializer** — the retrofit *is* the specification.
 Building `init` first would encode guesses about a structure no project has lived in.
 

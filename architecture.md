@@ -1180,6 +1180,15 @@ Primitives live with the brand because they *are* the brand. Semantic mapping li
 design system because it is a design decision, not a brand one. Generated output is derived and
 never edited.
 
+**The kit generates primitives only** — decided 2026-07-29. `morpheus tokens build` emits CSS
+custom properties and a typed module from `hq/brand/tokens.json` and stops there; the semantic
+layer stays per project, which is where the table above already puts it. The question was whether
+the *kit* should own a shared semantic vocabulary with a per-project mapping file. It should not,
+yet: only one project has a semantic layer, `--ember` and `--forest` are brand choices rather than
+technical ones, and *extract on the second use, never the first* applies with particular force to
+a vocabulary — a wrong abstraction here propagates into every project that adopts it. When a
+second project wants one, the shape of the mapping file will be evident rather than invented.
+
 **A project that already has a token system keeps it.** `morpheus brand init` writes no
 `tokens.json` when `visualSource` is set, and never overwrites an existing file — so adopting the
 brand format cannot destroy or duplicate a working visual system. Migrating existing tokens into

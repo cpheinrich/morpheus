@@ -10,9 +10,14 @@ import { readFile } from "node:fs/promises";
  * arrays, one silently drops them, one hardcodes every variable name.
  *
  * This reads DTCG-shaped JSON and emits CSS custom properties and a typed TS
- * module. It deliberately does **not** decide semantic names: only one of the
- * three projects has a semantic layer, its mapping is bespoke, and inventing
- * a shared vocabulary from a sample of one would be guessing.
+ * module. It emits **primitives only** and never decides semantic names —
+ * settled 2026-07-29, not a placeholder. Only one project has a semantic layer,
+ * its mapping is a brand choice rather than a technical one, and a shared
+ * vocabulary extracted from a sample of one would be a guess frozen into every
+ * project that follows.
+ *
+ * The semantic layer is per project, in `packages/shared/tokens/semantic.json`
+ * — see architecture §15.1a, which already assigns it there.
  */
 
 /** A leaf value, flattened out of the token tree. */
