@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { branchPrefix, findClaims } from "./claim.js";
+import { hasNoSubstantiveChange } from "../paths.js";
 import { parseArtifact } from "./parse.js";
 
 const exec = promisify(execFile);
@@ -33,6 +34,8 @@ async function git(args: string[], cwd: string): Promise<string> {
 export interface MergedPr {
   number: number;
   branch: string;
+  /** Paths the PR changed, or null when the list could not be read. */
+  files: string[] | null;
 }
 
 /**
@@ -45,11 +48,30 @@ export async function mergedPrs(cwd: string): Promise<MergedPr[] | null> {
   try {
     const { stdout } = await exec(
       "gh",
-      ["pr", "list", "--state", "merged", "--limit", "300", "--json", "number,headRefName"],
+      [
+        "pr",
+        "list",
+        "--state",
+        "merged",
+        "--limit",
+        "300",
+        "--json",
+        "number,headRefName,files",
+      ],
       { cwd },
     );
-    const raw = JSON.parse(stdout) as Array<{ number: number; headRefName: string }>;
-    return raw.map((p) => ({ number: p.number, branch: p.headRefName }));
+    const raw = JSON.parse(stdout) as Array<{
+      number: number;
+      headRefName: string;
+      files?: Array<{ path: string }>;
+    }>;
+    return raw.map((p) => ({
+      number: p.number,
+      branch: p.headRefName,
+      // Null, not [], when the field is absent. An unread file list must not
+      // read as "this PR changed nothing".
+      files: p.files ? p.files.map((f) => f.path) : null,
+    }));
   } catch {
     return null;
   }
@@ -74,12 +96,35 @@ export type ShipOutcome =
    * item may have been reopened on purpose, and reconciliation cannot tell a
    * deliberate reopen from a status nobody updated.
    */
-  | { kind: "reopened"; id: string; pr: number };
+  | { kind: "reopened"; id: string; pr: number }
+  /**
+   * The merged PR changed nothing but records and board bookkeeping, so it did
+   * not do this item's work. Reported without writing — this is the state that
+   * marked MO-010 shipped against a PR that only moved the inbox.
+   */
+  | { kind: "no-work"; id: string; pr: number; branch: string };
 
 export interface ReconcileResult {
   outcomes: ShipOutcome[];
   /** True when `gh` was unavailable, so nothing could be confirmed. */
   blind: boolean;
+}
+
+/**
+ * True when a merged PR demonstrably did not do its item's work.
+ *
+ * `check pr` blocks this before a merge, but a gate only covers what passes
+ * through it — all three historical instances merged green because the rule did
+ * not exist yet. This is the same predicate from the other side, which is why
+ * it comes from `paths.ts` rather than being restated here.
+ *
+ * `files === null` means the list could not be read, which is not evidence of
+ * anything. Shipping proceeds in that case: refusing on an unread list would
+ * stall every reconcile the day `gh` renames a field, and the failure this
+ * guards against needs positive evidence, not its absence.
+ */
+export function didNoWork(pr: MergedPr): boolean {
+  return pr.files !== null && hasNoSubstantiveChange(pr.files);
 }
 
 /** Rewrite one item's status, and record the PR when we know it. */
@@ -151,7 +196,14 @@ export async function reconcile(
 
     if (claims.length > 0) {
       const mergedHere = prs?.find((p) => claims.includes(p.branch));
-      if (mergedHere) {
+      if (mergedHere && didNoWork(mergedHere)) {
+        outcomes.push({
+          kind: "no-work",
+          id,
+          pr: mergedHere.number,
+          branch: mergedHere.branch,
+        });
+      } else if (mergedHere) {
         if (opts.write) await markShipped(productDir, id, mergedHere.number);
         outcomes.push({
           kind: "stale",
@@ -172,6 +224,10 @@ export async function reconcile(
       continue;
     }
 
+    if (didNoWork(pr)) {
+      outcomes.push({ kind: "no-work", id, pr: pr.number, branch: pr.branch });
+      continue;
+    }
     if (item.data.status === "backlog") {
       outcomes.push({ kind: "reopened", id, pr: pr.number });
       continue;
@@ -192,6 +248,9 @@ export function formatReconcile(r: ReconcileResult): string {
   );
   const reopened = r.outcomes.filter((o): o is Extract<ShipOutcome, { kind: "reopened" }> =>
     o.kind === "reopened",
+  );
+  const noWork = r.outcomes.filter((o): o is Extract<ShipOutcome, { kind: "no-work" }> =>
+    o.kind === "no-work",
   );
   const lines: string[] = [];
 
@@ -219,6 +278,17 @@ export function formatReconcile(r: ReconcileResult): string {
   if (reopened.length) {
     lines.push("\n\x1b[2mIn backlog with a merged PR — left alone in case the reopen was\ndeliberate:\x1b[0m");
     for (const o of reopened) lines.push(`  \x1b[2m${o.id} (#${o.pr})\x1b[0m`);
+  }
+  if (noWork.length) {
+    lines.push(
+      `\n\x1b[33m${noWork.length} item(s) NOT shipped — the merged PR changed only records and\nboard files, so it did not do the item's work:\x1b[0m`,
+    );
+    for (const o of noWork) lines.push(`  ${o.id}  \x1b[2m${o.branch} (#${o.pr})\x1b[0m`);
+    lines.push(
+      "\x1b[2m  This is how MO-010 was marked shipped against a PR that only moved the\n" +
+        "  inbox. If the item really is done, `morpheus pm ship <ID>` says so\n" +
+        "  deliberately.\x1b[0m",
+    );
   }
   if (unconfirmed.length) {
     lines.push(

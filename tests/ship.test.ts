@@ -2,7 +2,12 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { formatReconcile, markShipped, type ReconcileResult } from "../src/pm/ship.js";
+import {
+  didNoWork,
+  formatReconcile,
+  markShipped,
+  type ReconcileResult,
+} from "../src/pm/ship.js";
 
 const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
@@ -81,6 +86,38 @@ describe("markShipped", () => {
   });
 });
 
+describe("didNoWork", () => {
+  const pr = (files: string[] | null) => ({ number: 31, branch: "mo-010-x", files });
+
+  it("is true for the shape that shipped MO-010 — inbox plus board bookkeeping", () => {
+    expect(
+      didNoWork(
+        pr([
+          ".agent/inbox-archive/2026-07-29-1330-cpheinrich.md",
+          "hq/inbox/cpheinrich.md",
+          "hq/product/roadmap/MO-010.md",
+          "hq/product/roadmap/README.md",
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it("is false as soon as one real file changed", () => {
+    expect(didNoWork(pr(["hq/product/roadmap/MO-010.md", "src/pm/ship.ts"]))).toBe(false);
+  });
+
+  // The distinction the whole guard rests on. An unread file list is not
+  // evidence that a PR did nothing, and treating it as such would refuse to
+  // ship legitimate work the day `gh` renames a field.
+  it("is false when the file list could not be read, which is not evidence", () => {
+    expect(didNoWork(pr(null))).toBe(false);
+  });
+
+  it("is false for an empty list, the same vacuous-every trap", () => {
+    expect(didNoWork(pr([]))).toBe(false);
+  });
+});
+
 describe("formatReconcile", () => {
   const result = (outcomes: ReconcileResult["outcomes"], blind = false): string =>
     plain(formatReconcile({ outcomes, blind }));
@@ -97,6 +134,18 @@ describe("formatReconcile", () => {
     // Both must refuse to claim it shipped.
     expect(result(unconfirmed, true)).not.toContain("Shipped 1");
     expect(result(unconfirmed, false)).not.toContain("Shipped 1");
+  });
+
+  it("reports a no-work item without claiming it shipped", () => {
+    const out = result([
+      { kind: "no-work", id: "MO-010", pr: 31, branch: "mo-010-simplify-architecture-md" },
+    ]);
+
+    expect(out).toContain("MO-010");
+    expect(out).toContain("did not do the item's work");
+    expect(out).not.toContain("Shipped 1");
+    // The way out, since the tool refusing without a remedy is its own dead end.
+    expect(out).toContain("morpheus pm ship");
   });
 
   it("gives the exact command to clear a merged branch that still blocks a claim", () => {
