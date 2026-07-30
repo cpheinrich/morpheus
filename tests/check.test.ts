@@ -2,14 +2,8 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  checkPr,
-  hasNoSubstantiveChange,
-  hasSection,
-  isRecordsOnly,
-  roadmapIdFromBranch,
-  type PrContext,
-} from "../src/check/pr.js";
+import { checkPr, hasSection, roadmapIdFromBranch, type PrContext } from "../src/check/pr.js";
+import { hasNoSubstantiveChange, isRecordsOnly } from "../src/paths.js";
 
 let product: string;
 

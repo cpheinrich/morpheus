@@ -7,6 +7,7 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
 | [MO-045](./MO-045.md) | Kit generates primitives only; projects own the semantic layer | review | P1 | — | — |
+| [MO-046](./MO-046.md) | Reconcile can ship an item whose merged PR did no work | review | P2 | — | — |
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |

@@ -1,3 +1,4 @@
+import { hasNoSubstantiveChange, isRecordsOnly } from "../paths.js";
 import { parseArtifact } from "../pm/parse.js";
 
 /**
@@ -29,54 +30,6 @@ const SOURCE = /^src\/.*\.(ts|tsx)$/;
 const TEST = /(^tests\/|\.test\.tsx?$)/;
 const DOCS = /^(docs\/|architecture\.md$|README\.md$|AGENTS\.md$)/;
 const GENERATED = /README\.md$/;
-
-/**
- * Paths that record what happened rather than change what the software does:
- * an inbox cycle, a worklog entry, a decision.
- */
-const RECORDS = /^(hq\/inbox\/|\.agent\/)/;
-
-/**
- * True when every change is a record, so the PR needs no roadmap item.
- *
- * An inbox cycle is real work with nothing to claim — it belongs to no feature.
- * Without this it had to ride someone else's branch, and it did: PR #31 moved
- * the inbox on `mo-010-simplify-architecture-md`, which marked MO-010 shipped
- * with a PR that never touched architecture.md.
- *
- * The `length > 0` is load-bearing, not defensive. An empty list satisfies
- * `every` vacuously, so a failed `git diff` would exempt a PR from every
- * roadmap rule at once — the exact shape `.agent/learned.md` records under *a
- * check that skips what is absent will report an empty thing as correct*.
- */
-export function isRecordsOnly(changedFiles: string[]): boolean {
-  return changedFiles.length > 0 && changedFiles.every((f) => RECORDS.test(f));
-}
-
-/** Board bookkeeping: item frontmatter and the generated index tables. */
-const BOARD = /^hq\/product\//;
-
-/**
- * True when a PR changes nothing but records and board bookkeeping — so
- * whatever item its branch claims, it did not do that item's work.
- *
- * `isRecordsOnly` does not catch this and was wrongly described as doing so.
- * A borrowed branch always carries board files: claiming reconciles statuses
- * and `pm index` regenerates the tables, so those ride along in the same
- * commit. PR #31 shipped MO-010 with exactly that mix, and is `false` under
- * `isRecordsOnly` for precisely the reason it needed catching.
- *
- * Deliberately separate from `isRecordsOnly` rather than a widened `RECORDS`:
- * the two answer different questions. "Does this need an item at all?" must
- * not be satisfied by touching the board, or a PR could excuse itself from the
- * roadmap rules by editing the roadmap.
- */
-export function hasNoSubstantiveChange(changedFiles: string[]): boolean {
-  return (
-    changedFiles.length > 0 &&
-    changedFiles.every((f) => RECORDS.test(f) || BOARD.test(f))
-  );
-}
 
 /** Extract the roadmap id a branch refers to: ev-014-slug -> EV-014. */
 export function roadmapIdFromBranch(branch: string): string | null {
