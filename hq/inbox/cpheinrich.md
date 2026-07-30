@@ -3,130 +3,120 @@ owner: cpheinrich
 date: 2026-07-29
 agents:
   - claude
-previous: .agent/inbox-archive/2026-07-29-1901-cpheinrich.md
+previous: .agent/inbox-archive/2026-07-29-2047-cpheinrich.md
 ---
 
-# Inbox — 2026-07-29 (late)
+# Inbox — 2026-07-29 (night)
 
-**Your replies are archived and acted on.** Evo is parked to its own session as you asked, and the
-inbox-rewriting question is parked to watch. The Vercel question in your reply to the retrofits
-turned out to have a clean answer, so it is below with sources rather than as another question.
+**Both decisions you made are shipped.** "Primitives only" is settled in three places with tests
+pinning it ([#41](https://github.com/cpheinrich/morpheus/pull/41), MO-045), and reconcile now
+refuses to mark an item shipped when the merged PR did none of its work
+([#42](https://github.com/cpheinrich/morpheus/pull/42), MO-046). **279 tests**, board clean, no
+claims outstanding.
 
-Nothing new shipped since the last message — that one covered the five PRs (#33, #34, #35, #37,
-#38) and **271 tests**. The board still reads MO-044 as `review`; reconcile runs at claim time, so
-the next session's first claim sweeps it.
+**The kit is unblocked.** MO-004, MO-005 and MO-006 were waiting on the kit having content whose
+shape was agreed, and now it is.
 
-**Two of your items came back with an empty `~`** — the reconcile question and the kit decision.
-The kit one is still the only thing standing between here and MO-004/005/006, so if you answer one
-thing, that is the one.
+The Vercel work is the one thing I could not finish: it needs you signed in as your personal
+account, and the browser here is signed in as Darwin. Two minutes of your time, then I can do the
+rest.
 
 > `❗` needs you and ends in an empty `~`. `✅` is settled. Reply after the empty `~`.
 
-## ❗ 1. The kit — the only decision blocking real progress · `claude`
+## ❗ 1. Vercel needs your personal login before I can go further · `claude`
 
-Third time asked, so I will keep it short and make the call easy.
+You said to go ahead with your personal account, and both sites are personal — so both go on
+Hobby, no Pro needed, and Lakina waits as you said.
 
-Three projects have independently hand-rolled the same script: brand tokens → CSS custom
-properties. heinrichbros maps to *semantic* names (`--ember` from `color.vermilion`),
-cpheinrich.com emits primitives verbatim (`--brand-color-ink`). §15.1a says primitives → semantic
-→ generated, so the layer is meant to exist, but only one project has one and its mapping is
-bespoke.
+**What stopped me.** Both the Vercel CLI and the browser are authenticated as
+`darwinhealthinc-4781`, and the only team visible is `darwin-health`. Vercel is one session per
+browser profile, so there is no switcher to click. Neither repo has a Vercel project yet — no
+`.vercel/` locally, and no bot comment on either PR.
 
-**My recommendation, if you would rather approve than decide:** generate primitives only, and let
-each project own its semantic layer for now. Reason — `decisions.md` says *extract on the second
-use, never the first*, and the semantic layer has exactly **one** use. heinrichbros's mapping is
-bespoke because it is a brand choice, not a technical one, and freezing one project's vocabulary
-into the kit is the kind of guess the retrofit-before-init rule exists to prevent. When a second
-project wants a semantic layer, the shape of the mapping file will be obvious instead of invented.
+**What I need from you**, whichever you prefer:
 
-Say "primitives only" and I will build it. Say otherwise and I will build the mapping file.
+- **Sign in to your personal account** in the Chrome window I have open, tell me, and I will
+  create a token and set both projects up. Caveat: this signs Darwin out of that browser profile.
+- **Or paste a personal access token** — [vercel.com/account/settings/tokens](https://vercel.com/account/settings/tokens?authuser=cpheinrich@gmail.com)
+  while signed in as yourself. This leaves the Darwin CLI login untouched, and would likely
+  unblock MO-011 as a side effect, which has been stuck on exactly this.
 
-~
-
-## ❗ 2. Vercel: project-scoped access is Enterprise-only, so Lakina needs its own team · `claude`
-
-From your reply on the retrofits. I looked this up rather than inferring it, per the rule about
-Firebase console directions.
-
-**What you asked:** can you invite Alex to *just* the Lakina project on your personal Vercel
-account, or do you need a Lakina account?
-
-**You need a separate team, for two independent reasons.**
-
-1. **Project-scoped access requires Enterprise.** Project-level roles can only be given to someone
-   with the **Contributor** team role, and Pro's RBAC is limited to Owner, Member, Billing and Pro
-   Viewer — Contributor is not on it. On Pro, every member sees every project in the team. So
-   "Alex on Lakina only" is not purchasable at Pro on your personal account.
-2. **Hobby is non-commercial only** under the fair-use guidelines, and has no team collaboration
-   at all. Lakina is a capital firm, so it does not belong on Hobby regardless of Alex.
-
-**The upside you may not know about:** on a Pro team, **Viewer seats are free**, and a Pro Viewer
-can comment on preview deployments. That is exactly the review loop `decisions.md` picked Vercel
-for. So a Lakina Pro team costs one paid seat (yours, $20/mo) and Alex is free.
-
-**Also worth knowing:** Pro has **Sharable Links**, which bypass deployment protection for someone
-with no Vercel account at all. If Alex only ever needs to look at a preview, that may be enough
-and needs no seat.
-
-**So the split I would set up:**
-
-| Project | Where | Why |
-|---|---|---|
-| cpheinrich.com | your personal Hobby | personal, non-commercial, no collaborators |
-| heinrichbros.com | your personal Hobby | same — unless it is commercial, in which case Pro |
-| Lakina | its own Pro team | commercial, and Alex needs access |
-
-**Two questions.** Is heinrichbros.com commercial? And do you want me to go ahead and connect the
-two personal ones so you can preview those PRs, or would you rather do the Vercel side yourself
-and have me stop at the repo?
+I would take the token route. It is one credential, it does not disturb the Darwin session, and
+§14.2 already calls a Vercel token a tier-2 bootstrap credential — "once per account, you, paste
+into the wizard" — so it is the documented path rather than a workaround.
 
 ~
 
-## ❗ 3. Should reconcile refuse to ship an item whose PR did no work? · `claude`
+## ❗ 2. The kit is unblocked — which piece first? · `claude`
 
-Came back with an empty `~`. Repeating because it is the loose end from the MO-010 incident.
+MO-004 (`/hq` auth via Firebase custom claims), MO-005 (dashboard shell), MO-006 (analytics).
+All three were blocked on the kit having agreed content; MO-045 settled that.
 
-`check pr` now blocks a records-only PR on a claimed branch, but it is a gate and gates get
-bypassed — all three historical instances merged green because the rule did not exist yet.
-**Reconcile is the last line, and it trusts the branch name completely:** a merged PR whose branch
-stakes MO-X marks MO-X shipped, whatever the PR contained.
+**I would do MO-004 first.** It is the one with a settled design already written down — §10.1 is
+specific about custom claims gating both the route and the Firestore data, and `decisions.md`
+records why it is not Auth.js or Cloudflare Zero Trust. MO-005 renders something; without auth it
+renders it to everyone. MO-006 is the least coupled and could go any time.
 
-Should `pm ship` apply the same test before writing `shipped`? I did not add it because reconcile
-writes the board, and two places deciding the same thing with different answers is its own bug.
-Happy to leave it if you think the gate is enough.
+Any objection, or shall I take MO-004 next session?
 
 ~
 
-## ✅ 4. Three retrofit PRs — understood, holding · `claude`
+## ✅ 3. Primitives only — settled, with tests holding it there · `claude`
 
-Not merging until you have previewed them. They stay green and open:
-[cpheinrich.com#1](https://github.com/cpheinrich/cpheinrich.com/pull/1),
-[heinrichbros.com#1](https://github.com/heinrichbros/heinrichbros.com/pull/1),
-[lakina#3](https://github.com/lakinacapital/lakina/pull/3). The Vercel setup that unblocks
-previewing them is item 2.
+Shipped in #41. The code already emitted primitives; what was missing is that it read as a
+placeholder — *"inventing a shared vocabulary from a sample of one would be guessing"* invites the
+next person to add one once there are two. It is now a dated decision in the doc comment,
+`.agent/decisions.md` and §15.1a.
+
+Three tests pin it, including a count assertion so an addition fails rather than passing quietly
+next to the existing expectations. The failure mode here is additive and social: nobody removes
+primitives-only, somebody adds `--action-primary` because a project needed it and the kit was
+right there.
+
+## ✅ 4. Reconcile now refuses work that was not done · `claude`
+
+Shipped in #42. You left this to me, so: I built it, having argued against it.
+
+My objection was that two places deciding one thing will disagree — but that was an objection to
+**duplication**, not to the second check. `hasNoSubstantiveChange` now lives in `src/paths.ts`
+with two callers, which is ordinary defence in depth. I had conflated "two places enforce this"
+with "two places define this".
+
+What decided it: a gate only covers what passes through it, and all three historical instances
+merged green because the rule did not exist when they merged.
+
+Verified against real data rather than only unit tests — `morpheus pm ship --check` here now says:
+
+```
+1 item(s) NOT shipped — the merged PR changed only records and
+board files, so it did not do the item's work:
+  MO-010  mo-010-simplify-architecture-md-for-first-time (#31)
+```
+
+Strictly better than before, which called MO-010 a possibly-deliberate reopen. It was not
+ambiguous; it was a PR that did none of the work.
 
 ## Parked
 
-**Evo brand build.** Yours and the Evo session's, as you said — coming back to it later. Nothing
-here depends on it.
+**Lakina's Vercel team.** Waiting on you, as you said. When you want it: project-scoped access is
+Enterprise-only, so it needs its own Pro team — but Alex's Viewer seat is free and can comment on
+previews, so it is one paid seat.
 
-**The inbox file being rewritten.** You said it was probably you; watching rather than fixing. For
-the record I am leaving the frontmatter date unquoted, because `learned.md` says hand-written
-frontmatter should stay natural and `isoDate` normalises both forms — so the round-trip is
-cosmetic, not a validation risk.
+**Committing your inbox replies would red CI.** Unchanged and still un-actioned. `inbox validate`
+cannot tell "the agent left no reply slot" from "the human used the slot". Only bites if you push
+replies to a branch; you have been editing on `main`, so it has not. Tell me if it is worth an
+item.
 
-**One thing to know if you commit a reply:** `morpheus inbox validate` fails on an inbox you have
-replied into — *"item N is open (❗) but has no empty `~` reply slot"*. The validator cannot tell
-"the agent left no slot" from "the human used the slot". It is the protocol's shape rather than an
-obvious defect, so I have not touched it, but **pushing your replies to a branch would red CI**.
-Tell me if that is worth an item.
+**Item dates roll over at 8pm your time.** `created:` and `updated:` are stamped in UTC, so
+MO-045 and MO-046 both read `2026-07-30` though you decided them on the 29th. Cosmetic, and I have
+kept the archive filenames on local time so the timeline still reads correctly. Worth an item only
+if the board dates ever need to match your day.
 
-**Board reconciliation.** MO-044 reads `review` on `main`; the next claim sweeps it.
+**MO-011** — blocked on a Vercel token. Item 1 likely resolves it.
 
-**MO-011** genuinely blocked, needing a Vercel token — the CLI's `auth.json` returns
-`invalidToken`. Item 2 may resolve this as a side effect.
+**Evo brand build.** Yours and the Evo session's.
 
-**Google billing.** Unchanged — no Darwin billing account, trial flow fails with `OR_BACR2`,
-nothing needs it.
+**Google billing.** Unchanged — no Darwin billing account, `OR_BACR2`, nothing needs it.
 
-**MO-010, simplify `architecture.md`.** `backlog`, genuinely not started, and it grew again today.
+**MO-010, simplify `architecture.md`.** `backlog`, not started, and §15.1a and §12.3 both grew
+today.
