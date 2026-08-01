@@ -151,3 +151,46 @@ describe("ci.yml", () => {
     }
   });
 });
+
+/**
+ * A called workflow cannot request more than its caller was granted, and a
+ * caller job with no `permissions` block gets the repository default.
+ *
+ * The failure is not a skipped job — the *entire* workflow file is rejected
+ * and nothing runs. It took down all of CI on PR #55 with "The nested job
+ * 'review' is requesting 'pull-requests: write', but is only allowed
+ * 'pull-requests: none'."
+ */
+describe("caller permissions cover what they call", () => {
+  it("declares at least the permissions the nested workflow asks for", async () => {
+    const files = (await readdir(DIR)).filter((f) => f.endsWith(".yml"));
+
+    for (const file of files) {
+      const wf = (await read(file)) as {
+        jobs?: Record<string, { uses?: string; permissions?: Record<string, string> }>;
+      };
+
+      for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+        const local = job.uses?.match(/^\.\/\.github\/workflows\/(.+)$/)?.[1];
+        if (!local) continue;
+
+        const called = (await read(local)) as {
+          jobs?: Record<string, { permissions?: Record<string, string> }>;
+        };
+
+        const needed: Record<string, string> = {};
+        for (const inner of Object.values(called.jobs ?? {})) {
+          Object.assign(needed, inner.permissions ?? {});
+        }
+
+        for (const [scope, level] of Object.entries(needed)) {
+          if (level !== "write") continue;
+          expect(
+            job.permissions?.[scope],
+            `${file}:${name} calls ${local}, which needs ${scope}: write`,
+          ).toBe("write");
+        }
+      }
+    }
+  });
+});
