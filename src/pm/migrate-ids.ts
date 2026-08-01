@@ -129,6 +129,8 @@ export interface MigrationResult extends MigrationPlan {
   applied: string[];
   /** Files elsewhere whose `roadmap:` reference was repointed. */
   referencesUpdated: string[];
+  /** Files whose relative markdown links were repaired. */
+  linksUpdated: string[];
 }
 
 /**
@@ -140,6 +142,66 @@ export interface MigrationResult extends MigrationPlan {
  * new id, so `grep MO-052` still finds it, and rewriting narrative text in
  * historical records would be editing the past rather than repairing a link.
  */
+/**
+ * Repair relative markdown links that point at a renamed item.
+ *
+ * `[DW-002](../roadmap/DW-002.md)` becomes
+ * `[DW-002](../roadmap/DW-26-07-29-002-slug.md)`. The **link text is left
+ * alone** — that is prose, and the old number is still the last field of the
+ * new id, so it still reads correctly and still greps.
+ *
+ * This was missed on the first pass. Worklog `roadmap:` frontmatter was
+ * repaired but markdown links were not, and Morpheus shipped a migration with
+ * 28 dangling links because it has no test asserting they resolve. Darwin does,
+ * which is the only reason it surfaced.
+ */
+export async function updateLinks(
+  roots: string[],
+  renames: Rename[],
+): Promise<string[]> {
+  const byOldId = new Map(renames.map((r) => [r.oldId, r.newFile]));
+  const touched: string[] = [];
+
+  const walk = async (dir: string): Promise<string[]> => {
+    let out: string[] = [];
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return out;
+    }
+    for (const e of entries) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) out = out.concat(await walk(full));
+      else if (e.name.endsWith(".md")) out.push(full);
+    }
+    return out;
+  };
+
+  for (const root of roots) {
+    for (const file of await walk(root)) {
+      const text = await readFile(file, "utf8");
+      const next = text.replace(
+        /\]\(([^)]*?roadmap\/)([A-Z]{2,4}-\d{3,})\.md\)/g,
+        (whole, prefix: string, id: string) => {
+          // Never rewrite an absolute URL. Those are pinned to a ref or point
+          // at another repository — an archived link to
+          // `github.com/…/blob/<branch>/…/DW-002.md` records what that file was
+          // called on that branch, and "fixing" it would break a working link
+          // to make a local one look tidy.
+          if (/^[a-z]+:\/\//i.test(prefix)) return whole;
+          return byOldId.has(id) ? `](${prefix}${byOldId.get(id)})` : whole;
+        },
+      );
+      if (next !== text) {
+        await writeFile(file, next, "utf8");
+        touched.push(file);
+      }
+    }
+  }
+  return touched;
+}
+
 export async function updateReferences(
   dir: string,
   renames: Rename[],
@@ -186,6 +248,8 @@ export async function migrate(
    * while updating nothing.
    */
   worklogDir?: string,
+  /** Directory trees to scan for relative markdown links, e.g. `hq/`, `.agent/`. */
+  linkRoots: string[] = [],
 ): Promise<MigrationResult> {
   const plan = await planMigration(roadmapDir);
 
@@ -195,7 +259,7 @@ export async function migrate(
   }
 
   const applied: string[] = [];
-  if (dryRun) return { ...plan, applied, referencesUpdated: [] };
+  if (dryRun) return { ...plan, applied, referencesUpdated: [], linksUpdated: [] };
 
   for (const r of plan.renames) {
     const path = join(roadmapDir, r.oldFile);
@@ -217,7 +281,9 @@ export async function migrate(
     ? await updateReferences(worklogDir, plan.renames)
     : [];
 
-  return { ...plan, applied, referencesUpdated };
+  const linksUpdated = await updateLinks(linkRoots, plan.renames);
+
+  return { ...plan, applied, referencesUpdated, linksUpdated };
 }
 
 export { isLegacyId };

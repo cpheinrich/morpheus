@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Item } from "./parse.js";
 import type { Goal, Priority, Request, RoadmapItem, RoadmapStatus } from "./schema.js";
 
@@ -32,8 +32,19 @@ function table(headers: string[], rows: string[][]): string {
 }
 
 /** Link an item id to its own file, so the table is navigable on GitHub. */
-function link(id: string): string {
-  return `[${id}](./${id}.md)`;
+/**
+ * Link to the file, not to `<id>.md`.
+ *
+ * Filenames stopped equalling ids in MO-057, when roadmap items gained a slug —
+ * `MO-26-07-28-005-kit-hq-dashboard-shell.md`. The generated index kept
+ * assembling `./${id}.md` and produced 77 broken links across three tables,
+ * caught only because darwin has a test asserting relative links resolve.
+ *
+ * The item already carries the path it was read from, so this needs no new
+ * information — only to stop reconstructing what it was given.
+ */
+function link(id: string, path: string): string {
+  return `[${id}](./${basename(path)})`;
 }
 
 export function renderRoadmap(items: Item<RoadmapItem>[]): string {
@@ -46,7 +57,7 @@ export function renderRoadmap(items: Item<RoadmapItem>[]): string {
   return table(
     ["ID", "Title", "Status", "Pri", "Goal", "PRs"],
     sorted.map((i) => [
-      link(i.data.id),
+      link(i.data.id, i.path),
       cell(i.data.title),
       i.data.status,
       i.data.priority,
@@ -61,7 +72,7 @@ export function renderGoals(items: Item<Goal>[]): string {
   return table(
     ["ID", "Title", "Period", "Metric", "Target", "Current", "Status"],
     sorted.map((i) => [
-      link(i.data.id),
+      link(i.data.id, i.path),
       cell(i.data.title),
       cell(i.data.period),
       cell(i.data.metric),
@@ -77,7 +88,7 @@ export function renderRequests(items: Item<Request>[]): string {
   return table(
     ["ID", "Title", "Source", "Status", "Roadmap"],
     sorted.map((i) => [
-      link(i.data.id),
+      link(i.data.id, i.path),
       cell(i.data.title),
       i.data.source,
       i.data.status,

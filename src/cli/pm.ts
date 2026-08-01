@@ -443,7 +443,10 @@ export async function migrateIds(
 
   let result;
   try {
-    result = await migrate(roadmapDir, dryRun, join(repoRoot, ".agent", "worklog"));
+    result = await migrate(roadmapDir, dryRun, join(repoRoot, ".agent", "worklog"), [
+      join(repoRoot, "hq"),
+      join(repoRoot, ".agent"),
+    ]);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     return 1;
@@ -463,6 +466,9 @@ export async function migrateIds(
 
   if (result.referencesUpdated.length) {
     console.log(`\n${result.referencesUpdated.length} worklog reference(s) repointed.`);
+  }
+  if (result.linksUpdated.length) {
+    console.log(`${result.linksUpdated.length} file(s) had markdown links repaired.`);
   }
   if (!dryRun) console.log("Run `morpheus pm index` to regenerate the tables.");
   return result.problems.length ? 1 : 0;

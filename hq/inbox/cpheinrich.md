@@ -92,11 +92,11 @@ already did:
 
 | Item | What landed |
 | --- | --- |
-| [MO-048](../product/roadmap/MO-048.md) | The specification: work graph, blocked, verifier stack, your browser rule |
-| [MO-049](../product/roadmap/MO-049.md) | `pm block` / `pm unblock` — three records, `needs` required by the schema |
-| [MO-050](../product/roadmap/MO-050.md) | `morpheus heartbeat` plus a scheduled workflow, twice on weekdays |
-| [MO-051](../product/roadmap/MO-051.md) | Agent review rung, persona as a versioned file, `acceptance` finally traversed |
-| [MO-052](../product/roadmap/MO-052.md) | Waivers report as `~ waived`, carrying their stated reason |
+| [MO-048](../product/roadmap/MO-26-08-01-048-work-graph-edges-blocked.md) | The specification: work graph, blocked, verifier stack, your browser rule |
+| [MO-049](../product/roadmap/MO-26-08-01-049-blocked-first-class-outcome.md) | `pm block` / `pm unblock` — three records, `needs` required by the schema |
+| [MO-050](../product/roadmap/MO-26-08-01-050-heartbeat-scheduled-dispatcher.md) | `morpheus heartbeat` plus a scheduled workflow, twice on weekdays |
+| [MO-051](../product/roadmap/MO-26-08-01-051-agent-code-review-independent.md) | Agent review rung, persona as a versioned file, `acceptance` finally traversed |
+| [MO-052](../product/roadmap/MO-26-08-01-052-waivers-surfaced-not-swallowed.md) | Waivers report as `~ waived`, carrying their stated reason |
 
 Try it:
 
