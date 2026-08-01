@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ROADMAP_ID } from "./id.js";
 
 /**
  * Schemas for the file-based project management artifacts.
@@ -15,7 +16,11 @@ import { z } from "zod";
  * these patterns only enforce *shape*, so the Zod schemas stay static rather
  * than being rebuilt per project.
  */
-export const ROADMAP_ID = /^[A-Z]{2,4}-\d{3,}$/;
+// Imported, not restated: `id.ts` owns the roadmap-id pattern. Two constants
+// of the same name with different meanings is exactly the drift MO-004 was
+// about, and the first draft of MO-057 had it — caught by a test asserting
+// `MO-045` still validates.
+export { ROADMAP_ID };
 export const GOAL_ID = /^[A-Z]{2,4}-G-\d{4}-(Q[1-4]|ANNUAL)-\d{2}$/;
 export const REQUEST_ID = /^[A-Z]{2,4}-FR-\d{3,}$/;
 

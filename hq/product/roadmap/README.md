@@ -6,6 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
+| [MO-057](./MO-057.md) | Roadmap ids become timestamps, not a coordinated integer | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-056](./MO-056.md) | Inbox items propose options, not open questions | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |

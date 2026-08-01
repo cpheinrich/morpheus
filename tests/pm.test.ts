@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -146,7 +146,7 @@ describe("parse", () => {
 
     const { items, issues } = await parseArtifact(product, "roadmap");
     expect(items).toHaveLength(0);
-    expect(issues[0]!.message).toContain("filename must match id");
+    expect(issues[0]!.message).toContain("filename must start with the id");
   });
 
   it("ignores the generated README", async () => {
@@ -287,18 +287,26 @@ describe("new item", () => {
   // `product` is a bare temp directory with no git repo, so the remote lookup
   // fails and allocation falls back to local files — which is also the blind
   // case asserted below.
-  it("allocates MO-001 in an empty directory", async () => {
-    expect((await nextId(product, "roadmap", "MO", product)).id).toBe("MO-001");
+  it("allocates a roadmap id from the clock (MO-057)", async () => {
+    const at = new Date("2026-08-01T15:26:34Z");
+    expect((await nextId(product, "roadmap", "MO", product, at)).id).toBe("MO-2026-08-01-15.26.34");
   });
 
-  it("allocates the next id after the highest existing one", async () => {
+  it("ignores what already exists — the clock, not the highest id, decides", async () => {
     await seed("roadmap", "MO-001", VALID_RM);
     await seed("roadmap", "MO-009", VALID_RM.replace("MO-001", "MO-009"));
-    expect((await nextId(product, "roadmap", "MO", product)).id).toBe("MO-010");
+    const at = new Date("2026-08-01T15:26:34Z");
+    expect((await nextId(product, "roadmap", "MO", product, at)).id).toBe("MO-2026-08-01-15.26.34");
   });
 
-  it("reports blind when origin cannot be reached, rather than implying the id is free", async () => {
-    expect((await nextId(product, "roadmap", "MO", product)).blind).toBe(true);
+  it("is never blind for a roadmap id, because it asks no remote", async () => {
+    // Sequential allocation had to consult origin and could fail to. A clock
+    // needs no answer, so there is no unanswered question to report.
+    expect((await nextId(product, "roadmap", "MO", product)).blind).toBe(false);
+  });
+
+  it("still reports blind for goals, which remain sequential", async () => {
+    expect((await nextId(product, "goals", "MO", product)).blind).toBe(true);
   });
 
   it("creates a file that passes its own validation", async () => {
@@ -310,7 +318,8 @@ describe("new item", () => {
       priority: "P1",
       cwd: product,
     });
-    expect(path).toContain("MO-001.md");
+    // Filename carries a slug so the directory is readable; the id does not.
+    expect(path).toMatch(/MO-\d{4}-\d{2}-\d{2}-\d{2}\.\d{2}\.\d{2}-wire-up-analytics\.md$/);
 
     const { items, issues } = await parseArtifact(product, "roadmap");
     expect(issues).toHaveLength(0);
@@ -340,7 +349,8 @@ describe("new item", () => {
       title: "No goal",
       cwd: product,
     });
-    const raw = await readFile(join(product, "roadmap", "MO-001.md"), "utf8");
+    const [file] = (await readdir(join(product, "roadmap"))).filter((f) => f.endsWith(".md"));
+    const raw = await readFile(join(product, "roadmap", file!), "utf8");
     expect(raw).not.toContain("goal:");
   });
 });
@@ -373,27 +383,39 @@ async function originHolding(...branches: string[]): Promise<string> {
 }
 
 describe("allocation consults the remote", () => {
-  it("skips an id another session holds on a branch but has not merged", async () => {
-    const cwd = await originHolding("mo-038-brand-prose-templates-break");
+  // Roadmap ids no longer consult the remote (MO-057): a fork contributor's
+  // `origin` is their fork, so no query can tell them which ids Morpheus has
+  // issued. Goals and requests stay sequential and still ask.
+  it("skips a goal id another session holds on a branch but has not merged", async () => {
+    const cwd = await originHolding("mo-g-038-a-goal");
 
-    // Nothing on disk — exactly the state a fresh clone is in while MO-038 is
-    // still only a claim. The old behaviour allocated MO-001.
-    const { id, blind } = await nextId(product, "roadmap", "MO", cwd);
-    expect(id).toBe("MO-039");
+    // Nothing on disk — the state a fresh clone is in while the claim is live.
+    const { id, blind } = await nextId(product, "goals", "MO", cwd);
+    expect(id).toBe("MO-G-039");
     expect(blind).toBe(false);
   });
 
   it("takes the higher of what merged and what is claimed", async () => {
-    await seed("roadmap", "MO-040", VALID_RM.replace("MO-001", "MO-040"));
-    const cwd = await originHolding("mo-038-still-open");
+    const cwd = await originHolding("mo-g-040-shipped", "mo-g-038-still-open");
 
-    expect((await nextId(product, "roadmap", "MO", cwd)).id).toBe("MO-041");
+    expect((await nextId(product, "goals", "MO", cwd)).id).toBe("MO-G-041");
   });
 
-  it("does not let a goal branch bump a roadmap id", async () => {
-    const cwd = await originHolding("mo-g-009-a-goal", "mo-fr-009-a-request");
+  it("does not let a request branch bump a goal id", async () => {
+    const cwd = await originHolding("mo-fr-009-a-request");
 
-    expect((await nextId(product, "roadmap", "MO", cwd)).id).toBe("MO-001");
+    expect((await nextId(product, "goals", "MO", cwd)).id).toBe("MO-G-001");
+  });
+
+  it("allocates a roadmap id without asking origin at all", async () => {
+    // The point of MO-057: an id that needs no answer cannot be given a wrong
+    // one, so a branch nobody can see cannot cause a collision.
+    const cwd = await originHolding("mo-2026-08-01-15.26.34-something");
+    const at = new Date("2026-08-01T15:26:34Z");
+
+    const { id, blind } = await nextId(product, "roadmap", "MO", cwd, at);
+    expect(id).toBe("MO-2026-08-01-15.26.34");
+    expect(blind).toBe(false);
   });
 });
 

@@ -321,3 +321,24 @@ structural, options go only where the analysis is real, and non-decisions keep a
 Not enforced by `inbox validate`: the validator cannot distinguish a real option set from three
 restatements of one choice, and a check that cannot tell those apart would pass the filler it
 exists to prevent — the `learned.md` shape where a check reports an empty thing as correct.
+
+**Roadmap ids are timestamps, not a coordinated integer** — 2026-08-01. `PREFIX-YYYY-MM-DD-HH.MM.SS` **in
+UTC**, taken from the clock when the item is first written. UTC because ordering is the scheme's
+whole job and is meaningless if authors measure from different origins — and because `created:`
+is `toISOString()`, already UTC, so local time put two different days in one frontmatter. A sequential integer requires every writer to
+agree on what the last one was, and that agreement does not exist: in one day `pm new` offered an
+id a parallel session held as an untracked file, would have offered one an open PR's branch held,
+and four items were created in the *same second* by a decomposition fan-out. Forks make it
+unfixable — a contributor's `origin` is their fork, so no query tells them the truth.
+
+**An id that needs no answer cannot be given a wrong one.** The clock needs no coordination and no
+network, preserving `pm new`'s offline allocation. On collision the seconds field steps forward, so
+ordering survives without randomness.
+
+The slug lives in the **filename**, not the id: the timestamp already makes the id unique, so the
+slug's only job is recognition when browsing, while the id is what every cross-reference repeats.
+Capped at 64 and cut at a word boundary, preferring the shortest intelligible name.
+
+Migrated ids keep the old number against the item's own creation date — `MO-045` → `MO-2026-07-29-045`
+— so `grep MO-045` still resolves against history that cannot be rewritten, and real chronology
+survives. Goals and requests stay sequential; they are rare and have never collided.

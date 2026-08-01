@@ -4,6 +4,7 @@ import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { findDuplicateIds, parseArtifact, type ParseIssue } from "../pm/parse.js";
 import { block as blockItem, BlockError, unblock as unblockItem } from "../pm/block.js";
+import { migrate } from "../pm/migrate-ids.js";
 import {
   renderGoals,
   renderRequests,
@@ -423,4 +424,39 @@ export async function ship(
   // failure. Without it, finding nothing to do is a success.
   if (check) return result.outcomes.some((o) => o.kind === "shipped") ? 1 : 0;
   return 0;
+}
+
+/**
+ * Migrate integer roadmap ids to the dated scheme (MO-057).
+ *
+ * `--check` plans and reports without writing, which is how a repo confirms it
+ * is already migrated. The order check runs in both modes and refuses rather
+ * than warns: a board whose order silently changed is worse than one that was
+ * not migrated.
+ */
+export async function migrateIds(productDir: string, dryRun: boolean): Promise<number> {
+  const roadmapDir = join(productDir, "roadmap");
+
+  let result;
+  try {
+    result = await migrate(roadmapDir, dryRun);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    return 1;
+  }
+
+  for (const p of result.problems) console.error(`✗ ${p}`);
+
+  if (result.renames.length === 0) {
+    console.log(`Nothing to migrate — ${result.skipped.length} item(s) already dated.`);
+    return result.problems.length ? 1 : 0;
+  }
+
+  console.log(`${dryRun ? "Would migrate" : "Migrated"} ${result.renames.length} item(s):\n`);
+  for (const r of result.renames) console.log(`  ${r.oldId.padEnd(10)} → ${r.newId}`);
+  if (result.skipped.length) console.log(`\n${result.skipped.length} already dated, left alone.`);
+  console.log("\nOrdering verified unchanged.");
+
+  if (!dryRun) console.log("Run `morpheus pm index` to regenerate the tables.");
+  return result.problems.length ? 1 : 0;
 }
