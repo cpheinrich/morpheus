@@ -1,0 +1,45 @@
+---
+id: MO-26-07-30-045
+title: "Kit generates primitives only; projects own the semantic layer"
+status: shipped
+priority: P1
+owner: agent
+prs: [41]
+created: 2026-07-30
+updated: 2026-08-01
+---
+
+> Migrated from `MO-045` to `MO-26-07-30-045` (MO-057). References to `MO-045` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+Asked three times across three inbox cycles, and it was blocking MO-004, MO-005 and MO-006 —
+not on a publishing pipeline, which `.agent/decisions.md` settled, but on the kit having content
+whose shape nobody had agreed.
+
+Three projects had independently hand-rolled the same tokens-to-CSS script, which is the
+extract-on-second-use trigger passed twice over, and MO-039 shipped the one generator. The
+remaining question was the layer above: heinrichbros maps `color.vermilion → --ember`,
+cpheinrich.com emits primitives verbatim. §15.1a says the semantic layer should exist, but only
+one project had one.
+
+**Chris decided: primitives only.**
+
+## Approach
+
+Mostly recording a decision that the code already anticipated — `src/design/tokens.ts` emitted
+primitives and said so, but framed it as "inventing a shared vocabulary from a sample of one would
+be guessing", which reads as provisional. It is now settled.
+
+Three places: the doc comment, `.agent/decisions.md`, and §15.1a, which already assigned the
+semantic layer to `packages/shared/tokens/semantic.json` per project and now says the kit does not
+take it back.
+
+Pinned with tests rather than left to prose. The failure mode is somebody helpfully adding
+`--action-primary` later, and a vocabulary nobody chose propagating into every project that adopts
+the kit — worse than a wrong function, because it is what everything downstream is written
+against.
+
+**MO-004, MO-005 and MO-006 are unblocked by this.**

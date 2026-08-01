@@ -7,60 +7,61 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
 | [MO-2026-08-01-23.03.19](./MO-2026-08-01-23.03.19.md) | External contributors open an issue, and may open a PR carrying the roadmap item | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
-| [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
-| [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
-| [MO-047](./MO-047.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — |
-| [MO-001](./MO-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — |
-| [MO-002](./MO-002.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — |
-| [MO-003](./MO-003.md) | Consume the kit as a git dependency, not a published package | shipped | P0 | MO-G-2026-Q3-01 | #26 |
-| [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | shipped | P0 | MO-G-2026-Q3-01 | #48 |
-| [MO-014](./MO-014.md) | Brand template and wizard | shipped | P0 | MO-G-2026-Q3-01 | — |
-| [MO-019](./MO-019.md) | Brand refresh, and never clobber an existing token system | shipped | P0 | MO-G-2026-Q3-01 | #9 |
-| [MO-023](./MO-023.md) | Brand refresh leaves derived files stale | shipped | P0 | MO-G-2026-Q3-01 | #14 |
-| [MO-027](./MO-027.md) | Nothing moves an item from review to shipped | shipped | P0 | MO-G-2026-Q3-01 | #18 |
-| [MO-030](./MO-030.md) | Onboarding checklist: morpheus init status | shipped | P0 | MO-G-2026-Q3-01 | #21 |
-| [MO-032](./MO-032.md) | Convention checks must not require the consumer to be a pnpm project | shipped | P0 | MO-G-2026-Q3-01 | #24 |
-| [MO-035](./MO-035.md) | Reusable checks only worked in the repo that defines them | shipped | P0 | MO-G-2026-Q3-01 | #28 |
-| [MO-036](./MO-036.md) | A freshly scaffolded project fails pm index --check | shipped | P0 | MO-G-2026-Q3-01 | #29 |
-| [MO-039](./MO-039.md) | kit/design: token pipeline — one generator, not three | shipped | P0 | MO-G-2026-Q3-01 | #32 |
-| [MO-048](./MO-048.md) | Work graph edges, blocked as an outcome, and the verifier stack | shipped | P0 | MO-G-2026-Q3-01 | #50 |
-| [MO-049](./MO-049.md) | Blocked is a first-class outcome, routed to the inbox | shipped | P0 | MO-G-2026-Q3-01 | #51 |
-| [MO-050](./MO-050.md) | Heartbeat: a scheduled dispatcher over the board | shipped | P0 | MO-G-2026-Q3-01 | #53 |
-| [MO-057](./MO-057.md) | Roadmap ids become timestamps, not a coordinated integer | shipped | P0 | MO-G-2026-Q3-01 | #58 |
-| [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — |
-| [MO-013](./MO-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
-| [MO-015](./MO-015.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | #22 |
-| [MO-016](./MO-016.md) | morpheus doctor — report drift without fixing it | shipped | P1 | MO-G-2026-Q3-01 | #8 |
-| [MO-018](./MO-018.md) | Reusable workflows must not fight packageManager | shipped | P1 | MO-G-2026-Q3-01 | #7 |
-| [MO-020](./MO-020.md) | Brand wizard hands off to an interactive session | shipped | P1 | MO-G-2026-Q3-01 | #10 |
-| [MO-021](./MO-021.md) | Brand prompt frames a design session, not a deliverable | shipped | P1 | MO-G-2026-Q3-01 | #11 |
-| [MO-022](./MO-022.md) | Brand package has a declared required set | shipped | P1 | MO-G-2026-Q3-01 | #13 |
-| [MO-024](./MO-024.md) | Design sessions keep a durable decision record | shipped | P1 | MO-G-2026-Q3-01 | #15 |
-| [MO-026](./MO-026.md) | Brand status wrongly requires tokens.json when a visual source is declared | shipped | P1 | MO-G-2026-Q3-01 | #17 |
-| [MO-028](./MO-028.md) | Brand answers editable as a file, not only a wizard | shipped | P1 | MO-G-2026-Q3-01 | #19 |
-| [MO-029](./MO-029.md) | Reconcile at claim time so ship never orphans a change on main | shipped | P1 | MO-G-2026-Q3-01 | #20 |
-| [MO-031](./MO-031.md) | Checklist detectors accept empty files as done | shipped | P1 | MO-G-2026-Q3-01 | #23 |
-| [MO-033](./MO-033.md) | Scaffolded gitignore hides legitimate design assets | shipped | P1 | MO-G-2026-Q3-01 | #25 |
-| [MO-037](./MO-037.md) | brand check reports clean when nothing has been generated | shipped | P1 | MO-G-2026-Q3-01 | #30 |
-| [MO-038](./MO-038.md) | Brand prose templates break on real answers | shipped | P1 | — | #32, #36 |
-| [MO-040](./MO-040.md) | pm new re-issues an id another session already claimed | shipped | P1 | — | #33 |
-| [MO-042](./MO-042.md) | An inbox cycle has no roadmap item to ride | shipped | P1 | — | #35 |
-| [MO-043](./MO-043.md) | A claimed branch can still ship an item it did no work on | shipped | P1 | — | #37 |
-| [MO-045](./MO-045.md) | Kit generates primitives only; projects own the semantic layer | shipped | P1 | — | #41 |
-| [MO-051](./MO-051.md) | Agent code review as an independent verifier rung | shipped | P1 | MO-G-2026-Q3-01 | #55 |
-| [MO-052](./MO-052.md) | Waivers are surfaced, not swallowed | shipped | P1 | MO-G-2026-Q3-01 | #54 |
-| [MO-054](./MO-054.md) | Every project points back at Morpheus, in AGENTS.md and README.md | shipped | P1 | MO-G-2026-Q3-01 | #52 |
-| [MO-056](./MO-056.md) | Inbox items propose options, not open questions | shipped | P1 | MO-G-2026-Q3-01 | #57 |
-| [MO-008](./MO-008.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
-| [MO-009](./MO-009.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
-| [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | #46 |
-| [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | shipped | P2 | MO-G-2026-Q3-01 | #1, #4 |
-| [MO-025](./MO-025.md) | Convergence requires evidence on more than one surface | shipped | P2 | MO-G-2026-Q3-01 | #16 |
-| [MO-034](./MO-034.md) | agents-md detector passes when CLAUDE.md is a divergent copy | shipped | P2 | MO-G-2026-Q3-01 | #27 |
-| [MO-041](./MO-041.md) | pm claim is the only documented way to start work | shipped | P2 | — | #34 |
-| [MO-044](./MO-044.md) | Onboarding heading comes from the directory name, not the manifest | shipped | P2 | — | #38 |
-| [MO-046](./MO-046.md) | Reconcile can ship an item whose merged PR did no work | shipped | P2 | — | #42 |
-| [MO-053](./MO-053.md) | Cloudflare Email Sending is the canonical transactional email service | shipped | P2 | MO-G-2026-Q3-01 | #49 |
-| [MO-012](./MO-012.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — |
+| [MO-26-08-01-16.40.29](./MO-26-08-01-16.40.29.md) | Migrate Morpheus roadmap ids to the dated scheme | review | P1 | — | — |
+| [MO-26-07-28-005](./MO-26-07-28-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-26-07-28-006](./MO-26-07-28-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-26-07-29-011](./MO-26-07-29-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-26-08-01-047](./MO-26-08-01-047.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — |
+| [MO-26-07-28-001](./MO-26-07-28-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — |
+| [MO-26-07-28-002](./MO-26-07-28-002.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — |
+| [MO-26-07-28-003](./MO-26-07-28-003.md) | Consume the kit as a git dependency, not a published package | shipped | P0 | MO-G-2026-Q3-01 | #26 |
+| [MO-26-07-28-004](./MO-26-07-28-004.md) | /hq auth: Firebase custom claims | shipped | P0 | MO-G-2026-Q3-01 | #48 |
+| [MO-26-07-29-014](./MO-26-07-29-014.md) | Brand template and wizard | shipped | P0 | MO-G-2026-Q3-01 | — |
+| [MO-26-07-29-019](./MO-26-07-29-019.md) | Brand refresh, and never clobber an existing token system | shipped | P0 | MO-G-2026-Q3-01 | #9 |
+| [MO-26-07-29-023](./MO-26-07-29-023.md) | Brand refresh leaves derived files stale | shipped | P0 | MO-G-2026-Q3-01 | #14 |
+| [MO-26-07-29-027](./MO-26-07-29-027.md) | Nothing moves an item from review to shipped | shipped | P0 | MO-G-2026-Q3-01 | #18 |
+| [MO-26-07-29-030](./MO-26-07-29-030.md) | Onboarding checklist: morpheus init status | shipped | P0 | MO-G-2026-Q3-01 | #21 |
+| [MO-26-07-29-032](./MO-26-07-29-032.md) | Convention checks must not require the consumer to be a pnpm project | shipped | P0 | MO-G-2026-Q3-01 | #24 |
+| [MO-26-07-29-035](./MO-26-07-29-035.md) | Reusable checks only worked in the repo that defines them | shipped | P0 | MO-G-2026-Q3-01 | #28 |
+| [MO-26-07-29-036](./MO-26-07-29-036.md) | A freshly scaffolded project fails pm index --check | shipped | P0 | MO-G-2026-Q3-01 | #29 |
+| [MO-26-07-29-039](./MO-26-07-29-039.md) | kit/design: token pipeline — one generator, not three | shipped | P0 | MO-G-2026-Q3-01 | #32 |
+| [MO-26-08-01-048](./MO-26-08-01-048.md) | Work graph edges, blocked as an outcome, and the verifier stack | shipped | P0 | MO-G-2026-Q3-01 | #50 |
+| [MO-26-08-01-049](./MO-26-08-01-049.md) | Blocked is a first-class outcome, routed to the inbox | shipped | P0 | MO-G-2026-Q3-01 | #51 |
+| [MO-26-08-01-050](./MO-26-08-01-050.md) | Heartbeat: a scheduled dispatcher over the board | shipped | P0 | MO-G-2026-Q3-01 | #53 |
+| [MO-26-08-01-057](./MO-26-08-01-057.md) | Roadmap ids become timestamps, not a coordinated integer | shipped | P0 | MO-G-2026-Q3-01 | #58 |
+| [MO-26-07-28-007](./MO-26-07-28-007.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — |
+| [MO-26-07-29-013](./MO-26-07-29-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
+| [MO-26-07-29-015](./MO-26-07-29-015.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | #22 |
+| [MO-26-07-29-016](./MO-26-07-29-016.md) | morpheus doctor — report drift without fixing it | shipped | P1 | MO-G-2026-Q3-01 | #8 |
+| [MO-26-07-29-018](./MO-26-07-29-018.md) | Reusable workflows must not fight packageManager | shipped | P1 | MO-G-2026-Q3-01 | #7 |
+| [MO-26-07-29-020](./MO-26-07-29-020.md) | Brand wizard hands off to an interactive session | shipped | P1 | MO-G-2026-Q3-01 | #10 |
+| [MO-26-07-29-021](./MO-26-07-29-021.md) | Brand prompt frames a design session, not a deliverable | shipped | P1 | MO-G-2026-Q3-01 | #11 |
+| [MO-26-07-29-022](./MO-26-07-29-022.md) | Brand package has a declared required set | shipped | P1 | MO-G-2026-Q3-01 | #13 |
+| [MO-26-07-29-024](./MO-26-07-29-024.md) | Design sessions keep a durable decision record | shipped | P1 | MO-G-2026-Q3-01 | #15 |
+| [MO-26-07-29-026](./MO-26-07-29-026.md) | Brand status wrongly requires tokens.json when a visual source is declared | shipped | P1 | MO-G-2026-Q3-01 | #17 |
+| [MO-26-07-29-028](./MO-26-07-29-028.md) | Brand answers editable as a file, not only a wizard | shipped | P1 | MO-G-2026-Q3-01 | #19 |
+| [MO-26-07-29-029](./MO-26-07-29-029.md) | Reconcile at claim time so ship never orphans a change on main | shipped | P1 | MO-G-2026-Q3-01 | #20 |
+| [MO-26-07-29-031](./MO-26-07-29-031.md) | Checklist detectors accept empty files as done | shipped | P1 | MO-G-2026-Q3-01 | #23 |
+| [MO-26-07-29-033](./MO-26-07-29-033.md) | Scaffolded gitignore hides legitimate design assets | shipped | P1 | MO-G-2026-Q3-01 | #25 |
+| [MO-26-07-29-037](./MO-26-07-29-037.md) | brand check reports clean when nothing has been generated | shipped | P1 | MO-G-2026-Q3-01 | #30 |
+| [MO-26-07-29-038](./MO-26-07-29-038.md) | Brand prose templates break on real answers | shipped | P1 | — | #32, #36 |
+| [MO-26-07-29-040](./MO-26-07-29-040.md) | pm new re-issues an id another session already claimed | shipped | P1 | — | #33 |
+| [MO-26-07-29-042](./MO-26-07-29-042.md) | An inbox cycle has no roadmap item to ride | shipped | P1 | — | #35 |
+| [MO-26-07-29-043](./MO-26-07-29-043.md) | A claimed branch can still ship an item it did no work on | shipped | P1 | — | #37 |
+| [MO-26-07-30-045](./MO-26-07-30-045.md) | Kit generates primitives only; projects own the semantic layer | shipped | P1 | — | #41 |
+| [MO-26-08-01-051](./MO-26-08-01-051.md) | Agent code review as an independent verifier rung | shipped | P1 | MO-G-2026-Q3-01 | #55 |
+| [MO-26-08-01-052](./MO-26-08-01-052.md) | Waivers are surfaced, not swallowed | shipped | P1 | MO-G-2026-Q3-01 | #54 |
+| [MO-26-08-01-054](./MO-26-08-01-054.md) | Every project points back at Morpheus, in AGENTS.md and README.md | shipped | P1 | MO-G-2026-Q3-01 | #52 |
+| [MO-26-08-01-056](./MO-26-08-01-056.md) | Inbox items propose options, not open questions | shipped | P1 | MO-G-2026-Q3-01 | #57 |
+| [MO-26-07-28-008](./MO-26-07-28-008.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
+| [MO-26-07-28-009](./MO-26-07-28-009.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
+| [MO-26-07-29-010](./MO-26-07-29-010.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | #46 |
+| [MO-26-07-29-017](./MO-26-07-29-017.md) | CLI install: npm link and the executable bit | shipped | P2 | MO-G-2026-Q3-01 | #1, #4 |
+| [MO-26-07-29-025](./MO-26-07-29-025.md) | Convergence requires evidence on more than one surface | shipped | P2 | MO-G-2026-Q3-01 | #16 |
+| [MO-26-07-29-034](./MO-26-07-29-034.md) | agents-md detector passes when CLAUDE.md is a divergent copy | shipped | P2 | MO-G-2026-Q3-01 | #27 |
+| [MO-26-07-29-041](./MO-26-07-29-041.md) | pm claim is the only documented way to start work | shipped | P2 | — | #34 |
+| [MO-26-07-29-044](./MO-26-07-29-044.md) | Onboarding heading comes from the directory name, not the manifest | shipped | P2 | — | #38 |
+| [MO-26-07-30-046](./MO-26-07-30-046.md) | Reconcile can ship an item whose merged PR did no work | shipped | P2 | — | #42 |
+| [MO-26-08-01-053](./MO-26-08-01-053.md) | Cloudflare Email Sending is the canonical transactional email service | shipped | P2 | MO-G-2026-Q3-01 | #49 |
+| [MO-26-07-29-012](./MO-26-07-29-012.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — |
 <!-- morpheus:end -->

@@ -279,6 +279,27 @@ describe("migration", () => {
     expect(await readdir(join(dir, "roadmap"))).toEqual(["MO-045.md"]);
   });
 
+  it("repoints a worklog's roadmap reference so it does not dangle", async () => {
+    const wl = join(dir, ".agent", "worklog");
+    await mkdir(wl, { recursive: true });
+    await writeFile(
+      join(wl, "note.md"),
+      `---\ndate: 2026-07-31\nagent: claude\nroadmap: MO-045\noutcome: shipped\nsummary: x\n---\n\nProse mentioning MO-045 stays as written.\n`,
+      "utf8",
+    );
+    await item("MO-045", "Forty-fifth thing", "2026-07-31");
+    const r = await migrate(join(dir, "roadmap"), false, wl);
+
+    const text = await readFile(join(wl, "note.md"), "utf8");
+    expect(text).toContain("roadmap: MO-26-07-31-045");
+    expect(r.referencesUpdated).toEqual(["note.md"]);
+
+    // Prose is deliberately untouched: the old number is still the last field
+    // of the new id, so grep finds it, and rewriting narrative in a historical
+    // record would be editing the past rather than repairing a link.
+    expect(text).toContain("Prose mentioning MO-045 stays as written.");
+  });
+
   it("refuses an item with no creation date rather than inventing one", async () => {
     await writeFile(
       join(dir, "roadmap", "MO-099.md"),

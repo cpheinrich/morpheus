@@ -1,7 +1,7 @@
 ---
 date: 2026-08-01
 agent: claude
-roadmap: MO-052
+roadmap: MO-26-08-01-052
 outcome: shipped
 summary: Waivers now report as a third finding level; writing the tests exposed a regex that made a bare `skip-tests:` capture the next line as its reason.
 ---

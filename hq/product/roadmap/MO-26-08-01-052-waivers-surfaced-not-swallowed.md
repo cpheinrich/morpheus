@@ -1,0 +1,64 @@
+---
+id: MO-26-08-01-052
+title: "Waivers are surfaced, not swallowed"
+status: shipped
+priority: P1
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: [54]
+created: 2026-08-01
+updated: 2026-08-01
+---
+
+> Migrated from `MO-052` to `MO-26-08-01-052` (MO-057). References to `MO-052` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+`check pr` accepts two waivers written by the author of the PR being checked: `skip-tests:` and
+`records-only:`. Both are legitimate — some changes genuinely cannot be tested, and a few items
+genuinely deliver a decision rather than code.
+
+The problem is that they pass **silently**. `formatFindings` prints `✓ PR conventions satisfied.`
+whether the rules were met or waived, so a PR that excused itself from its tests is
+indistinguishable, in CI output, from one that has them.
+
+By the definition MO-048 adopted — *a verifier answers "is this correct?" without trusting the
+doer's own say-so* — a self-written waiver accepted in silence is not verification. The waiver
+should stay; what has to change is that it becomes visible to the rung above.
+
+This is the cheapest item in the set and the one with the highest ratio of value to code.
+
+## Approach
+
+A waived rule produces a `waived` finding rather than no finding.
+
+- A third `level`, alongside `error` and `warning`, so a waiver cannot be mistaken for either. It
+  does not affect the exit code.
+- The finding carries the **stated reason**, so the reason is visible in the check output rather
+  than only in the PR body someone would have to scroll for.
+- `formatFindings` never reports a clean run when something was waived. `✓ PR conventions
+  satisfied` becomes `✓ PR conventions satisfied — 1 waived` with the waiver listed beneath.
+- An empty reason is refused. `skip-tests: yes` is not a reason, and the current regex (`\S+`)
+  accepts it. A waiver has to say something, or it is an opt-out with extra steps.
+
+## Non-goals
+
+Not a ratchet. No cap on waivers, no tracking of waivers over time, no failing a PR for using
+one. Those are policy; this is visibility, and visibility should land first so there is something
+to base a policy on.
+
+## Test plan
+
+- `skip-tests: <reason>` produces a `waived` finding carrying the reason, and exit code 0.
+- `records-only: <reason>` likewise.
+- `skip-tests:` with an empty or whitespace reason is an **error**, not a waiver.
+- `skip-tests: yes` — a non-reason that satisfies the current `\S+` — is refused.
+- A clean PR with no waivers still prints the plain success line, unchanged.
+- Both waivers at once list both.
+- Existing `check.test.ts` cases keep passing: this changes reporting, not what is allowed.
+
+## Open questions
+
+None.

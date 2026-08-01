@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-025
+roadmap: MO-26-07-29-025
 outcome: shipped
 summary: Convergence now requires an expressive and a dense surface, and the session signs off with the checks it did not run.
 ---

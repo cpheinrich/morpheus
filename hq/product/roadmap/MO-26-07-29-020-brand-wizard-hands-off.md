@@ -1,0 +1,47 @@
+---
+id: MO-26-07-29-020
+title: "Brand wizard hands off to an interactive session"
+status: shipped
+priority: P1
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: [10]
+created: 2026-07-29
+updated: 2026-07-29
+---
+
+> Migrated from `MO-020` to `MO-26-07-29-020` (MO-057). References to `MO-020` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+The wizard was implicitly promising more than it can deliver. **A questionnaire captures the
+constraints an identity must satisfy; it cannot produce a look.** Eight questions and a
+`tokens.json` scaffold do not get anyone to a visual direction, and pretending otherwise leaves
+people stuck with a folder of prose and no design.
+
+The deterministic part is a runway. The visual work is interactive — an agent generating and
+iterating on mockups, with the wizard answers as its brief.
+
+## Shipped
+
+`hq/brand/explore-prompt.md`, generated from the answers, ready to paste into a fresh Claude Code
+or Codex session. It carries the strategy verbatim so nothing is restated by hand, and asks for
+**8 genuinely distinct directions** — "not one idea in eight colourways" — each with a palette,
+type pairing, a representative screen, and an honest note on which constraint it serves worst.
+
+It also asks the agent to name the two it would take forward *and what is lost by dropping the
+others*, then to write the winner into `tokens.json` and `visual-system.md`.
+
+When `visualSource` is set the prompt says to explore **within** the existing direction rather
+than replacing it, and to flag any departure explicitly.
+
+The CLI now closes by saying this in four numbered steps, so the handoff is not something you
+have to infer.
+
+## Why this shape
+
+A deterministic tool that knows its own boundary is more useful than one that pretends to cover
+the whole job. The wizard's value is that the constraints are written down *before* exploration
+starts — which is what stops eight mockups from being eight arbitrary aesthetics.

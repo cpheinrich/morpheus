@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-031
+roadmap: MO-26-07-29-031
 outcome: shipped
 summary: Detectors parse what they find; reconcile stops overriding deliberate reopens; YAML numbers accepted in goals.
 ---

@@ -1,7 +1,7 @@
 ---
 date: 2026-08-01
 agent: claude
-roadmap: MO-049
+roadmap: MO-26-08-01-049
 outcome: shipped
 summary: pm block writes three records and routes the question to an inbox; the schema refinement is what makes "name your unblocker" enforceable rather than advisory.
 ---

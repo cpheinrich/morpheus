@@ -1,0 +1,48 @@
+---
+id: MO-26-07-29-024
+title: "Design sessions keep a durable decision record"
+status: shipped
+priority: P1
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: [15]
+created: 2026-07-29
+updated: 2026-07-29
+---
+
+> Migrated from `MO-024` to `MO-26-07-29-024` (MO-057). References to `MO-024` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+_Why this matters._
+
+## Approach
+
+_How it will be done._
+
+From [issue #12](https://github.com/cpheinrich/morpheus/issues/12), part 2. Codex is right and this
+is the most valuable of the three.
+
+The prompt says "ask what landed" but never says to write the answer down. Brand work spans rounds,
+compaction, days, and sometimes a different agent. **Scrollback is not a design record.** Without a
+checkpoint a fresh session cannot tell an abandoned direction from an unexplored one, so rejected
+ideas come back and the good fragment of a rejected direction is lost.
+
+The valuable information is mostly negative or compositional — which direction was rejected and
+why, which single element of it should survive, which constraint hardened during review.
+
+## Approach
+
+`hq/brand/decisions.md`, maintained by the session, with `## Settled` / `## Rejected` / `## Open`
+and a rationale on every line. Mirrors `.agent/decisions.md`, which is already the repo's shape for
+this.
+
+Make it a **required session output**, despite MO-022 arguing required lists should be short. It
+earns the slot: it is the only thing that makes round two on a different day start from anywhere
+other than zero.
+
+Directions get stable names from round one, so "take the type from B and the imagery from D" still
+resolves after the mockups are gone. Scratch mockups stay outside the package — the decision and
+its reason are what is durable, not the artefact.

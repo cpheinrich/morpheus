@@ -127,6 +127,46 @@ export function migrationNote(oldId: string, newId: string): string {
 export interface MigrationResult extends MigrationPlan {
   /** Ids whose files were rewritten and renamed. */
   applied: string[];
+  /** Files elsewhere whose `roadmap:` reference was repointed. */
+  referencesUpdated: string[];
+}
+
+/**
+ * Repoint `roadmap:` frontmatter elsewhere in the repo.
+ *
+ * Worklog entries carry `roadmap: MO-052`, which is a *structured* reference,
+ * not prose — a tool resolving it would find nothing after the rename. Prose
+ * mentions are deliberately left alone: the old number is the last field of the
+ * new id, so `grep MO-052` still finds it, and rewriting narrative text in
+ * historical records would be editing the past rather than repairing a link.
+ */
+export async function updateReferences(
+  dir: string,
+  renames: Rename[],
+): Promise<string[]> {
+  const map = new Map(renames.map((r) => [r.oldId, r.newId]));
+  const touched: string[] = [];
+
+  let entries: string[];
+  try {
+    entries = (await readdir(dir)).filter((f) => f.endsWith(".md"));
+  } catch {
+    return touched; // no worklog directory in this project
+  }
+
+  for (const file of entries) {
+    const path = join(dir, file);
+    const text = await readFile(path, "utf8");
+    const next = text.replace(
+      /^(roadmap:\s*)([A-Z]{2,4}-\d{3,})\s*$/m,
+      (whole, prefix: string, id: string) => (map.has(id) ? `${prefix}${map.get(id)}` : whole),
+    );
+    if (next !== text) {
+      await writeFile(path, next, "utf8");
+      touched.push(file);
+    }
+  }
+  return touched;
 }
 
 /**
@@ -136,7 +176,17 @@ export interface MigrationResult extends MigrationPlan {
  * reporting afterwards. A board whose order silently changed is worse than one
  * that was not migrated, and this is the only moment the check is cheap.
  */
-export async function migrate(roadmapDir: string, dryRun = false): Promise<MigrationResult> {
+export async function migrate(
+  roadmapDir: string,
+  dryRun = false,
+  /**
+   * Where worklog entries live. Passed in rather than derived from
+   * `roadmapDir` — a `../../..` walk is right for a real repo and silently
+   * wrong anywhere else, which is how the first version passed its own test
+   * while updating nothing.
+   */
+  worklogDir?: string,
+): Promise<MigrationResult> {
   const plan = await planMigration(roadmapDir);
 
   const disorder = verifyOrder(plan.renames);
@@ -145,7 +195,7 @@ export async function migrate(roadmapDir: string, dryRun = false): Promise<Migra
   }
 
   const applied: string[] = [];
-  if (dryRun) return { ...plan, applied };
+  if (dryRun) return { ...plan, applied, referencesUpdated: [] };
 
   for (const r of plan.renames) {
     const path = join(roadmapDir, r.oldFile);
@@ -163,7 +213,11 @@ export async function migrate(roadmapDir: string, dryRun = false): Promise<Migra
     applied.push(r.newId);
   }
 
-  return { ...plan, applied };
+  const referencesUpdated = worklogDir
+    ? await updateReferences(worklogDir, plan.renames)
+    : [];
+
+  return { ...plan, applied, referencesUpdated };
 }
 
 export { isLegacyId };

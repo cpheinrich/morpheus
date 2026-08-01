@@ -1,0 +1,40 @@
+---
+id: MO-26-07-29-034
+title: "agents-md detector passes when CLAUDE.md is a divergent copy"
+status: shipped
+priority: P2
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: [27]
+created: 2026-07-29
+updated: 2026-07-29
+---
+
+> Migrated from `MO-034` to `MO-26-07-29-034` (MO-057). References to `MO-034` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+_Why this matters._
+
+## Approach
+
+_How it will be done._
+
+## Context
+
+Found retrofitting Lakina, which had a real `CLAUDE.md` — 125 lines of genuine project
+documentation — and no `AGENTS.md`. After `init` scaffolded `AGENTS.md`, the repository held **two
+separate files**, which is exactly the state the symlink convention exists to prevent.
+
+The detector checked that both paths exist and called it done.
+
+## Shipped
+
+`lstat` and a symlink check. Two divergent instruction files now read as outstanding.
+
+## Third instance today
+
+`goal` and `inbox` checked for a filename rather than valid content; `tokens.json` before that.
+Every one of them was a cheap check standing in for the thing it was meant to verify.

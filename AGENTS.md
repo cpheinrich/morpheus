@@ -83,6 +83,11 @@ to be. Omitting `--slug` derives one from the title, which is a fallback rather 
 Items migrated from the old integer scheme read `MO-26-07-29-045`: their own creation date plus the
 old number, so `grep MO-045` still resolves against git history that cannot be rewritten.
 
+`morpheus pm migrate-ids` also **repoints structured references** — `roadmap:` in worklog
+frontmatter, which a tool would otherwise fail to resolve. Prose mentions are left alone
+deliberately: the number is still in the new id, and rewriting narrative in a historical record
+edits the past rather than repairing a link.
+
 **Goals and requests are still sequential**, and for those `pm new` allocates against the remote
 as well as the item files, because the files only hold ids that have already merged — an id
 another session holds sits on its branch and nowhere else. If `origin` cannot be reached it still

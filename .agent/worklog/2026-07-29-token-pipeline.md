@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-039
+roadmap: MO-26-07-29-039
 outcome: shipped
 summary: One token generator replacing three hand-rolled ones; verified byte-identical against cpheinrich.com.
 ---

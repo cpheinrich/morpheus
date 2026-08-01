@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-030
+roadmap: MO-26-07-29-030
 outcome: shipped
 summary: morpheus init status — a resumable, self-verifying setup checklist rather than a wizard.
 ---

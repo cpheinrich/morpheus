@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-029
+roadmap: MO-26-07-29-029
 outcome: shipped
 summary: Reconciliation moved to claim time after the post-merge instruction proved unfollowable.
 ---

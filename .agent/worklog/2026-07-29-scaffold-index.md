@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-036
+roadmap: MO-26-07-29-036
 outcome: shipped
 summary: A scaffolded project failed its own pm index --check; third variant of the same failure.
 ---

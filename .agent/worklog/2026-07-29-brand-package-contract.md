@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-022
+roadmap: MO-26-07-29-022
 outcome: shipped
 summary: The brand package's required and optional sets are declared once and read by the prompt, the check, and the README.
 ---

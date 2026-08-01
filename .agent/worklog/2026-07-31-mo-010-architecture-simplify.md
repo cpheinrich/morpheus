@@ -1,7 +1,7 @@
 ---
 date: 2026-07-31
 agent: claude
-roadmap: MO-010
+roadmap: MO-26-07-29-010
 outcome: shipped
 summary: Restructured architecture.md into five parts, stripped the changelog and the argument, corrected three places where the spec had drifted from the code
 ---

@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-021
+roadmap: MO-26-07-29-021
 outcome: shipped
 summary: The generated prompt now runs a design session with an arc instead of requesting one batch of mockups.
 ---

@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-019
+roadmap: MO-26-07-29-019
 outcome: shipped
 summary: Brand generation made non-destructive; refresh added; token ownership disambiguated.
 ---

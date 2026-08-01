@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-008
+roadmap: MO-26-07-28-008
 outcome: shipped
 summary: morpheus init scaffolds the repository; provisioning stays with the checklist, so init is blocked on nothing.
 ---

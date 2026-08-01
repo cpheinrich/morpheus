@@ -1,0 +1,87 @@
+---
+id: MO-26-08-01-051
+title: "Agent code review as an independent verifier rung"
+status: shipped
+priority: P1
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: [55]
+acceptance: MO-051.md
+created: 2026-08-01
+updated: 2026-08-01
+---
+
+> Migrated from `MO-051` to `MO-26-08-01-051` (MO-057). References to `MO-051` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+Morpheus has one verifier rung: `node-ci` plus `check pr`. Everything above it is Chris reading a
+diff. Between "the tests pass" and "a human read it" there is nothing, and the gap is exactly
+where the expensive mistakes live — code that compiles, passes its own tests, and does the wrong
+thing.
+
+Rung 2 is a **second agent with a reviewer persona**, reviewing the PR the first one opened. The
+independence is the entire point: an agent reviewing its own work re-derives the same reasoning
+and reaches the same wrong conclusion. This is the `verify` half of the pattern, not a second
+opinion from the same head.
+
+## Approach
+
+`.github/workflows/agent-review.yml`, reusable, called from every project's `ci.yml` the same way
+`pr-check.yml` is.
+
+**The reviewer persona is a versioned file**, `.github/agent-review-prompt.md`, not a string
+buried in YAML. It is the part that will be tuned most often, it is the part a human will want to
+read, and a prompt inside a workflow is invisible in review.
+
+What it is told to look for is scoped to what the rung below cannot see:
+
+- Does the change do what the roadmap item said, rather than something adjacent?
+- Failure modes the tests do not cover — the empty-input case in `.agent/learned.md` under *a
+  check that skips what is absent will report an empty thing as correct*
+- Silently widened scope
+- Contradictions with `.agent/decisions.md` — the record exists precisely so a settled choice is
+  not quietly reversed, and no automated check reads it today
+
+It posts review comments on the PR. **It does not block the merge.** A model-graded gate that can
+fail on its own noise would train everyone to bypass it, and rung 4 is still a human.
+
+### No credential exists
+
+Confirmed at intake. The workflow is written to **no-op cleanly and visibly** when the secret is
+absent: it checks, logs that the rung is unconfigured, and exits 0. It must not appear green as
+though it ran — an unconfigured verifier reporting success is worse than no verifier, and it is
+the same failure the codebase already records in two places.
+
+Setup is documented as a prerequisite. Everything except the model call is testable now: prompt
+assembly, the diff and context the reviewer is handed, and the skip path.
+
+## Rung 3 gets its input at the same time
+
+`RoadmapItem.acceptance` is documented as "a path into `qa/acceptance/`" and **no item has ever
+set it** — the field has been dangling since MO-001. It is rung 3's input: conformance means
+comparing the change against stated acceptance criteria, and with nothing to compare against,
+rung 3 cannot exist.
+
+Scope here is small and deliberate: when an item declares `acceptance`, the reviewer prompt is
+handed that file. Generating or enforcing acceptance criteria is a separate item, if it is ever
+one.
+
+## Test plan
+
+- Prompt assembly is a pure function: given a PR diff, an item, and an optional acceptance file,
+  assert the prompt contains the item's stated intent and the acceptance text.
+- An item with no `acceptance` produces a valid prompt with the conformance section omitted rather
+  than an empty heading.
+- A missing `acceptance` path is reported, not silently skipped — a dangling reference is a
+  mistake, and treating it as "no criteria" is how the field stays dead.
+- The skip path: with no credential the step logs the reason and exits 0, and the log names what
+  to configure.
+- Workflow YAML parses and the reusable-workflow inputs match how `ci.yml` calls it.
+
+## Open questions
+
+**Which model, and whose subscription.** Blocked on the credential decision, which is a human
+call. The workflow takes the API key as a secret and is otherwise agnostic.
