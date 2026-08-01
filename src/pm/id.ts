@@ -13,8 +13,8 @@
  *
  * | Form | Shape | Example |
  * |---|---|---|
- * | New | `PREFIX-YYMMDD-HHMMSS` | `MO-260801-152634` |
- * | Legacy | `PREFIX-YYMMDD-NNN` | `MO-260729-045` |
+ * | New | `PREFIX-YYYY-MM-DD-HHMMSS` **in UTC** | `MO-2026-08-01-152634` |
+ * | Legacy | `PREFIX-YYYY-MM-DD-NNN` | `MO-2026-07-29-045` |
  *
  * Legacy ids keep the item's **own** `created:` date and its old integer, so
  * `grep MO-045` still finds it in the git history, commit messages and merged
@@ -30,22 +30,22 @@
  * it — the first draft of MO-057 had two constants of the same name with
  * different meanings, which is the drift MO-004 exists to prevent.
  *
- * Three shapes are accepted: `MO-260801-152634` (timestamp), `MO-260729-045`
- * (migrated), and `MO-045` (not yet migrated). The last is kept because the
+ * Three shapes are accepted: `MO-2026-08-01-152634` (timestamp),
+ * `MO-2026-07-29-045` (migrated), and `MO-045` (not yet migrated). The last is kept because the
  * scheme ships before the sweep, and a validator that rejected the current
  * board would turn every project red the moment this landed.
  */
-export const ROADMAP_ID = /^[A-Z]{2,4}-(\d{6}-(\d{6}|\d{3})|\d{3,})$/;
+export const ROADMAP_ID = /^[A-Z]{2,4}-(\d{4}-\d{2}-\d{2}-(\d{6}|\d{3})|\d{3,})$/;
 
 /** Just the two dated shapes — what `pm new` now produces. */
-export const DATED_ROADMAP_ID = /^[A-Z]{2,4}-\d{6}-(\d{6}|\d{3})$/;
+export const DATED_ROADMAP_ID = /^[A-Z]{2,4}-\d{4}-\d{2}-\d{2}-(\d{6}|\d{3})$/;
 
 /** Ceiling, not a target — prefer the shortest intelligible slug. */
 export const SLUG_MAX = 64;
 
 export interface ParsedId {
   prefix: string;
-  /** `YYMMDD` as written in the id. */
+  /** `YYYY-MM-DD` as written in the id. */
   date: string;
   /** `HHMMSS`, or the old integer for a migrated item. */
   tail: string;
@@ -53,7 +53,7 @@ export interface ParsedId {
 }
 
 export function parseRoadmapId(id: string): ParsedId | null {
-  const m = /^([A-Z]{2,4})-(\d{6})-(\d{6}|\d{3})$/.exec(id);
+  const m = /^([A-Z]{2,4})-(\d{4}-\d{2}-\d{2})-(\d{6}|\d{3})$/.exec(id);
   if (!m) return null;
   return { prefix: m[1]!, date: m[2]!, tail: m[3]!, legacy: m[3]!.length === 3 };
 }
@@ -65,14 +65,32 @@ export function isLegacyId(id: string): boolean {
 
 const two = (n: number): string => String(n).padStart(2, "0");
 
-/** `YYMMDD` from a Date, in local time — ids read as the day the author had. */
+/**
+ * **Ids are UTC.** Not a detail — the scheme's whole job is ordering, and
+ * ordering is meaningless if two authors measure from different origins.
+ *
+ * In local time, an item written in Tokyo at 09:00 (00:00 UTC) sorts *after*
+ * one written in Los Angeles at 18:00 the "previous" day (01:00 UTC), even
+ * though it was written first. The moment contributors are not all in one
+ * timezone — which is the case MO-054 exists to support — the board silently
+ * stops being chronological.
+ *
+ * It also keeps the id consistent with the file it sits in: `created:` is
+ * `toISOString()`, already UTC. The first draft of this used local time, so an
+ * item written at 00:30 UTC from Los Angeles read `id: MO-2026-08-01-173000`
+ * against `created: 2026-08-02` — two different days in the same frontmatter.
+ *
+ * The cost is that an id may name a different calendar day than the author's
+ * own. That is the right trade: `created:` already had that property, and a
+ * globally comparable id is worth more than a locally familiar one.
+ */
 export function datePart(d: Date): string {
-  return `${two(d.getFullYear() % 100)}${two(d.getMonth() + 1)}${two(d.getDate())}`;
+  return `${d.getUTCFullYear()}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())}`;
 }
 
-/** `HHMMSS` from a Date, in local time. */
+/** `HHMMSS` in UTC — see `datePart`. */
 export function timePart(d: Date): string {
-  return `${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}`;
+  return `${two(d.getUTCHours())}${two(d.getUTCMinutes())}${two(d.getUTCSeconds())}`;
 }
 
 /**
@@ -91,7 +109,7 @@ export function timestampId(prefix: string, taken: Iterable<string>, now: Date):
   for (let i = 0; i < 86_400; i++) {
     const id = `${prefix}-${datePart(d)}-${timePart(d)}`;
     if (!seen.has(id)) return id;
-    d.setSeconds(d.getSeconds() + 1);
+    d.setUTCSeconds(d.getUTCSeconds() + 1);
   }
   // A full day of collisions means `taken` is not what it claims to be.
   throw new Error(`Could not allocate an id for ${prefix}: 86400 consecutive seconds are taken`);
@@ -99,8 +117,7 @@ export function timestampId(prefix: string, taken: Iterable<string>, now: Date):
 
 /** The id a migrated item takes: its own creation date plus its old number. */
 export function migratedId(prefix: string, created: string, oldNumber: number): string {
-  const [y, m, d] = created.slice(0, 10).split("-");
-  return `${prefix}-${y!.slice(2)}${m}${d}-${String(oldNumber).padStart(3, "0")}`;
+  return `${prefix}-${created.slice(0, 10)}-${String(oldNumber).padStart(3, "0")}`;
 }
 
 /**
@@ -127,7 +144,7 @@ export function slugForFilename(title: string, max: number = SLUG_MAX): string {
   return (boundary > max / 2 ? cut.slice(0, boundary) : cut).replace(/-+$/, "");
 }
 
-/** `MO-260801-152634-blocked-is-a-first-class-outcome.md` */
+/** `MO-2026-08-01-152634-blocked-is-a-first-class-outcome.md` */
 export function itemFilename(id: string, title: string, max: number = SLUG_MAX): string {
   const slug = slugForFilename(title, max);
   return slug ? `${id}-${slug}.md` : `${id}.md`;

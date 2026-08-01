@@ -67,14 +67,16 @@ morpheus pm claim MO-014     # stakes the branch on origin, sets in-progress, pu
 
 The remote branch **is** the claim — `pm claim` refuses if `origin` already has `mo-014-*`.
 
-**Roadmap ids come from the clock** — `MO-260801-152634`, `PREFIX-YYMMDD-HHMMSS` at first write.
+**Roadmap ids come from the clock** — `MO-2026-08-01-152634`, `PREFIX-YYYY-MM-DD-HHMMSS` **in
+UTC** at first write. UTC because ordering across contributors in different timezones is the
+point, and because `created:` is already UTC.
 No remote is consulted because none can help: a fork contributor's `origin` is their fork, so no
 query would say which ids Morpheus has issued. On collision the seconds field steps forward, so a
 fan-out gets `:34 :35 :36 :37` and ordering survives. Filenames add a slug — `<id>-<slug>.md`,
 ≤ 64 characters, cut at a word boundary — so the directory reads; the id stays short because it
 is what `prs:` and every cross-reference repeat.
 
-Items migrated from the old integer scheme read `MO-260729-045`: their own creation date plus the
+Items migrated from the old integer scheme read `MO-2026-07-29-045`: their own creation date plus the
 old number, so `grep MO-045` still resolves against git history that cannot be rewritten.
 
 **Goals and requests are still sequential**, and for those `pm new` allocates against the remote

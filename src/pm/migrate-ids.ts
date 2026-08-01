@@ -5,7 +5,7 @@ import { isLegacyId, itemFilename, migratedId, parseRoadmapId } from "./id.js";
 /**
  * Migrate integer roadmap ids to the dated scheme (MO-057).
  *
- * `MO-045` created 2026-07-29 becomes `MO-260729-045`: the item's **own**
+ * `MO-045` created 2026-07-29 becomes `MO-2026-07-29-045`: the item's **own**
  * creation date plus its old number. Using the migration date instead would
  * collapse every item onto one day and destroy the chronology the scheme exists
  * to record, and dropping the old number would break `grep MO-045` against a

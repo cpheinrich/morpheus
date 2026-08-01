@@ -573,14 +573,21 @@ No Jira, no Linear. Markdown in git, with a validated schema.
 ```
 hq/product/
 ├── goals/      README.md (GENERATED index)  ·  MO-G-2026-Q3-01.md
-├── roadmap/    README.md (GENERATED index)  ·  MO-260801-152634-blocked-is-an-outcome.md
+├── roadmap/    README.md (GENERATED index)  ·  MO-2026-08-01-152634-blocked-is-an-outcome.md
 └── requests/   README.md (GENERATED index)  ·  MO-FR-007.md
 ```
 
 #### Roadmap ids are timestamps, not a sequence
 
-`MO-260801-152634` — `PREFIX-YYMMDD-HHMMSS`, taken from the clock the moment the item is
-first written.
+`MO-2026-08-01-152634` — `PREFIX-YYYY-MM-DD-HHMMSS`, taken from the clock the moment the item
+is first written, **in UTC**.
+
+The timezone is not a detail. The scheme's whole job is ordering, and ordering is meaningless if
+two authors measure from different origins: in local time an item written in Tokyo at 09:00
+(00:00 UTC) sorts *after* one written in Los Angeles at 18:00 the "previous" day (01:00 UTC),
+though it was written first. UTC also keeps the id consistent with `created:`, which is
+`toISOString()` and already UTC — the first draft used local time and produced
+`id: MO-2026-08-01-173000` beside `created: 2026-08-02`, two different days in one frontmatter.
 
 A sequential integer requires every writer to agree on what the last one was, and that agreement
 does not exist. In a single day: `pm new` offered an id a parallel session held as an
@@ -597,7 +604,7 @@ preserved, deterministic, no randomness.
 
 | Field | Purpose |
 |---|---|
-| `id` | `MO-260801-152634`, or `MO-260729-045` for an item migrated from the integer scheme |
+| `id` | `MO-2026-08-01-152634`, or `MO-2026-07-29-045` for an item migrated from the integer scheme |
 | filename | `<id>-<slug>.md`, slug ≤ 64 characters cut at a word boundary |
 | `baseSha` | `main`'s tip when the item was written — *what did the repo look like*, which a date only approximates |
 
@@ -607,7 +614,7 @@ and every cross-reference repeat. Measured across 80 real items the median title
 characters, so most are shortened; cutting at a word boundary rather than mid-word costs nothing
 and avoids `project-manageme`.
 
-**Migrated ids keep the old number.** `MO-045` created 2026-07-29 becomes `MO-260729-045`, using
+**Migrated ids keep the old number.** `MO-045` created 2026-07-29 becomes `MO-2026-07-29-045`, using
 the item's *own* creation date. The migration date would collapse every item onto one day and
 destroy the chronology; dropping the number would break `grep MO-045` against a git history,
 commit messages and merged pull requests that cannot be rewritten.
