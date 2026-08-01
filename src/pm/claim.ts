@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { today, updateFrontmatter } from "./frontmatter.js";
 import { parseArtifact } from "./parse.js";
 
 const exec = promisify(execFile);
@@ -154,11 +155,13 @@ async function setStatusInProgress(productDir: string, id: string): Promise<void
   if (!item) throw new ClaimError(`No roadmap item ${id} in ${productDir}/roadmap/`);
 
   const raw = await readFile(item.path, "utf8");
-  const today = new Date().toISOString().slice(0, 10);
-  const next = raw
-    .replace(/^status:.*$/m, "status: in-progress")
-    .replace(/^updated:.*$/m, `updated: ${today}`);
-  await writeFile(item.path, next, "utf8");
+  // `needs` is cleared, because re-claiming a previously blocked item means the
+  // answer arrived. Leaving it would read as a live blocker on active work.
+  await writeFile(
+    item.path,
+    updateFrontmatter(raw, { status: "in-progress", needs: null, updated: today() }),
+    "utf8",
+  );
 }
 
 export interface ClaimResult {
@@ -193,19 +196,32 @@ export async function claim(
   const { reconcile } = await import("./ship.js");
   const reconciled = await reconcile(productDir, cwd).catch(() => null);
 
-  const existing = await findClaims(id, cwd);
-  if (existing.length > 0) {
-    throw new ClaimError(
-      `${id} is already claimed by branch "${existing[0]}". ` +
-        `Run \`morpheus pm claims\` to see who and how long ago.`,
-    );
-  }
-
   const { items } = await parseArtifact(productDir, "roadmap");
   const item = items.find((i) => i.data.id === id);
   if (!item) throw new ClaimError(`No roadmap item ${id} in ${productDir}/roadmap/`);
   if (item.data.status === "shipped" || item.data.status === "dropped") {
     throw new ClaimError(`${id} is "${item.data.status}" — nothing to claim.`);
+  }
+
+  const existing = await findClaims(id, cwd);
+  if (existing.length > 0) {
+    // A blocked item still holds its branch on purpose — the partial work is
+    // there. So this is the *expected* path back into blocked work, not a
+    // collision, and the message has to name the different recovery or the
+    // item looks permanently unclaimable.
+    if (item.data.status === "blocked") {
+      throw new ClaimError(
+        `${id} is blocked and still holds its branch — the partial work is on it.\n` +
+          `Resume it rather than re-claiming:\n\n` +
+          `  git checkout ${existing[0]}\n` +
+          `  morpheus pm unblock ${id}\n\n` +
+          `It needs: ${item.data.needs ?? "(unrecorded)"}`,
+      );
+    }
+    throw new ClaimError(
+      `${id} is already claimed by branch "${existing[0]}". ` +
+        `Run \`morpheus pm claims\` to see who and how long ago.`,
+    );
   }
 
   const branch = `${branchPrefix(id)}${slugify(item.data.title)}`;

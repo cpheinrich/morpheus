@@ -6,12 +6,15 @@ import type { Goal, Priority, Request, RoadmapItem, RoadmapStatus } from "./sche
 export const BEGIN = "<!-- morpheus:begin -->";
 export const END = "<!-- morpheus:end -->";
 
+// Blocked sorts above everything but active work: it is the row a reader most
+// needs to see, because nothing moves it without them.
 const STATUS_ORDER: Record<RoadmapStatus, number> = {
   "in-progress": 0,
-  review: 1,
-  backlog: 2,
-  shipped: 3,
-  dropped: 4,
+  blocked: 1,
+  review: 2,
+  backlog: 3,
+  shipped: 4,
+  dropped: 5,
 };
 
 const PRIORITY_ORDER: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };

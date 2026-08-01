@@ -48,7 +48,12 @@ function splitTail(rest: string): {
   for (const p of parts.slice(1)) {
     const a = /^`(claude|codex|human)`$/.exec(p);
     if (a) agent = a[1];
-    const r = /(RM-\d{3,})/.exec(p);
+    // Any project prefix, not just `RM-`. Ids were namespaced per project in
+    // MO-002 and this pattern was never updated, so it had matched nothing for
+    // as long as the current ids have existed — every roadmap link in every
+    // inbox heading was silently dropped. Kept permissive enough to still read
+    // the legacy `RM-` ids sitting in the archive.
+    const r = /\b([A-Z]{2,4}-\d{3,})\b/.exec(p);
     if (r) roadmap = r[1];
   }
   return { title, ...(agent ? { agent } : {}), ...(roadmap ? { roadmap } : {}) };

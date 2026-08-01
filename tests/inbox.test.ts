@@ -61,6 +61,19 @@ describe("parseInbox", () => {
     expect(r.items[0]!.roadmap).toBe("RM-006");
   });
 
+  // Ids were namespaced per project in MO-002 and this pattern still read
+  // `RM-`, so no current id could match it — every roadmap link in every
+  // heading had been silently dropped since.
+  it("extracts a project-prefixed id, not only the legacy RM- one", () => {
+    const item = `\n## ❗ 1. Blocked: agent review · \`claude\` · [MO-051](../product/roadmap/MO-051.md)\n\n~\n`;
+    expect(parseInbox("s.md", doc(item)).items[0]!.roadmap).toBe("MO-051");
+  });
+
+  it("still reads the legacy RM- ids sitting in the archive", () => {
+    const item = `\n## ❗ 1. Old one · \`claude\` · [RM-004](x.md)\n\n~\n`;
+    expect(parseInbox("s.md", doc(item)).items[0]!.roadmap).toBe("RM-004");
+  });
+
   it("leaves roadmap undefined when an item is not a task", () => {
     const r = parseInbox("s.md", doc(openItem(1)));
     expect(r.items[0]!.roadmap).toBeUndefined();

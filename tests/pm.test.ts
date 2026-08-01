@@ -213,6 +213,33 @@ describe("index generation", () => {
     expect(rows[2]).toContain("MO-001"); // shipped
   });
 
+  // Blocked sits second because it is the row a reader most needs to see:
+  // nothing moves it without them.
+  it("sorts blocked above review, backlog and shipped", async () => {
+    await seed("roadmap", "MO-001", VALID_RM.replace("status: in-progress", "status: backlog"));
+    await seed(
+      "roadmap",
+      "MO-002",
+      VALID_RM.replace("MO-001", "MO-002").replace(
+        "status: in-progress",
+        "status: blocked\nneeds: which model",
+      ),
+    );
+    await seed(
+      "roadmap",
+      "MO-003",
+      VALID_RM.replace("MO-001", "MO-003").replace("status: in-progress", "status: review"),
+    );
+
+    const { items, issues } = await parseArtifact(product, "roadmap");
+    expect(issues).toEqual([]);
+    const rows = renderRoadmap(items).split("\n").slice(2);
+
+    expect(rows[0]).toContain("MO-002"); // blocked
+    expect(rows[1]).toContain("MO-003"); // review
+    expect(rows[2]).toContain("MO-001"); // backlog
+  });
+
   it("renders a placeholder when there are no items", () => {
     expect(renderRoadmap([])).toContain("Nothing here yet");
   });

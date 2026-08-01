@@ -90,8 +90,16 @@ This sets `status: blocked` and `needs:` on the item, writes a worklog entry, an
 guess costs far more to discover later than a question costs to ask now.
 
 `needs` is required by the schema when an item is blocked, so say what would actually unblock you.
-"Blocked on Chris" is not an answer; "which model, and whose subscription pays for it" is. Keep the
-branch — the partial work lives there, and blocked work holds no lane in the heartbeat's ceiling.
+"Blocked on Chris" is not an answer; "which model, and whose subscription pays for it" is.
+
+**A blocked item keeps its branch** — the partial work is on it, and blocked work holds no lane in
+the heartbeat's ceiling. So resuming is a checkout, not a fresh claim; `pm claim` will refuse and
+print exactly this:
+
+```sh
+git checkout mo-051-agent-code-review
+morpheus pm unblock MO-051
+```
 
 **Browser-reachable work is not blocked.** If the only thing standing between you and finishing is
 that something has to happen in a browser — a console to click through, a dashboard to read, a
