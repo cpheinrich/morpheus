@@ -241,3 +241,16 @@ This retires the "personal Vercel login" blocker that had been carried through t
 Cloudflare Workers with no `deviations` entry, and neither it, `cpheinrich.com`, nor `lakina` sets
 `domain`. A deviation nobody recorded is indistinguishable from the canonical choice, which is how
 a stale premise survives three inbox cycles.
+
+**Cloudflare Email Sending is the canonical transactional email service** — 2026-08-01. Chris's
+call, made while moving `cpheinrich.com` off Cloudflare Pages onto Vercel. Cloudflare is already
+load-bearing and permanent: registrar and DNS for every domain — including the two that host on
+Vercel — plus R2 for public media. Email Sending is a service inside a vendor already in the
+stack, and it is a plain bearer-token REST endpoint, so using it does not tie a project to
+Cloudflare *hosting*. Resend would have been a net-new dependency, a second account, and another
+credential to rotate, to replace something that works.
+
+The §6 row `Email, accounts | Google Workspace` was about human mailboxes and said nothing about
+application email, which is exactly how a project ends up choosing a provider per-project rather
+than reading one off the spec. Both rows now say which they are. Reach for another provider only
+when Cloudflare cannot do the job, and record it as a `deviations` entry.
