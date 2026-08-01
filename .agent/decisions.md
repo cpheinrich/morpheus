@@ -236,6 +236,53 @@ neither repo has a `.vercel/` link. There is no missing personal Vercel account 
 one. Only `darwin` and `evo` are linked to Vercel, both under `team_WvHuh3zpY4O68wXCIUolqksG`.
 This retires the "personal Vercel login" blocker that had been carried through three cycles.
 
+**Browser-reachable work is not blocked** — 2026-08-01. When the *only* obstacle to finishing is
+that something must happen in a browser, the agent drives the browser rather than stopping to
+describe what a human should click. This had recurred often enough to be a pattern: work parked, a
+human asked, "try it yourself in the browser", and the same agent clearing it in a minute. The wait
+was pure loss — the capability was there and only the asking cost anything.
+
+The boundary is what makes it safe, and it is about **obstacles, not gates**. Where a human is
+wanted for judgment — spending, publishing, sending, granting access — the gate stands, and the
+browser merely being where that happens changes nothing. Pairs with *use the browser tool to verify
+UI before giving UI instructions*, which is the same instinct one step earlier: look first.
+
+**Verifiers are a concept, not a directory** — 2026-08-01. The handoff spec asked whether to
+formalise "verifiers" as its own thing or fold them into `qa/`. Neither: they are named in
+`architecture.md` §9 as a four-rung stack, and no directory is created. `qa/` holds *artifacts* —
+test plans, checklists, acceptance criteria — while a verifier is a *stage in the merge path*, and
+its rungs already live in `.github/workflows/`, `qa/acceptance/`, and a pull request. A
+`verifiers/` directory would contain only pointers to those three.
+
+What was actually missing was vocabulary. With no word for *the thing that checks the doer*, the
+rungs could not be reasoned about as a stack — which is why nobody had noticed that rung 3's input,
+`RoadmapItem.acceptance`, had never been set by a single item.
+
+**An edge gets drawn when the schema already declares it and nothing traverses it** — 2026-08-01.
+The test for which work-graph edges to formalise. A dangling field is evidence someone thought a
+handoff mattered; a speculative edge is a guess, and a wrong edge in a *vocabulary* propagates.
+Three qualified (`JournalEntry.outcome: blocked`, `RoadmapItem.acceptance`, the roadmap-proposal
+loop) and two did not (`Request.roadmap`, `Goal.current`) — same rule as *extract on the second
+use*, applied to edges.
+
+**The heartbeat proposes; dispatch is a flag, off by default** — 2026-08-01. Chris's call at
+intake. A scheduled beat picks the next item and surfaces it; it does not run an unattended agent
+on a timer. The switch is wired and tested so enabling it later is configuration rather than
+redesign.
+
+**The heartbeat's assess step is a ranking function, not a prompt** — 2026-08-01. The spec framed
+it as a model call. Built that way it would be unrunnable without a credential, untestable in CI,
+dead at the first billing failure, and non-deterministic in a job that runs unattended. Every input
+— priority, goal status, claim age, ceiling headroom — is computable from files already in git, so
+the ranking stands alone and a model is an optional second opinion over it. This is also what let
+the heartbeat ship before any API key existed.
+
+**An unconfigured verifier must never report success** — 2026-08-01. Agent review needs a model
+credential and none exists. The workflow logs that the rung is unconfigured and exits without
+claiming to have run, rather than passing green. Same shape as *a check that skips what is absent
+will report an empty thing as correct* in `learned.md` — and worse here, because a green check is
+read as evidence.
+
 **Hosting deviations must reach the manifest** — 2026-07-31. §4 says the canonical stack lives in
 `architecture.md` and only *deviations* are recorded per project, but `heinrichbros.com` runs on
 Cloudflare Workers with no `deviations` entry, and neither it, `cpheinrich.com`, nor `lakina` sets

@@ -371,6 +371,45 @@ housekeeping step gets quietly dropped. A board that lags reality stops being re
 **Never-blocked rule:** when the queue is full, agents must have a backlog needing no approval —
 tests, docs, refactors, research written to `.agent/`. An idle agent is a design failure.
 
+#### Three exits, not two
+
+An agent finishes, or it fails — and given only those two, a run that meets real ambiguity takes
+the worse one: it guesses, and ships something plausible. The third exit is **blocked**: started,
+hit ambiguity, stopped, and here is exactly what is needed.
+
+**Escalating is cheap; shipping half-baked is expensive.** That asymmetry is structural rather
+than advisory, because advice loses to momentum:
+
+```sh
+morpheus pm block MO-051 --needs "which model, and whose subscription pays for it"
+```
+
+Which sets `status: blocked` and `needs:` on the item, writes a worklog entry with
+`outcome: blocked`, and raises an open `❗` item in the owner's inbox. **A blocked item must name
+its unblocker** — `needs` is required by the schema when the status is `blocked`, so "I am
+blocked" without "here is what I need" does not validate. It would otherwise be a crash with
+better manners.
+
+A blocked item keeps its claim: the partial work lives on that branch, and re-taking it means
+checking it out rather than starting over. But **blocked is not in-flight** — it holds a branch
+and consumes no lane, or one unanswered question would permanently cost a slot (§7.8).
+
+#### What blocked is not
+
+**An obstacle an agent could clear itself is not a blocker.** The recurring case is a browser: a
+console to click through, a dashboard to read, a setting to verify. Agents have parked work on
+these, waited hours for a human, and then cleared them in a minute when told to try — the wait was
+pure loss, because the agent could do it and only asking cost anything.
+
+So: **when the only obstacle is that something must happen in a browser, drive the browser.** Look
+first, and report what was seen (§*use the browser tool to verify UI*). Do not describe what a
+human should click.
+
+The boundary is what makes this safe, and it is about obstacles rather than gates. Where a human is
+wanted for **judgment** — spending, publishing, sending, granting access, anything under §7.4's
+approval queue — the gate stands, and the browser being where it happens changes nothing. The rule
+applies only where browser use is the *single, entire* obstacle.
+
 ### 7.4 The review queue is GitHub
 
 Any design requiring a sync job between GitHub and a database has two copies of the same state and
@@ -442,6 +481,74 @@ Scheduled agent runs (GitHub Actions cron) that read the world and propose chang
 **Agent proposals arrive as pull requests.** Review is a diff, and the human edits the proposal in
 the same place the agent will read it back from. No separate approval system.
 
+### 7.7 The work graph
+
+`hq/` is organised by topic — product, brand, finance, marketing. That is an **organisational
+map**: it answers *where does this kind of thing live*. It is not a work graph, which answers a
+different question — *what output unlocks what next, and under what condition*.
+
+Both are useful and they are not the same lens. Morpheus is already graph-shaped: a request
+becomes a roadmap item, an item becomes a claim, a claim becomes a PR, a PR becomes a shipped
+status. What was missing is that the **edges were implicit**, living in prose and habit rather
+than in anything traversable. That matters more here than in a normal codebase, because agents
+extend the board at runtime — they are rewriting the graph while walking it.
+
+**The test for drawing an edge: the schema already declares it and nothing traverses it.** A
+dangling field is not a hypothetical — someone thought the handoff mattered enough to reserve a
+place for it, and then no path was built. Speculative edges are worse than absent ones, so this
+rule is what keeps the graph honest.
+
+Three qualified, and each is built rather than described:
+
+| Edge | Declared as | Was traversed by | Now |
+|---|---|---|---|
+| blocked work → the human | `JournalEntry.outcome` includes `blocked` | nothing | `pm block` (§7.3) |
+| an item → its acceptance criteria | `RoadmapItem.acceptance` | nothing; no item ever set it | rung 3 (§9) |
+| goals + board + in-flight → the next item | §7.6's "roadmap proposal" loop | nothing | the heartbeat (§7.8) |
+
+Two more dangle and are deliberately **not** drawn yet. `Request.roadmap` (promotion from request
+to item) and `Goal.current` (updated by the analytics loop) have one use each, and *extract on the
+second use* applies to edges as much as to code.
+
+### 7.8 The heartbeat
+
+Everything above starts because a human opened a session. The heartbeat is the one thing that does
+not: a scheduled run that reads the board, decides what should happen next, raises it, and stops.
+
+**It is a dispatcher, not a doer.** Doing the work inside the beat puts an unattended agent on a
+timer, which is a much larger decision than scheduling one.
+
+Four moves:
+
+1. **Read** — the board, the goals, and the live claims. All in git already; the history *is* the
+   memory layer, so there is no store to add.
+2. **Assess** — what is in flight, what is unblocked, what is aligned, and what is highest
+   leverage.
+3. **Propose** — surface the pick. Dispatch is a flag, off by default.
+4. **Record** — nothing new. The board is the completion record and `pm claim` reconciles it.
+
+**Assess is a ranking function, not a prompt.** This is the design decision worth stating, because
+the obvious reading of "identify the highest-leverage work" is a model call, and building it that
+way makes the heartbeat unrunnable without a credential, untestable in CI, dead at the first
+billing failure, and non-deterministic in something that runs unattended. Every input is
+computable from files in git: priority, goal status, claim age, ceiling headroom. A model can
+reorder or veto later — as a second opinion over a ranking that stands on its own.
+
+Guards, each closing a specific failure:
+
+- **Concurrency ceiling.** At or above it the beat picks nothing. This is what stops a runaway
+  queue, so it is the one guard that must never be advisory.
+- **Blocked is not in-flight.** Otherwise one unanswered question permanently consumes a lane and
+  the ceiling stops meaning anything.
+- **Nothing is a valid answer.** An empty beat exits successfully with a reason. A heartbeat that
+  cannot do nothing will invent work to justify itself.
+- **Blocked-but-actionable work is re-surfaced, not re-raised.** `pm block` already filed it; a
+  cron that duplicates items teaches people to ignore it.
+
+The beat writes nothing to the repo. A scheduled job that commits would have to push to protected
+`main`, which agents may not do — so the report is the Actions job summary, which is durable
+enough and has no such problem.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.
@@ -481,12 +588,13 @@ export const REQUEST_ID = /^[A-Z]{2,4}-FR-\d{3,}$/;                       // EV-
 export const RoadmapItem = z.object({
   id:         z.string().regex(ROADMAP_ID),
   title:      z.string().min(3),
-  status:     z.enum(["backlog", "in-progress", "review", "shipped", "dropped"]),
+  status:     z.enum(["backlog", "in-progress", "blocked", "review", "shipped", "dropped"]),
   priority:   z.enum(["P0", "P1", "P2", "P3"]).default("P2"),
   goal:       z.string().regex(GOAL_ID).optional(),
   owner:      z.enum(["agent", "human"]).default("agent"),
   prs:        z.array(z.number().int()).default([]),
-  acceptance: z.string().optional(),        // path into qa/acceptance/
+  acceptance: z.string().optional(),        // path into qa/acceptance/ — rung 3's input (§9)
+  needs:      z.string().optional(),        // required when status is "blocked" (§7.3)
   created:    z.iso.date(),
   updated:    z.iso.date(),
 });
@@ -531,6 +639,40 @@ qa/
 | Every PR | Above + `morpheus check pr` + build | Merge |
 | Pre-deploy | E2E against the preview deployment | Deploy |
 | Human review | Preview link + screenshots + test plan | Deploy |
+
+### The verifier stack
+
+A **verifier** answers *is this correct?* without trusting the doer's own say-so. Independence is
+the whole point — an agent checking its own work re-derives the same reasoning and reaches the same
+wrong conclusion, which is why "the agent self-reviewed" is not a rung.
+
+Four of them, each catching what it can so the rung above only sees what genuinely needs it:
+
+| Rung | Verifier | Catches | Blocks |
+|---|---|---|---|
+| 1 | **Automated checks** — tests, types, lint, build, `check pr` | Anything mechanically decidable | Merge |
+| 2 | **Agent review** — a second session, reviewer persona | Wrong-but-clean: untested failure modes, widened scope, decisions quietly reversed | No |
+| 3 | **Conformance** — the change against `qa/acceptance/`, staging against the designs | Built the wrong thing correctly | Deploy |
+| 4 | **Human sign-off** | Taste, strategy, real risk | Deploy |
+
+Rung 2 does not block. A model-graded gate that can fail on its own noise trains everyone to
+bypass it, and rung 4 is still a human.
+
+**This is a concept, not a directory.** The rungs already live in four places — `.github/workflows/`
+for 1 and 2, `qa/acceptance/` for 3, a pull request for 4 — and a `verifiers/` directory would hold
+nothing but pointers to them. What was missing was the vocabulary: with no word for *the thing that
+checks the doer*, the rungs could not be reasoned about as a stack, and nobody noticed that rung 3
+had no input. `qa/` keeps holding artifacts; the stack is how they are read.
+
+**An unconfigured verifier must not report success.** Rung 2 needs a model credential, and where it
+is absent the step says so and exits without claiming to have run. A verifier that reports green
+because it never executed is worse than no verifier — the same shape as *a check that skips what is
+absent will report an empty thing as correct* in `.agent/learned.md`.
+
+**A self-written waiver is not verification.** `check pr` accepts `skip-tests:` and `records-only:`
+from the author of the PR it is checking. Both are legitimate, and both stay — but they surface as
+waived findings carrying their stated reason, rather than passing silently into a clean report. The
+waiver is a fact the next rung needs, not an exemption from being looked at.
 
 ### The human review artifact
 
