@@ -21,9 +21,44 @@ export interface PrContext {
 }
 
 export interface Finding {
-  level: "error" | "warning";
+  /**
+   * `waived` is a third level, not a flavour of warning.
+   *
+   * A verifier answers *is this correct?* without trusting the doer's own
+   * say-so (architecture §9). `skip-tests:` and `records-only:` are written by
+   * the author of the PR being checked, and until now they passed silently — so
+   * a PR that excused itself from its tests was indistinguishable, in the check
+   * output, from one that has them. The waivers are legitimate and stay; what
+   * changes is that the rung above can see them.
+   */
+  level: "error" | "warning" | "waived";
   rule: string;
   message: string;
+}
+
+/**
+ * A waiver line and the reason it gives.
+ *
+ * The reason must be more than a token. The original pattern was `\S+`, which
+ * accepts `skip-tests: yes` — an opt-out with extra steps. Requiring words means
+ * the author has to state something a human can weigh.
+ */
+export function waiverReason(body: string, key: string): string | null {
+  // `[ \t]` rather than `\s`, which includes newlines: `\s*` after the colon
+  // would swallow the blank line under a bare `skip-tests:` and capture the
+  // *next* line as the reason. That made `skip-tests:` with nothing after it
+  // read as the reason "## Test plan" — a non-reason passing as a good one,
+  // which is the precise failure this rule exists to prevent.
+  const m = new RegExp(`(^|\\n)[ \\t]*${key}:[ \\t]*(.*)$`, "im").exec(body);
+  if (!m) return null;
+  return (m[2] ?? "").trim();
+}
+
+/** Reasons that are present but say nothing. */
+const NON_REASONS = new Set(["yes", "y", "true", "n/a", "na", "none", "ok", "-"]);
+
+function isRealReason(reason: string): boolean {
+  return reason.length >= 4 && !NON_REASONS.has(reason.toLowerCase());
 }
 
 const SOURCE = /^src\/.*\.(ts|tsx)$/;
@@ -72,14 +107,25 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
   const docs = changedFiles.filter((f) => DOCS.test(f) && !GENERATED.test(f));
 
   // Tests must accompany source changes, unless explicitly justified.
-  const testsWaived = /(^|\n)\s*skip-tests:\s*\S+/i.test(body);
+  const testsReason = waiverReason(body, "skip-tests");
+  const testsWaived = testsReason !== null && isRealReason(testsReason);
+
   if (source.length > 0 && tests.length === 0 && !testsWaived) {
     findings.push({
       level: "error",
       rule: "tests-with-source",
       message:
         `${source.length} source file(s) changed with no test changes. Add tests, ` +
-        `or put "skip-tests: <reason>" in the PR body.`,
+        `or put "skip-tests: <reason>" in the PR body.` +
+        (testsReason !== null
+          ? `\n    "${testsReason}" is not a reason — say why these changes cannot be tested.`
+          : ""),
+    });
+  } else if (source.length > 0 && tests.length === 0 && testsWaived) {
+    findings.push({
+      level: "waived",
+      rule: "tests-with-source",
+      message: `tests waived — "${testsReason}"`,
     });
   }
 
@@ -117,17 +163,30 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
   // code: MO-003's whole outcome was "do not publish, use a git dependency",
   // recorded in decisions.md. Stating the reason is cheap; the default must be
   // refusal, since the cost of a wrong shipped is that nobody looks again.
-  const recordsWaived = /(^|\n)\s*records-only:\s*\S+/i.test(body);
-  if (id && hasNoSubstantiveChange(changedFiles) && !recordsWaived) {
-    findings.push({
-      level: "error",
-      rule: "no-work-for-claimed-item",
-      message:
-        `"${branch}" claims ${id}, but this PR changes only records and board files — ` +
-        `no work on ${id} itself. Merging it would mark ${id} shipped. Move the commits ` +
-        `to a branch that stakes no id (e.g. "inbox-2026-07-29"), or put ` +
-        `"records-only: <reason>" in the body if the deliverable really is the record.`,
-    });
+  const recordsReason = waiverReason(body, "records-only");
+  const recordsWaived = recordsReason !== null && isRealReason(recordsReason);
+
+  if (id && hasNoSubstantiveChange(changedFiles)) {
+    if (!recordsWaived) {
+      findings.push({
+        level: "error",
+        rule: "no-work-for-claimed-item",
+        message:
+          `"${branch}" claims ${id}, but this PR changes only records and board files — ` +
+          `no work on ${id} itself. Merging it would mark ${id} shipped. Move the commits ` +
+          `to a branch that stakes no id (e.g. "inbox-2026-07-29"), or put ` +
+          `"records-only: <reason>" in the body if the deliverable really is the record.` +
+          (recordsReason !== null
+            ? `\n    "${recordsReason}" is not a reason — say why the record is the deliverable.`
+            : ""),
+      });
+    } else {
+      findings.push({
+        level: "waived",
+        rule: "no-work-for-claimed-item",
+        message: `${id} ships on records alone — "${recordsReason}"`,
+      });
+    }
   }
 
   if (isRecordsOnly(changedFiles)) {
@@ -178,9 +237,32 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
   return findings;
 }
 
+const MARK: Record<Finding["level"], string> = {
+  error: "✗",
+  warning: "!",
+  waived: "~",
+};
+
+/**
+ * Render findings, never reporting a clean run when something was waived.
+ *
+ * The success line is the whole point of the change: a PR that excused itself
+ * from its tests used to print exactly what a PR with tests printed, so the
+ * waiver was only discoverable by reading the body it was hidden in.
+ */
 export function formatFindings(findings: Finding[]): string {
-  if (findings.length === 0) return "✓ PR conventions satisfied.";
-  return findings
-    .map((f) => `${f.level === "error" ? "✗" : "!"} [${f.rule}] ${f.message}`)
-    .join("\n");
+  const waived = findings.filter((f) => f.level === "waived");
+  const rest = findings.filter((f) => f.level !== "waived");
+
+  if (rest.length === 0 && waived.length === 0) return "✓ PR conventions satisfied.";
+
+  const lines = findings.map((f) => `${MARK[f.level]} [${f.rule}] ${f.message}`);
+
+  if (rest.length === 0) {
+    return [
+      `✓ PR conventions satisfied — ${waived.length} waived.`,
+      ...lines,
+    ].join("\n");
+  }
+  return lines.join("\n");
 }

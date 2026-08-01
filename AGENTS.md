@@ -132,6 +132,14 @@ When the deliverable genuinely *is* the record — a decision item like MO-003, 
 was "do not publish, use a git dependency" — put `records-only: <reason>` in the PR body, the same
 shape as `skip-tests:`.
 
+**Both waivers are reported, not swallowed.** They are your own say-so about your own PR, so
+`check pr` prints them as `~ waived` with the reason attached and never says "conventions
+satisfied" without listing them. They still pass — the reason just has to be visible to whoever
+reads the check.
+
+**A waiver needs a real reason.** `skip-tests: yes` is refused, as are `true`, `n/a` and an empty
+value. Say what cannot be tested and why.
+
 **Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm morpheus pm index`, and commit
 any index changes. CI runs the same checks and will fail otherwise.
 
