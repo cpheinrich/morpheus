@@ -1189,9 +1189,26 @@ billing account.
 
 ### 12.11 `init` scaffolds the repository and nothing else
 
-`morpheus init` writes the manifest, `AGENTS.md` with `CLAUDE.md` symlinked to it, the `.agent/`
-records, the `hq/` tree for the project's kind, an inbox, a CI workflow delegating to the reusable
-ones, and `.gitignore` entries. Then it registers the prefix and prints `init status`.
+`morpheus init` writes the manifest, `README.md`, `AGENTS.md` with `CLAUDE.md` symlinked to it,
+the `.agent/` records, the `hq/` tree for the project's kind, an inbox, a CI workflow delegating to
+the reusable ones, and `.gitignore` entries. Then it registers the prefix and prints `init status`.
+
+**Every project points back here.** `README.md` and `AGENTS.md` both carry a Morpheus callout —
+the repo link, `architecture.md`, and these operating principles — and `AGENTS.md` carries it
+*above* the project's own conventions, because read-Morpheus-first is only true if it is read
+first. The callouts are exported from `init/templates.ts` as `morpheusCalloutForReadme` and
+`morpheusCalloutForAgents` rather than inlined, so the projects carrying this text cannot drift
+into different answers to "what is this repo".
+
+The audience is the reader nobody can brief: a code review agent starts with no memory by design,
+and an agent working for a collaborator has never seen Morpheus. To them the structure looks
+arbitrary, and arbitrary-looking structure gets confidently corrected — a generated file
+hand-edited, an id renamed out from under its branch, `pm claim` bypassed into a collision.
+
+Both callouts also tell such an agent to open an **issue or pull request on Morpheus** when it
+finds a gap here, rather than working around it locally. A local workaround fixes one project and
+hides the defect from every other one, so this is what turns projects built on Morpheus into a
+source of improvements to it.
 
 **It never overwrites.** Anything present is skipped and reported, which makes it safe on an
 established repository — so *initialise a new project* and *bring an old one up to the standard*
