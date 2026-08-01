@@ -322,7 +322,7 @@ Not enforced by `inbox validate`: the validator cannot distinguish a real option
 restatements of one choice, and a check that cannot tell those apart would pass the filler it
 exists to prevent — the `learned.md` shape where a check reports an empty thing as correct.
 
-**Roadmap ids are timestamps, not a coordinated integer** — 2026-08-01. `PREFIX-YYYY-MM-DD-HH.MM.SS` **in
+**Roadmap ids are timestamps, not a coordinated integer** — 2026-08-01. `PREFIX-YY-MM-DD-HH.MM.SS` **in
 UTC**, taken from the clock when the item is first written. UTC because ordering is the scheme's
 whole job and is meaningless if authors measure from different origins — and because `created:`
 is `toISOString()`, already UTC, so local time put two different days in one frontmatter. A sequential integer requires every writer to
@@ -339,6 +339,6 @@ The slug lives in the **filename**, not the id: the timestamp already makes the 
 slug's only job is recognition when browsing, while the id is what every cross-reference repeats.
 Capped at 64 and cut at a word boundary, preferring the shortest intelligible name.
 
-Migrated ids keep the old number against the item's own creation date — `MO-045` → `MO-2026-07-29-045`
+Migrated ids keep the old number against the item's own creation date — `MO-045` → `MO-26-07-29-045`
 — so `grep MO-045` still resolves against history that cannot be rewritten, and real chronology
 survives. Goals and requests stay sequential; they are rare and have never collided.

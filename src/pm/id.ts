@@ -13,8 +13,12 @@
  *
  * | Form | Shape | Example |
  * |---|---|---|
- * | New | `PREFIX-YYYY-MM-DD-HH.MM.SS` **in UTC** | `MO-2026-08-01-15.26.34` |
- * | Legacy | `PREFIX-YYYY-MM-DD-NNN` | `MO-2026-07-29-045` |
+ * | New | `PREFIX-YY-MM-DD-HH.MM.SS` in Pacific | `MO-26-08-01-15.26.34` |
+ * | Legacy | `PREFIX-YY-MM-DD-NNN` | `MO-26-07-29-045` |
+ *
+ * A four-digit year is still accepted: items created between the format
+ * landing and the migration sweep carry one, and rejecting them would fail the
+ * board that produced them.
  *
  * Legacy ids keep the item's **own** `created:` date and its old integer, so
  * `grep MO-045` still finds it in the git history, commit messages and merged
@@ -36,10 +40,11 @@
  * board would turn every project red the moment this landed.
  */
 export const ROADMAP_ID =
-  /^[A-Z]{2,4}-(\d{4}-\d{2}-\d{2}-(\d{2}\.\d{2}\.\d{2}|\d{3})|\d{3,})$/;
+  /^[A-Z]{2,4}-((?:\d{2}|\d{4})-\d{2}-\d{2}-(?:\d{2}\.\d{2}\.\d{2}|\d{3})|\d{3,})$/;
 
 /** Just the two dated shapes — what `pm new` now produces. */
-export const DATED_ROADMAP_ID = /^[A-Z]{2,4}-\d{4}-\d{2}-\d{2}-(\d{2}\.\d{2}\.\d{2}|\d{3})$/;
+export const DATED_ROADMAP_ID =
+  /^[A-Z]{2,4}-(?:\d{2}|\d{4})-\d{2}-\d{2}-(?:\d{2}\.\d{2}\.\d{2}|\d{3})$/;
 
 /**
  * Hard character ceiling.
@@ -84,7 +89,7 @@ const DANGLING = new Set([
 
 export interface ParsedId {
   prefix: string;
-  /** `YYYY-MM-DD` as written in the id. */
+  /** `YY-MM-DD` as written in the id. */
   date: string;
   /** `HH.MM.SS`, or the old integer for a migrated item. */
   tail: string;
@@ -92,7 +97,7 @@ export interface ParsedId {
 }
 
 export function parseRoadmapId(id: string): ParsedId | null {
-  const m = /^([A-Z]{2,4})-(\d{4}-\d{2}-\d{2})-(\d{2}\.\d{2}\.\d{2}|\d{3})$/.exec(id);
+  const m = /^([A-Z]{2,4})-((?:\d{2}|\d{4})-\d{2}-\d{2})-(\d{2}\.\d{2}\.\d{2}|\d{3})$/.exec(id);
   if (!m) return null;
   return { prefix: m[1]!, date: m[2]!, tail: m[3]!, legacy: !m[3]!.includes(".") };
 }
@@ -147,10 +152,10 @@ function zoned(d: Date): Record<string, string> {
   return out;
 }
 
-/** `YYYY-MM-DD` in Pacific time. */
+/** `YY-MM-DD` in Pacific time — two-digit year, two characters cheaper. */
 export function datePart(d: Date): string {
   const p = zoned(d);
-  return `${p.year}-${p.month}-${p.day}`;
+  return `${p.year!.slice(-2)}-${p.month}-${p.day}`;
 }
 
 /**
@@ -190,7 +195,8 @@ export function timestampId(prefix: string, taken: Iterable<string>, now: Date):
 
 /** The id a migrated item takes: its own creation date plus its old number. */
 export function migratedId(prefix: string, created: string, oldNumber: number): string {
-  return `${prefix}-${created.slice(0, 10)}-${String(oldNumber).padStart(3, "0")}`;
+  // `2026-07-29` -> `26-07-29`
+  return `${prefix}-${created.slice(2, 10)}-${String(oldNumber).padStart(3, "0")}`;
 }
 
 /**
@@ -316,7 +322,7 @@ export function cleanSlug(slug: string): string {
     .replace(/-+$/, "");
 }
 
-/** `MO-2026-08-01-15.26.34-blocked-is-a-first-class-outcome.md` */
+/** `MO-26-08-01-15.26.34-blocked-first-class-outcome.md` */
 export function itemFilename(
   id: string,
   title: string,

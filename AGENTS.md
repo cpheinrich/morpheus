@@ -67,7 +67,7 @@ morpheus pm claim MO-014     # stakes the branch on origin, sets in-progress, pu
 
 The remote branch **is** the claim — `pm claim` refuses if `origin` already has `mo-014-*`.
 
-**Roadmap ids come from the clock** — `MO-2026-08-01-15.26.34`, `PREFIX-YYYY-MM-DD-HH.MM.SS` in
+**Roadmap ids come from the clock** — `MO-26-08-01-15.26.34`, `PREFIX-YY-MM-DD-HH.MM.SS` in
 **Pacific time on every machine**, not the author's local zone. A fixed zone is what makes ids
 from different contributors comparable; a local one silently reorders the board the moment two
 people are in different places.
@@ -80,7 +80,7 @@ to be. Omitting `--slug` derives one from the title, which is a fallback rather 
 "Roadmap ids become timestamps, not a coordinated integer" derives to
 `roadmap-ids-become-timestamps` where `update-roadmap-ids` says as much in half the space.
 
-Items migrated from the old integer scheme read `MO-2026-07-29-045`: their own creation date plus the
+Items migrated from the old integer scheme read `MO-26-07-29-045`: their own creation date plus the
 old number, so `grep MO-045` still resolves against git history that cannot be rewritten.
 
 **Goals and requests are still sequential**, and for those `pm new` allocates against the remote

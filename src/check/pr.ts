@@ -73,20 +73,22 @@ const GENERATED = /README\.md$/;
  *
  * | Branch | Id |
  * |---|---|
- * | `mo-2026-08-01-15.26.34-slug` | `MO-2026-08-01-15.26.34` |
- * | `mo-2026-07-29-045-slug` | `MO-2026-07-29-045` |
+ * | `mo-26-08-01-15.26.34-slug` | `MO-26-08-01-15.26.34` |
+ * | `mo-26-07-29-045-slug` | `MO-26-07-29-045` |
  * | `ev-014-slug` | `EV-014` |
  *
+ * A four-digit year is also accepted — branches cut between the format landing
+ * and the migration sweep carry one.
+ *
  * The dated forms must be tried **first**. Matching the legacy pattern against
- * `mo-2026-08-01-...` yields `MO-2026` — a plausible-looking id for an item
+ * `mo-26-08-01-...` or `mo-2026-08-01-...` yields `MO-26` or `MO-2026` — a plausible-looking id for an item
  * that cannot exist — and the check then reports the branch as referencing a
  * missing item. That is what it did on the first PR created under the new
  * scheme.
  */
 export function roadmapIdFromBranch(branch: string): string | null {
-  const dated = /^([a-z]{2,4})-(\d{4}-\d{2}-\d{2}-(?:\d{2}\.\d{2}\.\d{2}|\d{3}))(?:-|$)/i.exec(
-    branch,
-  );
+  const dated =
+    /^([a-z]{2,4})-((?:\d{2}|\d{4})-\d{2}-\d{2}-(?:\d{2}\.\d{2}\.\d{2}|\d{3}))(?:-|$)/i.exec(branch);
   if (dated) return `${dated[1]!.toUpperCase()}-${dated[2]}`;
 
   const legacy = /^([a-z]{2,4})-(\d{3,})(?:-|$)/i.exec(branch);

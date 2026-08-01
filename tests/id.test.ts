@@ -25,7 +25,7 @@ const AT = (iso: string) => new Date(`${iso}Z`);
 describe("timestamp ids", () => {
   it("reads as the date and time it was written", () => {
     const id = timestampId("MO", [], AT("2026-08-01T15:26:34"));
-    expect(id).toBe("MO-2026-08-01-08.26.34");
+    expect(id).toBe("MO-26-08-01-08.26.34");
     expect(ROADMAP_ID.test(id)).toBe(true);
   });
 
@@ -37,10 +37,10 @@ describe("timestamp ids", () => {
     for (let i = 0; i < 4; i++) taken.push(timestampId("MO", taken, now));
 
     expect(taken).toEqual([
-      "MO-2026-08-01-08.26.34",
-      "MO-2026-08-01-08.26.35",
-      "MO-2026-08-01-08.26.36",
-      "MO-2026-08-01-08.26.37",
+      "MO-26-08-01-08.26.34",
+      "MO-26-08-01-08.26.35",
+      "MO-26-08-01-08.26.36",
+      "MO-26-08-01-08.26.37",
     ]);
   });
 
@@ -54,14 +54,14 @@ describe("timestamp ids", () => {
 
   it("needs no remote — two prefixes never interfere", () => {
     const at = AT("2026-08-01T09:00:00");
-    expect(timestampId("EV", [], at)).toBe("EV-2026-08-01-02.00.00");
-    expect(timestampId("MO", [], at)).toBe("MO-2026-08-01-02.00.00");
+    expect(timestampId("EV", [], at)).toBe("EV-26-08-01-02.00.00");
+    expect(timestampId("MO", [], at)).toBe("MO-26-08-01-02.00.00");
   });
 
   it("pads single-digit date and time parts", () => {
     // 03:04:05Z on 2 Jan is 19:04:05 Pacific on 1 Jan — PST, UTC-8.
     const d = AT("2026-01-02T03:04:05");
-    expect(datePart(d)).toBe("2026-01-01");
+    expect(datePart(d)).toBe("26-01-01");
     expect(timePart(d)).toBe("19.04.05");
   });
 
@@ -80,7 +80,7 @@ describe("timestamp ids", () => {
       const d = new Date("2026-08-02T00:30:00Z"); // 17:30 Pacific on 1 Aug
       for (const tz of ["UTC", "Asia/Tokyo", "America/New_York"]) {
         process.env.TZ = tz;
-        expect(timestampId("MO", [], d)).toBe("MO-2026-08-01-17.30.00");
+        expect(timestampId("MO", [], d)).toBe("MO-26-08-01-17.30.00");
       }
     });
 
@@ -93,7 +93,7 @@ describe("timestamp ids", () => {
 
     it("handles a UTC instant that falls on the previous Pacific day", () => {
       // The case that made local time and `created:` disagree.
-      expect(datePart(new Date("2026-08-02T05:00:00Z"))).toBe("2026-08-01");
+      expect(datePart(new Date("2026-08-02T05:00:00Z"))).toBe("26-08-01");
     });
   });
 });
@@ -102,44 +102,44 @@ describe("legacy ids", () => {
   it("keeps the old number so git history still greps", () => {
     // Merged PR bodies and commit messages say MO-045 and cannot be rewritten.
     const id = migratedId("MO", "2026-07-29", 45);
-    expect(id).toBe("MO-2026-07-29-045");
+    expect(id).toBe("MO-26-07-29-045");
     expect(id).toContain("045");
     expect(ROADMAP_ID.test(id)).toBe(true);
   });
 
   it("uses the item's own creation date, not the migration date", () => {
-    expect(migratedId("MO", "2026-07-28", 3)).toBe("MO-2026-07-28-003");
-    expect(migratedId("MO", "2026-07-31", 46)).toBe("MO-2026-07-31-046");
+    expect(migratedId("MO", "2026-07-28", 3)).toBe("MO-26-07-28-003");
+    expect(migratedId("MO", "2026-07-31", 46)).toBe("MO-26-07-31-046");
   });
 
   it("is distinguishable from a timestamp id", () => {
-    expect(isLegacyId("MO-2026-07-29-045")).toBe(true);
-    expect(isLegacyId("MO-2026-08-01-15.26.34")).toBe(false);
+    expect(isLegacyId("MO-26-07-29-045")).toBe(true);
+    expect(isLegacyId("MO-26-08-01-15.26.34")).toBe(false);
   });
 
   it("sorts before same-day timestamp ids without ambiguity", () => {
-    const ids = ["MO-2026-08-01-15.26.34", "MO-2026-08-01-045"].sort();
-    expect(ids[0]).toBe("MO-2026-08-01-045");
+    const ids = ["MO-26-08-01-15.26.34", "MO-26-08-01-045"].sort();
+    expect(ids[0]).toBe("MO-26-08-01-045");
   });
 });
 
 describe("ROADMAP_ID", () => {
   it("accepts all three shapes during the migration", () => {
-    for (const id of ["MO-2026-08-01-15.26.34", "MO-2026-07-29-045", "MO-045"]) {
+    for (const id of ["MO-26-08-01-15.26.34", "MO-26-07-29-045", "MO-045"]) {
       expect(ROADMAP_ID.test(id)).toBe(true);
     }
   });
 
   it("rejects malformed ids", () => {
-    for (const id of ["MO-2026-8-01-152634", "mo-2026-08-01-152634", "MO-2026-08-01-15.26.3", "MO-"]) {
+    for (const id of ["MO-26-8-01-15.26.34", "mo-26-08-01-15.26.34", "MO-26-08-01-15.26.3", "MO-"]) {
       expect(ROADMAP_ID.test(id)).toBe(false);
     }
   });
 
   it("parses each shape into its parts", () => {
-    expect(parseRoadmapId("MO-2026-08-01-15.26.34")).toEqual({
+    expect(parseRoadmapId("MO-26-08-01-15.26.34")).toEqual({
       prefix: "MO",
-      date: "2026-08-01",
+      date: "26-08-01",
       tail: "15.26.34",
       legacy: false,
     });
@@ -190,8 +190,8 @@ describe("slugForFilename", () => {
   });
 
   it("builds a filename with the id first, so the directory sorts by date", () => {
-    expect(itemFilename("MO-2026-08-01-15.26.34", "Blocked is a first-class outcome")).toBe(
-      "MO-2026-08-01-15.26.34-blocked-first-class-outcome.md",
+    expect(itemFilename("MO-26-08-01-15.26.34", "Blocked is a first-class outcome")).toBe(
+      "MO-26-08-01-15.26.34-blocked-first-class-outcome.md",
     );
   });
 });
@@ -222,17 +222,17 @@ describe("migration", () => {
     const plan = await planMigration(join(dir, "roadmap"));
     expect(verifyOrder(plan.renames)).toEqual([]);
     expect(plan.renames.map((r) => r.newId)).toEqual([
-      "MO-2026-07-28-001",
-      "MO-2026-07-29-010",
-      "MO-2026-07-31-045",
+      "MO-26-07-28-001",
+      "MO-26-07-29-010",
+      "MO-26-07-31-045",
     ]);
   });
 
   it("refuses outright if the rewrite would reorder the board", () => {
     // A later item with an earlier creation date inverts the sequence.
     const renames = [
-      { oldId: "MO-001", newId: "MO-2026-07-31-001", oldFile: "a", newFile: "a" },
-      { oldId: "MO-002", newId: "MO-2026-07-28-002", oldFile: "b", newFile: "b" },
+      { oldId: "MO-001", newId: "MO-26-07-31-001", oldFile: "a", newFile: "a" },
+      { oldId: "MO-002", newId: "MO-26-07-28-002", oldFile: "b", newFile: "b" },
     ];
     expect(verifyOrder(renames)).not.toEqual([]);
   });
@@ -242,10 +242,10 @@ describe("migration", () => {
     await migrate(join(dir, "roadmap"));
 
     const files = await readdir(join(dir, "roadmap"));
-    expect(files).toEqual(["MO-2026-07-31-045-forty-fifth-thing.md"]);
+    expect(files).toEqual(["MO-26-07-31-045-forty-fifth-thing.md"]);
 
     const text = await readFile(join(dir, "roadmap", files[0]!), "utf8");
-    expect(text).toContain("id: MO-2026-07-31-045");
+    expect(text).toContain("id: MO-26-07-31-045");
     expect(text).toContain('title: "Forty-fifth thing"');
     expect(text).toContain("status: shipped");
     expect(text).toContain("prs: [12]");
@@ -258,7 +258,7 @@ describe("migration", () => {
 
     const files = await readdir(join(dir, "roadmap"));
     const text = await readFile(join(dir, "roadmap", files[0]!), "utf8");
-    expect(text).toContain("Migrated from `MO-045` to `MO-2026-07-31-045`");
+    expect(text).toContain("Migrated from `MO-045` to `MO-26-07-31-045`");
   });
 
   it("is idempotent — a second run finds nothing to do", async () => {
@@ -267,7 +267,7 @@ describe("migration", () => {
     const again = await migrate(join(dir, "roadmap"));
 
     expect(again.renames).toEqual([]);
-    expect(again.skipped).toEqual(["MO-2026-07-31-045"]);
+    expect(again.skipped).toEqual(["MO-26-07-31-045"]);
   });
 
   it("writes nothing on --check", async () => {
