@@ -16,6 +16,7 @@
     ".": "./dist/index.js",
     "./pm": "./dist/pm/index.js",
     "./inbox": "./dist/inbox/index.js",
+    "./heartbeat": "./dist/heartbeat/index.js",
     "./brand": "./dist/brand/index.js",
     "./access": "./dist/access/index.js",
     "./hq": "./dist/hq/index.js",
@@ -44,8 +45,10 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.2",
     "firebase": "^12.17.0",
+    "js-yaml": "^5.2.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^7.3.6",

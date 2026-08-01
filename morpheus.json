@@ -10,6 +10,10 @@
     "ios": false,
     "hardware": false
   },
+  "heartbeat": {
+    "ceiling": 3,
+    "dispatch": false
+  },
   "hq": {
     "route": "/hq",
     "allowlist": [],

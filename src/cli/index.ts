@@ -12,6 +12,7 @@ import { run as doctorRun } from "./doctor.js";
 import { mark as initMark, status as initStatus } from "./onboarding.js";
 import { init as initScaffold } from "./init.js";
 import { build as tokensBuild } from "./tokens.js";
+import { heartbeat } from "./heartbeat.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -41,6 +42,8 @@ Usage
   morpheus tokens build     [--source hq/brand/tokens.json] [--css <path>] [--ts <path>]
                             [--prefix brand] [--check]
   morpheus doctor           [--all]
+  morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
+                            what should happen next, and whether anything should
 
 Options
   --dir <path>   Product directory (default: hq/product)
@@ -70,6 +73,9 @@ interface Flags {
   goal?: string;
   needs?: string;
   context?: string;
+  ceiling?: number;
+  json: boolean;
+  dispatch: boolean;
   print: boolean;
   positional: string[];
 }
@@ -82,6 +88,8 @@ function parseArgs(argv: string[]): Flags {
     dryRun: false,
     all: false,
     offline: false,
+    json: false,
+    dispatch: false,
     print: false,
     positional: [],
   };
@@ -146,6 +154,17 @@ function parseArgs(argv: string[]): Flags {
       case "--context":
         flags.context = argv[++i];
         break;
+      case "--ceiling": {
+        const n = Number(argv[++i]);
+        if (Number.isInteger(n) && n > 0) flags.ceiling = n;
+        break;
+      }
+      case "--json":
+        flags.json = true;
+        break;
+      case "--dispatch":
+        flags.dispatch = true;
+        break;
       default:
         flags.positional.push(arg);
     }
@@ -166,6 +185,18 @@ async function main(): Promise<number> {
   const dir = resolve(process.cwd(), flags.dir);
 
   if (group === "doctor") return doctorRun(process.cwd(), flags.all);
+
+  if (group === "heartbeat") {
+    return heartbeat({
+      productDir: dir,
+      cwd: process.cwd(),
+      ...(flags.ceiling !== undefined ? { ceiling: flags.ceiling } : {}),
+      json: flags.json,
+      // Only override the manifest when the flag was actually passed, so
+      // `dispatch: true` in morpheus.json is not silently turned off.
+      ...(flags.dispatch ? { dispatch: true } : {}),
+    });
+  }
 
   if (group === "tokens") {
     if (command === "build" || command === undefined) {

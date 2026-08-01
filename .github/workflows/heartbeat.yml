@@ -1,0 +1,95 @@
+name: Heartbeat
+
+# Reusable workflow. A scheduled beat that reads the board and says what should
+# happen next — a dispatcher, not a doer.
+#
+#   on:
+#     schedule:
+#       - cron: "0 9,17 * * 1-5"
+#     workflow_dispatch:
+#   jobs:
+#     heartbeat:
+#       uses: cpheinrich/morpheus/.github/workflows/heartbeat.yml@main
+#
+# The schedule lives in the *calling* repo, because cadence is a property of the
+# project. Morpheus's own caller is `schedule.yml`.
+#
+# It writes nothing to the repository. A scheduled job that commits would have
+# to push to protected `main`, which agents may not do — so the beat is reported
+# in the Actions job summary, which is durable and has no such problem.
+
+on:
+  workflow_call:
+    inputs:
+      product-dir:
+        type: string
+        default: "hq/product"
+      ceiling:
+        description: >
+          Items allowed in flight at once. Leave at 0 to use `heartbeat.ceiling`
+          from morpheus.json, which is where it belongs — the ceiling is a
+          property of the project, not of whoever triggered the run.
+        type: number
+        default: 0
+      dispatch:
+        description: >
+          Off by default and deliberately so. With no agent credential present
+          the run refuses loudly rather than degrading to propose-only, because
+          a configured intent that cannot be honoured is not the same as one
+          never expressed.
+        type: boolean
+        default: false
+      morpheus-ref:
+        type: string
+        default: "main"
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        description: >
+          Leave empty to let Morpheus's own `packageManager` field decide.
+          Setting both makes pnpm/action-setup fail with "Multiple versions of
+          pnpm specified".
+        type: string
+        default: ""
+
+jobs:
+  beat:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history and all branches: live claims are read with `git ls-remote`
+      # and `for-each-ref` over origin, and a shallow single-branch checkout
+      # would report an empty queue — which the beat would read as free lanes.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Same reasoning as pm-check.yml: the consuming repo does not depend on
+      # morpheus-kit, and should not need it installed to run a beat.
+      - uses: actions/checkout@v4
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.morpheus-ref }}
+          path: .morpheus
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+          package_json_file: .morpheus/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Build the Morpheus CLI
+        working-directory: .morpheus
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Beat
+        run: >
+          node .morpheus/dist/cli/index.js heartbeat
+          --dir ${{ inputs.product-dir }}
+          ${{ inputs.ceiling > 0 && format('--ceiling {0}', inputs.ceiling) || '' }}
+          ${{ inputs.dispatch && '--dispatch' || '' }}

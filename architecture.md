@@ -549,6 +549,21 @@ The beat writes nothing to the repo. A scheduled job that commits would have to 
 `main`, which agents may not do — so the report is the Actions job summary, which is durable
 enough and has no such problem.
 
+Configured per project, because the ceiling is a property of the project rather than of whoever
+triggered the run:
+
+```jsonc
+// morpheus.json
+"heartbeat": { "ceiling": 3, "dispatch": false }
+```
+
+`morpheus heartbeat` runs a beat by hand; `.github/workflows/heartbeat.yml` is the reusable
+workflow and the calling repo owns the cron, since cadence is a project's own business. Exit codes
+separate the three outcomes that matter: **0** the beat ran (pick or no pick), **1** it could not
+read state, **2** dispatch was asked for and refused. A beat that could not reach origin refuses
+rather than proceeding — an unreadable queue is not an empty one, and reading it as empty would
+dispatch straight through a full ceiling.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.
