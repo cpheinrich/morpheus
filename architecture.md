@@ -680,9 +680,21 @@ checks the doer*, the rungs could not be reasoned about as a stack, and nobody n
 had no input. `qa/` keeps holding artifacts; the stack is how they are read.
 
 **An unconfigured verifier must not report success.** Rung 2 needs a model credential, and where it
-is absent the step says so and exits without claiming to have run. A verifier that reports green
-because it never executed is worse than no verifier — the same shape as *a check that skips what is
-absent will report an empty thing as correct* in `.agent/learned.md`.
+is absent the step says so — a job summary plus a warning annotation — and exits without claiming to
+have run. A verifier that reports green because it never executed is worse than no verifier, the
+same shape as *a check that skips what is absent will report an empty thing as correct* in
+`.agent/learned.md`.
+
+**The reviewer persona is a versioned file**, `.github/agent-review-prompt.md`, not a string inside
+YAML. It is the part that gets tuned most often and the part a human most wants to read, and a
+prompt buried in a workflow is invisible in review. `morpheus review prompt` assembles it with the
+item's intent and acceptance criteria; the workflow pipes the result to the model, so the judgment
+lives in a module with a type checker and tests behind it rather than in YAML, which has neither.
+
+**Rung 3's input is `RoadmapItem.acceptance`** — a path into `qa/acceptance/`. An item that declares
+one has its criteria handed to the reviewer; an item that declares one pointing nowhere is reported
+as a defect rather than read as "no criteria", which is the distinction that kept the field dead
+from MO-001 until MO-051 first set it.
 
 **A self-written waiver is not verification.** `check pr` accepts `skip-tests:` and `records-only:`
 from the author of the PR it is checking. Both are legitimate, and both stay — but they surface as

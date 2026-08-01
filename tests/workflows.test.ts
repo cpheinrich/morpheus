@@ -97,3 +97,57 @@ describe("schedule.yml", () => {
     expect(wf.jobs?.["heartbeat"]?.uses).toContain("heartbeat.yml");
   });
 });
+
+describe("agent-review.yml", () => {
+  it("is reusable and takes the key as an optional secret", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      on?: { workflow_call?: { secrets?: Record<string, { required?: boolean }> } };
+    };
+    const secret = wf.on?.workflow_call?.secrets?.["anthropic_api_key"];
+    expect(secret).toBeDefined();
+    // Required would fail every repo that has not configured the rung.
+    expect(secret?.required).toBe(false);
+  });
+
+  /**
+   * The `secrets` context is not available in a step-level `if`. Testing
+   * `secrets.*` there evaluates to false silently, so the rung would skip even
+   * when configured — a verifier that never runs and never says so.
+   */
+  it("gates on an env var rather than the secrets context", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw).toContain("HAS_KEY:");
+    expect(raw).toMatch(/if:\s*env\.HAS_KEY/);
+    expect(raw).not.toMatch(/if:.*secrets\./);
+  });
+
+  it("needs write access to comment, and no more", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { permissions?: Record<string, string> }>;
+    };
+    const perms = wf.jobs?.["review"]?.permissions;
+    expect(perms).toEqual({ contents: "read", "pull-requests": "write" });
+  });
+});
+
+describe("ci.yml", () => {
+  it("calls the agent review rung", async () => {
+    const wf = await read("ci.yml");
+    expect(wf.jobs?.["agent-review"]?.uses).toContain("agent-review.yml");
+  });
+
+  /**
+   * Rung 2 is advisory. Making it a dependency of anything, or letting it gate
+   * a merge, is the change this asserts against — a model-graded gate that can
+   * fail on its own noise trains everyone to bypass it.
+   */
+  it("does not let the review rung block anything else", async () => {
+    const wf = (await read("ci.yml")) as {
+      jobs?: Record<string, { needs?: string | string[] }>;
+    };
+    for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+      const needs = [job.needs ?? []].flat();
+      expect(needs, `${name} must not depend on agent-review`).not.toContain("agent-review");
+    }
+  });
+});

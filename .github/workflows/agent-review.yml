@@ -1,0 +1,120 @@
+name: Agent review
+
+# Reusable workflow. Verifier rung 2 (architecture §9): an independent agent
+# reviews the pull request another agent opened.
+#
+#   jobs:
+#     agent-review:
+#       uses: cpheinrich/morpheus/.github/workflows/agent-review.yml@main
+#       secrets:
+#         anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+#
+# It does NOT block the merge. A model-graded gate that can fail on its own
+# noise trains everyone to bypass it, and rung 4 is still a human.
+#
+# With no key it says the rung is unconfigured and stops. It must not appear to
+# have run — a verifier reporting green because it never executed is worse than
+# no verifier, since a green check is read as evidence.
+
+on:
+  workflow_call:
+    inputs:
+      product-dir:
+        type: string
+        default: "hq/product"
+      morpheus-ref:
+        type: string
+        default: "main"
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        description: >
+          Leave empty to let Morpheus's own `packageManager` field decide.
+          Setting both makes pnpm/action-setup fail with "Multiple versions of
+          pnpm specified".
+        type: string
+        default: ""
+    secrets:
+      anthropic_api_key:
+        description: Absent means the rung is unconfigured and reports itself as skipped.
+        required: false
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      # The `secrets` context is not available in a step-level `if`, so the
+      # presence of the key is resolved once here into a plain string. Testing
+      # `secrets.*` directly in a conditional silently evaluates to false and
+      # the rung would skip even when configured.
+      HAS_KEY: ${{ secrets.anthropic_api_key != '' }}
+    steps:
+      # The reviewer compares the change against its base, so it needs history.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/checkout@v4
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.morpheus-ref }}
+          path: .morpheus
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+          package_json_file: .morpheus/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Build the Morpheus CLI
+        working-directory: .morpheus
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      # Assembled by the CLI rather than written inline: the prompt is where the
+      # judgment in this rung lives, and YAML is the one part of the kit with
+      # neither a type checker nor tests behind it.
+      - name: Assemble the reviewer prompt
+        id: prompt
+        run: |
+          {
+            echo 'text<<PROMPT_EOF'
+            node .morpheus/dist/cli/index.js review prompt --dir ${{ inputs.product-dir }}
+            echo 'PROMPT_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      # Say so loudly. Skipping in silence would leave a green check that reads
+      # as "an agent reviewed this".
+      - name: Report the rung as unconfigured
+        if: env.HAS_KEY != 'true'
+        run: |
+          {
+            echo "## Agent review — not configured"
+            echo
+            echo "Verifier rung 2 did **not** run. No \`anthropic_api_key\` reached this"
+            echo "workflow, so no independent review of this pull request happened."
+            echo
+            echo "This check being green means the rung was skipped, not that the change"
+            echo "passed it."
+            echo
+            echo "To enable: add \`ANTHROPIC_API_KEY\` to the repository or organisation"
+            echo "secrets and pass it through as \`anthropic_api_key\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning title=Agent review skipped::rung 2 is unconfigured — no reviewer ran"
+
+      - name: Review
+        if: env.HAS_KEY == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          prompt: ${{ steps.prompt.outputs.text }}
+          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

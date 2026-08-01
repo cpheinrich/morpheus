@@ -24,3 +24,13 @@ jobs:
     uses: ./.github/workflows/pr-check.yml
     with:
       product-dir: hq/product
+
+  # Verifier rung 2. Advisory by design — it never blocks the merge, and it
+  # reports itself as skipped rather than green when no key is configured.
+  agent-review:
+    uses: ./.github/workflows/agent-review.yml
+    with:
+      product-dir: hq/product
+      morpheus-ref: ${{ github.sha }}
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

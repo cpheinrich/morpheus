@@ -13,6 +13,7 @@ import { mark as initMark, status as initStatus } from "./onboarding.js";
 import { init as initScaffold } from "./init.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
+import { prompt as reviewPrompt } from "./review.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -27,6 +28,7 @@ Usage
   morpheus pm unblock <MO-051>
   morpheus pm ship [<MO-020> ...]  [--check]
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
+  morpheus review prompt    assemble the rung-2 reviewer prompt for this branch
   morpheus inbox validate   [--dir <hq/inbox>]
   morpheus brand init | refresh   [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
   morpheus brand build            regenerate from an edited hq/brand/answers.md
@@ -298,6 +300,12 @@ async function main(): Promise<number> {
       return validateInbox(resolve(process.cwd(), flags.dir === "hq/product" ? "hq/inbox" : flags.dir));
     }
     console.error(`Unknown inbox command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+  }
+
+  if (group === "review") {
+    if (command === "prompt") return reviewPrompt(dir, process.cwd());
+    console.error(`Unknown review command "${command ?? ""}".\n\n${HELP}`);
     return 1;
   }
 
