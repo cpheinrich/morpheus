@@ -11,6 +11,7 @@ item files, not this table.
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-047](./MO-047.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-001](./MO-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-002](./MO-002.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-003](./MO-003.md) | Consume the kit as a git dependency, not a published package | shipped | P0 | MO-G-2026-Q3-01 | #26 |
