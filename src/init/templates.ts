@@ -63,13 +63,22 @@ and colliding with another agent's work.
 ### Found a gap in Morpheus itself?
 
 If something in Morpheus is wrong, missing, or gets in your way while working here, **send it
-upstream** — open an issue or a pull request:
+upstream**. Do not quietly work around it in this repo — a local workaround fixes one project,
+hides the defect from every other one, and leaves the next agent to rediscover it.
 
-${MORPHEUS_REPO}/issues
+1. **Open an issue.** ${MORPHEUS_REPO}/issues
+   It is the durable record, it needs no fork, and it is where triage happens.
+2. **A pull request is welcome too**, especially carrying a fix you have verified — you hit the
+   problem, so you can prove the fix works, and that reproduction is the expensive part to
+   rebuild from a description.
+3. **Create the roadmap item in your pull request**, with \`morpheus pm new roadmap "..."\`.
+   Do not leave it for a maintainer: a roadmap id is a timestamp and \`baseSha\` is the commit
+   **you** were on, so both only mean anything when recorded at the moment you hit the problem.
+   Written afterwards by someone else, they record the wrong repository and a date days late.
 
-Do not quietly work around it in this repo. A local workaround fixes one project, hides the
-defect from every other one, and leaves the next agent to rediscover it. Morpheus improves only
-when the projects built on it report back.`;
+A pull request from outside the project needs a fork; an issue does not. Note that a fork's CI
+runs without secrets, so some checks skip and a first-time contributor's workflows need manual
+approval — that is GitHub's behaviour, not a problem with your change.`;
 
 export const morpheusCalloutForReadme = (): string =>
   `## Built and managed with Morpheus
@@ -89,8 +98,10 @@ and roadmap items with prefixed ids. Those are Morpheus conventions, not local i
 Most conventions in this repo have a reason recorded there rather than here, so without it they
 read as arbitrary and get "corrected" into breakage.
 
-Found a shortcoming in Morpheus while working here? Open an issue or a pull request rather than
-working around it locally — that is how Morpheus gets better.
+Found a shortcoming in Morpheus while working here? **Open an issue** rather than working around
+it locally — that is how Morpheus gets better. A pull request is welcome too, especially with a
+fix you have verified; include the roadmap item in it, since a roadmap id is a timestamp and only
+means anything recorded at the moment you hit the problem.
 
 ${MORPHEUS_REPO}/issues`;
 
