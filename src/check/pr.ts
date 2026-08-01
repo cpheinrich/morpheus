@@ -66,10 +66,31 @@ const TEST = /(^tests\/|\.test\.tsx?$)/;
 const DOCS = /^(docs\/|architecture\.md$|README\.md$|AGENTS\.md$)/;
 const GENERATED = /README\.md$/;
 
-/** Extract the roadmap id a branch refers to: ev-014-slug -> EV-014. */
+/**
+ * Extract the roadmap id a branch refers to.
+ *
+ * Three shapes, because MO-057 changed the scheme and branches outlive it:
+ *
+ * | Branch | Id |
+ * |---|---|
+ * | `mo-2026-08-01-15.26.34-slug` | `MO-2026-08-01-15.26.34` |
+ * | `mo-2026-07-29-045-slug` | `MO-2026-07-29-045` |
+ * | `ev-014-slug` | `EV-014` |
+ *
+ * The dated forms must be tried **first**. Matching the legacy pattern against
+ * `mo-2026-08-01-...` yields `MO-2026` — a plausible-looking id for an item
+ * that cannot exist — and the check then reports the branch as referencing a
+ * missing item. That is what it did on the first PR created under the new
+ * scheme.
+ */
 export function roadmapIdFromBranch(branch: string): string | null {
-  const m = /^([a-z]{2,4})-(\d{3,})(?:-|$)/i.exec(branch);
-  return m ? `${m[1]!.toUpperCase()}-${m[2]}` : null;
+  const dated = /^([a-z]{2,4})-(\d{4}-\d{2}-\d{2}-(?:\d{2}\.\d{2}\.\d{2}|\d{3}))(?:-|$)/i.exec(
+    branch,
+  );
+  if (dated) return `${dated[1]!.toUpperCase()}-${dated[2]}`;
+
+  const legacy = /^([a-z]{2,4})-(\d{3,})(?:-|$)/i.exec(branch);
+  return legacy ? `${legacy[1]!.toUpperCase()}-${legacy[2]}` : null;
 }
 
 /**

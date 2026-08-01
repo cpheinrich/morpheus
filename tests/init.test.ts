@@ -88,6 +88,21 @@ describe("morpheus init", () => {
       expect(agents.indexOf("managed by Morpheus")).toBeLessThan(agents.indexOf("## Layout"));
     });
 
+    it("tells a contributor to create the roadmap item themselves", async () => {
+      await scaffold(dir, SEED);
+
+      // `created` and `baseSha` only mean anything recorded at the moment the
+      // problem was hit. A maintainer writing the item afterwards records the
+      // wrong repository state and a date days late.
+      const agents = await read("AGENTS.md");
+      expect(agents).toContain("Create the roadmap item in your pull request");
+      expect(agents).toContain("morpheus pm new roadmap");
+
+      // And the two pieces of GitHub behaviour a contributor would hit blind.
+      expect(agents).toContain("needs a fork");
+      expect(agents).toContain("without secrets");
+    });
+
     it("keeps a README the project already wrote", async () => {
       const mine = "# The real readme\n";
       await writeFile(join(dir, "README.md"), mine);
