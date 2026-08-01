@@ -301,3 +301,23 @@ The §6 row `Email, accounts | Google Workspace` was about human mailboxes and s
 application email, which is exactly how a project ends up choosing a provider per-project rather
 than reading one off the spec. Both rows now say which they are. Reach for another provider only
 when Cloudflare cannot do the job, and record it as a `deviations` entry.
+
+**Inbox items propose options, not open questions** — 2026-08-01. Chris's idea. An open `❗`
+item that is a decision carries three concrete options plus `Other`, one recommended and first, so
+replying is a selection rather than a composition. His reply time is the bottleneck and agent
+generation time is not, so an item demanding prose spends the scarce resource to save the abundant
+one.
+
+The stronger reason is upstream of speed: **three real options cannot be written without having
+done the analysis.** A bare `~` lets an agent hand over an under-examined question and call it
+collaboration.
+
+**The caveat is load-bearing.** Options railroad — three plausible-looking choices can hide that
+the right answer is a fourth thing. The same day this was decided, a question was posed as "darwin
+and evo use Vercel DNS, so cut over" when the premise was false; as three Vercel-flavoured options
+it would have been *harder* to catch, since each would have reasserted it. So `Other` is
+structural, options go only where the analysis is real, and non-decisions keep a plain `~`.
+
+Not enforced by `inbox validate`: the validator cannot distinguish a real option set from three
+restatements of one choice, and a check that cannot tell those apart would pass the filler it
+exists to prevent — the `learned.md` shape where a check reports an empty thing as correct.

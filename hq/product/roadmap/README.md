@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-054](./MO-054.md) | Every project points back at Morpheus, in AGENTS.md and README.md | review | P1 | MO-G-2026-Q3-01 | — |
+| [MO-056](./MO-056.md) | Inbox items propose options, not open questions | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -49,6 +49,7 @@ item files, not this table.
 | [MO-045](./MO-045.md) | Kit generates primitives only; projects own the semantic layer | shipped | P1 | — | #41 |
 | [MO-051](./MO-051.md) | Agent code review as an independent verifier rung | shipped | P1 | MO-G-2026-Q3-01 | #55 |
 | [MO-052](./MO-052.md) | Waivers are surfaced, not swallowed | shipped | P1 | MO-G-2026-Q3-01 | #54 |
+| [MO-054](./MO-054.md) | Every project points back at Morpheus, in AGENTS.md and README.md | shipped | P1 | MO-G-2026-Q3-01 | #52 |
 | [MO-008](./MO-008.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
 | [MO-009](./MO-009.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
 | [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | #46 |

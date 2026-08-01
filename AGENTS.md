@@ -220,6 +220,39 @@ Two mistakes to avoid, both made in the first round:
    his *previous* reply, not a fresh one.
 2. **`✅` on an item that still asks a question.** If there is a question, it is open.
 
+**An open item proposes options.** Where the item is a decision, give **three concrete options
+and an `Other`**, one marked recommended and placed first, so replying is a selection rather than
+a composition:
+
+```markdown
+## ❗ 3. Which way on the contact form? · `claude`
+
+Delivery still calls Cloudflare's Email Sending API…
+
+- **A — keep Cloudflare (recommended).** Works today, already in the stack, no new account.
+- **B — move to Resend.** Removes the dependency; needs an account, a verified domain, a key.
+- **C — drop the form.** Point people at the social links already on the page.
+- **Other —** something else, or none of these is the right frame.
+
+~
+```
+
+Chris's reply time is the bottleneck, not agent generation time, and an item demanding prose
+spends the scarce resource to save the abundant one. The second reason matters more: **three real
+options cannot be written without having done the analysis**, where a bare `~` lets an
+under-examined question be handed over as though that were collaboration. Items get longer; that
+is the trade.
+
+**`Other` is structural, not decoration.** Options railroad — three plausible choices can hide
+that the answer is a fourth thing, and a reader scanning quickly takes the least-bad rather than
+noticing the frame is wrong. This is not hypothetical: a question went out as *"darwin and evo use
+Vercel DNS — if so, cut over"* when they in fact use Cloudflare DNS pointed at Vercel. As three
+Vercel-DNS-flavoured options, that false premise would have been *harder* to catch, since each
+option would have quietly reasserted it.
+
+So: **options only where the analysis is real.** Filler is worse than an honest open question. And
+not every item is a decision — an FYI or a genuinely open-ended question takes a plain `~`.
+
 `morpheus inbox validate` enforces both, plus dense numbering, the GitHub-handle rule, and a
 summary before the first item. Run it before finishing; CI runs it too.
 
