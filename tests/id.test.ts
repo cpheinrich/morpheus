@@ -23,7 +23,7 @@ const AT = (iso: string) => new Date(`${iso}Z`);
 describe("timestamp ids", () => {
   it("reads as the date and time it was written", () => {
     const id = timestampId("MO", [], AT("2026-08-01T15:26:34"));
-    expect(id).toBe("MO-2026-08-01-152634");
+    expect(id).toBe("MO-2026-08-01-15.26.34");
     expect(ROADMAP_ID.test(id)).toBe(true);
   });
 
@@ -35,10 +35,10 @@ describe("timestamp ids", () => {
     for (let i = 0; i < 4; i++) taken.push(timestampId("MO", taken, now));
 
     expect(taken).toEqual([
-      "MO-2026-08-01-152634",
-      "MO-2026-08-01-152635",
-      "MO-2026-08-01-152636",
-      "MO-2026-08-01-152637",
+      "MO-2026-08-01-15.26.34",
+      "MO-2026-08-01-15.26.35",
+      "MO-2026-08-01-15.26.36",
+      "MO-2026-08-01-15.26.37",
     ]);
   });
 
@@ -52,14 +52,14 @@ describe("timestamp ids", () => {
 
   it("needs no remote — two prefixes never interfere", () => {
     const at = AT("2026-08-01T09:00:00");
-    expect(timestampId("EV", [], at)).toBe("EV-2026-08-01-090000");
-    expect(timestampId("MO", [], at)).toBe("MO-2026-08-01-090000");
+    expect(timestampId("EV", [], at)).toBe("EV-2026-08-01-09.00.00");
+    expect(timestampId("MO", [], at)).toBe("MO-2026-08-01-09.00.00");
   });
 
   it("pads single-digit date and time parts", () => {
     const d = AT("2026-01-02T03:04:05");
     expect(datePart(d)).toBe("2026-01-02");
-    expect(timePart(d)).toBe("030405");
+    expect(timePart(d)).toBe("03.04.05");
   });
 
   describe("timezone", () => {
@@ -78,7 +78,7 @@ describe("timestamp ids", () => {
     it("uses UTC, not the machine's local time", () => {
       // 00:30 UTC on the 2nd is 17:30 local on the 1st — a different day.
       const id = timestampId("MO", [], new Date("2026-08-02T00:30:00Z"));
-      expect(id).toBe("MO-2026-08-02-003000");
+      expect(id).toBe("MO-2026-08-02-00.30.00");
     });
 
     it("agrees with the `created:` field written beside it", () => {
@@ -120,33 +120,33 @@ describe("legacy ids", () => {
 
   it("is distinguishable from a timestamp id", () => {
     expect(isLegacyId("MO-2026-07-29-045")).toBe(true);
-    expect(isLegacyId("MO-2026-08-01-152634")).toBe(false);
+    expect(isLegacyId("MO-2026-08-01-15.26.34")).toBe(false);
   });
 
   it("sorts before same-day timestamp ids without ambiguity", () => {
-    const ids = ["MO-2026-08-01-152634", "MO-2026-08-01-045"].sort();
+    const ids = ["MO-2026-08-01-15.26.34", "MO-2026-08-01-045"].sort();
     expect(ids[0]).toBe("MO-2026-08-01-045");
   });
 });
 
 describe("ROADMAP_ID", () => {
   it("accepts all three shapes during the migration", () => {
-    for (const id of ["MO-2026-08-01-152634", "MO-2026-07-29-045", "MO-045"]) {
+    for (const id of ["MO-2026-08-01-15.26.34", "MO-2026-07-29-045", "MO-045"]) {
       expect(ROADMAP_ID.test(id)).toBe(true);
     }
   });
 
   it("rejects malformed ids", () => {
-    for (const id of ["MO-2026-8-01-152634", "mo-2026-08-01-152634", "MO-2026-08-01-15263", "MO-"]) {
+    for (const id of ["MO-2026-8-01-152634", "mo-2026-08-01-152634", "MO-2026-08-01-15.26.3", "MO-"]) {
       expect(ROADMAP_ID.test(id)).toBe(false);
     }
   });
 
   it("parses each shape into its parts", () => {
-    expect(parseRoadmapId("MO-2026-08-01-152634")).toEqual({
+    expect(parseRoadmapId("MO-2026-08-01-15.26.34")).toEqual({
       prefix: "MO",
       date: "2026-08-01",
-      tail: "152634",
+      tail: "15.26.34",
       legacy: false,
     });
     expect(parseRoadmapId("MO-045")).toBeNull();
@@ -183,8 +183,8 @@ describe("slugForFilename", () => {
   });
 
   it("builds a filename with the id first, so the directory sorts by date", () => {
-    expect(itemFilename("MO-2026-08-01-152634", "Blocked is a first-class outcome")).toBe(
-      "MO-2026-08-01-152634-blocked-is-a-first-class-outcome.md",
+    expect(itemFilename("MO-2026-08-01-15.26.34", "Blocked is a first-class outcome")).toBe(
+      "MO-2026-08-01-15.26.34-blocked-is-a-first-class-outcome.md",
     );
   });
 });

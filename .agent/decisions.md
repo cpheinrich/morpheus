@@ -302,7 +302,7 @@ application email, which is exactly how a project ends up choosing a provider pe
 than reading one off the spec. Both rows now say which they are. Reach for another provider only
 when Cloudflare cannot do the job, and record it as a `deviations` entry.
 
-**Roadmap ids are timestamps, not a coordinated integer** — 2026-08-01. `PREFIX-YYYY-MM-DD-HHMMSS` **in
+**Roadmap ids are timestamps, not a coordinated integer** — 2026-08-01. `PREFIX-YYYY-MM-DD-HH.MM.SS` **in
 UTC**, taken from the clock when the item is first written. UTC because ordering is the scheme's
 whole job and is meaningless if authors measure from different origins — and because `created:`
 is `toISOString()`, already UTC, so local time put two different days in one frontmatter. A sequential integer requires every writer to

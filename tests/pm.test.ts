@@ -289,14 +289,14 @@ describe("new item", () => {
   // case asserted below.
   it("allocates a roadmap id from the clock (MO-057)", async () => {
     const at = new Date("2026-08-01T15:26:34Z");
-    expect((await nextId(product, "roadmap", "MO", product, at)).id).toBe("MO-2026-08-01-152634");
+    expect((await nextId(product, "roadmap", "MO", product, at)).id).toBe("MO-2026-08-01-15.26.34");
   });
 
   it("ignores what already exists — the clock, not the highest id, decides", async () => {
     await seed("roadmap", "MO-001", VALID_RM);
     await seed("roadmap", "MO-009", VALID_RM.replace("MO-001", "MO-009"));
     const at = new Date("2026-08-01T15:26:34Z");
-    expect((await nextId(product, "roadmap", "MO", product, at)).id).toBe("MO-2026-08-01-152634");
+    expect((await nextId(product, "roadmap", "MO", product, at)).id).toBe("MO-2026-08-01-15.26.34");
   });
 
   it("is never blind for a roadmap id, because it asks no remote", async () => {
@@ -319,7 +319,7 @@ describe("new item", () => {
       cwd: product,
     });
     // Filename carries a slug so the directory is readable; the id does not.
-    expect(path).toMatch(/MO-\d{4}-\d{2}-\d{2}-\d{6}-wire-up-analytics\.md$/);
+    expect(path).toMatch(/MO-\d{4}-\d{2}-\d{2}-\d{2}\.\d{2}\.\d{2}-wire-up-analytics\.md$/);
 
     const { items, issues } = await parseArtifact(product, "roadmap");
     expect(issues).toHaveLength(0);
@@ -410,11 +410,11 @@ describe("allocation consults the remote", () => {
   it("allocates a roadmap id without asking origin at all", async () => {
     // The point of MO-057: an id that needs no answer cannot be given a wrong
     // one, so a branch nobody can see cannot cause a collision.
-    const cwd = await originHolding("mo-2026-08-01-152634-something");
+    const cwd = await originHolding("mo-2026-08-01-15.26.34-something");
     const at = new Date("2026-08-01T15:26:34Z");
 
     const { id, blind } = await nextId(product, "roadmap", "MO", cwd, at);
-    expect(id).toBe("MO-2026-08-01-152634");
+    expect(id).toBe("MO-2026-08-01-15.26.34");
     expect(blind).toBe(false);
   });
 });

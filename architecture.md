@@ -573,13 +573,13 @@ No Jira, no Linear. Markdown in git, with a validated schema.
 ```
 hq/product/
 ├── goals/      README.md (GENERATED index)  ·  MO-G-2026-Q3-01.md
-├── roadmap/    README.md (GENERATED index)  ·  MO-2026-08-01-152634-blocked-is-an-outcome.md
+├── roadmap/    README.md (GENERATED index)  ·  MO-2026-08-01-15.26.34-blocked-is-an-outcome.md
 └── requests/   README.md (GENERATED index)  ·  MO-FR-007.md
 ```
 
 #### Roadmap ids are timestamps, not a sequence
 
-`MO-2026-08-01-152634` — `PREFIX-YYYY-MM-DD-HHMMSS`, taken from the clock the moment the item
+`MO-2026-08-01-15.26.34` — `PREFIX-YYYY-MM-DD-HH.MM.SS`, taken from the clock the moment the item
 is first written, **in UTC**.
 
 The timezone is not a detail. The scheme's whole job is ordering, and ordering is meaningless if
@@ -587,7 +587,7 @@ two authors measure from different origins: in local time an item written in Tok
 (00:00 UTC) sorts *after* one written in Los Angeles at 18:00 the "previous" day (01:00 UTC),
 though it was written first. UTC also keeps the id consistent with `created:`, which is
 `toISOString()` and already UTC — the first draft used local time and produced
-`id: MO-2026-08-01-173000` beside `created: 2026-08-02`, two different days in one frontmatter.
+`id: MO-2026-08-01-17.30.00` beside `created: 2026-08-02`, two different days in one frontmatter.
 
 A sequential integer requires every writer to agree on what the last one was, and that agreement
 does not exist. In a single day: `pm new` offered an id a parallel session held as an
@@ -604,7 +604,7 @@ preserved, deterministic, no randomness.
 
 | Field | Purpose |
 |---|---|
-| `id` | `MO-2026-08-01-152634`, or `MO-2026-07-29-045` for an item migrated from the integer scheme |
+| `id` | `MO-2026-08-01-15.26.34`, or `MO-2026-07-29-045` for an item migrated from the integer scheme |
 | filename | `<id>-<slug>.md`, slug ≤ 64 characters cut at a word boundary |
 | `baseSha` | `main`'s tip when the item was written — *what did the repo look like*, which a date only approximates |
 

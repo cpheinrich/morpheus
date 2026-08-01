@@ -83,7 +83,7 @@ export async function parseDir<T>(
 
     // The filename must begin with the id, so a file is findable from its id
     // alone. Roadmap files may then carry a `-slug` (MO-057) which makes the
-    // directory readable — `MO-2026-08-01-152634-blocked-is-a-first-class-outcome`
+    // directory readable — `MO-2026-08-01-15.26.34-blocked-is-a-first-class-outcome`
     // — without lengthening the id that `prs:` and cross-references repeat.
     const id = (parsed.data as { id?: string }).id;
     const name = basename(path);

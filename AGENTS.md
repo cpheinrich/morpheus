@@ -67,7 +67,7 @@ morpheus pm claim MO-014     # stakes the branch on origin, sets in-progress, pu
 
 The remote branch **is** the claim — `pm claim` refuses if `origin` already has `mo-014-*`.
 
-**Roadmap ids come from the clock** — `MO-2026-08-01-152634`, `PREFIX-YYYY-MM-DD-HHMMSS` **in
+**Roadmap ids come from the clock** — `MO-2026-08-01-15.26.34`, `PREFIX-YYYY-MM-DD-HH.MM.SS` **in
 UTC** at first write. UTC because ordering across contributors in different timezones is the
 point, and because `created:` is already UTC.
 No remote is consulted because none can help: a fork contributor's `origin` is their fork, so no

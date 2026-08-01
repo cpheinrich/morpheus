@@ -13,7 +13,7 @@
  *
  * | Form | Shape | Example |
  * |---|---|---|
- * | New | `PREFIX-YYYY-MM-DD-HHMMSS` **in UTC** | `MO-2026-08-01-152634` |
+ * | New | `PREFIX-YYYY-MM-DD-HH.MM.SS` **in UTC** | `MO-2026-08-01-15.26.34` |
  * | Legacy | `PREFIX-YYYY-MM-DD-NNN` | `MO-2026-07-29-045` |
  *
  * Legacy ids keep the item's **own** `created:` date and its old integer, so
@@ -30,15 +30,16 @@
  * it — the first draft of MO-057 had two constants of the same name with
  * different meanings, which is the drift MO-004 exists to prevent.
  *
- * Three shapes are accepted: `MO-2026-08-01-152634` (timestamp),
+ * Three shapes are accepted: `MO-2026-08-01-15.26.34` (timestamp),
  * `MO-2026-07-29-045` (migrated), and `MO-045` (not yet migrated). The last is kept because the
  * scheme ships before the sweep, and a validator that rejected the current
  * board would turn every project red the moment this landed.
  */
-export const ROADMAP_ID = /^[A-Z]{2,4}-(\d{4}-\d{2}-\d{2}-(\d{6}|\d{3})|\d{3,})$/;
+export const ROADMAP_ID =
+  /^[A-Z]{2,4}-(\d{4}-\d{2}-\d{2}-(\d{2}\.\d{2}\.\d{2}|\d{3})|\d{3,})$/;
 
 /** Just the two dated shapes — what `pm new` now produces. */
-export const DATED_ROADMAP_ID = /^[A-Z]{2,4}-\d{4}-\d{2}-\d{2}-(\d{6}|\d{3})$/;
+export const DATED_ROADMAP_ID = /^[A-Z]{2,4}-\d{4}-\d{2}-\d{2}-(\d{2}\.\d{2}\.\d{2}|\d{3})$/;
 
 /** Ceiling, not a target — prefer the shortest intelligible slug. */
 export const SLUG_MAX = 64;
@@ -47,15 +48,15 @@ export interface ParsedId {
   prefix: string;
   /** `YYYY-MM-DD` as written in the id. */
   date: string;
-  /** `HHMMSS`, or the old integer for a migrated item. */
+  /** `HH.MM.SS`, or the old integer for a migrated item. */
   tail: string;
   legacy: boolean;
 }
 
 export function parseRoadmapId(id: string): ParsedId | null {
-  const m = /^([A-Z]{2,4})-(\d{4}-\d{2}-\d{2})-(\d{6}|\d{3})$/.exec(id);
+  const m = /^([A-Z]{2,4})-(\d{4}-\d{2}-\d{2})-(\d{2}\.\d{2}\.\d{2}|\d{3})$/.exec(id);
   if (!m) return null;
-  return { prefix: m[1]!, date: m[2]!, tail: m[3]!, legacy: m[3]!.length === 3 };
+  return { prefix: m[1]!, date: m[2]!, tail: m[3]!, legacy: !m[3]!.includes(".") };
 }
 
 /** True for an id migrated from the integer scheme. */
@@ -77,7 +78,7 @@ const two = (n: number): string => String(n).padStart(2, "0");
  *
  * It also keeps the id consistent with the file it sits in: `created:` is
  * `toISOString()`, already UTC. The first draft of this used local time, so an
- * item written at 00:30 UTC from Los Angeles read `id: MO-2026-08-01-173000`
+ * item written at 00:30 UTC from Los Angeles read `id: MO-2026-08-01-17.30.00`
  * against `created: 2026-08-02` — two different days in the same frontmatter.
  *
  * The cost is that an id may name a different calendar day than the author's
@@ -88,9 +89,16 @@ export function datePart(d: Date): string {
   return `${d.getUTCFullYear()}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())}`;
 }
 
-/** `HHMMSS` in UTC — see `datePart`. */
+/**
+ * `HH.MM.SS` in UTC — see `datePart`.
+ *
+ * Dots rather than colons because git **rejects a colon in a branch name**
+ * outright, and `pm claim` derives the branch from the id, so every claim would
+ * fail. Files containing colons also stage on macOS but cannot be checked out
+ * on Windows. Dots say "clock" without either problem.
+ */
 export function timePart(d: Date): string {
-  return `${two(d.getUTCHours())}${two(d.getUTCMinutes())}${two(d.getUTCSeconds())}`;
+  return `${two(d.getUTCHours())}.${two(d.getUTCMinutes())}.${two(d.getUTCSeconds())}`;
 }
 
 /**
@@ -144,7 +152,7 @@ export function slugForFilename(title: string, max: number = SLUG_MAX): string {
   return (boundary > max / 2 ? cut.slice(0, boundary) : cut).replace(/-+$/, "");
 }
 
-/** `MO-2026-08-01-152634-blocked-is-a-first-class-outcome.md` */
+/** `MO-2026-08-01-15.26.34-blocked-is-a-first-class-outcome.md` */
 export function itemFilename(id: string, title: string, max: number = SLUG_MAX): string {
   const slug = slugForFilename(title, max);
   return slug ? `${id}-${slug}.md` : `${id}.md`;
