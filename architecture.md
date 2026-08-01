@@ -606,7 +606,7 @@ preserved, deterministic, no randomness.
 |---|---|
 | `id` | `MO-2026-08-01-15.26.34`, or `MO-2026-07-29-045` for an item migrated from the integer scheme |
 | filename | `<id>-<slug>.md`, slug ≤ 64 characters cut at a word boundary |
-| `baseSha` | `main`'s tip when the item was written — *what did the repo look like*, which a date only approximates |
+| `baseSha` | **`HEAD`** when the item was written — the commit the author was actually on. Not `origin/main`: for an external contributor that is their fork, and the point is the version they were using |
 
 **The slug is in the filename, not the id.** The timestamp already makes the id unique, so the
 slug's only job is recognition when browsing a directory — while the id is what `prs:`, `goal:`

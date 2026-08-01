@@ -14,6 +14,7 @@ import {
   timestampId,
 } from "../src/pm/id.js";
 import { migrate, planMigration, verifyOrder } from "../src/pm/migrate-ids.js";
+import { headSha } from "../src/pm/git-sha.js";
 
 // Fixtures are explicitly UTC. A timezone-less string is parsed as *local* by
 // JS, so these would drift with the machine running them — and a test that
@@ -283,5 +284,45 @@ describe("migration", () => {
     // A fabricated date reads as fact, which is worse than a failed migration.
     expect(plan.renames).toEqual([]);
     expect(plan.problems[0]).toContain("no usable");
+  });
+});
+
+describe("baseSha", () => {
+  let repo: string;
+
+  beforeEach(async () => {
+    repo = await mkdtemp(join(tmpdir(), "sha-"));
+  });
+  afterEach(async () => {
+    await rm(repo, { recursive: true, force: true });
+  });
+
+  const git = async (...args: string[]) => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    return promisify(execFile)("git", args, { cwd: repo });
+  };
+
+  it("records the commit the author is actually on, not origin/main", async () => {
+    // The external-contributor case: a fork whose `origin/main` is behind what
+    // the contributor is working from. Recording upstream's tip would assert
+    // they were on code they never ran.
+    await git("init", "-q", ".");
+    await git("config", "user.email", "t@example.com");
+    await git("config", "user.name", "T");
+    await git("commit", "-q", "--allow-empty", "-m", "first");
+    await git("checkout", "-qb", "their-branch");
+    await git("commit", "-q", "--allow-empty", "-m", "their work");
+
+    const head = (await git("rev-parse", "--short=12", "HEAD")).stdout.trim();
+    const main = (await git("rev-parse", "--short=12", "main")).stdout.trim();
+
+    expect(await headSha(repo)).toBe(head);
+    expect(await headSha(repo)).not.toBe(main);
+  });
+
+  it("returns null rather than throwing outside a repository", async () => {
+    // An item is still worth writing without it.
+    expect(await headSha(await mkdtemp(join(tmpdir(), "norepo-")))).toBeNull();
   });
 });
