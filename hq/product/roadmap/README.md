@@ -6,15 +6,20 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | review | P0 | MO-G-2026-Q3-01 | — |
+| [MO-048](./MO-048.md) | Work graph edges, blocked as an outcome, and the verifier stack | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-053](./MO-053.md) | Cloudflare Email Sending is the canonical transactional email service | review | P2 | MO-G-2026-Q3-01 | — |
+| [MO-049](./MO-049.md) | Blocked is a first-class outcome, routed to the inbox | backlog | P0 | MO-G-2026-Q3-01 | — |
+| [MO-050](./MO-050.md) | Heartbeat: a scheduled dispatcher over the board | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-051](./MO-051.md) | Agent code review as an independent verifier rung | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-052](./MO-052.md) | Waivers are surfaced, not swallowed | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-047](./MO-047.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-001](./MO-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-002](./MO-002.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-003](./MO-003.md) | Consume the kit as a git dependency, not a published package | shipped | P0 | MO-G-2026-Q3-01 | #26 |
+| [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | shipped | P0 | MO-G-2026-Q3-01 | #48 |
 | [MO-014](./MO-014.md) | Brand template and wizard | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-019](./MO-019.md) | Brand refresh, and never clobber an existing token system | shipped | P0 | MO-G-2026-Q3-01 | #9 |
 | [MO-023](./MO-023.md) | Brand refresh leaves derived files stale | shipped | P0 | MO-G-2026-Q3-01 | #14 |
