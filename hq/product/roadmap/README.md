@@ -6,8 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | review | P2 | MO-G-2026-Q3-01 | — |
-| [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | backlog | P0 | MO-G-2026-Q3-01 | — |
+| [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -46,6 +45,7 @@ item files, not this table.
 | [MO-045](./MO-045.md) | Kit generates primitives only; projects own the semantic layer | shipped | P1 | — | #41 |
 | [MO-008](./MO-008.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
 | [MO-009](./MO-009.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
+| [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | #46 |
 | [MO-017](./MO-017.md) | CLI install: npm link and the executable bit | shipped | P2 | MO-G-2026-Q3-01 | #1, #4 |
 | [MO-025](./MO-025.md) | Convergence requires evidence on more than one surface | shipped | P2 | MO-G-2026-Q3-01 | #16 |
 | [MO-034](./MO-034.md) | agents-md detector passes when CLAUDE.md is a divergent copy | shipped | P2 | MO-G-2026-Q3-01 | #27 |

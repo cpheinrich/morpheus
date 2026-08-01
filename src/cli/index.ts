@@ -6,6 +6,7 @@ import { validate as validateInbox } from "./inbox.js";
 import { build as brandBuild, check as brandCheck, init as brandInit } from "./brand.js";
 import { status as brandStatus } from "./brand-status.js";
 import { sync as accessSync } from "./access.js";
+import { printRules, rules as hqRules } from "./hq.js";
 import * as registry from "./registry.js";
 import { run as doctorRun } from "./doctor.js";
 import { mark as initMark, status as initStatus } from "./onboarding.js";
@@ -28,6 +29,8 @@ Usage
   morpheus brand status           [--dir <hq/brand>] [--name <Acme>]
   morpheus brand check            [--dir <hq/brand>] — generated files vs answers.md
   morpheus access sync      [--project <firebase-project>] [--dry-run]
+  morpheus hq rules         [--check] — role helpers in firestore.rules, from the vocabulary
+  morpheus hq rules --print print the generated block, to paste into existing rules
   morpheus registry list | add [--prefix XX] | remove <name>
   morpheus init             [--name <Acme>] [--prefix XX] [--kind company|personal|internal]
   morpheus init status      [--offline]
@@ -62,6 +65,7 @@ interface Flags {
   ts?: string;
   priority?: string;
   goal?: string;
+  print: boolean;
   positional: string[];
 }
 
@@ -73,6 +77,7 @@ function parseArgs(argv: string[]): Flags {
     dryRun: false,
     all: false,
     offline: false,
+    print: false,
     positional: [],
   };
 
@@ -93,6 +98,9 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--offline":
         flags.offline = true;
+        break;
+      case "--print":
+        flags.print = true;
         break;
       case "--dry-run":
         flags.dryRun = true;
@@ -194,6 +202,14 @@ async function main(): Promise<number> {
     if (command === "add") return registry.add(process.cwd(), flags.prefix);
     if (command === "remove") return registry.remove(rest[0] ?? "");
     console.error(`Unknown registry command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+  }
+
+  if (group === "hq") {
+    if (command === "rules") {
+      return flags.print ? printRules() : hqRules(process.cwd(), flags.check);
+    }
+    console.error(`Unknown hq command "${command ?? ""}".\n\n${HELP}`);
     return 1;
   }
 
