@@ -217,3 +217,27 @@ merges when checks go green rather than holding a session open polling.
 
 **Set `--auto` only when the branch is finished** — 2026-07-29. Enabling auto-merge on a PR with
 failing checks lost a commit pushed afterwards. Watch, fix, *then* auto-merge.
+
+**MO-004 first in the kit** — 2026-07-31. Of the three unblocked kit items, `/hq` auth via Firebase
+custom claims goes first. Darwin's DW-002 shipped exactly this and Chris verified it renders
+`chris@darwin.health · admin`, so the kit version generalises something demonstrably working rather
+than designing it. MO-005 renders a shell that without auth renders to everyone; MO-006 is least
+coupled and can go any time.
+
+**Cross-repo inbox gets a reader, not a new home** — 2026-07-31. `morpheus inbox status` (MO-047)
+walks the registry and prints every open `❗` across all repos. One inbox per person *per repo*
+stays — the repo is what makes an inbox reviewable and CI-checkable. Explicitly "not the end of the
+story": replying from one place is unsolved and deliberately deferred until the reader has been
+lived with.
+
+**Neither personal site is on Vercel** — 2026-07-31. `cpheinrich.com` and `heinrichbros.com` both
+serve from Cloudflare; heinrichbros is a Worker with custom-domain routes and a KV binding, and
+neither repo has a `.vercel/` link. There is no missing personal Vercel account — there was never
+one. Only `darwin` and `evo` are linked to Vercel, both under `team_WvHuh3zpY4O68wXCIUolqksG`.
+This retires the "personal Vercel login" blocker that had been carried through three cycles.
+
+**Hosting deviations must reach the manifest** — 2026-07-31. §4 says the canonical stack lives in
+`architecture.md` and only *deviations* are recorded per project, but `heinrichbros.com` runs on
+Cloudflare Workers with no `deviations` entry, and neither it, `cpheinrich.com`, nor `lakina` sets
+`domain`. A deviation nobody recorded is indistinguishable from the canonical choice, which is how
+a stale premise survives three inbox cycles.
