@@ -56,6 +56,11 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   await put("morpheus.json", t.manifest(seed));
   await put("AGENTS.md", t.agents(seed));
 
+  // A README for humans, and for agents that read one before anything else.
+  // Absent until MO-054, which is why cpheinrich.com had none at all — the
+  // scaffold decided what a project starts as, and it did not start with one.
+  await put("README.md", t.readme(seed));
+
   // CLAUDE.md is a symlink, not a copy. Two files would drift, and the drift
   // would be invisible until an agent acted on the stale one.
   const claude = join(root, "CLAUDE.md");

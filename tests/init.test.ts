@@ -45,6 +45,61 @@ describe("morpheus init", () => {
     expect(stat.isSymbolicLink()).toBe(true);
   });
 
+  describe("pointing back at Morpheus", () => {
+    // MO-054. The readers who most need this are the ones nobody can brief: a
+    // code review agent starts with no memory by design, and an agent working
+    // for a collaborator has never seen Morpheus at all.
+    it("writes a README a human can read", async () => {
+      await scaffold(dir, SEED);
+      const readme = await read("README.md");
+
+      expect(readme).toContain("# Acme Health");
+      expect(readme).toContain("Built and managed with Morpheus");
+    });
+
+    it("links to the public repo from both README.md and AGENTS.md", async () => {
+      await scaffold(dir, SEED);
+
+      // Bare repo link, plus the two documents an arriving agent is sent to.
+      for (const file of ["README.md", "AGENTS.md"]) {
+        const text = await read(file);
+        expect(text).toContain("https://github.com/cpheinrich/morpheus");
+        expect(text).toContain("/blob/main/architecture.md");
+        expect(text).toContain("/blob/main/AGENTS.md");
+      }
+    });
+
+    it("tells an agent to send Morpheus gaps upstream rather than patch locally", async () => {
+      await scaffold(dir, SEED);
+
+      // The whole point: a local workaround fixes one project and hides the
+      // defect from every other one.
+      for (const file of ["README.md", "AGENTS.md"]) {
+        expect(await read(file)).toContain("https://github.com/cpheinrich/morpheus/issues");
+      }
+    });
+
+    it("puts the callout before the project's own conventions in AGENTS.md", async () => {
+      await scaffold(dir, SEED);
+      const agents = await read("AGENTS.md");
+
+      // Read-Morpheus-first is only true if it comes first. Below the layout
+      // and the claim instructions, an agent has already acted.
+      expect(agents.indexOf("managed by Morpheus")).toBeLessThan(agents.indexOf("## Layout"));
+    });
+
+    it("keeps a README the project already wrote", async () => {
+      const mine = "# The real readme\n";
+      await writeFile(join(dir, "README.md"), mine);
+
+      const { written, skipped } = await scaffold(dir, SEED);
+
+      expect(skipped).toContain("README.md");
+      expect(written).not.toContain("README.md");
+      expect(await read("README.md")).toBe(mine);
+    });
+  });
+
   it("leaves hq/brand/README.md to the brand wizard", async () => {
     await scaffold(dir, SEED);
     const files = await readdir(join(dir, "hq/brand"));

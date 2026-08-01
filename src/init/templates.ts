@@ -22,10 +22,110 @@ export interface Seed {
 export const manifest = (s: Seed): string =>
   JSON.stringify({ name: s.name, prefix: s.prefix, kind: s.kind }, null, 2) + "\n";
 
+/**
+ * The public Morpheus repository.
+ *
+ * Every scaffolded project links back here, because a project's conventions are
+ * only legible to someone who has read Morpheus — and the readers who most need
+ * that are the ones who cannot be told: code review agents, which start with no
+ * memory by design, and agents working for collaborators.
+ */
+export const MORPHEUS_REPO = "https://github.com/cpheinrich/morpheus";
+
+/**
+ * The callout every project carries, in two registers.
+ *
+ * Kept as constants rather than inlined so the wording is one fact. Five repos
+ * carry this text; five copies that drift are five different answers to "what
+ * is this repo".
+ */
+export const morpheusCalloutForAgents = (): string =>
+  `## This project is managed by Morpheus — read that first
+
+This repository is architected and operated according to
+[Morpheus](${MORPHEUS_REPO}), which is public. The directory layout,
+the roadmap and inbox formats, the \`morpheus\` CLI, and the conventions below all come from
+there. Very little of the *reasoning* behind them lives in this repo.
+
+**Before reviewing or changing anything here, read:**
+
+- [\`architecture.md\`](${MORPHEUS_REPO}/blob/main/architecture.md)
+  — the specification: what the structure is, and why it is that way
+- [\`AGENTS.md\`](${MORPHEUS_REPO}/blob/main/AGENTS.md)
+  — the operating principles: claiming work, what a pull request must carry, the inbox cycle
+
+This is aimed at agents arriving with **no memory of this project**. Without that context the
+conventions here look arbitrary, and the resulting mistakes are confident ones: "tidying" a
+generated file that is rewritten from its source, renaming an id that a branch and a PR both
+depend on, deleting a worklog as clutter, or branching by hand instead of \`morpheus pm claim\`
+and colliding with another agent's work.
+
+### Found a gap in Morpheus itself?
+
+If something in Morpheus is wrong, missing, or gets in your way while working here, **send it
+upstream** — open an issue or a pull request:
+
+${MORPHEUS_REPO}/issues
+
+Do not quietly work around it in this repo. A local workaround fixes one project, hides the
+defect from every other one, and leaves the next agent to rediscover it. Morpheus improves only
+when the projects built on it report back.`;
+
+export const morpheusCalloutForReadme = (): string =>
+  `## Built and managed with Morpheus
+
+This project is architected and operated with
+[Morpheus](${MORPHEUS_REPO}) — a public framework for structuring
+and running a company's repositories so that agents can do the work.
+
+That is why this repo has \`hq/\` for the business layer, \`.agent/\` for what agents have learned,
+and roadmap items with prefixed ids. Those are Morpheus conventions, not local invention.
+
+**If you are reviewing or contributing here — human or agent — read Morpheus first:**
+
+- [Architecture](${MORPHEUS_REPO}/blob/main/architecture.md)
+- [Operating principles](${MORPHEUS_REPO}/blob/main/AGENTS.md)
+
+Most conventions in this repo have a reason recorded there rather than here, so without it they
+read as arbitrary and get "corrected" into breakage.
+
+Found a shortcoming in Morpheus while working here? Open an issue or a pull request rather than
+working around it locally — that is how Morpheus gets better.
+
+${MORPHEUS_REPO}/issues`;
+
+/**
+ * A README for humans.
+ *
+ * Deliberately short. `init` cannot know what the project *is*, and a template
+ * that guesses produces prose nobody trusts — so it states only what is true of
+ * every Morpheus project and leaves the description as one visible line to
+ * fill in. The same rule as the rest of this file: no `TODO` that looks
+ * answered.
+ */
+export const readme = (s: Seed): string => `# ${s.name}
+
+_One sentence on what this is._
+
+${morpheusCalloutForReadme()}
+
+## Working here
+
+\`\`\`sh
+morpheus init status    # how far through setup this repo is
+morpheus pm claims      # what work is already taken
+morpheus pm claim ${s.prefix}-001   # stake a branch and start
+\`\`\`
+
+Agent instructions are in [\`AGENTS.md\`](./AGENTS.md); \`CLAUDE.md\` symlinks to it.
+`;
+
 export const agents = (s: Seed): string => `# ${s.name} — agent instructions
 
 Read this before doing anything. \`CLAUDE.md\` is a symlink to this file so Claude and Codex
 read the same instructions.
+
+${morpheusCalloutForAgents()}
 
 ## Layout
 
