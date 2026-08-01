@@ -18,6 +18,7 @@
     "./inbox": "./dist/inbox/index.js",
     "./brand": "./dist/brand/index.js",
     "./access": "./dist/access/index.js",
+    "./hq": "./dist/hq/index.js",
     "./registry": "./dist/registry/index.js",
     "./doctor": "./dist/doctor/index.js",
     "./design": "./dist/design/index.js"
@@ -27,19 +28,24 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && chmod +x dist/cli/index.js",
+    "prepare": "pnpm build",
     "dev": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:rules": "pnpm build && firebase emulators:exec --only firestore --project morpheus-rules-test 'node --test tests/firestore-rules.test.mjs'",
     "lint": "eslint src",
     "morpheus": "tsx src/cli/index.ts"
   },
   "dependencies": {
     "gray-matter": "^4.0.3",
+    "jose": "^6.2.5",
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@types/node": "^22.10.2",
+    "firebase": "^12.17.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^7.3.6",

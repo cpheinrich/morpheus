@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ROLES } from "../hq/roles.js";
 
 /**
  * Access control as code.
@@ -11,13 +12,16 @@ import { z } from "zod";
  * Claims are what make this work in two places at once — the same `role` gates
  * the Next.js middleware *and* the Firestore security rules. A network-layer
  * gate could only do the first.
+ *
+ * The vocabulary itself lives in `hq/roles.ts` and is imported rather than
+ * restated: this module *writes* claims and the gates *read* them, so a
+ * divergence here would grant a role nothing downstream recognises.
  */
 
-export const Role = z.enum(["admin", "employee", "investor"]);
+export const Role = z.enum(ROLES);
 export type Role = z.infer<typeof Role>;
 
-/** Roles that may reach /hq at all, most privileged first. */
-export const HQ_ROLES: Role[] = ["admin", "employee"];
+export { ROLES, HQ_ROLES, canAccessHq, isAdmin, isRole } from "../hq/roles.js";
 
 export const AccessEntry = z.object({
   email: z.email(),
@@ -61,9 +65,4 @@ export function resolveEntries(hq: HqConfig): AccessEntry[] {
   for (const email of hq.admins) byEmail.set(email.toLowerCase(), "admin");
 
   return [...byEmail].map(([email, role]) => ({ email, role }));
-}
-
-/** True when a role may reach /hq. */
-export function canAccessHq(role: string | undefined): boolean {
-  return HQ_ROLES.includes(role as Role);
 }

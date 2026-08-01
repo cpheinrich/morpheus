@@ -1,2 +1,9 @@
+# Build scripts are opt-in. Both of these arrive under the Firestore emulator
+# client used by `pnpm test:rules`, and neither needs its postinstall to run:
+# nothing here imports protobufjs's generated types, and the emulator talks to a
+# local Java process over gRPC either way. Declared false rather than left
+# unanswered because an unanswered entry fails `pnpm install` outright.
 allowBuilds:
+  '@firebase/util': false
   esbuild: true
+  protobufjs: false

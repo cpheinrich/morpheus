@@ -34,6 +34,7 @@ pnpm install
 pnpm build && npm link      # once — puts `morpheus` on PATH for every project
 pnpm typecheck             # tsc --noEmit
 pnpm test                  # vitest run
+pnpm test:rules            # generated firestore.rules vs the emulator — needs Java
 pnpm build                 # tsc -p tsconfig.build.json
 pnpm morpheus pm validate   # validate hq/product frontmatter
 pnpm morpheus pm index      # regenerate README index tables
@@ -43,6 +44,9 @@ pnpm morpheus brand status         # what the brand package still needs
 pnpm morpheus brand build          # regenerate from an edited hq/brand/answers.md
 pnpm morpheus init                 # scaffold a project — safe to re-run, never overwrites
 pnpm morpheus init status          # how far through project setup this repo is
+pnpm morpheus access sync          # apply morpheus.json's allowlist to Firebase custom claims
+pnpm morpheus hq rules             # write/refresh the role helpers in firestore.rules
+pnpm morpheus hq rules --check     # fail if they have drifted from the role vocabulary
 ```
 
 ## Working conventions

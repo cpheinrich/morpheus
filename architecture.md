@@ -695,22 +695,59 @@ The decisive advantage: **the same claim gates the route and the data.** Zero Tr
 network-layer gate — it can stop someone loading `/hq`, but it cannot stop a Firestore read, so it
 would still need a second rule system underneath.
 
-```js
-// infra/firebase/firestore.rules
-allow read: if request.auth.token.role in ["employee", "admin"];
-```
-
-```ts
-// apps/web/middleware.ts — same claim, route layer
-if (!["employee", "admin"].includes(claims.role)) return redirect("/sign-in");
-```
-
 **Access as code.** The allowlist in `morpheus.json` is the declarative source of truth — in git,
-reviewable in a PR, diffable. `morpheus sync-access` reads it and applies the claims via the Admin
-SDK, so granting access is a pull request rather than a console click, and so is revoking it.
+reviewable in a PR, diffable. `morpheus access sync` reads it and applies the claims, so granting
+access is a pull request rather than a console click, and so is revoking it.
 
 Keep Zero Trust only for defence-in-depth on genuinely sensitive infrastructure such as the
 Chatwoot admin panel; it is redundant in front of `/hq`.
+
+#### One vocabulary, three readers
+
+"The same claim gates both" only holds if all three parts agree on what the roles *are*. They are
+derived from one exported list rather than restated:
+
+| Reader | Consumes | Kept honest by |
+|---|---|---|
+| The claim **writer** — `morpheus access sync` | `Role` zod enum, built from `ROLES` | typecheck |
+| The **route** gate — a project's `proxy.ts` | `canAccessHq()` from `morpheus-kit/hq` | typecheck |
+| The **data** gate — `firestore.rules` | generated helpers | `morpheus hq rules --check` |
+
+Darwin's first cut carried a comment asking the next reader to keep two lists identical by hand.
+An invariant a comment is asking for is one the code should be enforcing — a role added on one
+side and missed on the other grants nothing, or keeps granting after removal, and neither is
+visible at the time.
+
+```ts
+// morpheus-kit/hq — the whole of what a project's proxy.ts needs
+const decision = await decideHqAccess({ cookie, projectId });
+// → { kind: "allow" } | { kind: "sign-in", path } | { kind: "no-access", path }
+```
+
+The gate returns a decision rather than a `NextResponse`: the kit would otherwise depend on Next,
+pinning every project to one framework and major version to reuse forty lines. The project adapts
+it in about fifteen. `no-access` is separate from `sign-in` because redirecting a signed-in
+investor to the sign-in page loops.
+
+Verification happens at the edge, against Google's published certificates — `firebase-admin`
+cannot run in middleware. **Session cookies use a different key set and issuer than ID tokens**;
+using the ID-token keys fails to verify every cookie silently, which reads as a broken login
+rather than a wrong constant.
+
+```sh
+morpheus hq rules            # write or refresh the generated block in firestore.rules
+morpheus hq rules --check    # fail when it has drifted — for CI
+```
+
+Only the role helpers are generated, between markers. The `match` blocks stay the project's own:
+which roles exist is a shared fact, what each collection allows is a per-project decision, and a
+generator people have to work around stops being run. Implication — that an admin may do what an
+employee may — is deliberately not generated either; it belongs in the `match` block where a
+reviewer can see which door it opens.
+
+`pnpm test:rules` runs the generated rules against the Firestore emulator and asserts what they
+actually permit. Generating a security boundary and testing only that the text looks right is the
+failure mode that check exists to close.
 
 ### 11.2 Theming
 
