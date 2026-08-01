@@ -24,6 +24,12 @@ jobs:
     uses: ./.github/workflows/pr-check.yml
     with:
       product-dir: hq/product
+      # Build the checker from *this* commit, as `pm` and `agent-review` above
+      # already do. Defaulting to `main` meant Morpheus validated its own PRs
+      # with main's CLI: a fix to `check pr` could never prove itself, and a PR
+      # that broke `check pr` would still pass its own conventions check. Found
+      # when MO-057's new id format made main's branch parser return `MO-2026`.
+      morpheus-ref: ${{ github.sha }}
 
   # Verifier rung 2. Advisory by design — it never blocks the merge, and it
   # reports itself as skipped rather than green when no key is configured.

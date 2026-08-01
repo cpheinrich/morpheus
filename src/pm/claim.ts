@@ -1,3 +1,4 @@
+import { slugForFilename } from "./id.js";
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
@@ -39,13 +40,16 @@ export function branchPrefix(id: string): string {
   return `${id.toLowerCase()}-`;
 }
 
+/**
+ * The branch slug — the *same* function filenames use.
+ *
+ * These were two implementations with different rules: 40 characters cut
+ * mid-word here, 64 at a word boundary there. The same item therefore got
+ * `…-open-an-issue-and` on its branch and `…-may-open-a-pr-carrying` in its
+ * filename, which is how the divergence was spotted. One function, one answer.
+ */
 export function slugify(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40)
-    .replace(/-$/, "");
+  return slugForFilename(title);
 }
 
 /** Remote branches that claim an item. Empty means the item is free. */

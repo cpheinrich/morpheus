@@ -13,8 +13,12 @@
  *
  * | Form | Shape | Example |
  * |---|---|---|
- * | New | `PREFIX-YYYY-MM-DD-HH.MM.SS` **in UTC** | `MO-2026-08-01-15.26.34` |
- * | Legacy | `PREFIX-YYYY-MM-DD-NNN` | `MO-2026-07-29-045` |
+ * | New | `PREFIX-YY-MM-DD-HH.MM.SS` in Pacific | `MO-26-08-01-15.26.34` |
+ * | Legacy | `PREFIX-YY-MM-DD-NNN` | `MO-26-07-29-045` |
+ *
+ * A four-digit year is still accepted: items created between the format
+ * landing and the migration sweep carry one, and rejecting them would fail the
+ * board that produced them.
  *
  * Legacy ids keep the item's **own** `created:` date and its old integer, so
  * `grep MO-045` still finds it in the git history, commit messages and merged
@@ -36,17 +40,56 @@
  * board would turn every project red the moment this landed.
  */
 export const ROADMAP_ID =
-  /^[A-Z]{2,4}-(\d{4}-\d{2}-\d{2}-(\d{2}\.\d{2}\.\d{2}|\d{3})|\d{3,})$/;
+  /^[A-Z]{2,4}-((?:\d{2}|\d{4})-\d{2}-\d{2}-(?:\d{2}\.\d{2}\.\d{2}|\d{3})|\d{3,})$/;
 
 /** Just the two dated shapes — what `pm new` now produces. */
-export const DATED_ROADMAP_ID = /^[A-Z]{2,4}-\d{4}-\d{2}-\d{2}-(\d{2}\.\d{2}\.\d{2}|\d{3})$/;
+export const DATED_ROADMAP_ID =
+  /^[A-Z]{2,4}-(?:\d{2}|\d{4})-\d{2}-\d{2}-(?:\d{2}\.\d{2}\.\d{2}|\d{3})$/;
 
-/** Ceiling, not a target — prefer the shortest intelligible slug. */
-export const SLUG_MAX = 64;
+/**
+ * Hard character ceiling.
+ *
+ * 32, not 64. A slug is a handle, not a summary — the description belongs in
+ * the title and the body, and the id above it is already unique, so the slug
+ * carries none of the burden of saying what the work *is*.
+ */
+export const SLUG_MAX = 32;
+
+/**
+ * Words kept, before the character ceiling applies.
+ *
+ * Brevity is the goal: a slug identifies, it does not describe. It should read
+ * like a branch name — **verb-noun**, two to four words: `fix-photo-picker`,
+ * `add-photo-session`, `update-roadmap-ids`. It does **not** need to be
+ * unique, because the timestamp above it already is.
+ *
+ * **Prefer `--slug`.** No sentence reliably reduces to verb-noun, so an agent
+ * choosing three words beats any transformation of the title:
+ * "Roadmap ids become timestamps, not a coordinated integer" derives to
+ * `roadmap-ids-become-timestamps`, where `update-roadmap-ids` says as much in
+ * half the space. The derived form is a fallback, not the intent.
+ */
+export const SLUG_MAX_WORDS = 4;
+
+/**
+ * Never the last word of a slug.
+ *
+ * Two kinds, both reading as a thought cut in half. A trailing **negation**
+ * has lost the thing it negates — `…-timestamps-not`. A trailing **modal** has
+ * lost its verb — `…-open-issue-may`, which is the same defect as ending on
+ * `and`.
+ *
+ * Trimmed only from the end, not removed throughout: `must` and `not` carry
+ * meaning in the middle of a title, and dropping them there would invert it.
+ */
+const DANGLING = new Set([
+  "not", "no", "never", "without", "vs", "than",
+  "may", "can", "will", "shall", "should", "must", "might", "could", "would",
+]);
 
 export interface ParsedId {
   prefix: string;
-  /** `YYYY-MM-DD` as written in the id. */
+  /** `YY-MM-DD` as written in the id. */
   date: string;
   /** `HH.MM.SS`, or the old integer for a migrated item. */
   tail: string;
@@ -54,7 +97,7 @@ export interface ParsedId {
 }
 
 export function parseRoadmapId(id: string): ParsedId | null {
-  const m = /^([A-Z]{2,4})-(\d{4}-\d{2}-\d{2})-(\d{2}\.\d{2}\.\d{2}|\d{3})$/.exec(id);
+  const m = /^([A-Z]{2,4})-((?:\d{2}|\d{4})-\d{2}-\d{2})-(\d{2}\.\d{2}\.\d{2}|\d{3})$/.exec(id);
   if (!m) return null;
   return { prefix: m[1]!, date: m[2]!, tail: m[3]!, legacy: !m[3]!.includes(".") };
 }
@@ -67,30 +110,56 @@ export function isLegacyId(id: string): boolean {
 const two = (n: number): string => String(n).padStart(2, "0");
 
 /**
- * **Ids are UTC.** Not a detail — the scheme's whole job is ordering, and
- * ordering is meaningless if two authors measure from different origins.
+ * **Ids are in Pacific time (America/Los_Angeles), on every machine.**
  *
- * In local time, an item written in Tokyo at 09:00 (00:00 UTC) sorts *after*
- * one written in Los Angeles at 18:00 the "previous" day (01:00 UTC), even
- * though it was written first. The moment contributors are not all in one
- * timezone — which is the case MO-054 exists to support — the board silently
- * stops being chronological.
+ * Not the author's local zone — a *fixed* zone. That distinction is the whole
+ * point. Ordering is the scheme's only job and is meaningless if two authors
+ * measure from different origins: under local time an item written in Tokyo at
+ * 09:00 sorts *after* one written in Los Angeles an hour later, because the
+ * calendar days differ. Pinning one zone makes every id comparable no matter
+ * where it was created, while reading as the wall clock of the person who runs
+ * this most.
  *
- * It also keeps the id consistent with the file it sits in: `created:` is
- * `toISOString()`, already UTC. The first draft of this used local time, so an
- * item written at 00:30 UTC from Los Angeles read `id: MO-2026-08-01-17.30.00`
- * against `created: 2026-08-02` — two different days in the same frontmatter.
+ * The first draft used the machine's local time, which also disagreed with the
+ * file it sat in: `created:` is `toISOString()` and therefore UTC, so an item
+ * written at 00:30 UTC from Los Angeles read `id: MO-2026-08-01-17.30.00`
+ * against `created: 2026-08-02` — two different days in one frontmatter.
  *
- * The cost is that an id may name a different calendar day than the author's
- * own. That is the right trade: `created:` already had that property, and a
- * globally comparable id is worth more than a locally familiar one.
+ * **Known cost: the DST fall-back hour.** Pacific repeats 01:00–02:00 once a
+ * year, so two items written an hour apart can produce the same id. The
+ * collision step in `timestampId` resolves it, but their relative order within
+ * that hour is not guaranteed. One hour a year, in exchange for ids that read
+ * as the time the author actually saw.
  */
+const ZONE = "America/Los_Angeles";
+
+const PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  // `h23` rather than `hour12: false`, which yields "24" for midnight in some
+  // runtimes and would produce an id no parser accepts.
+  hourCycle: "h23",
+});
+
+function zoned(d: Date): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const p of PARTS.formatToParts(d)) if (p.type !== "literal") out[p.type] = p.value;
+  return out;
+}
+
+/** `YY-MM-DD` in Pacific time — two-digit year, two characters cheaper. */
 export function datePart(d: Date): string {
-  return `${d.getUTCFullYear()}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())}`;
+  const p = zoned(d);
+  return `${p.year!.slice(-2)}-${p.month}-${p.day}`;
 }
 
 /**
- * `HH.MM.SS` in UTC — see `datePart`.
+ * `HH.MM.SS` in Pacific time.
  *
  * Dots rather than colons because git **rejects a colon in a branch name**
  * outright, and `pm claim` derives the branch from the id, so every claim would
@@ -98,7 +167,8 @@ export function datePart(d: Date): string {
  * on Windows. Dots say "clock" without either problem.
  */
 export function timePart(d: Date): string {
-  return `${two(d.getUTCHours())}.${two(d.getUTCMinutes())}.${two(d.getUTCSeconds())}`;
+  const p = zoned(d);
+  return `${p.hour}.${p.minute}.${p.second}`;
 }
 
 /**
@@ -125,35 +195,140 @@ export function timestampId(prefix: string, taken: Iterable<string>, now: Date):
 
 /** The id a migrated item takes: its own creation date plus its old number. */
 export function migratedId(prefix: string, created: string, oldNumber: number): string {
-  return `${prefix}-${created.slice(0, 10)}-${String(oldNumber).padStart(3, "0")}`;
+  // `2026-07-29` -> `26-07-29`
+  return `${prefix}-${created.slice(2, 10)}-${String(oldNumber).padStart(3, "0")}`;
 }
 
 /**
- * A filename slug: lowercase, hyphenated, cut at a **word** boundary.
+ * Words dropped from a slug.
  *
- * Mid-word truncation produces noise — `project-manageme`, `pm-claim-is-the-`
- * — so the cut falls back to the last hyphen rather than landing wherever the
- * character limit does. Measured across 80 real items, the median title
- * slugifies to 47 characters, so most slugs are shortened; making them read
- * properly costs nothing.
+ * A slug is a label, not a sentence — `open-issue` says as much as
+ * `open-an-issue` in two thirds the space, and space is the whole point.
+ *
+ * **Negations are deliberately absent from this list.** Dropping `not`, `no`,
+ * `never` or `without` inverts the meaning of the title it is naming, which is
+ * far worse than a long slug: `blocked-is-not-an-outcome` would become
+ * `blocked-outcome`, saying the opposite.
+ */
+const STOP_WORDS = new Set([
+  "a", "an", "the", "and", "or", "of", "to", "in", "on", "at", "by", "for",
+  "with", "from", "is", "are", "was", "were", "be", "been", "that", "this",
+  "as", "into", "it", "its", "we", "our",
+]);
+
+/**
+ * Abbreviations a reader expands without thinking.
+ *
+ * Only genuinely conventional ones. An abbreviation the reader has to decode
+ * costs more than the characters it saves, and the slug exists to be
+ * recognised at a glance.
+ */
+const ABBREVIATIONS: Record<string, string> = {
+  external: "ext",
+  repository: "repo",
+  repositories: "repos",
+  documentation: "docs",
+  configuration: "config",
+  directory: "dir",
+  directories: "dirs",
+  environment: "env",
+  development: "dev",
+  production: "prod",
+  specification: "spec",
+  implementation: "impl",
+  reference: "ref",
+  references: "refs",
+  database: "db",
+  application: "app",
+  applications: "apps",
+  authentication: "auth",
+  package: "pkg",
+  packages: "pkgs",
+  statistics: "stats",
+  information: "info",
+  administrator: "admin",
+  parameter: "param",
+  parameters: "params",
+  temporary: "temp",
+  previous: "prev",
+  number: "num",
+  identifier: "id",
+  identifiers: "ids",
+  management: "mgmt",
+  maximum: "max",
+  minimum: "min",
+};
+
+/**
+ * A slug: lowercase, hyphenated, short, and cut at a **word** boundary.
+ *
+ * Three passes, in order:
+ *
+ * 1. **Abbreviate** — `external` becomes `ext`
+ * 2. **Drop stop words** — `open-an-issue` becomes `open-issue`
+ * 3. **Keep the first `SLUG_MAX_WORDS`**, then trim any trailing stop word or
+ *    dangling negation
+ *
+ * Mid-word truncation produces noise (`project-manageme`), and truncation that
+ * lands on a stop word produces a slug ending in `-and`, which is how this was
+ * noticed. Trailing stop words are stripped after the cut as well as before it,
+ * since dropping them can shift which word lands last.
+ *
+ * Measured across 80 real items the median title slugified to 47 characters
+ * before these rules; they take it well below that.
  */
 export function slugForFilename(title: string, max: number = SLUG_MAX): string {
-  const full = title
+  const words = title
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => ABBREVIATIONS[w] ?? w)
+    .filter((w) => !STOP_WORDS.has(w));
 
-  if (full.length <= max) return full;
+  // Everything was a stop word — keep the original words rather than emit
+  // nothing, since a slug is optional but an empty one is a bug.
+  const kept = words.length ? words : title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
 
-  const cut = full.slice(0, max);
-  const boundary = cut.lastIndexOf("-");
-  // Only fall back to the boundary if it leaves something worth reading; a
-  // single very long first word is better truncated than reduced to nothing.
-  return (boundary > max / 2 ? cut.slice(0, boundary) : cut).replace(/-+$/, "");
+  const out: string[] = [];
+  for (const w of kept.slice(0, SLUG_MAX_WORDS)) {
+    const next = out.length ? `${out.join("-")}-${w}`.length : w.length;
+    if (next > max) break;
+    out.push(w);
+  }
+
+  // A single first word longer than the cap: truncate it rather than return
+  // nothing.
+  if (!out.length) return kept[0]?.slice(0, max) ?? "";
+
+  while (out.length > 1 && (STOP_WORDS.has(out.at(-1)!) || DANGLING.has(out.at(-1)!))) out.pop();
+  return out.join("-");
 }
 
-/** `MO-2026-08-01-15.26.34-blocked-is-a-first-class-outcome.md` */
-export function itemFilename(id: string, title: string, max: number = SLUG_MAX): string {
-  const slug = slugForFilename(title, max);
+/**
+ * Sanitise a slug supplied by hand.
+ *
+ * Trusted for *wording* — the caller chose it, so no stop words are dropped and
+ * nothing is abbreviated — but not for *shape*: it still has to be a legal
+ * filename and git ref component.
+ */
+export function cleanSlug(slug: string): string {
+  return slug
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, SLUG_MAX)
+    .replace(/-+$/, "");
+}
+
+/** `MO-26-08-01-15.26.34-blocked-first-class-outcome.md` */
+export function itemFilename(
+  id: string,
+  title: string,
+  max: number = SLUG_MAX,
+  chosen?: string,
+): string {
+  const slug = chosen ? cleanSlug(chosen) : slugForFilename(title, max);
   return slug ? `${id}-${slug}.md` : `${id}.md`;
 }

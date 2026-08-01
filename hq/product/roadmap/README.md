@@ -6,8 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-057](./MO-057.md) | Roadmap ids become timestamps, not a coordinated integer | review | P0 | MO-G-2026-Q3-01 | — |
-| [MO-056](./MO-056.md) | Inbox items propose options, not open questions | review | P1 | MO-G-2026-Q3-01 | — |
+| [MO-2026-08-01-23.03.19](./MO-2026-08-01-23.03.19.md) | External contributors open an issue, and may open a PR carrying the roadmap item | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -28,6 +27,7 @@ item files, not this table.
 | [MO-048](./MO-048.md) | Work graph edges, blocked as an outcome, and the verifier stack | shipped | P0 | MO-G-2026-Q3-01 | #50 |
 | [MO-049](./MO-049.md) | Blocked is a first-class outcome, routed to the inbox | shipped | P0 | MO-G-2026-Q3-01 | #51 |
 | [MO-050](./MO-050.md) | Heartbeat: a scheduled dispatcher over the board | shipped | P0 | MO-G-2026-Q3-01 | #53 |
+| [MO-057](./MO-057.md) | Roadmap ids become timestamps, not a coordinated integer | shipped | P0 | MO-G-2026-Q3-01 | #58 |
 | [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-013](./MO-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-015](./MO-015.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | #22 |
@@ -51,6 +51,7 @@ item files, not this table.
 | [MO-051](./MO-051.md) | Agent code review as an independent verifier rung | shipped | P1 | MO-G-2026-Q3-01 | #55 |
 | [MO-052](./MO-052.md) | Waivers are surfaced, not swallowed | shipped | P1 | MO-G-2026-Q3-01 | #54 |
 | [MO-054](./MO-054.md) | Every project points back at Morpheus, in AGENTS.md and README.md | shipped | P1 | MO-G-2026-Q3-01 | #52 |
+| [MO-056](./MO-056.md) | Inbox items propose options, not open questions | shipped | P1 | MO-G-2026-Q3-01 | #57 |
 | [MO-008](./MO-008.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
 | [MO-009](./MO-009.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
 | [MO-010](./MO-010.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | #46 |

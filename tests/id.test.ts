@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   datePart,
   isLegacyId,
+  cleanSlug,
   itemFilename,
   migratedId,
   parseRoadmapId,
@@ -16,15 +17,15 @@ import {
 import { migrate, planMigration, verifyOrder } from "../src/pm/migrate-ids.js";
 import { headSha } from "../src/pm/git-sha.js";
 
-// Fixtures are explicitly UTC. A timezone-less string is parsed as *local* by
-// JS, so these would drift with the machine running them — and a test that
-// passes for the wrong reason is the one that hides a timezone bug.
+// Ids render in a fixed Pacific zone, so fixtures are given as the UTC instant
+// and expectations are written in Pacific. A timezone-less string would be
+// parsed as *local* by JS and drift with the machine running the suite.
 const AT = (iso: string) => new Date(`${iso}Z`);
 
 describe("timestamp ids", () => {
   it("reads as the date and time it was written", () => {
     const id = timestampId("MO", [], AT("2026-08-01T15:26:34"));
-    expect(id).toBe("MO-2026-08-01-15.26.34");
+    expect(id).toBe("MO-26-08-01-08.26.34");
     expect(ROADMAP_ID.test(id)).toBe(true);
   });
 
@@ -36,10 +37,10 @@ describe("timestamp ids", () => {
     for (let i = 0; i < 4; i++) taken.push(timestampId("MO", taken, now));
 
     expect(taken).toEqual([
-      "MO-2026-08-01-15.26.34",
-      "MO-2026-08-01-15.26.35",
-      "MO-2026-08-01-15.26.36",
-      "MO-2026-08-01-15.26.37",
+      "MO-26-08-01-08.26.34",
+      "MO-26-08-01-08.26.35",
+      "MO-26-08-01-08.26.36",
+      "MO-26-08-01-08.26.37",
     ]);
   });
 
@@ -53,54 +54,46 @@ describe("timestamp ids", () => {
 
   it("needs no remote — two prefixes never interfere", () => {
     const at = AT("2026-08-01T09:00:00");
-    expect(timestampId("EV", [], at)).toBe("EV-2026-08-01-09.00.00");
-    expect(timestampId("MO", [], at)).toBe("MO-2026-08-01-09.00.00");
+    expect(timestampId("EV", [], at)).toBe("EV-26-08-01-02.00.00");
+    expect(timestampId("MO", [], at)).toBe("MO-26-08-01-02.00.00");
   });
 
   it("pads single-digit date and time parts", () => {
+    // 03:04:05Z on 2 Jan is 19:04:05 Pacific on 1 Jan — PST, UTC-8.
     const d = AT("2026-01-02T03:04:05");
-    expect(datePart(d)).toBe("2026-01-02");
-    expect(timePart(d)).toBe("03.04.05");
+    expect(datePart(d)).toBe("26-01-01");
+    expect(timePart(d)).toBe("19.04.05");
   });
 
   describe("timezone", () => {
-    // CI runs in UTC, where local time and UTC are identical — so a fixture
-    // alone cannot tell them apart, and a regression to local time would pass
-    // CI silently. These force a non-UTC zone so the distinction is real
-    // wherever the suite runs.
+    // Pacific is applied on *every* machine, not the author's local zone. That
+    // is the whole point: ordering is meaningless if two authors measure from
+    // different origins. These flip process.env.TZ to prove the output does
+    // not move with it — on a UTC runner a local-time implementation would
+    // otherwise look correct.
     const original = process.env.TZ;
-    beforeEach(() => {
-      process.env.TZ = "America/Los_Angeles";
-    });
     afterEach(() => {
       process.env.TZ = original;
     });
 
-    it("uses UTC, not the machine's local time", () => {
-      // 00:30 UTC on the 2nd is 17:30 local on the 1st — a different day.
-      const id = timestampId("MO", [], new Date("2026-08-02T00:30:00Z"));
-      expect(id).toBe("MO-2026-08-02-00.30.00");
+    it("renders in Pacific regardless of the machine's zone", () => {
+      const d = new Date("2026-08-02T00:30:00Z"); // 17:30 Pacific on 1 Aug
+      for (const tz of ["UTC", "Asia/Tokyo", "America/New_York"]) {
+        process.env.TZ = tz;
+        expect(timestampId("MO", [], d)).toBe("MO-26-08-01-17.30.00");
+      }
     });
 
-    it("agrees with the `created:` field written beside it", () => {
-      // `created:` is toISOString().slice(0,10) — already UTC. An id on a
-      // different day from the date in its own frontmatter is the bug this
-      // catches, and it is what the first draft did.
-      const d = new Date("2026-08-02T00:30:00Z");
-      const created = d.toISOString().slice(0, 10); // 2026-08-02
-
-      // The id embeds the same ISO date verbatim, so this compares the two
-      // fields against one source rather than against a restated constant.
-      expect(timestampId("MO", [], d)).toContain(created);
+    it("keeps ordering correct across authors in different zones", () => {
+      // One fixed origin means two instants always compare the same way.
+      const earlier = timestampId("MO", [], new Date("2026-08-02T00:00:00Z"));
+      const later = timestampId("MO", [], new Date("2026-08-02T01:00:00Z"));
+      expect([later, earlier].sort()).toEqual([earlier, later]);
     });
 
-    it("keeps ordering correct across timezones", () => {
-      // Tokyo 09:00 (00:00 UTC) is written *before* Los Angeles 18:00 the
-      // "previous" day (01:00 UTC). Under local time the ids invert.
-      const tokyo = timestampId("MO", [], new Date("2026-08-02T00:00:00Z"));
-      const la = timestampId("MO", [], new Date("2026-08-02T01:00:00Z"));
-
-      expect([la, tokyo].sort()).toEqual([tokyo, la]);
+    it("handles a UTC instant that falls on the previous Pacific day", () => {
+      // The case that made local time and `created:` disagree.
+      expect(datePart(new Date("2026-08-02T05:00:00Z"))).toBe("26-08-01");
     });
   });
 });
@@ -109,44 +102,44 @@ describe("legacy ids", () => {
   it("keeps the old number so git history still greps", () => {
     // Merged PR bodies and commit messages say MO-045 and cannot be rewritten.
     const id = migratedId("MO", "2026-07-29", 45);
-    expect(id).toBe("MO-2026-07-29-045");
+    expect(id).toBe("MO-26-07-29-045");
     expect(id).toContain("045");
     expect(ROADMAP_ID.test(id)).toBe(true);
   });
 
   it("uses the item's own creation date, not the migration date", () => {
-    expect(migratedId("MO", "2026-07-28", 3)).toBe("MO-2026-07-28-003");
-    expect(migratedId("MO", "2026-07-31", 46)).toBe("MO-2026-07-31-046");
+    expect(migratedId("MO", "2026-07-28", 3)).toBe("MO-26-07-28-003");
+    expect(migratedId("MO", "2026-07-31", 46)).toBe("MO-26-07-31-046");
   });
 
   it("is distinguishable from a timestamp id", () => {
-    expect(isLegacyId("MO-2026-07-29-045")).toBe(true);
-    expect(isLegacyId("MO-2026-08-01-15.26.34")).toBe(false);
+    expect(isLegacyId("MO-26-07-29-045")).toBe(true);
+    expect(isLegacyId("MO-26-08-01-15.26.34")).toBe(false);
   });
 
   it("sorts before same-day timestamp ids without ambiguity", () => {
-    const ids = ["MO-2026-08-01-15.26.34", "MO-2026-08-01-045"].sort();
-    expect(ids[0]).toBe("MO-2026-08-01-045");
+    const ids = ["MO-26-08-01-15.26.34", "MO-26-08-01-045"].sort();
+    expect(ids[0]).toBe("MO-26-08-01-045");
   });
 });
 
 describe("ROADMAP_ID", () => {
   it("accepts all three shapes during the migration", () => {
-    for (const id of ["MO-2026-08-01-15.26.34", "MO-2026-07-29-045", "MO-045"]) {
+    for (const id of ["MO-26-08-01-15.26.34", "MO-26-07-29-045", "MO-045"]) {
       expect(ROADMAP_ID.test(id)).toBe(true);
     }
   });
 
   it("rejects malformed ids", () => {
-    for (const id of ["MO-2026-8-01-152634", "mo-2026-08-01-152634", "MO-2026-08-01-15.26.3", "MO-"]) {
+    for (const id of ["MO-26-8-01-15.26.34", "mo-26-08-01-15.26.34", "MO-26-08-01-15.26.3", "MO-"]) {
       expect(ROADMAP_ID.test(id)).toBe(false);
     }
   });
 
   it("parses each shape into its parts", () => {
-    expect(parseRoadmapId("MO-2026-08-01-15.26.34")).toEqual({
+    expect(parseRoadmapId("MO-26-08-01-15.26.34")).toEqual({
       prefix: "MO",
-      date: "2026-08-01",
+      date: "26-08-01",
       tail: "15.26.34",
       legacy: false,
     });
@@ -155,12 +148,27 @@ describe("ROADMAP_ID", () => {
 });
 
 describe("slugForFilename", () => {
-  it("cuts at a word boundary rather than mid-word", () => {
-    // Measured: median real title slugifies to 47 characters, so most are cut.
-    // `project-manageme` is what mid-word truncation produces.
-    const s = slugForFilename("Project management package: schemas, parser, index generator", 24);
-    expect(s).toBe("project-management");
+  it("abbreviates and drops stop words, keeping four words at most", () => {
+    // A slug is a handle, not a summary — 32 characters, verb-noun shaped.
+    const s = slugForFilename("Project management package: schemas, parser, index generator");
+    expect(s).toBe("project-mgmt-pkg-schemas");
     expect(s.endsWith("-")).toBe(false);
+    expect(s.length).toBeLessThanOrEqual(32);
+  });
+
+  it("takes a hand-chosen slug verbatim, only sanitising its shape", () => {
+    // No sentence reliably reduces to verb-noun, so the caller's wording wins.
+    expect(cleanSlug("update-roadmap-ids")).toBe("update-roadmap-ids");
+    expect(cleanSlug("Fix Photo Picker!")).toBe("fix-photo-picker");
+  });
+
+  it("never ends on a stop word or a dangling negation", () => {
+    expect(slugForFilename("A study of the effects of and")).toBe("study-effects");
+    expect(slugForFilename("Roadmap ids become timestamps not")).not.toMatch(/-not$/);
+  });
+
+  it("keeps a negation that still has something to negate", () => {
+    expect(slugForFilename("Blocked is not an outcome without needs")).toContain("not");
   });
 
   it("never exceeds the cap", () => {
@@ -178,14 +186,12 @@ describe("slugForFilename", () => {
   });
 
   it("drops punctuation and collapses separators", () => {
-    expect(slugForFilename("/hq auth: Firebase custom claims")).toBe(
-      "hq-auth-firebase-custom-claims",
-    );
+    expect(slugForFilename("/hq auth: Firebase custom claims")).toBe("hq-auth-firebase-custom");
   });
 
   it("builds a filename with the id first, so the directory sorts by date", () => {
-    expect(itemFilename("MO-2026-08-01-15.26.34", "Blocked is a first-class outcome")).toBe(
-      "MO-2026-08-01-15.26.34-blocked-is-a-first-class-outcome.md",
+    expect(itemFilename("MO-26-08-01-15.26.34", "Blocked is a first-class outcome")).toBe(
+      "MO-26-08-01-15.26.34-blocked-first-class-outcome.md",
     );
   });
 });
@@ -216,17 +222,17 @@ describe("migration", () => {
     const plan = await planMigration(join(dir, "roadmap"));
     expect(verifyOrder(plan.renames)).toEqual([]);
     expect(plan.renames.map((r) => r.newId)).toEqual([
-      "MO-2026-07-28-001",
-      "MO-2026-07-29-010",
-      "MO-2026-07-31-045",
+      "MO-26-07-28-001",
+      "MO-26-07-29-010",
+      "MO-26-07-31-045",
     ]);
   });
 
   it("refuses outright if the rewrite would reorder the board", () => {
     // A later item with an earlier creation date inverts the sequence.
     const renames = [
-      { oldId: "MO-001", newId: "MO-2026-07-31-001", oldFile: "a", newFile: "a" },
-      { oldId: "MO-002", newId: "MO-2026-07-28-002", oldFile: "b", newFile: "b" },
+      { oldId: "MO-001", newId: "MO-26-07-31-001", oldFile: "a", newFile: "a" },
+      { oldId: "MO-002", newId: "MO-26-07-28-002", oldFile: "b", newFile: "b" },
     ];
     expect(verifyOrder(renames)).not.toEqual([]);
   });
@@ -236,10 +242,10 @@ describe("migration", () => {
     await migrate(join(dir, "roadmap"));
 
     const files = await readdir(join(dir, "roadmap"));
-    expect(files).toEqual(["MO-2026-07-31-045-forty-fifth-thing.md"]);
+    expect(files).toEqual(["MO-26-07-31-045-forty-fifth-thing.md"]);
 
     const text = await readFile(join(dir, "roadmap", files[0]!), "utf8");
-    expect(text).toContain("id: MO-2026-07-31-045");
+    expect(text).toContain("id: MO-26-07-31-045");
     expect(text).toContain('title: "Forty-fifth thing"');
     expect(text).toContain("status: shipped");
     expect(text).toContain("prs: [12]");
@@ -252,7 +258,7 @@ describe("migration", () => {
 
     const files = await readdir(join(dir, "roadmap"));
     const text = await readFile(join(dir, "roadmap", files[0]!), "utf8");
-    expect(text).toContain("Migrated from `MO-045` to `MO-2026-07-31-045`");
+    expect(text).toContain("Migrated from `MO-045` to `MO-26-07-31-045`");
   });
 
   it("is idempotent — a second run finds nothing to do", async () => {
@@ -261,7 +267,7 @@ describe("migration", () => {
     const again = await migrate(join(dir, "roadmap"));
 
     expect(again.renames).toEqual([]);
-    expect(again.skipped).toEqual(["MO-2026-07-31-045"]);
+    expect(again.skipped).toEqual(["MO-26-07-31-045"]);
   });
 
   it("writes nothing on --check", async () => {

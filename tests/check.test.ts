@@ -52,10 +52,35 @@ describe("roadmapIdFromBranch", () => {
     expect(roadmapIdFromBranch("ev-014")).toBe("EV-014");
   });
 
+  it("extracts a timestamp id (MO-057)", () => {
+    // The dated form must win over the legacy one. Matching `\\d{3,}` against
+    // `mo-2026-08-01-...` yields "MO-2026" — a plausible id for an item that
+    // cannot exist — and the check then reports a missing roadmap item. That is
+    // exactly what happened on the first PR created under the new scheme.
+    expect(roadmapIdFromBranch("mo-26-08-01-15.26.34-blocked-is-an-outcome")).toBe(
+      "MO-26-08-01-15.26.34",
+    );
+    expect(roadmapIdFromBranch("mo-26-08-01-15.26.34")).toBe("MO-26-08-01-15.26.34");
+  });
+
+  it("extracts a migrated id", () => {
+    expect(roadmapIdFromBranch("mo-26-07-29-045-simplify-architecture")).toBe(
+      "MO-26-07-29-045",
+    );
+  });
+
+  it("never returns a truncated prefix of a dated branch", () => {
+    // The specific regression: any dated branch must not degrade to PREFIX-YYYY.
+    for (const b of ["mo-26-08-01-15.26.34-x", "ev-26-12-31-045-y", "cph-26-01-02-00.00.01"]) {
+      expect(roadmapIdFromBranch(b)).not.toMatch(/^[A-Z]{2,4}-\d{2,4}$/);
+    }
+  });
+
   it("returns null for a branch that does not reference one", () => {
     expect(roadmapIdFromBranch("main")).toBeNull();
     expect(roadmapIdFromBranch("fix-the-thing")).toBeNull();
     expect(roadmapIdFromBranch("ev-14-too-short")).toBeNull();
+    expect(roadmapIdFromBranch("inbox-2026-08-01")).toBeNull();
   });
 });
 
