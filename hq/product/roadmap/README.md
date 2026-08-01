@@ -7,6 +7,7 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
 | [MO-004](./MO-004.md) | /hq auth: Firebase custom claims | review | P0 | MO-G-2026-Q3-01 | — |
+| [MO-053](./MO-053.md) | Cloudflare Email Sending is the canonical transactional email service | review | P2 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |

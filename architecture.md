@@ -263,16 +263,31 @@ often goes wrong when one person runs several companies.
 | Payments | **Stripe** | Regulatory surface |
 | Banking | **Mercury** | |
 | HR / payroll | **Gusto** | Compliance surface |
-| Email, accounts | **Google Workspace** | |
+| Email, accounts | **Google Workspace** | Human mailboxes — not application email |
 | Code hosting, CI, packages | **GitHub** | Substrate for everything else |
 | Messaging | **Slack** | Agent notification target |
-| DNS, CDN, public media | **Cloudflare** | Registrar, CDN, R2 (§14.3) |
+| DNS, CDN, public media | **Cloudflare** | Registrar, CDN, R2 (§14.3), transactional email |
+| Transactional email | **Cloudflare Email Sending** | Already in the stack — see below |
 | SEO research | **Semrush** | Data moat |
 | Agents | **Claude + Codex** | |
 | Error tracking | **Sentry** | |
 | Web hosting | **Vercel** | §10.2 — decided on the review loop |
 | Product analytics | **PostHog Cloud** | §10.3 |
 | Hardware | **Macs** | |
+
+**Transactional email is Cloudflare's, not a new vendor's.** Cloudflare is already load-bearing
+and is not going away: it is the registrar and DNS for every domain — including `darwin.health`
+and `evo.med`, which *host* on Vercel — and it holds R2 for public media. Email Sending is a
+service inside a vendor already in the stack, reachable as an ordinary bearer-token REST endpoint
+from any runtime, so it does not tie a project to Cloudflare hosting.
+
+Resend or Postmark would be a net-new dependency, a second account, and another credential to
+rotate, to replace something that works. Reach for one only when Cloudflare cannot do the job —
+and record that as a `deviations` entry (§4) when it happens.
+
+Note the distinction the table now makes: **Google Workspace is human mailboxes, Cloudflare is
+application email.** Conflating them is how `cpheinrich.com` came to pick a provider per-project
+instead of reading one off the spec.
 
 ### Built and maintained in Morpheus
 
