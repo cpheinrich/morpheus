@@ -322,23 +322,55 @@ Not enforced by `inbox validate`: the validator cannot distinguish a real option
 restatements of one choice, and a check that cannot tell those apart would pass the filler it
 exists to prevent — the `learned.md` shape where a check reports an empty thing as correct.
 
-**Roadmap ids are timestamps, not a coordinated integer** — 2026-08-01. `PREFIX-YY-MM-DD-HH.MM.SS` **in
-UTC**, taken from the clock when the item is first written. UTC because ordering is the scheme's
-whole job and is meaningless if authors measure from different origins — and because `created:`
-is `toISOString()`, already UTC, so local time put two different days in one frontmatter. A sequential integer requires every writer to
-agree on what the last one was, and that agreement does not exist: in one day `pm new` offered an
-id a parallel session held as an untracked file, would have offered one an open PR's branch held,
-and four items were created in the *same second* by a decomposition fan-out. Forks make it
-unfixable — a contributor's `origin` is their fork, so no query tells them the truth.
+**Roadmap ids are timestamps, not a coordinated integer** — 2026-08-01.
+`PREFIX-YY-MM-DD-HH.MM.SS` in **Pacific time on every machine**, taken from the clock when the
+item
+is first written. A *fixed* zone, not the author's local one: ordering is the scheme's whole job
+and is meaningless if authors measure from different origins. (An earlier draft of this entry
+said UTC, which is what shipped first and was then changed — the entry had gone stale against
+the code.) A sequential integer requires every writer to agree on what the last one was, and
+that agreement does not exist: in one day `pm new` offered an id a parallel session held as an
+untracked file, would have offered one an open PR's branch held, and four items were created in
+the *same second* by a decomposition fan-out. Forks make it unfixable — a contributor's `origin`
+is their fork, so no query tells them the truth.
 
-**An id that needs no answer cannot be given a wrong one.** The clock needs no coordination and no
-network, preserving `pm new`'s offline allocation. On collision the seconds field steps forward, so
-ordering survives without randomness.
+**An id that needs no answer cannot be given a wrong one.** The clock needs no coordination and
+no network, preserving `pm new`'s offline allocation. On collision the seconds field steps
+forward, so ordering survives without randomness.
 
-The slug lives in the **filename**, not the id: the timestamp already makes the id unique, so the
-slug's only job is recognition when browsing, while the id is what every cross-reference repeats.
-Capped at 64 and cut at a word boundary, preferring the shortest intelligible name.
+The slug lives in the **filename**, not the id: the timestamp already makes the id unique, so
+the slug's only job is recognition when browsing, while the id is what every cross-reference
+repeats. Capped at 64 and cut at a word boundary, preferring the shortest intelligible name.
 
-Migrated ids keep the old number against the item's own creation date — `MO-045` → `MO-26-07-29-045`
-— so `grep MO-045` still resolves against history that cannot be rewritten, and real chronology
-survives. Goals and requests stay sequential; they are rare and have never collided.
+Migrated ids keep the old number against the item's own creation date — `MO-045` →
+`MO-26-07-29-045` — so `grep MO-045` still resolves against history that cannot be rewritten,
+and real chronology survives. Goals and requests stay sequential; they are rare and have never
+collided.
+
+**A slug is a handle, not a summary** — 2026-08-01. Verb-noun, two to four words, at most 32
+characters: `fix-photo-picker`, `update-roadmap-ids`. It does not have to be unique, because the
+timestamp beside it already is, so it carries none of the burden of saying what the work *is* —
+that is the title's job. Stop words are dropped and familiar abbreviations applied, and a
+trailing stop word, dangling negation or stranded modal is trimmed, because ending on `and`,
+`not` or `may` reads as a thought cut in half. Negations are only stripped from the *end*:
+removing `not` from the middle of a title would assert the opposite.
+
+**Prefer `--slug`.** No sentence reliably reduces to verb-noun, so the derived form is a
+fallback rather than the intent — "Roadmap ids become timestamps, not a coordinated integer"
+derives to
+`roadmap-ids-become-timestamps` where `update-roadmap-ids` says as much in half the space.
+
+**One slug function, not one per consumer.** Branch names and filenames both come from
+`slugForFilename`. They were two implementations with different caps, and the same item got
+`…-open-an-issue-and` on its branch against `…-may-open-a-pr-carrying` in its filename.
+
+**Migrating ids repoints structured references, not prose** — 2026-08-01. Worklog frontmatter
+carries `roadmap: MO-052`, which a tool resolving it would fail to follow once the item is
+renamed, so `pm migrate-ids` rewrites those. Prose mentions in `architecture.md`, worklog bodies
+and merged pull requests are deliberately left alone: the old number is the last field of the
+new id, so
+`grep MO-052` still finds it, and rewriting narrative in a historical record would be editing the
+past rather than repairing a link.
+
+The distinction is worth stating because it is the one judgement call in an otherwise mechanical
+migration — a link is repaired, a sentence is not.
