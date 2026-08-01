@@ -2,7 +2,14 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { checkPr, hasSection, roadmapIdFromBranch, type PrContext } from "../src/check/pr.js";
+import {
+  checkPr,
+  formatFindings,
+  hasSection,
+  roadmapIdFromBranch,
+  waiverReason,
+  type PrContext,
+} from "../src/check/pr.js";
 import { hasNoSubstantiveChange, isRecordsOnly } from "../src/paths.js";
 
 let product: string;
@@ -77,14 +84,19 @@ describe("checkPr", () => {
     expect(rule?.level).toBe("error");
   });
 
-  it("allows an explicitly justified test waiver", async () => {
+  // Allowed, but no longer silent: a waiver is the author's own say-so about
+  // their own PR, which is exactly what a verifier must not swallow.
+  it("allows an explicitly justified test waiver, and surfaces it", async () => {
     const findings = await checkPr(
       goodPr({
         changedFiles: ["src/pm/parse.ts"],
         body: "## Test plan\n\nManual.\n\n## Open questions\n\nNone.\n\nskip-tests: pure rename\n",
       }),
     );
-    expect(findings.find((f) => f.rule === "tests-with-source")).toBeUndefined();
+    const rule = findings.find((f) => f.rule === "tests-with-source");
+    expect(rule?.level).toBe("waived");
+    expect(rule?.message).toContain("pure rename");
+    expect(findings.filter((f) => f.level === "error")).toHaveLength(0);
   });
 
   it("does not demand tests for a docs-only change", async () => {
@@ -224,7 +236,9 @@ describe("a claimed branch that did none of its item's work", () => {
         body: "records-only: the decision is the deliverable\n\n## Test plan\n\nRead it.\n\n## Open questions\n\nNone.\n",
       }),
     );
-    expect(findings.find((f) => f.rule === "no-work-for-claimed-item")).toBeUndefined();
+    const rule = findings.find((f) => f.rule === "no-work-for-claimed-item");
+    expect(rule?.level).toBe("waived");
+    expect(findings.filter((f) => f.level === "error")).toHaveLength(0);
   });
 
   it("does not fire on a branch that stakes no id", async () => {
@@ -246,5 +260,105 @@ describe("a claimed branch that did none of its item's work", () => {
       goodPr({ changedFiles: ["src/pm/index.ts", "tests/pm.test.ts", "hq/product/roadmap/README.md"] }),
     );
     expect(findings.find((f) => f.rule === "docs-with-api")?.level).toBe("warning");
+  });
+});
+
+/**
+ * A verifier answers *is this correct?* without trusting the doer's own say-so
+ * (architecture §9). `skip-tests:` and `records-only:` are written by the author
+ * of the PR being checked, and they used to pass in silence — so a PR that
+ * excused itself from its tests printed exactly what a PR with tests printed.
+ * They stay allowed; they stop being invisible.
+ */
+describe("waivers are surfaced, not swallowed", () => {
+  const withBody = (body: string): PrContext =>
+    goodPr({ changedFiles: ["src/pm/parse.ts"], body: `${body}\n\n## Test plan\n\nx.\n` });
+
+  it("does not report a clean run when something was waived", () => {
+    const out = formatFindings([
+      { level: "waived", rule: "tests-with-source", message: 'tests waived — "pure rename"' },
+    ]);
+    expect(out).toContain("1 waived");
+    expect(out).toContain("pure rename");
+  });
+
+  it("still reports a genuinely clean run plainly", () => {
+    expect(formatFindings([])).toBe("✓ PR conventions satisfied.");
+  });
+
+  it("marks a waiver distinctly from an error and a warning", () => {
+    const out = formatFindings([
+      { level: "error", rule: "a", message: "m" },
+      { level: "warning", rule: "b", message: "m" },
+      { level: "waived", rule: "c", message: "m" },
+    ]);
+    expect(out).toContain("✗ [a]");
+    expect(out).toContain("! [b]");
+    expect(out).toContain("~ [c]");
+  });
+
+  it("lists both waivers when a PR uses both", async () => {
+    const findings = await checkPr(
+      goodPr({
+        changedFiles: ["hq/inbox/cpheinrich.md", "hq/product/roadmap/EV-014.md"],
+        body:
+          "skip-tests: nothing executable changed\n" +
+          "records-only: the decision is the deliverable\n\n" +
+          "## Test plan\n\nRead it.\n",
+      }),
+    );
+    expect(findings.filter((f) => f.level === "waived")).toHaveLength(1);
+    expect(findings.filter((f) => f.level === "error")).toHaveLength(0);
+  });
+
+  // The old pattern was `\S+`, which accepted this. An opt-out with extra steps
+  // is not a reason.
+  it("refuses `skip-tests: yes` as a non-reason", async () => {
+    const findings = await checkPr(withBody("skip-tests: yes"));
+    const rule = findings.find((f) => f.rule === "tests-with-source");
+    expect(rule?.level).toBe("error");
+    expect(rule?.message).toContain("is not a reason");
+  });
+
+  it("refuses an empty reason", async () => {
+    const findings = await checkPr(withBody("skip-tests:"));
+    expect(findings.find((f) => f.rule === "tests-with-source")?.level).toBe("error");
+  });
+
+  it("refuses a whitespace-only reason", async () => {
+    const findings = await checkPr(withBody("skip-tests:    "));
+    expect(findings.find((f) => f.rule === "tests-with-source")?.level).toBe("error");
+  });
+
+  it("accepts a reason that says something", async () => {
+    const findings = await checkPr(withBody("skip-tests: generated output, asserted downstream"));
+    expect(findings.find((f) => f.rule === "tests-with-source")?.level).toBe("waived");
+  });
+
+  it("does not raise a waiver when the rule was satisfied outright", async () => {
+    const findings = await checkPr(goodPr({ body: "skip-tests: not needed here\n\n## Test plan\n\nx.\n" }));
+    expect(findings.find((f) => f.rule === "tests-with-source")).toBeUndefined();
+  });
+});
+
+describe("waiverReason", () => {
+  it("returns null when the key is absent", () => {
+    expect(waiverReason("## Test plan\n\nx.", "skip-tests")).toBeNull();
+  });
+
+  it("returns an empty string for a present key with no reason", () => {
+    expect(waiverReason("skip-tests:", "skip-tests")).toBe("");
+  });
+
+  it("reads the reason, trimmed", () => {
+    expect(waiverReason("skip-tests:   pure rename  ", "skip-tests")).toBe("pure rename");
+  });
+
+  it("is case-insensitive on the key, as the original was", () => {
+    expect(waiverReason("Skip-Tests: pure rename", "skip-tests")).toBe("pure rename");
+  });
+
+  it("does not read a key that is part of a longer word", () => {
+    expect(waiverReason("noskip-tests: x", "skip-tests")).toBeNull();
   });
 });

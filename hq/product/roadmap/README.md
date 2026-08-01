@@ -6,12 +6,11 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-050](./MO-050.md) | Heartbeat: a scheduled dispatcher over the board | review | P0 | MO-G-2026-Q3-01 | — |
+| [MO-052](./MO-052.md) | Waivers are surfaced, not swallowed | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-011](./MO-011.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-051](./MO-051.md) | Agent code review as an independent verifier rung | backlog | P1 | MO-G-2026-Q3-01 | — |
-| [MO-052](./MO-052.md) | Waivers are surfaced, not swallowed | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-047](./MO-047.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-001](./MO-001.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-002](./MO-002.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — |
@@ -28,6 +27,7 @@ item files, not this table.
 | [MO-039](./MO-039.md) | kit/design: token pipeline — one generator, not three | shipped | P0 | MO-G-2026-Q3-01 | #32 |
 | [MO-048](./MO-048.md) | Work graph edges, blocked as an outcome, and the verifier stack | shipped | P0 | MO-G-2026-Q3-01 | #50 |
 | [MO-049](./MO-049.md) | Blocked is a first-class outcome, routed to the inbox | shipped | P0 | MO-G-2026-Q3-01 | #51 |
+| [MO-050](./MO-050.md) | Heartbeat: a scheduled dispatcher over the board | shipped | P0 | MO-G-2026-Q3-01 | #53 |
 | [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-013](./MO-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-015](./MO-015.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | #22 |
