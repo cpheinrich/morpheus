@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-023
+roadmap: MO-26-07-29-023
 outcome: shipped
 summary: Refresh regenerates derived files and names seeded ones instead of reporting success over a stale mission.
 ---

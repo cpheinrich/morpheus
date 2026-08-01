@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-032
+roadmap: MO-26-07-29-032
 outcome: shipped
 summary: Convention checks no longer require the consuming repo to be a pnpm project.
 ---

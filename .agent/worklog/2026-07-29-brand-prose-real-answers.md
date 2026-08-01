@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-038
+roadmap: MO-26-07-29-038
 outcome: shipped
 summary: Brand prose templates broke on real answers; the fix reached main through another session's PR.
 ---

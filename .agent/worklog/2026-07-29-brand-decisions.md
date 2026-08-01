@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-024
+roadmap: MO-26-07-29-024
 outcome: shipped
 summary: Design sessions now keep a durable settled/rejected/open record, written per round.
 ---

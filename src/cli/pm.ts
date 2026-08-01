@@ -434,12 +434,16 @@ export async function ship(
  * than warns: a board whose order silently changed is worse than one that was
  * not migrated.
  */
-export async function migrateIds(productDir: string, dryRun: boolean): Promise<number> {
+export async function migrateIds(
+  productDir: string,
+  dryRun: boolean,
+  repoRoot: string = process.cwd(),
+): Promise<number> {
   const roadmapDir = join(productDir, "roadmap");
 
   let result;
   try {
-    result = await migrate(roadmapDir, dryRun);
+    result = await migrate(roadmapDir, dryRun, join(repoRoot, ".agent", "worklog"));
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     return 1;
@@ -457,6 +461,9 @@ export async function migrateIds(productDir: string, dryRun: boolean): Promise<n
   if (result.skipped.length) console.log(`\n${result.skipped.length} already dated, left alone.`);
   console.log("\nOrdering verified unchanged.");
 
+  if (result.referencesUpdated.length) {
+    console.log(`\n${result.referencesUpdated.length} worklog reference(s) repointed.`);
+  }
   if (!dryRun) console.log("Run `morpheus pm index` to regenerate the tables.");
   return result.problems.length ? 1 : 0;
 }

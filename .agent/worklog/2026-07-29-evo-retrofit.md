@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-007
+roadmap: MO-26-07-28-007
 outcome: shipped
 summary: Retrofitted Evo to the Morpheus structure by hand; found one real template bug.
 ---

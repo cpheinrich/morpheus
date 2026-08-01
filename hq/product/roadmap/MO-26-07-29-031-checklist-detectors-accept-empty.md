@@ -1,0 +1,48 @@
+---
+id: MO-26-07-29-031
+title: "Checklist detectors accept empty files as done"
+status: shipped
+priority: P1
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: [23]
+created: 2026-07-29
+updated: 2026-07-29
+---
+
+> Migrated from `MO-031` to `MO-26-07-29-031` (MO-057). References to `MO-031` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+_Why this matters._
+
+## Approach
+
+_How it will be done._
+
+## Context
+
+Chris: *"an empty file should not pass as checked."* He is right, and it is the same mistake
+`tokens.json` had — existence standing in for completeness — left in three other detectors.
+
+`goal`, `roadmap` and `inbox` checked for any `.md` that was not a README. An empty goal file, or
+an inbox that would fail its own CI, read as done.
+
+## Also fixed
+
+Reconcile re-shipped MO-015 twice after it was deliberately reopened, by matching PR #2's branch
+prefix. `backlog` items are now **reported, never written** — reconciliation cannot tell a
+deliberate reopen from a status nobody updated, and a tool that overrides the first is arguing with
+its owner.
+
+## Found while writing a test fixture
+
+`target: 1` in a goal fails, because YAML makes it a number and the schema wanted a string. That is
+the most natural thing to write for a numeric goal, and the error — *expected string, received
+number* — is about types, for a mistake nobody made. `metric`, `target` and `current` now go through
+`looseString`, the same shape as `isoDate`.
+
+**Second time YAML's scalar coercion has cost us.** The rule is in `.agent/learned.md`: the file is
+right and the parser has to meet it.

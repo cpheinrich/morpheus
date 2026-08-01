@@ -1,0 +1,56 @@
+---
+id: MO-26-07-29-030
+title: "Onboarding checklist: morpheus init status"
+status: shipped
+priority: P0
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: [21]
+created: 2026-07-29
+updated: 2026-07-29
+---
+
+> Migrated from `MO-030` to `MO-26-07-29-030` (MO-057). References to `MO-030` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+_Why this matters._
+
+## Approach
+
+_How it will be done._
+
+## Context
+
+Chris: an onboarding checklist rather than a wizard, because *"it is a pet peeve of mine when you
+are going through a setup wizard and if you get interrupted in the middle you have to restart from
+scratch."*
+
+He asked whether these should be roadmap tickets assigned to a person. They should not. Roadmap
+items have ids, claims, branches and PRs; setup steps have none of those, and twenty-five chores
+would dominate the board permanently. The lifecycles are different enough that sharing a mechanism
+costs more than it saves.
+
+## Shipped
+
+`morpheus init status`, writing `hq/onboarding.md`.
+
+**Anything Morpheus can see, Morpheus checks.** Roughly half the list is detected — manifest,
+`.agent/` records, registry, reusable workflows, branch protection via `gh`, a goal, a roadmap item,
+an inbox, brand answers, brand completeness, Vercel link, `.env.example`. Those boxes are rewritten
+every run and ticking one by hand is undone, because a checklist that can be wrong about something
+it could have verified stops being read.
+
+Manual state — Cloudflare token, GCP project, domain — persists in the file, along with any note
+written under a task.
+
+Detection returns `true`, `false`, or `null` for *could not check*. `null` never collapses into
+"not done".
+
+Filtered by `kind`: Morpheus is `internal` and is never asked about a brand or a billing account.
+
+## Found while building it
+
+Evo has no `pm-check` or `pr-check` workflow. The checklist reported it on first run.

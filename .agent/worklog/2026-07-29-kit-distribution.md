@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-003
+roadmap: MO-26-07-28-003
 outcome: shipped
 summary: MO-003 contradicted a settled decision; rewritten around git dependencies, which unblocks three items.
 ---

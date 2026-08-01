@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-034
+roadmap: MO-26-07-29-034
 outcome: shipped
 summary: Retrofitted the three remaining projects with morpheus init; each one found a bug.
 ---

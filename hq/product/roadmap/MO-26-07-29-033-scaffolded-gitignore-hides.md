@@ -1,0 +1,43 @@
+---
+id: MO-26-07-29-033
+title: "Scaffolded gitignore hides legitimate design assets"
+status: shipped
+priority: P1
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: [25]
+created: 2026-07-29
+updated: 2026-07-29
+---
+
+> Migrated from `MO-033` to `MO-26-07-29-033` (MO-057). References to `MO-033` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+_Why this matters._
+
+## Approach
+
+_How it will be done._
+
+## Context
+
+Found retrofitting `cpheinrich.com`, which tracks nine PNGs — moodboards and page mockups from its
+brand work.
+
+The scaffolded `.gitignore` carried `*.png` from Morpheus's own rules, written after a 448 KB
+screenshot reached a public repo. As a scaffold default it is wrong: **the brand session is
+explicitly asked to produce mockups and logo exports**, and a scaffold that silently ignores the
+design work is worse than one that occasionally lets a screenshot through.
+
+## Shipped
+
+Scoped to `/*.png` and friends — the repository root and `local/`, which is where an editor paste
+actually lands. Asset directories are untouched.
+
+## The general shape
+
+A rule earned by one project's incident is not automatically a good default for every project. This
+one was copied across without asking what the other projects do.

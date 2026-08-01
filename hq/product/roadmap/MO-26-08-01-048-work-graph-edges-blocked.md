@@ -1,0 +1,115 @@
+---
+id: MO-26-08-01-048
+title: "Work graph edges, blocked as an outcome, and the verifier stack"
+status: shipped
+priority: P0
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: [50]
+created: 2026-08-01
+updated: 2026-08-01
+---
+
+> Migrated from `MO-048` to `MO-26-08-01-048` (MO-057). References to `MO-048` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+A handoff spec arrived on 2026-08-01 from a session with no access to this codebase
+(`local/handoffs/2026-08-01-heartbeat-and-verifiers.md`). It carries two framings and three asks.
+This item is the specification pass: decide the open questions, write the architecture, and
+decompose the rest into buildable items. It writes no runtime code.
+
+**The graph framing.** `hq/` is organised by topic — product, brand, finance. That is an
+organisational map, not a work graph. In a work graph the nodes are units of work and the edges
+are handoff rules: what output unlocks what next, and under what condition. Morpheus is already
+graph-shaped; the edges are just implicit.
+
+**The verifier framing.** A verifier answers *is this correct?* without trusting the doer's own
+say-so. Independence is the whole point, and Morpheus currently has exactly one rung of it.
+
+## The decision the spec asked for: verifiers as a concept, not a directory
+
+**Named in `architecture.md` §9. No `verifiers/` directory.**
+
+`qa/` holds *artifacts* — test plans, checklists, acceptance criteria. A verifier is not an
+artifact, it is a stage in the merge path, and its four rungs already live in four different
+places: `.github/workflows/` for rungs 1 and 2, `qa/acceptance/` for rung 3, a human on a PR for
+rung 4. A `verifiers/` directory would contain nothing but pointers to those.
+
+What was missing was the *vocabulary*, not the storage — there was no word for "the thing that
+checks the doer", so the rungs could not be reasoned about as a stack, and nobody could notice
+that rung 3 had no input. Per the naming stopping rule in `.agent/decisions.md`: name it well
+enough to be read correctly on first encounter, then document the rest.
+
+## The three edges worth drawing now
+
+The test applied: an edge is worth making explicit when the schema already declares it and
+nothing traverses it. All three below are dangling fields, not speculation.
+
+| Edge | Declared as | Traversed by | Item |
+|---|---|---|---|
+| `worklog.outcome: blocked` → an open `❗` inbox item | `JournalEntry.outcome` already has `blocked` | **nothing** | MO-049 |
+| `roadmap.acceptance` → `qa/acceptance/` → conformance | `RoadmapItem.acceptance` is "a path into `qa/acceptance/`" | **nothing — zero items set it** | MO-051 |
+| goals + board + in-flight → the next unblocked item | §7.6 lists a weekly "roadmap proposal" loop | **nothing** | MO-050 |
+
+`blocked` being *already in the enum* is the finding that matters. The schema anticipated the
+third exit two months before the spec asked for it; what never got built was the edge out of it.
+A `blocked` outcome today is a value nobody reads.
+
+Two edges are deliberately **not** drawn yet. `requests.roadmap` (promotion) and `goals.current`
+(the analytics loop) also dangle, but neither has a second use, and §"extract on the second use"
+applies to edges as much as to code.
+
+## Net-new verifier ideas beyond agent code review
+
+The spec asked for these. Two survived, both from applying its own definition — *without trusting
+the doer's own say-so* — to what Morpheus already does:
+
+1. **`check pr` currently trusts the doer.** `skip-tests:` and `records-only:` are waivers the
+   author writes about their own PR, and they pass **silently**. By the spec's definition that is
+   not verification. The fix is not to remove them — they are legitimate — but to make every
+   waiver a visible finding, so the rung above sees what was excused. MO-052.
+2. **A blocked outcome must name its unblocker.** "I am blocked" without "here is exactly what I
+   need" is a crash with better manners. Enforceable as a required field. Folded into MO-049.
+
+## Decomposition
+
+| Item | What |
+|---|---|
+| MO-049 | Blocked is a first-class outcome, routed to the inbox |
+| MO-050 | Heartbeat: a scheduled dispatcher over the board |
+| MO-051 | Agent code review as an independent verifier rung |
+| MO-052 | Waivers are surfaced, not swallowed |
+
+## Also in this item: browser-reachable work is not blocked
+
+Directed by Chris on 2026-08-01, and it belongs here because MO-049 defines what *blocked* means
+and this defines what it does not. Agents have repeatedly parked work whose only obstacle was
+needing to drive a browser, waited for a human, and then unblocked themselves the moment they
+were told to try. The wait was pure loss: the agent could do it, and asking cost a round trip
+measured in hours.
+
+The rule and its boundary go in `AGENTS.md` and `.agent/decisions.md`. The boundary is the whole
+point — this is about obstacles, not about gates. Where a human is wanted for judgment, the
+browser is incidental to that and the gate stands.
+
+## Approach
+
+Specification only. Deliverables:
+
+- `architecture.md` — a work-graph section, blocked as an outcome, and the verifier stack in §9
+- `AGENTS.md` — the browser rule, plus how to declare blocked
+- `.agent/decisions.md` — four entries: verifiers-as-concept, the edge test, browser-reachable
+  work, and heartbeat autonomy
+- MO-049 through MO-052 filed with real specs
+
+## Test plan
+
+No runtime code, so nothing to unit test. Verified by `pnpm typecheck && pnpm test` staying
+green, `morpheus pm validate`, `morpheus pm index --check`, and `morpheus inbox validate`.
+
+## Open questions
+
+None. The three questions the spec delegated are answered above.

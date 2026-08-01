@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-026
+roadmap: MO-26-07-29-026
 outcome: shipped
 summary: brand status no longer demands the second source of truth the generator refuses to create.
 ---

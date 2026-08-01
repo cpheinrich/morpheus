@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-014
+roadmap: MO-26-07-29-014
 outcome: shipped
 summary: Brand wizard, GCP projects created, and a bad diagnostic worth remembering.
 ---

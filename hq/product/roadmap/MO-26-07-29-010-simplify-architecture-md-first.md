@@ -1,0 +1,49 @@
+---
+id: MO-26-07-29-010
+title: "Simplify architecture.md for first-time readers"
+status: shipped
+priority: P2
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: [46]
+created: 2026-07-29
+updated: 2026-08-01
+---
+
+> Migrated from `MO-010` to `MO-26-07-29-010` (MO-057). References to `MO-010` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+> **Reopened.** This was marked shipped against PR #31, which changed only `hq/inbox/` and
+> `.agent/inbox-archive/` — an inbox cycle that borrowed this item's branch because a cycle has
+> no item of its own. No part of the work below was done. See MO-042, which stops the borrowing.
+
+## Context
+
+`architecture.md` grew by accretion through a long design conversation, so it carries a lot
+of material that only makes sense if you were there. A first-time reader should be able to
+learn the system from it without reading its history.
+
+## What to strip
+
+- The **Resolved** table — it is a changelog of decisions, not part of the design
+- "Revised from draft 2", "you were right that", "confirmed", and similar conversational residue
+- Justifications that argue against an alternative that was never adopted — state the decision
+  and its reasoning, not the debate
+- Open questions that have since been answered, and the numbered Q-references pointing at them
+- Repeated restatements of the same rationale across sections
+
+## What to keep
+
+- Every decision, with a one-line reason. The *why* is load-bearing for an agent; the
+  *argument* is not
+- Genuine open questions, in one short section at the end
+- The "things that have bitten us" material — hard-won and not obvious
+
+## Approach
+
+Restructure rather than edit in place: a reader should meet the shape of a project first
+(structure, tool choices), then the operating model, then the details. Target roughly half
+the current length with no loss of decisions.
+
+Do this once the initializer exists, since building it will change what the doc needs to say.

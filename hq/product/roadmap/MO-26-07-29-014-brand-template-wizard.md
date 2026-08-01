@@ -1,0 +1,65 @@
+---
+id: MO-26-07-29-014
+title: "Brand template and wizard"
+status: shipped
+priority: P0
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: []
+created: 2026-07-29
+updated: 2026-07-29
+---
+
+> Migrated from `MO-014` to `MO-26-07-29-014` (MO-057). References to `MO-014` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+Evo's brand is largely decided but fragmented: some in `local/brand-research/` (30+
+explorations, gitignored), some already built into `apps/web/app/brand` by Codex. Consolidating
+it is blocked on there being a canonical shape to consolidate *into*.
+
+So the template comes first, then the consolidation — otherwise we hand-shape Evo's brand and
+discover the template wanted something different.
+
+## Approach
+
+**The template.** `hq/brand/` scaffolded from `templates/brand/`, matching what already works in
+`cpheinrich.com` and `lakina`:
+
+```
+hq/brand/
+├── README.md           index, reading order
+├── strategy.md         positioning, mission, audiences
+├── voice.md            tone, vocabulary, patterns
+├── visual-system.md    colour, type, layout, imagery, logo usage
+├── tokens.json         primitives — the palette and type scale
+├── messaging.json      taglines, mission, audience (imported by web, §15.2)
+└── assets/             logo.svg, logo-reverse.svg, icon.png, og-image.png
+```
+
+**The wizard.** `morpheus brand init` walks the strategic questions — what it is, who it is for,
+what it must never sound like — and writes the skeletons with those answers in place rather than
+leaving `TODO` everywhere. A half-filled brand document is worse than an empty one, because it
+looks answered.
+
+**Then consolidate Evo** from both sources into that shape, as a separate PR from the retrofit.
+
+## Blocks
+
+Evo brand consolidation, and by extension anything that needs Evo's tokens to be canonical.
+
+## Shipped
+
+`morpheus brand init` — eight questions, writes `hq/brand/` with README, strategy, voice,
+visual-system, tokens.json, messaging.json, and assets/. Thirteen tests, including one asserting
+**no output contains a TODO placeholder**: a question skipped produces an absent section rather
+than one that looks answered.
+
+The `never` question is the one that earns its place. Positioning drifts because nobody writes
+down the boundary, and an agent cannot infer it from what the thing is — so it is required, and
+it lands in `strategy.md` as a hard rule rather than a preference.
+
+When `visualSource` is given, `visual-system.md` states that the live surface wins over the
+document — which is the correct authority order for Evo, where Codex already shipped the design.

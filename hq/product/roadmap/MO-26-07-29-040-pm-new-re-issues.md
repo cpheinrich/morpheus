@@ -1,0 +1,39 @@
+---
+id: MO-26-07-29-040
+title: "pm new re-issues an id another session already claimed"
+status: shipped
+priority: P1
+owner: agent
+prs: [33]
+created: 2026-07-29
+updated: 2026-07-29
+---
+
+> Migrated from `MO-040` to `MO-26-07-29-040` (MO-057). References to `MO-040` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+## Context
+
+`nextId` takes `max + 1` over the item files on disk. Those are only the ids that have
+**merged** — an id another session claimed lives solely on its remote branch until its PR
+lands, so allocation cannot see it.
+
+This repo was in exactly that state today. A second session claimed MO-038 and pushed
+`mo-038-brand-prose-templates-break-on-real-answ`; local `main` held MO-001 through MO-037.
+Had MO-039 not already merged, `pm new` here would have allocated MO-038 a second time.
+`pm validate` catches the duplicate in CI, but only after two sessions have each written a
+different item under one id and one of them has to be renamed by hand.
+
+The remote already knows the answer. `findClaims` asks it for a single id; allocation never
+asked it at all.
+
+## Approach
+
+Consult the remote branch heads at allocation time and take the maximum across both sources.
+
+The lookup must distinguish "origin has no claims" from "origin could not be reached" —
+`.agent/learned.md` records three occurrences of an unanswerable question rendering as a
+confident answer, and a network blip silently reading as a free id is the same shape. So
+`claimedNumbers` returns `null` on failure, never `[]`, and `pm new` prints a warning naming
+the id it could not verify rather than allocating in silence.

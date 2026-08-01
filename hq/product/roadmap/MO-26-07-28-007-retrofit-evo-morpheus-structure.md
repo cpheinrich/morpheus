@@ -1,0 +1,44 @@
+---
+id: MO-26-07-28-007
+title: Retrofit Evo to the Morpheus structure
+status: shipped
+priority: P1
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: []
+created: 2026-07-28
+updated: 2026-07-29
+---
+
+> Migrated from `MO-007` to `MO-26-07-28-007` (MO-057). References to `MO-007` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+Move to `apps/` + `hq/`, adopt the kit, switch auth, adopt the shared workflows.
+
+Done by hand deliberately. This retrofit is the specification for `morpheus init` —
+writing the initializer first would encode guesses about a structure no project has
+actually lived in.
+
+## What the retrofit taught us
+
+Ran against Evo on 2026-07-29. Findings that change the templates:
+
+1. **`web-ci` hard-failed on missing scripts.** Evo's `apps/web` had no `typecheck` or
+   `test` script, so the workflow failed on a project that was otherwise fine. Fixed with
+   `pnpm run --if-present` for optional steps — a template should not require a script a
+   young project has not written yet.
+
+2. **The move itself was mechanical.** `web/` had zero imports crossing out of it and did
+   not consume `shared/` at all, so no import rewrites were needed. `init` can assume the
+   same for a fresh project, but `morpheus add` against an established repo cannot.
+
+3. **`.npmrc` overrides were archaeology.** Three of them existed only to escape the global
+   Polycam Artifactory registry. A retrofit should look for workarounds whose cause is gone.
+
+4. **Package names needed scoping.** `web` and `shared` became `@evo/web` and `@evo/shared`.
+   `init` should scope from the start; `add` must rename and update the workspace globs.
+
+5. **A wide move conflicts with every in-flight branch.** Evo had an unmerged Codex branch.
+   The retrofit needs a quiet moment, which is a sequencing constraint worth stating in the
+   docs rather than discovering twice.

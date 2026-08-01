@@ -1,7 +1,7 @@
 ---
 date: 2026-07-29
 agent: claude
-roadmap: MO-020
+roadmap: MO-26-07-29-020
 outcome: shipped
 summary: The brand wizard now hands off to an interactive session rather than implying it is finished.
 ---

@@ -1,0 +1,69 @@
+---
+id: MO-26-08-01-056
+title: "Inbox items propose options, not open questions"
+status: shipped
+priority: P1
+goal: MO-G-2026-Q3-01
+owner: agent
+prs: [57]
+created: 2026-08-01
+updated: 2026-08-01
+---
+
+> Migrated from `MO-056` to `MO-26-08-01-056` (MO-057). References to `MO-056` in git
+> history, commit messages and merged pull requests still resolve — the old number is
+> the last field of the new id.
+
+Chris's idea, 2026-08-01: an open `❗` item should carry **three proposed answers plus "Other"**,
+so replying is usually a selection rather than a composition.
+
+## Why
+
+**His reply time is the bottleneck, not agent generation time.** That asymmetry is the whole
+economics of this setup, and an inbox item that demands prose spends the scarce resource to save
+the abundant one. Items sit unanswered because writing the reply is work, not because the decision
+is hard.
+
+The second reason matters more. **Writing three real options forces the analysis to have
+happened.** A bare `~` lets an agent hand over an under-examined question and call it
+collaboration; three options cannot be written without having actually worked the tradeoff. This
+raises the quality of the item, not just the speed of the reply.
+
+Items get longer. That is the intended trade.
+
+## The failure mode this must avoid
+
+**Options can railroad.** Three plausible-looking choices can hide that the right answer is a
+fourth thing, and a reader scanning quickly picks the least-bad rather than noticing the frame is
+wrong.
+
+This is not hypothetical. The same day this was proposed, a question went out as *"darwin and evo
+use Vercel DNS — if so, cut over"*, and the premise was false: they use Cloudflare DNS pointed at
+Vercel. Posed as three Vercel-DNS-flavoured options, the bad premise would have been **harder** to
+catch, because each option would have silently reasserted it.
+
+So `Other` is structural, not decoration, and an option set must not be written where the analysis
+has not actually been done.
+
+## The rule
+
+- **Open items propose three options and `Other`** where the item is a decision
+- **One option is marked recommended, and it goes first.** Three neutral equals push the ranking
+  work back onto the human — which is the work the agent is there to do
+- **Options must be real.** Filler is worse than an honest open question; if the tradeoff has not
+  been analysed, say so instead of dressing it up
+- **Not every item is a decision.** An FYI, a status report, or a genuinely open-ended question
+  takes a plain `~`. Forcing options onto those is noise
+
+## What changes
+
+- `AGENTS.md` — the rule in the inbox cycle section, with the shape
+- `.agent/decisions.md` — the decision and the railroading caveat
+
+## Deliberately not enforced by `inbox validate`
+
+The validator checks structure — markers, dense numbering, a summary before the first item. It
+cannot tell a real option set from three restatements of the same choice, and a check that cannot
+tell those apart would pass the filler it exists to prevent. Same shape as the lesson in
+`learned.md`: a check that reports an empty thing as correct. This is a convention, held by
+review.

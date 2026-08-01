@@ -1,7 +1,7 @@
 ---
 date: 2026-08-01
 agent: claude
-roadmap: MO-048
+roadmap: MO-26-08-01-048
 outcome: shipped
 summary: Specified the work graph, blocked as a third exit, and the verifier stack; the useful finding was that all three edges were already declared in the schema and never traversed.
 ---

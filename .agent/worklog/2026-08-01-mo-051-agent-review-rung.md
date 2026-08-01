@@ -1,7 +1,7 @@
 ---
 date: 2026-08-01
 agent: claude
-roadmap: MO-051
+roadmap: MO-26-08-01-051
 outcome: shipped
 summary: Rung 2 ships with everything except the model call testable; RoadmapItem.acceptance is finally traversed, by the first item ever to set it.
 ---
