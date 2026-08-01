@@ -67,14 +67,18 @@ morpheus pm claim MO-014     # stakes the branch on origin, sets in-progress, pu
 
 The remote branch **is** the claim — `pm claim` refuses if `origin` already has `mo-014-*`.
 
-**Roadmap ids come from the clock** — `MO-2026-08-01-15.26.34`, `PREFIX-YYYY-MM-DD-HH.MM.SS` **in
-UTC** at first write. UTC because ordering across contributors in different timezones is the
-point, and because `created:` is already UTC.
+**Roadmap ids come from the clock** — `MO-2026-08-01-15.26.34`, `PREFIX-YYYY-MM-DD-HH.MM.SS` in
+**Pacific time on every machine**, not the author's local zone. A fixed zone is what makes ids
+from different contributors comparable; a local one silently reorders the board the moment two
+people are in different places.
 No remote is consulted because none can help: a fork contributor's `origin` is their fork, so no
 query would say which ids Morpheus has issued. On collision the seconds field steps forward, so a
-fan-out gets `:34 :35 :36 :37` and ordering survives. Filenames add a slug — `<id>-<slug>.md`,
-≤ 64 characters, cut at a word boundary — so the directory reads; the id stays short because it
-is what `prs:` and every cross-reference repeat.
+fan-out gets `:34 :35 :36 :37` and ordering survives. **Name the slug like a branch.** `morpheus pm new roadmap "<title>" --slug update-roadmap-ids`
+— verb-noun, two to four words, ≤ 32 characters. It is a handle, not a summary: the description
+belongs in the title and body, and the id above it is already unique, so the slug does not have
+to be. Omitting `--slug` derives one from the title, which is a fallback rather than the intent —
+"Roadmap ids become timestamps, not a coordinated integer" derives to
+`roadmap-ids-become-timestamps` where `update-roadmap-ids` says as much in half the space.
 
 Items migrated from the old integer scheme read `MO-2026-07-29-045`: their own creation date plus the
 old number, so `grep MO-045` still resolves against git history that cannot be rewritten.

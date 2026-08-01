@@ -13,24 +13,34 @@ describe("branchPrefix", () => {
 });
 
 describe("slugify", () => {
-  it("lowercases and dashes a title", () => {
-    expect(slugify("Ship the calorie pipeline")).toBe("ship-the-calorie-pipeline");
+  // The same function filenames use (MO-057), so a branch and its item file
+  // can never disagree — they did, before: 40 characters cut mid-word here
+  // against 64 at a word boundary there.
+  it("abbreviates, drops stop words, and keeps it short", () => {
+    expect(slugify("External contributors open an issue")).toBe("ext-contributors-open-issue");
+    expect(slugify("/hq auth: Firebase custom claims")).toBe("hq-auth-firebase-custom");
   });
 
-  it("strips punctuation that is illegal in a branch name", () => {
-    expect(slugify("PM package: schemas, parser & CLI")).toBe(
-      "pm-package-schemas-parser-cli",
-    );
+  it("keeps at most four words and 32 characters", () => {
+    expect(slugify("one two three four five six seven").split("-")).toHaveLength(4);
+    expect(slugify("alpha bravo charlie delta echo foxtrot").length).toBeLessThanOrEqual(32);
   });
 
-  it("truncates without leaving a trailing dash", () => {
-    const s = slugify("a".repeat(30) + " " + "b".repeat(30));
-    expect(s.length).toBeLessThanOrEqual(40);
-    expect(s.endsWith("-")).toBe(false);
+  it("never ends on a stop word or a dangling negation", () => {
+    expect(slugify("A study of the effects of and")).toBe("study-effects");
+    expect(slugify("Roadmap ids become timestamps not")).not.toMatch(/-not$/);
+  });
+
+  it("preserves a negation that still has something to negate", () => {
+    expect(slugify("Blocked is not an outcome without needs")).toContain("not");
+  });
+
+  it("produces a valid git branch component", () => {
+    expect(slugify("PM package: schemas, parser & CLI!")).toMatch(/^[a-z0-9-]+$/);
   });
 
   it("handles a title that is entirely punctuation", () => {
-    expect(slugify("!!!")).toBe("");
+    expect(slugify("!!! ???")).toBe("");
   });
 });
 

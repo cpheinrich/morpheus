@@ -190,7 +190,7 @@ export async function create(
   productDir: string,
   kind: string,
   title: string,
-  opts: { priority?: string; goal?: string },
+  opts: { priority?: string; goal?: string; slug?: string },
   cwd: string,
 ): Promise<number> {
   if (!isKind(kind)) {

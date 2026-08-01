@@ -289,14 +289,14 @@ describe("new item", () => {
   // case asserted below.
   it("allocates a roadmap id from the clock (MO-057)", async () => {
     const at = new Date("2026-08-01T15:26:34Z");
-    expect((await nextId(product, "roadmap", "MO", product, at)).id).toBe("MO-2026-08-01-15.26.34");
+    expect((await nextId(product, "roadmap", "MO", product, at)).id).toBe("MO-2026-08-01-08.26.34");
   });
 
   it("ignores what already exists — the clock, not the highest id, decides", async () => {
     await seed("roadmap", "MO-001", VALID_RM);
     await seed("roadmap", "MO-009", VALID_RM.replace("MO-001", "MO-009"));
     const at = new Date("2026-08-01T15:26:34Z");
-    expect((await nextId(product, "roadmap", "MO", product, at)).id).toBe("MO-2026-08-01-15.26.34");
+    expect((await nextId(product, "roadmap", "MO", product, at)).id).toBe("MO-2026-08-01-08.26.34");
   });
 
   it("is never blind for a roadmap id, because it asks no remote", async () => {
@@ -414,7 +414,7 @@ describe("allocation consults the remote", () => {
     const at = new Date("2026-08-01T15:26:34Z");
 
     const { id, blind } = await nextId(product, "roadmap", "MO", cwd, at);
-    expect(id).toBe("MO-2026-08-01-15.26.34");
+    expect(id).toBe("MO-2026-08-01-08.26.34");
     expect(blind).toBe(false);
   });
 });

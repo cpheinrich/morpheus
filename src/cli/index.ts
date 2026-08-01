@@ -31,6 +31,7 @@ Usage
   morpheus pm validate [--dir <hq/product>]
   morpheus pm index    [--dir <hq/product>] [--check]
   morpheus pm new <roadmap|goals|requests> <title> [--priority P1] [--goal G-2026-Q3-01]
+                            [--slug fix-photo-picker] — name it like a branch; derived otherwise
   morpheus pm claim <RM-014>
   morpheus pm claims
   morpheus pm block <MO-051> --needs "<what would unblock this>" [--owner <handle>]
@@ -84,6 +85,7 @@ interface Flags {
   ts?: string;
   priority?: string;
   goal?: string;
+  slug?: string;
   needs?: string;
   context?: string;
   ceiling?: number;
@@ -160,6 +162,9 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--goal":
         flags.goal = argv[++i];
+        break;
+      case "--slug":
+        flags.slug = argv[++i];
         break;
       case "--needs":
         flags.needs = argv[++i];
@@ -358,7 +363,7 @@ async function main(): Promise<number> {
         dir,
         kind ?? "",
         titleParts.join(" "),
-        { priority: flags.priority, goal: flags.goal },
+        { priority: flags.priority, goal: flags.goal, slug: flags.slug },
         process.cwd(),
       );
     }

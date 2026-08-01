@@ -105,6 +105,8 @@ export interface NewItemOptions {
   cwd: string;
   /** Roadmap only. */
   priority?: string;
+  /** Name the slug deliberately, like a branch. Falls back to the title. */
+  slug?: string;
   goal?: string;
 }
 
@@ -173,7 +175,7 @@ export async function createItem(opts: NewItemOptions): Promise<NewItem> {
   // out of it short, since that is what `prs:`, `goal:` and cross-references
   // repeat. Goals and requests keep `<id>.md` — there are few of them and their
   // ids already read as words.
-  const name = kind === "roadmap" ? itemFilename(id, title) : `${id}.md`;
+  const name = kind === "roadmap" ? itemFilename(id, title, undefined, opts.slug) : `${id}.md`;
   const path = join(dir, name);
   await writeFile(path, `${fm}\n${body}`, "utf8");
   return { path, id, blind };

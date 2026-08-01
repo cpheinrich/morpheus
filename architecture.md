@@ -582,12 +582,14 @@ hq/product/
 `MO-2026-08-01-15.26.34` — `PREFIX-YYYY-MM-DD-HH.MM.SS`, taken from the clock the moment the item
 is first written, **in UTC**.
 
+**Pacific time (`America/Los_Angeles`) on every machine**, not the author's local zone.
+
 The timezone is not a detail. The scheme's whole job is ordering, and ordering is meaningless if
-two authors measure from different origins: in local time an item written in Tokyo at 09:00
-(00:00 UTC) sorts *after* one written in Los Angeles at 18:00 the "previous" day (01:00 UTC),
-though it was written first. UTC also keeps the id consistent with `created:`, which is
-`toISOString()` and already UTC — the first draft used local time and produced
-`id: MO-2026-08-01-17.30.00` beside `created: 2026-08-02`, two different days in one frontmatter.
+two authors measure from different origins: in the author's local time an item written in Tokyo at 09:00
+sorts *after* one written in Los Angeles an hour later, because the calendar days differ. Pinning
+one zone makes every id comparable wherever it was created. The known cost is the DST fall-back
+hour, which repeats once a year — the collision step resolves it, but order within that hour is
+not guaranteed.
 
 A sequential integer requires every writer to agree on what the last one was, and that agreement
 does not exist. In a single day: `pm new` offered an id a parallel session held as an
@@ -605,7 +607,7 @@ preserved, deterministic, no randomness.
 | Field | Purpose |
 |---|---|
 | `id` | `MO-2026-08-01-15.26.34`, or `MO-2026-07-29-045` for an item migrated from the integer scheme |
-| filename | `<id>-<slug>.md`, slug ≤ 64 characters cut at a word boundary |
+| filename | `<id>-<slug>.md`, slug ≤ 32 characters — verb-noun, two to four words, `--slug` to choose it |
 | `baseSha` | **`HEAD`** when the item was written — the commit the author was actually on. Not `origin/main`: for an external contributor that is their fork, and the point is the version they were using |
 
 **The slug is in the filename, not the id.** The timestamp already makes the id unique, so the
