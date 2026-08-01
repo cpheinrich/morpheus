@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 import { basename, resolve } from "node:path";
-import { block, claim, claims, create, index, ship, unblock, validate } from "./pm.js";
+import {
+  block,
+  claim,
+  claims,
+  create,
+  index,
+  migrateIds,
+  ship,
+  unblock,
+  validate,
+} from "./pm.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
 import { build as brandBuild, check as brandCheck, init as brandInit } from "./brand.js";
@@ -27,6 +37,7 @@ Usage
                             [--context "<where it stopped>"]
   morpheus pm unblock <MO-051>
   morpheus pm ship [<MO-020> ...]  [--check]
+  morpheus pm migrate-ids   [--check] — integer roadmap ids to the dated scheme (MO-057)
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus review prompt    assemble the rung-2 reviewer prompt for this branch
   morpheus inbox validate   [--dir <hq/inbox>]
@@ -339,6 +350,8 @@ async function main(): Promise<number> {
       return unblock(dir, rest[0] ?? "");
     case "ship":
       return ship(dir, rest, process.cwd(), flags.check);
+    case "migrate-ids":
+      return migrateIds(dir, flags.check);
     case "new": {
       const [kind, ...titleParts] = rest;
       return create(

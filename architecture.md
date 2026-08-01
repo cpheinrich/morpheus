@@ -573,9 +573,47 @@ No Jira, no Linear. Markdown in git, with a validated schema.
 ```
 hq/product/
 ├── goals/      README.md (GENERATED index)  ·  MO-G-2026-Q3-01.md
-├── roadmap/    README.md (GENERATED index)  ·  MO-014.md  ·  MO-015.md
+├── roadmap/    README.md (GENERATED index)  ·  MO-260801-152634-blocked-is-an-outcome.md
 └── requests/   README.md (GENERATED index)  ·  MO-FR-007.md
 ```
+
+#### Roadmap ids are timestamps, not a sequence
+
+`MO-260801-152634` — `PREFIX-YYMMDD-HHMMSS`, taken from the clock the moment the item is
+first written.
+
+A sequential integer requires every writer to agree on what the last one was, and that agreement
+does not exist. In a single day: `pm new` offered an id a parallel session held as an
+*untracked file*, invisible to an allocator that reads item files and `origin` because an
+untracked file is in neither; it would have offered another an open PR's branch held; and four
+items were created
+in the **same second** by one decomposition fan-out. Forks make it unfixable rather than merely
+awkward — a contributor's `origin` **is their fork**, so no query would tell them the truth.
+
+A clock needs no coordination and no network, which also preserves the offline allocation `pm new`
+deliberately supports. **An id that needs no answer cannot be given a wrong one.** On local
+collision the seconds field steps forward, so a fan-out gets `:34 :35 :36 :37` — ordering
+preserved, deterministic, no randomness.
+
+| Field | Purpose |
+|---|---|
+| `id` | `MO-260801-152634`, or `MO-260729-045` for an item migrated from the integer scheme |
+| filename | `<id>-<slug>.md`, slug ≤ 64 characters cut at a word boundary |
+| `baseSha` | `main`'s tip when the item was written — *what did the repo look like*, which a date only approximates |
+
+**The slug is in the filename, not the id.** The timestamp already makes the id unique, so the
+slug's only job is recognition when browsing a directory — while the id is what `prs:`, `goal:`
+and every cross-reference repeat. Measured across 80 real items the median title slugifies to 47
+characters, so most are shortened; cutting at a word boundary rather than mid-word costs nothing
+and avoids `project-manageme`.
+
+**Migrated ids keep the old number.** `MO-045` created 2026-07-29 becomes `MO-260729-045`, using
+the item's *own* creation date. The migration date would collapse every item onto one day and
+destroy the chronology; dropping the number would break `grep MO-045` against a git history,
+commit messages and merged pull requests that cannot be rewritten.
+
+Goals and requests keep sequential ids. They are rare, written deliberately, and have never
+collided.
 
 **One file per item, not one big `roadmap.md`**, because several agents run concurrently and two
 agents updating status in a single file conflict every time. One file per item makes concurrent

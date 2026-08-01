@@ -41,6 +41,7 @@ pnpm build                 # tsc -p tsconfig.build.json
 pnpm morpheus pm validate   # validate hq/product frontmatter
 pnpm morpheus pm index      # regenerate README index tables
 pnpm morpheus pm new roadmap "Title here" --priority P1
+pnpm morpheus pm migrate-ids --check   # integer roadmap ids → the dated scheme (MO-057)
 pnpm morpheus pm block MO-051 --needs "what would unblock this"
 pnpm morpheus pm unblock MO-051
 pnpm morpheus heartbeat            # what should happen next, and whether anything should
@@ -66,10 +67,20 @@ morpheus pm claim MO-014     # stakes the branch on origin, sets in-progress, pu
 
 The remote branch **is** the claim — `pm claim` refuses if `origin` already has `mo-014-*`.
 
-`pm new` allocates ids against the remote as well as the item files, because the files only hold
-ids that have already merged — an id another session holds sits on its branch and nowhere else.
-If `origin` cannot be reached it still allocates, but says so; treat that id as provisional until
-`pm claim` accepts it.
+**Roadmap ids come from the clock** — `MO-260801-152634`, `PREFIX-YYMMDD-HHMMSS` at first write.
+No remote is consulted because none can help: a fork contributor's `origin` is their fork, so no
+query would say which ids Morpheus has issued. On collision the seconds field steps forward, so a
+fan-out gets `:34 :35 :36 :37` and ordering survives. Filenames add a slug — `<id>-<slug>.md`,
+≤ 64 characters, cut at a word boundary — so the directory reads; the id stays short because it
+is what `prs:` and every cross-reference repeat.
+
+Items migrated from the old integer scheme read `MO-260729-045`: their own creation date plus the
+old number, so `grep MO-045` still resolves against git history that cannot be rewritten.
+
+**Goals and requests are still sequential**, and for those `pm new` allocates against the remote
+as well as the item files, because the files only hold ids that have already merged — an id
+another session holds sits on its branch and nowhere else. If `origin` cannot be reached it still
+allocates, but says so; treat that id as provisional until `pm claim` accepts it.
 
 **Never create the branch by hand.** `pm claim` derives it from the item id, so the two cannot
 disagree; hand-naming has already failed `check pr` twice by referencing an id that did not exist

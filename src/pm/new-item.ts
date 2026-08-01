@@ -2,8 +2,10 @@ import { writeFile } from "node:fs/promises";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { claimedNumbers } from "./claim.js";
+import { itemFilename, timestampId } from "./id.js";
 import { parseArtifact } from "./parse.js";
 import { ARTIFACTS, type ArtifactKind } from "./schema.js";
+import { headSha } from "./git-sha.js";
 
 /** Infix per artifact kind. Roadmap items get the bare project prefix. */
 const INFIX: Record<ArtifactKind, string> = {
@@ -39,8 +41,22 @@ export async function nextId(
   kind: ArtifactKind,
   prefix: string,
   cwd: string,
+  now: Date = new Date(),
 ): Promise<Allocation> {
   const { items } = await parseArtifact(productDir, kind);
+
+  // Roadmap ids come from the clock (MO-057). No remote is consulted because
+  // none can help: a fork contributor's `origin` is their fork, so there is no
+  // query that would tell them which ids Morpheus has issued. Allocation that
+  // needs no answer cannot be given a wrong one — so `blind` is false here, not
+  // suppressed.
+  if (kind === "roadmap") {
+    const taken = items.map((i) => (i.data as { id: string }).id);
+    return { id: timestampId(prefix, taken, now), blind: false };
+  }
+
+  // Goals and requests keep sequential ids: they are rare, written
+  // deliberately, and have never collided.
   const local = items
     .map((i) => /(\d+)$/.exec((i.data as { id: string }).id)?.[1])
     .filter((n): n is string => Boolean(n))
@@ -123,6 +139,9 @@ export async function createItem(opts: NewItemOptions): Promise<NewItem> {
         prs: [],
         created: date,
         updated: date,
+        // What the repo looked like when this was written. Absent rather than
+        // empty when git cannot say — see git-sha.ts.
+        baseSha: (await headSha(cwd)) ?? undefined,
       });
       body = "## Context\n\n_Why this matters._\n\n## Approach\n\n_How it will be done._\n";
       break;
@@ -150,7 +169,12 @@ export async function createItem(opts: NewItemOptions): Promise<NewItem> {
       break;
   }
 
-  const path = join(dir, `${id}.md`);
+  // Roadmap filenames carry a slug so the directory is readable; the id stays
+  // out of it short, since that is what `prs:`, `goal:` and cross-references
+  // repeat. Goals and requests keep `<id>.md` — there are few of them and their
+  // ids already read as words.
+  const name = kind === "roadmap" ? itemFilename(id, title) : `${id}.md`;
+  const path = join(dir, name);
   await writeFile(path, `${fm}\n${body}`, "utf8");
   return { path, id, blind };
 }
