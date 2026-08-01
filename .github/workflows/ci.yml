@@ -24,3 +24,22 @@ jobs:
     uses: ./.github/workflows/pr-check.yml
     with:
       product-dir: hq/product
+
+  # Verifier rung 2. Advisory by design — it never blocks the merge, and it
+  # reports itself as skipped rather than green when no key is configured.
+  agent-review:
+    uses: ./.github/workflows/agent-review.yml
+    # A called workflow cannot request more than its caller was granted, and a
+    # caller job with no `permissions` block gets the repository default —
+    # read-only here. Without this the *entire* workflow file is rejected and
+    # nothing runs: "The nested job 'review' is requesting 'pull-requests:
+    # write', but is only allowed 'pull-requests: none'." Took down all of CI
+    # on the first push of this branch.
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      product-dir: hq/product
+      morpheus-ref: ${{ github.sha }}
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

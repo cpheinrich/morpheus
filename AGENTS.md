@@ -21,6 +21,8 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `src/cli/` | The `morpheus` command |
 | `hq/product/` | Morpheus's own roadmap and goals — it eats its own dog food |
 | `.github/workflows/` | Reusable workflows called by every project |
+| `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
+| `qa/acceptance/` | Acceptance criteria per item, named by `RoadmapItem.acceptance` |
 | `tests/` | Vitest, mirroring `src/` |
 | `.agent/worklog/` | What was attempted and learned per task, including dead ends |
 | `.agent/decisions.md` | Settled choices and why — **read this first** |
@@ -42,6 +44,7 @@ pnpm morpheus pm new roadmap "Title here" --priority P1
 pnpm morpheus pm block MO-051 --needs "what would unblock this"
 pnpm morpheus pm unblock MO-051
 pnpm morpheus heartbeat            # what should happen next, and whether anything should
+pnpm morpheus review prompt        # the rung-2 reviewer prompt for this branch
 pnpm morpheus registry list        # every Morpheus project on this machine
 pnpm morpheus brand status         # what the brand package still needs
 pnpm morpheus brand build          # regenerate from an edited hq/brand/answers.md
