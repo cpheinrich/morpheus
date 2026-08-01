@@ -3,174 +3,182 @@ owner: cpheinrich
 date: 2026-08-01
 agents:
   - claude
-previous: .agent/inbox-archive/2026-07-31-2200-cpheinrich.md
+previous: .agent/inbox-archive/2026-08-01-1300-cpheinrich.md
 ---
+# Inbox — 2026-08-01 (evening)
 
-# Inbox — 2026-08-01
+**The heartbeat and verifier work is done — five items specced, built, tested and merged.** PRs
+[#50](https://github.com/cpheinrich/morpheus/pull/50), [#51](https://github.com/cpheinrich/morpheus/pull/51),
+[#53](https://github.com/cpheinrich/morpheus/pull/53), [#54](https://github.com/cpheinrich/morpheus/pull/54),
+[#55](https://github.com/cpheinrich/morpheus/pull/55). Tests went 303 → 412. Morpheus now has a
+scheduled heartbeat, a third exit for agents that hit ambiguity, and a named four-rung verifier
+stack.
 
-**All four of your replies are acted on, and one of them dissolved a blocker rather than solving
-it.** You could not find a personal Vercel account because there is no personal Vercel account —
-neither `cpheinrich.com` nor `heinrichbros.com` is on Vercel at all. Both serve from Cloudflare.
-That premise had been carried through three cycles unchallenged; item 1 has the evidence and it is
-closed.
+**The most useful thing I found was not new.** I went looking for "net-new edges worth making
+explicit" expecting to invent some, and instead every edge worth drawing was **already declared in
+the schema and traversed by nothing**. `JournalEntry.outcome` has had `blocked` in its enum since
+MO-001. `RoadmapItem.acceptance` had never been set by a single item, in fifty-one of them. Twice
+out of three, the concept was anticipated and only the path was missing. That became a written rule:
+draw an edge when the schema declares it and nothing traverses it.
 
-**Morpheus itself moved a lot.** MO-010 finally landed — `architecture.md` restructured, 2048 →
-1458 lines — and the board reconciled MO-045 and MO-046, which had been shipped since the 30th but
-still read `review`. MO-047 is filed for the inbox reader you approved. **MO-004 is agreed as
-next** and is the one thing waiting on nothing but a session.
+**The heartbeat runs today, with no API key, because assess is a ranking function rather than a
+prompt.** That was the one significant departure from the handoff spec, and it is the reason there
+is something working rather than something waiting on you.
 
-**Two of your three sites run locally; the third does not boot.** heinrichbros.com fails before it
-serves a byte, for two stacked reasons, both in item 3. That is the reason not to merge its PR yet.
-
-Also: the home folder reorganisation is done — everything is under `~/code` and `~/cowork` now, and
-a handoff sits in `local/handoffs/2026-07-31-home-refactor-and-mo-010.md`.
+**Your browser rule is in** — `AGENTS.md` and `decisions.md`, with the boundary written explicitly:
+it applies when browser use is the *single, entire* obstacle, and does not touch cases where you are
+wanted for judgment. I used it twice today, once to read a CI failure the GitHub API would not give
+me, and once on your heinrichbros question below.
 
 > `❗` needs you and ends in an empty `~`. `✅` is settled. Reply after the empty `~`.
 
-## ✅ 1. There is no personal Vercel account — the sites are on Cloudflare · `claude`
+## ❗ 1. heinrichbros.com — you did fix that, and it broke somewhere new · `claude`
 
-~ *(previous: "I can't find my personal Vercel account… are we sure cpheinrich and heinrichbros are on Vercel?")*
+~ *(previous: "What I thought this was fixed. Is it still broken?")*
 
-**They are not, and you are not missing anything.** Evidence:
+**You are half right, and the half you remember is genuinely fixed.** The duplicate `nodejs_compat`
+is gone — `vite.config.ts:16` now carries only a `compatibility_date`, so the miniflare error I
+reported is no longer reachable.
 
-| Repo | `.vercel/project.json` | Serves from |
-| --- | --- | --- |
-| cpheinrich.com | none | Cloudflare (`server: cloudflare`) |
-| heinrichbros.com | none | Cloudflare Worker — `wrangler.jsonc` with custom-domain routes and a `FAMILY_AUTH` KV binding |
-| lakina | none | — |
-| darwin | `team_WvHuh3zpY4O68wXCIUolqksG` | Vercel |
-| evo | `team_WvHuh3zpY4O68wXCIUolqksG` | Vercel |
+It still does not boot, but for a **third reason neither of us has seen**, and it now fails earlier
+than either of the previous two:
 
-Only Darwin and Evo are on Vercel, both under the same team. The earlier item assumed the two
-personal sites needed a personal Vercel account to *deploy to*; they were already deployed
-elsewhere. Nothing to create, nothing to paste.
+```
+ERR_PNPM_IGNORED_BUILDS: esbuild@0.27.3, sharp@0.34.5, unrs-resolver@1.12.2, workerd@1.20260515.1
+Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+```
 
-**This retires the blocker but not MO-011.** "Post the staging URL into the PR description" was
-parked behind the Vercel token — for Darwin and Evo that still holds. For the Cloudflare repos the
-preview story is different, and MO-011 should say which repos it covers before it is claimed.
+pnpm 11 refuses to run those packages' postinstall scripts until they are approved, and `pnpm dev`
+runs an install first — so it dies before wrangler is ever invoked. **This means the old
+compatibility-date problem is now untested rather than fixed**: I could not get far enough to see
+whether `2026-07-25` in `wrangler.jsonc` still exceeds what workerd `1.20260515.1` supports.
+Installed wrangler is still `4.92.0`; latest is `4.118.0`.
 
-One thing this exposes, raised as item 5.
+Two other things worth knowing, found while in there:
 
-## ✅ 2. MO-004 is next · `claude`
+- **The repo has no committed lockfile at all** — none in `web/`, none at root. That is why the
+  approval prompt appears fresh on every machine, and it is the more interesting of the two.
+- The app moved to `web/` in PR #1, so the paths in my previous report are stale.
 
-~ *(previous: "Yes the custom claims make sense. Go for it.")*
+I left the repo exactly as found, removing the `pnpm-lock.yaml` and `pnpm-workspace.yaml` my install
+generated. **I did not fix it** — it is a second repo on an open branch, and you asked a question
+rather than for a change.
 
-Recorded in `.agent/decisions.md`. Not claimed, because a claim marks an item in-progress and
-stakes a branch, and I did not want to hold it open across a session boundary — the next session
-claims it and starts clean.
-
-Worth knowing before it starts: Darwin's implementation is the reference, and the generalisation is
-mostly about what stays project-specific. The claim gates both the route and the Firestore rule
-from one fact, which is the property worth preserving.
-
-## ❗ 3. Two sites run; heinrichbros.com does not boot · `claude`
-
-~ *(previous: "I want to verify everything looks ok… can you launch three browser windows with each one of these sites running locally?")*
-
-Two are up and open in the browser pane:
-
-| Site | Port | State |
-| --- | --- | --- |
-| **cpheinrich.com** | 3101 | Renders. No console errors. One empty image block on the hero right — worth a look, it may be intentional |
-| **lakina** | 3103 | Renders — the minimal "Carve your own path." splash |
-| **heinrichbros.com** | 3102 | **Fails to start** |
-
-heinrichbros.com fails for two stacked reasons, and the first hides the second:
-
-1. **`nodejs_compat` is declared twice** — `wrangler.jsonc:6` and `vite.config.ts:16`. vinext merges
-   both in dev, and miniflare refuses to start on a duplicated compatibility flag. I confirmed the
-   fix by deleting the `vite.config.ts` copy, which is the right one to lose since `wrangler.jsonc`
-   is the deploy source of truth. **I reverted it** — see below.
-2. **The bundled runtime is too old.** With the flag fixed it gets one step further and stops on
-   `requires compatibility date "2026-07-25", but the newest supported is "2026-05-22"`. Installed
-   wrangler is `4.92.0` / workerd `1.20260515.1`; latest wrangler is `4.118.0`.
-
-So the real fix is one line plus a dependency bump. **I reverted my change and left the repo
-exactly as found**, because a partial fix that still does not boot is worse than a clear report,
-and I was not going to bump dependencies unattended on a branch with an open PR.
-
-Note the live site is fine — production reads only `wrangler.jsonc`, so only dev is broken. That is
-also why nobody noticed.
-
-**Do you want me to do the fix as its own PR in that repo** — remove the duplicate flag, bump
-wrangler, verify it boots — before you merge #1? I would not merge the retrofit PR until this is
-sorted, since "I verified it looks ok" is exactly what you cannot do right now.
+The fix looks like three things: commit an `onlyBuiltDependencies` list, commit a lockfile, bump
+wrangler. **Want that as its own PR over there?**
 
 ~
 
-## ✅ 4. MO-047 filed for the inbox reader · `claude`
+## ✅ 2. The three questions your spec delegated, and how I answered them · `claude`
 
-~ *(previous: "this sounds like a nice utility so lets build it, its just not the end of the story.")*
+**Verifiers are a concept, not a directory.** The four rungs already live in four places —
+`.github/workflows/` for 1 and 2, `qa/acceptance/` for 3, a pull request for 4 — so a `verifiers/`
+directory would have held nothing but pointers. `qa/` keeps holding artifacts. What was missing was
+*vocabulary*, and the evidence is direct: with no word for "the thing that checks the doer", nobody
+had noticed for two months that rung 3 had no input.
 
-[MO-047](../product/roadmap/MO-047.md), P2. `morpheus inbox status` walks the registry and prints
-every open `❗` across all repos, so the terminal is the front door and the files stay where they
-are.
+**Which edges to draw.** Three qualified under the dangling-field test; two did not
+(`Request.roadmap` and `Goal.current` — one use each, so *extract on the second use* applies).
 
-Your "not the end of the story" is written into the item as an explicit non-goal: it is a *reader*,
-replying from one place is unsolved, and that should be decided after living with the reader rather
-than designed now. Three details are specified because they are where this kind of tool goes wrong:
-an unreadable inbox reports as `null` rather than zero, staleness is printed rather than hidden
-(Evo's stale inbox is the motivating case), and dead registry paths warn instead of failing the
-run.
+**Two net-new verifier ideas**, both from applying your spec's own definition to what Morpheus
+already did:
 
-## ❗ 5. Three manifests record no deviations and no domain · `claude`
+1. `check pr` accepted `skip-tests:` and `records-only:` from the author of the PR it was checking,
+   **silently**. By that definition it is not verification. Both stay allowed; they are now visible.
+   → MO-052
+2. A blocked outcome must name its unblocker, or it is a crash with better manners. → MO-049
 
-Found while answering item 1, and it is the reason that item survived three cycles.
+## ✅ 3. What each item actually does · `claude`
 
-`architecture.md` §4 says the canonical stack lives in the spec and only *deviations* are recorded
-per project. But heinrichbros.com runs on Cloudflare Workers rather than the canonical Vercel and
-its `morpheus.json` has no `deviations` key at all. Neither does cpheinrich.com or Lakina. None of
-the three sets `domain` either.
+| Item | What landed |
+| --- | --- |
+| [MO-048](../product/roadmap/MO-048.md) | The specification: work graph, blocked, verifier stack, your browser rule |
+| [MO-049](../product/roadmap/MO-049.md) | `pm block` / `pm unblock` — three records, `needs` required by the schema |
+| [MO-050](../product/roadmap/MO-050.md) | `morpheus heartbeat` plus a scheduled workflow, twice on weekdays |
+| [MO-051](../product/roadmap/MO-051.md) | Agent review rung, persona as a versioned file, `acceptance` finally traversed |
+| [MO-052](../product/roadmap/MO-052.md) | Waivers report as `~ waived`, carrying their stated reason |
 
-A deviation nobody recorded is indistinguishable from the canonical choice. That is precisely how
-"both sites are personal, so both go on Hobby" got written down as fact and carried forward three
-times without anyone checking.
+Try it:
 
-Two things could follow, and I would like your call on which:
+```sh
+morpheus heartbeat
+morpheus pm block MO-005 --needs "which dashboard sections matter first"
+```
 
-- **Just backfill the three manifests** — small, and it fixes today's wrongness.
-- **Make `doctor` check it** — if a repo has a `wrangler.jsonc` or a `.vercel/` link that disagrees
-  with the canonical stack and no matching `deviations` entry, say so. This is the version that
-  stops it recurring, and it is a real item rather than a five-minute edit.
+Run against the real board, the heartbeat picked MO-005 — P1, serves the live goal, oldest of the
+P1s. That is what I would have picked by hand.
+
+## ✅ 4. Three bugs found on the way, all the same shape · `claude`
+
+Each was invisible because **nothing read the value**:
+
+- **`src/inbox/parse.ts` matched roadmap ids as `RM-\d{3,}`** — a prefix retired in MO-002. No
+  current id could match, so every roadmap link in every inbox heading had been silently dropped for
+  as long as the current ids have existed.
+- **A bare `skip-tests:` captured the next line of the PR body as its reason.** `\s` includes
+  newlines, so the regex crossed the blank line and read `## Test plan` as a perfectly good
+  justification — a non-reason passing as a real one, inside the fix for exactly that.
+- **`RoadmapItem.acceptance` had never been set**, so nothing ever complained that rung 3 had no
+  input.
+
+One lesson, three times in a day: *a field nobody reads cannot be observed to be broken.*
+
+## ❗ 5. Two things need your key, and nothing else · `claude`
+
+Both are built and tested, and inert until a credential exists. I did not guess which.
+
+**Agent review (rung 2)** runs on every PR right now and reports itself as **skipped** — a job
+summary plus a warning annotation reading "rung 2 is unconfigured — no reviewer ran". It
+deliberately does not go quietly green. Add `ANTHROPIC_API_KEY` to the repo or org secrets and it
+starts working; nothing else changes.
+
+**Heartbeat dispatch** is wired behind `heartbeat.dispatch` in `morpheus.json`, currently `false`.
+Turning it on without a key refuses loudly rather than silently falling back to proposing.
+
+The open question is the one your spec flagged: **which model, and whose subscription pays for it.**
+Your Anthropic API account, or a Claude subscription token? It changes nothing in the code — the
+workflow takes the key as a secret and is otherwise agnostic — but I am not picking which of your
+accounts gets billed.
 
 ~
 
-## ✅ 6. Where every repo stands · `claude`
+## ❗ 6. The heartbeat's schedule has already started · `claude`
 
-| Repo | State | Open PR | Waiting on |
-| --- | --- | --- | --- |
-| **Morpheus** `MO` | 47 items, board valid, 279 tests, no claims | — | MO-004 to be claimed |
-| **Darwin** `DW` | DW-005 added; `/hq` auth live | — | its own inbox |
-| **Evo** `EV` | EV-005 open and green; EV-006/7/8 exist only on that branch | [#12](https://github.com/darwin-health/evo/pull/12) | your call to merge |
-| **cpheinrich.com** `CPH` | runs locally, renders | [#1](https://github.com/cpheinrich/cpheinrich.com/pull/1) | your verification |
-| **heinrichbros.com** `HB` | **does not boot locally** | [#1](https://github.com/heinrichbros/heinrichbros.com/pull/1) | item 3 |
-| **Lakina** `LK` | runs locally, renders | [#3](https://github.com/lakinacapital/lakina/pull/3) | your verification |
+`schedule.yml` runs at 09:00 and 17:00 on weekdays, matching the inbox rhythm. GitHub ignores
+`schedule:` on branches, so **it began when MO-050 merged** — beats will appear in the Actions tab
+without you doing anything.
 
-**EV-006, EV-007 and EV-008 are unreachable until #12 merges** — all three were created on the
-EV-005 branch, so they do not exist on `main`. EV-007 is separately blocked on you: it says the
-typeface is the design session's call.
+It writes nothing to the repo and starts no work. Each beat is a job summary naming the next item
+and why. If twice a day is noise, it is a one-line change.
+
+Worth knowing: **GitHub disables a scheduled workflow automatically after 60 days without repo
+activity.** Not a concern now, but it is the failure mode where a heartbeat quietly stops and nobody
+notices — worse than not having one.
+
+Leave it at twice daily?
+
+~
+
+## ✅ 7. Where the repos stand · `claude`
+
+| Repo | State | Waiting on |
+| --- | --- | --- |
+| **Morpheus** `MO` | 55 items, board valid, 412 tests, no open claims | your key, for two inert features |
+| **heinrichbros.com** `HB` | does not boot locally — new reason, item 1 | your call on a fix PR |
+| **Darwin** `DW` · **Evo** `EV` · **cpheinrich.com** `CPH` · **Lakina** `LK` | untouched this session | their own inboxes |
+
+A parallel session merged MO-053 and MO-054 while I worked. No collision — `pm new` allocated around
+it correctly, which is MO-040's id-allocation fix doing its job unprompted.
 
 ## Parked
 
-**28 stale local branches in this repo will block future claims.** `pm claim MO-010` died on
-`fatal: a branch named 'mo-010-…' already exists` — a leftover from PR #31. `pm claim` refuses
-gracefully when *origin* has the branch but passes git's raw error through for a local one. Worth
-an item; not filed, because you did not ask for one.
+**28 stale local branches still block future claims.** Unchanged, and it bit again: `pm claim`
+passes git's raw error through for a local branch where it refuses gracefully for a remote one.
+Still not filed, since you have not asked for it.
 
-**MO-010's length target was missed deliberately** — 29% rather than the ~50% the item asked for.
-The open question is in [PR #46](https://github.com/cpheinrich/morpheus/pull/46) and unanswered: if
-the diagrams and lookup tables are fair game, a second pass gets much closer. I did not assume they
-were.
+**Committing your inbox replies would red CI.** It happened again — your reply to item 3 consumed
+the `~` slot, so `inbox validate` failed on `main` all session. `pm block` is built to append to an
+invalid inbox precisely because that is the normal mid-cycle state.
 
-**Evo's EV-004 reads `review` but shipped as PR #10.** Same drift MO-045/046 had. Left alone
-deliberately — it self-heals on Evo's next `pm claim`, and the file sits inside your open #12.
-
-**Committing your inbox replies would red CI.** Unchanged, and it did not bite this cycle either
-since you edited on `main`.
-
-**Evo's brand design session.** Still the thing gating Evo's brand work, still wants you in the
-room. Evo's inbox, Evo's call.
-
-**Lakina's Vercel team.** Unchanged — one paid seat, waiting on you.
-
-**Google billing.** Unchanged.
+**Evo's brand design session**, **Lakina's Vercel seat**, and **Google billing** — all unchanged,
+all yours.
