@@ -307,7 +307,9 @@ describe("baseSha", () => {
     // The external-contributor case: a fork whose `origin/main` is behind what
     // the contributor is working from. Recording upstream's tip would assert
     // they were on code they never ran.
-    await git("init", "-q", ".");
+    // `-b main` explicitly: the runner's init.defaultBranch is `master`, so
+    // assuming the name is what this test failed on in CI.
+    await git("init", "-q", "-b", "main", ".");
     await git("config", "user.email", "t@example.com");
     await git("config", "user.name", "T");
     await git("commit", "-q", "--allow-empty", "-m", "first");
