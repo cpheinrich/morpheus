@@ -1,0 +1,20 @@
+name: Schedule
+
+# Morpheus's own scheduled runs — the counterpart to ci.yml, which covers
+# push and pull_request. It calls the same reusable workflows it ships, so a
+# broken schedule breaks here first.
+#
+# Twice on weekdays, matching the inbox rhythm: a beat is only useful at a
+# cadence a human actually reads.
+
+on:
+  schedule:
+    - cron: "0 9,17 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  heartbeat:
+    uses: ./.github/workflows/heartbeat.yml
+    with:
+      product-dir: hq/product
+      morpheus-ref: ${{ github.sha }}
