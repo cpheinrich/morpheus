@@ -51,9 +51,18 @@ export const looseString = z.preprocess(
   z.string().min(1),
 );
 
+/**
+ * `blocked` is the third exit, alongside finishing and failing.
+ *
+ * Without it an agent that meets real ambiguity takes the worse option and
+ * guesses, because there is nowhere to put "started, stopped, here is what I
+ * need". It sits next to `in-progress` rather than near `dropped`: the work is
+ * live and its branch is still held, it is just waiting on an answer.
+ */
 export const RoadmapStatus = z.enum([
   "backlog",
   "in-progress",
+  "blocked",
   "review",
   "shipped",
   "dropped",
@@ -61,18 +70,33 @@ export const RoadmapStatus = z.enum([
 
 export const Priority = z.enum(["P0", "P1", "P2", "P3"]);
 
-export const RoadmapItem = z.object({
-  id: z.string().regex(ROADMAP_ID, "must look like EV-014"),
-  title: z.string().min(3),
-  status: RoadmapStatus,
-  priority: Priority.default("P2"),
-  goal: z.string().regex(GOAL_ID).optional(),
-  owner: z.enum(["agent", "human"]).default("agent"),
-  prs: z.array(z.number().int().positive()).default([]),
-  acceptance: z.string().optional(),
-  created: isoDate,
-  updated: isoDate,
-});
+export const RoadmapItem = z
+  .object({
+    id: z.string().regex(ROADMAP_ID, "must look like EV-014"),
+    title: z.string().min(3),
+    status: RoadmapStatus,
+    priority: Priority.default("P2"),
+    goal: z.string().regex(GOAL_ID).optional(),
+    owner: z.enum(["agent", "human"]).default("agent"),
+    prs: z.array(z.number().int().positive()).default([]),
+    acceptance: z.string().optional(),
+    /** What would unblock this. Required when `status` is `blocked`. */
+    needs: z.string().optional(),
+    created: isoDate,
+    updated: isoDate,
+  })
+  /**
+   * A blocked item must name its unblocker.
+   *
+   * "I am blocked" without "here is what I need" is a crash with better
+   * manners — it stops the work and hands the reader nothing to act on. Making
+   * it a schema rule rather than a convention means `pm validate` catches it in
+   * CI, so the requirement costs no new mechanism.
+   */
+  .refine((item) => item.status !== "blocked" || (item.needs?.trim().length ?? 0) > 0, {
+    error: 'status "blocked" requires a non-empty "needs" — say what would unblock it',
+    path: ["needs"],
+  });
 
 export const Goal = z.object({
   id: z.string().regex(GOAL_ID, "must look like EV-G-2026-Q3-01"),

@@ -6,9 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-048](./MO-048.md) | Work graph edges, blocked as an outcome, and the verifier stack | review | P0 | MO-G-2026-Q3-01 | — |
-| [MO-053](./MO-053.md) | Cloudflare Email Sending is the canonical transactional email service | review | P2 | MO-G-2026-Q3-01 | — |
-| [MO-049](./MO-049.md) | Blocked is a first-class outcome, routed to the inbox | backlog | P0 | MO-G-2026-Q3-01 | — |
+| [MO-049](./MO-049.md) | Blocked is a first-class outcome, routed to the inbox | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-050](./MO-050.md) | Heartbeat: a scheduled dispatcher over the board | backlog | P0 | MO-G-2026-Q3-01 | — |
 | [MO-005](./MO-005.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-006](./MO-006.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -29,6 +27,7 @@ item files, not this table.
 | [MO-035](./MO-035.md) | Reusable checks only worked in the repo that defines them | shipped | P0 | MO-G-2026-Q3-01 | #28 |
 | [MO-036](./MO-036.md) | A freshly scaffolded project fails pm index --check | shipped | P0 | MO-G-2026-Q3-01 | #29 |
 | [MO-039](./MO-039.md) | kit/design: token pipeline — one generator, not three | shipped | P0 | MO-G-2026-Q3-01 | #32 |
+| [MO-048](./MO-048.md) | Work graph edges, blocked as an outcome, and the verifier stack | shipped | P0 | MO-G-2026-Q3-01 | #50 |
 | [MO-007](./MO-007.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-013](./MO-013.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-015](./MO-015.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | #22 |
@@ -58,5 +57,6 @@ item files, not this table.
 | [MO-041](./MO-041.md) | pm claim is the only documented way to start work | shipped | P2 | — | #34 |
 | [MO-044](./MO-044.md) | Onboarding heading comes from the directory name, not the manifest | shipped | P2 | — | #38 |
 | [MO-046](./MO-046.md) | Reconcile can ship an item whose merged PR did no work | shipped | P2 | — | #42 |
+| [MO-053](./MO-053.md) | Cloudflare Email Sending is the canonical transactional email service | shipped | P2 | MO-G-2026-Q3-01 | #49 |
 | [MO-012](./MO-012.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — |
 <!-- morpheus:end -->

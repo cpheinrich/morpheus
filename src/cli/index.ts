@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { basename, resolve } from "node:path";
-import { claim, claims, create, index, ship, validate } from "./pm.js";
+import { block, claim, claims, create, index, ship, unblock, validate } from "./pm.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
 import { build as brandBuild, check as brandCheck, init as brandInit } from "./brand.js";
@@ -21,6 +21,9 @@ Usage
   morpheus pm new <roadmap|goals|requests> <title> [--priority P1] [--goal G-2026-Q3-01]
   morpheus pm claim <RM-014>
   morpheus pm claims
+  morpheus pm block <MO-051> --needs "<what would unblock this>" [--owner <handle>]
+                            [--context "<where it stopped>"]
+  morpheus pm unblock <MO-051>
   morpheus pm ship [<MO-020> ...]  [--check]
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus inbox validate   [--dir <hq/inbox>]
@@ -65,6 +68,8 @@ interface Flags {
   ts?: string;
   priority?: string;
   goal?: string;
+  needs?: string;
+  context?: string;
   print: boolean;
   positional: string[];
 }
@@ -134,6 +139,12 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--goal":
         flags.goal = argv[++i];
+        break;
+      case "--needs":
+        flags.needs = argv[++i];
+        break;
+      case "--context":
+        flags.context = argv[++i];
         break;
       default:
         flags.positional.push(arg);
@@ -278,7 +289,15 @@ async function main(): Promise<number> {
     case "claim":
       return claim(dir, rest[0] ?? "", process.cwd());
     case "claims":
-      return claims(process.cwd());
+      return claims(dir, process.cwd());
+    case "block":
+      return block(dir, process.cwd(), rest[0] ?? "", {
+        ...(flags.needs ? { needs: flags.needs } : {}),
+        ...(flags.owner ? { owner: flags.owner } : {}),
+        ...(flags.context ? { context: flags.context } : {}),
+      });
+    case "unblock":
+      return unblock(dir, rest[0] ?? "");
     case "ship":
       return ship(dir, rest, process.cwd(), flags.check);
     case "new": {
