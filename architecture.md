@@ -1,9 +1,16 @@
 # Morpheus — Architecture
 
-> **Status:** Draft 2, under active iteration. Decisions marked **[open]** are unresolved and
-> collected in [§21](#21-open-questions). Nothing is implemented yet.
+This is the specification. It states what Morpheus is, what a project it creates looks like, and
+why each choice was made. Decisions carry their reason; they do not carry the argument that
+produced them. Genuine unknowns are collected in [§21](#21-open-questions).
+
+Read it top to bottom the first time: Part I is what this is, Part II is the shape of a project,
+Part III is how work actually happens, Part IV is the subsystems, Part V is how Morpheus itself
+gets built.
 
 ---
+
+# Part I — Orientation
 
 ## 1. What Morpheus is
 
@@ -34,8 +41,6 @@ Chris, plus a small number of family and friends. It is not a product. Three con
 - **Public namespace collisions do not matter.**
 - **Multi-tenancy, billing, and onboarding UX are out of scope.** Forever.
 
----
-
 ## 2. Design principles
 
 1. **Agents are the primary operator; humans review.** Every artifact is chosen for legibility to
@@ -52,8 +57,8 @@ Chris, plus a small number of family and friends. It is not a product. Three con
 
 5. **Reusable code is a dependency, never a copy.**
 
-6. **Templates are copies and that is fine.** Scaffolding is a starting point. Projects diverge.
-   Do not build machinery to keep templates in sync — build machinery to *add* new ones (§13).
+6. **Templates are copies and that is fine.** Scaffolding is a starting point; projects diverge.
+   Do not build machinery to keep templates in sync — build machinery to *add* new ones (§18).
 
 7. **The human checks in once or twice a day.** Anything requiring human input queues rather than
    blocks. Agents must always have work available that needs no approval.
@@ -64,16 +69,21 @@ Chris, plus a small number of family and friends. It is not a product. Three con
 9. **Instructions are advisory; CI is enforcement.** Anything that genuinely must happen on every
    PR is a check, not a sentence in a markdown file.
 
+10. **Extract on the second use, never the first.** Nothing enters the kit until a second project
+    needs it. A wrong abstraction propagates into everything that adopts it.
+
 ---
 
-## 3. Canonical project structure
+# Part II — The shape of a project
+
+## 3. Project structure
 
 ```
 acme/
 ├── README.md                  # human entry point
 ├── AGENTS.md                  # agent entry point — canonical instructions
 ├── CLAUDE.md                  # symlink → AGENTS.md
-├── morpheus.json              # project manifest (§5)
+├── morpheus.json              # project manifest (§4)
 ├── package.json               # workspace root
 ├── pnpm-workspace.yaml
 │
@@ -82,10 +92,10 @@ acme/
 │   │   └── tests/             # unit + component tests, colocated
 │   ├── ios/                   # SwiftUI — optional
 │   │   └── Tests/
-│   └── hardware/              # designs, BOM, vendors — optional
+│   └── hardware/              # designs, BOM, vendors — optional (§19)
 │
 ├── packages/
-│   └── shared/                # cross-surface: tokens, schema, generated types (§4)
+│   └── shared/                # cross-surface: tokens, schema, generated types
 │
 ├── hq/                        # the business layer — rendered at /hq
 │   ├── brand/                 # identity, voice, visual system, messaging, assets
@@ -93,12 +103,13 @@ acme/
 │   ├── marketing/             # SEO, ASO, social, content
 │   ├── finance/               # revenue/expense model, dashboard config
 │   ├── ops/                   # strategy, legal, contracts, vendors, procurement
-│   └── support/               # macros, escalation policy, known issues
+│   ├── support/               # macros, escalation policy, known issues
+│   └── inbox/                 # per-person status exchange (§7.5)
 │
-├── qa/                        # cross-surface QA (§16)
-├── docs/                      # engineering documentation (§17)
-├── infra/                     # deploy config, environments, IaC (§18)
-├── .agent/                    # agent journal and durable notes (§12.4)
+├── qa/                        # cross-surface QA (§9)
+├── docs/                      # engineering documentation (§15)
+├── infra/                     # deploy config, environments, IaC (§14)
+├── .agent/                    # agent records (§7.5)
 ├── .claude/                   # skills, commands
 ├── .github/workflows/         # ci.yml, deploy.yml, agent-*.yml
 └── local/                     # gitignored scratch
@@ -106,29 +117,25 @@ acme/
 
 ### `apps/` and `hq/`
 
-The split is: **`apps/` is deployed and has users; `hq/` is read, decided, and written down.**
+**`apps/` is deployed and has users; `hq/` is read, decided, and written down.**
 
-**Renamed from `company/` to `hq/`** for two reasons. First, not every project is a company —
-`cpheinrich.com` is personal and Morpheus itself is an internal tool, so "company" was wrong for a
-meaningful share of projects. Second, and better, it makes the naming coherent across all three
+Named `hq/` rather than `company/` because not every project is a company — `cpheinrich.com` is
+personal, Morpheus is an internal tool — and because it makes the naming coherent across all three
 layers:
 
 ```
 hq/               the data          (markdown in the repo)
 /hq               the view          (route in apps/web)
-morpheus-kit/hq  the renderer      (package)
+morpheus-kit/hq   the renderer      (package)
 ```
 
-One word, one concept, and the mapping is obvious in both directions: whatever is in `hq/` is what
-`/hq` shows.
-
-The concern about `apps/` needing facts from `hq/` is real and is solved by importing rather than
-syncing — see §15.2.
+Whatever is in `hq/` is what `/hq` shows. Where `apps/` needs a fact from `hq/`, it imports rather
+than copies (§12.3).
 
 ### Project kinds
 
-Not every project needs every subtree. `morpheus.json` carries a `kind`, set by the wizard, which
-determines what gets scaffolded and what `doctor` expects to exist.
+Not every project needs every subtree. `morpheus.json` carries a `kind` that determines what gets
+scaffolded and what `doctor` expects to exist.
 
 | | `company` | `personal` | `internal` |
 |---|---|---|---|
@@ -143,19 +150,19 @@ determines what gets scaffolded and what `doctor` expects to exist.
 | Chatwoot inbox | ✅ | — | — |
 | `/hq/investors` | ✅ | — | — |
 
-**`personal` is the wizard default.** Most projects here are solo — `cpheinrich.com` today,
-`heinrich.money` next — so the common case should need the fewest answers. `company` is the
-deliberate choice you make when collaborators, revenue, or legal entities are involved.
+**`personal` is the wizard default**, because most projects here are solo and the common case
+should need the fewest answers. `company` is the deliberate choice when collaborators, revenue, or
+legal entities are involved.
 
 A **personal** project has no customer support and no corporate legal — a person does not have
-terms of service with themselves. What it does have is `hq/identity/`: the personal equivalent of
-`ops/` holding contact details, professional bio, licence and consent notes for photography, and
-anything else the site needs to state truthfully about a real person.
+terms of service with themselves. It has `hq/identity/` instead: contact details, professional bio,
+licence and consent notes for photography, and anything else the site must state truthfully about a
+real person.
 
 An **internal** project is the minimal case: a roadmap and nothing else.
 
-`kind` is not a hard constraint — `morpheus add support` can bolt a support inbox onto a personal
-project later if it grows one. It sets defaults, not limits.
+`kind` sets defaults, not limits — `morpheus add support` can bolt a support inbox onto a personal
+project that grows one.
 
 ### `packages/shared/`, not `apps/shared/`
 
@@ -164,7 +171,7 @@ consumed by two or more surfaces:
 
 ```
 packages/shared/
-├── tokens/semantic.json    # semantic mapping only — see §15.1a for ownership
+├── tokens/semantic.json    # semantic mapping only — ownership in §12.1
 ├── generated/              # Style Dictionary output
 │   ├── web/tokens.css, tokens.js, tokens.json
 │   └── ios/Tokens.swift
@@ -173,90 +180,12 @@ packages/shared/
 ├── generated/schema/       # codegen output
 │   ├── web/types.ts
 │   └── ios/Models.swift
-└── messaging.json          # taglines, mission, audience — imported by web (§15.2)
+└── messaging.json          # taglines, mission, audience — imported by web (§12.3)
 ```
 
-### Firestore schema — staged, not built all at once
+## 4. The project manifest
 
-**Firestore has no native schema.** It is schemaless by design, so "the canonical way" is a
-convention you pick. The realistic options, in ascending cost:
-
-1. Nothing — the schema lives implicitly in whatever code touches the collection. This is what most
-   projects do and it is exactly how web and iOS drift apart.
-2. TypeScript types plus `withConverter` — web only, no help for Swift.
-3. **Zod schemas in one file, TypeScript types inferred from them** — validation at boundaries and
-   types for free.
-4. Zod as source, plus a generator emitting Swift structs and Firestore rules.
-
-**Recommendation: do 3 now, add 4 when iOS actually starts.**
-
-The key point is that **most of the value comes from having one file, not from the codegen.** A
-single `packages/shared/schema/user.schema.ts` that both surfaces are required to conform to
-already prevents the Polycam-style drift, because there is an unambiguous answer to "what shape is
-this document." Codegen removes the manual transcription step, which matters once a second
-consumer exists — and not before.
-
-```ts
-// packages/shared/schema/entry.schema.ts — the source of truth
-export const Entry = z.object({
-  id: z.string(),
-  userId: z.string(),
-  imageKey: z.string(),          // R2/Storage object key, never a URL
-  calories: z.number().int(),
-  loggedAt: z.string().datetime(),
-});
-export type Entry = z.infer<typeof Entry>;
-```
-
-Stage 1 gives you `Entry` as a TypeScript type and runtime validation at every write. Stage 2 adds
-`generated/ios/Models.swift` and `infra/firebase/firestore.rules` emitted from the same file, so
-rules cannot drift from the shape they guard.
-
-On "real work": the cost is not effort — it is **complexity you have to live with**. A codegen
-pipeline is another CI step that can break and another thing to update when Firebase or Swift
-changes. Deferring stage 2 until iOS exists means you never pay for a generator with one consumer.
-
----
-
-## 4. Where each business function lives
-
-| Function | Location | Form |
-|---|---|---|
-| Web product | `apps/web/` | Next.js app |
-| iOS product | `apps/ios/` | SwiftUI app |
-| Android product | `apps/android/` | Deferred — bolt-on template later |
-| Design tokens | `packages/shared/tokens/` | DTCG JSON → generated |
-| Database schema | `packages/shared/schema/` | TS source → generated types + rules |
-| Brand messaging | `packages/shared/messaging.json` | Imported by web |
-| Analytics | PostHog Cloud + `/hq` KPIs | SaaS + dashboard |
-| Automations | `.claude/skills/`, `.github/workflows/` | Skills + Actions |
-| Staging | Vercel preview per PR | Ephemeral |
-| Unit tests | `apps/*/tests/` | Colocated |
-| E2E tests | `qa/e2e/` | Playwright |
-| QA checklists, acceptance | `qa/` | Markdown |
-| Security posture | `qa/security.md` | Markdown |
-| Cloud infra | `infra/` | Config + IaC |
-| SEO | `hq/marketing/seo/` | Docs + Semrush |
-| ASO | `hq/marketing/aso/` | Docs + ASC integration |
-| Marketing content | `hq/marketing/content/` | Markdown |
-| Identity, mission, audiences | `hq/brand/strategy.md` | Markdown |
-| Finance | `hq/finance/` → rendered at `/hq/finance` | Config + dashboard |
-| Legal, contracts, ToS | `hq/ops/legal/` | Markdown + PDFs |
-| Vendors, procurement | `hq/ops/vendors/`, `apps/hardware/` | YAML |
-| Secrets | `secrets.manifest.json` + GSM | Manifest; values external (§14) |
-| Customer support | Chatwoot + `/hq/support` | Self-hosted + dashboard |
-| Agent instructions | `AGENTS.md`, `.claude/skills/` | Markdown |
-| Agent journal | `.agent/worklog/` | Markdown |
-| Goals, roadmap, requests | `hq/product/` | Markdown |
-| Engineering docs | `docs/` → `/hq/docs` | Markdown + Mermaid |
-| HR | Google Workspace + Gusto | External |
-| Investors | `/hq/investors` | Dashboard view |
-
----
-
-## 5. The project manifest
-
-`morpheus.json` — written by the wizard, read by agents. The `stack` block is gone; the stack is
+`morpheus.json` — written by the wizard, read by agents. There is no `stack` block; the stack is
 canonical and lives in this document. Only *deviations* are recorded.
 
 ```jsonc
@@ -265,18 +194,18 @@ canonical and lives in this document. Only *deviations* are recorded.
   "name": "evo",
   "displayName": "Evo",
   "kind": "company",                 // company | personal | internal (§3)
-  "org": "darwin-health",            // groups sibling repos (§11); omit for personal/internal
+  "org": "darwin-health",            // groups sibling repos (§17); omit for personal/internal
   "domain": "evo.med",
   "description": "One-sentence description.",
   "surfaces": { "web": true, "ios": true, "hardware": false },
   "integrations": ["firebase", "stripe", "posthog", "github", "slack", "semrush"],
-  "accounts": { /* which identity per service — see §14.2 */ },
+  "accounts": { /* which identity per service — see §13.3 */ },
   "hq": {
     "route": "/hq",
     "allowlist": ["you@example.com"],
     "investorAllowlist": []
   },
-  "inherits": {                       // §11 — what comes from the parent company
+  "inherits": {                       // §17 — what comes from the parent company
     "legal": "darwin",
     "hr": "darwin"
   },
@@ -286,75 +215,45 @@ canonical and lives in this document. Only *deviations* are recorded.
 }
 ```
 
----
+The manifest names *which* identity a project operates as; the values live in Secret Manager
+(§13). An agent opening the repo reads this and knows which account it is — the thing that most
+often goes wrong when one person runs several companies.
 
-## 6. Morpheus's own structure
+## 5. Where each business function lives
 
-**One package, not many.** `morpheus-kit` ships everything, with subpath exports so a project
-imports only what it uses. One version number, one install, one registry entry.
+| Function | Location | Form |
+|---|---|---|
+| Web product | `apps/web/` | Next.js app |
+| iOS product | `apps/ios/` | SwiftUI app |
+| Android product | `apps/android/` | Deferred — bolt-on template later |
+| Design tokens | `hq/brand/tokens.json` → `packages/shared/` | DTCG JSON → generated (§12.1) |
+| Database schema | `packages/shared/schema/` | TS source → generated types + rules |
+| Brand messaging | `hq/brand/messaging.json` | Imported by web |
+| Analytics | PostHog Cloud + `/hq` KPIs | SaaS + dashboard |
+| Automations | `.claude/skills/`, `.github/workflows/` | Skills + Actions |
+| Staging | Vercel preview per PR | Ephemeral — no permanent staging environment |
+| Unit tests | `apps/*/tests/` | Colocated |
+| E2E tests | `qa/e2e/` | Playwright |
+| QA checklists, acceptance | `qa/` | Markdown |
+| Security posture | `qa/security.md` | Markdown |
+| Cloud infra | `infra/` | Config + IaC |
+| SEO | `hq/marketing/seo/` | Docs + Semrush |
+| ASO | `hq/marketing/aso/` | Docs + ASC integration |
+| Marketing content | `hq/marketing/content/` | Markdown |
+| Identity, mission, audiences | `hq/brand/strategy.md` | Markdown |
+| Finance | `hq/finance/` → `/hq/finance` | Config + dashboard |
+| Legal, contracts, ToS | `hq/ops/legal/` | Markdown + PDFs |
+| Vendors, procurement | `hq/ops/vendors/`, `apps/hardware/` | YAML |
+| Secrets | `secrets.manifest.json` + GSM | Manifest; values external (§13) |
+| Customer support | Chatwoot + `/hq/support` | Self-hosted + dashboard |
+| Agent instructions | `AGENTS.md`, `.claude/skills/` | Markdown |
+| Agent records | `.agent/` | Markdown (§7.5) |
+| Goals, roadmap, requests | `hq/product/` | Markdown (§8) |
+| Engineering docs | `docs/` → `/hq/docs` | Markdown + Mermaid |
+| HR | Google Workspace + Gusto | External |
+| Investors | `/hq/investors` | Dashboard view |
 
-```
-morpheus/
-├── README.md
-├── architecture.md
-├── AGENTS.md                  # + CLAUDE.md symlink
-├── morpheus.json              # kind: "internal"
-├── package.json               # the single published package
-│
-├── hq/                        # Morpheus eats its own dog food (§5.1)
-│   └── product/
-│       ├── goals/
-│       └── roadmap/
-│
-├── src/
-│   ├── cli/                   # init, add, upgrade, doctor, secrets
-│   ├── hq/                    # dashboard routes + components
-│   ├── design/                # semantic tokens + React components
-│   ├── agent/                 # AGENTS.md fragments, skills, review tooling
-│   ├── integrations/          # Stripe, Firebase, PostHog, Chatwoot, Slack adapters
-│   ├── analytics/             # event schema + PostHog helpers
-│   ├── pm/                    # roadmap/goal schemas + parsers
-│   └── qa/                    # test harness, CI actions
-│
-├── templates/
-│   └── base/  web/  ios/  hardware/  brand/  android/
-├── .github/workflows/         # reusable workflows called by every project (§13.1)
-├── .agent/worklog/
-├── tests/
-└── docs/
-```
-
-### 5.1 Morpheus's own `hq/`
-
-You are right that it needs one. As `kind: "internal"` it gets the minimal subtree — `hq/product/`
-with `goals/` and `roadmap/`, and nothing else. No brand, no marketing, no finance, no support:
-Morpheus has no customers and does not bill anyone.
-
-This is the smallest honest instance of the structure, which makes it a useful test. If the roadmap
-schema is awkward here, it is awkward everywhere.
-
-Note that `src/hq/` (the renderer, shipped in the package) and `hq/` (Morpheus's own data) sit side
-by side in this repo without colliding — one is code the kit exports, the other is content this
-repo owns. Every other project has only the latter.
-
-Consumers import subpaths:
-
-```ts
-import { HqShell } from "morpheus-kit/hq";
-import { Button } from "morpheus-kit/design";
-```
-
-Heavy or surface-specific dependencies are declared as **optional peer dependencies**, so a
-web-only project never installs hardware or iOS tooling. If install weight becomes a real problem
-later, splitting one package into several is a mechanical change — starting split and merging
-later is not. Start together.
-
-The CLI is exposed as a `bin` from the same package, installed globally:
-`pnpm add -g morpheus-kit`.
-
----
-
-## 7. Canonical tool choices
+## 6. Canonical tool choices
 
 ### Bought
 
@@ -367,12 +266,12 @@ The CLI is exposed as a `bin` from the same package, installed globally:
 | Email, accounts | **Google Workspace** | |
 | Code hosting, CI, packages | **GitHub** | Substrate for everything else |
 | Messaging | **Slack** | Agent notification target |
-| DNS, CDN, public media | **Cloudflare** | Registrar, CDN, R2 (§19) |
+| DNS, CDN, public media | **Cloudflare** | Registrar, CDN, R2 (§14.3) |
 | SEO research | **Semrush** | Data moat |
 | Agents | **Claude + Codex** | |
 | Error tracking | **Sentry** | |
-| **Web hosting** | **Vercel** | §9 — decided on the review loop, not the hosting |
-| **Product analytics** | **PostHog Cloud** | §8 |
+| Web hosting | **Vercel** | §10.2 — decided on the review loop |
+| Product analytics | **PostHog Cloud** | §10.3 |
 | Hardware | **Macs** | |
 
 ### Built and maintained in Morpheus
@@ -383,95 +282,271 @@ The CLI is exposed as a `bin` from the same package, installed globally:
 | Project management | Goals/roadmap/requests as markdown in git beats any API |
 | QA tracking | Checklists next to the code they check |
 | Automations | GitHub Actions + skills; no Zapier |
-| Review queue | GitHub PRs + `decision` issues (§12.3) |
+| Review queue | GitHub PRs + `decision` issues (§7.4) |
 | Investor reporting | A view over the same data, gated differently |
 
 ### Self-hosted
 
 | Function | Choice | Notes |
 |---|---|---|
-| Customer support | **Chatwoot** | §20 — deployed at `support.<domain>`, surfaced in `/hq/support` |
+| Customer support | **Chatwoot** | §16 — at `support.<domain>`, surfaced in `/hq/support` |
 
 ### Stack defaults
 
 Next.js (App Router) · React · TypeScript · Tailwind · pnpm · Style Dictionary (DTCG) ·
-Vitest + React Testing Library · Playwright (E2E) · SwiftUI · Auth.js with Google OAuth ·
-uv + ruff + pytest where Python is needed.
+Vitest + React Testing Library · Playwright (E2E) · SwiftUI · uv + ruff + pytest where Python is
+needed.
 
 ---
 
-## 8. Analytics: PostHog
+# Part III — How work happens
 
-**Decision: PostHog Cloud.** It is a strong fit and self-hosting is strictly worse.
+## 7. The agent operating model
 
-### Why it fits
+### 7.1 Instruction layering
 
-The positioning you responded to is backed by the actual product surface. PostHog bundles product
-analytics, session replay, feature flags, experiments, surveys, and error tracking in one tool
-with one SDK — which collapses five vendors into one and, more importantly, gives an agent one
-place to look.
+- **`AGENTS.md` (root)** — canonical, project-wide. `CLAUDE.md` symlinks to it so Claude and Codex
+  read exactly one file. Generated at init from `morpheus-kit/agent` fragments plus project
+  specifics, with a marked region the CLI can update on `morpheus upgrade`.
+- **`apps/web/AGENTS.md`** — surface-specific.
+- **`.claude/skills/`** — named, repeatable procedures.
 
-**SDK coverage is complete for our surfaces:** official libraries for React, iOS (Swift, moving to
-Swift Package Manager as CocoaPods goes read-only in December 2026), Android, and React Native.
-Android is covered before we build it.
+### 7.2 Conventions and how they are enforced
 
-**It has an official MCP server**, so an agent can query trends, funnels, retention, and raw HogQL
-without a bespoke integration. This is the mechanism for the ingestion loop in §12.5 — the agent
-reads product metrics the same way it reads a file.
+The conventions: every PR includes tests where testable, updates docs when behaviour changes,
+carries a staging link, updates roadmap status, states a test plan, lists open questions, and
+records self-review.
 
-### Cost
+| Layer | Mechanism | Strength |
+|---|---|---|
+| Instruction | `AGENTS.md` | Advisory — agents mostly comply |
+| Visible | `.github/pull_request_template.md` | Social |
+| **Enforced** | **`ci.yml` — `morpheus check pr`** | **Blocking** |
 
-Free tier, per month: **1M events**, 5K web session replays, 1M feature flag requests, 100K
-exceptions, 1M data warehouse rows, 1,500 survey responses. No platform or base fee.
+`morpheus check pr` fails the build when: source files changed without corresponding test changes
+and no `skip-tests` justification is present; a public API changed without a `docs/` change; the PR
+body is missing required sections; or the roadmap item named by the branch was not moved to
+`review`.
 
-Beyond that: **$0.00005/event** — $50 per additional million. Session replay is $0.005/recording
-(web), $0.01 (mobile); flags $0.0001/request; error tracking $0.00037/exception. Rates decrease at
-volume.
+Instructions get ignored eventually. A failing check does not.
 
-Practically: a new project pays nothing for a long time, and a successful one pays tens of dollars
-a month. This is not a cost decision.
+### 7.3 The work loop
 
-### Self-hosting: no
+1. Agents pull work from `hq/product/roadmap/` and `qa/`.
+2. `morpheus pm claim <ID>` starts it — derives the branch from the id, marks the item
+   in-progress, and pushes. Never on `main`.
+3. Push triggers CI and a Vercel preview deploy.
+4. The PR carries a summary, staging link, screenshots, and a test plan.
+5. The human reviews at `/hq/review` or on the Vercel preview, leaving anchored comments.
+6. Comments sync to the PR; the agent ingests them and iterates.
+7. Approval merges and deploys.
 
-PostHog's own documentation recommends against it, and the terms make it clearly wrong here:
+**`pm claim` is the only supported way to start work.** Three things are derived from the item id
+at claim time and cannot be kept in agreement by anyone remembering to: the branch name, the item's
+`in-progress` status, and the claim itself, which *is* the remote branch. `git checkout -b`
+produces none of them, and the failure surfaces at `check pr` — after the work is done and the
+branch is expensive to rename. Recovery is `pm claim` on a fresh branch plus a cherry-pick, which
+is why `check pr` names the command in its failure message.
 
-- **Paid-plan features are Cloud-only.** Self-hosting gets you *fewer* features, not the same ones
-  cheaper.
-- No support, no uptime guarantee, "assume all responsibility and risk."
-- Continuous updates from `main` rather than versioned releases, and **they do not publish CVEs** —
-  so staying secure means tracking the latest Docker image continuously.
-- Recommended only below ~300K events/month, on a 4 vCPU / 16GB VM.
+**`pm claim` reconciles the board first**, marking merged work shipped and recording its PR number,
+so those status changes ride along in the claim commit. Running reconciliation after a merge
+instead leaves the change in a dirty tree on protected `main` with nowhere to go, which is how a
+housekeeping step gets quietly dropped. A board that lags reality stops being read.
 
-Self-hosting costs more operationally, delivers less, and the free Cloud tier is three times the
-volume they consider the self-host ceiling. Not close.
+**Never-blocked rule:** when the queue is full, agents must have a backlog needing no approval —
+tests, docs, refactors, research written to `.agent/`. An idle agent is a design failure.
 
-### Interface
+### 7.4 The review queue is GitHub
 
-Exactly the shape you described: a handful of KPIs rendered in `/hq` (pulled server-side via the
-PostHog API and cached), each linking out to the corresponding PostHog dashboard for depth. We do
-not rebuild PostHog's UI.
+Any design requiring a sync job between GitHub and a database has two copies of the same state and
+a job that can fail. So there is no separate store.
+
+| Item | Lives as | Why |
+|---|---|---|
+| Code awaiting review | **Pull request** | Already the source of truth |
+| Non-code decision | **Issue labeled `decision`** | Structured body, state, assignee, comments, API |
+
+Spending approvals, copy sign-off, and vendor selection are all fine as issues. Agents create them
+via the API; closing one approves it.
+
+`/hq/review` is a **read-only view over the GitHub API**. Nothing to sync, and it degrades
+gracefully: with no `/hq` deployed, the GitHub PR and issue lists *are* the queue — which is
+exactly how Morpheus itself operates (§19.3).
+
+**Firestore is reserved for state the running application must read** — a launch-approval flag the
+web app checks at request time. That is a different need from "a human owes me a decision."
+
+### 7.5 Agent records
+
+Deliberately minimal: markdown in git, no vector database, no external store.
+
+```
+.agent/
+├── decisions.md          settled choices and their reasoning   ← read first
+├── learned.md            technical facts and gotchas           ← read first
+├── inbox-archive/        past cycles of hq/inbox/, with replies
+└── worklog/              what was attempted and learned per task
+```
+
+Two raw logs, each feeding exactly one distillation:
+
+| Raw | Feeds | Answers |
+|---|---|---|
+| `inbox-archive/` | `decisions.md` | *What did we decide, and why?* |
+| `worklog/` | `learned.md` | *What do we know about how this behaves?* |
+
+**`hq/inbox/<handle>.md` is the live exchange** — one file per person, named by GitHub handle, and
+the only file a human is expected to edit. An agent writes a prose summary of what got done, then
+numbered items each ending in a `~` reply slot. The human replies inline. On the next turn the
+agent acts on the replies, promotes anything durable to `decisions.md`, archives the exchange to
+`inbox-archive/`, and writes a fresh inbox. One inbox per *person*, not per session, so two agents
+working for the same human land in one place — and two people never touch the same file, so git
+never merges a status.
+
+Worklog entries carry frontmatter (`agent`, `date`, `roadmap`, `outcome`) and record what was
+attempted, what happened, and what was learned — **including dead ends that produced no code**,
+which is the part git history cannot capture.
+
+Git rather than cloud storage because these are small, textual, appear in PR diffs, and are
+greppable with no authentication. Indexing markdown later is easy; migrating off a bespoke store is
+not.
+
+### 7.6 Ingestion loops
+
+Scheduled agent runs (GitHub Actions cron) that read the world and propose changes:
+
+| Loop | Cadence | Reads | Produces |
+|---|---|---|---|
+| Bug triage | Daily | Sentry, Chatwoot, bug form | Labeled issues, roadmap entries |
+| Analytics review | Weekly | PostHog MCP | `/hq` KPI notes, roadmap proposals |
+| Support sweep | Daily | Chatwoot API | Draft replies queued for approval |
+| Finance sync | Weekly | Stripe, Mercury | `/hq/finance` update |
+| Market research | Monthly | Semrush, web | `hq/marketing/research/` |
+| Roadmap proposal | Weekly | All of the above | **A PR against `hq/product/roadmap/`** |
+
+**Agent proposals arrive as pull requests.** Review is a diff, and the human edits the proposal in
+the same place the agent will read it back from. No separate approval system.
+
+## 8. Project management as files
+
+No Jira, no Linear. Markdown in git, with a validated schema.
+
+### 8.1 One file per item
+
+```
+hq/product/
+├── goals/      README.md (GENERATED index)  ·  MO-G-2026-Q3-01.md
+├── roadmap/    README.md (GENERATED index)  ·  MO-014.md  ·  MO-015.md
+└── requests/   README.md (GENERATED index)  ·  MO-FR-007.md
+```
+
+**One file per item, not one big `roadmap.md`**, because several agents run concurrently and two
+agents updating status in a single file conflict every time. One file per item makes concurrent
+writes conflict-free, gives each item exactly one frontmatter block to validate, and keeps diffs
+readable.
+
+The cost — you can no longer read the whole roadmap in one file open — is paid back by the
+**generated `README.md`** in each directory, rebuilt on every merge. GitHub renders a directory's
+README automatically, so opening `hq/product/roadmap/` shows a table of every item, its status, and
+its PRs. The index is derived and never hand-edited.
+
+### 8.2 Schemas
+
+The source of truth for the *shape* is Zod, exported from `morpheus-kit/pm`. The same schemas
+validate frontmatter in CI, parse files for `/hq`, and generate the index tables — one definition,
+not three.
+
+Ids are project-prefixed, so an id is unambiguous across repos:
+
+```ts
+export const ROADMAP_ID = /^[A-Z]{2,4}-\d{3,}$/;                          // EV-014
+export const GOAL_ID    = /^[A-Z]{2,4}-G-\d{4}-(Q[1-4]|ANNUAL)-\d{2}$/;   // EV-G-2026-Q3-01
+export const REQUEST_ID = /^[A-Z]{2,4}-FR-\d{3,}$/;                       // EV-FR-007
+
+export const RoadmapItem = z.object({
+  id:         z.string().regex(ROADMAP_ID),
+  title:      z.string().min(3),
+  status:     z.enum(["backlog", "in-progress", "review", "shipped", "dropped"]),
+  priority:   z.enum(["P0", "P1", "P2", "P3"]).default("P2"),
+  goal:       z.string().regex(GOAL_ID).optional(),
+  owner:      z.enum(["agent", "human"]).default("agent"),
+  prs:        z.array(z.number().int()).default([]),
+  acceptance: z.string().optional(),        // path into qa/acceptance/
+  created:    z.iso.date(),
+  updated:    z.iso.date(),
+});
+```
+
+`Goal` carries `horizon`, `period`, `metric`, `target`, optional `current` (updated by the
+analytics loop), and `status` of `on-track | at-risk | missed | achieved`. `Request` carries
+`source` (`support | analytics | investor | founder | agent`), `status`
+(`new | triaged | accepted | declined | duplicate`), and an optional `roadmap` id once promoted.
+A worklog entry carries `date`, `agent`, optional `roadmap`, `outcome`
+(`shipped | abandoned | blocked | research`), and `summary`.
+
+An item file is frontmatter plus free prose — the schema constrains the metadata, never the body.
+This is the same validation approach used for Firestore documents (§14.1): **one way to describe a
+shape, whether it lands in a markdown file or a database row.**
+
+> **Gotchas.** YAML silently converts an unquoted `2026-07-01` into a Date object, so frontmatter
+> dates go through `isoDate`, which normalises both forms. A colon in a title breaks YAML — `pm
+> new` quotes scalars defensively, and hand-written frontmatter with a colon must be quoted.
+
+## 9. Testing and QA
+
+Tests are first-class. Agents update tests in the same PR as the code, enforced by CI (§7.2).
+
+**Colocated with the code they test** — `apps/web/tests/`, `apps/ios/Tests/`, never centralised. An
+agent editing a component should find its test in the same tree. `qa/` holds what spans surfaces or
+is not code:
+
+```
+qa/
+├── e2e/                       # Playwright — full user journeys
+├── test-plans/                # per-feature manual test plans, referenced from PRs
+├── checklists/                # pr-review.md, release.md, accessibility.md
+├── acceptance/                # acceptance criteria per roadmap item
+├── known-issues.md            # defects accepted and deferred, with reasons
+└── security.md                # posture, threat notes, dependency policy
+```
+
+| When | Runs | Blocks |
+|---|---|---|
+| Every commit | Lint, typecheck, unit tests | Merge |
+| Every PR | Above + `morpheus check pr` + build | Merge |
+| Pre-deploy | E2E against the preview deployment | Deploy |
+| Human review | Preview link + screenshots + test plan | Deploy |
+
+### The human review artifact
+
+Every PR carries a Vercel preview link, screenshots of changed screens captured in CI, a
+"what to test" list generated from the acceptance criteria, and for iOS a simulator recording plus
+a build link. Web feedback returns as Vercel comments anchored to page elements and synced into the
+PR (§10.2).
+
+### iOS: agents QA their own work
+
+This works today with the standard Xcode toolchain and no special infrastructure — `xcodebuild` to
+build, `xcrun simctl` to boot/install/launch, **XCUITest** to drive the UI (the tests double as the
+QA script), `simctl io` to screenshot and record video, and Firebase App Distribution or TestFlight
+via `fastlane` for real builds. So an agent can implement a change, run it in a simulator, drive
+the flow, and attach a screenshot per step plus a video to the PR.
+
+Physical devices additionally need a provisioning profile and a connected device, so simulator is
+the default for the review loop.
+
+**Feedback convention.** iOS has no anchored-comment equivalent, so screenshots are emitted with
+stable numbered names tied to the test step that produced them — `MO-014-03-paywall-presented.png`
+— and a comment saying "03 — the CTA is too low" is unambiguous. The `ios-ci` workflow enforces the
+naming. Deliberately lower-tech than Vercel Comments and good enough.
 
 ---
 
-## 9. Software architecture and hosting
+# Part IV — The system
 
-### What Next.js is (and Angular)
+## 10. Runtime architecture and hosting
 
-Both are frameworks for building websites and web apps in the browser — the web equivalent of
-choosing SwiftUI vs UIKit. Both are React-era answers to "how do I build a site with many pages,
-shared components, and data fetching."
-
-- **Next.js** is built on React (Meta's UI library) and is the mainstream default for new web
-  work. It renders pages on the server for speed and SEO, then hydrates them into an interactive
-  app in the browser.
-- **Angular** is Google's older, heavier, more prescriptive framework. It is common in enterprises
-  and rare in new consumer products.
-
-**Next.js + TypeScript is the right call and matches what all four of your existing repos already
-use.** Firebase App Hosting listing Angular support first is a signal about its origins, not about
-what you should build.
-
-### Runtime architecture
+### 10.1 Runtime
 
 ```mermaid
 flowchart TB
@@ -526,9 +601,26 @@ flowchart TB
 Both surfaces talk to the same Firebase backend. The web app additionally does server-side work in
 Next.js route handlers (Firebase Admin SDK) for anything needing a secret. The iOS app talks to
 Firebase directly and to Cloud Functions for privileged operations. `/hq` reads PostHog and
-Chatwoot over their REST APIs to render summary tiles, linking out for depth.
+Chatwoot over REST to render summary tiles, linking out for depth.
 
-### The development and review loop
+### 10.2 Hosting: Vercel
+
+**Decided on the review loop, not on hosting quality.** Two reasons:
+
+1. **Next.js gaps elsewhere.** Cache Components and the Proxy (formerly Middleware) still present
+   architectural hurdles on non-Vercel providers — exactly the features a `/hq` dashboard with auth
+   middleware uses.
+2. **Vercel Comments.** Enabled by default at no cost, they let a reviewer click any element on a
+   staged page and leave a threaded comment anchored to it, then **sync those comments into the
+   GitHub pull request**. The agent ingests visual feedback as PR comments with enough context to
+   know which part of the page each note refers to. Nothing in the Firebase or Cloudflare stack has
+   an equivalent.
+
+The cost is one more provider; it buys the most important human-in-the-loop mechanism in the
+system.
+
+**Reconsider if:** Vercel pricing becomes painful at scale, or Firebase App Hosting ships
+equivalent preview commenting.
 
 ```mermaid
 flowchart LR
@@ -547,41 +639,29 @@ flowchart LR
     MERGE --> J[".agent/worklog/"]
 ```
 
-The critical property: human feedback re-enters as PR comments the agent already knows how to
-read, so review never requires a separate system or a handoff.
+Human feedback re-enters as PR comments the agent already knows how to read, so review never
+requires a separate system or a handoff.
 
-### Hosting decision: Vercel
+### 10.3 Analytics: PostHog Cloud
 
-**Decided on the review loop, not on hosting quality.**
+PostHog bundles product analytics, session replay, feature flags, experiments, surveys, and error
+tracking behind one SDK — five vendors collapsed into one, and one place for an agent to look. SDK
+coverage is complete for our surfaces (React, iOS, Android, React Native), and **it has an official
+MCP server**, so an agent queries trends, funnels, and raw HogQL without a bespoke integration.
+That is the mechanism for the analytics ingestion loop in §7.6.
 
-Firebase App Hosting has improved substantially — it runs on Cloud Build, Cloud Run, and Cloud CDN
-with Secret Manager integration, and Next.js 16.2's stable Deployment Adapter API gives it
-first-class support where previously providers reverse-engineered internal Next.js APIs. It is a
-credible option and the all-Google consolidation argument is genuine.
+Cost is not a factor: the free tier covers 1M events/month with no base fee, and beyond it events
+are $0.00005 each. A successful project pays tens of dollars a month.
 
-But two things decide it:
+**Self-hosting is rejected.** Paid-plan features are Cloud-only, so self-hosting gets *fewer*
+features rather than the same ones cheaper; there is no support or uptime guarantee; updates come
+continuously from `main` and **they publish no CVEs**; and it is recommended only below ~300K
+events/month — a ceiling below the free Cloud tier.
 
-1. **Remaining Next.js gaps.** Cache Components and the Proxy (formerly Middleware) still present
-   architectural hurdles on non-Vercel providers; App Hosting limits caching for apps using
-   middleware, and Cloud Run's URL path decoding can break parallel routes. These are exactly the
-   features a `/hq` dashboard with auth middleware would use.
+`/hq/analytics` renders a handful of KPIs pulled server-side and cached, each linking out to the
+corresponding PostHog dashboard. We do not rebuild PostHog's UI.
 
-2. **Vercel Comments solve your Q9 directly.** Comments on preview deployments are enabled by
-   default on every plan at no cost, let a reviewer click any element on the staged page and leave
-   a threaded comment anchored to it, and **sync those comments into the associated GitHub pull
-   request**. That is precisely the loop you described: a human leaves visual feedback on a staged
-   site, and the agent ingests it as PR comments with enough context to know which part of the page
-   each note refers to. Nothing in the Firebase or Cloudflare stack has an equivalent.
-
-The cost is one more provider. It buys the single most important human-in-the-loop mechanism in the
-whole system, so it is worth it.
-
-**Reconsider if:** Vercel pricing becomes painful at scale, or Firebase App Hosting ships
-equivalent preview commenting.
-
----
-
-## 10. The `/hq` dashboard
+## 11. The `/hq` dashboard
 
 Mounted at `<domain>/hq` in the project's own Next.js app — not a separate deployment — so it
 inherits the domain, auth, and deploy pipeline. Shipped as `morpheus-kit/hq`.
@@ -595,31 +675,25 @@ inherits the domain, auth, and deploy pipeline. Shipped as `morpheus-kit/hq`.
 /hq/support             Chatwoot summary, links out to support.<domain>
 /hq/qa                  Test status, CI health, known defects
 /hq/infra               Deploy status, environments, costs
-/hq/docs                Rendered engineering documentation (§17)
+/hq/docs                Rendered engineering documentation (§15)
 /hq/design              Internal design system reference
 /hq/vendors             Suppliers, procurement, contracts (hardware projects)
 /hq/investors           Restricted subset, second allowlist
 ```
 
-Public counterpart: `<domain>/brand` — see §15.3.
+Public counterpart: `<domain>/brand` — see §12.4.
 
-### 10.1 Access control: Firebase Auth with custom claims
+### 11.1 Access control: Firebase Auth with custom claims
 
 **Canonical: Firebase Auth + custom claims. Not Auth.js, not Cloudflare Zero Trust.**
 
-Firebase is already the identity system for the product, so adding a second one for internal pages
-means two session models, two logout paths, and two places to revoke someone. Custom claims collapse
-that: staff are ordinary Firebase users carrying a role claim.
+Firebase is already the identity system for the product, so a second one means two session models,
+two logout paths, and two places to revoke someone. Custom claims collapse that: staff are ordinary
+Firebase users carrying a role claim of `employee | investor | admin`.
 
-```jsonc
-// custom claims on the Firebase user
-{ "role": "employee" }        // employee | investor | admin
-```
-
-The decisive advantage over both Auth.js and Cloudflare Zero Trust: **the same claim gates the
-route and the data.** Zero Trust is a network-layer gate — it can stop someone loading `/hq`, but it
-cannot stop a Firestore read, so you would still need a second rule system underneath. With claims,
-one fact does both jobs:
+The decisive advantage: **the same claim gates the route and the data.** Zero Trust is a
+network-layer gate — it can stop someone loading `/hq`, but it cannot stop a Firestore read, so it
+would still need a second rule system underneath.
 
 ```js
 // infra/firebase/firestore.rules
@@ -631,275 +705,290 @@ allow read: if request.auth.token.role in ["employee", "admin"];
 if (!["employee", "admin"].includes(claims.role)) return redirect("/sign-in");
 ```
 
-**Access as code.** The allowlist in `morpheus.json` stays the declarative source of truth — it is
-in git, reviewable in a PR, and diffable. `morpheus sync-access` reads it and applies the claims via
-the Admin SDK. Granting someone access is a pull request, not a console click, and revocation is
-the same.
+**Access as code.** The allowlist in `morpheus.json` is the declarative source of truth — in git,
+reviewable in a PR, diffable. `morpheus sync-access` reads it and applies the claims via the Admin
+SDK, so granting access is a pull request rather than a console click, and so is revoking it.
 
-**Migration note.** `darwin` currently uses Auth.js v5 with a hardcoded email allowlist, and
-`heinrichbros.com` uses Google SSO with a GCP-approved audience plus Cloudflare Zero Trust. Both
-should move to this model. Since you are actively building Darwin's `/hq` now, this is the piece to
-settle first — retrofitting auth after internal tooling exists is materially harder than starting
-with it. Keep Zero Trust only where you want defense-in-depth on genuinely sensitive infrastructure
-(the Chatwoot admin panel, for example); it is redundant in front of `/hq`.
+Keep Zero Trust only for defence-in-depth on genuinely sensitive infrastructure such as the
+Chatwoot admin panel; it is redundant in front of `/hq`.
 
----
+### 11.2 Theming
 
-## 11. Companies with multiple repos
+`/hq` uses the same kit components and token CSS as the public site, so each project's dashboard is
+themed by that project's brand with no per-project styling work. Dashboards want higher information
+density than marketing pages, so the kit defines a small set of `--hq-*` tokens (density, table row
+height, muted surface) that *derive from* brand colours rather than introducing a parallel palette.
 
-One repo per product, not per company. Darwin Health operates `darwin` and `evo` as separate
-repos with separate brands and separate analytics, but shared HR and legal.
+## 12. Brand and design
 
-**Grouping:** `morpheus.json` carries an `org` field. Sibling repos share a value.
+**Brand is what changes in a rebrand; the design system is what changes in a redesign.**
 
-**Inheritance:** the `inherits` block declares which `hq/` subtrees come from the parent
-rather than being owned locally. `evo` inherits `legal` and `hr` from `darwin`; it owns `brand`,
-`product`, `marketing`, and `support`. The CLI does not copy these — `/hq` resolves them by
-reading the parent repo, and agents are told in `AGENTS.md` where the canonical copy lives.
+```
+hq/brand/
+├── README.md              # index, reading order
+├── answers.md             # the owner's input — the single source (§12.6)
+├── strategy.md            # positioning, mission, vision, audiences
+├── voice.md               # tone, vocabulary, patterns
+├── visual-system.md       # color, type, layout, imagery, logo usage
+├── decisions.md           # session record: Settled / Rejected / Open (§12.7)
+├── tokens.json            # primitives — the raw palette and type scale
+├── messaging.json         # taglines, mission, audience — structured (§12.3)
+└── assets/                # logo.svg, logo-reverse.svg, monogram.svg, icon.png, og-image.png
+```
 
-**Cross-project dashboards:** `darwin.health/hq` needs Evo's numbers. Two options considered:
+Assets live in git: small, versioned, diffable, needed at build time. Large media does not (§14.3).
 
-- *Rejected:* Evo exposes an authenticated `/api/hq/export` that Darwin calls. Adds a service
-  dependency, an auth surface, and a failure mode.
-- **Chosen:** both projects export metrics to a **designated warehouse project** — one GCP
-  project per company holding the BigQuery datasets. `darwin`'s `/hq` queries across both.
-  PostHog projects stay separate (separate products deserve separate funnels) but both export to
-  the same warehouse.
+### 12.1 Token ownership — one canonical owner per layer
 
-So a company has *n+1* GCP projects: one per app, plus a warehouse. Cross-project BigQuery reads
-are an explicit IAM grant, which is a feature — the rollup is opt-in per dataset rather than
-implicit.
-
----
-
-## 12. Agent operating model
-
-### 12.1 Instruction layering
-
-- **`AGENTS.md` (root)** — canonical, project-wide. `CLAUDE.md` symlinks to it so Claude and Codex
-  read exactly one file. Generated at init from `morpheus-kit/agent` fragments plus project
-  specifics, with a marked region the CLI can update on `morpheus upgrade`.
-- **`apps/web/AGENTS.md`** — surface-specific. The brand-preflight pattern from
-  `cpheinrich.com/web/AGENTS.md` is the model.
-- **`.claude/skills/`** — named, repeatable procedures.
-
-### 12.2 Conventions and how they are actually enforced
-
-The conventions: every PR includes tests where testable, updates docs when behavior changes,
-carries a staging link, updates roadmap status, states a test plan, lists open questions, and
-records self-review.
-
-Enforcement is layered, weakest to strongest:
-
-| Layer | Mechanism | Strength |
+| Layer | Canonical owner | Changes when |
 |---|---|---|
-| Instruction | `AGENTS.md` | Advisory — agents mostly comply |
-| Visible | `.github/pull_request_template.md` with checklist | Social |
-| **Enforced** | **`ci.yml` — `morpheus check pr`** | **Blocking** |
+| **Primitives** — raw palette and type scale | `hq/brand/tokens.json` | You rebrand |
+| **Semantic mapping** — `action.primary → electricRed` | `packages/shared/tokens/semantic.json` | You redesign |
+| **Generated bindings** — CSS vars, JS, Swift | `packages/shared/generated/` | Never by hand |
+| **Components** | `morpheus-kit/design` | — |
 
-`morpheus check pr` runs in CI and fails the build when: source files changed without
-corresponding test changes and no `skip-tests` justification is present; a public API changed
-without a `docs/` change; the PR body is missing required sections; or the roadmap item referenced
-in the branch name was not moved to `review`.
+Primitives live with the brand because they *are* the brand. Semantic mapping lives with the design
+system because it is a design decision, not a brand one. Generated output is derived.
 
-Instructions get ignored eventually. A failing check does not.
+**The kit generates primitives only.** `morpheus tokens build` emits CSS custom properties and a
+typed module from `hq/brand/tokens.json` and stops there; the semantic layer stays per project.
+Only one project has a semantic layer today, and inventing a shared vocabulary from a sample of one
+would be guessing — principle 10 applies with particular force to a vocabulary, since a wrong one
+propagates into every project that adopts it.
 
-### 12.3 The work loop and review queue
+**A project that already has a token system keeps it.** `morpheus brand init` writes no
+`tokens.json` when `visualSource` is set and never overwrites an existing file, so adopting the
+brand format cannot destroy or duplicate a working visual system.
 
-1. Agents pull work from `hq/product/roadmap/` and `qa/`.
-2. `morpheus pm claim <ID>` starts the work — it derives the branch from the id, marks the item
-   in-progress, and pushes. Never on `main`, and never a branch anyone typed (see below).
-3. Push triggers CI and a Vercel preview deploy.
-4. The PR is registered in the review queue with a summary, staging link, screenshots, and a test
-   plan.
-5. Human reviews at `/hq/review` or directly on the Vercel preview, leaving anchored comments.
-6. Comments sync to the PR; the agent ingests them and iterates.
-7. Approval merges and deploys.
+### 12.2 How the design system is split
 
-**`pm claim` is the only supported way to start work.** Not a style preference — three things are
-derived from the item id at claim time and cannot be kept in agreement by anyone remembering to:
-the branch name, the item's `in-progress` status, and the claim itself, which *is* the remote
-branch. Typing `git checkout -b` produces none of them, and the failure surfaces at `check pr`,
-after the work is done and the branch is expensive to rename. That has happened three times.
+**Reusable structure in the kit, project-specific values in the project.**
 
-The recovery, when it does happen, is `morpheus pm claim <ID>` on a fresh branch and a
-cherry-pick — which is why `check pr` names the command in its failure message rather than only
-reporting the violation.
-
-**Queue storage — revised from draft 2.** The earlier answer (Firestore, with PRs synced in) was
-wrong, and asking "where does Morpheus itself host this?" is what exposed it. Any design requiring
-a sync job between GitHub and Firestore has two copies of the same state and a job that can fail.
-
-**The queue is GitHub.** Two item types, one source of truth each:
-
-| Item | Lives as | Why |
+| Layer | Where it lives | Project-specific? |
 |---|---|---|
-| Code awaiting review | **Pull request** | Already the source of truth; never duplicate it |
-| Non-code decision | **Issue labeled `decision`** | Structured body, state, assignee, comments, API |
+| Primitives | `hq/brand/tokens.json` | **Yes** |
+| Semantic mapping | `packages/shared/tokens/semantic.json` | **Yes** |
+| Generated bindings | `packages/shared/generated/` | **Yes** — derived |
+| Components (`Button`, `Card`, `DataTable`) | `morpheus-kit/design` | **No** |
+| Showcase renderer | `morpheus-kit/design/showcase` | **No** |
+| Showcase route | `apps/web/app/brand/page.tsx` | Yes, but ~5 lines |
+| One-off components | `apps/web/components/` | **Yes** |
 
-Spending approvals, copy sign-off, and vendor selection are all fine as issues — they have a title,
-a body with structured frontmatter, open/closed state, and a comment thread. Agents create them via
-the API; you close them to approve.
+The mechanism that makes this work: **kit components never hardcode a colour, font, or radius.**
+They reference CSS custom properties the project defines.
 
-`/hq/review` becomes a **read-only view over the GitHub API**, not a separate store. Nothing to
-sync, nothing to reconcile, and it degrades gracefully: with no `/hq` deployed, the GitHub PR and
-issue lists *are* the queue, which is exactly how Morpheus itself operates (§24).
-
-**Firestore is reserved for state the running application must read** — a launch-approval flag the
-web app checks at request time, for example. That is a genuinely different need from "a human owes
-me a decision," and conflating them was the error.
-
-**Never-blocked rule:** when the queue is full, agents must have a backlog needing no approval —
-tests, docs, refactors, research written to `.agent/`. An idle agent is a design failure.
-
-### 12.4 Agent memory
-
-Deliberately minimal: markdown in git, no vector database, no external store.
-
-```
-.agent/
-├── journal/                       # per task: what was attempted and learned
-│   └── 2026-07-28-calorie-pipeline.md
-├── status/                        # archived status exchanges, with replies
-│   └── 2026-07-29-2145.md
-├── decisions.md                   # distilled: settled choices and why
-└── learned.md                     # technical facts and gotchas
+```tsx
+// morpheus-kit/design — ships once, used everywhere
+export function Button({ variant = "primary", ...props }) {
+  return <button className={styles[variant]} {...props} />;
+}
+// styles.primary → background: var(--ac-color-action-primary);
 ```
 
-`hq/STATUS.md` is the live status report — the one file the human is expected to edit. Items
-needing input are numbered with a `~` reply slot beneath each; replies are answered, distilled
-into `decisions.md`, and the exchange archived to `status/`. The archive is raw and prunable;
-`decisions.md` is the part meant to be read.
-
-Journal entries carry frontmatter (`agent`, `date`, `roadmap-id`, `outcome`) and a short body: what
-was attempted, what happened, what was learned — **including dead ends that produced no code**,
-which is the part git history cannot capture.
-
-`learned.md` holds durable project facts an agent should know before starting: gotchas,
-non-obvious constraints, decisions and their reasons.
-
-Git rather than Cloud Storage because these are small, textual, benefit from appearing in PR
-diffs, and are greppable by any agent with no authentication. If volume ever makes grep
-insufficient, indexing markdown is easy; migrating off a bespoke store is not.
-
-`AGENTS.md` instructs both agents to read `learned.md` at session start and append a journal entry
-before opening a PR.
-
-### 12.5 Ingestion loops
-
-Scheduled agent runs (GitHub Actions cron) that read the world and propose changes:
-
-| Loop | Cadence | Reads | Produces |
-|---|---|---|---|
-| Bug triage | Daily | Sentry, Chatwoot, bug form | Labeled issues, roadmap entries |
-| Analytics review | Weekly | PostHog MCP | `/hq` KPI notes, roadmap proposals |
-| Support sweep | Daily | Chatwoot API | Draft replies queued for approval |
-| Finance sync | Weekly | Stripe, Mercury | `/hq/finance` update |
-| Market research | Monthly | Semrush, web | `hq/marketing/research/` |
-| Roadmap proposal | Weekly | All of the above | **A PR adding/editing `roadmap/*.md`** |
-
-The critical design choice: **agent proposals arrive as pull requests against
-`hq/product/roadmap/`.** Review is a diff. The human edits the proposal in the same place
-the agent will read it back from. No separate approval system.
-
----
-
-## 13. Distribution: three mechanisms
-
-Morpheus reaches a project three ways, and the difference matters:
-
-| Mechanism | Reaches projects by | Updates | Use for |
-|---|---|---|---|
-| **Templates** | Copied at `init` / `add` | Never automatically | Scaffolding that should diverge |
-| **The kit** | npm dependency | Version bump | Runtime code that should not diverge |
-| **Reusable workflows** | Referenced by ref | Instantly, on ref | CI logic |
-
-The test for the first two: *if I improve this, do I want every existing project to get the
-improvement?* Yes → kit. No → template.
-
-### 13.1 Reusable GitHub workflows
-
-Your instinct is right and it is a real GitHub feature. Workflows with an `on: workflow_call`
-trigger live in Morpheus; each project keeps a thin delegator that supplies project-specific
-inputs.
-
-```yaml
-# morpheus/.github/workflows/web-ci.yml
-on:
-  workflow_call:
-    inputs:
-      node-version: { type: string, default: "22" }
-      run-e2e:      { type: boolean, default: true }
-    secrets:
-      VERCEL_TOKEN: { required: true }
+```css
+/* the project — packages/shared/generated/web/tokens.css */
+:root { --ac-color-action-primary: #e63946; }
 ```
 
-```yaml
-# acme/.github/workflows/ci.yml — the whole file
-name: CI
-on: [push, pull_request]
-jobs:
-  ci:
-    uses: cpheinrich/morpheus/.github/workflows/web-ci.yml@main
-    with:
-      run-e2e: true
-    secrets: inherit
+Same component; it looks like Evo in Evo and Lakina in Lakina, with no forking and no per-project
+copies. The token prefix is a two-letter project code.
+
+**There is no "populated design system" as a separate artifact.** It is the kit's components
+rendered with the project's token CSS loaded — it exists only at runtime, which is why the showcase
+route is worth having: it is the only place you can *see* it.
+
+```mermaid
+flowchart LR
+    A["hq/brand/tokens.json<br/>primitives"] --> B["packages/shared/<br/>Style Dictionary"]
+    B --> C["generated/web/tokens.css"]
+    B --> D["generated/ios/Tokens.swift"]
+    E["morpheus-kit/design<br/>components + showcase"] --> F["apps/web"]
+    C --> F
+    D --> G["apps/ios"]
+    E --> H["apps/web/app/brand/page.tsx<br/>public showcase route"]
+    C --> H
 ```
 
-Improving CI for every project becomes one commit in Morpheus. **Projects pin `@main`, not a
-tag** — with one operator and a handful of repos, instant propagation is worth more than staged
-rollout, and a broken workflow is noticed and fixed in minutes. Revisit only if the number of
-projects grows enough that a simultaneous CI break becomes expensive.
+**One token generator, not one per project.** `morpheus tokens build` exists because three projects
+independently hand-rolled the same twenty lines, and the three differed in ways that matter — one
+threw on arrays, one silently dropped them, one hardcoded every variable name. Two properties worth
+keeping: it **writes nothing when the source has problems** and reports every problem at once,
+because a stylesheet built from a half-read token file still renders, which is how the mistake
+survives to production; and it **emits a TS module as well as CSS**, because a deleted custom
+property renders as nothing while a deleted key does not compile.
 
-**One setup requirement:** because Morpheus is private, cross-repo workflow access is not on by
-default. In Morpheus's **Settings → Actions → Access**, the policy must be set to allow access from
-your other repositories. Without it, calling repos fail with a permissions error that does not
-obviously point at this setting.
+### 12.3 Import, don't sync
 
-Planned shared workflows: `web-ci`, `ios-ci`, `deploy`, `pr-check` (the `morpheus check pr` gate),
-`agent-triage`, `agent-analytics-review`, `release-kit`.
+Facts that appear both in `hq/brand/` and on the website live once in `hq/brand/messaging.json`,
+are re-exported through `packages/shared/`, and are *imported* by the web app:
 
-### `morpheus add` — bolt-on templates
-
-Templates are not only for `init`. `morpheus add <template>` applies a template to an existing
-project:
-
-```sh
-morpheus add android          # scaffold apps/android/, wire CI, extend token pipeline
-morpheus add hardware
-morpheus add legal            # a company function added after the fact
+```ts
+import { tagline, mission, primaryAudience } from "@acme/shared/messaging";
 ```
 
-It refuses to overwrite existing files, writes only what is missing, prints a summary of what it
-added, and updates `morpheus.json`. Because templates are additive and file-scoped, this stays
-simple — it is `init` restricted to a subset, run against a non-empty directory.
+Changing the tagline is a one-line edit; the site picks it up at build. A skill that copied text
+between the two would drift within weeks. Page-specific prose stays in `apps/web/content/`. The
+remaining skill (`.claude/skills/brand-review`) checks *consistency and application* rather than
+copying strings.
 
-`morpheus upgrade` is the separate, narrower operation: bump the kit, and *offer diffs* for
-template files that changed upstream without ever applying them automatically.
+### 12.4 Public design system route
 
-### Why not GitHub template repositories
+`<domain>/brand` — a public page rendering the live design system: palette, type scale, component
+gallery, logo downloads, usage rules. **The rendering code is in the kit; the route is in the
+project**, about five lines mounting `BrandShowcase`.
 
-GitHub's template-repo feature is one-shot and monolithic — it cannot compose optional surfaces
-(base + web + ios) or bolt on later. Templates live as directories inside the Morpheus repo, and
-the CLI copies and interpolates them. That supports composition, `add`, and per-file diffs.
+Because it reads the same tokens the product renders with, it cannot go stale, and improvements to
+the showcase arrive with a kit upgrade for every project at once. This is the link you send a
+vendor or contractor. It excludes strategy, audiences, and positioning, which stay internal;
+`/hq/design` is the internal counterpart and may include them.
 
-### Registry
+### 12.5 The brand package has a declared required set
 
-`morpheus-kit` publishes to **GitHub Packages**. Projects get an `.npmrc`:
+`src/brand/package.ts` declares what a brand package must contain, and is the **single source of
+that list**. Three consumers read it: the design-session prompt, `morpheus brand status`, and the
+generated `hq/brand/README.md`. Written separately these would drift silently — a prompt asking for
+something nothing checks looks exactly like a prompt asking for the right thing.
 
-```
-# published to public npm — no registry config needed
-//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
-```
+| File | Produced by |
+|---|---|
+| `README.md`, `strategy.md`, `voice.md`, `messaging.json` | the wizard |
+| `tokens.json`, `visual-system.md`, `assets/logo.svg` | the design session |
 
-Publishing is a GitHub Action on tag; consuming needs a PAT with `read:packages` (CI gets it
-automatically via `GITHUB_TOKEN`). **Prerequisite:** the machine-level Polycam Artifactory registry
-config must be removed first, and the per-repo `.npmrc` overrides in `darwin` and `evo` deleted
-during retrofit.
+Deliberately short: a required list long enough to be thorough is one nobody completes, and a
+checklist that is never green stops being read.
 
----
+**Existence is not completeness.** The wizard writes an empty `tokens.json` scaffold, and an empty
+scaffold beside a finished design looks done in a file listing — the exact failure this check
+exists to catch. So `tokens.json` must carry real values under `color`, `font`, and `space`, and
+`visual-system.md` is scanned for the generator's own placeholder sentences, reporting *which*
+section was never written.
 
-## 14. Secrets
+**Optional entries carry a trigger, not a deadline** — `motion.md` when transitions start being
+invented per screen, `components.md` when the same pattern is rebuilt a third time. Nothing
+optional affects the exit code: treating an unmet trigger as a failure trains people to ignore the
+output.
+
+### 12.6 The answers are a file, not a wizard transcript
+
+`hq/brand/answers.md` is the single source of the owner's input. The wizard fills it in; editing it
+directly is the other way, and for most projects the better one.
+
+**The answers refer to each other** — `never` is written against `feels`, `mission` sharpens once
+`primaryAudience` is concrete — and a sequential prompt makes you commit to each before seeing the
+next. A file lets you write them in any order, revise three at once, and leave one blank.
+
+`morpheus brand init` writes the file *before* asking anything, so quitting the wizard leaves a
+usable artefact. `morpheus brand build` regenerates from the edited file and asks nothing.
+Questions are anchored by `<!-- morpheus:q <key> -->` rather than by heading text, so rewording a
+heading does not break parsing.
+
+There is no `answers.json`: a JSON record beside the editable file would be a second source of
+truth by another name.
+
+### 12.7 Generated, seeded, and authored
+
+"Never overwrite anything" was right about not destroying work and wrong about treating every file
+the same — a changed mission could sit in the answers while the old one stayed in
+`messaging.json`, which the web app imports, and refresh reported success while the stale value
+shipped. So every file the generator writes declares its owner:
+
+| Ownership | Files | On refresh |
+|---|---|---|
+| `derived` | `messaging.json`, `explore-prompt.md`, `README.md`, `assets/README.md` | Regenerated |
+| `seeded` | `strategy.md`, `voice.md`, `visual-system.md` | Reported as disagreeing |
+| `authored` | `tokens.json`, `assets/*` | Never touched |
+
+**Morpheus will not revert your prose to close a gap it noticed.** A seeded file that disagrees
+with the answers is named, not rewritten — silently reverting someone's writing is the same class
+of bug as silently keeping a stale mission. To take the regenerated version, delete the file and
+re-run.
+
+`morpheus brand check` reports drift, writes nothing, and is safe in CI. It exits non-zero on any
+drift: a package whose prose disagrees with its own answers is wrong even though every file is
+present.
+
+### 12.8 A design session records decisions, not just outcomes
+
+`hq/brand/decisions.md` is a required session output — `## Settled`, `## Rejected`, `## Open`, with
+a reason on every line, written **after each round rather than at the end**.
+
+**Scrollback is not a design record.** Brand work spans rounds, context compaction, more than one
+day, and sometimes a different agent. Without a checkpoint, a rejected direction returns in round
+four and a fresh session cannot tell an abandoned idea from an unexplored one. The negative and
+compositional entries carry most of the value — *Direction B rejected as too institutional, keep
+its type pairing* — so directions get stable names in round one.
+
+`brand status` checks all three sections are present. A session that rejected nothing did not
+diverge, so a missing `## Rejected` is a real signal.
+
+Scratch mockups live in gitignored `local/brand/`. The decision and its reason are durable; the
+artefact is not.
+
+### 12.9 Convergence needs evidence, not a good hero
+
+A hero section flatters almost any direction. Before converging, the session renders the leading
+direction on **one expressive surface** and **one dense functional surface** — real inputs, labels,
+an error state, a result — each at mobile and desktop. The second is where a palette with no quiet
+neutral, or a display face that cannot set 13px, shows up. *If it holds on both it is a direction;
+if it only holds on the first it is a poster.*
+
+A fuller acceptance set (every interactive state, dark mode, contrast, reduced motion, imagery
+provenance) is named in the prompt as things to look at, with the instruction to **say which were
+not checked** rather than imply they were — shipping it as a gate would produce one that gets
+skipped while looking enforced.
+
+The session ends by writing `## Completion` into `decisions.md`: files written, surfaces reviewed,
+decisions still open, temporary assets needing replacement, departures from the brief, and checks
+run **and not run**. That last line is what makes "first working version" a claim with evidence and
+named gaps rather than the note a conversation happened to end on.
+
+### 12.10 Setup is a checklist, not a wizard
+
+`morpheus init status` reports how far through setup a project is, writing the full list to
+`hq/onboarding.md`.
+
+**Nothing is sequential and nothing is lost.** The defining failure of a setup wizard is that it is
+a transaction: quit at step nine and begin again at step one. Here the state is a markdown file, so
+closing the terminal costs nothing, steps happen in any order over as many days as it takes, and a
+note under a task survives.
+
+**Anything Morpheus can see, Morpheus checks.** Roughly half the list is detected by reading the
+repository — manifest, `.agent/` records, registry membership, reusable workflows, branch
+protection via `gh`, a goal, a roadmap item, an inbox, brand completeness, a linked Vercel project,
+a committed `.env.example`. Those checkboxes are rewritten every run and ticking one by hand is
+undone, because **a checklist that can be wrong about something it could have verified stops being
+read.** Manual state exists only for work outside the repo.
+
+Detection returns `true`, `false`, or **`null` for "could not check"**, and `null` must never
+collapse into "not done" — a missing `gh` rendering as an unprotected branch sends someone to fix
+what was never broken.
+
+The list is filtered by `kind`, so Morpheus itself is never asked about a brand, a domain, or a
+billing account.
+
+### 12.11 `init` scaffolds the repository and nothing else
+
+`morpheus init` writes the manifest, `AGENTS.md` with `CLAUDE.md` symlinked to it, the `.agent/`
+records, the `hq/` tree for the project's kind, an inbox, a CI workflow delegating to the reusable
+ones, and `.gitignore` entries. Then it registers the prefix and prints `init status`.
+
+**It never overwrites.** Anything present is skipped and reported, which makes it safe on an
+established repository — so *initialise a new project* and *bring an old one up to the standard*
+are the same command rather than two that drift apart.
+
+**It provisions nothing.** No GCP, no DNS, no Vercel — those live in someone else's console and
+need credentials this command should not hold. Drawing the seam there means `init` can never be
+blocked on a token.
+
+> **Gotchas.** `CLAUDE.md` is a **symlink**, not a copy; two files would drift invisibly until an
+> agent acted on the stale one. `hq/brand/` gets a `.gitkeep`, not a `README.md`, because the brand
+> wizard owns that filename and never overwrites — a placeholder would block the real file
+> permanently.
+
+The scaffold was written after two retrofits rather than before, and every template in it exists
+because Evo or Darwin needed it.
+
+## 13. Secrets and credentials
 
 Values never enter git. What enters git is a manifest declaring which secrets exist and where they
 live, so an agent knows what it needs without being able to read it.
@@ -916,132 +1005,55 @@ live, so an agent knows what it needs without being able to read it.
 }
 ```
 
-### Two populations, two stores
-
-The apparent 1Password-vs-Secret-Manager choice dissolves once you notice these are different
-kinds of secret:
+### 13.1 Two populations, two stores
 
 | | **Google Secret Manager** | **1Password** |
 |---|---|---|
 | Holds | Anything code reads at runtime | Anything only a human uses |
 | Examples | API keys, service account JSON, DB URLs | Bank logins, vendor portals, 2FA recovery codes |
-| Runtime access | Native — Cloud Run and Functions mount secrets directly | Awkward — requires fetch-at-boot |
-| Human editing | Console; adequate, not delightful | Excellent |
-| Agent access | `gcloud secrets` — full lifecycle management | `op` CLI with a service account |
+| Runtime access | Native — Cloud Run and Functions mount directly | Awkward — requires fetch-at-boot |
+| Agent access | `gcloud secrets` — full lifecycle | `op` CLI with a service account |
 
-**GSM is the source of truth for every secret the software touches. 1Password holds credentials
-code never reads.** These populations barely overlap, so this is one system per job, not two
-systems for one job.
-
-### Scoping
-
-**One GCP project per app** — corrected from "per company", which was wrong.
-
-**A Firebase project *is* a GCP project**, one-to-one: a GCP project can host at most one
-Firebase project. Darwin and Evo have separate user bases and therefore separate Firebase Auth
-pools and Firestore databases, so they *must* be separate GCP projects. This is not a design
-choice; it falls out of how Firebase is built.
-
-Grouping happens at the **billing account**, not the project. Several projects bill to one
-account, so `darwin` and `evo` roll up to the Darwin billing account while personal projects
-roll up to a personal one — which is the grouping that actually matters.
-
-IAM is per-project, so an agent's service account gets `roles/secretmanager.secretAccessor` on
-its own project and nowhere else. Blast radius is one app rather than one company, which is
-strictly better isolation than the original design.
-
-For 1Password, the equivalent is **one vault per company**, with a 1Password Service Account
-granted read access to only that vault. Agents never hold your personal 1Password credentials —
-they hold a scoped service-account token that is itself stored in GSM.
-
-### How much can an agent manage?
-
-Essentially all of GSM. Creating projects, enabling APIs, creating secrets, granting IAM,
-rotating versions, and wiring Cloud Run to mount them are all `gcloud` commands. `morpheus init`
-will run them. The only step needing you is the initial billing-account link and the first OAuth
-consent.
-
-1Password requires you to create the vault and mint the service-account token once per company;
-after that an agent can read and write within that vault.
-
-### Tiering
+**GSM is the source of truth for every secret the software touches; 1Password holds credentials
+code never reads.** These populations barely overlap, so this is one system per job.
 
 | Context | Mechanism |
 |---|---|
 | Local development | `.env.local`, gitignored, populated by `morpheus secrets pull` |
 | CI | GitHub Actions secrets, synced from GSM by `morpheus secrets push --ci` |
-| Runtime | GSM mounted directly into Cloud Run / Vercel environment |
+| Runtime | GSM mounted into Cloud Run / Vercel environment |
 
 `morpheus doctor` verifies every manifest entry resolves in every declared scope, so a missing
 secret fails before deploy rather than at runtime.
 
-### 14.1 MCP credentials
+### 13.2 Scoping
 
-The consumer here is **the agent**, not the application — so this is a third population, distinct
-from both runtime secrets and human-only credentials. There are three cases, and the Semrush
-example lands in the first.
+**One GCP project per app.** A Firebase project *is* a GCP project, one-to-one, and Darwin and Evo
+have separate user bases and therefore separate Auth pools and Firestore databases — so they must
+be separate GCP projects. This falls out of how Firebase is built rather than being a design
+choice.
 
-**Case 1 — remote MCP authenticated through claude.ai (no token to manage).** Semrush, Linear,
-Asana, Figma, Slack, and Sentry as currently connected are OAuth connectors: you authorize once in
-claude.ai and the credential lives in Claude's own store, never in the repo and never in GSM.
-There is no `SEMRUSH_API_KEY` anywhere in this system today. The catch is that these are
-**account-scoped, not project-scoped** — one Semrush identity across every project.
+Grouping happens at the **billing account**, not the project: `darwin` and `evo` roll up to the
+Darwin billing account while personal projects roll up to a personal one.
 
-**Case 2 — MCP servers needing an API key.** `.mcp.json` at the project root **is designed to be
-committed** and supports environment variable expansion — `${VAR}` and `${VAR:-default}` — in
-`command`, `args`, `env`, `url`, and `headers`. So the file documents *which* servers the project
-uses (valuable, reviewable, diffable) while holding no values:
+IAM is per-project, so an agent's service account gets `roles/secretmanager.secretAccessor` on its
+own project and nowhere else — blast radius is one app. For 1Password the equivalent is **one vault
+per company**, with a service account granted read access to only that vault. Agents never hold
+personal 1Password credentials; they hold a scoped token that is itself stored in GSM.
 
-```jsonc
-// .mcp.json — committed
-{
-  "mcpServers": {
-    "cloudflare": {
-      "type": "http",
-      "url": "https://mcp.cloudflare.com/mcp",
-      "headers": { "Authorization": "Bearer ${CLOUDFLARE_API_TOKEN}" }
-    }
-  }
-}
-```
+An agent can manage essentially all of GSM — creating projects, enabling APIs, creating secrets,
+granting IAM, rotating versions. Only the initial billing-account link and first OAuth consent need
+a human.
 
-Values live in gitignored `.env.local`, populated by `morpheus secrets pull` from that org's Secret
-Manager — the same command and the same store as application secrets, so there is one place a
-credential can be and one command to get it. `secrets.manifest.json` gains a `consumers: ["agent"]`
-entry so `doctor` knows to check it.
+### 13.3 Credential bootstrap
 
-**Case 3 — per-project identity for the same service.** This is the case you raised earlier
-(multiple Cloudflare or Google accounts), and it is the reason case 2 matters. Because claude.ai
-connectors authenticate per *account*, they cannot give you a different Cloudflare identity per
-project. **When you need per-project scoping, use a project-scoped `.mcp.json` server with a scoped
-API token instead of the claude.ai connector.** The `.mcp.json` in `evo/` then points at Evo's
-Cloudflare token and the one in `lakina/` at Lakina's, with each token stored in its own org's GSM.
+**Generate credentials once, broadly, at setup — then let the agent run.** Every mid-project token
+request is a stall that costs more than the marginal security a narrow token buys.
 
-Claude Code's scope precedence is local → project → user → plugin → claude.ai connector, and
-duplicates are matched by name for the first three and by endpoint for the last two. So a
-project-scoped entry pointing at the same URL as a claude.ai connector **wins**, which is exactly
-the override behavior this needs. Project-scoped servers require one-time approval per repo, and in
-a freshly cloned repo they stay pending until you trust the workspace — worth knowing so it does
-not look like a bug.
-
-**Terminology.** There is no such thing as an "MCP token." MCP is a transport; the credential is
-whatever the underlying service already uses — a Cloudflare API token, a Google OAuth grant, a
-GCP service account key. The MCP server just carries it. So "configure MCP for this project" always
-reduces to "get this project's normal API credentials into the environment."
-
-### 14.2 Credential bootstrap
-
-**The principle is right: generate credentials once, broadly, at setup — then let the agent run.**
-Every mid-project token request is a stall that costs more than the marginal security a narrow
-token buys.
-
-What makes broad tokens defensible here is that **isolation happens at the account boundary, not
-the token boundary.** Each company already has its own Cloudflare account, its own GCP project, and
-its own GitHub org. A deliberately broad Darwin token still cannot touch Lakina, because it is
-scoped to an account that has no Lakina resources in it. Narrow per-resource tokens would add
-friction without adding a boundary that isn't already there.
-
-The bootstrap set is smaller than it looks, and most of it is **per identity, not per project**:
+Broad tokens are defensible here because **isolation happens at the account boundary, not the token
+boundary.** Each company already has its own Cloudflare account, GCP project, and GitHub org. A
+deliberately broad Darwin token cannot touch Lakina, because it is scoped to an account with no
+Lakina resources in it.
 
 | Tier | What | How often | Who |
 |---|---|---|---|
@@ -1051,62 +1063,27 @@ The bootstrap set is smaller than it looks, and most of it is **per identity, no
 | **3** | Semrush, Stripe, Slack, PostHog | Optional, skippable | You — or skip |
 | **4** | GCP projects, service accounts, Firebase projects, PostHog projects, R2 buckets, DNS records, Vercel projects, GitHub repos, Chatwoot inboxes | Continuously | **Agent** |
 
-#### Per service
+**Google Cloud and Firebase need no separate token.** `gcloud auth login` as an Owner is
+sufficient: the Firebase CLI reads Application Default Credentials, and Firebase projects are
+creatable through the Management API via `gcloud`. Multiple Google identities are handled by
+**named `gcloud` configurations**, selected per repo via `CLOUDSDK_ACTIVE_CONFIG_NAME` in
+`.env.local`, so opening a repo puts the agent on the right account with no switching ritual.
 
-**Google Cloud and Firebase — no separate token needed.** This answers the question directly: you
-do not need a Firebase token. `gcloud auth login` as a user with Owner is sufficient, because the
-Firebase CLI reads Application Default Credentials and Firebase projects are creatable through the
-Firebase Management API via `gcloud`. From one interactive login the agent can create projects,
-enable APIs, mint service accounts, configure IAM, and write Secret Manager entries.
-
-Multiple Google identities are handled by **named `gcloud` configurations** rather than by
-re-authenticating:
-
-```sh
-gcloud config configurations create darwin
-gcloud config configurations activate darwin
-gcloud auth login you@your-company.com
-```
-
-The project selects one via `CLOUDSDK_ACTIVE_CONFIG_NAME` in `.env.local`, so opening a repo puts
-the agent on the right account automatically with no switching ritual.
-
-**Cloudflare — one broad token per account, the only genuinely manual step.** The first token has to
+**Cloudflare — one broad token per account, the only genuinely manual step.** The first token must
 be created in the dashboard, because minting a token through the API requires a token. Create one
-per account with a wide permission set (Zone:Edit, DNS:Edit, Workers Scripts:Edit, R2:Edit, Account
-Settings:Read) and the agent handles DNS, Workers, R2, and cache from then on — including minting
-narrower tokens later if a specific need ever arises. Darwin's token is reused by both `darwin` and
-`evo`, so this is once per *account*, not once per repo.
+per account (Zone:Edit, DNS:Edit, Workers Scripts:Edit, R2:Edit, Account Settings:Read); the agent
+handles everything after, including minting narrower tokens later. Darwin's token serves both
+`darwin` and `evo`.
 
-**Vercel — one token, scoped per invocation.** A single personal token reaches every team you
-belong to; `vercel --scope <team-slug>` selects the right one. No need for a token per
-team.
+**Vercel — one token, scoped per invocation** with `vercel --scope <team-slug>`.
 
-**GitHub — one identity covers everything.** Your repos live under three owners (`cpheinrich`,
-`darwin-health`, `lakinacapital`) but all under one authenticated user, so a single `gh auth login`
-covers all of them.
+**GitHub — one identity covers everything.** Repos live under three owners but one authenticated
+user.
 
-> **One real wrinkle.** `morpheus-kit` will be published under `cpheinrich`, but `darwin-health`
-> and `lakinacapital` repos need to install it. GitHub Packages permissions are owner-scoped, and
-> the `GITHUB_TOKEN` that Actions provides automatically only reaches packages owned by the same
-> account as the repo. **Cross-org consumption requires an explicit PAT with `read:packages`** in
-> each consuming repo's Actions secrets. Worth knowing before the first cross-org CI run fails.
-> Your current token has `gist, read:org, repo, workflow` — it needs `write:packages` and
-> `read:packages` added.
-
-**Google Drive per project — use a service account, not the connector.** The claude.ai Drive
-connector authenticates one Google account, so it cannot give personal projects your personal Drive
-and Darwin its own. The clean answer reuses infrastructure you already have: **create a service
-account in that company's GCP project and share the relevant Drive folders with its email address.**
-No OAuth, no account switching, and the agent authenticates with credentials it already holds.
-
-**Granola and similar consumer tools** have no service-account path and stay account-scoped. That is
-a genuine limitation rather than a design choice — flagged in §27 Q7.
-
-#### Bootstrap ordering
-
-This resolves the chicken-and-egg problem of needing credentials to create the store that holds
-credentials:
+**Google Drive per project — use a service account, not the claude.ai connector.** The connector
+authenticates one Google account, so it cannot give personal projects your Drive and Darwin its
+own. Create a service account in that company's GCP project and share the relevant folders with its
+email address.
 
 ```mermaid
 flowchart TB
@@ -1118,473 +1095,104 @@ flowchart TB
     F --> G["7. .mcp.json resolves — agent fully enabled"]
 ```
 
-**Net: one interactive login per Google identity, one pasted token per Cloudflare account, and
-nothing else.** Everything downstream is agent-created.
+**Net: one interactive login per Google identity, one pasted token per Cloudflare account.**
 
-#### Recorded in the manifest
+> **Gotcha.** `morpheus-kit` publishes under `cpheinrich`, but `darwin-health` and `lakinacapital`
+> repos install it. GitHub Packages permissions are owner-scoped and the automatic `GITHUB_TOKEN`
+> only reaches packages owned by the same account as the repo, so **cross-org consumption requires
+> an explicit PAT with `read:packages`** in each consuming repo's Actions secrets.
 
-```jsonc
-"accounts": {
-  "gcloud":     "darwin",                  // gcloud configuration name
-  "gcpProject": "acme-app",       // one per app; a Firebase project is a GCP project
-  "gcpWarehouse": "acme-warehouse", // shared per company, for cross-app BigQuery
-  "cloudflare": "darwin-health",           // account name; token in GSM
-  "vercel":     "acme-team-slug",          // --scope value
-  "github":     "darwin-health"            // repo owner
-}
-```
+### 13.4 MCP credentials
 
-The manifest names *which* identity a project uses; the values live in GSM. An agent opening the
-repo reads this and knows which account it is operating as, which is the thing that most often goes
-wrong when one person runs several companies.
+The consumer is **the agent**, not the application — a third population. Three cases:
 
----
+**Remote MCP authenticated through claude.ai.** Semrush, Linear, Asana, Figma, Slack, Sentry: you
+authorise once and the credential lives in Claude's store, never in the repo. The catch is that
+these are **account-scoped, not project-scoped**.
 
-## 15. Brand and design
+**MCP servers needing an API key.** `.mcp.json` at the project root **is designed to be committed**
+and supports `${VAR}` expansion, so the file documents *which* servers the project uses while
+holding no values. Values live in gitignored `.env.local`, populated by `morpheus secrets pull`
+from that org's Secret Manager — the same command and store as application secrets.
+`secrets.manifest.json` gains a `consumers: ["agent"]` entry so `doctor` checks it.
 
-**Brand is what changes in a rebrand; the design system is what changes in a redesign.**
+**Per-project identity for the same service.** Because claude.ai connectors authenticate per
+*account*, they cannot give a different Cloudflare identity per project. **When you need
+per-project scoping, use a project-scoped `.mcp.json` server with a scoped API token instead of the
+connector.** Claude Code's scope precedence is local → project → user → plugin → claude.ai
+connector, so a project-scoped entry pointing at the same URL as a connector wins.
 
-### 15.1 Layout
+> **Gotchas.** Project-scoped servers require one-time approval per repo, and in a freshly cloned
+> repo stay pending until you trust the workspace — worth knowing so it does not look like a bug.
+> There is also no such thing as an "MCP token": MCP is a transport, and the credential is whatever
+> the underlying service already uses, so "configure MCP for this project" always reduces to "get
+> this project's normal API credentials into the environment."
 
-```
-hq/brand/
-├── README.md              # index, reading order
-├── strategy.md            # positioning, mission, vision, audiences
-├── voice.md               # tone, vocabulary, patterns
-├── visual-system.md       # color, type, layout, imagery, logo usage
-├── tokens.json            # primitives — the raw palette and type scale
-├── messaging.json         # taglines, mission statement, audience — structured (§15.2)
-└── assets/
-    ├── logo.svg  logo-reverse.svg  monogram.svg
-    ├── icon.png  icon-1024.png
-    └── og-image.png
-```
+## 14. Data and media
 
-Assets live in git: they are small, versioned, diffable (SVG), and needed at build time. Large
-media does not — see §19.
+### 14.1 Firestore schema — staged
 
-### 15.1a Token ownership — one canonical owner per layer
+Firestore is schemaless, so the convention is a choice. **Zod schemas in one file with TypeScript
+types inferred from them** — validation at boundaries and types for free. A generator emitting
+Swift structs and Firestore rules from the same source is deferred until iOS actually starts.
 
-**This section is authoritative.** An earlier draft described `packages/shared/tokens/` as the
-whole DTCG source, which contradicted the split below and would let a retrofit create a second
-canonical token system. Corrected.
-
-| Layer | Canonical owner | Changes when |
-|---|---|---|
-| **Primitives** — the raw palette and type scale | `hq/brand/tokens.json` | You rebrand |
-| **Semantic mapping** — `action.primary → electricRed` | `packages/shared/tokens/semantic.json` | You redesign |
-| **Generated bindings** — CSS vars, JS, Swift | `packages/shared/generated/` | Never by hand |
-| **Components** | `morpheus-kit/design` | — |
-
-Primitives live with the brand because they *are* the brand. Semantic mapping lives with the
-design system because it is a design decision, not a brand one. Generated output is derived and
-never edited.
-
-**The kit generates primitives only** — decided 2026-07-29. `morpheus tokens build` emits CSS
-custom properties and a typed module from `hq/brand/tokens.json` and stops there; the semantic
-layer stays per project, which is where the table above already puts it. The question was whether
-the *kit* should own a shared semantic vocabulary with a per-project mapping file. It should not,
-yet: only one project has a semantic layer, `--ember` and `--forest` are brand choices rather than
-technical ones, and *extract on the second use, never the first* applies with particular force to
-a vocabulary — a wrong abstraction here propagates into every project that adopts it. When a
-second project wants one, the shape of the mapping file will be evident rather than invented.
-
-**A project that already has a token system keeps it.** `morpheus brand init` writes no
-`tokens.json` when `visualSource` is set, and never overwrites an existing file — so adopting the
-brand format cannot destroy or duplicate a working visual system. Migrating existing tokens into
-this shape is deliberate, reviewed work, not something an initializer does silently.
-
-### How the design system is actually split
-
-The design system is not one thing in one place. It is **reusable structure in the kit, and
-project-specific values in the project.** Three layers:
-
-| Layer | What it is | Where it lives | Project-specific? |
-|---|---|---|---|
-| **Primitives** | The raw palette, type scale, spacing ramp | `hq/brand/tokens.json` | **Yes** — owned by the project |
-| **Semantic mapping** | `action.primary → electricRed` | `packages/shared/tokens/semantic.json` | **Yes** |
-| **Generated bindings** | CSS vars, JS consts, Swift enum | `packages/shared/generated/` | **Yes** — derived, never hand-edited |
-| **Components** | `Button`, `Card`, `DataTable` — structure, variants, states, a11y | `morpheus-kit/design` | **No** — reusable |
-| **Showcase renderer** | The code that draws a palette grid, type specimen, component gallery | `morpheus-kit/design/showcase` | **No** — reusable |
-| **Showcase route** | The page that mounts it | `apps/web/app/brand/page.tsx` | Yes, but ~5 lines |
-| **One-off components** | Things only this product has | `apps/web/components/` | **Yes** |
-
-The mechanism that makes this work: **kit components never hardcode a color, font, or radius.**
-They reference CSS custom properties that the project defines.
-
-```tsx
-// in morpheus-kit/design — ships once, used everywhere
-export function Button({ variant = "primary", ...props }) {
-  return <button className={styles[variant]} {...props} />;
-}
-// styles.primary → background: var(--ac-color-action-primary);
-```
-
-```css
-/* in the project — packages/shared/generated/web/tokens.css */
-:root { --ac-color-action-primary: #e63946; }
-```
-
-Same `Button` component; it looks like Evo in Evo and like Lakina in Lakina, with no forking, no
-theme prop threading, and no per-project component copies. Token prefix is a two-letter project
-code, as with `--lk-` in Lakina.
-
-**So there is no "populated design system" as a separate artifact.** The populated design system is
-the kit's components rendered in the browser with the project's token CSS loaded. It only exists at
-runtime — which is exactly why the showcase page (§15.3) is worth having: it is the only place you
-can *see* it.
-
-The full flow:
-
-```mermaid
-flowchart LR
-    A["hq/brand/tokens.json<br/>primitives"] --> B["packages/shared/<br/>Style Dictionary"]
-    B --> C["generated/web/tokens.css"]
-    B --> D["generated/ios/Tokens.swift"]
-    E["morpheus-kit/design<br/>components + showcase"] --> F["apps/web"]
-    C --> F
-    D --> G["apps/ios"]
-    E --> H["apps/web/app/brand/page.tsx<br/>public showcase route"]
-    C --> H
-```
-
-### 15.2 Import, don't sync
-
-Your point about brand copy also appearing on the website is the important one. A Claude skill that
-copies text between `hq/brand/` and `apps/web/` would drift within weeks.
-
-Instead, facts that appear in both places live once in **`hq/brand/messaging.json`**, are
-re-exported through `packages/shared/`, and are *imported* by the web app:
+**Most of the value comes from having one file, not from the codegen.** A single
+`packages/shared/schema/user.schema.ts` that both surfaces must conform to already prevents drift,
+because there is an unambiguous answer to "what shape is this document." Codegen removes the manual
+transcription step, which matters once a second consumer exists and not before — and a codegen
+pipeline is another CI step that can break.
 
 ```ts
-import { tagline, mission, primaryAudience } from "@acme/shared/messaging";
+// packages/shared/schema/entry.schema.ts — the source of truth
+export const Entry = z.object({
+  id: z.string(),
+  userId: z.string(),
+  imageKey: z.string(),          // R2/Storage object key, never a URL
+  calories: z.number().int(),
+  loggedAt: z.string().datetime(),
+});
+export type Entry = z.infer<typeof Entry>;
 ```
 
-Changing the tagline is a one-line edit in one file; the site picks it up at build. Prose that is
-genuinely page-specific stays in `apps/web/content/`. The skill that remains
-(`.claude/skills/brand-review`) checks *consistency and application* — does this page reflect
-current voice and visual system — rather than copying strings.
+Stage 2 adds `generated/ios/Models.swift` and `infra/firebase/firestore.rules` emitted from the
+same file, so rules cannot drift from the shape they guard.
 
-### 15.3 Public design system route
+### 14.2 `infra/`
 
-`<domain>/brand` — a public, unauthenticated page rendering the live design system: palette, type
-scale, component gallery, logo downloads, and usage rules.
+Configuration for everything that runs, kept at the root because it spans surfaces — the same
+Firebase project backs web and iOS, and the same DNS zone fronts the site, the CDN, and Chatwoot.
 
-**The rendering code is in the kit; the route is in the project.** `morpheus-kit/design/showcase`
-exports the components that introspect tokens and draw the gallery. The project mounts them:
-
-```tsx
-// apps/web/app/brand/page.tsx — the entire file
-import { BrandShowcase } from "morpheus-kit/design/showcase";
-import tokens from "@acme/shared/tokens.json";
-import { assets, usage } from "@acme/shared/brand";
-
-export default function Page() {
-  return <BrandShowcase tokens={tokens} assets={assets} usage={usage} />;
-}
+```
+infra/
+├── environments/              # production.json, preview.json, local.json
+├── firebase/                  # firestore.rules (generated), indexes, storage.rules
+├── vercel.json
+├── cloudflare/                # DNS records, R2 buckets, cache rules
+├── gcp/                       # project setup, IAM, enabled APIs, Secret Manager
+├── chatwoot/                  # docker-compose + Coolify config
+└── README.md                  # what runs where, and how to reach it
 ```
 
-Because it reads the same tokens the product renders with, it cannot go stale — there is no
-separate design-system site to keep in sync, and improvements to the showcase itself arrive with a
-kit upgrade for every project at once.
+Recreating the entire runtime from an empty cloud account should be a scripted operation an agent
+can perform, not tribal knowledge.
 
-This is the link you send a hardware vendor or contractor. It deliberately excludes strategy,
-audiences, and positioning, which stay internal in `hq/brand/strategy.md`. `/hq/design` is the
-internal counterpart and may include the strategic material.
+### 14.3 Media assets
 
-### 15.4 `/hq` inherits the project brand
-
-Confirmed as intended: `/hq` uses the same kit components and the same token CSS as the public
-site, so each project's dashboard is themed by that project's brand with no per-project styling
-work.
-
-One refinement — dashboards want higher information density than marketing pages. The kit defines a
-small set of `--hq-*` semantic tokens (density, table row height, muted surface) that default
-sensibly and *derive from* brand colors rather than introducing a parallel palette. A project can
-override them, but is not expected to.
-
-### 15.5 The brand package has a declared required set
-
-`src/brand/package.ts` declares what a brand package must contain and what it may grow. It is the
-**single source of that list**, and three consumers read it: the design-session prompt tells an
-agent what to produce, `morpheus brand status` reports what is missing, and the generated
-`hq/brand/README.md` documents the contract for a human.
-
-Written separately these would drift, and the drift would be silent — a prompt asking for
-something nothing checks looks exactly like a prompt asking for the right thing.
-
-**Required, and deliberately short:**
-
-| File | Produced by |
-|---|---|
-| `README.md`, `strategy.md`, `voice.md`, `messaging.json` | the wizard |
-| `tokens.json`, `visual-system.md`, `assets/logo.svg` | the design session |
-
-A required list long enough to be thorough is one nobody completes, and a checklist that is never
-green stops being read.
-
-**Existence is not completeness.** The wizard writes an empty `tokens.json` scaffold, and an empty
-scaffold beside a finished design is the exact failure this check exists to catch — it looks done
-in a file listing. So `tokens.json` must carry real values under `color`, `font` and `space`, and
-`visual-system.md` is scanned for the generator's own placeholder sentences, reporting *which*
-section was never written rather than that the file is short.
-
-**Optional entries carry a trigger, not a deadline** — `motion.md` when transitions start being
-invented per screen, `components.md` when the same pattern is rebuilt a third time,
-`accessibility.md` when someone re-derives a contrast ratio already checked once. Nothing optional
-affects the exit code. Treating an unmet trigger as a failure trains people to ignore the output,
-and guessing at a motion system before anything animates produces rules nobody follows.
-
-### 15.5a The answers are a file, not a wizard transcript
-
-`hq/brand/answers.md` is the single source of the owner's input. The wizard is one way to fill it
-in; editing it directly is the other, and for most projects the better one.
-
-A sequential prompt is the wrong shape for this work. **The answers refer to each other** — `never`
-is written against `feels`, `mission` gets sharper once `primaryAudience` is concrete — and a
-wizard makes you commit to each one before you can see the next. A file lets you write them in any
-order, revise three at once, and leave one blank while you think.
-
-`morpheus brand init` writes the file *before* asking anything, so quitting the wizard leaves a
-usable artefact rather than nothing, and says so on screen. `morpheus brand build` regenerates from
-the edited file and asks nothing.
-
-Questions are anchored by `<!-- morpheus:q <key> -->` rather than by matching heading text, so
-rewording a heading to something clearer does not break parsing. The comment is invisible wherever
-markdown is rendered.
-
-There is no `answers.json`. A JSON record beside the editable file would be a second source of
-truth by another name — the thing this package spends most of its effort avoiding everywhere else.
-
-### 15.6 Generated, seeded, and authored
-
-The original rule — never overwrite anything — was right about not destroying work and wrong about
-treating every file the same. `refresh` rewrote `answers.json` and skipped the rest, so a changed
-mission could sit in `answers.json` while the old one stayed in `messaging.json`, which the web app
-imports. The refresh reported success and the stale value shipped.
-
-Every file the generator writes now declares its owner:
-
-| Ownership | Files | On refresh |
+| Content | Store | Why |
 |---|---|---|
-| `derived` | `messaging.json`, `explore-prompt.md`, `README.md`, `assets/README.md` | Regenerated. Nothing hand-written legitimately survives in a pure function of the answers. |
-| `seeded` | `strategy.md`, `voice.md`, `visual-system.md` | Reported as disagreeing. Generated once as a starting point, then yours. |
-| `authored` | `tokens.json`, `assets/*` | Never touched. |
+| Brand assets (logo, icon) | Git | Small, versioned, build-time |
+| Public marketing media | **R2**, `cdn.<domain>` | Read-heavy — free egress |
+| User-generated content | **Firebase Storage** | Upload-heavy, read-cold, needs Security Rules + lifecycle tiering |
+| Source files (raw video, PSD) | Google Drive | Never needed by the build |
 
-**Morpheus will not revert your prose to close a gap it noticed.** A seeded file that disagrees
-with the answers is named, not rewritten — silently reverting someone's writing is the same class
-of bug as silently keeping a stale mission, just pointed the other way. To take the regenerated
-version, delete the file and re-run.
+Marketing media is written once and read constantly, which is exactly the profile where R2's zero
+egress fees win: $0.015/GB-month with no transfer cost, against $0.08–0.12/GB egress on Google
+Cloud.
 
-`morpheus brand check` reports drift and writes nothing, reading `answers.json` rather than asking,
-so it is safe in CI. It exits non-zero on any drift: a package whose prose disagrees with its own
-answers is wrong even though every file is present.
+Always store **object keys** in the database, never full URLs, and always serve through
+`cdn.<domain>`, so the backing store can change without touching data or shipped clients.
 
-### 15.7 A design session records decisions, not just outcomes
-
-`hq/brand/decisions.md` is a required session output — `## Settled`, `## Rejected`, `## Open`, with
-a reason on every line, written **after each round rather than at the end**.
-
-**Scrollback is not a design record.** Brand work spans rounds, context compaction, more than one
-day, and sometimes a different agent. Without a checkpoint, a rejected direction returns in round
-four, the one good fragment inside a rejected direction is lost, and a fresh session cannot tell an
-abandoned idea from an unexplored one.
-
-The negative and compositional entries carry most of the value — *Direction B rejected as too
-institutional, keep its type pairing*. So directions get stable names in round one, or "take the
-type from B and the imagery from D" stops resolving once the mockups are gone.
-
-`brand status` checks all three sections are present. A session that rejected nothing did not
-diverge, so a missing `## Rejected` is a real signal rather than a formatting nit.
-
-Scratch mockups live in `local/brand/`, which is gitignored. The decision and its reason are what
-is durable; the artefact is not.
-
-### 15.8 Convergence needs evidence, not a good hero
-
-A hero section flatters almost any direction. Convergence declared on one attractive marketing
-mockup is the failure this step exists to prevent.
-
-Before converging, the session renders the leading direction on **one expressive surface** (the
-case that naturally flatters it) and **one dense functional surface** — real inputs, labels, an
-error state, a result — each at mobile and desktop. That second one is where a palette with no
-quiet neutral, or a display face that cannot set 13px, shows up. *If it holds on both, it is a
-direction. If it only holds on the first, it is a poster.*
-
-Issue #12 proposed a fuller acceptance set — every interactive state, dark mode, contrast, reduced
-motion, imagery provenance, brand-architecture differentiation. That is a design-QA framework, and
-§15.5 argues a checklist long enough to be thorough is one nobody completes. Shipping it whole
-would produce a gate that gets skipped while looking enforced, which is worse than the
-underspecification it replaced. So those are named in the prompt as things to look at, with the
-instruction to **say which ones were not checked** rather than imply they were.
-
-The session ends by writing `## Completion` into `decisions.md`: files written, surfaces reviewed,
-decisions still open, temporary assets needing replacement, departures from the brief and why they
-were accepted, and checks run **and not run**. That last line is what makes "first working version"
-a claim with evidence and named gaps behind it rather than the note a conversation happened to end
-on.
-
-### 15.9 Setup is a checklist, not a wizard
-
-`morpheus init status` reports how far through setup a project is, writing the full list to
-`hq/onboarding.md`.
-
-**Nothing is sequential and nothing is lost.** The defining failure of a setup wizard is that it is
-a transaction: quit at step nine and you begin again at step one. Here the state is a markdown file,
-so closing the terminal costs nothing, steps can be done in any order over as many days as it takes,
-and a note under a task — an account id, who to ask, why it is blocked — survives.
-
-**Anything Morpheus can see, Morpheus checks.** Roughly half the list is detected by reading the
-repository: the manifest, `.agent/` records, registry membership, reusable workflows, branch
-protection via `gh`, a goal, a roadmap item, an inbox, brand answers, brand package completeness, a
-linked Vercel project, a committed `.env.example`. Those checkboxes are rewritten every run and
-ticking one by hand is undone — deliberately, because **a checklist that can be wrong about
-something it could have verified stops being read.** Manual state exists only for work that happens
-outside the repo, where there is nothing to look at.
-
-Detection returns `true`, `false`, or **`null` for "could not check"**, and `null` must never
-collapse into "not done". A missing `gh` rendering as an unprotected branch sends someone to fix
-what was never broken. Unknown steps say so and keep whatever was recorded.
-
-The list is filtered by `kind`, the same as `doctor`'s expectations. Morpheus itself is `internal`
-and is never asked about a brand, a domain, or a billing account — a checklist that is wrong for you
-is one you stop opening.
-
-Optional tasks carry the same weight as optional brand files: they never affect completion. Analytics
-is not missing before launch.
-
-### 15.10 `init` scaffolds the repository and nothing else
-
-`morpheus init` writes the manifest, `AGENTS.md` with `CLAUDE.md` symlinked to it, the four
-`.agent/` records, the `hq/` tree for the project's kind, an inbox, a CI workflow delegating to the
-reusable ones, and `.gitignore` entries. Then it registers the prefix and prints `init status`.
-
-**It never overwrites.** Anything present is skipped and reported, which is what makes it safe on an
-established repository — so *initialise a new project* and *bring an old one up to the standard* are
-the same command rather than two that drift apart.
-
-**It provisions nothing.** No GCP, no DNS, no Vercel. Those live in someone else's console, need
-credentials this command should not hold, and are already tracked by §15.9's checklist. Drawing the
-seam there means `init` can never be blocked on a token — which is why it exists at all while the
-infrastructure items sit unstarted.
-
-Two details worth keeping:
-
-- `CLAUDE.md` is a **symlink**, not a copy. Two files would drift, and the drift would be invisible
-  until an agent acted on the stale one.
-- `hq/brand/` gets a `.gitkeep`, not a `README.md`. The brand wizard owns that filename and never
-  overwrites, so a placeholder would block the real file permanently.
-
-The scaffold was written after two retrofits rather than before, and it shows: every template here
-exists because Evo or Darwin needed it. Guessing the shape first would have produced something that
-looked right and was wrong in ways nobody could name.
-
-### 15.11 One token generator, not one per project
-
-`morpheus tokens build` reads a DTCG-shaped token file and writes CSS custom properties and a
-typed TS module. Exported from the kit as `morpheus-kit/design`.
-
-It exists because **three projects independently hand-rolled the same twenty lines** —
-`cpheinrich.com/web/scripts/generate-brand-css.mjs`,
-`heinrichbros.com/web/scripts/sync-brand-theme.mjs`, and Lakina's `tokens.css`. That is
-extract-on-second-use passed twice over, and the three differ in ways that matter: one throws on
-arrays, one silently drops them, one hardcodes every variable name so a new token requires editing
-the generator.
-
-Two decisions worth keeping:
-
-**It writes nothing when the source has problems.** A stylesheet built from a half-read token file
-still renders, which is how the mistake survives to production. Every problem is reported at once —
-arrays, name collisions, malformed JSON — rather than throwing on the first.
-
-**It emits a TS module as well as CSS.** A deleted custom property renders as nothing and a
-stylesheet cannot catch it; a deleted key in `token` does not compile.
-
-**It does not decide semantic names.** Only `heinrichbros.com` has a semantic layer
-(`color.vermilion` → `--ember`) and its mapping is bespoke. §15.1a says the layer should exist, but
-inventing a shared vocabulary from a sample of one would be guessing — so the kit emits primitives
-and a project maps them, until there is enough evidence to do better.
-
----
-
-## 16. Testing and QA
-
-Tests are first-class. Agents update tests in the same PR as the code, enforced by CI (§12.2).
-
-### Where tests live
-
-**Colocated with the code they test.** Unit and component tests go in `apps/web/tests/` and
-`apps/ios/Tests/`, never centralized — an agent editing a component should find its test in the
-same tree.
-
-**`qa/` holds what spans surfaces or is not code.**
-
-```
-qa/
-├── e2e/                       # Playwright — full user journeys across the web app
-│   ├── specs/
-│   └── fixtures/
-├── test-plans/                # per-feature manual test plans, referenced from PRs
-│   └── MO-014-calorie-pipeline.md
-├── checklists/
-│   ├── pr-review.md           # what an agent self-checks before requesting review
-│   ├── release.md             # pre-deploy gate
-│   └── accessibility.md
-├── acceptance/                # acceptance criteria per roadmap item
-├── known-issues.md            # defects accepted and deferred, with reasons
-└── security.md                # posture, threat notes, dependency policy
-```
-
-### Gates
-
-| When | Runs | Blocks |
-|---|---|---|
-| Every commit | Lint, typecheck, unit tests | Merge |
-| Every PR | Above + `morpheus check pr` + build | Merge |
-| Pre-deploy | E2E against the preview deployment | Deploy |
-| Human review | Preview link + screenshots + test plan | Deploy |
-
-### The human review artifact
-
-Every PR carries: a Vercel preview link, screenshots of changed screens captured in CI, a per-change
-"what to test" list generated from the acceptance criteria, and for iOS a simulator recording plus a
-build link.
-
-**Web feedback** comes back as Vercel comments anchored to page elements, synced into the PR (§9),
-which is what makes it unambiguous which note refers to which part of the page.
-
-### 16.1 iOS: agents can build, run, and QA their own work
-
-Yes — this works today with the standard Xcode toolchain, no special infrastructure:
-
-| Capability | Mechanism |
-|---|---|
-| Build | `xcodebuild -scheme Evo -destination 'platform=iOS Simulator,name=iPhone 16'` |
-| Boot a simulator | `xcrun simctl boot`, `xcrun simctl install`, `xcrun simctl launch` |
-| Drive the UI | **XCUITest** — the agent writes UI tests and they double as the QA script |
-| Screenshot | `xcrun simctl io booted screenshot shot.png` |
-| Record video | `xcrun simctl io booted recordVideo demo.mp4` |
-| Distribute a real build | Firebase App Distribution or TestFlight via `fastlane` |
-
-So the agent can implement a change, build it, launch it in a simulator, drive the flow with
-XCUITest, capture a screenshot per step and a video of the whole flow, and attach all of it to the
-PR. It genuinely QAs its own work before asking for review.
-
-Running on a **physical device** additionally needs a provisioning profile and a connected device,
-so simulator is the default for the review loop and device builds go through App Distribution when
-you want to hold the real thing.
-
-**Feedback convention.** Since iOS has no anchored-comment equivalent, screenshots are emitted with
-stable numbered names tied to the test step that produced them —
-`MO-014-03-paywall-presented.png` — so a PR comment saying "03 — the CTA is too low" is
-unambiguous to the agent. The kit's `ios-ci` workflow enforces the naming.
-
-This is deliberately lower-tech than Vercel Comments and good enough. Building an in-app feedback
-overlay is possible later if numbered screenshots prove insufficient in practice.
-
----
-
-## 17. Documentation
+## 15. Documentation
 
 One source of truth: **markdown in `docs/`**, rendered at `/hq/docs`.
 
@@ -1597,376 +1205,224 @@ docs/
 └── api/                   # generated where possible
 ```
 
-**Diagrams are Mermaid in fenced code blocks**, not image files. Mermaid renders natively on
-GitHub *and* in the web app, so one text source serves both, diagrams live in PR diffs, and agents
-can edit them. No Figma-export-to-PNG step that goes stale.
+**Diagrams are Mermaid in fenced code blocks**, not image files. Mermaid renders natively on GitHub
+*and* in the web app, so one text source serves both, diagrams live in PR diffs, and agents can
+edit them. No Figma-export-to-PNG step that goes stale.
 
-`/hq/docs` renders `docs/` at build time. The markdown is canonical; the web page is a view. There
-is never a second copy.
+The markdown is canonical; the web page is a view. Company documentation is different in kind — it
+*is* the `hq/` tree, which is why it does not live in `docs/`.
 
-Company documentation is different in kind — it *is* the `hq/` tree, navigated from `/hq`,
-which is why it does not live in `docs/`.
+## 16. Customer support: Chatwoot
+
+**Self-hosted from the start**, rather than building first-party email handling and migrating
+later. Volume is expected to grow, and Chatwoot is a well-trodden deployment: a few hours once
+instead of a migration under pressure.
+
+A Linux VPS with **2 cores and 4 GB RAM minimum**, running Docker Compose with PostgreSQL and
+Redis behind Nginx with Let's Encrypt — roughly $20–40/month on Hetzner. **Deploy via Coolify**
+rather than hand-rolled Compose: it handles TLS, environment variables, backups, and updates behind
+a consistent API, which turns a bespoke server into a surface an agent can operate.
+
+**One instance, many inboxes.** One deployment serves every company through separate accounts and
+inboxes — one server to patch instead of five — and each project's `/hq` reads only its own inbox
+via a scoped API token. Custom domains still work per company by pointing multiple hostnames at the
+same instance. One Chatwoot per company would buy a stronger boundary at roughly 5× the operating
+cost.
+
+Chatwoot's **Application API** is account-scoped REST with full CRUD over conversations, contacts,
+messages, and agents, plus reporting covering first-response time, resolution time, volume, and
+CSAT — so `/hq/support` renders live summary tiles and links out for conversation work. Agents use
+the same API plus webhooks to triage messages and draft replies for approval.
+
+Worth knowing for later: Chatwoot supports **Dashboard Apps**, which embed your app inside its
+agent view with the conversation and contact passed as context — the reason not to plan on
+replacing Chatwoot's UI.
+
+**Reconsider if:** volume stays trivially low for a year. The cost of being wrong in that direction
+is $30/month, versus a migration in the other.
+
+## 17. Companies with multiple repos
+
+One repo per product, not per company. Darwin Health operates `darwin` and `evo` as separate repos
+with separate brands and analytics, but shared HR and legal.
+
+**Grouping:** `morpheus.json` carries an `org` field; sibling repos share a value.
+
+**Inheritance:** the `inherits` block declares which `hq/` subtrees come from the parent rather
+than being owned locally. `evo` inherits `legal` and `hr` from `darwin`; it owns `brand`,
+`product`, `marketing`, and `support`. The CLI does not copy these — `/hq` resolves them by reading
+the parent repo, and `AGENTS.md` tells agents where the canonical copy lives.
+
+**Cross-project dashboards.** `darwin.health/hq` needs Evo's numbers. Both projects export metrics
+to a **designated warehouse project** — one GCP project per company holding the BigQuery datasets —
+and `darwin`'s `/hq` queries across both. The rejected alternative was Evo exposing an
+authenticated export endpoint that Darwin calls, which adds a service dependency, an auth surface,
+and a failure mode. PostHog projects stay separate, since separate products deserve separate
+funnels, but both export to the same warehouse.
+
+So a company has *n+1* GCP projects: one per app plus a warehouse. Cross-project BigQuery reads are
+an explicit IAM grant, which makes the rollup opt-in per dataset rather than implicit.
 
 ---
 
-## 18. `infra/`
+# Part V — Building Morpheus
 
-Configuration for everything that runs, kept at the root because it spans surfaces — the same
-Firebase project backs web and iOS, and the same DNS zone fronts the site, the CDN, and Chatwoot.
+## 18. Distribution: three mechanisms
+
+| Mechanism | Reaches projects by | Updates | Use for |
+|---|---|---|---|
+| **Templates** | Copied at `init` / `add` | Never automatically | Scaffolding that should diverge |
+| **The kit** | npm dependency | Version bump | Runtime code that should not diverge |
+| **Reusable workflows** | Referenced by ref | Instantly, on ref | CI logic |
+
+The test for the first two: *if I improve this, do I want every existing project to get the
+improvement?* Yes → kit. No → template.
+
+### 18.1 Morpheus's own structure
+
+**One package, not many.** `morpheus-kit` ships everything with subpath exports, so a project
+imports only what it uses: one version number, one install, one registry entry. Heavy or
+surface-specific dependencies are **optional peer dependencies**, so a web-only project never
+installs iOS tooling. Splitting one package into several later is mechanical; starting split and
+merging later is not.
 
 ```
-infra/
-├── environments/
-│   ├── production.json  preview.json  local.json
-├── firebase/
-│   ├── firestore.rules        # generated from packages/shared/schema
-│   ├── firestore.indexes.json
-│   └── storage.rules
-├── vercel.json
-├── cloudflare/                # DNS records, R2 buckets, cache rules
-├── gcp/                       # project setup, IAM, enabled APIs, Secret Manager
-├── chatwoot/                  # docker-compose + Coolify config for the support host
-└── README.md                  # what runs where, and how to reach it
+morpheus/
+├── architecture.md            # this file — the specification
+├── AGENTS.md                  # + CLAUDE.md symlink
+├── morpheus.json              # kind: "internal"
+├── hq/product/                # Morpheus's own goals and roadmap
+├── src/
+│   ├── cli/                   # init, add, upgrade, doctor, secrets
+│   ├── hq/                    # dashboard routes + components
+│   ├── design/                # tokens + React components
+│   ├── agent/                 # AGENTS.md fragments, skills, review tooling
+│   ├── integrations/          # Stripe, Firebase, PostHog, Chatwoot, Slack adapters
+│   ├── analytics/             # event schema + PostHog helpers
+│   ├── pm/                    # roadmap/goal schemas + parsers
+│   └── qa/                    # test harness, CI actions
+├── templates/                 # base, web, ios, hardware, brand, android
+├── .github/workflows/         # reusable workflows called by every project
+├── .agent/  ·  tests/  ·  docs/
 ```
 
-The goal is that recreating the entire runtime from an empty cloud account is a scripted operation
-an agent can perform, not tribal knowledge.
+As `kind: internal` Morpheus gets the minimal subtree — `hq/product/` and nothing else, because it
+has no customers and bills nobody. This is the smallest honest instance of the structure, which
+makes it a useful test: if the roadmap schema is awkward here, it is awkward everywhere.
 
----
+`src/hq/` (the renderer, shipped in the package) and `hq/` (Morpheus's own data) sit side by side
+without colliding — one is code the kit exports, the other is content this repo owns.
 
-## 19. Media assets
+### 18.2 Reusable GitHub workflows
 
-Git holds brand assets (SVG logos, icons, OG images) because they are small and build-time.
+Workflows with an `on: workflow_call` trigger live in Morpheus; each project keeps a thin delegator
+supplying project-specific inputs.
 
-**Everything large goes to Cloudflare R2**, served from `cdn.<domain>`: hero images, motion
-graphics, onboarding videos, marketing photography, App Store screenshots.
-
-Rationale, consistent with earlier analysis: marketing media is written once and read constantly by
-every visitor, which is exactly the profile where R2's **zero egress fees** win decisively. R2
-storage is $0.015/GB-month with no transfer cost, against $0.08–0.12/GB egress on Google Cloud.
-
-The split:
-
-| Content | Store | Why |
-|---|---|---|
-| Brand assets (logo, icon) | Git | Small, versioned, build-time |
-| Public marketing media | **R2**, `cdn.<domain>` | Read-heavy — free egress |
-| User-generated content | **Firebase Storage** | Upload-heavy, read-cold, needs Security Rules + lifecycle tiering |
-| Source files (raw video, PSD) | Google Drive | Never needed by the build |
-
-Always store **object keys** in the database, never full URLs, and always serve through
-`cdn.<domain>` — so the backing store can change without touching data or shipped clients.
-
----
-
-## 20. Customer support: Chatwoot
-
-**Decision: self-host Chatwoot from the start**, rather than building first-party email handling
-and migrating later. You expect volume to grow and dislike migrations; Chatwoot is a well-trodden
-deployment, and starting there costs a few hours once instead of a migration under pressure.
-
-### What it takes
-
-A Linux VPS with **2 CPU cores and 4 GB RAM minimum** (4 GB / 2 cores is the production baseline),
-running Docker Compose with PostgreSQL and Redis, behind Nginx with a Let's Encrypt certificate.
-Roughly $20–40/month on Hetzner.
-
-**Deploy via Coolify** rather than hand-rolled Compose. Coolify is a self-hosted PaaS that handles
-TLS, environment variables, backups, and updates behind a consistent API — which turns "a bespoke
-server an agent must reason about" into "a managed surface an agent can operate." An agent can
-perform the entire setup: provision, deploy, configure channels, and wire webhooks.
-
-### One instance, many inboxes
-
-**"Shared" means one self-hosted deployment on one VPS**, serving every company through separate
-accounts and inboxes. One server to patch and back up instead of five, and each project's `/hq`
-reads only its own inbox via a scoped API token. The alternative — one Chatwoot per company — buys
-a stronger security boundary at roughly 5× the operating cost, which is not worth it for projects
-that share an operator.
-
-Custom domains still work per company (`support.evo.med`, `support.darwin.health`) by pointing
-multiple hostnames at the same instance.
-
-### Integration with `/hq`
-
-Confirmed viable: Chatwoot's **Application API** is account-scoped REST with full CRUD over
-conversations, contacts, messages, and agents, plus built-in reporting covering first-response
-time, resolution time, conversation volume, agent performance, and CSAT. Everything needed for
-`/hq/support` tiles is available programmatically — it is not GUI-only.
-
-So `/hq/support` renders live summary metrics (open conversations, first-response time, backlog,
-common labels) and links out to `support.<domain>` for actual conversation work. Agents use the
-same API plus webhooks to triage incoming messages, draft replies, and queue them for approval.
-
-Worth knowing about for later: Chatwoot also supports **Dashboard Apps**, which embed *your* app
-inside Chatwoot's agent view with the current conversation and contact passed in as context. That
-is the reverse direction — it would let an agent handling a ticket see the customer's Firestore
-record, subscription state, and recent events inline. Not needed on day one, but it is the reason
-not to plan on replacing Chatwoot's UI.
-
-**Reconsider if:** volume stays trivially low for a year, in which case the VPS is waste — but the
-cost of being wrong in that direction is $30/month, versus a migration in the other.
-
----
-
-## 21. Project management as files
-
-No Jira, no Linear. Markdown in git, with a validated schema.
-
-### 21.1 Layout — one file per item
-
-```
-hq/product/
-├── goals/
-│   ├── README.md              # GENERATED index table
-│   └── MO-G-2026-Q3-01.md
-├── roadmap/
-│   ├── README.md              # GENERATED index table
-│   ├── MO-014.md
-│   └── MO-015.md
-└── requests/
-    ├── README.md              # GENERATED index table
-    └── FR-007.md
+```yaml
+# acme/.github/workflows/ci.yml — the whole file
+name: CI
+on: [push, pull_request]
+jobs:
+  ci:
+    uses: cpheinrich/morpheus/.github/workflows/web-ci.yml@main
+    with:
+      run-e2e: true
+    secrets: inherit
 ```
 
-**One file per item, not one big `roadmap.md`.** Revised from draft 2 for a concrete reason: you
-plan to run several agents concurrently, and two agents updating status in a single `roadmap.md`
-produce a merge conflict every time. One file per item makes concurrent writes conflict-free, gives
-each item exactly one frontmatter block to validate, and keeps diffs readable.
+Improving CI for every project becomes one commit in Morpheus. **Projects pin `@main`, not a tag** —
+with one operator and a handful of repos, instant propagation is worth more than staged rollout,
+and a broken workflow is noticed and fixed in minutes.
 
-The cost — you can no longer read the whole roadmap in one file open — is paid back by the
-**generated `README.md`** in each directory, rebuilt by CI on every merge. GitHub renders a
-directory's README automatically, so navigating to `hq/product/roadmap/` shows a sortable table
-of every item, its status, and its PRs. The index is derived, never hand-edited.
+Planned: `web-ci`, `ios-ci`, `deploy`, `pr-check`, `agent-triage`, `agent-analytics-review`,
+`release-kit`.
 
-### 21.2 Schemas
+> **Gotcha.** Cross-repo workflow access is not on by default. In Morpheus's **Settings → Actions →
+> Access**, the policy must allow access from your other repositories, or calling repos fail with a
+> permissions error that does not obviously point at this setting.
 
-The source of truth for the *shape* is Zod, exported from `morpheus-kit/pm`. The same schemas
-validate frontmatter in CI (`morpheus check pm`), parse files for `/hq`, and generate the index
-tables — so there is one definition, not three.
+### 18.3 Templates and `morpheus add`
 
-```ts
-// morpheus-kit/pm/schema.ts
-export const RoadmapItem = z.object({
-  id:         z.string().regex(/^RM-\d{3,}$/),
-  title:      z.string().min(3),
-  status:     z.enum(["backlog", "in-progress", "review", "shipped", "dropped"]),
-  priority:   z.enum(["P0", "P1", "P2", "P3"]).default("P2"),
-  goal:       z.string().regex(/^G-\d{4}-(Q[1-4]|ANNUAL)-\d{2}$/).optional(),
-  owner:      z.enum(["agent", "human"]).default("agent"),
-  prs:        z.array(z.number().int()).default([]),
-  acceptance: z.string().optional(),        // path into qa/acceptance/
-  created:    z.iso.date(),
-  updated:    z.iso.date(),
-});
+`morpheus add <template>` applies a template to an existing project — `morpheus add android`,
+`add hardware`, `add legal`. It refuses to overwrite, writes only what is missing, prints a summary,
+and updates `morpheus.json`. Because templates are additive and file-scoped this stays simple: it
+is `init` restricted to a subset, run against a non-empty directory.
 
-export const Goal = z.object({
-  id:      z.string().regex(/^G-\d{4}-(Q[1-4]|ANNUAL)-\d{2}$/),
-  title:   z.string(),
-  horizon: z.enum(["annual", "quarterly"]),
-  period:  z.string(),                      // "2026" | "2026-Q3"
-  metric:  z.string(),                      // what is measured
-  target:  z.string(),                      // the number to hit
-  current: z.string().optional(),           // updated by the analytics loop
-  status:  z.enum(["on-track", "at-risk", "missed", "achieved"]),
-});
+`morpheus upgrade` is the narrower operation: bump the kit, and *offer diffs* for template files
+that changed upstream without ever applying them automatically.
 
-export const Request = z.object({
-  id:      z.string().regex(/^FR-\d{3,}$/),
-  title:   z.string(),
-  source:  z.enum(["support", "analytics", "investor", "founder", "agent"]),
-  status:  z.enum(["new", "triaged", "accepted", "declined", "duplicate"]),
-  roadmap: z.string().optional(),           // RM-id once promoted
-  created: z.iso.date(),
-});
+GitHub's template-repo feature is not used because it is one-shot and monolithic — it cannot
+compose optional surfaces or bolt on later.
 
-export const JournalEntry = z.object({
-  date:    z.iso.date(),
-  agent:   z.enum(["claude", "codex", "human"]),
-  roadmap: z.string().optional(),
-  outcome: z.enum(["shipped", "abandoned", "blocked", "research"]),
-  summary: z.string(),
-});
-```
+## 19. Build plan
 
-An item file is frontmatter plus free prose — the schema constrains the metadata, never the body:
+The risk is building Morpheus as a speculative platform. Principle 10 is the counter-rule: extract
+on the second use, never the first. Real projects come first, and Morpheus is the residue of what
+they had in common.
 
-```markdown
----
-id: MO-014
-title: Ship calorie estimation pipeline
-status: in-progress
-priority: P1
-goal: MO-G-2026-Q3-01
-owner: agent
-prs: [42, 47]
-acceptance: qa/acceptance/MO-014.md
-created: 2026-07-20
-updated: 2026-07-28
----
+### 19.1 Stages
 
-Users photograph a meal; the pipeline returns a calorie estimate.
+**Stage 0 — Documentation only.** ✅ This file. The value is that decisions are settled before
+anything encodes them.
 
-## Context
-...
-```
+**Stage 1 — Extract what is already needed twice.** Each item has two consumers today: reusable
+workflows (`web-ci`, `pr-check`) across all repos; `morpheus-kit/pm` for Darwin and Evo;
+`morpheus-kit/analytics` for both, since the wrong event schema is expensive to fix later; and
+`morpheus-kit/hq` for Darwin, then Evo. Publishing infrastructure comes with this stage. **The
+`/hq` auth model (§11.1) lands first within it**, because everything else in `/hq` sits behind it
+and retrofitting auth is materially harder than starting with it.
 
-This is the same validation approach used for Firestore documents (§3) — **one way to describe a
-shape, whether it lands in a markdown file or a database row.**
+**Stage 2 — Retrofit by hand, then codify.** Retrofit Evo manually before writing `morpheus init`:
+move it to `apps/` + `hq/`, wire the kit, switch auth, adopt the workflows, and take notes. That
+retrofit *is* the specification for `init` — writing the initializer first would encode guesses
+about a structure no project has lived in. Darwin follows as the second retrofit, which is where
+templates get validated: anything needing hand-editing the second time is a template bug.
 
-Branch names derive from the id (`mo-014-calorie-pipeline`), which is how `morpheus check pr` knows
-which item to verify status on. `morpheus pm claim` does the deriving, which is why it is the only
-supported way to start work — see §12.3.
+**Stage 3 — The CLI.** `init` and `add`, built from stage 2's notes, then `doctor`, then `upgrade`.
+`init` earns its keep on the *third* project.
 
----
+**Stage 4 — Extract on encounter, indefinitely.** Firebase helpers, Stripe adapters, design system
+components, Chatwoot integration, schema codegen. There is no completion date; Morpheus is a
+permanent byproduct of building companies.
 
-## 22. The init wizard
-
-`morpheus init <name>` — interactive; answers written to `morpheus.json`.
-
-1. **Kind** — company, personal, or internal. Determines which `hq/` subtrees are scaffolded (§3)
-2. **Identity** — name, display name, domain, one-sentence description, parent org if any
-3. **Surfaces** — web (assumed), iOS, hardware
-4. **Brand** — generate skeletons, or point at an existing `brand/`
-5. **Integrations** — which canonical services to wire
-6. **Credentials** — tier 2 and 3 tokens, each individually skippable (§14.2); written to GSM, never to disk
-7. **Access** — `/hq` allowlist
-
-Then: create the directory, scaffold from templates, install `morpheus-kit`, init git, create the
-private GitHub repo, push, provision the GCP project and Secret Manager entries, create the
-Firebase project, link the Vercel project, configure DNS in Cloudflare, and set Actions secrets.
-
-Target: a deployed skeleton on a real domain with a working `/hq`, in one command.
-
----
-
-## 23. Hardware (optional)
-
-```
-apps/hardware/
-├── designs/            # CAD, schematics, revisions
-├── bom/                # bill of materials, versioned
-├── vendors/            # one file per vendor: contacts, terms, lead times, MOQ
-└── procurement/        # POs, shipment tracking, QC records
-```
-
-Vendors and BOM are structured YAML so `/hq/vendors` can render them and agents can reason over
-cost and lead time. Large CAD files go to R2, not git.
-
----
-
-## 24. Build plan
-
-The risk is building Morpheus as a speculative platform. The counter-rule:
-
-> **Extract on the second use, never the first.** Nothing enters the kit until a second project
-> needs it. Until then it lives in the project that needs it and is allowed to be specific.
-
-This inverts the usual scaffolder failure mode, where someone designs a framework, then discovers
-the abstractions were wrong once real projects arrive. Here, real projects come first and Morpheus
-is the residue of what they had in common.
-
-### Stage 0 — Documentation only ✅
-
-`architecture.md`. Done. No code. The value is that decisions are settled before anything encodes
-them.
-
-### Stage 1 — Extract what you already need twice (next)
-
-Driven strictly by your stated near-term needs — analytics on Evo *and* Darwin, project management
-across multiple projects — each item already has two consumers:
-
-| Ship | Why now | Consumers |
-|---|---|---|
-| **Reusable workflows** (`web-ci`, `pr-check`) | Highest value per hour; no package publishing needed | All four repos |
-| **`morpheus-kit/pm`** — roadmap/goal format + parser | You want agents working off roadmaps across projects | Darwin, Evo |
-| **`morpheus-kit/analytics`** — PostHog setup + event schema | You want analytics on both, and the wrong event schema is expensive to fix later | Darwin, Evo |
-| **`morpheus-kit/hq`** — shell, auth, nav, first tiles | You are building Darwin's `/hq` now | Darwin, then Evo |
-
-Publishing infrastructure (GitHub Packages, release workflow) comes with this stage since the kit
-needs somewhere to go.
-
-**The `/hq` auth model (§10.1) should land first within this stage**, because everything else in
-`/hq` sits behind it and retrofitting auth is materially harder than starting with it.
-
-### Stage 2 — Retrofit by hand, then codify
-
-**Retrofit Evo manually before writing `morpheus init`.** Move it to `apps/` + `hq/`, wire the
-kit, switch auth, adopt the workflows. Do it by hand and take notes.
-
-That retrofit *is* the specification for `init`. Writing the initializer first would encode guesses
-about a structure no project has actually lived in. Writing it second turns it into transcription.
-
-Darwin follows as the second retrofit, which is where the templates get validated — anything that
-needed hand-editing the second time is a template bug.
-
-### Stage 3 — The CLI
-
-`morpheus init` and `morpheus add`, built from stage 2's notes. Then `doctor`, then `upgrade`.
-`init` earns its keep on the *third* project; before that, retrofitting by hand is faster than
-building the tool.
-
-### Stage 4 — Extract on encounter, indefinitely
-
-Firebase setup helpers, Stripe adapters, design system components, Chatwoot integration, schema
-codegen. Each enters the kit the second time you need it, not before. There is no completion date;
-Morpheus is a permanent byproduct of building companies.
-
-### How Morpheus uses itself
-
-It should — but only where dogfooding is real, not ceremonial:
+### 19.2 How Morpheus uses itself
 
 | Uses itself for | How | Why it is genuine |
 |---|---|---|
-| Project management | `hq/product/roadmap/` in this repo | Morpheus has a roadmap; proves the format immediately |
+| Project management | `hq/product/roadmap/` in this repo | Proves the format immediately |
 | Documentation | `docs/` with Mermaid | Already true of this file |
-| Agent memory | `.agent/worklog/` | Multi-session work starts now |
-| CI | Calls its own reusable workflows | Genuine test: if they break, they break here first |
-| Conventions | Its own `AGENTS.md` + `morpheus check pr` | The gate must survive contact with its author |
+| Agent records | `.agent/` | Multi-session work starts now |
+| CI | Calls its own reusable workflows | If they break, they break here first |
+| Conventions | Its own `AGENTS.md` + `check pr` | The gate must survive contact with its author |
 
-**What it should *not* do yet: have a web surface.** A `/hq` for a repo with no customers, no
-revenue, and no analytics would render empty tiles — a worse test of the dashboard than Darwin,
-which has real data and real stakes. **Dogfood `/hq` in Darwin, not in Morpheus.**
+**What it should not do yet: have a web surface.** A `/hq` for a repo with no customers, revenue,
+or analytics would render empty tiles — a worse test of the dashboard than Darwin, which has real
+data and real stakes.
 
-### 24.1 Where Morpheus's own data lives and how you read it
+### 19.3 Where Morpheus's own data lives
 
-The apparent contradiction — "it uses itself for roadmap and docs, but has no web surface" —
-dissolves once you notice **GitHub is already a hosted, authenticated, searchable web view of
-exactly this data.**
+"It uses itself for roadmap and docs but has no web surface" is not a contradiction, because
+**GitHub is already a hosted, authenticated, searchable web view of exactly this data.**
 
-| Data | Source of truth | How you view it | How an agent reads it |
-|---|---|---|---|
-| Roadmap | `hq/product/roadmap/*.md` | GitHub renders the generated `README.md` as a table when you open the directory | Reads the directory |
-| Goals | `hq/product/goals/*.md` | Same | Same |
-| Docs | `docs/**.md` | GitHub renders markdown **and Mermaid diagrams** natively | Same |
-| Journal | `.agent/worklog/*.md` | GitHub, or `grep` | Same |
-| Code review queue | Open pull requests | GitHub PR list | GitHub API |
-| Decision queue | Issues labeled `decision` | GitHub issue list, filtered | GitHub API |
+| Data | Source of truth | How you view it |
+|---|---|---|
+| Roadmap, goals | `hq/product/**.md` | GitHub renders the generated `README.md` as a table |
+| Docs | `docs/**.md` | GitHub renders markdown and Mermaid natively |
+| Worklog | `.agent/worklog/*.md` | GitHub, or `grep` |
+| Code review queue | Open pull requests | GitHub PR list |
+| Decision queue | Issues labeled `decision` | GitHub issue list, filtered |
 
-Nothing here needs Firebase, a deployment, or a domain. GitHub gives you rendering, auth, full-text
-search, mobile apps, and notifications for free, on a private repo, today.
+**`/hq` is a nicer view of the same files, not a different source of truth.** That is the point of
+keeping state in markdown and GitHub: the data is readable with or without the dashboard.
 
-**`/hq` is a nicer view of the same files, not a different source of truth.** That is the whole
-point of keeping state in markdown and GitHub rather than in a product's database — the data is
-readable with or without the dashboard, and the dashboard is an optimization you add when a project
-has enough going on to justify it.
+**The trigger for building a Morpheus web surface is cross-project rollup**, not "Morpheus needs a
+dashboard." Once four or five projects each have a roadmap, one page showing what every agent is
+working on everywhere becomes valuable, and GitHub cannot span repositories. That is a genuinely
+different product — an aggregator reading several repos via the API — and the natural home for the
+kit's design system showcase and rendered docs as well. Until then, buying a domain would be buying
+a placeholder.
 
-**The trigger for building a Morpheus web surface** is therefore not "Morpheus needs a dashboard" —
-it is *cross-project rollup*. Once four or five projects each have their own roadmap, you will want
-one page showing what every agent is working on everywhere, and GitHub cannot span repositories.
-That is a genuinely different product from a per-project `/hq`: an aggregator that reads several
-repos via the GitHub API and renders one table. It is worth building at that point, and it is the
-natural home for the kit's design system showcase and rendered docs as well.
-
-Until then, buying a domain would be buying a placeholder.
-
-Morpheus has only `hq/product/` — it is an internal tool, not a company (§5.1).
-Its structure is legitimately a subset, and `morpheus.json` records that with
-`"kind": "internal-tool"` so `doctor` does not report the missing directories as drift.
-
----
-
-## 25. What Morpheus is not
+## 20. What Morpheus is not
 
 - Not multi-tenant, not a product, not currently sold. Licensed PolyForm Noncommercial so that
   option stays open; commercial use requires a separate licence.
@@ -1974,75 +1430,29 @@ Its structure is legitimately a subset, and `morpheus.json` records that with
 - Not a replacement for Stripe, Firebase, or Gusto. Those moats are real.
 - Not a runtime. It scaffolds and supplies packages; it is not in the request path.
 
----
-
-## 26. Resolved
-
-| Question | Resolution |
-|---|---|
-| `apps/` + `hq/` grouping | Adopted. Solved the cross-reference concern with import-not-sync (§15.2) |
-| Retrofit existing projects | Yes, all four — after Morpheus matures. Lakina moves off Vite to Next.js |
-| Package registry | GitHub Packages. Wipe Artifactory config first |
-| One package or many | **One** — `morpheus-kit` with subpath exports |
-| Secrets store | GSM for anything code reads; 1Password for human-only credentials |
-| Analytics | PostHog Cloud. Not self-hosted — self-host has fewer features |
-| Hosting | Vercel, decided by preview-comment review loop |
-| Repo per company | One repo per product; `org` field groups them; shared BigQuery for cross-project `/hq` |
-| Support | Chatwoot self-hosted from day one, via Coolify, at `support.<domain>` |
-| Staging | Vercel preview per PR; no permanent staging environment |
-| Review queue | **GitHub** — PRs for code, `decision`-labeled issues for the rest. Firestore only for state the app reads at runtime |
-| PM file layout | One file per item + generated `README.md` index, to avoid concurrent-agent merge conflicts |
-| PM schemas | Zod in `morpheus-kit/pm`; same shape definition validates CI, parses `/hq`, generates indexes |
-| Viewing Morpheus's own data | GitHub renders it. Web surface deferred until cross-project rollup is needed |
-| `company/` renamed | **`hq/`** — not every project is a company, and it makes `hq/` → `/hq` → `kit/hq` coherent |
-| Project kinds | `company` \| `personal` \| `internal`, set by the wizard, drives which `hq/` subtrees exist |
-| MCP credentials | `.mcp.json` committed with `${VAR}` refs; values in `.env.local` from GSM. claude.ai connectors need no token but are account-scoped |
-| Credential breadth | Broad tokens, deliberately — isolation is at the *account* boundary, which already exists per company |
-| Firebase token | Not needed. `gcloud auth login` covers Firebase via ADC + Management API |
-| Multi-account Google | Named `gcloud` configurations, selected per repo via `CLOUDSDK_ACTIVE_CONFIG_NAME` |
-| Per-project Google Drive | Service account per company with folders shared to it — not the claude.ai connector |
-| Bootstrap manual steps | One `gcloud auth login` per Google identity; one pasted Cloudflare token per account |
-| Design system split | Components + showcase in the kit; tokens and route in the project (§15.1a) |
-| `/hq` auth | Firebase Auth custom claims; allowlist in `morpheus.json` applied by `sync-access` |
-| `/hq` theming | Inherits project brand automatically; `--hq-*` tokens for density only |
-| Shared CI | GitHub reusable workflows in Morpheus, thin delegators in projects |
-| iOS review | Agent builds, runs in simulator, drives XCUITest, attaches numbered screenshots + video |
-| Firestore schema | Zod source of truth now; Swift + rules codegen deferred until iOS starts |
-| Chatwoot topology | One instance, per-company inboxes, custom domains per company |
-| Kit versioning | Semver for the package; reusable workflows pin `@main` for instant propagation |
-| Codex/Claude split | Conventions in `AGENTS.md` prose so both benefit; skills are a Claude bonus |
-| Morpheus web surface | Deferred — dogfood `/hq` in Darwin, which has real data |
-
----
-
-## 27. Open questions
+## 21. Open questions
 
 **Q1 — Event schema design.** Analytics is stage 1 and the event schema is the expensive thing to
 get wrong. Do we define a small canonical set every project emits (`signup`, `activation`,
 `purchase`, `retention_ping`) so cross-project dashboards work, and let projects extend it? Or is
 each project's schema fully its own?
 
-**Q2 — Cross-project rollup.** If Morpheus, Darwin, and Evo each keep their own `roadmap/`, should
-there be a rollup view — one place showing what agents are doing across every project? That implies
-either a shared Firestore or an aggregator reading several repos. Useful, or premature?
+**Q2 — Which agent does what.** Codex is better at image asset generation. Should `AGENTS.md`
+encode a division of labour (Codex for assets and bulk mechanical edits, Claude for architecture
+and review), or stay agent-agnostic and let you route by hand?
 
-**Q3 — Which agent does what.** You noted Codex is better at image asset generation. Should
-`AGENTS.md` encode a division of labor (Codex for asset generation and bulk mechanical edits, Claude
-for architecture and review), or stay agent-agnostic and let you route by hand?
+**Q3 — `hq/` for non-software businesses.** The structure assumes a software product. If a company
+is purely hardware or services, `apps/` is nearly empty. Support it, or explicitly out of scope?
 
-**Q4 — `hq/` for non-software businesses.** The structure assumes a software product. If a
-company is purely hardware or services, `apps/` is nearly empty. Support it, or explicitly out of
-scope?
-
-**Q5 — Journal growth.** `.agent/worklog/` grows monotonically. When does it need compaction, and
+**Q4 — Worklog growth.** `.agent/worklog/` grows monotonically. When does it need compaction, and
 should a scheduled agent fold old entries into `learned.md`?
 
-**Q6 — `personal` projects that handle sensitive data.** `heinrich.money` is `kind: personal` by
+**Q5 — `personal` projects that handle sensitive data.** `heinrich.money` is `kind: personal` by
 collaborator count but handles financial data, which implies real auth, bank-aggregator
 credentials, and a stricter security posture than `cpheinrich.com` needs. Does `personal` need a
 `sensitive: true` flag that pulls in the security scaffolding a `company` project gets, or is that
 a fourth kind?
 
-**Q7 — Account-scoped consumer connectors.** Granola, and any other claude.ai connector without a
+**Q6 — Account-scoped consumer connectors.** Granola, and any other claude.ai connector without a
 service-account path, cannot be made per-project. Accept one identity across all projects, or route
 those through a per-project integration where the vendor offers an API key?
