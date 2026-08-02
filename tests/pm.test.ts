@@ -13,6 +13,7 @@ import {
   spliceIndex,
   writeIndex,
 } from "../src/pm/index-gen.js";
+import { index } from "../src/cli/pm.js";
 import { createItem, nextId } from "../src/pm/new-item.js";
 import { Goal, RoadmapItem } from "../src/pm/schema.js";
 
@@ -192,6 +193,33 @@ describe("parse", () => {
     const doubled = [...items, { ...items[0]!, path: join(dir, "copy.md") }];
 
     expect(findDuplicateIds(doubled)).toHaveLength(1);
+  });
+});
+
+describe("index over a partial product directory", () => {
+  it("skips a kind whose directory does not exist", async () => {
+    // A project need not use every kind. Darwin moved goals to
+    // `hq/strategy/goals/` — a company has goals that are not product goals —
+    // which left `hq/product/goals/` absent. `parseDir` already treats a
+    // missing directory as zero items, but `writeIndex` then tried to write a
+    // README into it, and `writeFile` cannot create the parent: the command
+    // died with a bare ENOENT and took CI's index check with it.
+    await seed("roadmap", "MO-001", VALID_RM);
+
+    await expect(index(product)).resolves.toBe(0);
+
+    // Skipped, not created. Materialising an empty directory would be a second
+    // bug wearing the first one's clothes.
+    await expect(readdir(join(product, "goals"))).rejects.toThrow();
+    expect(await readFile(join(product, "roadmap", "README.md"), "utf8")).toContain("MO-001");
+  });
+
+  it("still reports stale under --check without crashing", async () => {
+    await seed("roadmap", "MO-001", VALID_RM);
+    expect(await index(product, true)).toBe(1); // roadmap README not written yet
+
+    await index(product);
+    expect(await index(product, true)).toBe(0);
   });
 });
 

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { findDuplicateIds, parseArtifact, type ParseIssue } from "../pm/parse.js";
@@ -19,6 +19,15 @@ import { formatReconcile, markShipped, reconcile } from "../pm/ship.js";
 const KINDS = Object.keys(ARTIFACTS) as ArtifactKind[];
 
 const exec = promisify(execFile);
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Whose inbox to write into, when `--owner` was not given.
@@ -147,6 +156,20 @@ export async function index(productDir: string, check = false): Promise<number> 
     }
 
     const dir = join(productDir, ARTIFACTS[kind].dir);
+
+    // A kind a project does not use has no directory, and `parseDir` already
+    // treats that as zero items. Writing an index into it would materialise a
+    // directory nobody asked for — and `writeFile` cannot create the parent, so
+    // before this the command died with a bare ENOENT.
+    //
+    // Darwin hit it by moving goals to `hq/strategy/goals/`, which left
+    // `hq/product/goals/` absent. That is a legitimate layout: a company has
+    // goals that are not product goals.
+    if (!(await exists(dir))) {
+      console.log(`skipped   ${dir}/README.md — directory not present`);
+      continue;
+    }
+
     const changed = await writeIndex(dir, rendered);
 
     if (changed) {
