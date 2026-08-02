@@ -266,7 +266,8 @@ often goes wrong when one person runs several companies.
 | Email, accounts | **Google Workspace** | Human mailboxes — not application email |
 | Code hosting, CI, packages | **GitHub** | Substrate for everything else |
 | Messaging | **Slack** | Agent notification target |
-| DNS, CDN, public media | **Cloudflare** | Registrar, CDN, R2 (§14.3), transactional email |
+| DNS, CDN, public media | **Cloudflare** | CDN, R2 (§14.3), transactional email — and DNS for every domain, see §6.1 |
+| Domain registration | **Porkbun**, or **Cloudflare** where it carries the TLD | §6.1 |
 | Transactional email | **Cloudflare Email Sending** | Already in the stack — see below |
 | SEO research | **Semrush** | Data moat |
 | Agents | **Claude + Codex** | |
@@ -276,8 +277,8 @@ often goes wrong when one person runs several companies.
 | Hardware | **Macs** | |
 
 **Transactional email is Cloudflare's, not a new vendor's.** Cloudflare is already load-bearing
-and is not going away: it is the registrar and DNS for every domain — including `darwin.health`
-and `evo.med`, which *host* on Vercel — and it holds R2 for public media. Email Sending is a
+and is not going away: it is the DNS for every domain (§6.1) — including `darwin.health` and
+`evo.med`, which *host* on Vercel — and it holds R2 for public media. Email Sending is a
 service inside a vendor already in the stack, reachable as an ordinary bearer-token REST endpoint
 from any runtime, so it does not tie a project to Cloudflare hosting.
 
@@ -288,6 +289,47 @@ and record that as a `deviations` entry (§4) when it happens.
 Note the distinction the table now makes: **Google Workspace is human mailboxes, Cloudflare is
 application email.** Conflating them is how `cpheinrich.com` came to pick a provider per-project
 instead of reading one off the spec.
+
+### 6.1 Domains: DNS and registration are separate decisions
+
+**DNS is Cloudflare. Always. There is no second option and it is not a per-project question.**
+
+Every zone lives in Cloudflare, whoever the registrar is. One console, one audit log, one place an
+agent looks to answer "where does this domain point". A project that puts DNS at its registrar has
+made a mistake, not a choice, and it should be moved.
+
+**Registration is a different question, because no single registrar carries every TLD.** That is the
+reason this section exists: treating registration and DNS as one decision is what produced the
+earlier claim that Cloudflare was "the registrar for every domain", which was never true.
+
+Approved registrars, in order of preference:
+
+| Registrar | Use when |
+|---|---|
+| **Cloudflare Registrar** | It carries the TLD — at-cost renewals, and DNS is already there |
+| **Porkbun** | Cloudflare does not carry the TLD, which is most of the long tail |
+
+Anything else is a deviation. Domains found at another registrar get transferred to one of these,
+subject to the ICANN 60-day post-registration lock and whatever `clientTransferProhibited` state the
+losing registrar has set — that status is a switch in the registrar's own panel, not a waiting
+period, so check it before assuming a domain is stuck.
+
+**Setting up a domain, in order:**
+
+1. Register at Cloudflare if it carries the TLD, otherwise Porkbun.
+2. Add the zone to Cloudflare — *Connect a domain*, not *Transfer*. Choose **manual** DNS import: a
+   freshly registered domain's only records are the registrar's parking, and automatic import copies
+   them into the new zone, where they then compete with the real ones.
+3. Point the registrar's nameservers at the Cloudflare pair.
+4. Add records in Cloudflare. Apex to Vercel is an unproxied CNAME — orange-cloud proxying puts
+   Cloudflare's certificate in front of Vercel's and breaks the domain. Cloudflare flattens the apex
+   CNAME, so no A record is needed, and none should be added: Vercel's IP range changes underneath it.
+5. Delete the registrar's parking records once the zone is live.
+
+**Why not DNS at the registrar, concretely.** Porkbun's DNS editor is a staging form that does not
+list a zone's existing records, so there is no way to see what is actually configured, or to remove a
+parking record, from its UI. That is not a knock on Porkbun as a registrar — it is why DNS does not
+live there.
 
 ### Built and maintained in Morpheus
 
