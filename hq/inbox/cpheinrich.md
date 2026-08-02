@@ -7,9 +7,8 @@ previous: .agent/inbox-archive/2026-08-02-0930-cpheinrich.md
 ---
 # Inbox — 2026-08-02
 
-**Your key is live on Morpheus and the review rung is no longer dark.** This pull request is the
-first one it has ever seen — whatever it said on this PR is the first real evidence of whether rung 2
-is worth reading, and item 2 below is where I report what it did.
+**Your key is live, the review rung works, and it has already earned its keep — after failing in
+exactly the way it was designed to prevent.** Item 2 is the whole story and the one worth reading.
 
 **Two decisions recorded while you were away**, both the conservative call: dispatch stays refusing
 until a week of beats has been read, and the review rung proves itself on Morpheus before going
@@ -58,23 +57,50 @@ But you clearly expected the key to be the whole step, so:
 
 ~
 
-## ❗ 2. What the reviewer actually said, first time out · `claude`
+## ❗ 2. The reviewer works, found a real bug in its own fix, and costs $1.14 a review · `claude`
 
-**Filled in once this PR's `agent-review` job completes** — I am writing the inbox in the same pull
-request that triggers it, so the result lands after these words do. See my message in the session for
-the verdict; this item exists so the next cycle has somewhere to record it.
+**It runs, and it is good.** But its first live run failed in the way rung 2 was built to prevent:
+it reviewed [#68](https://github.com/cpheinrich/morpheus/pull/68) for 3m48s, was denied nine times
+trying to post, and **exited green**. Automation mode grants the base GitHub tools but not the ones
+that write to a pull request. Fixed in [#69](https://github.com/cpheinrich/morpheus/pull/69).
 
-What matters is not whether it liked the PR. It is:
+The uncomfortable part: MO-051's whole argument was that an unconfigured verifier must not report
+success. I built the skip path carefully around that and then shipped the state nobody enumerated —
+configured, running, and mute, which looks *healthier* than the skip because the warning annotation
+is gone too. The tell was timing, not status: 3m48s where a skip took 20s.
 
-1. **Did it run at all**, rather than reporting itself skipped.
-2. **Was it worth reading**, or is it noise. The persona is explicitly told that finding nothing is
-   an acceptable answer, and this is a records-only PR — so *"nothing here needs a human"* is the
-   correct result and a good sign. Findings on a PR that changes no code would be the bad sign.
+**Then it reviewed its own fix, five times, and was right every time.** Two findings were in that
+PR's own code — including that two of my three new guards were substring matches that would pass on
+a commented-out config block, and then that my *rewritten* guards still passed because YAML does not
+strip `#` inside a block scalar. Three findings were in the follow-up item's spec: each of my first
+three definitions of "the review landed" would have shipped a detector that reported success in
+exactly the state it existed to catch.
 
-If it turns out noisy, the fix is the persona file — `.github/agent-review-prompt.md`, versioned
-precisely so it is tunable without touching a workflow.
+**Twice it retracted its own recommendation from the previous pass.** That is the argument for an
+independent rung in one line — not that it is right, but that it is independent enough to catch
+itself. I also acted once on a recommendation it had already withdrawn, because I read a review
+partially. That is in `learned.md` now.
 
-Do you want me to keep reporting on its quality for the first few PRs, or leave you to read them?
+### The cost, which nobody has decided on
+
+| Run | Cost |
+| --- | --- |
+| #68, first live run | $0.86 |
+| #69, five review passes plus final | $7.15 |
+| **Total, one bug fix** | **$8.01** |
+
+**$1.14 a review on average**, on `claude-opus-5[1m]` — the action's default, because I pinned no
+model. Every push re-reviews, so an iterative PR multiplies. At roughly one PR an hour of active
+work that is real money, and the quality above is what it buys.
+
+- **A — pin Sonnet for review, keep Opus for nothing (recommended).** Roughly a fifth the cost.
+  The findings above are mostly careful reading of source and cross-referencing records, which
+  Sonnet does well; I would rather spend the difference on more repos than on more depth in one.
+- **B — leave it on Opus.** The two guard findings were subtle and the self-retractions suggest
+  depth is doing real work. If a caught bug is worth more than $10, this pays for itself.
+- **C — Opus, but only on pushes that touch `src/`.** Records-only PRs like this one still cost
+  $0.86 to be told there is nothing to review. Cheap to implement with a `paths` filter.
+- **Other —** including a monthly cap, or on-demand only via `workflow_dispatch`.
 
 ~
 
