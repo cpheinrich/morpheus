@@ -283,6 +283,24 @@ claiming to have run, rather than passing green. Same shape as *a check that ski
 will report an empty thing as correct* in `learned.md` — and worse here, because a green check is
 read as evidence.
 
+**Dispatch stays refusing until the beats have been read** — 2026-08-02. A Claude Platform account
+now exists, so the credential that gated both inert features is available — and dispatch is
+*still* off, deliberately. The reason is not the key: it is that nobody has yet read a week of beats
+to see whether the ranker picks what Chris would have picked. Dispatching on a judgment neither of
+us has checked means an unattended agent acting on it while he sleeps, and the ceiling is the only
+thing between a bad ranking and a queue full of bad PRs.
+
+**So a future session finding `dispatch: false` beside a working key should not read that as an
+oversight.** The far side is also genuinely unimplemented — `heartbeat --dispatch` refuses with *"no
+dispatcher is implemented yet"* — so enabling it is an item, not a config flip. Revisit once the
+scheduled beats have run and their picks have been compared against what a human would choose.
+
+**The review rung proves itself on one repo first** — 2026-08-02. Agent review stays on Morpheus
+only, though the key would enable it everywhere. The persona has never been run against a real pull
+request, and if it turns out noisy the cost of tuning it in one repo is far below the cost of
+turning it off in five — a model-graded reviewer that gets ignored is worse than none, because the
+rung then reads as covered. Rolling out later is one `uses:` block per repo.
+
 **Voice context splits static from live** — 2026-08-01. A voice session starts cold and cannot read
 the repo, so context arrives as text and competes with the conversation for room. What the project
 *is* goes into claude.ai project knowledge once; what the board looks like *today* is regenerated per
