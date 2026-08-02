@@ -118,3 +118,22 @@ jobs:
           prompt: ${{ steps.prompt.outputs.text }}
           anthropic_api_key: ${{ secrets.anthropic_api_key }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+          # Supplying `prompt` puts the action in automation mode, which in v1
+          # deliberately creates no tracking comment. Without this the reviewer
+          # runs, thinks, and has nowhere to put the result.
+          track_progress: true
+
+          # **The reviewer cannot report without these.** Automation mode grants
+          # the base GitHub tools but not the ones that write to a pull request,
+          # so the first live run spent 20 turns and $0.86 producing a review it
+          # was then denied every means of posting — nine permission denials and
+          # a green check. A verifier that cannot speak is indistinguishable
+          # from one that found nothing.
+          #
+          # `--max-turns` is a runaway backstop, not a budget: 20 turns was the
+          # observed cost of a records-only PR, and a cap near that would
+          # truncate a real review just before it posts.
+          claude_args: |
+            --max-turns 40
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"

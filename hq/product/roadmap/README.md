@@ -6,10 +6,11 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-26-08-01-23.09.54](./MO-26-08-01-23.09.54-prune-stale-claims.md) | Prune before listing claims | review | P0 | MO-G-2026-Q3-01 | — |
+| [MO-26-08-02-02.34.24](./MO-26-08-02-02.34.24-fix-review-posting.md) | The reviewer could not post its review | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
+| [MO-26-08-02-02.48.16](./MO-26-08-02-02.48.16-detect-review-denials.md) | Agent review must report when it could not report | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-08-01-047](./MO-26-08-01-047-inbox-status-one-front.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-001](./MO-26-07-28-001-project-mgmt-pkg-schemas.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-002](./MO-26-07-28-002-reusable-github-workflows.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — |
@@ -30,6 +31,7 @@ item files, not this table.
 | [MO-26-08-01-057](./MO-26-08-01-057-roadmap-ids-become-timestamps.md) | Roadmap ids become timestamps, not a coordinated integer | shipped | P0 | MO-G-2026-Q3-01 | #58 |
 | [MO-26-08-01-16.56.15](./MO-26-08-01-16.56.15-repair-migration-links.md) | Repair links the id migration left dangling | shipped | P0 | — | #62 |
 | [MO-26-08-01-23.03.14](./MO-26-08-01-23.03.14-fix-claim-id-parse.md) | One branch-to-id parser, not three | shipped | P0 | MO-G-2026-Q3-01 | #65 |
+| [MO-26-08-01-23.09.54](./MO-26-08-01-23.09.54-prune-stale-claims.md) | Prune before listing claims | shipped | P0 | MO-G-2026-Q3-01 | #66 |
 | [MO-26-07-28-007](./MO-26-07-28-007-retrofit-evo-morpheus-structure.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-013](./MO-26-07-29-013-claim-mechanism-pm-claim.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-015](./MO-26-07-29-015-init-must-scaffold-agent.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | #22 |

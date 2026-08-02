@@ -194,3 +194,75 @@ describe("caller permissions cover what they call", () => {
     }
   });
 });
+
+/**
+ * The reviewer has to be able to report.
+ *
+ * Supplying `prompt` puts claude-code-action into automation mode, which grants
+ * the base GitHub tools but not the ones that write to a pull request — and
+ * creates no tracking comment. The first live run spent 20 turns and $0.86
+ * producing a review, hit nine permission denials trying to post it, and exited
+ * green with `agent-review / review  pass`.
+ *
+ * That is the failure this rung was explicitly built not to have: a verifier
+ * that cannot speak is indistinguishable from one that found nothing, and the
+ * green check reads as evidence either way.
+ */
+describe("agent-review can actually post", () => {
+  /**
+   * Read from the *parsed* step, never the raw file.
+   *
+   * The first version of these guards used `toContain` over the whole file, so
+   * commenting out the `claude_args:` block left all of them green while the
+   * reviewer was mute again — the guard against the bug passing on the bug.
+   * Caught by the reviewer, on the pull request that introduced it.
+   */
+  async function reviewStep(): Promise<Record<string, unknown>> {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ with?: Record<string, unknown> }> }>;
+    };
+    const step = wf.jobs?.["review"]?.steps?.find((s) =>
+      Object.hasOwn(s.with ?? {}, "anthropic_api_key"),
+    );
+    expect(step, "no step passes anthropic_api_key").toBeDefined();
+    return step!.with!;
+  }
+
+  /**
+   * The args the action will actually act on.
+   *
+   * `claude_args` is a YAML block scalar, and **YAML does not treat `#` as a
+   * comment inside `|`** — the `#` survives into the string. The action strips
+   * those lines itself (`stripShellComments`, `base-action/src/parse-sdk-options.ts`),
+   * which makes commenting a line out the supported way to disable it.
+   *
+   * So asserting on the raw string passes on a commented-out `--allowedTools`
+   * while the reviewer is mute. The first version of these guards read the raw
+   * file and the second read the unstripped scalar; both were the same mistake
+   * at different depths — fixing the *instance* rather than the *class*. This
+   * mirrors what the action does, so the test sees what the action sees.
+   */
+  async function effectiveArgs(): Promise<string> {
+    return String((await reviewStep())["claude_args"] ?? "")
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#"))
+      .join("\n");
+  }
+
+  it("forces tag mode, or automation mode leaves it nowhere to write", async () => {
+    expect((await reviewStep())["track_progress"]).toBe(true);
+  });
+
+  it("grants the tools a review is delivered through", async () => {
+    const args = await effectiveArgs();
+    // Inline findings and the top-level comment are separate paths; losing
+    // either silently halves what a review can say.
+    expect(args).toContain("mcp__github_inline_comment__create_inline_comment");
+    expect(args).toContain("Bash(gh pr comment:*)");
+  });
+
+  it("keeps a runaway backstop well above observed usage", async () => {
+    const turns = Number(/--max-turns (\d+)/.exec(await effectiveArgs())?.[1]);
+    expect(turns).toBeGreaterThan(20);
+  });
+});

@@ -180,3 +180,39 @@ one shape the broken parser still handled.
 
 **A fixture frozen at an old format tests the old format.** When an identifier scheme changes, the
 fixtures are part of the migration, not incidental to it.
+
+## A verifier that runs but cannot report looks exactly like one that found nothing
+
+Agent review's first live run spent 20 turns and $0.86 producing a review, hit nine permission
+denials trying to post it, and exited **green**. `agent-review / review  pass`.
+
+MO-051 had guarded the obvious case — an *unconfigured* verifier must not report success, because a
+green check is read as evidence — and the skip path does that correctly, with a job summary and a
+warning annotation. What nobody considered was the case in between: configured, executing, and
+mute. That state looks *healthier* than the skip, because the warning annotation is absent too.
+
+The tell was in the timing, not the status: 3m48s where a skip took 20s. **When a step's cost
+changes and its output does not, that gap is the finding.**
+
+Generalising: for anything whose job is to *report*, "did it run" and "did its output arrive" are
+two separate questions, and only the first one is usually instrumented. Ask what the check looks
+like when the reporting path is broken — if the answer is "the same as success", the check is not
+finished.
+
+Sibling of *a check that skips what is absent will report an empty thing as correct*, one step
+further out: there a check read absence as assent; here a check read its own silence as a clean bill
+of health.
+
+## Read a review to the end before acting on it
+
+The agent review rung proposed a detector keyed on `permission_denials_count > 0`, then **retracted
+it one pass later** in a "Smaller" note: denials are routinely non-zero on healthy runs, because
+compound `Bash` commands are not in tag mode's allowlist. It said explicitly that whoever picked up
+the item should take the delivery-based shape instead.
+
+I had truncated that comment while reading it and stopped before the retraction, then wrote the
+roadmap item around the withdrawn design. The next pass caught it, in the item rather than the code.
+
+The reviewer was not wrong — it corrected itself unprompted. **Partial reading is how a superseded
+recommendation gets implemented**, and it is far cheaper to make than to find. A review is a
+document with a conclusion, not a list to skim for the first actionable line.
