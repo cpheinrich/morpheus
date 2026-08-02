@@ -26,7 +26,10 @@
  * every migrated item collapsing onto the migration date.
  *
  * Goals and requests keep their sequential schemes. They are rare, written
- * deliberately, and have never collided.
+ * deliberately, and have never collided. Goals scope that sequence to a
+ * period — `MO-G-2026-Q3-01` — because a goal is a thing you set *for* a
+ * quarter, and an id that cannot say which one has to be read alongside the
+ * file to mean anything.
  */
 
 /**
@@ -156,6 +159,20 @@ function zoned(d: Date): Record<string, string> {
 export function datePart(d: Date): string {
   const p = zoned(d);
   return `${p.year!.slice(-2)}-${p.month}-${p.day}`;
+}
+
+/**
+ * `YYYY-Qn` in the same fixed zone the ids use.
+ *
+ * A goal id **contains** its period (`MO-G-2026-Q3-01`), so the id and the
+ * `period:` field beside it are two renderings of one fact. Deriving both from
+ * here is what keeps them from disagreeing — the first version hardcoded `Q1`
+ * in the frontmatter while the id carried no period at all, and a goal written
+ * in August claimed to be a Q1 goal.
+ */
+export function periodInZone(d: Date = new Date()): string {
+  const p = zoned(d);
+  return `${p.year}-Q${Math.floor((Number(p.month) - 1) / 3) + 1}`;
 }
 
 /**

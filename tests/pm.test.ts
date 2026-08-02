@@ -355,6 +355,30 @@ describe("new item", () => {
     expect(items[0]!.data.priority).toBe("P1");
   });
 
+  // The bug this replaces: `pm new goals` wrote `MO-G-001` against a `GOAL_ID`
+  // spelling `MO-G-2026-Q3-01`, so every goal the CLI produced failed
+  // `pm validate` — in CI, on the first push, in a repo that had done nothing
+  // wrong. The unit tests passed throughout because they asserted the id the
+  // generator emitted rather than the one the schema accepts, which is why
+  // this one goes through `parseArtifact` instead.
+  it("creates a goal that passes its own validation", async () => {
+    const { path } = await createItem({
+      productDir: product,
+      kind: "goals",
+      prefix: "MO",
+      title: "Two real projects on the structure",
+      cwd: product,
+      now: new Date("2026-08-01T15:26:34Z"),
+    });
+    expect(path).toMatch(/MO-G-2026-Q3-01\.md$/);
+
+    const { items, issues } = await parseArtifact(product, "goals");
+    expect(issues).toHaveLength(0);
+    // The id and the field beside it are one fact, read from one clock.
+    expect(items[0]!.data.id).toBe("MO-G-2026-Q3-01");
+    expect(items[0]!.data.period).toBe("2026-Q3");
+  });
+
   it("quotes a title containing a colon so the YAML stays valid", async () => {
     await createItem({
       productDir: product,
@@ -414,25 +438,38 @@ describe("allocation consults the remote", () => {
   // Roadmap ids no longer consult the remote (MO-057): a fork contributor's
   // `origin` is their fork, so no query can tell them which ids Morpheus has
   // issued. Goals and requests stay sequential and still ask.
+  // Pacific 2026-08-01, so every goal below lands in 2026-Q3.
+  const inQ3 = new Date("2026-08-01T15:26:34Z");
+
   it("skips a goal id another session holds on a branch but has not merged", async () => {
-    const cwd = await originHolding("mo-g-038-a-goal");
+    const cwd = await originHolding("mo-g-2026-q3-38-a-goal");
 
     // Nothing on disk — the state a fresh clone is in while the claim is live.
-    const { id, blind } = await nextId(product, "goals", "MO", cwd);
-    expect(id).toBe("MO-G-039");
+    const { id, blind } = await nextId(product, "goals", "MO", cwd, inQ3);
+    expect(id).toBe("MO-G-2026-Q3-39");
     expect(blind).toBe(false);
   });
 
   it("takes the higher of what merged and what is claimed", async () => {
-    const cwd = await originHolding("mo-g-040-shipped", "mo-g-038-still-open");
+    const cwd = await originHolding("mo-g-2026-q3-40-shipped", "mo-g-2026-q3-38-still-open");
 
-    expect((await nextId(product, "goals", "MO", cwd)).id).toBe("MO-G-041");
+    expect((await nextId(product, "goals", "MO", cwd, inQ3)).id).toBe("MO-G-2026-Q3-41");
   });
 
   it("does not let a request branch bump a goal id", async () => {
     const cwd = await originHolding("mo-fr-009-a-request");
 
-    expect((await nextId(product, "goals", "MO", cwd)).id).toBe("MO-G-001");
+    expect((await nextId(product, "goals", "MO", cwd, inQ3)).id).toBe("MO-G-2026-Q3-01");
+  });
+
+  it("restarts the sequence in a new quarter", async () => {
+    // The reason the period is in the id: Q4's first goal is `-01`, not a
+    // continuation of Q3's run, so the number counts goals set for a quarter
+    // rather than goals ever set.
+    const cwd = await originHolding("mo-g-2026-q3-07-last-quarter");
+    const inQ4 = new Date("2026-11-01T16:00:00Z");
+
+    expect((await nextId(product, "goals", "MO", cwd, inQ4)).id).toBe("MO-G-2026-Q4-01");
   });
 
   it("allocates a roadmap id without asking origin at all", async () => {
