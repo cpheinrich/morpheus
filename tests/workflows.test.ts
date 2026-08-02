@@ -272,7 +272,12 @@ describe("agent-review cost controls", () => {
     const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
     // The run history is the record of what was reviewed and when, so no cursor
     // is stored that could disagree with reality.
-    expect(raw).toContain("actions/workflows/ci.yml/runs");
+    // Derived, never hardcoded: agent-review.yml is reusable, and naming the
+    // caller `ci.yml` would make this a silent permanent no-op in any consumer
+    // whose caller is named anything else.
+    expect(raw).not.toContain("actions/workflows/ci.yml/runs");
+    expect(raw).toContain("GITHUB_WORKFLOW_REF");
+    expect(raw).toContain("actions/workflows/$caller/runs");
     expect(raw).toMatch(/--base \$\{\{ steps\.since\.outputs\.base \}\}/);
   });
 

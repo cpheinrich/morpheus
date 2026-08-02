@@ -305,3 +305,50 @@ describe("re-review gating", () => {
     expect(needed(["hq/product/roadmap/x.md"], { priorReview: "no findings" }).review).toBe(false);
   });
 });
+
+/**
+ * The forms a reviewer actually cites files in.
+ *
+ * The first version required a leading whitespace/backtick/quote/bracket, and
+ * therefore missed **bold** — the single most common way this reviewer names a
+ * file. The module promised to widen rather than narrow and did the opposite in
+ * the one place that counted.
+ */
+describe("pathsMentioned across citation styles", () => {
+  it("finds a bold path", () => {
+    expect(pathsMentioned("**src/cli/review.ts** is wrong")).toContain("src/cli/review.ts");
+  });
+
+  it("finds a path after a colon with no space", () => {
+    expect(pathsMentioned("File:src/cli/review.ts")).toContain("src/cli/review.ts");
+  });
+
+  it("finds both sides of a comma-separated pair", () => {
+    const out = pathsMentioned("src/a.ts,src/b.ts");
+    expect(out).toContain("src/a.ts");
+    expect(out).toContain("src/b.ts");
+  });
+
+  it("finds a path at the very start of the body", () => {
+    expect(pathsMentioned("src/a.ts is the file")).toContain("src/a.ts");
+  });
+
+  /**
+   * URLs are now removed before matching rather than filtered after. The
+   * previous guards were unreachable — the capture group cannot contain a
+   * colon — and this test passed because the boundary class refused to start
+   * there, proving neither mechanism.
+   */
+  it("still ignores a URL, and now for the stated reason", () => {
+    expect(pathsMentioned("see https://docs.github.com/en/actions/foo.yml")).toEqual([]);
+  });
+
+  it("ignores a scheme-less web address", () => {
+    expect(pathsMentioned("see docs.github.com/en/actions/foo.yml")).toEqual([]);
+  });
+
+  it("keeps a repo path that appears alongside a URL", () => {
+    const out = pathsMentioned("per https://docs.github.com/x.html, fix `src/a.ts`");
+    expect(out).toEqual(["src/a.ts"]);
+  });
+});

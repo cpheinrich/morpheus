@@ -88,16 +88,29 @@ jobs:
 
       # What has changed since anyone last *looked*, not since the merge base.
       #
-      # The previous reviewed commit comes from this workflow's own run history
-      # — the runs are already a record of what was reviewed and when, so
-      # nothing new has to be stored, and there is no cursor that can disagree
-      # with reality. First review on a PR finds none and falls back to the base.
+      # The cursor comes from the calling workflow's run history — no new state
+      # is stored and nothing can disagree with reality. A reusable workflow has
+      # no runs of its own, so the *caller* has to be named, and the name is
+      # derived from `GITHUB_WORKFLOW_REF` rather than hardcoded. Hardcoding
+      # `ci.yml` worked here and would have made this a permanent no-op in any
+      # consumer whose caller is named anything else — the 404 is swallowed, the
+      # fallback fires on every push, and the only trace is a log line that
+      # reads exactly like a normal first review.
+      #
+      # Honest about what the cursor measures: the *run's* conclusion, which is
+      # CI health rather than review activity. A green run may be one where this
+      # gate skipped; a red one may be a failing test on a commit the reviewer
+      # did read. Both directions err toward reviewing again, which is the safe
+      # way round, so this stays until it demonstrably costs something.
       - name: What has changed since the last review?
         id: since
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          prev=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?branch=${{ github.head_ref }}&status=success&per_page=20" \
+          caller=$(basename "${GITHUB_WORKFLOW_REF%%@*}")
+          echo "Caller workflow: $caller"
+
+          prev=$(gh api "repos/${{ github.repository }}/actions/workflows/$caller/runs?branch=${{ github.head_ref }}&status=success&per_page=20" \
             --jq '[.workflow_runs[] | select(.head_sha != "${{ github.event.pull_request.head.sha }}")] | .[0].head_sha // ""' 2>/dev/null || echo "")
 
           if [ -n "$prev" ] && git cat-file -e "$prev^{commit}" 2>/dev/null; then

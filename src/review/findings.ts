@@ -19,18 +19,33 @@
  */
 
 /** `src/pm/claim.ts`, `.github/workflows/ci.yml`, `qa/acceptance/MO-051.md`. */
-const PATH_LIKE = /(?:^|[\s`("'[])((?:[\w.-]+\/)+[\w.-]+\.\w{1,6})(?::\d+)?/g;
+const PATH_LIKE = /((?:[\w.-]+\/)+[\w.-]+\.\w{1,6})(?::\d+)?/g;
+
+/** Anything with a scheme, or `www.`, plus everything after it. */
+const URL_LIKE = /\b(?:[a-z][\w+.-]*:\/\/|www\.)\S+/gi;
+
+/** A scheme-less web address — `docs.github.com/en/actions/foo.yml`. */
+const BARE_DOMAIN = /\b[\w-]+(?:\.[\w-]+)*\.(?:com|org|net|io|dev|ai|gov|edu|co|sh)\/\S*/gi;
 
 /**
  * Repo-relative paths a review mentions.
  *
- * Matches inside backticks, parentheses, quotes and bare prose, because a
- * review writes them all four ways. A trailing `:123` line number is dropped —
- * the file is the unit that gets edited, not the line.
+ * A trailing `:123` line number is dropped — the file is the unit that gets
+ * edited, not the line.
  *
- * URLs are excluded: a review linking to GitHub docs is not naming a file in
- * this repository, and treating `docs.github.com/en/actions` as a path would
- * make almost any push look like it addressed something.
+ * **URLs are removed before matching, not filtered after.** The first version
+ * did it the other way and the guards were unreachable: the capture group is
+ * `[\w.-]` and `/`, so it can never contain a colon, and `/^https?:/` therefore
+ * never fired. The URL test passed anyway — because the *leading boundary
+ * class* refused to start a match at `//docs…` — which meant one mechanism was
+ * silently doing two jobs and the test proved neither.
+ *
+ * That mattered because the boundary class was also the bug: it listed
+ * whitespace, backtick, paren, quote and bracket, and therefore missed
+ * `**src/cli/review.ts**` — bold being the single most common way a reviewer
+ * cites a file. The module promised to widen rather than narrow and did the
+ * opposite in the one place that counted. Removing URLs explicitly is what
+ * allows the boundary to go away entirely.
  */
 export function pathsMentioned(reviewBody: string): string[] {
   const found = new Set<string>();
@@ -38,17 +53,12 @@ export function pathsMentioned(reviewBody: string): string[] {
   // Strip fenced code blocks' *fences* but keep their content: reviews quote
   // the offending code, and the path is often in the line above it inside the
   // same block.
-  const text = reviewBody.replace(/^```\w*$/gm, "");
+  const text = reviewBody
+    .replace(/^```\w*$/gm, "")
+    .replace(URL_LIKE, " ")
+    .replace(BARE_DOMAIN, " ");
 
-  for (const m of text.matchAll(PATH_LIKE)) {
-    const path = m[1]!;
-    if (/^https?:/.test(path) || path.includes("://")) continue;
-    // A bare domain (`docs.github.com/en/actions`) has no leading segment that
-    // looks like a directory in this repo. Requiring a known-ish root is too
-    // brittle across projects, so exclude the obvious web shapes only.
-    if (/^(www\.|[\w-]+\.(com|org|net|io|dev|ai)\/)/.test(path)) continue;
-    found.add(path);
-  }
+  for (const m of text.matchAll(PATH_LIKE)) found.add(m[1]!);
 
   return [...found].sort();
 }
