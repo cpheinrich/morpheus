@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
-import { branchPrefix, findClaims } from "./claim.js";
+import { branchPrefix, FETCH_PRUNE, findClaims } from "./claim.js";
 import { hasNoSubstantiveChange } from "../paths.js";
 import { parseArtifact } from "./parse.js";
 import { today } from "./frontmatter.js";
@@ -168,7 +168,7 @@ export async function reconcile(
   cwd: string,
   opts: { write: boolean } = { write: true },
 ): Promise<ReconcileResult> {
-  await git(["fetch", "origin", "--prune", "--quiet"], cwd).catch(() => "");
+  await git([...FETCH_PRUNE], cwd).catch(() => "");
 
   const { items } = await parseArtifact(productDir, "roadmap");
 

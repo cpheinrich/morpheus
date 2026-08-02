@@ -63,3 +63,22 @@ owns the patterns it has to agree with and importing `pm/` from `check/` would h
 
 Added a test asserting the two parsers agree across every id shape. Two parsers agreeing is exactly
 what stopped being true, and that is cheaper than hoping nobody copies the pattern a third time.
+
+## A third bug, revealed by fixing the second
+
+Seconds after #65 merged, `pm claims` still listed the branch it had just deleted. `listClaims`
+fetched without `--prune`, so merged branches survived as local remote-tracking refs and read as
+live claims — while `reconcile` in `ship.ts`, asking git the same question, pruned correctly.
+
+The failure is the mirror image of the one just fixed: there claims **vanished** and the ceiling
+undercounted; here they **accumulate** and it overcounts, so after three merges the heartbeat
+reports a full queue and stops dispatching. A dispatcher that quietly stops is harder to notice than
+one that misbehaves.
+
+It had been invisible because the first bug masked it — with `listClaims` returning nothing, there
+were no phantoms to see. **Fixing a silent failure surfaces whatever it was hiding**, which is an
+argument for looking again immediately after, rather than treating the fix as the end.
+
+Third instance in one session of the same root cause: a value written twice and drifting — the
+branch-id pattern, then the fetch argument list. Both are now single exported definitions with a
+test asserting there is no second copy.
