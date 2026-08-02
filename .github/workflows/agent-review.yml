@@ -27,7 +27,7 @@ on:
           Pinned deliberately. Left unset the action picks its own default,
           which moved cost and quality with no diff to show for it.
         type: string
-        default: "claude-sonnet-5"
+        default: "claude-opus-5"
       morpheus-ref:
         type: string
         default: "main"
@@ -86,18 +86,41 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
-      # Assembled by the CLI rather than written inline: the prompt is where the
-      # judgment in this rung lives, and YAML is the one part of the kit with
-      # neither a type checker nor tests behind it.
-      # Rung 2 reads code. A push that changes only records and board files has
-      # nothing for it — and four of the seven runs during this rung's rollout
-      # were exactly that, for $4.93 of $8.01. Uses the same predicate as
-      # `check pr` and `pm ship`, so there is one definition of "did no work".
+      # What has changed since anyone last *looked*, not since the merge base.
+      #
+      # The previous reviewed commit comes from this workflow's own run history
+      # — the runs are already a record of what was reviewed and when, so
+      # nothing new has to be stored, and there is no cursor that can disagree
+      # with reality. First review on a PR finds none and falls back to the base.
+      - name: What has changed since the last review?
+        id: since
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          prev=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?branch=${{ github.head_ref }}&status=success&per_page=20" \
+            --jq '[.workflow_runs[] | select(.head_sha != "${{ github.event.pull_request.head.sha }}")] | .[0].head_sha // ""' 2>/dev/null || echo "")
+
+          if [ -n "$prev" ] && git cat-file -e "$prev^{commit}" 2>/dev/null; then
+            echo "base=$prev" >> "$GITHUB_OUTPUT"
+            echo "Comparing against the last reviewed commit: $prev"
+          else
+            echo "base=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+            echo "No previous review found — comparing against the base branch."
+          fi
+
+          # The last review's text, so the gate can tell whether this push
+          # touches something it named. A records-only push that answers a
+          # finding is worth re-reviewing; one that does not, is not.
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            --jq '[.[] | select(.user.login == "github-actions[bot]")] | .[-1].body // ""' \
+            > /tmp/prior-review.md 2>/dev/null || : > /tmp/prior-review.md
+
       - name: Is this worth a review?
         id: needed
         run: |
           echo "review=$(node .morpheus/dist/cli/index.js review needed \
-            --base origin/${{ github.base_ref }})" >> "$GITHUB_OUTPUT"
+            --base ${{ steps.since.outputs.base }} \
+            --prior-review /tmp/prior-review.md)" >> "$GITHUB_OUTPUT"
 
       - name: Report the review as skipped
         if: steps.needed.outputs.review != 'true'
@@ -109,6 +132,9 @@ jobs:
             echo "Green here means skipped, not passed."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Assembled by the CLI rather than written inline: the prompt is where the
+      # judgment in this rung lives, and YAML is the one part of the kit with
+      # neither a type checker nor tests behind it.
       - name: Assemble the reviewer prompt
         id: prompt
         if: steps.needed.outputs.review == 'true'
@@ -161,14 +187,14 @@ jobs:
           # `--max-turns` is a runaway backstop, not a budget: 20 turns was the
           # observed cost of a records-only PR, and a cap near that would
           # truncate a real review just before it posts.
-          # Pinned, rather than left on the action's default. Unpinned it chose
-          # `claude-opus-5[1m]` and averaged $1.14 a review — Chris's call was to
-          # try Sonnet, on the reasoning that most of what this rung caught was
-          # careful source reading rather than depth, and the difference is
-          # better spent on more repos than more thinking on one.
+          # Opus, and pinned. Sonnet was tried for one review and came in at
+          # $0.88 against an Opus average of $1.14 — 23%, not the 80% the
+          # estimate claimed, because it used *more* turns to get there. At that
+          # margin the quality question decides it, and Opus is what found the
+          # subtle guard bugs. The gate above is what actually moves the bill.
           #
-          # Pinning also removes a silent variable: an unpinned default can move
-          # under you, and cost and quality would both change with no diff.
+          # Pinned either way: an unpinned default moves under you, changing cost
+          # and quality with no diff to show for it.
           claude_args: |
             --model ${{ inputs.model }}
             --max-turns 40

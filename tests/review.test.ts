@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { needed } from "../src/cli/review.js";
+import { pathsMentioned } from "../src/review/findings.js";
 import { loadReviewContext, PERSONA_PATH, ReviewError } from "../src/review/context.js";
 import { acceptancePath, buildReviewPrompt } from "../src/review/prompt.js";
 
@@ -229,5 +230,78 @@ describe("review needed", () => {
     for (const files of [[], ["src/x.ts"], [".agent/x.md"]]) {
       expect(needed(files).why.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * Reading a prior review well enough to know if a push answered it.
+ *
+ * The code test alone is right for a first review and wrong for a second: the
+ * most useful re-review this rung has done confirmed a fix to a roadmap item's
+ * prose, which the code test skips.
+ */
+describe("pathsMentioned", () => {
+  it("finds a backticked path", () => {
+    expect(pathsMentioned("see `src/pm/claim.ts` for the bug")).toContain("src/pm/claim.ts");
+  });
+
+  it("finds a path with a line number, without the line number", () => {
+    expect(pathsMentioned("`tests/workflows.test.ts:235` is wrong")).toContain(
+      "tests/workflows.test.ts",
+    );
+  });
+
+  it("finds a bare path in prose and one in parentheses", () => {
+    const out = pathsMentioned("in .github/workflows/ci.yml and (qa/acceptance/MO-051.md)");
+    expect(out).toContain(".github/workflows/ci.yml");
+    expect(out).toContain("qa/acceptance/MO-051.md");
+  });
+
+  // A review linking to docs is not naming a file here, and treating it as one
+  // would make almost any push look like it addressed something.
+  it("ignores URLs", () => {
+    const out = pathsMentioned("see https://docs.github.com/en/actions/foo.html");
+    expect(out).toHaveLength(0);
+  });
+
+  it("deduplicates a path cited several times", () => {
+    const out = pathsMentioned("`src/a.ts` then src/a.ts again and `src/a.ts`");
+    expect(out).toEqual(["src/a.ts"]);
+  });
+
+  it("is empty for a review that names no file", () => {
+    expect(pathsMentioned("Looks good, nothing worth a human's time.")).toEqual([]);
+  });
+});
+
+describe("re-review gating", () => {
+  const PRIOR = "Finding 1: `hq/product/roadmap/MO-26-08-02-02.48.16-x.md:48` names the wrong string.";
+
+  // The case that motivated this: a records-only push that answers a finding.
+  // Without the prior review it is skipped; with it, it is confirmed.
+  it("reviews a records-only push that touches a file the review named", () => {
+    const files = ["hq/product/roadmap/MO-26-08-02-02.48.16-x.md"];
+    expect(needed(files).review).toBe(false);
+    const r = needed(files, { priorReview: PRIOR });
+    expect(r.review).toBe(true);
+    expect(r.why).toContain("was addressed");
+  });
+
+  it("still skips a records-only push that answers nothing", () => {
+    const r = needed(["hq/inbox/cpheinrich.md"], { priorReview: PRIOR });
+    expect(r.review).toBe(false);
+    expect(r.why).toContain("none the last review named");
+  });
+
+  it("reviews a code push regardless of what the review named", () => {
+    expect(needed(["src/x.ts"], { priorReview: PRIOR }).review).toBe(true);
+  });
+
+  it("behaves as before when there is no prior review", () => {
+    expect(needed(["hq/inbox/x.md"], { priorReview: "" }).review).toBe(false);
+  });
+
+  it("does not treat an empty prior review as naming everything", () => {
+    expect(needed(["hq/product/roadmap/x.md"], { priorReview: "no findings" }).review).toBe(false);
   });
 });

@@ -268,6 +268,24 @@ describe("agent-review can actually post", () => {
 });
 
 describe("agent-review cost controls", () => {
+  it("diffs against the last reviewed commit, not the merge base", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    // The run history is the record of what was reviewed and when, so no cursor
+    // is stored that could disagree with reality.
+    expect(raw).toContain("actions/workflows/ci.yml/runs");
+    expect(raw).toMatch(/--base \$\{\{ steps\.since\.outputs\.base \}\}/);
+  });
+
+  it("hands the gate the last review, so an answering push is not skipped", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw).toContain("--prior-review");
+  });
+
+  it("falls back to the base branch on a first review", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw).toContain('base=origin/${{ github.base_ref }}');
+  });
+
   it("pins a model rather than inheriting the action's default", async () => {
     const wf = (await read("agent-review.yml")) as {
       on?: { workflow_call?: { inputs?: { model?: { default?: string } } } };

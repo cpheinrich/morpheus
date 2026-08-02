@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { hasNoSubstantiveChange } from "../paths.js";
+import { addressesPriorFindings, pathsMentioned } from "../review/findings.js";
 import { loadReviewContext, ReviewError } from "../review/context.js";
 import { buildReviewPrompt } from "../review/prompt.js";
 
@@ -56,19 +58,45 @@ export async function prompt(productDir: string, root: string): Promise<number> 
  * gives that up to stop paying a dollar a push to re-read a paragraph. Prints a
  * reason either way so the skip is legible in the job log rather than silent.
  */
-export function needed(changedFiles: string[]): { review: boolean; why: string } {
+export interface NeededOptions {
+  /** Body of the last review, when this is a re-review. */
+  priorReview?: string;
+}
+
+export function needed(
+  changedFiles: string[],
+  opts: NeededOptions = {},
+): { review: boolean; why: string } {
   if (changedFiles.length === 0) {
     // An unreadable diff is not an empty one. Review rather than skip: the cost
     // of a wasted run is a dollar, the cost of silently skipping every review
     // the day `git diff` changes shape is the rung.
     return { review: true, why: "could not read the changed files — reviewing rather than assuming" };
   }
+
+  // A re-review has a second reason to run, and it is the one the code test
+  // misses. When the last review named a file and this push touches it, the
+  // push is answering the review — even if the file is a roadmap item, which
+  // `hasNoSubstantiveChange` would otherwise skip. That case is not
+  // hypothetical: the most useful re-review this rung has done confirmed a fix
+  // to an item's prose that it had asked for one pass earlier.
+  const mentioned = opts.priorReview ? pathsMentioned(opts.priorReview) : [];
+  if (addressesPriorFindings(changedFiles, mentioned)) {
+    return {
+      review: true,
+      why: "touches a file the last review named — checking whether it was addressed",
+    };
+  }
+
   if (hasNoSubstantiveChange(changedFiles)) {
     return {
       review: false,
-      why: `${changedFiles.length} file(s) changed, all records or board bookkeeping — nothing for a code reviewer`,
+      why: mentioned.length
+        ? `${changedFiles.length} file(s) changed, all records or board bookkeeping, and none the last review named`
+        : `${changedFiles.length} file(s) changed, all records or board bookkeeping — nothing for a code reviewer`,
     };
   }
+
   return { review: true, why: `${changedFiles.length} file(s) changed` };
 }
 
@@ -83,9 +111,28 @@ function changedFiles(base: string): string[] {
   }
 }
 
-/** Prints `true` or `false` for the workflow to gate on. Always exits 0. */
-export function reviewNeeded(base: string): number {
-  const { review, why } = needed(changedFiles(base));
+function readIfGiven(path?: string): string | undefined {
+  if (!path) return undefined;
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    // A missing prior review means this is the first pass, or the fetch failed.
+    // Either way the code test still applies; losing the second signal costs a
+    // skipped confirmation, not a wrong answer.
+    return undefined;
+  }
+}
+
+/**
+ * Prints `true` or `false` for the workflow to gate on. Always exits 0.
+ *
+ * `base` is the *previously reviewed* commit on a re-review, not the merge
+ * base — so the question asked is "what has changed since anyone looked", which
+ * is the one that decides whether looking again is worth it.
+ */
+export function reviewNeeded(base: string, priorReviewPath?: string): number {
+  const prior = readIfGiven(priorReviewPath);
+  const { review, why } = needed(changedFiles(base), ...(prior ? [{ priorReview: prior }] : []));
   console.log(String(review));
   console.error(review ? `Reviewing: ${why}` : `Skipping: ${why}`);
   return 0;
