@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ageInDays, branchPrefix, slugify } from "../src/pm/claim.js";
+import { ageInDays, branchPrefix, parseClaimRefs, slugify } from "../src/pm/claim.js";
+import { roadmapIdFromBranch } from "../src/pm/id.js";
 import { parseArtifact } from "../src/pm/parse.js";
 
 describe("branchPrefix", () => {
@@ -87,5 +88,73 @@ describe("itemPath after MO-057", () => {
     expect(basename(found!.path)).not.toBe("MO-26-07-31-045.md");
 
     await rm(dir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * The parsing `listClaims` does, which drifted after MO-057.
+ *
+ * `listClaims` carried a private copy of the id pattern — `/^([a-z]{2,4}-\d{3,})-/`
+ * — and it failed two different ways at once against the ids in use:
+ * a four-digit-year branch truncated to `CPH-2026`, and a two-digit-year one,
+ * which is what `pm new` produces today, did not match at all.
+ *
+ * The second is the dangerous one, because it is silent. An unparsed branch is
+ * not reported — it is absent from the result, and every caller reads absence
+ * as "nothing claims this".
+ */
+describe("parseClaimRefs", () => {
+  const ref = (branch: string) => `origin/${branch}\t2026-08-01T00:00:00-07:00\tChris`;
+
+  it("reads a timestamp id, the form pm new produces today", () => {
+    const claims = parseClaimRefs(ref("mo-26-08-01-17.28.41-voice-session-handoff"));
+    expect(claims).toHaveLength(1);
+    expect(claims[0]!.id).toBe("MO-26-08-01-17.28.41");
+  });
+
+  // The exact branch from issue #60, which reported as `CPH-2026`.
+  it("does not truncate a four-digit-year id at the year", () => {
+    const claims = parseClaimRefs(ref("cph-2026-08-01-22.49.21-keep-hq-brand"));
+    expect(claims[0]!.id).toBe("CPH-2026-08-01-22.49.21");
+  });
+
+  it("reads a migrated id", () => {
+    expect(parseClaimRefs(ref("mo-26-07-29-045-something"))[0]!.id).toBe("MO-26-07-29-045");
+  });
+
+  it("still reads a legacy integer id", () => {
+    expect(parseClaimRefs(ref("mo-045-legacy"))[0]!.id).toBe("MO-045");
+  });
+
+  it("carries the branch, author and date through", () => {
+    const c = parseClaimRefs(ref("mo-26-08-01-17.28.41-x"))[0]!;
+    expect(c.branch).toBe("mo-26-08-01-17.28.41-x");
+    expect(c.by).toBe("Chris");
+    expect(c.at).toBe("2026-08-01T00:00:00-07:00");
+  });
+
+  it("skips branches that stake no id, and keeps the ones that do", () => {
+    const out = [ref("main"), ref("inbox-2026-08-01"), ref("mo-26-08-01-17.28.41-x")].join("\n");
+    expect(parseClaimRefs(out).map((c) => c.id)).toEqual(["MO-26-08-01-17.28.41"]);
+  });
+
+  it("is empty for empty input rather than throwing", () => {
+    expect(parseClaimRefs("")).toEqual([]);
+  });
+
+  /**
+   * The drift guard. Two parsers agreeing today is what stopped being true;
+   * asserting they agree is cheaper than hoping nobody copies the pattern again.
+   */
+  it("agrees with roadmapIdFromBranch on every shape", () => {
+    for (const branch of [
+      "mo-26-08-01-17.28.41-slug",
+      "cph-2026-08-01-22.49.21-slug",
+      "mo-26-07-29-045-slug",
+      "mo-045-slug",
+      "ev-014",
+    ]) {
+      expect(parseClaimRefs(ref(branch))[0]?.id, branch).toBe(roadmapIdFromBranch(branch));
+    }
   });
 });

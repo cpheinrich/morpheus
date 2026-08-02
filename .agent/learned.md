@@ -146,3 +146,37 @@ like** — and specifically, what it reports when handed nothing at all.
 
 Related but distinct from *never let an unanswerable question render as a confident answer*: there
 the tool cannot determine the answer, here it can and treats absence as assent.
+
+## A parser that fails silently deletes rows rather than reporting them
+
+`listClaims` filtered branches through a regex and did `if (!m) continue`. When MO-057 changed the
+id scheme and the pattern was not updated, every current branch stopped matching — so the function
+returned an empty list from a remote full of claims, and reported no error at all.
+
+The dangerous part is not the wrong output. It is that **absence is indistinguishable from
+emptiness to every caller**. `pm claims` printed "No items are currently claimed", and the heartbeat
+computed its ceiling, its blocked exclusion and its candidate list from the same empty list — all
+three degrading at once, all three still "working".
+
+Two things follow, and the second is the one that would have caught it:
+
+1. **A skip in a parser is a decision, not a filter.** If a line cannot be parsed, either it is
+   legitimately not a row (`main` is not a claim) or it is a row we failed to read — and those want
+   different handling.
+2. **Test the parse, not the pipeline.** The regex was welded to a `git for-each-ref` call, so
+   nothing tested it and the whole suite passed against a parser returning nothing. The same file
+   already had `parseClaimedNumbers` split out for exactly this reason; the lesson had been learned
+   ten lines above and not applied.
+
+Sibling of *a check that skips what is absent will report an empty thing as correct* — same shape,
+one layer lower: there a check reads absence as assent, here a parser turns a failure into absence
+first.
+
+## Fixtures must use the identifiers actually in use
+
+Every heartbeat test used `MO-001`. The scheme moved to `MO-26-08-01-17.28.41` in MO-057, and the
+tests kept passing while the guards they cover had stopped working — because the legacy id was the
+one shape the broken parser still handled.
+
+**A fixture frozen at an old format tests the old format.** When an identifier scheme changes, the
+fixtures are part of the migration, not incidental to it.

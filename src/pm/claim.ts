@@ -1,4 +1,4 @@
-import { slugForFilename } from "./id.js";
+import { roadmapIdFromBranch, slugForFilename } from "./id.js";
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
@@ -131,15 +131,32 @@ export async function listClaims(cwd: string): Promise<Claim[]> {
     cwd,
   );
 
+  return parseClaimRefs(out);
+}
+
+/**
+ * Turn `for-each-ref` output into claims.
+ *
+ * Split out from the lookup for the same reason `parseClaimedNumbers` was: the
+ * parsing is where this goes wrong, and it cannot be tested while it is welded
+ * to a git call.
+ *
+ * It goes wrong *silently*, which is the part worth guarding. A branch this
+ * fails to parse is not reported as unparseable — it is simply absent from the
+ * result, and every caller reads absence as "no claim". `listClaims` carried a
+ * private copy of the id pattern that MO-057 left behind, so under the current
+ * scheme it returned an empty list from a remote full of claims.
+ */
+export function parseClaimRefs(forEachRefOutput: string): Claim[] {
   const claims: Claim[] = [];
-  for (const line of out.split("\n").filter(Boolean)) {
+  for (const line of forEachRefOutput.split("\n").filter(Boolean)) {
     const [ref, at, by] = line.split("\t");
     if (!ref) continue;
     const branch = ref.replace(/^origin\//, "");
-    const m = /^([a-z]{2,4}-\d{3,})-/i.exec(branch);
-    if (!m) continue;
+    const id = roadmapIdFromBranch(branch);
+    if (!id) continue;
     claims.push({
-      id: m[1]!.toUpperCase(),
+      id,
       branch,
       ...(by ? { by } : {}),
       ...(at ? { at } : {}),
