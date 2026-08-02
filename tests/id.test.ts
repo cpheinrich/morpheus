@@ -300,6 +300,61 @@ describe("migration", () => {
     expect(text).toContain("Prose mentioning MO-045 stays as written.");
   });
 
+  it("repairs relative markdown links that point at a renamed item", async () => {
+    // Missed on the first pass: worklog frontmatter was repaired but markdown
+    // links were not, and Morpheus shipped a migration with 28 dangling links
+    // because it has no test asserting they resolve. Darwin does.
+    const hq = join(dir, "hq");
+    await mkdir(hq, { recursive: true });
+    await writeFile(
+      join(hq, "goals.md"),
+      "See [MO-045](../roadmap/MO-045.md) and [MO-099](../roadmap/MO-099.md).\n",
+      "utf8",
+    );
+    await item("MO-045", "Forty-fifth thing", "2026-07-31");
+    const r = await migrate(join(dir, "roadmap"), false, undefined, [hq]);
+
+    const text = await readFile(join(hq, "goals.md"), "utf8");
+    expect(text).toContain("(../roadmap/MO-26-07-31-045-forty-fifth-thing.md)");
+    expect(r.linksUpdated).toHaveLength(1);
+
+    // Link *text* is prose and stays — the old number still reads correctly.
+    expect(text).toContain("[MO-045]");
+    // A link to an item that was not renamed is left exactly as it was.
+    expect(text).toContain("(../roadmap/MO-099.md)");
+  });
+
+  it("repairs sibling links between items in the same directory", async () => {
+    // Items reference each other as `](./MO-045.md)`, with no `roadmap/`
+    // segment. Requiring one missed every sibling link and took darwin from
+    // zero broken links to three.
+    await item("MO-045", "Forty-fifth thing", "2026-07-31");
+    await item("MO-046", "Forty-sixth thing", "2026-07-31");
+    const sib = join(dir, "roadmap", "MO-046.md");
+    await writeFile(sib, (await readFile(sib, "utf8")) + "\nSee [MO-045](./MO-045.md).\n", "utf8");
+
+    await migrate(join(dir, "roadmap"), false, undefined, [join(dir, "roadmap")]);
+
+    const files = await readdir(join(dir, "roadmap"));
+    const moved = files.find((f) => f.includes("046"))!;
+    expect(await readFile(join(dir, "roadmap", moved), "utf8")).toContain(
+      "(./MO-26-07-31-045-forty-fifth-thing.md)",
+    );
+  });
+
+  it("never rewrites an absolute URL, even to a renamed item", async () => {
+    // An archived link pinned to a branch records what the file was called on
+    // that branch. Rewriting it breaks a working link to tidy a local one.
+    const hq = join(dir, "hq");
+    await mkdir(hq, { recursive: true });
+    const url = "https://github.com/o/r/blob/some-branch/hq/product/roadmap/MO-045.md";
+    await writeFile(join(hq, "archive.md"), `See [MO-045](${url}).\n`, "utf8");
+    await item("MO-045", "Forty-fifth thing", "2026-07-31");
+    await migrate(join(dir, "roadmap"), false, undefined, [hq]);
+
+    expect(await readFile(join(hq, "archive.md"), "utf8")).toContain(url);
+  });
+
   it("refuses an item with no creation date rather than inventing one", async () => {
     await writeFile(
       join(dir, "roadmap", "MO-099.md"),
