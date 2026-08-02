@@ -131,6 +131,102 @@ morpheus pm claim ${s.prefix}-001   # stake a branch and start
 Agent instructions are in [\`AGENTS.md\`](./AGENTS.md); \`CLAUDE.md\` symlinks to it.
 `;
 
+
+/**
+ * A README for a directory that earns one.
+ *
+ * Not every folder does. The rule (see `AGENTS.md`) is that a folder gets one
+ * when an agent could plausibly do the wrong thing without it: it feeds
+ * something else, it has a convention filenames do not reveal, it is generated,
+ * or it is a seam between projects. Framework-standard directories — `app/`,
+ * `components/`, `__tests__/` — do not, because their meaning is universal and
+ * a README restating it is noise that can also go stale.
+ *
+ * These are **short on purpose** and point at `architecture.md` for the
+ * canonical explanation rather than repeating it. Locality is what a README
+ * buys — eight lines where you are standing beat 1,400 lines in another repo —
+ * but two copies of the same reasoning drift, so depth stays in one place.
+ *
+ * The previous scaffold wrote `Nothing here yet.` into every directory, which
+ * looks documented and says nothing. A file full of placeholders is worse than
+ * an absent one, the same rule the brand package follows.
+ */
+const SPEC = "https://github.com/cpheinrich/morpheus/blob/main/architecture.md";
+
+export const dirReadmes: Record<string, (s: Seed) => string> = {
+  "hq/inbox": () => `# Inbox
+
+One file per person, named for their GitHub handle — \`cpheinrich.md\`, not \`chris.md\`.
+
+**These are the only files a human is expected to edit.** An agent writes a summary and numbered
+items at the end of a session; the human replies inline after the \`~\` marker, and the next
+session acts on the replies and archives the exchange to \`.agent/inbox-archive/\`.
+
+An inbox is a snapshot, never a log. \`morpheus inbox validate\` enforces the shape and CI runs it.
+
+See [the inbox cycle](${SPEC}) in the specification.
+`,
+
+  "hq/marketing": (s) => `# Marketing
+
+SEO, content plans, and campaign notes for ${s.name}.
+
+Positioning and voice live in \`hq/brand/\` and are **read** from here, not restated — a second
+copy of the messaging is one that drifts from the brand package that generates it.
+`,
+
+  "hq/finance": (s) => `# Finance
+
+Revenue and expense model, pricing, and runway for ${s.name}.
+
+Numbers that a dashboard reads belong in structured files rather than prose, so \`/hq/finance\`
+can render them without parsing sentences.
+`,
+
+  "hq/ops": (s) => `# Ops
+
+Legal, contracts, vendors, and suppliers for ${s.name}.
+
+Contracts themselves are not committed — this holds the index and the decisions, not the PDFs.
+Large binaries do not belong in a text repository.
+`,
+
+  "qa": () => `# QA
+
+Acceptance criteria, test plans, and known defects.
+
+\`qa/acceptance/<name>.md\` is the input to verifier rung 3: a roadmap item's \`acceptance\` field
+names a file here, and the check is whether the shipped work meets it. An item with no
+\`acceptance\` has nothing to verify against, which is the gap this directory exists to close.
+
+Unit and integration tests live beside the code they test, not here.
+
+See the verifier stack in [the specification](${SPEC}).
+`,
+
+  "qa/acceptance": () => `# Acceptance criteria
+
+One file per roadmap item, named by that item's \`acceptance\` field.
+
+Written **before** the work, in terms a reviewer can check without reading the implementation:
+what a user can now do, what the system must refuse, what must not have changed. If it can only be
+verified by reading the diff, it is a test, not an acceptance criterion.
+`,
+
+  "infra": () => `# Infra
+
+Deployment configuration, security rules, and environment definitions.
+
+\`firestore.rules\` is partly **generated** — the role helpers between the \`morpheus:begin roles\`
+markers come from the role vocabulary and are rewritten by \`morpheus hq rules\`. The \`match\`
+blocks around them are yours. Never hand-edit inside the markers.
+
+Provisioning is not here: consoles, DNS and hosting need credentials this repo should not hold.
+
+See [access control](${SPEC}) in the specification.
+`,
+};
+
 export const agents = (s: Seed): string => `# ${s.name} — agent instructions
 
 Read this before doing anything. \`CLAUDE.md\` is a symlink to this file so Claude and Codex

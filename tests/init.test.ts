@@ -115,6 +115,52 @@ describe("morpheus init", () => {
     });
   });
 
+  describe("folder documentation", () => {
+    // A folder gets a README when an agent could plausibly do the wrong thing
+    // without it. The previous scaffold wrote "Nothing here yet." into every
+    // directory, which looks documented and says less than the folder name.
+    it("writes a README that says something, for folders that earn one", async () => {
+      await scaffold(dir, SEED);
+
+      for (const [d, must] of [
+        ["hq/inbox", "GitHub handle"],
+        ["hq/marketing", "hq/brand"],
+        ["qa", "verifier rung 3"],
+        ["qa/acceptance", "before"],
+        ["infra", "morpheus hq rules"],
+      ] as const) {
+        const text = await read(`${d}/README.md`);
+        expect(text, d).toContain(must);
+        expect(text, d).not.toContain("Nothing here yet");
+      }
+    });
+
+    it("points at the specification instead of restating it", async () => {
+      await scaffold(dir, SEED);
+
+      // Depth lives in one place; the README buys locality, not a second copy.
+      for (const d of ["qa", "infra", "hq/inbox"]) {
+        expect(await read(`${d}/README.md`), d).toContain("architecture.md");
+      }
+    });
+
+    it("scaffolds qa/ and infra/, which the spec described and no project had", async () => {
+      await scaffold(dir, SEED);
+
+      expect(await read("qa/acceptance/README.md")).toContain("acceptance");
+      expect(await read("infra/README.md")).toContain("firestore.rules");
+    });
+
+    it("writes no README for a directory it has nothing to say about", async () => {
+      await scaffold(dir, SEED);
+      const files = await readdir(join(dir, "hq/brand"));
+
+      // The brand wizard owns that filename and never overwrites, so a
+      // placeholder here would block the real one permanently.
+      expect(files).not.toContain("README.md");
+    });
+  });
+
   it("leaves hq/brand/README.md to the brand wizard", async () => {
     await scaffold(dir, SEED);
     const files = await readdir(join(dir, "hq/brand"));

@@ -105,11 +105,26 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
       await put("hq/brand/.gitkeep", "");
       continue;
     }
+    // A written README where we have something to say, and nothing at all where
+    // we do not. The old placeholder wrote "Nothing here yet." into every
+    // directory — a file that looks documented and says less than the folder
+    // name already did, and which can then go stale on top of that.
     const readme = `${dir}/README.md`;
-    if (!(await exists(join(root, readme)))) {
-      const label = dir.split("/").pop()!;
-      await put(readme, `# ${label[0]!.toUpperCase()}${label.slice(1)}\n\nNothing here yet.\n`);
-    }
+    const write = t.dirReadmes[dir];
+    if (write && !(await exists(join(root, readme)))) await put(readme, write(seed));
+  }
+
+  // Parents of expected directories, and `hq/inbox`, which the loop skips
+  // because the person's inbox file is written there instead. `qa/acceptance`
+  // being expected means `qa/` exists, and a directory that exists and feeds a
+  // verifier deserves to say so.
+  const parents = new Set(dirs.map((d) => d.split("/").slice(0, -1).join("/")).filter(Boolean));
+  for (const dir of [...parents, "hq/inbox"]) {
+    const write = t.dirReadmes[dir];
+    if (!write) continue;
+    if (!dirs.some((d) => d === dir || d.startsWith(`${dir}/`))) continue;
+    const readme = `${dir}/README.md`;
+    if (!(await exists(join(root, readme)))) await put(readme, write(seed));
   }
 
   // --- ci -------------------------------------------------------------------
