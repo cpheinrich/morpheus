@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-26-08-02-02.34.24](./MO-26-08-02-02.34.24-fix-review-posting.md) | The reviewer could not post its review | review | P0 | MO-G-2026-Q3-01 | — |
+| [MO-26-08-02-03.25.14](./MO-26-08-02-03.25.14-cheapen-ci-agents.md) | Make the CI agents cheap enough to leave on | in-progress | P0 | MO-G-2026-Q3-01 | — |
 | [MO-26-08-02-03.16.10](./MO-26-08-02-03.16.10-pm-index-crashes-when.md) | pm index crashes when an artifact directory is absent | review | P1 | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -33,6 +33,7 @@ item files, not this table.
 | [MO-26-08-01-16.56.15](./MO-26-08-01-16.56.15-repair-migration-links.md) | Repair links the id migration left dangling | shipped | P0 | — | #62 |
 | [MO-26-08-01-23.03.14](./MO-26-08-01-23.03.14-fix-claim-id-parse.md) | One branch-to-id parser, not three | shipped | P0 | MO-G-2026-Q3-01 | #65 |
 | [MO-26-08-01-23.09.54](./MO-26-08-01-23.09.54-prune-stale-claims.md) | Prune before listing claims | shipped | P0 | MO-G-2026-Q3-01 | #66 |
+| [MO-26-08-02-02.34.24](./MO-26-08-02-02.34.24-fix-review-posting.md) | The reviewer could not post its review | shipped | P0 | MO-G-2026-Q3-01 | #69 |
 | [MO-26-07-28-007](./MO-26-07-28-007-retrofit-evo-morpheus-structure.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-013](./MO-26-07-29-013-claim-mechanism-pm-claim.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-015](./MO-26-07-29-015-init-must-scaffold-agent.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | #22 |

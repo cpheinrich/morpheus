@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import { needed } from "../src/cli/review.js";
 import { loadReviewContext, PERSONA_PATH, ReviewError } from "../src/review/context.js";
 import { acceptancePath, buildReviewPrompt } from "../src/review/prompt.js";
 
@@ -179,5 +180,54 @@ describe("the shipped persona", () => {
     // it — no test encodes a decision.
     expect(text).toContain("decisions.md");
     expect(text).toContain("do not block");
+  });
+});
+
+/**
+ * Whether a change is worth spending a review on.
+ *
+ * Four of the seven review runs during this rung's rollout read pushes that
+ * changed no code — three of them successive edits to one roadmap item's prose
+ * — for $4.93 of $8.01. Rung 2 reads code; a records-only push has nothing for
+ * it.
+ */
+describe("review needed", () => {
+  it("reviews a source change", () => {
+    expect(needed(["src/pm/claim.ts"]).review).toBe(true);
+  });
+
+  it("skips a change that is only records", () => {
+    expect(needed(["hq/inbox/cpheinrich.md", ".agent/decisions.md"]).review).toBe(false);
+  });
+
+  // The three passes that cost the most: successive edits to one item's prose.
+  it("skips a change that is only board bookkeeping", () => {
+    const r = needed(["hq/product/roadmap/MO-26-08-02-02.48.16-x.md", "hq/product/roadmap/README.md"]);
+    expect(r.review).toBe(false);
+  });
+
+  it("reviews when code rides alongside records", () => {
+    expect(needed(["hq/product/roadmap/x.md", "tests/review.test.ts"]).review).toBe(true);
+  });
+
+  it("reviews a workflow change, which is code the tests cannot run", () => {
+    expect(needed([".github/workflows/agent-review.yml"]).review).toBe(true);
+  });
+
+  /**
+   * An unreadable diff is not an empty one. Skipping here would silently
+   * disable the rung the day `git diff` changes shape — the exact failure this
+   * repo keeps finding, so it errs toward spending a dollar.
+   */
+  it("reviews rather than assumes when the diff could not be read", () => {
+    const r = needed([]);
+    expect(r.review).toBe(true);
+    expect(r.why).toContain("could not read");
+  });
+
+  it("always gives a reason, so a skip is legible in the log", () => {
+    for (const files of [[], ["src/x.ts"], [".agent/x.md"]]) {
+      expect(needed(files).why.length).toBeGreaterThan(0);
+    }
   });
 });

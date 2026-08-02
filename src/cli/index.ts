@@ -23,7 +23,7 @@ import { mark as initMark, status as initStatus } from "./onboarding.js";
 import { init as initScaffold } from "./init.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
-import { prompt as reviewPrompt } from "./review.js";
+import { prompt as reviewPrompt, reviewNeeded } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 
 const HELP = `morpheus — an operating system for building and running companies
@@ -42,6 +42,7 @@ Usage
   morpheus pm migrate-ids   [--check] — integer roadmap ids to the dated scheme (MO-057)
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus review prompt    assemble the rung-2 reviewer prompt for this branch
+  morpheus review needed    [--base origin/main] — is this change worth a review?
   morpheus inbox validate   [--dir <hq/inbox>]
   morpheus brand init | refresh   [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
   morpheus brand build            regenerate from an edited hq/brand/answers.md
@@ -357,6 +358,7 @@ async function main(): Promise<number> {
 
   if (group === "review") {
     if (command === "prompt") return reviewPrompt(dir, process.cwd());
+    if (command === "needed") return reviewNeeded(flags.base);
     console.error(`Unknown review command "${command ?? ""}".\n\n${HELP}`);
     return 1;
   }

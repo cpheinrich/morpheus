@@ -7,9 +7,14 @@ name: Schedule
 # Twice on weekdays, matching the inbox rhythm: a beat is only useful at a
 # cadence a human actually reads.
 
+# Hourly, every day — Chris's call: "if there is nothing to do then it is
+# cheap." It is. The beat is a deterministic ranking function with no model in
+# it, so a run that picks nothing costs a runner minute and writes a job
+# summary. That is the property that makes this cadence affordable, and it is
+# the reason assess was built as a ranker rather than a prompt.
 on:
   schedule:
-    - cron: "0 9,17 * * 1-5"
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 jobs:

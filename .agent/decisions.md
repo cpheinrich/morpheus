@@ -283,6 +283,25 @@ claiming to have run, rather than passing green. Same shape as *a check that ski
 will report an empty thing as correct* in `learned.md` — and worse here, because a green check is
 read as evidence.
 
+**Rung 2 runs on Sonnet, and only when code changed** — 2026-08-02. The first day of real reviews
+cost $8.01 across seven runs, $1.14 each, on the action's unpinned `claude-opus-5[1m]` default.
+Chris's call was to try Sonnet: most of what the rung caught was careful source reading and
+cross-referencing the records rather than depth, and the difference buys more repos rather than more
+thinking on one. Pinning also removes a silent variable — an unpinned default moves under you,
+changing cost and quality with no diff.
+
+**Four of those seven runs reviewed pushes that changed no code**, three of them successive edits to
+one item's prose, for $4.93. The gate reuses `hasNoSubstantiveChange`, already shared by `check pr`
+and `pm ship`. The trade is real and not free: the reviewer *did* find genuine problems in item
+prose. If that turns out to matter, the fix is a cheaper trigger, not pretending the gate cost
+nothing.
+
+**The heartbeat beats hourly, every day** — 2026-08-02. Chris: *"if there is nothing to do then it is
+cheap."* It is, and that is a consequence of MO-050's decision to build assess as a ranking function
+rather than a prompt — a beat with no model in it costs a runner minute whether or not it picks
+anything. A prompt-based beat could not have been left on this cadence, so a design choice made for
+testability turned out to decide what cadence was affordable.
+
 **Dispatch stays refusing until the beats have been read** — 2026-08-02. A Claude Platform account
 now exists, so the credential that gated both inert features is available — and dispatch is
 *still* off, deliberately. The reason is not the key: it is that nobody has yet read a week of beats
