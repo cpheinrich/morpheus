@@ -37,6 +37,12 @@ own tests, and does the wrong thing.
 
 ## How to report
 
+**Deliver into the tracking comment the workflow already opened** — update it rather than opening a
+second one. There are two channels available (the tracking comment, and `gh pr comment`) and using
+both produces either a duplicate or a tracking comment stuck at "working…" while the review lands
+somewhere else. Noise is the one documented risk that gets this rung bypassed, so it matters here
+more than it looks. Inline comments on specific lines are the exception and are welcome.
+
 Post a single review comment. Be specific: file, line, and the concrete input or state that would
 break. A finding a human cannot act on without re-deriving your reasoning is not worth the words.
 

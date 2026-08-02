@@ -209,27 +209,40 @@ describe("caller permissions cover what they call", () => {
  * green check reads as evidence either way.
  */
 describe("agent-review can actually post", () => {
-  it("forces tag mode, or automation mode leaves it nowhere to write", async () => {
+  /**
+   * Read from the *parsed* step, never the raw file.
+   *
+   * The first version of these guards used `toContain` over the whole file, so
+   * commenting out the `claude_args:` block left all of them green while the
+   * reviewer was mute again — the guard against the bug passing on the bug.
+   * Caught by the reviewer, on the pull request that introduced it.
+   */
+  async function reviewStep(): Promise<Record<string, unknown>> {
     const wf = (await read("agent-review.yml")) as {
       jobs?: Record<string, { steps?: Array<{ with?: Record<string, unknown> }> }>;
     };
     const step = wf.jobs?.["review"]?.steps?.find((s) =>
       Object.hasOwn(s.with ?? {}, "anthropic_api_key"),
     );
-    expect(step?.with?.["track_progress"]).toBe(true);
+    expect(step, "no step passes anthropic_api_key").toBeDefined();
+    return step!.with!;
+  }
+
+  it("forces tag mode, or automation mode leaves it nowhere to write", async () => {
+    expect((await reviewStep())["track_progress"]).toBe(true);
   });
 
   it("grants the tools a review is delivered through", async () => {
-    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    const args = String((await reviewStep())["claude_args"] ?? "");
     // Inline findings and the top-level comment are separate paths; losing
     // either silently halves what a review can say.
-    expect(raw).toContain("mcp__github_inline_comment__create_inline_comment");
-    expect(raw).toContain("Bash(gh pr comment:*)");
+    expect(args).toContain("mcp__github_inline_comment__create_inline_comment");
+    expect(args).toContain("Bash(gh pr comment:*)");
   });
 
   it("keeps a runaway backstop well above observed usage", async () => {
-    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
-    const turns = Number(/--max-turns (\d+)/.exec(raw)?.[1]);
+    const args = String((await reviewStep())["claude_args"] ?? "");
+    const turns = Number(/--max-turns (\d+)/.exec(args)?.[1]);
     expect(turns).toBeGreaterThan(20);
   });
 });
