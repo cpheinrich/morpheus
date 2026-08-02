@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { branchPrefix, findClaims } from "./claim.js";
 import { hasNoSubstantiveChange } from "../paths.js";
 import { parseArtifact } from "./parse.js";
+import { today } from "./frontmatter.js";
 
 const exec = promisify(execFile);
 
@@ -138,10 +139,9 @@ export async function markShipped(
   if (!item) throw new Error(`No roadmap item ${id} in ${productDir}/roadmap/`);
 
   const raw = await readFile(item.path, "utf8");
-  const today = new Date().toISOString().slice(0, 10);
   let next = raw
     .replace(/^status:.*$/m, "status: shipped")
-    .replace(/^updated:.*$/m, `updated: ${today}`);
+    .replace(/^updated:.*$/m, `updated: ${today()}`);
 
   if (pr !== undefined) {
     const existing = item.data.prs ?? [];

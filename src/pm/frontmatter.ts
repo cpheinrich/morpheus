@@ -67,7 +67,16 @@ export function updateFrontmatter(
   );
 }
 
-/** Today as an ISO date, matching what `pm new` writes. */
-export function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+/**
+ * Today, in the same fixed zone the ids use.
+ *
+ * Not `toISOString()`, which is UTC: after 5pm Pacific that is already
+ * tomorrow, so an item created at 17:28 got the id `MO-26-08-01-17.28.41` and
+ * the frontmatter `created: 2026-08-02`. The whole reason ids pin a zone is
+ * that ordering is meaningless when writers measure from different origins, and
+ * a date field beside them measuring from a third one gives that up again.
+ *
+ * The one exception is `schema.ts`, which slices a `Date` js-yaml has *already*
+ * parsed as UTC — there, UTC is what makes the round trip lossless.
+ */
+export { isoDateInZone as today } from "./id.js";

@@ -283,6 +283,29 @@ claiming to have run, rather than passing green. Same shape as *a check that ski
 will report an empty thing as correct* in `learned.md` — and worse here, because a green check is
 read as evidence.
 
+**Voice context splits static from live** — 2026-08-01. A voice session starts cold and cannot read
+the repo, so context arrives as text and competes with the conversation for room. What the project
+*is* goes into claude.ai project knowledge once; what the board looks like *today* is regenerated per
+session and pasted. Uploading everything each time would work and would waste most of the window on
+things that never change.
+
+The split also makes the workflow independent of a question the documentation does not answer:
+whether project knowledge reaches a voice conversation. Voice mode is available inside a project chat
+— verified in the UI, the composer offers it when the Chat/Cowork toggle is on Chat — but if the
+knowledge did not reach it, `--full` inlines the explainer and nothing else changes.
+
+**Handoffs are correspondence, not record** — 2026-08-01. `local/handoffs/`, both directions, never
+committed. What is worth keeping from a handoff becomes a roadmap item, a decision, or a worklog
+entry — and those are committed. Keeping the handoffs themselves would archive the packaging rather
+than the content, and `local/` is already gitignored in every scaffolded project.
+
+**Out is a command, back is a skill** — 2026-08-01. The two directions are not symmetric, and
+building them the same way would have made one of them wrong. Generating a brief is deterministic —
+board, inbox, commits since the last handoff — so it is `morpheus voice brief`, testable and reusable
+by every project. Ingesting a returning spec is judgment: it was written without the codebase in
+view, so it has to be checked against the repository and its false premises found. A command cannot
+do that, and a skill that also hand-derived the board state would drift from the CLI's version.
+
 **Hosting deviations must reach the manifest** — 2026-07-31. §4 says the canonical stack lives in
 `architecture.md` and only *deviations* are recorded per project, but `heinrichbros.com` runs on
 Cloudflare Workers with no `deviations` entry, and neither it, `cpheinrich.com`, nor `lakina` sets

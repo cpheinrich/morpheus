@@ -564,6 +564,46 @@ read state, **2** dispatch was asked for and refused. A beat that could not reac
 rather than proceeding — an unreadable queue is not an empty one, and reading it as empty would
 dispatch straight through a full ceiling.
 
+### 7.9 Voice sessions
+
+Thinking out loud is a different mode from working, and Claude is good at it — but a voice session
+has none of a working session's capabilities. It cannot read the repository, run the CLI, or see the
+board, and it starts cold every time.
+
+So context moves in and out as text, and the design is one split:
+
+| Half | Lifecycle | Where |
+|---|---|---|
+| **What the project is** — how work happens, conventions, how to close a session | changes when a convention does | uploaded once as claude.ai **project knowledge** |
+| **What the board looks like today** | stale in hours | regenerated per session and pasted in |
+
+`morpheus voice knowledge` writes the first, `morpheus voice brief "<topic>"` the second. The split
+is what keeps each paste small enough that the conversation, not the briefing, gets the context.
+
+It also survives the thing that could not be settled from the documentation: whether project
+knowledge actually reaches a voice conversation. Voice mode *is* available inside a project chat —
+the composer offers it whenever the Chat/Cowork toggle is on Chat — but if the knowledge turned out
+not to reach it, `--full` inlines the explainer and nothing else changes.
+
+**Handoffs live in `local/handoffs/`, in both directions, and are never committed.** They are
+correspondence rather than record: what is worth keeping from one becomes a roadmap item, a decision,
+or a worklog entry, and those *are* committed. `YYYY-MM-DD-<slug>.md`, dated in the same fixed
+Pacific zone as the ids, so a handoff and the item it produced sort together.
+
+The two directions are asymmetric, which is why one is a command and the other is not:
+
+- **Out** is deterministic — board state, open inbox items, what landed since the last handoff — so
+  it is `morpheus voice brief`, with a skill supplying only the session narrative the board cannot
+  know.
+- **Back** is judgment. A returning spec was written without the codebase in view, so ingesting it
+  means checking it against the repository, finding the false premises, and saying which parts are
+  being dropped. That is `.claude/skills/voice-import`, and it cannot be a deterministic command.
+
+**The caveat is the load-bearing part.** Both the explainer and the brief instruct the voice session
+to close with a spec that says it could not see the codebase and should be deferred to. That single
+line, in a handoff received on 2026-08-01, is what caused a prompt-based heartbeat design to be
+checked against reality and killed rather than built.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.

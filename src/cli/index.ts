@@ -24,6 +24,7 @@ import { init as initScaffold } from "./init.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
 import { prompt as reviewPrompt } from "./review.js";
+import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -58,6 +59,9 @@ Usage
   morpheus doctor           [--all]
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
+  morpheus voice knowledge  the standing explainer, to upload once as project knowledge
+  morpheus voice brief ["<topic>"] [--slug x] [--notes "..."] [--full]
+                            today's state, to paste into a voice session
 
 Options
   --dir <path>   Product directory (default: hq/product)
@@ -89,6 +93,9 @@ interface Flags {
   needs?: string;
   context?: string;
   ceiling?: number;
+  notes?: string;
+  out?: string;
+  full: boolean;
   json: boolean;
   dispatch: boolean;
   print: boolean;
@@ -103,6 +110,7 @@ function parseArgs(argv: string[]): Flags {
     dryRun: false,
     all: false,
     offline: false,
+    full: false,
     json: false,
     dispatch: false,
     print: false,
@@ -180,6 +188,15 @@ function parseArgs(argv: string[]): Flags {
       case "--json":
         flags.json = true;
         break;
+      case "--notes":
+        flags.notes = argv[++i];
+        break;
+      case "--out":
+        flags.out = argv[++i];
+        break;
+      case "--full":
+        flags.full = true;
+        break;
       case "--dispatch":
         flags.dispatch = true;
         break;
@@ -214,6 +231,25 @@ async function main(): Promise<number> {
       // `dispatch: true` in morpheus.json is not silently turned off.
       ...(flags.dispatch ? { dispatch: true } : {}),
     });
+  }
+
+  if (group === "voice") {
+    if (command === "knowledge") return voiceKnowledge(process.cwd(), flags.out);
+    if (command === "brief") {
+      // The topic is the rest of the positionals, so it can be typed without
+      // quoting — `morpheus voice brief how should the heartbeat dispatch`.
+      const topic = rest.join(" ").trim();
+      return voiceBrief({
+        root: process.cwd(),
+        productDir: dir,
+        ...(topic ? { topic } : {}),
+        ...(flags.slug ? { slug: flags.slug } : {}),
+        ...(flags.notes ? { notes: flags.notes } : {}),
+        ...(flags.full ? { full: true } : {}),
+      });
+    }
+    console.error(`Unknown voice command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
   }
 
   if (group === "tokens") {
