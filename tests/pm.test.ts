@@ -108,6 +108,38 @@ describe("schema", () => {
       status: "on-track",
     }).success).toBe(false);
   });
+
+  // The id carries the period, so the two are one fact written twice. The
+  // generator derives both from one clock and cannot disagree; a hand-edit can,
+  // and a `period:` that lies about its own quarter is precisely the bug the
+  // periodful id replaced.
+  it("rejects a period that disagrees with the id", () => {
+    const goal = {
+      id: "MO-G-2026-Q3-01",
+      title: "Ship Morpheus v1",
+      horizon: "quarterly" as const,
+      metric: "projects scaffolded",
+      target: "2",
+      status: "on-track" as const,
+    };
+
+    expect(Goal.safeParse({ ...goal, period: "2026-Q3" }).success).toBe(true);
+    expect(Goal.safeParse({ ...goal, period: "2026-Q4" }).success).toBe(false);
+  });
+
+  it("reads an annual goal's period as the year alone", () => {
+    const goal = {
+      id: "MO-G-2026-ANNUAL-01",
+      title: "Two paying projects",
+      horizon: "annual" as const,
+      metric: "revenue",
+      target: "1",
+      status: "on-track" as const,
+    };
+
+    expect(Goal.safeParse({ ...goal, period: "2026" }).success).toBe(true);
+    expect(Goal.safeParse({ ...goal, period: "2026-Q1" }).success).toBe(false);
+  });
 });
 
 describe("parse", () => {
@@ -377,6 +409,39 @@ describe("new item", () => {
     // The id and the field beside it are one fact, read from one clock.
     expect(items[0]!.data.id).toBe("MO-G-2026-Q3-01");
     expect(items[0]!.data.period).toBe("2026-Q3");
+  });
+
+  // Allocation reads `parseArtifact(...).items`, which drops anything that
+  // failed to parse — so a goal file that exists but is malformed is invisible
+  // and its id is offered again. An unconditional write then replaced someone's
+  // work with the TBD template and exited 0. The trigger is not hypothetical:
+  // an unquoted colon in a title is the first entry in `.agent/learned.md`.
+  it("refuses to overwrite a goal file it could not parse", async () => {
+    const at = new Date("2026-08-01T15:26:34Z");
+    // The colon after `kit/hq` makes YAML read the title as a nested mapping.
+    await seed("goals", "MO-G-2026-Q3-01", "id: MO-G-2026-Q3-01\ntitle: Ship kit/hq: the shell");
+
+    // Precondition: the parser really cannot see it, which is what makes the
+    // id look free.
+    const before = await parseArtifact(product, "goals");
+    expect(before.items).toHaveLength(0);
+    expect(before.issues).toHaveLength(1);
+
+    const path = join(product, "goals", "MO-G-2026-Q3-01.md");
+    const original = await readFile(path, "utf8");
+
+    await expect(
+      createItem({
+        productDir: product,
+        kind: "goals",
+        prefix: "MO",
+        title: "Something else entirely",
+        cwd: product,
+        now: at,
+      }),
+    ).rejects.toThrow(/already exists/);
+
+    expect(await readFile(path, "utf8")).toBe(original);
   });
 
   it("quotes a title containing a colon so the YAML stays valid", async () => {

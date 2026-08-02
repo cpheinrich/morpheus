@@ -103,16 +103,40 @@ export const RoadmapItem = z
     path: ["needs"],
   });
 
-export const Goal = z.object({
-  id: z.string().regex(GOAL_ID, "must look like EV-G-2026-Q3-01"),
-  title: z.string().min(3),
-  horizon: z.enum(["annual", "quarterly"]),
-  period: z.string().min(4),
-  metric: looseString,
-  target: looseString,
-  current: looseString.optional(),
-  status: z.enum(["on-track", "at-risk", "missed", "achieved"]),
-});
+export const Goal = z
+  .object({
+    id: z.string().regex(GOAL_ID, "must look like EV-G-2026-Q3-01"),
+    title: z.string().min(3),
+    horizon: z.enum(["annual", "quarterly"]),
+    period: z.string().min(4),
+    metric: looseString,
+    target: looseString,
+    current: looseString.optional(),
+    status: z.enum(["on-track", "at-risk", "missed", "achieved"]),
+  })
+  /**
+   * The id contains the period, so the two are one fact written twice.
+   *
+   * `pm new goals` derives both from one clock and cannot disagree. A hand-edit
+   * can, and that is exactly the shape of the bug this replaced — a `period:`
+   * saying Q1 about a goal that was not — surviving in the one place the
+   * generator does not reach.
+   *
+   * An annual goal's id reads `MO-G-2026-ANNUAL-01` against `period: 2026`, so
+   * the comparison is against the year alone there.
+   */
+  .refine(
+    (goal) => {
+      const segment = /^[A-Z]{2,4}-G-(\d{4})-(Q[1-4]|ANNUAL)-\d{2}$/.exec(goal.id);
+      if (!segment) return true; // the regex above already reported this
+      const [, year, quarter] = segment;
+      return goal.period.trim() === (quarter === "ANNUAL" ? year : `${year}-${quarter}`);
+    },
+    {
+      error: "period must match the period in the id",
+      path: ["period"],
+    },
+  );
 
 export const Request = z.object({
   id: z.string().regex(REQUEST_ID, "must look like EV-FR-007"),

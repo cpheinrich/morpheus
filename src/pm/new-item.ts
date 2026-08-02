@@ -221,6 +221,30 @@ export async function createItem(opts: NewItemOptions): Promise<NewItem> {
   // ids already read as words.
   const name = kind === "roadmap" ? itemFilename(id, title, undefined, opts.slug) : `${id}.md`;
   const path = join(dir, name);
-  await writeFile(path, `${fm}\n${body}`, "utf8");
+
+  // `wx` — never overwrite.
+  //
+  // Allocation reads `parseArtifact(...).items`, which *excludes* anything that
+  // failed to parse. So a goal file that exists but is malformed — the
+  // canonical case being an unquoted colon in a title, the first entry under
+  // *things that have bitten us* — is invisible here, its id is re-issued, and
+  // an unconditional write replaces someone's work with the TBD template while
+  // printing `Created` and exiting 0.
+  //
+  // Raising the sequence past ids we cannot read would mean parsing filenames
+  // rather than frontmatter, which is more machinery than the case is worth.
+  // Refusing costs one flag and turns silent data loss into a message naming
+  // the file.
+  try {
+    await writeFile(path, `${fm}\n${body}`, { encoding: "utf8", flag: "wx" });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    throw new Error(
+      `${path} already exists, so ${id} was not written.\n` +
+        `That id looked free because the file could not be parsed. ` +
+        `Run \`morpheus pm validate\` to see what is wrong with it.`,
+    );
+  }
+
   return { path, id, blind };
 }
