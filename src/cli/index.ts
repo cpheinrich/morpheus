@@ -42,7 +42,8 @@ Usage
   morpheus pm migrate-ids   [--check] — integer roadmap ids to the dated scheme (MO-057)
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus review prompt    assemble the rung-2 reviewer prompt for this branch
-  morpheus review needed    [--base origin/main] — is this change worth a review?
+  morpheus review needed    [--base <ref>] [--prior-review <file>]
+                            is this change worth a review, or a re-review?
   morpheus inbox validate   [--dir <hq/inbox>]
   morpheus brand init | refresh   [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
   morpheus brand build            regenerate from an edited hq/brand/answers.md
@@ -95,6 +96,7 @@ interface Flags {
   context?: string;
   ceiling?: number;
   notes?: string;
+  priorReview?: string;
   out?: string;
   full: boolean;
   json: boolean;
@@ -191,6 +193,9 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--notes":
         flags.notes = argv[++i];
+        break;
+      case "--prior-review":
+        flags.priorReview = argv[++i];
         break;
       case "--out":
         flags.out = argv[++i];
@@ -358,7 +363,7 @@ async function main(): Promise<number> {
 
   if (group === "review") {
     if (command === "prompt") return reviewPrompt(dir, process.cwd());
-    if (command === "needed") return reviewNeeded(flags.base);
+    if (command === "needed") return reviewNeeded(flags.base, flags.priorReview);
     console.error(`Unknown review command "${command ?? ""}".\n\n${HELP}`);
     return 1;
   }

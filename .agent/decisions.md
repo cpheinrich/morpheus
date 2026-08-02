@@ -290,9 +290,18 @@ cross-referencing the records rather than depth, and the difference buys more re
 thinking on one. Pinning also removes a silent variable — an unpinned default moves under you,
 changing cost and quality with no diff.
 
-**The saving is smaller than estimated**: the first Sonnet review cost $0.88 against an Opus average
-of $1.14 — 23%, not the 80% the option claimed — and used 28 turns where Opus used 20. Turn count
-dominates, not per-token price. The gate below, not the model swap, is what actually moves the bill.
+**Reverted to Opus 5 the same day** — 2026-08-02. The saving was far smaller than estimated: Sonnet
+cost $0.88 against an Opus average of $1.14, 23% rather than the 80% claimed, because it used 28
+turns where Opus used 20. Turn count dominates, not per-token price. At that margin quality decides,
+and Opus is what found the subtle guard bugs. **The gate, not the model, moves the bill.** Pinned
+either way — an unpinned default moves under you, changing cost and quality with no diff.
+
+**A re-review diffs against the last reviewed commit, and a push that answers a finding is never
+skipped** — 2026-08-02. Chris's call. The first gate compared against the merge base and skipped
+records-only pushes, which would have suppressed the most valuable re-review this rung has done: a
+confirmation that a roadmap item's prose was fixed, which the reviewer had itself asked for. The
+previous SHA comes from the workflow run history rather than a stored cursor, because the runs
+already are the record and a cursor can disagree with reality.
 
 **Four of those seven runs reviewed pushes that changed no code**, three of them successive edits to
 one item's prose, for $4.93. The gate reuses `hasNoSubstantiveChange`, already shared by `check pr`
