@@ -290,6 +290,10 @@ cross-referencing the records rather than depth, and the difference buys more re
 thinking on one. Pinning also removes a silent variable — an unpinned default moves under you,
 changing cost and quality with no diff.
 
+**The saving is smaller than estimated**: the first Sonnet review cost $0.88 against an Opus average
+of $1.14 — 23%, not the 80% the option claimed — and used 28 turns where Opus used 20. Turn count
+dominates, not per-token price. The gate below, not the model swap, is what actually moves the bill.
+
 **Four of those seven runs reviewed pushes that changed no code**, three of them successive edits to
 one item's prose, for $4.93. The gate reuses `hasNoSubstantiveChange`, already shared by `check pr`
 and `pm ship`. The trade is real and not free: the reviewer *did* find genuine problems in item
