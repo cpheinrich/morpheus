@@ -346,3 +346,40 @@ export function itemFilename(
   const slug = chosen ? cleanSlug(chosen) : slugForFilename(title, max);
   return slug ? `${id}-${slug}.md` : `${id}.md`;
 }
+
+/**
+ * Extract the roadmap id a branch refers to.
+ *
+ * Three shapes, because MO-057 changed the scheme and branches outlive it:
+ *
+ * | Branch | Id |
+ * |---|---|
+ * | `mo-26-08-01-15.26.34-slug` | `MO-26-08-01-15.26.34` |
+ * | `mo-26-07-29-045-slug` | `MO-26-07-29-045` |
+ * | `ev-014-slug` | `EV-014` |
+ *
+ * A four-digit year is also accepted — branches cut between the format landing
+ * and the migration sweep carry one.
+ *
+ * The dated forms must be tried **first**. Matching the legacy pattern against
+ * `mo-26-08-01-...` or `mo-2026-08-01-...` yields `MO-26` or `MO-2026` — a plausible-looking id for an item
+ * that cannot exist — and the check then reports the branch as referencing a
+ * missing item. That is what it did on the first PR created under the new
+ * scheme.
+ *
+ * **Every consumer must use this one.** `listClaims` kept its own copy and
+ * drifted, in two directions at once: `cph-2026-08-01-22.49.21-…` truncated to
+ * `CPH-2026`, and `mo-26-08-01-…` — what `pm new` produces today — did not match
+ * at all, so the claim was dropped from the list silently. A claim missing from
+ * the list is worse than a mangled one: the heartbeat counts what is in flight
+ * from exactly that list, so its ceiling stopped holding and it offered work
+ * another session already held.
+ */
+export function roadmapIdFromBranch(branch: string): string | null {
+  const dated =
+    /^([a-z]{2,4})-((?:\d{2}|\d{4})-\d{2}-\d{2}-(?:\d{2}\.\d{2}\.\d{2}|\d{3}))(?:-|$)/i.exec(branch);
+  if (dated) return `${dated[1]!.toUpperCase()}-${dated[2]}`;
+
+  const legacy = /^([a-z]{2,4})-(\d{3,})(?:-|$)/i.exec(branch);
+  return legacy ? `${legacy[1]!.toUpperCase()}-${legacy[2]}` : null;
+}

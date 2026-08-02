@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { assess, DEFAULT_CONFIG, type AssessInput } from "../src/heartbeat/assess.js";
 import { hasDispatchCredential, readConfig } from "../src/heartbeat/config.js";
 import { formatBeat, formatSummary } from "../src/heartbeat/format.js";
-import type { Claim } from "../src/pm/claim.js";
+import { parseClaimRefs, type Claim } from "../src/pm/claim.js";
 import type { Item } from "../src/pm/parse.js";
 import type { Goal, RoadmapItem } from "../src/pm/schema.js";
 
@@ -365,5 +365,79 @@ describe("formatting", () => {
       input({ items: [item({ id: "MO-001", status: "blocked", needs: "a | b" })] }),
     );
     expect(formatSummary(risky)).toContain("a \\| b");
+  });
+});
+
+/**
+ * The guards, exercised with the ids actually in use.
+ *
+ * Every test above uses `MO-001`, which is the legacy shape. That is why they
+ * all kept passing while `listClaims` returned nothing at all under MO-057:
+ * the beat was correct about a claim list that had silently gone empty.
+ *
+ * These use timestamp ids end to end — parsed from a branch exactly as
+ * `listClaims` produces them — so a regression in the parser fails the guard it
+ * actually breaks, not just the parser's own test.
+ */
+describe("the guards under timestamp ids", () => {
+  const ref = (branch: string) => `origin/${branch}\t2026-08-01T00:00:00-07:00\tChris`;
+  const claimFor = (branch: string) => parseClaimRefs(ref(branch))[0]!;
+
+  const IN_FLIGHT = "mo-26-08-01-10.00.00-something";
+  const BLOCKED = "mo-26-08-01-11.00.00-waiting";
+
+  it("counts a timestamp-id claim against the ceiling", () => {
+    const beat = assess(
+      input({
+        items: [item({ id: "MO-26-08-01-12.00.00" })],
+        claims: [
+          claimFor(IN_FLIGHT),
+          claimFor("mo-26-08-01-10.30.00-b"),
+          claimFor("mo-26-08-01-10.45.00-c"),
+        ],
+      }),
+    );
+    expect(beat.inFlight).toHaveLength(3);
+    expect(beat.pick).toBeNull();
+  });
+
+  // The load-bearing guard from MO-050. It can only hold if the claim's id
+  // matches the item's — which is exactly what the drifted parser broke.
+  it("still excludes a blocked claim from the ceiling", () => {
+    const beat = assess(
+      input({
+        items: [
+          item({ id: "MO-26-08-01-11.00.00", status: "blocked", needs: "an answer" }),
+          item({ id: "MO-26-08-01-12.00.00" }),
+        ],
+        claims: [claimFor(BLOCKED)],
+      }),
+    );
+    expect(beat.inFlight).toHaveLength(0);
+    expect(beat.blocked.map((b) => b.id)).toEqual(["MO-26-08-01-11.00.00"]);
+    expect(beat.pick?.id).toBe("MO-26-08-01-12.00.00");
+  });
+
+  // With ids that do not match, a claimed item reads as unclaimed and the beat
+  // hands another session work someone already holds.
+  it("does not offer an item another session already claims", () => {
+    const beat = assess(
+      input({
+        items: [item({ id: "MO-26-08-01-10.00.00" })],
+        claims: [claimFor(IN_FLIGHT)],
+      }),
+    );
+    expect(beat.ranked).toHaveLength(0);
+    expect(beat.pick).toBeNull();
+  });
+
+  it("does not call a properly claimed timestamp-id item drift", () => {
+    const beat = assess(
+      input({
+        items: [item({ id: "MO-26-08-01-10.00.00", status: "in-progress" })],
+        claims: [claimFor(IN_FLIGHT)],
+      }),
+    );
+    expect(beat.drift).toHaveLength(0);
   });
 });

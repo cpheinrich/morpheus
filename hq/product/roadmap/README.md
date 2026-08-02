@@ -6,8 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-26-08-01-17.28.41](./MO-26-08-01-17.28.41-voice-handoff.md) | Voice session handoff, out and back | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-26-08-01-17.24.24](./MO-26-08-01-17.24.24-fix-four-digit-id.md) | Normalise the one four-digit-year roadmap id | review | P2 | — | — |
+| [MO-26-08-01-23.03.14](./MO-26-08-01-23.03.14-fix-claim-id-parse.md) | One branch-to-id parser, not three | review | P0 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -55,6 +54,7 @@ item files, not this table.
 | [MO-26-08-01-054](./MO-26-08-01-054-every-project-points-back.md) | Every project points back at Morpheus, in AGENTS.md and README.md | shipped | P1 | MO-G-2026-Q3-01 | #52 |
 | [MO-26-08-01-056](./MO-26-08-01-056-inbox-items-propose-options.md) | Inbox items propose options, not open questions | shipped | P1 | MO-G-2026-Q3-01 | #57 |
 | [MO-26-08-01-16.40.29](./MO-26-08-01-16.40.29-migrate-roadmap-ids.md) | Migrate Morpheus roadmap ids to the dated scheme | shipped | P1 | — | #61 |
+| [MO-26-08-01-17.28.41](./MO-26-08-01-17.28.41-voice-handoff.md) | Voice session handoff, out and back | shipped | P1 | MO-G-2026-Q3-01 | #64 |
 | [MO-26-08-01-23.03.19](./MO-26-08-01-23.03.19-update-contributor-guidance.md) | External contributors open an issue, and may open a PR carrying the roadmap item | shipped | P1 | MO-G-2026-Q3-01 | #59 |
 | [MO-26-07-28-008](./MO-26-07-28-008-morpheus-init.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
 | [MO-26-07-28-009](./MO-26-07-28-009-retrofit-darwin.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
@@ -66,5 +66,6 @@ item files, not this table.
 | [MO-26-07-29-044](./MO-26-07-29-044-onboarding-heading-comes-dir.md) | Onboarding heading comes from the directory name, not the manifest | shipped | P2 | — | #38 |
 | [MO-26-07-30-046](./MO-26-07-30-046-reconcile-can-ship-item.md) | Reconcile can ship an item whose merged PR did no work | shipped | P2 | — | #42 |
 | [MO-26-08-01-053](./MO-26-08-01-053-cloudflare-email-sending.md) | Cloudflare Email Sending is the canonical transactional email service | shipped | P2 | MO-G-2026-Q3-01 | #49 |
+| [MO-26-08-01-17.24.24](./MO-26-08-01-17.24.24-fix-four-digit-id.md) | Normalise the one four-digit-year roadmap id | shipped | P2 | — | #63 |
 | [MO-26-07-29-012](./MO-26-07-29-012-make-morpheus-private-adjust.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — |
 <!-- morpheus:end -->

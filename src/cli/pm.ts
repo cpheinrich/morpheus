@@ -272,6 +272,12 @@ export async function claims(
     items.filter((i) => i.data.status === "blocked").map((i) => [i.data.id, i.data.needs]),
   );
 
+  // Sized from the data, not a constant. The widths were picked for `MO-045`
+  // and a timestamp id is twenty characters, so every row after the first long
+  // one lost its columns.
+  const idWidth = Math.max(8, ...all.map((c) => c.id.length));
+  const branchWidth = Math.min(48, Math.max(...all.map((c) => c.branch.length)));
+
   const now = new Date();
   for (const c of all) {
     const age = c.at ? ageInDays(c.at, now) : undefined;
@@ -280,7 +286,7 @@ export async function claims(
     const stale = !isBlocked && age !== undefined && age >= staleDays;
     const when = age === undefined ? "" : age === 0 ? "today" : `${age}d ago`;
     console.log(
-      `${stale ? "!" : isBlocked ? "⊘" : " "} ${c.id.padEnd(8)} ${c.branch.padEnd(40)} ${(c.by ?? "").padEnd(18)} ${when}`,
+      `${stale ? "!" : isBlocked ? "⊘" : " "} ${c.id.padEnd(idWidth)} ${c.branch.padEnd(branchWidth)} ${(c.by ?? "").padEnd(18)} ${when}`,
     );
     if (isBlocked) {
       console.log(`  \x1b[2mblocked — needs: ${blocked.get(c.id) ?? "(unrecorded)"}\x1b[0m`);

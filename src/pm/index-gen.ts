@@ -31,7 +31,6 @@ function table(headers: string[], rows: string[][]): string {
   return [head, sep, body].join("\n");
 }
 
-/** Link an item id to its own file, so the table is navigable on GitHub. */
 /**
  * Link to the file, not to `<id>.md`.
  *
