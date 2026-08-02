@@ -278,7 +278,8 @@ describe("agent-review cost controls", () => {
     expect(raw).not.toContain("actions/workflows/ci.yml/runs");
     expect(raw).toContain("GITHUB_WORKFLOW_REF");
     expect(raw).toContain("actions/workflows/$caller/runs");
-    expect(raw).toMatch(/--base \$\{\{ steps\.since\.outputs\.base \}\}/);
+    expect(raw).toContain('BASE: ${{ steps.since.outputs.base }}');
+    expect(raw).toContain('--base "$BASE"');
   });
 
   it("hands the gate the last review, so an answering push is not skipped", async () => {
@@ -288,7 +289,7 @@ describe("agent-review cost controls", () => {
 
   it("falls back to the base branch on a first review", async () => {
     const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
-    expect(raw).toContain('base=origin/${{ github.base_ref }}');
+    expect(raw).toContain("base=origin/$BASE_REF");
   });
 
   it("pins a model rather than inheriting the action's default", async () => {
@@ -318,5 +319,62 @@ describe("schedule.yml cadence", () => {
       on?: { schedule?: Array<{ cron?: string }> };
     };
     expect(wf.on?.schedule?.[0]?.cron).toBe("0 * * * *");
+  });
+});
+
+/**
+ * `${{ }}` substitutes before bash parses, so any attacker-controlled value
+ * interpolated into a `run:` block is executed. A branch name is
+ * attacker-controlled on a fork pull request, and this repo is public and takes
+ * external contributions — a live surface, not a theoretical one.
+ */
+describe("no untrusted interpolation into shell", () => {
+  const UNTRUSTED = [
+    "github.head_ref",
+    "github.event.pull_request.title",
+    "github.event.pull_request.body",
+  ];
+
+  it("never templates an attacker-controlled value into a run block", async () => {
+    const files = (await readdir(DIR)).filter((f) => f.endsWith(".yml"));
+
+    for (const file of files) {
+      // Parsed, not split on text: the `env:` block sits directly above `run:`,
+      // so any text-slicing heuristic sees the two as one chunk and flags the
+      // safe form as unsafe. `step.run` is exactly the shell that executes.
+      const wf = (await read(file)) as {
+        jobs?: Record<string, { steps?: Array<{ run?: string }> }>;
+      };
+
+      for (const [job, def] of Object.entries(wf.jobs ?? {})) {
+        for (const step of def.steps ?? []) {
+          for (const ctx of UNTRUSTED) {
+            expect(
+              step.run?.includes(`\${{ ${ctx} }}`) ?? false,
+              `${file}:${job} interpolates ${ctx} into a run block`,
+            ).toBe(false);
+          }
+        }
+      }
+    }
+  });
+});
+
+describe("the review gate fails open", () => {
+  /**
+   * `review=$(node …)` swallows a non-zero exit into an empty string, which
+   * reads as false and skips — discarding the fail-open `needed()` goes out of
+   * its way to provide. A crash must review, not go quiet.
+   */
+  it("reviews when the gate itself crashes", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw).toMatch(/if ! out=\$\(node/);
+    expect(raw).toContain('echo "review=true"');
+  });
+
+  it("drops checklist lines before the gate reads a prior review", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    // `- [x] Read src/x.ts` names a file without raising anything.
+    expect(raw).toContain("\\[[ x]\\]");
   });
 });
