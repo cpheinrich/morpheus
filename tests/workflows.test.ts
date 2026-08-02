@@ -266,3 +266,34 @@ describe("agent-review can actually post", () => {
     expect(turns).toBeGreaterThan(20);
   });
 });
+
+describe("agent-review cost controls", () => {
+  it("pins a model rather than inheriting the action's default", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      on?: { workflow_call?: { inputs?: { model?: { default?: string } } } };
+    };
+    // Unpinned it chose claude-opus-5[1m] and averaged $1.14 a review. An
+    // unpinned default can also move under you, changing cost and quality with
+    // no diff to show for it.
+    expect(wf.on?.workflow_call?.inputs?.model?.default).toBeTruthy();
+  });
+
+  it("gates the model call on there being something to review", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw).toMatch(/if:.*steps\.needed\.outputs\.review == 'true'/);
+  });
+
+  it("says so when it skips, rather than passing silently", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw).toContain("Green here means skipped, not passed.");
+  });
+});
+
+describe("schedule.yml cadence", () => {
+  it("beats hourly, every day", async () => {
+    const wf = (await read("schedule.yml")) as {
+      on?: { schedule?: Array<{ cron?: string }> };
+    };
+    expect(wf.on?.schedule?.[0]?.cron).toBe("0 * * * *");
+  });
+});

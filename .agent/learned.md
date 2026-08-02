@@ -216,3 +216,17 @@ roadmap item around the withdrawn design. The next pass caught it, in the item r
 The reviewer was not wrong — it corrected itself unprompted. **Partial reading is how a superseded
 recommendation gets implemented**, and it is far cheaper to make than to find. A review is a
 document with a conclusion, not a list to skim for the first actionable line.
+
+## Every push re-triggers a model-graded check, so the feedback loop is the bill
+
+Rung 2 reviews on `pull_request`, which includes `synchronize` — so acting on a review and pushing
+buys another review. That loop is the rung's whole value when it is reading code: two of the five
+passes on #69 found defects in that PR's own guards, and neither would have surfaced without a
+re-review.
+
+It is also how $8.01 happened. **Four of seven runs read pushes that changed no code**, three of them
+successive edits to one roadmap item's prose — the reviewer re-reading a paragraph at a dollar a
+turn because the trigger cannot tell prose from code.
+
+Worth internalising when wiring any paid check into CI: the cost is not per PR, it is per push, and
+an agent that iterates diligently is the worst case. Gate on what the check can actually act on.
