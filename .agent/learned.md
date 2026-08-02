@@ -202,3 +202,17 @@ finished.
 Sibling of *a check that skips what is absent will report an empty thing as correct*, one step
 further out: there a check read absence as assent; here a check read its own silence as a clean bill
 of health.
+
+## Read a review to the end before acting on it
+
+The agent review rung proposed a detector keyed on `permission_denials_count > 0`, then **retracted
+it one pass later** in a "Smaller" note: denials are routinely non-zero on healthy runs, because
+compound `Bash` commands are not in tag mode's allowlist. It said explicitly that whoever picked up
+the item should take the delivery-based shape instead.
+
+I had truncated that comment while reading it and stopped before the retraction, then wrote the
+roadmap item around the withdrawn design. The next pass caught it, in the item rather than the code.
+
+The reviewer was not wrong — it corrected itself unprompted. **Partial reading is how a superseded
+recommendation gets implemented**, and it is far cheaper to make than to find. A review is a
+document with a conclusion, not a list to skim for the first actionable line.
