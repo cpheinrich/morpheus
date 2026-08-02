@@ -176,9 +176,18 @@ export interface ClaimResult {
   shipped?: string[];
 }
 
-/** Where an item file lives, by convention. */
-function itemPath(productDir: string, id: string): string {
-  return `${productDir}/roadmap/${id}.md`;
+/**
+ * Where an item file lives — **looked up, not reconstructed**.
+ *
+ * `<id>.md` stopped being the filename in MO-057, when roadmap items gained a
+ * slug. Rebuilding the name from the id is the same mistake `index-gen` made,
+ * and it fails loudly here: `git add` on a path that does not exist aborts the
+ * claim. Returns null when the id has no file, so a caller can skip it rather
+ * than stage a phantom.
+ */
+async function itemPath(productDir: string, id: string): Promise<string | null> {
+  const { items } = await parseArtifact(productDir, "roadmap");
+  return items.find((i) => (i.data as { id: string }).id === id)?.path ?? null;
 }
 
 /**
@@ -238,7 +247,10 @@ export async function claim(
   const shipped = (reconciled?.outcomes ?? [])
     .filter((o) => o.kind === "shipped" || o.kind === "stale")
     .map((o) => o.id);
-  const paths = [item.path, ...shipped.map((sid) => itemPath(productDir, sid))];
+  const shippedPaths = (await Promise.all(shipped.map((sid) => itemPath(productDir, sid)))).filter(
+    (p): p is string => p !== null,
+  );
+  const paths = [item.path, ...shippedPaths];
   await git(["add", "--", ...paths], cwd);
 
   const note = shipped.length

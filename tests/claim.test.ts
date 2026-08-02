@@ -1,5 +1,9 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ageInDays, branchPrefix, slugify } from "../src/pm/claim.js";
+import { parseArtifact } from "../src/pm/parse.js";
 
 describe("branchPrefix", () => {
   it("lowercases the id and adds a trailing dash", () => {
@@ -57,5 +61,31 @@ describe("ageInDays", () => {
 
   it("does not round a partial day up", () => {
     expect(ageInDays("2026-07-28T13:00:00Z", now)).toBe(0);
+  });
+});
+
+describe("itemPath after MO-057", () => {
+  // `<id>.md` stopped being the filename when items gained a slug. Claiming
+  // reconstructed it to stage reconciled items and aborted with
+  // "pathspec ... did not match any files" — the same mistake `index-gen` made,
+  // failing loudly here rather than silently producing a broken link.
+  it("stages the file that exists, not a name rebuilt from the id", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "claimpath-"));
+    await mkdir(join(dir, "roadmap"), { recursive: true });
+    const name = "MO-26-07-31-045-forty-fifth-thing.md";
+    await writeFile(
+      join(dir, "roadmap", name),
+      `---\nid: MO-26-07-31-045\ntitle: "Forty-fifth thing"\nstatus: shipped\npriority: P1\nowner: agent\nprs: [12]\ncreated: 2026-07-31\nupdated: 2026-07-31\n---\n\nBody.\n`,
+      "utf8",
+    );
+
+    const { items } = await parseArtifact(dir, "roadmap");
+    const found = items.find((i) => i.data.id === "MO-26-07-31-045");
+
+    expect(found).toBeDefined();
+    expect(basename(found!.path)).toBe(name);
+    expect(basename(found!.path)).not.toBe("MO-26-07-31-045.md");
+
+    await rm(dir, { recursive: true, force: true });
   });
 });

@@ -6,9 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-26-08-01-16.56.15](./MO-26-08-01-16.56.15-repair-migration-links.md) | Repair links the id migration left dangling | review | P0 | — | — |
-| [MO-2026-08-01-23.03.19](./MO-2026-08-01-23.03.19-update-contributor-guidance.md) | External contributors open an issue, and may open a PR carrying the roadmap item | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-26-08-01-16.40.29](./MO-26-08-01-16.40.29-migrate-roadmap-ids.md) | Migrate Morpheus roadmap ids to the dated scheme | review | P1 | — | — |
+| [MO-26-08-01-17.24.24](./MO-26-08-01-17.24.24-fix-four-digit-id.md) | Normalise the one four-digit-year roadmap id | review | P2 | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -30,6 +28,7 @@ item files, not this table.
 | [MO-26-08-01-049](./MO-26-08-01-049-blocked-first-class-outcome.md) | Blocked is a first-class outcome, routed to the inbox | shipped | P0 | MO-G-2026-Q3-01 | #51 |
 | [MO-26-08-01-050](./MO-26-08-01-050-heartbeat-scheduled-dispatcher.md) | Heartbeat: a scheduled dispatcher over the board | shipped | P0 | MO-G-2026-Q3-01 | #53 |
 | [MO-26-08-01-057](./MO-26-08-01-057-roadmap-ids-become-timestamps.md) | Roadmap ids become timestamps, not a coordinated integer | shipped | P0 | MO-G-2026-Q3-01 | #58 |
+| [MO-26-08-01-16.56.15](./MO-26-08-01-16.56.15-repair-migration-links.md) | Repair links the id migration left dangling | shipped | P0 | — | #62 |
 | [MO-26-07-28-007](./MO-26-07-28-007-retrofit-evo-morpheus-structure.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-013](./MO-26-07-29-013-claim-mechanism-pm-claim.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-015](./MO-26-07-29-015-init-must-scaffold-agent.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | #22 |
@@ -54,6 +53,8 @@ item files, not this table.
 | [MO-26-08-01-052](./MO-26-08-01-052-waivers-surfaced-not-swallowed.md) | Waivers are surfaced, not swallowed | shipped | P1 | MO-G-2026-Q3-01 | #54 |
 | [MO-26-08-01-054](./MO-26-08-01-054-every-project-points-back.md) | Every project points back at Morpheus, in AGENTS.md and README.md | shipped | P1 | MO-G-2026-Q3-01 | #52 |
 | [MO-26-08-01-056](./MO-26-08-01-056-inbox-items-propose-options.md) | Inbox items propose options, not open questions | shipped | P1 | MO-G-2026-Q3-01 | #57 |
+| [MO-26-08-01-16.40.29](./MO-26-08-01-16.40.29-migrate-roadmap-ids.md) | Migrate Morpheus roadmap ids to the dated scheme | shipped | P1 | — | #61 |
+| [MO-26-08-01-23.03.19](./MO-26-08-01-23.03.19-update-contributor-guidance.md) | External contributors open an issue, and may open a PR carrying the roadmap item | shipped | P1 | MO-G-2026-Q3-01 | #59 |
 | [MO-26-07-28-008](./MO-26-07-28-008-morpheus-init.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
 | [MO-26-07-28-009](./MO-26-07-28-009-retrofit-darwin.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-010](./MO-26-07-29-010-simplify-architecture-md-first.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | #46 |
