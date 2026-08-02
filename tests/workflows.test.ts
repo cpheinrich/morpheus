@@ -228,12 +228,33 @@ describe("agent-review can actually post", () => {
     return step!.with!;
   }
 
+  /**
+   * The args the action will actually act on.
+   *
+   * `claude_args` is a YAML block scalar, and **YAML does not treat `#` as a
+   * comment inside `|`** — the `#` survives into the string. The action strips
+   * those lines itself (`stripShellComments`, `base-action/src/parse-sdk-options.ts`),
+   * which makes commenting a line out the supported way to disable it.
+   *
+   * So asserting on the raw string passes on a commented-out `--allowedTools`
+   * while the reviewer is mute. The first version of these guards read the raw
+   * file and the second read the unstripped scalar; both were the same mistake
+   * at different depths — fixing the *instance* rather than the *class*. This
+   * mirrors what the action does, so the test sees what the action sees.
+   */
+  async function effectiveArgs(): Promise<string> {
+    return String((await reviewStep())["claude_args"] ?? "")
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#"))
+      .join("\n");
+  }
+
   it("forces tag mode, or automation mode leaves it nowhere to write", async () => {
     expect((await reviewStep())["track_progress"]).toBe(true);
   });
 
   it("grants the tools a review is delivered through", async () => {
-    const args = String((await reviewStep())["claude_args"] ?? "");
+    const args = await effectiveArgs();
     // Inline findings and the top-level comment are separate paths; losing
     // either silently halves what a review can say.
     expect(args).toContain("mcp__github_inline_comment__create_inline_comment");
@@ -241,8 +262,7 @@ describe("agent-review can actually post", () => {
   });
 
   it("keeps a runaway backstop well above observed usage", async () => {
-    const args = String((await reviewStep())["claude_args"] ?? "");
-    const turns = Number(/--max-turns (\d+)/.exec(args)?.[1]);
+    const turns = Number(/--max-turns (\d+)/.exec(await effectiveArgs())?.[1]);
     expect(turns).toBeGreaterThan(20);
   });
 });
