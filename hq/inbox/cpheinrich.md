@@ -1,184 +1,186 @@
 ---
 owner: cpheinrich
-date: 2026-08-01
+date: 2026-08-02
 agents:
   - claude
-previous: .agent/inbox-archive/2026-08-01-1300-cpheinrich.md
+previous: .agent/inbox-archive/2026-08-02-0930-cpheinrich.md
 ---
-# Inbox — 2026-08-01 (evening)
+# Inbox — 2026-08-02
 
-**The heartbeat and verifier work is done — five items specced, built, tested and merged.** PRs
-[#50](https://github.com/cpheinrich/morpheus/pull/50), [#51](https://github.com/cpheinrich/morpheus/pull/51),
-[#53](https://github.com/cpheinrich/morpheus/pull/53), [#54](https://github.com/cpheinrich/morpheus/pull/54),
-[#55](https://github.com/cpheinrich/morpheus/pull/55). Tests went 303 → 412. Morpheus now has a
-scheduled heartbeat, a third exit for agents that hit ambiguity, and a named four-rung verifier
-stack.
+**Your key is live, the review rung works, and it has already earned its keep — after failing in
+exactly the way it was designed to prevent.** Item 2 is the whole story and the one worth reading.
 
-**The most useful thing I found was not new.** I went looking for "net-new edges worth making
-explicit" expecting to invent some, and instead every edge worth drawing was **already declared in
-the schema and traversed by nothing**. `JournalEntry.outcome` has had `blocked` in its enum since
-MO-001. `RoadmapItem.acceptance` had never been set by a single item, in fifty-one of them. Twice
-out of three, the concept was anticipated and only the path was missing. That became a written rule:
-draw an edge when the schema declares it and nothing traverses it.
+**Two decisions recorded while you were away**, both the conservative call: dispatch stays refusing
+until a week of beats has been read, and the review rung proves itself on Morpheus before going
+anywhere else. Written into `.agent/decisions.md` in [#67](https://github.com/cpheinrich/morpheus/pull/67)
+specifically so a future session finding `dispatch: false` beside a working key does not read it as
+an oversight and flip it.
 
-**The heartbeat runs today, with no API key, because assess is a ranking function rather than a
-prompt.** That was the one significant departure from the handoff spec, and it is the reason there
-is something working rather than something waiting on you.
+**The first scheduled beat is Monday 09:00 Pacific.** Nothing has fired yet — `schedule.yml` merged
+on Saturday evening and the cron is weekdays only. Not a fault, just the calendar.
 
-**Your browser rule is in** — `AGENTS.md` and `decisions.md`, with the boundary written explicitly:
-it applies when browser use is the *single, entire* obstacle, and does not touch cases where you are
-wanted for judgment. I used it twice today, once to read a CI failure the GitHub API would not give
-me, and once on your heinrichbros question below.
+Also shipped since the last cycle: voice handoffs in both directions, and three bugs from
+[#60](https://github.com/cpheinrich/morpheus/issues/60) — the third of which only became visible
+once the first was fixed.
 
 > `❗` needs you and ends in an empty `~`. `✅` is settled. Reply after the empty `~`.
 
-## ❗ 1. heinrichbros.com — you did fix that, and it broke somewhere new · `claude`
+## ❗ 1. The key is on five repos, and does nothing on four of them · `claude`
 
-~ *(previous: "What I thought this was fixed. Is it still broken?")*
+~ *(previous: "Ok I set the key for morpheus and other repos as well")*
 
-**You are half right, and the half you remember is genuinely fixed.** The duplicate `nodejs_compat`
-is gone — `vite.config.ts:16` now carries only a `compatibility_date`, so the miniflare error I
-reported is no longer reachable.
+Morpheus is live. The others are not, and it is not their fault — **no repo except Morpheus has an
+`agent-review` job in its `ci.yml`**, so the secret sits there unused.
 
-It still does not boot, but for a **third reason neither of us has seen**, and it now fails earlier
-than either of the previous two:
+| Repo | `ANTHROPIC_API_KEY` | Calls the review rung |
+| --- | --- | --- |
+| **morpheus** | ✅ | ✅ working |
+| darwin, evo, lakina, heinrichbros.com | ✅ | ✗ nothing calls it |
+| **cpheinrich.com** | **✗ missing** | ✗ |
 
-```
-ERR_PNPM_IGNORED_BUILDS: esbuild@0.27.3, sharp@0.34.5, unrs-resolver@1.12.2, workerd@1.20260515.1
-Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
-```
+Two things follow. First, `cpheinrich.com` is the one you missed — worth knowing whether that was
+deliberate. Second, the four that have the key need about six lines in their `ci.yml` before it does
+anything.
 
-pnpm 11 refuses to run those packages' postinstall scripts until they are approved, and `pnpm dev`
-runs an install first — so it dies before wrangler is ever invoked. **This means the old
-compatibility-date problem is now untested rather than fixed**: I could not get far enough to see
-whether `2026-07-25` in `wrangler.jsonc` still exceeds what workerd `1.20260515.1` supports.
-Installed wrangler is still `4.92.0`; latest is `4.118.0`.
+That is a deliberate hold, not an omission: we agreed the persona proves itself on one repo before
+going on five, because a noisy reviewer is cheaper to tune in one place than to switch off in five.
+But you clearly expected the key to be the whole step, so:
 
-Two other things worth knowing, found while in there:
-
-- **The repo has no committed lockfile at all** — none in `web/`, none at root. That is why the
-  approval prompt appears fresh on every machine, and it is the more interesting of the two.
-- The app moved to `web/` in PR #1, so the paths in my previous report are stale.
-
-I left the repo exactly as found, removing the `pnpm-lock.yaml` and `pnpm-workspace.yaml` my install
-generated. **I did not fix it** — it is a second repo on an open branch, and you asked a question
-rather than for a change.
-
-The fix looks like three things: commit an `onlyBuiltDependencies` list, commit a lockfile, bump
-wrangler. **Want that as its own PR over there?**
+- **A — hold as agreed (recommended).** Read the reviews on Morpheus for a week. Roll out when you
+  have an opinion on whether they are worth reading. Costs nothing; the keys keep.
+- **B — roll out to darwin and evo now.** The two with real product surface, where a wrong-but-clean
+  change costs most. Six lines each, and I can do it today.
+- **C — roll out to all five.** Consistent, and the personal sites are where you are least likely to
+  read a diff closely. Multiplies both spend and noise if the persona needs work.
+- **Other —** including "remove the key from the four until they need it", which is the tidier
+  version of A.
 
 ~
 
-## ✅ 2. The three questions your spec delegated, and how I answered them · `claude`
+## ❗ 2. The reviewer works, found a real bug in its own fix, and costs $1.14 a review · `claude`
 
-**Verifiers are a concept, not a directory.** The four rungs already live in four places —
-`.github/workflows/` for 1 and 2, `qa/acceptance/` for 3, a pull request for 4 — so a `verifiers/`
-directory would have held nothing but pointers. `qa/` keeps holding artifacts. What was missing was
-*vocabulary*, and the evidence is direct: with no word for "the thing that checks the doer", nobody
-had noticed for two months that rung 3 had no input.
+**It runs, and it is good.** But its first live run failed in the way rung 2 was built to prevent:
+it reviewed [#68](https://github.com/cpheinrich/morpheus/pull/68) for 3m48s, was denied nine times
+trying to post, and **exited green**. Automation mode grants the base GitHub tools but not the ones
+that write to a pull request. Fixed in [#69](https://github.com/cpheinrich/morpheus/pull/69).
 
-**Which edges to draw.** Three qualified under the dangling-field test; two did not
-(`Request.roadmap` and `Goal.current` — one use each, so *extract on the second use* applies).
+The uncomfortable part: MO-051's whole argument was that an unconfigured verifier must not report
+success. I built the skip path carefully around that and then shipped the state nobody enumerated —
+configured, running, and mute, which looks *healthier* than the skip because the warning annotation
+is gone too. The tell was timing, not status: 3m48s where a skip took 20s.
 
-**Two net-new verifier ideas**, both from applying your spec's own definition to what Morpheus
-already did:
+**Then it reviewed its own fix, five times, and was right every time.** Two findings were in that
+PR's own code — including that two of my three new guards were substring matches that would pass on
+a commented-out config block, and then that my *rewritten* guards still passed because YAML does not
+strip `#` inside a block scalar. Three findings were in the follow-up item's spec: each of my first
+three definitions of "the review landed" would have shipped a detector that reported success in
+exactly the state it existed to catch.
 
-1. `check pr` accepted `skip-tests:` and `records-only:` from the author of the PR it was checking,
-   **silently**. By that definition it is not verification. Both stay allowed; they are now visible.
-   → MO-052
-2. A blocked outcome must name its unblocker, or it is a crash with better manners. → MO-049
+**Twice it retracted its own recommendation from the previous pass.** That is the argument for an
+independent rung in one line — not that it is right, but that it is independent enough to catch
+itself. I also acted once on a recommendation it had already withdrawn, because I read a review
+partially. That is in `learned.md` now.
 
-## ✅ 3. What each item actually does · `claude`
+### The cost, which nobody has decided on
 
-| Item | What landed |
+| Run | Cost |
 | --- | --- |
-| [MO-048](../product/roadmap/MO-26-08-01-048-work-graph-edges-blocked.md) | The specification: work graph, blocked, verifier stack, your browser rule |
-| [MO-049](../product/roadmap/MO-26-08-01-049-blocked-first-class-outcome.md) | `pm block` / `pm unblock` — three records, `needs` required by the schema |
-| [MO-050](../product/roadmap/MO-26-08-01-050-heartbeat-scheduled-dispatcher.md) | `morpheus heartbeat` plus a scheduled workflow, twice on weekdays |
-| [MO-051](../product/roadmap/MO-26-08-01-051-agent-code-review-independent.md) | Agent review rung, persona as a versioned file, `acceptance` finally traversed |
-| [MO-052](../product/roadmap/MO-26-08-01-052-waivers-surfaced-not-swallowed.md) | Waivers report as `~ waived`, carrying their stated reason |
+| #68, first live run | $0.86 |
+| #69, five review passes plus final | $7.15 |
+| **Total, one bug fix** | **$8.01** |
 
-Try it:
+**$1.14 a review on average**, on `claude-opus-5[1m]` — the action's default, because I pinned no
+model. Every push re-reviews, so an iterative PR multiplies. At roughly one PR an hour of active
+work that is real money, and the quality above is what it buys.
+
+- **A — pin Sonnet for review, keep Opus for nothing (recommended).** Roughly a fifth the cost.
+  The findings above are mostly careful reading of source and cross-referencing records, which
+  Sonnet does well; I would rather spend the difference on more repos than on more depth in one.
+- **B — leave it on Opus.** The two guard findings were subtle and the self-retractions suggest
+  depth is doing real work. If a caught bug is worth more than $10, this pays for itself.
+- **C — Opus, but only on pushes that touch `src/`.** Records-only PRs like this one still cost
+  $0.86 to be told there is nothing to review. Cheap to implement with a `paths` filter.
+- **Other —** including a monthly cap, or on-demand only via `workflow_dispatch`.
+
+~
+
+## ❗ 3. Heartbeat cadence — still unanswered · `claude`
+
+~ *(carried from the last cycle, where it went unanswered)*
+
+`schedule.yml` beats at 09:00 and 17:00 on weekdays. Nothing has run yet, so you have not seen one
+and cannot really judge — which is a reason to leave it and revisit Monday rather than decide now.
+
+Restating the one thing worth knowing: **GitHub disables a scheduled workflow after 60 days without
+repository activity.** Not a risk today, but it is the failure where a heartbeat stops and nobody
+notices, which is worse than never having had one.
+
+- **A — leave it at twice daily (recommended).** Matches the inbox rhythm. Judge it after a week of
+  real beats.
+- **B — once a day, 09:00.** If two job-summary notifications a day is noise you will start ignoring.
+- **C — weekdays plus a Monday-morning-only variant.** Lower volume, but a beat you read is worth
+  more than two you skim.
+- **Other —** including turning the schedule off and running `morpheus heartbeat` by hand when you
+  want it.
+
+~
+
+## ✅ 4. heinrichbros.com — carried, and still yours to call · `claude`
+
+Unchanged from the last cycle and not re-investigated. The duplicate `nodejs_compat` you remember
+fixing **is** fixed; it now fails earlier at `ERR_PNPM_IGNORED_BUILDS`, which leaves the old
+compatibility-date problem untested rather than resolved. The repo has no committed lockfile at all.
+
+The fix is three things — commit an `onlyBuiltDependencies` list, commit a lockfile, bump wrangler.
+You have not said whether you want it, so I have not touched it. Closing this item rather than
+re-asking: it is on the list above under repos, and re-posing the same question every cycle is how an
+inbox starts getting skimmed.
+
+## ✅ 5. What shipped since the last cycle · `claude`
+
+| PR | What |
+| --- | --- |
+| [#64](https://github.com/cpheinrich/morpheus/pull/64) | Voice handoffs, both directions — `voice knowledge`, `voice brief`, and two skills |
+| [#65](https://github.com/cpheinrich/morpheus/pull/65) | One branch-to-id parser, closing [#60](https://github.com/cpheinrich/morpheus/issues/60) |
+| [#66](https://github.com/cpheinrich/morpheus/pull/66) | Prune before listing claims |
+| [#67](https://github.com/cpheinrich/morpheus/pull/67) | The two decisions above |
+
+Tests 412 → 512.
+
+**Your issue was half already-fixed and half worse than reported.** The index-link bug had gone in
+with #62. The `pm claims` one truncated `CPH-2026` as you saw — but against the id form `pm new`
+produces *today* it matched nothing at all, and `if (!m) continue` meant those branches were not
+mangled, they were **dropped**. `pm claims` printed "No items are currently claimed" against a remote
+full of them, and the heartbeat computed its ceiling from the same empty list.
+
+Then fixing that revealed a third: `listClaims` fetched without `--prune`, so merged branches
+lingered as live claims. Mirror image of the first — claims accumulate, the ceiling overcounts, and
+after three merges the heartbeat reports a full queue and silently stops. It had been invisible
+because the first bug masked it.
+
+Three bugs, one root cause: **a value written twice and drifting.** Both are now single exported
+definitions with a test asserting no second copy exists. Recorded in `.agent/learned.md`.
+
+## ✅ 6. Voice handoffs are ready to use · `claude`
 
 ```sh
-morpheus heartbeat
-morpheus pm block MO-005 --needs "which dashboard sections matter first"
+morpheus voice knowledge   # once — upload local/voice/knowledge.md to a claude.ai project
+morpheus voice brief "what I want to think about"
 ```
 
-Run against the real board, the heartbeat picked MO-005 — P1, serves the live goal, oldest of the
-P1s. That is what I would have picked by hand.
+Then `/voice-handoff` at the end of a session and `/voice-import` when you come back.
 
-## ✅ 4. Three bugs found on the way, all the same shape · `claude`
-
-Each was invisible because **nothing read the value**:
-
-- **`src/inbox/parse.ts` matched roadmap ids as `RM-\d{3,}`** — a prefix retired in MO-002. No
-  current id could match, so every roadmap link in every inbox heading had been silently dropped for
-  as long as the current ids have existed.
-- **A bare `skip-tests:` captured the next line of the PR body as its reason.** `\s` includes
-  newlines, so the regex crossed the blank line and read `## Test plan` as a perfectly good
-  justification — a non-reason passing as a real one, inside the fix for exactly that.
-- **`RoadmapItem.acceptance` had never been set**, so nothing ever complained that rung 3 had no
-  input.
-
-One lesson, three times in a day: *a field nobody reads cannot be observed to be broken.*
-
-## ❗ 5. Two things need your key, and nothing else · `claude`
-
-Both are built and tested, and inert until a credential exists. I did not guess which.
-
-**Agent review (rung 2)** runs on every PR right now and reports itself as **skipped** — a job
-summary plus a warning annotation reading "rung 2 is unconfigured — no reviewer ran". It
-deliberately does not go quietly green. Add `ANTHROPIC_API_KEY` to the repo or org secrets and it
-starts working; nothing else changes.
-
-**Heartbeat dispatch** is wired behind `heartbeat.dispatch` in `morpheus.json`, currently `false`.
-Turning it on without a key refuses loudly rather than silently falling back to proposing.
-
-The open question is the one your spec flagged: **which model, and whose subscription pays for it.**
-Your Anthropic API account, or a Claude subscription token? It changes nothing in the code — the
-workflow takes the key as a secret and is otherwise agnostic — but I am not picking which of your
-accounts gets billed.
-
-~
-
-## ❗ 6. The heartbeat's schedule has already started · `claude`
-
-`schedule.yml` runs at 09:00 and 17:00 on weekdays, matching the inbox rhythm. GitHub ignores
-`schedule:` on branches, so **it began when MO-050 merged** — beats will appear in the Actions tab
-without you doing anything.
-
-It writes nothing to the repo and starts no work. Each beat is a job summary naming the next item
-and why. If twice a day is noise, it is a one-line change.
-
-Worth knowing: **GitHub disables a scheduled workflow automatically after 60 days without repo
-activity.** Not a concern now, but it is the failure mode where a heartbeat quietly stops and nobody
-notices — worse than not having one.
-
-Leave it at twice daily?
-
-~
-
-## ✅ 7. Where the repos stand · `claude`
-
-| Repo | State | Waiting on |
-| --- | --- | --- |
-| **Morpheus** `MO` | 55 items, board valid, 412 tests, no open claims | your key, for two inert features |
-| **heinrichbros.com** `HB` | does not boot locally — new reason, item 1 | your call on a fix PR |
-| **Darwin** `DW` · **Evo** `EV` · **cpheinrich.com** `CPH` · **Lakina** `LK` | untouched this session | their own inboxes |
-
-A parallel session merged MO-053 and MO-054 while I worked. No collision — `pm new` allocated around
-it correctly, which is MO-040's id-allocation fix doing its job unprompted.
+**Voice mode does work inside a Project** — I checked the UI rather than reasoning from the docs. The
+composer offers it whenever the Chat/Cowork toggle is on Chat; the help-doc caveat is about running
+voice *as Cowork*. What I could not verify is whether project knowledge actually reaches the
+conversation, so `--full` inlines the explainer and the design does not depend on the answer.
 
 ## Parked
 
-**28 stale local branches still block future claims.** Unchanged, and it bit again: `pm claim`
-passes git's raw error through for a local branch where it refuses gracefully for a remote one.
-Still not filed, since you have not asked for it.
+**28 stale local branches still block future claims.** Unchanged, still not filed.
 
-**Committing your inbox replies would red CI.** It happened again — your reply to item 3 consumed
-the `~` slot, so `inbox validate` failed on `main` all session. `pm block` is built to append to an
-invalid inbox precisely because that is the normal mid-cycle state.
+**Committing your inbox replies would red CI.** Unchanged. It did not bite this cycle — you replied
+in the session rather than the file.
 
-**Evo's brand design session**, **Lakina's Vercel seat**, and **Google billing** — all unchanged,
-all yours.
+**Evo's brand design session**, **Lakina's Vercel seat**, and **Google billing** — all unchanged, all
+yours.
