@@ -159,6 +159,20 @@ export function datePart(d: Date): string {
 }
 
 /**
+ * `YYYY-MM-DD` in the same fixed zone the ids use.
+ *
+ * Exported from here rather than defined where it is needed, so there is one
+ * `ZONE`. Anything dating a file from `toISOString()` gets UTC, which after
+ * 5pm Pacific is already tomorrow — a handoff written the same afternoon as an
+ * item would carry a date a day ahead of the item's id, and the two would sort
+ * against each other wrongly.
+ */
+export function isoDateInZone(d: Date = new Date()): string {
+  const p = zoned(d);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+/**
  * `HH.MM.SS` in Pacific time.
  *
  * Dots rather than colons because git **rejects a colon in a branch name**

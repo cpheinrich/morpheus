@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { claimedNumbers } from "./claim.js";
 import { itemFilename, timestampId } from "./id.js";
+import { today } from "./frontmatter.js";
 import { parseArtifact } from "./parse.js";
 import { ARTIFACTS, type ArtifactKind } from "./schema.js";
 import { headSha } from "./git-sha.js";
@@ -70,9 +71,10 @@ export async function nextId(
   return { id: `${idPrefix}${String(next).padStart(3, "0")}`, blind: claimed === null };
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+// One definition, in `frontmatter.ts`, resolving to the ids' fixed zone. Three
+// local copies had drifted to UTC, so `created:` could read a day ahead of the
+// id written beside it in the same call.
+
 
 /**
  * Render a YAML scalar, quoting when the value would otherwise be misparsed.
