@@ -182,7 +182,11 @@ export async function updateLinks(
     for (const file of await walk(root)) {
       const text = await readFile(file, "utf8");
       const next = text.replace(
-        /\]\(([^)]*?roadmap\/)([A-Z]{2,4}-\d{3,})\.md\)/g,
+        // Any relative link ending in `<ID>.md`, not only those with a
+        // `roadmap/` segment. Items link to each other as siblings —
+        // `](./DW-006.md)` — and requiring the directory name missed every one
+        // of those, which is how darwin went from zero broken links to three.
+        /\]\(([^)]*?)([A-Z]{2,4}-\d{3,})\.md\)/g,
         (whole, prefix: string, id: string) => {
           // Never rewrite an absolute URL. Those are pinned to a ref or point
           // at another repository — an archived link to

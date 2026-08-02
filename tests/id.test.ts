@@ -324,6 +324,24 @@ describe("migration", () => {
     expect(text).toContain("(../roadmap/MO-099.md)");
   });
 
+  it("repairs sibling links between items in the same directory", async () => {
+    // Items reference each other as `](./MO-045.md)`, with no `roadmap/`
+    // segment. Requiring one missed every sibling link and took darwin from
+    // zero broken links to three.
+    await item("MO-045", "Forty-fifth thing", "2026-07-31");
+    await item("MO-046", "Forty-sixth thing", "2026-07-31");
+    const sib = join(dir, "roadmap", "MO-046.md");
+    await writeFile(sib, (await readFile(sib, "utf8")) + "\nSee [MO-045](./MO-045.md).\n", "utf8");
+
+    await migrate(join(dir, "roadmap"), false, undefined, [join(dir, "roadmap")]);
+
+    const files = await readdir(join(dir, "roadmap"));
+    const moved = files.find((f) => f.includes("046"))!;
+    expect(await readFile(join(dir, "roadmap", moved), "utf8")).toContain(
+      "(./MO-26-07-31-045-forty-fifth-thing.md)",
+    );
+  });
+
   it("never rewrites an absolute URL, even to a renamed item", async () => {
     // An archived link pinned to a branch records what the file was called on
     // that branch. Rewriting it breaks a working link to tidy a local one.
