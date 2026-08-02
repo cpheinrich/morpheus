@@ -194,3 +194,42 @@ describe("caller permissions cover what they call", () => {
     }
   });
 });
+
+/**
+ * The reviewer has to be able to report.
+ *
+ * Supplying `prompt` puts claude-code-action into automation mode, which grants
+ * the base GitHub tools but not the ones that write to a pull request — and
+ * creates no tracking comment. The first live run spent 20 turns and $0.86
+ * producing a review, hit nine permission denials trying to post it, and exited
+ * green with `agent-review / review  pass`.
+ *
+ * That is the failure this rung was explicitly built not to have: a verifier
+ * that cannot speak is indistinguishable from one that found nothing, and the
+ * green check reads as evidence either way.
+ */
+describe("agent-review can actually post", () => {
+  it("forces tag mode, or automation mode leaves it nowhere to write", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ with?: Record<string, unknown> }> }>;
+    };
+    const step = wf.jobs?.["review"]?.steps?.find((s) =>
+      Object.hasOwn(s.with ?? {}, "anthropic_api_key"),
+    );
+    expect(step?.with?.["track_progress"]).toBe(true);
+  });
+
+  it("grants the tools a review is delivered through", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    // Inline findings and the top-level comment are separate paths; losing
+    // either silently halves what a review can say.
+    expect(raw).toContain("mcp__github_inline_comment__create_inline_comment");
+    expect(raw).toContain("Bash(gh pr comment:*)");
+  });
+
+  it("keeps a runaway backstop well above observed usage", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    const turns = Number(/--max-turns (\d+)/.exec(raw)?.[1]);
+    expect(turns).toBeGreaterThan(20);
+  });
+});
