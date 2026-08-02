@@ -35,6 +35,22 @@ async function git(args: string[], cwd: string): Promise<string> {
   return stdout.trim();
 }
 
+/**
+ * How to refresh remote-tracking refs before reading claims from them.
+ *
+ * **`--prune` is the load-bearing word.** Merging deletes the branch on origin,
+ * but a plain fetch leaves the local `refs/remotes/origin/…` behind — so a
+ * merged item keeps reading as claimed, forever, on every machine that ever
+ * fetched it.
+ *
+ * One exported constant rather than the same array written twice, because it
+ * already went wrong that way once: `reconcile` pruned and `listClaims` did not,
+ * and the two disagreed about what was claimed while appearing to ask git the
+ * same question. Same failure as the branch-id pattern that preceded this fix —
+ * a second copy that drifts.
+ */
+export const FETCH_PRUNE = ["fetch", "origin", "--prune", "--quiet"] as const;
+
 /** Branch prefix for an item: EV-014 -> ev-014- */
 export function branchPrefix(id: string): string {
   return `${id.toLowerCase()}-`;
@@ -119,7 +135,7 @@ export function parseClaimedNumbers(lsRemote: string, idPrefix: string): number[
 
 /** Every live claim in the repo, newest activity first. */
 export async function listClaims(cwd: string): Promise<Claim[]> {
-  await git(["fetch", "origin", "--quiet"], cwd).catch(() => "");
+  await git([...FETCH_PRUNE], cwd).catch(() => "");
 
   const out = await git(
     [

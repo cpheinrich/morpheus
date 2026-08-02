@@ -2,7 +2,13 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ageInDays, branchPrefix, parseClaimRefs, slugify } from "../src/pm/claim.js";
+import {
+  ageInDays,
+  branchPrefix,
+  FETCH_PRUNE,
+  parseClaimRefs,
+  slugify,
+} from "../src/pm/claim.js";
 import { roadmapIdFromBranch } from "../src/pm/id.js";
 import { parseArtifact } from "../src/pm/parse.js";
 
@@ -155,6 +161,43 @@ describe("parseClaimRefs", () => {
       "ev-014",
     ]) {
       expect(parseClaimRefs(ref(branch))[0]?.id, branch).toBe(roadmapIdFromBranch(branch));
+    }
+  });
+});
+
+/**
+ * Merging deletes the branch on origin, but a plain `git fetch` leaves the
+ * local remote-tracking ref behind — so a shipped item keeps reading as
+ * claimed on every machine that ever fetched it.
+ *
+ * This was live for one commit: `reconcile` pruned, `listClaims` did not, and
+ * they disagreed about what was claimed while appearing to ask git the same
+ * question. Surfaced immediately after the branch-id fix, because until then
+ * `listClaims` returned nothing and there was no phantom to see.
+ */
+describe("FETCH_PRUNE", () => {
+  it("prunes, or a merged branch reads as a live claim forever", () => {
+    expect(FETCH_PRUNE).toContain("--prune");
+  });
+
+  it("is quiet, so it does not pollute command output", () => {
+    expect(FETCH_PRUNE).toContain("--quiet");
+  });
+
+  // The point of the constant. Two call sites writing the array by hand is how
+  // they diverged; one definition is what stops it recurring.
+  it("is the single definition both readers use", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const read = (f: string) => readFile(join(import.meta.dirname, "..", f), "utf8");
+    const occurrences = (s: string) => (s.match(/"fetch",\s*"origin"/g) ?? []).length;
+
+    // One in claim.ts: the definition itself. None anywhere else.
+    expect(occurrences(await read("src/pm/claim.ts"))).toBe(1);
+    expect(occurrences(await read("src/pm/ship.ts"))).toBe(0);
+
+    for (const f of ["src/pm/claim.ts", "src/pm/ship.ts"]) {
+      expect(await read(f), `${f} should use FETCH_PRUNE`).toContain("FETCH_PRUNE");
     }
   });
 });
