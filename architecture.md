@@ -1383,23 +1383,50 @@ live, so an agent knows what it needs without being able to read it.
 }
 ```
 
-### 13.1 Two populations, two stores
+### 13.1 Three stores, split by who reads the secret
 
-| | **Google Secret Manager** | **1Password** |
-|---|---|---|
-| Holds | Anything code reads at runtime | Anything only a human uses |
-| Examples | API keys, service account JSON, DB URLs | Bank logins, vendor portals, 2FA recovery codes |
-| Runtime access | Native — Cloud Run and Functions mount directly | Awkward — requires fetch-at-boot |
-| Agent access | `gcloud secrets` — full lifecycle | `op` CLI with a service account |
+| | **Google Secret Manager** | **GitHub Actions secrets** | **1Password** |
+|---|---|---|---|
+| Read by | The **deployed software** | **CI**, and only CI | A **human** |
+| Examples | DB URLs, service account JSON, Stripe live keys | `ANTHROPIC_API_KEY`, deploy tokens | Bank logins, vendor portals, 2FA recovery codes |
+| Access | Cloud Run and Functions mount directly | Native in a workflow | Awkward for code — fetch-at-boot |
+| Agent access | `gcloud secrets` — full lifecycle | `gh secret set` | `op` CLI with a service account |
 
-**GSM is the source of truth for every secret the software touches; 1Password holds credentials
-code never reads.** These populations barely overlap, so this is one system per job.
+**The axis is who reads it, not when it is used.** An earlier version of this section split on
+code-versus-human and folded CI into "code", which made GitHub Actions secrets a *delivery surface*
+for GSM — with a `morpheus secrets push --ci` sync keeping them aligned. That sync was never built
+and should not be: for a secret only CI reads, the source and the destination are the same place,
+so it is ceremony with no product. Naming the third store is what stops a future agent trying to
+"fix" a divergence that is the intended design.
+
+Reaching GSM from CI without a stored credential is possible — Workload Identity Federation
+exchanges GitHub's OIDC token for short-lived GCP credentials — and it is deliberately **not** used.
+It costs a pool, a provider, a service account and an IAM binding per project plus an auth step in
+every workflow, to remove one encrypted value from GitHub. At one CI secret and one operator that
+is not a trade worth making. Revisit if CI ever needs a secret that the deployed software also
+reads, since that is the case the split genuinely strains.
+
+**The boundary case, and the rule for it.** When both CI and the runtime need the same *capability*
+— a Stripe key for a smoke test, say — do not copy the value into both stores. **GSM owns it, and CI
+gets its own credential minted for CI**, with narrower scope. That keeps one rotation point per
+credential and gives CI a blast radius of its own. Two copies of one secret is the thing to avoid;
+two credentials for one capability is the thing to want.
+
+Worth knowing, because it decides where a secret can be used at all: **GitHub does not pass secrets
+to `pull_request` runs from forks.** So a CI secret is unavailable on exactly the pull requests
+external contributors open — the agent review rung (§9) reports itself unconfigured there, which is
+honest but means outside contributions get no rung 2. The contributor flow itself lives in
+`AGENTS.md` rather than here.
 
 | Context | Mechanism |
 |---|---|
 | Local development | `.env.local`, gitignored, populated by `morpheus secrets pull` |
-| CI | GitHub Actions secrets, synced from GSM by `morpheus secrets push --ci` |
-| Runtime | GSM mounted into Cloud Run / Vercel environment |
+| CI | GitHub Actions secrets, set directly with `gh secret set` |
+| Runtime | Cloud Run and Functions mount GSM directly; **Vercel does not read GSM** — values are pushed into its own encrypted environment store, or fetched at boot |
+
+> `morpheus secrets pull` is **specified but not built** — there is no `secrets` command in the CLI
+> today, and populating `.env.local` is a manual `gcloud` step. Recorded rather than quietly
+> implied, because a command named in the architecture reads as a command that exists.
 
 `morpheus doctor` verifies every manifest entry resolves in every declared scope, so a missing
 secret fails before deploy rather than at runtime.
@@ -1418,6 +1445,11 @@ IAM is per-project, so an agent's service account gets `roles/secretmanager.secr
 own project and nowhere else — blast radius is one app. For 1Password the equivalent is **one vault
 per company**, with a service account granted read access to only that vault. Agents never hold
 personal 1Password credentials; they hold a scoped token that is itself stored in GSM.
+
+GitHub Actions secrets scope the same way, one level up: repository, organisation, or environment.
+A CI secret set on one repo cannot be read by another. The review key sits on `cpheinrich/morpheus`
+alone because *the review rung proves itself on one repo first* — organisation secrets are not an
+alternative there in any case, since `cpheinrich` is a personal account rather than an org.
 
 An agent can manage essentially all of GSM — creating projects, enabling APIs, creating secrets,
 granting IAM, rotating versions. Only the initial billing-account link and first OAuth consent need

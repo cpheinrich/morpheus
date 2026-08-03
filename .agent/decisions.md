@@ -303,6 +303,27 @@ confirmation that a roadmap item's prose was fixed, which the reviewer had itsel
 previous SHA comes from the workflow run history rather than a stored cursor, because the runs
 already are the record and a cursor can disagree with reality.
 
+**Three secret stores, split by who reads the secret** — 2026-08-03. Chris's call, correcting a
+framing of mine. GSM for what the deployed software reads, **GitHub Actions secrets for what CI
+alone reads**, 1Password for what only a human reads.
+
+I had proposed recording the Anthropic key's presence in GitHub as a *deviation* from §13.1's
+"sync from GSM" design. Chris: *"we will always use github secrets for keys needed during CI — why
+not just make that a named default?"* He is right, and the reason is the mirror of a rule already
+here: **a deviation nobody recorded is indistinguishable from the canonical choice** — and a
+canonical choice recorded as a deviation manufactures phantom work. A future agent would read
+"deviation" and build `morpheus secrets push --ci` to close a gap that is the intended design. For a
+secret only CI reads, the sync's source and destination are the same place.
+
+*Workload Identity Federation is deliberately not used.* It would let CI read GSM with no stored
+credential, and costs a pool, a provider, a service account and an IAM binding per project plus an
+auth step in every workflow — to remove one encrypted value from GitHub. Not worth it at one CI
+secret and one operator.
+
+*The boundary case has a rule*: when CI and the runtime need the same capability, GSM owns it and
+CI gets its *own* credential minted for CI, narrower. Two copies of one secret is what to avoid;
+two credentials for one capability is what to want.
+
 **Four of those seven runs reviewed pushes that changed no code**, three of them successive edits to
 one item's prose, for $4.93. The gate reuses `hasNoSubstantiveChange`, already shared by `check pr`
 and `pm ship`. The trade is real and not free: the reviewer *did* find genuine problems in item
