@@ -7,6 +7,7 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
 | [MO-26-08-02-03.16.10](./MO-26-08-02-03.16.10-pm-index-crashes-when.md) | pm index crashes when an artifact directory is absent | review | P1 | — | — |
+| [MO-26-08-02-03.30.25](./MO-26-08-02-03.30.25-scaffold-folder-readmes.md) | Every folder that earns one gets a README, scaffolded by init | review | P1 | — | — |
 | [MO-26-08-02-15.15.21](./MO-26-08-02-15.15.21-fix-goal-ids.md) | Goal ids must match the shape the schema requires | review | P1 | MO-G-2026-Q3-01 | #79 |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |

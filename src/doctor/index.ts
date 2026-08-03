@@ -49,6 +49,11 @@ export const EXPECTED: Record<Kind, string[]> = {
     "hq/marketing",
     "hq/finance",
     "hq/ops",
+    // `qa/` feeds verifier rung 3 and `infra/` holds the generated Firestore
+    // rules. Both were in the specification and in no project's scaffold, so
+    // every repo grew them by hand or not at all.
+    "qa/acceptance",
+    "infra",
     ".agent/worklog",
     ".agent/inbox-archive",
   ],
@@ -57,10 +62,11 @@ export const EXPECTED: Record<Kind, string[]> = {
     "hq/product/goals",
     "hq/inbox",
     "hq/brand",
+    "qa/acceptance",
     ".agent/worklog",
     ".agent/inbox-archive",
   ],
-  internal: ["hq/product/roadmap", ".agent/worklog"],
+  internal: ["hq/product/roadmap", "qa/acceptance", ".agent/worklog"],
 };
 
 /** Files every project should carry regardless of kind. */

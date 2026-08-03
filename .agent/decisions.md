@@ -447,3 +447,24 @@ past rather than repairing a link.
 
 The distinction is worth stating because it is the one judgement call in an otherwise mechanical
 migration — a link is repaired, a sentence is not.
+
+**A folder gets a README when an agent could do the wrong thing without it** — 2026-08-02.
+Chris's call, after a `/hq` dashboard was built that did not match the folder structure it
+rendered. The explanation existed in `architecture.md` and the agent never reached it: locality is
+what a README buys.
+
+Not every folder. The triggers are that it feeds something else, carries a convention filenames do
+not reveal, is generated, or is a seam between projects. Framework-standard directories are
+excluded — a README restating `components/` is noise that can also go stale. Measured across six
+repos, "every folder" would have meant 150-200 files; the rule as written means roughly 30.
+
+**Short, and pointing rather than repeating.** Depth stays in `architecture.md` so there is one
+copy to keep true.
+
+**Scaffolded by `morpheus init`, not enforced by a check.** A check that demands a file gets a
+file — stubs written to silence it. The previous scaffold wrote `Nothing here yet.` into every
+directory, which is that failure already in the codebase: a file that looks documented and says
+less than the folder name.
+
+**A tool reads the filesystem, not the README.** A dashboard deriving its sections from prose
+turns the README into a config file that looks like documentation, and the two drift.
