@@ -7,8 +7,7 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
 | [MO-26-08-02-03.16.10](./MO-26-08-02-03.16.10-pm-index-crashes-when.md) | pm index crashes when an artifact directory is absent | review | P1 | — | — |
-| [MO-26-08-02-03.30.25](./MO-26-08-02-03.30.25-scaffold-folder-readmes.md) | Every folder that earns one gets a README, scaffolded by init | review | P1 | — | — |
-| [MO-26-08-02-15.15.21](./MO-26-08-02-15.15.21-fix-goal-ids.md) | Goal ids must match the shape the schema requires | review | P1 | MO-G-2026-Q3-01 | #79 |
+| [MO-26-08-03-13.25.57](./MO-26-08-03-13.25.57-name-ci-secret-store.md) | Three secret stores, split by who reads them | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -64,7 +63,9 @@ item files, not this table.
 | [MO-26-08-01-16.40.29](./MO-26-08-01-16.40.29-migrate-roadmap-ids.md) | Migrate Morpheus roadmap ids to the dated scheme | shipped | P1 | — | #61 |
 | [MO-26-08-01-17.28.41](./MO-26-08-01-17.28.41-voice-handoff.md) | Voice session handoff, out and back | shipped | P1 | MO-G-2026-Q3-01 | #64 |
 | [MO-26-08-01-23.03.19](./MO-26-08-01-23.03.19-update-contributor-guidance.md) | External contributors open an issue, and may open a PR carrying the roadmap item | shipped | P1 | MO-G-2026-Q3-01 | #59 |
+| [MO-26-08-02-03.30.25](./MO-26-08-02-03.30.25-scaffold-folder-readmes.md) | Every folder that earns one gets a README, scaffolded by init | shipped | P1 | — | #73 |
 | [MO-26-08-02-13.23.35](./MO-26-08-02-13.23.35-gate-re-reviews.md) | Re-review only what a new push actually changed | shipped | P1 | MO-G-2026-Q3-01 | #75 |
+| [MO-26-08-02-15.15.21](./MO-26-08-02-15.15.21-fix-goal-ids.md) | Goal ids must match the shape the schema requires | shipped | P1 | MO-G-2026-Q3-01 | #79 |
 | [MO-26-07-28-008](./MO-26-07-28-008-morpheus-init.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
 | [MO-26-07-28-009](./MO-26-07-28-009-retrofit-darwin.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-010](./MO-26-07-29-010-simplify-architecture-md-first.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | #46 |
