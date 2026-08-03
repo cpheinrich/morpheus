@@ -3,131 +3,139 @@ owner: cpheinrich
 date: 2026-08-02
 agents:
   - claude
-previous: .agent/inbox-archive/2026-08-02-1030-cpheinrich.md
+previous: .agent/inbox-archive/2026-08-02-1730-cpheinrich.md
 ---
-# Inbox — 2026-08-02 (afternoon)
+# Inbox — 2026-08-02 (evening)
 
-**All three replies are acted on and merged** in [#72](https://github.com/cpheinrich/morpheus/pull/72).
-Sonnet is pinned, the heartbeat beats hourly every day, and reviews now skip pushes that change no
-code. Other repos parked as you said.
+**The issue-triage agent you asked for is paused one step in, on two questions I could not answer
+for you.** Both are about blast radius rather than design, and item 1 has them. I read all seven
+issues first, so the triage half is ready to run the moment the build question is settled.
 
-**Your question about the five passes had a measurable answer**, and it turned out to matter more
-than the model swap. Every push re-triggers a review, and **four of the seven runs read pushes that
-changed no code** — three of them successive edits to one roadmap item's prose. That was $4.93 of the
-$8.01. Item 1 has the table and what I did about it.
+**Six issues left, not seven.** [#78](https://github.com/cpheinrich/morpheus/issues/78) was already
+fixed by [#79](https://github.com/cpheinrich/morpheus/pull/79) — a parallel session shipped the fix
+without closing the issue. I reproduced the original report against current `main`, confirmed it
+passes, and closed it. Worth knowing the drift exists: a fix that lands without closing its issue
+looks exactly like an open bug.
 
-**One correction to something I told you.** I estimated Sonnet at "roughly a fifth the cost". It is
-not. Measured on #72 itself: **$0.88 against an Opus average of $1.14 — about 23%, not 80%.** It used
-*more* turns to get there, 28 against 20, so turn count dominates rather than per-token price. The
-gate is what actually moves the bill; the model swap is a rounding error next to it. Corrected in the
-item and in `decisions.md` rather than left standing.
+**Nine beats have run since we last spoke** and they are picking sensibly. Which surfaced something
+you asked about and I had no good answer to: **there is nowhere durable to read them.** Item 2.
 
-**Sonnet's review quality, on one data point, looks fine** — it caught a stale comment in
-`schedule.yml` that the new one contradicted, which is exactly the class of thing a human skims past.
+**One correction to the architecture, found answering your design-system question.**
+`architecture.md` names **Style Dictionary** in three places. It is not a dependency and never has
+been — the token pipeline is DTCG-shaped JSON read by Morpheus's own `tokens build`. An architecture
+doc naming a package that was never installed sends someone hunting for a config file that does not
+exist. I will fold the fix into the triage work unless you would rather it stayed as-is.
 
 > `❗` needs you and ends in an empty `~`. `✅` is settled. Reply after the empty `~`.
 
-## ✅ 1. Why #69 took five passes, and what now stops it · `claude`
+## ❗ 1. The issue-fixing agent has a blast radius I should not pick for you · `claude`
 
-~ *(previous: "We can go with A and see how Sonnet does. Why did #69 need five review passes? Could we reduce the number of passes?")*
+The triage half is straightforward and I will build it either way: on a new issue, an agent reads
+it, labels it, and comments with an assessment. Cheap, reversible, no write access to code.
 
-**Because I pushed five times, and every push buys a review.** Two of those passes earned it — they
-found defects in that PR's own guards, and neither would have surfaced without a re-review. The other
-three read successive edits to one roadmap item's prose.
+The *fixing* half is different, and two things about it are genuinely your call.
 
-| Run | What the push changed | Cost |
-| --- | --- | --- |
-| #68 | inbox cycle — no code | $0.86 |
-| #69 pass 1 | workflow, tests | $0.91 |
-| #69 pass 2 | tests, item | $1.24 |
-| #69 pass 3 | tests, item | $0.93 |
-| #69 pass 4 | **item only** | $1.99 |
-| #69 pass 5 | **item only** | $1.17 |
-| #69 final | **item only** | $0.91 |
+**a) This repo is public, so anyone can open an issue.** An agent that reads issue text and then
+writes code makes the issue body untrusted input to a model with commit access — the same class as
+the `${{ github.head_ref }}` injection the reviewer caught this afternoon, except the payload is
+prose rather than shell. It is also a spend surface: fifty issues is fifty runs at roughly $1.50.
 
-`morpheus review needed` now returns false when the diff is entirely records and board bookkeeping,
-and the workflow gates the model call on it. On the run above it would have skipped four, saving
-$4.93. The predicate is `hasNoSubstantiveChange`, already shared by `check pr` and `pm ship` — third
-consumer, one definition, because this repo spent yesterday fixing three bugs caused by a second copy
-of something.
+**b) "If the submitter doesn't produce a PR themselves" cannot be known at issue-open time.** It
+needs either a wait or a signal.
 
-An **unreadable** diff reviews rather than skips: silently disabling the rung the day `git diff`
-changes shape is worse than a wasted dollar.
+- **A — trusted authors, and a delayed sweep (recommended).** Triage every issue on open, from
+  anyone. *Fix* only issues from `OWNER`/`MEMBER`/`COLLABORATOR`, and only after the hourly
+  heartbeat sees them sitting unclaimed with no linked PR for some hours. The heartbeat already
+  exists, already runs hourly, and already has a concurrency ceiling — this is the work it was
+  built to dispatch, so it needs no second scheduler.
+- **B — trusted authors, fix immediately on open.** Simpler, faster, no waiting. Gives up the
+  "let them fix it themselves" behaviour you asked for, and means a typo'd issue becomes a PR
+  before you have finished writing the issue.
+- **C — label-gated.** Nothing happens until you add `agent-fix`. Safest and fully deliberate;
+  it is also one more thing to remember, and the whole point was that it happens without you.
+- **Other —** including "triage only, never fix", which is a legitimate answer given (a).
 
-**What it gives up, said plainly:** the reviewer *did* find real problems in item prose — a claim that
-a file existed when it did not, and three successive wrong definitions in a detector spec. Those are
-now out of scope by construction. If that turns out to matter, the honest fix is a cheaper trigger,
-not pretending the gate was free.
-
-## ✅ 2. Hourly beats, and why that is actually cheap · `claude`
-
-~ *(previous: "Set it to run on the hour, every hour, every day of the week. If there is nothing to do then it is cheap.")*
-
-Done — `0 * * * *`. You are right that it is cheap, and it is worth saying *why*, because it was not
-guaranteed: the beat is a deterministic ranking function with **no model in it**, so a run that picks
-nothing costs a runner minute and writes a job summary.
-
-That was MO-050's most consequential decision, and it was made for a different reason — the handoff
-spec described assess as a prompt, and I built it as a ranker so it would be testable and would run
-before any API key existed. A prompt-based beat could not have been left on this cadence at any
-sensible price. A choice made for testability turned out to decide what cadence was affordable.
-
-You will start seeing beats within the hour.
-
-## ✅ 3. Other repos parked · `claude`
-
-~ *(previous: "Don't worry about the other keys - we'll come back to them.")*
-
-Parked. For when you return to it: four repos hold the key and none has an `agent-review` job, so
-nothing is running or spending there; `cpheinrich.com` has no key. Six lines of `ci.yml` each when
-you want them.
-
-## ❗ 4. What I would watch over the next few days · `claude`
-
-Nothing needed today. This is a check-in on what would tell us the rung is worth its keep, since one
-good review is not evidence.
-
-Three things worth watching:
-
-- **Does Sonnet keep finding real things?** One data point so far. The failure mode is findings that
-  are technically true and not worth acting on — that is the noise that gets a rung bypassed, and it
-  arrives gradually rather than obviously.
-- **Does the gate ever skip something it should not?** It skips board-only pushes, which is where
-  roadmap items are written. Worth knowing if a spec problem reaches merge that a review would have
-  caught.
-- **Are the hourly beats read or ignored?** A heartbeat nobody reads is worse than none, because it
-  makes the board look attended.
-
-- **A — report back after a week (recommended).** One short item next cycle: what the reviews caught,
-  what they cost, whether the beats were useful.
-- **B — only tell you if something goes wrong.** Less noise; the risk is that gradual decline is
-  exactly what nobody reports.
-- **C — leave it to you to notice.** Cheapest, and reasonable if you would rather form your own view
-  before hearing mine.
-- **Other —** including a different thing worth watching that I have not thought of.
+I lean A because it reuses the heartbeat rather than adding a second autonomous path, and because
+the ceiling is already the guard against a runaway queue.
 
 ~
 
-## ❗ 5. Dispatch is still the thing not built · `claude`
+## ❗ 2. Nine beats, and nowhere to read them · `claude`
 
-Unchanged and deliberately so, but worth resurfacing now that the rest is live and cheap, because
-this is the piece your original spec was actually about.
+You asked where heartbeat records are stored. The honest answer is **only the Actions job summary** —
+the beat writes nothing to the repo, deliberately, because a scheduled job would have to push to
+protected `main`.
 
-`heartbeat --dispatch` refuses with *"no dispatcher is implemented yet"*. Turning it on is an item,
-not a config flip. The decision recorded this morning was to wait until a week of beats has been
-read — you cannot judge a ranker you have not watched.
+That was fine at twice a day. At hourly it is not: 24 beats a day into a tab, no way to grep what
+the heartbeat thought last Tuesday, and GitHub ages logs out at 90 days. A record you cannot search
+is close to no record.
 
-You will have that week's beats by roughly next weekend. Nothing to decide today; flagging it so it
-does not quietly become permanent, which is the failure mode for a thing that is off by default and
-working fine without it.
+Also worth knowing, from the nine so far: **they are not actually hourly.** 12:08, 14:39, 16:06,
+18:03, 20:13 — GitHub's cron is best-effort and the top of the hour is its most congested slot. Not
+a fault, but "hourly" is aspirational rather than literal.
+
+- **A — append to a file on a records branch (recommended).** The beat opens or updates a single
+  `inbox-YYYY-MM-DD`-style branch with a one-line-per-beat log, and it merges itself since it stakes
+  no id. Greppable, in git, costs nothing, and reuses the records exception that already exists.
+- **B — leave it in job summaries.** Zero work. Accept that the record is unsearchable and
+  90-day-lived, on the grounds that a beat older than a day is rarely interesting.
+- **C — only record beats that changed their mind.** Log a line when the pick differs from the
+  previous beat, so the file is a history of decisions rather than of runs. Smaller and more
+  readable; loses the ability to prove the heartbeat was alive at a given hour.
+- **Other —** including a `/hq` view, which is the version that eventually wants building anyway.
 
 ~
+
+## ✅ 3. The re-review gate shipped, and its own review caught a security bug · `claude`
+
+[#75](https://github.com/cpheinrich/morpheus/pull/75). Re-reviews now diff against the last
+*reviewed* commit rather than the merge base, and a push touching a file the last review named is
+never skipped — your signal, working:
+
+```
+Comparing against the last reviewed commit: e092b04f6a93…
+Reviewing: touches a file the last review named — checking whether it was addressed
+```
+
+**The reviewer caught three things I would have shipped.** The worst was a script injection:
+`${{ github.head_ref }}` interpolated into a `run:` block, which substitutes *before* bash parses.
+Branch names are attacker-controlled on fork pull requests and this repo takes external
+contributions. It filed that under "Minor"; it was the most serious thing in the review.
+
+It also caught that the caller workflow was hardcoded as `ci.yml` in a *reusable* workflow — a
+permanent silent no-op in any consumer named otherwise — and that my `pathsMentioned` narrowed in
+the exact place its docstring promised to widen, with a URL test that passed for the wrong reason.
+
+Three remaining findings are filed as [#76](https://github.com/cpheinrich/morpheus/issues/76).
+
+## ✅ 4. Reporting back on the rung after a week, by default · `claude`
+
+You did not answer last cycle's offer, so I am taking option A rather than re-asking: one short item
+next weekend with what the reviews caught, what they cost, and whether the beats were useful. Say so
+if you would rather not.
+
+## ✅ 5. Where things stand · `claude`
+
+| | |
+| --- | --- |
+| Board | valid, 552 tests, no open claims |
+| Open issues | 6 — #70, #76, #80, #81, #82, #83 |
+| Merged since last cycle | [#75](https://github.com/cpheinrich/morpheus/pull/75), [#79](https://github.com/cpheinrich/morpheus/pull/79) |
+| Heartbeat | 9 beats, picking `MO-26-07-28-005` consistently |
+| Agent review | live on Opus 5, gated on substantive changes |
+
+Of the six open issues, four are real bugs with clear fixes (#80, #82, #83 and, less clearly, #81),
+and two are follow-ups I filed against my own work (#70, #76). I will not start fixing them until
+item 1 is settled, since how the agent handles issues changes whether I fix these by hand or use it
+as its first real exercise.
 
 ## Parked
 
+**Dispatch.** Unchanged and not yet due — the decision was to wait for a week of beats, and there
+have been nine. Next weekend.
+
 **28 stale local branches still block future claims.** Unchanged, still not filed.
 
-**heinrichbros.com does not boot locally** — `ERR_PNPM_IGNORED_BUILDS`, no committed lockfile. Still
-yours to call; a three-line fix in that repo when you want it.
+**heinrichbros.com does not boot locally.** Unchanged, still yours to call.
 
 **Evo's brand design session**, **Lakina's Vercel seat**, and **Google billing** — all unchanged.
