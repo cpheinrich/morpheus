@@ -272,7 +272,7 @@ often goes wrong when one person runs several companies.
 | SEO research | **Semrush** | Data moat |
 | Agents | **Claude + Codex** | |
 | Error tracking | **Sentry** | |
-| Web hosting | **Vercel** | §10.2 — decided on the review loop |
+| Web hosting | **Vercel** | §10.2 — every web surface, every size. Not Cloudflare Pages |
 | Product analytics | **PostHog Cloud** | §10.3 |
 | Hardware | **Macs** | |
 
@@ -929,6 +929,10 @@ Chatwoot over REST to render summary tiles, linking out for depth.
 
 ### 10.2 Hosting: Vercel
 
+> **Every web surface deploys to Vercel. Every project, every size.** A marketing page, a landing
+> page, a one-route redirect: Vercel. This is the default, not the recommendation — an agent
+> reading this section does not weigh it against alternatives, it follows it.
+
 **Decided on the review loop, not on hosting quality.** Two reasons:
 
 1. **Next.js gaps elsewhere.** Cache Components and the Proxy (formerly Middleware) still present
@@ -943,8 +947,40 @@ Chatwoot over REST to render summary tiles, linking out for depth.
 The cost is one more provider; it buys the most important human-in-the-loop mechanism in the
 system.
 
+#### The small-site trap
+
+The argument above reads as being *about* `/hq` dashboards and auth middleware, so a one-page
+marketing site looks like a case it does not cover. It reliably produces this reasoning:
+
+> This project is a single static page. It has no `/hq`, no middleware, and its only reviewer is
+> the person who wrote it, so preview commenting earns nothing. Cloudflare already holds the
+> registrar and DNS, so Pages is one fewer account in the path.
+
+Every sentence of that is true, and the conclusion is still wrong. Lakina reached it and filed
+`hosting-cloudflare-pages` as a deviation; Heinrich LLC reached the same fork six weeks later.
+Two projects out of three is not a judgement call being exercised, it is a default that does not
+hold.
+
+**What the local reasoning cannot see:**
+
+- **The uniformity is the product.** An agent arriving at any project should not have to ask where
+  the site deploys, how a preview URL is produced, or which CLI is installed. One answer across
+  every repo is worth more than the marginal correctness of picking the ideal host per project —
+  and *more* so on trivial projects, where nobody will remember the exception.
+- **"It is only one page" is a statement about today.** Sites grow a contact form, then a route
+  handler to receive it, then `/hq`. Lakina's own deviation records the cost it had already
+  accepted: no server runtime, so `/hq` cannot be gated by edge middleware and the gate is
+  client-side. That is a real capability given up in exchange for one fewer account.
+- **The account is not the cost it appears to be.** Vercel is already in the stack. Adding the
+  eleventh project to an existing account is not "one more provider"; declining to is what creates
+  a second deployment story to remember.
+
+**A deviation here needs a reason the next project would not also have.** "Small site" is not one:
+it describes most projects, and a default that fails on the common case is not a default.
+
 **Reconsider if:** Vercel pricing becomes painful at scale, or Firebase App Hosting ships
-equivalent preview commenting.
+equivalent preview commenting. Both are reasons to change the default **for everything**, in this
+file — not to except one project from it.
 
 ```mermaid
 flowchart LR
