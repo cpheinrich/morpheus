@@ -198,7 +198,7 @@ describe("block", () => {
     expect(worklog).toContain("outcome: blocked");
     expect(worklog).toContain("roadmap: MO-051");
 
-    const inbox = await readFile(join(root, "hq/inbox/cpheinrich.md"), "utf8");
+    const inbox = await readFile(join(root, "hq/team/cpheinrich.md"), "utf8");
     expect(inbox).toContain("Blocked: Agent code review");
   });
 
@@ -216,24 +216,24 @@ describe("block", () => {
     await seedItem();
     await block(opts());
 
-    const raw = await readFile(join(root, "hq/inbox/cpheinrich.md"), "utf8");
+    const raw = await readFile(join(root, "hq/team/cpheinrich.md"), "utf8");
     expect(parseInbox("cpheinrich.md", raw).issues).toEqual([]);
   });
 
   it("appends to an existing inbox rather than replacing it", async () => {
     await seedItem();
-    await mkdir(join(root, "hq/inbox"), { recursive: true });
+    await mkdir(join(root, "hq/team"), { recursive: true });
     const existing = appendOpenItem(
       null,
       { title: "An earlier question", agent: "claude", body: "Body." },
       { owner: "cpheinrich", date: "2026-07-30" },
     );
-    await writeFile(join(root, "hq/inbox/cpheinrich.md"), existing);
+    await writeFile(join(root, "hq/team/cpheinrich.md"), existing);
 
     const r = await block(opts());
     expect(r.inboxCreated).toBe(false);
 
-    const raw = await readFile(join(root, "hq/inbox/cpheinrich.md"), "utf8");
+    const raw = await readFile(join(root, "hq/team/cpheinrich.md"), "utf8");
     const parsed = parseInbox("cpheinrich.md", raw);
     expect(parsed.items).toHaveLength(2);
     expect(parsed.items[0]!.title).toBe("An earlier question");

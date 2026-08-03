@@ -491,7 +491,7 @@ Deliberately minimal: markdown in git, no vector database, no external store.
 .agent/
 ├── decisions.md          settled choices and their reasoning   ← read first
 ├── learned.md            technical facts and gotchas           ← read first
-├── inbox-archive/        past cycles of hq/inbox/, with replies
+├── inbox-archive/        past cycles of hq/team/, with replies
 └── worklog/              what was attempted and learned per task
 ```
 
@@ -502,7 +502,7 @@ Two raw logs, each feeding exactly one distillation:
 | `inbox-archive/` | `decisions.md` | *What did we decide, and why?* |
 | `worklog/` | `learned.md` | *What do we know about how this behaves?* |
 
-**`hq/inbox/<handle>.md` is the live exchange** — one file per person, named by GitHub handle, and
+**`hq/team/<handle>.md` is the live exchange** — one file per person, named by GitHub handle, and
 the only file a human is expected to edit. An agent writes a prose summary of what got done, then
 numbered items each ending in a `~` reply slot. The human replies inline. On the next turn the
 agent acts on the replies, promotes anything durable to `decisions.md`, archives the exchange to

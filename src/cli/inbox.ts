@@ -1,5 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { TEAM_RESERVED } from "../paths.js";
 import { parseInboxFile } from "../inbox/parse.js";
 
 /** Validate every inbox in a directory. Returns an exit code. */
@@ -7,7 +8,7 @@ export async function validate(dir: string): Promise<number> {
   let files: string[];
   try {
     files = (await readdir(dir)).filter(
-      (f) => f.endsWith(".md") && f.toLowerCase() !== "readme.md",
+      (f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()),
     );
   } catch {
     console.error(`No inbox directory at ${dir}`);

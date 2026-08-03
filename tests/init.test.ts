@@ -26,7 +26,7 @@ describe("morpheus init", () => {
 
     // The inbox it writes must satisfy the inbox validator, or the first thing
     // a new project does is fail its own CI.
-    const inbox = await parseInboxFile(join(dir, "hq/inbox/cpheinrich.md"));
+    const inbox = await parseInboxFile(join(dir, "hq/team/cpheinrich.md"));
     expect(inbox.issues).toEqual([]);
 
     // The product directories must parse, empty though they are.
@@ -123,7 +123,7 @@ describe("morpheus init", () => {
       await scaffold(dir, SEED);
 
       for (const [d, must] of [
-        ["hq/inbox", "GitHub handle"],
+        ["hq/team", "GitHub handle"],
         ["hq/marketing", "hq/brand"],
         ["qa", "verifier rung 3"],
         ["qa/acceptance", "before"],
@@ -139,7 +139,7 @@ describe("morpheus init", () => {
       await scaffold(dir, SEED);
 
       // Depth lives in one place; the README buys locality, not a second copy.
-      for (const d of ["qa", "infra", "hq/inbox"]) {
+      for (const d of ["qa", "infra", "hq/team"]) {
         expect(await read(`${d}/README.md`), d).toContain("architecture.md");
       }
     });
@@ -279,12 +279,12 @@ describe("morpheus init", () => {
     });
 
     it("keeps a hand-written inbox for someone else", async () => {
-      await mkdir(join(dir, "hq/inbox"), { recursive: true });
-      await writeFile(join(dir, "hq/inbox/someone-else.md"), "theirs\n");
+      await mkdir(join(dir, "hq/team"), { recursive: true });
+      await writeFile(join(dir, "hq/team/someone-else.md"), "theirs\n");
       await scaffold(dir, SEED);
 
-      expect(await read("hq/inbox/someone-else.md")).toBe("theirs\n");
-      expect(await read("hq/inbox/cpheinrich.md")).toContain("owner: cpheinrich");
+      expect(await read("hq/team/someone-else.md")).toBe("theirs\n");
+      expect(await read("hq/team/cpheinrich.md")).toContain("owner: cpheinrich");
     });
   });
 
@@ -328,7 +328,7 @@ describe("morpheus init", () => {
       await scaffold(dir, SEED);
       const hq = await readdir(join(dir, "hq"));
 
-      for (const d of ["product", "inbox", "brand", "marketing", "finance", "ops"]) {
+      for (const d of ["product", "team", "brand", "marketing", "finance", "ops"]) {
         expect(hq).toContain(d);
       }
     });

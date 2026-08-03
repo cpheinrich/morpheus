@@ -52,3 +52,34 @@ second use* applies to directory structure as much as to code.
 Filed as a proposal at `status: review` with no code, because the folder layout is cheap to change
 now and expensive after six repos have one. `outcome: research` rather than `shipped`: this produced
 a document and no behaviour.
+
+## What changed between the proposal and the build
+
+Chris settled all three open questions in one reply: `hq/team/`, move the inbox in, and have the
+heartbeat scan for meeting context. Two things then surfaced that the proposal had not.
+
+**The roster cannot be YAML.** `yaml` is not a runtime dependency and `js-yaml` is only a dev one —
+and `morpheus-kit` ships to every project, so one file is not worth a dependency in all of them.
+`members.md` with frontmatter is what `gray-matter` already parses, and it keeps `hq/` uniform. The
+proposal had written `members.yaml` without checking, which would have been a dependency added for
+aesthetics.
+
+**Three readers misread the roster as an inbox.** Inboxes sit at the root of `hq/team/`, so anything
+else at that root has to be excluded by name — and `inbox validate`, `doctor` and `pm block`'s owner
+inference each had their own hand-written `!== "readme.md"`. All three reported the roster as a
+broken inbox, in the same afternoon, for the same reason. One exported `TEAM_RESERVED` and a test
+asserting nobody re-lists it.
+
+That is the **fourth** time this week the same root cause has appeared: a value written twice and
+drifting. The branch-id pattern, the fetch arguments, `today()`'s timezone, and now this. The pattern
+is specific enough to be worth naming — it happens when a rule is *obvious enough to retype*, which
+is exactly when nobody thinks to share it.
+
+## The one the sample note caught
+
+Writing sample content immediately hit the YAML-Date trap the repo already documents: unquoted
+`occurred: 2026-08-03T09:30:00-07:00` parses as a Date, and the note failed with "expected string,
+received Date". `isoDate` exists for precisely this one layer up, so `isoDateTime` mirrors it — with
+the offset preserved rather than normalised, because a note's id reads as the wall clock of the room.
+
+Worth noting the sample earned its place by finding that before any real meeting did.

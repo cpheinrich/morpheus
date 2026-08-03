@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { appendOpenItem } from "../inbox/append.js";
 import { updateFrontmatter, today } from "./frontmatter.js";
+import { INBOX_DIR } from "../paths.js";
 import { parseArtifact } from "./parse.js";
 import { slugify } from "./claim.js";
 
@@ -143,7 +144,7 @@ export async function block(opts: BlockOptions): Promise<BlockResult> {
   await writeFile(worklogPath, worklogBody(opts, item.data.title, date), "utf8");
   written.push(worklogPath);
 
-  const inboxPath = join(root, "hq/inbox", `${owner}.md`);
+  const inboxPath = join(root, INBOX_DIR, `${owner}.md`);
   const existing = await readIfExists(inboxPath);
   await mkdir(dirname(inboxPath), { recursive: true });
   await writeFile(

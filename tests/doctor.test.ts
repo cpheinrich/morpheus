@@ -59,9 +59,9 @@ describe("doctor", () => {
   it("errors on a missing expected directory", async () => {
     await scaffold("company");
     const { rm } = await import("node:fs/promises");
-    await rm(join(root, "hq/inbox"), { recursive: true });
+    await rm(join(root, "hq/team"), { recursive: true });
     const f = await doctor({ root });
-    expect(f.some((x) => x.check === "structure" && x.message.includes("hq/inbox"))).toBe(true);
+    expect(f.some((x) => x.check === "structure" && x.message.includes("hq/team"))).toBe(true);
   });
 
   it("expects more of a company than an internal project", async () => {

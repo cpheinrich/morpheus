@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { EXPECTED } from "../doctor/index.js";
 import * as t from "./templates.js";
 import type { Seed } from "./templates.js";
+import { INBOX_DIR } from "../paths.js";
 
 /**
  * Scaffold a Morpheus project.
@@ -92,11 +93,11 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     await put(`hq/product/${kind}/README.md`, t.productReadme(kind, seed));
   }
 
-  if (dirs.includes("hq/inbox")) await put(`hq/inbox/${seed.owner}.md`, t.inbox(seed));
+  if (dirs.includes(INBOX_DIR)) await put(`${INBOX_DIR}/${seed.owner}.md`, t.inbox(seed));
 
   // Remaining expected directories get a placeholder so they survive a clone.
   for (const dir of dirs) {
-    if (dir.startsWith(".agent/") || dir.startsWith("hq/product/") || dir === "hq/inbox") continue;
+    if (dir.startsWith(".agent/") || dir.startsWith("hq/product/") || dir === INBOX_DIR) continue;
 
     // `hq/brand/README.md` belongs to the brand wizard, which never overwrites
     // an existing file — so a placeholder here would permanently block the
@@ -119,7 +120,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   // being expected means `qa/` exists, and a directory that exists and feeds a
   // verifier deserves to say so.
   const parents = new Set(dirs.map((d) => d.split("/").slice(0, -1).join("/")).filter(Boolean));
-  for (const dir of [...parents, "hq/inbox"]) {
+  for (const dir of [...parents, INBOX_DIR]) {
     const write = t.dirReadmes[dir];
     if (!write) continue;
     if (!dirs.some((d) => d === dir || d.startsWith(`${dir}/`))) continue;

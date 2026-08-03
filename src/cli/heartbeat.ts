@@ -1,9 +1,12 @@
 import { appendFile } from "node:fs/promises";
+import { join } from "node:path";
 import { assess, type Beat, type HeartbeatConfig } from "../heartbeat/assess.js";
 import { hasDispatchCredential, readConfig } from "../heartbeat/config.js";
 import { formatBeat, formatSummary } from "../heartbeat/format.js";
 import { listClaims } from "../pm/claim.js";
-import { parseArtifact } from "../pm/parse.js";
+import { parseArtifact, parseDir } from "../pm/parse.js";
+import { MEETING_NOTES_DIR } from "../paths.js";
+import { MeetingNote } from "../team/schema.js";
 
 /**
  * One beat.
@@ -69,7 +72,11 @@ export async function heartbeat(opts: HeartbeatOptions): Promise<number> {
     return 1;
   }
 
-  const beat = assess({ items, goals, claims, config, now: new Date() });
+  // Absent is not empty: a project with no meeting-notes directory reports
+  // `sinceLastNote: null` rather than a stale record it does not keep.
+  const { items: notes } = await parseDir(join(cwd, MEETING_NOTES_DIR), MeetingNote);
+
+  const beat = assess({ items, goals, claims, config, now: new Date(), notes });
 
   if (opts.json) {
     console.log(JSON.stringify(beat, null, 2));

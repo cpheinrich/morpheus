@@ -18,7 +18,7 @@ on:
       inbox-dir:
         description: Set to "" to skip inbox validation.
         type: string
-        default: "hq/inbox"
+        default: "hq/team"
       morpheus-ref:
         type: string
         default: "main"
@@ -81,3 +81,10 @@ jobs:
       - name: Validate inboxes
         if: ${{ inputs.inbox-dir != '' }}
         run: node .morpheus/dist/cli/index.js inbox validate --dir ${{ inputs.inbox-dir }}
+
+      # The roster and every meeting note. Separate from `inbox validate`
+      # because a project can legitimately have one and not the other, and a
+      # note that skipped its redaction pass must not reach `main`.
+      - name: Team
+        if: inputs.inbox-dir != ''
+        run: node .morpheus/dist/cli/index.js team validate

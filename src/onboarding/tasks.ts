@@ -2,6 +2,7 @@ import { access, lstat, readFile, readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
+import { INBOX_DIR } from "../paths.js";
 import { packageStatus } from "../brand/package.js";
 import { parseArtifact } from "../pm/parse.js";
 import { readRegistry } from "../registry/index.js";
@@ -250,7 +251,7 @@ export const TASKS: Task[] = [
     why: "Without one there is nowhere for an agent to hand you a question and get an answer back.",
     how: "Create hq/inbox/<github-handle>.md, one per person",
     detect: async (root) => {
-      const dir = join(root, "hq/inbox");
+      const dir = join(root, INBOX_DIR);
       let files: string[];
       try {
         files = (await readdir(dir)).filter(

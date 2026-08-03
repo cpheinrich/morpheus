@@ -154,7 +154,7 @@ Agent instructions are in [\`AGENTS.md\`](./AGENTS.md); \`CLAUDE.md\` symlinks t
 const SPEC = "https://github.com/cpheinrich/morpheus/blob/main/architecture.md";
 
 export const dirReadmes: Record<string, (s: Seed) => string> = {
-  "hq/inbox": () => `# Inbox
+  "hq/team": () => `# Inbox
 
 One file per person, named for their GitHub handle — \`cpheinrich.md\`, not \`chris.md\`.
 

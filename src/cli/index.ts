@@ -11,6 +11,7 @@ import {
   unblock,
   validate,
 } from "./pm.js";
+import { INBOX_DIR } from "../paths.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
 import { build as brandBuild, check as brandCheck, init as brandInit } from "./brand.js";
@@ -25,6 +26,7 @@ import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
 import { prompt as reviewPrompt, reviewNeeded } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
+import { validate as teamValidate } from "./team.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -44,7 +46,8 @@ Usage
   morpheus review prompt    assemble the rung-2 reviewer prompt for this branch
   morpheus review needed    [--base <ref>] [--prior-review <file>]
                             is this change worth a review, or a re-review?
-  morpheus inbox validate   [--dir <hq/inbox>]
+  morpheus inbox validate   [--dir <hq/team>]
+  morpheus team validate    the roster and every meeting note
   morpheus brand init | refresh   [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
   morpheus brand build            regenerate from an edited hq/brand/answers.md
   morpheus brand status           [--dir <hq/brand>] [--name <Acme>]
@@ -355,7 +358,7 @@ async function main(): Promise<number> {
 
   if (group === "inbox") {
     if (command === "validate") {
-      return validateInbox(resolve(process.cwd(), flags.dir === "hq/product" ? "hq/inbox" : flags.dir));
+      return validateInbox(resolve(process.cwd(), flags.dir === "hq/product" ? INBOX_DIR : flags.dir));
     }
     console.error(`Unknown inbox command "${command ?? ""}".\n\n${HELP}`);
     return 1;
@@ -365,6 +368,12 @@ async function main(): Promise<number> {
     if (command === "prompt") return reviewPrompt(dir, process.cwd());
     if (command === "needed") return reviewNeeded(flags.base, flags.priorReview);
     console.error(`Unknown review command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+  }
+
+  if (group === "team") {
+    if (command === "validate") return teamValidate(process.cwd());
+    console.error(`Unknown team command "${command ?? ""}".\n\n${HELP}`);
     return 1;
   }
 

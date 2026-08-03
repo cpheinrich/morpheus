@@ -179,12 +179,12 @@ describe("checkPr", () => {
 describe("isRecordsOnly", () => {
   it("recognises an inbox cycle", () => {
     expect(
-      isRecordsOnly(["hq/inbox/cpheinrich.md", ".agent/inbox-archive/2026-07-29-1330-x.md"]),
+      isRecordsOnly(["hq/team/cpheinrich.md", ".agent/inbox-archive/2026-07-29-1330-x.md"]),
     ).toBe(true);
   });
 
   it("is false when anything outside the records changed", () => {
-    expect(isRecordsOnly(["hq/inbox/cpheinrich.md", "src/pm/parse.ts"])).toBe(false);
+    expect(isRecordsOnly(["hq/team/cpheinrich.md", "src/pm/parse.ts"])).toBe(false);
   });
 
   // The regression that matters. `every` is vacuously true on an empty array,
@@ -199,7 +199,7 @@ describe("a PR that only moves records", () => {
   const cycle = () =>
     goodPr({
       branch: "inbox-2026-07-29",
-      changedFiles: ["hq/inbox/cpheinrich.md", ".agent/inbox-archive/2026-07-29-1330-x.md"],
+      changedFiles: ["hq/team/cpheinrich.md", ".agent/inbox-archive/2026-07-29-1330-x.md"],
     });
 
   it("needs no roadmap item, so a branch staking none is fine", async () => {
@@ -231,7 +231,7 @@ describe("a PR that only moves records", () => {
 describe("a claimed branch that did none of its item's work", () => {
   const PR31 = [
     ".agent/inbox-archive/2026-07-29-1330-cpheinrich.md",
-    "hq/inbox/cpheinrich.md",
+    "hq/team/cpheinrich.md",
     "hq/product/roadmap/MO-010.md",
     "hq/product/roadmap/MO-037.md",
     "hq/product/roadmap/README.md",
@@ -325,7 +325,7 @@ describe("waivers are surfaced, not swallowed", () => {
   it("lists both waivers when a PR uses both", async () => {
     const findings = await checkPr(
       goodPr({
-        changedFiles: ["hq/inbox/cpheinrich.md", "hq/product/roadmap/EV-014.md"],
+        changedFiles: ["hq/team/cpheinrich.md", "hq/product/roadmap/EV-014.md"],
         body:
           "skip-tests: nothing executable changed\n" +
           "records-only: the decision is the deliverable\n\n" +

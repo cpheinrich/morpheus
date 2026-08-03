@@ -198,7 +198,7 @@ describe("review needed", () => {
   });
 
   it("skips a change that is only records", () => {
-    expect(needed(["hq/inbox/cpheinrich.md", ".agent/decisions.md"]).review).toBe(false);
+    expect(needed(["hq/team/cpheinrich.md", ".agent/decisions.md"]).review).toBe(false);
   });
 
   // The three passes that cost the most: successive edits to one item's prose.
@@ -288,7 +288,7 @@ describe("re-review gating", () => {
   });
 
   it("still skips a records-only push that answers nothing", () => {
-    const r = needed(["hq/inbox/cpheinrich.md"], { priorReview: PRIOR });
+    const r = needed(["hq/team/cpheinrich.md"], { priorReview: PRIOR });
     expect(r.review).toBe(false);
     expect(r.why).toContain("none the last review named");
   });
@@ -298,7 +298,7 @@ describe("re-review gating", () => {
   });
 
   it("behaves as before when there is no prior review", () => {
-    expect(needed(["hq/inbox/x.md"], { priorReview: "" }).review).toBe(false);
+    expect(needed(["hq/team/x.md"], { priorReview: "" }).review).toBe(false);
   });
 
   it("does not treat an empty prior review as naming everything", () => {

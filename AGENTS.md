@@ -29,7 +29,9 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `.agent/worklog/` | What was attempted and learned per task, including dead ends |
 | `.agent/decisions.md` | Settled choices and why — **read this first** |
 | `.agent/inbox-archive/` | Past inbox cycles with replies, date-first |
-| `hq/inbox/<handle>.md` | Live inboxes — one per person by GitHub handle |
+| `hq/team/<handle>.md` | Live inboxes — one per person by GitHub handle |
+| `hq/team/members.md` | The roster — handles, names, and how to work with each person |
+| `hq/team/meeting-notes/` | Distilled meeting summaries, never transcripts |
 
 ## Commands
 
@@ -50,6 +52,7 @@ pnpm morpheus heartbeat            # what should happen next, and whether anythi
 pnpm morpheus review prompt        # the rung-2 reviewer prompt for this branch
 pnpm morpheus voice knowledge      # standing explainer, uploaded once as project knowledge
 pnpm morpheus voice brief "topic"  # today's state, to paste into a voice session
+pnpm morpheus team validate        # the roster, and every meeting note
 pnpm morpheus registry list        # every Morpheus project on this machine
 pnpm morpheus brand status         # what the brand package still needs
 pnpm morpheus brand build          # regenerate from an edited hq/brand/answers.md
@@ -148,7 +151,7 @@ changes nothing. The rule applies only when browser use is the *single, entire* 
 - Any open questions you could not resolve, stated plainly rather than guessed at
 - The roadmap item moved to `review`
 
-**Except a PR that only touches records** — `hq/inbox/` and `.agent/`. An inbox cycle belongs to
+**Except a PR that only touches records** — `hq/team/` and `.agent/`. An inbox cycle belongs to
 no feature and has no item to move. Branch it as `inbox-<YYYY-MM-DD>`, staking no id, and
 `check pr` will not ask for one.
 
@@ -210,7 +213,7 @@ settled choices — if one looks wrong, say so and ask rather than quietly worki
 
 ## The inbox cycle
 
-`hq/inbox/<handle>.md` is how a human and their agents exchange state. These are the only
+`hq/team/<handle>.md` is how a human and their agents exchange state. These are the only
 files a human is expected to edit.
 
 **One inbox per person, not per session.** A person's file collects items from every agent

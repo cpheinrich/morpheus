@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { findDuplicateIds, parseArtifact, type ParseIssue } from "../pm/parse.js";
 import { block as blockItem, BlockError, unblock as unblockItem } from "../pm/block.js";
 import { migrate } from "../pm/migrate-ids.js";
@@ -38,7 +39,8 @@ async function exists(path: string): Promise<boolean> {
  */
 async function inboxOwner(root: string): Promise<string | null> {
   try {
-    const files = (await readdir(join(root, "hq/inbox"))).filter((f) => f.endsWith(".md"));
+    const files = (await readdir(join(root, INBOX_DIR)))
+      .filter((f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()));
     return files.length === 1 ? basename(files[0]!, ".md") : null;
   } catch {
     return null;

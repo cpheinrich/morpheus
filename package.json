@@ -22,7 +22,8 @@
     "./hq": "./dist/hq/index.js",
     "./registry": "./dist/registry/index.js",
     "./doctor": "./dist/doctor/index.js",
-    "./design": "./dist/design/index.js"
+    "./design": "./dist/design/index.js",
+    "./team": "./dist/team/index.js"
   },
   "files": [
     "dist"

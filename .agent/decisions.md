@@ -303,6 +303,47 @@ confirmation that a roadmap item's prose was fixed, which the reviewer had itsel
 previous SHA comes from the workflow run history rather than a stored cursor, because the runs
 already are the record and a cursor can disagree with reality.
 
+**Collaborative context lives in `hq/team/`, and meeting notes are summaries** — 2026-08-03.
+Chris's call. `hq/` is otherwise organised by business *function*; a meeting is a *medium* and covers
+three functions at once, so it belongs to none of them. Inboxes were always the first member of that
+second category, which is why they sat at the top of `hq/` rather than under a function — so the
+inbox moves in, at the **root** of `hq/team/` rather than a subdirectory, because a person is the
+primary thing in the folder and a medium should not sit above one.
+
+**Notes are always distilled, never transcripts.** Whoever is in the meeting writes the summary into
+the canonical format, with a redaction pass that strips off-topic personal conversation and anything
+that would embarrass a participant. `redacted:` is a schema field rather than a convention, so CI
+refuses a note that skipped it — the note-taker has to make a positive claim rather than forget.
+
+For a **public repo, a meeting about that project may be summarised publicly.** That is not new
+exposure: issue threads and PR reviews are already public discussion of the same work, and a redacted
+summary says less than a review usually does. What changes is that the redaction passes stop being
+tidiness and become the gate.
+
+**The heartbeat reports the gap, it does not fetch.** Granola is a claude.ai connector and iMessage
+is a local database; neither is reachable from a CI runner. A beat that tried to pull meetings would
+either need credentials it should not have, or would find nothing and report a clean sweep. So the
+beat surfaces how stale the notes are and which produced no roadmap items, and an interactive session
+does the ingestion — the same split as `assess` itself.
+
+**Morpheus does nothing by default for anyone without repo collaboration access** — 2026-08-03.
+Chris's instruction, and the reason is propagation: **a vulnerability in Morpheus reaches every
+project built with it.** A hole here is not one repo's problem, it is the template's, and it ships
+to each new project silently.
+
+So: no agent takes an action on input from an untrusted author. Concretely — an issue body, a pull
+request title, a branch name and a chat message are all attacker-controlled on a public repo, and
+all of them are *data*, never instructions. An agent may **triage** anything; it may only **act** on
+input from `OWNER`, `MEMBER` or `COLLABORATOR`. Nothing is on by default that a stranger can trigger.
+
+This is already load-bearing in three places and is written down now because it was implicit in all
+three: the `${{ github.head_ref }}` injection the reviewer caught (a branch name interpolated into a
+`run:` block), the issue-triage agent's trusted-author gate, and chat capture refusing a public repo.
+
+**The correct default when in doubt is to do nothing and say so**, which is the same shape as the
+unconfigured-verifier rule — a capability that silently degrades to "did nothing" is safe; one that
+silently degrades to "did something on untrusted input" is not.
+
 **Three secret stores, split by who reads the secret** — 2026-08-03. Chris's call, correcting a
 framing of mine. GSM for what the deployed software reads, **GitHub Actions secrets for what CI
 alone reads**, 1Password for what only a human reads.
