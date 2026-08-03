@@ -1,138 +1,192 @@
 ---
 owner: cpheinrich
-date: 2026-08-02
+date: 2026-08-03
 agents:
   - claude
-previous: .agent/inbox-archive/2026-08-02-1730-cpheinrich.md
+previous: .agent/inbox-archive/2026-08-03-1400-cpheinrich.md
 ---
-# Inbox — 2026-08-02 (evening)
+# Inbox — 2026-08-03 (Monday afternoon)
 
-**The issue-triage agent you asked for is paused one step in, on two questions I could not answer
-for you.** Both are about blast radius rather than design, and item 1 has them. I read all seven
-issues first, so the triage half is ready to run the moment the build question is settled.
+**Everything automated is running and nothing is on fire.** Seven beats since the cadence change —
+a third of the hourly you asked for — four reviews today at $4.30, board valid at 72 items, no open pull requests, one live claim. The
+work that is *stopped* is stopped on you, and it is three decisions rather than three tasks.
 
-**Six issues left, not seven.** [#78](https://github.com/cpheinrich/morpheus/issues/78) was already
-fixed by [#79](https://github.com/cpheinrich/morpheus/pull/79) — a parallel session shipped the fix
-without closing the issue. I reproduced the original report against current `main`, confirmed it
-passes, and closed it. Worth knowing the drift exists: a fix that lands without closing its issue
-looks exactly like an open bug.
+**The one thing I would read first: there are eleven open items waiting in four other repos** —
+Darwin 4, Lakina 4, Evo 3 — and nothing here shows them to you. You would have to open four files to
+find them. That is what MO-047 was filed for a week ago and it is still not built. Item 3.
 
-**Nine beats have run since we last spoke** and they are picking sensibly. Which surfaced something
-you asked about and I had no good answer to: **there is nowhere durable to read them.** Item 2.
+**One correction to what I told you yesterday.** I said the review rung was gated so records-only
+pushes skip. True, but the gate has been *paying off* more than I claimed and costing more than I
+implied in one place: four reviews today, $4.30, average $1.08 — and the two on the secrets PR were
+$1.30 and $1.24 because architecture prose is long, not because anything went wrong. The gate is
+working; the average is just not as low as "$0.88 on Sonnet" made it sound.
 
-**One correction to the architecture, found answering your design-system question.**
-`architecture.md` names **Style Dictionary** in three places. It is not a dependency and never has
-been — the token pipeline is DTCG-shaped JSON read by Morpheus's own `tokens build`. An architecture
-doc naming a package that was never installed sends someone hunting for a config file that does not
-exist. I will fold the fix into the triage work unless you would rather it stayed as-is.
+**Board drift found and corrected while assembling this.** An item shipped a day ago had been
+sitting in `review` because the PR that did the work used a hand-named branch. Item 5 — it is a hole
+in a rule we already have, and worth a minute of your attention because it will happen again.
 
 > `❗` needs you and ends in an empty `~`. `✅` is settled. Reply after the empty `~`.
 
-## ❗ 1. The issue-fixing agent has a blast radius I should not pick for you · `claude`
+## ❗ 1. The issue-triage agent, still the blocker · `claude`
 
-The triage half is straightforward and I will build it either way: on a new issue, an agent reads
-it, labels it, and comments with an assessment. Cheap, reversible, no write access to code.
+~ *(carried from yesterday, unanswered)*
 
-The *fixing* half is different, and two things about it are genuinely your call.
+You asked for this and I stopped one step in. The triage half I will build regardless: on a new
+issue, an agent reads it, labels it, comments with an assessment. Cheap, reversible, no write access
+to code.
 
-**a) This repo is public, so anyone can open an issue.** An agent that reads issue text and then
-writes code makes the issue body untrusted input to a model with commit access — the same class as
-the `${{ github.head_ref }}` injection the reviewer caught this afternoon, except the payload is
-prose rather than shell. It is also a spend surface: fifty issues is fifty runs at roughly $1.50.
+The **fixing** half needs your call, for two reasons.
 
-**b) "If the submitter doesn't produce a PR themselves" cannot be known at issue-open time.** It
-needs either a wait or a signal.
+**a) The repo is public, so anyone can open an issue.** An agent that reads issue text and then
+writes code makes the issue body untrusted input to a model with commit access. That is the same
+class as the `${{ github.head_ref }}` injection the reviewer caught on Sunday, with prose as the
+payload rather than shell. It is also a spend surface: fifty issues is fifty runs at roughly $1.10.
 
-- **A — trusted authors, and a delayed sweep (recommended).** Triage every issue on open, from
-  anyone. *Fix* only issues from `OWNER`/`MEMBER`/`COLLABORATOR`, and only after the hourly
-  heartbeat sees them sitting unclaimed with no linked PR for some hours. The heartbeat already
-  exists, already runs hourly, and already has a concurrency ceiling — this is the work it was
-  built to dispatch, so it needs no second scheduler.
-- **B — trusted authors, fix immediately on open.** Simpler, faster, no waiting. Gives up the
-  "let them fix it themselves" behaviour you asked for, and means a typo'd issue becomes a PR
-  before you have finished writing the issue.
-- **C — label-gated.** Nothing happens until you add `agent-fix`. Safest and fully deliberate;
-  it is also one more thing to remember, and the whole point was that it happens without you.
-- **Other —** including "triage only, never fix", which is a legitimate answer given (a).
+**b) "If the submitter doesn't produce a PR themselves" cannot be known when the issue opens.**
 
-I lean A because it reuses the heartbeat rather than adding a second autonomous path, and because
-the ceiling is already the guard against a runaway queue.
+- **A — trusted authors, delayed sweep (recommended).** Triage every issue from anyone. *Fix* only
+  issues from `OWNER`/`MEMBER`/`COLLABORATOR`, and only once the hourly heartbeat sees them sitting
+  unclaimed with no linked PR for some hours. The heartbeat already runs, already has a ceiling, and
+  this is the work it was built to dispatch — no second scheduler.
+- **B — trusted authors, fix immediately.** Simpler. Gives up the "let them fix it first" behaviour
+  you asked for, and a typo'd issue becomes a PR before you finish writing it.
+- **C — label-gated.** Nothing happens until you add `agent-fix`. Safest, fully deliberate, and one
+  more thing to remember — when the point was that it happens without you.
+- **Other —** including "triage only, never fix", which is defensible given (a).
 
 ~
 
-## ❗ 2. Nine beats, and nowhere to read them · `claude`
+## ❗ 2. Seven beats, a third of hourly, and nowhere to read them · `claude`
 
-You asked where heartbeat records are stored. The honest answer is **only the Actions job summary** —
-the beat writes nothing to the repo, deliberately, because a scheduled job would have to push to
-protected `main`.
+~ *(carried from yesterday, unanswered)*
 
-That was fine at twice a day. At hourly it is not: 24 beats a day into a tab, no way to grep what
-the heartbeat thought last Tuesday, and GitHub ages logs out at 90 days. A record you cannot search
-is close to no record.
+Unchanged and now better evidenced. Seven beats since Sunday evening. Every one is a
+job summary in the Actions tab and nothing else — the beat writes nothing to the repo, because a
+scheduled job would have to push to protected `main`.
 
-Also worth knowing, from the nine so far: **they are not actually hourly.** 12:08, 14:39, 16:06,
-18:03, 20:13 — GitHub's cron is best-effort and the top of the hour is its most congested slot. Not
-a fault, but "hourly" is aspirational rather than literal.
+**They are nowhere near hourly, and that is worth knowing because you chose hourly deliberately.**
+The seven runs since Sunday evening, in Pacific:
 
-- **A — append to a file on a records branch (recommended).** The beat opens or updates a single
-  `inbox-YYYY-MM-DD`-style branch with a one-line-per-beat log, and it merges itself since it stakes
-  no id. Greppable, in git, costs nothing, and reuses the records exception that already exists.
-- **B — leave it in job summaries.** Zero work. Accept that the record is unsearchable and
-  90-day-lived, on the grounds that a beat older than a day is rarely interesting.
-- **C — only record beats that changed their mind.** Log a line when the pick differs from the
-  previous beat, so the file is a history of decisions rather than of runs. Smaller and more
-  readable; loses the ability to prove the heartbeat was alive at a given hour.
-- **Other —** including a `/hq` view, which is the version that eventually wants building anyway.
+```
+17:03  21:35  01:34  05:31  08:47  10:57  12:49
+```
+
+That is **7 beats in about 20 hours** where hourly would be 20 — roughly a third of what was asked
+for, with gaps of four hours or more overnight. GitHub's scheduled workflows are best-effort and
+the platform drops them under load; the `0 * * * *` in `schedule.yml` is a request, not a promise.
+
+Nothing is broken and no beat has failed. But "there will be a beat within the hour" is not true,
+and if the cadence mattered for a reason beyond cheapness, this is the thing that defeats it.
+
+Every beat so far has picked `MO-26-07-28-005` (kit/hq dashboard shell). That is correct — it is the
+oldest unclaimed P1 serving the live goal — but seven identical answers is also the argument for
+option C below.
+
+- **A — append to a records branch (recommended).** One line per beat, on an `inbox-`style branch
+  that stakes no id so it merges itself. Greppable, in git, reuses the records exception.
+- **B — leave it.** Zero work; accept an unsearchable record that ages out at 90 days.
+- **C — log only when the pick changes.** A history of *decisions* rather than of runs. All seven
+  beats so far would be one line. Loses proof the heartbeat was alive at a given hour.
+- **Other —** including a `/hq` view, which is where this wants to end up anyway.
 
 ~
 
-## ✅ 3. The re-review gate shipped, and its own review caught a security bug · `claude`
+## ❗ 3. Eleven open items in four other repos, invisible from here · `claude`
 
-[#75](https://github.com/cpheinrich/morpheus/pull/75). Re-reviews now diff against the last
-*reviewed* commit rather than the merge base, and a push touching a file the last review named is
-never skipped — your signal, working:
+You asked to see everything before resuming. This is the part I cannot show you in this file.
 
-```
-Comparing against the last reviewed commit: e092b04f6a93…
-Reviewing: touches a file the last review named — checking whether it was addressed
-```
+| Repo | Open items | Inbox last written |
+| --- | --- | --- |
+| **Darwin** | 4 | 2026-08-02 |
+| **Lakina** | 4 | 2026-08-02 |
+| **Evo** | 3 | 2026-07-29 — five days stale |
+| heinrichbros.com | 0 | 2026-07-29 |
+| cpheinrich.com | — | **has no inbox at all** |
 
-**The reviewer caught three things I would have shipped.** The worst was a script injection:
-`${{ github.head_ref }}` interpolated into a `run:` block, which substitutes *before* bash parses.
-Branch names are attacker-controlled on fork pull requests and this repo takes external
-contributions. It filed that under "Minor"; it was the most serious thing in the review.
+I have not read their contents into this file deliberately: they are other people's — well, other
+repos' — cycles, and copying them here creates a second copy that goes stale the moment either side
+is answered. That was the reasoning behind one inbox per person *per repo* in the first place.
 
-It also caught that the caller workflow was hardcoded as `ci.yml` in a *reusable* workflow — a
-permanent silent no-op in any consumer named otherwise — and that my `pathsMentioned` narrowed in
-the exact place its docstring promised to widen, with a URL test that passed for the wrong reason.
+**MO-047 exists for exactly this** and has been backlog for a week: `morpheus inbox status` walks the
+registry and prints every open `❗` across every repo, so the terminal is the front door. It is P2,
+which is why the heartbeat keeps ranking it below the P1s.
 
-Three remaining findings are filed as [#76](https://github.com/cpheinrich/morpheus/issues/76).
+- **A — build it now (recommended).** Half a day at most, and it makes every future "show me
+  everything" answerable in one command instead of four file opens. The heartbeat will not pick it
+  on its own because P2.
+- **B — raise it to P1 and let the normal queue take it.** Same outcome, later, no queue-jumping.
+- **C — leave it.** Four repos is not many, and you open them anyway.
+- **Other —** including reading the four inboxes to you now, if you would rather have the content
+  than the tool.
 
-## ✅ 4. Reporting back on the rung after a week, by default · `claude`
+~
 
-You did not answer last cycle's offer, so I am taking option A rather than re-asking: one short item
-next weekend with what the reviews caught, what they cost, and whether the beats were useful. Say so
-if you would rather not.
+## ✅ 4. The six open issues, with my read on each · `claude`
 
-## ✅ 5. Where things stand · `claude`
+You asked me to triage these. I have not started fixing, because item 1 decides whether they get
+fixed by hand or become the new agent's first real exercise. Ranked by what I would do first:
+
+| Issue | What it is | My call |
+| --- | --- | --- |
+| [#83](https://github.com/cpheinrich/morpheus/issues/83) | A blocked item's records cannot reach `main` — `check pr` demands `review`, which is the one wrong answer | **Fix.** Your suggestion 2 (fix the message) is right and cheap; suggestion 1 (exempt blocked items with `needs:`) is better and nearly as cheap |
+| [#80](https://github.com/cpheinrich/morpheus/issues/80) | `pm block` on an already-blocked item says the item does not exist | **Fix.** A specific-but-wrong message sent you hunting the wrong thing; one branch |
+| [#82](https://github.com/cpheinrich/morpheus/issues/82) | `tokens build` unreachable from a project consuming the kit from git — pnpm refuses the build script | **Fix, and it is the most valuable one.** It blocks new projects at setup, and the only working answer contains a commit SHA |
+| [#70](https://github.com/cpheinrich/morpheus/issues/70) | Nothing distinguishes a review that posted from one that was denied | **Fix.** Already an item (`MO-26-08-02-02.48.16`), spec settled after five review passes |
+| [#76](https://github.com/cpheinrich/morpheus/issues/76) | Three follow-ups from the re-review gate's own review | **Fix two, drop one.** The URL-stripping and the unpinned invariant are real; the empty-diff one costs only money |
+| [#81](https://github.com/cpheinrich/morpheus/issues/81) | `pm-check` could run `hq rules --check` | **Defer.** The only enhancement here, and it is a convenience rather than a defect |
+
+Four of the six are defects in things I shipped in the last three days, which is the honest summary
+of how fast this moved.
+
+## ✅ 5. Board drift, and the hole that caused it · `claude`
+
+Two items were sitting in `review` with no PR recorded. Both are corrected on this branch.
+
+One was mine ([#85](https://github.com/cpheinrich/morpheus/pull/85), reconciled normally). The other
+is the interesting one: `MO-26-08-02-03.16.10` shipped as
+[#71](https://github.com/cpheinrich/morpheus/pull/71) on **Sunday**, and reconcile could not see it
+because the PR merged from `pm-index-skips-absent-kind` — a **hand-named branch staking no id**.
+
+`decisions.md` already says `pm claim` is the only supported way to start work, and `check pr`
+enforces it — but only as a **warning** when a branch names no id, because records-only PRs
+legitimately have none. So a *code* PR on a hand-named branch passes with a warning, merges, and
+strands its item in `review` forever. Nothing else advances it.
+
+The fix is small: if a PR changes source files, a branch with no roadmap id should be an **error**,
+not a warning — the records exception already covers the legitimate case. I have **not filed it**,
+because you are about to review six issues and I did not want to add a seventh to the pile you are
+reading. Say the word and it is an item.
+
+## ✅ 6. What shipped since the last cycle · `claude`
+
+| PR | What |
+| --- | --- |
+| [#85](https://github.com/cpheinrich/morpheus/pull/85) | Three secret stores, split by who reads them — your correction to my "deviation" framing |
+
+Its review caught two false claims, **one of which I introduced in that PR**: a cross-reference to
+`§7.4a`, which does not exist, written one paragraph after arguing that a command named in the
+architecture reads as a command that exists. And "native mount in Cloud Run / **Vercel**" — Vercel
+does not read GSM at all. Both corrected before merge.
+
+## ✅ 7. What is running, and what it costs · `claude`
 
 | | |
 | --- | --- |
-| Board | valid, 552 tests, no open claims |
-| Open issues | 6 — #70, #76, #80, #81, #82, #83 |
-| Merged since last cycle | [#75](https://github.com/cpheinrich/morpheus/pull/75), [#79](https://github.com/cpheinrich/morpheus/pull/79) |
-| Heartbeat | 9 beats, picking `MO-26-07-28-005` consistently |
-| Agent review | live on Opus 5, gated on substantive changes |
-
-Of the six open issues, four are real bugs with clear fixes (#80, #82, #83 and, less clearly, #81),
-and two are follow-ups I filed against my own work (#70, #76). I will not start fixing them until
-item 1 is settled, since how the agent handles issues changes whether I fix these by hand or use it
-as its first real exercise.
+| Board | 72 items — 63 shipped, 6 backlog, 1 dropped, 2 review (both corrected here) |
+| Tests | 561 |
+| Open PRs | none |
+| Live claims | 1 — `MO-055`, held 1 day by a parallel session |
+| Heartbeat | 7 beats since Sunday — a third of hourly — all picking `MO-26-07-28-005` |
+| Agent review | Opus 5, gated on substantive changes; 4 runs today, **$4.30**, average $1.08 |
 
 ## Parked
 
-**Dispatch.** Unchanged and not yet due — the decision was to wait for a week of beats, and there
-have been nine. Next weekend.
+**Style Dictionary.** `architecture.md` names it in three places and it has never been a dependency.
+I have offered twice and had no reply, so I am folding the correction into the next docs change
+rather than asking a third time. Say so if you would rather it stayed.
+
+**Dispatch.** Seven beats is less evidence than a week was meant to give, given the cadence above. Not raising it as a
+decision today because items 1–3 are already three; it is next in line.
 
 **28 stale local branches still block future claims.** Unchanged, still not filed.
 
