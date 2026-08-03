@@ -326,8 +326,19 @@ period, so check it before assuming a domain is stuck.
    CNAME, so no A record is needed, and none should be added: Vercel's IP range changes underneath it.
 5. Delete the registrar's parking records once the zone is live.
 
+**Known deviations today.** Recorded rather than left implicit — a deviation nobody wrote down is
+indistinguishable from the canonical choice, which is exactly how the "Cloudflare is the registrar
+for every domain" claim survived unchallenged.
+
+| Domain | Deviation | Note |
+|---|---|---|
+| `heinrich.la` | **DNS at Porkbun**, not Cloudflare | The domain that motivated this section; still unmoved |
+| `cpheinrich.com` | Registered at **Tucows** | Not on the approved list; DNS is correctly at Cloudflare |
+| `darwin.health` | Registered at **Sav.com** | 60-day lock expired; `clientTransferProhibited` still set |
+
 **Why not DNS at the registrar, concretely.** Porkbun's DNS editor is a staging form that does not
-list a zone's existing records, so there is no way to see what is actually configured, or to remove a
+list a zone's existing records, so there is no way to see what is actually configured, or to
+remove a
 parking record, from its UI. That is not a knock on Porkbun as a registrar — it is why DNS does not
 live there.
 
