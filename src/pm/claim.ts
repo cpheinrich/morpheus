@@ -94,7 +94,9 @@ export async function findClaims(id: string, cwd: string): Promise<string[]> {
  * evidence, "origin was unreachable" is not, and collapsing them lets a network
  * blip render as a free id. Same reason `mergedPrs` returns null.
  *
- * @param idPrefix Everything before the digits, e.g. `MO-` or `MO-G-`.
+ * @param idPrefix Everything before the digits, e.g. `MO-FR-` for a request or
+ * `MO-G-2026-Q3-` for a goal — a goal's sequence restarts each period, so the
+ * period is part of what identifies the run being counted.
  */
 export async function claimedNumbers(
   idPrefix: string,
@@ -115,9 +117,11 @@ export async function claimedNumbers(
  * Sequence numbers staked by `git ls-remote --heads` output.
  *
  * Split out from the lookup because the parsing is where this can quietly go
- * wrong — `mo-*` also matches the goal and request branches (`mo-g-001-…`,
- * `mo-fr-007-…`), and a roadmap allocation must not read their numbers as its
- * own. Requiring a digit immediately after the prefix is what separates them.
+ * wrong — `mo-*` also matches the goal and request branches
+ * (`mo-g-2026-q3-01-…`, `mo-fr-007-…`), and a roadmap allocation must not read
+ * their numbers as its own. Requiring a digit immediately after the prefix is
+ * what separates them: a roadmap allocation passes `MO-` and a goal branch's
+ * next character is `g`, so it does not match.
  */
 export function parseClaimedNumbers(lsRemote: string, idPrefix: string): number[] {
   // Branches are `<id lowercased>-<slug>`, so the digits between the prefix and

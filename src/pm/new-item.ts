@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { claimedNumbers } from "./claim.js";
-import { itemFilename, timestampId } from "./id.js";
+import { itemFilename, periodInZone, timestampId } from "./id.js";
 import { today } from "./frontmatter.js";
 import { parseArtifact } from "./parse.js";
 import { ARTIFACTS, type ArtifactKind } from "./schema.js";
@@ -14,6 +14,31 @@ const INFIX: Record<ArtifactKind, string> = {
   goals: "G-",
   requests: "FR-",
 };
+
+/**
+ * Digits in the sequence number, per kind.
+ *
+ * Two for goals, because `GOAL_ID` in `schema.ts` spells the shape out as
+ * `\d{2}` and the sequence restarts every quarter, so three would be padding
+ * for a hundred goals nobody sets in ninety days.
+ */
+const SEQ_DIGITS: Record<ArtifactKind, number> = {
+  roadmap: 0, // unused — roadmap ids come from the clock
+  goals: 2,
+  requests: 3,
+};
+
+/**
+ * The id prefix a sequence number is allocated under.
+ *
+ * Goals scope theirs to the period, so the leading run of a new quarter starts
+ * at `01` again and the id says which quarter it belongs to without opening
+ * the file.
+ */
+function sequencePrefix(kind: ArtifactKind, prefix: string, now: Date): string {
+  const base = `${prefix}-${INFIX[kind]}`;
+  return kind === "goals" ? `${base}${periodInZone(now)}-` : base;
+}
 
 export interface Allocation {
   id: string;
@@ -58,17 +83,27 @@ export async function nextId(
 
   // Goals and requests keep sequential ids: they are rare, written
   // deliberately, and have never collided.
+  //
+  // Matching on the full id prefix rather than "trailing digits of anything in
+  // this directory" is what makes the goal sequence per-period. Sliced the
+  // loose way, Q2's `-07` would push the first Q3 goal to `-08` and leave a
+  // gap that reads as a deleted goal.
+  const idPrefix = sequencePrefix(kind, prefix, now);
   const local = items
-    .map((i) => /(\d+)$/.exec((i.data as { id: string }).id)?.[1])
+    .map((i) => (i.data as { id: string }).id)
+    .filter((id) => id.startsWith(idPrefix))
+    .map((id) => /(\d+)$/.exec(id)?.[1])
     .filter((n): n is string => Boolean(n))
     .map(Number);
 
-  const idPrefix = `${prefix}-${INFIX[kind]}`;
   const claimed = await claimedNumbers(idPrefix, cwd);
 
   const nums = [...local, ...(claimed ?? [])];
   const next = (nums.length ? Math.max(...nums) : 0) + 1;
-  return { id: `${idPrefix}${String(next).padStart(3, "0")}`, blind: claimed === null };
+  return {
+    id: `${idPrefix}${String(next).padStart(SEQ_DIGITS[kind], "0")}`,
+    blind: claimed === null,
+  };
 }
 
 // One definition, in `frontmatter.ts`, resolving to the ids' fixed zone. Three
@@ -110,6 +145,8 @@ export interface NewItemOptions {
   /** Name the slug deliberately, like a branch. Falls back to the title. */
   slug?: string;
   goal?: string;
+  /** Injectable clock, so tests can pin the period a goal lands in. */
+  now?: Date;
 }
 
 export interface NewItem {
@@ -125,8 +162,12 @@ export async function createItem(opts: NewItemOptions): Promise<NewItem> {
   const dir = join(productDir, ARTIFACTS[kind].dir);
   await mkdir(dir, { recursive: true });
 
-  const { id, blind } = await nextId(productDir, kind, prefix, cwd);
-  const date = today();
+  // One clock for the id and every date derived beside it. A goal id contains
+  // its period, so reading the time twice is enough to write a Q3 id into a
+  // file that calls itself Q4.
+  const now = opts.now ?? new Date();
+  const { id, blind } = await nextId(productDir, kind, prefix, cwd, now);
+  const date = today(now);
 
   let fm: string;
   let body: string;
@@ -154,7 +195,8 @@ export async function createItem(opts: NewItemOptions): Promise<NewItem> {
         id,
         title,
         horizon: "quarterly",
-        period: `${date.slice(0, 4)}-Q1`,
+        // The same value the id carries — see `periodInZone`.
+        period: periodInZone(now),
         metric: "TBD",
         target: "TBD",
         status: "on-track",
@@ -179,6 +221,30 @@ export async function createItem(opts: NewItemOptions): Promise<NewItem> {
   // ids already read as words.
   const name = kind === "roadmap" ? itemFilename(id, title, undefined, opts.slug) : `${id}.md`;
   const path = join(dir, name);
-  await writeFile(path, `${fm}\n${body}`, "utf8");
+
+  // `wx` — never overwrite.
+  //
+  // Allocation reads `parseArtifact(...).items`, which *excludes* anything that
+  // failed to parse. So a goal file that exists but is malformed — the
+  // canonical case being an unquoted colon in a title, the first entry under
+  // *things that have bitten us* — is invisible here, its id is re-issued, and
+  // an unconditional write replaces someone's work with the TBD template while
+  // printing `Created` and exiting 0.
+  //
+  // Raising the sequence past ids we cannot read would mean parsing filenames
+  // rather than frontmatter, which is more machinery than the case is worth.
+  // Refusing costs one flag and turns silent data loss into a message naming
+  // the file.
+  try {
+    await writeFile(path, `${fm}\n${body}`, { encoding: "utf8", flag: "wx" });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    throw new Error(
+      `${path} already exists, so ${id} was not written.\n` +
+        `That id looked free because the file could not be parsed. ` +
+        `Run \`morpheus pm validate\` to see what is wrong with it.`,
+    );
+  }
+
   return { path, id, blind };
 }

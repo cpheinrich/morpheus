@@ -108,6 +108,38 @@ describe("schema", () => {
       status: "on-track",
     }).success).toBe(false);
   });
+
+  // The id carries the period, so the two are one fact written twice. The
+  // generator derives both from one clock and cannot disagree; a hand-edit can,
+  // and a `period:` that lies about its own quarter is precisely the bug the
+  // periodful id replaced.
+  it("rejects a period that disagrees with the id", () => {
+    const goal = {
+      id: "MO-G-2026-Q3-01",
+      title: "Ship Morpheus v1",
+      horizon: "quarterly" as const,
+      metric: "projects scaffolded",
+      target: "2",
+      status: "on-track" as const,
+    };
+
+    expect(Goal.safeParse({ ...goal, period: "2026-Q3" }).success).toBe(true);
+    expect(Goal.safeParse({ ...goal, period: "2026-Q4" }).success).toBe(false);
+  });
+
+  it("reads an annual goal's period as the year alone", () => {
+    const goal = {
+      id: "MO-G-2026-ANNUAL-01",
+      title: "Two paying projects",
+      horizon: "annual" as const,
+      metric: "revenue",
+      target: "1",
+      status: "on-track" as const,
+    };
+
+    expect(Goal.safeParse({ ...goal, period: "2026" }).success).toBe(true);
+    expect(Goal.safeParse({ ...goal, period: "2026-Q1" }).success).toBe(false);
+  });
 });
 
 describe("parse", () => {
@@ -355,6 +387,63 @@ describe("new item", () => {
     expect(items[0]!.data.priority).toBe("P1");
   });
 
+  // The bug this replaces: `pm new goals` wrote `MO-G-001` against a `GOAL_ID`
+  // spelling `MO-G-2026-Q3-01`, so every goal the CLI produced failed
+  // `pm validate` — in CI, on the first push, in a repo that had done nothing
+  // wrong. The unit tests passed throughout because they asserted the id the
+  // generator emitted rather than the one the schema accepts, which is why
+  // this one goes through `parseArtifact` instead.
+  it("creates a goal that passes its own validation", async () => {
+    const { path } = await createItem({
+      productDir: product,
+      kind: "goals",
+      prefix: "MO",
+      title: "Two real projects on the structure",
+      cwd: product,
+      now: new Date("2026-08-01T15:26:34Z"),
+    });
+    expect(path).toMatch(/MO-G-2026-Q3-01\.md$/);
+
+    const { items, issues } = await parseArtifact(product, "goals");
+    expect(issues).toHaveLength(0);
+    // The id and the field beside it are one fact, read from one clock.
+    expect(items[0]!.data.id).toBe("MO-G-2026-Q3-01");
+    expect(items[0]!.data.period).toBe("2026-Q3");
+  });
+
+  // Allocation reads `parseArtifact(...).items`, which drops anything that
+  // failed to parse — so a goal file that exists but is malformed is invisible
+  // and its id is offered again. An unconditional write then replaced someone's
+  // work with the TBD template and exited 0. The trigger is not hypothetical:
+  // an unquoted colon in a title is the first entry in `.agent/learned.md`.
+  it("refuses to overwrite a goal file it could not parse", async () => {
+    const at = new Date("2026-08-01T15:26:34Z");
+    // The colon after `kit/hq` makes YAML read the title as a nested mapping.
+    await seed("goals", "MO-G-2026-Q3-01", "id: MO-G-2026-Q3-01\ntitle: Ship kit/hq: the shell");
+
+    // Precondition: the parser really cannot see it, which is what makes the
+    // id look free.
+    const before = await parseArtifact(product, "goals");
+    expect(before.items).toHaveLength(0);
+    expect(before.issues).toHaveLength(1);
+
+    const path = join(product, "goals", "MO-G-2026-Q3-01.md");
+    const original = await readFile(path, "utf8");
+
+    await expect(
+      createItem({
+        productDir: product,
+        kind: "goals",
+        prefix: "MO",
+        title: "Something else entirely",
+        cwd: product,
+        now: at,
+      }),
+    ).rejects.toThrow(/already exists/);
+
+    expect(await readFile(path, "utf8")).toBe(original);
+  });
+
   it("quotes a title containing a colon so the YAML stays valid", async () => {
     await createItem({
       productDir: product,
@@ -414,25 +503,38 @@ describe("allocation consults the remote", () => {
   // Roadmap ids no longer consult the remote (MO-057): a fork contributor's
   // `origin` is their fork, so no query can tell them which ids Morpheus has
   // issued. Goals and requests stay sequential and still ask.
+  // Pacific 2026-08-01, so every goal below lands in 2026-Q3.
+  const inQ3 = new Date("2026-08-01T15:26:34Z");
+
   it("skips a goal id another session holds on a branch but has not merged", async () => {
-    const cwd = await originHolding("mo-g-038-a-goal");
+    const cwd = await originHolding("mo-g-2026-q3-38-a-goal");
 
     // Nothing on disk — the state a fresh clone is in while the claim is live.
-    const { id, blind } = await nextId(product, "goals", "MO", cwd);
-    expect(id).toBe("MO-G-039");
+    const { id, blind } = await nextId(product, "goals", "MO", cwd, inQ3);
+    expect(id).toBe("MO-G-2026-Q3-39");
     expect(blind).toBe(false);
   });
 
   it("takes the higher of what merged and what is claimed", async () => {
-    const cwd = await originHolding("mo-g-040-shipped", "mo-g-038-still-open");
+    const cwd = await originHolding("mo-g-2026-q3-40-shipped", "mo-g-2026-q3-38-still-open");
 
-    expect((await nextId(product, "goals", "MO", cwd)).id).toBe("MO-G-041");
+    expect((await nextId(product, "goals", "MO", cwd, inQ3)).id).toBe("MO-G-2026-Q3-41");
   });
 
   it("does not let a request branch bump a goal id", async () => {
     const cwd = await originHolding("mo-fr-009-a-request");
 
-    expect((await nextId(product, "goals", "MO", cwd)).id).toBe("MO-G-001");
+    expect((await nextId(product, "goals", "MO", cwd, inQ3)).id).toBe("MO-G-2026-Q3-01");
+  });
+
+  it("restarts the sequence in a new quarter", async () => {
+    // The reason the period is in the id: Q4's first goal is `-01`, not a
+    // continuation of Q3's run, so the number counts goals set for a quarter
+    // rather than goals ever set.
+    const cwd = await originHolding("mo-g-2026-q3-07-last-quarter");
+    const inQ4 = new Date("2026-11-01T16:00:00Z");
+
+    expect((await nextId(product, "goals", "MO", cwd, inQ4)).id).toBe("MO-G-2026-Q4-01");
   });
 
   it("allocates a roadmap id without asking origin at all", async () => {
