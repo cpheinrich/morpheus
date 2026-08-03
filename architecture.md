@@ -1389,7 +1389,7 @@ live, so an agent knows what it needs without being able to read it.
 |---|---|---|---|
 | Read by | The **deployed software** | **CI**, and only CI | A **human** |
 | Examples | DB URLs, service account JSON, Stripe live keys | `ANTHROPIC_API_KEY`, deploy tokens | Bank logins, vendor portals, 2FA recovery codes |
-| Access | Native mount in Cloud Run / Vercel | Native in a workflow | Awkward for code — fetch-at-boot |
+| Access | Cloud Run and Functions mount directly | Native in a workflow | Awkward for code — fetch-at-boot |
 | Agent access | `gcloud secrets` — full lifecycle | `gh secret set` | `op` CLI with a service account |
 
 **The axis is who reads it, not when it is used.** An earlier version of this section split on
@@ -1414,14 +1414,15 @@ two credentials for one capability is the thing to want.
 
 Worth knowing, because it decides where a secret can be used at all: **GitHub does not pass secrets
 to `pull_request` runs from forks.** So a CI secret is unavailable on exactly the pull requests
-external contributors open (§7.4a) — the agent review rung reports itself unconfigured there, which
-is honest but means outside contributions get no rung 2.
+external contributors open — the agent review rung (§9) reports itself unconfigured there, which is
+honest but means outside contributions get no rung 2. The contributor flow itself lives in
+`AGENTS.md` rather than here.
 
 | Context | Mechanism |
 |---|---|
 | Local development | `.env.local`, gitignored, populated by `morpheus secrets pull` |
 | CI | GitHub Actions secrets, set directly with `gh secret set` |
-| Runtime | GSM mounted into Cloud Run / Vercel environment |
+| Runtime | Cloud Run and Functions mount GSM directly; **Vercel does not read GSM** — values are pushed into its own encrypted environment store, or fetched at boot |
 
 > `morpheus secrets pull` is **specified but not built** — there is no `secrets` command in the CLI
 > today, and populating `.env.local` is a manual `gcloud` step. Recorded rather than quietly
@@ -1446,9 +1447,9 @@ per company**, with a service account granted read access to only that vault. Ag
 personal 1Password credentials; they hold a scoped token that is itself stored in GSM.
 
 GitHub Actions secrets scope the same way, one level up: repository, organisation, or environment.
-A CI secret set on one repo cannot be read by another, which is why the review key sits on
-`cpheinrich/morpheus` alone rather than at the org level — the rung runs in one repo, so the key
-should be readable in one repo.
+A CI secret set on one repo cannot be read by another. The review key sits on `cpheinrich/morpheus`
+alone because *the review rung proves itself on one repo first* — organisation secrets are not an
+alternative there in any case, since `cpheinrich` is a personal account rather than an org.
 
 An agent can manage essentially all of GSM — creating projects, enabling APIs, creating secrets,
 granting IAM, rotating versions. Only the initial billing-account link and first OAuth consent need
