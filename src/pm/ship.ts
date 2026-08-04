@@ -103,7 +103,17 @@ export type ShipOutcome =
    * not do this item's work. Reported without writing — this is the state that
    * marked MO-010 shipped against a PR that only moved the inbox.
    */
-  | { kind: "no-work"; id: string; pr: number; branch: string };
+  | { kind: "no-work"; id: string; pr: number; branch: string }
+  /**
+   * Blocked with a merged PR against it. Reported without writing, for a
+   * stronger reason than `reopened`: a merged PR on a blocked item is the
+   * *expected* state, not evidence of completion. `pm block` records what is
+   * outstanding in `needs:`, and `pm claim` deliberately leaves the branch on
+   * origin so the partial work stays reachable. So the merged groundwork and
+   * the unfinished item are both true at once, and only a human clearing
+   * `needs:` can tell reconciliation which way to resolve it.
+   */
+  | { kind: "blocked"; id: string; pr: number; needs?: string };
 
 export interface ReconcileResult {
   outcomes: ShipOutcome[];
@@ -203,6 +213,17 @@ export async function reconcile(
           pr: mergedHere.number,
           branch: mergedHere.branch,
         });
+      } else if (mergedHere && item.data.status === "blocked") {
+        // The branch surviving on origin is not staleness here — `pm claim`
+        // leaves it there on purpose so the partial work stays reachable, and
+        // says so. Writing `shipped` would retire an item whose `needs:` still
+        // names outstanding work.
+        outcomes.push({
+          kind: "blocked",
+          id,
+          pr: mergedHere.number,
+          needs: item.data.needs,
+        });
       } else if (mergedHere) {
         if (opts.write) await markShipped(productDir, id, mergedHere.number);
         outcomes.push({
@@ -232,6 +253,10 @@ export async function reconcile(
       outcomes.push({ kind: "reopened", id, pr: pr.number });
       continue;
     }
+    if (item.data.status === "blocked") {
+      outcomes.push({ kind: "blocked", id, pr: pr.number, needs: item.data.needs });
+      continue;
+    }
     if (opts.write) await markShipped(productDir, id, pr.number);
     outcomes.push({ kind: "shipped", id, pr: pr.number });
   }
@@ -251,6 +276,9 @@ export function formatReconcile(r: ReconcileResult): string {
   );
   const noWork = r.outcomes.filter((o): o is Extract<ShipOutcome, { kind: "no-work" }> =>
     o.kind === "no-work",
+  );
+  const blocked = r.outcomes.filter((o): o is Extract<ShipOutcome, { kind: "blocked" }> =>
+    o.kind === "blocked",
   );
   const lines: string[] = [];
 
@@ -288,6 +316,20 @@ export function formatReconcile(r: ReconcileResult): string {
       "\x1b[2m  This is how MO-010 was marked shipped against a PR that only moved the\n" +
         "  inbox. If the item really is done, `morpheus pm ship <ID>` says so\n" +
         "  deliberately.\x1b[0m",
+    );
+  }
+  if (blocked.length) {
+    lines.push(
+      `\n\x1b[33m${blocked.length} blocked item(s) NOT shipped — a merged PR on a blocked item is\nthe expected state, not evidence the item is done:\x1b[0m`,
+    );
+    for (const o of blocked) {
+      lines.push(`  ${o.id} \x1b[2m(#${o.pr})\x1b[0m`);
+      if (o.needs) lines.push(`    \x1b[2mneeds: ${o.needs}\x1b[0m`);
+    }
+    lines.push(
+      "\x1b[2m  Clear the blocker with `morpheus pm unblock <ID>` first. Reconciling\n" +
+        "  these automatically would retire the item that records why the work is\n" +
+        "  not finished.\x1b[0m",
     );
   }
   if (unconfirmed.length) {
