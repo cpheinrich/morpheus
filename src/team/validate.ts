@@ -76,17 +76,21 @@ export async function validateTeam(root: string): Promise<TeamValidation> {
   const all = [...issues, ...noteIssues];
 
   for (const note of items) {
-    // Only cross-check when a roster exists. With none, an attendee list is
-    // still useful and refusing it would make notes unusable before the roster
-    // is written — which is the wrong order to demand.
-    if (known.size === 0) break;
-
-    for (const who of note.data.attendees) {
-      if (!known.has(who)) {
-        all.push({
-          path: note.path,
-          message: `attendee "${who}" is not in ${MEMBERS_FILE} — a typo, or somebody nobody wrote down`,
-        });
+    // Only cross-check attendees when a roster exists. With none, an attendee
+    // list is still useful and refusing it would make notes unusable before the
+    // roster is written — the wrong order to demand.
+    //
+    // `continue` would skip the id check below for this note; `break` skipped it
+    // for *every* note, which is the state `morpheus init` scaffolds. So the
+    // guard wraps only the loop it is about.
+    if (known.size > 0) {
+      for (const who of note.data.attendees) {
+        if (!known.has(who)) {
+          all.push({
+            path: note.path,
+            message: `attendee "${who}" is not in ${MEMBERS_FILE} — a typo, or somebody nobody wrote down`,
+          });
+        }
       }
     }
 

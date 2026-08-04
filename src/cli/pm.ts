@@ -361,7 +361,7 @@ export async function block(
   if (!owner) {
     console.error(
       "Could not tell whose inbox this belongs in. Pass --owner <github-handle>, or add\n" +
-        "one inbox under hq/inbox/ so there is an unambiguous default.",
+        "one inbox under hq/team/ so there is an unambiguous default.",
     );
     return 1;
   }

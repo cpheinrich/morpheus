@@ -80,7 +80,7 @@ ${kind ? `This project is \`kind: ${kind}\`.\n\n` : ""}Everything is files in gi
 - **Every pull request** carries tests, a test plan, open questions, and moves
   its item to \`review\`. A check enforces it — instructions get ignored
   eventually, a failing check does not.
-- **The inbox**, \`hq/inbox/<handle>.md\`, is how Chris and his agents exchange
+- **The inbox**, \`hq/team/<handle>.md\`, is how Chris and his agents exchange
   state. An agent writes a summary and numbered items; he replies inline.
 - **Blocked is a real outcome.** An agent that hits genuine ambiguity stops and
   says exactly what it needs, rather than guessing. Escalating is cheap;

@@ -12,7 +12,7 @@ Two raw logs, each feeding exactly one distillation:
 
 | Raw | Feeds | Answers |
 |---|---|---|
-| `inbox-archive/` — past cycles of `hq/inbox/`, with replies | `decisions.md` | *What did we decide, and why?* |
+| `inbox-archive/` — past cycles of `hq/team/`, with replies | `decisions.md` | *What did we decide, and why?* |
 | `worklog/` — what was attempted and learned per task | `learned.md` | *What do we know about how this behaves?* |
 
 ```
@@ -25,7 +25,7 @@ Two raw logs, each feeding exactly one distillation:
 
 ### The pairing
 
-`hq/inbox/<handle>.md` is live; **`.agent/inbox-archive/` is where a cycle goes once it has
+`hq/team/<handle>.md` is live; **`.agent/inbox-archive/` is where a cycle goes once it has
 been replied to and acted on.** Same documents, past tense — the name carries the stem so the
 relationship is visible without reading this file.
 

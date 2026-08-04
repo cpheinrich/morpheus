@@ -83,3 +83,34 @@ received Date". `isoDate` exists for precisely this one layer up, so `isoDateTim
 the offset preserved rather than normalised, because a note's id reads as the wall clock of the room.
 
 Worth noting the sample earned its place by finding that before any real meeting did.
+
+## The review finding that would have broken five repos
+
+The reviewer caught that merging this as written would have **reddened CI in every project repo**.
+The reusable workflows pin `@main`, `pm-check.yml`'s `inbox-dir` default had moved to `hq/team`, and
+`inbox validate` exits 1 on a missing directory. So the moment this merged, five repos still on
+`hq/inbox/` would fail a step for a directory that is absent *for the documented reason* — Morpheus
+migrates first by design.
+
+I had reasoned about the migration order and not about the window it creates. "Morpheus first, then
+the others" is a sequence, and a sequence has a middle where both states are live; the tooling has to
+accept both or the sequence is a break. `LEGACY_INBOX_DIR` and a fallback in `inbox validate`, to be
+deleted once the registry has moved.
+
+## And the one in the gate itself
+
+`redacted: z.boolean().default(true)` — so **omitting** the field passed. The only note refused was
+one that explicitly declared it had skipped the redaction pass; the person who forgets the line, who
+is the entire population the field exists for, sailed straight through. Two documents said the
+opposite of the code, including the README sentence claiming `team validate` refuses a note without
+it.
+
+`.default(false)` is the polarity the rest of the PR argues for — `isRecordsOnly`'s `length > 0`
+guard is the same principle one file over: **silence must not read as assent.** I wrote that comment
+and then defaulted the other way in the same change.
+
+Third finding worth keeping: my stale-path guard checked *one file*, and three more references
+survived it — including an onboarding instruction whose own detector disagreed with it, so following
+the printed step could never complete the task. The guard was written against the instance I had just
+fixed rather than the class. That is the fourth time this week; it is apparently the default mistake
+when writing a test immediately after a fix.

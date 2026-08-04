@@ -27,6 +27,19 @@ export const TEAM_DIR = "hq/team";
 /** Inboxes are files directly under `hq/team/`, one per GitHub handle. */
 export const INBOX_DIR = TEAM_DIR;
 
+/**
+ * Where inboxes lived before `hq/team/`.
+ *
+ * The reusable workflows pin `@main` (decisions.md), so the moment this merges
+ * every project repo still on the old layout runs the new `inbox validate` —
+ * and a missing directory exits 1. Morpheus migrates first *by design*, which
+ * means there is a window where both layouts are live, and the tooling has to
+ * accept both or it breaks five repos on merge.
+ *
+ * Delete this once every repo in the registry has moved.
+ */
+export const LEGACY_INBOX_DIR = "hq/inbox";
+
 export const MEETING_NOTES_DIR = `${TEAM_DIR}/meeting-notes`;
 /**
  * The roster. Markdown with frontmatter, not YAML — `gray-matter` is already a
@@ -56,7 +69,7 @@ export const TEAM_RESERVED = new Set(["readme.md", "members.md"]);
  * roster, an inbox, a meeting summary — describes the project rather than
  * changing what it does, which is exactly what this predicate means.
  */
-const RECORDS = /^(hq\/team\/|\.agent\/)/;
+const RECORDS = /^(hq\/team\/|hq\/inbox\/|\.agent\/)/;
 
 /** Board bookkeeping: item frontmatter and the generated index tables. */
 const BOARD = /^hq\/product\//;

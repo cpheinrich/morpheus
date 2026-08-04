@@ -249,7 +249,7 @@ export const TASKS: Task[] = [
     group: "Product",
     title: "An inbox file for each person",
     why: "Without one there is nowhere for an agent to hand you a question and get an answer back.",
-    how: "Create hq/inbox/<github-handle>.md, one per person",
+    how: `Create ${INBOX_DIR}/<github-handle>.md, one per person`,
     detect: async (root) => {
       const dir = join(root, INBOX_DIR);
       let files: string[];

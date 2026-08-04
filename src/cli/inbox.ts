@@ -1,18 +1,30 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { TEAM_RESERVED } from "../paths.js";
+import { LEGACY_INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { parseInboxFile } from "../inbox/parse.js";
 
 /** Validate every inbox in a directory. Returns an exit code. */
 export async function validate(dir: string): Promise<number> {
+  const read = async (d: string) =>
+    (await readdir(d)).filter((f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()));
+
   let files: string[];
   try {
-    files = (await readdir(dir)).filter(
-      (f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()),
-    );
+    files = await read(dir);
   } catch {
-    console.error(`No inbox directory at ${dir}`);
-    return 1;
+    // Fall back to the pre-`hq/team/` layout rather than failing. Morpheus
+    // migrates first by design and the workflows pin `@main`, so on merge every
+    // repo that has not moved yet would otherwise go red on a directory that is
+    // absent for the documented reason.
+    const legacy = dir.replace(/hq\/team$/, LEGACY_INBOX_DIR);
+    try {
+      files = await read(legacy);
+      console.log(`Using ${legacy} — this repo has not moved to hq/team/ yet.`);
+      dir = legacy;
+    } catch {
+      console.error(`No inbox directory at ${dir}`);
+      return 1;
+    }
   }
 
   if (files.length === 0) {

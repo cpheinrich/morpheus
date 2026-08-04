@@ -154,7 +154,20 @@ Agent instructions are in [\`AGENTS.md\`](./AGENTS.md); \`CLAUDE.md\` symlinks t
 const SPEC = "https://github.com/cpheinrich/morpheus/blob/main/architecture.md";
 
 export const dirReadmes: Record<string, (s: Seed) => string> = {
-  "hq/team": () => `# Inbox
+  "hq/team": () => `# Team
+
+Who collaborates on this project, and what passed between them.
+
+\`hq/\` is otherwise organised by business **function** — product, brand, marketing, finance. This
+folder is a **medium**: one meeting covers three functions, so it belongs to none of them.
+
+| Path | What |
+|---|---|
+| \`members.md\` | The roster — handles, names, and how to work with each person |
+| \`<handle>.md\` | That person's live inbox — the human↔agent exchange |
+| \`meeting-notes/\` | Distilled meeting summaries, never transcripts |
+
+## Inboxes
 
 One file per person, named for their GitHub handle — \`cpheinrich.md\`, not \`chris.md\`.
 
@@ -163,6 +176,14 @@ items at the end of a session; the human replies inline after the \`~\` marker, 
 session acts on the replies and archives the exchange to \`.agent/inbox-archive/\`.
 
 An inbox is a snapshot, never a log. \`morpheus inbox validate\` enforces the shape and CI runs it.
+
+## Everything here is raw input to a distillation
+
+Meeting notes feed \`.agent/decisions.md\` and the roadmap; they are not meant to be read in bulk.
+A note whose decisions were never promoted is an archive, and an agent that reads every archive
+knows less, not more.
+
+\`morpheus team validate\` checks the roster and every note.
 
 See [the inbox cycle](${SPEC}) in the specification.
 `,

@@ -94,8 +94,16 @@ export const MeetingNote = z
      * was decided. The action items live in the body until they become items.
      */
     roadmap: z.array(z.string()).default([]),
-    /** Written by the note-taker after redacting. See the README. */
-    redacted: z.boolean().default(true),
+    /**
+     * Written by the note-taker after redacting. See the README.
+     *
+     * **Defaults to `false`, so omitting it fails.** The first version defaulted
+     * to `true`, which meant the only note refused was one that *declared* it
+     * had skipped the pass — while the person who forgot the line entirely, who
+     * is the whole population this field exists for, sailed through. Silence has
+     * to read as "not yet redacted" or the gate is decorative.
+     */
+    redacted: z.boolean().default(false),
     created: isoDate,
   })
   /**

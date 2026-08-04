@@ -57,11 +57,23 @@ describe("the meeting-note schema", () => {
     attendees: ["cpheinrich"],
     recorded_by: "claude",
     source: "session",
+    redacted: true,
     created: "2026-08-03",
   };
 
   it("accepts a well-formed note", () => {
     expect(MeetingNote.safeParse(base).success).toBe(true);
+  });
+
+  /**
+   * The finding that mattered: `.default(true)` meant the only note refused was
+   * one that *declared* it had skipped the pass, while the person who forgot the
+   * line — the whole population the field exists for — sailed through. Silence
+   * has to read as "not yet redacted" or the gate is decorative.
+   */
+  it("refuses a note that never claims to have been redacted", () => {
+    const { redacted: _omitted, ...noClaim } = base;
+    expect(MeetingNote.safeParse(noClaim).success).toBe(false);
   });
 
   // The whole folder rests on notes being summaries. The redaction pass is the
@@ -72,8 +84,9 @@ describe("the meeting-note schema", () => {
     expect(r.error?.issues[0]?.message).toContain("redacted");
   });
 
-  it("defaults redacted to true only when the field is absent", () => {
-    expect(MeetingNote.parse(base).redacted).toBe(true);
+  it("does not treat an absent claim as a made one", () => {
+    const { redacted: _omitted, ...noClaim } = base;
+    expect(MeetingNote.safeParse(noClaim).error?.issues[0]?.message).toContain("redacted");
   });
 
   /**
@@ -127,6 +140,22 @@ describe("validateTeam", () => {
   it("does not cross-check attendees when there is no roster", async () => {
     await seedNote(NOTE().replace("[cpheinrich]", "[anyone]"));
     expect((await validateTeam(root)).issues).toEqual([]);
+  });
+
+  /**
+   * `break` skipped the id check for *every* note, not just the attendee
+   * cross-check — and no-roster-with-notes is the state `morpheus init`
+   * scaffolds, so `team validate` printed a clean sweep over unvalidated ids.
+   * The previous test could not tell `break` from `continue`, because its note
+   * had an id that already agreed.
+   */
+  it("still checks the id against occurred when there is no roster", async () => {
+    await seedNote(
+      NOTE()
+        .replace("[cpheinrich]", "[anyone]")
+        .replace('"2026-08-03T09:30:00-07:00"', '"2026-08-03T14:00:00-07:00"'),
+    );
+    expect((await validateTeam(root)).issues[0]!.message).toContain("derived from the meeting's start");
   });
 
   it("treats a missing roster as absent, not as an error", async () => {
@@ -189,11 +218,36 @@ describe("hq/team paths", () => {
    * up in a *new* project — the worst place to discover it, because the person
    * hitting it has no reason to suspect Morpheus rather than their own repo.
    */
-  it("scaffolds no reference to the old inbox path", async () => {
-    const { readFile } = await import("node:fs/promises");
+  it("leaves no source file pointing at the old inbox path", async () => {
+    const { readFile, readdir } = await import("node:fs/promises");
     const { join: j } = await import("node:path");
-    const src = await readFile(j(import.meta.dirname, "../src/init/templates.ts"), "utf8");
-    expect(src).not.toContain("hq/inbox/");
+
+    // Narrower than the bug: the first version checked one file, and three
+    // more stale references survived it — including an onboarding instruction
+    // whose own detector disagreed with it.
+    const root = j(import.meta.dirname, "..", "src");
+    const walk = async (d: string): Promise<string[]> => {
+      const out: string[] = [];
+      for (const e of await readdir(d, { withFileTypes: true })) {
+        const full = j(d, e.name);
+        if (e.isDirectory()) out.push(...(await walk(full)));
+        else if (e.name.endsWith(".ts")) out.push(full);
+      }
+      return out;
+    };
+
+    for (const f of await walk(root)) {
+      // `paths.ts` names the legacy directory on purpose, for the migration.
+      if (f.endsWith("paths.ts")) continue;
+      expect(await readFile(f, "utf8"), `${f} still names the old path`).not.toContain("hq/inbox/");
+    }
+  });
+
+  it("scaffolds a team README that covers more than inboxes", async () => {
+    const { dirReadmes } = await import("../src/init/templates.js");
+    const readme = dirReadmes["hq/team"]!({ name: "Acme" } as never);
+    expect(readme).toContain("members.md");
+    expect(readme).toContain("meeting-notes");
   });
 
   it("counts everything under hq/team as a record", () => {
