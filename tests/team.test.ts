@@ -184,6 +184,18 @@ describe("hq/team paths", () => {
     }
   });
 
+  /**
+   * A scaffolded template naming the old path is invisible here and only shows
+   * up in a *new* project — the worst place to discover it, because the person
+   * hitting it has no reason to suspect Morpheus rather than their own repo.
+   */
+  it("scaffolds no reference to the old inbox path", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const { join: j } = await import("node:path");
+    const src = await readFile(j(import.meta.dirname, "../src/init/templates.ts"), "utf8");
+    expect(src).not.toContain("hq/inbox/");
+  });
+
   it("counts everything under hq/team as a record", () => {
     expect(isRecordsOnly(["hq/team/cpheinrich.md"])).toBe(true);
     expect(isRecordsOnly(["hq/team/meeting-notes/MO-26-08-03-09.30.00-x.md"])).toBe(true);

@@ -239,7 +239,7 @@ ${morpheusCalloutForAgents()}
 | Path | What |
 |---|---|
 | \`hq/product/\` | Roadmap, goals and requests — the board agents pick work from |
-| \`hq/inbox/<handle>.md\` | How a person and their agents exchange state |
+| \`hq/team/<handle>.md\` | How a person and their agents exchange state |
 | \`hq/brand/\` | Strategy, voice, visual system and tokens |
 | \`hq/onboarding.md\` | Setup checklist — \`morpheus init status\` |
 | \`.agent/decisions.md\` | Settled choices and why — **read this first** |
