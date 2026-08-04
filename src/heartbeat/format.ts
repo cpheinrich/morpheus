@@ -51,6 +51,18 @@ export function formatBeat(beat: Beat): string {
     ),
   );
 
+  if (beat.meetings.sinceLastNote !== null) {
+    const m = beat.meetings;
+    lines.push(
+      ...bullet("Meeting record:", [
+        `last note ${m.sinceLastNote}d ago`,
+        ...(m.unpromoted.length
+          ? [`${m.unpromoted.length} note(s) filed no roadmap items — oldest ${m.unpromoted[0]!.age}d`]
+          : []),
+      ]),
+    );
+  }
+
   if (beat.ranked.length > 1) {
     lines.push(
       ...bullet(
@@ -103,6 +115,22 @@ export function formatSummary(beat: Beat): string {
       "### Drift",
       "",
       table(["ID", "Problem"], beat.drift.map((d) => [d.id, d.why])),
+      "",
+    );
+  }
+
+  if (beat.meetings.unpromoted.length) {
+    out.push(
+      "### Meeting notes that produced nothing",
+      "",
+      "Capture with no decay path is the failure this folder is most likely to have.",
+      "",
+      table(
+        ["ID", "Title", "Age"],
+        beat.meetings.unpromoted
+          .slice(0, 8)
+          .map((m) => [m.id, m.title.replace(/\|/g, "\\|"), `${m.age}d`]),
+      ),
       "",
     );
   }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { parseArtifact } from "../pm/parse.js";
 import { parseInboxFile } from "../inbox/parse.js";
 import { readRegistry } from "../registry/index.js";
+import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 
 /**
  * Report drift without fixing it.
@@ -44,7 +45,7 @@ export const EXPECTED: Record<Kind, string[]> = {
   company: [
     "hq/product/roadmap",
     "hq/product/goals",
-    "hq/inbox",
+    "hq/team",
     "hq/brand",
     "hq/marketing",
     "hq/finance",
@@ -60,7 +61,7 @@ export const EXPECTED: Record<Kind, string[]> = {
   personal: [
     "hq/product/roadmap",
     "hq/product/goals",
-    "hq/inbox",
+    "hq/team",
     "hq/brand",
     "qa/acceptance",
     ".agent/worklog",
@@ -172,14 +173,17 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     }
   }
 
-  const inboxDir = join(root, "hq/inbox");
+  const inboxDir = join(root, INBOX_DIR);
   if (await exists(inboxDir)) {
     const { readdir } = await import("node:fs/promises");
+    // `TEAM_RESERVED`, not a local list: the roster now lives beside the
+    // inboxes, and reading it as one reports three schema errors about a file
+    // that is perfectly valid. Third reader of this rule, so it is shared.
     const files = (await readdir(inboxDir)).filter(
-      (f) => f.endsWith(".md") && f.toLowerCase() !== "readme.md",
+      (f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()),
     );
     if (files.length === 0) {
-      add("warning", "inbox", "hq/inbox/ has no inbox files — nobody would receive status.");
+      add("warning", "inbox", `${INBOX_DIR}/ has no inbox files — nobody would receive status.`);
     }
     for (const f of files) {
       const { issues } = await parseInboxFile(join(inboxDir, f));

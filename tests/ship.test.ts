@@ -94,7 +94,7 @@ describe("didNoWork", () => {
       didNoWork(
         pr([
           ".agent/inbox-archive/2026-07-29-1330-cpheinrich.md",
-          "hq/inbox/cpheinrich.md",
+          "hq/team/cpheinrich.md",
           "hq/product/roadmap/MO-010.md",
           "hq/product/roadmap/README.md",
         ]),

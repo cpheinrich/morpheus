@@ -59,6 +59,32 @@ export interface Drift {
   why: string;
 }
 
+/**
+ * What the beat can see about collaborative context.
+ *
+ * **Deliberately a gap report, not a fetch.** Granola is a claude.ai connector
+ * and iMessage is a local database; neither is reachable from a GitHub Actions
+ * runner, so a beat that tried to *pull* meetings would either need credentials
+ * it should not have or would silently find nothing and report a clean sweep.
+ *
+ * So the beat reports what the repository can prove — how stale the notes are,
+ * and which notes produced nothing — and an interactive session with the
+ * connector does the ingestion. Same split as `assess` itself: deterministic in
+ * CI, model and connector work in a session.
+ */
+export interface MeetingContext {
+  /** Days since the most recent note, or null when there are none at all. */
+  sinceLastNote: number | null;
+  /**
+   * Notes that filed no roadmap items.
+   *
+   * The failure this folder is most likely to have: capture with no decay path,
+   * where notes accumulate and nothing is promoted out of them. Empty `roadmap:`
+   * is not proof a meeting produced nothing — but a run of them is the signal.
+   */
+  unpromoted: { id: string; title: string; age: number }[];
+}
+
 export interface Beat {
   /** Claims doing actual work — blocked ones excluded. */
   inFlight: Claim[];
@@ -70,6 +96,7 @@ export interface Beat {
   pick: Candidate | null;
   /** Always populated, including when the pick is null. */
   reason: string;
+  meetings: MeetingContext;
 }
 
 export interface AssessInput {
@@ -78,6 +105,8 @@ export interface AssessInput {
   claims: Claim[];
   config: HeartbeatConfig;
   now: Date;
+  /** Meeting notes, when the project keeps any. Absent is not empty. */
+  notes?: Item<{ id: string; title: string; occurred: string; roadmap: string[] }>[];
 }
 
 const PRIORITY_ORDER: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
@@ -183,6 +212,8 @@ export function assess(input: AssessInput): Beat {
     })
     .sort(compare);
 
+  const meetings = meetingContext(input.notes ?? [], now);
+
   const headroom = config.ceiling - inFlight.length;
 
   if (headroom <= 0) {
@@ -194,6 +225,7 @@ export function assess(input: AssessInput): Beat {
       headroom,
       ranked,
       pick: null,
+      meetings,
       reason:
         `${inFlight.length} item(s) in flight against a ceiling of ${config.ceiling}. ` +
         `Nothing dispatched — finishing beats starting.`,
@@ -215,6 +247,7 @@ export function assess(input: AssessInput): Beat {
       headroom,
       ranked,
       pick: null,
+      meetings,
       reason: `${why} Nothing to pick, which is a valid answer — filing work is a human's call.`,
     };
   }
@@ -228,8 +261,38 @@ export function assess(input: AssessInput): Beat {
     headroom,
     ranked,
     pick,
+    meetings,
     reason:
       `${pick.id} is the highest-leverage unclaimed item: ${pick.priority}, ${pick.note}, ` +
       `last touched ${pick.age}d ago. ${headroom} lane(s) free of ${config.ceiling}.`,
+  };
+}
+
+/**
+ * How stale the meeting record is, and what it produced nothing from.
+ *
+ * Pure, like everything else in this module. An empty list means "this project
+ * keeps no notes", which reports as `null` rather than zero — the same
+ * distinction the rest of the beat draws between absence and evidence.
+ */
+export function meetingContext(
+  notes: Item<{ id: string; title: string; occurred: string; roadmap: string[] }>[],
+  now: Date,
+): MeetingContext {
+  if (notes.length === 0) return { sinceLastNote: null, unpromoted: [] };
+
+  const withAge = notes.map((n) => ({
+    id: n.data.id,
+    title: n.data.title,
+    age: Math.max(0, Math.floor((now.getTime() - new Date(n.data.occurred).getTime()) / 86_400_000)),
+    promoted: (n.data.roadmap ?? []).length > 0,
+  }));
+
+  return {
+    sinceLastNote: Math.min(...withAge.map((n) => n.age)),
+    unpromoted: withAge
+      .filter((n) => !n.promoted)
+      .sort((a, b) => b.age - a.age)
+      .map(({ id, title, age }) => ({ id, title, age })),
   };
 }

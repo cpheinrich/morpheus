@@ -6,6 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
+| [MO-26-08-03-14.18.25](./MO-26-08-03-14.18.25-capture-collab-context.md) | hq/team: the roster, inboxes, and meeting notes | review | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-08-03-13.58.45](./MO-26-08-03-13.58.45-vercel-default.md) | Vercel is the default, not the recommendation | review | P2 | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |

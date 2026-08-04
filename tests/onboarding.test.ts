@@ -174,8 +174,8 @@ describe("detection outranks the file, except when it cannot answer", () => {
   });
 
   it("does not accept an inbox that would fail its own validator", async () => {
-    await mkdir(join(dir, "hq/inbox"), { recursive: true });
-    await writeFile(join(dir, "hq/inbox/cpheinrich.md"), "# Just a heading\n");
+    await mkdir(join(dir, "hq/team"), { recursive: true });
+    await writeFile(join(dir, "hq/team/cpheinrich.md"), "# Just a heading\n");
 
     const found = await collectStatus(dir, { offline: true });
     expect(found.find((s) => s.task.id === "inbox")?.state).toBe("todo");

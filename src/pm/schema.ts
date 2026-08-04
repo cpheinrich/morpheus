@@ -43,6 +43,24 @@ export const isoDate = z.preprocess(
 );
 
 /**
+ * An ISO timestamp with an offset, tolerant of YAML's date handling.
+ *
+ * Same trap as `isoDate` one layer up: YAML parses an unquoted
+ * `2026-08-03T09:30:00-07:00` into a Date, so a meeting note written the
+ * natural way fails with "expected string, received Date".
+ *
+ * **The offset is preserved rather than normalised to UTC.** A meeting note's
+ * id reads as the wall clock of the people who were in it, and converting to
+ * UTC here would make a 09:30 meeting in Berlin disagree with its own filename.
+ * A Date has already lost the offset, so one recovered from YAML is rendered in
+ * UTC and will simply not match — which is the honest outcome: quote the value.
+ */
+export const isoDateTime = z.preprocess(
+  (v) => (v instanceof Date ? v.toISOString() : v),
+  z.iso.datetime({ offset: true }),
+);
+
+/**
  * A scalar that YAML will happily turn into a number.
  *
  * `target: 1` is the most natural thing to write for a numeric goal, and

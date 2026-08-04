@@ -10,10 +10,66 @@
  */
 
 /**
- * Paths that record what happened rather than change what the software does:
- * an inbox cycle, a worklog entry, a decision.
+ * Where collaborative context lives.
+ *
+ * One definition, because nine modules held the string `"hq/inbox"` and the
+ * move to `hq/team/` would have needed all nine changed in step. Three bugs in
+ * one week here came from a value written twice and drifting — the branch-id
+ * pattern, the fetch arguments, and the `today()` timezone. A tenth copy was
+ * not going to be the one that held.
+ *
+ * **Inboxes sit at the root of `hq/team/`**, not in a subdirectory:
+ * `hq/team/cpheinrich.md`. A person is the primary thing in this folder, and
+ * `hq/team/inbox/cpheinrich.md` would put a medium above a person.
  */
-const RECORDS = /^(hq\/inbox\/|\.agent\/)/;
+export const TEAM_DIR = "hq/team";
+
+/** Inboxes are files directly under `hq/team/`, one per GitHub handle. */
+export const INBOX_DIR = TEAM_DIR;
+
+/**
+ * Where inboxes lived before `hq/team/`.
+ *
+ * The reusable workflows pin `@main` (decisions.md), so the moment this merges
+ * every project repo still on the old layout runs the new `inbox validate` —
+ * and a missing directory exits 1. Morpheus migrates first *by design*, which
+ * means there is a window where both layouts are live, and the tooling has to
+ * accept both or it breaks five repos on merge.
+ *
+ * Delete this once every repo in the registry has moved.
+ */
+export const LEGACY_INBOX_DIR = "hq/inbox";
+
+export const MEETING_NOTES_DIR = `${TEAM_DIR}/meeting-notes`;
+/**
+ * The roster. Markdown with frontmatter, not YAML — `gray-matter` is already a
+ * runtime dependency and `yaml` is not, and `morpheus-kit` ships to every
+ * project, so one file is not worth a new dependency in all of them. It also
+ * keeps `hq/` uniform: everything a human edits here is markdown with
+ * frontmatter, which is what makes third-party editors safe (decisions.md).
+ */
+export const MEMBERS_FILE = `${TEAM_DIR}/members.md`;
+
+/**
+ * Files in `hq/team/` that are *not* somebody's inbox.
+ *
+ * Inboxes are named for a person and sit at the root of the folder, so anything
+ * else at that root has to be named explicitly — otherwise `inbox validate`
+ * reads the roster as an inbox and reports three schema errors about a file
+ * that is perfectly valid. One list, because `inbox validate` and any future
+ * reader must agree on what an inbox is.
+ */
+export const TEAM_RESERVED = new Set(["readme.md", "members.md"]);
+
+/**
+ * Paths that record what happened rather than change what the software does:
+ * an inbox cycle, a meeting note, a worklog entry, a decision.
+ *
+ * `hq/team/` joins wholesale rather than by file. Everything in it — the
+ * roster, an inbox, a meeting summary — describes the project rather than
+ * changing what it does, which is exactly what this predicate means.
+ */
+const RECORDS = /^(hq\/team\/|hq\/inbox\/|\.agent\/)/;
 
 /** Board bookkeeping: item frontmatter and the generated index tables. */
 const BOARD = /^hq\/product\//;

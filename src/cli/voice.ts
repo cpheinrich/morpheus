@@ -8,6 +8,7 @@ import { cleanSlug, isoDateInZone, slugForFilename } from "../pm/id.js";
 import { parseArtifact } from "../pm/parse.js";
 import { buildBrief, type OpenInboxItem } from "../voice/brief.js";
 import { buildKnowledge } from "../voice/knowledge.js";
+import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { HANDOFF_DIR, readSince } from "../voice/since.js";
 
 /**
@@ -86,10 +87,12 @@ export async function knowledge(root: string, out?: string): Promise<number> {
  * exact state it is normally in.
  */
 async function openInboxItems(root: string): Promise<OpenInboxItem[]> {
-  const dir = join(root, "hq/inbox");
+  const dir = join(root, INBOX_DIR);
   let files: string[];
   try {
-    files = (await readdir(dir)).filter((f) => f.endsWith(".md") && f !== "README.md");
+    files = (await readdir(dir)).filter(
+      (f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()),
+    );
   } catch {
     return [];
   }
