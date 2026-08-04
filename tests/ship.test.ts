@@ -165,6 +165,27 @@ describe("formatReconcile", () => {
     expect(out).toContain("in case the reopen was");
   });
 
+  it("refuses to ship a blocked item and shows what it is still waiting on", () => {
+    const out = result([
+      {
+        kind: "blocked",
+        id: "MO-033",
+        pr: 56,
+        needs: "a human risk owner must sign the limits",
+      },
+    ]);
+
+    expect(out).toContain("MO-033 (#56)");
+    expect(out).not.toContain("Shipped 1");
+    // The merged PR is expected on a blocked item, so the report has to say
+    // that rather than reading as an anomaly the reader should resolve.
+    expect(out).toContain("expected state");
+    // `needs:` is the whole reason it stays blocked — printing the id without
+    // it makes the refusal look arbitrary.
+    expect(out).toContain("a human risk owner must sign the limits");
+    expect(out).toContain("morpheus pm unblock");
+  });
+
   it("keeps open items quiet — they are not a problem", () => {
     const out = result([{ kind: "open", id: "MO-027", branch: "mo-027-x" }]);
 
