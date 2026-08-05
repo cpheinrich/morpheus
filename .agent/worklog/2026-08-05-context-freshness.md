@@ -17,6 +17,13 @@ without contacting GitHub, Codex, or Claude.
 The local Claude CLI is authenticated, but its non-interactive invocation
 returned no review payload despite multiple bounded read-only attempts. Do not
 claim Claude feedback was incorporated. A readable Claude review remains a
-required gate before opening the Morpheus PR; the deterministic foundation can
-advance independently because its acceptance tests do not rely on provider
-availability.
+required gate before merge; Chris elected to open the draft PR now so Claude
+can review the visible branch. The deterministic foundation advances
+independently because its acceptance tests do not rely on provider availability.
+
+## Verification before draft review
+
+`pnpm test` passed 596 tests and `pnpm typecheck` passed. `pnpm lint` could
+not run because the package script invokes `eslint`, but eslint is not
+installed or declared by the repository; this is reported in the PR rather
+than presented as a passing check.
