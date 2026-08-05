@@ -657,6 +657,47 @@ to close with a spec that says it could not see the codebase and should be defer
 line, in a handoff received on 2026-08-01, is what caused a prompt-based heartbeat design to be
 checked against reality and killed rather than built.
 
+### 7.10 Context freshness
+
+Everything above assumes an agent has read the records. Nothing made it prove that. A session can
+start without loading `decisions.md`, and a session that *did* load it six hours ago can keep
+working through changes another agent has since pushed — with a claim, a plan, and a draft PR all
+looking like evidence of an agent that knows the current state.
+
+Two artefacts, both local and gitignored under `local/sessions/`:
+
+| | What it asserts |
+|---|---|
+| **Context receipt** | *I read these records, at these fingerprints, against this remote SHA* |
+| **Session lease** | *That receipt was checked against the remote at this time, and held* |
+
+**A lease has a five-minute term**, which is the whole difference between the two. Past it the
+lease states a historical fact, not a fact about now, so it degrades to `refresh_required` rather
+than carrying its verdict forward. So does one whose check time is unreadable, or in the future
+because a clock moved.
+
+Three states, and the third is the point: an unreachable remote is `unknown`, never assumed
+unchanged. **`requireFresh` throws on anything but `fresh`** — the guard fails closed, and offline
+is a blocked state rather than a permitted one until the offline exception exists.
+
+Two rules keep the artefacts honest, both learned by getting them wrong first:
+
+- **A receipt is measured against a declared required set**, not just against itself. A receipt
+  listing nothing would otherwise be indistinguishable from one listing everything — the same
+  shape as a check that skips what is absent and reports the empty thing as correct.
+- **Drift is derived, not asserted.** An observation carries current fingerprints and the policy
+  computes the delta. A caller that can choose what counts as changed can also choose to report
+  nothing.
+
+**Local, and deliberately not shared.** A receipt says *this working copy read these files*, which
+is true of one machine. Committing it would turn a local observation into a claim about everyone.
+Shared evidence stays what it was: the worklog, the commit, the PR.
+
+The policy is pure and provider-neutral, sitting behind a `SessionAdapter` that runners implement
+but do not own — so CI exercises fresh, stale, expired, offline and never-loaded paths with a mock,
+needing neither GitHub nor a Codex or Claude account. **Nothing calls the guard yet** — the policy
+makes the answer computable, and MO-26-08-05-16.27.56 wires it to hooks, commands, and runners.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.
