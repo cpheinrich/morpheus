@@ -38,33 +38,88 @@ export interface RemoteObservation {
   checkedAt: string;
   /** Null means the remote could not be checked, never that it is unchanged. */
   remoteSha: string | null;
-  changedInputs?: string[];
+  /**
+   * The canonical inputs as they are *now*, fingerprinted by
+   * `readInputs`. Compared against the receipt to derive the delta — an
+   * observation never asserts the delta directly, because a caller that can
+   * choose what counts as changed can also choose to report nothing.
+   */
+  inputs?: ContextInput[];
+}
+
+/**
+ * The records CLAUDE.md tells every session to load before doing anything. A
+ * receipt that does not cover all of them is not a receipt for this project,
+ * whatever else it lists.
+ */
+export const CANONICAL_INPUTS: readonly string[] = [
+  "CLAUDE.md",
+  ".agent/decisions.md",
+  ".agent/learned.md",
+];
+
+/**
+ * A lease is an observation with a term. Past it the observation is a
+ * historical fact rather than a statement about now, which is the whole
+ * difference between a lease and a receipt.
+ */
+export const LEASE_TTL_MS = 5 * 60 * 1000;
+
+export interface LeasePolicy {
+  /** Defaults to `CANONICAL_INPUTS`; generated projects may declare their own. */
+  requiredInputs?: readonly string[];
+  ttlMs?: number;
 }
 
 export class ContextFreshnessError extends Error {
   constructor(public readonly lease: SessionLease) {
-    const inputs = lease.changedInputs.length
-      ? ` Refresh these inputs: ${lease.changedInputs.join(", ")}.`
+    const changed = lease.changedInputs ?? [];
+    const inputs = changed.length
+      ? ` Refresh these inputs: ${changed.join(", ")}.`
       : " Refresh context before continuing.";
-    super(`Context is ${lease.status}.${inputs}`);
+    super(`Context is ${lease.status}.${inputs}${lease.reason ? ` ${lease.reason}` : ""}`);
   }
 }
 
+/**
+ * Everything the receipt alone can settle: inputs it never covered, and
+ * inputs whose fingerprint has moved since. Both are knowable offline, so
+ * they are reported even when the remote could not be reached — an agent that
+ * cannot verify GitHub can still be told which files it never read.
+ */
+function localDelta(
+  receipt: ContextReceipt,
+  observation: RemoteObservation,
+  required: readonly string[],
+): string[] {
+  const covered = new Map(receipt.inputs.map((input) => [input.id, input.fingerprint]));
+  const missing = required.filter((id) => !covered.has(id));
+  const drifted = (observation.inputs ?? [])
+    .filter((input) => covered.has(input.id) && covered.get(input.id) !== input.fingerprint)
+    .map((input) => input.id);
+  return [...new Set([...missing, ...drifted])].sort();
+}
+
 /** Pure policy function, so CI needs neither GitHub nor an AI provider. */
-export function observeLease(receipt: ContextReceipt, observation: RemoteObservation): SessionLease {
+export function observeLease(
+  receipt: ContextReceipt,
+  observation: RemoteObservation,
+  policy: LeasePolicy = {},
+): SessionLease {
+  const changedInputs = localDelta(receipt, observation, policy.requiredInputs ?? CANONICAL_INPUTS);
+
   if (observation.remoteSha === null) {
     return {
       version: 1,
       receipt,
       checkedAt: observation.checkedAt,
       status: "unknown",
-      changedInputs: [],
+      changedInputs,
       reason: "Could not verify remote context.",
     };
   }
 
-  const changedInputs = [...new Set(observation.changedInputs ?? [])].sort();
-  if (observation.remoteSha !== receipt.remoteSha || changedInputs.length > 0) {
+  if (changedInputs.length > 0 || observation.remoteSha !== receipt.remoteSha) {
     return {
       version: 1,
       receipt,
@@ -73,7 +128,7 @@ export function observeLease(receipt: ContextReceipt, observation: RemoteObserva
       changedInputs,
       reason:
         changedInputs.length > 0
-          ? "Canonical project inputs changed."
+          ? "Canonical project inputs are unread or changed."
           : "Remote state advanced; determine the canonical delta before continuing.",
     };
   }
@@ -87,7 +142,35 @@ export function observeLease(receipt: ContextReceipt, observation: RemoteObserva
   };
 }
 
-/** Fail closed at a durable or externally governed boundary. */
-export function requireFresh(lease: SessionLease): void {
-  if (lease.status !== "fresh") throw new ContextFreshnessError(lease);
+/**
+ * Re-read a lease as of `now`. An expired lease — or one whose `checkedAt`
+ * cannot be parsed, or sits in the future because a clock moved — degrades to
+ * `refresh_required` rather than carrying its old verdict forward.
+ */
+export function leaseAt(
+  lease: SessionLease,
+  now: Date = new Date(),
+  policy: LeasePolicy = {},
+): SessionLease {
+  if (lease.status !== "fresh") return lease;
+
+  const ttlMs = policy.ttlMs ?? LEASE_TTL_MS;
+  const age = now.getTime() - Date.parse(lease.checkedAt);
+  if (Number.isFinite(age) && age >= 0 && age < ttlMs) return lease;
+
+  let reason: string;
+  if (!Number.isFinite(age)) reason = "Lease has no readable check time.";
+  else if (age < 0) reason = "Lease was checked in the future; the clock moved.";
+  else reason = `Lease was checked ${Math.round(age / 1000)}s ago; the term is ${ttlMs / 1000}s.`;
+
+  return { ...lease, status: "refresh_required", reason };
+}
+
+/**
+ * Fail closed at a durable or externally governed boundary. `now` defaults to
+ * the real clock so a caller cannot skip the term check by omitting it.
+ */
+export function requireFresh(lease: SessionLease, now: Date = new Date(), policy: LeasePolicy = {}): void {
+  const current = leaseAt(lease, now, policy);
+  if (current.status !== "fresh") throw new ContextFreshnessError(current);
 }
