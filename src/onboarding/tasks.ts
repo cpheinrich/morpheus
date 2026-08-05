@@ -2,7 +2,7 @@ import { access, lstat, readFile, readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import { INBOX_DIR } from "../paths.js";
+import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { packageStatus } from "../brand/package.js";
 import { parseArtifact } from "../pm/parse.js";
 import { readRegistry } from "../registry/index.js";
@@ -254,8 +254,13 @@ export const TASKS: Task[] = [
       const dir = join(root, INBOX_DIR);
       let files: string[];
       try {
+        // `TEAM_RESERVED`, not a local `!== "readme.md"`. `hq/team/` holds the
+        // roster and the meeting-notes folder as well as inboxes, so "every
+        // remaining file must parse as an inbox" is only true against the same
+        // reserved list `inbox validate` uses. Filtering by hand here unticked
+        // a completed setup step the moment a project wrote a `members.md`.
         files = (await readdir(dir)).filter(
-          (f) => f.endsWith(".md") && f.toLowerCase() !== "readme.md",
+          (f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()),
         );
       } catch {
         return false;
