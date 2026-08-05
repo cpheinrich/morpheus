@@ -6,8 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-26-08-03-14.18.25](./MO-26-08-03-14.18.25-capture-collab-context.md) | hq/team: the roster, inboxes, and meeting notes | review | P1 | MO-G-2026-Q3-01 | — |
-| [MO-26-08-03-13.58.45](./MO-26-08-03-13.58.45-vercel-default.md) | Vercel is the default, not the recommendation | review | P2 | — | — |
+| [MO-26-08-05-16.29.20](./MO-26-08-05-16.29.20-fix-inbox-detect-reserved.md) | Onboarding reads members.md as an inbox | review | P1 | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -68,6 +67,7 @@ item files, not this table.
 | [MO-26-08-02-13.23.35](./MO-26-08-02-13.23.35-gate-re-reviews.md) | Re-review only what a new push actually changed | shipped | P1 | MO-G-2026-Q3-01 | #75 |
 | [MO-26-08-02-15.15.21](./MO-26-08-02-15.15.21-fix-goal-ids.md) | Goal ids must match the shape the schema requires | shipped | P1 | MO-G-2026-Q3-01 | #79 |
 | [MO-26-08-03-13.25.57](./MO-26-08-03-13.25.57-name-ci-secret-store.md) | Three secret stores, split by who reads them | shipped | P1 | MO-G-2026-Q3-01 | #85 |
+| [MO-26-08-03-14.18.25](./MO-26-08-03-14.18.25-capture-collab-context.md) | hq/team: the roster, inboxes, and meeting notes | shipped | P1 | MO-G-2026-Q3-01 | #88 |
 | [MO-26-07-28-008](./MO-26-07-28-008-morpheus-init.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
 | [MO-26-07-28-009](./MO-26-07-28-009-retrofit-darwin.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-010](./MO-26-07-29-010-simplify-architecture-md-first.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | #46 |
@@ -79,5 +79,6 @@ item files, not this table.
 | [MO-26-07-30-046](./MO-26-07-30-046-reconcile-can-ship-item.md) | Reconcile can ship an item whose merged PR did no work | shipped | P2 | — | #42 |
 | [MO-26-08-01-053](./MO-26-08-01-053-cloudflare-email-sending.md) | Cloudflare Email Sending is the canonical transactional email service | shipped | P2 | MO-G-2026-Q3-01 | #49 |
 | [MO-26-08-01-17.24.24](./MO-26-08-01-17.24.24-fix-four-digit-id.md) | Normalise the one four-digit-year roadmap id | shipped | P2 | — | #63 |
+| [MO-26-08-03-13.58.45](./MO-26-08-03-13.58.45-vercel-default.md) | Vercel is the default, not the recommendation | shipped | P2 | — | #87 |
 | [MO-26-07-29-012](./MO-26-07-29-012-make-morpheus-private-adjust.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — |
 <!-- morpheus:end -->
