@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   ContextFreshnessError,
   MockSessionAdapter,
   notifyAdapter,
   observeLease,
   requireFresh,
+  readLease,
+  writeLease,
   type ContextReceipt,
 } from "../src/session/index.js";
 
@@ -68,5 +73,19 @@ describe("session lease policy", () => {
       remoteSha: null,
     }));
     expect(adapter.refreshRequests).toEqual([]);
+  });
+
+  it("keeps receipts local while preserving the complete lease across a resume", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-session-"));
+    const lease = observeLease(receipt, {
+      checkedAt: "2026-08-05T12:05:00.000Z",
+      remoteSha: "def456",
+      changedInputs: ["hq/product/roadmap/README.md"],
+    });
+
+    const path = await writeLease(root, "session-001", lease);
+    expect(path).toBe(join(root, "local", "sessions", "session-001.json"));
+    expect(await readLease(root, "session-001")).toEqual(lease);
+    expect(await readLease(root, "absent")).toBeNull();
   });
 });
