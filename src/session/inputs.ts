@@ -10,6 +10,15 @@ import { CANONICAL_INPUTS, type ContextInput } from "./lease.js";
  */
 export const ABSENT = "absent";
 
+/**
+ * A record that exists but could not be read — a permission change, a broken
+ * symlink (`CLAUDE.md` is one in this repo), a directory where a file was.
+ * A sentinel rather than a throw: a freshness check is the wrong place to
+ * abort with a raw fs error, and an unreadable record is *exactly* the state
+ * that should read as drift and make the agent go look.
+ */
+export const UNREADABLE = "unreadable";
+
 export function fingerprint(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
@@ -28,8 +37,8 @@ export async function readInputs(
       try {
         return { id, fingerprint: fingerprint(await readFile(join(root, id), "utf8")) };
       } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return { id, fingerprint: ABSENT };
-        throw error;
+        const code = (error as NodeJS.ErrnoException).code;
+        return { id, fingerprint: code === "ENOENT" ? ABSENT : UNREADABLE };
       }
     }),
   );

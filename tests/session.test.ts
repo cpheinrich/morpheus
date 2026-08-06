@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   ABSENT,
+  UNREADABLE,
   CANONICAL_INPUTS,
   ContextFreshnessError,
   LEASE_TTL_MS,
@@ -68,14 +69,14 @@ describe("session lease policy", () => {
   });
 
   it("never treats an unavailable remote as unchanged", () => {
-    const lease = observeLease(receipt, { checkedAt: CHECKED_AT, remoteSha: null });
+    const lease = observeLease(receipt, { checkedAt: CHECKED_AT, remoteSha: null, inputs: covering });
 
     expect(lease.status).toBe("unknown");
     expect(lease.reason).toContain("Could not verify");
     expect(() => requireFresh(lease, CHECKED)).toThrow("Context is unknown");
   });
 
-  it("does not notify a runner for a clean or unknown observation", async () => {
+  it("does not notify a runner for a clean or featureless-unknown observation", async () => {
     const adapter = new MockSessionAdapter();
     await notifyAdapter(adapter, observeLease(receipt, {
       checkedAt: CHECKED_AT,
@@ -85,8 +86,24 @@ describe("session lease policy", () => {
     await notifyAdapter(adapter, observeLease(receipt, {
       checkedAt: "2026-08-05T12:10:00.000Z",
       remoteSha: null,
+      inputs: covering,
     }));
     expect(adapter.refreshRequests).toEqual([]);
+  });
+
+  it("notifies on an unknown lease that still names something to load", async () => {
+    const adapter = new MockSessionAdapter();
+    // Offline, and the receipt covered nothing. The remote is unknowable; the
+    // three records the agent never read are not, so the runner hears about it.
+    const lease = observeLease({ ...receipt, inputs: [] }, {
+      checkedAt: CHECKED_AT,
+      remoteSha: null,
+      inputs: covering,
+    });
+
+    await notifyAdapter(adapter, lease);
+    expect(lease.status).toBe("unknown");
+    expect(adapter.refreshRequests).toEqual([lease]);
   });
 });
 
@@ -95,6 +112,7 @@ describe("receipt coverage", () => {
     const lease = observeLease({ ...receipt, inputs: [] }, {
       checkedAt: CHECKED_AT,
       remoteSha: "abc123",
+      inputs: covering,
     });
 
     expect(lease.status).toBe("refresh_required");
@@ -105,7 +123,7 @@ describe("receipt coverage", () => {
   it("names the canonical records a partial receipt never loaded", () => {
     const lease = observeLease(
       { ...receipt, inputs: covering.filter((i) => i.id !== ".agent/learned.md") },
-      { checkedAt: CHECKED_AT, remoteSha: "abc123" },
+      { checkedAt: CHECKED_AT, remoteSha: "abc123", inputs: covering },
     );
 
     expect(lease.changedInputs).toEqual([".agent/learned.md"]);
@@ -115,6 +133,7 @@ describe("receipt coverage", () => {
     const lease = observeLease({ ...receipt, inputs: [] }, {
       checkedAt: CHECKED_AT,
       remoteSha: null,
+      inputs: covering,
     });
 
     // Offline is still `unknown` — but not knowing the remote is no reason to
@@ -123,13 +142,15 @@ describe("receipt coverage", () => {
     expect(lease.changedInputs).toEqual([...CANONICAL_INPUTS].sort());
   });
 
-  it("honours a project-declared required set", () => {
-    const lease = observeLease({ ...receipt, inputs: [] }, {
-      checkedAt: CHECKED_AT,
-      remoteSha: "abc123",
-    }, { requiredInputs: [] });
+  it("treats an explicit empty required set as the only way to switch coverage off", () => {
+    const observation = { checkedAt: CHECKED_AT, remoteSha: "abc123", inputs: covering };
+    const empty = observeLease({ ...receipt, inputs: [] }, observation, { requiredInputs: [] });
+    const unset = observeLease({ ...receipt, inputs: [] }, observation, { requiredInputs: undefined });
 
-    expect(lease.status).toBe("fresh");
+    // `[]` is a declaration that this project has no canonical records;
+    // `undefined` is no declaration at all, and falls back to the default.
+    expect(empty.status).toBe("fresh");
+    expect(unset.status).toBe("refresh_required");
   });
 });
 
@@ -170,7 +191,7 @@ describe("lease term", () => {
   });
 
   it("leaves a non-fresh lease's reason intact", () => {
-    const unknown = observeLease(receipt, { checkedAt: CHECKED_AT, remoteSha: null });
+    const unknown = observeLease(receipt, { checkedAt: CHECKED_AT, remoteSha: null, inputs: covering });
     expect(leaseAt(unknown, new Date(CHECKED.getTime() + 60 * 60_000))).toEqual(unknown);
   });
 });
@@ -218,6 +239,29 @@ describe("canonical input fingerprints", () => {
     expect(inputs.map((i) => i.id)).toEqual([...CANONICAL_INPUTS]);
     expect(byId.get("CLAUDE.md")).toBe(fingerprint("read this first"));
     expect(byId.get(".agent/learned.md")).toBe(ABSENT);
+  });
+
+  it("reports an unreadable record as drift rather than aborting the check", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-inputs-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    // A directory where a file should be: readable path, unreadable content.
+    // One bad record must not take the whole freshness check down with it.
+    await mkdir(join(root, "CLAUDE.md"));
+    await writeFile(join(root, ".agent", "decisions.md"), "settled choices", "utf8");
+
+    const inputs = await readInputs(root);
+    const byId = new Map(inputs.map((i) => [i.id, i.fingerprint]));
+
+    expect(byId.get("CLAUDE.md")).toBe(UNREADABLE);
+    expect(byId.get(".agent/decisions.md")).toBe(fingerprint("settled choices"));
+
+    const lease = observeLease({ ...receipt, inputs: covering }, {
+      checkedAt: CHECKED_AT,
+      remoteSha: "abc123",
+      inputs,
+    });
+    expect(lease.status).toBe("refresh_required");
+    expect(lease.changedInputs).toContain("CLAUDE.md");
   });
 
   it("closes the loop: an edited record drifts against the receipt that read it", async () => {

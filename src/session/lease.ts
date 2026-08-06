@@ -17,6 +17,13 @@ export interface ContextReceipt {
   version: 1;
   id: string;
   createdAt: string;
+  /**
+   * The tip of `origin/main` when the receipt was taken — **not** the branch
+   * tip. The whole `fresh` verdict turns on this field, so it needs one
+   * meaning: the question is whether the canonical trunk moved under this
+   * session, which is what another agent merging changes. A branch's own tip
+   * moving is a different concern, and the wiring item handles it separately.
+   */
   remoteSha: string;
   branch: string;
   worktree: string;
@@ -39,12 +46,17 @@ export interface RemoteObservation {
   /** Null means the remote could not be checked, never that it is unchanged. */
   remoteSha: string | null;
   /**
-   * The canonical inputs as they are *now*, fingerprinted by
-   * `readInputs`. Compared against the receipt to derive the delta — an
-   * observation never asserts the delta directly, because a caller that can
-   * choose what counts as changed can also choose to report nothing.
+   * The canonical inputs as they are *now*, fingerprinted by `readInputs`.
+   * Compared against the receipt to derive the delta — an observation never
+   * asserts the delta directly, because a caller that can choose what counts
+   * as changed can also choose to report nothing.
+   *
+   * Required, and required for the same reason. Optional, omission *is* that
+   * choice under another name: every call site that forgot the argument would
+   * silently report no drift. `readInputs` produces it in one line, and it is
+   * readable offline, so there is no observation that cannot supply it.
    */
-  inputs?: ContextInput[];
+  inputs: ContextInput[];
 }
 
 /**
@@ -66,7 +78,13 @@ export const CANONICAL_INPUTS: readonly string[] = [
 export const LEASE_TTL_MS = 5 * 60 * 1000;
 
 export interface LeasePolicy {
-  /** Defaults to `CANONICAL_INPUTS`; generated projects may declare their own. */
+  /**
+   * `undefined` means none declared — take `CANONICAL_INPUTS`. An empty array
+   * is the *only* way to switch coverage off, and it has to be written on
+   * purpose: a project config that yields `[]` by accident, from a blank or
+   * unparseable field, would hand every session a check that passes for
+   * having read nothing.
+   */
   requiredInputs?: readonly string[];
   ttlMs?: number;
 }
@@ -94,7 +112,7 @@ function localDelta(
 ): string[] {
   const covered = new Map(receipt.inputs.map((input) => [input.id, input.fingerprint]));
   const missing = required.filter((id) => !covered.has(id));
-  const drifted = (observation.inputs ?? [])
+  const drifted = observation.inputs
     .filter((input) => covered.has(input.id) && covered.get(input.id) !== input.fingerprint)
     .map((input) => input.id);
   return [...new Set([...missing, ...drifted])].sort();

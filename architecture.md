@@ -664,12 +664,19 @@ start without loading `decisions.md`, and a session that *did* load it six hours
 working through changes another agent has since pushed — with a claim, a plan, and a draft PR all
 looking like evidence of an agent that knows the current state.
 
-Two artefacts, both local and gitignored under `local/sessions/`:
+Two assertions, both local and gitignored under `local/sessions/`:
 
 | | What it asserts |
 |---|---|
 | **Context receipt** | *I read these records, at these fingerprints, against this remote SHA* |
 | **Session lease** | *That receipt was checked against the remote at this time, and held* |
+
+**The remote SHA is the tip of `origin/main`**, not the branch tip. The whole `fresh` verdict turns
+on that field, so it gets one meaning: did the canonical trunk move under this session, which is
+what another agent merging does. A branch's own tip moving is a real but separate concern.
+
+Only the lease is a file today. Nothing constructs a receipt — `readInputs` supplies the `inputs`
+half and the rest has no producer, so a receipt store lands with the wiring item below.
 
 **A lease has a five-minute term**, which is the whole difference between the two. Past it the
 lease states a historical fact, not a fact about now, so it degrades to `refresh_required` rather
@@ -684,10 +691,16 @@ Two rules keep the artefacts honest, both learned by getting them wrong first:
 
 - **A receipt is measured against a declared required set**, not just against itself. A receipt
   listing nothing would otherwise be indistinguishable from one listing everything — the same
-  shape as a check that skips what is absent and reports the empty thing as correct.
-- **Drift is derived, not asserted.** An observation carries current fingerprints and the policy
-  computes the delta. A caller that can choose what counts as changed can also choose to report
+  shape as a check that skips what is absent and reports the empty thing as correct. An *empty*
+  declared set switches the check off and is the only thing that does, so a project config must
+  distinguish "none declared" (take the default) from "declared as none": a blank or unparseable
+  field yielding `[]` would hand every generated project a check that passes for having read
   nothing.
+- **Drift is derived, not asserted**, and the observation's fingerprints are a required argument
+  for the same reason. Optional, omitting them *is* the caller choosing to report no drift, under
+  another name. A record that exists but cannot be read gets a sentinel rather than an exception —
+  an unreadable `decisions.md` is precisely the state that should send an agent to look, not the
+  state that should abort a freshness check with a raw filesystem error.
 
 **Local, and deliberately not shared.** A receipt says *this working copy read these files*, which
 is true of one machine. Committing it would turn a local observation into a claim about everyone.
