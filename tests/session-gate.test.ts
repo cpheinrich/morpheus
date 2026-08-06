@@ -307,6 +307,39 @@ describe("scaffolding", () => {
     ).toBe("error");
   });
 
+  it("still reports an inbox that exists and cannot be read", async () => {
+    // The handle check only fires when the inbox is **absent**. Keyed on the
+    // handle being *declared*, the de-duplication silenced the unreadable
+    // case entirely — a dangling symlink is UNREADABLE, equally unresolvable,
+    // and equally a permanent lockout.
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-unreadable-inbox-"));
+    roots.push(root);
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await mkdir(join(root, "hq", "team"), { recursive: true });
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", prefix: "XX", kind: "internal", context: { handle: "bob" } }),
+      "utf8",
+    );
+    for (const id of [".agent/decisions.md", ".agent/learned.md"]) {
+      await writeFile(join(root, id), "x", "utf8");
+    }
+    await writeFile(join(root, "AGENTS.md"), "x", "utf8");
+    await symlink("AGENTS.md", join(root, "CLAUDE.md"));
+    // Exists — `access` succeeds, so the handle check does *not* fire — and
+    // cannot be read, so `readInputs` maps it to UNREADABLE. A dangling
+    // symlink is the other shape and lands in the handle check, because
+    // `access` follows links.
+    await mkdir(join(root, "hq/team/bob.md"), { recursive: true });
+
+    const findings = await doctor({ root, offline: true });
+    const named = findings.filter((f) => f.check === "context" && f.message.includes("bob.md"));
+    expect(named).toHaveLength(1);
+    expect(named[0]?.severity).toBe("error");
+    expect(named[0]?.message).toContain("every session must load");
+  });
+
   it("reports a required record that is missing, unreadable or declared-and-absent", async () => {
     // The one declared thing `doctor` did not verify — and it is the *default*
     // set, so it reaches every project. A missing required record is ABSENT,

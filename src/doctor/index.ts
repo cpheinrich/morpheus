@@ -404,7 +404,14 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   }
 
   const handle = typeof raw["handle"] === "string" ? raw["handle"] : undefined;
+  // Whether the handle check *fired*, not whether a handle was declared. It
+  // only fires when the inbox is **absent** — an inbox that exists and cannot
+  // be read (a dangling symlink, a permission change) is `UNREADABLE`, equally
+  // unresolvable, and equally a permanent lockout. Keyed on the declaration,
+  // the de-duplication silenced that case entirely.
+  let handleReported = false;
   if (handle && !(await exists(join(root, "hq", "team", `${handle}.md`)))) {
+    handleReported = true;
     // The one way this protocol locks a project out of itself: a declared
     // record that does not exist is ABSENT, therefore unresolvable, therefore
     // never fresh — and no flag or override reaches it. An error, not a
@@ -466,7 +473,7 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   // Reporting one condition twice cuts against the rule two commits back: an
   // operator whose gate is shut should not read past redundant lines to find
   // the one that names it.
-  await checkRequiredRecords(root, add, handle ? [`hq/team/${handle}.md`] : []);
+  await checkRequiredRecords(root, add, handleReported ? [`hq/team/${handle!}.md`] : []);
 
   await checkTrunk(
     root,
@@ -542,8 +549,15 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
       add("warning", "inbox", `${INBOX_DIR}/ has no inbox files — nobody would receive status.`);
     }
     for (const f of files) {
-      const { issues } = await parseInboxFile(join(inboxDir, f));
-      for (const i of issues) add("error", "inbox", `${f}: ${i.message}`);
+      // An inbox that is listed and cannot be read — a dangling symlink, a
+      // permission change — threw out of `doctor` entirely, taking every
+      // finding gathered so far with it. `readdir` reports the entry, so its
+      // absence at read time is a *finding*, not an exception: the same rule
+      // this run has applied to the manifest, the trunk and the required set.
+      const parsed = await parseInboxFile(join(inboxDir, f)).catch(
+        (err: unknown) => ({ issues: [{ message: `unreadable — ${(err as Error).message}` }] }),
+      );
+      for (const i of parsed.issues) add("error", "inbox", `${f}: ${i.message}`);
     }
   }
 

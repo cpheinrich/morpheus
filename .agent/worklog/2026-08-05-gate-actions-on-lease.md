@@ -710,6 +710,27 @@ The review found no defect it would hold a merge for. Two residuals, both closed
   past redundant lines to find the one that names the fix — so the required-set check skips what
   the handle check already covered.
 
+## Twenty-fourth review pass — de-duplicated on the wrong condition
+
+The de-duplication added last round keyed on the handle being **declared**, not on the handle check
+having **fired**. That check only fires when the inbox is *absent*; an inbox that exists and cannot
+be read — a permission change, a directory where a file should be — is `UNREADABLE`, equally
+unresolvable, and equally a permanent lockout. Keyed on the declaration, it was silenced entirely:
+a silent lockout re-opened by the commit two before it that was written to close one.
+
+**The general form: de-duplicate on the report, not on the reason you expect the report.** The two
+are the same only when the check is total, and this one is not.
+
+Writing the test found a second thing, pre-existing and worse: `doctor` **threw** on an inbox that
+`readdir` lists and `readFile` cannot open, taking every finding gathered so far with it. Same rule
+this run has applied to the manifest, the trunk and the required set — a failed read is a finding,
+not an exception — and the last place in `doctor` that had not learned it.
+
+Worth recording the fixture detail, because it cost a wrong first attempt: **`access()` follows
+symlinks**, so a dangling link is *absent* to the handle check and *unreadable* to `readInputs`.
+The case the de-duplication silenced needs a file that exists and cannot be read — a directory in
+its place — not a broken link.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
