@@ -881,6 +881,11 @@ processes can be in flight at once. The default 5s is contention, not slowness. 
 `testTimeout: 30_000` in `vitest.config.ts`, with the reason recorded there. Three consecutive
 clean runs after.
 
+And the fix did not reach the tests it was written for: seven per-test `20_000` overrides —
+written when the default was 5s, so they read as *raising* it — were now **capping** the
+git-heaviest tests in the suite below the new 30s default. Removed, so they inherit it. A local
+override that was generous against one default is a restriction against the next.
+
 **Worth noting as a cost of the approach.** Testing git behaviour against real repositories is
 what caught the porcelain-trim bug, the merge-ref fork point and the unborn-HEAD case — none of
 which a mocked `git` would have surfaced, because each was a fact about git rather than about this

@@ -1193,7 +1193,7 @@ describe("the offline declaration and the receipt", () => {
     // And the gate agrees, rather than refusing work the declaration was
     // supposed to permit.
     expect((await gate(root, "pm new", "local", { now })).ok).toBe(true);
-  }, 20_000);
+  });
 });
 
 describe("status offline", () => {
@@ -1248,7 +1248,7 @@ describe("status offline", () => {
     expect(out).toContain("Context is fresh");
     expect(out).not.toContain("unknown is assumed");
     expect(out).not.toContain("external actions are not");
-  }, 20_000);
+  });
 });
 
 describe("what a lease is scoped to", () => {
@@ -1299,7 +1299,7 @@ describe("what a lease is scoped to", () => {
     const { lease } = await check(root, new Date(now.getTime() + 60_000));
     expect(lease?.status).toBe("refresh_required");
     expect(lease?.changedInputs).toContain(".agent/decisions.md");
-  }, 20_000);
+  });
 
   it("still names what moved, from the receipt it just discarded", async () => {
     // The discard has to come first — a session must not inherit
@@ -1323,7 +1323,7 @@ describe("what a lease is scoped to", () => {
     const out = printed.join("\n");
     expect(out).toContain("no context receipt");
     expect(out).toContain(".agent/learned.md");
-  }, 20_000);
+  });
 
   it("re-anchors the receipt when the session itself switched branches", async () => {
     // `pm claim` creates and checks out the branch, so the receipt's `branch`
@@ -1349,7 +1349,7 @@ describe("what a lease is scoped to", () => {
     const second = await check(root, inTerm);
     expect(second.lease?.status).toBe("fresh");
     expect(second.observed).toBe(false);
-  }, 20_000);
+  });
 
   it("does not let two failed branch lookups compare equal", async () => {
     // `(detached)` was a failed lookup wearing a branch name — `rev-parse
@@ -1394,7 +1394,7 @@ describe("what a lease is scoped to", () => {
     expect(await currentBranch(root)).toBe(first);
     execFileSync("git", ["checkout", "-q", second], { cwd: root });
     expect(await currentBranch(root)).toBe(second);
-  }, 20_000);
+  });
 
   it("does not let a new session inherit the previous one's certification", async () => {
     // The lease is keyed on the worktree, so a session starting where another
@@ -1415,5 +1415,5 @@ describe("what a lease is scoped to", () => {
 
     const { lease } = await check(root, inTerm);
     expect(lease).toBeNull();
-  }, 20_000);
+  });
 });
