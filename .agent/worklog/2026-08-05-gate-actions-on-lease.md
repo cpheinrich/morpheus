@@ -636,6 +636,33 @@ only Morpheus command a generated project runs automatically was the one its own
 named — and the receipt was still described as fingerprinted against `origin/main` three paragraphs
 above the fork note explaining the trunk is declarable.
 
+## Twenty-first review pass — the rule applied everywhere except where the default lives
+
+`init`'s own comment states it: *a declared record that is never created is the worst shape this
+protocol has.* `doctor` applied it to the declared `handle` and the declared `trunk` — both
+**errors**, each with *"every governed command is already refused"* spelled out — and **not to the
+records themselves**, which is where the default lives and therefore reaches every project.
+
+A missing required record is `ABSENT` → unresolvable → `refresh_required` forever, and
+`MORPHEUS_OFFLINE=1` cannot reach it because the offline branch needs `unknown`. What `doctor` said
+about that depended on which record:
+
+| Missing | Before |
+|---|---|
+| `.agent/decisions.md` / `.agent/learned.md` | a **warning** under `structure`, exit 0 |
+| `CLAUDE.md` | **nothing** — not in `EXPECTED_FILES`, which carries `AGENTS.md` |
+| a declared `requiredInputs` path | nothing |
+
+The warning predates this branch and was correctly cosmetic then. **This branch changed what that
+absence means and left the severity where it was** — which is its own lesson: when you make an
+existing condition consequential, the thing that already reports it is part of the change.
+`CLAUDE.md` is worse, because in this repo it is a symlink: a checkout where the link did not
+materialise produces a project `doctor` calls clean and that refuses every governed command.
+
+Also: `name` and `inherits` were still strict, and `name` is parsed and **read by nothing** — its
+only effect was to abort the run and hide the errors that name a shut gate. Fourth and fifth fields
+moved out for that reason.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

@@ -6,6 +6,7 @@ import { parseInboxFile } from "../inbox/parse.js";
 import { readRegistry } from "../registry/index.js";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { projectPolicy } from "../session/policy.js";
+import { ABSENT, CANONICAL_INPUTS, UNREADABLE } from "../session/lease.js";
 
 /**
  * Report drift without fixing it.
@@ -22,7 +23,10 @@ export const Kind = z.enum(["company", "personal", "internal"]);
 export type Kind = z.infer<typeof Kind>;
 
 export const Manifest = z.object({
-  name: z.string(),
+  // Parsed and never read by anything here — its only effect was to abort the
+  // run, hiding the errors that name a shut gate. Fourth field moved out for
+  // that reason: a validator that runs before the reporter can only subtract.
+  name: z.unknown().optional(),
   // `unknown`, and checked below. A *missing* prefix was already a finding
   // that lets `doctor` continue; an *invalid* one aborted the whole run —
   // harmless until the governed-command errors sat behind that abort. An
@@ -48,7 +52,7 @@ export const Manifest = z.object({
    * `{ "finance": "darwin" }`. Their directories are correctly absent, so
    * expecting them would report drift on a project that is right.
    */
-  inherits: z.record(z.string(), z.string()).optional(),
+  inherits: z.unknown().optional(),
 });
 
 export type Severity = "error" | "warning";
@@ -90,12 +94,55 @@ export const EXPECTED: Record<Kind, string[]> = {
 };
 
 /** Files every project should carry regardless of kind. */
-const EXPECTED_FILES = [
-  "morpheus.json",
-  "AGENTS.md",
-  ".agent/decisions.md",
-  ".agent/learned.md",
-];
+/**
+ * `.agent/decisions.md` and `.agent/learned.md` are deliberately absent:
+ * `checkRequiredRecords` reports them as *errors* naming the lockout, and a
+ * warning beside it saying "missing" would understate the same fact twice.
+ */
+const EXPECTED_FILES = ["morpheus.json", "AGENTS.md"];
+
+/**
+ * Whether the records every session must load actually exist.
+ *
+ * `init`'s own comment states the rule: *a declared record that is never
+ * created is the worst shape this protocol has.* `doctor` applied it to the
+ * declared `handle` and the declared `trunk` — both **errors**, because each
+ * refuses every governed command with no override — and not to the records
+ * themselves, which is where the *default* lives and so reaches every project.
+ *
+ * A missing required record is `ABSENT`, which `localDelta` marks
+ * unresolvable, so the lease is `refresh_required` forever and
+ * `MORPHEUS_OFFLINE=1` cannot reach it: the offline branch needs `unknown`.
+ * `.agent/decisions.md` was reported as a *structure warning* that predates
+ * this branch and was correctly cosmetic then; `CLAUDE.md` was reported by
+ * nothing at all, and in this repo it is a symlink — a checkout where the link
+ * did not materialise produces a project `doctor` calls clean and that refuses
+ * every governed command.
+ */
+async function checkRequiredRecords(
+  root: string,
+  add: (severity: Severity, check: string, message: string) => void,
+): Promise<void> {
+  const { requiredInputs } = await projectPolicy(root);
+  const ids = requiredInputs ?? CANONICAL_INPUTS;
+  if (!ids.length) return;
+
+  const { readInputs } = await import("../session/inputs.js");
+  const missing = (await readInputs(root, ids)).filter(
+    (i) => i.fingerprint === ABSENT || i.fingerprint === UNREADABLE,
+  );
+  if (!missing.length) return;
+
+  add(
+    "error",
+    "context",
+    `${missing.length} record(s) every session must load ${missing.length === 1 ? "is" : "are"} ` +
+      `missing or unreadable: ${missing.map((i) => i.id).join(", ")}. Each is unresolvable, so ` +
+      `pm claim, pm new, pm block and access sync are refused permanently — and ` +
+      `MORPHEUS_OFFLINE=1 does not reach it, because the lease is "refresh_required" rather ` +
+      `than "unknown".`,
+  );
+}
 
 /**
  * Whether this project's freshness checks are measuring the right ref.
@@ -387,6 +434,8 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     );
   }
 
+  await checkRequiredRecords(root, add);
+
   await checkTrunk(
     root,
     typeof raw["trunk"] === "string" ? raw["trunk"] : undefined,
@@ -395,9 +444,15 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   );
 
   // --- structure ----------------------------------------------------------
-  const inherited = new Set(
-    Object.keys(manifest.inherits ?? {}).map((k) => `hq/${k}`),
-  );
+  const inheritsRaw = manifest.inherits;
+  const inherits =
+    inheritsRaw && typeof inheritsRaw === "object" && !Array.isArray(inheritsRaw)
+      ? (inheritsRaw as Record<string, unknown>)
+      : {};
+  if (inheritsRaw !== undefined && inheritsRaw !== inherits) {
+    add("error", "manifest", `"inherits" is not an object, so it is ignored.`);
+  }
+  const inherited = new Set(Object.keys(inherits).map((k) => `hq/${k}`));
 
   for (const dir of EXPECTED[kind ?? "personal"]) {
     if (inherited.has(dir)) continue; // owned by a parent project

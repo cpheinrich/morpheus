@@ -307,6 +307,42 @@ describe("scaffolding", () => {
     ).toBe("error");
   });
 
+  it("reports a required record that is missing, unreadable or declared-and-absent", async () => {
+    // The one declared thing `doctor` did not verify — and it is the *default*
+    // set, so it reaches every project. A missing required record is ABSENT,
+    // therefore unresolvable, therefore refused forever with no offline
+    // escape; `.agent/decisions.md` was a cosmetic structure *warning* that
+    // predates this branch, and `CLAUDE.md` was reported by nothing at all.
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-records-"));
+    roots.push(root);
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({
+        name: "x",
+        prefix: "XX",
+        kind: "internal",
+        context: { requiredInputs: ["docs/renamed.md"] },
+      }),
+      "utf8",
+    );
+    // A dangling symlink, which is the realistic `CLAUDE.md` shape.
+    await symlink("AGENTS.md", join(root, "CLAUDE.md"));
+    await writeFile(join(root, ".agent/decisions.md"), "settled", "utf8");
+    // `.agent/learned.md` absent, `docs/renamed.md` declared and absent.
+
+    const findings = await doctor({ root, offline: true });
+    const locked = findings.find(
+      (f) => f.check === "context" && f.message.includes("every session must load"),
+    );
+    expect(locked?.severity).toBe("error");
+    expect(locked?.message).toContain("CLAUDE.md");
+    expect(locked?.message).toContain(".agent/learned.md");
+    expect(locked?.message).toContain("docs/renamed.md");
+    expect(locked?.message).not.toContain(".agent/decisions.md");
+  });
+
   it("reports a dropped requiredInputs entry as an error", async () => {
     const { doctor } = await import("../src/doctor/index.js");
     const root = await mkdtemp(join(tmpdir(), "morpheus-dropped-"));
