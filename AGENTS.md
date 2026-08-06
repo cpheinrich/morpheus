@@ -96,6 +96,10 @@ the one failure mode the whole protocol cannot detect.
 pushing a claim, granting access — stays refused, because an unverified trunk is exactly when you
 should not be operating external controls.
 
+**On a fork**, set `"context": { "trunk": "upstream/main" }` in `morpheus.json`. `origin` is
+your fork, whose `main` sits still while the real trunk moves — measured against it, a lease
+certifies fresh forever. `morpheus doctor` reports a trunk that does not resolve.
+
 Receipts live in `local/sessions/`, keyed by worktree, and are gitignored. A receipt says *this
 working copy read these files*, which is true of one machine — committing it would turn a local
 observation into a claim about everyone. Shared evidence stays the worklog, the commit and the PR.

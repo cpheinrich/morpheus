@@ -20,6 +20,13 @@ interface ContextConfig {
    * baked into `CANONICAL_INPUTS`.
    */
   handle?: unknown;
+  /**
+   * The canonical trunk, `remote/branch`. Declared rather than assumed
+   * because `origin` is not always canonical — for a fork contributor
+   * `origin` is their fork, and a lease measured against a fork's `main`
+   * certifies `fresh` while the real trunk moves.
+   */
+  trunk?: unknown;
 }
 
 const asStrings = (v: unknown): string[] =>
@@ -34,7 +41,12 @@ const asStrings = (v: unknown): string[] =>
  * read nothing. A project that genuinely has no canonical records has to say
  * `"requiredInputs": []` on purpose, which this preserves.
  */
-export async function projectPolicy(root: string): Promise<LeasePolicy> {
+export interface ProjectContext extends LeasePolicy {
+  /** `undefined` means undeclared — `resolveTrunk` asks `origin/HEAD` then. */
+  trunk?: string;
+}
+
+export async function projectPolicy(root: string): Promise<ProjectContext> {
   let config: ContextConfig = {};
   try {
     const manifest = JSON.parse(await readFile(join(root, "morpheus.json"), "utf8")) as {
@@ -45,6 +57,8 @@ export async function projectPolicy(root: string): Promise<LeasePolicy> {
     return {};
   }
 
+
+  const trunk = typeof config.trunk === "string" && config.trunk ? { trunk: config.trunk } : {};
   const raw = Array.isArray(config.requiredInputs) ? config.requiredInputs : null;
   const declared = raw ? asStrings(raw) : null;
   const inbox = typeof config.handle === "string" ? [`hq/team/${config.handle}.md`] : [];
@@ -55,9 +69,12 @@ export async function projectPolicy(root: string): Promise<LeasePolicy> {
   // off. Declared-and-nothing-usable is not declared-as-none, and a filter
   // that erases the difference is the absent-reads-as-empty defect again.
   if (raw !== null && raw.length === 0 && inbox.length === 0) {
-    return { requiredInputs: [] };
+    return { requiredInputs: [], ...trunk };
   }
-  return { requiredInputs: [...new Set([...CANONICAL_INPUTS, ...(declared ?? []), ...inbox])] };
+  return {
+    requiredInputs: [...new Set([...CANONICAL_INPUTS, ...(declared ?? []), ...inbox])],
+    ...trunk,
+  };
 }
 
 /**

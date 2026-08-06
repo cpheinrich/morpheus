@@ -1,6 +1,7 @@
 import { LEASE_TTL_MS } from "../session/lease.js";
 import { check as checkContext, refresh as takeReceipt } from "../session/context.js";
-import { trunkLog } from "../session/git.js";
+import { resolveTrunk, trunkLog } from "../session/git.js";
+import { projectPolicy } from "../session/policy.js";
 import { gate as gateAction, offlineDeclared, type Reach } from "../session/gate.js";
 
 const OK = "✓";
@@ -25,7 +26,7 @@ export async function refresh(root: string): Promise<number> {
   const before = await checkContext(root);
   const previous = before.lease?.receipt;
 
-  const { lease, issue, written } = await takeReceipt(root);
+  const { lease, issue, written, trunkMissing } = await takeReceipt(root);
   if (!lease) {
     console.error(issue ?? "Could not take a context receipt.");
     return 1;
@@ -41,7 +42,9 @@ export async function refresh(root: string): Promise<number> {
   }
 
   if (previous && previous.remoteSha && lease.receipt.remoteSha !== previous.remoteSha) {
-    const log = await trunkLog(root, previous.remoteSha, lease.receipt.remoteSha);
+    const policy = await projectPolicy(root);
+    const trunk = await resolveTrunk(root, policy.trunk);
+    const log = await trunkLog(root, trunk, previous.remoteSha, lease.receipt.remoteSha);
     if (log.length) {
       console.log(`Landed on main since your last receipt:`);
       for (const line of log.slice(0, 20)) console.log(`  ${line}`);
@@ -85,7 +88,14 @@ export async function refresh(root: string): Promise<number> {
     console.log(`  Repair these — re-reading will not clear them:`);
     for (const id of lease.unresolvableInputs) console.log(`    ${id}`);
   }
-  if (lease.status === "unknown") {
+  if (trunkMissing) {
+    // Not a network problem, and saying so is the whole point: the operator
+    // would otherwise chase connectivity for a ref that does not exist.
+    console.log(
+      `  \`${trunkMissing.remote}/${trunkMissing.branch}\` does not exist on the remote.`,
+    );
+    console.log(`  Set \`context.trunk\` in morpheus.json — e.g. "upstream/main" on a fork.`);
+  } else if (lease.status === "unknown") {
     console.log(`  The trunk could not be reached. MORPHEUS_OFFLINE=1 permits local work.`);
   }
   return 1;
@@ -105,7 +115,7 @@ export async function check(root: string): Promise<number> {
 
 export async function status(root: string): Promise<number> {
   const now = new Date();
-  const { lease, issue, observed, written } = await checkContext(root, now);
+  const { lease, issue, observed, written, trunkMissing } = await checkContext(root, now);
 
   if (!lease) {
     console.log(`${NO} No context receipt for this worktree.`);
@@ -120,6 +130,11 @@ export async function status(root: string): Promise<number> {
   if (lease.reason) console.log(`  ${lease.reason}`);
   if (issue) console.log(`  ! ${issue}`);
   if (!written) console.log(`  ! This verdict was not persisted — the lease on disk is older than it.`);
+  if (trunkMissing) {
+    console.log(
+      `  ! \`${trunkMissing.remote}/${trunkMissing.branch}\` does not exist — set \`context.trunk\` in morpheus.json.`,
+    );
+  }
   if (offlineDeclared()) console.log(`  MORPHEUS_OFFLINE=1 is set — local work permitted, external actions are not.`);
   return lease.status === "fresh" ? 0 : 1;
 }

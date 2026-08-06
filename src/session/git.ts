@@ -3,37 +3,99 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
-/**
- * The canonical trunk. `ContextReceipt.remoteSha` is its tip and nothing
- * else — the question a lease answers is whether the trunk moved under this
- * session, which is what another agent merging does.
- */
-export const TRUNK = "main";
+/** `origin/main` unless a project says otherwise. */
+export const DEFAULT_TRUNK = "origin/main";
 
-async function git(root: string, args: string[]): Promise<string | null> {
+export interface TrunkRef {
+  remote: string;
+  branch: string;
+}
+
+/**
+ * What a trunk lookup found. Three answers, not two.
+ *
+ * `missing` and `unreachable` rode one `null` channel until a review caught
+ * it, and the whole `fresh` verdict turns on this field: a repo whose default
+ * branch is not `main`, or whose remote is not `origin`, was permanently
+ * `unknown` — `pm claim` and `access sync` refused forever, with a message
+ * blaming a network that was fine. The same declared-thing-that-does-not-exist
+ * shape as a handle without an inbox, one layer down.
+ */
+export type TrunkObservation =
+  | { sha: string; reason?: undefined }
+  | { sha: null; reason: "unreachable" | "missing" };
+
+interface Run {
+  ok: boolean;
+  stdout: string;
+  code: number | null;
+}
+
+async function git(root: string, args: string[]): Promise<Run> {
   try {
     const { stdout } = await run("git", args, { cwd: root, timeout: 15_000 });
-    return stdout.trim();
-  } catch {
-    return null;
+    return { ok: true, stdout: stdout.trim(), code: 0 };
+  } catch (error: unknown) {
+    const err = error as { code?: number | string; stdout?: string };
+    return {
+      ok: false,
+      stdout: (err.stdout ?? "").trim(),
+      code: typeof err.code === "number" ? err.code : null,
+    };
   }
 }
 
+async function out(root: string, args: string[]): Promise<string | null> {
+  const result = await git(root, args);
+  return result.ok && result.stdout ? result.stdout : null;
+}
+
+export function parseTrunk(ref: string): TrunkRef {
+  const slash = ref.indexOf("/");
+  if (slash <= 0) return { remote: "origin", branch: ref };
+  return { remote: ref.slice(0, slash), branch: ref.slice(slash + 1) };
+}
+
 /**
- * The tip of `origin/main`, straight from the remote.
+ * Which ref is this project's canonical trunk.
+ *
+ * A declared value wins, because `origin` is **not** always canonical: for a
+ * fork contributor `origin` is their fork, which AGENTS.md already states in
+ * the section on id allocation. Left hardcoded, a fork's `main` would sit
+ * still while the real trunk moved and the lease would certify `fresh` — the
+ * exact state the protocol exists to refuse, arriving with a ✓.
+ *
+ * Undeclared, `origin/HEAD` is asked before falling back, so a repo whose
+ * default branch is `master` or `trunk` works without configuration.
+ */
+export async function resolveTrunk(root: string, declared?: string): Promise<TrunkRef> {
+  if (declared) return parseTrunk(declared);
+  const head = await out(root, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
+  return parseTrunk(head ?? DEFAULT_TRUNK);
+}
+
+/**
+ * The tip of the trunk, straight from the remote.
  *
  * `ls-remote` rather than `rev-parse origin/main`, which reads a local ref
- * that is only as current as the last fetch — the exact "looks checked, is
- * not" failure the lease exists to catch. Null when the remote could not be
- * reached, which `observeLease` turns into `unknown` and never into unchanged.
+ * only as current as the last fetch — the exact "looks checked, is not"
+ * failure the lease exists to catch.
+ *
+ * `--exit-code` is what separates the two failures: it exits 2 when no ref
+ * matches, where a plain `ls-remote` exits 0 with empty output and is
+ * indistinguishable from a dead network.
  */
-export async function trunkSha(root: string): Promise<string | null> {
-  const out = await git(root, ["ls-remote", "origin", TRUNK]);
-  return out ? (out.split(/\s+/)[0] ?? null) : null;
+export async function trunkSha(root: string, trunk: TrunkRef): Promise<TrunkObservation> {
+  const result = await git(root, ["ls-remote", "--exit-code", trunk.remote, trunk.branch]);
+  if (result.ok) {
+    const sha = result.stdout.split(/\s+/)[0];
+    return sha ? { sha } : { sha: null, reason: "missing" };
+  }
+  return { sha: null, reason: result.code === 2 ? "missing" : "unreachable" };
 }
 
 export async function currentBranch(root: string): Promise<string> {
-  return (await git(root, ["rev-parse", "--abbrev-ref", "HEAD"])) ?? "(detached)";
+  return (await out(root, ["rev-parse", "--abbrev-ref", "HEAD"])) ?? "(detached)";
 }
 
 /**
@@ -42,7 +104,7 @@ export async function currentBranch(root: string): Promise<string> {
  * `--show-toplevel` is the right question.
  */
 export async function worktreeRoot(root: string): Promise<string> {
-  return (await git(root, ["rev-parse", "--show-toplevel"])) ?? root;
+  return (await out(root, ["rev-parse", "--show-toplevel"])) ?? root;
 }
 
 /**
@@ -51,11 +113,15 @@ export async function worktreeRoot(root: string): Promise<string> {
  * has to go looking; one `git log` is the difference between a prompt and an
  * answer.
  */
-export async function trunkLog(root: string, from: string, to: string): Promise<string[]> {
-  // `--no-walk` is wrong here and `from..to` needs both objects locally, so a
-  // fetch of the trunk is part of asking. It is cheap and it is the only
-  // network call a refresh makes beyond `ls-remote`.
-  await git(root, ["fetch", "--quiet", "origin", TRUNK]);
-  const out = await git(root, ["log", "--oneline", "--no-decorate", `${from}..${to}`]);
-  return out ? out.split("\n").filter(Boolean) : [];
+export async function trunkLog(
+  root: string,
+  trunk: TrunkRef,
+  from: string,
+  to: string,
+): Promise<string[]> {
+  // `from..to` needs both objects locally, so a fetch is part of asking. It is
+  // the only network call a refresh makes beyond `ls-remote`.
+  await git(root, ["fetch", "--quiet", trunk.remote, trunk.branch]);
+  const log = await out(root, ["log", "--oneline", "--no-decorate", `${from}..${to}`]);
+  return log ? log.split("\n").filter(Boolean) : [];
 }

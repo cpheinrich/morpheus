@@ -272,3 +272,55 @@ describe("a receipt that does not reach disk", () => {
     expect(result.issue).toBeTruthy();
   });
 });
+
+describe("a command that writes a record it required", () => {
+  it("keeps the receipt true rather than making the session re-assert it", async () => {
+    // `pm block` appends to the owner's inbox, which is in the required set —
+    // so without this the next gated command past the term is refused for
+    // drift the session authored, naming a file it just wrote. Refusals with
+    // no informational content are where "do not refresh without reading"
+    // stops being holdable.
+    const root = await mkdtemp(join(tmpdir(), "morpheus-notewrite-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await mkdir(join(root, "hq", "team"), { recursive: true });
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", context: { handle: "cpheinrich" } }),
+      "utf8",
+    );
+    for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `v1 ${id}`, "utf8");
+    await writeFile(join(root, "hq/team/cpheinrich.md"), "# inbox\n", "utf8");
+
+    const { refresh, noteWrite, check } = await import("../src/session/context.js");
+    const start = new Date("2026-08-05T12:00:00.000Z");
+    await refresh(root, start);
+
+    // The session writes the inbox, as `pm block` does, and says so.
+    await writeFile(join(root, "hq/team/cpheinrich.md"), "# inbox\n\n## ❗ 1. Blocked\n", "utf8");
+    await noteWrite(root, ["hq/team/cpheinrich.md"]);
+
+    // Past the term, so the lease is genuinely re-observed rather than trusted.
+    const after = new Date(start.getTime() + 10 * 60_000);
+    const { lease } = await check(root, after);
+    expect(lease?.changedInputs).not.toContain("hq/team/cpheinrich.md");
+  });
+
+  it("does not make an unread record read by writing over it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-notewrite-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "x" }), "utf8");
+    for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `v1 ${id}`, "utf8");
+
+    const { refresh, noteWrite, check } = await import("../src/session/context.js");
+    const start = new Date("2026-08-05T12:00:00.000Z");
+    await refresh(root, start);
+
+    // A record the receipt never covered stays uncovered — `noteWrite` only
+    // updates ids already in the receipt.
+    await writeFile(join(root, "docs.md"), "new", "utf8");
+    await noteWrite(root, ["docs.md"]);
+
+    const { lease } = await check(root, new Date(start.getTime() + 10 * 60_000));
+    expect(lease?.receipt.inputs.map((i) => i.id)).not.toContain("docs.md");
+  });
+});

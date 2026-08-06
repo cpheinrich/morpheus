@@ -165,6 +165,34 @@ Two more, both the same one-of-two-outputs shape:
   `unresolvableInputs` into the changed list and closed with "run refresh". The one instruction
   that cannot fix them.
 
+## Third review pass — the lock-out shape has layers
+
+- **`ls-remote` exits 0 with empty output when no ref matches.** So *"origin has no `main`"* and
+  *"the network is down"* rode one `null` channel, and the whole `fresh` verdict turns on that
+  field. A repo whose default branch is `master`, or whose remote is `upstream`, was permanently
+  `unknown` — `pm claim` and `access sync` refused forever, with a message telling the operator to
+  check their connection. **The same shape as a handle whose inbox is never created, one layer
+  down: a declared thing that does not exist, failing closed with a misleading reason.**
+  `--exit-code` separates them, and `doctor` now has somewhere to point.
+- **`origin` is not the canonical trunk on a fork** — AGENTS.md says so explicitly, in the section
+  on id allocation, and I hardcoded it anyway. A fork's `main` sits still while the real trunk
+  moves, so the lease certifies `fresh` indefinitely: the exact state the protocol exists to
+  refuse, arriving with a ✓. `context.trunk` declares it; undeclared, `origin/HEAD` is asked first.
+  **Worth noting the pattern in the miss:** the answer was already written down in the repo's own
+  instructions, in a section about something else.
+- **A gated command invalidated the lease that let it run.** `pm block` writes the owner's inbox,
+  which the required set names, so the second `pm block` past the term was refused for drift this
+  session authored — naming a file it wrote a minute earlier. The everyday inbox cycle is worse:
+  read replies, promote to `decisions.md`, archive, rewrite the inbox, and three of four canonical
+  records have moved by your own hand.
+
+  Nothing unsafe, and that is the problem. **Refusals with no informational content are the fastest
+  route to a gate being routed around**, and they are exactly where "do not refresh without
+  reading" stops being holdable — there is nothing to read, so the habit that forms is *refresh to
+  clear the gate*, which the docs correctly name as the one failure this cannot detect. `noteWrite`
+  re-fingerprints only the records the caller wrote and only those the receipt already covered, so
+  the assertion stays **true** rather than being re-asserted blindly.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { trunkChanges } from "../src/cli/check.js";
+import { parseTrunk, resolveTrunk, trunkSha } from "../src/session/git.js";
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, {
@@ -94,5 +95,66 @@ describe("trunkChanges", () => {
     process.chdir(root);
 
     expect(trunkChanges("origin/nonexistent")).toEqual([]);
+  });
+});
+
+describe("resolving the trunk", () => {
+  it("splits a declared remote/branch, and defaults the remote", () => {
+    expect(parseTrunk("upstream/main")).toEqual({ remote: "upstream", branch: "main" });
+    expect(parseTrunk("origin/release/v2")).toEqual({ remote: "origin", branch: "release/v2" });
+    // A bare name is a branch on `origin`, not a remote with no branch.
+    expect(parseTrunk("trunk")).toEqual({ remote: "origin", branch: "trunk" });
+  });
+
+  it("prefers a declared trunk over anything it could infer", async () => {
+    // `origin` is not always canonical: on a fork it is the fork, whose main
+    // sits still while the real trunk moves — and the lease would certify
+    // `fresh` the whole time.
+    const root = await mkdtemp(join(tmpdir(), "morpheus-trunk-"));
+    git(root, "init", "-q", "-b", "main");
+    expect(await resolveTrunk(root, "upstream/main")).toEqual({
+      remote: "upstream",
+      branch: "main",
+    });
+  });
+
+  it("falls back to origin/main when nothing is declared or inferable", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-trunk-"));
+    git(root, "init", "-q", "-b", "main");
+    expect(await resolveTrunk(root)).toEqual({ remote: "origin", branch: "main" });
+  });
+});
+
+describe("observing the trunk", () => {
+  it("tells a ref that does not exist from a remote that cannot be reached", async () => {
+    // These rode one `null` channel, and the whole `fresh` verdict turns on
+    // this field: a repo whose default branch is not `main` was permanently
+    // `unknown`, with `pm claim` refused forever and a message blaming a
+    // network that was fine.
+    const upstream = await mkdtemp(join(tmpdir(), "morpheus-remote-"));
+    git(upstream, "init", "-q", "--bare", "-b", "main");
+
+    const root = await mkdtemp(join(tmpdir(), "morpheus-trunk-"));
+    git(root, "init", "-q", "-b", "main");
+    await commit(root, "a.md", "a", "root");
+    git(root, "remote", "add", "origin", upstream);
+    git(root, "push", "-q", "origin", "main");
+
+    expect(await trunkSha(root, { remote: "origin", branch: "main" })).toEqual({
+      sha: git(root, "rev-parse", "HEAD"),
+    });
+
+    // Present remote, absent ref — `ls-remote` exits 0 with no output without
+    // `--exit-code`, which is what made this indistinguishable from offline.
+    expect(await trunkSha(root, { remote: "origin", branch: "master" })).toEqual({
+      sha: null,
+      reason: "missing",
+    });
+
+    // No such remote at all.
+    expect(await trunkSha(root, { remote: "nope", branch: "main" })).toEqual({
+      sha: null,
+      reason: "unreachable",
+    });
   });
 });

@@ -789,6 +789,20 @@ is re-observed against `git ls-remote origin main` and the records as they are n
 rather than `rev-parse origin/main`, which reads a local ref only as current as the last fetch:
 the exact looks-checked-is-not failure the lease exists to catch.
 
+**The trunk is declared, not assumed.** `origin` is not always canonical — on a fork it *is* the
+fork, whose `main` sits still while the real trunk moves, and a lease measured against it certifies
+`fresh` indefinitely. `context.trunk` in `morpheus.json` names it; undeclared, `origin/HEAD` is
+asked before falling back to `origin/main`. And a ref that does not exist is distinguished from a
+remote that cannot be reached (`ls-remote --exit-code`), because both produce an `unknown` lease
+and only one of them is a network problem — conflated, a repo whose default branch is `master` was
+permanently refused with a message blaming connectivity.
+
+**A command that writes a required record re-fingerprints it.** `pm block` appends to the owner's
+inbox, which the required set names, so the next gated command past the term would be refused for
+drift the session authored. Re-fingerprinting keeps the assertion *true* rather than having it
+re-asserted blindly — and refusals with no informational content are the fastest route to the gate
+being routed around.
+
 **Offline is contained, not permitted.** `MORPHEUS_OFFLINE=1` lets local work proceed on an
 `unknown` lease and still refuses anything that leaves the machine. It has to be *declared*: an
 unreachable remote is `unknown` either way, and inferring the exception from the symptom would

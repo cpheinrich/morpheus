@@ -7,7 +7,7 @@ import {
   type SessionLease,
 } from "./lease.js";
 import { readInputs } from "./inputs.js";
-import { currentBranch, trunkSha, worktreeRoot } from "./git.js";
+import { currentBranch, resolveTrunk, trunkSha, worktreeRoot, type TrunkRef } from "./git.js";
 import { projectPolicy, sessionId } from "./policy.js";
 import { readLease, writeLease } from "./store.js";
 
@@ -22,6 +22,13 @@ export interface ContextResult {
   issue?: string;
   /** True when the remote was consulted, false when the term was still running. */
   observed: boolean;
+  /**
+   * Set when the trunk itself is the problem: the configured ref does not
+   * exist, rather than the network being down. Both produce an `unknown`
+   * lease, and only this tells an operator which — a message blaming the
+   * network for a misconfigured ref sends them hunting the wrong thing.
+   */
+  trunkMissing?: TrunkRef;
   /**
    * Whether the lease reached disk. Separate from `issue` because a
    * filesystem failure and "dropped an advisory label" are not the same
@@ -53,7 +60,9 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
   const { worktree, id } = await session(root);
   const policy = await projectPolicy(worktree);
   const inputs = await readInputs(worktree, required(policy));
-  const sha = await trunkSha(worktree);
+  const trunk = await resolveTrunk(worktree, policy.trunk);
+  const observation = await trunkSha(worktree, trunk);
+  const sha = observation.sha;
 
   const receipt: ContextReceipt = {
     version: 1,
@@ -76,7 +85,45 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
     observed: true,
     written: write.written,
     ...(write.issue ? { issue: write.issue } : {}),
+    ...(observation.reason === "missing" ? { trunkMissing: trunk } : {}),
   };
+}
+
+/**
+ * Re-fingerprint records this session just wrote into its own receipt.
+ *
+ * `pm block` appends to `hq/team/<handle>.md`, which the same project's
+ * required set names — so the next gated command past the term is refused for
+ * drift *this session authored*, naming a file it wrote a moment ago. The
+ * everyday inbox cycle is worse: read the replies, promote to
+ * `.agent/decisions.md`, archive, write a fresh inbox, and three of the four
+ * canonical records have moved by your own hand.
+ *
+ * Nothing there is unsafe, and that is exactly the problem. Refusals with no
+ * informational content are the highest-frequency source of the gate fatigue
+ * this design is otherwise careful about, and they are where "do not refresh
+ * without reading" is hardest to hold — there is genuinely nothing to read,
+ * so the habit that forms is *refresh to clear the gate*.
+ *
+ * Re-fingerprinting keeps the assertion **true** rather than re-asserting it
+ * blindly: the agent read the record, then wrote it, so it knows the current
+ * contents. Deliberately narrow — only the named ids, and only from the
+ * caller that did the writing.
+ */
+export async function noteWrite(root: string, ids: readonly string[]): Promise<void> {
+  if (!ids.length) return;
+  const { worktree, id } = await session(root);
+  const { lease } = await readLease(worktree, id);
+  if (!lease) return;
+
+  const fresh = new Map((await readInputs(worktree, ids)).map((i) => [i.id, i.fingerprint]));
+  // Only records the receipt already covered. A record this session never
+  // read does not become read by being written over.
+  const inputs = lease.receipt.inputs.map((input) =>
+    fresh.has(input.id) ? { ...input, fingerprint: fresh.get(input.id)! } : input,
+  );
+
+  await writeLease(worktree, id, { ...lease, receipt: { ...lease.receipt, inputs } });
 }
 
 /**
@@ -114,10 +161,11 @@ export async function check(root: string, now = new Date()): Promise<ContextResu
   // agent actually took — its `inputs` are the assertion, and comparing new
   // observations to them is the entire mechanism.
   const inputs = await readInputs(worktree, required(policy));
-  const sha = await trunkSha(worktree);
+  const trunk = await resolveTrunk(worktree, policy.trunk);
+  const observation = await trunkSha(worktree, trunk);
   const lease = observeLease(
     stored.receipt,
-    { checkedAt: now.toISOString(), remoteSha: sha, inputs },
+    { checkedAt: now.toISOString(), remoteSha: observation.sha, inputs },
     policy,
   );
 
@@ -131,5 +179,6 @@ export async function check(root: string, now = new Date()): Promise<ContextResu
     observed: true,
     written: write.written,
     ...(problem ? { issue: problem } : {}),
+    ...(observation.reason === "missing" ? { trunkMissing: trunk } : {}),
   };
 }

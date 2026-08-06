@@ -35,6 +35,14 @@ import {
   status as contextStatus,
 } from "./context.js";
 import { GATED } from "../session/gate.js";
+import { noteWrite } from "../session/context.js";
+import { projectPolicy } from "../session/policy.js";
+
+/** The required records that live in `hq/team/` — what `pm block` writes. */
+async function inboxRecords(root: string): Promise<string[]> {
+  const { requiredInputs = [] } = await projectPolicy(root);
+  return requiredInputs.filter((id) => id.startsWith("hq/team/"));
+}
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -433,11 +441,16 @@ async function main(): Promise<number> {
     case "block": {
       const refused = await guard(process.cwd(), "pm block", GATED["pm block"]!, flags.offline);
       if (refused !== null) return refused;
-      return block(dir, process.cwd(), rest[0] ?? "", {
+      // `block` raises an `❗` item in the owner's inbox, which is a required
+      // record. Without this the next gated command is refused for drift this
+      // session authored, naming a file it just wrote.
+      const code = await block(dir, process.cwd(), rest[0] ?? "", {
         ...(flags.needs ? { needs: flags.needs } : {}),
         ...(flags.owner ? { owner: flags.owner } : {}),
         ...(flags.context ? { context: flags.context } : {}),
       });
+      await noteWrite(process.cwd(), await inboxRecords(process.cwd()));
+      return code;
     }
     case "unblock":
       return unblock(dir, rest[0] ?? "");

@@ -608,6 +608,10 @@ records changed. Re-read those, then refresh again — the delta is the point, n
 pushing a claim, granting access — is still refused, because an unverified trunk is exactly
 when you should not be operating external controls.
 
+**On a fork**, set \`"context": { "trunk": "upstream/main" }\` in \`morpheus.json\`. \`origin\` is
+your fork, whose \`main\` sits still while the real trunk moves — measured against it, a lease
+certifies fresh forever.
+
 Receipts live in \`local/sessions/\`, which is gitignored. A receipt says *this working copy read
 these files*, which is true of one machine — committing it would turn a local observation into a
 claim about everyone. Shared evidence stays the worklog, the commit and the PR.
