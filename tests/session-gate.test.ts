@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CANONICAL_INPUTS } from "../src/session/lease.js";
@@ -611,6 +611,43 @@ describe("records of a blocked item that reached nobody", () => {
     expect(paths).toContain(`hq/product/roadmap/${id}-thing.md`);
     expect(paths).toContain(`.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`);
     expect(paths).toContain("hq/team/cpheinrich.md");
+  });
+
+  it("finds the inbox when run from a subdirectory", async () => {
+    // Git emits repo-root-relative paths whatever directory it runs in, so
+    // joining them onto `process.cwd()` only works from the root. From `src/`
+    // the inbox read went ENOENT, `catch(() => "")` turned that into "names no
+    // blocked id", and the one record that *is* the escalation dropped out
+    // while the two that carry no information survived by path — with the
+    // message still saying "including the inbox entry".
+    const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const id = "MO-26-08-05-16.27.56";
+    const root = await repo();
+    await mkdir(join(root, "hq", "team"), { recursive: true });
+    await mkdir(join(root, "src"), { recursive: true });
+    await writeFile(
+      join(root, "hq/team/cpheinrich.md"),
+      `# inbox\n\n## ❗ 1. Blocked · [${id}](../product/roadmap/${id}.md)\n`,
+      "utf8",
+    );
+
+    const { paths } = await unsentBlockRecords(join(root, "src"), [id]);
+    expect(paths).toContain("hq/team/cpheinrich.md");
+  });
+
+  it("lists an inbox it cannot read rather than treating it as clean", async () => {
+    const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const id = "MO-26-08-05-16.27.56";
+    const root = await repo();
+    await mkdir(join(root, "hq", "team"), { recursive: true });
+    // A dangling symlink: git reports it as a dirty file, and `readFile`
+    // follows it to ENOENT. The check exists for this record, so failing
+    // closed on it is the only safe direction — "" would have said it names
+    // no blocked id, which is the absence-reads-as-clean shape.
+    await symlink("gone.md", join(root, "hq/team/cpheinrich.md"));
+
+    const { paths } = await unsentBlockRecords(root, [id]);
+    expect(paths.some((p) => p.startsWith("hq/team/cpheinrich.md"))).toBe(true);
   });
 
   it("ignores an inbox cycle, the roster and meeting notes that name no blocked id", async () => {

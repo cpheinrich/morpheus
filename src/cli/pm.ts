@@ -361,7 +361,7 @@ export async function claims(
         (noUpstream ? ` This branch has no upstream — push with \`-u\`.` : "") +
         `\x1b[0m`,
     );
-  } else if (noUpstream && blocked.size) {
+  } else if (noUpstream) {
     // Nothing on this branch has reached anyone and `@{u}` cannot say which
     // records those are. Silence here would be the "absence renders as nothing
     // to do" shape — and `block` promises this command will keep saying so.
@@ -424,6 +424,14 @@ export async function unsentBlockRecords(
     }
   };
 
+  // Git emits repo-root-relative paths for `--porcelain` and `--name-only`
+  // whatever directory it runs in, so they are only joinable onto `cwd` when
+  // `cwd` *is* the root. Resolved once: joining onto a subdirectory made the
+  // inbox read ENOENT, and the `catch(() => "")` below turned that into "names
+  // no blocked id" — silently dropping the one record that is the escalation
+  // while the two that carry no information survived by path.
+  const rootDir = (await lines(["rev-parse", "--show-toplevel"]))?.[0] ?? cwd;
+
   // `-uall`, because plain `--porcelain` collapses an untracked directory to
   // one entry — a first block in a fresh checkout reports `hq/` and names none
   // of the three records.
@@ -431,8 +439,16 @@ export async function unsentBlockRecords(
     l.slice(3).trim(),
   );
 
-  const upstream = await lines(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
-  const noUpstream = upstream === null;
+  // Specifically "there is no upstream", not "some git command failed". Four
+  // different failures reach `null` — not a repo, git missing, a timeout, no
+  // upstream — and reporting all of them as the last one is a confident answer
+  // built from a failed lookup. A repo with no HEAD commit yet has no upstream
+  // either, and saying so is right; a broken git is not this check's business.
+  const inRepo = (await lines(["rev-parse", "--is-inside-work-tree"]))?.[0] === "true";
+  const upstream = inRepo
+    ? await lines(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+    : ["(not a repo)"];
+  const noUpstream = inRepo && upstream === null;
   const unpushed = noUpstream
     ? []
     : ((await lines(["log", "--name-only", "--pretty=format:", "@{u}..HEAD"])) ?? []);
@@ -448,8 +464,12 @@ export async function unsentBlockRecords(
     if (named.includes(path)) continue;
     const name = basename(path).toLowerCase();
     if (dirname(path) !== INBOX_DIR || !name.endsWith(".md") || TEAM_RESERVED.has(name)) continue;
-    const body = await readFile(join(cwd, path), "utf8").catch(() => "");
-    if (ids.some((id) => body.toLowerCase().includes(id))) inboxes.push(path);
+
+    const body = await readFile(join(rootDir, path), "utf8").catch(() => null);
+    // Unreadable is not "names no blocked id". An inbox that exists and cannot
+    // be read is listed rather than dropped — the check exists for this file,
+    // so failing closed on it is the only safe direction.
+    if (body === null || ids.some((id) => body.toLowerCase().includes(id))) inboxes.push(path);
   }
 
   return { paths: [...named, ...inboxes].sort(), noUpstream };

@@ -338,6 +338,30 @@ Two more:
   escalation and its path has no id, so it is matched **by content**: `appendOpenItem` writes the
   roadmap id into the entry as a link, which is the thing the path cannot carry.
 
+## Ninth review pass — the fix arrived through the mechanism that fixed it
+
+`git status --porcelain` and `git log --name-only` emit **repo-root-relative** paths whatever
+directory they run in, and the inbox content-read joined them onto `process.cwd()`. From any
+subdirectory that read went ENOENT, `.catch(() => "")` turned it into *"names no blocked id"*, and
+**the one record that is the escalation dropped out of the report while the two that carry no
+information to the human survived by path** — with the instruction still saying *"including the
+inbox entry"*.
+
+That is the previous round's finding, arriving through the mechanism written to close it. Two
+lessons, and the second is the durable one:
+
+1. Resolve the repo root once (`rev-parse --show-toplevel`) before joining anything git printed.
+   `src/session/context.ts` normalises to `worktreeRoot` for exactly this reason, in the same
+   commit family; this helper never did.
+2. **`.catch(() => "")` is the sentinel rule in punctuation.** An unreadable file and a file that
+   says nothing are different answers, and folding them into an empty string is *absence rendering
+   as clean* on the one file the whole check exists for. It now lists an unreadable inbox rather
+   than dropping it — failing closed is the only safe direction here.
+
+Also: the no-upstream detection reported four different failures as "no upstream" — not a repo, git
+missing, a timeout, and the real thing. A confident answer built from a failed lookup. It asks
+`--is-inside-work-tree` first now.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
