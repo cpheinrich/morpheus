@@ -781,7 +781,9 @@ routing-around is permanent where the staleness was temporary.**
 starting where another refreshed minutes ago would inherit its ✓ — the failure this whole section
 is about, arriving through the surface added to prevent it. `context brief` discards the stored
 receipt before reporting: that asserts nothing, so it does not violate the rule below, and it is
-what makes the lease session-scoped rather than merely working-copy-scoped. It also lands correctly
+what makes the lease session-scoped rather than merely working-copy-scoped. It is also **entirely
+local** — everything it prints comes from the records, so the hook in front of every session makes
+no network call at all. It also lands correctly
 on a session *resumed* after a context compaction, which is exactly when an agent has lost what it
 read. Discarding rather than downgrading, because flipping the stored status does not survive the
 next check — which re-observes from the receipt, and the receipt is still valid.

@@ -408,7 +408,7 @@ async function main(): Promise<number> {
     const off = offlineDeclared(flags.offline);
     if (command === "refresh") return contextRefresh(process.cwd(), off);
     if (command === "check") return contextCheck(process.cwd(), off);
-    if (command === "brief") return contextBrief(process.cwd(), off);
+    if (command === "brief") return contextBrief(process.cwd());
     if (command === "status" || command === undefined) return contextStatus(process.cwd(), off);
     console.error(`Unknown context command "${command}".\n\n${HELP}`);
     return 1;

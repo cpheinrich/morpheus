@@ -1307,7 +1307,7 @@ describe("what a lease is scoped to", () => {
     const log = console.log;
     console.log = (...args: unknown[]) => void printed.push(args.join(" "));
     try {
-      await brief(root, true);
+      await brief(root);
     } finally {
       console.log = log;
     }

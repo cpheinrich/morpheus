@@ -231,18 +231,28 @@ async function sinceReceipt(
   root: string,
   receipt: ContextReceipt,
   now: Date,
-  offline: boolean,
 ): Promise<SessionLease> {
   const wt = await worktreeRoot(root);
   const policy = await projectPolicy(wt);
-  const trunk = await resolveTrunk(wt, policy.trunk);
   const inputs = await readInputs(wt, policy.requiredInputs ?? CANONICAL_INPUTS);
-  const sha = offline ? null : (await trunkSha(wt, trunk)).sha;
-  return observeLease(receipt, { checkedAt: now.toISOString(), remoteSha: sha, inputs }, policy);
+
+  // **No network call.** `brief` prints `changedInputs` and
+  // `unresolvableInputs`, both of which `localDelta` computes from the records
+  // alone — the trunk answer cannot change one character of the output. This
+  // runs at the start of every session, from a hook, so an `ls-remote` here is
+  // a round trip bought for nothing, and a timeout on a slow link would sit in
+  // front of the session. `null` is the honest input: the trunk was not asked.
+  return observeLease(receipt, { checkedAt: now.toISOString(), remoteSha: null, inputs }, policy);
 }
 
 /**
  * The session-start message, injected into a new session's context by a hook.
+ *
+ * **Entirely local.** It makes no network call, so it takes no `offline`
+ * argument: everything it prints comes from `localDelta`, which is computed
+ * from the records alone. That matters because it runs from a hook at the
+ * start of every session — a round trip here is bought for nothing, and on a
+ * slow link its timeout would sit in front of the session.
  *
  * **Not read-only.** It discards the stored receipt, which is what makes the
  * lease session-scoped — so it belongs in a session-start hook and nowhere
@@ -258,7 +268,7 @@ async function sinceReceipt(
  * so a receipt minted here would certify the records were loaded by the act of
  * not loading them.
  */
-export async function brief(root: string, offline = offlineDeclared()): Promise<number> {
+export async function brief(root: string): Promise<number> {
   // **Decertify first.** The lease is keyed on the worktree, so a session
   // starting where a previous one refreshed minutes ago would otherwise
   // inherit its certification — and this command would tell a session that
@@ -271,7 +281,7 @@ export async function brief(root: string, offline = offlineDeclared()): Promise<
   // must not inherit certification) and the reporting depends on the thing
   // discarded, so `endTerm` returns it rather than dropping it.
   const now = new Date();
-  const moved = previous ? await sinceReceipt(root, previous.receipt, now, offline) : null;
+  const moved = previous ? await sinceReceipt(root, previous.receipt, now) : null;
 
   if (previous) {
     console.log(

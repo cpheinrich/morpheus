@@ -780,6 +780,18 @@ Two smaller, both about the same command's contract having quietly changed:
 - The opening line asserted *"the previous one was another session's"* whether or not one had ever
   existed. It reports what was actually there.
 
+## Twenty-seventh review pass — a round trip bought for nothing
+
+`sinceReceipt` asked `ls-remote` for a trunk SHA whose answer **cannot change one character of
+`brief`'s output**: everything it prints comes from `changedInputs` and `unresolvableInputs`, both
+computed by `localDelta` from the records alone. A cost rather than a defect — but it ran from a
+hook at the start of every session, and on a slow link its timeout would have sat in front of the
+session.
+
+Dropping it made `brief` take no `offline` argument either, which is the better property to state
+outright: **the session-start hook is entirely local.** Worth noticing that the argument existed
+only because the call did — a parameter threaded to serve a call that should not have been there.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
