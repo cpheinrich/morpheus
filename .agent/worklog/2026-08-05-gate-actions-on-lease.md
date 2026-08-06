@@ -551,6 +551,31 @@ after the last fix printed nothing — in the one path where the gate has just s
 advanced; determine the canonical delta"*. It says there is no baseline now, and gives the `git
 log` that answers it. **Silence is not the fix for a wrong answer; a true one is.**
 
+## Eighteenth review pass — the replacement for the silence pointed at a stale ref
+
+The "no baseline" block added last round printed `git log --oneline HEAD..origin/main`, and
+**nothing on that path has fetched**. `checkContext` and `takeReceipt` both use `ls-remote`, which
+does not update refs; the only `fetch` lives inside `trunkLog`, in the mutually exclusive branch
+below. So the command answered from whenever the user last fetched: the SHA asserted one line above
+would not appear in its output, and on a fork with a declared but never-fetched upstream it fails
+with *"unknown revision"*.
+
+That is the exact failure `trunkSha`'s own doc comment cites as the reason this module uses
+`ls-remote` at all — **the founding decision of the whole protocol, contradicted eight lines from
+the function that states it.** And the correct machinery was already in the file: `trunkLog`
+fetches. It answers now rather than delegating.
+
+Worth naming as the pattern across the last three rounds: *wrong answer → silence → true answer*.
+Each intermediate step looked like a fix. **A "here is how to find out" is a wrong answer whenever
+the command you hand over cannot reach what you just asserted.**
+
+- The container, not just the fields: `.loose()` widens which *keys* are allowed, not the type, so
+  a `context` that is not an object still threw and still silenced every other check. Fifth
+  variation on the same theme in this file.
+- `pm block` still works offline — **fifth pass this doc has been wrong**, and it is the one
+  surface a generated project cannot correct for itself. Fixed in `templates.ts`, where AGENTS.md
+  and `architecture.md` were fixed rounds ago.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

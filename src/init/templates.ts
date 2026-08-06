@@ -606,7 +606,9 @@ records changed. Re-read those, then refresh again — the delta is the point, n
 
 **Offline**, set \`MORPHEUS_OFFLINE=1\` — or pass \`--offline\`. Local work proceeds; anything that leaves the machine —
 pushing a claim, granting access — is still refused, because an unverified trunk is exactly
-when you should not be operating external controls.
+when you should not be operating external controls. **\`pm block\` still works**: it writes the
+records and skips the push, telling you the block is not visible to other sessions yet. Blocking
+rather than guessing is the one escape hatch a stuck session needs most.
 
 **On a fork**, set \`"context": { "trunk": "upstream/main" }\` in \`morpheus.json\`. \`origin\` is
 your fork, whose \`main\` sits still while the real trunk moves — measured against it, a lease

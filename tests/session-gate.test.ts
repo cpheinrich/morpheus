@@ -217,6 +217,27 @@ describe("scaffolding", () => {
     expect(skipped?.severity).toBe("warning");
   });
 
+  it("keeps reporting when the whole context block is not an object", async () => {
+    // `.loose()` widens which *keys* are allowed, not the type — so the rule
+    // has to reach the container, not stop at the fields.
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-badcontext-"));
+    roots.push(root);
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", prefix: "XX", kind: "internal", context: "cpheinrich" }),
+      "utf8",
+    );
+
+    const findings = await doctor({ root, offline: true });
+    expect(findings.find((f) => f.check === "manifest")).toBeUndefined();
+    expect(
+      findings.find((f) => f.check === "context" && f.message.includes("not an object"))?.severity,
+    ).toBe("error");
+    // …and the rest of the checks still run.
+    expect(findings.some((f) => f.check === "structure")).toBe(true);
+  });
+
   it("keeps reporting the states that lock the gate when a context field is malformed", async () => {
     // A schema strict enough to reject a hand-edit silences `doctor` entirely
     // — including the handle-without-inbox and trunk errors, which name states

@@ -57,11 +57,22 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
   // just said "the remote advanced; determine the canonical delta". Saying
   // there is no baseline is the answer; showing nothing is not.
   if (previous && !previous.remoteSha && lease.receipt.remoteSha) {
-    console.log(
-      `Your previous receipt was taken without a verified trunk, so there is no range to show.`,
-    );
-    console.log(`  The trunk is now ${lease.receipt.remoteSha.slice(0, 7)}; to see what landed:`);
-    console.log(`    git log --oneline HEAD..${trunkRef ?? "origin/main"}`);
+    // Answered, not delegated. Printing `git log HEAD..origin/main` here would
+    // name a **local remote-tracking ref** that nothing on this path has
+    // fetched — the exact stale-local-ref failure `trunkSha` cites as the
+    // reason this module uses `ls-remote` at all. The command would answer
+    // from whenever the user last fetched, the SHA asserted one line above
+    // would not appear in its output, and on a fork with a declared but
+    // never-fetched upstream it fails outright. `trunkLog` fetches.
+    const behind = await trunkLog(wt, trunk, "HEAD", lease.receipt.remoteSha);
+    console.log(`Your previous receipt was taken without a verified trunk (${trunkRef}).`);
+    if (behind.length) {
+      console.log(`On the trunk and not in this branch:`);
+      for (const line of behind.slice(0, 20)) console.log(`  ${line}`);
+      if (behind.length > 20) console.log(`  … and ${behind.length - 20} more`);
+    } else {
+      console.log(`  Nothing on it that this branch does not already have.`);
+    }
     console.log("");
   }
 

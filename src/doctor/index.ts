@@ -37,7 +37,7 @@ export const Manifest = z.object({
    * enough to reject a hand-edit silences the only surface that would have
    * explained it, while the gate carries on with a default.
    */
-  context: z.object({}).loose().optional(),
+  context: z.unknown().optional(),
   /**
    * Subtrees owned by a parent project rather than this one, e.g.
    * `{ "finance": "darwin" }`. Their directories are correctly absent, so
@@ -267,7 +267,22 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   // which projects have the protocol wired and which are still open.
   // Checked here rather than in the schema, so a bad one is reported and the
   // rest of `doctor` still runs.
-  const raw = (manifest.context ?? {}) as Record<string, unknown>;
+  const contextBlock = manifest.context;
+  if (contextBlock !== undefined && (typeof contextBlock !== "object" || contextBlock === null || Array.isArray(contextBlock))) {
+    // `.loose()` widens which *keys* are allowed, not the type — so a
+    // `context` that is not an object still threw and still silenced every
+    // other check. The rule has to reach the container, not stop at the
+    // fields.
+    add(
+      "error",
+      "context",
+      `context is not an object, so every session-freshness setting in it is ignored and the ` +
+        `defaults apply. Nothing else reports this: the gate falls back silently.`,
+    );
+  }
+  const raw = (contextBlock && typeof contextBlock === "object" && !Array.isArray(contextBlock)
+    ? contextBlock
+    : {}) as Record<string, unknown>;
   for (const [key, expected, ok] of [
     ["handle", "a string", (v: unknown) => typeof v === "string"],
     ["trunk", "a string", (v: unknown) => typeof v === "string"],
