@@ -65,6 +65,7 @@ describe("session lease policy", () => {
     expect(lease.changedInputs).toEqual([".agent/decisions.md"]);
     await notifyAdapter(adapter, lease, CHECKED);
     expect(adapter.refreshRequests.map((r) => r.lease)).toEqual([lease]);
+    expect(adapter.repairRequests).toEqual([]);
     expect(() => requireFresh(lease, CHECKED)).toThrow(ContextFreshnessError);
   });
 
@@ -107,6 +108,7 @@ describe("session lease policy", () => {
     await notifyAdapter(adapter, lease, CHECKED);
     expect(lease.status).toBe("unknown");
     expect(adapter.refreshRequests.map((r) => r.lease)).toEqual([lease]);
+    expect(adapter.repairRequests).toEqual([]);
   });
 });
 
@@ -375,6 +377,7 @@ describe("lease term", () => {
     expect(adapter.refreshRequests).toHaveLength(1);
     expect(adapter.refreshRequests[0]?.lease.status).toBe("refresh_required");
     expect(adapter.refreshRequests[0]?.lease.reason).toMatch(/Lease was checked/);
+    expect(adapter.repairRequests).toEqual([]);
   });
 
   it("leaves a non-fresh lease's reason intact", () => {
