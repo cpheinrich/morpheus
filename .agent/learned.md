@@ -308,3 +308,10 @@ Then the assertion written to pin it **passed under both regexes** — the path 
 window the bug deletes, so it proved nothing. An assertion for a swallowing bug has to put the
 thing being looked for *inside* the swallowed span. Same failure as the guard itself, one level
 down: checking the shape rather than the mechanism.
+
+Round five was the useful generalisation. Closer-anchoring alone made the live miss go away —
+because the globs happen to sit past the file's last block comment. **Safe-today and safe are
+different properties**, and the difference was two characters: key the opener on shape too
+(`/**` or `/* `, never `/*.`) and the guard stops depending on where in the file anything sits.
+Appending a comment below those globs is the normal way that file grows, so "no miss today" had a
+short shelf life.

@@ -213,10 +213,15 @@ function namesOldPath(source: string): boolean {
     // forward to the `**/` two lines down — deleting three lines of the very
     // file the guard exists for.
     //
-    // Anchoring the closer is what actually discriminates. Every `*/` in
-    // `src/` followed by anything but whitespace — three of them — is a glob, a
-    // regex or a template. A real block comment always ends its line.
-    .replace(/^[ \t]*\/\*[\s\S]*?\*\/[ \t]*$/gm, "")
+    // Both ends are keyed on *shape*, not position. A real block comment ends
+    // its line — every `*/` in `src/` followed by anything else is a glob, a
+    // regex or a template — and opens `/**` or `/* `, never `/*.`, which is
+    // what every one of those globs does.
+    //
+    // The closer alone happens to be enough today, but only because the globs
+    // sit after the file's last comment. Appending one below them would reopen
+    // the swallow, and appending to that file is the normal way it grows.
+    .replace(/^[ \t]*\/\*[*\s][\s\S]*?\*\/[ \t]*$/gm, "")
     // `//` only. An earlier version also dropped lines opening with `*`, for
     // JSDoc continuations — which are already inside the block above, so it
     // bought nothing and cost the shape this repo actually writes: inside a
@@ -288,6 +293,12 @@ describe("hq/team paths", () => {
     // sit *inside* that window or the assertion proves nothing — which is the
     // trap the first version of this line fell into, passing either way.
     expect(namesOldPath('const g = `\n/*.png\nhq/inbox\nlocal/**/*.png\n`;')).toBe(true);
+    // The same globs with a block comment *after* them. Closer-anchoring alone
+    // survives the real file only because its globs sit past the last comment;
+    // appending one below them is how that file normally grows, and it would
+    // reopen the swallow. Keying the opener on shape too makes the guard
+    // independent of where in the file anything sits.
+    expect(namesOldPath('const g = `\n/*.png\nhq/inbox\n`;\n/** A doc comment. */')).toBe(true);
 
     // And the thing the narrowing was actually for: history stays sayable.
     // `.agent/decisions.md` — *historical records keep the old paths* — is
