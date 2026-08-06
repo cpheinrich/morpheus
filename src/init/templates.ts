@@ -20,7 +20,20 @@ export interface Seed {
 }
 
 export const manifest = (s: Seed): string =>
-  JSON.stringify({ name: s.name, prefix: s.prefix, kind: s.kind }, null, 2) + "\n";
+  JSON.stringify(
+    {
+      name: s.name,
+      prefix: s.prefix,
+      kind: s.kind,
+      // The handle puts `hq/team/<handle>.md` into the session-freshness
+      // required set. It is the record a human actually replies in, so an
+      // agent resuming without re-reading it is the failure the protocol
+      // exists for — and the policy cannot derive a handle on its own.
+      context: { handle: s.owner },
+    },
+    null,
+    2,
+  ) + "\n";
 
 /**
  * The public Morpheus repository.
@@ -267,6 +280,7 @@ ${morpheusCalloutForAgents()}
 | \`.agent/learned.md\` | Things that have bitten us |
 | \`.agent/worklog/\` | What was attempted per task, including dead ends |
 
+${contextFreshness()}
 ## Working conventions
 
 **Claim work before starting it:**
@@ -517,4 +531,81 @@ local/
 /*.jpg
 /*.jpeg
 local/**/*.png
+`;
+
+/**
+ * Claude Code's session hooks.
+ *
+ * One hook, and it is deliberately **informational rather than blocking**.
+ * `context brief` prints what the session is missing and always exits 0; the
+ * refusal lives in the `morpheus` CLI, which is provider-neutral and needs no
+ * per-project wiring. A blocking `PreToolUse` hook would fire on every edit,
+ * and a gate that fires constantly is a gate people disable — permanently,
+ * where the staleness was temporary.
+ *
+ * Codex reads `AGENTS.md`, not this file, which is why the instruction is in
+ * both places and the enforcement is in neither.
+ */
+export const claudeSettings = (): string =>
+  JSON.stringify(
+    {
+      hooks: {
+        SessionStart: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: "pnpm --silent morpheus context brief",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  ) + "\n";
+
+/**
+ * The freshness section every project's AGENTS.md carries.
+ *
+ * Short, and pointing rather than repeating — the reasoning is one copy, in
+ * `architecture.md` §7.10. What has to be local is the two commands and the
+ * list of what is refused, because an agent that has to follow a link to find
+ * out it is about to be refused will not follow it.
+ */
+export const contextFreshness = (): string =>
+  `## Context freshness
+
+**Read \`.agent/decisions.md\`, \`.agent/learned.md\` and your inbox, then:**
+
+\`\`\`sh
+morpheus context refresh
+\`\`\`
+
+This takes a *context receipt* — your assertion that you have loaded current project state,
+fingerprinted against the tip of \`origin/main\`. It is good for five minutes, after which the
+next governed command re-checks the trunk and those records.
+
+**Until you have one, these are refused:** \`pm claim\`, \`pm new\`, \`pm block\`, \`access sync\`.
+Read-only and mechanical commands are not gated.
+
+\`\`\`sh
+morpheus context status    # what the current lease says, and how old it is
+morpheus context check     # exit non-zero unless fresh — for hooks and scripts
+\`\`\`
+
+**When something has moved**, \`context refresh\` prints what landed on the trunk and which
+records changed. Re-read those, then refresh again — the delta is the point, not the ceremony.
+
+**Offline**, set \`MORPHEUS_OFFLINE=1\`. Local work proceeds; anything that leaves the machine —
+pushing a claim, granting access — is still refused, because an unverified trunk is exactly
+when you should not be operating external controls.
+
+Receipts live in \`local/sessions/\`, which is gitignored. A receipt says *this working copy read
+these files*, which is true of one machine — committing it would turn a local observation into a
+claim about everyone. Shared evidence stays the worklog, the commit and the PR.
+
+Why this exists, and the failure modes it is built against:
+[\`architecture.md\` §7.10](${MORPHEUS_REPO}/blob/main/architecture.md).
 `;

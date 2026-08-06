@@ -27,6 +27,14 @@ import { heartbeat } from "./heartbeat.js";
 import { prompt as reviewPrompt, reviewNeeded } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
+import {
+  check as contextCheck,
+  guard,
+  brief as contextBrief,
+  refresh as contextRefresh,
+  status as contextStatus,
+} from "./context.js";
+import { GATED } from "../session/gate.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -61,6 +69,10 @@ Usage
   morpheus init done | doing | todo <task-id>
   morpheus tokens build     [--source hq/brand/tokens.json] [--css <path>] [--ts <path>]
                             [--prefix brand] [--check]
+  morpheus context refresh  take a receipt — run it after reading the canonical records
+  morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
+  morpheus context status   what the current lease says, and how old it is
+  morpheus context brief    the session-start message; always exits 0, for hooks
   morpheus doctor           [--all]
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
@@ -319,6 +331,10 @@ async function main(): Promise<number> {
   }
 
   if (group === "access") {
+    if (command === "sync" && !flags.dryRun) {
+      const refused = await guard(process.cwd(), "access sync", GATED["access sync"]!, flags.offline);
+      if (refused !== null) return refused;
+    }
     if (command === "sync") return accessSync(process.cwd(), flags.project, flags.dryRun);
     console.error(`Unknown access command "${command ?? ""}".\n\n${HELP}`);
     return 1;
@@ -377,6 +393,15 @@ async function main(): Promise<number> {
     return 1;
   }
 
+  if (group === "context") {
+    if (command === "refresh") return contextRefresh(process.cwd());
+    if (command === "check") return contextCheck(process.cwd());
+    if (command === "brief") return contextBrief(process.cwd());
+    if (command === "status" || command === undefined) return contextStatus(process.cwd());
+    console.error(`Unknown context command "${command}".\n\n${HELP}`);
+    return 1;
+  }
+
   if (group === "check") {
     if (command === "pr") return pr(dir, flags.base);
     console.error(`Unknown check command "${command ?? ""}".\n\n${HELP}`);
@@ -393,16 +418,22 @@ async function main(): Promise<number> {
       return validate(dir);
     case "index":
       return index(dir, flags.check);
-    case "claim":
+    case "claim": {
+      const refused = await guard(process.cwd(), "pm claim", GATED["pm claim"]!, flags.offline);
+      if (refused !== null) return refused;
       return claim(dir, rest[0] ?? "", process.cwd());
+    }
     case "claims":
       return claims(dir, process.cwd());
-    case "block":
+    case "block": {
+      const refused = await guard(process.cwd(), "pm block", GATED["pm block"]!, flags.offline);
+      if (refused !== null) return refused;
       return block(dir, process.cwd(), rest[0] ?? "", {
         ...(flags.needs ? { needs: flags.needs } : {}),
         ...(flags.owner ? { owner: flags.owner } : {}),
         ...(flags.context ? { context: flags.context } : {}),
       });
+    }
     case "unblock":
       return unblock(dir, rest[0] ?? "");
     case "ship":
@@ -410,6 +441,8 @@ async function main(): Promise<number> {
     case "migrate-ids":
       return migrateIds(dir, flags.check);
     case "new": {
+      const refused = await guard(process.cwd(), "pm new", GATED["pm new"]!, flags.offline);
+      if (refused !== null) return refused;
       const [kind, ...titleParts] = rest;
       return create(
         dir,

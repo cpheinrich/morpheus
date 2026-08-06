@@ -24,6 +24,8 @@ export const Manifest = z.object({
   name: z.string(),
   prefix: z.string().regex(/^[A-Z]{2,4}$/).optional(),
   kind: Kind.optional(),
+  /** Session-freshness config. Its absence is what `context` below reports. */
+  context: z.object({ handle: z.string().optional() }).loose().optional(),
   /**
    * Subtrees owned by a parent project rather than this one, e.g.
    * `{ "finance": "darwin" }`. Their directories are correctly absent, so
@@ -123,6 +125,28 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   const kind = manifest.kind;
   if (!kind) {
     add("warning", "kind", 'No "kind" — defaulting expectations to personal.');
+  }
+
+  // --- context freshness ---------------------------------------------------
+  // Adoption reporting, not enforcement. `doctor` never writes, so it says
+  // which projects have the protocol wired and which are still open.
+  if (!manifest.context?.handle) {
+    add(
+      "warning",
+      "context",
+      'No "context.handle" in morpheus.json — `hq/team/<handle>.md` is not in the ' +
+        "session-freshness required set, so an agent can resume without re-reading the " +
+        "inbox a human replies in. Add the owner's GitHub handle.",
+    );
+  }
+  if (!(await exists(join(root, ".claude", "settings.json")))) {
+    add(
+      "warning",
+      "context",
+      "No .claude/settings.json — a Claude session starts with no notice that its context " +
+        "is stale. `morpheus init` scaffolds one; the CLI gate still refuses governed " +
+        "actions either way.",
+    );
   }
 
   // --- structure ----------------------------------------------------------

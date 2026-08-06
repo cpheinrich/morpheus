@@ -72,6 +72,12 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     written.push("CLAUDE.md -> AGENTS.md");
   }
 
+  // Claude Code's session hook. Informational, not blocking — the refusal
+  // lives in the `morpheus` CLI, which every provider goes through and which
+  // needs no per-project wiring. Codex reads AGENTS.md instead, which is why
+  // the instruction is in both and the enforcement is in neither.
+  await put(".claude/settings.json", t.claudeSettings());
+
   // --- agent memory ---------------------------------------------------------
   await put(".agent/README.md", t.agentReadme());
   await put(".agent/decisions.md", t.decisions(seed));

@@ -29,6 +29,15 @@ function changedFiles(base: string): string[] {
   return out ? out.split("\n").filter(Boolean) : [];
 }
 
+/**
+ * What moved on the base branch since this one left it — the mirror of
+ * `changedFiles`, with the three-dot the other way round.
+ */
+function trunkChanges(base: string): string[] {
+  const out = gitOutput(["diff", "--name-only", `HEAD...${base}`]);
+  return out ? out.split("\n").filter(Boolean) : [];
+}
+
 function prBody(): string {
   // Actions writes the event payload to disk; read the body from it.
   const eventPath = process.env["GITHUB_EVENT_PATH"];
@@ -50,6 +59,7 @@ export async function pr(productDir: string, base: string): Promise<number> {
     body: prBody(),
     branch: currentBranch(),
     changedFiles: changedFiles(base),
+    trunkChanges: trunkChanges(base),
     productDir,
   });
 

@@ -13,6 +13,14 @@ import { parseArtifact } from "../pm/parse.js";
 export interface PrContext {
   /** PR body markdown. */
   body: string;
+  /**
+   * Files that changed **on the base branch** since this branch left it — not
+   * files this PR changed. CI cannot see a context receipt (`local/` is
+   * gitignored, and a receipt is one machine's observation anyway), so this is
+   * the freshness question CI *can* answer: did the canonical records move
+   * under this branch while it was being written?
+   */
+  trunkChanges?: string[];
   /** Branch name, e.g. rm-014-calorie-pipeline. */
   branch: string;
   /** Paths changed in the PR, repo-relative. */
@@ -65,6 +73,13 @@ function isRealReason(reason: string): boolean {
 const SOURCE = /^src\/.*\.(ts|tsx)$/;
 const TEST = /(^tests\/|\.test\.tsx?$)/;
 const DOCS = /^(docs\/|architecture\.md$|README\.md$|AGENTS\.md$)/;
+/**
+ * The records a session is required to have loaded. Kept as a pattern rather
+ * than imported from `session/lease.ts` so this check stays a pure function of
+ * paths — `CANONICAL_INPUTS` is per-project and resolved from a manifest, and
+ * `hq/team/` is matched wholesale because CI does not know whose branch it is.
+ */
+const CANONICAL = /^(AGENTS\.md$|CLAUDE\.md$|\.agent\/(decisions|learned)\.md$|hq\/team\/[^/]+\.md$)/;
 const GENERATED = /README\.md$/;
 
 // `roadmapIdFromBranch` now lives in `pm/id.ts`, beside the patterns it has to
@@ -223,6 +238,23 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
           `so the board does not lag the work.`,
       });
     }
+  }
+
+  // The freshness protocol, from the outside. A warning rather than an error:
+  // a trunk that moved mid-branch is nobody's mistake, and blocking on it
+  // would fail PRs for something outside the author's control at write time.
+  // The local gate is where refusal belongs; this is where it becomes visible
+  // to whoever reads the check.
+  const staleContext = (ctx.trunkChanges ?? []).filter((f: string) => CANONICAL.test(f));
+  if (staleContext.length) {
+    findings.push({
+      level: "warning",
+      rule: "context-drift",
+      message:
+        `Canonical records changed on the base branch while this one was open: ` +
+        `${staleContext.join(", ")}. Merge the base and re-read them — ` +
+        `\`morpheus context refresh\` prints what landed.`,
+    });
   }
 
   // Behaviour changes should land with the docs that describe them.

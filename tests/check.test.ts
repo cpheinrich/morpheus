@@ -387,3 +387,38 @@ describe("waiverReason", () => {
     expect(waiverReason("noskip-tests: x", "skip-tests")).toBeNull();
   });
 });
+
+describe("context drift", () => {
+  it("flags canonical records that moved on the base while the branch was open", async () => {
+    // CI cannot see a context receipt — `local/` is gitignored, and a receipt
+    // is one machine's observation anyway. This is the freshness question CI
+    // *can* answer: did the records move under this branch?
+    const findings = await checkPr(
+      goodPr({ trunkChanges: [".agent/decisions.md", "src/unrelated.ts"] }),
+    );
+    const drift = findings.find((f) => f.rule === "context-drift");
+
+    expect(drift?.level).toBe("warning");
+    expect(drift?.message).toContain(".agent/decisions.md");
+    expect(drift?.message).not.toContain("src/unrelated.ts");
+  });
+
+  it("warns rather than blocks, because a moving trunk is nobody's mistake", async () => {
+    const findings = await checkPr(goodPr({ trunkChanges: ["hq/team/cpheinrich.md"] }));
+    expect(findings.filter((f) => f.level === "error")).toEqual([]);
+  });
+
+  it("says nothing when the trunk moved somewhere that is not canonical", async () => {
+    const findings = await checkPr(
+      goodPr({ trunkChanges: ["src/pm/parse.ts", "hq/product/roadmap/README.md"] }),
+    );
+    expect(findings.find((f) => f.rule === "context-drift")).toBeUndefined();
+  });
+
+  it("says nothing when the caller supplies no trunk history at all", async () => {
+    // Absent is not empty: a checkout with no base ref must not read as "the
+    // trunk did not move", which is the whole sentinel rule one layer up.
+    const findings = await checkPr(goodPr());
+    expect(findings.find((f) => f.rule === "context-drift")).toBeUndefined();
+  });
+});
