@@ -236,10 +236,24 @@ describe("hq/team paths", () => {
       return out;
     };
 
+    /**
+     * `paths.ts` used to be exempt by filename, because it held the legacy
+     * constant on purpose. Every repo in the registry has moved and the
+     * constant is gone, so the exemption goes too — one that outlives its
+     * reason is how the string comes back.
+     *
+     * What replaces it is narrower and better: a **string literal** naming the
+     * old path is the bug. Prose recording that the directory used to exist is
+     * not, and a check that cannot tell them apart pushes history out of the
+     * comments to stay green.
+     *
+     * Quote characters only, not backticks. This codebase writes paths in doc
+     * comments as backticked prose, so including the backtick would fail every
+     * sentence about the old layout — the same problem one level down.
+     */
+    const LITERAL = /["']hq\/inbox/;
     for (const f of await walk(root)) {
-      // `paths.ts` names the legacy directory on purpose, for the migration.
-      if (f.endsWith("paths.ts")) continue;
-      expect(await readFile(f, "utf8"), `${f} still names the old path`).not.toContain("hq/inbox/");
+      expect(await readFile(f, "utf8"), `${f} still points at the old path`).not.toMatch(LITERAL);
     }
   });
 
@@ -254,6 +268,56 @@ describe("hq/team paths", () => {
     expect(isRecordsOnly(["hq/team/cpheinrich.md"])).toBe(true);
     expect(isRecordsOnly(["hq/team/meeting-notes/MO-26-08-03-09.30.00-x.md"])).toBe(true);
     expect(isRecordsOnly(["hq/team/members.md", "src/x.ts"])).toBe(false);
+  });
+
+  /**
+   * `hq/inbox/` was a record path through the migration window. No repo has
+   * that directory now, so re-creating one is a mistake — and exempting it
+   * from the roadmap rules would let the mistake merge quietly as "records
+   * only" instead of being asked about.
+   */
+  it("no longer exempts the directory nothing has", () => {
+    expect(isRecordsOnly(["hq/inbox/cpheinrich.md"])).toBe(false);
+  });
+});
+
+/**
+ * The fallback that let an unmigrated repo validate `hq/inbox` shipped with no
+ * test at all — it was checked by hand against a scratch repository and never
+ * pinned, which is why removing it broke nothing and proved nothing. These are
+ * the tests it should have had, written now for the behaviour that replaced it.
+ */
+describe("inbox validate against a missing directory", () => {
+  it("fails rather than looking somewhere else", async () => {
+    const { validate } = await import("../src/cli/inbox.js");
+    expect(await validate(join(root, "hq/team"))).toBe(1);
+  });
+
+  it("still fails when the old directory is sitting right there", async () => {
+    // The compatibility window is over. A repo that never migrated should be
+    // told so, not quietly validated — silence here is what would let one sit
+    // on the old layout indefinitely.
+    await mkdir(join(root, "hq/inbox"), { recursive: true });
+    await writeFile(join(root, "hq/inbox/cpheinrich.md"), "# Inbox\n");
+
+    const { validate } = await import("../src/cli/inbox.js");
+    expect(await validate(join(root, "hq/team"))).toBe(1);
+  });
+
+  it("passes once the inbox is where it belongs", async () => {
+    const { appendOpenItem } = await import("../src/inbox/append.js");
+    await mkdir(join(root, INBOX_DIR), { recursive: true });
+    await writeFile(
+      join(root, INBOX_DIR, "cpheinrich.md"),
+      appendOpenItem(
+        null,
+        { title: "A question", agent: "claude", body: "Body." },
+        { owner: "cpheinrich", date: "2026-08-05" },
+      ),
+    );
+
+    const { validate } = await import("../src/cli/inbox.js");
+    expect(await validate(join(root, INBOX_DIR))).toBe(0);
   });
 });
 
