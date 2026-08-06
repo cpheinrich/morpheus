@@ -861,7 +861,7 @@ describe("records of a blocked item that reached nobody", () => {
       "utf8",
     );
 
-    const paths = await unsentBlockRecords(root, [id]);
+    const { paths } = await unsentBlockRecords(root, [id]);
     expect(paths).toContain(`hq/product/roadmap/${id}-thing.md`);
     expect(paths).toContain("hq/team/cpheinrich.md");
   });
@@ -890,7 +890,7 @@ describe("records of a blocked item that reached nobody", () => {
       "utf8",
     );
 
-    const paths = await unsentBlockRecords(root, [id]);
+    const { paths } = await unsentBlockRecords(root, [id]);
     expect(paths).toContain(`hq/product/roadmap/${id}-thing.md`);
     expect(paths).toContain(`.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`);
     expect(paths).toContain("hq/team/cpheinrich.md");
@@ -914,7 +914,7 @@ describe("records of a blocked item that reached nobody", () => {
       "utf8",
     );
 
-    const paths = await unsentBlockRecords(join(root, "src"), [id]);
+    const { paths } = await unsentBlockRecords(join(root, "src"), [id]);
     expect(paths).toContain("hq/team/cpheinrich.md");
   });
 
@@ -929,7 +929,7 @@ describe("records of a blocked item that reached nobody", () => {
     // no blocked id, which is the absence-reads-as-clean shape.
     await symlink("gone.md", join(root, "hq/team/cpheinrich.md"));
 
-    const paths = await unsentBlockRecords(root, [id]);
+    const { paths } = await unsentBlockRecords(root, [id]);
     expect(paths.some((p) => p.startsWith("hq/team/cpheinrich.md"))).toBe(true);
   });
 
@@ -964,12 +964,12 @@ describe("records of a blocked item that reached nobody", () => {
     // whoever answers on Monday.
     await writeFile(join(root, "hq/team/cpheinrich.md"), `# inbox\n\nfresh cycle\n\n${entry}\n`, "utf8");
 
-    expect(await unsentBlockRecords(root, [id])).toEqual([]);
+    expect((await unsentBlockRecords(root, [id])).paths).toEqual([]);
     // And from a subdirectory: `rev-list -- <path>` takes a *pathspec*, read
     // relative to cwd, where `--porcelain` emits root-relative paths. Mixed,
     // the exclusion inverted and the false positive came straight back.
     await mkdir(join(root, "src"), { recursive: true });
-    expect(await unsentBlockRecords(join(root, "src"), [id])).toEqual([]);
+    expect((await unsentBlockRecords(join(root, "src"), [id])).paths).toEqual([]);
   });
 
   it("ignores an inbox cycle, the roster and meeting notes that name no blocked id", async () => {
@@ -984,7 +984,7 @@ describe("records of a blocked item that reached nobody", () => {
     await writeFile(join(root, "hq/team/members.md"), "roster", "utf8");
     await writeFile(join(root, "hq/team/meeting-notes/2026-08-06-standup.md"), "notes", "utf8");
 
-    const paths = await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"]);
+    const { paths } = await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"]);
     expect(paths).toEqual([]);
   });
 
@@ -1017,7 +1017,7 @@ describe("records of a blocked item that reached nobody", () => {
     run(root, "fetch", "-q", "origin");
 
     expect(run(root, "status", "--porcelain").toString().trim()).toBe("");
-    const paths = await unsentBlockRecords(root, [id]);
+    const { paths } = await unsentBlockRecords(root, [id]);
     expect(paths).toEqual([]);
   });
 
@@ -1042,7 +1042,7 @@ describe("records of a blocked item that reached nobody", () => {
     execFileSync("git", ["add", "-A"], { cwd: root });
     execFileSync("git", ["commit", "-q", "-m", "blocked"], { cwd: root, env });
 
-    expect(await unsentBlockRecords(root, [id])).toContain(`hq/product/roadmap/${id}-thing.md`);
+    expect((await unsentBlockRecords(root, [id])).paths).toContain(`hq/product/roadmap/${id}-thing.md`);
   });
 
   it("sees records that are committed but unpushed", async () => {
@@ -1075,7 +1075,20 @@ describe("records of a blocked item that reached nobody", () => {
     run("commit", "-q", "-m", `chore(${id}): blocked`);
 
     expect(run("status", "--porcelain").toString().trim()).toBe("");
-    expect(await unsentBlockRecords(root, [id])).toContain("hq/team/cpheinrich.md");
+    expect((await unsentBlockRecords(root, [id])).paths).toContain("hq/team/cpheinrich.md");
+  });
+
+  it("says it could not ask, rather than answering with an empty list", async () => {
+    // The last place the null/[] split had not reached — and once the
+    // tracked-modification path started working it became the only remaining
+    // route to a silent report, in the check whose whole purpose is that a
+    // dropped escalation cannot be silent.
+    const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const notARepo = await mkdtemp(join(tmpdir(), "morpheus-nogit-"));
+
+    const result = await unsentBlockRecords(notARepo, ["MO-26-08-05-16.27.56"]);
+    expect(result.unavailable).toBe(true);
+    expect(result.paths).toEqual([]);
   });
 
   it("says nothing about an unrelated dirty file", async () => {
@@ -1083,7 +1096,7 @@ describe("records of a blocked item that reached nobody", () => {
     const root = await repo();
     await writeFile(join(root, "src-thing.ts"), "work", "utf8");
 
-    expect(await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"])).toEqual([]);
+    expect((await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"])).paths).toEqual([]);
   });
 });
 

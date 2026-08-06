@@ -693,6 +693,23 @@ configuration. A project that switches coverage off has not stopped needing file
 every session to read. **The rule applies to itself: the report that already covered a condition is
 part of the change.**
 
+## Twenty-third review pass — the last instance, and one condition reported twice
+
+The review found no defect it would hold a merge for. Two residuals, both closed:
+
+- **`unsentBlockRecords` was the last place the `null`/`[]` split had not reached.** `gitLines` got
+  it in `doctor`, `trunkLog` got it in `session/git.ts`, both because *a failed lookup rendering as
+  a confident answer* is this branch's most-repeated defect — and this one threw it away at two
+  call sites. A `git status -uall` hitting the 10s timeout on a large tree, or a `dubious
+  ownership` refusal in a container, printed **nothing** about blocked records: indistinguishable
+  from "they all reached their reader". It only became the *only* remaining route to a silent
+  report once the previous commit made the tracked-modification path work at all.
+- **A declared handle whose inbox is absent was reported twice, at error severity**, by the handle
+  check and by the required-set check. Neither line is wrong; both counted into the exit code. It
+  cuts against the rule from two rounds earlier — an operator whose gate is shut should not read
+  past redundant lines to find the one that names the fix — so the required-set check skips what
+  the handle check already covered.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

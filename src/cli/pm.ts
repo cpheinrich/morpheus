@@ -349,8 +349,13 @@ export async function claims(
   // nobody can see is not a block, so the state has to be visible somewhere
   // that gets read again — this is the "what is in flight" view, and it
   // already has the board in hand.
-  const unsent = await unsentBlockRecords(cwd, [...blocked.keys()]);
-  if (unsent.length) {
+  const { paths: unsent, unavailable } = await unsentBlockRecords(cwd, [...blocked.keys()]);
+  if (unavailable) {
+    console.log(
+      `\n\x1b[33mCould not ask git whether the blocked items' records have reached anyone.\n` +
+        `Silence here would be indistinguishable from "they all did".\x1b[0m`,
+    );
+  } else if (unsent.length) {
     console.log(
       `\n\x1b[33mRecords for blocked items have not reached anyone — uncommitted, or committed\n` +
         `and unpushed. The escalation is on this machine only:\x1b[0m`,
@@ -390,8 +395,22 @@ export async function claims(
  *   ago from `main` are not unsent. "In no remote" is the question, and it
  *   needs no upstream to ask.
  */
-export async function unsentBlockRecords(cwd: string, blockedIds: string[]): Promise<string[]> {
-  if (!blockedIds.length) return [];
+export interface UnsentRecords {
+  paths: string[];
+  /**
+   * git could not be asked. The last place the `null`/`[]` split had not
+   * reached, and once the tracked-modification path started working it became
+   * the only remaining route to a silent report — in the check whose whole
+   * purpose is that a dropped escalation cannot be silent.
+   */
+  unavailable: boolean;
+}
+
+export async function unsentBlockRecords(
+  cwd: string,
+  blockedIds: string[],
+): Promise<UnsentRecords> {
+  if (!blockedIds.length) return { paths: [], unavailable: false };
   const ids = blockedIds.map((id) => id.toLowerCase());
 
   // **Lines are not trimmed.** `git status --porcelain` is `XY<space>PATH`
@@ -429,16 +448,16 @@ export async function unsentBlockRecords(cwd: string, blockedIds: string[]): Pro
   // `-uall`, because plain `--porcelain` collapses an untracked directory to
   // one entry — a first block in a fresh checkout reports `hq/` and names none
   // of the three records.
-  const dirty = (await lines(["status", "--porcelain", "-uall"]) ?? []).map((l) =>
-    l.slice(3).trim(),
-  );
+  const status = await lines(["status", "--porcelain", "-uall"]);
+  const dirty = (status ?? []).map((l) => l.slice(3).trim());
 
   // Reachable from no remote at all — which is the actual question, and needs
   // no upstream to ask. It covers a branch with no tracking ref (where an
   // upstream-relative range answers nothing) without also calling records that
   // were pushed from `main` long ago unsent.
-  const unpushed =
-    (await lines(["log", "--name-only", "--pretty=format:", "HEAD", "--not", "--remotes"])) ?? [];
+  const log = await lines(["log", "--name-only", "--pretty=format:", "HEAD", "--not", "--remotes"]);
+  const unpushed = log ?? [];
+  if (status === null || log === null) return { paths: [], unavailable: true };
 
   const candidates = [...new Set([...dirty, ...unpushed])].filter(Boolean);
   const named = candidates.filter((path) => ids.some((id) => path.toLowerCase().includes(id)));
@@ -474,7 +493,7 @@ export async function unsentBlockRecords(cwd: string, blockedIds: string[]): Pro
     if (here.some((id) => !pushed.includes(id))) inboxes.push(path);
   }
 
-  return [...named, ...inboxes].sort();
+  return { paths: [...named, ...inboxes].sort(), unavailable: false };
 }
 
 /**

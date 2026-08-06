@@ -131,6 +131,7 @@ const READ_FIRST = [".agent/decisions.md", ".agent/learned.md"];
 async function checkRequiredRecords(
   root: string,
   add: (severity: Severity, check: string, message: string) => void,
+  covered: readonly string[] = [],
 ): Promise<void> {
   const { requiredInputs } = await projectPolicy(root);
   const ids = requiredInputs ?? CANONICAL_INPUTS;
@@ -154,7 +155,8 @@ async function checkRequiredRecords(
 
   const { readInputs } = await import("../session/inputs.js");
   const missing = (await readInputs(root, ids)).filter(
-    (i) => i.fingerprint === ABSENT || i.fingerprint === UNREADABLE,
+    (i) =>
+      (i.fingerprint === ABSENT || i.fingerprint === UNREADABLE) && !covered.includes(i.id),
   );
   if (!missing.length) return;
 
@@ -459,7 +461,12 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     );
   }
 
-  await checkRequiredRecords(root, add);
+  // The handle check names the same file when a declared inbox is absent, and
+  // its message is the more useful of the two because it names the fix.
+  // Reporting one condition twice cuts against the rule two commits back: an
+  // operator whose gate is shut should not read past redundant lines to find
+  // the one that names it.
+  await checkRequiredRecords(root, add, handle ? [`hq/team/${handle}.md`] : []);
 
   await checkTrunk(
     root,
