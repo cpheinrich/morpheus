@@ -206,9 +206,19 @@ describe("validateTeam", () => {
  */
 function namesOldPath(source: string): boolean {
   const code = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
+    // Line-anchored, because a `/*` can open inside a template literal —
+    // `src/design/tokens.ts` embeds a whole CSS header in one — and an
+    // unanchored match would swallow forward to the next `*/` anywhere in the
+    // file, silently blanking the code this guard exists to read.
+    .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, "")
+    // `//` only. An earlier version also dropped lines opening with `*`, for
+    // JSDoc continuations — which are already inside the block above, so it
+    // bought nothing and cost the shape this repo actually writes: inside a
+    // template literal a leading `*` is a markdown **bold lead-in** or a
+    // bullet, and `src/init/templates.ts` has a dozen. The guard caught the
+    // path in a table cell and missed it one paragraph below.
     .split("\n")
-    .filter((line) => !/^\s*(\/\/|\*)/.test(line))
+    .filter((line) => !/^\s*\/\//.test(line))
     .join("\n");
   return code.includes("hq/inbox") || code.includes("hq\\/inbox");
 }
@@ -256,6 +266,16 @@ describe("hq/team paths", () => {
     // substring is not even present, so re-adding the deleted line passed.
     expect(namesOldPath("const RECORDS = /^(hq\\/team\\/|hq\\/inbox\\/)/;")).toBe(true);
     expect(namesOldPath('const dir = "hq/inbox";')).toBe(true);
+    // Markdown inside a template literal, which is how this repo writes
+    // scaffolded documents. A leading `*` here is bold or a bullet, not a
+    // JSDoc continuation — the second round of this guard dropped both, so it
+    // caught the path in a table cell and missed it one paragraph below.
+    expect(namesOldPath("const t = `\n**Inboxes** live at `hq/inbox/<handle>.md`\n`;")).toBe(true);
+    expect(namesOldPath("const t = `\n* Inboxes live at hq/inbox/<handle>.md\n`;")).toBe(true);
+    // A block comment opening mid-line, inside a template. Stripping comments
+    // unanchored would consume forward to the next `*/` and blank the code
+    // after it — including, here, the thing being looked for.
+    expect(namesOldPath('const h = `/* generated */`;\nconst d = "hq/inbox";')).toBe(true);
 
     // And the thing the narrowing was actually for: history stays sayable.
     // `.agent/decisions.md` — *historical records keep the old paths* — is

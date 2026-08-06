@@ -281,3 +281,18 @@ and worse than it, because an exemption is visible where a too-narrow pattern is
 Related: writing "confirmed to still fail on a re-introduced string literal" in the PR body was
 narrowly true and implied coverage that did not exist. When a check is narrowed, state what it
 *stopped* covering, not what it still does.
+
+**And then it happened again in the fix.** The rewrite stripped lines opening with `//` *or* `*`,
+for JSDoc continuations — which are already inside the `/* … */` removed one step earlier, so the
+`*` bought nothing and cost the shape this repo writes most: inside a template literal a leading
+`*` is a markdown **bold lead-in** or a bullet, and `src/init/templates.ts` has a dozen. The guard
+caught the path in a table cell and missed it one paragraph below.
+
+Three rounds, one mistake: **verifying a guard against the cases someone named rather than against
+the class.** Each round I fixed exactly the shapes the review listed and shipped, and each time the
+next shape was one the reviewer had not thought to name either. What finally worked was deleting
+the clause that earned nothing rather than adding a case — and proving the sweep catches a real
+regression by re-introducing `hq/inbox` into the actual template and watching it fail.
+
+**A guard is only verified by breaking the thing it guards.** Assertions on synthetic strings prove
+the helper; they do not prove the sweep is wired to anything.
