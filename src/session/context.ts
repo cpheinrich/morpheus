@@ -103,30 +103,6 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
 }
 
 /**
- * Re-anchor the receipt to the branch this session just switched to.
- *
- * The same principle as `noteWrite`, for the same reason: `pm claim` creates
- * and checks out the branch itself, so the receipt's `branch` stops matching
- * the moment it succeeds — and the term then never applies again for the rest
- * of the session, sending every gated command back to the network. That fails
- * closed rather than open, so it costs latency rather than safety, but the
- * specification says the term is five minutes and this made it zero.
- *
- * Only called by the command that did the switching, and only after it
- * succeeded: the records on the new branch are compared as usual on the next
- * observation, so re-anchoring asserts nothing about their contents.
- */
-export async function noteBranch(root: string): Promise<void> {
-  const { worktree, id } = await session(root);
-  const { lease } = await readLease(worktree, id);
-  if (!lease) return;
-
-  const branch = await currentBranch(worktree);
-  if (branch === lease.receipt.branch) return;
-  await writeLease(worktree, id, { ...lease, receipt: { ...lease.receipt, branch } });
-}
-
-/**
  * Discard the stored receipt, and return what it was.
  *
  * The session-start hook may not *certify* — that would assert the records
@@ -280,13 +256,26 @@ export async function check(
     policy,
   );
 
-  const write = await writeLease(worktree, id, lease);
+  // Re-anchored **here**, where the re-observation has just proven the receipt
+  // still true against the records on this branch — which covers every route
+  // to a switch, not the one command that happens to do it. `pm claim` checks
+  // out the branch it stakes, and AGENTS.md prescribes a bare `git checkout`
+  // to resume blocked work; a fix at either call site leaves the other, and
+  // the mismatch is otherwise permanent for the session even once the receipt
+  // is proved current. Only on `fresh`: a lease that failed for any other
+  // reason has proved nothing.
+  const anchored =
+    lease.status === "fresh" && onBranch !== lease.receipt.branch
+      ? { ...lease, receipt: { ...lease.receipt, branch: onBranch } }
+      : lease;
+
+  const write = await writeLease(worktree, id, anchored);
   // A failed write is the module's one fail-open path: the previous lease
   // survives and a `fresh` one inside its term still passes. Carried out to
   // the caller rather than dropped.
   const problem = write.written ? write.issue : (write.issue ?? "lease not persisted");
   return {
-    lease,
+    lease: anchored,
     observed: true,
     written: write.written,
     ...(problem ? { issue: problem } : {}),

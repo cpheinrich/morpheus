@@ -1324,17 +1324,23 @@ describe("what a lease is scoped to", () => {
     // the network. Fails closed, so it costs latency rather than safety; the
     // specification still says five minutes and this made it zero.
     const { execFileSync } = await import("node:child_process");
-    const { check, noteBranch } = await import("../src/session/context.js");
+    const { check } = await import("../src/session/context.js");
     const { root, now } = await certified();
     const inTerm = new Date(now.getTime() + 60_000);
 
     execFileSync("git", ["checkout", "-q", "-b", "mo-x-thing"], { cwd: root });
-    // Without this the term is dead: `check` re-observes every time.
-    await noteBranch(root);
 
-    const result = await check(root, inTerm);
-    expect(result.lease?.status).toBe("fresh");
-    expect(result.observed).toBe(false);
+    // The first check re-observes — the branch moved — proves the receipt
+    // still true, and re-anchors.
+    const first = await check(root, inTerm);
+    expect(first.lease?.status).toBe("fresh");
+    expect(first.observed).toBe(true);
+
+    // The second is back inside the term. Without re-anchoring it would
+    // re-observe forever, for the rest of the session.
+    const second = await check(root, inTerm);
+    expect(second.lease?.status).toBe("fresh");
+    expect(second.observed).toBe(false);
   }, 20_000);
 
   it("does not let a new session inherit the previous one's certification", async () => {

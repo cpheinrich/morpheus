@@ -790,10 +790,11 @@ next check — which re-observes from the receipt, and the receipt is still vali
 
 **The branch is part of what a receipt is about.** A `git checkout` inside the five minutes puts
 different canonical records on disk, so `check` compares `receipt.branch` before trusting the term.
-A command that switches branches *itself* re-anchors the receipt afterwards — `pm claim` creates
-and checks out the branch it stakes, and without that the term would never apply again for the rest
-of the session. Same principle as re-fingerprinting a record a command wrote: the session did it,
-so it knows.
+When a re-observation proves the receipt still true on a different branch, `check` **re-anchors it
+there** — otherwise the mismatch is permanent for the session and every gated command goes back to
+the network. It sits in `check` rather than at a call site because two prescribed workflows switch
+branches: `pm claim` checks out the branch it stakes, and resuming blocked work is a bare `git
+checkout`. Fixing either call site would leave the other.
 
 **Taking a receipt is a command, never a side effect.** `morpheus context refresh` is the agent
 asserting it has loaded current state. A hook that took one at session start would certify the

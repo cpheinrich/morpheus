@@ -824,6 +824,21 @@ modules but between a check and the workflow the repo mandates.** Both of this r
 `pm block` writing a required record, `pm claim` switching a compared branch — were the guard
 tripping over instructions written years before it.
 
+## Thirtieth review pass — fixed at the call site, and there were two call sites
+
+The re-anchor was right and put in the wrong place. It was gated on `pm claim` *succeeding*, while
+the checkout happens **before** the four steps that can fail — so the bug survived on the path
+where you are most likely to keep working. And AGENTS.md prescribes a second branch switch that is
+not a command at all: a bare `git checkout` to resume blocked work.
+
+So it moved into `check`, at the point where the re-observation has **just proved the receipt still
+true against the records on this branch**. That covers every route, needs no call site to remember,
+and is the same correction this branch has made repeatedly: *fix it where the answer is known, not
+where the change happened.*
+
+`noteWrite` is the deliberate contrast and is still right at its call site — only the caller knows
+what content it read before writing, and no observation can recover that.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
