@@ -804,7 +804,11 @@ re-asserted blindly — and refusals with no informational content are the faste
 being routed around.
 
 **Offline is contained, not permitted.** `MORPHEUS_OFFLINE=1` lets local work proceed on an
-`unknown` lease and still refuses anything that leaves the machine. It has to be *declared*: an
+`unknown` lease and still refuses anything that leaves the machine. `pm block` is the one command
+that changes shape rather than being refused: it writes the records and skips the push, reporting
+that the block is not yet visible. AGENTS.md tells an agent facing real ambiguity to block rather
+than guess, and refusing that offline leaves guessing or stopping — for exactly the session that
+most needs the third option. It has to be *declared*: an
 unreachable remote is `unknown` either way, and inferring the exception from the symptom would
 make every network blip an unlocked gate.
 

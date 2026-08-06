@@ -94,7 +94,9 @@ the one failure mode the whole protocol cannot detect.
 
 **Offline**, set `MORPHEUS_OFFLINE=1` — or pass `--offline`. Local work proceeds; anything that leaves the machine —
 pushing a claim, granting access — stays refused, because an unverified trunk is exactly when you
-should not be operating external controls.
+should not be operating external controls. **`pm block` still works**: it writes the records and
+skips the push, telling you the block is not visible to other sessions yet. Blocking rather than
+guessing is the one escape hatch a stuck session needs most, so it is not the one to take away.
 
 **On a fork**, set `"context": { "trunk": "upstream/main" }` in `morpheus.json`. `origin` is
 your fork, whose `main` sits still while the real trunk moves — measured against it, a lease

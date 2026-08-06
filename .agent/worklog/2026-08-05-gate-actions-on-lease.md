@@ -220,6 +220,34 @@ Path handling caught in passing: `block` returns absolute paths and receipt ids 
 worktree-relative, so `noteWrite` matched nothing and was a **silent no-op** — the failure mode
 that looks exactly like success. Relativised.
 
+## Fifth review pass — the blunt fix was the wrong one
+
+Round four reclassified `pm block` as `external` because it pushes. Correct diagnosis, blunt
+remedy: **AGENTS.md tells an agent facing real ambiguity to block rather than guess**, and refusing
+that offline leaves guessing or stopping, for exactly the session that most needs the third option.
+
+The split was available and cheap the whole time. `pm block` is `local` again *conditionally*:
+offline it writes the item, the worklog and the inbox entry and **skips the push**, saying the
+block is on disk and not yet visible. Acceptance 2 is satisfied on its own terms — local work
+proceeds, nothing leaves the machine — and the classification is true rather than asserted.
+
+Worth generalising: **when a command's reach depends on what it does, change what it does rather
+than relabelling it.** Two rounds were spent moving `pm block` between columns when neither column
+described it.
+
+Two more in the check added last round, both the same lock-out shape it was written to catch:
+
+- **A repo with no remote at all got no finding.** The fork warning was gated on there being
+  *other* remotes, and `ls-remote origin main` in a repo with no `origin` exits **128, not 2** — so
+  `trunkSha` says `unreachable` and the `missing` branch never runs. That is the *freshly
+  scaffolded* state, before `git remote add`: every observation `unknown`, both external commands
+  refused permanently with no override, and `doctor` giving it a clean bill of health. Answered
+  locally now, from `git remote`, needing no network at all.
+- **`doctor` gained a network call and was the one command ignoring the offline declaration.**
+  `DoctorOptions.offline` existed and `checkTrunk` respected it; nothing set it. `doctor --all` on
+  a plane would have blocked on seven 15-second `ls-remote` timeouts with `MORPHEUS_OFFLINE=1`
+  exported and doing nothing.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

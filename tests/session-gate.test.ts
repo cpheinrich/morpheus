@@ -92,12 +92,13 @@ describe("what is gated", () => {
   it("treats anything that leaves the machine as external", () => {
     expect(GATED["pm claim"]).toBe("external");
     expect(GATED["access sync"]).toBe("external");
-    // `pm block` ends in `commitRecords` — add, commit, **push**. Classified
-    // `local`, the offline branch printed "stays on this machine" and then
-    // pushed to the shared inbox.
-    expect(GATED["pm block"]).toBe("external");
-    // The only local one: its remote use is a read-only `ls-remote` for id
-    // allocation, and it writes nothing outward.
+    // `pm block` is local *conditionally* — it normally pushes, and offline it
+    // writes the records and skips the push, which is what makes the
+    // classification true rather than merely asserted. The blunt alternative
+    // shut the one escape hatch a stuck session has: block rather than guess.
+    expect(GATED["pm block"]).toBe("local");
+    // Local unconditionally: its only remote use is a read-only `ls-remote`
+    // for id allocation, and it never writes outward.
     expect(GATED["pm new"]).toBe("local");
   });
 
@@ -179,6 +180,27 @@ describe("scaffolding", () => {
       }
     });
   }
+
+  it("reports a repo with no remote at all, without asking the network", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-noremote-"));
+    roots.push(root);
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", prefix: "XX", kind: "internal" }),
+      "utf8",
+    );
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+
+    // The freshly-scaffolded state, before `git remote add`. `ls-remote origin`
+    // exits 128 rather than 2 here, so `trunkSha` says `unreachable` and the
+    // `missing` branch never fires — which is why this has to be answered
+    // locally. Offline, so no network is consulted at all.
+    const findings = await doctor({ root, offline: true });
+    const none = findings.find((f) => f.check === "context" && f.message.includes("no git remotes"));
+    expect(none?.severity).toBe("error");
+  });
 
   it("reports a declared trunk whose branch does not exist on a reachable remote", async () => {
     const { execFileSync } = await import("node:child_process");

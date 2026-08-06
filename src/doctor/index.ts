@@ -102,10 +102,39 @@ async function checkTrunk(
 ): Promise<void> {
   const { resolveTrunk, trunkSha } = await import("../session/git.js");
   const trunk = await resolveTrunk(root, declared);
+  const remotes = await gitLines(root, ["remote"]);
+
+  // Hoisted out of the `!declared` branch, because the worst case has *no*
+  // remotes at all: `ls-remote origin main` then exits 128 rather than 2, so
+  // `trunkSha` says `unreachable` and the `missing` branch below never runs.
+  // A freshly scaffolded project before `git remote add` is exactly that
+  // state — every observation `unknown`, both external commands refused with
+  // no override, and nothing reporting it. Locally certain, so it needs no
+  // network to diagnose.
+  if (remotes.length && !remotes.includes(trunk.remote)) {
+    add(
+      "error",
+      "context",
+      `The session-freshness trunk is "${trunk.remote}/${trunk.branch}" but this repo has no ` +
+        `remote named "${trunk.remote}" (it has ${remotes.join(", ")}). Every observation is ` +
+        `"unknown", so pm claim and access sync are refused with a message blaming the network.`,
+    );
+    return;
+  }
+  if (!remotes.length) {
+    add(
+      "error",
+      "context",
+      `This repo has no git remotes, so the session-freshness trunk ` +
+        `"${trunk.remote}/${trunk.branch}" can never resolve. Every observation is "unknown" and ` +
+        `pm claim and access sync are refused permanently — MORPHEUS_OFFLINE=1 does not cover ` +
+        `external actions. Add the remote, or set context.trunk once there is one.`,
+    );
+    return;
+  }
 
   if (!declared) {
-    const remotes = await gitLines(root, ["remote"]);
-    const others = remotes.filter((r) => r && r !== "origin");
+    const others = remotes.filter((r) => r !== "origin");
     if (others.length) {
       add(
         "warning",

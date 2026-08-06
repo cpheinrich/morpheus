@@ -34,7 +34,7 @@ import {
   refresh as contextRefresh,
   status as contextStatus,
 } from "./context.js";
-import { GATED } from "../session/gate.js";
+import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 
 const HELP = `morpheus — an operating system for building and running companies
@@ -77,7 +77,8 @@ Usage
                             Governed commands (pm claim|new|block, access sync) refuse without
                             a fresh receipt. --offline, or MORPHEUS_OFFLINE=1, permits local
                             work on an unverified trunk and still refuses anything external.
-  morpheus doctor           [--all]
+  morpheus doctor           [--all] [--offline]
+                            --offline skips the one network check (does the trunk resolve)
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge
@@ -246,7 +247,7 @@ async function main(): Promise<number> {
   const [group, command, ...rest] = flags.positional;
   const dir = resolve(process.cwd(), flags.dir);
 
-  if (group === "doctor") return doctorRun(process.cwd(), flags.all);
+  if (group === "doctor") return doctorRun(process.cwd(), flags.all, flags.offline);
 
   if (group === "heartbeat") {
     return heartbeat({
@@ -441,6 +442,10 @@ async function main(): Promise<number> {
         ...(flags.needs ? { needs: flags.needs } : {}),
         ...(flags.owner ? { owner: flags.owner } : {}),
         ...(flags.context ? { context: flags.context } : {}),
+        // Offline, the records are written and the push is skipped — which is
+        // what makes the `local` classification true rather than merely
+        // asserted.
+        push: !offlineDeclared(flags.offline),
       });
       // Exactly what it wrote, and only when it wrote. A failed `block`
       // touches nothing, and re-fingerprinting there would silently clear

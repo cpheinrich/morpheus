@@ -353,7 +353,7 @@ export async function block(
   productDir: string,
   root: string,
   id: string,
-  opts: { needs?: string; owner?: string; context?: string },
+  opts: { needs?: string; owner?: string; context?: string; push?: boolean },
 ): Promise<BlockOutcome> {
   const nothing = (code: number): BlockOutcome => ({ code, written: [] });
 
@@ -394,16 +394,27 @@ export async function block(
     for (const p of r.written) console.log(`  wrote ${p}`);
     if (r.inboxCreated) console.log(`  (created a new inbox for ${owner})`);
 
-    const pushed = await commitRecords(
-      root,
-      r.written,
-      `chore(${r.id}): blocked — ${opts.needs.trim().slice(0, 60)}`,
-    );
-    console.log(
-      pushed
-        ? "Committed and pushed — the block is visible to every other session."
-        : "\x1b[33mCommitted nothing: not a git repo, or the push failed. The records are on disk.\x1b[0m",
-    );
+    if (opts.push === false) {
+      // Offline. The records are written, which is what keeps `pm block`
+      // reachable when a session most needs it — but a block nobody can see
+      // is not yet a block, and saying so is the difference between a
+      // deferred step and a silently dropped one.
+      console.log(
+        "\x1b[33mOffline: written to disk and not pushed. The block is not visible to other\n" +
+          "sessions yet — commit and push it when you reconnect.\x1b[0m",
+      );
+    } else {
+      const pushed = await commitRecords(
+        root,
+        r.written,
+        `chore(${r.id}): blocked — ${opts.needs.trim().slice(0, 60)}`,
+      );
+      console.log(
+        pushed
+          ? "Committed and pushed — the block is visible to every other session."
+          : "\x1b[33mCommitted nothing: not a git repo, or the push failed. The records are on disk.\x1b[0m",
+      );
+    }
 
     console.log(
       `\nThe branch stays claimed. When answered: \`morpheus pm unblock ${r.id}\`.`,

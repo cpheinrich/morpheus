@@ -30,11 +30,12 @@ export interface GateResult {
  * |---|---|---|
  * | `pm claim` | claiming work you would not claim knowing what merged | external |
  * | `pm new` | filing an item that already exists on the board | local |
- * | `pm block` | escalating a question the inbox already answered | external |
+ * | `pm block` | escalating a question the inbox already answered | local¹ |
  * | `access sync` | granting access from an allowlist that has moved | external |
  *
- * `pm new` is the only `local` one: its remote use is a read-only `ls-remote`
- * for id allocation and it writes nothing outward.
+ * ¹ `pm block` is local *conditionally*: offline it writes the records and
+ * skips the push. `pm new`'s only remote use is a read-only `ls-remote` for id
+ * allocation, and it never writes outward at all.
  *
  * Read-only and mechanical commands — `pm index`, `pm validate`, `pm ship`,
  * `check pr`, `heartbeat`, `doctor` — are not gated. Neither is
@@ -46,13 +47,14 @@ export interface GateResult {
 export const GATED: Record<string, Reach> = {
   "pm claim": "external",
   "pm new": "local",
-  // External, because `block` ends in `commitRecords` — add, commit, **push**.
-  // Its entire purpose is to be visible to other sessions, which is the
-  // definition of leaving the machine. Classified `local`, the offline branch
-  // printed "proceeding … because it stays on this machine" and then pushed:
-  // a message asserting the opposite of what happened, through the one door
-  // the exception opens.
-  "pm block": "external",
+  // `local`, and it takes work to keep it true: `block` normally ends in
+  // `commitRecords` — add, commit, **push** — so an offline session skips the
+  // push and says the block is on disk but not yet visible. The blunt
+  // alternative was reclassifying it `external`, which shuts the one escape
+  // hatch AGENTS.md gives an agent that hits real ambiguity: *block rather
+  // than guess*. Refusing it offline leaves guessing or stopping, for exactly
+  // the session that most needs the third option.
+  "pm block": "local",
   "access sync": "external",
 };
 
