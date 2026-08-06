@@ -198,7 +198,7 @@ describe("receipt coverage", () => {
     });
 
     expect(lease.changedInputs).toEqual([extra.id]);
-    expect(lease.unreadableInputs).toEqual([extra.id]);
+    expect(lease.unresolvableInputs).toEqual([extra.id]);
   });
 
   it("separates what refreshing cannot fix from ordinary drift", () => {
@@ -215,8 +215,28 @@ describe("receipt coverage", () => {
     // that cannot be re-read. The reason has to say which, and that it is
     // repair rather than refresh.
     expect(lease.changedInputs).toEqual([".agent/decisions.md", "CLAUDE.md"]);
-    expect(lease.unreadableInputs).toEqual(["CLAUDE.md"]);
-    expect(lease.reason).toMatch(/refreshing will not clear this/);
+    expect(lease.unresolvableInputs).toEqual(["CLAUDE.md"]);
+    expect(lease.reason).toMatch(/Repair first: CLAUDE\.md/);
+    // The guard's message must not tell the agent to refresh what it has just
+    // said refreshing cannot fix.
+    const message = new ContextFreshnessError(lease).message;
+    expect(message).toContain("Refresh these inputs: .agent/decisions.md.");
+    expect(message).not.toMatch(/Refresh these inputs:[^.]*CLAUDE/);
+  });
+
+  it("reports the wrong-root case as repair, not as something to re-read", () => {
+    // The likelier of the two loops: a wrong `root` is a caller mistake where
+    // EACCES is a filesystem fault. Re-reading three files that are not there
+    // returns the same three absences forever.
+    const nothing = CANONICAL_INPUTS.map((id) => ({ id, fingerprint: ABSENT }));
+    const lease = observeLease({ ...receipt, inputs: nothing }, {
+      checkedAt: CHECKED_AT,
+      remoteSha: "abc123",
+      inputs: nothing,
+    });
+
+    expect(lease.unresolvableInputs).toEqual([...CANONICAL_INPUTS].sort());
+    expect(new ContextFreshnessError(lease).message).not.toContain("Refresh these inputs");
   });
 
   it("treats an explicit empty required set as the only way to switch coverage off", () => {
@@ -297,6 +317,25 @@ describe("lease store", () => {
     expect(path).toBe(join(root, "local", "sessions", "session-001.json"));
     expect(await readLease(root, "session-001")).toEqual({ lease });
     expect(await readLease(root, "absent")).toEqual({ lease: null });
+  });
+
+  it("does not read a broken or unreadable lease path as no session at all", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-session-"));
+    const path = leasePath(root, "session-003");
+    await mkdir(dirname(path), { recursive: true });
+    await symlink(join(root, "gone.json"), path);
+
+    // A dangling link reports ENOENT through `readFile`, exactly as a session
+    // that was never written does. The two are not the same thing.
+    const broken = await readLease(root, "session-003");
+    expect(broken.lease).toBeNull();
+    expect(broken.issue).toContain("dangling symlink");
+
+    // And a non-ENOENT failure is data, not a throw out of the guard.
+    await mkdir(leasePath(root, "session-004"), { recursive: true });
+    const unreadable = await readLease(root, "session-004");
+    expect(unreadable.lease).toBeNull();
+    expect(unreadable.issue).toBeTruthy();
   });
 
   it("distinguishes corrupt state from no state", async () => {

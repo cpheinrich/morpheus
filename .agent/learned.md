@@ -278,10 +278,18 @@ It is this: **a value that means *I do not have this information* will compare e
 equality is what every freshness, cache, and diff check is built out of. The result always reads as
 agreement, which is always the unsafe direction.
 
-So: sentinels get excluded from the comparison by an explicit branch, before any `===`. If a
-sentinel is deliberately allowed to compare — `ABSENT` still does, outside a declared required set,
-because *nothing there and still nothing there* is genuine knowledge — the exception needs a comment
-saying why, or the next reader restores the bug while fixing something adjacent.
+So: sentinels get excluded from the comparison by an explicit branch, before any `===`. If one is
+deliberately allowed to compare — `ABSENT` still does, outside a declared required set, because
+*nothing there and still nothing there* is genuine knowledge — the exception needs a comment saying
+why, or the next reader restores the bug while fixing something adjacent.
 
-The reviewer's own summary of the pattern is the shortest version: *the check skips what is absent
-and reports the empty thing as correct.*
+**Stated as a rule about sentinels this was too narrow, and the commit that wrote it left two more
+instances standing one file over** — an fs error code and a retry loop are also values meaning *I do
+not have this information*. So carry it as a question to ask at every boundary instead:
+
+> **What does this code do when the thing is not there, and can the caller tell that apart from the
+> thing being fine?**
+
+If the answer to the second half is no, that is the bug, whatever shape it is wearing. The
+reviewer's summary is the shortest version: *the check skips what is absent and reports the empty
+thing as correct.*

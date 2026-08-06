@@ -39,11 +39,12 @@ export interface SessionLease {
   status: LeaseStatus;
   changedInputs: string[];
   /**
-   * The subset of `changedInputs` that re-reading cannot fix. Separate because
-   * a refresh loop against an unclearable record never terminates, and the
-   * flat list gives a runner no way to tell the two apart.
+   * The subset of `changedInputs` that re-reading cannot fix — a record with
+   * no content now, or a required one the observation never reported. Separate
+   * because a refresh loop against these never terminates, and a flat list
+   * gives a runner no way to tell repair from refresh.
    */
-  unreadableInputs?: string[];
+  unresolvableInputs?: string[];
   reason?: string;
 }
 
@@ -116,13 +117,23 @@ export interface LeasePolicy {
   ttlMs?: number;
 }
 
+/**
+ * The one message an agent actually reads, so the two instructions in it must
+ * not contradict. `unresolvableInputs` is a *subset* of `changedInputs`, and
+ * naming the same record in both halves opened by telling the agent to refresh
+ * what the next clause said refreshing would not fix.
+ */
 export class ContextFreshnessError extends Error {
   constructor(public readonly lease: SessionLease) {
-    const changed = lease.changedInputs ?? [];
-    const inputs = changed.length
-      ? ` Refresh these inputs: ${changed.join(", ")}.`
-      : " Refresh context before continuing.";
-    super(`Context is ${lease.status}.${inputs}${lease.reason ? ` ${lease.reason}` : ""}`);
+    const stuck = lease.unresolvableInputs ?? [];
+    const refresh = (lease.changedInputs ?? []).filter((id) => !stuck.includes(id));
+    const parts = [`Context is ${lease.status}.`];
+
+    if (refresh.length) parts.push(`Refresh these inputs: ${refresh.join(", ")}.`);
+    else if (!stuck.length) parts.push("Refresh context before continuing.");
+    if (lease.reason) parts.push(lease.reason);
+
+    super(parts.join(" "));
   }
 }
 
@@ -142,13 +153,13 @@ function localDelta(
   receipt: ContextReceipt,
   observation: RemoteObservation,
   required: readonly string[],
-): { changed: string[]; unreadable: string[] } {
+): { changed: string[]; unresolvable: string[] } {
   const covered = new Map(receipt.inputs.map((input) => [input.id, input.fingerprint]));
   const observed = new Map(observation.inputs.map((input) => [input.id, input.fingerprint]));
   const isRequired = new Set(required);
 
   const changed: string[] = [];
-  const unreadable: string[] = [];
+  const unresolvable: string[] = [];
 
   // One predicate over the union, so the sentinel rule cannot stop at the edge
   // of the required set. A record the receipt covered voluntarily gets the same
@@ -156,19 +167,22 @@ function localDelta(
   for (const id of [...new Set([...required, ...covered.keys()])].sort()) {
     const read = covered.get(id);
     const now = observed.get(id);
+    const mustHave = isRequired.has(id);
 
-    if (read === UNREADABLE || now === UNREADABLE) {
-      unreadable.push(id);
+    // What a refresh cannot fix — judged on the *observation*, because that is
+    // what re-reading would produce again. A required record with no content
+    // now, or one the observer never reported, comes back identical however
+    // many times the runner retries.
+    if (now === UNREADABLE || (mustHave && (now === undefined || now === ABSENT))) {
       changed.push(id);
+      unresolvable.push(id);
       continue;
     }
 
-    if (isRequired.has(id)) {
-      // A required record must have real content on both sides. `ABSENT` is
-      // not "nothing to read" here — it is *this is not that project, or not
-      // that tree*, and it is what a wrong root or a dangling symlink produces
-      // on both sides at once.
-      if (read === undefined || now === undefined || read === ABSENT || now === ABSENT) {
+    if (mustHave) {
+      // The record is readable now; the *receipt* is what lacks content. That
+      // is ordinary drift — taking a fresh receipt clears it.
+      if (read === undefined || read === ABSENT || read === UNREADABLE) {
         changed.push(id);
         continue;
       }
@@ -177,12 +191,15 @@ function localDelta(
       // observation did not report is not something the policy can speak to.
       // A project that needs it verified declares it required.
       continue;
+    } else if (read === UNREADABLE) {
+      changed.push(id);
+      continue;
     }
 
     if (read !== now) changed.push(id);
   }
 
-  return { changed, unreadable };
+  return { changed, unresolvable };
 }
 
 /** Pure policy function, so CI needs neither GitHub nor an AI provider. */
@@ -191,17 +208,18 @@ export function observeLease(
   observation: RemoteObservation,
   policy: LeasePolicy = {},
 ): SessionLease {
-  const { changed: changedInputs, unreadable } = localDelta(
+  const { changed: changedInputs, unresolvable } = localDelta(
     receipt,
     observation,
     policy.requiredInputs ?? CANONICAL_INPUTS,
   );
   // Reported separately because refreshing cannot clear it. Folded into
-  // `changedInputs`, an unreadable record is indistinguishable from one another
-  // agent edited, and the runner loops on a refresh that can never succeed.
-  const unreadableInputs = unreadable.length ? { unreadableInputs: unreadable } : {};
-  const cannotRead = unreadable.length
-    ? ` Cannot read: ${unreadable.join(", ")} — refreshing will not clear this; the record has to be repaired.`
+  // `changedInputs`, a record that re-reading cannot fix is indistinguishable
+  // from one another agent edited, and the runner loops on a refresh that can
+  // never succeed.
+  const unresolvableInputs = unresolvable.length ? { unresolvableInputs: unresolvable } : {};
+  const cannotRead = unresolvable.length
+    ? ` Repair first: ${unresolvable.join(", ")} — re-reading will not clear this.`
     : "";
 
   if (observation.remoteSha === null) {
@@ -211,7 +229,7 @@ export function observeLease(
       checkedAt: observation.checkedAt,
       status: "unknown",
       changedInputs,
-      ...unreadableInputs,
+      ...unresolvableInputs,
       reason: `Could not verify remote context.${cannotRead}`,
     };
   }
@@ -223,7 +241,7 @@ export function observeLease(
       checkedAt: observation.checkedAt,
       status: "refresh_required",
       changedInputs,
-      ...unreadableInputs,
+      ...unresolvableInputs,
       reason:
         (changedInputs.length > 0
           ? "Canonical project inputs are unread or changed."

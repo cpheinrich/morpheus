@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import type { SessionLease } from "./lease.js";
@@ -29,7 +29,7 @@ const leaseSchema = z.object({
   checkedAt: z.string(),
   status: z.enum(["fresh", "refresh_required", "unknown"]),
   changedInputs: z.array(z.string()),
-  unreadableInputs: z.array(z.string()).optional(),
+  unresolvableInputs: z.array(z.string()).optional(),
   reason: z.string().optional(),
 });
 
@@ -66,8 +66,17 @@ export async function readLease(root: string, sessionId: string): Promise<LeaseR
   try {
     raw = await readFile(path, "utf8");
   } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { lease: null };
-    throw error;
+    const err = error as NodeJS.ErrnoException;
+    // The same two holes `readInputs` had, in the sibling file. A raw fs error
+    // thrown from here aborts the guard instead of failing closed through it,
+    // and `readFile` follows symlinks — so a dangling one reports ENOENT and
+    // unusable state reads as "no session was ever established", which is what
+    // this function exists to prevent.
+    if (err.code !== "ENOENT") return { lease: null, issue: `${path}: ${err.code ?? err.message}` };
+    if (await lstat(path).catch(() => null)) {
+      return { lease: null, issue: `${path}: dangling symlink — the lease it pointed at is gone` };
+    }
+    return { lease: null };
   }
 
   let parsed: unknown;

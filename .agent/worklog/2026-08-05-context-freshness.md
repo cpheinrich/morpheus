@@ -155,4 +155,31 @@ Two more from the same round, both the rule not yet reaching far enough:
   cannot be re-read. Leases now carry `unreadableInputs` and a reason that says
   repair, not refresh.
 
-618 tests pass.
+## Sixth checkpoint — the rule was too narrow, twice over
+
+Round 6 found the fifth and sixth instances, and the interesting part is that
+**the commit that wrote the rule left two more standing one file over.** The
+rule as phrased was about fingerprint sentinels; an fs error code and a retry
+loop are the same defect and did not look like it.
+
+- `unreadableInputs` was keyed on *unreadable* when what a runner needs is
+  *cannot be resolved by re-reading* — which also covers a required record
+  absent in the observation, i.e. the wrong-root case, the likelier loop of the
+  two. Renamed `unresolvableInputs` and broadened.
+- Both defects fixed in `readInputs` last round were untouched in `readLease`:
+  a raw fs throw out of the guard, and `readFile` following a dangling symlink
+  so unusable state read as *no session was ever established* — which the
+  function's own doc comment says must not happen.
+- `ContextFreshnessError` opened by telling the agent to refresh a record the
+  next clause said refreshing would not fix. It is the only message an agent
+  sees; the two halves now agree.
+
+So `.agent/learned.md` no longer states this as a rule about sentinels. It
+states it as a question to ask at any boundary: **what does this code do when
+the thing is not there, and can the caller tell that apart from the thing being
+fine?** A rule keyed to a shape only catches that shape, which is exactly how a
+commit fixing it introduced two more.
+
+620 tests pass across six review rounds. The findings did not taper, but they
+did move outward — rounds 1–2 were in the policy, 5–6 in the reporting around
+it. Nothing after round 4 changed a `fresh` verdict for the ordinary path.

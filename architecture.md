@@ -708,9 +708,11 @@ Two rules keep the artefacts honest, both learned by getting them wrong first:
   `fresh`. Outside the required set `absent` does compare, because *nothing there and still nothing
   there* is genuine knowledge. This is [`.agent/learned.md`](.agent/learned.md)'s sentinel rule; it
   cost four review rounds to see once.
-- **Unreadable is reported separately**, because refreshing cannot clear it. Folded into the flat
-  changed list it is indistinguishable from a record another agent edited, and a runner told only
-  "these ids changed" loops on a refresh that can never succeed.
+- **What re-reading cannot fix is reported separately.** Folded into the flat changed list, a
+  record that yields no content is indistinguishable from one another agent edited, and a runner
+  told only "these ids changed" loops on a refresh that can never succeed — the wrong-root case
+  most of all, since a bad path is a caller mistake where a permission fault is a machine's. The
+  guard's message subtracts them from what it asks to be refreshed, so its two instructions agree.
 
 **Local, and deliberately not shared.** A receipt says *this working copy read these files*, which
 is true of one machine. Committing it would turn a local observation into a claim about everyone.
