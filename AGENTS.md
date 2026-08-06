@@ -84,7 +84,7 @@ routing-around outlives the staleness.
 ```sh
 morpheus context status    # what the current lease says, and how old it is
 morpheus context check     # exit non-zero unless fresh — for hooks and scripts
-morpheus context brief     # the session-start message; always exits 0
+morpheus context brief     # session start: discards the last receipt, says what to read
 ```
 
 **When something has moved**, `context refresh` prints what landed on the trunk and which records

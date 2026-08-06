@@ -1293,6 +1293,30 @@ describe("what a lease is scoped to", () => {
     expect(lease?.changedInputs).toContain(".agent/decisions.md");
   }, 20_000);
 
+  it("still names what moved, from the receipt it just discarded", async () => {
+    // The discard has to come first — a session must not inherit
+    // certification — and the reporting depends on the thing discarded. Wired
+    // in that order without threading it through, `brief` stopped naming any
+    // record at all, including the class the protocol says refreshing cannot
+    // fix.
+    const { brief } = await import("../src/cli/context.js");
+    const { root } = await certified();
+    await writeFile(join(root, ".agent/learned.md"), "someone else wrote this", "utf8");
+
+    const printed: string[] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => void printed.push(args.join(" "));
+    try {
+      await brief(root, true);
+    } finally {
+      console.log = log;
+    }
+
+    const out = printed.join("\n");
+    expect(out).toContain("no context receipt");
+    expect(out).toContain(".agent/learned.md");
+  }, 20_000);
+
   it("does not let a new session inherit the previous one's certification", async () => {
     // The lease is keyed on the worktree, so a session starting where another
     // refreshed minutes ago inherited its ✓ — and `context brief`, the hook

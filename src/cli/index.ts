@@ -73,7 +73,7 @@ Usage
   morpheus context refresh  take a receipt — run it after reading the canonical records
   morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
   morpheus context status   what the current lease says, and how old it is
-  morpheus context brief    the session-start message; always exits 0, for hooks
+  morpheus context brief    session start: discards the last receipt, says what to read
                             Governed commands (pm claim|new|block, access sync) refuse without
                             a fresh receipt. --offline, or MORPHEUS_OFFLINE=1, permits local
                             work on an unverified trunk and still refuses anything external.

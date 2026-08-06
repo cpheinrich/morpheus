@@ -1,6 +1,13 @@
-import { LEASE_TTL_MS } from "../session/lease.js";
+import {
+  CANONICAL_INPUTS,
+  LEASE_TTL_MS,
+  observeLease,
+  type ContextReceipt,
+  type SessionLease,
+} from "../session/lease.js";
+import { readInputs } from "../session/inputs.js";
 import { check as checkContext, endTerm, refresh as takeReceipt } from "../session/context.js";
-import { resolveTrunk, trunkLog, worktreeRoot } from "../session/git.js";
+import { resolveTrunk, trunkLog, trunkSha, worktreeRoot } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
 import { gate as gateAction, offlineDeclared, type Reach } from "../session/gate.js";
 
@@ -213,7 +220,33 @@ export async function status(root: string, offline = offlineDeclared()): Promise
 }
 
 /**
+ * What has moved since a receipt, without writing anything.
+ *
+ * `brief` cannot ask the store: it has just discarded the receipt, which is
+ * the point. This is the same observation `check` makes, minus the persistence
+ * — a pure read, so the session-start message can still name records rather
+ * than only announcing that it has none.
+ */
+async function sinceReceipt(
+  root: string,
+  receipt: ContextReceipt,
+  now: Date,
+  offline: boolean,
+): Promise<SessionLease> {
+  const wt = await worktreeRoot(root);
+  const policy = await projectPolicy(wt);
+  const trunk = await resolveTrunk(wt, policy.trunk);
+  const inputs = await readInputs(wt, policy.requiredInputs ?? CANONICAL_INPUTS);
+  const sha = offline ? null : (await trunkSha(wt, trunk)).sha;
+  return observeLease(receipt, { checkedAt: now.toISOString(), remoteSha: sha, inputs }, policy);
+}
+
+/**
  * The session-start message, injected into a new session's context by a hook.
+ *
+ * **Not read-only.** It discards the stored receipt, which is what makes the
+ * lease session-scoped — so it belongs in a session-start hook and nowhere
+ * else. Running it by hand mid-session costs one `context refresh`.
  *
  * **Always exits 0**, and that is the point rather than convenience. A hook
  * written as `morpheus context status || true` swallows a missing binary
@@ -233,11 +266,22 @@ export async function brief(root: string, offline = offlineDeclared()): Promise<
   // may end a term, which asserts nothing.
   const previous = await endTerm(root);
 
-  const { lease } = await checkContext(root, new Date(), offline);
-  console.log("This session has no context receipt — the previous one was another session's.");
+  // Computed from the receipt that was discarded, not from the store — which
+  // now holds nothing, by design. The discard has to come first (a session
+  // must not inherit certification) and the reporting depends on the thing
+  // discarded, so `endTerm` returns it rather than dropping it.
+  const now = new Date();
+  const moved = previous ? await sinceReceipt(root, previous.receipt, now, offline) : null;
+
   if (previous) {
-    console.log(`  (that one was taken ${ago(previous.checkedAt, new Date())}, covering ${previous.receipt.inputs.length} records)`);
+    console.log(
+      `This session has no context receipt — the last one was taken ${ago(previous.checkedAt, now)} ` +
+        `by another session, covering ${previous.receipt.inputs.length} records.`,
+    );
+  } else {
+    console.log("This session has no context receipt.");
   }
+  const lease = moved;
 
   // Split, not flattened. `unresolvableInputs` is a subset of `changedInputs`,
   // so listing them together and closing with "run refresh" answers a record

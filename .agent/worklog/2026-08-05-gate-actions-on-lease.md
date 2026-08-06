@@ -760,6 +760,26 @@ receipt is the claim "I read these files" and it belonged to the other session, 
 must genuinely have none. Discard, not downgrade — the previous receipt is returned rather than
 dropped so `brief` can still say what has moved since.
 
+## Twenty-sixth review pass — the fix landed in front of the thing it fed
+
+The discard is right. It was wired **ahead of the reporting that depends on the receipt it
+discards**, so `brief` asked the store what had moved, the store now held nothing by design, and
+the session-start hook stopped naming a single record — including the class the protocol says
+refreshing cannot fix.
+
+The shape: **a correct change to *when* something happens, without following what read it
+afterwards.** `endTerm` already returned the previous lease for exactly this, and the caller
+ignored it. The delta is computed from that receipt now, as a pure observation with no write —
+which is also the honest thing for a command that has just declared it holds no receipt.
+
+Two smaller, both about the same command's contract having quietly changed:
+
+- Three surfaces described `context brief` as *"the session-start message; always exits 0"* —
+  informational — and it is now the one command that **destroys state**. It belongs in a hook and
+  nowhere else, and all three say so.
+- The opening line asserted *"the previous one was another session's"* whether or not one had ever
+  existed. It reports what was actually there.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
