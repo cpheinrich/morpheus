@@ -1,0 +1,294 @@
+---
+roadmap: MO-26-08-05-12.24.47
+date: 2026-08-05
+summary: Established a provider-neutral, CI-tested receipt and session-lease policy before wiring any real agent runner.
+---
+
+## First checkpoint
+
+Added the pure context receipt/lease model, an explicit fail-closed guard, and
+a mock `SessionAdapter`. The policy treats an unavailable remote as `unknown`,
+not as unchanged; a changed SHA or canonical input produces the smallest known
+refresh set. Tests cover fresh, stale, unknown, and mock notification paths
+without contacting GitHub, Codex, or Claude.
+
+## Claude review gate
+
+The local Claude CLI is authenticated, but its non-interactive invocation
+returned no review payload despite multiple bounded read-only attempts. Do not
+claim Claude feedback was incorporated. A readable Claude review remains a
+required gate before merge; Chris elected to open the draft PR now so Claude
+can review the visible branch. The deterministic foundation advances
+independently because its acceptance tests do not rely on provider availability.
+
+## Verification before draft review
+
+`pnpm test` passed 596 tests and `pnpm typecheck` passed. `pnpm lint` could
+not run because the package script invokes `eslint`, but eslint is not
+installed or declared by the repository; this is reported in the PR rather
+than presented as a passing check.
+
+## Second checkpoint — what the review found
+
+Claude's rung-2 review landed three findings, all inside what the branch
+claimed rather than what it deferred. They shared one shape: **a field was
+written and never read, so the code named a guarantee it did not provide.**
+
+- `checkedAt` was stored and never compared. A "five-minute lease" with no
+  term is a receipt, and `readLease` is exactly the path that brings a
+  six-hour-old one back. Now `leaseAt` expires it, and `requireFresh` defaults
+  `now` to the real clock so a caller cannot skip the check by omitting the
+  argument. An unparseable or future `checkedAt` expires too — a clock that
+  moved backwards must not buy a lease extra life.
+- `ContextInput.fingerprint` was stored and never compared; drift came
+  entirely from a caller-supplied optional `changedInputs`. A receipt with
+  `inputs: []` therefore certified as `fresh` — the `.agent/learned.md` failure
+  verbatim, where the check skips what is absent and reports the empty thing as
+  correct. Receipts are now measured against a declared `CANONICAL_INPUTS` set,
+  and observations carry fingerprints rather than conclusions.
+- `readLease` cast unvalidated JSON. `null` read as "no session ever existed",
+  and `{}` reached `requireFresh` and threw a `TypeError` instead of failing
+  closed. Now zod-validated, returning `{ lease, issue }` so corrupt and absent
+  are distinguishable, and `writeLease` renames into place so a crash cannot
+  produce the half-file in the first place.
+
+**The thing no reviewer flagged:** merging this branch would have reconciled
+MO-26-08-05-12.24.47 to `shipped`, with four of five acceptance criteria
+unbuilt — and CLAUDE.md is explicit that a shipped item is never looked at
+again. The item is now scoped to the policy it actually contains, and
+MO-26-08-05-16.27.56 carries the enforcement, offline exception, and adapters.
+Worth generalising: **when a claimed item is knowingly delivered in slices, the
+split has to happen before the first merge, not after.** The board has no other
+way to learn that the rest exists.
+
+## Third checkpoint — the doc outran the code
+
+Round 3 reviewed the architecture section rather than the code, and found the
+inverse of round 2's problem: **§7.10 asserted guarantees the module made
+optional.** Worth naming as a shape, because CLAUDE.md says architecture.md is
+the specification and more current than the code — so a doc that overstates is
+not a wording slip, it is a spec the next implementer will build against.
+
+- "Drift is derived, not asserted" was true only if the caller passed
+  `inputs`, which was optional. The doc's own justification is the argument:
+  *a caller that can choose what counts as changed can also choose to report
+  nothing*, and omission is that choice under another name. Now required.
+- The coverage rule could be switched off with `requiredInputs: []` — round
+  one's finding restored through config. `[]` stays meaningful, because a
+  project genuinely may have no canonical records, but `undefined` now
+  explicitly means "none declared, take the default", and
+  MO-26-08-05-16.27.56 carries an acceptance criterion that a blank or
+  unparseable policy file must never resolve to `[]`.
+- `remoteSha` had no definition, and it is the field the whole verdict turns
+  on. Settled: the tip of `origin/main`, not the branch tip.
+
+Two carryovers from round 2, both fixed: `notifyAdapter` gated on
+`refresh_required`, so the offline lease this branch went out of its way to
+populate with a known delta was the one case the runner never heard about; and
+`readInputs` rethrew every non-ENOENT fs error inside a `Promise.all`, so one
+unreadable record aborted the check with a raw fs error instead of reading as
+drift. `CLAUDE.md` is a symlink here, which is the realistic path to it.
+
+`readInputs` was added for the same reason the fingerprint finding existed —
+nothing in the branch produced a fingerprint, so both sides of the comparison
+were theoretical. One producer for receipt and observation makes them
+comparable by construction rather than by convention.
+
+## Fourth checkpoint — the fix reintroduced the bug it fixed
+
+Round 4 found that `UNREADABLE`, added in round 3 *to* make an unreadable
+record read as drift, did the opposite. `readInputs` is the single producer for
+both sides, so a permanent failure — a broken symlink, a permission change —
+fingerprints identically on each, `covered.has(id)` is true, the values match,
+and the lease certifies `fresh`. Forever, because the failure does not clear
+itself.
+
+**This is the third time on this branch that the same shape has appeared**, and
+it is worth stating plainly: *the absence of information kept being encoded as
+a value, and then compared like one.* An empty `inputs` array meant "read
+nothing" and passed. A missing `checkedAt` comparison meant "never checked" and
+passed. `UNREADABLE == UNREADABLE` meant "could not read, twice" and passed.
+Each fix was correct and each left the next instance standing. The generalised
+rule is now in the code and §7.10: **a sentinel for missing information must be
+excluded from the comparison, not compared.** `ABSENT` is the deliberate
+exception, and the comment says why.
+
+Two more, same round:
+
+- `notifyAdapter` branched on `lease.status` while `requireFresh` read the
+  lease through `leaseAt`. Two consumers of one lease disagreeing, and the
+  disagreement lands exactly on the resume path `readLease` exists to serve —
+  a lease persisted `fresh` six hours ago threw at the guard and told the
+  runner nothing.
+- Making `RemoteObservation.inputs` required removed the way to report no drift
+  by omitting the *argument*, not by omitting an *entry*. `drifted` iterated
+  the observation, so a required id the observation never reported was checked
+  for coverage and never for drift — reachable through `requiredInputs`, the
+  one knob the policy exposes. The comparison now walks `required`.
+
+## Fifth checkpoint — the rule, and where it stops
+
+Round 5 found the fourth instance of the shape round 4 named, in the exception
+round 4 had just declared safe. `ABSENT` was allowed to compare because
+*nothing to read really is nothing to read* — true for an optional record,
+false for a required one, where absent does not mean "this record is empty" but
+**"this is not that project, or not that tree."** `readFile` follows symlinks,
+so a dangling `CLAUDE.md` reports ENOENT and routed to `ABSENT` — the branch
+that compared — which is the one example the `UNREADABLE` comment gave. And
+pointing `readInputs` at a wrong root fingerprints all three records `ABSENT`
+on both sides: a receipt recording three absences, certifying fresh.
+
+The rule is now in `.agent/learned.md` rather than only here, because it is not
+about this module. Four disguises, one defect: **a value meaning *I do not have
+this information* compares equal to itself, and equality is what every
+freshness, cache and diff check is built out of.** It always reads as
+agreement, which is always the unsafe direction.
+
+Two more from the same round, both the rule not yet reaching far enough:
+
+- The sentinel exclusion stopped at the edge of `required`; the `drifted` block
+  three lines down still compared by raw equality, and it is the only check for
+  ids the receipt covers voluntarily. Both now run through one walk over the
+  union.
+- `UNREADABLE` was unclearable and said so in the vocabulary of ordinary drift.
+  An agent told "these three ids changed" retries forever on the one that
+  cannot be re-read. Leases now carry `unreadableInputs` and a reason that says
+  repair, not refresh.
+
+## Sixth checkpoint — the rule was too narrow, twice over
+
+Round 6 found the fifth and sixth instances, and the interesting part is that
+**the commit that wrote the rule left two more standing one file over.** The
+rule as phrased was about fingerprint sentinels; an fs error code and a retry
+loop are the same defect and did not look like it.
+
+- `unreadableInputs` was keyed on *unreadable* when what a runner needs is
+  *cannot be resolved by re-reading* — which also covers a required record
+  absent in the observation, i.e. the wrong-root case, the likelier loop of the
+  two. Renamed `unresolvableInputs` and broadened.
+- Both defects fixed in `readInputs` last round were untouched in `readLease`:
+  a raw fs throw out of the guard, and `readFile` following a dangling symlink
+  so unusable state read as *no session was ever established* — which the
+  function's own doc comment says must not happen.
+- `ContextFreshnessError` opened by telling the agent to refresh a record the
+  next clause said refreshing would not fix. It is the only message an agent
+  sees; the two halves now agree.
+
+So `.agent/learned.md` no longer states this as a rule about sentinels. It
+states it as a question to ask at any boundary: **what does this code do when
+the thing is not there, and can the caller tell that apart from the thing being
+fine?** A rule keyed to a shape only catches that shape, which is exactly how a
+commit fixing it introduced two more.
+
+## Seventh checkpoint — the other consumer, and the format
+
+Round 7 walked the required-input path exhaustively rather than sampling it and
+could not construct a receipt certifying `fresh` while a required record was
+unread, unreadable, missing or stale. The policy core is closed. All three
+findings were about what happens *around* a correct verdict:
+
+- `ContextFreshnessError` stopped asking for a refresh it had just said would
+  not work — and `notifyAdapter`, the module's other output and the one a
+  runner actually acts on, still did. `SessionAdapter` now has two channels,
+  because a runner given one has to guess and the guess it makes is the loop.
+  `interrupt?` came out: declared, unreachable, and not what this is.
+- The rename `unreadableInputs` → `unresolvableInputs` was a breaking format
+  change under an unchanged `version`, and zod strips unknown keys by default —
+  so an old lease would have parsed clean with every stuck record reading as
+  refreshable. Schemas are `strictObject` throughout now.
+- `advisoryMemorySources` was the one claim about what the system will *not*
+  do, and it was a bare `string[]` with no producer — a convention for whoever
+  writes one. It has a `source:key` shape now, checked on write as well as
+  read, because a guarantee about what is never written has to be enforced
+  where writing happens.
+
+## Eighth checkpoint — the handoff, and one regression the tests caught
+
+Round 8's first finding is the one worth keeping: **this branch's own commit
+falsified its successor item.** Acceptance 8 on MO-26-08-05-16.27.56 said
+`unresolvableInputs` was read by nothing, that `SessionAdapter` had no repair
+channel, and that `interrupt?` was the obvious home — all true when written,
+all false one commit later, and one of them naming a symbol that no longer
+exists. On merge that item *becomes* the specification, worked from cold by
+someone who cannot check it against a conversation.
+
+So: **when a commit changes something a deferred item describes, the item is
+part of the diff.** It reads like documentation and behaves like a handoff.
+
+The other two were small and both about consuming a correct verdict —
+`writeLease` threw a raw `ZodError` where every other function in the module
+returns data (and threw on the *write* side of the corrupt-vs-absent
+distinction, so a hook catching broadly would leave "no session was ever
+established"); and `notifyAdapter` inferred "the remote advanced" from an empty
+local delta, which is wrong precisely when a record is stuck *and* the trunk
+moved. The lease states `remoteAdvanced` now rather than having it guessed.
+
+**One thing to record about the fix, not the finding.** Replacing the inference
+with `remoteAdvanced` broke an existing test immediately: an *expired* lease has
+no local delta and no remote advance, so the runner stopped being told about
+the one case `leaseAt` exists for. The narrow fix would have been to add
+expiry to the condition; the right one was to invert it — refresh fires by
+default, and only two states genuinely have nothing to ask for. A condition
+enumerating reasons to act will keep missing one.
+
+## Ninth checkpoint — one shape, stated once
+
+Round 9's three findings were all the same shape, and it is the shape most of
+rounds 5–9 have been: **a fix landed on one of two outputs.** Worth writing
+down because it is now the most reliable thing to check on this branch.
+
+- `writeLease` reported validation failures as data and filesystem failures as
+  exceptions — the mirror image of round 6's `readLease` finding, inside the
+  same round-trip. `written: false` matters beyond tidiness: a failed write
+  leaves the *previous* lease on disk, and if that one was `fresh` and inside
+  its term it still passes `requireFresh`. Surviving the old file is safe
+  against a half-write and fail-open against a failed one, and `LeaseWrite` is
+  the only place a caller learns which.
+- `remoteAdvanced` fixed the adapter and left `reason` — the only field the
+  error message surfaces — unable to say the trunk moved, because a ternary
+  gave the inputs sentence priority. Both clauses now.
+- `notifyAdapter` handed `requestRefresh` a lease still naming the stuck
+  records in `changedInputs`. `ContextFreshnessError` subtracts them for its
+  string; the structured output did not.
+
+So the check to run on any fix here: **this module has two outputs for every
+answer — a string a human or agent reads, and a structure a runner acts on.
+Change one and the other is where the bug now lives.**
+
+## Tenth checkpoint — the last one, and where it stops
+
+Round 10 confirmed the policy closed for the third consecutive round and found
+three more in delivery. One of them was mine from round 9, and it is the useful
+one: narrowing `changedInputs` before handing the lease to `requestRefresh`
+created **two shapes that both type as `SessionLease` with opposite
+invariants** — the type documents `unresolvableInputs` as a subset of
+`changedInputs`, and in the handed-over copy they were disjoint. No consumer
+here breaks on it; a runner persisting what it was given would store a lease
+that under-reports its own delta.
+
+The fix is the general one: **the narrowing belongs to the delivery, not to the
+artefact.** `requestRefresh(lease, inputs)` — the lease stays whole and the
+channel says which part of it this call is about. Fixing it inside the object
+would have meant a second invariant to remember.
+
+Also: `written: false` acquired a second cause (a filesystem failure, not just
+an unusable lease) and its doc comment still said the first. That is the one
+fail-open path in the module — a failed write leaves the previous lease on
+disk, and a `fresh` one inside its term reads back clean — so it is now
+acceptance 9 on the wiring item rather than only a comment in a file whose item
+closes on merge.
+
+**Stopping here.** Ten rounds, and rounds 8, 9 and 10 each confirmed the
+required-input path closed by exhaustive walk. Everything since round 7 has
+been about delivering a correct verdict rather than reaching one, which is the
+wiring item's subject — and each round's findings now arrive with the previous
+round's fix as their cause, which is the signal that the remaining yield is
+about this code being new rather than being wrong.
+
+633 tests pass across ten review rounds. The findings did not taper, but they
+moved steadily outward — rounds 1–2 the verdicts, 3–4 the policy, 5–6 the
+reporting, 7 the consumers, 8 the handoff, 9 the second copy of each output. Rounds 7
+and 8 both walked the required-input path exhaustively and could not construct
+a `fresh` verdict over a record that is unread, unreadable, missing or stale.
+Nothing after round 4 changed a `fresh` answer, which is the signal that the
+core converged even while the review kept finding things around it.

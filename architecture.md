@@ -684,6 +684,79 @@ to close with a spec that says it could not see the codebase and should be defer
 line, in a handoff received on 2026-08-01, is what caused a prompt-based heartbeat design to be
 checked against reality and killed rather than built.
 
+### 7.10 Context freshness
+
+Everything above assumes an agent has read the records. Nothing made it prove that. A session can
+start without loading `decisions.md`, and a session that *did* load it six hours ago can keep
+working through changes another agent has since pushed — with a claim, a plan, and a draft PR all
+looking like evidence of an agent that knows the current state.
+
+Two assertions, both local and gitignored under `local/sessions/`:
+
+| | What it asserts |
+|---|---|
+| **Context receipt** | *I read these records, at these fingerprints, against this remote SHA* |
+| **Session lease** | *That receipt was checked against the remote at this time, and held* |
+
+**The remote SHA is the tip of `origin/main`**, not the branch tip. The whole `fresh` verdict turns
+on that field, so it gets one meaning: did the canonical trunk move under this session, which is
+what another agent merging does. A branch's own tip moving is a real but separate concern.
+
+Only the lease is a file today. Nothing constructs a receipt — `readInputs` supplies the `inputs`
+half and the rest has no producer, so a receipt store lands with the wiring item below.
+
+**A lease has a five-minute term**, which is the whole difference between the two. Past it the
+lease states a historical fact, not a fact about now, so it degrades to `refresh_required` rather
+than carrying its verdict forward. So does one whose check time is unreadable, or in the future
+because a clock moved.
+
+Three states, and the third is the point: an unreachable remote is `unknown`, never assumed
+unchanged. **`requireFresh` throws on anything but `fresh`** — the guard fails closed, and offline
+is a blocked state rather than a permitted one until the offline exception exists.
+
+Two rules keep the artefacts honest, both learned by getting them wrong first:
+
+- **A receipt is measured against a declared required set**, not just against itself. A receipt
+  listing nothing would otherwise be indistinguishable from one listing everything — the same
+  shape as a check that skips what is absent and reports the empty thing as correct. An *empty*
+  declared set switches the check off and is the only thing that does, so a project config must
+  distinguish "none declared" (take the default) from "declared as none": a blank or unparseable
+  field yielding `[]` would hand every generated project a check that passes for having read
+  nothing.
+- **Drift is derived, not asserted**, and the observation's fingerprints are a required argument
+  for the same reason. Optional, omitting them *is* the caller choosing to report no drift, under
+  another name. The comparison walks the *required* set rather than what the observation reported,
+  so an entry left out is unverified rather than unchanged — the same hole one level down.
+- **A record with no content never counts as read.** It fingerprints to a sentinel rather than
+  throwing, because a freshness check is the wrong place to abort with a raw filesystem error — but
+  the sentinel is then *excluded* from the comparison rather than compared. Both sentinels
+  fingerprint identically on each side, so equality alone makes *I could not read it* match itself,
+  and — the wider case — makes a wrong root, where every required record is missing, certify
+  `fresh`. Outside the required set `absent` does compare, because *nothing there and still nothing
+  there* is genuine knowledge. This is [`.agent/learned.md`](.agent/learned.md)'s sentinel rule; it
+  cost four review rounds to see once.
+- **What re-reading cannot fix is reported separately.** Folded into the flat changed list, a
+  record that yields no content is indistinguishable from one another agent edited, and a runner
+  told only "these ids changed" loops on a refresh that can never succeed — the wrong-root case
+  most of all, since a bad path is a caller mistake where a permission fault is a machine's. The
+  guard's message subtracts them from what it asks to be refreshed, and the adapter has **two
+  channels** rather than one — a runner given only `requestRefresh` has to guess, and the guess it
+  makes is the loop.
+
+**Local, and deliberately not shared.** A receipt says *this working copy read these files*, which
+is true of one machine. Committing it would turn a local observation into a claim about everyone.
+Shared evidence stays what it was: the worklog, the commit, the PR.
+
+Local state is validated on the way **out** as well as in, and strictly: the receipt's one
+privacy claim — safe source labels, never conversation text — is only a property of the artefact if
+something checks at the point of writing, and a strict schema is what makes the next persisted-key
+change loud rather than silently lossy.
+
+The policy is pure and provider-neutral, sitting behind a `SessionAdapter` that runners implement
+but do not own — so CI exercises fresh, stale, expired, offline and never-loaded paths with a mock,
+needing neither GitHub nor a Codex or Claude account. **Nothing calls the guard yet** — the policy
+makes the answer computable, and MO-26-08-05-16.27.56 wires it to hooks, commands, and runners.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.

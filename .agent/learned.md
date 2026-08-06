@@ -261,6 +261,39 @@ The test for this must parse the YAML rather than slice the text: an `env:` bloc
 above the `run:` it feeds, so any text-splitting heuristic sees them as one chunk and flags the safe
 form as unsafe. `step.run` is exactly the shell that executes and nothing else.
 
+## A sentinel for missing information must be excluded from a comparison, not compared
+
+Four rounds of review on the context-freshness policy (MO-26-08-05-12.24.47) found the same defect
+four times, in four disguises:
+
+| The absence | Encoded as | Compared, and so |
+|---|---|---|
+| Never read the records | `inputs: []` | covered nothing, certified `fresh` |
+| Never checked the remote | `checkedAt` written, never read | a six-hour-old lease certified `fresh` |
+| Read it, could not parse it | `UNREADABLE` | matched `UNREADABLE`, certified `fresh` |
+| Wrong tree entirely | `ABSENT` on every record | matched `ABSENT`, certified `fresh` |
+
+Each fix was correct and each left the next instance standing, because the shape was never named.
+It is this: **a value that means *I do not have this information* will compare equal to itself**, and
+equality is what every freshness, cache, and diff check is built out of. The result always reads as
+agreement, which is always the unsafe direction.
+
+So: sentinels get excluded from the comparison by an explicit branch, before any `===`. If one is
+deliberately allowed to compare — `ABSENT` still does, outside a declared required set, because
+*nothing there and still nothing there* is genuine knowledge — the exception needs a comment saying
+why, or the next reader restores the bug while fixing something adjacent.
+
+**Stated as a rule about sentinels this was too narrow, and the commit that wrote it left two more
+instances standing one file over** — an fs error code and a retry loop are also values meaning *I do
+not have this information*. So carry it as a question to ask at every boundary instead:
+
+> **What does this code do when the thing is not there, and can the caller tell that apart from the
+> thing being fine?**
+
+If the answer to the second half is no, that is the bug, whatever shape it is wearing. The
+reviewer's summary is the shortest version: *the check skips what is absent and reports the empty
+thing as correct.*
+
 ## A regression guard narrowed to stay green can stop covering its own reason
 
 2026-08-05. The "no source file names `hq/inbox`" sweep exempted `paths.ts` by filename while the
