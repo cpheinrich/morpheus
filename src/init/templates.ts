@@ -555,7 +555,13 @@ export const claudeSettings = (): string =>
             hooks: [
               {
                 type: "command",
-                command: "pnpm --silent morpheus context brief",
+                // Bare, not `pnpm morpheus`. `init` writes no `package.json`,
+                // so a scaffolded project has nothing for pnpm to resolve —
+                // and AGENTS.md documents `npm link` putting `morpheus` on
+                // PATH. Wrapping it also puts a layer in front that fails for
+                // its own reasons, which is what `context brief` exiting 0 by
+                // design was meant to avoid.
+                command: "morpheus context brief",
               },
             ],
           },
@@ -598,7 +604,7 @@ morpheus context check     # exit non-zero unless fresh — for hooks and script
 **When something has moved**, \`context refresh\` prints what landed on the trunk and which
 records changed. Re-read those, then refresh again — the delta is the point, not the ceremony.
 
-**Offline**, set \`MORPHEUS_OFFLINE=1\`. Local work proceeds; anything that leaves the machine —
+**Offline**, set \`MORPHEUS_OFFLINE=1\` — or pass \`--offline\`. Local work proceeds; anything that leaves the machine —
 pushing a claim, granting access — is still refused, because an unverified trunk is exactly
 when you should not be operating external controls.
 

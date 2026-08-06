@@ -25,9 +25,18 @@ export async function refresh(root: string): Promise<number> {
   const before = await checkContext(root);
   const previous = before.lease?.receipt;
 
-  const { lease, issue } = await takeReceipt(root);
+  const { lease, issue, written } = await takeReceipt(root);
   if (!lease) {
     console.error(issue ?? "Could not take a context receipt.");
+    return 1;
+  }
+
+  // A receipt that did not reach disk is not a receipt. Printing ✓ here sends
+  // the agent into a loop: the next governed command finds no lease, asks for
+  // a refresh, and the refresh appears to succeed again.
+  if (!written) {
+    console.error(`${NO} Receipt computed but not persisted — ${issue ?? "the lease did not reach disk"}.`);
+    console.error(`  Every governed command will keep refusing until \`local/sessions/\` is writable.`);
     return 1;
   }
 
@@ -83,7 +92,7 @@ export async function check(root: string): Promise<number> {
 
 export async function status(root: string): Promise<number> {
   const now = new Date();
-  const { lease, issue, observed } = await checkContext(root, now);
+  const { lease, issue, observed, written } = await checkContext(root, now);
 
   if (!lease) {
     console.log(`${NO} No context receipt for this worktree.`);
@@ -97,6 +106,7 @@ export async function status(root: string): Promise<number> {
   console.log(`  Receipt covers ${lease.receipt.inputs.length} records against trunk ${lease.receipt.remoteSha.slice(0, 7) || "(unverified)"}.`);
   if (lease.reason) console.log(`  ${lease.reason}`);
   if (issue) console.log(`  ! ${issue}`);
+  if (!written) console.log(`  ! This verdict was not persisted — the lease on disk is older than it.`);
   if (offlineDeclared()) console.log(`  MORPHEUS_OFFLINE=1 is set — local work permitted, external actions are not.`);
   return lease.status === "fresh" ? 0 : 1;
 }

@@ -73,6 +73,9 @@ Usage
   morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
   morpheus context status   what the current lease says, and how old it is
   morpheus context brief    the session-start message; always exits 0, for hooks
+                            Governed commands (pm claim|new|block, access sync) refuse without
+                            a fresh receipt. --offline, or MORPHEUS_OFFLINE=1, permits local
+                            work on an unverified trunk and still refuses anything external.
   morpheus doctor           [--all]
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
@@ -86,6 +89,8 @@ Options
   --name <str>   Display name for brand init
   --prefix <str> Two-letter token prefix for brand init
   --check        Verify indexes are current without writing; exits non-zero if stale
+  --offline      Skip network checks in "init status"; declare the context-freshness
+                 offline exception everywhere else (same as MORPHEUS_OFFLINE=1)
   -h, --help     Show this message
 `;
 

@@ -108,6 +108,35 @@ cannot distinguish *none declared* from *declared as none*. That is the sentinel
 Sixth instance. The rule holds and so does the correction to it: state it as a question at every
 boundary, not as a fact about one shape.
 
+## What review found, and the shape it shared
+
+Five findings, and four of them were one thing again: **a fix landed on one of two outputs.**
+
+- **The offline exception discarded the half of the lease that is knowable offline.**
+  `observeLease` returns `unknown` unconditionally for an unreachable remote *and still fills in
+  the local delta* — that is what `localDelta` is documented for. The gate threw it away and
+  printed a reassurance. Offline covers **an unverifiable trunk, not records you can read right
+  now and have not**, which is the only reading under which the exception is safe.
+- **`refresh` printed ✓ and exited 0 for a receipt that never reached disk.** `check` twelve lines
+  down handled it; `refresh`, whose entire job is to write the lease, folded a filesystem failure
+  into the same channel as "dropped an advisory label". The loop that produces is the one
+  `unresolvableInputs` exists to prevent, arriving through the store instead of the inputs.
+  `ContextResult` now carries `written` separately from `issue`.
+- **`asStrings` collapsed a malformed declaration into `[]`.** A project writing
+  `requiredInputs: [{path: "x.md"}]` — trying to *add* records — got coverage switched off. The
+  empty branch now gates on the raw array, because declared-and-nothing-usable is not
+  declared-as-none.
+- **The scaffolded hook could not run in a scaffolded project.** `pnpm --silent morpheus` in a
+  repo `init` never gives a `package.json`. Worse, `doctor` stat'd the file and reported adoption,
+  so the hook read as present in exactly the projects where it did nothing. Bare `morpheus context
+  brief` now, and `doctor` reads the file rather than stat'ing it.
+- Acceptance 7 was half-done: `leaseAt` took the default policy while `observeLease` took the
+  project's. Harmless while nothing sets `ttlMs`, and precisely the trap 7 asked to be closed.
+
+The fixture for the offline tests failed first time for a good reason worth recording: it wrote a
+lease without creating the records on disk, and `gate` **re-observes**. A synthetic lease measures
+nothing here. Fixtures for this module have to be grounded on a real tree.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

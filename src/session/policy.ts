@@ -45,12 +45,16 @@ export async function projectPolicy(root: string): Promise<LeasePolicy> {
     return {};
   }
 
-  const declared = Array.isArray(config.requiredInputs) ? asStrings(config.requiredInputs) : null;
+  const raw = Array.isArray(config.requiredInputs) ? config.requiredInputs : null;
+  const declared = raw ? asStrings(raw) : null;
   const inbox = typeof config.handle === "string" ? [`hq/team/${config.handle}.md`] : [];
 
-  // An explicit `[]` stays `[]` — but only the explicit one reaches here,
-  // because a manifest without the key yields `null` above.
-  if (declared !== null && declared.length === 0 && inbox.length === 0) {
+  // `[]` stays `[]` **only when it was written as `[]`**. Gating on the
+  // filtered array instead would let `["…", {path: "x"}]` — a project trying
+  // to *add* records — collapse into the one value that switches coverage
+  // off. Declared-and-nothing-usable is not declared-as-none, and a filter
+  // that erases the difference is the absent-reads-as-empty defect again.
+  if (raw !== null && raw.length === 0 && inbox.length === 0) {
     return { requiredInputs: [] };
   }
   return { requiredInputs: [...new Set([...CANONICAL_INPUTS, ...(declared ?? []), ...inbox])] };

@@ -92,7 +92,7 @@ changed. Re-read those and refresh again — the delta is the point, not the cer
 refresh without reading.** The receipt is your assertion, and a receipt taken to clear a gate is
 the one failure mode the whole protocol cannot detect.
 
-**Offline**, set `MORPHEUS_OFFLINE=1`. Local work proceeds; anything that leaves the machine —
+**Offline**, set `MORPHEUS_OFFLINE=1` — or pass `--offline`. Local work proceeds; anything that leaves the machine —
 pushing a claim, granting access — stays refused, because an unverified trunk is exactly when you
 should not be operating external controls.
 

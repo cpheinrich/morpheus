@@ -35,7 +35,10 @@ export interface GateResult {
  *
  * Read-only and mechanical commands — `pm index`, `pm validate`, `pm ship`,
  * `check pr`, `heartbeat`, `doctor` — are not gated. Neither is
- * `context refresh`, which would be circular.
+ * `context refresh`, which would be circular, nor `access sync --dry-run`,
+ * which leaves nothing behind: its whole output is a description of what
+ * *would* change, and reading that on stale context is how you find out the
+ * context is stale.
  */
 export const GATED: Record<string, Reach> = {
   "pm claim": "external",
@@ -82,6 +85,22 @@ export async function gate(
   if (lease.status === "fresh") return { ok: true, message: issue ?? "" };
 
   if (lease.status === "unknown" && offlineDeclared(options.offline)) {
+    // The exception covers an **unverifiable trunk**, and nothing else.
+    // `observeLease` returns `unknown` unconditionally for an unreachable
+    // remote but still fills in the local delta, because that half is
+    // knowable without a network — so waving it through would permit exactly
+    // the harm the gated list names for `pm block`: escalating a question the
+    // records already answered, on records the session could have read.
+    if (lease.changedInputs.length) {
+      return {
+        ok: false,
+        message:
+          `${new ContextFreshnessError(lease).message}\n\n` +
+          `  Offline covers a trunk you cannot reach — not records you can. Read what it\n` +
+          `  names, then run:\n    morpheus context refresh`,
+      };
+    }
+
     if (reach === "local") {
       return {
         ok: true,

@@ -22,6 +22,14 @@ export interface ContextResult {
   issue?: string;
   /** True when the remote was consulted, false when the term was still running. */
   observed: boolean;
+  /**
+   * Whether the lease reached disk. Separate from `issue` because a
+   * filesystem failure and "dropped an advisory label" are not the same
+   * answer — folding them into one channel let `refresh` print a ✓ for a
+   * receipt that never persisted, and the next governed command then asks for
+   * the refresh that just appeared to succeed.
+   */
+  written: boolean;
 }
 
 async function session(root: string): Promise<{ worktree: string; id: string }> {
@@ -63,7 +71,12 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
 
   const lease = observeLease(receipt, { checkedAt: now.toISOString(), remoteSha: sha, inputs }, policy);
   const write = await writeLease(worktree, id, lease);
-  return write.issue ? { lease, issue: write.issue, observed: true } : { lease, observed: true };
+  return {
+    lease,
+    observed: true,
+    written: write.written,
+    ...(write.issue ? { issue: write.issue } : {}),
+  };
 }
 
 /**
@@ -80,15 +93,26 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
 export async function check(root: string, now = new Date()): Promise<ContextResult> {
   const { worktree, id } = await session(root);
   const { lease: stored, issue } = await readLease(worktree, id);
-  if (!stored) return issue ? { lease: null, issue, observed: false } : { lease: null, observed: false };
+  if (!stored) {
+    return issue
+      ? { lease: null, issue, observed: false, written: false }
+      : { lease: null, observed: false, written: false };
+  }
 
-  const current = leaseAt(stored, now);
-  if (current.status === "fresh") return { lease: current, observed: false };
+  // Resolved before either read of the lease. `leaseAt` and `observeLease`
+  // taking their policy from different places is the divergence acceptance 7
+  // asks to be made impossible — harmless while nothing sets `ttlMs`, and a
+  // trap for whatever adds a per-project term.
+  const policy = await projectPolicy(worktree);
+
+  const current = leaseAt(stored, now, policy);
+  // Nothing was written, because nothing needed to be — the stored lease is
+  // still the current answer.
+  if (current.status === "fresh") return { lease: current, observed: false, written: true };
 
   // Past the term, or already known stale. Re-observe against the receipt the
   // agent actually took — its `inputs` are the assertion, and comparing new
   // observations to them is the entire mechanism.
-  const policy = await projectPolicy(worktree);
   const inputs = await readInputs(worktree, required(policy));
   const sha = await trunkSha(worktree);
   const lease = observeLease(
@@ -102,5 +126,10 @@ export async function check(root: string, now = new Date()): Promise<ContextResu
   // survives and a `fresh` one inside its term still passes. Carried out to
   // the caller rather than dropped.
   const problem = write.written ? write.issue : (write.issue ?? "lease not persisted");
-  return problem ? { lease, issue: problem, observed: true } : { lease, observed: true };
+  return {
+    lease,
+    observed: true,
+    written: write.written,
+    ...(problem ? { issue: problem } : {}),
+  };
 }

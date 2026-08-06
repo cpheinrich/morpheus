@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pnpm --silent morpheus context brief"
+            "command": "morpheus context brief"
           }
         ]
       }
