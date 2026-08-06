@@ -11,22 +11,22 @@ import { leaseAt, type LeasePolicy, type SessionLease } from "./lease.js";
  */
 export interface SessionAdapter {
   /** There is a delta, and loading it clears the lease. */
-  requestRefresh(lease: SessionLease): Promise<void>;
+  requestRefresh(lease: SessionLease, inputs: string[]): Promise<void>;
   /** Nothing to load: a record is missing or unreadable and needs fixing. */
-  requestRepair(lease: SessionLease): Promise<void>;
+  requestRepair(lease: SessionLease, inputs: string[]): Promise<void>;
 }
 
 /** Test double used by PM/session tests. */
 export class MockSessionAdapter implements SessionAdapter {
-  readonly refreshRequests: SessionLease[] = [];
-  readonly repairRequests: SessionLease[] = [];
+  readonly refreshRequests: { lease: SessionLease; inputs: string[] }[] = [];
+  readonly repairRequests: { lease: SessionLease; inputs: string[] }[] = [];
 
-  async requestRefresh(lease: SessionLease): Promise<void> {
-    this.refreshRequests.push(lease);
+  async requestRefresh(lease: SessionLease, inputs: string[]): Promise<void> {
+    this.refreshRequests.push({ lease, inputs });
   }
 
-  async requestRepair(lease: SessionLease): Promise<void> {
-    this.repairRequests.push(lease);
+  async requestRepair(lease: SessionLease, inputs: string[]): Promise<void> {
+    this.repairRequests.push({ lease, inputs });
   }
 }
 
@@ -61,7 +61,7 @@ export async function notifyAdapter(
   // Repair is reported alongside refresh rather than instead of it: a lease can
   // carry both, and suppressing either leaves the runner acting on half a
   // picture.
-  if (stuck.length) await adapter.requestRepair(current);
+  if (stuck.length) await adapter.requestRepair(current, stuck);
 
   // Refresh fires by default, because most reasons a lease is not fresh — a
   // moved trunk, an expired term — leave nothing in `changedInputs` to point
@@ -74,13 +74,12 @@ export async function notifyAdapter(
     refreshable.length === 0 &&
     !current.remoteAdvanced &&
     (current.status === "unknown" || stuck.length > 0);
-  // Handed a lease whose `changedInputs` names only what a refresh can act on.
-  // `ContextFreshnessError` subtracts the stuck records for its string; the
-  // structured output has to as well, or a runner reading `changedInputs`
-  // straight off the lease re-reads records the same lease says it cannot.
-  if (!nothingToRefresh) {
-    await adapter.requestRefresh(
-      stuck.length ? { ...current, changedInputs: refreshable, unresolvableInputs: stuck } : current,
-    );
-  }
+  // The narrowed list is the *second argument*, not a rewritten lease. Handing
+  // over `{...current, changedInputs: refreshable}` made two shapes that both
+  // type as `SessionLease` with opposite invariants — `unresolvableInputs` is
+  // documented as a subset of `changedInputs`, and there it was disjoint. A
+  // runner persisting the one it was handed would store a lease that
+  // under-reports its own delta. The lease stays whole; the channel says which
+  // part it is about.
+  if (!nothingToRefresh) await adapter.requestRefresh(current, refreshable);
 }

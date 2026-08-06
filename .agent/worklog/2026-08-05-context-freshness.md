@@ -255,7 +255,37 @@ So the check to run on any fix here: **this module has two outputs for every
 answer — a string a human or agent reads, and a structure a runner acts on.
 Change one and the other is where the bug now lives.**
 
-633 tests pass across nine review rounds. The findings did not taper, but they
+## Tenth checkpoint — the last one, and where it stops
+
+Round 10 confirmed the policy closed for the third consecutive round and found
+three more in delivery. One of them was mine from round 9, and it is the useful
+one: narrowing `changedInputs` before handing the lease to `requestRefresh`
+created **two shapes that both type as `SessionLease` with opposite
+invariants** — the type documents `unresolvableInputs` as a subset of
+`changedInputs`, and in the handed-over copy they were disjoint. No consumer
+here breaks on it; a runner persisting what it was given would store a lease
+that under-reports its own delta.
+
+The fix is the general one: **the narrowing belongs to the delivery, not to the
+artefact.** `requestRefresh(lease, inputs)` — the lease stays whole and the
+channel says which part of it this call is about. Fixing it inside the object
+would have meant a second invariant to remember.
+
+Also: `written: false` acquired a second cause (a filesystem failure, not just
+an unusable lease) and its doc comment still said the first. That is the one
+fail-open path in the module — a failed write leaves the previous lease on
+disk, and a `fresh` one inside its term reads back clean — so it is now
+acceptance 9 on the wiring item rather than only a comment in a file whose item
+closes on merge.
+
+**Stopping here.** Ten rounds, and rounds 8, 9 and 10 each confirmed the
+required-input path closed by exhaustive walk. Everything since round 7 has
+been about delivering a correct verdict rather than reaching one, which is the
+wiring item's subject — and each round's findings now arrive with the previous
+round's fix as their cause, which is the signal that the remaining yield is
+about this code being new rather than being wrong.
+
+633 tests pass across ten review rounds. The findings did not taper, but they
 moved steadily outward — rounds 1–2 the verdicts, 3–4 the policy, 5–6 the
 reporting, 7 the consumers, 8 the handoff, 9 the second copy of each output. Rounds 7
 and 8 both walked the required-input path exhaustively and could not construct

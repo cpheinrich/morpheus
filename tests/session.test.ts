@@ -64,7 +64,7 @@ describe("session lease policy", () => {
     expect(lease.status).toBe("refresh_required");
     expect(lease.changedInputs).toEqual([".agent/decisions.md"]);
     await notifyAdapter(adapter, lease, CHECKED);
-    expect(adapter.refreshRequests).toEqual([lease]);
+    expect(adapter.refreshRequests.map((r) => r.lease)).toEqual([lease]);
     expect(() => requireFresh(lease, CHECKED)).toThrow(ContextFreshnessError);
   });
 
@@ -103,7 +103,7 @@ describe("session lease policy", () => {
 
     await notifyAdapter(adapter, lease, CHECKED);
     expect(lease.status).toBe("unknown");
-    expect(adapter.refreshRequests).toEqual([lease]);
+    expect(adapter.refreshRequests.map((r) => r.lease)).toEqual([lease]);
   });
 });
 
@@ -289,8 +289,11 @@ describe("receipt coverage", () => {
     expect(adapter.repairRequests).toHaveLength(1);
     expect(adapter.refreshRequests).toHaveLength(1);
     // Handed only what a refresh can act on — here, nothing but the trunk.
-    expect(adapter.refreshRequests[0]?.changedInputs).toEqual([]);
-    expect(adapter.refreshRequests[0]?.unresolvableInputs).toEqual([...CANONICAL_INPUTS].sort());
+    expect(adapter.refreshRequests[0]?.inputs).toEqual([]);
+    expect(adapter.repairRequests[0]?.inputs).toEqual([...CANONICAL_INPUTS].sort());
+    // The lease itself is handed over whole — the channel says which part of
+    // it this call is about, so its stated invariant still holds.
+    expect(adapter.refreshRequests[0]?.lease).toEqual(lease);
   });
 
   it("asks for both when a lease carries refreshable and stuck records at once", async () => {
@@ -308,8 +311,8 @@ describe("receipt coverage", () => {
     // Suppressing either leaves the runner acting on half a picture.
     expect(adapter.repairRequests).toHaveLength(1);
     expect(adapter.refreshRequests).toHaveLength(1);
-    expect(adapter.repairRequests[0]?.changedInputs).toEqual([".agent/decisions.md", "CLAUDE.md"]);
-    expect(adapter.refreshRequests[0]?.changedInputs).toEqual([".agent/decisions.md"]);
+    expect(adapter.repairRequests[0]?.inputs).toEqual(["CLAUDE.md"]);
+    expect(adapter.refreshRequests[0]?.inputs).toEqual([".agent/decisions.md"]);
   });
 
   it("treats an explicit empty required set as the only way to switch coverage off", () => {
@@ -367,8 +370,8 @@ describe("lease term", () => {
     await notifyAdapter(adapter, fresh, new Date(CHECKED.getTime() + 6 * 60 * 60_000));
 
     expect(adapter.refreshRequests).toHaveLength(1);
-    expect(adapter.refreshRequests[0]?.status).toBe("refresh_required");
-    expect(adapter.refreshRequests[0]?.reason).toMatch(/Lease was checked/);
+    expect(adapter.refreshRequests[0]?.lease.status).toBe("refresh_required");
+    expect(adapter.refreshRequests[0]?.lease.reason).toMatch(/Lease was checked/);
   });
 
   it("leaves a non-fresh lease's reason intact", () => {

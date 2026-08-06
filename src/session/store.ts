@@ -66,7 +66,14 @@ export interface LeaseRead {
 
 export interface LeaseWrite {
   path: string;
-  /** Whether anything reached disk. False only when the lease itself is unusable. */
+  /**
+   * Whether anything reached disk. False for an unusable lease **or a
+   * filesystem failure** — and the second is why a caller must check it. A
+   * failed write leaves the *previous* lease in place, so a `fresh` one still
+   * inside its term reads back clean and passes `requireFresh`: the stale
+   * lease does not look stale. This field is the only signal that the state on
+   * disk is not the state just observed.
+   */
   written: boolean;
   /** What was corrected or refused, in the same shape `readLease` reports. */
   issue?: string;
