@@ -503,6 +503,31 @@ Also: `ls-remote <remote> <branch>` is a **glob against ref tails**, so `main` m
 first — `split()[0]` then took the wrong SHA for the field the whole verdict turns on. Fully
 qualified as `refs/heads/<branch>` now.
 
+## Sixteenth review pass — an empty endpoint is not a range
+
+`trunkLog(from, "")` becomes `git log abc1234..`, and **git defaults an omitted side of `..` to
+`HEAD`** — so an offline refresh after an online one printed the local branch's own unpushed
+commits under *"Landed on main since your last receipt"*. Reachable in the exact situation the
+offline exception exists for, and the answer it invents is the hardest kind to disbelieve, because
+those commit subjects are real.
+
+The branch's own *"a failed lookup rendered as a confident answer"* row again, and the fix is where
+it always is: **make the query refuse a degenerate input rather than letting a default fill it in.**
+`trunkLog` returns `[]` for an empty endpoint, and the caller checks both SHAs rather than one.
+
+Two smaller, both about a value meaning more than it says:
+
+- **A dropped `requiredInputs` entry narrowed coverage in silence.** `asStrings` filtered
+  non-strings out; nothing reported it. It lands on the project that was trying to *add* a record,
+  which is the only reason the field exists. `doctor` names them as an error now, and the manifest
+  schema types the array as `unknown[]` so a bad entry reaches the check rather than failing the
+  whole parse — which would return early and report nothing else about the project.
+- **`before: null` is a positive claim**, mapped to `ABSENT`, not an abstention. The call site made
+  it for all three of `block`'s records when it only knew for the inbox. No live failure — the gate
+  refuses `pm block` before `noteWrite` if a required record is `ABSENT` in the receipt — but it is
+  a contract defect of exactly the kind this branch kept getting bitten by, so the two records it
+  cannot speak for are omitted rather than described falsely.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

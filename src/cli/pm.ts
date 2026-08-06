@@ -565,14 +565,15 @@ export async function block(
     console.log(
       `\nThe branch stays claimed. When answered: \`morpheus pm unblock ${r.id}\`.`,
     );
+    // `before: null` is a positive claim — `noteWrite` maps it to `ABSENT` —
+    // so it is only made for the inbox, where `block()` actually knows. The
+    // other two records are omitted rather than described falsely: the
+    // roadmap item existed before it was rewritten, and saying otherwise
+    // would be a claim about a file this call never measured.
     const inboxPath = r.written[r.written.length - 1];
     return {
       code: 0,
-      written: r.written.map((path) => ({
-        path,
-        // Only the inbox is a required record, and it is the last written.
-        before: path === inboxPath ? r.inboxBefore : null,
-      })),
+      written: inboxPath ? [{ path: inboxPath, before: r.inboxBefore }] : [],
     };
   } catch (err) {
     if (err instanceof BlockError) {

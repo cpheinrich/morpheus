@@ -5,6 +5,7 @@ import { parseArtifact } from "../pm/parse.js";
 import { parseInboxFile } from "../inbox/parse.js";
 import { readRegistry } from "../registry/index.js";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
+import { projectPolicy } from "../session/policy.js";
 
 /**
  * Report drift without fixing it.
@@ -26,7 +27,14 @@ export const Manifest = z.object({
   kind: Kind.optional(),
   /** Session-freshness config. Its absence is what `context` below reports. */
   context: z
-    .object({ handle: z.string().optional(), trunk: z.string().optional() })
+    .object({
+      handle: z.string().optional(),
+      trunk: z.string().optional(),
+      // Typed as unknown[] rather than string[]: a non-string entry must
+      // reach the check below rather than failing the whole manifest parse,
+      // which returns early and reports nothing else about the project.
+      requiredInputs: z.array(z.unknown()).optional(),
+    })
     .loose()
     .optional(),
   /**
@@ -299,6 +307,18 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
       "context",
       ".claude/settings.json has no `morpheus context brief` hook — the file is present but a " +
         "session still starts with no notice that its context is stale.",
+    );
+  }
+
+  const { droppedInputs } = await projectPolicy(root);
+  if (droppedInputs?.length) {
+    add(
+      "error",
+      "context",
+      `context.requiredInputs has ${droppedInputs.length} entr${droppedInputs.length === 1 ? "y" : "ies"} ` +
+        `that are not strings (${droppedInputs.join(", ")}). They are silently not in the ` +
+        `session-freshness required set, so every session certifies without them — which is the ` +
+        `opposite of what declaring them was for.`,
     );
   }
 

@@ -44,6 +44,21 @@ describe("project policy", () => {
     expect((await projectPolicy(root)).requiredInputs).toContain("hq/team/cpheinrich.md");
   });
 
+  it("names entries it had to drop rather than narrowing coverage in silence", async () => {
+    const root = await project({
+      name: "x",
+      context: { requiredInputs: ["docs/protocol.md", { path: "docs/runbook.md" }] },
+    });
+    const { requiredInputs, droppedInputs } = await projectPolicy(root);
+
+    expect(requiredInputs).toContain("docs/protocol.md");
+    expect(requiredInputs).not.toContain("docs/runbook.md");
+    // The project was trying to *add* a record. Narrowing coverage silently is
+    // the same shape as switching it off silently, and it lands on exactly the
+    // project that cared enough to declare one.
+    expect(droppedInputs).toHaveLength(1);
+  });
+
   it("does not let a malformed declaration collapse into the empty set", async () => {
     // A project trying to *add* records must not end up with coverage off.
     // `[]` is the one value that disables the check, and reaching it by
@@ -200,6 +215,26 @@ describe("scaffolding", () => {
     const findings = await doctor({ root, offline: true });
     const skipped = findings.find((f) => f.check === "context" && f.message.startsWith("Offline:"));
     expect(skipped?.severity).toBe("warning");
+  });
+
+  it("reports a dropped requiredInputs entry as an error", async () => {
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-dropped-"));
+    roots.push(root);
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({
+        name: "x",
+        prefix: "XX",
+        kind: "internal",
+        context: { requiredInputs: ["docs/a.md", 42] },
+      }),
+      "utf8",
+    );
+
+    const findings = await doctor({ root, offline: true });
+    const dropped = findings.find((f) => f.check === "context" && f.message.includes("not strings"));
+    expect(dropped?.severity).toBe("error");
   });
 
   it("does not answer a failed git lookup with a confident 'no remotes'", async () => {

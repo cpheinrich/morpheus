@@ -44,6 +44,14 @@ const asStrings = (v: unknown): string[] =>
 export interface ProjectContext extends LeasePolicy {
   /** `undefined` means undeclared — `resolveTrunk` asks `origin/HEAD` then. */
   trunk?: string;
+  /**
+   * Entries of `requiredInputs` that were not strings and so are not in the
+   * required set. Surfaced rather than dropped: it lands on the project that
+   * was trying to *add* records, which is the only reason the field exists,
+   * and coverage narrowing silently is the same shape as coverage switching
+   * off silently.
+   */
+  droppedInputs?: string[];
 }
 
 export async function projectPolicy(root: string): Promise<ProjectContext> {
@@ -71,9 +79,13 @@ export async function projectPolicy(root: string): Promise<ProjectContext> {
   if (raw !== null && raw.length === 0 && inbox.length === 0) {
     return { requiredInputs: [], ...trunk };
   }
+  const dropped = raw && declared ? raw.length - declared.length : 0;
   return {
     requiredInputs: [...new Set([...CANONICAL_INPUTS, ...(declared ?? []), ...inbox])],
     ...trunk,
+    ...(dropped > 0
+      ? { droppedInputs: (raw ?? []).filter((v) => typeof v !== "string").map((v) => JSON.stringify(v)) }
+      : {}),
   };
 }
 

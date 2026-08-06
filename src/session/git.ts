@@ -124,6 +124,13 @@ export async function trunkLog(
   from: string,
   to: string,
 ): Promise<string[]> {
+  // An empty endpoint is not a range: git's revision syntax defaults an
+  // omitted side of `..` to `HEAD`, so `abc1234..` silently becomes
+  // `abc1234..HEAD` and answers with the local branch's own commits. Handing
+  // that to a caller that labels the result "landed on main" invents a
+  // specific, plausible answer out of a failed lookup — and the commit
+  // subjects are real, which is what makes it hard to disbelieve.
+  if (!from || !to) return [];
   // `from..to` needs both objects locally, so a fetch is part of asking. It is
   // the only network call a refresh makes beyond `ls-remote`.
   await git(root, ["fetch", "--quiet", trunk.remote, trunk.branch]);

@@ -47,7 +47,14 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
     return 1;
   }
 
-  if (previous && previous.remoteSha && lease.receipt.remoteSha !== previous.remoteSha) {
+  // Both endpoints, not just the old one. `takeReceipt` writes `remoteSha:
+  // sha ?? ""` for an unreachable trunk, so an offline refresh after an online
+  // one passed this guard and asked git for a range with a defaulted side.
+  if (
+    previous?.remoteSha &&
+    lease.receipt.remoteSha &&
+    lease.receipt.remoteSha !== previous.remoteSha
+  ) {
     // Normalised, exactly as `takeReceipt` does. `projectPolicy` reads
     // `join(root, "morpheus.json")` and returns `{}` on any failure, so from a
     // subdirectory `context.trunk` was silently dropped — the receipt was then
