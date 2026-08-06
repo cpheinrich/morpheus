@@ -1,4 +1,4 @@
-import type { SessionLease } from "./lease.js";
+import { leaseAt, type LeasePolicy, type SessionLease } from "./lease.js";
 
 /** Runner integrations deliver a lease decision; they do not own policy. */
 export interface SessionAdapter {
@@ -23,13 +23,27 @@ export class MockSessionAdapter implements SessionAdapter {
 /**
  * Notify whenever the agent can resolve a known canonical delta.
  *
- * That includes an `unknown` lease carrying one. Gating on
- * `refresh_required` alone meant the offline case — the one whose whole point
- * is that files it never read are still knowable without the remote — was the
- * case the runner was never told about. A clean `unknown` stays silent, since
- * there is nothing to ask for beyond a remote that is not there.
+ * Reads the lease **through its term**, exactly as `requireFresh` does, with
+ * `now` defaulting to the real clock. Branching on `lease.status` directly
+ * made the two consumers of a lease disagree: `readLease` exists to bring one
+ * back across a resume, so a lease persisted `fresh` six hours ago would
+ * throw at the guard while the runner heard nothing.
+ *
+ * An `unknown` lease qualifies when it names something. Gating on
+ * `refresh_required` alone meant the offline case — whose whole point is that
+ * records it never read are knowable without the remote — was the one the
+ * runner was never told about. A clean `unknown` stays silent: there is
+ * nothing to ask for beyond a remote that is not there.
  */
-export async function notifyAdapter(adapter: SessionAdapter, lease: SessionLease): Promise<void> {
-  const actionable = lease.status === "refresh_required" || lease.changedInputs.length > 0;
-  if (lease.status !== "fresh" && actionable) await adapter.requestRefresh(lease);
+export async function notifyAdapter(
+  adapter: SessionAdapter,
+  lease: SessionLease,
+  now: Date = new Date(),
+  policy: LeasePolicy = {},
+): Promise<void> {
+  const current = leaseAt(lease, now, policy);
+  const actionable =
+    current.status === "refresh_required" ||
+    (current.status === "unknown" && current.changedInputs.length > 0);
+  if (actionable) await adapter.requestRefresh(current);
 }

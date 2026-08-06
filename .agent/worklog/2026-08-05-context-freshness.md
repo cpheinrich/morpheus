@@ -92,4 +92,38 @@ drift. `CLAUDE.md` is a symlink here, which is the realistic path to it.
 `readInputs` was added for the same reason the fingerprint finding existed —
 nothing in the branch produced a fingerprint, so both sides of the comparison
 were theoretical. One producer for receipt and observation makes them
-comparable by construction rather than by convention. 611 tests pass.
+comparable by construction rather than by convention.
+
+## Fourth checkpoint — the fix reintroduced the bug it fixed
+
+Round 4 found that `UNREADABLE`, added in round 3 *to* make an unreadable
+record read as drift, did the opposite. `readInputs` is the single producer for
+both sides, so a permanent failure — a broken symlink, a permission change —
+fingerprints identically on each, `covered.has(id)` is true, the values match,
+and the lease certifies `fresh`. Forever, because the failure does not clear
+itself.
+
+**This is the third time on this branch that the same shape has appeared**, and
+it is worth stating plainly: *the absence of information kept being encoded as
+a value, and then compared like one.* An empty `inputs` array meant "read
+nothing" and passed. A missing `checkedAt` comparison meant "never checked" and
+passed. `UNREADABLE == UNREADABLE` meant "could not read, twice" and passed.
+Each fix was correct and each left the next instance standing. The generalised
+rule is now in the code and §7.10: **a sentinel for missing information must be
+excluded from the comparison, not compared.** `ABSENT` is the deliberate
+exception, and the comment says why.
+
+Two more, same round:
+
+- `notifyAdapter` branched on `lease.status` while `requireFresh` read the
+  lease through `leaseAt`. Two consumers of one lease disagreeing, and the
+  disagreement lands exactly on the resume path `readLease` exists to serve —
+  a lease persisted `fresh` six hours ago threw at the guard and told the
+  runner nothing.
+- Making `RemoteObservation.inputs` required removed the way to report no drift
+  by omitting the *argument*, not by omitting an *entry*. `drifted` iterated
+  the observation, so a required id the observation never reported was checked
+  for coverage and never for drift — reachable through `requiredInputs`, the
+  one knob the policy exposes. The comparison now walks `required`.
+
+614 tests pass.

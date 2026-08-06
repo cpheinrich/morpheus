@@ -77,6 +77,25 @@ export const CANONICAL_INPUTS: readonly string[] = [
  */
 export const LEASE_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * Fingerprint sentinels. They live here rather than beside `readInputs`
+ * because their *meaning* is policy: `localDelta` below is what decides that
+ * one of them can never satisfy coverage.
+ */
+export const ABSENT = "absent";
+
+/**
+ * A record that exists but could not be read — a permission change, a broken
+ * symlink (`CLAUDE.md` is one in this repo), a directory where a file was.
+ *
+ * **Never satisfies coverage**, which is the whole difference from `ABSENT`.
+ * Absent-then-still-absent genuinely is nothing to read. Unreadable means the
+ * agent does not know what the record says, and comparing sentinel to
+ * sentinel would make *I could not read it* match *I could not read it* and
+ * certify `fresh` — the failure being guarded against, one level up.
+ */
+export const UNREADABLE = "unreadable";
+
 export interface LeasePolicy {
   /**
    * `undefined` means none declared — take `CANONICAL_INPUTS`. An empty array
@@ -100,10 +119,16 @@ export class ContextFreshnessError extends Error {
 }
 
 /**
- * Everything the receipt alone can settle: inputs it never covered, and
- * inputs whose fingerprint has moved since. Both are knowable offline, so
- * they are reported even when the remote could not be reached — an agent that
- * cannot verify GitHub can still be told which files it never read.
+ * Everything the receipt alone can settle. Knowable offline, so it is
+ * reported even when the remote could not be reached — an agent that cannot
+ * verify GitHub can still be told which records it never read.
+ *
+ * Driven by `required`, not by what the observation happened to report. The
+ * two lists are supplied independently by the caller, so iterating the
+ * observation would let a project declare a fourth canonical record, build
+ * its receipt with it, observe without it, and get `fresh` while that record
+ * changed underneath. Completeness has to be the policy's property, not a
+ * convention at the call site.
  */
 function localDelta(
   receipt: ContextReceipt,
@@ -111,11 +136,23 @@ function localDelta(
   required: readonly string[],
 ): string[] {
   const covered = new Map(receipt.inputs.map((input) => [input.id, input.fingerprint]));
-  const missing = required.filter((id) => !covered.has(id));
+  const observed = new Map(observation.inputs.map((input) => [input.id, input.fingerprint]));
+
+  const unresolved = required.filter((id) => {
+    const read = covered.get(id);
+    // Never loaded it, or loaded it and could not read it — the same thing.
+    if (read === undefined || read === UNREADABLE) return true;
+    const now = observed.get(id);
+    // Unreported is not unchanged: the observation cannot vouch for it either.
+    return now === undefined || now === UNREADABLE || now !== read;
+  });
+
+  // Drift in whatever else the receipt covered still counts.
   const drifted = observation.inputs
     .filter((input) => covered.has(input.id) && covered.get(input.id) !== input.fingerprint)
     .map((input) => input.id);
-  return [...new Set([...missing, ...drifted])].sort();
+
+  return [...new Set([...unresolved, ...drifted])].sort();
 }
 
 /** Pure policy function, so CI needs neither GitHub nor an AI provider. */

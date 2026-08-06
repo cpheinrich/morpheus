@@ -698,9 +698,14 @@ Two rules keep the artefacts honest, both learned by getting them wrong first:
   nothing.
 - **Drift is derived, not asserted**, and the observation's fingerprints are a required argument
   for the same reason. Optional, omitting them *is* the caller choosing to report no drift, under
-  another name. A record that exists but cannot be read gets a sentinel rather than an exception —
-  an unreadable `decisions.md` is precisely the state that should send an agent to look, not the
-  state that should abort a freshness check with a raw filesystem error.
+  another name. The comparison walks the *required* set rather than what the observation reported,
+  so an entry left out is unverified rather than unchanged — the same hole one level down.
+- **A record that cannot be read never counts as read.** It fingerprints to a sentinel rather than
+  throwing, because a freshness check is the wrong place to abort with a raw filesystem error. But
+  the sentinel is excluded from coverage rather than compared: an unreadable record fingerprints
+  identically on both sides, and equality alone would make *I could not read it* match *I could not
+  read it* and certify `fresh` permanently. Absent is different, and does compare — nothing to read
+  really is nothing to read, and absent-to-present drifts correctly.
 
 **Local, and deliberately not shared.** A receipt says *this working copy read these files*, which
 is true of one machine. Committing it would turn a local observation into a claim about everyone.

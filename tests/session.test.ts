@@ -63,7 +63,7 @@ describe("session lease policy", () => {
 
     expect(lease.status).toBe("refresh_required");
     expect(lease.changedInputs).toEqual([".agent/decisions.md"]);
-    await notifyAdapter(adapter, lease);
+    await notifyAdapter(adapter, lease, CHECKED);
     expect(adapter.refreshRequests).toEqual([lease]);
     expect(() => requireFresh(lease, CHECKED)).toThrow(ContextFreshnessError);
   });
@@ -82,12 +82,12 @@ describe("session lease policy", () => {
       checkedAt: CHECKED_AT,
       remoteSha: "abc123",
       inputs: covering,
-    }));
+    }), CHECKED);
     await notifyAdapter(adapter, observeLease(receipt, {
       checkedAt: "2026-08-05T12:10:00.000Z",
       remoteSha: null,
       inputs: covering,
-    }));
+    }), CHECKED);
     expect(adapter.refreshRequests).toEqual([]);
   });
 
@@ -101,7 +101,7 @@ describe("session lease policy", () => {
       inputs: covering,
     });
 
-    await notifyAdapter(adapter, lease);
+    await notifyAdapter(adapter, lease, CHECKED);
     expect(lease.status).toBe("unknown");
     expect(adapter.refreshRequests).toEqual([lease]);
   });
@@ -140,6 +140,37 @@ describe("receipt coverage", () => {
     // withhold the files the agent demonstrably never read.
     expect(lease.status).toBe("unknown");
     expect(lease.changedInputs).toEqual([...CANONICAL_INPUTS].sort());
+  });
+
+  it("refuses to certify a record the receipt could not read", () => {
+    // Both sides come from `readInputs`, so a permanent failure — a broken
+    // symlink, a permission change — fingerprints identically on each. Equality
+    // alone would make "I could not read it" match "I could not read it" and
+    // certify fresh, forever.
+    const stuck = covering.map((i) => (i.id === "CLAUDE.md" ? { ...i, fingerprint: UNREADABLE } : i));
+    const lease = observeLease({ ...receipt, inputs: stuck }, {
+      checkedAt: CHECKED_AT,
+      remoteSha: "abc123",
+      inputs: stuck,
+    });
+
+    expect(lease.status).toBe("refresh_required");
+    expect(lease.changedInputs).toEqual(["CLAUDE.md"]);
+  });
+
+  it("treats a record the observation never reported as unverified", () => {
+    // `requiredInputs` and the ids passed to `readInputs` are independent
+    // lists. A project declaring a fourth record and observing without it must
+    // not read as clean — completeness is the policy's job, not the caller's.
+    const extra = { id: "hq/team/cpheinrich.md", fingerprint: "inbox" };
+    const lease = observeLease({ ...receipt, inputs: [...covering, extra] }, {
+      checkedAt: CHECKED_AT,
+      remoteSha: "abc123",
+      inputs: covering,
+    }, { requiredInputs: [...CANONICAL_INPUTS, extra.id] });
+
+    expect(lease.status).toBe("refresh_required");
+    expect(lease.changedInputs).toEqual([extra.id]);
   });
 
   it("treats an explicit empty required set as the only way to switch coverage off", () => {
@@ -188,6 +219,17 @@ describe("lease term", () => {
     expect(leaseAt({ ...fresh, checkedAt: "whenever" }, CHECKED).status).toBe("refresh_required");
     // A clock that moved backwards must not buy a lease extra life.
     expect(leaseAt(fresh, new Date(CHECKED.getTime() - 60_000)).status).toBe("refresh_required");
+  });
+
+  it("tells the runner about a lease that expired while it was persisted", async () => {
+    const adapter = new MockSessionAdapter();
+    // The resume path: written fresh, read back hours later. The guard and the
+    // runner have to read the same lease the same way.
+    await notifyAdapter(adapter, fresh, new Date(CHECKED.getTime() + 6 * 60 * 60_000));
+
+    expect(adapter.refreshRequests).toHaveLength(1);
+    expect(adapter.refreshRequests[0]?.status).toBe("refresh_required");
+    expect(adapter.refreshRequests[0]?.reason).toMatch(/Lease was checked/);
   });
 
   it("leaves a non-fresh lease's reason intact", () => {
