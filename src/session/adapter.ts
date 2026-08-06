@@ -74,5 +74,13 @@ export async function notifyAdapter(
     refreshable.length === 0 &&
     !current.remoteAdvanced &&
     (current.status === "unknown" || stuck.length > 0);
-  if (!nothingToRefresh) await adapter.requestRefresh(current);
+  // Handed a lease whose `changedInputs` names only what a refresh can act on.
+  // `ContextFreshnessError` subtracts the stuck records for its string; the
+  // structured output has to as well, or a runner reading `changedInputs`
+  // straight off the lease re-reads records the same lease says it cannot.
+  if (!nothingToRefresh) {
+    await adapter.requestRefresh(
+      stuck.length ? { ...current, changedInputs: refreshable, unresolvableInputs: stuck } : current,
+    );
+  }
 }

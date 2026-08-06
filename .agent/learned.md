@@ -293,6 +293,7 @@ not have this information*. So carry it as a question to ask at every boundary i
 If the answer to the second half is no, that is the bug, whatever shape it is wearing. The
 reviewer's summary is the shortest version: *the check skips what is absent and reports the empty
 thing as correct.*
+
 ## A regression guard narrowed to stay green can stop covering its own reason
 
 2026-08-05. The "no source file names `hq/inbox`" sweep exempted `paths.ts` by filename while the

@@ -251,10 +251,19 @@ export function observeLease(
       changedInputs,
       ...unresolvableInputs,
       ...(remoteAdvanced ? { remoteAdvanced: true as const } : {}),
+      // Both clauses, not the first that applies. `changedInputs` is local
+      // records by construction, so a ternary meant an agent whose
+      // `decisions.md` moved *and* whose trunk advanced was told to re-read
+      // three files and never told to look at what merged — different
+      // actions, and the same one-of-two-outputs miss the lease field fixed
+      // for the adapter.
       reason:
-        (changedInputs.length > 0
-          ? "Canonical project inputs are unread or changed."
-          : "Remote state advanced; determine the canonical delta before continuing.") + cannotRead,
+        [
+          changedInputs.length > 0 ? "Canonical project inputs are unread or changed." : "",
+          remoteAdvanced ? "Remote state advanced; determine the canonical delta before continuing." : "",
+        ]
+          .filter(Boolean)
+          .join(" ") + cannotRead,
     };
   }
 

@@ -231,9 +231,33 @@ expiry to the condition; the right one was to invert it — refresh fires by
 default, and only two states genuinely have nothing to ask for. A condition
 enumerating reasons to act will keep missing one.
 
-632 tests pass across eight review rounds. The findings did not taper, but they
+## Ninth checkpoint — one shape, stated once
+
+Round 9's three findings were all the same shape, and it is the shape most of
+rounds 5–9 have been: **a fix landed on one of two outputs.** Worth writing
+down because it is now the most reliable thing to check on this branch.
+
+- `writeLease` reported validation failures as data and filesystem failures as
+  exceptions — the mirror image of round 6's `readLease` finding, inside the
+  same round-trip. `written: false` matters beyond tidiness: a failed write
+  leaves the *previous* lease on disk, and if that one was `fresh` and inside
+  its term it still passes `requireFresh`. Surviving the old file is safe
+  against a half-write and fail-open against a failed one, and `LeaseWrite` is
+  the only place a caller learns which.
+- `remoteAdvanced` fixed the adapter and left `reason` — the only field the
+  error message surfaces — unable to say the trunk moved, because a ternary
+  gave the inputs sentence priority. Both clauses now.
+- `notifyAdapter` handed `requestRefresh` a lease still naming the stuck
+  records in `changedInputs`. `ContextFreshnessError` subtracts them for its
+  string; the structured output did not.
+
+So the check to run on any fix here: **this module has two outputs for every
+answer — a string a human or agent reads, and a structure a runner acts on.
+Change one and the other is where the bug now lives.**
+
+633 tests pass across nine review rounds. The findings did not taper, but they
 moved steadily outward — rounds 1–2 the verdicts, 3–4 the policy, 5–6 the
-reporting, 7 the consumers and the persisted format, 8 the handoff. Rounds 7
+reporting, 7 the consumers, 8 the handoff, 9 the second copy of each output. Rounds 7
 and 8 both walked the required-input path exhaustively and could not construct
 a `fresh` verdict over a record that is unread, unreadable, missing or stale.
 Nothing after round 4 changed a `fresh` answer, which is the signal that the

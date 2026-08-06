@@ -280,9 +280,17 @@ describe("receipt coverage", () => {
     });
 
     expect(lease.remoteAdvanced).toBe(true);
+    // The one message an agent reads has to carry both. Re-read three files
+    // and go look at what merged are different actions.
+    expect(lease.reason).toMatch(/unread or changed/);
+    expect(lease.reason).toMatch(/Remote state advanced/);
+
     await notifyAdapter(adapter, lease, CHECKED);
     expect(adapter.repairRequests).toHaveLength(1);
     expect(adapter.refreshRequests).toHaveLength(1);
+    // Handed only what a refresh can act on — here, nothing but the trunk.
+    expect(adapter.refreshRequests[0]?.changedInputs).toEqual([]);
+    expect(adapter.refreshRequests[0]?.unresolvableInputs).toEqual([...CANONICAL_INPUTS].sort());
   });
 
   it("asks for both when a lease carries refreshable and stuck records at once", async () => {
@@ -300,6 +308,8 @@ describe("receipt coverage", () => {
     // Suppressing either leaves the runner acting on half a picture.
     expect(adapter.repairRequests).toHaveLength(1);
     expect(adapter.refreshRequests).toHaveLength(1);
+    expect(adapter.repairRequests[0]?.changedInputs).toEqual([".agent/decisions.md", "CLAUDE.md"]);
+    expect(adapter.refreshRequests[0]?.changedInputs).toEqual([".agent/decisions.md"]);
   });
 
   it("treats an explicit empty required set as the only way to switch coverage off", () => {
@@ -404,6 +414,24 @@ describe("lease store", () => {
     expect(back?.receipt.advisoryMemorySources).toBeUndefined();
     expect(back?.receipt.inputs).toEqual(covering);
     expect(back?.status).toBe(lease.status);
+  });
+
+  it("reports a filesystem failure as data, and says nothing was written", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-session-"));
+    // `local/sessions` as a *file*: `mkdir` fails, and every later read finds
+    // whatever was on disk before. A caller that cannot tell a failed write
+    // from a successful one keeps running against a lease it thinks it replaced.
+    await mkdir(join(root, "local"), { recursive: true });
+    await writeFile(join(root, "local", "sessions"), "not a directory", "utf8");
+
+    const write = await writeLease(root, "session-007", observeLease(receipt, {
+      checkedAt: CHECKED_AT,
+      remoteSha: "abc123",
+      inputs: covering,
+    }));
+
+    expect(write.written).toBe(false);
+    expect(write.issue).toBeTruthy();
   });
 
   it("does not read a broken or unreadable lease path as no session at all", async () => {

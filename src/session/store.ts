@@ -109,12 +109,24 @@ export async function writeLease(
     issue = `${path}: dropped advisoryMemorySources — not \`source:key\` labels`;
   }
 
-  await mkdir(dirname(path), { recursive: true });
-  // Write-then-rename: a crash mid-write leaves the previous lease intact
-  // rather than a half-file that `readLease` would have to reject.
-  const staging = `${path}.${process.pid}.tmp`;
-  await writeFile(staging, `${JSON.stringify(toWrite, null, 2)}\n`, "utf8");
-  await rename(staging, path);
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    // Write-then-rename: a crash mid-write leaves the previous lease intact
+    // rather than a half-file that `readLease` would have to reject.
+    const staging = `${path}.${process.pid}.tmp`;
+    await writeFile(staging, `${JSON.stringify(toWrite, null, 2)}\n`, "utf8");
+    await rename(staging, path);
+  } catch (error: unknown) {
+    // Data, like every other failure in this module — `readLease` handles
+    // these same codes ten lines down. And `written: false` is load-bearing
+    // rather than cosmetic: surviving the previous file is the safe outcome
+    // against a half-write and the *fail-open* one against a failed write,
+    // because a stale `fresh` lease inside its term still passes
+    // `requireFresh`. This is the only place a caller can learn which happened.
+    const err = error as NodeJS.ErrnoException;
+    return { path, written: false, issue: `${path}: ${err.code ?? err.message}` };
+  }
+
   return issue ? { path, written: true, issue } : { path, written: true };
 }
 
