@@ -599,12 +599,85 @@ describe("records of a blocked item that reached nobody", () => {
     await writeFile(join(root, `hq/product/roadmap/${id}-thing.md`), "item", "utf8");
     // Lowercased by `block`, which `String.includes` would not match.
     await writeFile(join(root, `.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`), "w", "utf8");
-    await writeFile(join(root, "hq/team/cpheinrich.md"), "# inbox\n\n## ❗ 1. Blocked\n", "utf8");
+    // `appendOpenItem` writes the roadmap id into the entry as a link, which
+    // is what makes matching by content possible where the path has no id.
+    await writeFile(
+      join(root, "hq/team/cpheinrich.md"),
+      `# inbox\n\n## ❗ 1. Blocked: a thing · \`claude\` [${id}](../product/roadmap/${id}.md)\n`,
+      "utf8",
+    );
 
-    const unsent = await unsentBlockRecords(root, [id]);
-    expect(unsent).toContain(`hq/product/roadmap/${id}-thing.md`);
-    expect(unsent).toContain(`.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`);
-    expect(unsent).toContain("hq/team/cpheinrich.md");
+    const { paths } = await unsentBlockRecords(root, [id]);
+    expect(paths).toContain(`hq/product/roadmap/${id}-thing.md`);
+    expect(paths).toContain(`.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`);
+    expect(paths).toContain("hq/team/cpheinrich.md");
+  });
+
+  it("ignores an inbox cycle, the roster and meeting notes that name no blocked id", async () => {
+    // `hq/team/` wholesale fired on every routine inbox cycle for as long as
+    // anything was blocked — days — and told you to commit it onto whatever
+    // branch you were on, which AGENTS.md forbids for a cycle. The inbox entry
+    // is still the escalation, so it is matched by *content*.
+    const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const root = await repo();
+    await mkdir(join(root, "hq", "team", "meeting-notes"), { recursive: true });
+    await writeFile(join(root, "hq/team/cpheinrich.md"), "# inbox\n\nfresh cycle, nothing blocked\n", "utf8");
+    await writeFile(join(root, "hq/team/members.md"), "roster", "utf8");
+    await writeFile(join(root, "hq/team/meeting-notes/2026-08-06-standup.md"), "notes", "utf8");
+
+    const { paths } = await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"]);
+    expect(paths).toEqual([]);
+  });
+
+  it("does not call an upstream that is merely ahead 'on this machine only'", async () => {
+    // Two-dot `git diff @{u}..HEAD` is tree-to-tree, so every file that moved
+    // upstream came back as unsent — the inverse of the truth, in the state
+    // you are in after any merged PR you have not pulled. `listClaims` fetches
+    // immediately before this runs, which makes it the ordinary case.
+    const { execFileSync } = await import("node:child_process");
+    const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const id = "MO-26-08-05-16.27.56";
+    const root = await repo();
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@e",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@e",
+    };
+    const run = (dir: string, ...args: string[]) => execFileSync("git", args, { cwd: dir, env });
+
+    // A second clone pushes, so this one is strictly behind with a clean tree.
+    const other = await mkdtemp(join(tmpdir(), "morpheus-other-"));
+    run(other, "clone", "-q", run(root, "remote", "get-url", "origin").toString().trim(), ".");
+    await mkdir(join(other, "hq", "product", "roadmap"), { recursive: true });
+    await writeFile(join(other, `hq/product/roadmap/${id}-thing.md`), "item", "utf8");
+    run(other, "add", "-A");
+    run(other, "commit", "-q", "-m", "someone else");
+    run(other, "push", "-q", "origin", "main");
+    run(root, "fetch", "-q", "origin");
+
+    expect(run(root, "status", "--porcelain").toString().trim()).toBe("");
+    const { paths } = await unsentBlockRecords(root, [id]);
+    expect(paths).toEqual([]);
+  });
+
+  it("says so when the branch has no upstream at all", async () => {
+    // A `git push` that fails for want of an upstream is a route into
+    // "committed but not pushed" — and the range query returns nothing there,
+    // so silence would be absence rendering as nothing-to-do.
+    const { execFileSync } = await import("node:child_process");
+    const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-noupstream-"));
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+    await writeFile(join(root, "a.md"), "a", "utf8");
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-q", "-m", "root"], {
+      cwd: root,
+      env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@e", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@e" },
+    });
+
+    expect((await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"])).noUpstream).toBe(true);
   });
 
   it("sees records that are committed but unpushed", async () => {
@@ -628,12 +701,16 @@ describe("records of a blocked item that reached nobody", () => {
       });
 
     await mkdir(join(root, "hq", "team"), { recursive: true });
-    await writeFile(join(root, "hq/team/cpheinrich.md"), "# inbox\n\n## ❗ 1. Blocked\n", "utf8");
+    await writeFile(
+      join(root, "hq/team/cpheinrich.md"),
+      `# inbox\n\n## ❗ 1. Blocked: a thing · \`claude\` [${id}](../product/roadmap/${id}.md)\n`,
+      "utf8",
+    );
     run("add", "-A");
     run("commit", "-q", "-m", `chore(${id}): blocked`);
 
     expect(run("status", "--porcelain").toString().trim()).toBe("");
-    expect(await unsentBlockRecords(root, [id])).toContain("hq/team/cpheinrich.md");
+    expect((await unsentBlockRecords(root, [id])).paths).toContain("hq/team/cpheinrich.md");
   });
 
   it("says nothing about an unrelated dirty file", async () => {
@@ -641,6 +718,6 @@ describe("records of a blocked item that reached nobody", () => {
     const root = await repo();
     await writeFile(join(root, "src-thing.ts"), "work", "utf8");
 
-    expect(await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"])).toEqual([]);
+    expect((await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"])).paths).toEqual([]);
   });
 });

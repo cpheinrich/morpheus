@@ -312,6 +312,32 @@ And one in the gate: **a trunk ref that does not exist is a configuration error 
 fully online machine and answered a misconfiguration with *"reconnect"*. Checked before the offline
 branch now, with its own message.
 
+## Eighth review pass — the same two-dot mistake, two rounds later
+
+`git diff @{u}..HEAD` is **tree-to-tree**, not "commits in HEAD and not upstream". So a branch
+merely *behind* reported every upstream file as *"the escalation is on this machine only"* — the
+inverse of the truth, in the state you are in after any merged PR you have not pulled, and
+`listClaims` fetches immediately before this runs, which makes it the ordinary case rather than
+the unlikely one. The printed instruction could not clear it, so it repeated on every run.
+
+**This is the identical defect `trunkChanges` was fixed for two rounds earlier**, written by the
+same hand, in the same file, days apart. The lesson is not "remember three dots" — it is that
+`A..B` and `A...B` mean *opposite things* between `diff` and `log`, so the safe move is to say what
+you mean with the command that has one meaning: `git log --name-only @{u}..HEAD`.
+
+Two more:
+
+- **No upstream returned `[]`.** `git push` failing for want of an upstream is a route into the new
+  "committed, but the push failed — `pm claims` will keep saying so" message, and it is exactly
+  the case where the range query answers nothing. A promise made by one part of the commit,
+  unkeepable by another, in the absence-renders-as-nothing-to-do shape.
+- **`hq/team/` wholesale was a standing condition, not "during a block".** Blocked items sit for
+  days by design, so any inbox cycle — which AGENTS.md mandates at the end of *every* session —
+  was reported as a dropped escalation, with an instruction to commit and push it onto whatever
+  branch you were on, which AGENTS.md explicitly forbids for a cycle. The inbox entry is still the
+  escalation and its path has no id, so it is matched **by content**: `appendOpenItem` writes the
+  roadmap id into the entry as a link, which is the thing the path cannot carry.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

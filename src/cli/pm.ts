@@ -349,14 +349,26 @@ export async function claims(
   // nobody can see is not a block, so the state has to be visible somewhere
   // that gets read again — this is the "what is in flight" view, and it
   // already has the board in hand.
-  const unsent = await unsentBlockRecords(cwd, [...blocked.keys()]);
+  const { paths: unsent, noUpstream } = await unsentBlockRecords(cwd, [...blocked.keys()]);
   if (unsent.length) {
     console.log(
       `\n\x1b[33mRecords for blocked items have not reached anyone — uncommitted, or committed\n` +
         `and unpushed. The escalation is on this machine only:\x1b[0m`,
     );
     for (const p of unsent) console.log(`  ${p}`);
-    console.log(`\x1b[33mCommit and push all of them, including the inbox entry.\x1b[0m`);
+    console.log(
+      `\x1b[33mCommit and push all of them, including the inbox entry.` +
+        (noUpstream ? ` This branch has no upstream — push with \`-u\`.` : "") +
+        `\x1b[0m`,
+    );
+  } else if (noUpstream && blocked.size) {
+    // Nothing on this branch has reached anyone and `@{u}` cannot say which
+    // records those are. Silence here would be the "absence renders as nothing
+    // to do" shape — and `block` promises this command will keep saying so.
+    console.log(
+      `\n\x1b[33mThis branch has no upstream, so nothing on it has reached whoever answers a\n` +
+        `block. Push with \`-u\` to find out what is outstanding.\x1b[0m`,
+    );
   }
   return 0;
 }
@@ -369,34 +381,78 @@ export async function claims(
  * checking the working tree missed the commonest route: `commitRecords`
  * committing and the push being rejected leaves a *clean* tree.
  *
- * Matching is by id so an unrelated dirty file is not reported as a dropped
- * escalation — case-insensitively, because `pm block` writes the worklog with
- * `id.toLowerCase()`. Paths under `hq/team/` are included wholesale: the inbox
- * entry **is** the escalation and its path carries no id at all, so the
- * id-matcher could never see the one record that matters. Reporting a dirty
- * inbox during a block is the correct outcome either way.
+ * Matching is deliberately narrow, and each part of it was a false report
+ * first:
+ *
+ * - **Case-insensitive**, because `pm block` writes the worklog with
+ *   `id.toLowerCase()` while the board holds the id uppercase.
+ * - **An inbox counts only if it names a blocked id.** The inbox entry *is*
+ *   the escalation and its path carries no id, so it cannot be matched by
+ *   path — but `hq/team/` wholesale fires on every routine inbox cycle for as
+ *   long as anything is blocked, which is days. Reading the file answers the
+ *   question the path cannot.
+ * - **`git log`, not `git diff @{u}..HEAD`.** A two-dot diff is tree-to-tree,
+ *   so a branch that is merely *behind* reported every upstream file as "on
+ *   this machine only" — the inverse of the truth, in the ordinary state, and
+ *   `listClaims` fetches immediately before this runs. The same two-dot
+ *   mistake `trunkChanges` was fixed for.
  */
-export async function unsentBlockRecords(cwd: string, blockedIds: string[]): Promise<string[]> {
-  if (!blockedIds.length) return [];
-  const ids = blockedIds.map((id) => id.toLowerCase());
-  const mine = (path: string): boolean =>
-    path.startsWith(`${INBOX_DIR}/`) || ids.some((id) => path.toLowerCase().includes(id));
+export interface UnsentRecords {
+  paths: string[];
+  /**
+   * The branch has no upstream, so nothing on it has reached anyone and
+   * `@{u}` cannot say which. Reported rather than swallowed: a failed `git
+   * push` for want of an upstream is one route into "committed but not
+   * pushed", and it is exactly the case where the range query returns nothing.
+   */
+  noUpstream: boolean;
+}
 
-  const lines = async (args: string[]): Promise<string[]> => {
+export async function unsentBlockRecords(
+  cwd: string,
+  blockedIds: string[],
+): Promise<UnsentRecords> {
+  if (!blockedIds.length) return { paths: [], noUpstream: false };
+  const ids = blockedIds.map((id) => id.toLowerCase());
+
+  const lines = async (args: string[]): Promise<string[] | null> => {
     try {
       const { stdout } = await exec("git", args, { cwd, timeout: 10_000 });
       return stdout.split("\n").map((l) => l.trim()).filter(Boolean);
     } catch {
-      return [];
+      return null;
     }
   };
 
   // `-uall`, because plain `--porcelain` collapses an untracked directory to
   // one entry — a first block in a fresh checkout reports `hq/` and names none
   // of the three records.
-  const dirty = (await lines(["status", "--porcelain", "-uall"])).map((l) => l.slice(3).trim());
-  const unpushed = await lines(["diff", "--name-only", "@{u}..HEAD"]);
-  return [...new Set([...dirty, ...unpushed])].filter(Boolean).filter(mine).sort();
+  const dirty = (await lines(["status", "--porcelain", "-uall"]) ?? []).map((l) =>
+    l.slice(3).trim(),
+  );
+
+  const upstream = await lines(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+  const noUpstream = upstream === null;
+  const unpushed = noUpstream
+    ? []
+    : ((await lines(["log", "--name-only", "--pretty=format:", "@{u}..HEAD"])) ?? []);
+
+  const candidates = [...new Set([...dirty, ...unpushed])].filter(Boolean);
+  const named = candidates.filter((path) => ids.some((id) => path.toLowerCase().includes(id)));
+
+  // An inbox has no id in its path, so ask its contents instead. `hq/team/`
+  // also holds the roster, a README and meeting notes, none of which are ever
+  // an escalation.
+  const inboxes: string[] = [];
+  for (const path of candidates) {
+    if (named.includes(path)) continue;
+    const name = basename(path).toLowerCase();
+    if (dirname(path) !== INBOX_DIR || !name.endsWith(".md") || TEAM_RESERVED.has(name)) continue;
+    const body = await readFile(join(cwd, path), "utf8").catch(() => "");
+    if (ids.some((id) => body.toLowerCase().includes(id))) inboxes.push(path);
+  }
+
+  return { paths: [...named, ...inboxes].sort(), noUpstream };
 }
 
 /**
