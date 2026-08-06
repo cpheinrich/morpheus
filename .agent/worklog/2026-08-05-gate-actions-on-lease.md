@@ -406,6 +406,37 @@ The code finding: **`context brief` is the scaffolded session-start hook and mad
 same argument, and the four `context` subcommands were missed — so a plane would have put a 15s
 `ls-remote` timeout in front of every session with `MORPHEUS_OFFLINE=1` exported and doing nothing.
 
+## Twelfth review pass — the fix for the record introduced the worst bug in the branch
+
+Threading `--offline` into the four `context` subcommands was right for three and a **regression**
+in the fourth. `check`, `status` and `brief` re-observe the *stored* receipt, so an `unknown`
+written offline is discarded the moment the network is back. `refresh` **mints** the receipt, and
+`remoteSha: sha ?? ""` bakes the skip in permanently.
+
+`gate()` observes unconditionally, by design and correctly. So with a sticky `MORPHEUS_OFFLINE=1`
+on a machine whose network is fine:
+
+1. `context refresh` → receipt with `remoteSha: ""`, exit 1.
+2. Any governed command → gate sees the real SHA against `""` → `remoteAdvanced` → status
+   `refresh_required`, **not** `unknown`, so the offline branch is never entered and even the local
+   actions are refused → *"run `morpheus context refresh`"*.
+3. Back to 1.
+
+Every governed command shut, on an online machine, with the refusal's own instruction regenerating
+the state. **This is the shape this branch's own review table already names — *a declaration read
+without the observation it modifies* — recurring one layer below where it was last fixed**, and
+written by the person who wrote that row.
+
+The generalisation that would have caught it: **the argument for skipping an observation is about
+cost, and cost is a property of the caller, not of the observation.** `brief` is a hook and pays it
+every session; `refresh` is user-initiated and exists to certify. Applying one command's argument
+to a sibling because they share a module is how the two got conflated.
+
+The test guarding it also passed whether or not the change was there — it asserted an unreachable
+remote yields `unknown`, which is true either way. Replaced with one that stands up a *reachable*
+remote, declares offline, and asserts the receipt still carries a real SHA and the gate still
+permits local work.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

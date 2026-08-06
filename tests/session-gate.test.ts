@@ -787,26 +787,54 @@ describe("records of a blocked item that reached nobody", () => {
   });
 });
 
-describe("the session-start hook offline", () => {
-  it("answers the unknown it already knows instead of waiting for a timeout", async () => {
-    // `context brief` is the scaffolded SessionStart hook, so an unreachable
-    // remote would put a 15s `ls-remote` timeout in front of every session on
-    // a plane — with MORPHEUS_OFFLINE=1 exported and doing nothing, which is
-    // the treatment `doctor` already got.
+describe("the offline declaration and the receipt", () => {
+  const previous = process.env["MORPHEUS_OFFLINE"];
+  afterEach(() => {
+    if (previous === undefined) delete process.env["MORPHEUS_OFFLINE"];
+    else process.env["MORPHEUS_OFFLINE"] = previous;
+  });
+
+  it("mints a receipt against the real trunk even when offline is declared", async () => {
+    // `gate()` observes unconditionally by design. A refresh that took the
+    // declaration's word for it wrote `remoteSha: ""`, the gate then saw a
+    // real SHA against an empty one, called it `refresh_required` rather than
+    // `unknown` — so the offline branch was never entered — and refused every
+    // governed command including the local ones, telling the agent to run the
+    // refresh that regenerates the state. A non-terminating loop, on a machine
+    // that is online.
     const { execFileSync } = await import("node:child_process");
     const { refresh } = await import("../src/session/context.js");
-    const root = await mkdtemp(join(tmpdir(), "morpheus-hookoffline-"));
+    const { gate } = await import("../src/session/gate.js");
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@e",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@e",
+    };
+
+    const remote = await mkdtemp(join(tmpdir(), "morpheus-bare-"));
+    execFileSync("git", ["init", "-q", "--bare", "-b", "main"], { cwd: remote });
+    const root = await mkdtemp(join(tmpdir(), "morpheus-sticky-refresh-"));
     await mkdir(join(root, ".agent"), { recursive: true });
     await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "x" }), "utf8");
     for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `v ${id}`, "utf8");
     execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
-    // A remote that will hang or fail rather than answer.
-    execFileSync("git", ["remote", "add", "origin", "https://10.255.255.1/nope.git"], { cwd: root });
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-q", "-m", "root"], { cwd: root, env });
+    execFileSync("git", ["remote", "add", "origin", remote], { cwd: root });
+    execFileSync("git", ["push", "-q", "-u", "origin", "main"], { cwd: root });
 
-    const started = new Date("2026-08-05T12:00:00.000Z");
-    const { lease } = await refresh(root, started, true);
+    // The sticky case the env var exists to describe: exported by a wrapper,
+    // outliving the condition, on a machine whose network is fine.
+    process.env["MORPHEUS_OFFLINE"] = "1";
+    const now = new Date();
+    const { lease } = await refresh(root, now);
 
-    expect(lease?.status).toBe("unknown");
-    expect(lease?.reason).toContain("Could not verify");
+    expect(lease?.status).toBe("fresh");
+    expect(lease?.receipt.remoteSha).not.toBe("");
+    // And the gate agrees, rather than refusing work the declaration was
+    // supposed to permit.
+    expect((await gate(root, "pm new", "local", { now })).ok).toBe(true);
   }, 20_000);
 });

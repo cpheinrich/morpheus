@@ -57,21 +57,23 @@ function required(policy: LeasePolicy): readonly string[] {
  * behalf. A guard that took a receipt automatically would be certifying that
  * the records were read by the act of not reading them.
  */
-export async function refresh(
-  root: string,
-  now = new Date(),
-  offline = false,
-): Promise<ContextResult> {
+export async function refresh(root: string, now = new Date()): Promise<ContextResult> {
   const { worktree, id } = await session(root);
   const policy = await projectPolicy(worktree);
   const inputs = await readInputs(worktree, required(policy));
   const trunk = await resolveTrunk(worktree, policy.trunk);
-  // Declared offline, the answer is already known and asking costs a 15s
-  // timeout. `context brief` is the scaffolded session-start hook, so that
-  // timeout would sit in front of every session on a plane.
-  const observation = offline
-    ? ({ sha: null, reason: "unreachable" } as const)
-    : await trunkSha(worktree, trunk);
+
+  // **Never skipped, whatever is declared.** The read-only commands may take
+  // the declaration's word for it because they re-observe the *stored*
+  // receipt and recover the moment the network is back. This one *mints* the
+  // receipt, and `remoteSha: sha ?? ""` bakes the skip in — after which
+  // `gate()`, which observes unconditionally by design, sees a real SHA
+  // against an empty one, calls it `refresh_required` rather than `unknown`,
+  // and refuses every governed command including the local ones. The refusal
+  // says "run context refresh", which regenerates the same receipt. A
+  // declaration read without the observation it modifies, one layer below
+  // where that was last fixed.
+  const observation = await trunkSha(worktree, trunk);
   const sha = observation.sha;
 
   const receipt: ContextReceipt = {

@@ -22,11 +22,17 @@ function ago(checkedAt: string, now: Date): string {
  * commits by subject — means the command that certifies is also the command
  * that tells you what you missed.
  */
+/**
+ * `offline` reaches the *read* below and never the receipt: a refresh is
+ * user-initiated and exists precisely to certify, so it has nothing to gain
+ * from not asking. The 15s argument was about `brief`, the session-start
+ * hook, which mints nothing.
+ */
 export async function refresh(root: string, offline = offlineDeclared()): Promise<number> {
   const before = await checkContext(root, new Date(), offline);
   const previous = before.lease?.receipt;
 
-  const { lease, issue, written, trunkMissing } = await takeReceipt(root, new Date(), offline);
+  const { lease, issue, written, trunkMissing } = await takeReceipt(root);
   if (!lease) {
     console.error(issue ?? "Could not take a context receipt.");
     return 1;
@@ -143,7 +149,12 @@ export async function status(root: string, offline = offlineDeclared()): Promise
       `  ! \`${trunkMissing.remote}/${trunkMissing.branch}\` does not exist — set \`context.trunk\` in morpheus.json.`,
     );
   }
-  if (offlineDeclared()) console.log(`  MORPHEUS_OFFLINE=1 is set — local work permitted, external actions are not.`);
+  if (offline) {
+    // A skipped check reported as nothing is a skipped check reported as a
+    // pass — the same reason `doctor --offline` says so out loud.
+    console.log(`  Offline declared: the trunk was not asked about, so "unknown" is assumed.`);
+    console.log(`  Local work is permitted on a clean delta; external actions are not.`);
+  }
   return lease.status === "fresh" ? 0 : 1;
 }
 
