@@ -260,3 +260,28 @@ part of the script.
 The test for this must parse the YAML rather than slice the text: an `env:` block sits directly
 above the `run:` it feeds, so any text-splitting heuristic sees them as one chunk and flags the safe
 form as unsafe. `step.run` is exactly the shell that executes and nothing else.
+
+## A sentinel for missing information must be excluded from a comparison, not compared
+
+Four rounds of review on the context-freshness policy (MO-26-08-05-12.24.47) found the same defect
+four times, in four disguises:
+
+| The absence | Encoded as | Compared, and so |
+|---|---|---|
+| Never read the records | `inputs: []` | covered nothing, certified `fresh` |
+| Never checked the remote | `checkedAt` written, never read | a six-hour-old lease certified `fresh` |
+| Read it, could not parse it | `UNREADABLE` | matched `UNREADABLE`, certified `fresh` |
+| Wrong tree entirely | `ABSENT` on every record | matched `ABSENT`, certified `fresh` |
+
+Each fix was correct and each left the next instance standing, because the shape was never named.
+It is this: **a value that means *I do not have this information* will compare equal to itself**, and
+equality is what every freshness, cache, and diff check is built out of. The result always reads as
+agreement, which is always the unsafe direction.
+
+So: sentinels get excluded from the comparison by an explicit branch, before any `===`. If a
+sentinel is deliberately allowed to compare — `ABSENT` still does, outside a declared required set,
+because *nothing there and still nothing there* is genuine knowledge — the exception needs a comment
+saying why, or the next reader restores the bug while fixing something adjacent.
+
+The reviewer's own summary of the pattern is the shortest version: *the check skips what is absent
+and reports the empty thing as correct.*

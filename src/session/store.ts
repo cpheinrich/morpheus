@@ -29,6 +29,7 @@ const leaseSchema = z.object({
   checkedAt: z.string(),
   status: z.enum(["fresh", "refresh_required", "unknown"]),
   changedInputs: z.array(z.string()),
+  unreadableInputs: z.array(z.string()).optional(),
   reason: z.string().optional(),
 });
 

@@ -38,6 +38,12 @@ export interface SessionLease {
   checkedAt: string;
   status: LeaseStatus;
   changedInputs: string[];
+  /**
+   * The subset of `changedInputs` that re-reading cannot fix. Separate because
+   * a refresh loop against an unclearable record never terminates, and the
+   * flat list gives a runner no way to tell the two apart.
+   */
+  unreadableInputs?: string[];
   reason?: string;
 }
 
@@ -78,21 +84,23 @@ export const CANONICAL_INPUTS: readonly string[] = [
 export const LEASE_TTL_MS = 5 * 60 * 1000;
 
 /**
- * Fingerprint sentinels. They live here rather than beside `readInputs`
- * because their *meaning* is policy: `localDelta` below is what decides that
- * one of them can never satisfy coverage.
+ * Fingerprint sentinels: the two ways a record can have no content.
+ *
+ * They live here rather than beside `readInputs` because their *meaning* is
+ * policy. **Neither is a value, so neither is compared** — `localDelta` treats
+ * a sentinel on a required record as the absence of information, never as
+ * information that happens to match. Comparing them by equality is what made
+ * *I could not read it* match *I could not read it*, and — the wider case —
+ * made three missing records in the wrong tree certify `fresh`.
  */
 export const ABSENT = "absent";
 
 /**
- * A record that exists but could not be read — a permission change, a broken
- * symlink (`CLAUDE.md` is one in this repo), a directory where a file was.
- *
- * **Never satisfies coverage**, which is the whole difference from `ABSENT`.
- * Absent-then-still-absent genuinely is nothing to read. Unreadable means the
- * agent does not know what the record says, and comparing sentinel to
- * sentinel would make *I could not read it* match *I could not read it* and
- * certify `fresh` — the failure being guarded against, one level up.
+ * The record exists but yields no content: a permission change, a dangling
+ * symlink (`CLAUDE.md` is a symlink in this repo), a directory where a file
+ * was. Distinguished from `ABSENT` because it is **unclearable** — re-reading
+ * is what the lease asks for and re-reading cannot change the answer — so a
+ * lease reports it separately rather than as ordinary drift.
  */
 export const UNREADABLE = "unreadable";
 
@@ -134,25 +142,47 @@ function localDelta(
   receipt: ContextReceipt,
   observation: RemoteObservation,
   required: readonly string[],
-): string[] {
+): { changed: string[]; unreadable: string[] } {
   const covered = new Map(receipt.inputs.map((input) => [input.id, input.fingerprint]));
   const observed = new Map(observation.inputs.map((input) => [input.id, input.fingerprint]));
+  const isRequired = new Set(required);
 
-  const unresolved = required.filter((id) => {
+  const changed: string[] = [];
+  const unreadable: string[] = [];
+
+  // One predicate over the union, so the sentinel rule cannot stop at the edge
+  // of the required set. A record the receipt covered voluntarily gets the same
+  // treatment as one the project declared.
+  for (const id of [...new Set([...required, ...covered.keys()])].sort()) {
     const read = covered.get(id);
-    // Never loaded it, or loaded it and could not read it — the same thing.
-    if (read === undefined || read === UNREADABLE) return true;
     const now = observed.get(id);
-    // Unreported is not unchanged: the observation cannot vouch for it either.
-    return now === undefined || now === UNREADABLE || now !== read;
-  });
 
-  // Drift in whatever else the receipt covered still counts.
-  const drifted = observation.inputs
-    .filter((input) => covered.has(input.id) && covered.get(input.id) !== input.fingerprint)
-    .map((input) => input.id);
+    if (read === UNREADABLE || now === UNREADABLE) {
+      unreadable.push(id);
+      changed.push(id);
+      continue;
+    }
 
-  return [...new Set([...unresolved, ...drifted])].sort();
+    if (isRequired.has(id)) {
+      // A required record must have real content on both sides. `ABSENT` is
+      // not "nothing to read" here — it is *this is not that project, or not
+      // that tree*, and it is what a wrong root or a dangling symlink produces
+      // on both sides at once.
+      if (read === undefined || now === undefined || read === ABSENT || now === ABSENT) {
+        changed.push(id);
+        continue;
+      }
+    } else if (read === undefined || now === undefined) {
+      // Outside the required set the receipt is best-effort: an id the
+      // observation did not report is not something the policy can speak to.
+      // A project that needs it verified declares it required.
+      continue;
+    }
+
+    if (read !== now) changed.push(id);
+  }
+
+  return { changed, unreadable };
 }
 
 /** Pure policy function, so CI needs neither GitHub nor an AI provider. */
@@ -161,7 +191,18 @@ export function observeLease(
   observation: RemoteObservation,
   policy: LeasePolicy = {},
 ): SessionLease {
-  const changedInputs = localDelta(receipt, observation, policy.requiredInputs ?? CANONICAL_INPUTS);
+  const { changed: changedInputs, unreadable } = localDelta(
+    receipt,
+    observation,
+    policy.requiredInputs ?? CANONICAL_INPUTS,
+  );
+  // Reported separately because refreshing cannot clear it. Folded into
+  // `changedInputs`, an unreadable record is indistinguishable from one another
+  // agent edited, and the runner loops on a refresh that can never succeed.
+  const unreadableInputs = unreadable.length ? { unreadableInputs: unreadable } : {};
+  const cannotRead = unreadable.length
+    ? ` Cannot read: ${unreadable.join(", ")} — refreshing will not clear this; the record has to be repaired.`
+    : "";
 
   if (observation.remoteSha === null) {
     return {
@@ -170,7 +211,8 @@ export function observeLease(
       checkedAt: observation.checkedAt,
       status: "unknown",
       changedInputs,
-      reason: "Could not verify remote context.",
+      ...unreadableInputs,
+      reason: `Could not verify remote context.${cannotRead}`,
     };
   }
 
@@ -181,10 +223,11 @@ export function observeLease(
       checkedAt: observation.checkedAt,
       status: "refresh_required",
       changedInputs,
+      ...unreadableInputs,
       reason:
-        changedInputs.length > 0
+        (changedInputs.length > 0
           ? "Canonical project inputs are unread or changed."
-          : "Remote state advanced; determine the canonical delta before continuing.",
+          : "Remote state advanced; determine the canonical delta before continuing.") + cannotRead,
     };
   }
 

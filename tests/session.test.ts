@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -173,6 +173,52 @@ describe("receipt coverage", () => {
     expect(lease.changedInputs).toEqual([extra.id]);
   });
 
+  it("refuses to certify a required record that is absent on both sides", () => {
+    // The wrong-root case, and the one that matters most: point `readInputs`
+    // at a tree with no `.agent/` and every required record fingerprints
+    // ABSENT twice over. Compared by equality, that is a receipt recording
+    // three absences and certifying fresh.
+    const nothing = CANONICAL_INPUTS.map((id) => ({ id, fingerprint: ABSENT }));
+    const lease = observeLease({ ...receipt, inputs: nothing }, {
+      checkedAt: CHECKED_AT,
+      remoteSha: "abc123",
+      inputs: nothing,
+    });
+
+    expect(lease.status).toBe("refresh_required");
+    expect(lease.changedInputs).toEqual([...CANONICAL_INPUTS].sort());
+  });
+
+  it("applies the sentinel rule outside the required set too", () => {
+    const extra = { id: "hq/team/cpheinrich.md", fingerprint: UNREADABLE };
+    const lease = observeLease({ ...receipt, inputs: [...covering, extra] }, {
+      checkedAt: CHECKED_AT,
+      remoteSha: "abc123",
+      inputs: [...covering, extra],
+    });
+
+    expect(lease.changedInputs).toEqual([extra.id]);
+    expect(lease.unreadableInputs).toEqual([extra.id]);
+  });
+
+  it("separates what refreshing cannot fix from ordinary drift", () => {
+    const stuck = covering.map((i) => (i.id === "CLAUDE.md" ? { ...i, fingerprint: UNREADABLE } : i));
+    const lease = observeLease({ ...receipt, inputs: covering }, {
+      checkedAt: CHECKED_AT,
+      remoteSha: "abc123",
+      inputs: stuck.map((i) =>
+        i.id === ".agent/decisions.md" ? { ...i, fingerprint: "moved" } : i,
+      ),
+    });
+
+    // An agent told only "these three ids changed" loops forever on the one
+    // that cannot be re-read. The reason has to say which, and that it is
+    // repair rather than refresh.
+    expect(lease.changedInputs).toEqual([".agent/decisions.md", "CLAUDE.md"]);
+    expect(lease.unreadableInputs).toEqual(["CLAUDE.md"]);
+    expect(lease.reason).toMatch(/refreshing will not clear this/);
+  });
+
   it("treats an explicit empty required set as the only way to switch coverage off", () => {
     const observation = { checkedAt: CHECKED_AT, remoteSha: "abc123", inputs: covering };
     const empty = observeLease({ ...receipt, inputs: [] }, observation, { requiredInputs: [] });
@@ -304,6 +350,19 @@ describe("canonical input fingerprints", () => {
     });
     expect(lease.status).toBe("refresh_required");
     expect(lease.changedInputs).toContain("CLAUDE.md");
+  });
+
+  it("routes a dangling symlink to unreadable, not absent", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-inputs-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    // `CLAUDE.md` is a symlink in this repo, so this is the realistic shape:
+    // `readFile` follows it and reports ENOENT, indistinguishable from a file
+    // that was never created — except that the link itself is right there.
+    await symlink("AGENTS.md", join(root, "CLAUDE.md"));
+
+    const byId = new Map((await readInputs(root)).map((i) => [i.id, i.fingerprint]));
+    expect(byId.get("CLAUDE.md")).toBe(UNREADABLE);
+    expect(byId.get(".agent/decisions.md")).toBe(ABSENT);
   });
 
   it("closes the loop: an edited record drifts against the receipt that read it", async () => {

@@ -700,12 +700,17 @@ Two rules keep the artefacts honest, both learned by getting them wrong first:
   for the same reason. Optional, omitting them *is* the caller choosing to report no drift, under
   another name. The comparison walks the *required* set rather than what the observation reported,
   so an entry left out is unverified rather than unchanged — the same hole one level down.
-- **A record that cannot be read never counts as read.** It fingerprints to a sentinel rather than
-  throwing, because a freshness check is the wrong place to abort with a raw filesystem error. But
-  the sentinel is excluded from coverage rather than compared: an unreadable record fingerprints
-  identically on both sides, and equality alone would make *I could not read it* match *I could not
-  read it* and certify `fresh` permanently. Absent is different, and does compare — nothing to read
-  really is nothing to read, and absent-to-present drifts correctly.
+- **A record with no content never counts as read.** It fingerprints to a sentinel rather than
+  throwing, because a freshness check is the wrong place to abort with a raw filesystem error — but
+  the sentinel is then *excluded* from the comparison rather than compared. Both sentinels
+  fingerprint identically on each side, so equality alone makes *I could not read it* match itself,
+  and — the wider case — makes a wrong root, where every required record is missing, certify
+  `fresh`. Outside the required set `absent` does compare, because *nothing there and still nothing
+  there* is genuine knowledge. This is [`.agent/learned.md`](.agent/learned.md)'s sentinel rule; it
+  cost four review rounds to see once.
+- **Unreadable is reported separately**, because refreshing cannot clear it. Folded into the flat
+  changed list it is indistinguishable from a record another agent edited, and a runner told only
+  "these ids changed" loops on a refresh that can never succeed.
 
 **Local, and deliberately not shared.** A receipt says *this working copy read these files*, which
 is true of one machine. Committing it would turn a local observation into a claim about everyone.

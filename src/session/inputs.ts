@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ABSENT, CANONICAL_INPUTS, UNREADABLE, type ContextInput } from "./lease.js";
 
@@ -23,11 +23,18 @@ export async function readInputs(
 ): Promise<ContextInput[]> {
   return Promise.all(
     ids.map(async (id) => {
+      const path = join(root, id);
       try {
-        return { id, fingerprint: fingerprint(await readFile(join(root, id), "utf8")) };
+        return { id, fingerprint: fingerprint(await readFile(path, "utf8")) };
       } catch (error: unknown) {
-        const code = (error as NodeJS.ErrnoException).code;
-        return { id, fingerprint: code === "ENOENT" ? ABSENT : UNREADABLE };
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          return { id, fingerprint: UNREADABLE };
+        }
+        // `readFile` follows symlinks, so a dangling one also reports ENOENT —
+        // and `CLAUDE.md` is a symlink in this repo. `lstat` sees the link
+        // itself: if it is there, the record exists and cannot be read, which
+        // is a different thing from a record that was never created.
+        return { id, fingerprint: (await lstat(path).catch(() => null)) ? UNREADABLE : ABSENT };
       }
     }),
   );

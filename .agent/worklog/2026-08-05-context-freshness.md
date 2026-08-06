@@ -126,4 +126,33 @@ Two more, same round:
   for coverage and never for drift — reachable through `requiredInputs`, the
   one knob the policy exposes. The comparison now walks `required`.
 
-614 tests pass.
+## Fifth checkpoint — the rule, and where it stops
+
+Round 5 found the fourth instance of the shape round 4 named, in the exception
+round 4 had just declared safe. `ABSENT` was allowed to compare because
+*nothing to read really is nothing to read* — true for an optional record,
+false for a required one, where absent does not mean "this record is empty" but
+**"this is not that project, or not that tree."** `readFile` follows symlinks,
+so a dangling `CLAUDE.md` reports ENOENT and routed to `ABSENT` — the branch
+that compared — which is the one example the `UNREADABLE` comment gave. And
+pointing `readInputs` at a wrong root fingerprints all three records `ABSENT`
+on both sides: a receipt recording three absences, certifying fresh.
+
+The rule is now in `.agent/learned.md` rather than only here, because it is not
+about this module. Four disguises, one defect: **a value meaning *I do not have
+this information* compares equal to itself, and equality is what every
+freshness, cache and diff check is built out of.** It always reads as
+agreement, which is always the unsafe direction.
+
+Two more from the same round, both the rule not yet reaching far enough:
+
+- The sentinel exclusion stopped at the edge of `required`; the `drifted` block
+  three lines down still compared by raw equality, and it is the only check for
+  ids the receipt covers voluntarily. Both now run through one walk over the
+  union.
+- `UNREADABLE` was unclearable and said so in the vocabulary of ordinary drift.
+  An agent told "these three ids changed" retries forever on the one that
+  cannot be re-read. Leases now carry `unreadableInputs` and a reason that says
+  repair, not refresh.
+
+618 tests pass.
