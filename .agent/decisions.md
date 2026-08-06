@@ -530,3 +530,29 @@ less than the folder name.
 
 **A tool reads the filesystem, not the README.** A dashboard deriving its sections from prose
 turns the README into a config file that looks like documentation, and the two drift.
+
+**Every repo is on `hq/team/`; there is no compatibility path back** — 2026-08-05. Morpheus,
+Lakina, Darwin, Evo, heinrich.llc, heinrich.money and heinrichbros.com. The `hq/inbox` fallback in
+`inbox validate` existed only for the window where Morpheus had migrated and the others had not,
+because the reusable workflows pin `@main`; that window is closed and the fallback is deleted.
+
+**A missing `hq/team/` is an error again**, and `isRecordsOnly` no longer exempts `hq/inbox/`. Left
+in place, compatibility code that never fires reads to the next person as evidence that both
+layouts are supported, and a repo re-creating the old directory would have merged as "records only"
+rather than being asked about.
+
+**The team README is copied from the `init` scaffold, never retyped.** Lakina migrated
+independently and produced no `hq/team/README.md` at all — two agents, one spec, different results.
+Every repo migrated on 2026-08-05 has a byte-identical copy because it was extracted from
+`dirReadmes["hq/team"]` rather than written each time.
+
+**`meeting-notes/` is scaffolded, not created on first use.** The folder carries the redaction gate
+— `redacted: true` is a claim `team validate` refuses a note without — and a gate you only meet
+after hand-creating the directory is one you meet after the first transcript is already committed.
+Its README stays short and points at Morpheus's canonical copy: one document about what may be
+published, so there is nothing to drift.
+
+**Historical records keep the old paths.** Worklog entries and shipped roadmap items still say
+`hq/inbox`, the same rule `pm migrate-ids` applies to prose mentions. Live documentation gets
+repointed because somebody will act on it; a record of July is a record of the past. The test is
+*will somebody follow this link*, not *is this string current*.

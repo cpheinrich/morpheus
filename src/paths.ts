@@ -12,7 +12,7 @@
 /**
  * Where collaborative context lives.
  *
- * One definition, because nine modules held the string `"hq/inbox"` and the
+ * One definition, because nine modules held the old path as a literal and the
  * move to `hq/team/` would have needed all nine changed in step. Three bugs in
  * one week here came from a value written twice and drifting — the branch-id
  * pattern, the fetch arguments, and the `today()` timezone. A tenth copy was
@@ -26,19 +26,6 @@ export const TEAM_DIR = "hq/team";
 
 /** Inboxes are files directly under `hq/team/`, one per GitHub handle. */
 export const INBOX_DIR = TEAM_DIR;
-
-/**
- * Where inboxes lived before `hq/team/`.
- *
- * The reusable workflows pin `@main` (decisions.md), so the moment this merges
- * every project repo still on the old layout runs the new `inbox validate` —
- * and a missing directory exits 1. Morpheus migrates first *by design*, which
- * means there is a window where both layouts are live, and the tooling has to
- * accept both or it breaks five repos on merge.
- *
- * Delete this once every repo in the registry has moved.
- */
-export const LEGACY_INBOX_DIR = "hq/inbox";
 
 export const MEETING_NOTES_DIR = `${TEAM_DIR}/meeting-notes`;
 /**
@@ -68,8 +55,13 @@ export const TEAM_RESERVED = new Set(["readme.md", "members.md"]);
  * `hq/team/` joins wholesale rather than by file. Everything in it — the
  * roster, an inbox, a meeting summary — describes the project rather than
  * changing what it does, which is exactly what this predicate means.
+ *
+ * `hq/inbox/` was here through the migration window and is not any more. A
+ * directory no repo has should not be granted an exemption: re-creating one
+ * now is a mistake, and this predicate deciding it needs no roadmap item would
+ * hide the mistake rather than surface it.
  */
-const RECORDS = /^(hq\/team\/|hq\/inbox\/|\.agent\/)/;
+const RECORDS = /^(hq\/team\/|\.agent\/)/;
 
 /** Board bookkeeping: item frontmatter and the generated index tables. */
 const BOARD = /^hq\/product\//;

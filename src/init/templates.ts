@@ -374,6 +374,40 @@ directory reads as one timeline.
 An inbox is a snapshot and never accumulates history. This is the record.
 `;
 
+/**
+ * Deliberately short, and deliberately a pointer.
+ *
+ * The canonical version — frontmatter fields, both redaction passes, the
+ * public-repo rule — is 130 lines in Morpheus's own `hq/team/meeting-notes/`.
+ * Copying it into every project would give one copy per repo to drift, and the
+ * one that drifts is a document about what may be published. What locality
+ * buys is the *gate* being visible where somebody is standing; the depth stays
+ * in one place.
+ */
+export const meetingNotesReadme = (): string => `# Meeting notes
+
+**A summary, never a transcript.** One file per meeting, named
+\`PREFIX-YY-MM-DD-HH.MM.SS-short-handle.md\`, where the timestamp is when the meeting *started* — in
+the wall clock of the people who were in it, with the offset in \`occurred\`.
+
+A transcript is high volume and low signal; storing them would make an agent's context worse rather
+than better. What is worth keeping is what was decided, what someone has to do, and enough of the
+reasoning that a decision can be argued with later.
+
+**\`redacted: true\` is a claim you are making**, and \`morpheus team validate\` refuses a note without
+it. It means you have stripped everything not about this project, and checked that the note is
+something you would be relaxed about being read back — by the team, by the person it is about, or
+by a stranger in a year.
+
+The canonical format, the frontmatter fields, and both redaction passes are documented once, in
+[Morpheus](https://github.com/cpheinrich/morpheus/blob/main/hq/team/meeting-notes/README.md).
+Depth stays in one place so two copies cannot drift.
+
+A note is **raw input**: its decisions belong in \`.agent/decisions.md\` and its action items on the
+roadmap. A note whose outputs were never promoted is an archive, which is much less useful than it
+looks.
+`;
+
 export const inbox = (s: Seed): string => `---
 owner: ${s.owner}
 date: ${new Date().toISOString().slice(0, 10)}
