@@ -195,24 +195,34 @@ export async function brief(root: string): Promise<number> {
   return 0;
 }
 
+export interface Guarded {
+  /** Non-null is the caller's exit code. */
+  refused: number | null;
+  /**
+   * The offline exception was actually applied — an `unknown` observation and
+   * a declaration, not just a declaration. Commands that degrade rather than
+   * refuse read this.
+   */
+  contained: boolean;
+}
+
 /**
  * Enforce the gate for a governed command, or explain why not.
  *
- * Returns null when the action may proceed. Callers treat a non-null value as
- * their exit code, so forgetting to check it is a type error rather than a
- * silently open gate.
+ * Returned as a record so `refused` has to be destructured and checked;
+ * ignoring it is a type error rather than a silently open gate.
  */
 export async function guard(
   root: string,
   action: string,
   reach: Reach,
   offline?: boolean,
-): Promise<number | null> {
+): Promise<Guarded> {
   const result = await gateAction(root, action, reach, offline === undefined ? {} : { offline });
   if (result.ok) {
     if (result.message) console.log(`! ${result.message}`);
-    return null;
+    return { refused: null, contained: result.contained === true };
   }
   console.error(`Refusing ${action}.\n\n${result.message}`);
-  return 1;
+  return { refused: 1, contained: false };
 }

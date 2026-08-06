@@ -327,7 +327,46 @@ export async function claims(
   if (blocked.size) {
     console.log(`${blocked.size} blocked (⊘) — waiting on an answer, not on an agent.`);
   }
+
+  // An offline `pm block` writes its records and skips the push, and its only
+  // other trace is a yellow line that has already scrolled past. A block
+  // nobody can see is not a block, so the state has to be visible somewhere
+  // that gets read again — this is the "what is in flight" view, and it
+  // already has the board in hand.
+  const uncommitted = await uncommittedBlockRecords(cwd, [...blocked.keys()]);
+  if (uncommitted.length) {
+    console.log(
+      `\n\x1b[33m${uncommitted.length} blocked item(s) have uncommitted records — the escalation is\n` +
+        `on this machine only. Commit and push so it reaches whoever answers:\x1b[0m`,
+    );
+    for (const p of uncommitted) console.log(`  ${p}`);
+  }
   return 0;
+}
+
+/**
+ * Records belonging to blocked items that are still only in the working tree.
+ *
+ * Matched by id rather than by path shape, so an unrelated dirty file is not
+ * reported as a dropped escalation.
+ */
+async function uncommittedBlockRecords(cwd: string, blockedIds: string[]): Promise<string[]> {
+  if (!blockedIds.length) return [];
+  try {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { stdout } = await promisify(execFile)("git", ["status", "--porcelain"], {
+      cwd,
+      timeout: 10_000,
+    });
+    const dirty = stdout
+      .split("\n")
+      .map((line) => line.slice(3).trim())
+      .filter(Boolean);
+    return dirty.filter((path) => blockedIds.some((id) => path.includes(id)));
+  } catch {
+    return [];
+  }
 }
 
 /**

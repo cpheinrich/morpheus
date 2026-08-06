@@ -16,6 +16,15 @@ export interface GateResult {
   ok: boolean;
   /** What to print. Empty when the gate passed silently. */
   message: string;
+  /**
+   * True only when the offline branch was actually taken — an `unknown`
+   * observation *and* a declaration. Callers that degrade their behaviour
+   * offline read this rather than `offlineDeclared()` directly: everywhere
+   * else in this design the declaration is a modifier on an observation, and
+   * a sticky `MORPHEUS_OFFLINE=1` set by a wrapper outlives the condition it
+   * was set for.
+   */
+  contained?: true;
 }
 
 /**
@@ -115,6 +124,7 @@ export async function gate(
     if (reach === "local") {
       return {
         ok: true,
+        contained: true,
         message: `Offline: proceeding with ${action} because it stays on this machine. The trunk was not verified.`,
       };
     }

@@ -34,7 +34,7 @@ import {
   refresh as contextRefresh,
   status as contextStatus,
 } from "./context.js";
-import { GATED, offlineDeclared } from "../session/gate.js";
+import { GATED } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 
 const HELP = `morpheus — an operating system for building and running companies
@@ -339,7 +339,7 @@ async function main(): Promise<number> {
 
   if (group === "access") {
     if (command === "sync" && !flags.dryRun) {
-      const refused = await guard(process.cwd(), "access sync", GATED["access sync"]!, flags.offline);
+      const { refused } = await guard(process.cwd(), "access sync", GATED["access sync"]!, flags.offline);
       if (refused !== null) return refused;
     }
     if (command === "sync") return accessSync(process.cwd(), flags.project, flags.dryRun);
@@ -426,14 +426,19 @@ async function main(): Promise<number> {
     case "index":
       return index(dir, flags.check);
     case "claim": {
-      const refused = await guard(process.cwd(), "pm claim", GATED["pm claim"]!, flags.offline);
+      const { refused } = await guard(process.cwd(), "pm claim", GATED["pm claim"]!, flags.offline);
       if (refused !== null) return refused;
       return claim(dir, rest[0] ?? "", process.cwd());
     }
     case "claims":
       return claims(dir, process.cwd());
     case "block": {
-      const refused = await guard(process.cwd(), "pm block", GATED["pm block"]!, flags.offline);
+      const { refused, contained } = await guard(
+        process.cwd(),
+        "pm block",
+        GATED["pm block"]!,
+        flags.offline,
+      );
       if (refused !== null) return refused;
       // `block` raises an `❗` item in the owner's inbox, which is a required
       // record. Without the `noteWrite` below, the next gated command is
@@ -442,10 +447,12 @@ async function main(): Promise<number> {
         ...(flags.needs ? { needs: flags.needs } : {}),
         ...(flags.owner ? { owner: flags.owner } : {}),
         ...(flags.context ? { context: flags.context } : {}),
-        // Offline, the records are written and the push is skipped — which is
-        // what makes the `local` classification true rather than merely
-        // asserted.
-        push: !offlineDeclared(flags.offline),
+        // From what the gate actually did, not from the declaration alone. A
+        // sticky `MORPHEUS_OFFLINE=1` — set by a wrapper, outliving the
+        // condition — would otherwise stop the one command whose purpose is
+        // visibility from being visible, in a session where nothing else is
+        // degraded and while claiming still pushes fine.
+        push: !contained,
       });
       // Exactly what it wrote, and only when it wrote. A failed `block`
       // touches nothing, and re-fingerprinting there would silently clear
@@ -462,7 +469,7 @@ async function main(): Promise<number> {
     case "migrate-ids":
       return migrateIds(dir, flags.check);
     case "new": {
-      const refused = await guard(process.cwd(), "pm new", GATED["pm new"]!, flags.offline);
+      const { refused } = await guard(process.cwd(), "pm new", GATED["pm new"]!, flags.offline);
       if (refused !== null) return refused;
       const [kind, ...titleParts] = rest;
       return create(

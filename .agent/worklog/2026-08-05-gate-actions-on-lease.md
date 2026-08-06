@@ -248,6 +248,37 @@ Two more in the check added last round, both the same lock-out shape it was writ
   a plane would have blocked on seven 15-second `ls-remote` timeouts with `MORPHEUS_OFFLINE=1`
   exported and doing nothing.
 
+## Sixth review pass — a declaration is not an observation
+
+The `pm block` split from round five introduced the inverse of the bug it fixed.
+`push: !offlineDeclared(flags.offline)` read the **declaration** where every other consumer reads
+an **observation**: `gate()` checks `lease.status` first and consults `offlineDeclared` only inside
+`if (status === "unknown" && …)`, so a fresh lease returns before the offline branch ever runs.
+
+The env var exists *because hooks and wrappers set environment rather than argv* — the module's own
+comment — which is precisely what makes it sticky. Exported once, network back, lease fresh:
+`pm claim` pushes fine, and `pm block` writes its records, prints *"Offline: written to disk and
+not pushed"*, and exits 0. **The one command whose purpose is visibility silently stops being
+visible, in a session where nothing else is degraded, with a message asserting a false premise.**
+
+`GateResult.contained` is now set only when the offline branch is actually taken, threaded out
+through `guard`, and that is what `push` reads. The rule to carry: **a declaration is a modifier on
+an observation, never a substitute for one.**
+
+Two more:
+
+- **`doctor --offline` printed `✓ No drift.` for a project whose trunk it had not checked.** A
+  skipped check reported as nothing is a skipped check reported as a pass, and `doctor` is the
+  adoption reporter, so it is the one surface where that difference has to survive. The
+  `.claude/settings.json` check two blocks up is *read* rather than stat'd for exactly this reason,
+  which is the argument being applied inconsistently within one function.
+- **The offline `pm block` had no completion path.** *"Commit and push it when you reconnect"* is an
+  instruction with no command behind it: `commitRecords` has one caller, `pm unblock` leaves the
+  inbox alone, and `noteWrite` correctly re-fingerprints the receipt — so the only trace of an
+  escalation that never reached anyone was a yellow line already scrolled past. `pm claims` now
+  reports blocked items whose records are still only in the working tree, matched by id so an
+  unrelated dirty file is not misreported.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

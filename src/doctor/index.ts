@@ -147,7 +147,21 @@ async function checkTrunk(
     }
   }
 
-  if (offline) return;
+  if (offline) {
+    // A skipped check reported as nothing is a skipped check reported as a
+    // pass — `formatFindings` renders an empty list as an unqualified "No
+    // drift.", and `doctor` is the adoption reporter, so it is the one
+    // surface where that difference has to survive. The `.claude/settings.json`
+    // check above is read rather than stat'd for the same reason.
+    add(
+      "warning",
+      "context",
+      `Offline: did not check that "${trunk.remote}/${trunk.branch}" resolves. A declared trunk ` +
+        `whose branch does not exist refuses pm claim and access sync permanently, and this run ` +
+        `cannot tell you whether that is the case.`,
+    );
+    return;
+  }
   const observed = await trunkSha(root, trunk);
   if (observed.reason === "missing") {
     add(

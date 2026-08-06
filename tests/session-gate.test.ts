@@ -181,6 +181,27 @@ describe("scaffolding", () => {
     });
   }
 
+  it("says the trunk check was skipped rather than reporting no drift", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-skipped-"));
+    roots.push(root);
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", prefix: "XX", kind: "internal", context: { trunk: "origin/main" } }),
+      "utf8",
+    );
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+    execFileSync("git", ["remote", "add", "origin", "https://example.invalid/r.git"], { cwd: root });
+
+    // Both local checks pass, so without this the empty finding list renders
+    // as an unqualified "✓ No drift." for a project whose declared branch may
+    // not exist — the state that refuses pm claim forever.
+    const findings = await doctor({ root, offline: true });
+    const skipped = findings.find((f) => f.check === "context" && f.message.startsWith("Offline:"));
+    expect(skipped?.severity).toBe("warning");
+  });
+
   it("reports a repo with no remote at all, without asking the network", async () => {
     const { execFileSync } = await import("node:child_process");
     const { doctor } = await import("../src/doctor/index.js");
@@ -343,9 +364,55 @@ describe("the offline exception", () => {
     const root = await withLease([]);
     const { gate } = await import("../src/session/gate.js");
 
-    expect((await gate(root, "pm block", "local")).ok).toBe(true);
+    const local = await gate(root, "pm block", "local");
+    expect(local.ok).toBe(true);
+    // `contained` is what a command reads to degrade — the exception was
+    // actually applied, not merely declared.
+    expect(local.contained).toBe(true);
     // …and still refuses anything that leaves the machine.
     expect((await gate(root, "pm claim", "external")).ok).toBe(false);
+  });
+
+  it("does not report containment for a fresh lease, however sticky the declaration", async () => {
+    // `MORPHEUS_OFFLINE=1` is set by wrappers and hooks, so it outlives the
+    // condition it was set for. Read unconditionally, it made the one command
+    // whose purpose is visibility stop being visible in a session where
+    // nothing else was degraded — and printed "offline" while `pm claim` in
+    // the same session pushed fine.
+    process.env["MORPHEUS_OFFLINE"] = "1";
+    const root = await mkdtemp(join(tmpdir(), "morpheus-sticky-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await mkdir(join(root, "local", "sessions"), { recursive: true });
+    await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "x" }), "utf8");
+    for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `v ${id}`, "utf8");
+
+    const { observeLease } = await import("../src/session/lease.js");
+    const { readInputs } = await import("../src/session/inputs.js");
+    const { writeLease } = await import("../src/session/store.js");
+    const { gate } = await import("../src/session/gate.js");
+
+    const inputs = await readInputs(root, CANONICAL_INPUTS);
+    const now = new Date();
+    const fresh = observeLease(
+      {
+        version: 1 as const,
+        id: "ctx-1",
+        createdAt: now.toISOString(),
+        remoteSha: "abc123",
+        branch: "b",
+        worktree: root,
+        inputs,
+      },
+      { checkedAt: now.toISOString(), remoteSha: "abc123", inputs },
+      { requiredInputs: [...CANONICAL_INPUTS] },
+    );
+    expect(fresh.status).toBe("fresh");
+    await writeLease(root, sessionId(root), fresh);
+
+    const result = await gate(root, "pm block", "local", { now });
+    expect(result.ok).toBe(true);
+    expect(result.contained).toBeUndefined();
+    delete process.env["MORPHEUS_OFFLINE"];
   });
 
   it("refuses everything when offline was never declared", async () => {
