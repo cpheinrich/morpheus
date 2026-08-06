@@ -9,6 +9,7 @@ import {
 import { readInputs } from "./inputs.js";
 import { currentBranch, resolveTrunk, trunkSha, worktreeRoot, type TrunkRef } from "./git.js";
 import { projectPolicy, sessionId } from "./policy.js";
+import { isAbsolute, relative } from "node:path";
 import { readLease, writeLease } from "./store.js";
 
 export interface ContextResult {
@@ -110,12 +111,17 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
  * contents. Deliberately narrow — only the named ids, and only from the
  * caller that did the writing.
  */
-export async function noteWrite(root: string, ids: readonly string[]): Promise<void> {
-  if (!ids.length) return;
+export async function noteWrite(root: string, paths: readonly string[]): Promise<void> {
+  if (!paths.length) return;
   const { worktree, id } = await session(root);
   const { lease } = await readLease(worktree, id);
   if (!lease) return;
 
+  // Callers hand over whatever they wrote, which for `pm block` is absolute.
+  // Receipt ids are worktree-relative, so an unrelativised path would match
+  // nothing and this would be a silent no-op — the failure mode that looks
+  // exactly like success.
+  const ids = paths.map((p) => (isAbsolute(p) ? relative(worktree, p) : p));
   const fresh = new Map((await readInputs(worktree, ids)).map((i) => [i.id, i.fingerprint]));
   // Only records the receipt already covered. A record this session never
   // read does not become read by being written over.

@@ -193,6 +193,33 @@ Two more, both the same one-of-two-outputs shape:
   re-fingerprints only the records the caller wrote and only those the receipt already covered, so
   the assertion stays **true** rather than being re-asserted blindly.
 
+## Fourth review pass — the reach table was wrong about its own commands
+
+- **`pm block` is classified `external` now, because it pushes.** `block()` ends in
+  `commitRecords` — add, commit, **push** — and exists so a block is visible to other sessions,
+  which is the definition of leaving the machine. Classified `local`, the offline branch printed
+  *"proceeding with pm block because it stays on this machine"* and then pushed to the shared
+  inbox. **A message asserting the opposite of what happens, through the one door the exception
+  opens**, against an invariant `architecture.md` states flatly. `pm new` is the only genuinely
+  local one: its remote use is a read-only `ls-remote` for id allocation.
+- **`noteWrite` was called unconditionally and with more than was written.** A `pm block` that
+  failed for a missing `--needs` wrote nothing and still re-fingerprinted the inbox, silently
+  clearing drift the session never read; and it was handed every required `hq/team/` path where
+  `block` writes exactly one, so a second declared inbox got asserted as read by a session that
+  neither read nor wrote it. `block` now returns `{ code, written }`, and the caller passes exactly
+  that. **The doc comment already said "deliberately narrow — only the named ids, and only from the
+  caller that did the writing"; the call site had widened it twice within one commit.**
+- **`doctor` now does what AGENTS.md said it did.** The docs promised a trunk check; `grep trunk
+  src/doctor/` returned nothing. Two checks: a declared trunk that does not resolve is an *error*
+  (every observation `unknown`, external commands refused, message blaming the network), and an
+  *undeclared* trunk in a repo with remotes besides `origin` is a warning — the fork case, which is
+  the quiet one, because it certifies fresh forever with a ✓ and `doctor` is the only place it can
+  be caught.
+
+Path handling caught in passing: `block` returns absolute paths and receipt ids are
+worktree-relative, so `noteWrite` matched nothing and was a **silent no-op** — the failure mode
+that looks exactly like success. Relativised.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

@@ -25,7 +25,10 @@ export const Manifest = z.object({
   prefix: z.string().regex(/^[A-Z]{2,4}$/).optional(),
   kind: Kind.optional(),
   /** Session-freshness config. Its absence is what `context` below reports. */
-  context: z.object({ handle: z.string().optional() }).loose().optional(),
+  context: z
+    .object({ handle: z.string().optional(), trunk: z.string().optional() })
+    .loose()
+    .optional(),
   /**
    * Subtrees owned by a parent project rather than this one, e.g.
    * `{ "finance": "darwin" }`. Their directories are correctly absent, so
@@ -79,6 +82,65 @@ const EXPECTED_FILES = [
   ".agent/decisions.md",
   ".agent/learned.md",
 ];
+
+/**
+ * Whether this project's freshness checks are measuring the right ref.
+ *
+ * Two failures, and the second is the quiet one. A **declared** trunk that
+ * does not resolve locks every governed command with a message blaming the
+ * network. An **undeclared** one on a fork resolves to the fork's own `main`,
+ * which sits still while the real trunk moves — so the lease certifies fresh
+ * indefinitely, with a ✓, which is the state the protocol exists to refuse.
+ * `doctor` is the only place the second can be caught, and an `upstream`
+ * remote beside `origin` is a cheap and specific signal for it.
+ */
+async function checkTrunk(
+  root: string,
+  declared: string | undefined,
+  offline: boolean,
+  add: (severity: Severity, check: string, message: string) => void,
+): Promise<void> {
+  const { resolveTrunk, trunkSha } = await import("../session/git.js");
+  const trunk = await resolveTrunk(root, declared);
+
+  if (!declared) {
+    const remotes = await gitLines(root, ["remote"]);
+    const others = remotes.filter((r) => r && r !== "origin");
+    if (others.length) {
+      add(
+        "warning",
+        "context",
+        `No "context.trunk" in morpheus.json, and this repo has remotes besides origin ` +
+          `(${others.join(", ")}). If origin is a fork, session freshness is measured against ` +
+          `the fork's ${trunk.branch} — which does not move when the real trunk does, so leases ` +
+          `certify fresh indefinitely. Set context.trunk, e.g. "${others[0]}/${trunk.branch}".`,
+      );
+    }
+  }
+
+  if (offline) return;
+  const observed = await trunkSha(root, trunk);
+  if (observed.reason === "missing") {
+    add(
+      "error",
+      "context",
+      `The session-freshness trunk "${trunk.remote}/${trunk.branch}" does not exist on the ` +
+        `remote. Every observation is "unknown", so pm claim, pm block and access sync are ` +
+        `refused with a message blaming the network. Set context.trunk in morpheus.json.`,
+    );
+  }
+}
+
+async function gitLines(root: string, args: string[]): Promise<string[]> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  try {
+    const { stdout } = await promisify(execFile)("git", args, { cwd: root, timeout: 10_000 });
+    return stdout.trim().split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+}
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -175,6 +237,8 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
         "session still starts with no notice that its context is stale.",
     );
   }
+
+  await checkTrunk(root, manifest.context?.trunk, opts.offline === true, add);
 
   // --- structure ----------------------------------------------------------
   const inherited = new Set(

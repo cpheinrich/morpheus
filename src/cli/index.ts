@@ -36,13 +36,6 @@ import {
 } from "./context.js";
 import { GATED } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
-import { projectPolicy } from "../session/policy.js";
-
-/** The required records that live in `hq/team/` — what `pm block` writes. */
-async function inboxRecords(root: string): Promise<string[]> {
-  const { requiredInputs = [] } = await projectPolicy(root);
-  return requiredInputs.filter((id) => id.startsWith("hq/team/"));
-}
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -442,15 +435,20 @@ async function main(): Promise<number> {
       const refused = await guard(process.cwd(), "pm block", GATED["pm block"]!, flags.offline);
       if (refused !== null) return refused;
       // `block` raises an `❗` item in the owner's inbox, which is a required
-      // record. Without this the next gated command is refused for drift this
-      // session authored, naming a file it just wrote.
-      const code = await block(dir, process.cwd(), rest[0] ?? "", {
+      // record. Without the `noteWrite` below, the next gated command is
+      // refused for drift this session authored, naming a file it just wrote.
+      const outcome = await block(dir, process.cwd(), rest[0] ?? "", {
         ...(flags.needs ? { needs: flags.needs } : {}),
         ...(flags.owner ? { owner: flags.owner } : {}),
         ...(flags.context ? { context: flags.context } : {}),
       });
-      await noteWrite(process.cwd(), await inboxRecords(process.cwd()));
-      return code;
+      // Exactly what it wrote, and only when it wrote. A failed `block`
+      // touches nothing, and re-fingerprinting there would silently clear
+      // drift the session never read; passing the whole required inbox set
+      // would have the receipt assert a record was read that this session
+      // neither read nor wrote.
+      await noteWrite(process.cwd(), outcome.written);
+      return outcome.code;
     }
     case "unblock":
       return unblock(dir, rest[0] ?? "");

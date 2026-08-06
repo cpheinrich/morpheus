@@ -92,8 +92,33 @@ describe("what is gated", () => {
   it("treats anything that leaves the machine as external", () => {
     expect(GATED["pm claim"]).toBe("external");
     expect(GATED["access sync"]).toBe("external");
+    // `pm block` ends in `commitRecords` — add, commit, **push**. Classified
+    // `local`, the offline branch printed "stays on this machine" and then
+    // pushed to the shared inbox.
+    expect(GATED["pm block"]).toBe("external");
+    // The only local one: its remote use is a read-only `ls-remote` for id
+    // allocation, and it writes nothing outward.
     expect(GATED["pm new"]).toBe("local");
-    expect(GATED["pm block"]).toBe("local");
+  });
+
+  it("refuses every external command offline, whatever the reason for being offline", async () => {
+    process.env["MORPHEUS_OFFLINE"] = "1";
+    const root = await mkdtemp(join(tmpdir(), "morpheus-reach-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "x" }), "utf8");
+    for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `v ${id}`, "utf8");
+
+    const { refresh } = await import("../src/session/context.js");
+    const { gate } = await import("../src/session/gate.js");
+    // No remote at all, so the observation is `unknown` with a clean local delta.
+    await refresh(root);
+
+    for (const [action, reach] of Object.entries(GATED)) {
+      const result = await gate(root, action, reach);
+      expect(result.ok, `${action} (${reach})`).toBe(reach === "local");
+      if (!result.ok) expect(result.message).not.toContain("stays on this machine");
+    }
+    delete process.env["MORPHEUS_OFFLINE"];
   });
 });
 
@@ -154,6 +179,63 @@ describe("scaffolding", () => {
       }
     });
   }
+
+  it("reports a declared trunk whose branch does not exist on a reachable remote", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const { doctor } = await import("../src/doctor/index.js");
+    const run = (cwd: string, ...args: string[]) =>
+      execFileSync("git", args, {
+        cwd,
+        env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@e", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@e" },
+      });
+
+    // A real remote that really lacks the branch — the distinction that
+    // matters. Outside a repo the answer is `unreachable`, which is honest
+    // and is not this finding.
+    const remote = await mkdtemp(join(tmpdir(), "morpheus-bare-"));
+    roots.push(remote);
+    run(remote, "init", "-q", "--bare", "-b", "main");
+
+    const root = await mkdtemp(join(tmpdir(), "morpheus-trunk-doctor-"));
+    roots.push(root);
+    run(root, "init", "-q", "-b", "main");
+    await writeFile(join(root, "a.md"), "a", "utf8");
+    run(root, "add", "-A");
+    run(root, "commit", "-q", "-m", "root");
+    run(root, "remote", "add", "origin", remote);
+    run(root, "push", "-q", "origin", "main");
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", prefix: "XX", kind: "internal", context: { trunk: "origin/trunk" } }),
+      "utf8",
+    );
+
+    const findings = await doctor({ root });
+    const bad = findings.find((f) => f.check === "context" && f.message.includes("origin/trunk"));
+    // An error: every observation is `unknown`, so the external commands are
+    // refused with a message blaming a network that is fine.
+    expect(bad?.severity).toBe("error");
+  });
+
+  it("warns when an undeclared trunk might be a fork's", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-fork-"));
+    roots.push(root);
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", prefix: "XX", kind: "internal" }),
+      "utf8",
+    );
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+    execFileSync("git", ["remote", "add", "origin", "https://example.invalid/fork.git"], { cwd: root });
+    execFileSync("git", ["remote", "add", "upstream", "https://example.invalid/real.git"], { cwd: root });
+
+    // Offline, so the resolve check is skipped and only the fork signal fires.
+    const findings = await doctor({ root, offline: true });
+    const fork = findings.find((f) => f.check === "context" && f.message.includes("upstream"));
+    expect(fork?.severity).toBe("warning");
+  });
 
   it("reports a declared handle whose inbox does not exist as an error", async () => {
     const { doctor } = await import("../src/doctor/index.js");
@@ -322,5 +404,62 @@ describe("a command that writes a record it required", () => {
 
     const { lease } = await check(root, new Date(start.getTime() + 10 * 60_000));
     expect(lease?.receipt.inputs.map((i) => i.id)).not.toContain("docs.md");
+  });
+});
+
+describe("noteWrite is narrow on purpose", () => {
+  /** A project with two required inboxes and a receipt already taken. */
+  async function twoInboxes(): Promise<{ root: string; start: Date }> {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-narrow-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await mkdir(join(root, "hq", "team"), { recursive: true });
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({
+        name: "x",
+        context: { handle: "alice", requiredInputs: ["hq/team/bob.md"] },
+      }),
+      "utf8",
+    );
+    for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `v1 ${id}`, "utf8");
+    await writeFile(join(root, "hq/team/alice.md"), "# alice\n", "utf8");
+    await writeFile(join(root, "hq/team/bob.md"), "# bob\n", "utf8");
+
+    const { refresh } = await import("../src/session/context.js");
+    const start = new Date("2026-08-05T12:00:00.000Z");
+    await refresh(root, start);
+    return { root, start };
+  }
+
+  it("re-fingerprints only the inbox that was written", async () => {
+    const { root, start } = await twoInboxes();
+    const { noteWrite, check } = await import("../src/session/context.js");
+
+    // Both move; only one is reported as written, as `pm block --owner bob`
+    // would.
+    await writeFile(join(root, "hq/team/bob.md"), "# bob\n\n## ❗ 1. Blocked\n", "utf8");
+    await writeFile(join(root, "hq/team/alice.md"), "# alice\n\nsomeone else replied\n", "utf8");
+    await noteWrite(root, [join(root, "hq/team/bob.md")]);
+
+    const { lease } = await check(root, new Date(start.getTime() + 10 * 60_000));
+    expect(lease?.changedInputs).not.toContain("hq/team/bob.md");
+    // The other inbox was never read and never written by this session, so it
+    // still has to be re-read. A receipt asserting otherwise is the one claim
+    // the whole protocol rests on.
+    expect(lease?.changedInputs).toContain("hq/team/alice.md");
+  });
+
+  it("does nothing when a command wrote nothing", async () => {
+    const { root, start } = await twoInboxes();
+    const { noteWrite, check } = await import("../src/session/context.js");
+
+    // A reply arrives that this session has not read, then a `pm block` fails
+    // for a missing --needs and writes nothing. Re-fingerprinting there would
+    // silently clear drift the session never saw.
+    await writeFile(join(root, "hq/team/alice.md"), "# alice\n\nunread reply\n", "utf8");
+    await noteWrite(root, []);
+
+    const { lease } = await check(root, new Date(start.getTime() + 10 * 60_000));
+    expect(lease?.changedInputs).toContain("hq/team/alice.md");
   });
 });

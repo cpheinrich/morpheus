@@ -26,12 +26,15 @@ export interface GateResult {
  * permanent where the staleness was not. These four are the ones where acting
  * on stale context does identifiable harm:
  *
- * | Command | Harm |
- * |---|---|
- * | `pm claim` | claiming work you would not claim knowing what merged |
- * | `pm new` | filing an item that already exists on the board |
- * | `pm block` | escalating a question the inbox already answered |
- * | `access sync` | granting access from an allowlist that has moved |
+ * | Command | Harm | Reach |
+ * |---|---|---|
+ * | `pm claim` | claiming work you would not claim knowing what merged | external |
+ * | `pm new` | filing an item that already exists on the board | local |
+ * | `pm block` | escalating a question the inbox already answered | external |
+ * | `access sync` | granting access from an allowlist that has moved | external |
+ *
+ * `pm new` is the only `local` one: its remote use is a read-only `ls-remote`
+ * for id allocation and it writes nothing outward.
  *
  * Read-only and mechanical commands — `pm index`, `pm validate`, `pm ship`,
  * `check pr`, `heartbeat`, `doctor` — are not gated. Neither is
@@ -43,7 +46,13 @@ export interface GateResult {
 export const GATED: Record<string, Reach> = {
   "pm claim": "external",
   "pm new": "local",
-  "pm block": "local",
+  // External, because `block` ends in `commitRecords` — add, commit, **push**.
+  // Its entire purpose is to be visible to other sessions, which is the
+  // definition of leaving the machine. Classified `local`, the offline branch
+  // printed "proceeding … because it stays on this machine" and then pushed:
+  // a message asserting the opposite of what happened, through the one door
+  // the exception opens.
+  "pm block": "external",
   "access sync": "external",
 };
 

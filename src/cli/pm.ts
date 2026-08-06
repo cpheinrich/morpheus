@@ -338,15 +338,28 @@ export async function claims(
  * would sweep whatever else is in the tree into a commit nobody intended, which
  * is the same reason `claim` stages explicitly.
  */
+export interface BlockOutcome {
+  code: number;
+  /**
+   * Repo-relative paths this call wrote, empty on every failure path. The
+   * caller re-fingerprints these into its context receipt, and passing
+   * anything it did not write would have the receipt assert a record was read
+   * that this session neither read nor wrote.
+   */
+  written: string[];
+}
+
 export async function block(
   productDir: string,
   root: string,
   id: string,
   opts: { needs?: string; owner?: string; context?: string },
-): Promise<number> {
+): Promise<BlockOutcome> {
+  const nothing = (code: number): BlockOutcome => ({ code, written: [] });
+
   if (!id) {
     console.error('Usage: morpheus pm block MO-051 --needs "what would unblock this"');
-    return 1;
+    return nothing(1);
   }
   if (!opts.needs?.trim()) {
     console.error(
@@ -354,7 +367,7 @@ export async function block(
         'subscription pays for it".\n\n' +
         '"Blocked on Chris" is not a need — say what would actually unblock it.',
     );
-    return 1;
+    return nothing(1);
   }
 
   const owner = opts.owner ?? (await inboxOwner(root));
@@ -363,7 +376,7 @@ export async function block(
       "Could not tell whose inbox this belongs in. Pass --owner <github-handle>, or add\n" +
         "one inbox under hq/team/ so there is an unambiguous default.",
     );
-    return 1;
+    return nothing(1);
   }
 
   try {
@@ -395,11 +408,11 @@ export async function block(
     console.log(
       `\nThe branch stays claimed. When answered: \`morpheus pm unblock ${r.id}\`.`,
     );
-    return 0;
+    return { code: 0, written: r.written };
   } catch (err) {
     if (err instanceof BlockError) {
       console.error(err.message);
-      return 1;
+      return nothing(1);
     }
     throw err;
   }
