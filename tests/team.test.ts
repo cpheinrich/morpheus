@@ -206,11 +206,17 @@ describe("validateTeam", () => {
  */
 function namesOldPath(source: string): boolean {
   const code = source
-    // Line-anchored, because a `/*` can open inside a template literal —
-    // `src/design/tokens.ts` embeds a whole CSS header in one — and an
-    // unanchored match would swallow forward to the next `*/` anywhere in the
-    // file, silently blanking the code this guard exists to read.
-    .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, "")
+    // **Both ends anchored.** A `/*` can open inside a template literal, and a
+    // swallowed span silently blanks the code this guard exists to read.
+    // Anchoring only the opener was not enough: `src/init/templates.ts` has
+    // `/*.png` at column 0 in the scaffolded `.gitignore`, whose match runs
+    // forward to the `**/` two lines down — deleting three lines of the very
+    // file the guard exists for.
+    //
+    // Anchoring the closer is what actually discriminates. Every `*/` in
+    // `src/` followed by anything but whitespace — three of them — is a glob, a
+    // regex or a template. A real block comment always ends its line.
+    .replace(/^[ \t]*\/\*[\s\S]*?\*\/[ \t]*$/gm, "")
     // `//` only. An earlier version also dropped lines opening with `*`, for
     // JSDoc continuations — which are already inside the block above, so it
     // bought nothing and cost the shape this repo actually writes: inside a
@@ -276,6 +282,12 @@ describe("hq/team paths", () => {
     // unanchored would consume forward to the next `*/` and blank the code
     // after it — including, here, the thing being looked for.
     expect(namesOldPath('const h = `/* generated */`;\nconst d = "hq/inbox";')).toBe(true);
+    // A gitignore glob at column 0, which is what defeated anchoring only the
+    // opener: `/*.png` matched as a comment start and the span ran forward to
+    // the `**/` two lines down, deleting everything between. The path has to
+    // sit *inside* that window or the assertion proves nothing — which is the
+    // trap the first version of this line fell into, passing either way.
+    expect(namesOldPath('const g = `\n/*.png\nhq/inbox\nlocal/**/*.png\n`;')).toBe(true);
 
     // And the thing the narrowing was actually for: history stays sayable.
     // `.agent/decisions.md` — *historical records keep the old paths* — is

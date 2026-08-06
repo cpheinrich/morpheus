@@ -296,3 +296,15 @@ regression by re-introducing `hq/inbox` into the actual template and watching it
 
 **A guard is only verified by breaking the thing it guards.** Assertions on synthetic strings prove
 the helper; they do not prove the sweep is wired to anything.
+
+Round four made the point twice more. Anchoring the comment strip's *opener* to column 0 was
+supposed to stop a `/*` inside a template from swallowing code — and `src/init/templates.ts` has
+`/*.png` at column 0 in the scaffolded `.gitignore`, whose match ran forward to the `**/` two lines
+below, blanking three lines of the exact file the guard exists for. **Anchoring the closer is what
+discriminates**: a real block comment ends its line, and every `*/` in `src/` followed by anything
+else is a glob, a regex or a template.
+
+Then the assertion written to pin it **passed under both regexes** — the path sat outside the
+window the bug deletes, so it proved nothing. An assertion for a swallowing bug has to put the
+thing being looked for *inside* the swallowed span. Same failure as the guard itself, one level
+down: checking the shape rather than the mechanism.
