@@ -88,7 +88,10 @@ describe("session lease policy", () => {
       remoteSha: null,
       inputs: covering,
     }), CHECKED);
+    // Both channels, not just one: with two, a spurious repair passes a test
+    // that only checks refreshes.
     expect(adapter.refreshRequests).toEqual([]);
+    expect(adapter.repairRequests).toEqual([]);
   });
 
   it("notifies on an unknown lease that still names something to load", async () => {
