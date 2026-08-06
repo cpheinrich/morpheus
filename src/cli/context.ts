@@ -22,11 +22,11 @@ function ago(checkedAt: string, now: Date): string {
  * commits by subject — means the command that certifies is also the command
  * that tells you what you missed.
  */
-export async function refresh(root: string): Promise<number> {
-  const before = await checkContext(root);
+export async function refresh(root: string, offline = offlineDeclared()): Promise<number> {
+  const before = await checkContext(root, new Date(), offline);
   const previous = before.lease?.receipt;
 
-  const { lease, issue, written, trunkMissing } = await takeReceipt(root);
+  const { lease, issue, written, trunkMissing } = await takeReceipt(root, new Date(), offline);
   if (!lease) {
     console.error(issue ?? "Could not take a context receipt.");
     return 1;
@@ -110,8 +110,8 @@ export async function refresh(root: string): Promise<number> {
 }
 
 /** Exit non-zero when context is not fresh. For hooks and scripts. */
-export async function check(root: string): Promise<number> {
-  const { lease, issue } = await checkContext(root);
+export async function check(root: string, offline = offlineDeclared()): Promise<number> {
+  const { lease, issue } = await checkContext(root, new Date(), offline);
   if (!lease) {
     console.error(issue ?? "No context receipt for this worktree. Run: morpheus context refresh");
     return 1;
@@ -121,9 +121,9 @@ export async function check(root: string): Promise<number> {
   return 1;
 }
 
-export async function status(root: string): Promise<number> {
+export async function status(root: string, offline = offlineDeclared()): Promise<number> {
   const now = new Date();
-  const { lease, issue, observed, written, trunkMissing } = await checkContext(root, now);
+  const { lease, issue, observed, written, trunkMissing } = await checkContext(root, now, offline);
 
   if (!lease) {
     console.log(`${NO} No context receipt for this worktree.`);
@@ -160,8 +160,8 @@ export async function status(root: string): Promise<number> {
  * so a receipt minted here would certify the records were loaded by the act of
  * not loading them.
  */
-export async function brief(root: string): Promise<number> {
-  const { lease } = await checkContext(root);
+export async function brief(root: string, offline = offlineDeclared()): Promise<number> {
+  const { lease } = await checkContext(root, new Date(), offline);
 
   if (lease?.status === "fresh") {
     console.log(`Context is fresh — receipt taken ${ago(lease.checkedAt, new Date())}, covering ${lease.receipt.inputs.length} canonical records.`);

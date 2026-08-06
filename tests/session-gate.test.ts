@@ -786,3 +786,27 @@ describe("records of a blocked item that reached nobody", () => {
     expect(await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"])).toEqual([]);
   });
 });
+
+describe("the session-start hook offline", () => {
+  it("answers the unknown it already knows instead of waiting for a timeout", async () => {
+    // `context brief` is the scaffolded SessionStart hook, so an unreachable
+    // remote would put a 15s `ls-remote` timeout in front of every session on
+    // a plane — with MORPHEUS_OFFLINE=1 exported and doing nothing, which is
+    // the treatment `doctor` already got.
+    const { execFileSync } = await import("node:child_process");
+    const { refresh } = await import("../src/session/context.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-hookoffline-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "x" }), "utf8");
+    for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `v ${id}`, "utf8");
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+    // A remote that will hang or fail rather than answer.
+    execFileSync("git", ["remote", "add", "origin", "https://10.255.255.1/nope.git"], { cwd: root });
+
+    const started = new Date("2026-08-05T12:00:00.000Z");
+    const { lease } = await refresh(root, started, true);
+
+    expect(lease?.status).toBe("unknown");
+    expect(lease?.reason).toContain("Could not verify");
+  }, 20_000);
+});

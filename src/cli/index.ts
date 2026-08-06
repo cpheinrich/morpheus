@@ -34,7 +34,7 @@ import {
   refresh as contextRefresh,
   status as contextStatus,
 } from "./context.js";
-import { GATED } from "../session/gate.js";
+import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 
 const HELP = `morpheus — an operating system for building and running companies
@@ -401,10 +401,15 @@ async function main(): Promise<number> {
   }
 
   if (group === "context") {
-    if (command === "refresh") return contextRefresh(process.cwd());
-    if (command === "check") return contextCheck(process.cwd());
-    if (command === "brief") return contextBrief(process.cwd());
-    if (command === "status" || command === undefined) return contextStatus(process.cwd());
+    // `--offline` reaches these the way it reaches `doctor`: they make a
+    // network call, and `context brief` is the scaffolded session-start hook,
+    // so an unreachable remote would sit a 15s timeout in front of every
+    // session rather than answering the `unknown` it already knows.
+    const off = offlineDeclared(flags.offline);
+    if (command === "refresh") return contextRefresh(process.cwd(), off);
+    if (command === "check") return contextCheck(process.cwd(), off);
+    if (command === "brief") return contextBrief(process.cwd(), off);
+    if (command === "status" || command === undefined) return contextStatus(process.cwd(), off);
     console.error(`Unknown context command "${command}".\n\n${HELP}`);
     return 1;
   }

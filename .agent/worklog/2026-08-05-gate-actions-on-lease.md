@@ -384,6 +384,28 @@ missing, a timeout, and the real thing. A confident answer built from a failed l
 That last one is the pattern worth keeping: **two rounds of patching a flag disappeared when the
 underlying question was stated correctly.** The special case existed because the query was wrong.
 
+## Eleventh review pass — the record was the last thing wrong
+
+*"After ten passes I could not find a new defect I would want fixed before merge."* What remained
+was the record, and two of the three findings were about it — which is worth recording as its own
+lesson, because both were flagged in earlier passes and left.
+
+- **Acceptances 1 and 3 read as delivered and describe things this branch deliberately did not
+  build.** The item had already annotated 4, 5, 7 and 9 when they came apart from reality, which is
+  exactly what made the two unannotated ones read as met. Acceptance 1 says a stale lease blocks
+  *commit, push* — it does not, by decision. Acceptance 3 says session start *refreshes* — it
+  deliberately does not, and `architecture.md` argues at length that it must not. **A shipped item
+  is never looked at again**, so ten of ten reading as met was the single most misleading artefact
+  in the branch.
+- **The PR body was eleven commits stale**, flagged three passes running. It is what rung 4 reads
+  first and the only surface that says which parts of 2,900 lines are novel — so a stale body does
+  not merely omit, it points attention at the wrong code.
+
+The code finding: **`context brief` is the scaffolded session-start hook and made a network call
+`--offline` could not reach.** `doctor` got exactly this treatment three commits earlier, on the
+same argument, and the four `context` subcommands were missed — so a plane would have put a 15s
+`ls-remote` timeout in front of every session with `MORPHEUS_OFFLINE=1` exported and doing nothing.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
