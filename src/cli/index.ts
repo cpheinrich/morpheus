@@ -35,7 +35,7 @@ import {
   status as contextStatus,
 } from "./context.js";
 import { GATED, offlineDeclared } from "../session/gate.js";
-import { noteWrite } from "../session/context.js";
+import { noteBranch, noteWrite } from "../session/context.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -434,7 +434,11 @@ async function main(): Promise<number> {
     case "claim": {
       const { refused } = await guard(process.cwd(), "pm claim", GATED["pm claim"]!, flags.offline);
       if (refused !== null) return refused;
-      return claim(dir, rest[0] ?? "", process.cwd());
+      const code = await claim(dir, rest[0] ?? "", process.cwd());
+      // `claim` checks out the branch it created, so the receipt's `branch`
+      // stops matching and the term would never apply again this session.
+      if (code === 0) await noteBranch(process.cwd());
+      return code;
     }
     case "claims":
       return claims(dir, process.cwd());

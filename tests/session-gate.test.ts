@@ -1317,6 +1317,26 @@ describe("what a lease is scoped to", () => {
     expect(out).toContain(".agent/learned.md");
   }, 20_000);
 
+  it("re-anchors the receipt when the session itself switched branches", async () => {
+    // `pm claim` creates and checks out the branch, so the receipt's `branch`
+    // stops matching the moment it succeeds — and the term then never applies
+    // again for the rest of the session, sending every gated command back to
+    // the network. Fails closed, so it costs latency rather than safety; the
+    // specification still says five minutes and this made it zero.
+    const { execFileSync } = await import("node:child_process");
+    const { check, noteBranch } = await import("../src/session/context.js");
+    const { root, now } = await certified();
+    const inTerm = new Date(now.getTime() + 60_000);
+
+    execFileSync("git", ["checkout", "-q", "-b", "mo-x-thing"], { cwd: root });
+    // Without this the term is dead: `check` re-observes every time.
+    await noteBranch(root);
+
+    const result = await check(root, inTerm);
+    expect(result.lease?.status).toBe("fresh");
+    expect(result.observed).toBe(false);
+  }, 20_000);
+
   it("does not let a new session inherit the previous one's certification", async () => {
     // The lease is keyed on the worktree, so a session starting where another
     // refreshed minutes ago inherited its ✓ — and `context brief`, the hook

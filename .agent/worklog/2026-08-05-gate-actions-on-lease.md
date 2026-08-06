@@ -803,6 +803,27 @@ justifying `--offline` reaching `brief` on the grounds of a 15s timeout that no 
 dependency — so nothing catches the import automatically. That gap is real and predates this
 branch; it is worth its own item rather than a fix smuggled in here.
 
+## Twenty-ninth review pass — the branch check met the workflow
+
+New, and none of the twenty-eight earlier passes reached it because **it only appears when you
+follow the branch comparison into the workflow AGENTS.md prescribes**: `pm claim` creates and
+checks out the branch it stakes, so the receipt's `branch` stops matching the moment it succeeds —
+and the term then never applies again for the rest of the session, sending every gated command back
+to the network.
+
+Fails closed, so it costs latency and not safety. But the specification says five minutes and this
+made it zero, which is the kind of quiet contradiction the branch has spent thirty passes removing.
+
+The fix is `noteWrite`'s principle in a second place: **a command that changes something the
+receipt describes re-anchors it afterwards, because the session did it and therefore knows.** Only
+the command that switched, only after it succeeded, and only the branch — the records on the new
+branch are compared as usual on the next observation, so it asserts nothing about their contents.
+
+The general lesson for the whole branch: **the two interactions worth hunting are not between
+modules but between a check and the workflow the repo mandates.** Both of this round's ancestors —
+`pm block` writing a required record, `pm claim` switching a compared branch — were the guard
+tripping over instructions written years before it.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
