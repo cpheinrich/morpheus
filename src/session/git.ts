@@ -99,8 +99,28 @@ export async function trunkSha(root: string, trunk: TrunkRef): Promise<TrunkObse
   return { sha: null, reason: result.code === 2 ? "missing" : "unreachable" };
 }
 
-export async function currentBranch(root: string): Promise<string> {
-  return (await out(root, ["rev-parse", "--abbrev-ref", "HEAD"])) ?? "(detached)";
+/**
+ * What HEAD is on: a branch name, or the commit when detached.
+ *
+ * **`null` when the lookup failed**, which is not a name. `(detached)` was
+ * both — `rev-parse --abbrev-ref HEAD` *succeeds* and prints the literal
+ * `HEAD` when detached, so the sentinel only ever meant "the command failed",
+ * and it was the one string that looked like an answer. Two failed lookups
+ * then compared equal and the in-term short-circuit answered from a receipt
+ * taken elsewhere: fail-open, in the one comparison added to fail closed.
+ *
+ * Detached resolves to the **commit**, because `HEAD` is the same string for
+ * every commit — so `checkout <sha1>` then `checkout <sha2>` inside the term
+ * would otherwise be the one branch change the comparison structurally cannot
+ * see. `git worktree add ../wt <sha>` lands there directly.
+ */
+export async function currentBranch(root: string): Promise<string | null> {
+  // `symbolic-ref`, not `rev-parse --abbrev-ref`: it answers on an **unborn**
+  // branch, where `rev-parse HEAD` has nothing to resolve, and it exits
+  // non-zero when detached rather than printing the literal `HEAD`.
+  const branch = await out(root, ["symbolic-ref", "--short", "-q", "HEAD"]);
+  if (branch) return branch;
+  return await out(root, ["rev-parse", "HEAD"]);
 }
 
 /**

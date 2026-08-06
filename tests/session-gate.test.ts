@@ -557,6 +557,7 @@ describe("the offline exception", () => {
     for (const id of CANONICAL_INPUTS) {
       await writeFile(join(root, id), `contents of ${id}`, "utf8");
     }
+    (await import("node:child_process")).execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
 
     const { observeLease } = await import("../src/session/lease.js");
     const { readInputs } = await import("../src/session/inputs.js");
@@ -569,7 +570,7 @@ describe("the offline exception", () => {
         id: "ctx-1",
         createdAt: "2026-08-05T12:00:00.000Z",
         remoteSha: "abc123",
-        branch: "(detached)",
+        branch: "main",
         worktree: root,
         // Drop coverage of the named records, so the local delta is non-empty
         // without needing the files themselves to differ.
@@ -580,7 +581,12 @@ describe("the offline exception", () => {
     );
 
     expect(lease.status).toBe("unknown");
-    await writeLease(root, sessionId(root), lease);
+    // `worktreeRoot`, not the raw temp path: git resolves symlinks, so on
+    // macOS `/var/folders/…` becomes `/private/var/folders/…` and the session
+    // id would not match the one `check` computes.
+    const { worktreeRoot } = await import("../src/session/git.js");
+    const wt = await worktreeRoot(root);
+    await writeLease(wt, sessionId(wt), lease);
     return root;
   }
 
@@ -624,6 +630,9 @@ describe("the offline exception", () => {
     await mkdir(join(root, "local", "sessions"), { recursive: true });
     await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "x" }), "utf8");
     for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `v ${id}`, "utf8");
+    // A real repo on `main`: `currentBranch` returns null outside one, and null
+    // is not a branch, so the receipt could never anchor.
+    (await import("node:child_process")).execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
 
     const { observeLease } = await import("../src/session/lease.js");
     const { readInputs } = await import("../src/session/inputs.js");
@@ -638,10 +647,7 @@ describe("the offline exception", () => {
         id: "ctx-1",
         createdAt: now.toISOString(),
         remoteSha: "abc123",
-        // What `currentBranch` reports outside a repository. `check` compares
-        // it now, because a checkout inside the term puts different canonical
-        // records on disk.
-        branch: "(detached)",
+        branch: "main",
         worktree: root,
         inputs,
       },
@@ -649,7 +655,9 @@ describe("the offline exception", () => {
       { requiredInputs: [...CANONICAL_INPUTS] },
     );
     expect(fresh.status).toBe("fresh");
-    await writeLease(root, sessionId(root), fresh);
+    const { worktreeRoot } = await import("../src/session/git.js");
+    const wt = await worktreeRoot(root);
+    await writeLease(wt, sessionId(wt), fresh);
 
     const result = await gate(root, "pm block", "local", { now });
     expect(result.ok).toBe(true);
@@ -1341,6 +1349,51 @@ describe("what a lease is scoped to", () => {
     const second = await check(root, inTerm);
     expect(second.lease?.status).toBe("fresh");
     expect(second.observed).toBe(false);
+  }, 20_000);
+
+  it("does not let two failed branch lookups compare equal", async () => {
+    // `(detached)` was a failed lookup wearing a branch name — `rev-parse
+    // --abbrev-ref HEAD` *succeeds* and prints `HEAD` when detached, so the
+    // sentinel only ever meant "the command failed". Two of them compared
+    // equal and the in-term short-circuit answered from a receipt taken
+    // elsewhere: fail-open, in the one comparison added to fail closed.
+    const { currentBranch } = await import("../src/session/git.js");
+    const notARepo = await mkdtemp(join(tmpdir(), "morpheus-nobranch-"));
+    expect(await currentBranch(notARepo)).toBeNull();
+  });
+
+  it("distinguishes one detached commit from another", async () => {
+    // `HEAD` is the same string for every commit, so `checkout <sha1>` then
+    // `checkout <sha2>` inside the term would be the one branch change the
+    // comparison structurally cannot see. `git worktree add ../wt <sha>`
+    // lands there directly, and AGENTS.md mandates one worktree per session.
+    const { execFileSync } = await import("node:child_process");
+    const { currentBranch } = await import("../src/session/git.js");
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@e",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@e",
+    };
+    const root = await mkdtemp(join(tmpdir(), "morpheus-detached-"));
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+    // Unborn: `symbolic-ref` answers where `rev-parse HEAD` has nothing to
+    // resolve, which is why it is asked first.
+    expect(await currentBranch(root)).toBe("main");
+
+    await writeFile(join(root, "a.md"), "a", "utf8");
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-q", "-m", "one"], { cwd: root, env });
+    const first = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root }).toString().trim();
+    await writeFile(join(root, "a.md"), "b", "utf8");
+    execFileSync("git", ["commit", "-q", "-am", "two"], { cwd: root, env });
+    const second = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root }).toString().trim();
+
+    execFileSync("git", ["checkout", "-q", first], { cwd: root });
+    expect(await currentBranch(root)).toBe(first);
+    execFileSync("git", ["checkout", "-q", second], { cwd: root });
+    expect(await currentBranch(root)).toBe(second);
   }, 20_000);
 
   it("does not let a new session inherit the previous one's certification", async () => {

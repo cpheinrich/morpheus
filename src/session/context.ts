@@ -86,7 +86,10 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
     // real, so the next online check has something to compare against rather
     // than starting over.
     remoteSha: sha ?? "",
-    branch: await currentBranch(worktree),
+    // `""` when the lookup failed — not a name, and `sameBranch` below never
+    // matches it, so an unanchorable receipt re-observes rather than
+    // short-circuiting.
+    branch: (await currentBranch(worktree)) ?? "",
     worktree,
     inputs,
   };
@@ -235,7 +238,9 @@ export async function check(
   // either get or be removed for — `worktree` got session identity; this is
   // the other half.
   const onBranch = await currentBranch(worktree);
-  const sameBranch = onBranch === stored.receipt.branch;
+  // Both sides have to be a real answer. A failed lookup is not a branch, and
+  // two of them are not the same branch.
+  const sameBranch = onBranch !== null && onBranch !== "" && onBranch === stored.receipt.branch;
   if (current.status === "fresh" && sameBranch) {
     // Nothing was written, because nothing needed to be — the stored lease is
     // still the current answer.
@@ -265,7 +270,7 @@ export async function check(
   // is proved current. Only on `fresh`: a lease that failed for any other
   // reason has proved nothing.
   const anchored =
-    lease.status === "fresh" && onBranch !== lease.receipt.branch
+    lease.status === "fresh" && onBranch !== null && onBranch !== lease.receipt.branch
       ? { ...lease, receipt: { ...lease.receipt, branch: onBranch } }
       : lease;
 

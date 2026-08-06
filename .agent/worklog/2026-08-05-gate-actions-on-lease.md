@@ -839,6 +839,34 @@ where the change happened.*
 `noteWrite` is the deliberate contrast and is still right at its call site — only the caller knows
 what content it read before writing, and no observation can recover that.
 
+## Thirty-first review pass — the sentinel was a branch name
+
+`currentBranch` returned `"(detached)"` when the lookup failed, and **it never meant detached**:
+`rev-parse --abbrev-ref HEAD` *succeeds* and prints the literal `HEAD` in that state. So the
+sentinel only ever meant *the command failed*, and it was the one string that looked like an
+answer. It had been a smaller note for three passes; it ranked now because the previous commit gave
+the field a second job — `check` no longer only reads `receipt.branch`, it **writes** it.
+
+Two consequences, both fail-open in the one comparison added to fail closed:
+
+- **Two failed lookups compared equal**, so the in-term short-circuit answered from a receipt taken
+  on a different branch with no observation.
+- **A real detached HEAD is `HEAD` for every commit**, so `checkout <sha1>` → `checkout <sha2>`
+  inside the term was the one branch change the comparison structurally could not see. `git
+  worktree add ../wt <sha>` lands there directly, and AGENTS.md mandates one worktree per session.
+
+`null` for a failed lookup, the **commit** when detached — and `symbolic-ref --short -q` rather
+than `rev-parse --abbrev-ref`, because it answers on an *unborn* branch where `rev-parse HEAD` has
+nothing to resolve, and exits non-zero when detached instead of printing a name that is not one.
+
+Two fixture lessons worth keeping, both cost a wrong attempt:
+
+- **`git init` alone leaves an unborn HEAD**, which is why the query had to change rather than the
+  fixtures.
+- **git resolves symlinks**, so on macOS a `mkdtemp` path under `/var/folders/…` becomes
+  `/private/var/…` — a fixture writing a lease at the raw path stores it under a different session
+  id than `check` computes. Fixtures for this module must go through `worktreeRoot`.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
