@@ -94,8 +94,17 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
     if (log === null) {
       // The sibling symptom: this branch used to print nothing at all while
       // the two SHAs genuinely differed.
+      // The query that actually failed, not the neighbouring block's. This
+      // one asks what landed *since your last receipt*; `HEAD..FETCH_HEAD`
+      // asks what is on the trunk and not in this branch, and on a claimed
+      // branch those differ. Handing it over is also genuinely better than
+      // retrying internally: a shell has no 15s timeout, which is what made
+      // the internal call fail after a day away.
       console.log(`The trunk moved, and ${trunkRef} could not be read locally to say how:`);
-      console.log(`    git fetch ${trunk.remote} ${trunk.branch} && git log --oneline HEAD..FETCH_HEAD`);
+      console.log(
+        `    git fetch ${trunk.remote} ${trunk.branch} && ` +
+          `git log --oneline ${previous.remoteSha.slice(0, 7)}..FETCH_HEAD`,
+      );
       console.log("");
     } else if (log.length) {
       console.log(`Landed on ${trunkRef} since your last receipt:`);

@@ -232,10 +232,23 @@ describe("scaffolding", () => {
       "utf8",
     );
 
+    // With items on the board, which is what the fan-out needs to be visible:
+    // `"mo"` is truthy, so an unnarrowed prefix ran the id-prefix loop and
+    // called every one of them wrong.
+    await mkdir(join(root, "hq", "product", "roadmap"), { recursive: true });
+    await writeFile(
+      join(root, "hq/product/roadmap/MO-26-08-05-12.00.00-thing.md"),
+      `---\nid: MO-26-08-05-12.00.00\ntitle: "A thing"\nstatus: backlog\npriority: P1\nowner: agent\nprs: []\ncreated: 2026-08-05\nupdated: 2026-08-05\n---\n\nBody.\n`,
+      "utf8",
+    );
+
     const findings = await doctor({ root, offline: true });
     expect(findings.find((f) => f.check === "manifest")).toBeUndefined();
     expect(findings.find((f) => f.check === "prefix")?.severity).toBe("error");
     expect(findings.find((f) => f.check === "kind")?.severity).toBe("error");
+    // One true error about the prefix, not one true error and eighty false
+    // ones about items that are perfectly fine.
+    expect(findings.filter((f) => f.check.startsWith("pm:"))).toEqual([]);
     // …and the one that names a gate refusing every governed command runs.
     expect(
       findings.find((f) => f.check === "context" && f.message.includes("ghost.md"))?.severity,

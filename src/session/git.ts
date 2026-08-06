@@ -137,7 +137,12 @@ export async function trunkLog(
   // that to a caller that labels the result "landed on main" invents a
   // specific, plausible answer out of a failed lookup — and the commit
   // subjects are real, which is what makes it hard to disbelieve.
-  if (!from || !to) return [];
+  // `null`, not `[]`. The empty array now carries the positive meaning
+  // "nothing on the trunk this branch does not have", and a range that was
+  // never given is not that. Both callers guard both endpoints today, so this
+  // is unreachable — but a guard in the caller and a sentinel in the function
+  // is the arrangement this module has spent several rounds dismantling.
+  if (!from || !to) return null;
   // `from..to` needs both objects locally, so a fetch is part of asking. It is
   // the only network call a refresh makes beyond `ls-remote`, and the only one
   // whose cost scales with how long you were away.

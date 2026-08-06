@@ -604,6 +604,38 @@ And the review's third finding was that three consecutive commits rewrote the sa
 with no test reaching them. `trunkLog`'s three answers are now pinned directly, against real
 repositories.
 
+## Twentieth review pass — reported the bad field and kept using it
+
+`kind` was narrowed to a validated value and that value used downstream. `prefix` got the same
+*reporting* treatment and none of the narrowing — so `"prefix": "mo"` is truthy, the id-prefix loop
+ran, and every one of this repo's eighty roadmap items was reported at error severity as *"does not
+use this project's prefix"*. **One true error under eighty-two false ones**, all counting into the
+exit code.
+
+That is the same failure the commit set out to fix, through the door it opened: the stated
+motivation was *"an operator whose gate is shut should not be told about their prefix and have to
+come back for the trunk"*, and the `context` errors are now emitted — as lines 3 and 4 of 86.
+
+The rule, stated properly this time: **validating a field and then using the raw one is worse than
+not validating it.** Before, the operator got one wrong answer; after, one right answer buried in
+eighty wrong ones — the same come-back-for-the-second-thing cost in a different shape.
+
+Two smaller, both about handing over the wrong thing:
+
+- The recovery command in the second block printed `HEAD..FETCH_HEAD` — *what is on the trunk and
+  not in this branch*, which is the **first** block's question. This one asks what landed since
+  your last receipt. Worth noting the handed-over form is genuinely better than retrying
+  internally: a shell has no 15s timeout, which is what made the internal call fail.
+- `trunkLog(from, "")` returned `[]`, and `[]` now carries the positive meaning *"nothing on the
+  trunk this branch does not have"*. Unreachable today because both callers guard — but a guard in
+  the caller and a sentinel in the function is the arrangement this module has spent several rounds
+  dismantling.
+
+And the scaffolded doc, **fifth pass**: `context brief` was missing from the command list — the
+only Morpheus command a generated project runs automatically was the one its own instructions never
+named — and the receipt was still described as fingerprinted against `origin/main` three paragraphs
+above the fork note explaining the trunk is declarable.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

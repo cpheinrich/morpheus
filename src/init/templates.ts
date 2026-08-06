@@ -590,8 +590,9 @@ morpheus context refresh
 \`\`\`
 
 This takes a *context receipt* — your assertion that you have loaded current project state,
-fingerprinted against the tip of \`origin/main\`. It is good for five minutes, after which the
-next governed command re-checks the trunk and those records.
+fingerprinted against the tip of the trunk — \`origin/main\` unless \`context.trunk\` says
+otherwise, see the fork note below. It is good for five minutes, after which the next governed
+command re-checks the trunk and those records.
 
 **Until you have one, these are refused:** \`pm claim\`, \`pm new\`, \`pm block\`, \`access sync\`.
 Read-only and mechanical commands are not gated.
@@ -599,7 +600,11 @@ Read-only and mechanical commands are not gated.
 \`\`\`sh
 morpheus context status    # what the current lease says, and how old it is
 morpheus context check     # exit non-zero unless fresh — for hooks and scripts
+morpheus context brief     # the session-start message; always exits 0
 \`\`\`
+
+\`context brief\` is what \`.claude/settings.json\` runs at the start of a session — the only
+Morpheus command this project runs automatically.
 
 **When something has moved**, \`context refresh\` prints what landed on the trunk and which
 records changed. Re-read those, then refresh again — the delta is the point, not the ceremony.

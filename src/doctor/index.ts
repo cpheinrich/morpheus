@@ -254,15 +254,29 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     return findings; // Everything else keys off the manifest.
   }
 
-  const prefix = manifest.prefix;
-  if (prefix === undefined) {
+  // Narrowed like `kind` is, and the narrowed value is what everything
+  // downstream reads. Reporting the bad field while still *using* it turned
+  // one true error into eighty-two: `"mo"` is truthy, so the id-prefix loop
+  // ran and called every roadmap item wrong. Same come-back-for-the-second-
+  // thing cost the commit was written to remove, in a different shape.
+  const prefix =
+    typeof manifest.prefix === "string" && /^[A-Z]{2,4}$/.test(manifest.prefix)
+      ? manifest.prefix
+      : undefined;
+
+  if (manifest.prefix === undefined) {
     add(
       "error",
       "prefix",
       'No "prefix" — ids would collide with other projects. Add 2-4 uppercase letters.',
     );
-  } else if (typeof prefix !== "string" || !/^[A-Z]{2,4}$/.test(prefix)) {
-    add("error", "prefix", `"prefix" must be 2-4 uppercase letters; got ${JSON.stringify(prefix)}.`);
+  } else if (!prefix) {
+    add(
+      "error",
+      "prefix",
+      `"prefix" must be 2-4 uppercase letters; got ${JSON.stringify(manifest.prefix)}. ` +
+        `Prefix-dependent checks are skipped until it is fixed.`,
+    );
   }
 
   const kind = Kind.safeParse(manifest.kind).success
@@ -402,7 +416,7 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   const entry = reg.projects.find((p) => p.path === root);
   if (!entry) {
     add("warning", "registry", "Not registered on this machine — run `morpheus registry add`.");
-  } else if (manifest.prefix && entry.prefix !== manifest.prefix) {
+  } else if (prefix && entry.prefix !== prefix) {
     add(
       "error",
       "registry",
@@ -417,10 +431,10 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
       const { items, issues } = await parseArtifact(productDir, artifact);
       for (const i of issues) add("error", `pm:${artifact}`, i.message);
 
-      if (manifest.prefix) {
+      if (prefix) {
         for (const item of items) {
           const id = (item.data as { id: string }).id;
-          if (!id.startsWith(`${manifest.prefix}-`)) {
+          if (!id.startsWith(`${prefix}-`)) {
             add("error", `pm:${artifact}`, `${id} does not use this project's prefix.`);
           }
         }
