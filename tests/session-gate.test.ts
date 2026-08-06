@@ -704,6 +704,11 @@ describe("records of a blocked item that reached nobody", () => {
     await writeFile(join(root, "hq/team/cpheinrich.md"), `# inbox\n\nfresh cycle\n\n${entry}\n`, "utf8");
 
     expect(await unsentBlockRecords(root, [id])).toEqual([]);
+    // And from a subdirectory: `rev-list -- <path>` takes a *pathspec*, read
+    // relative to cwd, where `--porcelain` emits root-relative paths. Mixed,
+    // the exclusion inverted and the false positive came straight back.
+    await mkdir(join(root, "src"), { recursive: true });
+    expect(await unsentBlockRecords(join(root, "src"), [id])).toEqual([]);
   });
 
   it("ignores an inbox cycle, the roster and meeting notes that name no blocked id", async () => {

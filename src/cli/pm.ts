@@ -394,22 +394,28 @@ export async function unsentBlockRecords(cwd: string, blockedIds: string[]): Pro
   if (!blockedIds.length) return [];
   const ids = blockedIds.map((id) => id.toLowerCase());
 
-  const lines = async (args: string[]): Promise<string[] | null> => {
+  const at = async (dir: string, args: string[]): Promise<string[] | null> => {
     try {
-      const { stdout } = await exec("git", args, { cwd, timeout: 10_000 });
+      const { stdout } = await exec("git", args, { cwd: dir, timeout: 10_000 });
       return stdout.split("\n").map((l) => l.trim()).filter(Boolean);
     } catch {
       return null;
     }
   };
 
-  // Git emits repo-root-relative paths for `--porcelain` and `--name-only`
-  // whatever directory it runs in, so they are only joinable onto `cwd` when
-  // `cwd` *is* the root. Resolved once: joining onto a subdirectory made the
-  // inbox read ENOENT, and the `catch(() => "")` below turned that into "names
-  // no blocked id" — silently dropping the one record that is the escalation
-  // while the two that carry no information survived by path.
-  const rootDir = (await lines(["rev-parse", "--show-toplevel"]))?.[0] ?? cwd;
+  /**
+   * Every git call runs **from the repo root**, and every path this function
+   * touches is repo-root-relative.
+   *
+   * `--porcelain` and `--name-only` emit root-relative paths whatever
+   * directory git runs in, but a `--` pathspec is read *relative to cwd*, and
+   * `join(cwd, path)` is a third coordinate system. Three separate defects in
+   * this one function came from mixing them — the inbox read going ENOENT and
+   * being swallowed, and the `rev-list` pathspec silently matching nothing.
+   * One root removes the class rather than the instances.
+   */
+  const rootDir = (await at(cwd, ["rev-parse", "--show-toplevel"]))?.[0] ?? cwd;
+  const lines = (args: string[]): Promise<string[] | null> => at(rootDir, args);
 
   // `-uall`, because plain `--porcelain` collapses an untracked directory to
   // one entry — a first block in a fresh checkout reports `hq/` and names none

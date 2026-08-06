@@ -458,6 +458,23 @@ that looks like it narrows and does not.**
   file on any remote, checked for the id. Two rounds were spent narrowing along "which files" when
   the axis was "which state".
 
+## Fourteenth review pass — fixing the instance three times
+
+`rev-list -1 --remotes -- <path>` takes a **pathspec**, which git reads relative to cwd — where
+`--porcelain` and `--name-only` emit repo-root-relative paths. From a subdirectory the new
+exclusion matched nothing, `pushed` came back empty, and the false positive it had just removed
+came straight back.
+
+**Third appearance of root-vs-cwd in the same function**, and each of the first two was fixed as an
+instance: `noteWrite` relativising absolute paths, then the inbox read joining onto `rootDir`. The
+third looked already handled *because `rootDir` was right there* four lines up, used for a
+different call.
+
+So this one is fixed as a class: **every git call in the function runs from the repo root, and
+every path it touches is root-relative.** Three coordinate systems were in play — root-relative
+output, cwd-relative pathspecs, and `join(cwd, path)` — and mixing them is not a mistake you stop
+making by being careful, only by removing the choice.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
