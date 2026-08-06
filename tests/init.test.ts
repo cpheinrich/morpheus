@@ -151,6 +151,26 @@ describe("morpheus init", () => {
       expect(await read("infra/README.md")).toContain("firestore.rules");
     });
 
+    /**
+     * The directory exists from the start rather than on first use, because
+     * the gate lives in it: `redacted: true` is a claim, `team validate`
+     * refuses a note without it, and a gate you only meet after hand-creating
+     * the folder is one you meet *after* the first transcript is committed.
+     *
+     * Migrated repos had this and scaffolded ones did not, which was the wrong
+     * way round — a fresh project got less than a retrofitted one.
+     */
+    it("scaffolds meeting-notes with its redaction gate stated up front", async () => {
+      await scaffold(dir, SEED);
+      const text = await read("hq/team/meeting-notes/README.md");
+
+      expect(text).toContain("never a transcript");
+      expect(text).toContain("redacted: true");
+      // A pointer, not a copy — one document about what may be published, so
+      // there is nothing to drift.
+      expect(text).toContain("blob/main/hq/team/meeting-notes/README.md");
+    });
+
     it("writes no README for a directory it has nothing to say about", async () => {
       await scaffold(dir, SEED);
       const files = await readdir(join(dir, "hq/brand"));

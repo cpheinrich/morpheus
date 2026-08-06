@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { EXPECTED } from "../doctor/index.js";
 import * as t from "./templates.js";
 import type { Seed } from "./templates.js";
-import { INBOX_DIR } from "../paths.js";
+import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
 
 /**
  * Scaffold a Morpheus project.
@@ -93,7 +93,18 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     await put(`hq/product/${kind}/README.md`, t.productReadme(kind, seed));
   }
 
-  if (dirs.includes(INBOX_DIR)) await put(`${INBOX_DIR}/${seed.owner}.md`, t.inbox(seed));
+  if (dirs.includes(INBOX_DIR)) {
+    await put(`${INBOX_DIR}/${seed.owner}.md`, t.inbox(seed));
+
+    // Meeting notes get their directory up front rather than on first use.
+    // The folder carries a redaction gate — `redacted: true` is a claim, and
+    // `team validate` refuses a note without it — and a gate nobody meets
+    // until they have hand-created the directory is a gate that gets
+    // discovered *after* the first transcript is already committed. Migrated
+    // repos ended up with this and scaffolded ones without, which is the wrong
+    // way round.
+    await put(`${MEETING_NOTES_DIR}/README.md`, t.meetingNotesReadme());
+  }
 
   // Remaining expected directories get a placeholder so they survive a clone.
   for (const dir of dirs) {
@@ -115,7 +126,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     if (write && !(await exists(join(root, readme)))) await put(readme, write(seed));
   }
 
-  // Parents of expected directories, and `hq/inbox`, which the loop skips
+  // Parents of expected directories, and `hq/team`, which the loop skips
   // because the person's inbox file is written there instead. `qa/acceptance`
   // being expected means `qa/` exists, and a directory that exists and feeds a
   // verifier deserves to say so.
