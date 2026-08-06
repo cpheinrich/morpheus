@@ -394,10 +394,19 @@ export async function unsentBlockRecords(cwd: string, blockedIds: string[]): Pro
   if (!blockedIds.length) return [];
   const ids = blockedIds.map((id) => id.toLowerCase());
 
+  // **Lines are not trimmed.** `git status --porcelain` is `XY<space>PATH`
+  // with a *space* meaning "unmodified in this position", so a worktree-only
+  // change emits ` M path` — and `.slice(3)` below is correct only on the raw
+  // line. Trimming first ate the first two characters of every tracked
+  // modification: `hq/team/x.md` became `q/team/x.md`, whose `dirname` is not
+  // `INBOX_DIR`, so the inbox — the one record that carries information —
+  // silently dropped out of a report saying "including the inbox entry".
+  // `rev-parse` and `log --name-only` emit no leading whitespace, so nothing
+  // else needed the trim.
   const at = async (dir: string, args: string[]): Promise<string[] | null> => {
     try {
       const { stdout } = await exec("git", args, { cwd: dir, timeout: 10_000 });
-      return stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+      return stdout.split("\n").filter((l) => l.trim()).map((l) => l.replace(/\s+$/, ""));
     } catch {
       return null;
     }

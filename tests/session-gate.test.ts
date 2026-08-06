@@ -343,6 +343,29 @@ describe("scaffolding", () => {
     expect(locked?.message).not.toContain(".agent/decisions.md");
   });
 
+  it("still names the read-first records when coverage is switched off", async () => {
+    // `"requiredInputs": []` is deliberate and supported — acceptance 6's
+    // subject — and the lockout error does not reach it. A project that
+    // switched freshness off has not stopped needing the files AGENTS.md
+    // tells every session to read.
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-nocoverage-"));
+    roots.push(root);
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", prefix: "XX", kind: "internal", context: { requiredInputs: [] } }),
+      "utf8",
+    );
+
+    const findings = await doctor({ root, offline: true });
+    const told = findings.filter(
+      (f) => f.check === "context" && f.message.includes("still tells every session to read"),
+    );
+    expect(told).toHaveLength(2);
+    // Warnings, not errors: nothing is refused in this configuration.
+    expect(told.every((f) => f.severity === "warning")).toBe(true);
+  });
+
   it("reports a dropped requiredInputs entry as an error", async () => {
     const { doctor } = await import("../src/doctor/index.js");
     const root = await mkdtemp(join(tmpdir(), "morpheus-dropped-"));
@@ -801,6 +824,47 @@ describe("records of a blocked item that reached nobody", () => {
     run(root, "push", "-q", "-u", "origin", "main");
     return root;
   }
+
+  it("names tracked modifications, whose porcelain lines start with a space", async () => {
+    // Every other test writes records as **new untracked files** (`?? path`),
+    // the one porcelain shape with no leading space — so a per-line trim
+    // followed by `.slice(3)` parsed them correctly and ate the first two
+    // characters of every tracked modification (` M path`). `hq/team/x.md`
+    // became `q/team/x.md`, whose dirname is not the inbox directory, so the
+    // escalation dropped out of a list that says it includes it.
+    const { execFileSync } = await import("node:child_process");
+    const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const id = "MO-26-08-05-16.27.56";
+    const root = await repo();
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@e",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@e",
+    };
+
+    await mkdir(join(root, "hq", "product", "roadmap"), { recursive: true });
+    await mkdir(join(root, "hq", "team"), { recursive: true });
+    await writeFile(join(root, `hq/product/roadmap/${id}-thing.md`), "item", "utf8");
+    await writeFile(join(root, "hq/team/cpheinrich.md"), "# inbox\n", "utf8");
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-q", "-m", "seed"], { cwd: root, env });
+    execFileSync("git", ["push", "-q", "origin", "main"], { cwd: root });
+
+    // Now tracked, and modified in the worktree only — as an offline
+    // `pm block` leaves them, since it skips `commitRecords` entirely.
+    await writeFile(join(root, `hq/product/roadmap/${id}-thing.md`), "blocked", "utf8");
+    await writeFile(
+      join(root, "hq/team/cpheinrich.md"),
+      `# inbox\n\n## ❗ 1. Blocked · [${id}](../product/roadmap/${id}.md)\n`,
+      "utf8",
+    );
+
+    const paths = await unsentBlockRecords(root, [id]);
+    expect(paths).toContain(`hq/product/roadmap/${id}-thing.md`);
+    expect(paths).toContain("hq/team/cpheinrich.md");
+  });
 
   it("names all three records pm block writes, not just the one with the id", async () => {
     // The roadmap file carries no information to the human; the inbox entry

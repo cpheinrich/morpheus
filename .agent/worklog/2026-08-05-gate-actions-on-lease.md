@@ -663,6 +663,36 @@ Also: `name` and `inherits` were still strict, and `name` is parsed and **read b
 only effect was to abort the run and hide the errors that name a shut gate. Fourth and fifth fields
 moved out for that reason.
 
+## Twenty-second review pass — a green test standing over a real bug
+
+`git status --porcelain` is `XY<space>PATH`, where a **space** means *unmodified in this position*.
+`.slice(3)` is correct on the raw line and only on the raw line — and thirteen commits back, when a
+shared `at()` helper replaced per-call parsing, it acquired a per-line `.trim()` for the
+`rev-parse`/`log` callers. So every **tracked modification** lost the first two characters of its
+path: `hq/team/cpheinrich.md` became `q/team/cpheinrich.md`, whose `dirname` is not the inbox
+directory, so it was skipped before the content match and **the escalation dropped out of a list
+that says "including the inbox entry"** — verbatim the failure two earlier passes each fixed once.
+
+**Nine passes missed it because every test writes records as new untracked files** (`?? path`), the
+one porcelain shape with no leading space. The single test that modifies a tracked file asserts
+`toEqual([])` and passed *because the path was mangled out of the loop*, not because the exclusion
+it was written for works.
+
+Two lessons, and the second is the one I would keep:
+
+- A shared helper inherited a transformation its new caller could not tolerate. The generalisation
+  that motivated the helper — *remove the choice rather than being careful* — is right, and it
+  still requires checking what each existing caller depended on.
+- **A test asserting an empty result proves nothing about why it is empty.** That one was green
+  over this bug for nine passes, and the fix was verified here by reintroducing the trim and
+  watching the new test fail.
+
+Also: removing the two records from `EXPECTED_FILES` was right where the required set is the
+default, and left them reported by nothing under `"requiredInputs": []` — a deliberate, supported
+configuration. A project that switches coverage off has not stopped needing files AGENTS.md tells
+every session to read. **The rule applies to itself: the report that already covered a condition is
+part of the change.**
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

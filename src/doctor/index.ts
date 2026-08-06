@@ -94,12 +94,21 @@ export const EXPECTED: Record<Kind, string[]> = {
 };
 
 /** Files every project should carry regardless of kind. */
-/**
- * `.agent/decisions.md` and `.agent/learned.md` are deliberately absent:
- * `checkRequiredRecords` reports them as *errors* naming the lockout, and a
- * warning beside it saying "missing" would understate the same fact twice.
- */
 const EXPECTED_FILES = ["morpheus.json", "AGENTS.md"];
+
+/**
+ * Records `AGENTS.md` tells every session to read, whether or not a lease
+ * measures them.
+ *
+ * Normally `checkRequiredRecords` covers these as *errors* naming the lockout,
+ * and a warning beside it would state the same fact twice, more weakly. But
+ * `"requiredInputs": []` is a deliberate, supported configuration — it is
+ * acceptance 6's whole subject — and there the new error does not reach them.
+ * A project that switches freshness coverage off has not stopped needing the
+ * files. The rule this branch arrived at applies to itself: the report that
+ * already covered a condition is part of the change.
+ */
+const READ_FIRST = [".agent/decisions.md", ".agent/learned.md"];
 
 /**
  * Whether the records every session must load actually exist.
@@ -125,7 +134,23 @@ async function checkRequiredRecords(
 ): Promise<void> {
   const { requiredInputs } = await projectPolicy(root);
   const ids = requiredInputs ?? CANONICAL_INPUTS;
-  if (!ids.length) return;
+  if (!ids.length) {
+    // Coverage is off on purpose. The records are still what every session is
+    // told to read, so they are reported — as warnings, since nothing is
+    // refused.
+    for (const id of READ_FIRST) {
+      if (!(await exists(join(root, id)))) {
+        add(
+          "warning",
+          "context",
+          `Missing ${id}. Session freshness is switched off for this project ` +
+            `("requiredInputs": []), so nothing is refused — but AGENTS.md still tells every ` +
+            `session to read it.`,
+        );
+      }
+    }
+    return;
+  }
 
   const { readInputs } = await import("../session/inputs.js");
   const missing = (await readInputs(root, ids)).filter(
