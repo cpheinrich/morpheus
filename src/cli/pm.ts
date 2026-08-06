@@ -374,11 +374,14 @@ export async function claims(
  *
  * - **Case-insensitive**, because `pm block` writes the worklog with
  *   `id.toLowerCase()` while the board holds the id uppercase.
- * - **An inbox counts only if it names a blocked id.** The inbox entry *is*
- *   the escalation and its path carries no id, so it cannot be matched by
- *   path — but `hq/team/` wholesale fires on every routine inbox cycle for as
- *   long as anything is blocked, which is days. Reading the file answers the
- *   question the path cannot.
+ * - **An inbox counts only if its escalation has never reached a remote.**
+ *   The inbox entry *is* the escalation and its path carries no id, so it
+ *   cannot be matched by path — but neither "under `hq/team/`" nor "names a
+ *   blocked id" narrows the right axis: `pm block` is what writes the id
+ *   there, and the `❗` stays until the cycle archives it, which cannot happen
+ *   while the item is blocked. Both reduce to *the inbox is dirty*, and fire
+ *   on the routine cycle AGENTS.md mandates at the end of every session.
+ *   The question is whether the pushed copy already carries the id.
  * - **`git log HEAD --not --remotes`, not `@{u}..HEAD`.** Two problems in
  *   one line. A two-dot *diff* is tree-to-tree, so a branch merely *behind*
  *   reported every upstream file as "on this machine only" — the same mistake
@@ -435,10 +438,25 @@ export async function unsentBlockRecords(cwd: string, blockedIds: string[]): Pro
     if (dirname(path) !== INBOX_DIR || !name.endsWith(".md") || TEAM_RESERVED.has(name)) continue;
 
     const body = await readFile(join(rootDir, path), "utf8").catch(() => null);
-    // Unreadable is not "names no blocked id". An inbox that exists and cannot
+    // Unreadable is not "names no escalation". An inbox that exists and cannot
     // be read is listed rather than dropped — the check exists for this file,
     // so failing closed on it is the only safe direction.
-    if (body === null || ids.some((id) => body.toLowerCase().includes(id))) inboxes.push(path);
+    if (body === null) {
+      inboxes.push(path);
+      continue;
+    }
+
+    const here = ids.filter((id) => body.toLowerCase().includes(id));
+    if (!here.length) continue;
+
+    // The newest version of this file that reached a remote. An id already in
+    // it is an escalation that reached whoever answers — the local copy is a
+    // routine cycle carrying a still-open item forward, not a dropped one.
+    const pushedAt = (await lines(["rev-list", "-1", "--remotes", "--", path]))?.[0];
+    const pushed = pushedAt
+      ? ((await lines(["show", `${pushedAt}:${path}`])) ?? []).join("\n").toLowerCase()
+      : "";
+    if (here.some((id) => !pushed.includes(id))) inboxes.push(path);
   }
 
   return [...named, ...inboxes].sort();

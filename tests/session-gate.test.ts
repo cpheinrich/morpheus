@@ -672,6 +672,40 @@ describe("records of a blocked item that reached nobody", () => {
     expect(paths.some((p) => p.startsWith("hq/team/cpheinrich.md"))).toBe(true);
   });
 
+  it("ignores a routine cycle carrying an escalation that already reached the remote", async () => {
+    // `pm block` is what writes the id into the inbox, and the ❗ stays until
+    // the cycle archives it — which cannot happen while the item is blocked.
+    // So "names a blocked id" is true for the whole lifetime of the block, and
+    // reduced to "the inbox is dirty": a false positive on the command
+    // AGENTS.md tells you to run *before* every claim.
+    const { execFileSync } = await import("node:child_process");
+    const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const id = "MO-26-08-05-16.27.56";
+    const root = await repo();
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@e",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@e",
+    };
+    const entry = `## ❗ 1. Blocked · \`claude\` [${id}](../product/roadmap/${id}.md)`;
+
+    // Monday: blocked, committed and pushed.
+    await mkdir(join(root, "hq", "team"), { recursive: true });
+    await writeFile(join(root, "hq/team/cpheinrich.md"), `# inbox\n\n${entry}\n`, "utf8");
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-q", "-m", "blocked"], { cwd: root, env });
+    execFileSync("git", ["push", "-q", "origin", "main"], { cwd: root });
+
+    // Wednesday: a routine cycle rewrites the inbox, carrying the still-open
+    // item forward. Dirty, and it names the id — but the escalation reached
+    // whoever answers on Monday.
+    await writeFile(join(root, "hq/team/cpheinrich.md"), `# inbox\n\nfresh cycle\n\n${entry}\n`, "utf8");
+
+    expect(await unsentBlockRecords(root, [id])).toEqual([]);
+  });
+
   it("ignores an inbox cycle, the roster and meeting notes that name no blocked id", async () => {
     // `hq/team/` wholesale fired on every routine inbox cycle for as long as
     // anything was blocked — days — and told you to commit it onto whatever
@@ -836,5 +870,60 @@ describe("the offline declaration and the receipt", () => {
     // And the gate agrees, rather than refusing work the declaration was
     // supposed to permit.
     expect((await gate(root, "pm new", "local", { now })).ok).toBe(true);
+  }, 20_000);
+});
+
+describe("status offline", () => {
+  const previous = process.env["MORPHEUS_OFFLINE"];
+  afterEach(() => {
+    if (previous === undefined) delete process.env["MORPHEUS_OFFLINE"];
+    else process.env["MORPHEUS_OFFLINE"] = previous;
+  });
+
+  it("does not claim unknown is assumed for a fresh in-term lease", async () => {
+    // `check` returns before `offline` is read at all inside the term, so
+    // nothing was skipped and the verdict is `fresh`. Printing "unknown is
+    // assumed" there contradicts the line above it, and "external actions are
+    // not permitted" is wrong about behaviour — `gate` returns ok for a fresh
+    // lease before the offline branch is reached.
+    const { execFileSync } = await import("node:child_process");
+    const { refresh } = await import("../src/session/context.js");
+    const { status } = await import("../src/cli/context.js");
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@e",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@e",
+    };
+
+    const remote = await mkdtemp(join(tmpdir(), "morpheus-bare-"));
+    execFileSync("git", ["init", "-q", "--bare", "-b", "main"], { cwd: remote });
+    const root = await mkdtemp(join(tmpdir(), "morpheus-statusoffline-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "x" }), "utf8");
+    for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `v ${id}`, "utf8");
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-q", "-m", "root"], { cwd: root, env });
+    execFileSync("git", ["remote", "add", "origin", remote], { cwd: root });
+    execFileSync("git", ["push", "-q", "-u", "origin", "main"], { cwd: root });
+
+    await refresh(root);
+    process.env["MORPHEUS_OFFLINE"] = "1";
+
+    const printed: string[] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => void printed.push(args.join(" "));
+    try {
+      await status(root);
+    } finally {
+      console.log = log;
+    }
+
+    const out = printed.join("\n");
+    expect(out).toContain("Context is fresh");
+    expect(out).not.toContain("unknown is assumed");
+    expect(out).not.toContain("external actions are not");
   }, 20_000);
 });

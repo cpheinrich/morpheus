@@ -437,6 +437,27 @@ remote yields `unknown`, which is true either way. Replaced with one that stands
 remote, declares offline, and asserts the receipt still carries a real SHA and the gate still
 permits local work.
 
+## Thirteenth review pass — narrowing the wrong axis
+
+Both findings were messages rather than gate defects, and both were the same mistake: **a condition
+that looks like it narrows and does not.**
+
+- **`context status`'s offline note was gated on the declaration.** Inside the term `check` returns
+  before `offline` is read at all, so nothing was skipped — and the block then printed *"unknown is
+  assumed"* one line under `✓ Context is fresh`, plus *"external actions are not permitted"*, which
+  is wrong about behaviour: `gate` returns ok for a fresh lease before the offline branch is
+  reached. It is on the observation now, which is the same correction `contained` got two commits
+  earlier.
+- **The inbox content match narrowed the wrong axis.** *"Names a blocked id"* replaced *"is under
+  `hq/team/`"* — but `pm block` is what writes the id there, and the `❗` stays until the cycle
+  archives it, which cannot happen while the item is blocked. So the predicate was true for the
+  whole lifetime of the block and reduced to *the inbox is dirty*: a false positive on the routine
+  cycle AGENTS.md mandates, in the command it tells you to run **before every claim**.
+
+  The right question is **has this escalation ever reached a remote** — the newest version of the
+  file on any remote, checked for the id. Two rounds were spent narrowing along "which files" when
+  the axis was "which state".
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

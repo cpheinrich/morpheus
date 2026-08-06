@@ -149,11 +149,18 @@ export async function status(root: string, offline = offlineDeclared()): Promise
       `  ! \`${trunkMissing.remote}/${trunkMissing.branch}\` does not exist — set \`context.trunk\` in morpheus.json.`,
     );
   }
-  if (offline) {
-    // A skipped check reported as nothing is a skipped check reported as a
-    // pass — the same reason `doctor --offline` says so out loud.
+  // On the *observation*, not the declaration. Inside the term `check`
+  // returns before `offline` is read at all, so nothing was skipped and the
+  // verdict is `fresh` — printing "unknown is assumed" there contradicts the
+  // line above it, and "external actions are not permitted" is wrong about
+  // behaviour: `gate` returns ok for a fresh lease before the offline branch
+  // is reached. `doctor --offline` says so correctly because it genuinely
+  // skipped a check it would otherwise have run.
+  if (offline && observed) {
     console.log(`  Offline declared: the trunk was not asked about, so "unknown" is assumed.`);
-    console.log(`  Local work is permitted on a clean delta; external actions are not.`);
+    if (lease.status !== "fresh") {
+      console.log(`  Local work is permitted on a clean delta; external actions are not.`);
+    }
   }
   return lease.status === "fresh" ? 0 : 1;
 }
