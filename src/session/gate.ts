@@ -90,7 +90,7 @@ export async function gate(
   reach: Reach,
   options: { offline?: boolean; now?: Date } = {},
 ): Promise<GateResult> {
-  const { lease, issue } = await check(root, options.now ?? new Date());
+  const { lease, issue, trunkMissing } = await check(root, options.now ?? new Date());
 
   if (!lease) {
     const why = issue
@@ -103,6 +103,22 @@ export async function gate(
   }
 
   if (lease.status === "fresh") return { ok: true, message: issue ?? "" };
+
+  // A trunk ref that does not exist is a **configuration** error wearing an
+  // `unknown` lease. It is not an offline condition, so the offline exception
+  // must not contain it: containing it would make `pm block` quietly stop
+  // pushing on a fully online machine, and would answer a misconfiguration
+  // with "reconnect". Checked before the offline branch for exactly that.
+  if (trunkMissing) {
+    return {
+      ok: false,
+      message:
+        `The configured trunk \`${trunkMissing.remote}/${trunkMissing.branch}\` does not exist.\n\n` +
+        `  This is not a network problem — every observation will be "unknown" until it is\n` +
+        `  fixed. Set \`context.trunk\` in morpheus.json, or add the remote.\n` +
+        `  \`morpheus doctor\` reports it too.`,
+    };
+  }
 
   if (lease.status === "unknown" && offlineDeclared(options.offline)) {
     // The exception covers an **unverifiable trunk**, and nothing else.

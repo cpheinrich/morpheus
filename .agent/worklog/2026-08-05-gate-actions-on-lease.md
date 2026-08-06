@@ -279,6 +279,39 @@ Two more:
   reports blocked items whose records are still only in the working tree, matched by id so an
   unrelated dirty file is not misreported.
 
+## Seventh review pass — the completion path pointed at the wrong files
+
+The check added in round six to make a dropped escalation visible **named the one record that
+carries no information to the human, and omitted the two that do.** `pm block` writes three files;
+the matcher used `path.includes(id)` with the uppercase roadmap id, so:
+
+| Record | Matched |
+|---|---|
+| `hq/product/roadmap/MO-….md` | yes — and it tells the human nothing |
+| `.agent/worklog/…-mo-….md` | no — `block` lowercases the id |
+| `hq/team/<owner>.md` | no — **the escalation itself**, and its path has no id at all |
+
+Following the printed *"commit and push so it reaches whoever answers"* literally left the `❗` in
+the working tree, and the next `pm claims` found nothing dirty matching any blocked id and
+**reported clean — using its own instruction as the mechanism.** Now case-insensitive, and
+`hq/team/` is included wholesale: a dirty inbox during a block is the thing you want named either
+way.
+
+Two more, both routes to the same invisible state:
+
+- **A failed push after a successful commit leaves a clean working tree**, so a working-tree check
+  is structurally unable to see it — and `commitRecords` wrapped add/commit/push in one `try`, so
+  the message said *"Committed nothing"* when it had committed. That is the commonest route, and it
+  happens *by accident* rather than by declaration. Separate `try` blocks now, and the check reads
+  `@{u}..HEAD` as well as `status`.
+- **`git status --porcelain` collapses an untracked directory to one entry.** A first block in a
+  fresh checkout reported `hq/` and named none of the three records. `-uall`.
+
+And one in the gate: **a trunk ref that does not exist is a configuration error wearing an
+`unknown` lease.** Contained by the offline exception, it made `pm block` quietly stop pushing on a
+fully online machine and answered a misconfiguration with *"reconnect"*. Checked before the offline
+branch now, with its own message.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

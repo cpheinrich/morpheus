@@ -55,18 +55,34 @@ async function inboxOwner(root: string): Promise<string | null> {
  * an exception because the network was down would be the worse outcome. The
  * caller says so out loud instead of reporting a success it did not have.
  */
+type RecordCommit = "pushed" | "committed" | "nothing";
+
+/**
+ * Commit and push, reporting **which** step got there.
+ *
+ * One `try` around all three conflated "not a git repo" with "the push was
+ * rejected", and the difference matters: committed-but-unpushed leaves a clean
+ * working tree, so the dirty-file check in `pm claims` cannot see it and an
+ * escalation that reached nobody is invisible forever. That is the same
+ * failure the offline completion path exists to prevent, by the route that
+ * happens *by accident* rather than by declaration.
+ */
 async function commitRecords(
   root: string,
   paths: string[],
   message: string,
-): Promise<boolean> {
+): Promise<RecordCommit> {
   try {
     await exec("git", ["add", "--", ...paths], { cwd: root });
     await exec("git", ["commit", "-m", message], { cwd: root });
-    await exec("git", ["push"], { cwd: root });
-    return true;
   } catch {
-    return false;
+    return "nothing";
+  }
+  try {
+    await exec("git", ["push"], { cwd: root });
+    return "pushed";
+  } catch {
+    return "committed";
   }
 }
 
@@ -333,40 +349,54 @@ export async function claims(
   // nobody can see is not a block, so the state has to be visible somewhere
   // that gets read again — this is the "what is in flight" view, and it
   // already has the board in hand.
-  const uncommitted = await uncommittedBlockRecords(cwd, [...blocked.keys()]);
-  if (uncommitted.length) {
+  const unsent = await unsentBlockRecords(cwd, [...blocked.keys()]);
+  if (unsent.length) {
     console.log(
-      `\n\x1b[33m${uncommitted.length} blocked item(s) have uncommitted records — the escalation is\n` +
-        `on this machine only. Commit and push so it reaches whoever answers:\x1b[0m`,
+      `\n\x1b[33mRecords for blocked items have not reached anyone — uncommitted, or committed\n` +
+        `and unpushed. The escalation is on this machine only:\x1b[0m`,
     );
-    for (const p of uncommitted) console.log(`  ${p}`);
+    for (const p of unsent) console.log(`  ${p}`);
+    console.log(`\x1b[33mCommit and push all of them, including the inbox entry.\x1b[0m`);
   }
   return 0;
 }
 
 /**
- * Records belonging to blocked items that are still only in the working tree.
+ * Records of blocked items that have not reached anyone yet — still in the
+ * working tree, or committed and unpushed.
  *
- * Matched by id rather than by path shape, so an unrelated dirty file is not
- * reported as a dropped escalation.
+ * **Both states, because both are invisible to whoever answers.** Only
+ * checking the working tree missed the commonest route: `commitRecords`
+ * committing and the push being rejected leaves a *clean* tree.
+ *
+ * Matching is by id so an unrelated dirty file is not reported as a dropped
+ * escalation — case-insensitively, because `pm block` writes the worklog with
+ * `id.toLowerCase()`. Paths under `hq/team/` are included wholesale: the inbox
+ * entry **is** the escalation and its path carries no id at all, so the
+ * id-matcher could never see the one record that matters. Reporting a dirty
+ * inbox during a block is the correct outcome either way.
  */
-async function uncommittedBlockRecords(cwd: string, blockedIds: string[]): Promise<string[]> {
+export async function unsentBlockRecords(cwd: string, blockedIds: string[]): Promise<string[]> {
   if (!blockedIds.length) return [];
-  try {
-    const { execFile } = await import("node:child_process");
-    const { promisify } = await import("node:util");
-    const { stdout } = await promisify(execFile)("git", ["status", "--porcelain"], {
-      cwd,
-      timeout: 10_000,
-    });
-    const dirty = stdout
-      .split("\n")
-      .map((line) => line.slice(3).trim())
-      .filter(Boolean);
-    return dirty.filter((path) => blockedIds.some((id) => path.includes(id)));
-  } catch {
-    return [];
-  }
+  const ids = blockedIds.map((id) => id.toLowerCase());
+  const mine = (path: string): boolean =>
+    path.startsWith(`${INBOX_DIR}/`) || ids.some((id) => path.toLowerCase().includes(id));
+
+  const lines = async (args: string[]): Promise<string[]> => {
+    try {
+      const { stdout } = await exec("git", args, { cwd, timeout: 10_000 });
+      return stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  };
+
+  // `-uall`, because plain `--porcelain` collapses an untracked directory to
+  // one entry — a first block in a fresh checkout reports `hq/` and names none
+  // of the three records.
+  const dirty = (await lines(["status", "--porcelain", "-uall"])).map((l) => l.slice(3).trim());
+  const unpushed = await lines(["diff", "--name-only", "@{u}..HEAD"]);
+  return [...new Set([...dirty, ...unpushed])].filter(Boolean).filter(mine).sort();
 }
 
 /**
@@ -443,16 +473,23 @@ export async function block(
           "sessions yet — commit and push it when you reconnect.\x1b[0m",
       );
     } else {
-      const pushed = await commitRecords(
+      const outcome = await commitRecords(
         root,
         r.written,
         `chore(${r.id}): blocked — ${opts.needs.trim().slice(0, 60)}`,
       );
-      console.log(
-        pushed
-          ? "Committed and pushed — the block is visible to every other session."
-          : "\x1b[33mCommitted nothing: not a git repo, or the push failed. The records are on disk.\x1b[0m",
-      );
+      if (outcome === "pushed") {
+        console.log("Committed and pushed — the block is visible to every other session.");
+      } else if (outcome === "committed") {
+        console.log(
+          "\x1b[33mCommitted, but the push failed — the block is not visible to other sessions.\n" +
+            "Push when you can; `morpheus pm claims` will keep saying so.\x1b[0m",
+        );
+      } else {
+        console.log(
+          "\x1b[33mCommitted nothing: not a git repo, or the commit failed. The records are on disk.\x1b[0m",
+        );
+      }
     }
 
     console.log(

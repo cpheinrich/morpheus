@@ -552,3 +552,95 @@ describe("noteWrite is narrow on purpose", () => {
     expect(lease?.changedInputs).toContain("hq/team/alice.md");
   });
 });
+
+describe("records of a blocked item that reached nobody", () => {
+  const cwd = process.cwd();
+  afterEach(() => process.chdir(cwd));
+
+  async function repo(): Promise<string> {
+    const { execFileSync } = await import("node:child_process");
+    const run = (dir: string, ...args: string[]) =>
+      execFileSync("git", args, {
+        cwd: dir,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "t",
+          GIT_AUTHOR_EMAIL: "t@e",
+          GIT_COMMITTER_NAME: "t",
+          GIT_COMMITTER_EMAIL: "t@e",
+        },
+      });
+
+    const remote = await mkdtemp(join(tmpdir(), "morpheus-bare-"));
+    run(remote, "init", "-q", "--bare", "-b", "main");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-unsent-"));
+    run(root, "init", "-q", "-b", "main");
+    await writeFile(join(root, "seed.md"), "s", "utf8");
+    run(root, "add", "-A");
+    run(root, "commit", "-q", "-m", "seed");
+    run(root, "remote", "add", "origin", remote);
+    run(root, "push", "-q", "-u", "origin", "main");
+    return root;
+  }
+
+  it("names all three records pm block writes, not just the one with the id", async () => {
+    // The roadmap file carries no information to the human; the inbox entry
+    // *is* the escalation, and its path holds no id at all. Matching on the
+    // uppercase id found only the roadmap file — so following the printed
+    // instruction left the escalation uncommitted and the next run reported
+    // clean, using its own advice as the mechanism.
+    const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const root = await repo();
+    const id = "MO-26-08-05-16.27.56";
+
+    await mkdir(join(root, "hq", "product", "roadmap"), { recursive: true });
+    await mkdir(join(root, "hq", "team"), { recursive: true });
+    await mkdir(join(root, ".agent", "worklog"), { recursive: true });
+    await writeFile(join(root, `hq/product/roadmap/${id}-thing.md`), "item", "utf8");
+    // Lowercased by `block`, which `String.includes` would not match.
+    await writeFile(join(root, `.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`), "w", "utf8");
+    await writeFile(join(root, "hq/team/cpheinrich.md"), "# inbox\n\n## ❗ 1. Blocked\n", "utf8");
+
+    const unsent = await unsentBlockRecords(root, [id]);
+    expect(unsent).toContain(`hq/product/roadmap/${id}-thing.md`);
+    expect(unsent).toContain(`.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`);
+    expect(unsent).toContain("hq/team/cpheinrich.md");
+  });
+
+  it("sees records that are committed but unpushed", async () => {
+    // The commonest route to the same state, and the one a working-tree check
+    // is structurally unable to see: the commit succeeds and the push is
+    // rejected, leaving a clean tree.
+    const { execFileSync } = await import("node:child_process");
+    const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const root = await repo();
+    const id = "MO-26-08-05-16.27.56";
+    const run = (...args: string[]) =>
+      execFileSync("git", args, {
+        cwd: root,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "t",
+          GIT_AUTHOR_EMAIL: "t@e",
+          GIT_COMMITTER_NAME: "t",
+          GIT_COMMITTER_EMAIL: "t@e",
+        },
+      });
+
+    await mkdir(join(root, "hq", "team"), { recursive: true });
+    await writeFile(join(root, "hq/team/cpheinrich.md"), "# inbox\n\n## ❗ 1. Blocked\n", "utf8");
+    run("add", "-A");
+    run("commit", "-q", "-m", `chore(${id}): blocked`);
+
+    expect(run("status", "--porcelain").toString().trim()).toBe("");
+    expect(await unsentBlockRecords(root, [id])).toContain("hq/team/cpheinrich.md");
+  });
+
+  it("says nothing about an unrelated dirty file", async () => {
+    const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const root = await repo();
+    await writeFile(join(root, "src-thing.ts"), "work", "utf8");
+
+    expect(await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"])).toEqual([]);
+  });
+});
