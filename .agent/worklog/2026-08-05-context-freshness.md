@@ -202,8 +202,39 @@ findings were about what happens *around* a correct verdict:
   read, because a guarantee about what is never written has to be enforced
   where writing happens.
 
-624 tests pass across seven review rounds. The findings did not taper, but they
+## Eighth checkpoint — the handoff, and one regression the tests caught
+
+Round 8's first finding is the one worth keeping: **this branch's own commit
+falsified its successor item.** Acceptance 8 on MO-26-08-05-16.27.56 said
+`unresolvableInputs` was read by nothing, that `SessionAdapter` had no repair
+channel, and that `interrupt?` was the obvious home — all true when written,
+all false one commit later, and one of them naming a symbol that no longer
+exists. On merge that item *becomes* the specification, worked from cold by
+someone who cannot check it against a conversation.
+
+So: **when a commit changes something a deferred item describes, the item is
+part of the diff.** It reads like documentation and behaves like a handoff.
+
+The other two were small and both about consuming a correct verdict —
+`writeLease` threw a raw `ZodError` where every other function in the module
+returns data (and threw on the *write* side of the corrupt-vs-absent
+distinction, so a hook catching broadly would leave "no session was ever
+established"); and `notifyAdapter` inferred "the remote advanced" from an empty
+local delta, which is wrong precisely when a record is stuck *and* the trunk
+moved. The lease states `remoteAdvanced` now rather than having it guessed.
+
+**One thing to record about the fix, not the finding.** Replacing the inference
+with `remoteAdvanced` broke an existing test immediately: an *expired* lease has
+no local delta and no remote advance, so the runner stopped being told about
+the one case `leaseAt` exists for. The narrow fix would have been to add
+expiry to the condition; the right one was to invert it — refresh fires by
+default, and only two states genuinely have nothing to ask for. A condition
+enumerating reasons to act will keep missing one.
+
+632 tests pass across eight review rounds. The findings did not taper, but they
 moved steadily outward — rounds 1–2 the verdicts, 3–4 the policy, 5–6 the
-reporting, 7 the consumers and the persisted format. Nothing after round 4
-changed a `fresh` answer on the ordinary path, which is the signal that the
-core converged even though the review kept finding things.
+reporting, 7 the consumers and the persisted format, 8 the handoff. Rounds 7
+and 8 both walked the required-input path exhaustively and could not construct
+a `fresh` verdict over a record that is unread, unreadable, missing or stale.
+Nothing after round 4 changed a `fresh` answer, which is the signal that the
+core converged even while the review kept finding things around it.

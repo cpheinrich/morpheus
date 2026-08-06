@@ -267,6 +267,24 @@ describe("receipt coverage", () => {
     expect(adapter.refreshRequests).toEqual([]);
   });
 
+  it("still asks for a refresh when the trunk moved under a stuck record", async () => {
+    const adapter = new MockSessionAdapter();
+    const nothing = CANONICAL_INPUTS.map((id) => ({ id, fingerprint: ABSENT }));
+    // Both conditions at once is where inferring "the remote advanced" from an
+    // empty refreshable list got it wrong: the delta is entirely unresolvable,
+    // and the trunk moved anyway.
+    const lease = observeLease({ ...receipt, inputs: nothing }, {
+      checkedAt: CHECKED_AT,
+      remoteSha: "def456",
+      inputs: nothing,
+    });
+
+    expect(lease.remoteAdvanced).toBe(true);
+    await notifyAdapter(adapter, lease, CHECKED);
+    expect(adapter.repairRequests).toHaveLength(1);
+    expect(adapter.refreshRequests).toHaveLength(1);
+  });
+
   it("asks for both when a lease carries refreshable and stuck records at once", async () => {
     const adapter = new MockSessionAdapter();
     await notifyAdapter(adapter, observeLease({ ...receipt, inputs: covering }, {
@@ -358,8 +376,9 @@ describe("lease store", () => {
       inputs: covering,
     });
 
-    const path = await writeLease(root, "session-001", lease);
+    const { path, written } = await writeLease(root, "session-001", lease);
     expect(path).toBe(join(root, "local", "sessions", "session-001.json"));
+    expect(written).toBe(true);
     expect(await readLease(root, "session-001")).toEqual({ lease });
     expect(await readLease(root, "absent")).toEqual({ lease: null });
   });
@@ -374,8 +393,17 @@ describe("lease store", () => {
     // The one claim this module makes about what it will *not* do. A bare
     // string[] left it to whoever writes the producer; checking on the way out
     // is what turns it into a property of the artefact.
-    await expect(writeLease(root, "session-005", lease)).rejects.toThrow(/source:key/);
-    await expect(writeLease(root, "session-006", { ...lease, receipt })).resolves.toBeTruthy();
+    const write = await writeLease(root, "session-005", lease);
+    expect(write.issue).toMatch(/dropped advisoryMemorySources/);
+
+    // The freshness record survives; only the prose is discarded. Throwing put
+    // the failure on the write side of the corrupt-vs-absent distinction, where
+    // a hook catching broadly leaves "no session was ever established".
+    expect(write.written).toBe(true);
+    const { lease: back } = await readLease(root, "session-005");
+    expect(back?.receipt.advisoryMemorySources).toBeUndefined();
+    expect(back?.receipt.inputs).toEqual(covering);
+    expect(back?.status).toBe(lease.status);
   });
 
   it("does not read a broken or unreadable lease path as no session at all", async () => {

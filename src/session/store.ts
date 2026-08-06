@@ -49,6 +49,7 @@ const leaseSchema = z.strictObject({
   status: z.enum(["fresh", "refresh_required", "unknown"]),
   changedInputs: z.array(z.string()),
   unresolvableInputs: z.array(z.string()).optional(),
+  remoteAdvanced: z.literal(true).optional(),
   reason: z.string().optional(),
 });
 
@@ -63,22 +64,62 @@ export interface LeaseRead {
   issue?: string;
 }
 
-export async function writeLease(root: string, sessionId: string, lease: SessionLease): Promise<string> {
-  // Validated on the way out as well as in. A guarantee about what is never
-  // written has to be checked where writing happens — an adapter that put a
-  // memory *hit* rather than a memory *source* into the receipt would
-  // otherwise land conversation text in `local/sessions/`, and a read-side
-  // check would only notice afterwards.
-  leaseSchema.parse(lease);
+export interface LeaseWrite {
+  path: string;
+  /** Whether anything reached disk. False only when the lease itself is unusable. */
+  written: boolean;
+  /** What was corrected or refused, in the same shape `readLease` reports. */
+  issue?: string;
+}
 
+/**
+ * Persist a lease, validated on the way out as well as in.
+ *
+ * A guarantee about what is never written has to be checked where writing
+ * happens — an adapter that put a memory *hit* rather than a memory *source*
+ * into the receipt would otherwise land conversation text in
+ * `local/sessions/`, and a read-side check would only notice afterwards.
+ *
+ * Reported as data rather than thrown, and the advisory field is dropped
+ * rather than taken as grounds to discard the lease. Throwing put the failure
+ * on the wrong side of the distinction `LeaseRead.issue` exists to preserve: a
+ * hook that computed a correct lease, threw on one malformed label, and caught
+ * broadly would leave nothing on disk — and the next `readLease` would report
+ * *no session was ever established*. `advisoryMemorySources` is optional and
+ * advisory by its own name; the receipt and the verdict are what the protocol
+ * runs on.
+ */
+export async function writeLease(
+  root: string,
+  sessionId: string,
+  lease: SessionLease,
+): Promise<LeaseWrite> {
   const path = leasePath(root, sessionId);
+  let toWrite = lease;
+  let issue: string | undefined;
+
+  if (!leaseSchema.safeParse(lease).success) {
+    const { advisoryMemorySources: _dropped, ...receipt } = lease.receipt;
+    const stripped = { ...lease, receipt };
+    const retry = leaseSchema.safeParse(stripped);
+    if (!retry.success) {
+      return { path, written: false, issue: `${path}: not a session lease — ${detail(retry.error)}` };
+    }
+    toWrite = stripped;
+    issue = `${path}: dropped advisoryMemorySources — not \`source:key\` labels`;
+  }
+
   await mkdir(dirname(path), { recursive: true });
   // Write-then-rename: a crash mid-write leaves the previous lease intact
   // rather than a half-file that `readLease` would have to reject.
   const staging = `${path}.${process.pid}.tmp`;
-  await writeFile(staging, `${JSON.stringify(lease, null, 2)}\n`, "utf8");
+  await writeFile(staging, `${JSON.stringify(toWrite, null, 2)}\n`, "utf8");
   await rename(staging, path);
-  return path;
+  return issue ? { path, written: true, issue } : { path, written: true };
+}
+
+function detail(error: z.ZodError): string {
+  return error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
 }
 
 /**
@@ -114,8 +155,7 @@ export async function readLease(root: string, sessionId: string): Promise<LeaseR
 
   const result = leaseSchema.safeParse(parsed);
   if (!result.success) {
-    const detail = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
-    return { lease: null, issue: `${path}: not a session lease — ${detail}` };
+    return { lease: null, issue: `${path}: not a session lease — ${detail(result.error)}` };
   }
   return { lease: result.data as SessionLease };
 }

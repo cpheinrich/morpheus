@@ -60,9 +60,19 @@ export async function notifyAdapter(
 
   // Repair is reported alongside refresh rather than instead of it: a lease can
   // carry both, and suppressing either leaves the runner acting on half a
-  // picture. Only the fully-stuck lease is kept out of `requestRefresh`.
+  // picture.
   if (stuck.length) await adapter.requestRepair(current);
-  if (refreshable.length || (current.status === "refresh_required" && !stuck.length)) {
-    await adapter.requestRefresh(current);
-  }
+
+  // Refresh fires by default, because most reasons a lease is not fresh — a
+  // moved trunk, an expired term — leave nothing in `changedInputs` to point
+  // at. Two cases have genuinely nothing to ask for: an `unknown` lease whose
+  // only problem is a remote that is not there, and one whose entire delta is
+  // unresolvable. `remoteAdvanced` is read rather than inferred from an empty
+  // local delta, which got it wrong for a lease carrying both an unreadable
+  // record and a moved trunk.
+  const nothingToRefresh =
+    refreshable.length === 0 &&
+    !current.remoteAdvanced &&
+    (current.status === "unknown" || stuck.length > 0);
+  if (!nothingToRefresh) await adapter.requestRefresh(current);
 }

@@ -45,6 +45,13 @@ export interface SessionLease {
    * gives a runner no way to tell repair from refresh.
    */
   unresolvableInputs?: string[];
+  /**
+   * Present only when the remote SHA moved. Stated rather than inferred: a
+   * consumer working it out from `status` and an empty `changedInputs` gets it
+   * wrong in the one case where both hold — a record that cannot be read
+   * *and* a trunk that advanced.
+   */
+  remoteAdvanced?: true;
   reason?: string;
 }
 
@@ -234,7 +241,8 @@ export function observeLease(
     };
   }
 
-  if (changedInputs.length > 0 || observation.remoteSha !== receipt.remoteSha) {
+  const remoteAdvanced = observation.remoteSha !== receipt.remoteSha;
+  if (changedInputs.length > 0 || remoteAdvanced) {
     return {
       version: 1,
       receipt,
@@ -242,6 +250,7 @@ export function observeLease(
       status: "refresh_required",
       changedInputs,
       ...unresolvableInputs,
+      ...(remoteAdvanced ? { remoteAdvanced: true as const } : {}),
       reason:
         (changedInputs.length > 0
           ? "Canonical project inputs are unread or changed."
