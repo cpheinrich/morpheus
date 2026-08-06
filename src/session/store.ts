@@ -12,11 +12,30 @@ export function leasePath(root: string, sessionId: string): string {
   return join(root, "local", "sessions", `${sessionId}.json`);
 }
 
-const contextInput = z.object({ id: z.string(), fingerprint: z.string() });
+const contextInput = z.strictObject({ id: z.string(), fingerprint: z.string() });
 
-const leaseSchema = z.object({
+/**
+ * The enforcement point for the receipt's one privacy claim — *safe source
+ * labels only, never raw memory or conversation text*. A bare `string[]` made
+ * that a convention for whoever writes the producer, which is the "a field
+ * names a guarantee the code does not provide" shape this module exists to
+ * stop. `store:key` and a hard length bound will not hold prose.
+ */
+const advisoryMemorySource = z
+  .string()
+  .max(120)
+  .regex(/^[a-z0-9][a-z0-9-]*:[\w./-]+$/, "must be a `source:key` label, not free text");
+
+/**
+ * Strict throughout, so a persisted key that no longer exists is loud rather
+ * than dropped. `unreadableInputs` → `unresolvableInputs` was a breaking
+ * format change under an unchanged `version`; non-strict, an old lease would
+ * have parsed clean with every unresolvable record silently reading as
+ * refreshable. `LeaseRead.issue` is exactly the channel for saying so.
+ */
+const leaseSchema = z.strictObject({
   version: z.literal(1),
-  receipt: z.object({
+  receipt: z.strictObject({
     version: z.literal(1),
     id: z.string(),
     createdAt: z.string(),
@@ -24,7 +43,7 @@ const leaseSchema = z.object({
     branch: z.string(),
     worktree: z.string(),
     inputs: z.array(contextInput),
-    advisoryMemorySources: z.array(z.string()).optional(),
+    advisoryMemorySources: z.array(advisoryMemorySource).optional(),
   }),
   checkedAt: z.string(),
   status: z.enum(["fresh", "refresh_required", "unknown"]),
@@ -45,6 +64,13 @@ export interface LeaseRead {
 }
 
 export async function writeLease(root: string, sessionId: string, lease: SessionLease): Promise<string> {
+  // Validated on the way out as well as in. A guarantee about what is never
+  // written has to be checked where writing happens — an adapter that put a
+  // memory *hit* rather than a memory *source* into the receipt would
+  // otherwise land conversation text in `local/sessions/`, and a read-side
+  // check would only notice afterwards.
+  leaseSchema.parse(lease);
+
   const path = leasePath(root, sessionId);
   await mkdir(dirname(path), { recursive: true });
   // Write-then-rename: a crash mid-write leaves the previous lease intact

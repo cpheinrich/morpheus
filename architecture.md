@@ -712,11 +712,18 @@ Two rules keep the artefacts honest, both learned by getting them wrong first:
   record that yields no content is indistinguishable from one another agent edited, and a runner
   told only "these ids changed" loops on a refresh that can never succeed — the wrong-root case
   most of all, since a bad path is a caller mistake where a permission fault is a machine's. The
-  guard's message subtracts them from what it asks to be refreshed, so its two instructions agree.
+  guard's message subtracts them from what it asks to be refreshed, and the adapter has **two
+  channels** rather than one — a runner given only `requestRefresh` has to guess, and the guess it
+  makes is the loop.
 
 **Local, and deliberately not shared.** A receipt says *this working copy read these files*, which
 is true of one machine. Committing it would turn a local observation into a claim about everyone.
 Shared evidence stays what it was: the worklog, the commit, the PR.
+
+Local state is validated on the way **out** as well as in, and strictly: the receipt's one
+privacy claim — safe source labels, never conversation text — is only a property of the artefact if
+something checks at the point of writing, and a strict schema is what makes the next persisted-key
+change loud rather than silently lossy.
 
 The policy is pure and provider-neutral, sitting behind a `SessionAdapter` that runners implement
 but do not own — so CI exercises fresh, stale, expired, offline and never-loaded paths with a mock,

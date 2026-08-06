@@ -180,6 +180,30 @@ the thing is not there, and can the caller tell that apart from the thing being
 fine?** A rule keyed to a shape only catches that shape, which is exactly how a
 commit fixing it introduced two more.
 
-620 tests pass across six review rounds. The findings did not taper, but they
-did move outward — rounds 1–2 were in the policy, 5–6 in the reporting around
-it. Nothing after round 4 changed a `fresh` verdict for the ordinary path.
+## Seventh checkpoint — the other consumer, and the format
+
+Round 7 walked the required-input path exhaustively rather than sampling it and
+could not construct a receipt certifying `fresh` while a required record was
+unread, unreadable, missing or stale. The policy core is closed. All three
+findings were about what happens *around* a correct verdict:
+
+- `ContextFreshnessError` stopped asking for a refresh it had just said would
+  not work — and `notifyAdapter`, the module's other output and the one a
+  runner actually acts on, still did. `SessionAdapter` now has two channels,
+  because a runner given one has to guess and the guess it makes is the loop.
+  `interrupt?` came out: declared, unreachable, and not what this is.
+- The rename `unreadableInputs` → `unresolvableInputs` was a breaking format
+  change under an unchanged `version`, and zod strips unknown keys by default —
+  so an old lease would have parsed clean with every stuck record reading as
+  refreshable. Schemas are `strictObject` throughout now.
+- `advisoryMemorySources` was the one claim about what the system will *not*
+  do, and it was a bare `string[]` with no producer — a convention for whoever
+  writes one. It has a `source:key` shape now, checked on write as well as
+  read, because a guarantee about what is never written has to be enforced
+  where writing happens.
+
+624 tests pass across seven review rounds. The findings did not taper, but they
+moved steadily outward — rounds 1–2 the verdicts, 3–4 the policy, 5–6 the
+reporting, 7 the consumers and the persisted format. Nothing after round 4
+changed a `fresh` answer on the ordinary path, which is the signal that the
+core converged even though the review kept finding things.

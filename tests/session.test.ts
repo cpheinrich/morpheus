@@ -224,6 +224,19 @@ describe("receipt coverage", () => {
     expect(message).not.toMatch(/Refresh these inputs:[^.]*CLAUDE/);
   });
 
+  it("clears an unreadable receipt entry once the record reads again", () => {
+    // The permissive direction of the sentinel split, and the one branch with
+    // no coverage: the *receipt* lacks content but the record is readable now,
+    // so a fresh receipt genuinely does clear it. Ordinary drift, not repair.
+    const lease = observeLease(
+      { ...receipt, inputs: covering.map((i) => (i.id === "CLAUDE.md" ? { ...i, fingerprint: UNREADABLE } : i)) },
+      { checkedAt: CHECKED_AT, remoteSha: "abc123", inputs: covering },
+    );
+
+    expect(lease.changedInputs).toEqual(["CLAUDE.md"]);
+    expect(lease.unresolvableInputs).toBeUndefined();
+  });
+
   it("reports the wrong-root case as repair, not as something to re-read", () => {
     // The likelier of the two loops: a wrong `root` is a caller mistake where
     // EACCES is a filesystem fault. Re-reading three files that are not there
@@ -237,6 +250,38 @@ describe("receipt coverage", () => {
 
     expect(lease.unresolvableInputs).toEqual([...CANONICAL_INPUTS].sort());
     expect(new ContextFreshnessError(lease).message).not.toContain("Refresh these inputs");
+  });
+
+  it("routes a fully stuck lease to repair rather than looping the runner", async () => {
+    const adapter = new MockSessionAdapter();
+    const nothing = CANONICAL_INPUTS.map((id) => ({ id, fingerprint: ABSENT }));
+    // The message stopped asking for a refresh here; the adapter is the other
+    // output, and asking there loops just as hard.
+    await notifyAdapter(adapter, observeLease({ ...receipt, inputs: nothing }, {
+      checkedAt: CHECKED_AT,
+      remoteSha: "abc123",
+      inputs: nothing,
+    }), CHECKED);
+
+    expect(adapter.repairRequests).toHaveLength(1);
+    expect(adapter.refreshRequests).toEqual([]);
+  });
+
+  it("asks for both when a lease carries refreshable and stuck records at once", async () => {
+    const adapter = new MockSessionAdapter();
+    await notifyAdapter(adapter, observeLease({ ...receipt, inputs: covering }, {
+      checkedAt: CHECKED_AT,
+      remoteSha: "abc123",
+      inputs: covering.map((i) => {
+        if (i.id === "CLAUDE.md") return { ...i, fingerprint: UNREADABLE };
+        if (i.id === ".agent/decisions.md") return { ...i, fingerprint: "moved" };
+        return i;
+      }),
+    }), CHECKED);
+
+    // Suppressing either leaves the runner acting on half a picture.
+    expect(adapter.repairRequests).toHaveLength(1);
+    expect(adapter.refreshRequests).toHaveLength(1);
   });
 
   it("treats an explicit empty required set as the only way to switch coverage off", () => {
@@ -319,6 +364,20 @@ describe("lease store", () => {
     expect(await readLease(root, "absent")).toEqual({ lease: null });
   });
 
+  it("refuses to persist a receipt carrying anything but a source label", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-session-"));
+    const lease = observeLease(
+      { ...receipt, advisoryMemorySources: ["the user said they prefer Cloudflare over Resend"] },
+      { checkedAt: CHECKED_AT, remoteSha: "abc123", inputs: covering },
+    );
+
+    // The one claim this module makes about what it will *not* do. A bare
+    // string[] left it to whoever writes the producer; checking on the way out
+    // is what turns it into a property of the artefact.
+    await expect(writeLease(root, "session-005", lease)).rejects.toThrow(/source:key/);
+    await expect(writeLease(root, "session-006", { ...lease, receipt })).resolves.toBeTruthy();
+  });
+
   it("does not read a broken or unreadable lease path as no session at all", async () => {
     const root = await mkdtemp(join(tmpdir(), "morpheus-session-"));
     const path = leasePath(root, "session-003");
@@ -343,7 +402,15 @@ describe("lease store", () => {
     const path = leasePath(root, "session-002");
     await mkdir(dirname(path), { recursive: true });
 
-    for (const body of ["null", "{}", '{"version":1}', "{not json"]) {
+    // `unreadableInputs` is the pre-rename key. Non-strict, this parses clean
+    // and a lease where everything is stuck reads as one where nothing is —
+    // a format change landing silently under an unchanged `version`.
+    const renamed = JSON.stringify({
+      ...observeLease(receipt, { checkedAt: CHECKED_AT, remoteSha: "abc123", inputs: covering }),
+      unreadableInputs: ["CLAUDE.md"],
+    });
+
+    for (const body of ["null", "{}", '{"version":1}', "{not json", renamed]) {
       await writeFile(path, body, "utf8");
       const read = await readLease(root, "session-002");
       expect(read.lease).toBeNull();

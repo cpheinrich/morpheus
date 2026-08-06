@@ -1,33 +1,44 @@
 import { leaseAt, type LeasePolicy, type SessionLease } from "./lease.js";
 
-/** Runner integrations deliver a lease decision; they do not own policy. */
+/**
+ * Runner integrations deliver a lease decision; they do not own policy.
+ *
+ * Two channels, because there are two answers and only one of them is *go and
+ * re-read*. A runner given one channel has to guess, and the guess it will
+ * make is refresh — which for a record re-reading cannot fix is an infinite
+ * loop. `ContextFreshnessError` was fixed for this; the adapter is the module's
+ * other output and had the same defect.
+ */
 export interface SessionAdapter {
+  /** There is a delta, and loading it clears the lease. */
   requestRefresh(lease: SessionLease): Promise<void>;
-  interrupt?(lease: SessionLease): Promise<void>;
+  /** Nothing to load: a record is missing or unreadable and needs fixing. */
+  requestRepair(lease: SessionLease): Promise<void>;
 }
 
 /** Test double used by PM/session tests. */
 export class MockSessionAdapter implements SessionAdapter {
   readonly refreshRequests: SessionLease[] = [];
-  readonly interruptions: SessionLease[] = [];
+  readonly repairRequests: SessionLease[] = [];
 
   async requestRefresh(lease: SessionLease): Promise<void> {
     this.refreshRequests.push(lease);
   }
 
-  async interrupt(lease: SessionLease): Promise<void> {
-    this.interruptions.push(lease);
+  async requestRepair(lease: SessionLease): Promise<void> {
+    this.repairRequests.push(lease);
   }
 }
 
 /**
- * Notify whenever the agent can resolve a known canonical delta.
+ * Tell the runner what to do about a lease, when there is anything to say.
  *
- * Reads the lease **through its term**, exactly as `requireFresh` does, with
- * `now` defaulting to the real clock. Branching on `lease.status` directly
- * made the two consumers of a lease disagree: `readLease` exists to bring one
- * back across a resume, so a lease persisted `fresh` six hours ago would
- * throw at the guard while the runner heard nothing.
+ * Applies the lease's term first, the way `requireFresh` does — `readLease`
+ * exists to bring a lease back across a resume, so branching on `status`
+ * directly let a lease persisted `fresh` six hours ago throw at the guard
+ * while the runner heard nothing. (Only a `fresh` lease has a term to apply;
+ * a `refresh_required` or `unknown` one is already the latest knowledge there
+ * is, with no newer receipt for it to be stale against.)
  *
  * An `unknown` lease qualifies when it names something. Gating on
  * `refresh_required` alone meant the offline case — whose whole point is that
@@ -42,8 +53,16 @@ export async function notifyAdapter(
   policy: LeasePolicy = {},
 ): Promise<void> {
   const current = leaseAt(lease, now, policy);
-  const actionable =
-    current.status === "refresh_required" ||
-    (current.status === "unknown" && current.changedInputs.length > 0);
-  if (actionable) await adapter.requestRefresh(current);
+  if (current.status === "fresh") return;
+
+  const stuck = current.unresolvableInputs ?? [];
+  const refreshable = current.changedInputs.filter((id) => !stuck.includes(id));
+
+  // Repair is reported alongside refresh rather than instead of it: a lease can
+  // carry both, and suppressing either leaves the runner acting on half a
+  // picture. Only the fully-stuck lease is kept out of `requestRefresh`.
+  if (stuck.length) await adapter.requestRepair(current);
+  if (refreshable.length || (current.status === "refresh_required" && !stuck.length)) {
+    await adapter.requestRefresh(current);
+  }
 }
