@@ -1,5 +1,5 @@
 import { LEASE_TTL_MS } from "../session/lease.js";
-import { check as checkContext, refresh as takeReceipt } from "../session/context.js";
+import { check as checkContext, endTerm, refresh as takeReceipt } from "../session/context.js";
 import { resolveTrunk, trunkLog, worktreeRoot } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
 import { gate as gateAction, offlineDeclared, type Reach } from "../session/gate.js";
@@ -226,14 +226,18 @@ export async function status(root: string, offline = offlineDeclared()): Promise
  * not loading them.
  */
 export async function brief(root: string, offline = offlineDeclared()): Promise<number> {
+  // **Decertify first.** The lease is keyed on the worktree, so a session
+  // starting where a previous one refreshed minutes ago would otherwise
+  // inherit its certification — and this command would tell a session that
+  // has read nothing that its context is fresh. A hook may not certify; it
+  // may end a term, which asserts nothing.
+  const previous = await endTerm(root);
+
   const { lease } = await checkContext(root, new Date(), offline);
-
-  if (lease?.status === "fresh") {
-    console.log(`Context is fresh — receipt taken ${ago(lease.checkedAt, new Date())}, covering ${lease.receipt.inputs.length} canonical records.`);
-    return 0;
+  console.log("This session has no context receipt — the previous one was another session's.");
+  if (previous) {
+    console.log(`  (that one was taken ${ago(previous.checkedAt, new Date())}, covering ${previous.receipt.inputs.length} records)`);
   }
-
-  console.log("This session has no current context receipt.");
 
   // Split, not flattened. `unresolvableInputs` is a subset of `changedInputs`,
   // so listing them together and closing with "run refresh" answers a record

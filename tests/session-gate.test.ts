@@ -569,7 +569,7 @@ describe("the offline exception", () => {
         id: "ctx-1",
         createdAt: "2026-08-05T12:00:00.000Z",
         remoteSha: "abc123",
-        branch: "b",
+        branch: "(detached)",
         worktree: root,
         // Drop coverage of the named records, so the local delta is non-empty
         // without needing the files themselves to differ.
@@ -638,7 +638,10 @@ describe("the offline exception", () => {
         id: "ctx-1",
         createdAt: now.toISOString(),
         remoteSha: "abc123",
-        branch: "b",
+        // What `currentBranch` reports outside a repository. `check` compares
+        // it now, because a checkout inside the term puts different canonical
+        // records on disk.
+        branch: "(detached)",
         worktree: root,
         inputs,
       },
@@ -1237,5 +1240,77 @@ describe("status offline", () => {
     expect(out).toContain("Context is fresh");
     expect(out).not.toContain("unknown is assumed");
     expect(out).not.toContain("external actions are not");
+  }, 20_000);
+});
+
+describe("what a lease is scoped to", () => {
+  const env = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "t",
+    GIT_AUTHOR_EMAIL: "t@e",
+    GIT_COMMITTER_NAME: "t",
+    GIT_COMMITTER_EMAIL: "t@e",
+  };
+
+  /** A real repo on `main` with the canonical records and a fresh receipt. */
+  async function certified(): Promise<{ root: string; now: Date }> {
+    const { execFileSync } = await import("node:child_process");
+    const remote = await mkdtemp(join(tmpdir(), "morpheus-bare-"));
+    execFileSync("git", ["init", "-q", "--bare", "-b", "main"], { cwd: remote });
+
+    const root = await mkdtemp(join(tmpdir(), "morpheus-scope-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "x" }), "utf8");
+    for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `on main: ${id}`, "utf8");
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-q", "-m", "root"], { cwd: root, env });
+    execFileSync("git", ["remote", "add", "origin", remote], { cwd: root });
+    execFileSync("git", ["push", "-q", "-u", "origin", "main"], { cwd: root });
+
+    const { refresh } = await import("../src/session/context.js");
+    const now = new Date();
+    const { lease } = await refresh(root, now);
+    expect(lease?.status).toBe("fresh");
+    return { root, now };
+  }
+
+  it("notices a branch switch inside the term", async () => {
+    // The term is not the only thing that can make a stored verdict stale: a
+    // `git checkout` puts different canonical records on disk, and the in-term
+    // short-circuit answered from a receipt taken against the other branch's.
+    // This is the job the item said `branch` must get or be removed for.
+    const { execFileSync } = await import("node:child_process");
+    const { check } = await import("../src/session/context.js");
+    const { root, now } = await certified();
+
+    execFileSync("git", ["checkout", "-q", "-b", "feature"], { cwd: root });
+    await writeFile(join(root, ".agent/decisions.md"), "different on this branch", "utf8");
+
+    // One minute later — well inside the five-minute term.
+    const { lease } = await check(root, new Date(now.getTime() + 60_000));
+    expect(lease?.status).toBe("refresh_required");
+    expect(lease?.changedInputs).toContain(".agent/decisions.md");
+  }, 20_000);
+
+  it("does not let a new session inherit the previous one's certification", async () => {
+    // The lease is keyed on the worktree, so a session starting where another
+    // refreshed minutes ago inherited its ✓ — and `context brief`, the hook
+    // added to prevent exactly this, said so out loud. A hook may not
+    // certify; it may end a term, which asserts nothing.
+    const { check, endTerm } = await import("../src/session/context.js");
+    const { root, now } = await certified();
+
+    const inTerm = new Date(now.getTime() + 60_000);
+    expect((await check(root, inTerm)).lease?.status).toBe("fresh");
+
+    // Discarded, not downgraded: flipping the stored status does not survive
+    // the next `check`, which re-observes from the *receipt* and finds it
+    // still valid. The receipt belonged to the other session.
+    const previous = await endTerm(root);
+    expect(previous?.status).toBe("fresh");
+
+    const { lease } = await check(root, inTerm);
+    expect(lease).toBeNull();
   }, 20_000);
 });

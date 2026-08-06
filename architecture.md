@@ -777,6 +777,18 @@ question the inbox answered), `access sync` (granting from an allowlist that mov
 also fired on `pm index` or `check pr` would train people to route around it, and **the
 routing-around is permanent where the staleness was temporary.**
 
+**A hook may not certify, but it may discard.** The lease is keyed on the worktree, so a session
+starting where another refreshed minutes ago would inherit its ✓ — the failure this whole section
+is about, arriving through the surface added to prevent it. `context brief` discards the stored
+receipt before reporting: that asserts nothing, so it does not violate the rule below, and it is
+what makes the lease session-scoped rather than merely working-copy-scoped. It also lands correctly
+on a session *resumed* after a context compaction, which is exactly when an agent has lost what it
+read. Discarding rather than downgrading, because flipping the stored status does not survive the
+next check — which re-observes from the receipt, and the receipt is still valid.
+
+**The branch is part of what a receipt is about.** A `git checkout` inside the five minutes puts
+different canonical records on disk, so `check` compares `receipt.branch` before trusting the term.
+
 **Taking a receipt is a command, never a side effect.** `morpheus context refresh` is the agent
 asserting it has loaded current state. A hook that took one at session start would certify the
 records were read by the act of not reading them, so the Claude hook prints `context brief` and

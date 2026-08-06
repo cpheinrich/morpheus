@@ -11,7 +11,7 @@ import { fingerprint, readInputs } from "./inputs.js";
 import { currentBranch, resolveTrunk, trunkSha, worktreeRoot, type TrunkRef } from "./git.js";
 import { projectPolicy, sessionId } from "./policy.js";
 import { isAbsolute, relative } from "node:path";
-import { readLease, writeLease } from "./store.js";
+import { clearLease, readLease, writeLease } from "./store.js";
 
 export interface ContextResult {
   /**
@@ -100,6 +100,34 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
     ...(write.issue ? { issue: write.issue } : {}),
     ...(observation.reason === "missing" ? { trunkMissing: trunk } : {}),
   };
+}
+
+/**
+ * Discard the stored receipt, and return what it was.
+ *
+ * The session-start hook may not *certify* — that would assert the records
+ * were read by the act of not reading them — but it may **discard**, and that
+ * asymmetry is what closes the last hole in the protocol's scope. The lease is
+ * keyed on the worktree, so a session starting where a previous one refreshed
+ * three minutes ago inherited its certification, and `context brief` said
+ * *"Context is fresh"* to a session that had read nothing — the failure the
+ * item opens with, from the surface added to prevent it.
+ *
+ * **Discarding, not downgrading.** Flipping the stored `status` does not
+ * survive the next `check`, which re-observes from the *receipt* and finds it
+ * still valid. The receipt is the claim "I read these files", and it belonged
+ * to the other session — so a new session genuinely has none.
+ *
+ * The previous receipt is returned rather than thrown away so the caller can
+ * still say what has moved since it was taken. It also lands correctly on a
+ * *resumed* session after a context compaction, which is precisely when an
+ * agent has lost what it read.
+ */
+export async function endTerm(root: string): Promise<SessionLease | null> {
+  const { worktree, id } = await session(root);
+  const { lease } = await readLease(worktree, id);
+  if (lease) await clearLease(worktree, id);
+  return lease;
 }
 
 /**
@@ -200,9 +228,19 @@ export async function check(
   const policy = await projectPolicy(worktree);
 
   const current = leaseAt(stored, now, policy);
-  // Nothing was written, because nothing needed to be — the stored lease is
-  // still the current answer.
-  if (current.status === "fresh") return { lease: current, observed: false, written: true };
+  // The term is not the only thing that can make a stored verdict stale. A
+  // `git checkout` inside the five minutes puts different canonical records on
+  // disk, and the in-term short-circuit would answer from a receipt taken
+  // against the other branch's. This is the job the item said `branch` must
+  // either get or be removed for — `worktree` got session identity; this is
+  // the other half.
+  const onBranch = await currentBranch(worktree);
+  const sameBranch = onBranch === stored.receipt.branch;
+  if (current.status === "fresh" && sameBranch) {
+    // Nothing was written, because nothing needed to be — the stored lease is
+    // still the current answer.
+    return { lease: current, observed: false, written: true };
+  }
 
   // Past the term, or already known stale. Re-observe against the receipt the
   // agent actually took — its `inputs` are the assertion, and comparing new

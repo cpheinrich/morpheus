@@ -731,6 +731,35 @@ symlinks**, so a dangling link is *absent* to the handle check and *unreadable* 
 The case the de-duplication silenced needs a file that exists and cannot be read — a directory in
 its place — not a broken link.
 
+## Twenty-fifth review pass — the lease was scoped to a working copy, not a session
+
+The sharpest finding of the whole branch, and it landed on the thing the item is named for.
+`sessionId` is `sha256(worktree)` and `leaseAt` compares one thing, the age of `checkedAt`. So
+inside the term the gate answered *this checkout read these files recently* — and two ordinary
+shapes fell through:
+
+- **A new session inherited certification.** Session A refreshes at 12:00 and ends; session B
+  starts at 12:03 in the same directory — a restart, a second terminal, the shared working copy
+  AGENTS.md contemplates. The `SessionStart` hook read the in-term lease and printed *"Context is
+  fresh"*, exit 0, to a session that had read nothing. **The failure the item opens with, asserted
+  by the surface added to prevent it.**
+- **A branch switch inside the term was invisible.** `git checkout feature-x` puts a different
+  `.agent/decisions.md` on disk; the short-circuit answered from the receipt taken on `main`. The
+  item's own Approach said `branch` must either get a job or come out — `worktree` got session
+  identity and `branch` got nothing.
+
+The first fix is the interesting one. The rule *a hook may not certify* is right and I still hold
+it — but it does not rule out the opposite move. **A hook may not certify; it may discard.**
+Discarding asserts nothing, and it is what makes the lease session-scoped rather than
+working-copy-scoped. It also lands correctly on a session resumed after a **context compaction**,
+which is precisely when an agent has lost what it read.
+
+And the first attempt at it was wrong in a way worth keeping: **downgrading the stored status does
+not survive the next `check`**, which re-observes from the *receipt* and finds it still valid. The
+receipt is the claim "I read these files" and it belonged to the other session, so a new session
+must genuinely have none. Discard, not downgrade — the previous receipt is returned rather than
+dropped so `brief` can still say what has moved since.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
