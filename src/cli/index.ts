@@ -27,6 +27,15 @@ import { heartbeat } from "./heartbeat.js";
 import { prompt as reviewPrompt, reviewNeeded } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
+import {
+  check as contextCheck,
+  guard,
+  brief as contextBrief,
+  refresh as contextRefresh,
+  status as contextStatus,
+} from "./context.js";
+import { GATED, offlineDeclared } from "../session/gate.js";
+import { noteWrite } from "../session/context.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -61,7 +70,15 @@ Usage
   morpheus init done | doing | todo <task-id>
   morpheus tokens build     [--source hq/brand/tokens.json] [--css <path>] [--ts <path>]
                             [--prefix brand] [--check]
-  morpheus doctor           [--all]
+  morpheus context refresh  take a receipt — run it after reading the canonical records
+  morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
+  morpheus context status   what the current lease says, and how old it is
+  morpheus context brief    session start: discards the last receipt, says what to read
+                            Governed commands (pm claim|new|block, access sync) refuse without
+                            a fresh receipt. --offline, or MORPHEUS_OFFLINE=1, permits local
+                            work on an unverified trunk and still refuses anything external.
+  morpheus doctor           [--all] [--offline]
+                            --offline skips the one network check (does the trunk resolve)
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge
@@ -74,6 +91,9 @@ Options
   --name <str>   Display name for brand init
   --prefix <str> Two-letter token prefix for brand init
   --check        Verify indexes are current without writing; exits non-zero if stale
+  --offline      Declare the context-freshness offline exception (same as
+                 MORPHEUS_OFFLINE=1), and skip the network checks in "init status",
+                 "doctor" and "context refresh|check|status" that it would answer
   -h, --help     Show this message
 `;
 
@@ -228,7 +248,7 @@ async function main(): Promise<number> {
   const [group, command, ...rest] = flags.positional;
   const dir = resolve(process.cwd(), flags.dir);
 
-  if (group === "doctor") return doctorRun(process.cwd(), flags.all);
+  if (group === "doctor") return doctorRun(process.cwd(), flags.all, flags.offline);
 
   if (group === "heartbeat") {
     return heartbeat({
@@ -319,6 +339,10 @@ async function main(): Promise<number> {
   }
 
   if (group === "access") {
+    if (command === "sync" && !flags.dryRun) {
+      const { refused } = await guard(process.cwd(), "access sync", GATED["access sync"]!, flags.offline);
+      if (refused !== null) return refused;
+    }
     if (command === "sync") return accessSync(process.cwd(), flags.project, flags.dryRun);
     console.error(`Unknown access command "${command ?? ""}".\n\n${HELP}`);
     return 1;
@@ -377,6 +401,20 @@ async function main(): Promise<number> {
     return 1;
   }
 
+  if (group === "context") {
+    // `--offline` reaches these the way it reaches `doctor`: each consults the
+    // trunk, and on an unreachable remote the 15s timeout buys an `unknown`
+    // the declaration already stated. `brief` is not among them — it makes no
+    // network call at all, which is why it takes no argument here.
+    const off = offlineDeclared(flags.offline);
+    if (command === "refresh") return contextRefresh(process.cwd(), off);
+    if (command === "check") return contextCheck(process.cwd(), off);
+    if (command === "brief") return contextBrief(process.cwd());
+    if (command === "status" || command === undefined) return contextStatus(process.cwd(), off);
+    console.error(`Unknown context command "${command}".\n\n${HELP}`);
+    return 1;
+  }
+
   if (group === "check") {
     if (command === "pr") return pr(dir, flags.base);
     console.error(`Unknown check command "${command ?? ""}".\n\n${HELP}`);
@@ -393,16 +431,47 @@ async function main(): Promise<number> {
       return validate(dir);
     case "index":
       return index(dir, flags.check);
-    case "claim":
+    case "claim": {
+      const { refused } = await guard(process.cwd(), "pm claim", GATED["pm claim"]!, flags.offline);
+      if (refused !== null) return refused;
+      // No re-anchoring here: `check` does it wherever the re-observation
+      // proves the receipt still true, which covers `pm claim`'s checkout and
+      // the bare `git checkout` AGENTS.md prescribes for resuming blocked work
+      // alike. A fix at this call site would have left the other.
       return claim(dir, rest[0] ?? "", process.cwd());
+    }
     case "claims":
       return claims(dir, process.cwd());
-    case "block":
-      return block(dir, process.cwd(), rest[0] ?? "", {
+    case "block": {
+      const { refused, contained } = await guard(
+        process.cwd(),
+        "pm block",
+        GATED["pm block"]!,
+        flags.offline,
+      );
+      if (refused !== null) return refused;
+      // `block` raises an `❗` item in the owner's inbox, which is a required
+      // record. Without the `noteWrite` below, the next gated command is
+      // refused for drift this session authored, naming a file it just wrote.
+      const outcome = await block(dir, process.cwd(), rest[0] ?? "", {
         ...(flags.needs ? { needs: flags.needs } : {}),
         ...(flags.owner ? { owner: flags.owner } : {}),
         ...(flags.context ? { context: flags.context } : {}),
+        // From what the gate actually did, not from the declaration alone. A
+        // sticky `MORPHEUS_OFFLINE=1` — set by a wrapper, outliving the
+        // condition — would otherwise stop the one command whose purpose is
+        // visibility from being visible, in a session where nothing else is
+        // degraded and while claiming still pushes fine.
+        push: !contained,
       });
+      // Exactly what it wrote, and only when it wrote. A failed `block`
+      // touches nothing, and re-fingerprinting there would silently clear
+      // drift the session never read; passing the whole required inbox set
+      // would have the receipt assert a record was read that this session
+      // neither read nor wrote.
+      await noteWrite(process.cwd(), outcome.written);
+      return outcome.code;
+    }
     case "unblock":
       return unblock(dir, rest[0] ?? "");
     case "ship":
@@ -410,6 +479,8 @@ async function main(): Promise<number> {
     case "migrate-ids":
       return migrateIds(dir, flags.check);
     case "new": {
+      const { refused } = await guard(process.cwd(), "pm new", GATED["pm new"]!, flags.offline);
+      if (refused !== null) return refused;
       const [kind, ...titleParts] = rest;
       return create(
         dir,

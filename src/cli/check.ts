@@ -10,7 +10,10 @@ import { checkPr, formatFindings } from "../check/pr.js";
  */
 function gitOutput(args: string[]): string {
   try {
-    return execFileSync("git", args, { encoding: "utf8" }).trim();
+    // stderr piped rather than inherited: a base ref that does not resolve is
+    // an answer this function returns, not a message the user should see
+    // mid-check.
+    return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   } catch {
     return "";
   }
@@ -26,6 +29,26 @@ function currentBranch(): string {
 
 function changedFiles(base: string): string[] {
   const out = gitOutput(["diff", "--name-only", `${base}...HEAD`]);
+  return out ? out.split("\n").filter(Boolean) : [];
+}
+
+/**
+ * What moved on the base branch since this one left it.
+ *
+ * **Not `HEAD...base`.** On `pull_request` GitHub checks out
+ * `refs/pull/N/merge`, a merge commit whose *first parent is the base tip* —
+ * so `merge-base(HEAD, base)` is `base` itself and that diff is empty every
+ * time. It would have reported nothing forever and looked like a clean trunk,
+ * which is the absent-reads-as-fine shape in the one check meant to catch it.
+ *
+ * The fork point has to come from the PR **head**: `HEAD^2` on a merge ref,
+ * `HEAD` on a normal checkout or a local run.
+ */
+export function trunkChanges(base: string): string[] {
+  const head = gitOutput(["rev-parse", "--verify", "--quiet", "HEAD^2"]) || "HEAD";
+  const fork = gitOutput(["merge-base", base, head]);
+  if (!fork) return [];
+  const out = gitOutput(["diff", "--name-only", `${fork}..${base}`]);
   return out ? out.split("\n").filter(Boolean) : [];
 }
 
@@ -50,6 +73,7 @@ export async function pr(productDir: string, base: string): Promise<number> {
     body: prBody(),
     branch: currentBranch(),
     changedFiles: changedFiles(base),
+    trunkChanges: trunkChanges(base),
     productDir,
   });
 

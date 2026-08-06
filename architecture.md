@@ -754,8 +754,96 @@ change loud rather than silently lossy.
 
 The policy is pure and provider-neutral, sitting behind a `SessionAdapter` that runners implement
 but do not own — so CI exercises fresh, stale, expired, offline and never-loaded paths with a mock,
-needing neither GitHub nor a Codex or Claude account. **Nothing calls the guard yet** — the policy
-makes the answer computable, and MO-26-08-05-16.27.56 wires it to hooks, commands, and runners.
+needing neither GitHub nor a Codex or Claude account.
+
+#### Where the gate actually is
+
+**Inside the `morpheus` CLI**, not in per-project configuration. Every project already shells out
+to `pm claim`, `pm new`, `pm block` and `access sync` — those *are* the governed actions — so the
+check is live everywhere the moment a project bumps its git dependency. Nothing to scaffold,
+nothing to migrate, and no per-provider wiring. Provider hooks reach one runner each for the same
+effort, which is why they are the last layer rather than the first.
+
+| Surface | Reaches | Per-project work |
+|---|---|---|
+| The CLI gate | every project, agent and human | none — bump the dependency |
+| `check pr`'s `context-drift` | every PR | already centralised |
+| `.claude/settings.json` | Claude Code sessions | one scaffolded file, informational |
+| `AGENTS.md` | anything that reads instructions | scaffolded |
+
+**Four commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
+knowing what merged), `pm new` (filing an item that already exists), `pm block` (escalating a
+question the inbox answered), `access sync` (granting from an allowlist that moved). A gate that
+also fired on `pm index` or `check pr` would train people to route around it, and **the
+routing-around is permanent where the staleness was temporary.**
+
+**A hook may not certify, but it may discard.** The lease is keyed on the worktree, so a session
+starting where another refreshed minutes ago would inherit its ✓ — the failure this whole section
+is about, arriving through the surface added to prevent it. `context brief` discards the stored
+receipt before reporting: that asserts nothing, so it does not violate the rule below, and it is
+what makes the lease session-scoped rather than merely working-copy-scoped. It is also **entirely
+local** — everything it prints comes from the records, so the hook in front of every session makes
+no network call at all. It also lands correctly
+on a session *resumed* after a context compaction, which is exactly when an agent has lost what it
+read. Discarding rather than downgrading, because flipping the stored status does not survive the
+next check — which re-observes from the receipt, and the receipt is still valid.
+
+**The branch is part of what a receipt is about.** A `git checkout` inside the five minutes puts
+different canonical records on disk, so `check` compares `receipt.branch` before trusting the term.
+When a re-observation proves the receipt still true on a different branch, `check` **re-anchors it
+there** — otherwise the mismatch is permanent for the session and every gated command goes back to
+the network. It sits in `check` rather than at a call site because two prescribed workflows switch
+branches: `pm claim` checks out the branch it stakes, and resuming blocked work is a bare `git
+checkout`. Fixing either call site would leave the other.
+
+**Taking a receipt is a command, never a side effect.** `morpheus context refresh` is the agent
+asserting it has loaded current state. A hook that took one at session start would certify the
+records were read by the act of not reading them, so the Claude hook prints `context brief` and
+takes nothing. That command exits 0 by design rather than by `|| true`, so a missing binary does
+not get swallowed the way a stale lease would be.
+
+**The term is how often the network is consulted.** Inside five minutes the last observation
+stands and the check costs one file read. Past it, the stored *receipt* — not the stored verdict —
+is re-observed against `git ls-remote origin main` and the records as they are now. `ls-remote`
+rather than `rev-parse origin/main`, which reads a local ref only as current as the last fetch:
+the exact looks-checked-is-not failure the lease exists to catch.
+
+**The trunk is declared, not assumed.** `origin` is not always canonical — on a fork it *is* the
+fork, whose `main` sits still while the real trunk moves, and a lease measured against it certifies
+`fresh` indefinitely. `context.trunk` in `morpheus.json` names it; undeclared, `origin/HEAD` is
+asked before falling back to `origin/main`. And a ref that does not exist is distinguished from a
+remote that cannot be reached (`ls-remote --exit-code`), because both produce an `unknown` lease
+and only one of them is a network problem — conflated, a repo whose default branch is `master` was
+permanently refused with a message blaming connectivity.
+
+**A command that writes a required record re-fingerprints it — but only what it actually read.**
+`pm block` appends to the owner's inbox, which the required set names, so the next gated command
+past the term would be refused for drift the session authored. Re-fingerprinting keeps the
+assertion *true* rather than having it re-asserted blindly, and refusals with no informational
+content are the fastest route to the gate being routed around.
+
+The caller passes the content it read immediately *before* writing, and the receipt is updated only
+where that still matches what it asserts. Otherwise this is the one path that can **destroy**
+evidence rather than fail to act on it: `check` returns early for an in-term lease without
+re-reading anything, so a human replying in the inbox inside the five minutes is invisible — and a
+blind re-fingerprint would absorb their reply into the receipt, which is the only record of what
+was read.
+
+**Offline is contained, not permitted.** `MORPHEUS_OFFLINE=1` lets local work proceed on an
+`unknown` lease and still refuses anything that leaves the machine. `pm block` is the one command
+that changes shape rather than being refused: it writes the records and skips the push, reporting
+that the block is not yet visible. AGENTS.md tells an agent facing real ambiguity to block rather
+than guess, and refusing that offline leaves guessing or stopping — for exactly the session that
+most needs the third option. It has to be *declared*: an
+unreachable remote is `unknown` either way, and inferring the exception from the symptom would
+make every network blip an unlocked gate.
+
+**CI answers the question it can.** A receipt is local and gitignored, so no workflow can validate
+one — it is one machine's observation by construction. What CI *can* see is whether the canonical
+records moved on the base branch while a PR was open, which is the same freshness question from
+outside. `check pr` reports it as a warning: a moving trunk is nobody's mistake, and blocking on it
+would fail PRs for something outside the author's control at write time. Refusal belongs at the
+local gate; visibility belongs here.
 
 ## 8. Project management as files
 

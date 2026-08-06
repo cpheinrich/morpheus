@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import type { SessionLease } from "./lease.js";
@@ -139,6 +139,11 @@ export async function writeLease(
 
 function detail(error: z.ZodError): string {
   return error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+}
+
+/** Remove a session's stored lease. Absent is not an error. */
+export async function clearLease(root: string, sessionId: string): Promise<void> {
+  await rm(leasePath(root, sessionId), { force: true });
 }
 
 /**

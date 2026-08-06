@@ -46,6 +46,14 @@ export interface BlockResult {
   title: string;
   /** Files written, repo-relative-ish absolute paths, in write order. */
   written: string[];
+  /**
+   * The inbox as it was **immediately before** this call appended to it, or
+   * null if it did not exist. The caller re-fingerprints the record into its
+   * context receipt, and may only do so when this still matches what the
+   * receipt asserts — otherwise a reply that landed inside the term would be
+   * absorbed and the evidence of it lost.
+   */
+  inboxBefore: string | null;
   /** True when the person had no inbox and one was created. */
   inboxCreated: boolean;
 }
@@ -163,7 +171,13 @@ export async function block(opts: BlockOptions): Promise<BlockResult> {
   );
   written.push(inboxPath);
 
-  return { id, title: item.data.title, written, inboxCreated: existing === null };
+  return {
+    id,
+    title: item.data.title,
+    written,
+    inboxBefore: existing,
+    inboxCreated: existing === null,
+  };
 }
 
 export interface UnblockResult {
