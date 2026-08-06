@@ -198,7 +198,7 @@ canonical and lives in this document. Only *deviations* are recorded.
   "domain": "evo.med",
   "description": "One-sentence description.",
   "surfaces": { "web": true, "ios": true, "hardware": false },
-  "integrations": ["firebase", "stripe", "posthog", "github", "slack", "semrush"],
+  "integrations": ["firebase", "stripe", "posthog", "github", "slack", "openseo"],
   "accounts": { /* which identity per service — see §13.3 */ },
   "hq": {
     "route": "/hq",
@@ -237,8 +237,8 @@ often goes wrong when one person runs several companies.
 | QA checklists, acceptance | `qa/` | Markdown |
 | Security posture | `qa/security.md` | Markdown |
 | Cloud infra | `infra/` | Config + IaC |
-| SEO | `hq/marketing/seo/` | Docs + Semrush |
-| ASO | `hq/marketing/aso/` | Docs + ASC integration |
+| SEO | `hq/marketing/seo/` | Docs + OpenSEO |
+| ASO | `hq/marketing/aso/` | Docs + Appeeky + ASC integration |
 | Marketing content | `hq/marketing/content/` | Markdown |
 | Identity, mission, audiences | `hq/brand/strategy.md` | Markdown |
 | Finance | `hq/finance/` → `/hq/finance` | Config + dashboard |
@@ -269,7 +269,8 @@ often goes wrong when one person runs several companies.
 | DNS, CDN, public media | **Cloudflare** | CDN, R2 (§14.3), transactional email — and DNS for every domain, see §6.1 |
 | Domain registration | **Porkbun**, or **Cloudflare** where it carries the TLD | §6.1 |
 | Transactional email | **Cloudflare Email Sending** | Already in the stack — see below |
-| SEO research | **Semrush** | Data moat |
+| SEO research | **OpenSEO** | Data moat — see §6.2 |
+| ASO research | **Appeeky** | App Store data moat, plus ASC/ASA writes — see §6.2 |
 | Agents | **Claude + Codex** | |
 | Error tracking | **Sentry** | |
 | Web hosting | **Vercel** | §10.2 — every web surface, every size. Not Cloudflare Pages |
@@ -341,6 +342,32 @@ list a zone's existing records, so there is no way to see what is actually confi
 remove a
 parking record, from its UI. That is not a knock on Porkbun as a registrar — it is why DNS does not
 live there.
+
+### 6.2 Search: SEO is OpenSEO, ASO is Appeeky
+
+Two separate disciplines, two separate tools, and agents must not substitute one for the other.
+
+| Discipline | Tool | Scope |
+|---|---|---|
+| **Website SEO** | **OpenSEO** | Keywords, SERPs, backlinks, rank tracking, site audits, Search Console, AI-visibility |
+| **App store ASO** | **Appeeky** | App keywords, store metadata, competitor and chart intelligence, plus ASC / Apple Search Ads / Play writes |
+
+**Any request about ranking a *website* goes to OpenSEO. Any request about ranking an *app* goes
+to Appeeky.** The two vocabularies overlap enough — "keywords", "rank", "competitors",
+"visibility" — that an agent reaching for the wrong one will return plausible, wrong numbers:
+app-store search volume and Google search volume are different quantities that look identical in
+a table.
+
+**These replace Semrush and AppTweak**, which earlier drafts named. Semrush was chosen for the
+data moat and priced as a seat subscription; OpenSEO reaches comparable data billed by usage, is
+open-source and self-hostable, and — the reason that decides it here — ships an MCP server as a
+first-class surface rather than an afterthought. Appeeky replaces AppTweak on the same logic, and
+additionally writes: it reaches App Store Connect and Apple Search Ads, so an agent can act on
+what it finds instead of only reporting it.
+
+Both authenticate as remote MCP through claude.ai (§13.4), so neither puts a key in a repo.
+Credentials for the *downstream* accounts Appeeky writes to — App Store Connect, Apple Search Ads,
+Play Console — are a separate authorisation, granted once inside Appeeky.
 
 ### Built and maintained in Morpheus
 
@@ -528,7 +555,7 @@ Scheduled agent runs (GitHub Actions cron) that read the world and propose chang
 | Analytics review | Weekly | PostHog MCP | `/hq` KPI notes, roadmap proposals |
 | Support sweep | Daily | Chatwoot API | Draft replies queued for approval |
 | Finance sync | Weekly | Stripe, Mercury | `/hq/finance` update |
-| Market research | Monthly | Semrush, web | `hq/marketing/research/` |
+| Market research | Monthly | OpenSEO, Appeeky, web | `hq/marketing/research/` |
 | Roadmap proposal | Weekly | All of the above | **A PR against `hq/product/roadmap/`** |
 
 **Agent proposals arrive as pull requests.** Review is a diff, and the human edits the proposal in
@@ -1506,7 +1533,7 @@ Lakina resources in it.
 | **0** | `gh auth login`; install `gcloud`, `wrangler`, `firebase-tools`, `op` | Once, ever | You |
 | **1** | `gcloud auth login` + named configuration per Google identity | Once per Google account | You |
 | **2** | Cloudflare API token (broad), Vercel token | Once per account | You — paste into wizard |
-| **3** | Semrush, Stripe, Slack, PostHog | Optional, skippable | You — or skip |
+| **3** | OpenSEO, Appeeky, Stripe, Slack, PostHog | Optional, skippable | You — or skip |
 | **4** | GCP projects, service accounts, Firebase projects, PostHog projects, R2 buckets, DNS records, Vercel projects, GitHub repos, Chatwoot inboxes | Continuously | **Agent** |
 
 **Google Cloud and Firebase need no separate token.** `gcloud auth login` as an Owner is
@@ -1552,7 +1579,7 @@ flowchart TB
 
 The consumer is **the agent**, not the application — a third population. Three cases:
 
-**Remote MCP authenticated through claude.ai.** Semrush, Linear, Asana, Figma, Slack, Sentry: you
+**Remote MCP authenticated through claude.ai.** OpenSEO, Appeeky, Linear, Asana, Figma, Slack, Sentry: you
 authorise once and the credential lives in Claude's store, never in the repo. The catch is that
 these are **account-scoped, not project-scoped**.
 
