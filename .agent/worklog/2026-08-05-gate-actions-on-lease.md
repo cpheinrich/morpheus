@@ -576,6 +576,34 @@ the command you hand over cannot reach what you just asserted.**
   surface a generated project cannot correct for itself. Fixed in `templates.ts`, where AGENTS.md
   and `architecture.md` were fixed rounds ago.
 
+## Nineteenth review pass — the same split, one module over
+
+`trunkLog` returned `[]` for *the range is empty* and for *the query could not be run* — the exact
+`null`/`[]` split `doctor`'s `gitLines` was given three rounds earlier, unapplied here. The old
+caller turned that into silence; the new one turned it into **"Nothing on it that this branch does
+not already have."**
+
+The path matters: `ls-remote` is one round trip and returns instantly, but `trunkLog`'s `fetch`
+transfers objects, under the same 15s timeout — so after a day offline it is *the* call that fails.
+The agent asks what the gate told it to determine, and is told the trunk holds nothing it lacks,
+and is certified. **Fail-open, in the branch added to stop a fail-open, with the most reassuring
+sentence available.**
+
+Its sibling twelve lines down had the same input and the opposite symptom — printing nothing under
+*"Landed on main"* while the two SHAs genuinely differed. One change fixed both, which is the tell
+that the split was the defect rather than either call site.
+
+Also: the *"a validator that runs before the reporter can only ever subtract"* rule reached
+`context` last round and stopped at `prefix` and `kind`. A lowercase `"prefix": "mo"` still aborted
+the whole run, so an operator whose gate is shut was told about their prefix and had to come back
+for the trunk. **Note the asymmetry that made it this branch's problem: a *missing* prefix was
+always a finding that lets `doctor` continue; an *invalid* one aborted — harmless until the
+governed-command errors sat behind that abort.**
+
+And the review's third finding was that three consecutive commits rewrote the same twenty lines
+with no test reaching them. `trunkLog`'s three answers are now pinned directly, against real
+repositories.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

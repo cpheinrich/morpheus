@@ -217,6 +217,31 @@ describe("scaffolding", () => {
     expect(skipped?.severity).toBe("warning");
   });
 
+  it("keeps reporting the gate-shutting states when the prefix or kind is invalid", async () => {
+    // A *missing* prefix was already a finding that lets `doctor` continue; an
+    // *invalid* one aborted the whole run — harmless until the
+    // governed-command errors sat behind that abort. An operator whose gate is
+    // shut should not be told about their prefix and have to come back for the
+    // trunk.
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-badprefix-"));
+    roots.push(root);
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", prefix: "mo", kind: "corp", context: { handle: "ghost" } }),
+      "utf8",
+    );
+
+    const findings = await doctor({ root, offline: true });
+    expect(findings.find((f) => f.check === "manifest")).toBeUndefined();
+    expect(findings.find((f) => f.check === "prefix")?.severity).toBe("error");
+    expect(findings.find((f) => f.check === "kind")?.severity).toBe("error");
+    // …and the one that names a gate refusing every governed command runs.
+    expect(
+      findings.find((f) => f.check === "context" && f.message.includes("ghost.md"))?.severity,
+    ).toBe("error");
+  });
+
   it("keeps reporting when the whole context block is not an object", async () => {
     // `.loose()` widens which *keys* are allowed, not the type — so the rule
     // has to reach the container, not stop at the fields.

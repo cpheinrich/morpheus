@@ -23,8 +23,13 @@ export type Kind = z.infer<typeof Kind>;
 
 export const Manifest = z.object({
   name: z.string(),
-  prefix: z.string().regex(/^[A-Z]{2,4}$/).optional(),
-  kind: Kind.optional(),
+  // `unknown`, and checked below. A *missing* prefix was already a finding
+  // that lets `doctor` continue; an *invalid* one aborted the whole run —
+  // harmless until the governed-command errors sat behind that abort. An
+  // operator whose gate is shut should not be told about their prefix and
+  // have to come back for the trunk.
+  prefix: z.unknown().optional(),
+  kind: z.unknown().optional(),
   /** Session-freshness config. Its absence is what `context` below reports. */
   /**
    * Every field `unknown`, and the shape checked where it is used.
@@ -249,17 +254,29 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     return findings; // Everything else keys off the manifest.
   }
 
-  if (!manifest.prefix) {
+  const prefix = manifest.prefix;
+  if (prefix === undefined) {
     add(
       "error",
       "prefix",
       'No "prefix" — ids would collide with other projects. Add 2-4 uppercase letters.',
     );
+  } else if (typeof prefix !== "string" || !/^[A-Z]{2,4}$/.test(prefix)) {
+    add("error", "prefix", `"prefix" must be 2-4 uppercase letters; got ${JSON.stringify(prefix)}.`);
   }
 
-  const kind = manifest.kind;
-  if (!kind) {
+  const kind = Kind.safeParse(manifest.kind).success
+    ? (manifest.kind as Kind)
+    : undefined;
+  if (manifest.kind === undefined) {
     add("warning", "kind", 'No "kind" — defaulting expectations to personal.');
+  } else if (!kind) {
+    add(
+      "error",
+      "kind",
+      `"kind" must be one of ${Kind.options.join(", ")}; got ${JSON.stringify(manifest.kind)}. ` +
+        `Defaulting expectations to personal.`,
+    );
   }
 
   // --- context freshness ---------------------------------------------------

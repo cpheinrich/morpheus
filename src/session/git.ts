@@ -117,13 +117,20 @@ export async function worktreeRoot(root: string): Promise<string> {
  * than merely assert. An agent told "the remote advanced" and nothing else
  * has to go looking; one `git log` is the difference between a prompt and an
  * answer.
+ *
+ * **`null` when the trunk could not be read, `[]` when the range is empty.**
+ * The same split `doctor`'s `gitLines` was given, and for the same reason: the
+ * fetch here transfers objects rather than doing one round trip, so it is what
+ * hits the timeout after a day offline — and a caller that renders a failed
+ * query as *"nothing on the trunk you do not have"* fails **open**, with the
+ * most reassuring sentence available, in the branch added to stop a fail-open.
  */
 export async function trunkLog(
   root: string,
   trunk: TrunkRef,
   from: string,
   to: string,
-): Promise<string[]> {
+): Promise<string[] | null> {
   // An empty endpoint is not a range: git's revision syntax defaults an
   // omitted side of `..` to `HEAD`, so `abc1234..` silently becomes
   // `abc1234..HEAD` and answers with the local branch's own commits. Handing
@@ -132,8 +139,12 @@ export async function trunkLog(
   // subjects are real, which is what makes it hard to disbelieve.
   if (!from || !to) return [];
   // `from..to` needs both objects locally, so a fetch is part of asking. It is
-  // the only network call a refresh makes beyond `ls-remote`.
-  await git(root, ["fetch", "--quiet", trunk.remote, trunk.branch]);
-  const log = await out(root, ["log", "--oneline", "--no-decorate", `${from}..${to}`]);
-  return log ? log.split("\n").filter(Boolean) : [];
+  // the only network call a refresh makes beyond `ls-remote`, and the only one
+  // whose cost scales with how long you were away.
+  const fetched = await git(root, ["fetch", "--quiet", trunk.remote, trunk.branch]);
+  if (!fetched.ok) return null;
+
+  const log = await git(root, ["log", "--oneline", "--no-decorate", `${from}..${to}`]);
+  if (!log.ok) return null;
+  return log.stdout ? log.stdout.split("\n").filter(Boolean) : [];
 }

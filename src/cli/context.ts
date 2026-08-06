@@ -66,7 +66,13 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
     // never-fetched upstream it fails outright. `trunkLog` fetches.
     const behind = await trunkLog(wt, trunk, "HEAD", lease.receipt.remoteSha);
     console.log(`Your previous receipt was taken without a verified trunk (${trunkRef}).`);
-    if (behind.length) {
+    if (behind === null) {
+      // Not "nothing there". The fetch after a spell offline is the call that
+      // times out, and saying nothing landed would be the most reassuring
+      // sentence available for a question that was never answered.
+      console.log(`  Could not read ${trunkRef} locally — the fetch did not complete.`);
+      console.log(`    git fetch ${trunk.remote} ${trunk.branch} && git log --oneline HEAD..FETCH_HEAD`);
+    } else if (behind.length) {
       console.log(`On the trunk and not in this branch:`);
       for (const line of behind.slice(0, 20)) console.log(`  ${line}`);
       if (behind.length > 20) console.log(`  … and ${behind.length - 20} more`);
@@ -85,8 +91,14 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
     lease.receipt.remoteSha !== previous.remoteSha
   ) {
     const log = await trunkLog(wt, trunk, previous.remoteSha, lease.receipt.remoteSha);
-    if (log.length) {
-      console.log(`Landed on main since your last receipt:`);
+    if (log === null) {
+      // The sibling symptom: this branch used to print nothing at all while
+      // the two SHAs genuinely differed.
+      console.log(`The trunk moved, and ${trunkRef} could not be read locally to say how:`);
+      console.log(`    git fetch ${trunk.remote} ${trunk.branch} && git log --oneline HEAD..FETCH_HEAD`);
+      console.log("");
+    } else if (log.length) {
+      console.log(`Landed on ${trunkRef} since your last receipt:`);
       for (const line of log.slice(0, 20)) console.log(`  ${line}`);
       if (log.length > 20) console.log(`  … and ${log.length - 20} more`);
       console.log("");

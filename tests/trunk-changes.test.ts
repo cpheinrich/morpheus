@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { trunkChanges } from "../src/cli/check.js";
-import { parseTrunk, resolveTrunk, trunkSha } from "../src/session/git.js";
+import { parseTrunk, resolveTrunk, trunkLog, trunkSha } from "../src/session/git.js";
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, {
@@ -156,5 +156,56 @@ describe("observing the trunk", () => {
       sha: null,
       reason: "unreachable",
     });
+  });
+});
+
+describe("reading the trunk", () => {
+  it("tells an empty range from a trunk it could not read", async () => {
+    // These shared one `[]` — the same null/[] split `doctor`'s `gitLines` was
+    // given, unapplied one module over. The caller turned it into "nothing on
+    // the trunk you do not have", which is the most reassuring sentence
+    // available for a question that was never answered, in the branch added to
+    // stop a fail-open.
+    const upstream = await mkdtemp(join(tmpdir(), "morpheus-bare-"));
+    git(upstream, "init", "-q", "--bare", "-b", "main");
+
+    const root = await mkdtemp(join(tmpdir(), "morpheus-trunklog-"));
+    git(root, "init", "-q", "-b", "main");
+    await commit(root, "a.md", "a", "root");
+    git(root, "remote", "add", "origin", upstream);
+    git(root, "push", "-q", "origin", "main");
+    const sha = git(root, "rev-parse", "HEAD");
+
+    const trunk = { remote: "origin", branch: "main" };
+    // Genuinely nothing in the range — an empty array, not null.
+    expect(await trunkLog(root, trunk, sha, sha)).toEqual([]);
+
+    // A remote that cannot be fetched: null, not "nothing landed".
+    expect(await trunkLog(root, { remote: "nope", branch: "main" }, sha, sha)).toBeNull();
+
+    // A range git cannot resolve: also null.
+    expect(await trunkLog(root, trunk, sha, "0".repeat(40))).toBeNull();
+  });
+
+  it("lists what is on the trunk and not in this branch", async () => {
+    const upstream = await mkdtemp(join(tmpdir(), "morpheus-bare-"));
+    git(upstream, "init", "-q", "--bare", "-b", "main");
+
+    const root = await mkdtemp(join(tmpdir(), "morpheus-trunklog-"));
+    git(root, "init", "-q", "-b", "main");
+    await commit(root, "a.md", "a", "root");
+    git(root, "remote", "add", "origin", upstream);
+    git(root, "push", "-q", "origin", "main");
+
+    // Someone else moves the trunk.
+    const other = await mkdtemp(join(tmpdir(), "morpheus-other-"));
+    git(other, "clone", "-q", upstream, ".");
+    await commit(other, "b.md", "b", "landed while you were away");
+    git(other, "push", "-q", "origin", "main");
+    const head = git(other, "rev-parse", "HEAD");
+
+    const log = await trunkLog(root, { remote: "origin", branch: "main" }, "HEAD", head);
+    expect(log).not.toBeNull();
+    expect(log?.join("\n")).toContain("landed while you were away");
   });
 });
