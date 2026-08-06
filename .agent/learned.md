@@ -260,3 +260,24 @@ part of the script.
 The test for this must parse the YAML rather than slice the text: an `env:` block sits directly
 above the `run:` it feeds, so any text-splitting heuristic sees them as one chunk and flags the safe
 form as unsafe. `step.run` is exactly the shell that executes and nothing else.
+
+## A regression guard narrowed to stay green can stop covering its own reason
+
+2026-08-05. The "no source file names `hq/inbox`" sweep exempted `paths.ts` by filename while the
+legacy constant lived there. Removing the constant, I replaced the exemption with a narrower match —
+`/["']hq\/inbox/` — so that honest prose about the old layout would not fail.
+
+The motivation was right and the implementation conceded far more than it had to. A quote character
+is not what this code looks like: the **scaffolded-template** case the test's own docstring cites is
+a markdown row inside a template literal with no quote at all, and a regex literal spells the path
+`hq\/inbox\/`, so re-adding the exact line the same PR deleted would have passed. The check read as
+covering templates and covered none of them.
+
+**Two properties were treated as a trade and were not one.** Stripping comments first and then
+looking at what remains keeps history sayable *and* catches every spelling in code. Reaching for the
+first thing that turned the suite green produced a guard weaker than the exemption it replaced —
+and worse than it, because an exemption is visible where a too-narrow pattern is not.
+
+Related: writing "confirmed to still fail on a re-introduced string literal" in the PR body was
+narrowly true and implied coverage that did not exist. When a check is narrowed, state what it
+*stopped* covering, not what it still does.

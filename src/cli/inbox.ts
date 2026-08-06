@@ -20,9 +20,20 @@ export async function validate(dir: string): Promise<number> {
     return 1;
   }
 
+  // A directory that exists and holds no inbox is the *half*-migrated repo,
+  // and it is the likelier failure now than a missing one: copying the team
+  // README across is step one of the move, so `hq/team/` can hold a README and
+  // a roster while the real inboxes still sit in `hq/inbox/`. Returning 0 there
+  // is `.agent/learned.md` verbatim — a check that skips what is absent reports
+  // an empty thing as correct — and it would pass CI on a repo that never
+  // finished moving.
+  //
+  // A project that legitimately has no inbox opts out by passing an empty
+  // `inbox-dir` to `pm-check`, which is a decision someone made rather than a
+  // silence nobody noticed.
   if (files.length === 0) {
-    console.log("No inboxes found.");
-    return 0;
+    console.error(`No inbox found in ${dir} — the directory exists but holds nobody.`);
+    return 1;
   }
 
   let total = 0;

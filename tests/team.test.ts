@@ -185,6 +185,34 @@ describe("validateTeam", () => {
   });
 });
 
+/**
+ * Does this TypeScript source *point at* the old inbox directory, as opposed to
+ * merely talking about it?
+ *
+ * `paths.ts` used to be exempt from the sweep by filename, because it held the
+ * legacy constant on purpose. That constant is gone and so is the exemption —
+ * one that outlives its reason is how the string comes back.
+ *
+ * What replaces it has to hold two things at once. `.agent/decisions.md` says
+ * historical records keep the old paths, so a comment explaining what used to
+ * be here must stay green, or the check quietly deletes the history it was
+ * written alongside. But *code* is the bug, in every spelling it takes: a
+ * quoted string, a markdown row inside a template literal — the scaffolded case
+ * this whole guard exists for — and a regex where the slash is escaped.
+ *
+ * So: strip the comments, then look at what is left, in both spellings. Keying
+ * on a quote character instead was tempting and wrong; it read as covering
+ * templates and covered none of them.
+ */
+function namesOldPath(source: string): boolean {
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !/^\s*(\/\/|\*)/.test(line))
+    .join("\n");
+  return code.includes("hq/inbox") || code.includes("hq\\/inbox");
+}
+
 describe("hq/team paths", () => {
   it("puts inboxes at the root of the team folder", () => {
     expect(INBOX_DIR).toBe("hq/team");
@@ -218,6 +246,24 @@ describe("hq/team paths", () => {
    * up in a *new* project — the worst place to discover it, because the person
    * hitting it has no reason to suspect Morpheus rather than their own repo.
    */
+  it("catches the old path in code while leaving prose about it alone", () => {
+    // The scaffolded-template case the docstring above exists for. It is a
+    // markdown table row inside a template literal, so it carries no quote at
+    // all — an earlier version of this check keyed on `["']` and read as
+    // covering exactly this while covering none of it.
+    expect(namesOldPath("const t = `| \\`hq/inbox/<handle>.md\\` | … |`;")).toBe(true);
+    // The `RECORDS` regex this PR deleted. Escaped slashes mean the raw
+    // substring is not even present, so re-adding the deleted line passed.
+    expect(namesOldPath("const RECORDS = /^(hq\\/team\\/|hq\\/inbox\\/)/;")).toBe(true);
+    expect(namesOldPath('const dir = "hq/inbox";')).toBe(true);
+
+    // And the thing the narrowing was actually for: history stays sayable.
+    // `.agent/decisions.md` — *historical records keep the old paths* — is
+    // undermined by a check that pushes the explanation out of the comments.
+    expect(namesOldPath("// Inboxes used to live at `hq/inbox/`, before the move.")).toBe(false);
+    expect(namesOldPath("/**\n * A fallback for `hq/inbox` lived here.\n */")).toBe(false);
+  });
+
   it("leaves no source file pointing at the old inbox path", async () => {
     const { readFile, readdir } = await import("node:fs/promises");
     const { join: j } = await import("node:path");
@@ -236,24 +282,10 @@ describe("hq/team paths", () => {
       return out;
     };
 
-    /**
-     * `paths.ts` used to be exempt by filename, because it held the legacy
-     * constant on purpose. Every repo in the registry has moved and the
-     * constant is gone, so the exemption goes too — one that outlives its
-     * reason is how the string comes back.
-     *
-     * What replaces it is narrower and better: a **string literal** naming the
-     * old path is the bug. Prose recording that the directory used to exist is
-     * not, and a check that cannot tell them apart pushes history out of the
-     * comments to stay green.
-     *
-     * Quote characters only, not backticks. This codebase writes paths in doc
-     * comments as backticked prose, so including the backtick would fail every
-     * sentence about the old layout — the same problem one level down.
-     */
-    const LITERAL = /["']hq\/inbox/;
     for (const f of await walk(root)) {
-      expect(await readFile(f, "utf8"), `${f} still points at the old path`).not.toMatch(LITERAL);
+      expect(namesOldPath(await readFile(f, "utf8")), `${f} still points at the old path`).toBe(
+        false,
+      );
     }
   });
 
@@ -287,7 +319,7 @@ describe("hq/team paths", () => {
  * pinned, which is why removing it broke nothing and proved nothing. These are
  * the tests it should have had, written now for the behaviour that replaced it.
  */
-describe("inbox validate against a missing directory", () => {
+describe("inbox validate against a repo that has not moved", () => {
   it("fails rather than looking somewhere else", async () => {
     const { validate } = await import("../src/cli/inbox.js");
     expect(await validate(join(root, "hq/team"))).toBe(1);
@@ -302,6 +334,28 @@ describe("inbox validate against a missing directory", () => {
 
     const { validate } = await import("../src/cli/inbox.js");
     expect(await validate(join(root, "hq/team"))).toBe(1);
+  });
+
+  /**
+   * The **half**-migrated repo, and the likelier one now: `.agent/decisions.md`
+   * tells people to copy `dirReadmes["hq/team"]` across, which is step one of
+   * the move. Do only that and `hq/team/` holds a README and a roster — both in
+   * `TEAM_RESERVED`, both filtered out — while the real inboxes are still in
+   * `hq/inbox/`. It used to print `No inboxes found.` and return 0.
+   *
+   * `.agent/learned.md` names this exactly: *a check that skips what is absent
+   * will report an empty thing as correct.* A `hq/team/` holding nobody
+   * violates the invariant as surely as a missing one does.
+   */
+  it("fails when the folder exists but holds nobody", async () => {
+    await mkdir(join(root, INBOX_DIR), { recursive: true });
+    await writeFile(join(root, INBOX_DIR, "README.md"), "# Team\n");
+    await writeFile(join(root, INBOX_DIR, "members.md"), "---\nmembers: []\n---\n");
+    await mkdir(join(root, "hq/inbox"), { recursive: true });
+    await writeFile(join(root, "hq/inbox/cpheinrich.md"), "# Inbox\n");
+
+    const { validate } = await import("../src/cli/inbox.js");
+    expect(await validate(join(root, INBOX_DIR))).toBe(1);
   });
 
   it("passes once the inbox is where it belongs", async () => {
