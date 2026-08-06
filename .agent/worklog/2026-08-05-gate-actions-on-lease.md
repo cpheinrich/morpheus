@@ -362,6 +362,28 @@ Also: the no-upstream detection reported four different failures as "no upstream
 missing, a timeout, and the real thing. A confident answer built from a failed lookup. It asks
 `--is-inside-work-tree` first now.
 
+## Tenth review pass — three shapes, and one of them had a better question
+
+- **`refresh`'s log block had the root-vs-cwd defect the previous commit fixed one file over.**
+  `projectPolicy(process.cwd())` reads `join(root, "morpheus.json")` and returns `{}` on failure,
+  so from a subdirectory `context.trunk` was silently dropped: the receipt was taken against the
+  declared trunk while the log block resolved `origin/HEAD`, fetched the wrong remote, and asked
+  for objects it had not brought. The *"Landed on main"* section simply vanished, leaving output
+  that looked complete.
+- **`gitLines` mapped every failure to `[]`**, so *"this repo has no git remotes"* — an **error**,
+  counted into the exit code — also fired for a non-repo, git missing from PATH, a timeout, and
+  git's `dubious ownership` refusal in a container. `git remote` exits 0 with empty stdout in a
+  real repo with no remotes, so the two were always cheaply separable.
+- **The no-upstream special case had a better question underneath it.** `@{u}..HEAD` answers
+  "unpushed relative to the tracking ref", which is wrong twice: nothing on a branch with no
+  upstream, and *everything* on a fresh branch whose records were pushed from `main` long ago.
+  `git log HEAD --not --remotes` — **reachable from no remote at all** — is the question actually
+  being asked, needs no upstream, and deleted the entire `noUpstream` flag, its message and its
+  branch.
+
+That last one is the pattern worth keeping: **two rounds of patching a flag disappeared when the
+underlying question was stated correctly.** The special case existed because the query was wrong.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

@@ -349,26 +349,14 @@ export async function claims(
   // nobody can see is not a block, so the state has to be visible somewhere
   // that gets read again — this is the "what is in flight" view, and it
   // already has the board in hand.
-  const { paths: unsent, noUpstream } = await unsentBlockRecords(cwd, [...blocked.keys()]);
+  const unsent = await unsentBlockRecords(cwd, [...blocked.keys()]);
   if (unsent.length) {
     console.log(
       `\n\x1b[33mRecords for blocked items have not reached anyone — uncommitted, or committed\n` +
         `and unpushed. The escalation is on this machine only:\x1b[0m`,
     );
     for (const p of unsent) console.log(`  ${p}`);
-    console.log(
-      `\x1b[33mCommit and push all of them, including the inbox entry.` +
-        (noUpstream ? ` This branch has no upstream — push with \`-u\`.` : "") +
-        `\x1b[0m`,
-    );
-  } else if (noUpstream) {
-    // Nothing on this branch has reached anyone and `@{u}` cannot say which
-    // records those are. Silence here would be the "absence renders as nothing
-    // to do" shape — and `block` promises this command will keep saying so.
-    console.log(
-      `\n\x1b[33mThis branch has no upstream, so nothing on it has reached whoever answers a\n` +
-        `block. Push with \`-u\` to find out what is outstanding.\x1b[0m`,
-    );
+    console.log(`\x1b[33mCommit and push all of them, including the inbox entry.\x1b[0m`);
   }
   return 0;
 }
@@ -391,28 +379,16 @@ export async function claims(
  *   path — but `hq/team/` wholesale fires on every routine inbox cycle for as
  *   long as anything is blocked, which is days. Reading the file answers the
  *   question the path cannot.
- * - **`git log`, not `git diff @{u}..HEAD`.** A two-dot diff is tree-to-tree,
- *   so a branch that is merely *behind* reported every upstream file as "on
- *   this machine only" — the inverse of the truth, in the ordinary state, and
- *   `listClaims` fetches immediately before this runs. The same two-dot
- *   mistake `trunkChanges` was fixed for.
+ * - **`git log HEAD --not --remotes`, not `@{u}..HEAD`.** Two problems in
+ *   one line. A two-dot *diff* is tree-to-tree, so a branch merely *behind*
+ *   reported every upstream file as "on this machine only" — the same mistake
+ *   `trunkChanges` was fixed for. And an upstream-relative range answers the
+ *   wrong question: on a fresh branch with no upstream, records pushed long
+ *   ago from `main` are not unsent. "In no remote" is the question, and it
+ *   needs no upstream to ask.
  */
-export interface UnsentRecords {
-  paths: string[];
-  /**
-   * The branch has no upstream, so nothing on it has reached anyone and
-   * `@{u}` cannot say which. Reported rather than swallowed: a failed `git
-   * push` for want of an upstream is one route into "committed but not
-   * pushed", and it is exactly the case where the range query returns nothing.
-   */
-  noUpstream: boolean;
-}
-
-export async function unsentBlockRecords(
-  cwd: string,
-  blockedIds: string[],
-): Promise<UnsentRecords> {
-  if (!blockedIds.length) return { paths: [], noUpstream: false };
+export async function unsentBlockRecords(cwd: string, blockedIds: string[]): Promise<string[]> {
+  if (!blockedIds.length) return [];
   const ids = blockedIds.map((id) => id.toLowerCase());
 
   const lines = async (args: string[]): Promise<string[] | null> => {
@@ -439,19 +415,12 @@ export async function unsentBlockRecords(
     l.slice(3).trim(),
   );
 
-  // Specifically "there is no upstream", not "some git command failed". Four
-  // different failures reach `null` — not a repo, git missing, a timeout, no
-  // upstream — and reporting all of them as the last one is a confident answer
-  // built from a failed lookup. A repo with no HEAD commit yet has no upstream
-  // either, and saying so is right; a broken git is not this check's business.
-  const inRepo = (await lines(["rev-parse", "--is-inside-work-tree"]))?.[0] === "true";
-  const upstream = inRepo
-    ? await lines(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
-    : ["(not a repo)"];
-  const noUpstream = inRepo && upstream === null;
-  const unpushed = noUpstream
-    ? []
-    : ((await lines(["log", "--name-only", "--pretty=format:", "@{u}..HEAD"])) ?? []);
+  // Reachable from no remote at all — which is the actual question, and needs
+  // no upstream to ask. It covers a branch with no tracking ref (where an
+  // upstream-relative range answers nothing) without also calling records that
+  // were pushed from `main` long ago unsent.
+  const unpushed =
+    (await lines(["log", "--name-only", "--pretty=format:", "HEAD", "--not", "--remotes"])) ?? [];
 
   const candidates = [...new Set([...dirty, ...unpushed])].filter(Boolean);
   const named = candidates.filter((path) => ids.some((id) => path.toLowerCase().includes(id)));
@@ -472,7 +441,7 @@ export async function unsentBlockRecords(
     if (body === null || ids.some((id) => body.toLowerCase().includes(id))) inboxes.push(path);
   }
 
-  return { paths: [...named, ...inboxes].sort(), noUpstream };
+  return [...named, ...inboxes].sort();
 }
 
 /**

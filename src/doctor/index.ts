@@ -104,6 +104,17 @@ async function checkTrunk(
   const trunk = await resolveTrunk(root, declared);
   const remotes = await gitLines(root, ["remote"]);
 
+  if (remotes === null) {
+    add(
+      "warning",
+      "context",
+      `Could not ask git for this repo's remotes, so the session-freshness trunk ` +
+        `"${trunk.remote}/${trunk.branch}" could not be checked. If this directory is not a git ` +
+        `repository yet, \`git init\` first — every observation is "unknown" until it is.`,
+    );
+    return;
+  }
+
   // Hoisted out of the `!declared` branch, because the worst case has *no*
   // remotes at all: `ls-remote origin main` then exits 128 rather than 2, so
   // `trunkSha` says `unreachable` and the `missing` branch below never runs.
@@ -174,14 +185,24 @@ async function checkTrunk(
   }
 }
 
-async function gitLines(root: string, args: string[]): Promise<string[]> {
+/**
+ * `null` when git could not be asked, `[]` when it answered nothing.
+ *
+ * `git remote` exits 0 with empty stdout in a real repo with no remotes, so
+ * the two are cheaply distinguishable — and conflating them made "this repo
+ * has no git remotes" fire, at *error* severity, for a directory that is not a
+ * repo, for git missing from PATH, for a timeout, and for git's `dubious
+ * ownership` refusal in a container. A failed lookup rendering as a confident
+ * answer, in the check added because a previous failed lookup was doing that.
+ */
+async function gitLines(root: string, args: string[]): Promise<string[] | null> {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   try {
     const { stdout } = await promisify(execFile)("git", args, { cwd: root, timeout: 10_000 });
     return stdout.trim().split("\n").filter(Boolean);
   } catch {
-    return [];
+    return null;
   }
 }
 

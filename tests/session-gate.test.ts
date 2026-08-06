@@ -202,6 +202,28 @@ describe("scaffolding", () => {
     expect(skipped?.severity).toBe("warning");
   });
 
+  it("does not answer a failed git lookup with a confident 'no remotes'", async () => {
+    // Not a git repo, git missing, a timeout, and git's `dubious ownership`
+    // refusal all made `git remote` fail — and the old code called all four
+    // "this repo has no git remotes", at *error* severity, which `run()`
+    // counts into the exit code. A failed lookup rendering as a confident
+    // answer, in the check added because a previous one was doing that.
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-notrepo-"));
+    roots.push(root);
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", prefix: "XX", kind: "internal" }),
+      "utf8",
+    );
+
+    const findings = await doctor({ root, offline: true });
+    expect(findings.find((f) => f.message.includes("no git remotes"))).toBeUndefined();
+    const asked = findings.find((f) => f.message.includes("Could not ask git"));
+    expect(asked?.severity).toBe("warning");
+    expect(asked?.message).toContain("git init");
+  });
+
   it("reports a repo with no remote at all, without asking the network", async () => {
     const { execFileSync } = await import("node:child_process");
     const { doctor } = await import("../src/doctor/index.js");
@@ -607,7 +629,7 @@ describe("records of a blocked item that reached nobody", () => {
       "utf8",
     );
 
-    const { paths } = await unsentBlockRecords(root, [id]);
+    const paths = await unsentBlockRecords(root, [id]);
     expect(paths).toContain(`hq/product/roadmap/${id}-thing.md`);
     expect(paths).toContain(`.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`);
     expect(paths).toContain("hq/team/cpheinrich.md");
@@ -631,7 +653,7 @@ describe("records of a blocked item that reached nobody", () => {
       "utf8",
     );
 
-    const { paths } = await unsentBlockRecords(join(root, "src"), [id]);
+    const paths = await unsentBlockRecords(join(root, "src"), [id]);
     expect(paths).toContain("hq/team/cpheinrich.md");
   });
 
@@ -646,7 +668,7 @@ describe("records of a blocked item that reached nobody", () => {
     // no blocked id, which is the absence-reads-as-clean shape.
     await symlink("gone.md", join(root, "hq/team/cpheinrich.md"));
 
-    const { paths } = await unsentBlockRecords(root, [id]);
+    const paths = await unsentBlockRecords(root, [id]);
     expect(paths.some((p) => p.startsWith("hq/team/cpheinrich.md"))).toBe(true);
   });
 
@@ -662,7 +684,7 @@ describe("records of a blocked item that reached nobody", () => {
     await writeFile(join(root, "hq/team/members.md"), "roster", "utf8");
     await writeFile(join(root, "hq/team/meeting-notes/2026-08-06-standup.md"), "notes", "utf8");
 
-    const { paths } = await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"]);
+    const paths = await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"]);
     expect(paths).toEqual([]);
   });
 
@@ -695,26 +717,32 @@ describe("records of a blocked item that reached nobody", () => {
     run(root, "fetch", "-q", "origin");
 
     expect(run(root, "status", "--porcelain").toString().trim()).toBe("");
-    const { paths } = await unsentBlockRecords(root, [id]);
+    const paths = await unsentBlockRecords(root, [id]);
     expect(paths).toEqual([]);
   });
 
-  it("says so when the branch has no upstream at all", async () => {
-    // A `git push` that fails for want of an upstream is a route into
-    // "committed but not pushed" — and the range query returns nothing there,
-    // so silence would be absence rendering as nothing-to-do.
+  it("finds records on a branch with no upstream at all", async () => {
+    // An upstream-relative range answers nothing here, which is exactly the
+    // state a `git push` that fails for want of an upstream leaves behind.
+    // "Reachable from no remote" needs no upstream to ask.
     const { execFileSync } = await import("node:child_process");
     const { unsentBlockRecords } = await import("../src/cli/pm.js");
+    const id = "MO-26-08-05-16.27.56";
     const root = await mkdtemp(join(tmpdir(), "morpheus-noupstream-"));
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@e",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@e",
+    };
     execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
-    await writeFile(join(root, "a.md"), "a", "utf8");
+    await mkdir(join(root, "hq", "product", "roadmap"), { recursive: true });
+    await writeFile(join(root, `hq/product/roadmap/${id}-thing.md`), "item", "utf8");
     execFileSync("git", ["add", "-A"], { cwd: root });
-    execFileSync("git", ["commit", "-q", "-m", "root"], {
-      cwd: root,
-      env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@e", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@e" },
-    });
+    execFileSync("git", ["commit", "-q", "-m", "blocked"], { cwd: root, env });
 
-    expect((await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"])).noUpstream).toBe(true);
+    expect(await unsentBlockRecords(root, [id])).toContain(`hq/product/roadmap/${id}-thing.md`);
   });
 
   it("sees records that are committed but unpushed", async () => {
@@ -747,7 +775,7 @@ describe("records of a blocked item that reached nobody", () => {
     run("commit", "-q", "-m", `chore(${id}): blocked`);
 
     expect(run("status", "--porcelain").toString().trim()).toBe("");
-    expect((await unsentBlockRecords(root, [id])).paths).toContain("hq/team/cpheinrich.md");
+    expect(await unsentBlockRecords(root, [id])).toContain("hq/team/cpheinrich.md");
   });
 
   it("says nothing about an unrelated dirty file", async () => {
@@ -755,6 +783,6 @@ describe("records of a blocked item that reached nobody", () => {
     const root = await repo();
     await writeFile(join(root, "src-thing.ts"), "work", "utf8");
 
-    expect((await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"])).paths).toEqual([]);
+    expect(await unsentBlockRecords(root, ["MO-26-08-05-16.27.56"])).toEqual([]);
   });
 });

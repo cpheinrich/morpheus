@@ -1,6 +1,6 @@
 import { LEASE_TTL_MS } from "../session/lease.js";
 import { check as checkContext, refresh as takeReceipt } from "../session/context.js";
-import { resolveTrunk, trunkLog } from "../session/git.js";
+import { resolveTrunk, trunkLog, worktreeRoot } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
 import { gate as gateAction, offlineDeclared, type Reach } from "../session/gate.js";
 
@@ -42,9 +42,17 @@ export async function refresh(root: string): Promise<number> {
   }
 
   if (previous && previous.remoteSha && lease.receipt.remoteSha !== previous.remoteSha) {
-    const policy = await projectPolicy(root);
-    const trunk = await resolveTrunk(root, policy.trunk);
-    const log = await trunkLog(root, trunk, previous.remoteSha, lease.receipt.remoteSha);
+    // Normalised, exactly as `takeReceipt` does. `projectPolicy` reads
+    // `join(root, "morpheus.json")` and returns `{}` on any failure, so from a
+    // subdirectory `context.trunk` was silently dropped — the receipt was then
+    // taken against the declared trunk while this block resolved `origin/HEAD`,
+    // fetched the wrong remote, and asked for objects it had not brought. The
+    // log came back empty and the "Landed on main" section just vanished,
+    // leaving output that looked complete.
+    const wt = await worktreeRoot(root);
+    const policy = await projectPolicy(wt);
+    const trunk = await resolveTrunk(wt, policy.trunk);
+    const log = await trunkLog(wt, trunk, previous.remoteSha, lease.receipt.remoteSha);
     if (log.length) {
       console.log(`Landed on main since your last receipt:`);
       for (const line of log.slice(0, 20)) console.log(`  ${line}`);
