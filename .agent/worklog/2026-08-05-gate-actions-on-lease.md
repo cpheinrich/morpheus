@@ -867,6 +867,26 @@ Two fixture lessons worth keeping, both cost a wrong attempt:
   `/private/var/…` — a fixture writing a lease at the raw path stores it under a different session
   id than `check` computes. Fixtures for this module must go through `worktreeRoot`.
 
+## The suite became flaky, and it was the branch's own doing
+
+A run failed four tests — in `id.test.ts` and `pm.test.ts` as well as the new ones — minutes after
+a clean 705. Every one was a 5s timeout, every one passed alone, and the only change between the
+runs was a markdown file.
+
+The cause is this branch: it added a lot of tests that stand up **real git repositories** — `init`,
+commits, bare remotes, `ls-remote`, `fetch` — and vitest runs files in parallel, so a dozen `git`
+processes can be in flight at once. The default 5s is contention, not slowness. It failed a
+*different* four each run, including tests nothing here touched, which is the tell.
+
+`testTimeout: 30_000` in `vitest.config.ts`, with the reason recorded there. Three consecutive
+clean runs after.
+
+**Worth noting as a cost of the approach.** Testing git behaviour against real repositories is
+what caught the porcelain-trim bug, the merge-ref fork point and the unborn-HEAD case — none of
+which a mocked `git` would have surfaced, because each was a fact about git rather than about this
+code. The price is a slower, more contention-sensitive suite, and it is worth paying; it just has
+to be paid deliberately rather than discovered as flakiness.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
