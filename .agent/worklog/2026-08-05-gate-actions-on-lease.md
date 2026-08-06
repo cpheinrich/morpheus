@@ -792,6 +792,17 @@ Dropping it made `brief` take no `offline` argument either, which is the better 
 outright: **the session-start hook is entirely local.** Worth noticing that the argument existed
 only because the call did — a parameter threaded to serve a call that should not have been there.
 
+## Twenty-eighth review pass — nothing left, and two comments describing a call that is gone
+
+No finding worth a human's time, and none in the branch that would hold a merge. Two leftovers from
+the previous commit's own edit, both one line, and both the same small thing: **removing a call
+leaves behind everything that explained it.** An unused `trunkSha` import, and three comments still
+justifying `--offline` reaching `brief` on the grounds of a 15s timeout that no longer exists.
+
+`tsconfig.json` sets no `noUnusedLocals` and `pnpm lint` cannot run — `eslint` is not a declared
+dependency — so nothing catches the import automatically. That gap is real and predates this
+branch; it is worth its own item rather than a fix smuggled in here.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

@@ -91,8 +91,9 @@ Options
   --name <str>   Display name for brand init
   --prefix <str> Two-letter token prefix for brand init
   --check        Verify indexes are current without writing; exits non-zero if stale
-  --offline      Skip network checks in "init status"; declare the context-freshness
-                 offline exception everywhere else (same as MORPHEUS_OFFLINE=1)
+  --offline      Declare the context-freshness offline exception (same as
+                 MORPHEUS_OFFLINE=1), and skip the network checks in "init status",
+                 "doctor" and "context refresh|check|status" that it would answer
   -h, --help     Show this message
 `;
 
@@ -401,10 +402,10 @@ async function main(): Promise<number> {
   }
 
   if (group === "context") {
-    // `--offline` reaches these the way it reaches `doctor`: they make a
-    // network call, and `context brief` is the scaffolded session-start hook,
-    // so an unreachable remote would sit a 15s timeout in front of every
-    // session rather than answering the `unknown` it already knows.
+    // `--offline` reaches these the way it reaches `doctor`: each consults the
+    // trunk, and on an unreachable remote the 15s timeout buys an `unknown`
+    // the declaration already stated. `brief` is not among them — it makes no
+    // network call at all, which is why it takes no argument here.
     const off = offlineDeclared(flags.offline);
     if (command === "refresh") return contextRefresh(process.cwd(), off);
     if (command === "check") return contextCheck(process.cwd(), off);

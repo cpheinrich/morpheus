@@ -7,7 +7,7 @@ import {
 } from "../session/lease.js";
 import { readInputs } from "../session/inputs.js";
 import { check as checkContext, endTerm, refresh as takeReceipt } from "../session/context.js";
-import { resolveTrunk, trunkLog, trunkSha, worktreeRoot } from "../session/git.js";
+import { resolveTrunk, trunkLog, worktreeRoot } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
 import { gate as gateAction, offlineDeclared, type Reach } from "../session/gate.js";
 
@@ -32,8 +32,7 @@ function ago(checkedAt: string, now: Date): string {
 /**
  * `offline` reaches the *read* below and never the receipt: a refresh is
  * user-initiated and exists precisely to certify, so it has nothing to gain
- * from not asking. The 15s argument was about `brief`, the session-start
- * hook, which mints nothing.
+ * from not asking.
  */
 export async function refresh(root: string, offline = offlineDeclared()): Promise<number> {
   const before = await checkContext(root, new Date(), offline);
