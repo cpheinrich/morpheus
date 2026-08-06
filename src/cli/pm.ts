@@ -479,12 +479,13 @@ export async function unsentBlockRecords(cwd: string, blockedIds: string[]): Pro
 export interface BlockOutcome {
   code: number;
   /**
-   * Repo-relative paths this call wrote, empty on every failure path. The
-   * caller re-fingerprints these into its context receipt, and passing
-   * anything it did not write would have the receipt assert a record was read
-   * that this session neither read nor wrote.
+   * What this call wrote, with the content it read first, empty on every
+   * failure path. The caller re-fingerprints these into its context receipt —
+   * passing anything it did not write would have the receipt assert a record
+   * was read that this session neither read nor wrote, and re-fingerprinting
+   * without `before` would absorb a reply that landed inside the term.
    */
-  written: string[];
+  written: { path: string; before: string | null }[];
 }
 
 export async function block(
@@ -564,7 +565,15 @@ export async function block(
     console.log(
       `\nThe branch stays claimed. When answered: \`morpheus pm unblock ${r.id}\`.`,
     );
-    return { code: 0, written: r.written };
+    const inboxPath = r.written[r.written.length - 1];
+    return {
+      code: 0,
+      written: r.written.map((path) => ({
+        path,
+        // Only the inbox is a required record, and it is the last written.
+        before: path === inboxPath ? r.inboxBefore : null,
+      })),
+    };
   } catch (err) {
     if (err instanceof BlockError) {
       console.error(err.message);

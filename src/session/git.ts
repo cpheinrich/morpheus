@@ -86,7 +86,12 @@ export async function resolveTrunk(root: string, declared?: string): Promise<Tru
  * indistinguishable from a dead network.
  */
 export async function trunkSha(root: string, trunk: TrunkRef): Promise<TrunkObservation> {
-  const result = await git(root, ["ls-remote", "--exit-code", trunk.remote, trunk.branch]);
+  // Fully qualified, because a bare name is a **glob against ref tails**:
+  // `main` matches `refs/tags/main` and `refs/heads/feature/main` as well, and
+  // the output is refname-sorted, so `feature/main` is emitted first and
+  // `split()[0]` takes its SHA. The whole `fresh` verdict turns on this field.
+  const ref = `refs/heads/${trunk.branch}`;
+  const result = await git(root, ["ls-remote", "--exit-code", trunk.remote, ref]);
   if (result.ok) {
     const sha = result.stdout.split(/\s+/)[0];
     return sha ? { sha } : { sha: null, reason: "missing" };

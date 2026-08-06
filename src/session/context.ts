@@ -1,4 +1,5 @@
 import {
+  ABSENT,
   CANONICAL_INPUTS,
   leaseAt,
   observeLease,
@@ -6,7 +7,7 @@ import {
   type LeasePolicy,
   type SessionLease,
 } from "./lease.js";
-import { readInputs } from "./inputs.js";
+import { fingerprint, readInputs } from "./inputs.js";
 import { currentBranch, resolveTrunk, trunkSha, worktreeRoot, type TrunkRef } from "./git.js";
 import { projectPolicy, sessionId } from "./policy.js";
 import { isAbsolute, relative } from "node:path";
@@ -118,12 +119,28 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
  * so the habit that forms is *refresh to clear the gate*.
  *
  * Re-fingerprinting keeps the assertion **true** rather than re-asserting it
- * blindly: the agent read the record, then wrote it, so it knows the current
- * contents. Deliberately narrow — only the named ids, and only from the
- * caller that did the writing.
+ * blindly — but only where the record was unchanged between the receipt and
+ * the write, which is why callers pass the content they read *before* writing.
+ *
+ * Without that check this is the one path in the protocol that can **destroy**
+ * evidence rather than merely fail to act on it. A human replying in the inbox
+ * inside the five-minute term is invisible to `check`, which returns early for
+ * an in-term lease without re-reading anything; `noteWrite` would then
+ * re-fingerprint the file *including their reply* and the drift would never be
+ * reported. The receipt is the only record of what was read, so overwriting it
+ * loses the reply permanently.
+ *
+ * Where the pre-write content does not match, the receipt is left alone: the
+ * drift is real, the session did not read it, and it should still be reported.
  */
-export async function noteWrite(root: string, paths: readonly string[]): Promise<void> {
-  if (!paths.length) return;
+export interface RecordWrite {
+  path: string;
+  /** Content as it was immediately before writing; null if it did not exist. */
+  before: string | null;
+}
+
+export async function noteWrite(root: string, writes: readonly RecordWrite[]): Promise<void> {
+  if (!writes.length) return;
   const { worktree, id } = await session(root);
   const { lease } = await readLease(worktree, id);
   if (!lease) return;
@@ -132,12 +149,21 @@ export async function noteWrite(root: string, paths: readonly string[]): Promise
   // Receipt ids are worktree-relative, so an unrelativised path would match
   // nothing and this would be a silent no-op — the failure mode that looks
   // exactly like success.
-  const ids = paths.map((p) => (isAbsolute(p) ? relative(worktree, p) : p));
-  const fresh = new Map((await readInputs(worktree, ids)).map((i) => [i.id, i.fingerprint]));
-  // Only records the receipt already covered. A record this session never
-  // read does not become read by being written over.
+  const seen = new Map(
+    writes.map((w) => [
+      isAbsolute(w.path) ? relative(worktree, w.path) : w.path,
+      w.before === null ? ABSENT : fingerprint(w.before),
+    ]),
+  );
+  const fresh = new Map((await readInputs(worktree, [...seen.keys()])).map((i) => [i.id, i.fingerprint]));
+
+  // Only records the receipt already covered — a record this session never
+  // read does not become read by being written over — and only where what the
+  // caller read before writing still matches what the receipt asserts.
   const inputs = lease.receipt.inputs.map((input) =>
-    fresh.has(input.id) ? { ...input, fingerprint: fresh.get(input.id)! } : input,
+    seen.get(input.id) === input.fingerprint && fresh.has(input.id)
+      ? { ...input, fingerprint: fresh.get(input.id)! }
+      : input,
   );
 
   await writeLease(worktree, id, { ...lease, receipt: { ...lease.receipt, inputs } });

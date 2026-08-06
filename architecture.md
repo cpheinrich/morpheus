@@ -797,11 +797,18 @@ remote that cannot be reached (`ls-remote --exit-code`), because both produce an
 and only one of them is a network problem — conflated, a repo whose default branch is `master` was
 permanently refused with a message blaming connectivity.
 
-**A command that writes a required record re-fingerprints it.** `pm block` appends to the owner's
-inbox, which the required set names, so the next gated command past the term would be refused for
-drift the session authored. Re-fingerprinting keeps the assertion *true* rather than having it
-re-asserted blindly — and refusals with no informational content are the fastest route to the gate
-being routed around.
+**A command that writes a required record re-fingerprints it — but only what it actually read.**
+`pm block` appends to the owner's inbox, which the required set names, so the next gated command
+past the term would be refused for drift the session authored. Re-fingerprinting keeps the
+assertion *true* rather than having it re-asserted blindly, and refusals with no informational
+content are the fastest route to the gate being routed around.
+
+The caller passes the content it read immediately *before* writing, and the receipt is updated only
+where that still matches what it asserts. Otherwise this is the one path that can **destroy**
+evidence rather than fail to act on it: `check` returns early for an in-term lease without
+re-reading anything, so a human replying in the inbox inside the five minutes is invisible — and a
+blind re-fingerprint would absorb their reply into the receipt, which is the only record of what
+was read.
 
 **Offline is contained, not permitted.** `MORPHEUS_OFFLINE=1` lets local work proceed on an
 `unknown` lease and still refuses anything that leaves the machine. `pm block` is the one command

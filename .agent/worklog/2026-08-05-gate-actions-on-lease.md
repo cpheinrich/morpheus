@@ -475,6 +475,34 @@ every path it touches is root-relative.** Three coordinate systems were in play 
 output, cwd-relative pathspecs, and `join(cwd, path)` — and mixing them is not a mistake you stop
 making by being careful, only by removing the choice.
 
+## Fifteenth review pass — the only place this can destroy evidence
+
+`noteWrite` re-fingerprinted a written record unconditionally, and its justification was *"the
+agent read the record, then wrote it, so it knows the current contents"* — true only if the record
+was unchanged between the receipt and the write. Nothing checked that, and the gate cannot:
+`check` returns early for a fresh in-term lease **without re-reading the inputs at all**.
+
+So on the flow AGENTS.md is built around — the inbox being *"the only file a human is expected to
+edit"*:
+
+1. 12:00 receipt fingerprints the inbox as **A**.
+2. 12:01 Chris replies inline after a `~`. The file is **B**.
+3. 12:02 `pm block` passes the gate in-term, appends, and `noteWrite` records **C**.
+4. 12:06 the term expires, the inbox is **C**, the receipt says **C** — no drift, `fresh`.
+
+**The reply is never surfaced, and the evidence that the file moved is gone permanently**, because
+the receipt is the only record of what was read. Every other failure in this branch was a failure
+to *act*; this one erases the input.
+
+`block()` already held the answer — `existing`, the content it read before appending. Callers now
+pass it, and the receipt is updated only where it still matches what the receipt asserts. Where it
+does not, the receipt is left alone: the drift is real and the session did not see it.
+
+Also: `ls-remote <remote> <branch>` is a **glob against ref tails**, so `main` matches
+`refs/tags/main` and `refs/heads/feature/main`, and refname-sorted output puts `feature/main`
+first — `split()[0]` then took the wrong SHA for the field the whole verdict turns on. Fully
+qualified as `refs/heads/<branch>` now.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
