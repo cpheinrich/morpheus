@@ -130,7 +130,21 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   // --- context freshness ---------------------------------------------------
   // Adoption reporting, not enforcement. `doctor` never writes, so it says
   // which projects have the protocol wired and which are still open.
-  if (!manifest.context?.handle) {
+  const handle = manifest.context?.handle;
+  if (handle && !(await exists(join(root, "hq", "team", `${handle}.md`)))) {
+    // The one way this protocol locks a project out of itself: a declared
+    // record that does not exist is ABSENT, therefore unresolvable, therefore
+    // never fresh — and no flag or override reaches it. An error, not a
+    // warning, because every governed command is already refused.
+    add(
+      "error",
+      "context",
+      `morpheus.json declares context.handle "${handle}" but hq/team/${handle}.md does not ` +
+        `exist. It is in the session-freshness required set, so every governed command is ` +
+        `refused until the file is there — create it, or remove the handle.`,
+    );
+  }
+  if (!handle) {
     add(
       "warning",
       "context",

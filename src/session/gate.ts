@@ -1,4 +1,4 @@
-import { ContextFreshnessError } from "./lease.js";
+import { ContextFreshnessError, type SessionLease } from "./lease.js";
 import { check } from "./context.js";
 
 /**
@@ -96,8 +96,8 @@ export async function gate(
         ok: false,
         message:
           `${new ContextFreshnessError(lease).message}\n\n` +
-          `  Offline covers a trunk you cannot reach — not records you can. Read what it\n` +
-          `  names, then run:\n    morpheus context refresh`,
+          `  Offline covers a trunk you cannot reach — not records you can.\n` +
+          `${next(lease)}`,
       };
     }
 
@@ -119,10 +119,27 @@ export async function gate(
   return {
     ok: false,
     message:
-      `${new ContextFreshnessError(lease).message}\n\n` +
-      `  Read what it names, then run:\n    morpheus context refresh` +
+      `${new ContextFreshnessError(lease).message}\n\n${next(lease)}` +
       (lease.status === "unknown"
-        ? `\n\n  If you are deliberately offline, MORPHEUS_OFFLINE=1 permits local work.`
+        ? `\n\n  If you are deliberately offline, MORPHEUS_OFFLINE=1 permits local work on\n  records you have read.`
         : ""),
   };
+}
+
+/**
+ * What to do next, which is not always "refresh".
+ *
+ * `ContextFreshnessError` already separates repair from refresh in its own
+ * sentence; appending an unconditional "read it, then refresh" underneath
+ * contradicts it whenever the whole delta is unresolvable. One derivation,
+ * used by both branches above.
+ */
+function next(lease: SessionLease): string {
+  const stuck = lease.unresolvableInputs ?? [];
+  const readable = lease.changedInputs.filter((id) => !stuck.includes(id));
+
+  if (!readable.length && stuck.length) {
+    return `  Repair what it names — refreshing will not clear it.`;
+  }
+  return `  Read what it names, then run:\n    morpheus context refresh`;
 }

@@ -130,22 +130,46 @@ describe("scaffolding", () => {
     await Promise.all(roots.splice(0).map((r) => rm(r, { recursive: true, force: true })));
   });
 
-  it("scaffolds a project whose canonical records all exist", async () => {
-    const { scaffold } = await import("../src/init/index.js");
-    const root = await mkdtemp(join(tmpdir(), "morpheus-init-"));
-    roots.push(root);
-    await mkdir(root, { recursive: true });
-
-    await scaffold(root, { name: "Acme", prefix: "AC", kind: "company", owner: "cpheinrich" });
-
-    // The default required set is only correct because `init` creates exactly
-    // these — that fit is load-bearing, not a coincidence to rediscover.
-    const required = (await projectPolicy(root)).requiredInputs ?? [];
-    for (const id of required) {
+  // Every kind, not one. `manifest()` declares `context.handle` for all of
+  // them, and a kind whose directory list omits `hq/team` would scaffold a
+  // project declaring a record it never creates — ABSENT, therefore
+  // unresolvable, therefore never fresh, with no offline escape and no
+  // `requiredInputs` override that reaches it. Testing one kind is how that
+  // ships.
+  for (const kind of ["company", "personal", "internal"] as const) {
+    it(`scaffolds a ${kind} project whose canonical records all exist`, async () => {
+      const { scaffold } = await import("../src/init/index.js");
       const { access } = await import("node:fs/promises");
-      await expect(access(join(root, id))).resolves.toBeUndefined();
-    }
-    expect(required).toContain("hq/team/cpheinrich.md");
+      const root = await mkdtemp(join(tmpdir(), "morpheus-init-"));
+      roots.push(root);
+
+      await scaffold(root, { name: "Acme", prefix: "AC", kind, owner: "cpheinrich" });
+
+      // The default required set is only correct because `init` creates
+      // exactly these — load-bearing, not a coincidence to rediscover.
+      const required = (await projectPolicy(root)).requiredInputs ?? [];
+      expect(required).toContain("hq/team/cpheinrich.md");
+      for (const id of required) {
+        await expect(access(join(root, id))).resolves.toBeUndefined();
+      }
+    });
+  }
+
+  it("reports a declared handle whose inbox does not exist as an error", async () => {
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-doctor-"));
+    roots.push(root);
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", prefix: "XX", kind: "internal", context: { handle: "ghost" } }),
+      "utf8",
+    );
+
+    const findings = await doctor({ root });
+    const locked = findings.find((f) => f.check === "context" && f.message.includes("ghost.md"));
+    // An error, not a warning: every governed command is already refused, and
+    // no flag reaches it.
+    expect(locked?.severity).toBe("error");
   });
 });
 

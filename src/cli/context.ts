@@ -50,10 +50,23 @@ export async function refresh(root: string): Promise<number> {
     }
   }
 
-  if (before.lease && before.lease.changedInputs.length) {
-    console.log("Records that had moved — re-read anything you are relying on:");
-    for (const id of before.lease.changedInputs) console.log(`  ${id}`);
-    console.log("");
+  // Compared receipt-to-receipt, the same way the trunk half compares SHAs —
+  // **not** from `before.lease.changedInputs`. A stored lease inside its term
+  // comes back unmodified and a fresh one has `changedInputs: []` by
+  // construction, so reading the verdict meant a refresh within five minutes
+  // of the last one silently re-certified whatever moved during the term.
+  if (previous) {
+    const was = new Map(previous.inputs.map((i) => [i.id, i.fingerprint]));
+    const moved = lease.receipt.inputs
+      .filter((i) => was.has(i.id) && was.get(i.id) !== i.fingerprint)
+      .map((i) => i.id);
+    const added = lease.receipt.inputs.filter((i) => !was.has(i.id)).map((i) => i.id);
+
+    if (moved.length || added.length) {
+      console.log("Records that moved since your last receipt — re-read what you rely on:");
+      for (const id of [...moved, ...added].sort()) console.log(`  ${id}`);
+      console.log("");
+    }
   }
 
   if (issue) console.log(`! ${issue}`);
@@ -133,15 +146,37 @@ export async function brief(root: string): Promise<number> {
   }
 
   console.log("This session has no current context receipt.");
-  if (lease?.changedInputs.length) {
+
+  // Split, not flattened. `unresolvableInputs` is a subset of `changedInputs`,
+  // so listing them together and closing with "run refresh" answers a record
+  // that re-reading cannot fix with the one instruction that cannot fix it —
+  // the loop `ContextFreshnessError` splits the two to prevent. This is the
+  // first thing an agent reads in a session, so it is the surface where the
+  // distinction matters most.
+  const stuck = lease?.unresolvableInputs ?? [];
+  const readable = (lease?.changedInputs ?? []).filter((id) => !stuck.includes(id));
+
+  if (readable.length) {
     console.log("These canonical records are unread or have moved:");
-    for (const id of lease.changedInputs) console.log(`  ${id}`);
-  } else {
+    for (const id of readable) console.log(`  ${id}`);
+  } else if (!stuck.length) {
     console.log("Read `.agent/decisions.md` and `.agent/learned.md` before starting work.");
   }
+
+  if (stuck.length) {
+    console.log("");
+    console.log("These cannot be read at all — repair them; refreshing will not clear it:");
+    for (const id of stuck) console.log(`  ${id}`);
+  }
+
   console.log("");
-  console.log("Then run `morpheus context refresh`. Claiming work, filing items, blocking and");
-  console.log("granting access are refused until you do.");
+  if (readable.length || !stuck.length) {
+    console.log("Then run `morpheus context refresh`. Claiming work, filing items, blocking and");
+    console.log("granting access are refused until you do.");
+  } else {
+    console.log("Claiming work, filing items, blocking and granting access stay refused until");
+    console.log("those records are readable.");
+  }
   return 0;
 }
 

@@ -137,6 +137,34 @@ The fixture for the offline tests failed first time for a good reason worth reco
 lease without creating the records on disk, and `gate` **re-observes**. A synthetic lease measures
 nothing here. Fixtures for this module have to be grounded on a real tree.
 
+## Second review pass — two that would have shipped broken
+
+- **A scaffolded `internal` project would have had a permanently closed gate.** `manifest()`
+  declares `context.handle` for every kind; `init` wrote `hq/team/<owner>.md` only when the kind's
+  directory list included `hq/team`, which `internal` does not. The record then reads `ABSENT` →
+  unresolvable → `refresh_required` forever, with **no escape**: offline does not help (the delta
+  is knowable locally), and `requiredInputs: []` does not either, because the handle is what put it
+  there. **A declared record that is never created is the worst shape this protocol has**, and the
+  new scaffolding test walked past it by testing `company` — the one kind that happened to work.
+  Tests over all three kinds now, and `doctor` reports a handle without its file as an *error*.
+- **`context-drift` could never fire in CI.** `HEAD...base` on `pull_request` compares
+  `refs/pull/N/merge` — whose first parent *is* the base tip — so the merge-base is the base and
+  the diff is empty every time. It would have reported a clean trunk forever and looked like it
+  was working, which is the whole acceptance-5 substitution silently doing nothing. The fork point
+  has to come from the PR *head* (`HEAD^2` on a merge ref). The pure function had tests; its only
+  producer had none, which is exactly where the bug was.
+
+Two more, both the same one-of-two-outputs shape:
+
+- `refresh` reported record drift from `before.lease.changedInputs`, and a stored lease inside its
+  term comes back unmodified with `changedInputs: []` by construction. So a refresh within five
+  minutes of the last one silently re-certified whatever moved during the term — you end up
+  holding a receipt asserting you read content you have not seen. It compares receipt to receipt
+  now, the way the trunk half always did.
+- `context brief` — which *is* the hook, and the first thing an agent reads — flattened
+  `unresolvableInputs` into the changed list and closed with "run refresh". The one instruction
+  that cannot fix them.
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and
