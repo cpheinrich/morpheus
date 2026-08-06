@@ -528,6 +528,29 @@ Two smaller, both about a value meaning more than it says:
   a contract defect of exactly the kind this branch kept getting bitten by, so the two records it
   cannot speak for are omitted rather than described falsely.
 
+## Seventeenth review pass — the schema that silenced the diagnosis
+
+Typing `requiredInputs` as an array closed one silence and opened the neighbouring one. `context`
+was `.loose()` before, so any shape passed; typed, a **non-array** — `"requiredInputs":
+"docs/protocol.md"`, the singular, the same hand-edit population as `[{path: …}]` — throws in
+`Manifest.parse`, and that catch returns early and reports **nothing else about the project**. Not
+the handle whose inbox is missing, not the trunk that does not resolve, both of which are *errors*
+precisely because they refuse every governed command with no override. Meanwhile `projectPolicy`
+never throws: it guards each field with a `typeof` and falls back to the default.
+
+**A schema strict enough to reject a hand-edit silenced the only surface that would have explained
+it, while the gate carried on regardless.** The comment on the line above said it was avoiding
+exactly this, one type up.
+
+So `context` is `unknown` in the schema and its shape is checked where it is used — which is also
+the general rule this whole module keeps arriving at: **validate where you can report, not where
+you can reject.** A validator that runs before the reporter can only ever subtract.
+
+Second: `refresh` used to print a wrong answer when the previous receipt had no trunk SHA, and
+after the last fix printed nothing — in the one path where the gate has just said *"the remote
+advanced; determine the canonical delta"*. It says there is no baseline now, and gives the `git
+log` that answers it. **Silence is not the fix for a wrong answer; a true one is.**
+
 ## Left open, deliberately
 
 - **Codex has no adapter.** `SessionAdapter` has `requestRefresh` and `requestRepair`; steering and

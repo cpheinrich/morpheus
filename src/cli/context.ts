@@ -32,6 +32,11 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
   const before = await checkContext(root, new Date(), offline);
   const previous = before.lease?.receipt;
 
+  const wt = await worktreeRoot(root);
+  const policy = await projectPolicy(wt);
+  const trunk = await resolveTrunk(wt, policy.trunk);
+  const trunkRef = `${trunk.remote}/${trunk.branch}`;
+
   const { lease, issue, written, trunkMissing } = await takeReceipt(root);
   if (!lease) {
     console.error(issue ?? "Could not take a context receipt.");
@@ -47,6 +52,19 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
     return 1;
   }
 
+  // The previous receipt was taken without a verified trunk, so there is no
+  // range to show — and silence here lands on the one path where the gate has
+  // just said "the remote advanced; determine the canonical delta". Saying
+  // there is no baseline is the answer; showing nothing is not.
+  if (previous && !previous.remoteSha && lease.receipt.remoteSha) {
+    console.log(
+      `Your previous receipt was taken without a verified trunk, so there is no range to show.`,
+    );
+    console.log(`  The trunk is now ${lease.receipt.remoteSha.slice(0, 7)}; to see what landed:`);
+    console.log(`    git log --oneline HEAD..${trunkRef ?? "origin/main"}`);
+    console.log("");
+  }
+
   // Both endpoints, not just the old one. `takeReceipt` writes `remoteSha:
   // sha ?? ""` for an unreachable trunk, so an offline refresh after an online
   // one passed this guard and asked git for a range with a defaulted side.
@@ -55,16 +73,6 @@ export async function refresh(root: string, offline = offlineDeclared()): Promis
     lease.receipt.remoteSha &&
     lease.receipt.remoteSha !== previous.remoteSha
   ) {
-    // Normalised, exactly as `takeReceipt` does. `projectPolicy` reads
-    // `join(root, "morpheus.json")` and returns `{}` on any failure, so from a
-    // subdirectory `context.trunk` was silently dropped — the receipt was then
-    // taken against the declared trunk while this block resolved `origin/HEAD`,
-    // fetched the wrong remote, and asked for objects it had not brought. The
-    // log came back empty and the "Landed on main" section just vanished,
-    // leaving output that looked complete.
-    const wt = await worktreeRoot(root);
-    const policy = await projectPolicy(wt);
-    const trunk = await resolveTrunk(wt, policy.trunk);
     const log = await trunkLog(wt, trunk, previous.remoteSha, lease.receipt.remoteSha);
     if (log.length) {
       console.log(`Landed on main since your last receipt:`);

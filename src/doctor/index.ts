@@ -26,17 +26,18 @@ export const Manifest = z.object({
   prefix: z.string().regex(/^[A-Z]{2,4}$/).optional(),
   kind: Kind.optional(),
   /** Session-freshness config. Its absence is what `context` below reports. */
-  context: z
-    .object({
-      handle: z.string().optional(),
-      trunk: z.string().optional(),
-      // Typed as unknown[] rather than string[]: a non-string entry must
-      // reach the check below rather than failing the whole manifest parse,
-      // which returns early and reports nothing else about the project.
-      requiredInputs: z.array(z.unknown()).optional(),
-    })
-    .loose()
-    .optional(),
+  /**
+   * Every field `unknown`, and the shape checked where it is used.
+   *
+   * `Manifest.parse` failing returns early and reports **nothing else about
+   * the project** — not the handle whose inbox is missing, not the trunk that
+   * does not resolve, both of which name states that refuse every governed
+   * command with no override. Meanwhile `projectPolicy` never throws: it
+   * guards each field with a `typeof` and falls back. So a schema strict
+   * enough to reject a hand-edit silences the only surface that would have
+   * explained it, while the gate carries on with a default.
+   */
+  context: z.object({}).loose().optional(),
   /**
    * Subtrees owned by a parent project rather than this one, e.g.
    * `{ "finance": "darwin" }`. Their directories are correctly absent, so
@@ -264,7 +265,25 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   // --- context freshness ---------------------------------------------------
   // Adoption reporting, not enforcement. `doctor` never writes, so it says
   // which projects have the protocol wired and which are still open.
-  const handle = manifest.context?.handle;
+  // Checked here rather than in the schema, so a bad one is reported and the
+  // rest of `doctor` still runs.
+  const raw = (manifest.context ?? {}) as Record<string, unknown>;
+  for (const [key, expected, ok] of [
+    ["handle", "a string", (v: unknown) => typeof v === "string"],
+    ["trunk", "a string", (v: unknown) => typeof v === "string"],
+    ["requiredInputs", "an array", (v: unknown) => Array.isArray(v)],
+  ] as const) {
+    if (raw[key] !== undefined && !ok(raw[key])) {
+      add(
+        "error",
+        "context",
+        `context.${key} is not ${expected}, so it is ignored entirely and the default applies. ` +
+          `Nothing else reports this: the gate falls back silently.`,
+      );
+    }
+  }
+
+  const handle = typeof raw["handle"] === "string" ? raw["handle"] : undefined;
   if (handle && !(await exists(join(root, "hq", "team", `${handle}.md`)))) {
     // The one way this protocol locks a project out of itself: a declared
     // record that does not exist is ABSENT, therefore unresolvable, therefore
@@ -322,7 +341,12 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
     );
   }
 
-  await checkTrunk(root, manifest.context?.trunk, opts.offline === true, add);
+  await checkTrunk(
+    root,
+    typeof raw["trunk"] === "string" ? raw["trunk"] : undefined,
+    opts.offline === true,
+    add,
+  );
 
   // --- structure ----------------------------------------------------------
   const inherited = new Set(

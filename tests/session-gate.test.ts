@@ -217,6 +217,37 @@ describe("scaffolding", () => {
     expect(skipped?.severity).toBe("warning");
   });
 
+  it("keeps reporting the states that lock the gate when a context field is malformed", async () => {
+    // A schema strict enough to reject a hand-edit silences `doctor` entirely
+    // — including the handle-without-inbox and trunk errors, which name states
+    // that refuse every governed command with no override — while
+    // `projectPolicy` never throws and carries on with a default.
+    const { doctor } = await import("../src/doctor/index.js");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-malformed-"));
+    roots.push(root);
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({
+        name: "x",
+        prefix: "XX",
+        kind: "internal",
+        // The singular, which is the same hand-edit population as [{path}].
+        context: { handle: "ghost", requiredInputs: "docs/protocol.md" },
+      }),
+      "utf8",
+    );
+
+    const findings = await doctor({ root, offline: true });
+    expect(findings.find((f) => f.check === "manifest")).toBeUndefined();
+    expect(
+      findings.find((f) => f.check === "context" && f.message.includes("not an array"))?.severity,
+    ).toBe("error");
+    // …and the check that names a locked gate still runs.
+    expect(
+      findings.find((f) => f.check === "context" && f.message.includes("ghost.md"))?.severity,
+    ).toBe("error");
+  });
+
   it("reports a dropped requiredInputs entry as an error", async () => {
     const { doctor } = await import("../src/doctor/index.js");
     const root = await mkdtemp(join(tmpdir(), "morpheus-dropped-"));
