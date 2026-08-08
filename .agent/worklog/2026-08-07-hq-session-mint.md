@@ -442,3 +442,28 @@ other:
 
 **Proximity is not composition.** Every test that would have caught one of these composes two parts
 of the kit; every test that missed them exercised one part against a literal.
+
+## Review round 9 — the cost of exceeding the window is a redirect, not a sign-in
+
+Round 8 made the number honest and left its consequence wrong, which is the same class one step
+along.
+
+"One gone longer does [sign in]" reads as re-authentication. Under the design this section
+prescribes it is not. An expired cookie makes `decision.kind` `sign-in`, which **falls through to
+the mint** in the kit's own session-route snippet — and the client has a fresh ID token to hand it,
+because the browser SDK still holds its refresh token and the `onIdTokenChanged` subscription is
+app-wide, firing on the sign-in page like any other.
+
+So the real sequence for a visitor gone ten days is: middleware sees an expired cookie → redirect to
+sign-in → SDK restores from persisted storage → the loop posts → the route re-mints → `safeReturnTo`
+carries them onward. **A page bounce. Google reappears only if the refresh token itself was revoked
+or cleared.**
+
+This matters because it was the price quoted for choosing a longer default, and it was quoted too
+high. Corrected, it argues *for* the short default rather than apologising for it: ten days trades a
+longer stale-authorization exposure — the thing the edge structurally cannot close — for the removal
+of one redirect. That is a much worse deal than the paragraph implied, and now says so.
+
+Worth noting the shape once more: the paragraph priced a cost using a mechanism described **thirty
+lines below it in the same section**. Ninth instance of two halves that only look consistent because
+they are near each other.

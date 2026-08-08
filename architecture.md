@@ -1240,13 +1240,17 @@ on the return from Google and the visitor arrives signed in while reading as sig
 **Renewal, not duration, is what makes a session permanent.** Two weeks is a ceiling per mint; a
 session re-minted whenever it is used never reaches it.
 
-Be precise about who that covers, because the default is five days and the arithmetic is the whole
-trade. **A visitor who returns within five days never signs in again; one gone longer does.**
-Renewal cannot rescue an absence — `onIdTokenChanged` fires in an open tab, and someone who is not
-there has nothing running — so the window is exactly the absence tolerated. A project that needs a
-weekly cadence to survive passes ten days or so and accepts the longer stale-authorization window
-that buys; that is a real choice, and it is the reason the default is a parameter rather than a
-constant.
+Be precise about what the window costs when it is exceeded, because it is smaller than it looks.
+**A visitor returning within five days is renewed in place. One gone longer bounces through the
+sign-in page and is re-minted there** — the browser SDK still holds its refresh token, the
+`onIdTokenChanged` subscription fires on that page like any other, and the route re-mints from the
+ID token it posts. `safeReturnTo` carries them onward. Nobody sees Google again unless the refresh
+token itself was revoked or cleared.
+
+So the window buys a page bounce, not a re-authentication, and that is the argument for keeping the
+default short: a longer one trades a longer stale-authorization window — the thing the edge cannot
+close — for the removal of a redirect. A project that wants that removal passes ten days or so and
+owns the trade, which is why the value is a parameter.
 
 Renewal has two halves, in two places, and they are easy to conflate:
 

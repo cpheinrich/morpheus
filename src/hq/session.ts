@@ -71,13 +71,16 @@ export const HQ_SESSION = {
    * permissive value by accident, so this is five days — cutting that window by
    * two thirds.
    *
-   * **The number is also the absence tolerated.** Renewal extends a session
-   * someone is present for; it cannot rescue one nobody visited, because
-   * `onIdTokenChanged` fires in an open tab and an absent visitor has nothing
-   * running. So five days means exactly that: return within five days and you
-   * never sign in again, leave it longer and you do. A project needing a weekly
-   * cadence to survive passes ten days or so and owns the longer window that
-   * buys.
+   * **What exceeding it costs is a redirect, not a sign-in.** Renewal in place
+   * needs an open tab, so a longer absence does expire the cookie — but the
+   * browser still holds its refresh token, so the visitor bounces through the
+   * sign-in page, the client loop posts a fresh ID token, and the route
+   * re-mints. Google reappears only if that refresh token was revoked or
+   * cleared.
+   *
+   * That is why short is the right default: a longer window trades a longer
+   * stale-authorization exposure for the removal of one redirect. A project
+   * that wants the redirect gone passes ten days or so and owns the trade.
    */
   defaultExpiresInMs: 5 * DAY,
 
