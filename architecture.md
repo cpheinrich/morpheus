@@ -1225,6 +1225,10 @@ object form of `cookies.set`. That is the call that works: the two-argument over
 lands under `hq_session`, the gate reads no cookie, and the visitor is signed out by the very code
 meant to sign them in.
 
+Sign-out is the same spread with an empty value — `set({ ...hqSessionClearOptions(), value: "" })`
+— rather than `cookies.delete("hq_session")`, which reintroduces the hardcoded name that
+`HQ_SESSION.cookieName` exists to prevent.
+
 `createHqSessionCookie` takes the caller's initialised Admin `Auth` **as a parameter and never
 imports `firebase-admin`** — the same argument as the gate returning a decision rather than a
 `NextResponse`. The kit is imported by edge middleware, and `firebase-admin` is Node-only; depending

@@ -159,7 +159,21 @@ export function hqSessionCookieOptions(
   };
 }
 
-/** Attributes that clear the cookie — same shape, zero lifetime. */
+/**
+ * Attributes that clear the cookie — same shape, zero lifetime.
+ *
+ * Spread the same way as the mint, with an empty value:
+ *
+ * ```ts
+ * response.cookies.set({ ...hqSessionClearOptions(), value: "" });
+ * ```
+ *
+ * `HqCookieOptions` omits `value` on purpose, so a bare
+ * `set(hqSessionClearOptions())` does not typecheck. **Do not reach for
+ * `cookies.delete("hq_session")` instead** — a hardcoded name is exactly the
+ * drift `HQ_SESSION.cookieName` exists to prevent, and sign-out is the worst
+ * place to keep a name that can disagree with the gate's.
+ */
 export function hqSessionClearOptions(
   opts: { secure?: boolean; path?: string } = {},
 ): HqCookieOptions {

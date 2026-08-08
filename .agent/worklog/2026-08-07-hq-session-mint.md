@@ -282,3 +282,34 @@ missing one; describing the good one is finite.** Round 3 named three bad spelli
 have named the single good shape, and round 4 found the fourth. The rule generalises past this
 function — the dot-segment guard is the same story, where round 1 matched two literal spellings and
 round 2 found four more the spec defines.
+
+## Review round 5 — the same gap, one function over
+
+`createHqSessionCookie` got the working call shape in round 4; `hqSessionClearOptions` is the only
+other producer of `HqCookieOptions` and did not. The natural
+`response.cookies.set(hqSessionClearOptions())` fails to typecheck for exactly the reason the mint's
+did — `ResponseCookie` requires `value`, which `HqCookieOptions` omits on purpose.
+
+Worth taking because of *where* it lands: a consumer who hits the type error and guesses reaches for
+`cookies.delete("hq_session")`, which reintroduces the hardcoded name `HQ_SESSION.cookieName` exists
+to prevent — on the sign-out path, where a name disagreeing with the gate's leaves the visitor
+signed in.
+
+Fixing a call shape in one place and not its counterpart is its own small version of the pattern
+this PR keeps finding: the fix was applied where the defect was reported rather than where the
+defect *is*.
+
+## Two findings deliberately left, and why
+
+- **`deny: ["/"]` denies only the literal `/`** — structurally the same as the root-base bug from
+  round 1, in the sibling branch. Left because `deny: ["/"]` means "deny everything", which is not
+  something a deny list is asked to express, so unlike `base: "/"` there is no legitimate caller
+  behind it. A guard with no caller is speculative.
+- **`base: "/hq "` — trailing space** — passes the leading-separator check, matches no path, and
+  returns as a fallback with a space in it. Left because a `base` is a developer literal in a config
+  object rather than user input, and at some point the guard is chasing typos the type system cannot
+  see either. Recorded so it is not rediscovered as a sixth round.
+
+Both are the reviewer's calls and both are right. Worth noting that "which spellings actually have a
+caller" is the question that stops the describe-the-good-shape lesson from turning into infinite
+validation.
