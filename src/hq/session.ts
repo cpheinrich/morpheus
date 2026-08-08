@@ -59,8 +59,23 @@ export const HQ_SESSION = {
    */
   minExpiresInMs: 5 * MINUTE,
 
-  /** What to ask for when the caller does not say. */
-  defaultExpiresInMs: 14 * DAY,
+  /**
+   * What to ask for when the caller does not say — deliberately **not** the
+   * ceiling.
+   *
+   * The gate reads the role out of the cookie payload, baked in at mint time,
+   * and `verifySessionCookie` runs at the edge where `checkRevoked` cannot. So
+   * the window is also how long a revoked or demoted account keeps working:
+   * `revokeRefreshTokens` stops the client minting *new* tokens, but it does
+   * not invalidate a session cookie already issued.
+   *
+   * Defaulting to the ceiling would mean every project inherits the most
+   * permissive value by accident. Five days keeps an active session alive
+   * without ever reaching a renewal — see `renewAfterFraction` — while cutting
+   * the stale-authorization window by two thirds. A project that genuinely
+   * wants fourteen can ask for it, and then owns that decision.
+   */
+  defaultExpiresInMs: 5 * DAY,
 
   /**
    * Re-mint once this fraction of the window is spent.

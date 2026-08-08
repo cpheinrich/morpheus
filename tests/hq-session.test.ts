@@ -50,6 +50,18 @@ describe("the ceiling is Firebase's, not a preference", () => {
     expect(result.expiresInMs).toBe(HQ_SESSION.maxExpiresInMs);
   });
 
+  it("does not default to the ceiling", async () => {
+    // The gate reads the role out of the payload and the edge cannot run
+    // checkRevoked, so the window is also how long a revoked account keeps
+    // working. Defaulting to the maximum hands every project the most
+    // permissive value by accident.
+    expect(HQ_SESSION.defaultExpiresInMs).toBeLessThan(HQ_SESSION.maxExpiresInMs);
+
+    const auth = minter();
+    await createHqSessionCookie(auth, "id-token");
+    expect(auth.calls[0]!.expiresIn).toBe(HQ_SESSION.defaultExpiresInMs);
+  });
+
   it("does not import firebase-admin — the minter is a parameter", async () => {
     // The whole design constraint. If this module ever imports firebase-admin,
     // every consumer's edge bundle inherits a Node-only dependency.
@@ -165,6 +177,40 @@ describe("returnTo narrowing", () => {
     expect(safeReturnTo("/admin/users", { base: "/admin" })).toBe("/admin/users");
     expect(safeReturnTo("/hq/product", { base: "/admin" })).toBe("/admin");
     expect(safeReturnTo("/nope", { base: "/admin", fallback: "/admin/home" })).toBe("/admin/home");
+  });
+
+  it("rejects dot-segments, which the browser resolves after this function approves them", () => {
+    // `/hq/../admin` starts with `/hq/` and lands on `/admin`, so the prefix
+    // check is meaningless without this. The backslash forms were already
+    // rejected by the backslash guard, which is what made this read as covered.
+    expect(safeReturnTo("/hq/../admin")).toBe("/hq");
+    expect(safeReturnTo("/hq/../../etc/whatever")).toBe("/hq");
+    expect(safeReturnTo("/hq/./product")).toBe("/hq");
+    expect(safeReturnTo("/hq/product/../../admin")).toBe("/hq");
+  });
+
+  it("does not let a dot-segment walk around deny", () => {
+    // `/hq/../hq/sign-in` is not string-equal to `/hq/sign-in`, so it would
+    // pass the deny check and then resolve straight back to the sign-in page —
+    // the exact loop deny exists to prevent.
+    expect(safeReturnTo("/hq/../hq/sign-in", { base: "/hq", deny: ["/hq/sign-in"] })).toBe("/hq");
+  });
+
+  it("keeps a dot inside a segment, which is an ordinary filename", () => {
+    expect(safeReturnTo("/hq/reports/q3.2026")).toBe("/hq/reports/q3.2026");
+    expect(safeReturnTo("/hq/..well-known")).toBe("/hq/..well-known");
+  });
+
+  it("admits any same-origin path when the base is root", () => {
+    // A project whose whole origin sits behind the gate sets base: "/". The
+    // prefix test cannot express that — `startsWith("//")` was already
+    // rejected — so without a special case every destination falls back and
+    // the `next` parameter silently does nothing.
+    expect(safeReturnTo("/anything/at/all", { base: "/" })).toBe("/anything/at/all");
+    expect(safeReturnTo("/", { base: "/" })).toBe("/");
+    expect(safeReturnTo("//evil.example", { base: "/" })).toBe("/");
+    expect(safeReturnTo("/../etc", { base: "/" })).toBe("/");
+    expect(safeReturnTo("/sign-in", { base: "/", deny: ["/sign-in"] })).toBe("/");
   });
 
   it("falls back on missing, oversized, or control-character input", () => {

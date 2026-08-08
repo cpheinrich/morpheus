@@ -89,13 +89,74 @@ rather than silently worked around.
   service-account key first — a real change to a project that currently advertises having no
   secrets.
 
-## The distribution premise has quietly expired
+## The distribution premise, and where I looked too narrowly
 
 `.agent/decisions.md` settles runtime distribution as a git dependency, and the stated reason is
-that **the repo is public**, so it needs no token. Chris plans to make Morpheus private within days.
-That invalidates the premise rather than the decision: a private git dependency needs a credential
-in every consumer's CI and in Vercel, and `dist/` is gitignored so consumers build from source on
-install.
+that **the repo is public**, so it needs no token. Chris said in session that he intends to revisit
+going private, which would invalidate the premise rather than the decision: a private git dependency
+needs a credential in every consumer's CI and in Vercel, and `dist/` is gitignored so consumers
+build from source on install.
 
-Raised in the linked issue. Not decided here, because it is a judgment call about access rather than
-a technical one.
+**See the review section below before acting on this.** `MO-26-07-29-012` already covers the ground
+and is `dropped` for a reason that anticipates the concern — I reached for `.agent/decisions.md`
+without checking whether a roadmap item said the same thing better.
+
+## Review round 1 — three real bugs, and one thing I had missed
+
+The rung-2 reviewer found three defects. All confirmed and fixed; recording them because two are
+the same shape.
+
+**The default was the ceiling.** `defaultExpiresInMs` was `14 * DAY`, identical to
+`maxExpiresInMs`, so every project inherited the most permissive value by saying nothing. Worse
+than it first looks, and the reviewer was more precise about why than I had been: the gate reads
+the **role** out of the cookie payload, baked in at mint time, so the window is also how long a
+revoked or demoted account keeps working. `verifySessionCookie` is edge-only by design, and
+`checkRevoked` needs the Admin SDK, so the edge structurally cannot close that.
+
+The correction I had to accept is that my own `architecture.md` text was wrong:
+`revokeRefreshTokens` stops the client minting *new* tokens, ending a renewal loop within about an
+hour — it does **not** invalidate an already-issued session cookie, and does nothing at all for a
+demotion. I had named it as the mitigation. It is half of one.
+
+Default now five days, with the reasoning in the constant. Renewal means an active session never
+reaches it, so the shorter default costs an active user nothing and cuts the stale-authorization
+window by two thirds. The reviewer's sharpest line: *the kit ships the half that widens the window
+and documents the half that closes it as the consumer's problem — the reverse of the argument this
+PR makes everywhere else.* That is right, and the default was where it showed.
+
+**`safeReturnTo` accepted dot-segments.** `/hq/../admin` starts with `/hq/`, passes the prefix
+check, and the browser resolves it to `/admin` *after* the function has approved it. It also walked
+around `deny`: `/hq/../hq/sign-in` is not string-equal to `/hq/sign-in`, so the one option written
+to stop a sign-in loop would have let one through.
+
+**Why the tests read as covering it and did not.** There was a case for `"/hq\\..\\.."` — the
+backslash form — which passes because of the backslash guard, on a completely different branch from
+the one under test. A test that passes for a reason you did not write, which `.agent/learned.md`
+already names. The forward-slash form was never exercised.
+
+Rejected rather than normalised: normalising changes what the caller gets back, and a redirect
+target containing `..` is a hand-written URL or an attack, never something a working app produced.
+A dot *inside* a segment — `/hq/reports/q3.2026` — still passes, and is now tested.
+
+**`base: "/"` rejected every path.** With a root base the accept test became
+`path === "/" || path.startsWith("//")`, and the second can never hold because protocol-relative
+paths were already rejected two lines above. So the one project shape the `base` option was
+generalised *for* — a whole origin behind the gate — got a `next` parameter that silently did
+nothing. No throw, no log. The third instance in this repo's records of a check that admits nothing
+reading as correct.
+
+## Review round 1 — the finding I was wrong about
+
+The reviewer pointed out that [`MO-26-07-29-012`](../../hq/product/roadmap/MO-26-07-29-012-make-morpheus-private-adjust.md)
+is `status: dropped`, so the board records Morpheus as **staying public** — while my open question
+asserted it was about to go private.
+
+Both are true, which is the interesting part. Chris said in session that he intends to revisit it;
+the board has not been updated. And the dropped item's stated reason is *exactly* the friction I had
+identified independently — sharing without minting PATs — plus three costs I had not: `pm-check`
+checks the repo out to build the CLI, reusable workflows need cross-repo access enabled, and Actions
+minutes stop being unlimited.
+
+So the right move was not to argue the point but to cite the item. **A record that already
+anticipates your concern is worth finding before writing the concern down**, and I had reached for
+`.agent/decisions.md` without checking whether a roadmap item covered the same ground.

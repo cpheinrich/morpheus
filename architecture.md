@@ -1238,10 +1238,22 @@ Two consequences, both load-bearing and neither obvious:
 - **Minting needs a service-account key.** A project that had none now has one. That is a real
   change to its secret posture and belongs in its own `infra/` notes rather than arriving as a side
   effect of a session fix.
-- **Long sessions weaken automatic revocation.** A one-hour credential re-checks Google constantly
-  by construction. Fourteen days does not, so `checkRevoked` on the Admin path and a per-request
-  allowlist check stop being optional, and `revokeRefreshTokens(uid)` — sign out everywhere — is the
-  lever you want built before you need it.
+- **Long sessions weaken revocation, and the edge cannot close that.** A one-hour credential
+  re-checks Google constantly by construction. A multi-day one does not, and the gate reads the role
+  out of the cookie payload — baked in at mint time — so **the window is also how long a revoked or
+  demoted account keeps working.**
+
+  Be precise about the mitigations, because the obvious one does less than it sounds like.
+  `revokeRefreshTokens(uid)` stops the *client* minting fresh ID tokens, which ends a renewal loop
+  within about an hour; it does **not** invalidate a session cookie already issued, and it does
+  nothing at all for a demotion. `checkRevoked` catches that, and structurally cannot run in
+  `verifySessionCookie`, which is edge-only by design — it needs the Admin SDK, on a server route.
+
+  So: the default window is five days rather than the fourteen-day ceiling, because defaulting to
+  the ceiling hands every project the most permissive value by accident. A project wanting a
+  same-session authorization check runs `checkRevoked` on its server routes, and one wanting instant
+  demotion re-reads the allowlist per request rather than trusting the payload's role. Both are
+  consumer-side by necessity, and both are worth knowing about before the window is chosen.
 
 The client half is a convention rather than a component, since the kit stays framework-free: the
 browser SDK holds a long-lived refresh token and mints a fresh ID token roughly hourly, so a

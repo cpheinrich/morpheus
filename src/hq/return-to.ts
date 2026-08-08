@@ -63,8 +63,22 @@ export function safeReturnTo(
 
   const path = trimTrailingSlashes(raw.split(/[?#]/)[0] ?? "");
 
+  // A dot-segment makes the prefix check meaningless, because the browser
+  // resolves the path *after* this function has approved it: `/hq/../admin`
+  // starts with `/hq/` and lands on `/admin`. It also walks straight past
+  // `deny` — `/hq/../hq/sign-in` is not string-equal to `/hq/sign-in`, so the
+  // one option written to stop a sign-in loop would let one through.
+  //
+  // Rejected rather than normalised: normalising changes what the caller gets
+  // back, and a redirect target containing `..` is a hand-written URL or an
+  // attack, never something a working app produced.
+  if (path.split("/").some((segment) => segment === "." || segment === "..")) return fallback;
+
   // `/hqevil` must not pass a check for `/hq`, so the separator is required.
-  if (path !== base && !path.startsWith(`${base}/`)) return fallback;
+  // A root base admits every path — the prefix test cannot express that, since
+  // `startsWith("//")` was already rejected above and would silently reject
+  // everything instead.
+  if (base !== "/" && path !== base && !path.startsWith(`${base}/`)) return fallback;
 
   // Returning to the sign-in page bounces the visitor straight back to it.
   if (deny.includes(path)) return fallback;
