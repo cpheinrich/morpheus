@@ -202,3 +202,35 @@ reading as correct.
 `request.cookies.get(SESSION_COOKIE_NAME)`, while `HQ_SESSION.cookieName`'s own comment claimed the
 gate and the mint cannot disagree. Docstring now uses the exported constant, so the claim is true
 rather than aspirational.
+
+## Review round 3 — three "take or leave" items, all taken
+
+The reviewer had nothing left to hold the merge for, and offered three smaller notes. All three
+made the code match reasoning already committed to elsewhere in the change, so leaving them would
+have meant shipping a comment that argues for something the code below it does not do.
+
+**`base: "//"` reached root the way `""` used to.** `||` closed the empty-string spelling; a run of
+separators strips to `""` inside `trimTrailingSlashes` and arrives at the same place. Now an
+explicit `isEmptyBase`.
+
+**`deny` was exact-match while its purpose implied a subtree.** `/hq/sign-in` did not cover
+`/hq/sign-in/verify`, which bounces identically. Made subtree-matching, with the separator still
+required so `/hq/sign-in-help` is unaffected, and the JSDoc now says which it is.
+
+**`clampExpiresIn(Infinity)` returned the default rather than the ceiling.** `Infinity` from a
+caller means "as long as you will give me", and the clamp already answers that correctly; only
+`NaN` is genuinely unspecified. `Number.isFinite` conflated them.
+
+## The regression my own test caught
+
+Fixing the `"//"` case, I wrote `isEmptyBase` as "strip all slashes, is it empty" — which classifies
+`"/"` as empty too. That silently removed root-base support, the thing round 1 had *added*, and the
+round-1 test failed immediately.
+
+Worth recording because the two values look like the same thing and are not: `"/"` is the deliberate
+value a project passes when its whole origin sits behind the gate; `""` and `"//"` are typos.
+A guard against misconfiguration has to name the misconfigurations rather than describe them by a
+property the legitimate value also has.
+
+The test suite caught it in one run, which is the argument for having written the root-base case as
+a test in round 1 rather than checking it by hand.

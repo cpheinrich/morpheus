@@ -35,9 +35,13 @@ describe("the ceiling is Firebase's, not a preference", () => {
     expect(clampExpiresIn(1000)).toBe(HQ_SESSION.minExpiresInMs);
   });
 
-  it("falls back to the default for a value that is not a number", () => {
+  it("distinguishes unspecified from unbounded", () => {
+    // NaN is the only genuinely unspecified value. Infinity is a caller saying
+    // "as long as you will give me", which the clamp answers correctly — and
+    // reading it as "unspecified" would quietly hand back less than the ceiling.
     expect(clampExpiresIn(Number.NaN)).toBe(HQ_SESSION.defaultExpiresInMs);
-    expect(clampExpiresIn(Number.POSITIVE_INFINITY)).toBe(HQ_SESSION.defaultExpiresInMs);
+    expect(clampExpiresIn(Number.POSITIVE_INFINITY)).toBe(HQ_SESSION.maxExpiresInMs);
+    expect(clampExpiresIn(Number.NEGATIVE_INFINITY)).toBe(HQ_SESSION.minExpiresInMs);
   });
 
   it("passes the clamped value to Firebase, and reports what it actually got", async () => {
@@ -223,10 +227,32 @@ describe("returnTo narrowing", () => {
   });
 
   it("treats an empty base as a misconfiguration, not as root", () => {
-    // `??` would let "" become "/" and silently admit every path — the same
-    // no-throw-no-log shape as a check that admits nothing.
-    expect(safeReturnTo("/anywhere", { base: "" })).toBe("/hq");
-    expect(safeReturnTo("/hq/product", { base: "" })).toBe("/hq/product");
+    // Falling through would strip to "/", hit the root special-case, and
+    // silently admit every path — the same no-throw-no-log shape as a check
+    // that admits nothing. "//" reaches root by a different route than "" does,
+    // so both spellings are covered.
+    for (const base of ["", "//", "///"]) {
+      expect(safeReturnTo("/anywhere", { base }), base).toBe("/hq");
+      expect(safeReturnTo("/hq/product", { base }), base).toBe("/hq/product");
+    }
+  });
+
+  it("still treats a single slash as the deliberate root it is", () => {
+    // The distinction the empty-base guard has to preserve: "/" is what a
+    // project whose whole origin sits behind the gate actually passes, and
+    // conflating it with "" would remove the case root support exists for.
+    expect(safeReturnTo("/anywhere", { base: "/" })).toBe("/anywhere");
+  });
+
+  it("denies a subtree, not just the exact path", () => {
+    // A sign-in flow with sub-routes bounces the same way, so an exact match
+    // would cover the parent and silently miss every step under it.
+    const deny = ["/hq/sign-in"];
+    expect(safeReturnTo("/hq/sign-in", { deny })).toBe("/hq");
+    expect(safeReturnTo("/hq/sign-in/verify", { deny })).toBe("/hq");
+    expect(safeReturnTo("/hq/sign-in/verify?code=1", { deny })).toBe("/hq");
+    // But the separator is still required — a sibling is not a subtree.
+    expect(safeReturnTo("/hq/sign-in-help", { deny })).toBe("/hq/sign-in-help");
   });
 
   it("admits any same-origin path when the base is root", () => {

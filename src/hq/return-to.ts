@@ -31,11 +31,27 @@ export interface SafeReturnToOptions {
   base?: string;
   /** Where to send anything rejected. Defaults to `base`. */
   fallback?: string;
-  /** Paths that verify as safe but must not be returned to — the sign-in page. */
+  /**
+   * Paths that verify as safe but must not be returned to — the sign-in page.
+   * Matched as **subtrees**: `/hq/sign-in` also denies `/hq/sign-in/verify`,
+   * which bounces the visitor exactly the same way.
+   */
   deny?: readonly string[];
 }
 
+/** Trailing slashes removed, root preserved. */
 const trimTrailingSlashes = (path: string): string => path.replace(/\/+$/, "") || "/";
+
+/**
+ * True for a base that says nothing — `""`, or a run of two or more separators.
+ *
+ * A single `"/"` is **not** empty: it is the deliberate value a project uses
+ * when its whole origin sits behind the gate, and the root special-case below
+ * exists for it. `"//"` is not a shorter way of saying that — it is a typo that
+ * would otherwise strip to root and admit everything silently.
+ */
+const isEmptyBase = (base: string | undefined): boolean =>
+  base === undefined || base === "" || /^\/{2,}$/.test(base);
 
 /**
  * A dot-segment, in every spelling the URL parser collapses.
@@ -63,11 +79,12 @@ export function safeReturnTo(
   raw: string | null | undefined,
   opts: SafeReturnToOptions = {},
 ): string {
-  // `||`, not `??`: an empty string is a misconfiguration, and `??` would let
-  // it become "/" via trimTrailingSlashes — turning the narrowing into a
-  // no-op with no throw and no log, which is the same silent shape as a
-  // check that admits nothing.
-  const base = trimTrailingSlashes(opts.base || "/hq");
+  // An empty base — `""`, `"//"`, any run of separators — is a
+  // misconfiguration, not a request for root. Left to fall through it would
+  // strip to `"/"`, hit the root special-case below, and admit every path
+  // with no throw and no log. A caller that genuinely wants the whole origin
+  // says so with `base: "/"`, which is a distinct and deliberate value.
+  const base = isEmptyBase(opts.base) ? "/hq" : trimTrailingSlashes(opts.base!);
   const fallback = opts.fallback ?? base;
   const deny = (opts.deny ?? []).map(trimTrailingSlashes);
 
@@ -99,7 +116,10 @@ export function safeReturnTo(
   if (base !== "/" && path !== base && !path.startsWith(`${base}/`)) return fallback;
 
   // Returning to the sign-in page bounces the visitor straight back to it.
-  if (deny.includes(path)) return fallback;
+  // Matched as a subtree rather than exactly: a sign-in flow with sub-routes
+  // — `/hq/sign-in/verify` — bounces exactly the same way, and an exact match
+  // would cover the parent while silently missing every step under it.
+  if (deny.some((denied) => path === denied || path.startsWith(`${denied}/`))) return fallback;
 
   return raw;
 }

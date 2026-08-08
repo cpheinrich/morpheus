@@ -99,7 +99,9 @@ export const HQ_SESSION = {
  * a sign-in that throws is not.
  */
 export function clampExpiresIn(expiresInMs: number): number {
-  if (!Number.isFinite(expiresInMs)) return HQ_SESSION.defaultExpiresInMs;
+  // NaN is the only genuinely unspecified value. Infinity means "as long as
+  // you will give me", which the clamp below already answers correctly.
+  if (Number.isNaN(expiresInMs)) return HQ_SESSION.defaultExpiresInMs;
   return Math.min(
     HQ_SESSION.maxExpiresInMs,
     Math.max(HQ_SESSION.minExpiresInMs, Math.floor(expiresInMs)),
