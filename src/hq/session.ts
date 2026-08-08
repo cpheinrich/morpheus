@@ -183,14 +183,26 @@ export function hqSessionClearOptions(
  *
  * Reads `iat` and `exp` off the payload the gate already verified, so renewal
  * needs no extra state and no second store to keep consistent. `SessionClaims`
- * carries both, so this composes directly with a gate decision:
+ * carries both, so this composes directly with a gate decision.
+ *
+ * **Call it on the session route, not in middleware.** The re-mint needs the
+ * Admin `Auth` and a fresh ID token, and middleware has neither — there is no
+ * server-side path from a session cookie back to an ID token, and
+ * `firebase-admin` cannot run at the edge. The session route is the only place
+ * the cookie, the token and the Admin SDK exist at once:
  *
  * ```ts
  * const decision = await decideHqAccess({ cookie, projectId });
- * if (decision.kind === "allow" && renewalDue(decision.claims)) {
- *   // re-mint from a fresh ID token
+ * if (decision.kind === "allow" && !renewalDue(decision.claims)) {
+ *   return Response.json({ ok: true });   // still fresh; don't re-mint
  * }
+ * const { value, expiresInMs } = await createHqSessionCookie(adminAuth, idToken);
  * ```
+ *
+ * What this buys, given the client re-posts on every `onIdTokenChanged` —
+ * roughly hourly — is a **rate limit on re-minting**. Without it the route
+ * re-mints sixty times a day. The client loop is what keeps the session alive;
+ * this is what keeps that loop cheap.
  *
  * A payload missing either claim — or carrying `null`, which is how
  * `toClaims` reports one that was absent — returns `false`. An unreadable

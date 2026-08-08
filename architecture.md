@@ -1241,17 +1241,38 @@ on the return from Google and the visitor arrives signed in while reading as sig
 session re-minted whenever it is used never reaches it. A weekly visitor never signs in again; one
 gone three weeks does, which is a reasonable place to draw the line.
 
+Renewal has two halves, in two places, and they are easy to conflate:
+
+- **The client supplies the material.** The browser SDK holds a long-lived refresh token and mints a
+  fresh ID token roughly hourly. A ~20-line `onIdTokenChanged` subscription re-posts each one to the
+  session route. The kit stays framework-free, so this is a convention rather than a component.
+- **The session route decides whether to act on it.** That route is the only place all three things
+  exist at once: the Admin `Auth`, a fresh ID token, and the current cookie.
+
 ```ts
+// the session route — a Node handler, not middleware
 const decision = await decideHqAccess({ cookie, projectId });
-if (decision.kind === "allow" && renewalDue(decision.claims)) {
-  // re-mint from a fresh ID token
+if (decision.kind === "allow" && !renewalDue(decision.claims)) {
+  return Response.json({ ok: true });   // still fresh; don't re-mint
 }
+const { value, expiresInMs } = await createHqSessionCookie(adminAuth, idToken);
 ```
 
-`SessionClaims` carries the verified `iat` and `exp` so this composes directly — renewal reads the
-window the gate already checked, which is what "no second store to keep consistent" has to mean. A
-predicate the gate's own output cannot be passed to would leave a consumer re-verifying the cookie
-to recover two numbers, or decoding it unverified on the one path where that is least acceptable.
+**Not in middleware.** `decideHqAccess` is the edge call everywhere else in this section, and the
+re-mint cannot happen there: `firebase-admin` is Node-only, and there is no server-side path from a
+session cookie back to a fresh ID token — the refresh token that could mint one lives in the
+browser. Middleware holds the cookie and nothing else, so its job is to gate, not to renew.
+
+**What `renewalDue` is actually for**, given the client posts hourly: without it the route re-mints
+on every post — sixty times a day for a five-day cookie. It is a server-side rate limit on
+re-minting, so the cookie is re-issued at 2.5 days rather than continuously. The client loop keeps
+the session alive; this keeps that loop from being expensive.
+
+`SessionClaims` carries the verified `iat` and `exp` so the check composes directly with the gate's
+output — renewal reads the window already checked, which is what "no second store to keep
+consistent" has to mean. A predicate the gate's own output could not be passed to would leave a
+consumer re-verifying the cookie to recover two numbers, or decoding it unverified on the one path
+where that is least acceptable.
 
 Two consequences, both load-bearing and neither obvious:
 

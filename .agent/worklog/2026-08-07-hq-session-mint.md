@@ -348,3 +348,49 @@ rounds.
 **A unit test built from a literal cannot detect that its subject is unreachable.** Every guard in
 this file was tested that way; this is the one where it mattered, because it is the only one whose
 input has to come from somewhere else in the kit.
+
+## Review round 7 — the snippet typechecked and still could not run where it was shown
+
+Round 6's fix made `renewalDue(decision.claims)` compile. Round 7 pointed out the snippet showing it
+was placed in **middleware** — `decideHqAccess` is the edge call in every other example the kit
+ships — and the `// re-mint from a fresh ID token` branch cannot run there:
+
+- `firebase-admin` is Node-only, which is the whole reason `createHqSessionCookie` takes `Auth` as a
+  parameter.
+- There is no server-side path from a session cookie back to a fresh ID token. The Admin SDK exposes
+  no such exchange, and the refresh token that could mint one lives in the browser.
+
+Unlike the three previous snippet defects, this one **does not fail at the type level** — which was
+the point of round 6's commit — so nothing tells a consumer. They discover it when they try to write
+the body of the `if`.
+
+The right placement was already in the file thirty lines down: the session route the
+`onIdTokenChanged` paragraph describes. It is a Node handler, it has the Admin `Auth`, and the
+client hands it a fresh ID token. It is the only place all three exist at once, and `decideHqAccess`
+runs there perfectly well since it is only `fetch` plus `jose`.
+
+## What `renewalDue` is actually for — a better answer than the one I shipped
+
+The second-order observation is the more valuable half. If the client re-posts on every
+`onIdTokenChanged` — roughly hourly — the session route re-mints on every one of them and
+`renewalDue` is never consulted. Its real job in that design is to **rate-limit re-mints
+server-side**: a five-day cookie re-issued at 2.5 days rather than sixty times a day.
+
+That is a better argument for the function than the one in the PR, which was "renewal keeps the
+session alive" — something the client loop does on its own. Two paragraphs had described two
+renewal mechanisms without ever saying how they relate; they now say it.
+
+**The pattern across all seven rounds**, worth stating once: every finding after the first was a
+claim that read as true because its two halves lived near each other — a comment near code, a
+snippet near an API, a predicate near a verifier. Proximity is not composition. The three tests that
+would have caught these each compose two parts of the kit rather than exercising one against a
+literal.
+
+## Left, with the reviewer agreeing
+
+- **`SessionClaims` gained two required fields**, which breaks anything constructing the type by
+  hand — the evidence is `tests/hq.test.ts`'s helper needing an update. `iat?: number | null` would
+  compose identically. Left required: it fails loudly rather than silently, the kit is a git
+  dependency with no semver, there are no external constructors yet, and a required field says the
+  window is always reported rather than sometimes present.
+- `deny: ["/"]` and `base: "/hq "`, both carried from earlier rounds for reasons already recorded.
