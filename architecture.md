@@ -1194,6 +1194,128 @@ cannot run in middleware. **Session cookies use a different key set and issuer t
 using the ID-token keys fails to verify every cookie silently, which reads as a broken login
 rather than a wrong constant.
 
+#### The session cookie is not the ID token
+
+The credential a project stores is the whole of how long a login lasts, and the two candidates look
+interchangeable until they are not.
+
+| | Firebase **ID token** | Firebase **session cookie** |
+|---|---|---|
+| Minted for | the client, by Google, at sign-in | **your server**, by Google, on request |
+| Lifetime | **1 hour**, fixed | **5 minutes – 14 days**, you choose |
+| Issuer | `securetoken.google.com/<project>` | `session.firebase.google.com/<project>` |
+| Signing keys | the ID-token certificates | **a different certificate endpoint** |
+| Created by | nothing — it arrives from the client | `createSessionCookie(idToken, { expiresIn })` |
+
+Storing the ID token directly is the mistake that looks like it works. `cpheinrich.com` did exactly
+that, and its session was one hour — which presented as being signed out again on every visit.
+**Raising the cookie's `maxAge` does not fix it**: the cookie outlives the token inside it,
+verification fails on `exp`, and the sign-in page returns on the same schedule. The fix is a
+different credential, not a longer one.
+
+```ts
+// morpheus-kit/hq — the mint half
+const { value, expiresInMs } = await createHqSessionCookie(adminAuth, idToken);
+response.cookies.set({ ...hqSessionCookieOptions({ expiresInMs }), value });
+```
+
+`HqCookieOptions` is deliberately Next's `ResponseCookie` minus `value`, so the two spread into the
+object form of `cookies.set`. That is the call that works: the two-argument overload is
+`(name, value)`, so passing the session JWT first sets a cookie *named* after the JWT — nothing
+lands under `hq_session`, the gate reads no cookie, and the visitor is signed out by the very code
+meant to sign them in.
+
+Sign-out is the same spread with an empty value — `set({ ...hqSessionClearOptions(), value: "" })`
+— rather than `cookies.delete("hq_session")`, which reintroduces the hardcoded name that
+`HQ_SESSION.cookieName` exists to prevent.
+
+`createHqSessionCookie` takes the caller's initialised Admin `Auth` **as a parameter and never
+imports `firebase-admin`** — the same argument as the gate returning a decision rather than a
+`NextResponse`. The kit is imported by edge middleware, and `firebase-admin` is Node-only; depending
+on it to reuse three lines of call would pin every consumer's runtime. The three lines are not the
+valuable part. The policy is: the 14-day ceiling is Firebase's and rejects anything longer, the
+floor is five minutes, and `sameSite` must be `lax` rather than `strict` or the cookie is withheld
+on the return from Google and the visitor arrives signed in while reading as signed out.
+
+**Renewal, not duration, is what makes a session permanent.** Two weeks is a ceiling per mint; a
+session re-minted whenever it is used never reaches it.
+
+Be precise about what the window costs when it is exceeded, because it is smaller than it looks.
+**A visitor returning within five days is renewed in place. One gone longer bounces through the
+sign-in page and is re-minted there** — the browser SDK still holds its refresh token, the
+`onIdTokenChanged` subscription fires on that page like any other, and the route re-mints from the
+ID token it posts. `safeReturnTo` carries them onward. Nobody sees Google again unless the refresh
+token itself was revoked or cleared.
+
+So the window buys a page bounce, not a re-authentication, and that is the argument for keeping the
+default short: a longer one trades a longer stale-authorization window — the thing the edge cannot
+close — for the removal of a redirect. A project that wants that removal passes ten days or so and
+owns the trade, which is why the value is a parameter.
+
+Renewal has two halves, in two places, and they are easy to conflate:
+
+- **The client supplies the material.** The browser SDK holds a long-lived refresh token and mints a
+  fresh ID token roughly hourly. A ~20-line `onIdTokenChanged` subscription re-posts each one to the
+  session route. The kit stays framework-free, so this is a convention rather than a component.
+- **The session route decides whether to act on it.** That route is the only place all three things
+  exist at once: the Admin `Auth`, a fresh ID token, and the current cookie.
+
+```ts
+// the session route — a Node handler, not middleware
+const decision = await decideHqAccess({ cookie, projectId });
+if (decision.kind === "allow" && !renewalDue(decision.claims)) {
+  return Response.json({ ok: true });   // still fresh; don't re-mint
+}
+const { value, expiresInMs } = await createHqSessionCookie(adminAuth, idToken);
+```
+
+**Not in middleware.** `decideHqAccess` is the edge call everywhere else in this section, and the
+re-mint cannot happen there: `firebase-admin` is Node-only, and there is no server-side path from a
+session cookie back to a fresh ID token — the refresh token that could mint one lives in the
+browser. Middleware holds the cookie and nothing else, so its job is to gate, not to renew.
+
+**What `renewalDue` is actually for**, given the client posts hourly: without it the route re-mints
+on every post — sixty times a day for a five-day cookie. It is a server-side rate limit on
+re-minting, so the cookie is re-issued at 2.5 days rather than continuously. The client loop keeps
+the session alive; this keeps that loop from being expensive.
+
+`SessionClaims` carries the verified `iat` and `exp` so the check composes directly with the gate's
+output — renewal reads the window already checked, which is what "no second store to keep
+consistent" has to mean. A predicate the gate's own output could not be passed to would leave a
+consumer re-verifying the cookie to recover two numbers, or decoding it unverified on the one path
+where that is least acceptable.
+
+Two consequences, both load-bearing and neither obvious:
+
+- **Minting needs a service-account key.** A project that had none now has one. That is a real
+  change to its secret posture and belongs in its own `infra/` notes rather than arriving as a side
+  effect of a session fix.
+- **Long sessions weaken revocation, and the edge cannot close that.** A one-hour credential
+  re-checks Google constantly by construction. A multi-day one does not, and the gate reads the role
+  out of the cookie payload — baked in at mint time — so **the window is also how long a revoked or
+  demoted account keeps working.**
+
+  Be precise about the mitigations, because the obvious one does less than it sounds like.
+  `revokeRefreshTokens(uid)` stops the *client* minting fresh ID tokens, which ends a renewal loop
+  within about an hour; it does **not** invalidate a session cookie already issued, and it does
+  nothing at all for a demotion. `checkRevoked` catches that, and structurally cannot run in
+  `verifySessionCookie`, which is edge-only by design — it needs the Admin SDK, on a server route.
+
+  So: the default window is five days rather than the fourteen-day ceiling, because defaulting to
+  the ceiling hands every project the most permissive value by accident. A project wanting a
+  same-session authorization check runs `checkRevoked` on its server routes, and one wanting instant
+  demotion re-reads the allowlist per request rather than trusting the payload's role. Both are
+  consumer-side by necessity, and both are worth knowing about before the window is chosen.
+
+The client half is a convention rather than a component, since the kit stays framework-free: the
+browser SDK holds a long-lived refresh token and mints a fresh ID token roughly hourly, so a
+~20-line `onIdTokenChanged` subscription that re-posts to the session endpoint keeps renewal
+supplied with material even on a page nobody is clicking.
+
+`safeReturnTo()` narrows the `next` parameter the gate produces back to a path under the route. It
+ships here rather than per project because the read side is where the open redirect lives, and
+`raw.startsWith("/")` — the check most people write — admits `//evil.example`.
+
 ```sh
 morpheus hq rules            # write or refresh the generated block in firestore.rules
 morpheus hq rules --check    # fail when it has drifted — for CI
