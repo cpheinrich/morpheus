@@ -1238,10 +1238,20 @@ floor is five minutes, and `sameSite` must be `lax` rather than `strict` or the 
 on the return from Google and the visitor arrives signed in while reading as signed out.
 
 **Renewal, not duration, is what makes a session permanent.** Two weeks is a ceiling per mint; a
-session re-minted whenever it is used never reaches it. `renewalDue(payload)` reads the `iat` and
-`exp` the gate already verified — so renewal needs no second store to keep consistent — and returns
-true once half the window is spent. A weekly visitor never signs in again; one gone three weeks
-does, which is a reasonable place to draw the line.
+session re-minted whenever it is used never reaches it. A weekly visitor never signs in again; one
+gone three weeks does, which is a reasonable place to draw the line.
+
+```ts
+const decision = await decideHqAccess({ cookie, projectId });
+if (decision.kind === "allow" && renewalDue(decision.claims)) {
+  // re-mint from a fresh ID token
+}
+```
+
+`SessionClaims` carries the verified `iat` and `exp` so this composes directly — renewal reads the
+window the gate already checked, which is what "no second store to keep consistent" has to mean. A
+predicate the gate's own output cannot be passed to would leave a consumer re-verifying the cookie
+to recover two numbers, or decoding it unverified on the one path where that is least acceptable.
 
 Two consequences, both load-bearing and neither obvious:
 

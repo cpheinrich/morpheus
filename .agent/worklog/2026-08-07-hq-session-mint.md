@@ -313,3 +313,38 @@ defect *is*.
 Both are the reviewer's calls and both are right. Worth noting that "which spellings actually have a
 caller" is the question that stops the describe-the-good-shape lesson from turning into infinite
 validation.
+
+## Review round 6 — the load-bearing half was unreachable
+
+The best finding of the six rounds, and it had been in the PR since the first commit.
+
+`renewalDue` took `Pick<JWTPayload, "iat" | "exp">`. **Nothing the kit returns carries those.**
+`verifySessionCookie` verifies a payload and then hands back `toClaims(payload)`, which projects to
+`{ uid, email, role }`; `HqDecision` carries `SessionClaims` and nothing else. So
+`renewalDue(decision.claims)` did not compile, and a consumer's only options were to re-verify the
+cookie they had just verified — the second clock the design claims to avoid — or to decode it
+unverified on a security boundary.
+
+**Why it matters more than a type error.** Renewal is this PR's entire thesis. It is the argument
+for a five-day default over fourteen, the reason the ceiling is "irrelevant for anyone who visits
+weekly", and why clamping instead of throwing is safe. Every one of those arguments assumes a
+consumer can call `renewalDue`. Through the public surface, none could.
+
+It is also the *same shape as the gap this PR was written to close*, one level up: a verifier with
+no mint became a renewal predicate with no source of input. And the same shape as the
+`SESSION_COOKIE_NAME` carry-over from round 3 — a comment asserting a relationship the code does not
+provide, reading as true because both halves live in the same folder.
+
+Fixed additively: `SessionClaims` now carries `iat`/`exp` as `number | null`, and `renewalDue`
+accepts `null` alongside `undefined`, which its existing `typeof !== "number"` guard already handled
+without a new branch.
+
+**Why it survived six rounds, which is the transferable part.** `renewalDue` was tested only against
+hand-built literals. That proves the arithmetic and says nothing about whether anything can reach
+it. There is now a test that composes the real path — `toClaims` → `decideFromClaims` → `allow` →
+`renewalDue(decision.claims)` — and it would have failed to compile at any point in the last six
+rounds.
+
+**A unit test built from a literal cannot detect that its subject is unreachable.** Every guard in
+this file was tested that way; this is the one where it mattered, because it is the only one whose
+input has to come from somewhere else in the kit.

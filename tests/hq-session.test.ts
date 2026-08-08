@@ -9,6 +9,8 @@ import {
   type SessionCookieMinter,
 } from "../src/hq/session.js";
 import { safeReturnTo } from "../src/hq/return-to.js";
+import { toClaims } from "../src/hq/session-cookie.js";
+import { decideFromClaims } from "../src/hq/gate.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -101,6 +103,31 @@ describe("renewal is what makes the session permanent", () => {
     expect(renewalDue({ iat }, exp * 1000)).toBe(false);
     expect(renewalDue({}, Date.now())).toBe(false);
     expect(renewalDue({ iat: exp, exp: iat }, Date.now())).toBe(false);
+    // `toClaims` reports an absent claim as null, not undefined.
+    expect(renewalDue({ iat: null, exp: null }, Date.now())).toBe(false);
+    expect(renewalDue({ iat, exp: null }, Date.now())).toBe(false);
+  });
+
+  it("composes with a gate decision, which is the only way a consumer reaches it", () => {
+    // The gap four rounds of review missed: renewalDue was tested only against
+    // hand-built literals, which proves the arithmetic and not that anything
+    // can reach it. toClaims used to project iat/exp away, so the kit's own
+    // decision could not be passed to its own renewal predicate.
+    const claims = toClaims({ sub: "u1", email: "c@x.com", role: "admin", iat, exp });
+    expect(claims).not.toBeNull();
+
+    const decision = decideFromClaims(claims);
+    expect(decision.kind).toBe("allow");
+    if (decision.kind !== "allow") return;
+
+    expect(renewalDue(decision.claims, iat * 1000)).toBe(false);
+    expect(renewalDue(decision.claims, (iat + (exp - iat) / 2) * 1000)).toBe(true);
+  });
+
+  it("carries a missing window through as null rather than inventing one", () => {
+    const claims = toClaims({ sub: "u1" });
+    expect(claims).toMatchObject({ iat: null, exp: null });
+    expect(renewalDue(claims!, Date.now())).toBe(false);
   });
 });
 

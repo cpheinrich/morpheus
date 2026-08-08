@@ -1,5 +1,3 @@
-import type { JWTPayload } from "jose";
-
 /**
  * The mint half of the `/hq` session, and the policy around it.
  *
@@ -184,13 +182,25 @@ export function hqSessionClearOptions(
  * Whether a verified session is far enough through its life to re-mint.
  *
  * Reads `iat` and `exp` off the payload the gate already verified, so renewal
- * needs no extra state and no second store to keep consistent.
+ * needs no extra state and no second store to keep consistent. `SessionClaims`
+ * carries both, so this composes directly with a gate decision:
  *
- * A payload missing either claim returns `false`: an unreadable window is not
- * evidence that renewal is due, and re-minting on every request would turn a
- * missing claim into a sign-in storm.
+ * ```ts
+ * const decision = await decideHqAccess({ cookie, projectId });
+ * if (decision.kind === "allow" && renewalDue(decision.claims)) {
+ *   // re-mint from a fresh ID token
+ * }
+ * ```
+ *
+ * A payload missing either claim — or carrying `null`, which is how
+ * `toClaims` reports one that was absent — returns `false`. An unreadable
+ * window is not evidence that renewal is due, and re-minting on every request
+ * would turn a missing claim into a sign-in storm.
  */
-export function renewalDue(payload: Pick<JWTPayload, "iat" | "exp">, now = Date.now()): boolean {
+export function renewalDue(
+  payload: { iat?: number | null; exp?: number | null },
+  now = Date.now(),
+): boolean {
   const { iat, exp } = payload;
   if (typeof iat !== "number" || typeof exp !== "number" || exp <= iat) return false;
 
