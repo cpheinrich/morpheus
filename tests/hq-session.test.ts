@@ -196,9 +196,37 @@ describe("returnTo narrowing", () => {
     expect(safeReturnTo("/hq/../hq/sign-in", { base: "/hq", deny: ["/hq/sign-in"] })).toBe("/hq");
   });
 
+  it("rejects the percent-encoded dot-segments the URL spec also collapses", () => {
+    // WHATWG defines a double-dot segment as `..` or a case-insensitive
+    // `.%2e` / `%2e.` / `%2e%2e`. Verified against new URL(): each of these
+    // resolves to /admin, so a guard matching only the literal spelling is
+    // not a guard.
+    expect(safeReturnTo("/hq/%2e%2e/admin")).toBe("/hq");
+    expect(safeReturnTo("/hq/%2E%2E/admin")).toBe("/hq");
+    expect(safeReturnTo("/hq/.%2e/admin")).toBe("/hq");
+    expect(safeReturnTo("/hq/%2e./admin")).toBe("/hq");
+    expect(safeReturnTo("/hq/%2e/product")).toBe("/hq");
+  });
+
+  it("does not let an encoded dot-segment walk around deny either", () => {
+    expect(safeReturnTo("/hq/%2e%2e/hq/sign-in", { base: "/hq", deny: ["/hq/sign-in"] })).toBe(
+      "/hq",
+    );
+  });
+
   it("keeps a dot inside a segment, which is an ordinary filename", () => {
     expect(safeReturnTo("/hq/reports/q3.2026")).toBe("/hq/reports/q3.2026");
     expect(safeReturnTo("/hq/..well-known")).toBe("/hq/..well-known");
+    // `%2ee` is not a dot-segment and new URL() leaves it alone, so an
+    // over-eager substring replace would reject a legitimate path.
+    expect(safeReturnTo("/hq/%2ee/x")).toBe("/hq/%2ee/x");
+  });
+
+  it("treats an empty base as a misconfiguration, not as root", () => {
+    // `??` would let "" become "/" and silently admit every path — the same
+    // no-throw-no-log shape as a check that admits nothing.
+    expect(safeReturnTo("/anywhere", { base: "" })).toBe("/hq");
+    expect(safeReturnTo("/hq/product", { base: "" })).toBe("/hq/product");
   });
 
   it("admits any same-origin path when the base is root", () => {

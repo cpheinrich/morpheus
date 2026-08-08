@@ -160,3 +160,45 @@ minutes stop being unlimited.
 So the right move was not to argue the point but to cite the item. **A record that already
 anticipates your concern is worth finding before writing the concern down**, and I had reached for
 `.agent/decisions.md` without checking whether a roadmap item covered the same ground.
+
+## Review round 2 — the same defect in a spelling the guard did not recognise
+
+**Percent-encoded dot-segments.** The round-1 fix rejected `.` and `..` as literal strings. WHATWG
+does not define them that way: a double-dot segment is `..` **or** a case-insensitive `.%2e`,
+`%2e.`, or `%2e%2e`, and a single-dot is `.` or `%2e`. So `/hq/%2e%2e/admin` passed every check and
+the browser still resolved it to `/admin` — the identical defect, reached through a spelling the
+guard did not know about.
+
+The reviewer flagged honestly that their sandbox had declined `node`, so they could not execute the
+check. **Ran it before acting**, which is the right response to a finding offered with its own
+caveat:
+
+```
+/hq/%2e%2e/admin      -> /admin
+/hq/%2E%2E/admin      -> /admin
+/hq/.%2e/admin        -> /admin
+/hq/%2e./admin        -> /admin
+/hq/%2e%2e/hq/sign-in -> /hq/sign-in
+/hq/%2ee/x            -> /hq/%2ee/x      ← not a dot-segment
+```
+
+Exactly as described. The last line is why the fold folds `%2e` to `.` and then compares the whole
+segment, rather than doing a substring replace and a `startsWith` — `%2ee` is a legitimate path
+component and an over-eager rewrite would reject it.
+
+**The general lesson, which is the second time this file has recorded it:** a guard written against
+the *spelling* of a hostile input rather than against what the consumer of that input actually does
+with it will keep being bypassed by a new spelling. The first instance was backslashes, handled in
+round 0 by luck rather than design — which is exactly why the round-1 test read as covering
+dot-segments when it covered a different branch.
+
+**`base: ""` silently became root.** `opts.base ?? "/hq"` passes an empty string through,
+`trimTrailingSlashes("")` returns `"/"`, and the new root special-case then admitted every path. A
+misconfiguration turning the narrowing into a no-op, with no throw and no log. `||` closes it. Third
+instance in this repo's records of a check that admits nothing — or in this case everything —
+reading as correct.
+
+**`gate.ts` referenced an identifier the kit does not export.** Its example read
+`request.cookies.get(SESSION_COOKIE_NAME)`, while `HQ_SESSION.cookieName`'s own comment claimed the
+gate and the mint cannot disagree. Docstring now uses the exported constant, so the claim is true
+rather than aspirational.

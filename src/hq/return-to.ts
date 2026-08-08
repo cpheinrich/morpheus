@@ -38,6 +38,20 @@ export interface SafeReturnToOptions {
 const trimTrailingSlashes = (path: string): string => path.replace(/\/+$/, "") || "/";
 
 /**
+ * A dot-segment, in every spelling the URL parser collapses.
+ *
+ * WHATWG does not define these as the literal one- and two-character strings.
+ * A double-dot segment is `..` or an ASCII case-insensitive `.%2e`, `%2e.`, or
+ * `%2e%2e`; a single-dot segment is `.` or `%2e`. Verified against `new URL()`:
+ * all four encoded forms resolve `/hq/<seg>/admin` to `/admin`, while `%2ee`
+ * does not — which is why the fold is exact rather than a substring replace.
+ */
+const isDotSegment = (segment: string): boolean => {
+  const folded = segment.toLowerCase().replaceAll("%2e", ".");
+  return folded === "." || folded === "..";
+};
+
+/**
  * Returns `raw` when it is a same-origin path under `base`, and the fallback
  * otherwise.
  *
@@ -49,7 +63,11 @@ export function safeReturnTo(
   raw: string | null | undefined,
   opts: SafeReturnToOptions = {},
 ): string {
-  const base = trimTrailingSlashes(opts.base ?? "/hq");
+  // `||`, not `??`: an empty string is a misconfiguration, and `??` would let
+  // it become "/" via trimTrailingSlashes — turning the narrowing into a
+  // no-op with no throw and no log, which is the same silent shape as a
+  // check that admits nothing.
+  const base = trimTrailingSlashes(opts.base || "/hq");
   const fallback = opts.fallback ?? base;
   const deny = (opts.deny ?? []).map(trimTrailingSlashes);
 
@@ -72,7 +90,7 @@ export function safeReturnTo(
   // Rejected rather than normalised: normalising changes what the caller gets
   // back, and a redirect target containing `..` is a hand-written URL or an
   // attack, never something a working app produced.
-  if (path.split("/").some((segment) => segment === "." || segment === "..")) return fallback;
+  if (path.split("/").some(isDotSegment)) return fallback;
 
   // `/hqevil` must not pass a check for `/hq`, so the separator is required.
   // A root base admits every path — the prefix test cannot express that, since

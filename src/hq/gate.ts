@@ -13,7 +13,7 @@ import { verifySessionCookie, type SessionClaims } from "./session-cookie.js";
  * // apps/web/proxy.ts
  * export default async function proxy(request: NextRequest) {
  *   const decision = await decideHqAccess({
- *     cookie: request.cookies.get(SESSION_COOKIE_NAME)?.value,
+ *     cookie: request.cookies.get(HQ_SESSION.cookieName)?.value,
  *     projectId: PROJECT_ID,
  *   });
  *
