@@ -68,20 +68,27 @@ export const HQ_SESSION = {
    * not invalidate a session cookie already issued.
    *
    * Defaulting to the ceiling would mean every project inherits the most
-   * permissive value by accident. Five days keeps an active session alive
-   * without ever reaching a renewal — see `renewAfterFraction` — while cutting
-   * the stale-authorization window by two thirds. A project that genuinely
-   * wants fourteen can ask for it, and then owns that decision.
+   * permissive value by accident, so this is five days — cutting that window by
+   * two thirds.
+   *
+   * **The number is also the absence tolerated.** Renewal extends a session
+   * someone is present for; it cannot rescue one nobody visited, because
+   * `onIdTokenChanged` fires in an open tab and an absent visitor has nothing
+   * running. So five days means exactly that: return within five days and you
+   * never sign in again, leave it longer and you do. A project needing a weekly
+   * cadence to survive passes ten days or so and owns the longer window that
+   * buys.
    */
   defaultExpiresInMs: 5 * DAY,
 
   /**
    * Re-mint once this fraction of the window is spent.
    *
-   * Renewal, not duration, is what makes a session feel permanent: two weeks is
-   * a ceiling per mint, but a session renewed whenever it is used never reaches
-   * it. Half is early enough that a weekly visitor never signs in again, and
-   * late enough that an active tab is not re-minting on every navigation.
+   * Half is late enough that an active tab is not re-minting on every
+   * navigation, and early enough that any visit in the second half of the
+   * window resets it — so a returning visitor is renewed rather than merely
+   * admitted. What it cannot do is extend a window nobody was there for; that
+   * is `defaultExpiresInMs`'s job, and the two are often confused.
    */
   renewAfterFraction: 0.5,
 } as const;

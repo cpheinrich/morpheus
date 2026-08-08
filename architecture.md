@@ -1238,8 +1238,15 @@ floor is five minutes, and `sameSite` must be `lax` rather than `strict` or the 
 on the return from Google and the visitor arrives signed in while reading as signed out.
 
 **Renewal, not duration, is what makes a session permanent.** Two weeks is a ceiling per mint; a
-session re-minted whenever it is used never reaches it. A weekly visitor never signs in again; one
-gone three weeks does, which is a reasonable place to draw the line.
+session re-minted whenever it is used never reaches it.
+
+Be precise about who that covers, because the default is five days and the arithmetic is the whole
+trade. **A visitor who returns within five days never signs in again; one gone longer does.**
+Renewal cannot rescue an absence — `onIdTokenChanged` fires in an open tab, and someone who is not
+there has nothing running — so the window is exactly the absence tolerated. A project that needs a
+weekly cadence to survive passes ten days or so and accepts the longer stale-authorization window
+that buys; that is a real choice, and it is the reason the default is a parameter rather than a
+constant.
 
 Renewal has two halves, in two places, and they are easy to conflate:
 

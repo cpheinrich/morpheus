@@ -394,3 +394,51 @@ literal.
   dependency with no semver, there are no external constructors yet, and a required field says the
   window is always reported rather than sometimes present.
 - `deny: ["/"]` and `base: "/hq "`, both carried from earlier rounds for reasons already recorded.
+
+## Review round 8 — the justification outlived the number it justified
+
+My error, introduced by fixing round 1's finding.
+
+"A weekly visitor never signs in again; one gone three weeks does" was written when
+`defaultExpiresInMs` was 14 days, where it is exactly right: a visitor returning on day 7 is past
+`renewAfterFraction: 0.5`, gets re-minted, and never signs in. Cutting the default to five days —
+correctly — left the sentence untouched. At five days a weekly visitor arrives on day 7 with an
+expired cookie and signs in **every visit**, which is the symptom the whole PR exists to remove.
+
+Renewal cannot rescue it. `onIdTokenChanged` fires in an open tab; someone who is not there has
+nothing running. **The window is exactly the absence tolerated**, and renewal only extends a session
+someone is present for. I had been treating the two as interchangeable, which is why the sentence
+survived.
+
+Restated honestly rather than raising the constant: five days was chosen for a security reason that
+has not changed, and moving it to ten to satisfy a sentence I wrote would be letting prose drive a
+security constant. The docs now say "returns within five days", name the absence/staleness trade,
+and say a project needing a weekly cadence passes ten days and owns the longer window. That puts the
+decision at the point of choosing, which was the argument for the lower default in the first place.
+
+`renewAfterFraction`'s comment had the same confusion — it argued 0.5 was right *because* it clears
+a weekly bar, which is `defaultExpiresInMs`'s job. It now says what the fraction actually controls
+and that the two are often confused.
+
+**Changing a constant and leaving its justification is the same defect as a comment asserting a
+relationship the code does not provide** — the class every round after the first has found. This one
+is worse because the prose is what a project reads to decide whether to override the default: it
+told them they need not, and they do.
+
+## Closing the loop on eight rounds
+
+Every finding after the first was a claim that read as true because its two halves sat near each
+other:
+
+| Round | The two halves |
+|---|---|
+| 2 | A test for backslashes near a guard for dot-segments |
+| 3 | `HQ_SESSION.cookieName`'s comment near a `gate.ts` example using another name |
+| 4 | A `set()` snippet near an options type it did not fit |
+| 5 | A documented call on the mint near an undocumented one on the clear |
+| 6 | `renewalDue` near a verifier that projected away its input |
+| 7 | A renewal snippet near a middleware example it could not run in |
+| 8 | A justification near a constant it no longer described |
+
+**Proximity is not composition.** Every test that would have caught one of these composes two parts
+of the kit; every test that missed them exercised one part against a literal.
