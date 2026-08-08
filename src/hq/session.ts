@@ -116,15 +116,23 @@ export function clampExpiresIn(expiresInMs: number): number {
  * holder is allowed into your `/hq`. `decideFromClaims` is the other half, and
  * this function deliberately does not do it — a mint that silently enforced
  * authorization would make the gate look optional.
+ *
+ * Returns `value` rather than `cookie` on purpose: it is the cookie's *value*,
+ * and `HqCookieOptions` is `ResponseCookie` minus exactly that field, so the
+ * two spread together into the call that works:
+ *
+ * ```ts
+ * response.cookies.set({ ...hqSessionCookieOptions({ expiresInMs }), value });
+ * ```
  */
 export async function createHqSessionCookie(
   auth: SessionCookieMinter,
   idToken: string,
   expiresInMs: number = HQ_SESSION.defaultExpiresInMs,
-): Promise<{ cookie: string; expiresInMs: number }> {
+): Promise<{ value: string; expiresInMs: number }> {
   const clamped = clampExpiresIn(expiresInMs);
-  const cookie = await auth.createSessionCookie(idToken, { expiresIn: clamped });
-  return { cookie, expiresInMs: clamped };
+  const value = await auth.createSessionCookie(idToken, { expiresIn: clamped });
+  return { value, expiresInMs: clamped };
 }
 
 /**

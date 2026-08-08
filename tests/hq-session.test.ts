@@ -49,7 +49,7 @@ describe("the ceiling is Firebase's, not a preference", () => {
     const result = await createHqSessionCookie(auth, "id-token", 30 * DAY);
 
     expect(auth.calls).toEqual([{ idToken: "id-token", expiresIn: HQ_SESSION.maxExpiresInMs }]);
-    expect(result.cookie).toBe("cookie-for-id-token");
+    expect(result.value).toBe("cookie-for-id-token");
     // Reported rather than silently different: the caller sets maxAge from it.
     expect(result.expiresInMs).toBe(HQ_SESSION.maxExpiresInMs);
   });
@@ -226,18 +226,20 @@ describe("returnTo narrowing", () => {
     expect(safeReturnTo("/hq/%2ee/x")).toBe("/hq/%2ee/x");
   });
 
-  it("treats an empty base as a misconfiguration, not as root", () => {
-    // Falling through would strip to "/", hit the root special-case, and
-    // silently admit every path — the same no-throw-no-log shape as a check
-    // that admits nothing. "//" reaches root by a different route than "" does,
-    // so both spellings are covered.
-    for (const base of ["", "//", "///"]) {
+  it("treats every unusable base as a misconfiguration, not as root", () => {
+    // Three spellings reached the same silent failure by different routes:
+    // "" and "//" strip to root and admit everything, and "hq" matches no path
+    // at all — worst of the three, because `fallback` defaults to `base`, so a
+    // relative fallback resolves against whatever path the visitor was on.
+    for (const base of ["", "//", "///", "hq", " /hq", "hq/"]) {
       expect(safeReturnTo("/anywhere", { base }), base).toBe("/hq");
       expect(safeReturnTo("/hq/product", { base }), base).toBe("/hq/product");
     }
   });
 
   it("still treats a single slash as the deliberate root it is", () => {
+    // The distinction the base check has to preserve, and the one a
+    // describe-the-bad-values guard kept losing.
     // The distinction the empty-base guard has to preserve: "/" is what a
     // project whose whole origin sits behind the gate actually passes, and
     // conflating it with "" would remove the case root support exists for.

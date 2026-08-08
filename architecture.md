@@ -1215,9 +1215,15 @@ different credential, not a longer one.
 
 ```ts
 // morpheus-kit/hq — the mint half
-const { cookie, expiresInMs } = await createHqSessionCookie(adminAuth, idToken);
-response.cookies.set(cookie, hqSessionCookieOptions({ expiresInMs }));
+const { value, expiresInMs } = await createHqSessionCookie(adminAuth, idToken);
+response.cookies.set({ ...hqSessionCookieOptions({ expiresInMs }), value });
 ```
+
+`HqCookieOptions` is deliberately Next's `ResponseCookie` minus `value`, so the two spread into the
+object form of `cookies.set`. That is the call that works: the two-argument overload is
+`(name, value)`, so passing the session JWT first sets a cookie *named* after the JWT — nothing
+lands under `hq_session`, the gate reads no cookie, and the visitor is signed out by the very code
+meant to sign them in.
 
 `createHqSessionCookie` takes the caller's initialised Admin `Auth` **as a parameter and never
 imports `firebase-admin`** — the same argument as the gate returning a decision rather than a

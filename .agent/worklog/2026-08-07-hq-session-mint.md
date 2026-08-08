@@ -234,3 +234,51 @@ property the legitimate value also has.
 
 The test suite caught it in one run, which is the argument for having written the root-base case as
 a test in round 1 rather than checking it by hand.
+
+## Review round 4 — the documented call shape did not work
+
+The headline example had been in the PR since the first commit, and **four rounds of review read
+past it**, mine included.
+
+```ts
+response.cookies.set(cookie, hqSessionCookieOptions({ expiresInMs }));   // wrong
+```
+
+Next's `ResponseCookies.set` has two overloads and this matches neither. The two-argument form is
+`(name, value)`, so it passes the session JWT as the cookie *name*. Verified against the real
+implementation rather than the type signature:
+
+```
+two-arg (name,value): "session-jwt-here=%5Bobject%20Object%5D; Path=/"
+object form:          "hq_session=session-jwt-here; Path=/; Max-Age=100; Secure; HttpOnly; SameSite=lax"
+```
+
+TypeScript would reject it in a consumer's build, so it was friction rather than a shipped bug — but
+§11.1 says "the three lines are not the valuable part," and these were the three lines. A snippet
+that does not compile teaches nothing about the shape that does.
+
+Two changes rather than one. The doc now uses the object form, **and** `createHqSessionCookie`
+returns `value` rather than `cookie`. The rename is the actual fix: `{ cookie }` reads as "the
+cookie", which is what invited `set(cookie, options)`, when it is the cookie's *value*.
+`HqCookieOptions` is `ResponseCookie` minus exactly that field, so `{ ...options, value }` spreads
+into the working call and the correct shape becomes self-evident rather than documented.
+
+**Nothing tests this and nothing can** — it is a doc snippet against a dependency the kit does not
+take. That is an argument for getting it right, not for adding a test.
+
+## Round 4 — the third spelling of the base misconfiguration
+
+`base: "hq"` — no leading slash — survived `isEmptyBase`, matched no path, and sent every
+destination to `fallback`, which defaults to `base`. So the fallback was a **relative** URL:
+`new URL("hq", "https://site/hq/product/")` resolves to `/hq/hq`. Silent, and the worst of the
+three.
+
+Three rounds of "here is another spelling" is the signal. The guard is now stated **positively** —
+`/^\/(?!\/)/`, exactly one leading separator — which admits `"/"` and `"/hq"` and rejects `""`,
+`"//"`, `"hq"` and `" /hq"` together.
+
+That is the same lesson round 3 recorded and did not fully apply: **describing the bad values keeps
+missing one; describing the good one is finite.** Round 3 named three bad spellings where it should
+have named the single good shape, and round 4 found the fourth. The rule generalises past this
+function — the dot-segment guard is the same story, where round 1 matched two literal spellings and
+round 2 found four more the spec defines.

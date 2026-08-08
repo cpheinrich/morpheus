@@ -43,15 +43,17 @@ export interface SafeReturnToOptions {
 const trimTrailingSlashes = (path: string): string => path.replace(/\/+$/, "") || "/";
 
 /**
- * True for a base that says nothing — `""`, or a run of two or more separators.
+ * A usable base: exactly one leading separator, then anything.
  *
- * A single `"/"` is **not** empty: it is the deliberate value a project uses
- * when its whole origin sits behind the gate, and the root special-case below
- * exists for it. `"//"` is not a shorter way of saying that — it is a typo that
- * would otherwise strip to root and admit everything silently.
+ * Stated positively after three rounds of finding another spelling that is not
+ * — `""`, `"//"`, and `"hq"` all reached the same silent failure by different
+ * routes, the last one worst because `fallback` defaults to `base`, so a
+ * relative fallback resolves against the current path. Describing the bad
+ * values kept missing one; describing the good one admits `"/"` and `"/hq"`
+ * and rejects the rest together.
  */
-const isEmptyBase = (base: string | undefined): boolean =>
-  base === undefined || base === "" || /^\/{2,}$/.test(base);
+const isUsableBase = (base: string | undefined): base is string =>
+  typeof base === "string" && /^\/(?!\/)/.test(base);
 
 /**
  * A dot-segment, in every spelling the URL parser collapses.
@@ -79,12 +81,12 @@ export function safeReturnTo(
   raw: string | null | undefined,
   opts: SafeReturnToOptions = {},
 ): string {
-  // An empty base — `""`, `"//"`, any run of separators — is a
-  // misconfiguration, not a request for root. Left to fall through it would
-  // strip to `"/"`, hit the root special-case below, and admit every path
-  // with no throw and no log. A caller that genuinely wants the whole origin
-  // says so with `base: "/"`, which is a distinct and deliberate value.
-  const base = isEmptyBase(opts.base) ? "/hq" : trimTrailingSlashes(opts.base!);
+  // An unusable base falls back to the default rather than being taken
+  // literally: every spelling of it — empty, all-separators, or missing the
+  // leading slash — otherwise turns the narrowing into a no-op or a relative
+  // fallback, with no throw and no log. A caller that wants the whole origin
+  // says so with `base: "/"`, which is deliberate and distinct.
+  const base = trimTrailingSlashes(isUsableBase(opts.base) ? opts.base : "/hq");
   const fallback = opts.fallback ?? base;
   const deny = (opts.deny ?? []).map(trimTrailingSlashes);
 
