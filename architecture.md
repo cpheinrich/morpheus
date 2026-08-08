@@ -1194,6 +1194,64 @@ cannot run in middleware. **Session cookies use a different key set and issuer t
 using the ID-token keys fails to verify every cookie silently, which reads as a broken login
 rather than a wrong constant.
 
+#### The session cookie is not the ID token
+
+The credential a project stores is the whole of how long a login lasts, and the two candidates look
+interchangeable until they are not.
+
+| | Firebase **ID token** | Firebase **session cookie** |
+|---|---|---|
+| Minted for | the client, by Google, at sign-in | **your server**, by Google, on request |
+| Lifetime | **1 hour**, fixed | **5 minutes – 14 days**, you choose |
+| Issuer | `securetoken.google.com/<project>` | `session.firebase.google.com/<project>` |
+| Signing keys | the ID-token certificates | **a different certificate endpoint** |
+| Created by | nothing — it arrives from the client | `createSessionCookie(idToken, { expiresIn })` |
+
+Storing the ID token directly is the mistake that looks like it works. `cpheinrich.com` did exactly
+that, and its session was one hour — which presented as being signed out again on every visit.
+**Raising the cookie's `maxAge` does not fix it**: the cookie outlives the token inside it,
+verification fails on `exp`, and the sign-in page returns on the same schedule. The fix is a
+different credential, not a longer one.
+
+```ts
+// morpheus-kit/hq — the mint half
+const { cookie, expiresInMs } = await createHqSessionCookie(adminAuth, idToken);
+response.cookies.set(cookie, hqSessionCookieOptions({ expiresInMs }));
+```
+
+`createHqSessionCookie` takes the caller's initialised Admin `Auth` **as a parameter and never
+imports `firebase-admin`** — the same argument as the gate returning a decision rather than a
+`NextResponse`. The kit is imported by edge middleware, and `firebase-admin` is Node-only; depending
+on it to reuse three lines of call would pin every consumer's runtime. The three lines are not the
+valuable part. The policy is: the 14-day ceiling is Firebase's and rejects anything longer, the
+floor is five minutes, and `sameSite` must be `lax` rather than `strict` or the cookie is withheld
+on the return from Google and the visitor arrives signed in while reading as signed out.
+
+**Renewal, not duration, is what makes a session permanent.** Two weeks is a ceiling per mint; a
+session re-minted whenever it is used never reaches it. `renewalDue(payload)` reads the `iat` and
+`exp` the gate already verified — so renewal needs no second store to keep consistent — and returns
+true once half the window is spent. A weekly visitor never signs in again; one gone three weeks
+does, which is a reasonable place to draw the line.
+
+Two consequences, both load-bearing and neither obvious:
+
+- **Minting needs a service-account key.** A project that had none now has one. That is a real
+  change to its secret posture and belongs in its own `infra/` notes rather than arriving as a side
+  effect of a session fix.
+- **Long sessions weaken automatic revocation.** A one-hour credential re-checks Google constantly
+  by construction. Fourteen days does not, so `checkRevoked` on the Admin path and a per-request
+  allowlist check stop being optional, and `revokeRefreshTokens(uid)` — sign out everywhere — is the
+  lever you want built before you need it.
+
+The client half is a convention rather than a component, since the kit stays framework-free: the
+browser SDK holds a long-lived refresh token and mints a fresh ID token roughly hourly, so a
+~20-line `onIdTokenChanged` subscription that re-posts to the session endpoint keeps renewal
+supplied with material even on a page nobody is clicking.
+
+`safeReturnTo()` narrows the `next` parameter the gate produces back to a path under the route. It
+ships here rather than per project because the read side is where the open redirect lives, and
+`raw.startsWith("/")` — the check most people write — admits `//evil.example`.
+
 ```sh
 morpheus hq rules            # write or refresh the generated block in firestore.rules
 morpheus hq rules --check    # fail when it has drifted — for CI
