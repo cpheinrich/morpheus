@@ -1,7 +1,7 @@
 import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { EXPECTED } from "../doctor/index.js";
-import { BEGIN, renderFirestoreRules } from "../hq/rules.js";
+import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
 import * as t from "./templates.js";
 import type { Seed } from "./templates.js";
 import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
@@ -155,16 +155,29 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
       if (existingRules === null) {
         await put(configured.path, renderFirestoreRules());
         rulesPath = configured.path;
-      } else if (existingRules.includes(BEGIN)) {
-        skipped.push(configured.path);
-        rulesPath = configured.path;
-      } else {
-        skipped.push(`${configured.path} (configured rules file has no generated role markers)`);
         notes.push(
-          `Kept the deployed rules file ${configured.path} and left its CI check off because it ` +
-            "has no generated role markers. Review `morpheus hq rules --print`, add the block " +
-            "inside the database match scope, then enable hq-rules-path.",
+          `Created the deployed rules file ${configured.path} with deny-by-default starter policy. ` +
+            "Review its match blocks before the next Firebase deploy.",
         );
+      } else {
+        const update = updateRoleHelpers(existingRules);
+        if (update) {
+          skipped.push(configured.path);
+          rulesPath = configured.path;
+          if (update.changed) {
+            notes.push(
+              `${configured.path} has stale generated role helpers. Run ` +
+                `\`morpheus hq rules --rules-path ${configured.path}\` before the first PR.`,
+            );
+          }
+        } else {
+          skipped.push(`${configured.path} (configured rules file has no complete role marker block)`);
+          notes.push(
+            `Kept the deployed rules file ${configured.path} and left its CI check off because it ` +
+              "has no complete generated role marker block. Review `morpheus hq rules --print`, " +
+              "add the block inside the database match scope, then enable hq-rules-path.",
+          );
+        }
       }
     } else if (firebaseConfig !== null) {
       const reason =

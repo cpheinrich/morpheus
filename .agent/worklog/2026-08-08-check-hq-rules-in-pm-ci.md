@@ -59,3 +59,7 @@ An existing configured rules file is wired only when its generated marker block 
 otherwise the scaffold preserves it, leaves CI off, and points at the explicit `--print` migration.
 Malformed Firebase JSON and parsed-but-ambiguous rule shapes remain separate reported states rather
 than collapsing into a guessed diagnosis.
+Initialization uses `updateRoleHelpers` itself to recognize a complete marker block, so its wiring
+predicate cannot drift from the CI command. Partial blocks remain unwired, complete stale blocks are
+wired with a pre-PR refresh note, and creating a deployed starter from existing Firebase config
+emits an explicit deny-by-default deployment warning.

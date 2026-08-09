@@ -5,6 +5,7 @@ import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
 import { rules } from "../src/cli/hq.js";
+import { BEGIN, renderFirestoreRules } from "../src/hq/rules.js";
 import { parseInboxFile } from "../src/inbox/parse.js";
 import { parseArtifact } from "../src/pm/parse.js";
 import type { Seed } from "../src/init/templates.js";
@@ -220,7 +221,7 @@ describe("morpheus init", () => {
         jobs?: Record<string, { with?: Record<string, unknown> }>;
       };
       expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBe("firebase/firestore.rules");
-      expect(result.notes.join("\n")).not.toContain("did not guess");
+      expect(result.notes.join("\n")).toContain("deny-by-default starter policy");
     });
 
     it("leaves CI off for an existing configured rules file without markers", async () => {
@@ -239,6 +240,44 @@ describe("morpheus init", () => {
       expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
       expect(await read("firestore.rules")).toBe("rules_version = '2';\n");
       expect(result.notes.join("\n")).toContain("morpheus hq rules --print");
+    });
+
+    it("treats a begin-only marker as incomplete and leaves CI off", async () => {
+      await writeFile(
+        join(dir, "firebase.json"),
+        JSON.stringify({ firestore: { rules: "firestore.rules" } }),
+        "utf8",
+      );
+      await writeFile(join(dir, "firestore.rules"), `${BEGIN}\ntruncated\n`, "utf8");
+
+      const result = await scaffold(dir, SEED);
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
+      expect(result.notes.join("\n")).toContain("no complete generated role marker block");
+    });
+
+    it("wires a complete stale block and reports the refresh before the first PR", async () => {
+      await writeFile(
+        join(dir, "firebase.json"),
+        JSON.stringify({ firestore: { rules: "firestore.rules" } }),
+        "utf8",
+      );
+      const stale = renderFirestoreRules().replace("role() == 'admin';", "role() == 'owner';");
+      await writeFile(join(dir, "firestore.rules"), stale, "utf8");
+
+      const result = await scaffold(dir, SEED);
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBe("firestore.rules");
+      expect(result.notes.join("\n")).toContain(
+        "morpheus hq rules --rules-path firestore.rules",
+      );
+      expect(await read("firestore.rules")).toBe(stale);
     });
 
     it("distinguishes malformed Firebase config from an ambiguous rules shape", async () => {
