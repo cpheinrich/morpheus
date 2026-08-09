@@ -65,7 +65,8 @@ Usage
   morpheus brand status           [--dir <hq/brand>] [--name <Acme>]
   morpheus brand check            [--dir <hq/brand>] — generated files vs answers.md
   morpheus access sync      [--project <firebase-project>] [--dry-run]
-  morpheus hq rules         [--check] — role helpers in firestore.rules, from the vocabulary
+  morpheus hq rules         [--check] [--rules-path <path>]
+                            — role helpers in firestore.rules, from the vocabulary
   morpheus hq rules --print print the generated block, to paste into existing rules
   morpheus registry list | add [--prefix XX] | remove <name>
   morpheus init             [--name <Acme>] [--prefix XX] [--kind company|personal|internal]
@@ -124,6 +125,7 @@ interface Flags {
   ceiling?: number;
   notes?: string;
   priorReview?: string;
+  rulesPath?: string;
   out?: string;
   full: boolean;
   json: boolean;
@@ -226,6 +228,9 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--prior-review":
         flags.priorReview = argv[++i];
+        break;
+      case "--rules-path":
+        flags.rulesPath = argv[++i];
         break;
       case "--out":
         flags.out = argv[++i];
@@ -339,7 +344,7 @@ async function main(): Promise<number> {
 
   if (group === "hq") {
     if (command === "rules") {
-      return flags.print ? printRules() : hqRules(process.cwd(), flags.check);
+      return flags.print ? printRules() : hqRules(process.cwd(), flags.check, flags.rulesPath);
     }
     console.error(`Unknown hq command "${command ?? ""}".\n\n${HELP}`);
     return 1;

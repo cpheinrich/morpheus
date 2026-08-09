@@ -252,7 +252,8 @@ verified by reading the diff, it is a test, not an acceptance criterion.
 Deployment configuration, security rules, and environment definitions.
 
 \`firestore.rules\` is partly **generated** — the role helpers between the \`morpheus:begin roles\`
-markers come from the role vocabulary and are rewritten by \`morpheus hq rules\`. The \`match\`
+markers come from the role vocabulary and are rewritten by
+\`morpheus hq rules --rules-path infra/firebase/firestore.rules\`. The \`match\`
 blocks around them are yours. Never hand-edit inside the markers.
 
 Provisioning is not here: consoles, DNS and hosting need credentials this repo should not hold.

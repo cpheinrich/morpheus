@@ -95,17 +95,27 @@ describe("pm-check.yml", () => {
       };
       jobs?: Record<
         string,
-        { steps?: Array<{ name?: string; if?: string; run?: string }> }
+        {
+          steps?: Array<{
+            name?: string;
+            if?: string;
+            env?: Record<string, string>;
+            run?: string;
+          }>;
+        }
       >;
     };
-    const input = wf.on?.workflow_call?.inputs?.["hq-rules"];
-    expect(input).toEqual(expect.objectContaining({ type: "boolean", default: false }));
+    const input = wf.on?.workflow_call?.inputs?.["hq-rules-path"];
+    expect(input).toEqual(expect.objectContaining({ type: "string", default: "" }));
 
     const step = wf.jobs?.["pm"]?.steps?.find(
       (candidate) => candidate.name === "Verify generated HQ role helpers",
     );
-    expect(step?.if).toContain("inputs.hq-rules");
-    expect(step?.run).toBe("node .morpheus/dist/cli/index.js hq rules --check");
+    expect(step?.if).toContain("inputs.hq-rules-path != ''");
+    expect(step?.env?.MORPHEUS_RULES_PATH).toBe("${{ inputs.hq-rules-path }}");
+    expect(step?.run).toBe(
+      'node .morpheus/dist/cli/index.js hq rules --check --rules-path "$MORPHEUS_RULES_PATH"',
+    );
   });
 });
 

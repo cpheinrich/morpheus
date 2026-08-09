@@ -1284,10 +1284,12 @@ jobs:
   pm:
     uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main
     with:
-      hq-rules: true
+      hq-rules-path: infra/firebase/firestore.rules
 ```
 
-The input defaults off because a project with no `firestore.rules` has no data gate to verify.
+The empty default leaves the check off because a project with no `firestore.rules` has no data
+gate to verify. The explicit path keeps the check attached to the file Firebase actually deploys;
+`morpheus hq rules --rules-path infra/firebase/firestore.rules` uses the same contract locally.
 
 Darwin's first cut carried a comment asking the next reader to keep two lists identical by hand.
 An invariant a comment is asking for is one the code should be enforcing — a role added on one

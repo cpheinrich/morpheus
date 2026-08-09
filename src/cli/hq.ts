@@ -1,5 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { renderFirestoreRules, renderRoleHelpers, updateRoleHelpers } from "../hq/rules.js";
 
 const RULES = "firestore.rules";
@@ -12,17 +12,24 @@ const RULES = "firestore.rules";
  * data gate disagreeing means a role that grants nothing, or worse, a role
  * removed from the vocabulary that a rule still honours.
  */
-export async function rules(repoRoot: string, check: boolean): Promise<number> {
-  const path = join(repoRoot, RULES);
+export async function rules(
+  repoRoot: string,
+  check: boolean,
+  rulesPath = RULES,
+): Promise<number> {
+  const path = resolve(repoRoot, rulesPath);
   const existing = await readFile(path, "utf8").catch(() => null);
 
   if (existing === null) {
     if (check) {
-      console.error(`No ${RULES} here. Run \`morpheus hq rules\` to create it.`);
+      console.error(
+        `No ${rulesPath} here. Run \`morpheus hq rules --rules-path ${rulesPath}\` to create it.`,
+      );
       return 1;
     }
+    await mkdir(dirname(path), { recursive: true });
     await writeFile(path, renderFirestoreRules(), "utf8");
-    console.log(`Wrote ${RULES}`);
+    console.log(`Wrote ${rulesPath}`);
     console.log("Review the match blocks — the role helpers are generated, the policy is yours.");
     return 0;
   }
@@ -31,7 +38,7 @@ export async function rules(repoRoot: string, check: boolean): Promise<number> {
   if (!update) {
     // Reported rather than injected at a guessed position: see rules.ts.
     console.error(
-      `${RULES} has no \`morpheus:begin roles\` block, so there is nothing to refresh.\n` +
+      `${rulesPath} has no \`morpheus:begin roles\` block, so there is nothing to refresh.\n` +
         "Paste the generated helpers in yourself, inside the `match /databases/...` scope:\n\n" +
         "  morpheus hq rules --print\n",
     );
@@ -39,20 +46,20 @@ export async function rules(repoRoot: string, check: boolean): Promise<number> {
   }
 
   if (!update.changed) {
-    console.log(`${RULES} is current.`);
+    console.log(`${rulesPath} is current.`);
     return 0;
   }
 
   if (check) {
     console.error(
-      `${RULES} role helpers are stale — the vocabulary has changed since they were generated.\n` +
-        "Run `morpheus hq rules` and commit the result.",
+      `${rulesPath} role helpers are stale — the vocabulary has changed since they were generated.\n` +
+        `Run \`morpheus hq rules --rules-path ${rulesPath}\` and commit the result.`,
     );
     return 1;
   }
 
   await writeFile(path, update.content, "utf8");
-  console.log(`Refreshed the role helpers in ${RULES}`);
+  console.log(`Refreshed the role helpers in ${rulesPath}`);
   return 0;
 }
 
