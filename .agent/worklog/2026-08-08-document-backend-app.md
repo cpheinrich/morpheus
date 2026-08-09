@@ -22,3 +22,8 @@ the manifest's closed surface list, the settled `apps/`/`hq/` decision, and the 
 backend's relationship to TypeScript schema sources. The manifest now supports `backend`, the
 settled rule is based on running as the product rather than having a human user, and other languages
 conform to shared schema contracts manually until a generator exists.
+
+The re-review found no merge-blocking defect, but identified two nearby places where readers could
+still infer more than the docs promise. The manifest now calls `surfaces` advisory rather than an
+init contract, and the schema section names every surface plus the non-TypeScript manual-conformance
+rule instead of retaining its older two-surface framing.

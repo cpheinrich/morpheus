@@ -229,6 +229,9 @@ The manifest names *which* identity a project operates as; the values live in Se
 (§13). An agent opening the repo reads this and knows which account it is — the thing that most
 often goes wrong when one person runs several companies.
 
+`surfaces` is an optional, advisory declaration for agents; it does not make a surface mandatory or
+cause `init` to scaffold an application directory. Projects record only the surfaces they need.
+
 ## 5. Where each business function lives
 
 | Function | Location | Form |
@@ -1949,10 +1952,11 @@ types inferred from them** — validation at boundaries and types for free. A ge
 Swift structs and Firestore rules from the same source is deferred until iOS actually starts.
 
 **Most of the value comes from having one file, not from the codegen.** A single
-`packages/shared/schema/user.schema.ts` that both surfaces must conform to already prevents drift,
-because there is an unambiguous answer to "what shape is this document." Codegen removes the manual
-transcription step, which matters once a second consumer exists and not before — and a codegen
-pipeline is another CI step that can break.
+`packages/shared/schema/user.schema.ts` that every surface must conform to already prevents drift,
+because there is an unambiguous answer to "what shape is this document." A non-TypeScript backend
+conforms to that contract manually as described in §3. Codegen removes the manual transcription
+step, which matters once a second consumer exists and not before — and a codegen pipeline is
+another CI step that can break.
 
 ```ts
 // packages/shared/schema/entry.schema.ts — the source of truth
