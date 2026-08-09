@@ -72,6 +72,12 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     written.push("CLAUDE.md -> AGENTS.md");
   }
 
+  // Claude Code's session hook. Informational, not blocking — the refusal
+  // lives in the `morpheus` CLI, which every provider goes through and which
+  // needs no per-project wiring. Codex reads AGENTS.md instead, which is why
+  // the instruction is in both and the enforcement is in neither.
+  await put(".claude/settings.json", t.claudeSettings());
+
   // --- agent memory ---------------------------------------------------------
   await put(".agent/README.md", t.agentReadme());
   await put(".agent/decisions.md", t.decisions(seed));
@@ -93,8 +99,17 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     await put(`hq/product/${kind}/README.md`, t.productReadme(kind, seed));
   }
 
+  // The inbox is written for **every** kind, not only those whose directory
+  // list includes `hq/team`. `manifest()` declares `context.handle`, which
+  // puts `hq/team/<owner>.md` into the session-freshness required set — so a
+  // kind that skipped the file would scaffold a project whose gate can never
+  // open: the record reads ABSENT, therefore unresolvable, therefore
+  // `refresh_required` forever, with no offline escape and no `requiredInputs`
+  // override that reaches it. A declared record that is never created is the
+  // worst shape this protocol has.
+  await put(`${INBOX_DIR}/${seed.owner}.md`, t.inbox(seed));
+
   if (dirs.includes(INBOX_DIR)) {
-    await put(`${INBOX_DIR}/${seed.owner}.md`, t.inbox(seed));
 
     // Meeting notes get their directory up front rather than on first use.
     // The folder carries a redaction gate — `redacted: true` is a claim, and

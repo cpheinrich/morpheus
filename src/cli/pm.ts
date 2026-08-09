@@ -55,18 +55,34 @@ async function inboxOwner(root: string): Promise<string | null> {
  * an exception because the network was down would be the worse outcome. The
  * caller says so out loud instead of reporting a success it did not have.
  */
+type RecordCommit = "pushed" | "committed" | "nothing";
+
+/**
+ * Commit and push, reporting **which** step got there.
+ *
+ * One `try` around all three conflated "not a git repo" with "the push was
+ * rejected", and the difference matters: committed-but-unpushed leaves a clean
+ * working tree, so the dirty-file check in `pm claims` cannot see it and an
+ * escalation that reached nobody is invisible forever. That is the same
+ * failure the offline completion path exists to prevent, by the route that
+ * happens *by accident* rather than by declaration.
+ */
 async function commitRecords(
   root: string,
   paths: string[],
   message: string,
-): Promise<boolean> {
+): Promise<RecordCommit> {
   try {
     await exec("git", ["add", "--", ...paths], { cwd: root });
     await exec("git", ["commit", "-m", message], { cwd: root });
-    await exec("git", ["push"], { cwd: root });
-    return true;
   } catch {
-    return false;
+    return "nothing";
+  }
+  try {
+    await exec("git", ["push"], { cwd: root });
+    return "pushed";
+  } catch {
+    return "committed";
   }
 }
 
@@ -327,7 +343,157 @@ export async function claims(
   if (blocked.size) {
     console.log(`${blocked.size} blocked (⊘) — waiting on an answer, not on an agent.`);
   }
+
+  // An offline `pm block` writes its records and skips the push, and its only
+  // other trace is a yellow line that has already scrolled past. A block
+  // nobody can see is not a block, so the state has to be visible somewhere
+  // that gets read again — this is the "what is in flight" view, and it
+  // already has the board in hand.
+  const { paths: unsent, unavailable } = await unsentBlockRecords(cwd, [...blocked.keys()]);
+  if (unavailable) {
+    console.log(
+      `\n\x1b[33mCould not ask git whether the blocked items' records have reached anyone.\n` +
+        `Silence here would be indistinguishable from "they all did".\x1b[0m`,
+    );
+  } else if (unsent.length) {
+    console.log(
+      `\n\x1b[33mRecords for blocked items have not reached anyone — uncommitted, or committed\n` +
+        `and unpushed. The escalation is on this machine only:\x1b[0m`,
+    );
+    for (const p of unsent) console.log(`  ${p}`);
+    console.log(`\x1b[33mCommit and push all of them, including the inbox entry.\x1b[0m`);
+  }
   return 0;
+}
+
+/**
+ * Records of blocked items that have not reached anyone yet — still in the
+ * working tree, or committed and unpushed.
+ *
+ * **Both states, because both are invisible to whoever answers.** Only
+ * checking the working tree missed the commonest route: `commitRecords`
+ * committing and the push being rejected leaves a *clean* tree.
+ *
+ * Matching is deliberately narrow, and each part of it was a false report
+ * first:
+ *
+ * - **Case-insensitive**, because `pm block` writes the worklog with
+ *   `id.toLowerCase()` while the board holds the id uppercase.
+ * - **An inbox counts only if its escalation has never reached a remote.**
+ *   The inbox entry *is* the escalation and its path carries no id, so it
+ *   cannot be matched by path — but neither "under `hq/team/`" nor "names a
+ *   blocked id" narrows the right axis: `pm block` is what writes the id
+ *   there, and the `❗` stays until the cycle archives it, which cannot happen
+ *   while the item is blocked. Both reduce to *the inbox is dirty*, and fire
+ *   on the routine cycle AGENTS.md mandates at the end of every session.
+ *   The question is whether the pushed copy already carries the id.
+ * - **`git log HEAD --not --remotes`, not `@{u}..HEAD`.** Two problems in
+ *   one line. A two-dot *diff* is tree-to-tree, so a branch merely *behind*
+ *   reported every upstream file as "on this machine only" — the same mistake
+ *   `trunkChanges` was fixed for. And an upstream-relative range answers the
+ *   wrong question: on a fresh branch with no upstream, records pushed long
+ *   ago from `main` are not unsent. "In no remote" is the question, and it
+ *   needs no upstream to ask.
+ */
+export interface UnsentRecords {
+  paths: string[];
+  /**
+   * git could not be asked. The last place the `null`/`[]` split had not
+   * reached, and once the tracked-modification path started working it became
+   * the only remaining route to a silent report — in the check whose whole
+   * purpose is that a dropped escalation cannot be silent.
+   */
+  unavailable: boolean;
+}
+
+export async function unsentBlockRecords(
+  cwd: string,
+  blockedIds: string[],
+): Promise<UnsentRecords> {
+  if (!blockedIds.length) return { paths: [], unavailable: false };
+  const ids = blockedIds.map((id) => id.toLowerCase());
+
+  // **Lines are not trimmed.** `git status --porcelain` is `XY<space>PATH`
+  // with a *space* meaning "unmodified in this position", so a worktree-only
+  // change emits ` M path` — and `.slice(3)` below is correct only on the raw
+  // line. Trimming first ate the first two characters of every tracked
+  // modification: `hq/team/x.md` became `q/team/x.md`, whose `dirname` is not
+  // `INBOX_DIR`, so the inbox — the one record that carries information —
+  // silently dropped out of a report saying "including the inbox entry".
+  // `rev-parse` and `log --name-only` emit no leading whitespace, so nothing
+  // else needed the trim.
+  const at = async (dir: string, args: string[]): Promise<string[] | null> => {
+    try {
+      const { stdout } = await exec("git", args, { cwd: dir, timeout: 10_000 });
+      return stdout.split("\n").filter((l) => l.trim()).map((l) => l.replace(/\s+$/, ""));
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * Every git call runs **from the repo root**, and every path this function
+   * touches is repo-root-relative.
+   *
+   * `--porcelain` and `--name-only` emit root-relative paths whatever
+   * directory git runs in, but a `--` pathspec is read *relative to cwd*, and
+   * `join(cwd, path)` is a third coordinate system. Three separate defects in
+   * this one function came from mixing them — the inbox read going ENOENT and
+   * being swallowed, and the `rev-list` pathspec silently matching nothing.
+   * One root removes the class rather than the instances.
+   */
+  const rootDir = (await at(cwd, ["rev-parse", "--show-toplevel"]))?.[0] ?? cwd;
+  const lines = (args: string[]): Promise<string[] | null> => at(rootDir, args);
+
+  // `-uall`, because plain `--porcelain` collapses an untracked directory to
+  // one entry — a first block in a fresh checkout reports `hq/` and names none
+  // of the three records.
+  const status = await lines(["status", "--porcelain", "-uall"]);
+  const dirty = (status ?? []).map((l) => l.slice(3).trim());
+
+  // Reachable from no remote at all — which is the actual question, and needs
+  // no upstream to ask. It covers a branch with no tracking ref (where an
+  // upstream-relative range answers nothing) without also calling records that
+  // were pushed from `main` long ago unsent.
+  const log = await lines(["log", "--name-only", "--pretty=format:", "HEAD", "--not", "--remotes"]);
+  const unpushed = log ?? [];
+  if (status === null || log === null) return { paths: [], unavailable: true };
+
+  const candidates = [...new Set([...dirty, ...unpushed])].filter(Boolean);
+  const named = candidates.filter((path) => ids.some((id) => path.toLowerCase().includes(id)));
+
+  // An inbox has no id in its path, so ask its contents instead. `hq/team/`
+  // also holds the roster, a README and meeting notes, none of which are ever
+  // an escalation.
+  const inboxes: string[] = [];
+  for (const path of candidates) {
+    if (named.includes(path)) continue;
+    const name = basename(path).toLowerCase();
+    if (dirname(path) !== INBOX_DIR || !name.endsWith(".md") || TEAM_RESERVED.has(name)) continue;
+
+    const body = await readFile(join(rootDir, path), "utf8").catch(() => null);
+    // Unreadable is not "names no escalation". An inbox that exists and cannot
+    // be read is listed rather than dropped — the check exists for this file,
+    // so failing closed on it is the only safe direction.
+    if (body === null) {
+      inboxes.push(path);
+      continue;
+    }
+
+    const here = ids.filter((id) => body.toLowerCase().includes(id));
+    if (!here.length) continue;
+
+    // The newest version of this file that reached a remote. An id already in
+    // it is an escalation that reached whoever answers — the local copy is a
+    // routine cycle carrying a still-open item forward, not a dropped one.
+    const pushedAt = (await lines(["rev-list", "-1", "--remotes", "--", path]))?.[0];
+    const pushed = pushedAt
+      ? ((await lines(["show", `${pushedAt}:${path}`])) ?? []).join("\n").toLowerCase()
+      : "";
+    if (here.some((id) => !pushed.includes(id))) inboxes.push(path);
+  }
+
+  return { paths: [...named, ...inboxes].sort(), unavailable: false };
 }
 
 /**
@@ -338,15 +504,29 @@ export async function claims(
  * would sweep whatever else is in the tree into a commit nobody intended, which
  * is the same reason `claim` stages explicitly.
  */
+export interface BlockOutcome {
+  code: number;
+  /**
+   * What this call wrote, with the content it read first, empty on every
+   * failure path. The caller re-fingerprints these into its context receipt —
+   * passing anything it did not write would have the receipt assert a record
+   * was read that this session neither read nor wrote, and re-fingerprinting
+   * without `before` would absorb a reply that landed inside the term.
+   */
+  written: { path: string; before: string | null }[];
+}
+
 export async function block(
   productDir: string,
   root: string,
   id: string,
-  opts: { needs?: string; owner?: string; context?: string },
-): Promise<number> {
+  opts: { needs?: string; owner?: string; context?: string; push?: boolean },
+): Promise<BlockOutcome> {
+  const nothing = (code: number): BlockOutcome => ({ code, written: [] });
+
   if (!id) {
     console.error('Usage: morpheus pm block MO-051 --needs "what would unblock this"');
-    return 1;
+    return nothing(1);
   }
   if (!opts.needs?.trim()) {
     console.error(
@@ -354,7 +534,7 @@ export async function block(
         'subscription pays for it".\n\n' +
         '"Blocked on Chris" is not a need — say what would actually unblock it.',
     );
-    return 1;
+    return nothing(1);
   }
 
   const owner = opts.owner ?? (await inboxOwner(root));
@@ -363,7 +543,7 @@ export async function block(
       "Could not tell whose inbox this belongs in. Pass --owner <github-handle>, or add\n" +
         "one inbox under hq/team/ so there is an unambiguous default.",
     );
-    return 1;
+    return nothing(1);
   }
 
   try {
@@ -381,25 +561,52 @@ export async function block(
     for (const p of r.written) console.log(`  wrote ${p}`);
     if (r.inboxCreated) console.log(`  (created a new inbox for ${owner})`);
 
-    const pushed = await commitRecords(
-      root,
-      r.written,
-      `chore(${r.id}): blocked — ${opts.needs.trim().slice(0, 60)}`,
-    );
-    console.log(
-      pushed
-        ? "Committed and pushed — the block is visible to every other session."
-        : "\x1b[33mCommitted nothing: not a git repo, or the push failed. The records are on disk.\x1b[0m",
-    );
+    if (opts.push === false) {
+      // Offline. The records are written, which is what keeps `pm block`
+      // reachable when a session most needs it — but a block nobody can see
+      // is not yet a block, and saying so is the difference between a
+      // deferred step and a silently dropped one.
+      console.log(
+        "\x1b[33mOffline: written to disk and not pushed. The block is not visible to other\n" +
+          "sessions yet — commit and push it when you reconnect.\x1b[0m",
+      );
+    } else {
+      const outcome = await commitRecords(
+        root,
+        r.written,
+        `chore(${r.id}): blocked — ${opts.needs.trim().slice(0, 60)}`,
+      );
+      if (outcome === "pushed") {
+        console.log("Committed and pushed — the block is visible to every other session.");
+      } else if (outcome === "committed") {
+        console.log(
+          "\x1b[33mCommitted, but the push failed — the block is not visible to other sessions.\n" +
+            "Push when you can; `morpheus pm claims` will keep saying so.\x1b[0m",
+        );
+      } else {
+        console.log(
+          "\x1b[33mCommitted nothing: not a git repo, or the commit failed. The records are on disk.\x1b[0m",
+        );
+      }
+    }
 
     console.log(
       `\nThe branch stays claimed. When answered: \`morpheus pm unblock ${r.id}\`.`,
     );
-    return 0;
+    // `before: null` is a positive claim — `noteWrite` maps it to `ABSENT` —
+    // so it is only made for the inbox, where `block()` actually knows. The
+    // other two records are omitted rather than described falsely: the
+    // roadmap item existed before it was rewritten, and saying otherwise
+    // would be a claim about a file this call never measured.
+    const inboxPath = r.written[r.written.length - 1];
+    return {
+      code: 0,
+      written: inboxPath ? [{ path: inboxPath, before: r.inboxBefore }] : [],
+    };
   } catch (err) {
     if (err instanceof BlockError) {
       console.error(err.message);
-      return 1;
+      return nothing(1);
     }
     throw err;
   }
