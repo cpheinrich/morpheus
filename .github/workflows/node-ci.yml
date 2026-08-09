@@ -35,6 +35,10 @@ on:
         description: Fail when the build changes committed generated output.
         type: boolean
         default: false
+      build-output-directory:
+        description: Tracked generated directory to clean before a verified build.
+        type: string
+        default: ""
 
 jobs:
   check:
@@ -68,6 +72,19 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Clean committed build output
+        if: ${{ inputs.verify-build-clean && inputs.build-output-directory != '' }}
+        env:
+          BUILD_OUTPUT_DIRECTORY: ${{ inputs.build-output-directory }}
+        run: |
+          case "$BUILD_OUTPUT_DIRECTORY" in
+            "."|"/"|/*|*".."*)
+              echo "build-output-directory must be a safe relative path" >&2
+              exit 1
+              ;;
+          esac
+          git rm -r -f --ignore-unmatch -- "$BUILD_OUTPUT_DIRECTORY"
+
       - name: Build
         env:
           BUILD_SCRIPT: ${{ inputs.build-script }}
@@ -75,4 +92,6 @@ jobs:
 
       - name: Verify committed build output
         if: ${{ inputs.verify-build-clean }}
-        run: git diff --exit-code
+        run: |
+          git add --all
+          git diff --cached --exit-code

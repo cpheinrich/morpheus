@@ -31,3 +31,14 @@ reported hook while still making npm clone dev dependencies and rebuild on every
   `dist/cli/index.js`, with a 979 KB unpacked package.
 - A clean `pnpm compile && git diff --exit-code` produced no diff, exercising the same artifact
   drift condition CI now enforces.
+
+Independent review found the first drift command only detected modified tracked files: it missed a
+new untracked artifact and a stale output left behind after source deletion. CI now removes the
+declared tracked output directory before compiling, stages the complete result, and compares the
+index. Tests assert that mechanism, not just the caller inputs.
+
+The same review caught a version seam in reusable workflows: a workflow body from `@main` may check
+out an older pinned `morpheus-ref` that has `build` rather than `compile`. Those workflows now only
+install the selected ref. Old refs generate `dist/` through their existing `prepare`; new refs
+already carry it. The package test also derives all exports and bins from `package.json` and checks
+the CLI executable mode, rather than hardcoding three entry points.

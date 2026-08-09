@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const manifest = JSON.parse(
@@ -7,6 +7,7 @@ const manifest = JSON.parse(
   scripts: Record<string, string>;
   files?: string[];
   exports?: Record<string, string>;
+  bin?: Record<string, string>;
   workspaces?: unknown;
 };
 
@@ -36,8 +37,13 @@ describe("the manifest a consumer installs against", () => {
     // clean checkout already has the package entry points a consumer needs;
     // CI compiles afterwards and fails if doing so changes the committed tree.
     expect(manifest.files).toContain("dist");
-    expect(existsSync(new URL("../dist/index.js", import.meta.url))).toBe(true);
-    expect(existsSync(new URL("../dist/design/index.js", import.meta.url))).toBe(true);
-    expect(existsSync(new URL("../dist/cli/index.js", import.meta.url))).toBe(true);
+    for (const [subpath, target] of Object.entries(manifest.exports ?? {})) {
+      expect(existsSync(new URL(`../${target}`, import.meta.url)), subpath).toBe(true);
+    }
+    for (const [name, target] of Object.entries(manifest.bin ?? {})) {
+      const path = new URL(`../${target}`, import.meta.url);
+      expect(existsSync(path), name).toBe(true);
+      expect(statSync(path).mode & 0o111, `${name} should be executable`).not.toBe(0);
+    }
   });
 });

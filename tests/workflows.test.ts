@@ -181,6 +181,7 @@ describe("ci.yml", () => {
       expect.objectContaining({
         "build-script": "compile",
         "verify-build-clean": true,
+        "build-output-directory": "dist",
       }),
     );
   });
@@ -202,6 +203,29 @@ describe("ci.yml", () => {
     for (const [name, job] of Object.entries(wf.jobs ?? {})) {
       const needs = [job.needs ?? []].flat();
       expect(needs, `${name} must not depend on agent-review`).not.toContain("agent-review");
+    }
+  });
+});
+
+describe("committed build output", () => {
+  it("cleans stale files and stages additions before comparing", async () => {
+    const wf = (await read("node-ci.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
+    };
+    const steps = wf.jobs?.check?.steps ?? [];
+    const clean = steps.find((step) => step.name === "Clean committed build output");
+    const verify = steps.find((step) => step.name === "Verify committed build output");
+
+    expect(clean?.run).toContain("git rm -r -f --ignore-unmatch");
+    expect(verify?.run).toContain("git add --all");
+    expect(verify?.run).toContain("git diff --cached --exit-code");
+  });
+
+  it("consumer workflows use the selected ref's packaged CLI", async () => {
+    for (const file of ["agent-review.yml", "heartbeat.yml", "pm-check.yml", "pr-check.yml"]) {
+      const raw = await readFile(join(DIR, file), "utf8");
+      expect(raw, file).toContain("pnpm install --frozen-lockfile");
+      expect(raw, file).not.toContain("pnpm compile");
     }
   });
 });

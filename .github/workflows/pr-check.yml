@@ -63,11 +63,12 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Build the Morpheus CLI
+      - name: Install the Morpheus CLI runtime
         working-directory: .morpheus
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm compile
+        # Old pinned refs still build through their prepare hook; new refs
+        # already carry dist/. Either way the workflow body stays compatible
+        # with the exact Morpheus ref the consumer selected.
+        run: pnpm install --frozen-lockfile
 
       - name: Check PR conventions
         run: >

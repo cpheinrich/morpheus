@@ -81,11 +81,9 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Build the Morpheus CLI
+      - name: Install the Morpheus CLI runtime
         working-directory: .morpheus
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm compile
+        run: pnpm install --frozen-lockfile
 
       - name: Beat
         run: >
