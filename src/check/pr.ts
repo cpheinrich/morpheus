@@ -70,14 +70,30 @@ function isRealReason(reason: string): boolean {
   return reason.length >= 4 && !NON_REASONS.has(reason.toLowerCase());
 }
 
+function stripHtmlComments(body: string): string {
+  return body.replace(/<!--[\s\S]*?-->/g, "");
+}
+
+/** Remove places where Markdown presents text as an example rather than prose. */
+function stripCode(body: string): string {
+  return body
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/~~~[\s\S]*?~~~/g, "")
+    .replace(/`[^`\r\n]*`/g, "");
+}
+
 /** Whether the PR body uses one of GitHub's same-repository closing keywords. */
 export function closesIssue(body: string, issue: number): boolean {
   const keyword = String.raw`(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)`;
   // The pull-request template carries an example inside an HTML comment.
   // GitHub does not treat hidden template guidance as closure intent, so the
   // verifier must not let that example satisfy the rule either.
-  const visible = body.replace(/<!--[\s\S]*?-->/g, "");
-  return new RegExp(String.raw`(?:^|\s)${keyword}\s+#${issue}(?!\d)`, "im").test(visible);
+  const visible = stripCode(stripHtmlComments(body));
+  // `_` is a regex word character but also Markdown emphasis, so `\b` would
+  // reject `_Resolves #70_`. Exclude letters and digits explicitly instead.
+  return new RegExp(String.raw`(?:^|[^A-Za-z0-9])${keyword}\s+#${issue}(?!\d)`, "im").test(
+    visible,
+  );
 }
 
 const SOURCE = /^src\/.*\.(ts|tsx)$/;
@@ -108,7 +124,10 @@ export { roadmapIdFromBranch };
  */
 export function hasSection(body: string, heading: string): boolean {
   const want = heading.trim().toLowerCase();
-  const lines = body.split("\n");
+  // Template guidance is not author input. Without stripping it, a heading
+  // followed only by `<!-- what did you test? -->` satisfies the error-level
+  // test-plan rule before the author writes one character.
+  const lines = stripHtmlComments(body).split("\n");
 
   let inSection = false;
   for (const line of lines) {

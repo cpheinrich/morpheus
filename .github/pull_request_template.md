@@ -10,4 +10,4 @@
 
 ## Open questions
 
-None.
+<!-- State unresolved questions, or write None explicitly. -->

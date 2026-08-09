@@ -94,6 +94,10 @@ describe("hasSection", () => {
     expect(hasSection("## Test plan\n\n## Next\n\nstuff", "Test plan")).toBe(false);
   });
 
+  it("rejects a heading whose only content is hidden template guidance", () => {
+    expect(hasSection("## Test plan\n\n<!-- What did you run? -->\n", "Test plan")).toBe(false);
+  });
+
   it("is case insensitive and works at any heading level", () => {
     expect(hasSection("#### test PLAN\n\ncontent", "Test plan")).toBe(true);
   });
@@ -112,6 +116,16 @@ describe("closesIssue", () => {
   it("ignores the pull-request template example inside an HTML comment", () => {
     expect(closesIssue("<!-- If applicable: Closes #70. -->", 70)).toBe(false);
   });
+
+  it.each(["**Closes #70**", "(Closes #70)", "_Resolves #70_"])(
+    "accepts ordinary Markdown around the closing line: %s",
+    (body) => expect(closesIssue(body, 70)).toBe(true),
+  );
+
+  it.each(["`Closes #70`", "```text\nCloses #70\n```", "~~~\nFixes #70\n~~~"])(
+    "ignores closing syntax presented as code: %s",
+    (body) => expect(closesIssue(body, 70)).toBe(false),
+  );
 });
 
 describe("checkPr", () => {

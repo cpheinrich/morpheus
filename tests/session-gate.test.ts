@@ -98,10 +98,16 @@ describe("session identity", () => {
 });
 
 describe("what is gated", () => {
-  it("gates the four commands where stale context does identifiable harm", () => {
+  it("gates the five commands where stale context does identifiable harm", () => {
     // Deliberately not every command: a gate that fires on `pm index` trains
     // people to route around it, and the routing-around is permanent.
-    expect(Object.keys(GATED).sort()).toEqual(["access sync", "pm block", "pm claim", "pm new"]);
+    expect(Object.keys(GATED).sort()).toEqual([
+      "access sync",
+      "pm block",
+      "pm claim",
+      "pm link-issue",
+      "pm new",
+    ]);
   });
 
   it("treats anything that leaves the machine as external", () => {
@@ -115,6 +121,7 @@ describe("what is gated", () => {
     // Local unconditionally: its only remote use is a read-only `ls-remote`
     // for id allocation, and it never writes outward.
     expect(GATED["pm new"]).toBe("local");
+    expect(GATED["pm link-issue"]).toBe("local");
   });
 
   it("refuses every external command offline, whatever the reason for being offline", async () => {

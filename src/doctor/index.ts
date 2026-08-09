@@ -165,7 +165,7 @@ async function checkRequiredRecords(
     "context",
     `${missing.length} record(s) every session must load ${missing.length === 1 ? "is" : "are"} ` +
       `missing or unreadable: ${missing.map((i) => i.id).join(", ")}. Each is unresolvable, so ` +
-      `pm claim, pm new, pm block and access sync are refused permanently — and ` +
+      `pm claim, pm new, pm link-issue, pm block and access sync are refused permanently — and ` +
       `MORPHEUS_OFFLINE=1 does not reach it, because the lease is "refresh_required" rather ` +
       `than "unknown".`,
   );

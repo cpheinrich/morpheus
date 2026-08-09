@@ -13,6 +13,11 @@ import {
   writeIndex,
 } from "../pm/index-gen.js";
 import { createItem } from "../pm/new-item.js";
+import {
+  IssueLinkError,
+  linkIssue as linkIssueItem,
+  parseIssueNumber,
+} from "../pm/issues.js";
 import { ageInDays, claim as claimItem, ClaimError, listClaims } from "../pm/claim.js";
 import { ARTIFACTS, type ArtifactKind } from "../pm/schema.js";
 import { formatReconcile, markShipped, reconcile } from "../pm/ship.js";
@@ -243,8 +248,8 @@ export async function create(
     return 1;
   }
 
-  const issue = opts.issue === undefined ? undefined : Number(opts.issue);
-  if (issue !== undefined && (!Number.isInteger(issue) || issue <= 0)) {
+  const issue = opts.issue === undefined ? undefined : parseIssueNumber(opts.issue);
+  if (issue === null) {
     console.error(`--issue must be a positive GitHub issue number; received "${opts.issue}".`);
     return 1;
   }
@@ -282,6 +287,35 @@ export async function create(
     );
   }
   return index(productDir);
+}
+
+/** Add issue-closure intent to an item that already exists. */
+export async function linkIssue(productDir: string, id: string, rawIssue: string): Promise<number> {
+  if (!id) {
+    console.error("Usage: morpheus pm link-issue <ROADMAP-ID> <ISSUE-NUMBER>");
+    return 1;
+  }
+  const issue = parseIssueNumber(rawIssue);
+  if (issue === null) {
+    console.error(`Issue number must be a positive decimal integer; received "${rawIssue}".`);
+    return 1;
+  }
+
+  try {
+    const result = await linkIssueItem(productDir, id, issue);
+    console.log(
+      result.written
+        ? `Linked ${id.toUpperCase()} to GitHub issue #${issue}.`
+        : `${id.toUpperCase()} already links GitHub issue #${issue}.`,
+    );
+    return result.written ? index(productDir) : 0;
+  } catch (error) {
+    if (error instanceof IssueLinkError) {
+      console.error(error.message);
+      return 1;
+    }
+    throw error;
+  }
 }
 
 /** Claim a roadmap item by staking its branch on the remote. */

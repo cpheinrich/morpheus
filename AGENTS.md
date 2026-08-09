@@ -45,6 +45,7 @@ pnpm build                 # tsc -p tsconfig.build.json
 pnpm morpheus pm validate   # validate hq/product frontmatter
 pnpm morpheus pm index      # regenerate README index tables
 pnpm morpheus pm new roadmap "Title here" --priority P1 [--issue 123]
+pnpm morpheus pm link-issue MO-014 123  # attach an issue to existing work
 pnpm morpheus pm migrate-ids --check   # integer roadmap ids → the dated scheme (MO-057)
 pnpm morpheus pm block MO-051 --needs "what would unblock this"
 pnpm morpheus pm unblock MO-051
@@ -77,7 +78,8 @@ This takes a *context receipt* — your assertion that you have loaded current p
 fingerprinted against the tip of `origin/main`. It is good for **five minutes**, after which the
 next governed command re-checks the trunk and those records rather than trusting the old verdict.
 
-**Until you have one, these are refused:** `pm claim`, `pm new`, `pm block`, `access sync`. Nothing
+**Until you have one, these are refused:** `pm claim`, `pm new`, `pm link-issue`, `pm block`,
+`access sync`. Nothing
 else is gated — a check that fires on `pm index` trains you to route around it, and the
 routing-around outlives the staleness.
 
@@ -198,7 +200,8 @@ changes nothing. The rule applies only when browser use is the *single, entire* 
 - `Closes #<number>` for every GitHub issue declared in the roadmap item's `issues:` field
 
 When an issue becomes roadmap work, create it with `morpheus pm new roadmap "<title>" --issue 123`.
-That writes structured closure intent into the item. `check pr` then requires GitHub's closing
+For an existing item, use `morpheus pm link-issue <ID> 123`. Both write structured closure intent
+into the item, and the generated roadmap makes the linked issues visible. `check pr` then requires GitHub's closing
 keyword in the PR body, so merging the fix cannot leave the issue open as a second, stale backlog.
 An issue merely mentioned as related is not declared and is not closed.
 

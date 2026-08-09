@@ -22,3 +22,15 @@ the first. Invalid values are refused before the item is written.
 The important negative test is a mention: `Related to #70. Closes #700.` must not satisfy issue 70.
 Without it, a boundary bug would make the new enforcement look green in precisely the state it was
 created to catch.
+
+Independent review caught three gaps before merge. The template's HTML guidance counted as Test
+plan content and its literal `None.` pre-satisfied Open questions; section validation now ignores
+comments and the template leaves both sections genuinely empty. Closing syntax inside inline or
+fenced code also counted as intent, while `_Resolves #70_` was rejected because regex treats an
+underscore as a word character. The matcher now strips code and uses an alphanumeric boundary.
+
+The same review pointed out that creation-only linking did not help pre-existing board work. That
+was especially relevant to this audit, where most issues already map to roadmap items. `pm
+link-issue <ID> <number>` now performs a targeted, idempotent frontmatter update under the same
+context-freshness gate, and the generated roadmap exposes the issue column so closure intent is
+reviewable before the PR check reads it.

@@ -13,8 +13,9 @@ import {
   spliceIndex,
   writeIndex,
 } from "../src/pm/index-gen.js";
-import { create, index } from "../src/cli/pm.js";
+import { create, index, linkIssue as linkIssueCli } from "../src/cli/pm.js";
 import { createItem, nextId } from "../src/pm/new-item.js";
+import { linkIssue, parseIssueNumber } from "../src/pm/issues.js";
 import { Goal, RoadmapItem } from "../src/pm/schema.js";
 
 const execFileAsync = promisify(execFile);
@@ -331,6 +332,15 @@ describe("index generation", () => {
     expect(renderRoadmap(items)).toContain("[MO-001](./MO-001.md)");
   });
 
+  it("shows declared GitHub issues on the generated board", async () => {
+    await seed("roadmap", "MO-001", `${VALID_RM}\nissues: [70, 76]`);
+    const { items } = await parseArtifact(product, "roadmap");
+    const rendered = renderRoadmap(items);
+
+    expect(rendered).toContain("| ID | Title | Status | Pri | Goal | Issues | PRs |");
+    expect(rendered).toContain("| #70, #76 | #12 |");
+  });
+
   it("replaces only the marked block, preserving surrounding prose", () => {
     const existing = `# Roadmap\n\nIntro prose.\n\n${BEGIN}\nOLD\n${END}\n\nTrailing note.\n`;
     const next = spliceIndex(existing, "NEW");
@@ -429,10 +439,48 @@ describe("new item", () => {
     expect(items[0]!.data.issues).toEqual([70]);
   });
 
-  it.each(["0", "-1", "not-a-number"])("refuses invalid --issue value %s before writing", async (issue) => {
+  it.each(["0", "-1", "7e1", " 70 ", "not-a-number"])("refuses invalid --issue value %s before writing", async (issue) => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect(await create(product, "roadmap", "Close the loop", { issue }, product)).toBe(1);
     expect(error).toHaveBeenCalledWith(expect.stringContaining("positive GitHub issue number"));
+    error.mockRestore();
+  });
+
+  it("parses only positive safe decimal issue numbers", () => {
+    expect(parseIssueNumber("70")).toBe(70);
+    for (const raw of ["0", "-1", "7e1", " 70 ", "9007199254740992"]) {
+      expect(parseIssueNumber(raw)).toBeNull();
+    }
+  });
+
+  it("adds, sorts and deduplicates issues on an existing roadmap item", async () => {
+    await seed("roadmap", "MO-001", `${VALID_RM}\nissues: [76]`);
+
+    const first = await linkIssue(product, "mo-001", 70, new Date("2026-08-08T19:00:00-07:00"));
+    expect(first).toMatchObject({ issues: [70, 76], written: true });
+    const raw = await readFile(first.path, "utf8");
+    expect(raw).toContain("issues: [70, 76]");
+    expect(raw).toContain("updated: 2026-08-08");
+
+    expect(await linkIssue(product, "MO-001", 70)).toMatchObject({ issues: [70, 76], written: false });
+  });
+
+  it("links an issue through the CLI boundary and refreshes the index", async () => {
+    await seed("roadmap", "MO-001", VALID_RM);
+
+    expect(await linkIssueCli(product, "MO-001", "70")).toBe(0);
+    const { items, issues } = await parseArtifact(product, "roadmap");
+    expect(issues).toEqual([]);
+    expect(items[0]!.data.issues).toEqual([70]);
+    expect(await readFile(join(product, "roadmap", "README.md"), "utf8")).toContain("#70");
+  });
+
+  it("refuses a missing item or malformed issue without writing", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await linkIssueCli(product, "MO-404", "70")).toBe(1);
+    expect(await linkIssueCli(product, "MO-404", "7e1")).toBe(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("No roadmap item MO-404"));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("positive decimal integer"));
     error.mockRestore();
   });
 
