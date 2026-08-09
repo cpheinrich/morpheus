@@ -342,6 +342,19 @@ describe("morpheus init", () => {
       }
     });
 
+    it("does not treat an unreadable Firebase config as absent", async () => {
+      await mkdir(join(dir, "firebase.json"));
+
+      const result = await scaffold(dir, SEED);
+
+      expect(result.notes.join("\n")).toContain("firebase.json could not be read");
+      await expect(read("infra/firebase/firestore.rules")).rejects.toMatchObject({ code: "ENOENT" });
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
+    });
+
     /**
      * The directory exists from the start rather than on first use, because
      * the gate lives in it: `redacted: true` is a claim, `team validate`

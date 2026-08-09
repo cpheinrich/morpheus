@@ -73,3 +73,5 @@ Every newly written rules file now carries the deny-by-default deployment warnin
 also creates `firebase.json`, the note states that the next deploy will activate that file. Partial
 gate reporting says initialization did not enable generated CI rather than claiming a preserved
 workflow was turned off.
+The last optional-file read now distinguishes absence from every other failure. An unreadable but
+present `firebase.json` is preserved and reported, never routed into fresh canonical scaffolding.

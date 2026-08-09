@@ -41,6 +41,27 @@ type ConfiguredFirestoreRules =
   | { kind: "missing" }
   | { kind: "invalid"; message: string };
 
+type OptionalFile =
+  | { kind: "absent" }
+  | { kind: "content"; content: string }
+  | { kind: "unreadable"; message: string };
+
+async function readOptional(path: string): Promise<OptionalFile> {
+  try {
+    return { kind: "content", content: await readFile(path, "utf8") };
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code: unknown }).code)
+        : undefined;
+    if (code === "ENOENT") return { kind: "absent" };
+    return {
+      kind: "unreadable",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 function configuredFirestoreRules(content: string): ConfiguredFirestoreRules {
   try {
     const parsed: unknown = JSON.parse(content);
@@ -197,11 +218,18 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   let rulesPath: string | undefined;
   if (seed.kind === "company") {
     const canonicalRules = "infra/firebase/firestore.rules";
-    const firebaseConfig = await readFile(join(root, "firebase.json"), "utf8").catch(() => null);
-    const configured = firebaseConfig ? configuredFirestoreRules(firebaseConfig) : null;
+    const firebaseConfig = await readOptional(join(root, "firebase.json"));
+    const configured =
+      firebaseConfig.kind === "content"
+        ? configuredFirestoreRules(firebaseConfig.content)
+        : null;
     if (configured?.kind === "path") {
       rulesPath = await prepareRules(configured.path);
-    } else if (firebaseConfig !== null) {
+    } else if (firebaseConfig.kind === "unreadable") {
+      const reason = `firebase.json could not be read: ${firebaseConfig.message}`;
+      skipped.push(`${canonicalRules} (${reason})`);
+      notes.push(`${reason}. Kept the repository unchanged and did not guess a rules path.`);
+    } else if (firebaseConfig.kind === "content") {
       const reason =
         configured?.kind === "invalid"
           ? `firebase.json could not be parsed: ${configured.message}`
