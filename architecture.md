@@ -92,6 +92,7 @@ acme/
 │   │   └── tests/             # unit + component tests, colocated
 │   ├── ios/                   # SwiftUI — optional
 │   │   └── Tests/
+│   ├── backend/               # workers, services, scheduled jobs — optional
 │   └── hardware/              # designs, BOM, vendors — optional (§19)
 │
 ├── packages/
@@ -131,6 +132,12 @@ morpheus-kit/hq   the renderer      (package)
 
 Whatever is in `hq/` is what `/hq` shows. Where `apps/` needs a fact from `hq/`, it imports rather
 than copies (§12.3).
+
+`apps/backend/` is the conventional home for a deployable product surface with no client UI: a
+worker, scheduled job, inference service, execution loop, or similar long-running system. Name the
+directory for that stable role rather than for one company's implementation (`trader/`, `bot/`).
+Code that is imported by two or more surfaces still belongs in `packages/shared/`; code that runs
+as the product belongs in `apps/backend/`, even when no other surface imports it.
 
 ### Project kinds
 
@@ -226,6 +233,7 @@ often goes wrong when one person runs several companies.
 | Web product | `apps/web/` | Next.js app |
 | iOS product | `apps/ios/` | SwiftUI app |
 | Android product | `apps/android/` | Deferred — bolt-on template later |
+| Backend product | `apps/backend/` | Worker, service, scheduled job, inference or execution loop |
 | Design tokens | `hq/brand/tokens.json` → `packages/shared/` | DTCG JSON → generated (§12.1) |
 | Database schema | `packages/shared/schema/` | TS source → generated types + rules |
 | Brand messaging | `hq/brand/messaging.json` | Imported by web |
