@@ -223,6 +223,41 @@ describe("morpheus init", () => {
       expect(result.notes.join("\n")).not.toContain("did not guess");
     });
 
+    it("leaves CI off for an existing configured rules file without markers", async () => {
+      await writeFile(
+        join(dir, "firebase.json"),
+        JSON.stringify({ firestore: { rules: "firestore.rules" } }),
+        "utf8",
+      );
+      await writeFile(join(dir, "firestore.rules"), "rules_version = '2';\n", "utf8");
+
+      const result = await scaffold(dir, SEED);
+
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
+      expect(await read("firestore.rules")).toBe("rules_version = '2';\n");
+      expect(result.notes.join("\n")).toContain("morpheus hq rules --print");
+    });
+
+    it("distinguishes malformed Firebase config from an ambiguous rules shape", async () => {
+      for (const [name, config, message] of [
+        ["malformed", "{\"firestore\":", "could not be parsed"],
+        ["ambiguous", JSON.stringify({ firestore: [{ rules: "a.rules" }] }), "does not name one"],
+      ] as const) {
+        const root = join(dir, name);
+        await mkdir(root, { recursive: true });
+        await writeFile(join(root, "firebase.json"), config, "utf8");
+
+        const result = await scaffold(root, SEED);
+        expect(result.notes.join("\n")).toContain(message);
+        await expect(readFile(join(root, "infra/firebase/firestore.rules"), "utf8")).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      }
+    });
+
     /**
      * The directory exists from the start rather than on first use, because
      * the gate lives in it: `redacted: true` is a claim, `team validate`

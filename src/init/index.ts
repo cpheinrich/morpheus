@@ -1,7 +1,7 @@
 import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { EXPECTED } from "../doctor/index.js";
-import { renderFirestoreRules } from "../hq/rules.js";
+import { BEGIN, renderFirestoreRules } from "../hq/rules.js";
 import * as t from "./templates.js";
 import type { Seed } from "./templates.js";
 import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
@@ -36,13 +36,23 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
-function configuredFirestoreRules(content: string): string | null {
+type ConfiguredFirestoreRules =
+  | { kind: "path"; path: string }
+  | { kind: "missing" }
+  | { kind: "invalid"; message: string };
+
+function configuredFirestoreRules(content: string): ConfiguredFirestoreRules {
   try {
     const parsed = JSON.parse(content) as { firestore?: { rules?: unknown } };
     const path = parsed.firestore?.rules;
-    return typeof path === "string" && path.trim() ? path : null;
-  } catch {
-    return null;
+    return typeof path === "string" && path.trim()
+      ? { kind: "path", path }
+      : { kind: "missing" };
+  } catch (error) {
+    return {
+      kind: "invalid",
+      message: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -139,16 +149,30 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   if (seed.kind === "company") {
     const canonicalRules = "infra/firebase/firestore.rules";
     const firebaseConfig = await readFile(join(root, "firebase.json"), "utf8").catch(() => null);
-    const configuredRules = firebaseConfig ? configuredFirestoreRules(firebaseConfig) : null;
-    if (configuredRules) {
-      await put(configuredRules, renderFirestoreRules());
-      rulesPath = configuredRules;
+    const configured = firebaseConfig ? configuredFirestoreRules(firebaseConfig) : null;
+    if (configured?.kind === "path") {
+      const existingRules = await readFile(join(root, configured.path), "utf8").catch(() => null);
+      if (existingRules === null) {
+        await put(configured.path, renderFirestoreRules());
+        rulesPath = configured.path;
+      } else if (existingRules.includes(BEGIN)) {
+        skipped.push(configured.path);
+        rulesPath = configured.path;
+      } else {
+        skipped.push(`${configured.path} (configured rules file has no generated role markers)`);
+        notes.push(
+          `Kept the deployed rules file ${configured.path} and left its CI check off because it ` +
+            "has no generated role markers. Review `morpheus hq rules --print`, add the block " +
+            "inside the database match scope, then enable hq-rules-path.",
+        );
+      }
     } else if (firebaseConfig !== null) {
-      skipped.push(`${canonicalRules} (firebase.json does not name one rules path)`);
-      notes.push(
-        "Kept the existing firebase.json and did not guess its Firestore rules path. " +
-          "Set hq-rules-path to the rules file that configuration deploys.",
-      );
+      const reason =
+        configured?.kind === "invalid"
+          ? `firebase.json could not be parsed: ${configured.message}`
+          : "firebase.json does not name one string Firestore rules path";
+      skipped.push(`${canonicalRules} (${reason})`);
+      notes.push(`${reason}. Kept the configuration and did not guess a path; fix or confirm it.`);
     } else if (await exists(join(root, "firestore.rules"))) {
       skipped.push(`${canonicalRules} (root firestore.rules already exists)`);
       notes.push(

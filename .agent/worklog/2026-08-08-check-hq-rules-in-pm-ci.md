@@ -55,3 +55,7 @@ and verification one file-backed invariant rather than two instructions. A singl
 in an existing Firebase configuration is authoritative; ambiguous configurations are preserved and
 reported instead of guessed. Preserved-CI guidance is derived from the file's current
 `hq-rules-path`, so it repeats on every `init` run until the deployed path is actually wired.
+An existing configured rules file is wired only when its generated marker block is already present;
+otherwise the scaffold preserves it, leaves CI off, and points at the explicit `--print` migration.
+Malformed Firebase JSON and parsed-but-ambiguous rule shapes remain separate reported states rather
+than collapsing into a guessed diagnosis.
