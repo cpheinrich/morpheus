@@ -35,3 +35,8 @@ The final integration review followed the documented command from a fresh scaffo
 `infra/firebase/` did not yet exist. Company scaffolds now carry the deny-by-default starter rules
 file, which makes the first check green and gives the local refresh command a real target. The CLI
 also requires a non-empty path, removing the undocumented root fallback entirely.
+
+For established repos, `init` treats an existing root `firestore.rules` as the current gate: it
+does not create a canonical-path duplicate, and its result explains that `hq-rules-path` must name
+the file Firebase actually deploys. This preserves the non-overwriting migration contract while
+fresh company repos get the canonical layout.

@@ -160,6 +160,18 @@ describe("morpheus init", () => {
       expect(await rules(dir, true, path)).toBe(0);
     });
 
+    it("does not add a second rules file to an established root-layout project", async () => {
+      await writeFile(join(dir, "firestore.rules"), "the deployed legacy gate\n", "utf8");
+
+      const result = await scaffold(dir, SEED);
+
+      await expect(read("infra/firebase/firestore.rules")).rejects.toMatchObject({ code: "ENOENT" });
+      expect(result.skipped).toContain(
+        "infra/firebase/firestore.rules (root firestore.rules already exists)",
+      );
+      expect(result.notes.join("\n")).toContain("did not create a second rules file");
+    });
+
     /**
      * The directory exists from the start rather than on first use, because
      * the gate lives in it: `redacted: true` is a claim, `team validate`

@@ -126,7 +126,16 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   // documented `hq rules` command names it. Scaffold the deny-by-default
   // starter so the first CI check is meaningful and its remedy is executable.
   if (seed.kind === "company") {
-    await put("infra/firebase/firestore.rules", renderFirestoreRules());
+    const canonicalRules = "infra/firebase/firestore.rules";
+    if (await exists(join(root, "firestore.rules"))) {
+      skipped.push(`${canonicalRules} (root firestore.rules already exists)`);
+      notes.push(
+        "Kept the existing root firestore.rules and did not create a second rules file. " +
+          "Set hq-rules-path to the file Firebase actually deploys.",
+      );
+    } else {
+      await put(canonicalRules, renderFirestoreRules());
+    }
   }
 
   // Remaining expected directories get a placeholder so they survive a clone.

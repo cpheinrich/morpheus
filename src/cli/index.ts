@@ -65,8 +65,8 @@ Usage
   morpheus brand status           [--dir <hq/brand>] [--name <Acme>]
   morpheus brand check            [--dir <hq/brand>] — generated files vs answers.md
   morpheus access sync      [--project <firebase-project>] [--dry-run]
-  morpheus hq rules         [--check] [--rules-path <path>]
-                            — role helpers in firestore.rules, from the vocabulary
+  morpheus hq rules         --rules-path <path> [--check]
+                            — role helpers in the deployed rules file, from the vocabulary
   morpheus hq rules --print print the generated block, to paste into existing rules
   morpheus registry list | add [--prefix XX] | remove <name>
   morpheus init             [--name <Acme>] [--prefix XX] [--kind company|personal|internal]
