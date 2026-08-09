@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
-| [MO-26-08-08-21.30.49](./MO-26-08-08-21.30.49-enforce-issue-closure.md) | Make issue closure explicit and enforced | review | P1 | — | — | — |
+| [MO-26-08-08-21.50.05](./MO-26-08-08-21.50.05-fix-block-lifecycle.md) | Make blocked work safe and durable | review | P1 | — | #80, #83, #91 | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
@@ -74,6 +74,7 @@ item files, not this table.
 | [MO-26-08-05-16.29.20](./MO-26-08-05-16.29.20-fix-inbox-detect-reserved.md) | Onboarding reads members.md as an inbox | shipped | P1 | — | — | #96 |
 | [MO-26-08-07-20.10.23](./MO-26-08-07-20.10.23-hq-session-mint.md) | Session cookies: the mint half of morpheus-kit/hq | shipped | P1 | — | — | #101 |
 | [MO-26-08-08-00.35.02](./MO-26-08-08-00.35.02-prepare-package-manager.md) | prepare must not assume the consumer's package manager | shipped | P1 | — | — | #102 |
+| [MO-26-08-08-21.30.49](./MO-26-08-08-21.30.49-enforce-issue-closure.md) | Make issue closure explicit and enforced | shipped | P1 | — | — | #105 |
 | [MO-26-07-28-008](./MO-26-07-28-008-morpheus-init.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | — | #22 |
 | [MO-26-07-28-009](./MO-26-07-28-009-retrofit-darwin.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-010](./MO-26-07-29-010-simplify-architecture-md-first.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | — | #46 |

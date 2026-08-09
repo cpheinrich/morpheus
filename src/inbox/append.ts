@@ -18,6 +18,8 @@ export interface OpenItem {
   agent: "claude" | "codex" | "human";
   /** Roadmap id, rendered as a relative link so it resolves on GitHub. */
   roadmap?: string;
+  /** Actual roadmap filename when it carries a slug. */
+  roadmapFile?: string;
   /** Markdown body, above the reply slot. */
   body: string;
 }
@@ -30,8 +32,8 @@ export interface InboxMeta {
 }
 
 /** `[MO-050](../product/roadmap/MO-050.md)` — resolves in Obsidian and on GitHub. */
-function roadmapLink(id: string): string {
-  return `[${id}](../product/roadmap/${id}.md)`;
+function roadmapLink(id: string, file = `${id}.md`): string {
+  return `[${id}](../product/roadmap/${file})`;
 }
 
 /**
@@ -53,7 +55,10 @@ export function lastItemNumber(content: string): number {
 }
 
 function render(item: OpenItem, n: number): string {
-  const tail = [`\`${item.agent}\``, item.roadmap ? roadmapLink(item.roadmap) : null]
+  const tail = [
+    `\`${item.agent}\``,
+    item.roadmap ? roadmapLink(item.roadmap, item.roadmapFile) : null,
+  ]
     .filter(Boolean)
     .join(" · ");
 

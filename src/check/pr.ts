@@ -278,8 +278,12 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
           level: "error",
           rule: "roadmap-status",
           message:
-            `${id} is "${item.data.status}" — set it to "review" when opening a PR, ` +
-            `so the board does not lag the work.`,
+            item.data.status === "blocked"
+              ? `${id} is "blocked" and must keep its claimed branch for the partial work. ` +
+                `Do not set it to "review" or merge this branch. Publish the block records on ` +
+                `a branch that stakes no item (for example "inbox-<YYYY-MM-DD>").`
+              : `${id} is "${item.data.status}" — set it to "review" when opening a PR, ` +
+                `so the board does not lag the work.`,
         });
       }
     }

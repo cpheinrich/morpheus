@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { promisify } from "node:util";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { findDuplicateIds, parseArtifact, type ParseIssue } from "../pm/parse.js";
@@ -21,6 +21,8 @@ import {
 import { ageInDays, claim as claimItem, ClaimError, listClaims } from "../pm/claim.js";
 import { ARTIFACTS, type ArtifactKind } from "../pm/schema.js";
 import { formatReconcile, markShipped, reconcile } from "../pm/ship.js";
+import { currentBranch, resolveTrunk } from "../session/git.js";
+import { projectPolicy } from "../session/policy.js";
 
 const KINDS = Object.keys(ARTIFACTS) as ArtifactKind[];
 
@@ -42,13 +44,14 @@ async function exists(path: string): Promise<boolean> {
  * guessing puts a blocker in front of the wrong person and it goes unread —
  * refusing and asking costs one flag.
  */
-async function inboxOwner(root: string): Promise<string | null> {
+async function inboxOwners(root: string): Promise<string[]> {
   try {
-    const files = (await readdir(join(root, INBOX_DIR)))
-      .filter((f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()));
-    return files.length === 1 ? basename(files[0]!, ".md") : null;
+    return (await readdir(join(root, INBOX_DIR)))
+      .filter((f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()))
+      .map((file) => basename(file, ".md"))
+      .sort();
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -403,7 +406,11 @@ export async function claims(
   // nobody can see is not a block, so the state has to be visible somewhere
   // that gets read again — this is the "what is in flight" view, and it
   // already has the board in hand.
-  const { paths: unsent, unavailable } = await unsentBlockRecords(cwd, [...blocked.keys()]);
+  const { paths: unsent, unavailable } = await unsentBlockRecords(
+    cwd,
+    [...blocked.keys()],
+    productDir,
+  );
   if (unavailable) {
     console.log(
       `\n\x1b[33mCould not ask git whether the blocked items' records have reached anyone.\n` +
@@ -463,6 +470,7 @@ export interface UnsentRecords {
 export async function unsentBlockRecords(
   cwd: string,
   blockedIds: string[],
+  productDir: string,
 ): Promise<UnsentRecords> {
   if (!blockedIds.length) return { paths: [], unavailable: false };
   const ids = blockedIds.map((id) => id.toLowerCase());
@@ -515,6 +523,16 @@ export async function unsentBlockRecords(
 
   const candidates = [...new Set([...dirty, ...unpushed])].filter(Boolean);
   const named = candidates.filter((path) => ids.some((id) => path.toLowerCase().includes(id)));
+  // `pm block` refreshes this generated view after changing the item. Its path
+  // carries no item id, so the ordinary record matcher cannot discover it.
+  const productRoot = isAbsolute(productDir) ? productDir : join(rootDir, productDir);
+  const comparableRoot = await realpath(rootDir).catch(() => rootDir);
+  const comparableProduct = await realpath(productRoot).catch(() => productRoot);
+  const indexPath = relative(
+    comparableRoot,
+    join(comparableProduct, "roadmap", "README.md"),
+  ).replaceAll("\\", "/");
+  const indexes = candidates.filter((path) => path === indexPath);
 
   // An inbox has no id in its path, so ask its contents instead. `hq/team/`
   // also holds the roster, a README and meeting notes, none of which are ever
@@ -547,7 +565,7 @@ export async function unsentBlockRecords(
     if (here.some((id) => !pushed.includes(id))) inboxes.push(path);
   }
 
-  return { paths: [...named, ...inboxes].sort(), unavailable: false };
+  return { paths: [...new Set([...named, ...indexes, ...inboxes])].sort(), unavailable: false };
 }
 
 /**
@@ -591,11 +609,28 @@ export async function block(
     return nothing(1);
   }
 
-  const owner = opts.owner ?? (await inboxOwner(root));
-  if (!owner) {
+  const policy = await projectPolicy(root);
+  const trunk = await resolveTrunk(root, policy.trunk);
+  const branch = await currentBranch(root);
+  if (opts.push !== false && branch === trunk.branch) {
     console.error(
-      "Could not tell whose inbox this belongs in. Pass --owner <github-handle>, or add\n" +
-        "one inbox under hq/team/ so there is an unambiguous default.",
+      `Refusing to block ${id.toUpperCase()} on the protected trunk branch "${branch}". ` +
+        "`pm block` commits and pushes its coordination records so other sessions can see them.\n" +
+        `Run \`morpheus pm claim ${id.toUpperCase()}\`, or check out its existing claimed branch, ` +
+        "then block it there. Nothing was written.",
+    );
+    return nothing(1);
+  }
+
+  const owners = opts.owner ? [] : await inboxOwners(root);
+  const owner = opts.owner ?? (owners.length === 1 ? owners[0] : undefined);
+  if (!owner) {
+    const found = owners.length
+      ? ` Found ${owners.length} inboxes: ${owners.join(", ")}.`
+      : " Found no person inboxes.";
+    console.error(
+      `Could not tell whose inbox this belongs in.${found}\n` +
+        "Pass --owner <github-handle>, or leave exactly one person inbox under hq/team/.",
     );
     return nothing(1);
   }
@@ -611,9 +646,15 @@ export async function block(
     });
 
     console.log(`\x1b[33m${r.id} → blocked\x1b[0m — ${r.title}`);
+    if (r.alreadyBlocked) console.log("Updated the existing block reason.");
     console.log(`Needs: ${opts.needs.trim()}`);
     for (const p of r.written) console.log(`  wrote ${p}`);
     if (r.inboxCreated) console.log(`  (created a new inbox for ${owner})`);
+    if (r.indexIssues.length) {
+      console.warn(
+        `  Roadmap index not refreshed: ${r.indexIssues.length} validation issue(s) remain.`,
+      );
+    }
 
     if (opts.push === false) {
       // Offline. The records are written, which is what keeps `pm block`
@@ -652,7 +693,7 @@ export async function block(
     // other two records are omitted rather than described falsely: the
     // roadmap item existed before it was rewritten, and saying otherwise
     // would be a claim about a file this call never measured.
-    const inboxPath = r.written[r.written.length - 1];
+    const inboxPath = r.inboxPath;
     return {
       code: 0,
       written: inboxPath ? [{ path: inboxPath, before: r.inboxBefore }] : [],

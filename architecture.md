@@ -469,14 +469,20 @@ morpheus pm block MO-051 --needs "which model, and whose subscription pays for i
 ```
 
 Which sets `status: blocked` and `needs:` on the item, writes a worklog entry with
-`outcome: blocked`, and raises an open `❗` item in the owner's inbox. **A blocked item must name
-its unblocker** — `needs` is required by the schema when the status is `blocked`, so "I am
-blocked" without "here is what I need" does not validate. It would otherwise be a crash with
-better manners.
+`outcome: blocked`, raises an open `❗` item in the owner's inbox, refreshes the generated roadmap,
+and commits and pushes those records on the claimed branch. Online it refuses the protected trunk
+before writing; the explicit offline path may write locally because it never commits or pushes.
+**A blocked item must name its unblocker** — `needs` is required by the schema when the
+status is `blocked`, so "I am blocked" without "here is what I need" does not validate. It would
+otherwise be a crash with better manners. Calling it on an already-blocked item replaces the reason,
+including repairing the hand-edited `blocked`-without-`needs` state that the schema rejects.
 
 A blocked item keeps its claim: the partial work lives on that branch, and re-taking it means
 checking it out rather than starting over. But **blocked is not in-flight** — it holds a branch
 and consumes no lane, or one unanswered question would permanently cost a slot (§7.8).
+The blocked branch is therefore not merged. Block records that must reach trunk travel on a
+records-only branch staking no item; `check pr` points there instead of falsely suggesting
+`status: review`.
 
 #### What blocked is not
 

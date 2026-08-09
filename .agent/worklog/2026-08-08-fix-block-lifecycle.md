@@ -1,0 +1,57 @@
+---
+date: 2026-08-08
+agent: codex
+roadmap: MO-26-08-08-21.50.05
+outcome: shipped
+summary: "Made pm block repairable, indexed, branch-safe, and honest about publishing blocked records."
+---
+
+# Repair the blocked-work lifecycle
+
+Issues #80, #83 and #91 were one state machine seen from three positions. The strict roadmap parser
+correctly excludes an invalid blocked item with no `needs:`, but `pm block` then interpreted absence
+from the valid result set as absence from disk. The repair path now re-reads only matching invalid
+files and accepts one only if adding the caller's need makes the full roadmap schema valid. Other
+invalid files stay errors; strict parsing was not weakened to make a recovery command convenient.
+
+The block's three source records and its generated view now travel together. The inbox renderer
+receives the basename the parser actually found rather than reconstructing `<id>.md`, and the index
+is regenerated only when the board validates — otherwise the block still records the escalation and
+reports why it could not safely render a partial board.
+
+The most important ordering is the trunk check before `blockItem`: refusal after the write would be
+the original protected-branch failure with a better message. The configured trunk branch is resolved
+through the same session policy as context freshness. Offline is deliberately exempt because that
+path already suppresses commit and push; removing it would close the escape hatch for the sessions
+that most need to stop rather than guess.
+
+Issue #83 could have been "fixed" by allowing a blocked claimed branch to merge. That would discard
+the branch holding partial work, contradicting the reason blocked claims persist. The verifier now
+states the existing correct route — publish the records on a branch staking no item — and explicitly
+warns not to relabel the item as review-ready.
+
+Independent review caught a positional coupling introduced by the index fix: the CLI assumed the
+inbox was the last entry in `BlockResult.written`, then handed that path and the inbox's old contents
+to `noteWrite`. Appending the README after the inbox silently redirected that receipt update to an
+untracked input, so the next governed command would call the session stale for a write it made
+itself. `BlockResult` now names `inboxPath` explicitly, and an integration test runs the block CLI,
+passes its result through `noteWrite`, and re-observes the lease after expiry.
+
+The same review followed the offline completion path one step further. `unsentBlockRecords` found
+item and worklog by id and inbox by content; the generated README has neither property. It is now an
+explicit fourth output in that report, so following the printed recovery instruction cannot leave
+the index dirty. The review also replaced a frozen sample date in the verifier message with the
+literal `inbox-<YYYY-MM-DD>` convention and qualified the documentation's trunk guarantee for the
+deliberate offline exception.
+
+Re-review found one remaining restatement: the unsent-record scan named the default roadmap index
+even though `pm block --dir` can write another product tree. The claims path now passes its actual
+`productDir`, and the scan derives a repo-relative index path after canonicalising both sides (the
+test's macOS temp path exposed `/var` versus `/private/var` as another way equivalent paths compare
+unequal). A non-default-directory test also dirties the default index and proves only the configured
+one is reported.
+
+The third review called out that leaving `productDir` optional preserved silent degradation for a
+future caller even though production passed it today. It is required now, and every test call names
+the directory whose index it expects the scan to cover. There is no supported call shape that turns
+index detection off by omission.

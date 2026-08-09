@@ -175,6 +175,17 @@ describe("checkPr", () => {
     expect(findings.find((f) => f.rule === "roadmap-status")?.level).toBe("error");
   });
 
+  it("routes a blocked item to a records branch without telling it to claim completion", async () => {
+    await seedRoadmap("EV-014", "blocked\nneeds: an owner decision");
+    const findings = await checkPr(goodPr());
+    const rule = findings.find((finding) => finding.rule === "roadmap-status");
+
+    expect(rule?.level).toBe("error");
+    expect(rule?.message).toContain("must keep its claimed branch");
+    expect(rule?.message).toContain("inbox-<YYYY-MM-DD>");
+    expect(rule?.message).toContain('Do not set it to "review"');
+  });
+
   it("accepts an item already marked shipped", async () => {
     await seedRoadmap("EV-014", "shipped");
     expect(await checkPr(goodPr())).toHaveLength(0);
