@@ -228,7 +228,10 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     } else if (firebaseConfig.kind === "unreadable") {
       const reason = `firebase.json could not be read: ${firebaseConfig.message}`;
       skipped.push(`${canonicalRules} (${reason})`);
-      notes.push(`${reason}. Kept the repository unchanged and did not guess a rules path.`);
+      notes.push(
+        `${reason}. Left the Firestore gate alone and did not guess a rules path; fix or ` +
+          "confirm the configuration.",
+      );
     } else if (firebaseConfig.kind === "content") {
       const reason =
         configured?.kind === "invalid"
@@ -291,10 +294,18 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     (await exists(join(root, "pnpm-lock.yaml"))) ||
     (await exists(join(root, "pnpm-workspace.yaml")));
   const ciPath = ".github/workflows/ci.yml";
-  const existingCi = await readFile(join(root, ciPath), "utf8").catch(() => null);
+  const existingCi = await readOptional(join(root, ciPath));
   await put(ciPath, t.ci({ node: isNode, ...(rulesPath ? { rulesPath } : {}) }));
-  const wiredRulesPath = /\bhq-rules-path:\s*["']?([^\s"']+)/.exec(existingCi ?? "")?.[1];
-  if (rulesPath && existingCi !== null && wiredRulesPath !== rulesPath) {
+  const wiredRulesPath =
+    existingCi.kind === "content"
+      ? /\bhq-rules-path:\s*["']?([^\s"']+)/.exec(existingCi.content)?.[1]
+      : undefined;
+  if (rulesPath && existingCi.kind === "unreadable") {
+    notes.push(
+      `Could not read the existing ${ciPath}: ${existingCi.message}. It was left unchanged; ` +
+        `after fixing access, wire hq-rules-path to ${rulesPath}.`,
+    );
+  } else if (rulesPath && existingCi.kind === "content" && wiredRulesPath !== rulesPath) {
     notes.push(
       `The deployed gate is ${rulesPath}, but the existing ${ciPath} does not check that path. ` +
         "Add this to its pm job to verify the deployed gate:\n" +

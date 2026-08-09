@@ -1717,9 +1717,9 @@ one. A fresh company gets the canonical rules file, deployment config and matchi
 check. When an existing `firebase.json` names one string rules path, that path is authoritative: a
 missing file receives the starter with an explicit deployment warning; a complete generated block
 is wired (and reported if stale); an unmarked or partial file is preserved with CI left off and an
-explicit `hq rules --print` migration. Malformed,
-multi-database or otherwise ambiguous configurations are preserved and reported rather than
-guessed. Without `firebase.json`, an established root `firestore.rules` is likewise preserved and
+explicit `hq rules --print` migration. Unreadable, malformed, multi-database or otherwise ambiguous
+configurations are preserved and reported rather than guessed. Without `firebase.json`, an
+established root `firestore.rules` is likewise preserved and
 left unwired until its deployed path is confirmed. Existing CI files are never overwritten; the
 result repeats the exact input block until the deployed path is wired.
 

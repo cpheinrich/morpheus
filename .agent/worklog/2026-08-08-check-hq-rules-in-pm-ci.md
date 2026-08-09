@@ -75,3 +75,5 @@ gate reporting says initialization did not enable generated CI rather than claim
 workflow was turned off.
 The last optional-file read now distinguishes absence from every other failure. An unreadable but
 present `firebase.json` is preserved and reported, never routed into fresh canonical scaffolding.
+Existing CI now uses the same optional-file state, so an unreadable preserved workflow produces
+explicit wiring guidance instead of collapsing into absence and silence.

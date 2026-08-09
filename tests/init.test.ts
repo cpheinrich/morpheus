@@ -347,12 +347,25 @@ describe("morpheus init", () => {
 
       const result = await scaffold(dir, SEED);
 
-      expect(result.notes.join("\n")).toContain("firebase.json could not be read");
+      const notes = result.notes.join("\n");
+      expect(notes).toContain("firebase.json could not be read");
+      expect(notes).toContain("Left the Firestore gate alone");
+      expect(notes).toContain("fix or confirm the configuration");
       await expect(read("infra/firebase/firestore.rules")).rejects.toMatchObject({ code: "ENOENT" });
       const ci = load(await read(".github/workflows/ci.yml")) as {
         jobs?: Record<string, { with?: Record<string, unknown> }>;
       };
       expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
+    });
+
+    it("reports an unreadable preserved CI file instead of dropping wiring guidance", async () => {
+      await mkdir(join(dir, ".github/workflows/ci.yml"), { recursive: true });
+
+      const result = await scaffold(dir, SEED);
+
+      const notes = result.notes.join("\n");
+      expect(notes).toContain("Could not read the existing .github/workflows/ci.yml");
+      expect(notes).toContain("wire hq-rules-path to infra/firebase/firestore.rules");
     });
 
     /**
