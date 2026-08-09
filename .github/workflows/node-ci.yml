@@ -82,7 +82,7 @@ jobs:
           BUILD_OUTPUT_DIRECTORY: ${{ inputs.build-output-directory }}
         run: |
           case "$BUILD_OUTPUT_DIRECTORY" in
-            "."|"/"|/*|*".."*|*"*"*|*"?"*|*"["*)
+            "."|"/"|/*|*".."*|*"*"*|*"?"*|*"["*|*":"*)
               echo "build-output-directory must be a safe relative path" >&2
               exit 1
               ;;

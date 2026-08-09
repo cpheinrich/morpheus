@@ -37,10 +37,14 @@ describe("the manifest a consumer installs against", () => {
     // clean checkout already has the package entry points a consumer needs;
     // CI compiles afterwards and fails if doing so changes the committed tree.
     expect(manifest.files).toContain("dist");
-    for (const [subpath, target] of Object.entries(manifest.exports ?? {})) {
+    const exports = Object.entries(manifest.exports ?? {});
+    const bins = Object.entries(manifest.bin ?? {});
+    expect(exports.length, "exports").toBeGreaterThan(0);
+    expect(bins.length, "bin").toBeGreaterThan(0);
+    for (const [subpath, target] of exports) {
       expect(existsSync(new URL(`../${target}`, import.meta.url)), subpath).toBe(true);
     }
-    for (const [name, target] of Object.entries(manifest.bin ?? {})) {
+    for (const [name, target] of bins) {
       const path = new URL(`../${target}`, import.meta.url);
       expect(existsSync(path), name).toBe(true);
       expect(statSync(path).mode & 0o111, `${name} should be executable`).not.toBe(0);

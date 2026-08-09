@@ -57,3 +57,7 @@ The final review found one non-blocking public-API rough edge: enabling verifica
 output directory reached Git's opaque empty-pathspec failure. The workflow now names that missing
 required input directly, documents that verification is scoped to it, and rejects glob characters
 along with absolute and parent-traversing paths.
+
+The last pass closed two cheap edge cases while the files were already open: Git pathspec magic
+containing `:` is rejected alongside globs, and the derived package-entry test first proves both
+`exports` and `bin` are non-empty so an absent map cannot make the loop pass vacuously.
