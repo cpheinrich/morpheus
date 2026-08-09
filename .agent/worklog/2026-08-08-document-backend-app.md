@@ -16,3 +16,9 @@ scheduled job, service, inference system, or execution loop that runs as the pro
 
 This is documentation rather than mandatory scaffolding. An unused backend directory should not
 appear in every new project merely because the convention exists.
+
+Independent review caught three places where the first pass had not carried the convention through:
+the manifest's closed surface list, the settled `apps/`/`hq/` decision, and the non-TypeScript
+backend's relationship to TypeScript schema sources. The manifest now supports `backend`, the
+settled rule is based on running as the product rather than having a human user, and other languages
+conform to shared schema contracts manually until a generator exists.

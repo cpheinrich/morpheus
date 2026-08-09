@@ -118,7 +118,7 @@ acme/
 
 ### `apps/` and `hq/`
 
-**`apps/` is deployed and has users; `hq/` is read, decided, and written down.**
+**`apps/` runs as the deployed product; `hq/` is read, decided, and written down.**
 
 Named `hq/` rather than `company/` because not every project is a company — `cpheinrich.com` is
 personal, Morpheus is an internal tool — and because it makes the naming coherent across all three
@@ -138,6 +138,9 @@ worker, scheduled job, inference service, execution loop, or similar long-runnin
 directory for that stable role rather than for one company's implementation (`trader/`, `bot/`).
 Code that is imported by two or more surfaces still belongs in `packages/shared/`; code that runs
 as the product belongs in `apps/backend/`, even when no other surface imports it.
+That boundary is about ownership, not language: a non-TypeScript backend treats the canonical
+schemas in `packages/shared/schema/` as contracts and conforms manually until a generator for its
+language exists; it does not need to import the TypeScript package.
 
 ### Project kinds
 
@@ -204,7 +207,7 @@ canonical and lives in this document. Only *deviations* are recorded.
   "org": "darwin-health",            // groups sibling repos (§17); omit for personal/internal
   "domain": "evo.med",
   "description": "One-sentence description.",
-  "surfaces": { "web": true, "ios": true, "hardware": false },
+  "surfaces": { "web": true, "ios": true, "backend": false, "hardware": false },
   "integrations": ["firebase", "stripe", "posthog", "github", "slack", "openseo"],
   "accounts": { /* which identity per service — see §13.3 */ },
   "hq": {
