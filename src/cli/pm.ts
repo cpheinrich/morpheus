@@ -21,6 +21,8 @@ import {
 import { ageInDays, claim as claimItem, ClaimError, listClaims } from "../pm/claim.js";
 import { ARTIFACTS, type ArtifactKind } from "../pm/schema.js";
 import { formatReconcile, markShipped, reconcile } from "../pm/ship.js";
+import { currentBranch, resolveTrunk } from "../session/git.js";
+import { projectPolicy } from "../session/policy.js";
 
 const KINDS = Object.keys(ARTIFACTS) as ArtifactKind[];
 
@@ -42,13 +44,14 @@ async function exists(path: string): Promise<boolean> {
  * guessing puts a blocker in front of the wrong person and it goes unread —
  * refusing and asking costs one flag.
  */
-async function inboxOwner(root: string): Promise<string | null> {
+async function inboxOwners(root: string): Promise<string[]> {
   try {
-    const files = (await readdir(join(root, INBOX_DIR)))
-      .filter((f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()));
-    return files.length === 1 ? basename(files[0]!, ".md") : null;
+    return (await readdir(join(root, INBOX_DIR)))
+      .filter((f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()))
+      .map((file) => basename(file, ".md"))
+      .sort();
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -591,11 +594,28 @@ export async function block(
     return nothing(1);
   }
 
-  const owner = opts.owner ?? (await inboxOwner(root));
-  if (!owner) {
+  const policy = await projectPolicy(root);
+  const trunk = await resolveTrunk(root, policy.trunk);
+  const branch = await currentBranch(root);
+  if (opts.push !== false && branch === trunk.branch) {
     console.error(
-      "Could not tell whose inbox this belongs in. Pass --owner <github-handle>, or add\n" +
-        "one inbox under hq/team/ so there is an unambiguous default.",
+      `Refusing to block ${id.toUpperCase()} on the protected trunk branch "${branch}". ` +
+        "`pm block` commits and pushes its coordination records so other sessions can see them.\n" +
+        `Run \`morpheus pm claim ${id.toUpperCase()}\`, or check out its existing claimed branch, ` +
+        "then block it there. Nothing was written.",
+    );
+    return nothing(1);
+  }
+
+  const owners = opts.owner ? [] : await inboxOwners(root);
+  const owner = opts.owner ?? (owners.length === 1 ? owners[0] : undefined);
+  if (!owner) {
+    const found = owners.length
+      ? ` Found ${owners.length} inboxes: ${owners.join(", ")}.`
+      : " Found no person inboxes.";
+    console.error(
+      `Could not tell whose inbox this belongs in.${found}\n` +
+        "Pass --owner <github-handle>, or leave exactly one person inbox under hq/team/.",
     );
     return nothing(1);
   }
@@ -611,9 +631,15 @@ export async function block(
     });
 
     console.log(`\x1b[33m${r.id} → blocked\x1b[0m — ${r.title}`);
+    if (r.alreadyBlocked) console.log("Updated the existing block reason.");
     console.log(`Needs: ${opts.needs.trim()}`);
     for (const p of r.written) console.log(`  wrote ${p}`);
     if (r.inboxCreated) console.log(`  (created a new inbox for ${owner})`);
+    if (r.indexIssues.length) {
+      console.warn(
+        `  Roadmap index not refreshed: ${r.indexIssues.length} validation issue(s) remain.`,
+      );
+    }
 
     if (opts.push === false) {
       // Offline. The records are written, which is what keeps `pm block`

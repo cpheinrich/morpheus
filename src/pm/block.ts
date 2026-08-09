@@ -1,10 +1,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import matter from "gray-matter";
 import { appendOpenItem } from "../inbox/append.js";
 import { updateFrontmatter, today } from "./frontmatter.js";
 import { INBOX_DIR } from "../paths.js";
 import { parseArtifact } from "./parse.js";
 import { slugify } from "./claim.js";
+import { renderRoadmap, writeIndex } from "./index-gen.js";
+import { RoadmapItem, type RoadmapItem as RoadmapItemData } from "./schema.js";
 
 /**
  * Blocking an item: the third exit.
@@ -56,6 +59,10 @@ export interface BlockResult {
   inboxBefore: string | null;
   /** True when the person had no inbox and one was created. */
   inboxCreated: boolean;
+  /** True when this call repaired or replaced a block that already existed. */
+  alreadyBlocked: boolean;
+  /** Validation problems that prevented a safe index refresh. */
+  indexIssues: string[];
 }
 
 async function readIfExists(path: string): Promise<string | null> {
@@ -107,6 +114,70 @@ function inboxBody(opts: BlockOptions, title: string): string {
   ].join("\n");
 }
 
+interface BlockTarget {
+  path: string;
+  data: RoadmapItemData;
+  raw: string;
+  alreadyBlocked: boolean;
+}
+
+/**
+ * Find the item even in the one invalid state `pm block` is meant to repair:
+ * `status: blocked` written by hand without the schema-required `needs:`.
+ */
+async function blockTarget(
+  productDir: string,
+  id: string,
+  needs: string,
+): Promise<BlockTarget> {
+  const parsed = await parseArtifact(productDir, "roadmap");
+  const item = parsed.items.find((candidate) => candidate.data.id === id);
+  if (item) {
+    return {
+      path: item.path,
+      data: item.data,
+      raw: await readFile(item.path, "utf8"),
+      alreadyBlocked: item.data.status === "blocked",
+    };
+  }
+
+  const candidatePaths = [
+    ...new Set(
+      parsed.issues
+        .map((issue) => issue.path)
+        .filter((path) => {
+          const name = basename(path);
+          return name === `${id}.md` || name.startsWith(`${id}-`);
+        }),
+    ),
+  ];
+
+  for (const path of candidatePaths) {
+    const raw = await readFile(path, "utf8");
+    let data: Record<string, unknown>;
+    try {
+      data = matter(raw).data as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (data["id"] !== id || data["status"] !== "blocked") continue;
+
+    const repaired = RoadmapItem.safeParse({ ...data, needs: needs.trim() });
+    if (repaired.success) {
+      return { path, data: repaired.data, raw, alreadyBlocked: true };
+    }
+  }
+
+  if (candidatePaths.length) {
+    const detail = parsed.issues
+      .filter((issue) => candidatePaths.includes(issue.path))
+      .map((issue) => issue.message)
+      .join("; ");
+    throw new BlockError(`${id} exists but is invalid — ${detail}`);
+  }
+  throw new BlockError(`No roadmap item ${id} in ${productDir}/roadmap/`);
+}
+
 /**
  * Mark an item blocked and route the question to its owner.
  *
@@ -125,9 +196,7 @@ export async function block(opts: BlockOptions): Promise<BlockResult> {
     );
   }
 
-  const { items } = await parseArtifact(productDir, "roadmap");
-  const item = items.find((i) => i.data.id === id);
-  if (!item) throw new BlockError(`No roadmap item ${id} in ${productDir}/roadmap/`);
+  const item = await blockTarget(productDir, id, needs);
   if (item.data.status === "shipped" || item.data.status === "dropped") {
     throw new BlockError(`${id} is "${item.data.status}" — nothing to block.`);
   }
@@ -135,10 +204,9 @@ export async function block(opts: BlockOptions): Promise<BlockResult> {
   const date = today();
   const written: string[] = [];
 
-  const raw = await readFile(item.path, "utf8");
   await writeFile(
     item.path,
-    updateFrontmatter(raw, { status: "blocked", needs: needs.trim(), updated: date }),
+    updateFrontmatter(item.raw, { status: "blocked", needs: needs.trim(), updated: date }),
     "utf8",
   );
   written.push(item.path);
@@ -163,6 +231,7 @@ export async function block(opts: BlockOptions): Promise<BlockResult> {
         title: `Blocked: ${item.data.title}`,
         agent: opts.agent ?? "claude",
         roadmap: id,
+        roadmapFile: basename(item.path),
         body: inboxBody(opts, item.data.title),
       },
       { owner, date },
@@ -171,12 +240,26 @@ export async function block(opts: BlockOptions): Promise<BlockResult> {
   );
   written.push(inboxPath);
 
+  // The index is generated state, but `pm block` commits its own records. If
+  // it does not refresh the table before that commit, the next unrelated PR
+  // fails `pm index --check` for a status change this command made.
+  const refreshed = await parseArtifact(productDir, "roadmap");
+  const indexIssues = refreshed.issues.map((issue) => `${issue.path}: ${issue.message}`);
+  if (!indexIssues.length) {
+    const indexPath = join(productDir, "roadmap", "README.md");
+    if (await writeIndex(join(productDir, "roadmap"), renderRoadmap(refreshed.items))) {
+      written.push(indexPath);
+    }
+  }
+
   return {
     id,
     title: item.data.title,
     written,
     inboxBefore: existing,
     inboxCreated: existing === null,
+    alreadyBlocked: item.alreadyBlocked,
+    indexIssues,
   };
 }
 

@@ -165,8 +165,10 @@ morpheus pm unblock MO-051    # once answered
 ```
 
 This sets `status: blocked` and `needs:` on the item, writes a worklog entry, and raises an open
-`❗` item in the inbox. **Escalating is cheap; shipping half-baked is expensive** — a plausible
-guess costs far more to discover later than a question costs to ask now.
+`❗` item in the inbox, refreshes the roadmap index, then commits and pushes those records on the
+claimed branch. It refuses the protected trunk before writing anything. **Escalating is cheap;
+shipping half-baked is expensive** — a plausible guess costs far more to discover later than a
+question costs to ask now.
 
 `needs` is required by the schema when an item is blocked, so say what would actually unblock you.
 "Blocked on Chris" is not an answer; "which model, and whose subscription pays for it" is.
@@ -179,6 +181,11 @@ print exactly this:
 git checkout mo-051-agent-code-review
 morpheus pm unblock MO-051
 ```
+
+Do not open a PR from the blocked branch: it must retain the partial work. If the block records
+need to land on trunk, copy them to a records branch that stakes no item (for example
+`inbox-YYYY-MM-DD`). `check pr` names this route and explicitly refuses the tempting but false
+answer of changing the item to `review`.
 
 **Browser-reachable work is not blocked.** If the only thing standing between you and finishing is
 that something has to happen in a browser — a console to click through, a dashboard to read, a
