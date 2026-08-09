@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
-| [MO-26-08-09-00.05.06](./MO-26-08-09-00.05.06-ship-prebuilt-git-artifacts.md) | Ship prebuilt git dependency artifacts | in-progress | P2 | — | #82 | — |
+| [MO-26-08-09-00.05.06](./MO-26-08-09-00.05.06-ship-prebuilt-git-artifacts.md) | Ship prebuilt git dependency artifacts | review | P2 | — | #82 | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |

@@ -18,3 +18,16 @@ rejects a compile that changes the committed tree.
 The package-contract test encodes npm's complete current git-build trigger set rather than checking
 only `prepare`. That matters because keeping a script literally named `build` would avoid pnpm's
 reported hook while still making npm clone dev dependencies and rebuild on every git install.
+
+## Verification
+
+- Before the change, a fresh pnpm 11.9.0 consumer failed against main at `5c7bdb2` with the exact
+  `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` report from issue #82.
+- After pushing `f205dac`, a fresh pnpm 11.9.0 consumer installed the branch in 3.6 seconds with no
+  `allowBuilds` configuration. `morpheus-kit/design` imported and the installed `morpheus` CLI ran.
+- A fresh npm consumer installed the same git ref with `--foreground-scripts`; no Morpheus lifecycle
+  script ran. The design export imported and the installed CLI ran.
+- `npm pack --dry-run --ignore-scripts` listed 264 package entries, including executable
+  `dist/cli/index.js`, with a 979 KB unpacked package.
+- A clean `pnpm compile && git diff --exit-code` produced no diff, exercising the same artifact
+  drift condition CI now enforces.
