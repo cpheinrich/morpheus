@@ -126,6 +126,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   // documented `hq rules` command names it. Scaffold the deny-by-default
   // starter so the first CI check is meaningful and its remedy is executable.
   let rulesPath: string | undefined;
+  let rulesCreated = false;
   if (seed.kind === "company") {
     const canonicalRules = "infra/firebase/firestore.rules";
     if (await exists(join(root, "firestore.rules"))) {
@@ -135,6 +136,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
           "Set hq-rules-path to the file Firebase actually deploys.",
       );
     } else {
+      rulesCreated = !(await exists(join(root, canonicalRules)));
       await put(canonicalRules, renderFirestoreRules());
       rulesPath = canonicalRules;
     }
@@ -182,7 +184,17 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   const isNode =
     (await exists(join(root, "pnpm-lock.yaml"))) ||
     (await exists(join(root, "pnpm-workspace.yaml")));
-  await put(".github/workflows/ci.yml", t.ci({ node: isNode, ...(rulesPath ? { rulesPath } : {}) }));
+  const ciPath = ".github/workflows/ci.yml";
+  const keptExistingCi = await exists(join(root, ciPath));
+  await put(ciPath, t.ci({ node: isNode, ...(rulesPath ? { rulesPath } : {}) }));
+  if (rulesPath && rulesCreated && keptExistingCi) {
+    notes.push(
+      `Created ${rulesPath} but left the existing ${ciPath} unchanged. ` +
+        "Add this to its pm job to verify the deployed gate:\n" +
+        "    with:\n" +
+        `      hq-rules-path: ${rulesPath}`,
+    );
+  }
   if (!isNode) {
     notes.push(
       "No pnpm lockfile here, so CI wires only the convention checks. Add the\n" +

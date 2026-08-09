@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
+import { ci as ciTemplate } from "../src/init/templates.js";
 
 /**
  * The workflows are shipped to every project, so a mistake here breaks repos
@@ -41,11 +42,20 @@ describe("callers match what they call", () => {
    */
   it("passes only inputs the called workflow declares", async () => {
     const files = (await readdir(DIR)).filter((f) => f.endsWith(".yml"));
+    const workflows: Array<{ file: string; wf: Workflow }> = [];
+    for (const file of files) workflows.push({ file, wf: await read(file) });
+    workflows.push({
+      file: "generated company ci.yml",
+      wf: load(
+        ciTemplate({ node: true, rulesPath: "infra/firebase/firestore.rules" }),
+      ) as Workflow,
+    });
 
-    for (const file of files) {
-      const wf = await read(file);
+    for (const { file, wf } of workflows) {
       for (const [name, job] of Object.entries(wf.jobs ?? {})) {
-        const local = job.uses?.match(/^\.\/\.github\/workflows\/(.+)$/)?.[1];
+        const local =
+          job.uses?.match(/^\.\/\.github\/workflows\/(.+)$/)?.[1] ??
+          job.uses?.match(/^cpheinrich\/morpheus\/\.github\/workflows\/(.+)@.+$/)?.[1];
         if (!local || !job.with) continue;
 
         const called = (await read(local)) as {

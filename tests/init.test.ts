@@ -185,6 +185,20 @@ describe("morpheus init", () => {
       expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
     });
 
+    it("explains how to wire a newly added gate when existing CI is preserved", async () => {
+      const existingCi = "name: Mine\n";
+      await mkdir(join(dir, ".github/workflows"), { recursive: true });
+      await writeFile(join(dir, ".github/workflows/ci.yml"), existingCi, "utf8");
+
+      const result = await scaffold(dir, SEED);
+
+      expect(await read(".github/workflows/ci.yml")).toBe(existingCi);
+      expect(await read("infra/firebase/firestore.rules")).toContain("morpheus:begin roles");
+      const note = result.notes.join("\n");
+      expect(note).toContain("left the existing .github/workflows/ci.yml unchanged");
+      expect(note).toContain("hq-rules-path: infra/firebase/firestore.rules");
+    });
+
     /**
      * The directory exists from the start rather than on first use, because
      * the gate lives in it: `redacted: true` is a claim, `team validate`

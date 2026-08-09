@@ -45,3 +45,7 @@ canonical fresh-project path to an established root-layout repository.
 Fresh company scaffolds also pass the canonical path into their generated PM workflow, closing the
 loop in the same operation that chooses the file. Established root-layout repos deliberately do not:
 their deployment configuration remains the source that must be confirmed before enabling the check.
+If migration creates the canonical gate but preserves an existing CI file, the result now prints the
+exact input block to add. The workflow contract test also parses generated remote-form callers and
+compares every passed input to the reusable workflow declaration, so the two templates cannot rename
+the contract independently.
