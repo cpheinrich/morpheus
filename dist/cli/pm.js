@@ -1,0 +1,612 @@
+import { execFile } from "node:child_process";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { promisify } from "node:util";
+import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
+import { findDuplicateIds, parseArtifact } from "../pm/parse.js";
+import { block as blockItem, BlockError, unblock as unblockItem } from "../pm/block.js";
+import { migrate } from "../pm/migrate-ids.js";
+import { renderGoals, renderRequests, renderRoadmap, writeIndex, } from "../pm/index-gen.js";
+import { createItem } from "../pm/new-item.js";
+import { IssueLinkError, linkIssue as linkIssueItem, parseIssueNumber, } from "../pm/issues.js";
+import { ageInDays, claim as claimItem, ClaimError, listClaims } from "../pm/claim.js";
+import { ARTIFACTS } from "../pm/schema.js";
+import { formatReconcile, markShipped, reconcile } from "../pm/ship.js";
+import { currentBranch, resolveTrunk } from "../session/git.js";
+import { projectPolicy } from "../session/policy.js";
+const KINDS = Object.keys(ARTIFACTS);
+const exec = promisify(execFile);
+async function exists(path) {
+    try {
+        await stat(path);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Whose inbox to write into, when `--owner` was not given.
+ *
+ * Only answered when there is exactly one inbox. With two people in a repo,
+ * guessing puts a blocker in front of the wrong person and it goes unread —
+ * refusing and asking costs one flag.
+ */
+async function inboxOwners(root) {
+    try {
+        return (await readdir(join(root, INBOX_DIR)))
+            .filter((f) => f.endsWith(".md") && !TEAM_RESERVED.has(f.toLowerCase()))
+            .map((file) => basename(file, ".md"))
+            .sort();
+    }
+    catch {
+        return [];
+    }
+}
+/**
+ * Commit and push, reporting **which** step got there.
+ *
+ * One `try` around all three conflated "not a git repo" with "the push was
+ * rejected", and the difference matters: committed-but-unpushed leaves a clean
+ * working tree, so the dirty-file check in `pm claims` cannot see it and an
+ * escalation that reached nobody is invisible forever. That is the same
+ * failure the offline completion path exists to prevent, by the route that
+ * happens *by accident* rather than by declaration.
+ */
+async function commitRecords(root, paths, message) {
+    try {
+        await exec("git", ["add", "--", ...paths], { cwd: root });
+        await exec("git", ["commit", "-m", message], { cwd: root });
+    }
+    catch {
+        return "nothing";
+    }
+    try {
+        await exec("git", ["push"], { cwd: root });
+        return "pushed";
+    }
+    catch {
+        return "committed";
+    }
+}
+function isKind(v) {
+    return KINDS.includes(v);
+}
+/**
+ * Parse one kind and render its index table.
+ *
+ * The switch exists so each branch narrows to a concrete item type — the
+ * renderers are type-specific, and a loop with casts would hide a mismatch
+ * between a schema and its renderer.
+ */
+async function renderKind(productDir, kind) {
+    switch (kind) {
+        case "roadmap": {
+            const { items, issues } = await parseArtifact(productDir, "roadmap");
+            return {
+                rendered: renderRoadmap(items),
+                issues: [...issues, ...findDuplicateIds(items)],
+                count: items.length,
+            };
+        }
+        case "goals": {
+            const { items, issues } = await parseArtifact(productDir, "goals");
+            return {
+                rendered: renderGoals(items),
+                issues: [...issues, ...findDuplicateIds(items)],
+                count: items.length,
+            };
+        }
+        case "requests": {
+            const { items, issues } = await parseArtifact(productDir, "requests");
+            return {
+                rendered: renderRequests(items),
+                issues: [...issues, ...findDuplicateIds(items)],
+                count: items.length,
+            };
+        }
+    }
+}
+function report(issues) {
+    for (const issue of issues) {
+        console.error(`  ${issue.path}\n    ${issue.message}`);
+    }
+}
+/** Validate every artifact under a product directory. Returns an exit code. */
+export async function validate(productDir) {
+    let total = 0;
+    for (const kind of KINDS) {
+        const { issues, count } = await renderKind(productDir, kind);
+        if (issues.length) {
+            console.error(`\n✗ ${ARTIFACTS[kind].label} — ${issues.length} issue(s)`);
+            report(issues);
+            total += issues.length;
+        }
+        else {
+            console.log(`✓ ${ARTIFACTS[kind].label} — ${count} item(s)`);
+        }
+    }
+    if (total) {
+        console.error(`\n${total} issue(s) found.`);
+        return 1;
+    }
+    console.log("\nAll project management files are valid.");
+    return 0;
+}
+/** Regenerate the README index table for each artifact directory. */
+export async function index(productDir, check = false) {
+    let stale = 0;
+    for (const kind of KINDS) {
+        const { rendered, issues } = await renderKind(productDir, kind);
+        if (issues.length) {
+            console.error(`✗ ${ARTIFACTS[kind].label} — fix validation issues first`);
+            report(issues);
+            return 1;
+        }
+        const dir = join(productDir, ARTIFACTS[kind].dir);
+        // A kind a project does not use has no directory, and `parseDir` already
+        // treats that as zero items. Writing an index into it would materialise a
+        // directory nobody asked for — and `writeFile` cannot create the parent, so
+        // before this the command died with a bare ENOENT.
+        //
+        // Darwin hit it by moving goals to `hq/strategy/goals/`, which left
+        // `hq/product/goals/` absent. That is a legitimate layout: a company has
+        // goals that are not product goals.
+        if (!(await exists(dir))) {
+            console.log(`skipped   ${dir}/README.md — directory not present`);
+            continue;
+        }
+        const changed = await writeIndex(dir, rendered);
+        if (changed) {
+            stale++;
+            console.log(`${check ? "✗ stale  " : "updated  "}${dir}/README.md`);
+        }
+        else {
+            console.log(`unchanged ${dir}/README.md`);
+        }
+    }
+    if (check && stale) {
+        console.error(`\n${stale} index file(s) were out of date. Run \`morpheus pm index\` and commit the result.`);
+        return 1;
+    }
+    return 0;
+}
+/**
+ * The project prefix, from morpheus.json beside the product directory.
+ *
+ * Required rather than defaulted: a wrong prefix silently creates ids that
+ * collide with another project, which is worse than refusing.
+ */
+async function projectPrefix(productDir) {
+    // hq/product -> hq -> repo root
+    const root = dirname(dirname(productDir));
+    try {
+        const raw = JSON.parse(await readFile(join(root, "morpheus.json"), "utf8"));
+        return raw.prefix ?? null;
+    }
+    catch {
+        return null;
+    }
+}
+/** Create a new item and print its path. */
+export async function create(productDir, kind, title, opts, cwd) {
+    if (!isKind(kind)) {
+        console.error(`Unknown kind "${kind}". Expected one of: ${KINDS.join(", ")}`);
+        return 1;
+    }
+    if (!title) {
+        console.error("A title is required.");
+        return 1;
+    }
+    const issue = opts.issue === undefined ? undefined : parseIssueNumber(opts.issue);
+    if (issue === null) {
+        console.error(`--issue must be a positive GitHub issue number; received "${opts.issue}".`);
+        return 1;
+    }
+    if (issue !== undefined && kind !== "roadmap") {
+        console.error("--issue is only valid for roadmap items.");
+        return 1;
+    }
+    const prefix = await projectPrefix(productDir);
+    if (!prefix) {
+        console.error('No "prefix" in morpheus.json. Add a 2-4 letter uppercase prefix — it namespaces\n' +
+            "every id in this repo so they cannot collide with another project.");
+        return 1;
+    }
+    const { path, id, blind } = await createItem({
+        productDir,
+        kind,
+        prefix,
+        title,
+        cwd,
+        priority: opts.priority,
+        goal: opts.goal,
+        slug: opts.slug,
+        ...(issue !== undefined ? { issues: [issue] } : {}),
+    });
+    console.log(`Created ${path}`);
+    if (blind) {
+        console.warn(`\x1b[33mCould not reach origin, so ${id} was allocated from local files alone.\x1b[0m\n` +
+            `\x1b[2mAnother session may already hold it on a branch. Run \`morpheus pm claims\`\n` +
+            `once you have a connection — \`pm claim\` will refuse the id if it is taken.\x1b[0m`);
+    }
+    return index(productDir);
+}
+/** Add issue-closure intent to an item that already exists. */
+export async function linkIssue(productDir, id, rawIssue) {
+    if (!id) {
+        console.error("Usage: morpheus pm link-issue <ROADMAP-ID> <ISSUE-NUMBER>");
+        return 1;
+    }
+    const issue = parseIssueNumber(rawIssue);
+    if (issue === null) {
+        console.error(`Issue number must be a positive decimal integer; received "${rawIssue}".`);
+        return 1;
+    }
+    try {
+        const result = await linkIssueItem(productDir, id, issue);
+        console.log(result.written
+            ? `Linked ${id.toUpperCase()} to GitHub issue #${issue}.`
+            : `${id.toUpperCase()} already links GitHub issue #${issue}.`);
+        return result.written ? index(productDir) : 0;
+    }
+    catch (error) {
+        if (error instanceof IssueLinkError) {
+            console.error(error.message);
+            return 1;
+        }
+        throw error;
+    }
+}
+/** Claim a roadmap item by staking its branch on the remote. */
+export async function claim(productDir, id, cwd) {
+    if (!id) {
+        console.error("Usage: morpheus pm claim RM-014");
+        return 1;
+    }
+    try {
+        const r = await claimItem(productDir, id.toUpperCase(), cwd);
+        console.log(`Claimed ${r.id} — ${r.title}`);
+        console.log(`Branch ${r.branch} pushed; status set to in-progress.`);
+        if (r.shipped?.length) {
+            console.log(`\x1b[2mAlso marked shipped, riding along in this branch: ${r.shipped.join(", ")}\x1b[0m`);
+        }
+        return 0;
+    }
+    catch (err) {
+        if (err instanceof ClaimError) {
+            console.error(err.message);
+            return 1;
+        }
+        throw err;
+    }
+}
+/**
+ * List live claims, oldest activity flagged as possibly stale.
+ *
+ * Blocked claims are labelled rather than hidden. They hold a branch on
+ * purpose — the partial work is on it — but reading them as active work is
+ * exactly backwards: nothing moves them without an answer, and a claim that has
+ * been sitting for nine days looks abandoned when it is in fact waiting.
+ */
+export async function claims(productDir, cwd, staleDays = 7) {
+    const all = await listClaims(cwd);
+    if (all.length === 0) {
+        console.log("No items are currently claimed.");
+        return 0;
+    }
+    const { items } = await parseArtifact(productDir, "roadmap");
+    const blocked = new Map(items.filter((i) => i.data.status === "blocked").map((i) => [i.data.id, i.data.needs]));
+    // Sized from the data, not a constant. The widths were picked for `MO-045`
+    // and a timestamp id is twenty characters, so every row after the first long
+    // one lost its columns.
+    const idWidth = Math.max(8, ...all.map((c) => c.id.length));
+    const branchWidth = Math.min(48, Math.max(...all.map((c) => c.branch.length)));
+    const now = new Date();
+    for (const c of all) {
+        const age = c.at ? ageInDays(c.at, now) : undefined;
+        // A blocked claim is never stale — the clock is on the reader, not the agent.
+        const isBlocked = blocked.has(c.id);
+        const stale = !isBlocked && age !== undefined && age >= staleDays;
+        const when = age === undefined ? "" : age === 0 ? "today" : `${age}d ago`;
+        console.log(`${stale ? "!" : isBlocked ? "⊘" : " "} ${c.id.padEnd(idWidth)} ${c.branch.padEnd(branchWidth)} ${(c.by ?? "").padEnd(18)} ${when}`);
+        if (isBlocked) {
+            console.log(`  \x1b[2mblocked — needs: ${blocked.get(c.id) ?? "(unrecorded)"}\x1b[0m`);
+        }
+    }
+    const staleCount = all.filter((c) => !blocked.has(c.id) && c.at && ageInDays(c.at, now) >= staleDays).length;
+    if (staleCount) {
+        console.log(`\n${staleCount} claim(s) with no activity for ${staleDays}+ days (marked !).`);
+    }
+    if (blocked.size) {
+        console.log(`${blocked.size} blocked (⊘) — waiting on an answer, not on an agent.`);
+    }
+    // An offline `pm block` writes its records and skips the push, and its only
+    // other trace is a yellow line that has already scrolled past. A block
+    // nobody can see is not a block, so the state has to be visible somewhere
+    // that gets read again — this is the "what is in flight" view, and it
+    // already has the board in hand.
+    const { paths: unsent, unavailable } = await unsentBlockRecords(cwd, [...blocked.keys()], productDir);
+    if (unavailable) {
+        console.log(`\n\x1b[33mCould not ask git whether the blocked items' records have reached anyone.\n` +
+            `Silence here would be indistinguishable from "they all did".\x1b[0m`);
+    }
+    else if (unsent.length) {
+        console.log(`\n\x1b[33mRecords for blocked items have not reached anyone — uncommitted, or committed\n` +
+            `and unpushed. The escalation is on this machine only:\x1b[0m`);
+        for (const p of unsent)
+            console.log(`  ${p}`);
+        console.log(`\x1b[33mCommit and push all of them, including the inbox entry.\x1b[0m`);
+    }
+    return 0;
+}
+export async function unsentBlockRecords(cwd, blockedIds, productDir) {
+    if (!blockedIds.length)
+        return { paths: [], unavailable: false };
+    const ids = blockedIds.map((id) => id.toLowerCase());
+    // **Lines are not trimmed.** `git status --porcelain` is `XY<space>PATH`
+    // with a *space* meaning "unmodified in this position", so a worktree-only
+    // change emits ` M path` — and `.slice(3)` below is correct only on the raw
+    // line. Trimming first ate the first two characters of every tracked
+    // modification: `hq/team/x.md` became `q/team/x.md`, whose `dirname` is not
+    // `INBOX_DIR`, so the inbox — the one record that carries information —
+    // silently dropped out of a report saying "including the inbox entry".
+    // `rev-parse` and `log --name-only` emit no leading whitespace, so nothing
+    // else needed the trim.
+    const at = async (dir, args) => {
+        try {
+            const { stdout } = await exec("git", args, { cwd: dir, timeout: 10_000 });
+            return stdout.split("\n").filter((l) => l.trim()).map((l) => l.replace(/\s+$/, ""));
+        }
+        catch {
+            return null;
+        }
+    };
+    /**
+     * Every git call runs **from the repo root**, and every path this function
+     * touches is repo-root-relative.
+     *
+     * `--porcelain` and `--name-only` emit root-relative paths whatever
+     * directory git runs in, but a `--` pathspec is read *relative to cwd*, and
+     * `join(cwd, path)` is a third coordinate system. Three separate defects in
+     * this one function came from mixing them — the inbox read going ENOENT and
+     * being swallowed, and the `rev-list` pathspec silently matching nothing.
+     * One root removes the class rather than the instances.
+     */
+    const rootDir = (await at(cwd, ["rev-parse", "--show-toplevel"]))?.[0] ?? cwd;
+    const lines = (args) => at(rootDir, args);
+    // `-uall`, because plain `--porcelain` collapses an untracked directory to
+    // one entry — a first block in a fresh checkout reports `hq/` and names none
+    // of the three records.
+    const status = await lines(["status", "--porcelain", "-uall"]);
+    const dirty = (status ?? []).map((l) => l.slice(3).trim());
+    // Reachable from no remote at all — which is the actual question, and needs
+    // no upstream to ask. It covers a branch with no tracking ref (where an
+    // upstream-relative range answers nothing) without also calling records that
+    // were pushed from `main` long ago unsent.
+    const log = await lines(["log", "--name-only", "--pretty=format:", "HEAD", "--not", "--remotes"]);
+    const unpushed = log ?? [];
+    if (status === null || log === null)
+        return { paths: [], unavailable: true };
+    const candidates = [...new Set([...dirty, ...unpushed])].filter(Boolean);
+    const named = candidates.filter((path) => ids.some((id) => path.toLowerCase().includes(id)));
+    // `pm block` refreshes this generated view after changing the item. Its path
+    // carries no item id, so the ordinary record matcher cannot discover it.
+    const productRoot = isAbsolute(productDir) ? productDir : join(rootDir, productDir);
+    const comparableRoot = await realpath(rootDir).catch(() => rootDir);
+    const comparableProduct = await realpath(productRoot).catch(() => productRoot);
+    const indexPath = relative(comparableRoot, join(comparableProduct, "roadmap", "README.md")).replaceAll("\\", "/");
+    const indexes = candidates.filter((path) => path === indexPath);
+    // An inbox has no id in its path, so ask its contents instead. `hq/team/`
+    // also holds the roster, a README and meeting notes, none of which are ever
+    // an escalation.
+    const inboxes = [];
+    for (const path of candidates) {
+        if (named.includes(path))
+            continue;
+        const name = basename(path).toLowerCase();
+        if (dirname(path) !== INBOX_DIR || !name.endsWith(".md") || TEAM_RESERVED.has(name))
+            continue;
+        const body = await readFile(join(rootDir, path), "utf8").catch(() => null);
+        // Unreadable is not "names no escalation". An inbox that exists and cannot
+        // be read is listed rather than dropped — the check exists for this file,
+        // so failing closed on it is the only safe direction.
+        if (body === null) {
+            inboxes.push(path);
+            continue;
+        }
+        const here = ids.filter((id) => body.toLowerCase().includes(id));
+        if (!here.length)
+            continue;
+        // The newest version of this file that reached a remote. An id already in
+        // it is an escalation that reached whoever answers — the local copy is a
+        // routine cycle carrying a still-open item forward, not a dropped one.
+        const pushedAt = (await lines(["rev-list", "-1", "--remotes", "--", path]))?.[0];
+        const pushed = pushedAt
+            ? ((await lines(["show", `${pushedAt}:${path}`])) ?? []).join("\n").toLowerCase()
+            : "";
+        if (here.some((id) => !pushed.includes(id)))
+            inboxes.push(path);
+    }
+    return { paths: [...new Set([...named, ...indexes, ...inboxes])].sort(), unavailable: false };
+}
+export async function block(productDir, root, id, opts) {
+    const nothing = (code) => ({ code, written: [] });
+    if (!id) {
+        console.error('Usage: morpheus pm block MO-051 --needs "what would unblock this"');
+        return nothing(1);
+    }
+    if (!opts.needs?.trim()) {
+        console.error('A --needs is required: morpheus pm block MO-051 --needs "which model, and whose\n' +
+            'subscription pays for it".\n\n' +
+            '"Blocked on Chris" is not a need — say what would actually unblock it.');
+        return nothing(1);
+    }
+    const policy = await projectPolicy(root);
+    const trunk = await resolveTrunk(root, policy.trunk);
+    const branch = await currentBranch(root);
+    if (opts.push !== false && branch === trunk.branch) {
+        console.error(`Refusing to block ${id.toUpperCase()} on the protected trunk branch "${branch}". ` +
+            "`pm block` commits and pushes its coordination records so other sessions can see them.\n" +
+            `Run \`morpheus pm claim ${id.toUpperCase()}\`, or check out its existing claimed branch, ` +
+            "then block it there. Nothing was written.");
+        return nothing(1);
+    }
+    const owners = opts.owner ? [] : await inboxOwners(root);
+    const owner = opts.owner ?? (owners.length === 1 ? owners[0] : undefined);
+    if (!owner) {
+        const found = owners.length
+            ? ` Found ${owners.length} inboxes: ${owners.join(", ")}.`
+            : " Found no person inboxes.";
+        console.error(`Could not tell whose inbox this belongs in.${found}\n` +
+            "Pass --owner <github-handle>, or leave exactly one person inbox under hq/team/.");
+        return nothing(1);
+    }
+    try {
+        const r = await blockItem({
+            productDir,
+            root,
+            id: id.toUpperCase(),
+            needs: opts.needs,
+            owner,
+            ...(opts.context ? { context: opts.context } : {}),
+        });
+        console.log(`\x1b[33m${r.id} → blocked\x1b[0m — ${r.title}`);
+        if (r.alreadyBlocked)
+            console.log("Updated the existing block reason.");
+        console.log(`Needs: ${opts.needs.trim()}`);
+        for (const p of r.written)
+            console.log(`  wrote ${p}`);
+        if (r.inboxCreated)
+            console.log(`  (created a new inbox for ${owner})`);
+        if (r.indexIssues.length) {
+            console.warn(`  Roadmap index not refreshed: ${r.indexIssues.length} validation issue(s) remain.`);
+        }
+        if (opts.push === false) {
+            // Offline. The records are written, which is what keeps `pm block`
+            // reachable when a session most needs it — but a block nobody can see
+            // is not yet a block, and saying so is the difference between a
+            // deferred step and a silently dropped one.
+            console.log("\x1b[33mOffline: written to disk and not pushed. The block is not visible to other\n" +
+                "sessions yet — commit and push it when you reconnect.\x1b[0m");
+        }
+        else {
+            const outcome = await commitRecords(root, r.written, `chore(${r.id}): blocked — ${opts.needs.trim().slice(0, 60)}`);
+            if (outcome === "pushed") {
+                console.log("Committed and pushed — the block is visible to every other session.");
+            }
+            else if (outcome === "committed") {
+                console.log("\x1b[33mCommitted, but the push failed — the block is not visible to other sessions.\n" +
+                    "Push when you can; `morpheus pm claims` will keep saying so.\x1b[0m");
+            }
+            else {
+                console.log("\x1b[33mCommitted nothing: not a git repo, or the commit failed. The records are on disk.\x1b[0m");
+            }
+        }
+        console.log(`\nThe branch stays claimed. When answered: \`morpheus pm unblock ${r.id}\`.`);
+        // `before: null` is a positive claim — `noteWrite` maps it to `ABSENT` —
+        // so it is only made for the inbox, where `block()` actually knows. The
+        // other two records are omitted rather than described falsely: the
+        // roadmap item existed before it was rewritten, and saying otherwise
+        // would be a claim about a file this call never measured.
+        const inboxPath = r.inboxPath;
+        return {
+            code: 0,
+            written: inboxPath ? [{ path: inboxPath, before: r.inboxBefore }] : [],
+        };
+    }
+    catch (err) {
+        if (err instanceof BlockError) {
+            console.error(err.message);
+            return nothing(1);
+        }
+        throw err;
+    }
+}
+/** Return a blocked item to in-progress. */
+export async function unblock(productDir, id) {
+    if (!id) {
+        console.error("Usage: morpheus pm unblock MO-051");
+        return 1;
+    }
+    try {
+        const r = await unblockItem(productDir, id.toUpperCase());
+        console.log(`\x1b[32m${r.id} → in-progress\x1b[0m — ${r.title}`);
+        console.log("The inbox item is left alone: close it in the next cycle, where the answer is recorded.");
+        return 0;
+    }
+    catch (err) {
+        if (err instanceof BlockError) {
+            console.error(err.message);
+            return 1;
+        }
+        throw err;
+    }
+}
+/**
+ * Move merged items to shipped.
+ *
+ * With no id, reconciles every `review` item against merged pull requests.
+ * With ids, marks those directly — the escape hatch for work that shipped
+ * without a PR this tool can see.
+ */
+export async function ship(productDir, ids, cwd, check = false) {
+    if (ids.length) {
+        for (const id of ids) {
+            await markShipped(productDir, id);
+            console.log(`\x1b[32m${id} → shipped\x1b[0m`);
+        }
+        return 0;
+    }
+    const result = await reconcile(productDir, cwd, { write: !check });
+    console.log(formatReconcile(result));
+    // `--check` is for CI, where a roadmap that disagrees with merged PRs is a
+    // failure. Without it, finding nothing to do is a success.
+    if (check)
+        return result.outcomes.some((o) => o.kind === "shipped") ? 1 : 0;
+    return 0;
+}
+/**
+ * Migrate integer roadmap ids to the dated scheme (MO-057).
+ *
+ * `--check` plans and reports without writing, which is how a repo confirms it
+ * is already migrated. The order check runs in both modes and refuses rather
+ * than warns: a board whose order silently changed is worse than one that was
+ * not migrated.
+ */
+export async function migrateIds(productDir, dryRun, repoRoot = process.cwd()) {
+    const roadmapDir = join(productDir, "roadmap");
+    let result;
+    try {
+        result = await migrate(roadmapDir, dryRun, join(repoRoot, ".agent", "worklog"), [
+            join(repoRoot, "hq"),
+            join(repoRoot, ".agent"),
+        ]);
+    }
+    catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        return 1;
+    }
+    for (const p of result.problems)
+        console.error(`✗ ${p}`);
+    if (result.renames.length === 0) {
+        console.log(`Nothing to migrate — ${result.skipped.length} item(s) already dated.`);
+        return result.problems.length ? 1 : 0;
+    }
+    console.log(`${dryRun ? "Would migrate" : "Migrated"} ${result.renames.length} item(s):\n`);
+    for (const r of result.renames)
+        console.log(`  ${r.oldId.padEnd(10)} → ${r.newId}`);
+    if (result.skipped.length)
+        console.log(`\n${result.skipped.length} already dated, left alone.`);
+    console.log("\nOrdering verified unchanged.");
+    if (result.referencesUpdated.length) {
+        console.log(`\n${result.referencesUpdated.length} worklog reference(s) repointed.`);
+    }
+    if (result.linksUpdated.length) {
+        console.log(`${result.linksUpdated.length} file(s) had markdown links repaired.`);
+    }
+    if (!dryRun)
+        console.log("Run `morpheus pm index` to regenerate the tables.");
+    return result.problems.length ? 1 : 0;
+}
+//# sourceMappingURL=pm.js.map

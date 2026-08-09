@@ -175,6 +175,16 @@ describe("agent-review.yml", () => {
 });
 
 describe("ci.yml", () => {
+  it("compiles Morpheus and rejects stale committed artifacts", async () => {
+    const wf = await read("ci.yml");
+    expect(wf.jobs?.node?.with).toEqual(
+      expect.objectContaining({
+        "build-script": "compile",
+        "verify-build-clean": true,
+      }),
+    );
+  });
+
   it("calls the agent review rung", async () => {
     const wf = await read("ci.yml");
     expect(wf.jobs?.["agent-review"]?.uses).toContain("agent-review.yml");

@@ -21,7 +21,7 @@ generates with its own tooling.
 
 ```sh
 git clone https://github.com/cpheinrich/morpheus.git ~/code/morpheus
-cd ~/code/morpheus && pnpm install && pnpm build && npm link
+cd ~/code/morpheus && pnpm install && pnpm compile && npm link
 ```
 
 `npm link` puts `morpheus` on your PATH, so it works from any project directory. There is no

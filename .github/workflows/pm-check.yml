@@ -70,7 +70,7 @@ jobs:
         working-directory: .morpheus
         run: |
           pnpm install --frozen-lockfile
-          pnpm build
+          pnpm compile
 
       # Projects without Firestore rules should not gain a failing check merely
       # by updating @main. Consumers with the data gate opt in, while reusing

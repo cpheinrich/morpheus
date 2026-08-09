@@ -27,6 +27,14 @@ on:
       run-lint:
         type: boolean
         default: false
+      build-script:
+        description: Package script that produces the deployable output.
+        type: string
+        default: "build"
+      verify-build-clean:
+        description: Fail when the build changes committed generated output.
+        type: boolean
+        default: false
 
 jobs:
   check:
@@ -61,4 +69,10 @@ jobs:
         run: pnpm test
 
       - name: Build
-        run: pnpm build
+        env:
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+        run: pnpm run "$BUILD_SCRIPT"
+
+      - name: Verify committed build output
+        if: ${{ inputs.verify-build-clean }}
+        run: git diff --exit-code

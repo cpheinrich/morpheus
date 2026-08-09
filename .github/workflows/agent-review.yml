@@ -84,7 +84,7 @@ jobs:
         working-directory: .morpheus
         run: |
           pnpm install --frozen-lockfile
-          pnpm build
+          pnpm compile
 
       # What has changed since anyone last *looked*, not since the merge base.
       #

@@ -37,11 +37,11 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 
 ```sh
 pnpm install
-pnpm build && npm link      # once — puts `morpheus` on PATH for every project
+pnpm compile && npm link    # once — puts `morpheus` on PATH for every project
 pnpm typecheck             # tsc --noEmit
 pnpm test                  # vitest run
 pnpm test:rules            # generated firestore.rules vs the emulator — needs Java
-pnpm build                 # tsc -p tsconfig.build.json
+pnpm compile               # tsc -p tsconfig.build.json; refreshes committed dist/
 pnpm morpheus pm validate   # validate hq/product frontmatter
 pnpm morpheus pm index      # regenerate README index tables
 pnpm morpheus pm new roadmap "Title here" --priority P1 [--issue 123]
@@ -234,7 +234,7 @@ reads the check.
 **A waiver needs a real reason.** `skip-tests: yes` is refused, as are `true`, `n/a` and an empty
 value. Say what cannot be tested and why.
 
-**Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm morpheus pm index`, and commit
+**Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm compile && pnpm morpheus pm index`, and commit
 any index changes. CI runs the same checks and will fail otherwise.
 
 ## Branch protection

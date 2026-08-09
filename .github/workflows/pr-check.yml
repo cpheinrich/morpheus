@@ -67,7 +67,7 @@ jobs:
         working-directory: .morpheus
         run: |
           pnpm install --frozen-lockfile
-          pnpm build
+          pnpm compile
 
       - name: Check PR conventions
         run: >

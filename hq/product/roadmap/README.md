@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
-| [MO-26-08-08-23.48.59](./MO-26-08-08-23.48.59-document-backend-app.md) | Give non-client deployables a backend home | review | P2 | — | #89 | — |
+| [MO-26-08-09-00.05.06](./MO-26-08-09-00.05.06-ship-prebuilt-git-artifacts.md) | Ship prebuilt git dependency artifacts | in-progress | P2 | — | #82 | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
@@ -91,5 +91,6 @@ item files, not this table.
 | [MO-26-08-03-13.58.45](./MO-26-08-03-13.58.45-vercel-default.md) | Vercel is the default, not the recommendation | shipped | P2 | — | — | #87 |
 | [MO-26-08-05-16.50.38](./MO-26-08-05-16.50.38-close-out-team-migration.md) | Retire the hq/inbox fallback, scaffold meeting-notes | shipped | P2 | — | — | #97 |
 | [MO-26-08-05-19.05.35](./MO-26-08-05-19.05.35-swap-seo-aso-tools.md) | SEO and ASO canonical tools become OpenSEO and Appeeky | shipped | P2 | — | — | #98 |
+| [MO-26-08-08-23.48.59](./MO-26-08-08-23.48.59-document-backend-app.md) | Give non-client deployables a backend home | shipped | P2 | — | #89 | #108 |
 | [MO-26-07-29-012](./MO-26-07-29-012-make-morpheus-private-adjust.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — | — |
 <!-- morpheus:end -->
