@@ -52,3 +52,8 @@ The review also caught that `git rm --ignore-unmatch` would silently weaken stal
 a mistyped or newly empty output directory. The clean step now requires the declared path to match
 tracked files before removing it. Verification stages and compares only that declared output path,
 so unrelated files produced elsewhere by a consumer job do not fail a build-output check.
+
+The final review found one non-blocking public-API rough edge: enabling verification without an
+output directory reached Git's opaque empty-pathspec failure. The workflow now names that missing
+required input directly, documents that verification is scoped to it, and rejects glob characters
+along with absolute and parent-traversing paths.

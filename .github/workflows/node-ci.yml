@@ -32,11 +32,15 @@ on:
         type: string
         default: "build"
       verify-build-clean:
-        description: Fail when the build changes committed generated output.
+        description: >
+          Fail when the build changes committed output inside build-output-directory.
+          Requires build-output-directory.
         type: boolean
         default: false
       build-output-directory:
-        description: Tracked generated directory to clean before a verified build.
+        description: >
+          Safe relative path to the tracked generated directory cleaned and checked by a
+          verified build.
         type: string
         default: ""
 
@@ -78,7 +82,7 @@ jobs:
           BUILD_OUTPUT_DIRECTORY: ${{ inputs.build-output-directory }}
         run: |
           case "$BUILD_OUTPUT_DIRECTORY" in
-            "."|"/"|/*|*".."*)
+            "."|"/"|/*|*".."*|*"*"*|*"?"*|*"["*)
               echo "build-output-directory must be a safe relative path" >&2
               exit 1
               ;;
@@ -99,5 +103,9 @@ jobs:
         env:
           BUILD_OUTPUT_DIRECTORY: ${{ inputs.build-output-directory }}
         run: |
+          if [ -z "$BUILD_OUTPUT_DIRECTORY" ]; then
+            echo "verify-build-clean requires build-output-directory" >&2
+            exit 1
+          fi
           git add --all -- "$BUILD_OUTPUT_DIRECTORY"
           git diff --cached --exit-code -- "$BUILD_OUTPUT_DIRECTORY"
