@@ -161,11 +161,22 @@ describe("morpheus init", () => {
       expect(await read(path)).toContain("morpheus:begin roles");
       expect(await rules(dir, true, path)).toBe(0);
       expect(JSON.parse(await read("firebase.json"))).toEqual({ firestore: { rules: path } });
+      const notes = (await scaffold(dir, SEED)).notes.join("\n");
+      expect(notes).not.toContain("Created the deployed rules file");
 
       const ci = load(await read(".github/workflows/ci.yml")) as {
         jobs?: Record<string, { with?: Record<string, unknown> }>;
       };
       expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBe(path);
+    });
+
+    it("warns that a fresh canonical gate and deploy config become active together", async () => {
+      const result = await scaffold(dir, SEED);
+
+      const notes = result.notes.join("\n");
+      expect(notes).toContain("deny-by-default starter policy");
+      expect(notes).toContain("also created firebase.json");
+      expect(notes).toContain("next Firebase deploy will use this file");
     });
 
     it("does not add a second rules file to an established root-layout project", async () => {

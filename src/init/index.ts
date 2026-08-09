@@ -79,10 +79,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     written.push(rel);
   };
 
-  const prepareRules = async (
-    path: string,
-    warnWhenCreated: boolean,
-  ): Promise<string | undefined> => {
+  const prepareRules = async (path: string): Promise<string | undefined> => {
     const existing = await readFile(join(root, path), "utf8").catch(() => null);
     if (existing === null) {
       await put(path, renderFirestoreRules());
@@ -93,12 +90,14 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
         );
         return undefined;
       }
-      if (warnWhenCreated) {
-        notes.push(
-          `Created the deployed rules file ${path} with deny-by-default starter policy. ` +
-            "Review its match blocks before the next Firebase deploy.",
-        );
-      }
+      const configWarning = written.includes("firebase.json")
+        ? " This run also created firebase.json, so the next Firebase deploy will use this file."
+        : "";
+      notes.push(
+        `Created the deployed rules file ${path} with deny-by-default starter policy.` +
+          configWarning +
+          " Review its match blocks before the next Firebase deploy.",
+      );
       return path;
     }
 
@@ -106,7 +105,8 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     if (!update) {
       skipped.push(`${path} (rules file has no complete generated role marker block)`);
       notes.push(
-        `Kept the deployed rules file ${path} and left its CI check off because it has no ` +
+        `Kept the deployed rules file ${path} and did not enable its generated CI check because ` +
+          "it has no " +
           "complete generated role marker block. Review `morpheus hq rules --print`, add the " +
           "block inside the database match scope, then enable hq-rules-path.",
       );
@@ -200,7 +200,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     const firebaseConfig = await readFile(join(root, "firebase.json"), "utf8").catch(() => null);
     const configured = firebaseConfig ? configuredFirestoreRules(firebaseConfig) : null;
     if (configured?.kind === "path") {
-      rulesPath = await prepareRules(configured.path, true);
+      rulesPath = await prepareRules(configured.path);
     } else if (firebaseConfig !== null) {
       const reason =
         configured?.kind === "invalid"
@@ -216,7 +216,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
       );
     } else {
       await put("firebase.json", t.firebaseConfig(canonicalRules));
-      rulesPath = await prepareRules(canonicalRules, false);
+      rulesPath = await prepareRules(canonicalRules);
     }
   }
 

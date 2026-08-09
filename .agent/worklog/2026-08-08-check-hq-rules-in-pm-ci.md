@@ -69,3 +69,7 @@ in `written`, so a read/access failure cannot be reported as a successful securi
 All configured and canonical paths now pass through one `prepareRules` adoption function. That
 removes the final branch-specific predicate and gives pre-existing canonical unmarked/stale gates
 the same unwired-or-reported behavior as paths read from `firebase.json`.
+Every newly written rules file now carries the deny-by-default deployment warning; when the same run
+also creates `firebase.json`, the note states that the next deploy will activate that file. Partial
+gate reporting says initialization did not enable generated CI rather than claiming a preserved
+workflow was turned off.
