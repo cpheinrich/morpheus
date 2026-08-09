@@ -1047,11 +1047,12 @@ tracking comment before the model reads the change, and the model may replace th
 in-progress checklist before it reports, so neither existence nor non-placeholder text proves that
 a review landed. A separate dependent job runs after the action's post step, identifies the comment
 by this workflow run's URL, and requires a new id, the pinned action's finished marker, and a
-Morpheus-owned delivery sentinel that the versioned reviewer persona emits only after substantive
-review text. Requiring that sentinel as the final line identifies arbitrary model-authored progress
-bodies without borrowing their unstable prose; action headers identify errors. Any missing evidence
-fails closed to a warning. Permission-denial counts are diagnostic only: healthy runs can contain
-denials, while a broken reporting path need not.
+Morpheus-owned delivery sentinel that the CLI appends to every assembled prompt after the caller's
+persona and item context. Requiring that sentinel with substantive text identifies arbitrary
+model-authored progress bodies without borrowing their unstable prose; the pinned action's spinner
+on the first line rejects a progress body that merely mentions it, and action headers identify
+errors. Any missing evidence fails closed to a warning. Permission-denial counts are diagnostic
+only: healthy runs can contain denials, while a broken reporting path need not.
 
 **The reviewer persona is a versioned file**, `.github/agent-review-prompt.md`, not a string inside
 YAML. It is the part that gets tuned most often and the part a human most wants to read, and a

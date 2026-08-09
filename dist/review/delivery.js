@@ -1,7 +1,7 @@
 /** The progress comment's body before the reviewer replaces it with a review. */
 export const REVIEW_PLACEHOLDER = "I'll analyze this and get back to you.";
 /** The action writes this into the tracking comment when its run aborts. */
-export const REVIEW_ERROR_PREFIX = "**Claude encountered an error after";
+export const REVIEW_ERROR_PREFIX = "**Claude encountered an error";
 /** Workflow sentinel: the pre-run comment list could not be read. */
 export const UNREADABLE_COMMENT_SNAPSHOT = "__unreadable__";
 /** Workflow sentinel: the pre-run read succeeded and found no comment for this run id. */
@@ -10,6 +10,8 @@ export const NO_PRIOR_COMMENT = "__none__";
 export const REVIEW_FINISHED_PREFIX = "**Claude finished @";
 /** Morpheus-owned positive evidence required by the versioned reviewer persona. */
 export const REVIEW_DELIVERED_SENTINEL = "<!-- morpheus:review-delivered -->";
+/** Pinned action asset kept on the first line of an unfinished progress body. */
+export const REVIEW_PROGRESS_SPINNER_ID = "5ac382c7-e004-429b-8e35-7feb3e8f9c6f";
 /**
  * Whether this run left a new tracking comment that contains an actual review.
  *
@@ -50,10 +52,14 @@ export function assessReviewDelivery(input) {
     if (reviewBody === REVIEW_PLACEHOLDER) {
         return { delivered: false, why: "the finalized tracking comment still contains only the initial placeholder" };
     }
-    if (!reviewBody.endsWith(REVIEW_DELIVERED_SENTINEL)) {
+    const firstLine = reviewBody.split("\n", 1)[0] ?? "";
+    if (firstLine.includes(REVIEW_PROGRESS_SPINNER_ID)) {
+        return { delivered: false, why: "the finalized tracking comment still has the action's progress spinner" };
+    }
+    if (!reviewBody.includes(REVIEW_DELIVERED_SENTINEL)) {
         return { delivered: false, why: "the finalized tracking comment lacks Morpheus's delivery sentinel" };
     }
-    const substantiveReview = reviewBody.slice(0, -REVIEW_DELIVERED_SENTINEL.length).trim();
+    const substantiveReview = reviewBody.replace(REVIEW_DELIVERED_SENTINEL, "").trim();
     if (!substantiveReview) {
         return { delivered: false, why: "the finalized tracking comment contains no review" };
     }

@@ -1,7 +1,7 @@
 /** The progress comment's body before the reviewer replaces it with a review. */
 export declare const REVIEW_PLACEHOLDER = "I'll analyze this and get back to you.";
 /** The action writes this into the tracking comment when its run aborts. */
-export declare const REVIEW_ERROR_PREFIX = "**Claude encountered an error after";
+export declare const REVIEW_ERROR_PREFIX = "**Claude encountered an error";
 /** Workflow sentinel: the pre-run comment list could not be read. */
 export declare const UNREADABLE_COMMENT_SNAPSHOT = "__unreadable__";
 /** Workflow sentinel: the pre-run read succeeded and found no comment for this run id. */
@@ -10,6 +10,8 @@ export declare const NO_PRIOR_COMMENT = "__none__";
 export declare const REVIEW_FINISHED_PREFIX = "**Claude finished @";
 /** Morpheus-owned positive evidence required by the versioned reviewer persona. */
 export declare const REVIEW_DELIVERED_SENTINEL = "<!-- morpheus:review-delivered -->";
+/** Pinned action asset kept on the first line of an unfinished progress body. */
+export declare const REVIEW_PROGRESS_SPINNER_ID = "5ac382c7-e004-429b-8e35-7feb3e8f9c6f";
 export interface ReviewDelivery {
     beforeCommentId?: string;
     commentId?: string;

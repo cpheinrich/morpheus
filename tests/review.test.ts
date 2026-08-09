@@ -103,6 +103,15 @@ describe("buildReviewPrompt", () => {
     const out = buildReviewPrompt({ persona: PERSONA, id: "MO-051", title: "t", intent: "  " });
     expect(out).toContain("records no detail beyond its title");
   });
+
+  it("appends the delivery contract even when the caller's persona predates it", () => {
+    const out = buildReviewPrompt({ persona: PERSONA, id: "MO-051", title: "t" });
+    expect(out).toContain("## Delivery contract");
+    expect(out).toContain(REVIEW_DELIVERED_SENTINEL);
+    expect(out.indexOf("## Delivery contract")).toBeGreaterThan(
+      out.indexOf("What this change was supposed to do"),
+    );
+  });
 });
 
 describe("acceptancePath", () => {
@@ -190,7 +199,7 @@ describe("the shipped persona", () => {
     // it — no test encodes a decision.
     expect(text).toContain("decisions.md");
     expect(text).toContain("do not block");
-    expect(text).toContain("morpheus:review-delivered");
+    expect(text).toContain("delivery sentinel");
   });
 });
 
@@ -383,7 +392,7 @@ describe("review delivery", () => {
   const delivered = {
     beforeCommentId: NO_PRIOR_COMMENT,
     commentId: "101",
-    body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task in 2m 4s** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Agent review\n\nNo findings worth a human's time.\n\n${REVIEW_DELIVERED_SENTINEL}`,
+    body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task in 2m 4s** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Agent review\n\nNo findings worth a human's time.\n\n${REVIEW_DELIVERED_SENTINEL}\n · branch [example](https://github.com/cpheinrich/morpheus/tree/example)`,
   };
 
   it("accepts a new comment containing a completed review", () => {
@@ -429,7 +438,7 @@ describe("review delivery", () => {
   it("rejects the action's final error body", () => {
     const result = assessReviewDelivery({
       ...delivered,
-      body: `${REVIEW_ERROR_PREFIX} 2m 4s**`,
+      body: `${REVIEW_ERROR_PREFIX}**`,
     });
     expect(result.delivered).toBe(false);
     expect(result.why).toContain("error");
@@ -450,7 +459,7 @@ describe("review delivery", () => {
       body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Review — MO-26-08-02-02.48.16 <img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" />\n\n- [ ] Read the diff\n- [ ] Report`,
     });
     expect(result.delivered).toBe(false);
-    expect(result.why).toContain("delivery sentinel");
+    expect(result.why).toContain("progress spinner");
   });
 
   it("requires the Morpheus-owned positive delivery sentinel", () => {
@@ -465,10 +474,10 @@ describe("review delivery", () => {
   it("does not accept a progress body that merely mentions the sentinel", () => {
     const result = assessReviewDelivery({
       ...delivered,
-      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nRemember to add ${REVIEW_DELIVERED_SENTINEL} after reporting.\n\n- [ ] Report`,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Reviewing <img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" />\n\nRemember to add ${REVIEW_DELIVERED_SENTINEL} after reporting.\n\n- [ ] Report`,
     });
     expect(result.delivered).toBe(false);
-    expect(result.why).toContain("delivery sentinel");
+    expect(result.why).toContain("progress spinner");
   });
 
   it("allows a completed review to discuss the placeholder and error markers", () => {

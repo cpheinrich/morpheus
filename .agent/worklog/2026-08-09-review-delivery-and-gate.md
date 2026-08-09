@@ -31,7 +31,9 @@ incidental shell exit in this item.
 ## Verification before the live PR run
 
 - `pnpm typecheck`
-- `pnpm test` — 27 files, 820 tests
+- `pnpm exec vitest run --maxWorkers=1` — 27 files, 821 tests. One parallel run timed out in three
+  unrelated temporary-Git-remote fixtures; all three exact cases passed serially in under a second
+  each, and the full serial suite passed.
 - Regression cases cover a successful review, an unchanged prior comment, the exact placeholder,
   the action error body, a GitHub blob permalink, a real-shape encoded Fix-this link, empty diff,
   and unreadable diff.
@@ -70,12 +72,27 @@ while discussing the detector, and the global substring check called that a fail
 review had used a different in-progress heading before it completed, proving the sampled model
 heading was not a contract either.
 
-The final definition borrows no positive evidence from model prose. The versioned reviewer persona
-requires `<!-- morpheus:review-delivered -->` only on a completed report, and the predicate requires
-it alongside the pinned action's final success header. Error matching is scoped to the action
+The final definition borrows no positive evidence from model prose. The CLI appends
+`<!-- morpheus:review-delivered -->` to every assembled prompt after the caller's persona and item
+context, so an older consumer persona cannot disagree with the detector. The predicate requires it
+alongside the pinned action's final success header. Error matching is scoped to the action
 header; placeholder matching is equality against the whole review section, so quoting either in a
-real finding cannot fire. Progress is rejected because it lacks the sentinel as the final line,
-without depending on a heading, spinner description or checklist the model may quote or change.
+real finding cannot fire. A model progress body that mentions the sentinel is rejected by the
+pinned spinner asset on its first line, without depending on a model-authored heading or checklist.
 The dependent job also treats a missing late `review_requested` output as review
 required, so an early checkout/install/cursor failure produces delivery evidence rather than
 silently skipping the detector.
+
+## The third live run moved the contract to the assembled prompt
+
+The sentinel-only version failed closed on a healthy run because the reviewer omitted it. Its own
+review identified why the persona was the wrong transport: consumers own copied persona files,
+while the detector ships from `morpheus-ref`, so they can drift independently. `buildReviewPrompt`
+now appends the delivery contract last on every run, even for a caller persona that predates it.
+The predicate accepts the sentinel anywhere in substantive review text because the action can leave
+its branch-footer remnant after it, and the test fixture now carries that exact live shape.
+
+The same pass tightened two fail-closed seams: `configured` and `review_requested` job outputs both
+use `!= 'false'`, so an early review-job failure does not silently skip delivery; and the exact run
+selector includes the closing `)` after the numeric id, so a run id cannot match a longer id by
+prefix. The error marker now covers the pinned action's no-duration abort header as well.

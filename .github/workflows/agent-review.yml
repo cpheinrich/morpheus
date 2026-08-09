@@ -160,7 +160,7 @@ jobs:
           # Passing mentions in prose are a known remaining looseness: the input
           # is the wrong shape for a regex to separate, and tuning the matcher
           # will not fix it. Recorded so the matcher is not blamed for it.
-          run_marker="/actions/runs/$GITHUB_RUN_ID"
+          run_marker="/actions/runs/$GITHUB_RUN_ID)"
           if ! gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
             --paginate --slurp > /tmp/comments-before.json 2>/dev/null; then
             comment_id_before="__unreadable__"
@@ -302,7 +302,7 @@ jobs:
   # final success/error header when it is inspected.
   delivery:
     needs: review
-    if: always() && needs.review.outputs.configured == 'true' && needs.review.outputs.review_requested != 'false'
+    if: always() && needs.review.outputs.configured != 'false' && needs.review.outputs.review_requested != 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -341,7 +341,7 @@ jobs:
           ACTION_CONCLUSION: ${{ needs.review.outputs.action_conclusion }}
         run: |
           reason=""
-          run_marker="/actions/runs/$GITHUB_RUN_ID"
+          run_marker="/actions/runs/$GITHUB_RUN_ID)"
           if ! gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
             --paginate --slurp > /tmp/final-review-comments.json; then
             reason="could not read the final tracking comment"

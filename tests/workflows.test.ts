@@ -215,6 +215,8 @@ describe("agent-review.yml", () => {
     expect(review?.id).toBe("review");
     expect(deliveryJob?.needs).toBe("review");
     expect(deliveryJob?.if).toContain("always()");
+    expect(deliveryJob?.if).toContain("configured != 'false'");
+    expect(deliveryJob?.if).not.toContain("configured == 'true'");
     expect(deliveryJob?.if).toContain("review_requested != 'false'");
     expect(deliveryJob?.if).not.toContain("review_requested == 'true'");
     expect(reviewJob?.outputs?.comment_id_before).toContain(
@@ -229,7 +231,7 @@ describe("agent-review.yml", () => {
     const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
     expect(raw.match(/--paginate --slurp/g)).toHaveLength(2);
     expect(raw).toContain('contains("[View job")');
-    expect(raw).toContain('run_marker="/actions/runs/$GITHUB_RUN_ID"');
+    expect(raw).toContain('run_marker="/actions/runs/$GITHUB_RUN_ID)"');
   });
 
   it("pins the action whose final comment contract the detector parses", async () => {
