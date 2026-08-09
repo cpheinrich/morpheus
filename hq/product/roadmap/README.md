@@ -6,9 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
-| [MO-26-08-04-12.48.59](./MO-26-08-04-12.48.59-never-reconcile-blocked-item.md) | Never reconcile a blocked item to shipped | review | P1 | — | — |
-| [MO-26-08-05-16.27.56](./MO-26-08-05-16.27.56-gate-actions-on-lease.md) | Gate durable and governed actions on a fresh session lease | review | P1 | — | — |
-| [MO-26-08-08-00.35.02](./MO-26-08-08-00.35.02-prepare-package-manager.md) | prepare must not assume the consumer's package manager | review | P1 | — | — |
+| [MO-26-08-08-21.30.49](./MO-26-08-08-21.30.49-enforce-issue-closure.md) | Make issue closure explicit and enforced | review | P1 | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — |
@@ -70,9 +68,12 @@ item files, not this table.
 | [MO-26-08-02-15.15.21](./MO-26-08-02-15.15.21-fix-goal-ids.md) | Goal ids must match the shape the schema requires | shipped | P1 | MO-G-2026-Q3-01 | #79 |
 | [MO-26-08-03-13.25.57](./MO-26-08-03-13.25.57-name-ci-secret-store.md) | Three secret stores, split by who reads them | shipped | P1 | MO-G-2026-Q3-01 | #85 |
 | [MO-26-08-03-14.18.25](./MO-26-08-03-14.18.25-capture-collab-context.md) | hq/team: the roster, inboxes, and meeting notes | shipped | P1 | MO-G-2026-Q3-01 | #88 |
+| [MO-26-08-04-12.48.59](./MO-26-08-04-12.48.59-never-reconcile-blocked-item.md) | Never reconcile a blocked item to shipped | shipped | P1 | — | #93 |
 | [MO-26-08-05-12.24.47](./MO-26-08-05-12.24.47-enforce-context-freshness.md) | Context receipts and session leases — the freshness policy core | shipped | P1 | — | #95 |
+| [MO-26-08-05-16.27.56](./MO-26-08-05-16.27.56-gate-actions-on-lease.md) | Gate durable and governed actions on a fresh session lease | shipped | P1 | — | #99 |
 | [MO-26-08-05-16.29.20](./MO-26-08-05-16.29.20-fix-inbox-detect-reserved.md) | Onboarding reads members.md as an inbox | shipped | P1 | — | #96 |
 | [MO-26-08-07-20.10.23](./MO-26-08-07-20.10.23-hq-session-mint.md) | Session cookies: the mint half of morpheus-kit/hq | shipped | P1 | — | #101 |
+| [MO-26-08-08-00.35.02](./MO-26-08-08-00.35.02-prepare-package-manager.md) | prepare must not assume the consumer's package manager | shipped | P1 | — | #102 |
 | [MO-26-07-28-008](./MO-26-07-28-008-morpheus-init.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | #22 |
 | [MO-26-07-28-009](./MO-26-07-28-009-retrofit-darwin.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-29-010](./MO-26-07-29-010-simplify-architecture-md-first.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | #46 |

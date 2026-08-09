@@ -44,7 +44,7 @@ pnpm test:rules            # generated firestore.rules vs the emulator — needs
 pnpm build                 # tsc -p tsconfig.build.json
 pnpm morpheus pm validate   # validate hq/product frontmatter
 pnpm morpheus pm index      # regenerate README index tables
-pnpm morpheus pm new roadmap "Title here" --priority P1
+pnpm morpheus pm new roadmap "Title here" --priority P1 [--issue 123]
 pnpm morpheus pm migrate-ids --check   # integer roadmap ids → the dated scheme (MO-057)
 pnpm morpheus pm block MO-051 --needs "what would unblock this"
 pnpm morpheus pm unblock MO-051
@@ -195,6 +195,12 @@ changes nothing. The rule applies only when browser use is the *single, entire* 
 - A test plan: what you verified and how
 - Any open questions you could not resolve, stated plainly rather than guessed at
 - The roadmap item moved to `review`
+- `Closes #<number>` for every GitHub issue declared in the roadmap item's `issues:` field
+
+When an issue becomes roadmap work, create it with `morpheus pm new roadmap "<title>" --issue 123`.
+That writes structured closure intent into the item. `check pr` then requires GitHub's closing
+keyword in the PR body, so merging the fix cannot leave the issue open as a second, stale backlog.
+An issue merely mentioned as related is not declared and is not closed.
 
 **Except a PR that only touches records** — `hq/team/` and `.agent/`. An inbox cycle belongs to
 no feature and has no item to move. Branch it as `inbox-<YYYY-MM-DD>`, staking no id, and

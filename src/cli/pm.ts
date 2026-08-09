@@ -231,7 +231,7 @@ export async function create(
   productDir: string,
   kind: string,
   title: string,
-  opts: { priority?: string; goal?: string; slug?: string },
+  opts: { priority?: string; goal?: string; slug?: string; issue?: string },
   cwd: string,
 ): Promise<number> {
   if (!isKind(kind)) {
@@ -240,6 +240,16 @@ export async function create(
   }
   if (!title) {
     console.error("A title is required.");
+    return 1;
+  }
+
+  const issue = opts.issue === undefined ? undefined : Number(opts.issue);
+  if (issue !== undefined && (!Number.isInteger(issue) || issue <= 0)) {
+    console.error(`--issue must be a positive GitHub issue number; received "${opts.issue}".`);
+    return 1;
+  }
+  if (issue !== undefined && kind !== "roadmap") {
+    console.error("--issue is only valid for roadmap items.");
     return 1;
   }
 
@@ -252,7 +262,17 @@ export async function create(
     return 1;
   }
 
-  const { path, id, blind } = await createItem({ productDir, kind, prefix, title, cwd, ...opts });
+  const { path, id, blind } = await createItem({
+    productDir,
+    kind,
+    prefix,
+    title,
+    cwd,
+    priority: opts.priority,
+    goal: opts.goal,
+    slug: opts.slug,
+    ...(issue !== undefined ? { issues: [issue] } : {}),
+  });
   console.log(`Created ${path}`);
   if (blind) {
     console.warn(

@@ -70,6 +70,16 @@ function isRealReason(reason: string): boolean {
   return reason.length >= 4 && !NON_REASONS.has(reason.toLowerCase());
 }
 
+/** Whether the PR body uses one of GitHub's same-repository closing keywords. */
+export function closesIssue(body: string, issue: number): boolean {
+  const keyword = String.raw`(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)`;
+  // The pull-request template carries an example inside an HTML comment.
+  // GitHub does not treat hidden template guidance as closure intent, so the
+  // verifier must not let that example satisfy the rule either.
+  const visible = body.replace(/<!--[\s\S]*?-->/g, "");
+  return new RegExp(String.raw`(?:^|\s)${keyword}\s+#${issue}(?!\d)`, "im").test(visible);
+}
+
 const SOURCE = /^src\/.*\.(ts|tsx)$/;
 const TEST = /(^tests\/|\.test\.tsx?$)/;
 const DOCS = /^(docs\/|architecture\.md$|README\.md$|AGENTS\.md$)/;
@@ -229,14 +239,30 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
           `Create it with \`morpheus pm new roadmap "<title>"\`, then \`morpheus pm claim\` ` +
           `the id it allocates — claiming derives the branch, so the two cannot disagree.`,
       });
-    } else if (!["review", "shipped"].includes(item.data.status)) {
-      findings.push({
-        level: "error",
-        rule: "roadmap-status",
-        message:
-          `${id} is "${item.data.status}" — set it to "review" when opening a PR, ` +
-          `so the board does not lag the work.`,
-      });
+    } else {
+      const missingClosures = item.data.issues.filter((issue) => !closesIssue(body, issue));
+      if (missingClosures.length) {
+        findings.push({
+          level: "error",
+          rule: "issue-closure",
+          message:
+            `${id} declares GitHub issue${missingClosures.length === 1 ? "" : "s"} ` +
+            `${missingClosures.map((issue) => `#${issue}`).join(", ")}, but the PR body does not ` +
+            `close ${missingClosures.length === 1 ? "it" : "them"}. Add ` +
+            missingClosures.map((issue) => `\"Closes #${issue}.\"`).join(" ") +
+            " so GitHub closes the issue when this PR merges.",
+        });
+      }
+
+      if (!["review", "shipped"].includes(item.data.status)) {
+        findings.push({
+          level: "error",
+          rule: "roadmap-status",
+          message:
+            `${id} is "${item.data.status}" — set it to "review" when opening a PR, ` +
+            `so the board does not lag the work.`,
+        });
+      }
     }
   }
 

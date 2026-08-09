@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseClaimedNumbers } from "../src/pm/claim.js";
 import { findDuplicateIds, parseArtifact, parseDir } from "../src/pm/parse.js";
 import {
@@ -13,7 +13,7 @@ import {
   spliceIndex,
   writeIndex,
 } from "../src/pm/index-gen.js";
-import { index } from "../src/cli/pm.js";
+import { create, index } from "../src/cli/pm.js";
 import { createItem, nextId } from "../src/pm/new-item.js";
 import { Goal, RoadmapItem } from "../src/pm/schema.js";
 
@@ -52,6 +52,21 @@ describe("schema", () => {
     expect(parsed.priority).toBe("P2");
     expect(parsed.owner).toBe("agent");
     expect(parsed.prs).toEqual([]);
+    expect(parsed.issues).toEqual([]);
+  });
+
+  it("accepts only positive GitHub issue numbers", () => {
+    const item = {
+      id: "MO-002",
+      title: "Something",
+      status: "backlog" as const,
+      created: "2026-07-01",
+      updated: "2026-07-01",
+    };
+
+    expect(RoadmapItem.safeParse({ ...item, issues: [70, 76] }).success).toBe(true);
+    expect(RoadmapItem.safeParse({ ...item, issues: [0] }).success).toBe(false);
+    expect(RoadmapItem.safeParse({ ...item, issues: ["70"] }).success).toBe(false);
   });
 
   it("rejects a malformed id", () => {
@@ -387,6 +402,47 @@ describe("new item", () => {
     expect(items[0]!.data.priority).toBe("P1");
   });
 
+  it("records the GitHub issues a roadmap item promises to close", async () => {
+    await createItem({
+      productDir: product,
+      kind: "roadmap",
+      prefix: "MO",
+      title: "Close the loop",
+      issues: [70],
+      cwd: product,
+    });
+
+    const { items, issues } = await parseArtifact(product, "roadmap");
+    expect(issues).toHaveLength(0);
+    expect(items[0]!.data.issues).toEqual([70]);
+  });
+
+  it("accepts --issue for a roadmap item through the CLI boundary", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-pm-issue-"));
+    const productDir = join(root, "hq/product");
+    await mkdir(productDir, { recursive: true });
+    await writeFile(join(root, "morpheus.json"), '{"prefix":"MO"}\n');
+
+    expect(await create(productDir, "roadmap", "Close the loop", { issue: "70" }, root)).toBe(0);
+    const { items, issues } = await parseArtifact(productDir, "roadmap");
+    expect(issues).toHaveLength(0);
+    expect(items[0]!.data.issues).toEqual([70]);
+  });
+
+  it.each(["0", "-1", "not-a-number"])("refuses invalid --issue value %s before writing", async (issue) => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await create(product, "roadmap", "Close the loop", { issue }, product)).toBe(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("positive GitHub issue number"));
+    error.mockRestore();
+  });
+
+  it("refuses --issue on non-roadmap items", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await create(product, "goals", "Wrong kind", { issue: "70" }, product)).toBe(1);
+    expect(error).toHaveBeenCalledWith("--issue is only valid for roadmap items.");
+    error.mockRestore();
+  });
+
   // The bug this replaces: `pm new goals` wrote `MO-G-001` against a `GOAL_ID`
   // spelling `MO-G-2026-Q3-01`, so every goal the CLI produced failed
   // `pm validate` — in CI, on the first push, in a repo that had done nothing
@@ -469,6 +525,7 @@ describe("new item", () => {
     const [file] = (await readdir(join(product, "roadmap"))).filter((f) => f.endsWith(".md"));
     const raw = await readFile(join(product, "roadmap", file!), "utf8");
     expect(raw).not.toContain("goal:");
+    expect(raw).not.toContain("issues:");
   });
 });
 

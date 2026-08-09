@@ -409,8 +409,8 @@ needed.
 ### 7.2 Conventions and how they are enforced
 
 The conventions: every PR includes tests where testable, updates docs when behaviour changes,
-carries a staging link, updates roadmap status, states a test plan, lists open questions, and
-records self-review.
+carries a staging link, updates roadmap status, states a test plan, lists open questions, records
+self-review, and closes every GitHub issue the roadmap item declares it resolves.
 
 | Layer | Mechanism | Strength |
 |---|---|---|
@@ -421,7 +421,10 @@ records self-review.
 `morpheus check pr` fails the build when: source files changed without corresponding test changes
 and no `skip-tests` justification is present; a public API changed without a `docs/` change; the PR
 body is missing required sections; or the roadmap item named by the branch was not moved to
-`review`.
+`review`. A roadmap item created with `pm new roadmap --issue 123` carries `issues: [123]` in its
+frontmatter; `check pr` requires `Closes #123` (or another GitHub closing keyword) in the PR body.
+The structured field distinguishes completion from a merely related issue mention, while GitHub's
+native merge behaviour performs the actual close.
 
 Instructions get ignored eventually. A failing check does not.
 

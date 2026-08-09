@@ -145,6 +145,8 @@ export interface NewItemOptions {
   /** Name the slug deliberately, like a branch. Falls back to the title. */
   slug?: string;
   goal?: string;
+  /** GitHub issues the roadmap item fully resolves. */
+  issues?: number[];
   /** Injectable clock, so tests can pin the period a goal lands in. */
   now?: Date;
 }
@@ -182,6 +184,7 @@ export async function createItem(opts: NewItemOptions): Promise<NewItem> {
         goal: opts.goal,
         owner: "agent",
         prs: [],
+        issues: opts.issues?.length ? opts.issues : undefined,
         created: date,
         updated: date,
         // What the repo looked like when this was written. Absent rather than

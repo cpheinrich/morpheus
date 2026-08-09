@@ -102,6 +102,8 @@ export const RoadmapItem = z
     goal: z.string().regex(GOAL_ID).optional(),
     owner: z.enum(["agent", "human"]).default("agent"),
     prs: z.array(z.number().int().positive()).default([]),
+    /** GitHub issues this item fully resolves. A merged PR must close each one. */
+    issues: z.array(z.number().int().positive()).default([]),
     acceptance: z.string().optional(),
     /** What would unblock this. Required when `status` is `blocked`. */
     needs: z.string().optional(),
