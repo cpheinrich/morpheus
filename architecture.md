@@ -1435,8 +1435,8 @@ ships here rather than per project because the read side is where the open redir
 `raw.startsWith("/")` — the check most people write — admits `//evil.example`.
 
 ```sh
-morpheus hq rules            # write or refresh the generated block in firestore.rules
-morpheus hq rules --check    # fail when it has drifted — for CI
+morpheus hq rules --rules-path infra/firebase/firestore.rules
+morpheus hq rules --check --rules-path infra/firebase/firestore.rules
 ```
 
 Only the role helpers are generated, between markers. The `match` blocks stay the project's own:

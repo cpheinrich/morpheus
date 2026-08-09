@@ -26,4 +26,7 @@ The independent review found that the original implementation hard-coded a root-
 the architecture places it at `infra/firebase/firestore.rules`. That was safe for a manual command
 someone would notice, but unsafe as an advertised CI check: the suggested remedy could create a
 second, undeployed rules file. The CLI and reusable workflow now share an explicit rules path, and
-CLI-level tests cover missing, unmarked, current, and nested-path creation states.
+CLI-level tests cover missing, unmarked, stale and current states. The follow-up review tightened
+that boundary: a stale helper block is exercised through the CLI in both read-only and refresh
+modes, and a missing parent directory is refused so a path typo cannot create a second security file
+that Firebase never deploys.

@@ -60,8 +60,8 @@ pnpm morpheus brand build          # regenerate from an edited hq/brand/answers.
 pnpm morpheus init                 # scaffold a project — safe to re-run, never overwrites
 pnpm morpheus init status          # how far through project setup this repo is
 pnpm morpheus access sync          # apply morpheus.json's allowlist to Firebase custom claims
-pnpm morpheus hq rules             # write/refresh the role helpers in firestore.rules
-pnpm morpheus hq rules --check     # fail if they have drifted from the role vocabulary
+pnpm morpheus hq rules --rules-path infra/firebase/firestore.rules
+pnpm morpheus hq rules --check --rules-path infra/firebase/firestore.rules
 pnpm morpheus context refresh      # take a context receipt — after reading the records
 pnpm morpheus context status       # what the current lease says, and how old it is
 ```

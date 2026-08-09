@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { renderFirestoreRules, renderRoleHelpers, updateRoleHelpers } from "../hq/rules.js";
 
 const RULES = "firestore.rules";
@@ -27,8 +27,15 @@ export async function rules(
       );
       return 1;
     }
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, renderFirestoreRules(), "utf8");
+    const wrote = await writeFile(path, renderFirestoreRules(), "utf8")
+      .then(() => true)
+      .catch(() => false);
+    if (!wrote) {
+      console.error(
+        `Cannot write ${rulesPath}. Create its parent directory and verify the path first.`,
+      );
+      return 1;
+    }
     console.log(`Wrote ${rulesPath}`);
     console.log("Review the match blocks — the role helpers are generated, the policy is yours.");
     return 0;

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -236,10 +236,18 @@ describe("hq rules command", () => {
 
     await writeFile(path, renderFirestoreRules(), "utf8");
     expect(await rules(root, true, rulesPath)).toBe(0);
+
+    const current = renderFirestoreRules();
+    const stale = current.replace("role() == 'admin';", "role() == 'owner';");
+    await writeFile(path, stale, "utf8");
+    expect(await rules(root, true, rulesPath)).toBe(1);
+    expect(await readFile(path, "utf8")).toBe(stale);
+    expect(await rules(root, false, rulesPath)).toBe(0);
+    expect(await readFile(path, "utf8")).toBe(current);
   });
 
-  it("creates the parent directories for a configured path", async () => {
-    expect(await rules(root, false, rulesPath)).toBe(0);
-    expect(await rules(root, true, rulesPath)).toBe(0);
+  it("refuses to invent parent directories for a mistyped path", async () => {
+    expect(await rules(root, false, rulesPath)).toBe(1);
+    await expect(readFile(join(root, rulesPath), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
