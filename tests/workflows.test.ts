@@ -85,6 +85,30 @@ describe("heartbeat.yml", () => {
   });
 });
 
+describe("pm-check.yml", () => {
+  it("offers the HQ rules check without breaking projects that have no rules", async () => {
+    const wf = (await read("pm-check.yml")) as {
+      on?: {
+        workflow_call?: {
+          inputs?: Record<string, { type?: string; default?: unknown }>;
+        };
+      };
+      jobs?: Record<
+        string,
+        { steps?: Array<{ name?: string; if?: string; run?: string }> }
+      >;
+    };
+    const input = wf.on?.workflow_call?.inputs?.["hq-rules"];
+    expect(input).toEqual(expect.objectContaining({ type: "boolean", default: false }));
+
+    const step = wf.jobs?.["pm"]?.steps?.find(
+      (candidate) => candidate.name === "Verify generated HQ role helpers",
+    );
+    expect(step?.if).toContain("inputs.hq-rules");
+    expect(step?.run).toBe("node .morpheus/dist/cli/index.js hq rules --check");
+  });
+});
+
 describe("schedule.yml", () => {
   it("runs on a cron and can be triggered by hand", async () => {
     const wf = await read("schedule.yml");

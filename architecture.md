@@ -1276,6 +1276,19 @@ derived from one exported list rather than restated:
 | The **route** gate — a project's `proxy.ts` | `canAccessHq()` from `morpheus-kit/hq` | typecheck |
 | The **data** gate — `firestore.rules` | generated helpers | `morpheus hq rules --check` |
 
+Projects using the data gate enable that last check in the reusable PM workflow instead of
+rebuilding the CLI in a second job:
+
+```yaml
+jobs:
+  pm:
+    uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main
+    with:
+      hq-rules: true
+```
+
+The input defaults off because a project with no `firestore.rules` has no data gate to verify.
+
 Darwin's first cut carried a comment asking the next reader to keep two lists identical by hand.
 An invariant a comment is asking for is one the code should be enforcing — a role added on one
 side and missed on the other grants nothing, or keeps granting after removal, and neither is
