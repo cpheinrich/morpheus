@@ -250,4 +250,12 @@ describe("hq rules command", () => {
     expect(await rules(root, false, rulesPath)).toBe(1);
     await expect(readFile(join(root, rulesPath), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("requires a non-empty path instead of falling back to the repository root", async () => {
+    expect(await rules(root, true)).toBe(1);
+    expect(await rules(root, true, "")).toBe(1);
+    await expect(readFile(join(root, "firestore.rules"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
 });

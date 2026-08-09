@@ -2,10 +2,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { renderFirestoreRules, renderRoleHelpers, updateRoleHelpers } from "../hq/rules.js";
 
-const RULES = "firestore.rules";
-
 /**
- * Write or refresh the generated role helpers in `firestore.rules`.
+ * Write or refresh the generated role helpers in the project's deployed rules file.
  *
  * `--check` writes nothing and fails when the block is stale, which is the
  * form CI needs. Drift here is the dangerous kind: the claim writer and the
@@ -15,8 +13,12 @@ const RULES = "firestore.rules";
 export async function rules(
   repoRoot: string,
   check: boolean,
-  rulesPath = RULES,
+  rulesPath?: string,
 ): Promise<number> {
+  if (!rulesPath) {
+    console.error("hq rules requires --rules-path <path> so it checks the file Firebase deploys.");
+    return 1;
+  }
   const path = resolve(repoRoot, rulesPath);
   const existing = await readFile(path, "utf8").catch(() => null);
 
@@ -27,13 +29,11 @@ export async function rules(
       );
       return 1;
     }
-    const wrote = await writeFile(path, renderFirestoreRules(), "utf8")
-      .then(() => true)
-      .catch(() => false);
-    if (!wrote) {
-      console.error(
-        `Cannot write ${rulesPath}. Create its parent directory and verify the path first.`,
-      );
+    try {
+      await writeFile(path, renderFirestoreRules(), "utf8");
+    } catch (error) {
+      const detail = error instanceof Error ? `: ${error.message}` : "";
+      console.error(`Cannot write ${rulesPath}${detail}`);
       return 1;
     }
     console.log(`Wrote ${rulesPath}`);

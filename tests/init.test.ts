@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
+import { rules } from "../src/cli/hq.js";
 import { parseInboxFile } from "../src/inbox/parse.js";
 import { parseArtifact } from "../src/pm/parse.js";
 import type { Seed } from "../src/init/templates.js";
@@ -149,6 +150,14 @@ describe("morpheus init", () => {
 
       expect(await read("qa/acceptance/README.md")).toContain("acceptance");
       expect(await read("infra/README.md")).toContain("firestore.rules");
+    });
+
+    it("starts company projects with the deployed rules file already current", async () => {
+      await scaffold(dir, SEED);
+
+      const path = "infra/firebase/firestore.rules";
+      expect(await read(path)).toContain("morpheus:begin roles");
+      expect(await rules(dir, true, path)).toBe(0);
     });
 
     /**

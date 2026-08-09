@@ -1,6 +1,7 @@
 import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { EXPECTED } from "../doctor/index.js";
+import { renderFirestoreRules } from "../hq/rules.js";
 import * as t from "./templates.js";
 import type { Seed } from "./templates.js";
 import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
@@ -119,6 +120,13 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     // repos ended up with this and scaffolded ones without, which is the wrong
     // way round.
     await put(`${MEETING_NOTES_DIR}/README.md`, t.meetingNotesReadme());
+  }
+
+  // The company layout declares this as the deployed data gate, and every
+  // documented `hq rules` command names it. Scaffold the deny-by-default
+  // starter so the first CI check is meaningful and its remedy is executable.
+  if (seed.kind === "company") {
+    await put("infra/firebase/firestore.rules", renderFirestoreRules());
   }
 
   // Remaining expected directories get a placeholder so they survive a clone.

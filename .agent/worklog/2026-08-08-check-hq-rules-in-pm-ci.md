@@ -30,3 +30,8 @@ CLI-level tests cover missing, unmarked, stale and current states. The follow-up
 that boundary: a stale helper block is exercised through the CLI in both read-only and refresh
 modes, and a missing parent directory is refused so a path typo cannot create a second security file
 that Firebase never deploys.
+
+The final integration review followed the documented command from a fresh scaffold and found that
+`infra/firebase/` did not yet exist. Company scaffolds now carry the deny-by-default starter rules
+file, which makes the first check green and gives the local refresh command a real target. The CLI
+also requires a non-empty path, removing the undocumented root fallback entirely.
