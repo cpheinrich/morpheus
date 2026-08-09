@@ -32,6 +32,6 @@ export declare function needed(changedFiles: string[] | null, opts?: NeededOptio
  * base — so the question asked is "what has changed since anyone looked", which
  * is the one that decides whether looking again is worth it.
  */
-export declare function reviewNeeded(base: string, priorReviewPath?: string): number;
+export declare function reviewNeeded(base: string, priorReviewPath?: string, json?: boolean): number;
 /** Verify that a reviewer run delivered a new, substantive tracking comment. */
 export declare function reviewDelivery(beforeCommentId?: string, commentId?: string, bodyPath?: string): number;

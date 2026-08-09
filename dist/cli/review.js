@@ -105,11 +105,16 @@ function readIfGiven(path) {
  * base — so the question asked is "what has changed since anyone looked", which
  * is the one that decides whether looking again is worth it.
  */
-export function reviewNeeded(base, priorReviewPath) {
+export function reviewNeeded(base, priorReviewPath, json = false) {
     const prior = readIfGiven(priorReviewPath);
     const { review, why } = needed(changedFiles(base), ...(prior ? [{ priorReview: prior }] : []));
-    console.log(String(review));
-    console.error(review ? `Reviewing: ${why}` : `Skipping: ${why}`);
+    if (json) {
+        console.log(JSON.stringify({ review, why }));
+    }
+    else {
+        console.log(String(review));
+        console.error(review ? `Reviewing: ${why}` : `Skipping: ${why}`);
+    }
     return 0;
 }
 /** Verify that a reviewer run delivered a new, substantive tracking comment. */

@@ -356,7 +356,7 @@ async function main() {
         if (command === "prompt")
             return reviewPrompt(dir, process.cwd());
         if (command === "needed")
-            return reviewNeeded(flags.base, flags.priorReview);
+            return reviewNeeded(flags.base, flags.priorReview, flags.json);
         if (command === "delivery") {
             return reviewDelivery(flags.beforeCommentId, flags.commentId, flags.bodyFile);
         }

@@ -5,8 +5,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { needed } from "../src/cli/review.js";
 import {
   assessReviewDelivery,
+  NO_PRIOR_COMMENT,
   REVIEW_ERROR_PREFIX,
+  REVIEW_FINISHED_PREFIX,
   REVIEW_PLACEHOLDER,
+  REVIEW_PROGRESS_HEADING,
   UNREADABLE_COMMENT_SNAPSHOT,
 } from "../src/review/delivery.js";
 import { pathsMentioned } from "../src/review/findings.js";
@@ -377,9 +380,9 @@ describe("pathsMentioned across citation styles", () => {
 
 describe("review delivery", () => {
   const delivered = {
-    beforeCommentId: "100",
+    beforeCommentId: NO_PRIOR_COMMENT,
     commentId: "101",
-    body: "### Agent review\n\nNo findings worth a human's time.",
+    body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task in 2m 4s** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Agent review\n\nNo findings worth a human's time.`,
   };
 
   it("accepts a new comment containing a completed review", () => {
@@ -389,9 +392,19 @@ describe("review delivery", () => {
   });
 
   it("does not let an earlier successful comment certify this run", () => {
-    const result = assessReviewDelivery({ ...delivered, commentId: "100" });
+    const result = assessReviewDelivery({
+      ...delivered,
+      beforeCommentId: "100",
+      commentId: "100",
+    });
     expect(result.delivered).toBe(false);
     expect(result.why).toContain("earlier run");
+  });
+
+  it("does not confuse a missing snapshot with a successful no-prior-comment read", () => {
+    const result = assessReviewDelivery({ ...delivered, beforeCommentId: "" });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("no pre-run");
   });
 
   it("fails closed when the pre-run comment snapshot was unreadable", () => {
@@ -418,8 +431,21 @@ describe("review delivery", () => {
     expect(result.why).toContain("error");
   });
 
-  it("does not use execution denials as delivery evidence", () => {
-    const result = assessReviewDelivery(delivered);
-    expect(result.delivered).toBe(true);
+  it("rejects a comment that has not been finalized by the action's post step", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: "### Agent review\n\nNo findings worth a human's time.",
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("completed-review marker");
+  });
+
+  it("rejects the live in-progress checklist even after the action finalizes it", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n${REVIEW_PROGRESS_HEADING}\n\n- [ ] Report`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("in-progress checklist");
   });
 });

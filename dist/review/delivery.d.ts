@@ -4,6 +4,12 @@ export declare const REVIEW_PLACEHOLDER = "I'll analyze this and get back to you
 export declare const REVIEW_ERROR_PREFIX = "**Claude encountered an error after";
 /** Workflow sentinel: the pre-run comment list could not be read. */
 export declare const UNREADABLE_COMMENT_SNAPSHOT = "__unreadable__";
+/** Workflow sentinel: the pre-run read succeeded and found no comment for this run id. */
+export declare const NO_PRIOR_COMMENT = "__none__";
+/** Written by the action's post step only after it has finalized successfully. */
+export declare const REVIEW_FINISHED_PREFIX = "**Claude finished @";
+/** The current reviewer writes this while it is still reading, before reporting. */
+export declare const REVIEW_PROGRESS_HEADING = "### Reviewing this PR";
 export interface ReviewDelivery {
     beforeCommentId?: string;
     commentId?: string;

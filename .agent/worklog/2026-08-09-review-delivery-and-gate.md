@@ -31,7 +31,7 @@ incidental shell exit in this item.
 ## Verification before the live PR run
 
 - `pnpm typecheck`
-- `pnpm test` — 27 files, 811 tests
+- `pnpm test` — 27 files, 817 tests
 - Regression cases cover a successful review, an unchanged prior comment, the exact placeholder,
   the action error body, a GitHub blob permalink, a real-shape encoded Fix-this link, empty diff,
   and unreadable diff.
@@ -40,3 +40,24 @@ incidental shell exit in this item.
 
 The final proof is the PR's own review run: the new delivery step must find the review comment the
 action leaves on this branch and report delivery confirmed. That result will be recorded on the PR.
+
+## The first live run changed the definition again
+
+PR #110 showed the current action/model replacing the old placeholder almost immediately with a
+`### Reviewing this PR` todo list. The review was still running for another six minutes. The
+historical item's claimed biconditional — placeholder absent iff a review landed — had drifted, and
+the first implementation would have certified that checklist if the model stopped there.
+
+The job step order exposed a second flaw: a normal step after a composite action runs before that
+action's post step, so it cannot observe the final `Claude finished` / `Claude encountered an error`
+body. Delivery is now a separate job that needs the review job and runs `if: always()` after its post
+steps. The Claude action is pinned to the exact v1 commit whose final body contract the predicate
+parses; the predicate requires its positive finished marker and substantive content after the
+separator, and explicitly rejects the live progress heading.
+
+The independent review then found four wiring paths that could still lie, all addressed before the
+second push: generic `github-actions[bot]` recency is replaced by this run's `[View job]` URL;
+comment reads paginate and flatten every page; successful-no-prior, unreadable and missing snapshot
+states are separate; and the skip reason is carried from typed code into the summary. It also
+surfaced an older silent-no-op in the cursor (`gh api --jq --arg`, where `--arg` belongs to jq), now
+replaced by an encoded GET plus jq over the response file.

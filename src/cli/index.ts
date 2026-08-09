@@ -416,7 +416,7 @@ async function main(): Promise<number> {
 
   if (group === "review") {
     if (command === "prompt") return reviewPrompt(dir, process.cwd());
-    if (command === "needed") return reviewNeeded(flags.base, flags.priorReview);
+    if (command === "needed") return reviewNeeded(flags.base, flags.priorReview, flags.json);
     if (command === "delivery") {
       return reviewDelivery(flags.beforeCommentId, flags.commentId, flags.bodyFile);
     }
