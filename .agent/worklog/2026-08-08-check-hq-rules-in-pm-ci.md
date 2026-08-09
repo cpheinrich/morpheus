@@ -63,3 +63,6 @@ Initialization uses `updateRoleHelpers` itself to recognize a complete marker bl
 predicate cannot drift from the CI command. Partial blocks remain unwired, complete stale blocks are
 wired with a pre-PR refresh note, and creating a deployed starter from existing Firebase config
 emits an explicit deny-by-default deployment warning.
+The architecture's `init` contract now records the same migration branches and distinguishes local
+deployment scaffolding from external provisioning. Creation warnings are tied to the file appearing
+in `written`, so a read/access failure cannot be reported as a successful security-file write.

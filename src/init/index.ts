@@ -154,11 +154,18 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
       const existingRules = await readFile(join(root, configured.path), "utf8").catch(() => null);
       if (existingRules === null) {
         await put(configured.path, renderFirestoreRules());
-        rulesPath = configured.path;
-        notes.push(
-          `Created the deployed rules file ${configured.path} with deny-by-default starter policy. ` +
-            "Review its match blocks before the next Firebase deploy.",
-        );
+        if (written.includes(configured.path)) {
+          rulesPath = configured.path;
+          notes.push(
+            `Created the deployed rules file ${configured.path} with deny-by-default starter policy. ` +
+              "Review its match blocks before the next Firebase deploy.",
+          );
+        } else {
+          notes.push(
+            `Could not read or create the configured rules file ${configured.path}; left its CI ` +
+              "check off. Verify the file and permissions before enabling hq-rules-path.",
+          );
+        }
       } else {
         const update = updateRoleHelpers(existingRules);
         if (update) {
