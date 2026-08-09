@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { promisify } from "node:util";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { findDuplicateIds, parseArtifact, type ParseIssue } from "../pm/parse.js";
@@ -406,7 +406,11 @@ export async function claims(
   // nobody can see is not a block, so the state has to be visible somewhere
   // that gets read again — this is the "what is in flight" view, and it
   // already has the board in hand.
-  const { paths: unsent, unavailable } = await unsentBlockRecords(cwd, [...blocked.keys()]);
+  const { paths: unsent, unavailable } = await unsentBlockRecords(
+    cwd,
+    [...blocked.keys()],
+    productDir,
+  );
   if (unavailable) {
     console.log(
       `\n\x1b[33mCould not ask git whether the blocked items' records have reached anyone.\n` +
@@ -466,6 +470,7 @@ export interface UnsentRecords {
 export async function unsentBlockRecords(
   cwd: string,
   blockedIds: string[],
+  productDir?: string,
 ): Promise<UnsentRecords> {
   if (!blockedIds.length) return { paths: [], unavailable: false };
   const ids = blockedIds.map((id) => id.toLowerCase());
@@ -520,7 +525,22 @@ export async function unsentBlockRecords(
   const named = candidates.filter((path) => ids.some((id) => path.toLowerCase().includes(id)));
   // `pm block` refreshes this generated view after changing the item. Its path
   // carries no item id, so the ordinary record matcher cannot discover it.
-  const indexes = candidates.filter((path) => path === "hq/product/roadmap/README.md");
+  const productRoot = productDir
+    ? isAbsolute(productDir)
+      ? productDir
+      : join(rootDir, productDir)
+    : null;
+  const comparableRoot = await realpath(rootDir).catch(() => rootDir);
+  const comparableProduct = productRoot
+    ? await realpath(productRoot).catch(() => productRoot)
+    : null;
+  const indexPath = comparableProduct
+    ? relative(comparableRoot, join(comparableProduct, "roadmap", "README.md")).replaceAll(
+        "\\",
+        "/",
+      )
+    : null;
+  const indexes = indexPath ? candidates.filter((path) => path === indexPath) : [];
 
   // An inbox has no id in its path, so ask its contents instead. `hq/team/`
   // also holds the roster, a README and meeting notes, none of which are ever

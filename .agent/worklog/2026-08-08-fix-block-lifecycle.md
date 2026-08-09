@@ -43,3 +43,10 @@ explicit fourth output in that report, so following the printed recovery instruc
 the index dirty. The review also replaced a frozen sample date in the verifier message with the
 literal `inbox-<YYYY-MM-DD>` convention and qualified the documentation's trunk guarantee for the
 deliberate offline exception.
+
+Re-review found one remaining restatement: the unsent-record scan named the default roadmap index
+even though `pm block --dir` can write another product tree. The claims path now passes its actual
+`productDir`, and the scan derives a repo-relative index path after canonicalising both sides (the
+test's macOS temp path exposed `/var` versus `/private/var` as another way equivalent paths compare
+unequal). A non-default-directory test also dirties the default index and proves only the configured
+one is reported.
