@@ -1,8 +1,11 @@
 import { lstat, mkdtemp, readFile, readdir, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
+import { rules } from "../src/cli/hq.js";
+import { BEGIN, renderFirestoreRules } from "../src/hq/rules.js";
 import { parseInboxFile } from "../src/inbox/parse.js";
 import { parseArtifact } from "../src/pm/parse.js";
 import type { Seed } from "../src/init/templates.js";
@@ -149,6 +152,220 @@ describe("morpheus init", () => {
 
       expect(await read("qa/acceptance/README.md")).toContain("acceptance");
       expect(await read("infra/README.md")).toContain("firestore.rules");
+    });
+
+    it("starts company projects with the deployed rules file already current", async () => {
+      await scaffold(dir, SEED);
+
+      const path = "infra/firebase/firestore.rules";
+      expect(await read(path)).toContain("morpheus:begin roles");
+      expect(await rules(dir, true, path)).toBe(0);
+      expect(JSON.parse(await read("firebase.json"))).toEqual({ firestore: { rules: path } });
+      const notes = (await scaffold(dir, SEED)).notes.join("\n");
+      expect(notes).not.toContain("Created the deployed rules file");
+
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBe(path);
+    });
+
+    it("warns that a fresh canonical gate and deploy config become active together", async () => {
+      const result = await scaffold(dir, SEED);
+
+      const notes = result.notes.join("\n");
+      expect(notes).toContain("deny-by-default starter policy");
+      expect(notes).toContain("also created firebase.json");
+      expect(notes).toContain("next Firebase deploy will use this file");
+    });
+
+    it("does not add a second rules file to an established root-layout project", async () => {
+      await writeFile(join(dir, "firestore.rules"), "the deployed legacy gate\n", "utf8");
+
+      const result = await scaffold(dir, SEED);
+
+      await expect(read("infra/firebase/firestore.rules")).rejects.toMatchObject({ code: "ENOENT" });
+      expect(result.skipped).toContain(
+        "infra/firebase/firestore.rules (root firestore.rules already exists)",
+      );
+      expect(result.notes.join("\n")).toContain("did not create a second rules file");
+      const infraReadme = await read("infra/README.md");
+      expect(infraReadme).toContain("the rules file firebase.json deploys");
+      expect(infraReadme).not.toContain("--rules-path infra/firebase/firestore.rules");
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
+    });
+
+    it("explains how to wire a newly added gate when existing CI is preserved", async () => {
+      const existingCi = "name: Mine\n";
+      await mkdir(join(dir, ".github/workflows"), { recursive: true });
+      await writeFile(join(dir, ".github/workflows/ci.yml"), existingCi, "utf8");
+
+      const result = await scaffold(dir, SEED);
+
+      expect(await read(".github/workflows/ci.yml")).toBe(existingCi);
+      expect(await read("infra/firebase/firestore.rules")).toContain("morpheus:begin roles");
+      const note = result.notes.join("\n");
+      expect(note).toContain("existing .github/workflows/ci.yml does not check that path");
+      expect(note).toContain("hq-rules-path: infra/firebase/firestore.rules");
+
+      const second = await scaffold(dir, SEED);
+      expect(second.notes.join("\n")).toContain(
+        "existing .github/workflows/ci.yml does not check that path",
+      );
+    });
+
+    it("uses the deployed path when firebase.json already owns it", async () => {
+      await writeFile(
+        join(dir, "firebase.json"),
+        JSON.stringify({ firestore: { rules: "firebase/firestore.rules" } }),
+        "utf8",
+      );
+
+      const result = await scaffold(dir, SEED);
+
+      await expect(read("infra/firebase/firestore.rules")).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await read("firebase/firestore.rules")).toContain("morpheus:begin roles");
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBe("firebase/firestore.rules");
+      expect(result.notes.join("\n")).toContain("deny-by-default starter policy");
+    });
+
+    it("leaves CI off for an existing configured rules file without markers", async () => {
+      await writeFile(
+        join(dir, "firebase.json"),
+        JSON.stringify({ firestore: { rules: "firestore.rules" } }),
+        "utf8",
+      );
+      await writeFile(join(dir, "firestore.rules"), "rules_version = '2';\n", "utf8");
+
+      const result = await scaffold(dir, SEED);
+
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
+      expect(await read("firestore.rules")).toBe("rules_version = '2';\n");
+      expect(result.notes.join("\n")).toContain("morpheus hq rules --print");
+    });
+
+    it("treats a begin-only marker as incomplete and leaves CI off", async () => {
+      await writeFile(
+        join(dir, "firebase.json"),
+        JSON.stringify({ firestore: { rules: "firestore.rules" } }),
+        "utf8",
+      );
+      await writeFile(join(dir, "firestore.rules"), `${BEGIN}\ntruncated\n`, "utf8");
+
+      const result = await scaffold(dir, SEED);
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
+      expect(result.notes.join("\n")).toContain("no complete generated role marker block");
+    });
+
+    it("wires a complete stale block and reports the refresh before the first PR", async () => {
+      await writeFile(
+        join(dir, "firebase.json"),
+        JSON.stringify({ firestore: { rules: "firestore.rules" } }),
+        "utf8",
+      );
+      const stale = renderFirestoreRules().replace("role() == 'admin';", "role() == 'owner';");
+      await writeFile(join(dir, "firestore.rules"), stale, "utf8");
+
+      const result = await scaffold(dir, SEED);
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBe("firestore.rules");
+      expect(result.notes.join("\n")).toContain(
+        "morpheus hq rules --rules-path firestore.rules",
+      );
+      expect(await read("firestore.rules")).toBe(stale);
+    });
+
+    it("leaves a pre-existing unmarked canonical gate unwired", async () => {
+      await mkdir(join(dir, "infra/firebase"), { recursive: true });
+      await writeFile(
+        join(dir, "infra/firebase/firestore.rules"),
+        "rules_version = '2';\n",
+        "utf8",
+      );
+
+      const result = await scaffold(dir, SEED);
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
+      expect(result.notes.join("\n")).toContain("morpheus hq rules --print");
+    });
+
+    it("wires a pre-existing stale canonical gate and reports its refresh", async () => {
+      await mkdir(join(dir, "infra/firebase"), { recursive: true });
+      const stale = renderFirestoreRules().replace("role() == 'admin';", "role() == 'owner';");
+      await writeFile(join(dir, "infra/firebase/firestore.rules"), stale, "utf8");
+
+      const result = await scaffold(dir, SEED);
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBe("infra/firebase/firestore.rules");
+      expect(result.notes.join("\n")).toContain(
+        "morpheus hq rules --rules-path infra/firebase/firestore.rules",
+      );
+      expect(await read("infra/firebase/firestore.rules")).toBe(stale);
+    });
+
+    it("distinguishes malformed Firebase config from an ambiguous rules shape", async () => {
+      for (const [name, config, message] of [
+        ["malformed", "{\"firestore\":", "could not be parsed"],
+        ["ambiguous", JSON.stringify({ firestore: [{ rules: "a.rules" }] }), "does not name one"],
+      ] as const) {
+        const root = join(dir, name);
+        await mkdir(root, { recursive: true });
+        await writeFile(join(root, "firebase.json"), config, "utf8");
+
+        const result = await scaffold(root, SEED);
+        expect(result.notes.join("\n")).toContain(message);
+        await expect(readFile(join(root, "infra/firebase/firestore.rules"), "utf8")).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      }
+    });
+
+    it("does not treat an unreadable Firebase config as absent", async () => {
+      await mkdir(join(dir, "firebase.json"));
+
+      const result = await scaffold(dir, SEED);
+
+      const notes = result.notes.join("\n");
+      expect(notes).toContain("firebase.json could not be read");
+      expect(notes).toContain("Left the Firestore gate alone");
+      expect(notes).toContain("fix or confirm the configuration");
+      await expect(read("infra/firebase/firestore.rules")).rejects.toMatchObject({ code: "ENOENT" });
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
+    });
+
+    it("reports an unreadable preserved CI file instead of dropping wiring guidance", async () => {
+      await mkdir(join(dir, ".github/workflows/ci.yml"), { recursive: true });
+
+      const result = await scaffold(dir, SEED);
+
+      const notes = result.notes.join("\n");
+      expect(notes).toContain("Could not read the existing .github/workflows/ci.yml");
+      expect(notes).toContain("wire hq-rules-path to infra/firebase/firestore.rules");
     });
 
     /**

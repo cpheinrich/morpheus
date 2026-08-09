@@ -1274,7 +1274,22 @@ derived from one exported list rather than restated:
 |---|---|---|
 | The claim **writer** — `morpheus access sync` | `Role` zod enum, built from `ROLES` | typecheck |
 | The **route** gate — a project's `proxy.ts` | `canAccessHq()` from `morpheus-kit/hq` | typecheck |
-| The **data** gate — `firestore.rules` | generated helpers | `morpheus hq rules --check` |
+| The **data** gate — `firestore.rules` | generated helpers | `morpheus hq rules --rules-path <deployed path> --check` |
+
+Projects using the data gate enable that last check in the reusable PM workflow instead of
+rebuilding the CLI in a second job:
+
+```yaml
+jobs:
+  pm:
+    uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main
+    with:
+      hq-rules-path: infra/firebase/firestore.rules
+```
+
+The empty default leaves the check off because a project with no `firestore.rules` has no data
+gate to verify. The explicit path keeps the check attached to the file Firebase actually deploys;
+`morpheus hq rules --rules-path infra/firebase/firestore.rules` uses the same contract locally.
 
 Darwin's first cut carried a comment asking the next reader to keep two lists identical by hand.
 An invariant a comment is asking for is one the code should be enforcing — a role added on one
@@ -1420,8 +1435,8 @@ ships here rather than per project because the read side is where the open redir
 `raw.startsWith("/")` — the check most people write — admits `//evil.example`.
 
 ```sh
-morpheus hq rules            # write or refresh the generated block in firestore.rules
-morpheus hq rules --check    # fail when it has drifted — for CI
+morpheus hq rules --rules-path infra/firebase/firestore.rules
+morpheus hq rules --check --rules-path infra/firebase/firestore.rules
 ```
 
 Only the role helpers are generated, between markers. The `match` blocks stay the project's own:
@@ -1692,7 +1707,21 @@ billing account.
 
 `morpheus init` writes the manifest, `README.md`, `AGENTS.md` with `CLAUDE.md` symlinked to it,
 the `.agent/` records, the `hq/` tree for the project's kind, an inbox, a CI workflow delegating to
-the reusable ones, and `.gitignore` entries. Then it registers the prefix and prints `init status`.
+the reusable ones, and `.gitignore` entries. A company scaffold also writes the deny-by-default
+Firestore gate at `infra/firebase/firestore.rules` and a minimal `firebase.json` that deploys that
+same file. Then it registers the prefix and prints `init status`.
+
+The Firestore branch is migration-aware because a second security file is worse than no generated
+one. A fresh company gets the canonical rules file, deployment config and matching
+`hq-rules-path` CI input together. A pre-existing canonical file goes through the same adoption
+check. When an existing `firebase.json` names one string rules path, that path is authoritative: a
+missing file receives the starter with an explicit deployment warning; a complete generated block
+is wired (and reported if stale); an unmarked or partial file is preserved with CI left off and an
+explicit `hq rules --print` migration. Unreadable, malformed, multi-database or otherwise ambiguous
+configurations are preserved and reported rather than guessed. Without `firebase.json`, an
+established root `firestore.rules` is likewise preserved and
+left unwired until its deployed path is confirmed. Existing CI files are never overwritten; the
+result repeats the exact input block until the deployed path is wired.
 
 **Every project points back here.** `README.md` and `AGENTS.md` both carry a Morpheus callout —
 the repo link, `architecture.md`, and these operating principles — and `AGENTS.md` carries it
@@ -1715,9 +1744,10 @@ source of improvements to it.
 established repository — so *initialise a new project* and *bring an old one up to the standard*
 are the same command rather than two that drift apart.
 
-**It provisions nothing.** No GCP, no DNS, no Vercel — those live in someone else's console and
-need credentials this command should not hold. Drawing the seam there means `init` can never be
-blocked on a token.
+**It provisions nothing.** Repository-local deployment configuration and a deny-by-default rules
+file are scaffolding, not a cloud mutation. No GCP, no DNS, no Vercel — those live in someone else's
+console and need credentials this command should not hold. Drawing the seam there means `init` can
+never be blocked on a token.
 
 > **Gotchas.** `CLAUDE.md` is a **symlink**, not a copy; two files would drift invisibly until an
 > agent acted on the stale one. `hq/brand/` gets a `.gitkeep`, not a `README.md`, because the brand

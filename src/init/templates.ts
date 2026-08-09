@@ -35,6 +35,9 @@ export const manifest = (s: Seed): string =>
     2,
   ) + "\n";
 
+export const firebaseConfig = (rulesPath: string): string =>
+  JSON.stringify({ firestore: { rules: rulesPath } }, null, 2) + "\n";
+
 /**
  * The public Morpheus repository.
  *
@@ -252,7 +255,9 @@ verified by reading the diff, it is a test, not an acceptance criterion.
 Deployment configuration, security rules, and environment definitions.
 
 \`firestore.rules\` is partly **generated** — the role helpers between the \`morpheus:begin roles\`
-markers come from the role vocabulary and are rewritten by \`morpheus hq rules\`. The \`match\`
+markers come from the role vocabulary and are rewritten by
+\`morpheus hq rules --rules-path <the rules file firebase.json deploys>\`. Verify that path before
+running the command: the checked file and the deployed file must be the same gate. The \`match\`
 blocks around them are yours. Never hand-edit inside the markers.
 
 Provisioning is not here: consoles, DNS and hosting need credentials this repo should not hold.
@@ -456,7 +461,7 @@ shape, and CI runs it too.
  * The convention checks are toolchain-agnostic — they build the Morpheus CLI
  * from a checkout — so every project gets those.
  */
-export const ci = (opts: { node: boolean } = { node: true }): string => `name: CI
+export const ci = (opts: { node: boolean; rulesPath?: string } = { node: true }): string => `name: CI
 
 # Delegates to the Morpheus reusable workflows, so improving CI for every
 # project is one commit there rather than a change in every repository.
@@ -475,7 +480,13 @@ jobs:${
     : ""
 }
   pm:
-    uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main
+    uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main${
+      opts.rulesPath
+        ? `
+    with:
+      hq-rules-path: ${opts.rulesPath}`
+        : ""
+    }
 
   pr:
     uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
