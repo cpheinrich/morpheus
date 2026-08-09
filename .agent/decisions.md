@@ -16,8 +16,10 @@ behave. This file holds judgment calls, which could have gone the other way.
 **`hq/`, not `company/`** — not every project is a company, and it makes the three layers
 coherent: `hq/` is the data, `/hq` is the view, `morpheus-kit/hq` is the renderer.
 
-**`apps/` + `hq/` split** — `apps/` is deployed and has users; `hq/` is read, decided, and
-written down. Cross-references solved by importing, never by a sync step.
+**`apps/` + `hq/` split** — `apps/` runs as the deployed product; `hq/` is read, decided, and
+written down. A headless worker, service, scheduled job, inference system, or execution loop is an
+`apps/backend/` surface even when no person interacts with it directly. Cross-references are solved
+by importing, never by a sync step.
 
 **One file per roadmap item, with a generated index** — several agents run concurrently, and a
 single `roadmap.md` conflicts on every status change.

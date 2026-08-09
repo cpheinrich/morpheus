@@ -92,6 +92,7 @@ acme/
 │   │   └── tests/             # unit + component tests, colocated
 │   ├── ios/                   # SwiftUI — optional
 │   │   └── Tests/
+│   ├── backend/               # workers, services, scheduled jobs — optional
 │   └── hardware/              # designs, BOM, vendors — optional (§19)
 │
 ├── packages/
@@ -117,7 +118,7 @@ acme/
 
 ### `apps/` and `hq/`
 
-**`apps/` is deployed and has users; `hq/` is read, decided, and written down.**
+**`apps/` runs as the deployed product; `hq/` is read, decided, and written down.**
 
 Named `hq/` rather than `company/` because not every project is a company — `cpheinrich.com` is
 personal, Morpheus is an internal tool — and because it makes the naming coherent across all three
@@ -131,6 +132,15 @@ morpheus-kit/hq   the renderer      (package)
 
 Whatever is in `hq/` is what `/hq` shows. Where `apps/` needs a fact from `hq/`, it imports rather
 than copies (§12.3).
+
+`apps/backend/` is the conventional home for a deployable product surface with no client UI: a
+worker, scheduled job, inference service, execution loop, or similar long-running system. Name the
+directory for that stable role rather than for one company's implementation (`trader/`, `bot/`).
+Code that is imported by two or more surfaces still belongs in `packages/shared/`; code that runs
+as the product belongs in `apps/backend/`, even when no other surface imports it.
+That boundary is about ownership, not language: a non-TypeScript backend treats the canonical
+schemas in `packages/shared/schema/` as contracts and conforms manually until a generator for its
+language exists; it does not need to import the TypeScript package.
 
 ### Project kinds
 
@@ -197,7 +207,7 @@ canonical and lives in this document. Only *deviations* are recorded.
   "org": "darwin-health",            // groups sibling repos (§17); omit for personal/internal
   "domain": "evo.med",
   "description": "One-sentence description.",
-  "surfaces": { "web": true, "ios": true, "hardware": false },
+  "surfaces": { "web": true, "ios": true, "backend": false, "hardware": false },
   "integrations": ["firebase", "stripe", "posthog", "github", "slack", "openseo"],
   "accounts": { /* which identity per service — see §13.3 */ },
   "hq": {
@@ -219,6 +229,9 @@ The manifest names *which* identity a project operates as; the values live in Se
 (§13). An agent opening the repo reads this and knows which account it is — the thing that most
 often goes wrong when one person runs several companies.
 
+`surfaces` is an optional, advisory declaration for agents; it does not make a surface mandatory or
+cause `init` to scaffold an application directory. Projects record only the surfaces they need.
+
 ## 5. Where each business function lives
 
 | Function | Location | Form |
@@ -226,6 +239,7 @@ often goes wrong when one person runs several companies.
 | Web product | `apps/web/` | Next.js app |
 | iOS product | `apps/ios/` | SwiftUI app |
 | Android product | `apps/android/` | Deferred — bolt-on template later |
+| Backend product | `apps/backend/` | Worker, service, scheduled job, inference or execution loop |
 | Design tokens | `hq/brand/tokens.json` → `packages/shared/` | DTCG JSON → generated (§12.1) |
 | Database schema | `packages/shared/schema/` | TS source → generated types + rules |
 | Brand messaging | `hq/brand/messaging.json` | Imported by web |
@@ -1938,10 +1952,11 @@ types inferred from them** — validation at boundaries and types for free. A ge
 Swift structs and Firestore rules from the same source is deferred until iOS actually starts.
 
 **Most of the value comes from having one file, not from the codegen.** A single
-`packages/shared/schema/user.schema.ts` that both surfaces must conform to already prevents drift,
-because there is an unambiguous answer to "what shape is this document." Codegen removes the manual
-transcription step, which matters once a second consumer exists and not before — and a codegen
-pipeline is another CI step that can break.
+`packages/shared/schema/user.schema.ts` that every surface must conform to already prevents drift,
+because there is an unambiguous answer to "what shape is this document." A non-TypeScript backend
+conforms to that contract manually as described in §3. Codegen removes the manual transcription
+step, which matters once a second consumer exists and not before — and a codegen pipeline is
+another CI step that can break.
 
 ```ts
 // packages/shared/schema/entry.schema.ts — the source of truth
