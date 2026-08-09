@@ -42,3 +42,13 @@ out an older pinned `morpheus-ref` that has `build` rather than `compile`. Those
 install the selected ref. Old refs generate `dist/` through their existing `prepare`; new refs
 already carry it. The package test also derives all exports and bins from `package.json` and checks
 the CLI executable mode, rather than hardcoding three entry points.
+
+The second review raised the old-ref compatibility path as unverified. A clean checkout of
+pre-artifact commit `5c7bdb2` began without `dist/`; `pnpm install --frozen-lockfile` ran that ref's
+existing `prepare`/`build` hook, produced an executable CLI, and `node dist/cli/index.js --help`
+succeeded. This confirms a current reusable workflow can install both sides of the transition.
+
+The review also caught that `git rm --ignore-unmatch` would silently weaken staleness detection for
+a mistyped or newly empty output directory. The clean step now requires the declared path to match
+tracked files before removing it. Verification stages and compares only that declared output path,
+so unrelated files produced elsewhere by a consumer job do not fail a build-output check.

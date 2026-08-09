@@ -83,7 +83,11 @@ jobs:
               exit 1
               ;;
           esac
-          git rm -r -f --ignore-unmatch -- "$BUILD_OUTPUT_DIRECTORY"
+          git ls-files --error-unmatch -- "$BUILD_OUTPUT_DIRECTORY" >/dev/null || {
+            echo "build-output-directory '$BUILD_OUTPUT_DIRECTORY' has no tracked files" >&2
+            exit 1
+          }
+          git rm -r -f -- "$BUILD_OUTPUT_DIRECTORY"
 
       - name: Build
         env:
@@ -92,6 +96,8 @@ jobs:
 
       - name: Verify committed build output
         if: ${{ inputs.verify-build-clean }}
+        env:
+          BUILD_OUTPUT_DIRECTORY: ${{ inputs.build-output-directory }}
         run: |
-          git add --all
-          git diff --cached --exit-code
+          git add --all -- "$BUILD_OUTPUT_DIRECTORY"
+          git diff --cached --exit-code -- "$BUILD_OUTPUT_DIRECTORY"

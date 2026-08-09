@@ -216,8 +216,10 @@ describe("committed build output", () => {
     const clean = steps.find((step) => step.name === "Clean committed build output");
     const verify = steps.find((step) => step.name === "Verify committed build output");
 
-    expect(clean?.run).toContain("git rm -r -f --ignore-unmatch");
-    expect(verify?.run).toContain("git add --all");
+    expect(clean?.run).toContain("git ls-files --error-unmatch");
+    expect(clean?.run).toContain('git rm -r -f -- "$BUILD_OUTPUT_DIRECTORY"');
+    expect(clean?.run).not.toContain("--ignore-unmatch");
+    expect(verify?.run).toContain('git add --all -- "$BUILD_OUTPUT_DIRECTORY"');
     expect(verify?.run).toContain("git diff --cached --exit-code");
   });
 
