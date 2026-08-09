@@ -1274,7 +1274,7 @@ derived from one exported list rather than restated:
 |---|---|---|
 | The claim **writer** — `morpheus access sync` | `Role` zod enum, built from `ROLES` | typecheck |
 | The **route** gate — a project's `proxy.ts` | `canAccessHq()` from `morpheus-kit/hq` | typecheck |
-| The **data** gate — `firestore.rules` | generated helpers | `morpheus hq rules --check` |
+| The **data** gate — `firestore.rules` | generated helpers | `morpheus hq rules --rules-path <deployed path> --check` |
 
 Projects using the data gate enable that last check in the reusable PM workflow instead of
 rebuilding the CLI in a second job:

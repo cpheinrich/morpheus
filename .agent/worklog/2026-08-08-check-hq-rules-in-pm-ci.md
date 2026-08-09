@@ -42,3 +42,6 @@ the file Firebase actually deploys. This preserves the non-overwriting migration
 fresh company repos get the canonical layout.
 The generated infra README therefore names the deployed path generically rather than teaching the
 canonical fresh-project path to an established root-layout repository.
+Fresh company scaffolds also pass the canonical path into their generated PM workflow, closing the
+loop in the same operation that chooses the file. Established root-layout repos deliberately do not:
+their deployment configuration remains the source that must be confirmed before enabling the check.

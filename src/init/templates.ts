@@ -458,7 +458,7 @@ shape, and CI runs it too.
  * The convention checks are toolchain-agnostic — they build the Morpheus CLI
  * from a checkout — so every project gets those.
  */
-export const ci = (opts: { node: boolean } = { node: true }): string => `name: CI
+export const ci = (opts: { node: boolean; rulesPath?: string } = { node: true }): string => `name: CI
 
 # Delegates to the Morpheus reusable workflows, so improving CI for every
 # project is one commit there rather than a change in every repository.
@@ -477,7 +477,13 @@ jobs:${
     : ""
 }
   pm:
-    uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main
+    uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main${
+      opts.rulesPath
+        ? `
+    with:
+      hq-rules-path: ${opts.rulesPath}`
+        : ""
+    }
 
   pr:
     uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main

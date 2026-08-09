@@ -1,6 +1,7 @@
 import { lstat, mkdtemp, readFile, readdir, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
 import { rules } from "../src/cli/hq.js";
@@ -158,6 +159,11 @@ describe("morpheus init", () => {
       const path = "infra/firebase/firestore.rules";
       expect(await read(path)).toContain("morpheus:begin roles");
       expect(await rules(dir, true, path)).toBe(0);
+
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBe(path);
     });
 
     it("does not add a second rules file to an established root-layout project", async () => {
@@ -173,6 +179,10 @@ describe("morpheus init", () => {
       const infraReadme = await read("infra/README.md");
       expect(infraReadme).toContain("the rules file firebase.json deploys");
       expect(infraReadme).not.toContain("--rules-path infra/firebase/firestore.rules");
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
     });
 
     /**
