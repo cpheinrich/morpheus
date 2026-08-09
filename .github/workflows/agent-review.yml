@@ -262,7 +262,7 @@ jobs:
         # Pinned because delivery parsing depends on this action's final comment
         # contract. A moving v1 tag could otherwise make the detector fail open
         # with no diff in this repository.
-        uses: anthropics/claude-code-action@6b082c41935b4c8a3b8b0ef85ba4ba4d9eeb8975 # v1
+        uses: anthropics/claude-code-action@6b082c41935b4c8a3b8b0ef85ba4ba4d9eeb8975 # v1.0.189
         with:
           prompt: ${{ steps.prompt.outputs.text }}
           anthropic_api_key: ${{ secrets.anthropic_api_key }}
@@ -302,7 +302,7 @@ jobs:
   # final success/error header when it is inspected.
   delivery:
     needs: review
-    if: always() && needs.review.outputs.configured == 'true' && needs.review.outputs.review_requested == 'true'
+    if: always() && needs.review.outputs.configured == 'true' && needs.review.outputs.review_requested != 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: read

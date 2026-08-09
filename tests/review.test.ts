@@ -6,10 +6,10 @@ import { needed } from "../src/cli/review.js";
 import {
   assessReviewDelivery,
   NO_PRIOR_COMMENT,
+  REVIEW_DELIVERED_SENTINEL,
   REVIEW_ERROR_PREFIX,
   REVIEW_FINISHED_PREFIX,
   REVIEW_PLACEHOLDER,
-  REVIEW_PROGRESS_HEADING,
   UNREADABLE_COMMENT_SNAPSHOT,
 } from "../src/review/delivery.js";
 import { pathsMentioned } from "../src/review/findings.js";
@@ -190,6 +190,7 @@ describe("the shipped persona", () => {
     // it — no test encodes a decision.
     expect(text).toContain("decisions.md");
     expect(text).toContain("do not block");
+    expect(text).toContain("morpheus:review-delivered");
   });
 });
 
@@ -382,7 +383,7 @@ describe("review delivery", () => {
   const delivered = {
     beforeCommentId: NO_PRIOR_COMMENT,
     commentId: "101",
-    body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task in 2m 4s** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Agent review\n\nNo findings worth a human's time.`,
+    body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task in 2m 4s** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Agent review\n\nNo findings worth a human's time.\n\n${REVIEW_DELIVERED_SENTINEL}`,
   };
 
   it("accepts a new comment containing a completed review", () => {
@@ -417,7 +418,10 @@ describe("review delivery", () => {
   });
 
   it("rejects a new comment that still holds the initial placeholder", () => {
-    const result = assessReviewDelivery({ ...delivered, body: REVIEW_PLACEHOLDER });
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n${REVIEW_PLACEHOLDER}`,
+    });
     expect(result.delivered).toBe(false);
     expect(result.why).toContain("placeholder");
   });
@@ -440,12 +444,38 @@ describe("review delivery", () => {
     expect(result.why).toContain("completed-review marker");
   });
 
-  it("rejects the live in-progress checklist even after the action finalizes it", () => {
+  it("rejects a literal live progress body even after the action finalizes it", () => {
     const result = assessReviewDelivery({
       ...delivered,
-      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n${REVIEW_PROGRESS_HEADING}\n\n- [ ] Report`,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Review — MO-26-08-02-02.48.16 <img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" />\n\n- [ ] Read the diff\n- [ ] Report`,
     });
     expect(result.delivered).toBe(false);
-    expect(result.why).toContain("in-progress checklist");
+    expect(result.why).toContain("delivery sentinel");
+  });
+
+  it("requires the Morpheus-owned positive delivery sentinel", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nA plausible body without positive evidence.`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("delivery sentinel");
+  });
+
+  it("does not accept a progress body that merely mentions the sentinel", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nRemember to add ${REVIEW_DELIVERED_SENTINEL} after reporting.\n\n- [ ] Report`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("delivery sentinel");
+  });
+
+  it("allows a completed review to discuss the placeholder and error markers", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nThe old body was \`${REVIEW_PLACEHOLDER}\` and errors began \`${REVIEW_ERROR_PREFIX}\`.\n\n${REVIEW_DELIVERED_SENTINEL}`,
+    });
+    expect(result.delivered).toBe(true);
   });
 });

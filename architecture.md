@@ -1046,8 +1046,10 @@ same shape as *a check that skips what is absent will report an empty thing as c
 tracking comment before the model reads the change, and the model may replace that with an
 in-progress checklist before it reports, so neither existence nor non-placeholder text proves that
 a review landed. A separate dependent job runs after the action's post step, identifies the comment
-by this workflow run's URL, and requires a new id, the pinned action's finished marker, and
-substantive review text rather than its placeholder, progress or error forms. Any missing evidence
+by this workflow run's URL, and requires a new id, the pinned action's finished marker, and a
+Morpheus-owned delivery sentinel that the versioned reviewer persona emits only after substantive
+review text. Requiring that sentinel as the final line identifies arbitrary model-authored progress
+bodies without borrowing their unstable prose; action headers identify errors. Any missing evidence
 fails closed to a warning. Permission-denial counts are diagnostic only: healthy runs can contain
 denials, while a broken reporting path need not.
 

@@ -31,12 +31,12 @@ incidental shell exit in this item.
 ## Verification before the live PR run
 
 - `pnpm typecheck`
-- `pnpm test` — 27 files, 817 tests
+- `pnpm test` — 27 files, 820 tests
 - Regression cases cover a successful review, an unchanged prior comment, the exact placeholder,
   the action error body, a GitHub blob permalink, a real-shape encoded Fix-this link, empty diff,
   and unreadable diff.
-- Workflow structure tests require the Review step id, the always-running delivery step, access to
-  `execution_file`, and the full-PR/cursor separation.
+- Workflow structure tests require the Review step id, the always-running dependent delivery job,
+  its comment-snapshot and action-conclusion plumbing, and the full-PR/cursor separation.
 
 The final proof is the PR's own review run: the new delivery step must find the review comment the
 action leaves on this branch and report delivery confirmed. That result will be recorded on the PR.
@@ -53,7 +53,7 @@ action's post step, so it cannot observe the final `Claude finished` / `Claude e
 body. Delivery is now a separate job that needs the review job and runs `if: always()` after its post
 steps. The Claude action is pinned to the exact v1 commit whose final body contract the predicate
 parses; the predicate requires its positive finished marker and substantive content after the
-separator, and explicitly rejects the live progress heading.
+separator. The next pass replaced the sampled progress heading with repository-owned evidence.
 
 The independent review then found four wiring paths that could still lie, all addressed before the
 second push: generic `github-actions[bot]` recency is replaced by this run's `[View job]` URL;
@@ -61,3 +61,21 @@ comment reads paginate and flatten every page; successful-no-prior, unreadable a
 states are separate; and the skip reason is carried from typed code into the summary. It also
 surfaced an older silent-no-op in the cursor (`gh api --jq --arg`, where `--arg` belongs to jq), now
 replaced by an encoded GET plus jq over the response file.
+
+## The second live run caught both kinds of borrowed evidence
+
+The separate delivery job ran in the right order, but correctly reading its log — rather than its
+green advisory conclusion — showed a warning. The completed review quoted the exact placeholder
+while discussing the detector, and the global substring check called that a failure. The same
+review had used a different in-progress heading before it completed, proving the sampled model
+heading was not a contract either.
+
+The final definition borrows no positive evidence from model prose. The versioned reviewer persona
+requires `<!-- morpheus:review-delivered -->` only on a completed report, and the predicate requires
+it alongside the pinned action's final success header. Error matching is scoped to the action
+header; placeholder matching is equality against the whole review section, so quoting either in a
+real finding cannot fire. Progress is rejected because it lacks the sentinel as the final line,
+without depending on a heading, spinner description or checklist the model may quote or change.
+The dependent job also treats a missing late `review_requested` output as review
+required, so an early checkout/install/cursor failure produces delivery evidence rather than
+silently skipping the detector.

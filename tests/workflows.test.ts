@@ -215,6 +215,8 @@ describe("agent-review.yml", () => {
     expect(review?.id).toBe("review");
     expect(deliveryJob?.needs).toBe("review");
     expect(deliveryJob?.if).toContain("always()");
+    expect(deliveryJob?.if).toContain("review_requested != 'false'");
+    expect(deliveryJob?.if).not.toContain("review_requested == 'true'");
     expect(reviewJob?.outputs?.comment_id_before).toContain(
       "steps.since.outputs.comment_id_before",
     );
@@ -234,6 +236,7 @@ describe("agent-review.yml", () => {
     const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
     expect(raw).toMatch(/anthropics\/claude-code-action@[0-9a-f]{40}/);
     expect(raw).not.toContain("anthropics/claude-code-action@v1");
+    expect(raw).toContain("# v1.0.189");
   });
 
   it("passes the honest skip reason through to the job summary", async () => {

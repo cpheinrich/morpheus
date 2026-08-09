@@ -8,8 +8,8 @@ export declare const UNREADABLE_COMMENT_SNAPSHOT = "__unreadable__";
 export declare const NO_PRIOR_COMMENT = "__none__";
 /** Written by the action's post step only after it has finalized successfully. */
 export declare const REVIEW_FINISHED_PREFIX = "**Claude finished @";
-/** The current reviewer writes this while it is still reading, before reporting. */
-export declare const REVIEW_PROGRESS_HEADING = "### Reviewing this PR";
+/** Morpheus-owned positive evidence required by the versioned reviewer persona. */
+export declare const REVIEW_DELIVERED_SENTINEL = "<!-- morpheus:review-delivered -->";
 export interface ReviewDelivery {
     beforeCommentId?: string;
     commentId?: string;

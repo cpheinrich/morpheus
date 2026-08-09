@@ -8,8 +8,8 @@ export const UNREADABLE_COMMENT_SNAPSHOT = "__unreadable__";
 export const NO_PRIOR_COMMENT = "__none__";
 /** Written by the action's post step only after it has finalized successfully. */
 export const REVIEW_FINISHED_PREFIX = "**Claude finished @";
-/** The current reviewer writes this while it is still reading, before reporting. */
-export const REVIEW_PROGRESS_HEADING = "### Reviewing this PR";
+/** Morpheus-owned positive evidence required by the versioned reviewer persona. */
+export const REVIEW_DELIVERED_SENTINEL = "<!-- morpheus:review-delivered -->";
 /**
  * Whether this run left a new tracking comment that contains an actual review.
  *
@@ -38,21 +38,24 @@ export function assessReviewDelivery(input) {
     if (!body) {
         return { delivered: false, why: "the new tracking comment is empty" };
     }
-    if (body.includes(REVIEW_PLACEHOLDER)) {
-        return { delivered: false, why: "the new tracking comment still contains the initial placeholder" };
-    }
-    if (body.includes(REVIEW_ERROR_PREFIX)) {
+    const separator = body.indexOf("\n---\n");
+    const header = separator >= 0 ? body.slice(0, separator).trim() : body;
+    const reviewBody = separator >= 0 ? body.slice(separator + 5).trim() : "";
+    if (header.startsWith(REVIEW_ERROR_PREFIX)) {
         return { delivered: false, why: "the new tracking comment reports that Claude encountered an error" };
     }
-    if (!body.includes(REVIEW_FINISHED_PREFIX)) {
+    if (!header.startsWith(REVIEW_FINISHED_PREFIX)) {
         return { delivered: false, why: "the new tracking comment has no completed-review marker" };
     }
-    const reviewBody = body.split("\n---\n", 2)[1]?.trim() ?? "";
-    if (!reviewBody) {
-        return { delivered: false, why: "the finalized tracking comment contains no review" };
+    if (reviewBody === REVIEW_PLACEHOLDER) {
+        return { delivered: false, why: "the finalized tracking comment still contains only the initial placeholder" };
     }
-    if (reviewBody.startsWith(REVIEW_PROGRESS_HEADING)) {
-        return { delivered: false, why: "the finalized tracking comment still contains the in-progress checklist" };
+    if (!reviewBody.endsWith(REVIEW_DELIVERED_SENTINEL)) {
+        return { delivered: false, why: "the finalized tracking comment lacks Morpheus's delivery sentinel" };
+    }
+    const substantiveReview = reviewBody.slice(0, -REVIEW_DELIVERED_SENTINEL.length).trim();
+    if (!substantiveReview) {
+        return { delivered: false, why: "the finalized tracking comment contains no review" };
     }
     return { delivered: true, why: "a new tracking comment contains the completed review" };
 }
