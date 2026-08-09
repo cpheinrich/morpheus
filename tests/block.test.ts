@@ -201,6 +201,7 @@ describe("block", () => {
 
     expect(r.written).toHaveLength(4);
     expect(r.inboxCreated).toBe(true);
+    expect(r.inboxPath).toBe(join(root, "hq/team/cpheinrich.md"));
 
     const item = await readFile(join(product, "roadmap/MO-051.md"), "utf8");
     expect(item).toContain("status: blocked");

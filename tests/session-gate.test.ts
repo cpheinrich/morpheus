@@ -702,6 +702,48 @@ describe("a receipt that does not reach disk", () => {
 });
 
 describe("a command that writes a record it required", () => {
+  it("keeps pm block's inbox receipt update explicit when the index is written after it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-block-notewrite-"));
+    const product = join(root, "hq/product");
+    const id = "MO-26-08-08-21.50.05";
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await mkdir(join(root, "hq", "team"), { recursive: true });
+    await mkdir(join(product, "roadmap"), { recursive: true });
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "x", prefix: "MO", context: { handle: "cpheinrich" } }),
+      "utf8",
+    );
+    for (const input of CANONICAL_INPUTS) {
+      await writeFile(join(root, input), `v1 ${input}`, "utf8");
+    }
+    const inbox = join(root, "hq/team/cpheinrich.md");
+    await writeFile(inbox, "# inbox\n", "utf8");
+    await writeFile(
+      join(product, `roadmap/${id}-thing.md`),
+      `---\nid: ${id}\ntitle: A thing\nstatus: in-progress\npriority: P1\nowner: agent\nprs: []\ncreated: 2026-08-08\nupdated: 2026-08-08\n---\n\nBody.\n`,
+      "utf8",
+    );
+
+    const { refresh, noteWrite, check } = await import("../src/session/context.js");
+    const { block } = await import("../src/cli/pm.js");
+    const start = new Date("2026-08-08T21:50:05.000-07:00");
+    await refresh(root, start);
+
+    // Offline containment avoids git, while still exercising the exact
+    // block-result contract handed to `noteWrite` by the top-level CLI.
+    const outcome = await block(product, root, id, {
+      owner: "cpheinrich",
+      needs: "an owner decision",
+      push: false,
+    });
+    expect(outcome.written).toEqual([{ path: inbox, before: "# inbox\n" }]);
+    await noteWrite(root, outcome.written);
+
+    const { lease } = await check(root, new Date(start.getTime() + 10 * 60_000));
+    expect(lease?.changedInputs).not.toContain("hq/team/cpheinrich.md");
+  });
+
   it("keeps the receipt true rather than making the session re-assert it", async () => {
     // `pm block` appends to the owner's inbox, which is in the required set —
     // so without this the next gated command past the term is refused for
@@ -917,7 +959,7 @@ describe("records of a blocked item that reached nobody", () => {
     expect(paths).toContain("hq/team/cpheinrich.md");
   });
 
-  it("names all three records pm block writes, not just the one with the id", async () => {
+  it("names all block outputs, including records with no id in their path", async () => {
     // The roadmap file carries no information to the human; the inbox entry
     // *is* the escalation, and its path holds no id at all. Matching on the
     // uppercase id found only the roadmap file — so following the printed
@@ -933,6 +975,11 @@ describe("records of a blocked item that reached nobody", () => {
     await writeFile(join(root, `hq/product/roadmap/${id}-thing.md`), "item", "utf8");
     // Lowercased by `block`, which `String.includes` would not match.
     await writeFile(join(root, `.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`), "w", "utf8");
+    await writeFile(
+      join(root, "hq/product/roadmap/README.md"),
+      `| ${id} | blocked |\n`,
+      "utf8",
+    );
     // `appendOpenItem` writes the roadmap id into the entry as a link, which
     // is what makes matching by content possible where the path has no id.
     await writeFile(
@@ -944,6 +991,7 @@ describe("records of a blocked item that reached nobody", () => {
     const { paths } = await unsentBlockRecords(root, [id]);
     expect(paths).toContain(`hq/product/roadmap/${id}-thing.md`);
     expect(paths).toContain(`.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`);
+    expect(paths).toContain("hq/product/roadmap/README.md");
     expect(paths).toContain("hq/team/cpheinrich.md");
   });
 

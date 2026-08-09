@@ -29,3 +29,17 @@ Issue #83 could have been "fixed" by allowing a blocked claimed branch to merge.
 the branch holding partial work, contradicting the reason blocked claims persist. The verifier now
 states the existing correct route — publish the records on a branch staking no item — and explicitly
 warns not to relabel the item as review-ready.
+
+Independent review caught a positional coupling introduced by the index fix: the CLI assumed the
+inbox was the last entry in `BlockResult.written`, then handed that path and the inbox's old contents
+to `noteWrite`. Appending the README after the inbox silently redirected that receipt update to an
+untracked input, so the next governed command would call the session stale for a write it made
+itself. `BlockResult` now names `inboxPath` explicitly, and an integration test runs the block CLI,
+passes its result through `noteWrite`, and re-observes the lease after expiry.
+
+The same review followed the offline completion path one step further. `unsentBlockRecords` found
+item and worklog by id and inbox by content; the generated README has neither property. It is now an
+explicit fourth output in that report, so following the printed recovery instruction cannot leave
+the index dirty. The review also replaced a frozen sample date in the verifier message with the
+literal `inbox-<YYYY-MM-DD>` convention and qualified the documentation's trunk guarantee for the
+deliberate offline exception.

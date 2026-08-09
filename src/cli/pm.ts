@@ -518,6 +518,9 @@ export async function unsentBlockRecords(
 
   const candidates = [...new Set([...dirty, ...unpushed])].filter(Boolean);
   const named = candidates.filter((path) => ids.some((id) => path.toLowerCase().includes(id)));
+  // `pm block` refreshes this generated view after changing the item. Its path
+  // carries no item id, so the ordinary record matcher cannot discover it.
+  const indexes = candidates.filter((path) => path === "hq/product/roadmap/README.md");
 
   // An inbox has no id in its path, so ask its contents instead. `hq/team/`
   // also holds the roster, a README and meeting notes, none of which are ever
@@ -550,7 +553,7 @@ export async function unsentBlockRecords(
     if (here.some((id) => !pushed.includes(id))) inboxes.push(path);
   }
 
-  return { paths: [...named, ...inboxes].sort(), unavailable: false };
+  return { paths: [...new Set([...named, ...indexes, ...inboxes])].sort(), unavailable: false };
 }
 
 /**
@@ -678,7 +681,7 @@ export async function block(
     // other two records are omitted rather than described falsely: the
     // roadmap item existed before it was rewritten, and saying otherwise
     // would be a claim about a file this call never measured.
-    const inboxPath = r.written[r.written.length - 1];
+    const inboxPath = r.inboxPath;
     return {
       code: 0,
       written: inboxPath ? [{ path: inboxPath, before: r.inboxBefore }] : [],

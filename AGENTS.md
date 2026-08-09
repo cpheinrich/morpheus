@@ -166,7 +166,8 @@ morpheus pm unblock MO-051    # once answered
 
 This sets `status: blocked` and `needs:` on the item, writes a worklog entry, and raises an open
 `❗` item in the inbox, refreshes the roadmap index, then commits and pushes those records on the
-claimed branch. It refuses the protected trunk before writing anything. **Escalating is cheap;
+claimed branch. Online it refuses the protected trunk before writing anything; the explicitly
+offline path may write locally there because it never commits or pushes. **Escalating is cheap;
 shipping half-baked is expensive** — a plausible guess costs far more to discover later than a
 question costs to ask now.
 

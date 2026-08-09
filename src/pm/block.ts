@@ -59,6 +59,8 @@ export interface BlockResult {
   inboxBefore: string | null;
   /** True when the person had no inbox and one was created. */
   inboxCreated: boolean;
+  /** Explicit because generated files may be appended after it in `written`. */
+  inboxPath: string;
   /** True when this call repaired or replaced a block that already existed. */
   alreadyBlocked: boolean;
   /** Validation problems that prevented a safe index refresh. */
@@ -258,6 +260,7 @@ export async function block(opts: BlockOptions): Promise<BlockResult> {
     written,
     inboxBefore: existing,
     inboxCreated: existing === null,
+    inboxPath,
     alreadyBlocked: item.alreadyBlocked,
     indexIssues,
   };

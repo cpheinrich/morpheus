@@ -182,7 +182,7 @@ describe("checkPr", () => {
 
     expect(rule?.level).toBe("error");
     expect(rule?.message).toContain("must keep its claimed branch");
-    expect(rule?.message).toContain("inbox-2026-08-08");
+    expect(rule?.message).toContain("inbox-<YYYY-MM-DD>");
     expect(rule?.message).toContain('Do not set it to "review"');
   });
 
