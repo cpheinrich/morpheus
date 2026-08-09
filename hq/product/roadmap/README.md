@@ -6,6 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | PRs |
 |---|---|---|---|---|---|
+| [MO-26-08-04-12.48.59](./MO-26-08-04-12.48.59-never-reconcile-blocked-item.md) | Never reconcile a blocked item to shipped | review | P1 | — | — |
 | [MO-26-08-08-00.35.02](./MO-26-08-08-00.35.02-prepare-package-manager.md) | prepare must not assume the consumer's package manager | review | P1 | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — |
 | [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — |
