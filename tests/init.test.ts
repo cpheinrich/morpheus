@@ -170,6 +170,9 @@ describe("morpheus init", () => {
         "infra/firebase/firestore.rules (root firestore.rules already exists)",
       );
       expect(result.notes.join("\n")).toContain("did not create a second rules file");
+      const infraReadme = await read("infra/README.md");
+      expect(infraReadme).toContain("the rules file firebase.json deploys");
+      expect(infraReadme).not.toContain("--rules-path infra/firebase/firestore.rules");
     });
 
     /**

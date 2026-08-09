@@ -23,7 +23,7 @@ import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
 export interface InitResult {
   written: string[];
   skipped: string[];
-  /** Directories created that git will not track until something lands in them. */
+  /** Explanations and follow-up constraints that do not belong in written/skipped. */
   notes: string[];
 }
 

@@ -40,3 +40,5 @@ For established repos, `init` treats an existing root `firestore.rules` as the c
 does not create a canonical-path duplicate, and its result explains that `hq-rules-path` must name
 the file Firebase actually deploys. This preserves the non-overwriting migration contract while
 fresh company repos get the canonical layout.
+The generated infra README therefore names the deployed path generically rather than teaching the
+canonical fresh-project path to an established root-layout repository.
