@@ -1042,6 +1042,13 @@ have run. A verifier that reports green because it never executed is worse than 
 same shape as *a check that skips what is absent will report an empty thing as correct* in
 `.agent/learned.md`.
 
+**A configured verifier must prove delivery, not merely execution.** The review action creates a
+tracking comment before the model reads the change, so the comment's existence is not evidence that
+a review landed. An always-running follow-up compares the final tracking comment with the one that
+preceded the run and warns when no new comment exists, the initial placeholder remains, or the
+action replaced it with an error body. Permission-denial counts and the action execution record are
+diagnostics only: healthy runs can contain denials, while a broken reporting path need not.
+
 **The reviewer persona is a versioned file**, `.github/agent-review-prompt.md`, not a string inside
 YAML. It is the part that gets tuned most often and the part a human most wants to read, and a
 prompt buried in a workflow is invisible in review. `morpheus review prompt` assembles it with the

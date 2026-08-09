@@ -3,6 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { needed } from "../src/cli/review.js";
+import {
+  assessReviewDelivery,
+  REVIEW_ERROR_PREFIX,
+  REVIEW_PLACEHOLDER,
+  UNREADABLE_COMMENT_SNAPSHOT,
+} from "../src/review/delivery.js";
 import { pathsMentioned } from "../src/review/findings.js";
 import { loadReviewContext, PERSONA_PATH, ReviewError } from "../src/review/context.js";
 import { acceptancePath, buildReviewPrompt } from "../src/review/prompt.js";
@@ -215,19 +221,20 @@ describe("review needed", () => {
     expect(needed([".github/workflows/agent-review.yml"]).review).toBe(true);
   });
 
-  /**
-   * An unreadable diff is not an empty one. Skipping here would silently
-   * disable the rung the day `git diff` changes shape — the exact failure this
-   * repo keeps finding, so it errs toward spending a dollar.
-   */
-  it("reviews rather than assumes when the diff could not be read", () => {
+  it("skips an empty diff because nothing changed since anyone looked", () => {
     const r = needed([]);
+    expect(r.review).toBe(false);
+    expect(r.why).toContain("nothing changed");
+  });
+
+  it("reviews rather than assumes when the diff could not be read", () => {
+    const r = needed(null);
     expect(r.review).toBe(true);
     expect(r.why).toContain("could not read");
   });
 
   it("always gives a reason, so a skip is legible in the log", () => {
-    for (const files of [[], ["src/x.ts"], [".agent/x.md"]]) {
+    for (const files of [null, [], ["src/x.ts"], [".agent/x.md"]]) {
       expect(needed(files).why.length).toBeGreaterThan(0);
     }
   });
@@ -262,6 +269,21 @@ describe("pathsMentioned", () => {
   it("ignores URLs", () => {
     const out = pathsMentioned("see https://docs.github.com/en/actions/foo.html");
     expect(out).toHaveLength(0);
+  });
+
+  it("extracts a repo path from a GitHub blob permalink", () => {
+    const out = pathsMentioned(
+      "see https://github.com/cpheinrich/morpheus/blob/abc123/src/review/findings.ts#L50",
+    );
+    expect(out).toEqual(["src/review/findings.ts"]);
+  });
+
+  it("extracts paths from a percent-encoded Fix-this link", () => {
+    const out = pathsMentioned(
+      "[Fix this →](https://claude.ai/code?q=Fix%20src%2Freview%2Ffindings.ts%20and%20tests%2Freview.test.ts&repo=cpheinrich/morpheus)",
+    );
+    expect(out).toContain("src/review/findings.ts");
+    expect(out).toContain("tests/review.test.ts");
   });
 
   it("deduplicates a path cited several times", () => {
@@ -350,5 +372,54 @@ describe("pathsMentioned across citation styles", () => {
   it("keeps a repo path that appears alongside a URL", () => {
     const out = pathsMentioned("per https://docs.github.com/x.html, fix `src/a.ts`");
     expect(out).toEqual(["src/a.ts"]);
+  });
+});
+
+describe("review delivery", () => {
+  const delivered = {
+    beforeCommentId: "100",
+    commentId: "101",
+    body: "### Agent review\n\nNo findings worth a human's time.",
+  };
+
+  it("accepts a new comment containing a completed review", () => {
+    expect(assessReviewDelivery(delivered)).toEqual(
+      expect.objectContaining({ delivered: true }),
+    );
+  });
+
+  it("does not let an earlier successful comment certify this run", () => {
+    const result = assessReviewDelivery({ ...delivered, commentId: "100" });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("earlier run");
+  });
+
+  it("fails closed when the pre-run comment snapshot was unreadable", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      beforeCommentId: UNREADABLE_COMMENT_SNAPSHOT,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("before the run");
+  });
+
+  it("rejects a new comment that still holds the initial placeholder", () => {
+    const result = assessReviewDelivery({ ...delivered, body: REVIEW_PLACEHOLDER });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("placeholder");
+  });
+
+  it("rejects the action's final error body", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_ERROR_PREFIX} 2m 4s**`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("error");
+  });
+
+  it("does not use execution denials as delivery evidence", () => {
+    const result = assessReviewDelivery(delivered);
+    expect(result.delivered).toBe(true);
   });
 });

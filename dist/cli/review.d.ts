@@ -21,7 +21,7 @@ export interface NeededOptions {
     /** Body of the last review, when this is a re-review. */
     priorReview?: string;
 }
-export declare function needed(changedFiles: string[], opts?: NeededOptions): {
+export declare function needed(changedFiles: string[] | null, opts?: NeededOptions): {
     review: boolean;
     why: string;
 };
@@ -33,3 +33,5 @@ export declare function needed(changedFiles: string[], opts?: NeededOptions): {
  * is the one that decides whether looking again is worth it.
  */
 export declare function reviewNeeded(base: string, priorReviewPath?: string): number;
+/** Verify that a reviewer run delivered a new, substantive tracking comment. */
+export declare function reviewDelivery(beforeCommentId?: string, commentId?: string, bodyPath?: string): number;

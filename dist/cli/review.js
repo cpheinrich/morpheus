@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { hasNoSubstantiveChange } from "../paths.js";
 import { addressesPriorFindings, pathsMentioned } from "../review/findings.js";
+import { assessReviewDelivery } from "../review/delivery.js";
 import { loadReviewContext, ReviewError } from "../review/context.js";
 import { buildReviewPrompt } from "../review/prompt.js";
 /**
@@ -41,11 +42,14 @@ export async function prompt(productDir, root) {
     }
 }
 export function needed(changedFiles, opts = {}) {
-    if (changedFiles.length === 0) {
+    if (changedFiles === null) {
         // An unreadable diff is not an empty one. Review rather than skip: the cost
         // of a wasted run is a dollar, the cost of silently skipping every review
         // the day `git diff` changes shape is the rung.
         return { review: true, why: "could not read the changed files — reviewing rather than assuming" };
+    }
+    if (changedFiles.length === 0) {
+        return { review: false, why: "nothing changed since the last review" };
     }
     // A re-review has a second reason to run, and it is the one the code test
     // misses. When the last review named a file and this push touches it, the
@@ -78,7 +82,7 @@ function changedFiles(base) {
         return out ? out.split("\n").filter(Boolean) : [];
     }
     catch {
-        return [];
+        return null;
     }
 }
 function readIfGiven(path) {
@@ -107,5 +111,21 @@ export function reviewNeeded(base, priorReviewPath) {
     console.log(String(review));
     console.error(review ? `Reviewing: ${why}` : `Skipping: ${why}`);
     return 0;
+}
+/** Verify that a reviewer run delivered a new, substantive tracking comment. */
+export function reviewDelivery(beforeCommentId, commentId, bodyPath) {
+    let body;
+    if (bodyPath) {
+        try {
+            body = readFileSync(bodyPath, "utf8");
+        }
+        catch {
+            console.log(`could not read the tracking comment body at ${bodyPath}`);
+            return 1;
+        }
+    }
+    const result = assessReviewDelivery({ beforeCommentId, commentId, body });
+    console.log(result.why);
+    return result.delivered ? 0 : 1;
 }
 //# sourceMappingURL=review.js.map

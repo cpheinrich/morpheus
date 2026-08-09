@@ -172,6 +172,41 @@ describe("agent-review.yml", () => {
     const perms = wf.jobs?.["review"]?.permissions;
     expect(perms).toEqual({ contents: "read", "pull-requests": "write" });
   });
+
+  it("keeps the cursor in the cost gate and gives the reviewer the full PR", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<Record<string, unknown>> }>;
+    };
+    const steps = wf.jobs?.["review"]?.steps ?? [];
+    const gate = steps.find((step) => step.name === "Is this worth a review?");
+    const review = steps.find((step) => step.name === "Review");
+    const cursorConsumers = steps.filter((step) =>
+      JSON.stringify(step).includes("steps.since.outputs.base"),
+    );
+
+    expect(JSON.stringify(gate)).toContain("steps.since.outputs.base");
+    expect(JSON.stringify(review)).not.toContain("steps.since.outputs.base");
+    expect(cursorConsumers).toEqual([gate]);
+  });
+
+  it("checks delivery after the review even when the action fails", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<Record<string, unknown>> }>;
+    };
+    const steps = wf.jobs?.["review"]?.steps ?? [];
+    const review = steps.find((step) => step.name === "Review");
+    const delivery = steps.find((step) => step.name === "Verify the review was delivered");
+    const reviewIndex = steps.findIndex((step) => step.name === "Review");
+    const deliveryIndex = steps.findIndex(
+      (step) => step.name === "Verify the review was delivered",
+    );
+
+    expect(review?.id).toBe("review");
+    expect(deliveryIndex).toBeGreaterThan(reviewIndex);
+    expect(delivery?.if).toContain("always()");
+    expect(JSON.stringify(delivery)).toContain("review delivery");
+    expect(JSON.stringify(delivery)).toContain("steps.review.outputs.execution_file");
+  });
 });
 
 describe("ci.yml", () => {

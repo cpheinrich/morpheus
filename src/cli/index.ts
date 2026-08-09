@@ -25,7 +25,7 @@ import { mark as initMark, status as initStatus } from "./onboarding.js";
 import { init as initScaffold } from "./init.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
-import { prompt as reviewPrompt, reviewNeeded } from "./review.js";
+import { prompt as reviewPrompt, reviewDelivery, reviewNeeded } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
 import {
@@ -58,6 +58,8 @@ Usage
   morpheus review prompt    assemble the rung-2 reviewer prompt for this branch
   morpheus review needed    [--base <ref>] [--prior-review <file>]
                             is this change worth a review, or a re-review?
+  morpheus review delivery  [--before-comment-id <id>] [--comment-id <id>]
+                            [--body-file <file>] — confirm the review was posted
   morpheus inbox validate   [--dir <hq/team>]
   morpheus team validate    the roster and every meeting note
   morpheus brand init | refresh   [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
@@ -125,6 +127,9 @@ interface Flags {
   ceiling?: number;
   notes?: string;
   priorReview?: string;
+  beforeCommentId?: string;
+  commentId?: string;
+  bodyFile?: string;
   rulesPath?: string;
   out?: string;
   full: boolean;
@@ -228,6 +233,15 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--prior-review":
         flags.priorReview = argv[++i];
+        break;
+      case "--before-comment-id":
+        flags.beforeCommentId = argv[++i];
+        break;
+      case "--comment-id":
+        flags.commentId = argv[++i];
+        break;
+      case "--body-file":
+        flags.bodyFile = argv[++i];
         break;
       case "--rules-path":
         flags.rulesPath = argv[++i];
@@ -403,6 +417,9 @@ async function main(): Promise<number> {
   if (group === "review") {
     if (command === "prompt") return reviewPrompt(dir, process.cwd());
     if (command === "needed") return reviewNeeded(flags.base, flags.priorReview);
+    if (command === "delivery") {
+      return reviewDelivery(flags.beforeCommentId, flags.commentId, flags.bodyFile);
+    }
     console.error(`Unknown review command "${command ?? ""}".\n\n${HELP}`);
     return 1;
   }

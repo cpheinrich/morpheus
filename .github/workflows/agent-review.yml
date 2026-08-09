@@ -144,7 +144,16 @@ jobs:
           # Passing mentions in prose are a known remaining looseness: the input
           # is the wrong shape for a regex to separate, and tuning the matcher
           # will not fix it. Recorded so the matcher is not blamed for it.
-          gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
+          if ! comment_id_before=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
+            --jq '[.[] | select(.user.login == "github-actions[bot]")] | .[-1].id // ""' \
+            2>/dev/null); then
+            # Empty means a successful read found no earlier comment. An API
+            # failure must remain distinct or an old review could certify this run.
+            comment_id_before="__unreadable__"
+          fi
+          echo "comment_id_before=$comment_id_before" >> "$GITHUB_OUTPUT"
+
+          gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
             --jq '[.[] | select(.user.login == "github-actions[bot]")] | .[-1].body // ""' \
             2>/dev/null | grep -v -E '^\s*-\s*\[[ x]\]' > /tmp/prior-review.md \
             || : > /tmp/prior-review.md
@@ -208,7 +217,12 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::warning title=Agent review skipped::rung 2 is unconfigured — no reviewer ran"
 
+      # The cursor above is only a cost gate. The action deliberately receives
+      # no incremental base: every review reads the full PR, so a commit missed
+      # by the cursor is still visible on the next run. Keep that invariant —
+      # `steps.since.outputs.base` must never scope this step.
       - name: Review
+        id: review
         if: env.HAS_KEY == 'true' && steps.needed.outputs.review == 'true'
         uses: anthropics/claude-code-action@v1
         with:
@@ -243,3 +257,54 @@ jobs:
             --model ${{ inputs.model }}
             --max-turns 40
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+      # The action creates a tracking comment before the model reads anything,
+      # so comment existence is not delivery. Inspect the final body even when
+      # the action failed: a placeholder or action-error body means the
+      # reviewer ran but never managed to report.
+      - name: Verify the review was delivered
+        id: delivery
+        if: always() && env.HAS_KEY == 'true' && steps.needed.outputs.review == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMENT_ID_BEFORE: ${{ steps.since.outputs.comment_id_before }}
+          # Diagnostic only. Delivery is established from the comment body;
+          # healthy runs can contain denials and failed runs need not contain one.
+          EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          reason=""
+          if ! gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
+            --jq '[.[] | select(.user.login == "github-actions[bot]")] | .[-1] // {}' \
+            > /tmp/final-review-comment.json; then
+            reason="could not read the final tracking comment"
+          else
+            comment_id=$(jq -r '.id // ""' /tmp/final-review-comment.json)
+            jq -r '.body // ""' /tmp/final-review-comment.json > /tmp/final-review-comment.md
+
+            if reason=$(node .morpheus/dist/cli/index.js review delivery \
+              --before-comment-id "$COMMENT_ID_BEFORE" \
+              --comment-id "$comment_id" \
+              --body-file /tmp/final-review-comment.md); then
+              {
+                echo "## Agent review — delivery confirmed"
+                echo
+                echo "$reason."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+
+          {
+            echo "## Agent review — delivery not confirmed"
+            echo
+            echo "Verifier rung 2 did **not** leave a completed review on this pull request."
+            echo "Reason: $reason."
+            echo
+            echo "This warning is infrastructure evidence, not a clean review."
+            if [ -n "$EXECUTION_FILE" ]; then
+              echo "The action execution record is available at \`$EXECUTION_FILE\` for diagnosis."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning title=Agent review not delivered::$reason"
