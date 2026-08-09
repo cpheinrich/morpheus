@@ -698,12 +698,12 @@ Two assertions, both local and gitignored under `local/sessions/`:
 | **Context receipt** | *I read these records, at these fingerprints, against this remote SHA* |
 | **Session lease** | *That receipt was checked against the remote at this time, and held* |
 
-**The remote SHA is the tip of `origin/main`**, not the branch tip. The whole `fresh` verdict turns
-on that field, so it gets one meaning: did the canonical trunk move under this session, which is
-what another agent merging does. A branch's own tip moving is a real but separate concern.
+**The remote SHA is the tip of the trunk**, not the branch tip. The whole `fresh` verdict turns on
+that field, so it gets one meaning: did the canonical trunk move under this session, which is what
+another agent merging does. Which ref *is* the trunk is declared rather than assumed — see below.
 
-Only the lease is a file today. Nothing constructs a receipt — `readInputs` supplies the `inputs`
-half and the rest has no producer, so a receipt store lands with the wiring item below.
+One file: `morpheus context refresh` builds the receipt and the lease that carries it, and the
+lease is what persists. The receipt is not stored separately because it has no separate reader.
 
 **A lease has a five-minute term**, which is the whole difference between the two. Past it the
 lease states a historical fact, not a fact about now, so it degrades to `refresh_required` rather
@@ -711,8 +711,11 @@ than carrying its verdict forward. So does one whose check time is unreadable, o
 because a clock moved.
 
 Three states, and the third is the point: an unreachable remote is `unknown`, never assumed
-unchanged. **`requireFresh` throws on anything but `fresh`** — the guard fails closed, and offline
-is a blocked state rather than a permitted one until the offline exception exists.
+unchanged. **The guard refuses anything but `fresh`** — `gate()`, against the `GATED` table of
+commands and their `Reach`. It fails closed, and offline is *contained* rather than blocked: see
+below. (`requireFresh` is the policy module's own boundary and has no production caller; `gate` is
+what commands go through, because refusing well needs the reach and the message as well as the
+verdict.)
 
 Two rules keep the artefacts honest, both learned by getting them wrong first:
 
