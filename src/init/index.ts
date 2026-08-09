@@ -43,8 +43,13 @@ type ConfiguredFirestoreRules =
 
 function configuredFirestoreRules(content: string): ConfiguredFirestoreRules {
   try {
-    const parsed = JSON.parse(content) as { firestore?: { rules?: unknown } };
-    const path = parsed.firestore?.rules;
+    const parsed: unknown = JSON.parse(content);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { kind: "missing" };
+    const firestore = (parsed as { firestore?: unknown }).firestore;
+    if (!firestore || typeof firestore !== "object" || Array.isArray(firestore)) {
+      return { kind: "missing" };
+    }
+    const path = (firestore as { rules?: unknown }).rules;
     return typeof path === "string" && path.trim()
       ? { kind: "path", path }
       : { kind: "missing" };
@@ -72,6 +77,50 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, content, "utf8");
     written.push(rel);
+  };
+
+  const prepareRules = async (
+    path: string,
+    warnWhenCreated: boolean,
+  ): Promise<string | undefined> => {
+    const existing = await readFile(join(root, path), "utf8").catch(() => null);
+    if (existing === null) {
+      await put(path, renderFirestoreRules());
+      if (!written.includes(path)) {
+        notes.push(
+          `Could not read or create the rules file ${path}; left its CI check off. ` +
+            "Verify the file and permissions before enabling hq-rules-path.",
+        );
+        return undefined;
+      }
+      if (warnWhenCreated) {
+        notes.push(
+          `Created the deployed rules file ${path} with deny-by-default starter policy. ` +
+            "Review its match blocks before the next Firebase deploy.",
+        );
+      }
+      return path;
+    }
+
+    const update = updateRoleHelpers(existing);
+    if (!update) {
+      skipped.push(`${path} (rules file has no complete generated role marker block)`);
+      notes.push(
+        `Kept the deployed rules file ${path} and left its CI check off because it has no ` +
+          "complete generated role marker block. Review `morpheus hq rules --print`, add the " +
+          "block inside the database match scope, then enable hq-rules-path.",
+      );
+      return undefined;
+    }
+
+    skipped.push(path);
+    if (update.changed) {
+      notes.push(
+        `${path} has stale generated role helpers. Run ` +
+          `\`morpheus hq rules --rules-path ${path}\` before the first PR.`,
+      );
+    }
+    return path;
   };
 
   // --- the manifest and the instructions -----------------------------------
@@ -151,41 +200,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     const firebaseConfig = await readFile(join(root, "firebase.json"), "utf8").catch(() => null);
     const configured = firebaseConfig ? configuredFirestoreRules(firebaseConfig) : null;
     if (configured?.kind === "path") {
-      const existingRules = await readFile(join(root, configured.path), "utf8").catch(() => null);
-      if (existingRules === null) {
-        await put(configured.path, renderFirestoreRules());
-        if (written.includes(configured.path)) {
-          rulesPath = configured.path;
-          notes.push(
-            `Created the deployed rules file ${configured.path} with deny-by-default starter policy. ` +
-              "Review its match blocks before the next Firebase deploy.",
-          );
-        } else {
-          notes.push(
-            `Could not read or create the configured rules file ${configured.path}; left its CI ` +
-              "check off. Verify the file and permissions before enabling hq-rules-path.",
-          );
-        }
-      } else {
-        const update = updateRoleHelpers(existingRules);
-        if (update) {
-          skipped.push(configured.path);
-          rulesPath = configured.path;
-          if (update.changed) {
-            notes.push(
-              `${configured.path} has stale generated role helpers. Run ` +
-                `\`morpheus hq rules --rules-path ${configured.path}\` before the first PR.`,
-            );
-          }
-        } else {
-          skipped.push(`${configured.path} (configured rules file has no complete role marker block)`);
-          notes.push(
-            `Kept the deployed rules file ${configured.path} and left its CI check off because it ` +
-              "has no complete generated role marker block. Review `morpheus hq rules --print`, " +
-              "add the block inside the database match scope, then enable hq-rules-path.",
-          );
-        }
-      }
+      rulesPath = await prepareRules(configured.path, true);
     } else if (firebaseConfig !== null) {
       const reason =
         configured?.kind === "invalid"
@@ -201,8 +216,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
       );
     } else {
       await put("firebase.json", t.firebaseConfig(canonicalRules));
-      await put(canonicalRules, renderFirestoreRules());
-      rulesPath = canonicalRules;
+      rulesPath = await prepareRules(canonicalRules, false);
     }
   }
 

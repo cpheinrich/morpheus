@@ -280,6 +280,40 @@ describe("morpheus init", () => {
       expect(await read("firestore.rules")).toBe(stale);
     });
 
+    it("leaves a pre-existing unmarked canonical gate unwired", async () => {
+      await mkdir(join(dir, "infra/firebase"), { recursive: true });
+      await writeFile(
+        join(dir, "infra/firebase/firestore.rules"),
+        "rules_version = '2';\n",
+        "utf8",
+      );
+
+      const result = await scaffold(dir, SEED);
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBeUndefined();
+      expect(result.notes.join("\n")).toContain("morpheus hq rules --print");
+    });
+
+    it("wires a pre-existing stale canonical gate and reports its refresh", async () => {
+      await mkdir(join(dir, "infra/firebase"), { recursive: true });
+      const stale = renderFirestoreRules().replace("role() == 'admin';", "role() == 'owner';");
+      await writeFile(join(dir, "infra/firebase/firestore.rules"), stale, "utf8");
+
+      const result = await scaffold(dir, SEED);
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBe("infra/firebase/firestore.rules");
+      expect(result.notes.join("\n")).toContain(
+        "morpheus hq rules --rules-path infra/firebase/firestore.rules",
+      );
+      expect(await read("infra/firebase/firestore.rules")).toBe(stale);
+    });
+
     it("distinguishes malformed Firebase config from an ambiguous rules shape", async () => {
       for (const [name, config, message] of [
         ["malformed", "{\"firestore\":", "could not be parsed"],

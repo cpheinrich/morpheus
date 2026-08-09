@@ -66,3 +66,6 @@ emits an explicit deny-by-default deployment warning.
 The architecture's `init` contract now records the same migration branches and distinguishes local
 deployment scaffolding from external provisioning. Creation warnings are tied to the file appearing
 in `written`, so a read/access failure cannot be reported as a successful security-file write.
+All configured and canonical paths now pass through one `prepareRules` adoption function. That
+removes the final branch-specific predicate and gives pre-existing canonical unmarked/stale gates
+the same unwired-or-reported behavior as paths read from `firebase.json`.
