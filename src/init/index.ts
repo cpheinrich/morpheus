@@ -36,6 +36,16 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
+function configuredFirestoreRules(content: string): string | null {
+  try {
+    const parsed = JSON.parse(content) as { firestore?: { rules?: unknown } };
+    const path = parsed.firestore?.rules;
+    return typeof path === "string" && path.trim() ? path : null;
+  } catch {
+    return null;
+  }
+}
+
 export const KIND_DIRS = EXPECTED;
 
 export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
@@ -126,17 +136,27 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   // documented `hq rules` command names it. Scaffold the deny-by-default
   // starter so the first CI check is meaningful and its remedy is executable.
   let rulesPath: string | undefined;
-  let rulesCreated = false;
   if (seed.kind === "company") {
     const canonicalRules = "infra/firebase/firestore.rules";
-    if (await exists(join(root, "firestore.rules"))) {
+    const firebaseConfig = await readFile(join(root, "firebase.json"), "utf8").catch(() => null);
+    const configuredRules = firebaseConfig ? configuredFirestoreRules(firebaseConfig) : null;
+    if (configuredRules) {
+      await put(configuredRules, renderFirestoreRules());
+      rulesPath = configuredRules;
+    } else if (firebaseConfig !== null) {
+      skipped.push(`${canonicalRules} (firebase.json does not name one rules path)`);
+      notes.push(
+        "Kept the existing firebase.json and did not guess its Firestore rules path. " +
+          "Set hq-rules-path to the rules file that configuration deploys.",
+      );
+    } else if (await exists(join(root, "firestore.rules"))) {
       skipped.push(`${canonicalRules} (root firestore.rules already exists)`);
       notes.push(
         "Kept the existing root firestore.rules and did not create a second rules file. " +
           "Set hq-rules-path to the file Firebase actually deploys.",
       );
     } else {
-      rulesCreated = !(await exists(join(root, canonicalRules)));
+      await put("firebase.json", t.firebaseConfig(canonicalRules));
       await put(canonicalRules, renderFirestoreRules());
       rulesPath = canonicalRules;
     }
@@ -185,11 +205,12 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     (await exists(join(root, "pnpm-lock.yaml"))) ||
     (await exists(join(root, "pnpm-workspace.yaml")));
   const ciPath = ".github/workflows/ci.yml";
-  const keptExistingCi = await exists(join(root, ciPath));
+  const existingCi = await readFile(join(root, ciPath), "utf8").catch(() => null);
   await put(ciPath, t.ci({ node: isNode, ...(rulesPath ? { rulesPath } : {}) }));
-  if (rulesPath && rulesCreated && keptExistingCi) {
+  const wiredRulesPath = /\bhq-rules-path:\s*["']?([^\s"']+)/.exec(existingCi ?? "")?.[1];
+  if (rulesPath && existingCi !== null && wiredRulesPath !== rulesPath) {
     notes.push(
-      `Created ${rulesPath} but left the existing ${ciPath} unchanged. ` +
+      `The deployed gate is ${rulesPath}, but the existing ${ciPath} does not check that path. ` +
         "Add this to its pm job to verify the deployed gate:\n" +
         "    with:\n" +
         `      hq-rules-path: ${rulesPath}`,

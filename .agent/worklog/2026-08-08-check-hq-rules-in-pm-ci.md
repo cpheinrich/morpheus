@@ -49,3 +49,9 @@ If migration creates the canonical gate but preserves an existing CI file, the r
 exact input block to add. The workflow contract test also parses generated remote-form callers and
 compares every passed input to the reusable workflow declaration, so the two templates cannot rename
 the contract independently.
+
+Fresh scaffolds now write `firebase.json` with the same rules path wired into CI, making deployment
+and verification one file-backed invariant rather than two instructions. A single string rules path
+in an existing Firebase configuration is authoritative; ambiguous configurations are preserved and
+reported instead of guessed. Preserved-CI guidance is derived from the file's current
+`hq-rules-path`, so it repeats on every `init` run until the deployed path is actually wired.

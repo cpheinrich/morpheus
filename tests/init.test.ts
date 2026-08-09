@@ -159,6 +159,7 @@ describe("morpheus init", () => {
       const path = "infra/firebase/firestore.rules";
       expect(await read(path)).toContain("morpheus:begin roles");
       expect(await rules(dir, true, path)).toBe(0);
+      expect(JSON.parse(await read("firebase.json"))).toEqual({ firestore: { rules: path } });
 
       const ci = load(await read(".github/workflows/ci.yml")) as {
         jobs?: Record<string, { with?: Record<string, unknown> }>;
@@ -195,8 +196,31 @@ describe("morpheus init", () => {
       expect(await read(".github/workflows/ci.yml")).toBe(existingCi);
       expect(await read("infra/firebase/firestore.rules")).toContain("morpheus:begin roles");
       const note = result.notes.join("\n");
-      expect(note).toContain("left the existing .github/workflows/ci.yml unchanged");
+      expect(note).toContain("existing .github/workflows/ci.yml does not check that path");
       expect(note).toContain("hq-rules-path: infra/firebase/firestore.rules");
+
+      const second = await scaffold(dir, SEED);
+      expect(second.notes.join("\n")).toContain(
+        "existing .github/workflows/ci.yml does not check that path",
+      );
+    });
+
+    it("uses the deployed path when firebase.json already owns it", async () => {
+      await writeFile(
+        join(dir, "firebase.json"),
+        JSON.stringify({ firestore: { rules: "firebase/firestore.rules" } }),
+        "utf8",
+      );
+
+      const result = await scaffold(dir, SEED);
+
+      await expect(read("infra/firebase/firestore.rules")).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await read("firebase/firestore.rules")).toContain("morpheus:begin roles");
+      const ci = load(await read(".github/workflows/ci.yml")) as {
+        jobs?: Record<string, { with?: Record<string, unknown> }>;
+      };
+      expect(ci.jobs?.pm?.with?.["hq-rules-path"]).toBe("firebase/firestore.rules");
+      expect(result.notes.join("\n")).not.toContain("did not guess");
     });
 
     /**

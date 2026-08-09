@@ -35,6 +35,9 @@ export const manifest = (s: Seed): string =>
     2,
   ) + "\n";
 
+export const firebaseConfig = (rulesPath: string): string =>
+  JSON.stringify({ firestore: { rules: rulesPath } }, null, 2) + "\n";
+
 /**
  * The public Morpheus repository.
  *
