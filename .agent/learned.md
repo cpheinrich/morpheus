@@ -260,3 +260,91 @@ part of the script.
 The test for this must parse the YAML rather than slice the text: an `env:` block sits directly
 above the `run:` it feeds, so any text-splitting heuristic sees them as one chunk and flags the safe
 form as unsafe. `step.run` is exactly the shell that executes and nothing else.
+
+## A sentinel for missing information must be excluded from a comparison, not compared
+
+Four rounds of review on the context-freshness policy (MO-26-08-05-12.24.47) found the same defect
+four times, in four disguises:
+
+| The absence | Encoded as | Compared, and so |
+|---|---|---|
+| Never read the records | `inputs: []` | covered nothing, certified `fresh` |
+| Never checked the remote | `checkedAt` written, never read | a six-hour-old lease certified `fresh` |
+| Read it, could not parse it | `UNREADABLE` | matched `UNREADABLE`, certified `fresh` |
+| Wrong tree entirely | `ABSENT` on every record | matched `ABSENT`, certified `fresh` |
+
+Each fix was correct and each left the next instance standing, because the shape was never named.
+It is this: **a value that means *I do not have this information* will compare equal to itself**, and
+equality is what every freshness, cache, and diff check is built out of. The result always reads as
+agreement, which is always the unsafe direction.
+
+So: sentinels get excluded from the comparison by an explicit branch, before any `===`. If one is
+deliberately allowed to compare — `ABSENT` still does, outside a declared required set, because
+*nothing there and still nothing there* is genuine knowledge — the exception needs a comment saying
+why, or the next reader restores the bug while fixing something adjacent.
+
+**Stated as a rule about sentinels this was too narrow, and the commit that wrote it left two more
+instances standing one file over** — an fs error code and a retry loop are also values meaning *I do
+not have this information*. So carry it as a question to ask at every boundary instead:
+
+> **What does this code do when the thing is not there, and can the caller tell that apart from the
+> thing being fine?**
+
+If the answer to the second half is no, that is the bug, whatever shape it is wearing. The
+reviewer's summary is the shortest version: *the check skips what is absent and reports the empty
+thing as correct.*
+
+## A regression guard narrowed to stay green can stop covering its own reason
+
+2026-08-05. The "no source file names `hq/inbox`" sweep exempted `paths.ts` by filename while the
+legacy constant lived there. Removing the constant, I replaced the exemption with a narrower match —
+`/["']hq\/inbox/` — so that honest prose about the old layout would not fail.
+
+The motivation was right and the implementation conceded far more than it had to. A quote character
+is not what this code looks like: the **scaffolded-template** case the test's own docstring cites is
+a markdown row inside a template literal with no quote at all, and a regex literal spells the path
+`hq\/inbox\/`, so re-adding the exact line the same PR deleted would have passed. The check read as
+covering templates and covered none of them.
+
+**Two properties were treated as a trade and were not one.** Stripping comments first and then
+looking at what remains keeps history sayable *and* catches every spelling in code. Reaching for the
+first thing that turned the suite green produced a guard weaker than the exemption it replaced —
+and worse than it, because an exemption is visible where a too-narrow pattern is not.
+
+Related: writing "confirmed to still fail on a re-introduced string literal" in the PR body was
+narrowly true and implied coverage that did not exist. When a check is narrowed, state what it
+*stopped* covering, not what it still does.
+
+**And then it happened again in the fix.** The rewrite stripped lines opening with `//` *or* `*`,
+for JSDoc continuations — which are already inside the `/* … */` removed one step earlier, so the
+`*` bought nothing and cost the shape this repo writes most: inside a template literal a leading
+`*` is a markdown **bold lead-in** or a bullet, and `src/init/templates.ts` has a dozen. The guard
+caught the path in a table cell and missed it one paragraph below.
+
+Three rounds, one mistake: **verifying a guard against the cases someone named rather than against
+the class.** Each round I fixed exactly the shapes the review listed and shipped, and each time the
+next shape was one the reviewer had not thought to name either. What finally worked was deleting
+the clause that earned nothing rather than adding a case — and proving the sweep catches a real
+regression by re-introducing `hq/inbox` into the actual template and watching it fail.
+
+**A guard is only verified by breaking the thing it guards.** Assertions on synthetic strings prove
+the helper; they do not prove the sweep is wired to anything.
+
+Round four made the point twice more. Anchoring the comment strip's *opener* to column 0 was
+supposed to stop a `/*` inside a template from swallowing code — and `src/init/templates.ts` has
+`/*.png` at column 0 in the scaffolded `.gitignore`, whose match ran forward to the `**/` two lines
+below, blanking three lines of the exact file the guard exists for. **Anchoring the closer is what
+discriminates**: a real block comment ends its line, and every `*/` in `src/` followed by anything
+else is a glob, a regex or a template.
+
+Then the assertion written to pin it **passed under both regexes** — the path sat outside the
+window the bug deletes, so it proved nothing. An assertion for a swallowing bug has to put the
+thing being looked for *inside* the swallowed span. Same failure as the guard itself, one level
+down: checking the shape rather than the mechanism.
+
+Round five was the useful generalisation. Closer-anchoring alone made the live miss go away —
+because the globs happen to sit past the file's last block comment. **Safe-today and safe are
+different properties**, and the difference was two characters: key the opener on shape too
+(`/**` or `/* `, never `/*.`) and the guard stops depending on where in the file anything sits.
+Appending a comment below those globs is the normal way that file grows, so "no miss today" had a
+short shelf life.

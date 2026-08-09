@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseOnboarding, renderOnboarding, setState, type TaskStatus } from "../src/onboarding/state.js";
 import { collectStatus, summarise } from "../src/onboarding/status.js";
 import { TASKS, projectLabel, tasksFor, type Task } from "../src/onboarding/tasks.js";
+import { appendOpenItem } from "../src/inbox/append.js";
+import { TEAM_RESERVED } from "../src/paths.js";
 
 const task = (over: Partial<Task> = {}): Task => ({
   id: "cloudflare-token",
@@ -179,6 +181,36 @@ describe("detection outranks the file, except when it cannot answer", () => {
 
     const found = await collectStatus(dir, { offline: true });
     expect(found.find((s) => s.task.id === "inbox")?.state).toBe("todo");
+  });
+
+  /**
+   * `hq/team/` is not a folder of inboxes — it is a folder of collaborative
+   * context, and the roster and the folder README live in it too. A detector
+   * that requires *every* `.md` to parse as an inbox therefore unticks a
+   * finished step the moment a project writes one, which is what happened to
+   * heinrichbros.com the hour after its roster landed.
+   *
+   * Written against `TEAM_RESERVED` rather than the two names in it today: the
+   * bug was a hand-written filter drifting from the shared set, so a test that
+   * hard-codes the same names would drift with it.
+   */
+  it("ignores every reserved file when looking for an inbox", async () => {
+    await mkdir(join(dir, "hq/team"), { recursive: true });
+    await writeFile(
+      join(dir, "hq/team/cpheinrich.md"),
+      appendOpenItem(
+        null,
+        { title: "A question", agent: "claude", body: "Body." },
+        { owner: "cpheinrich", date: "2026-08-05" },
+      ),
+    );
+    for (const reserved of TEAM_RESERVED) {
+      // Deliberately not parseable as an inbox — that is the whole point.
+      await writeFile(join(dir, "hq/team", reserved), "---\nmembers: []\n---\n\n# Not an inbox\n");
+    }
+
+    const found = await collectStatus(dir, { offline: true });
+    expect(found.find((s) => s.task.id === "inbox")?.state).toBe("done");
   });
 
   it("accepts a goal that actually parses", async () => {

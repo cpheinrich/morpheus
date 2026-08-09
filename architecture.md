@@ -198,7 +198,7 @@ canonical and lives in this document. Only *deviations* are recorded.
   "domain": "evo.med",
   "description": "One-sentence description.",
   "surfaces": { "web": true, "ios": true, "hardware": false },
-  "integrations": ["firebase", "stripe", "posthog", "github", "slack", "semrush"],
+  "integrations": ["firebase", "stripe", "posthog", "github", "slack", "openseo"],
   "accounts": { /* which identity per service — see §13.3 */ },
   "hq": {
     "route": "/hq",
@@ -237,8 +237,8 @@ often goes wrong when one person runs several companies.
 | QA checklists, acceptance | `qa/` | Markdown |
 | Security posture | `qa/security.md` | Markdown |
 | Cloud infra | `infra/` | Config + IaC |
-| SEO | `hq/marketing/seo/` | Docs + Semrush |
-| ASO | `hq/marketing/aso/` | Docs + ASC integration |
+| SEO | `hq/marketing/seo/` | Docs + OpenSEO |
+| ASO | `hq/marketing/aso/` | Docs + Appeeky + ASC integration |
 | Marketing content | `hq/marketing/content/` | Markdown |
 | Identity, mission, audiences | `hq/brand/strategy.md` | Markdown |
 | Finance | `hq/finance/` → `/hq/finance` | Config + dashboard |
@@ -269,7 +269,8 @@ often goes wrong when one person runs several companies.
 | DNS, CDN, public media | **Cloudflare** | CDN, R2 (§14.3), transactional email — and DNS for every domain, see §6.1 |
 | Domain registration | **Porkbun**, or **Cloudflare** where it carries the TLD | §6.1 |
 | Transactional email | **Cloudflare Email Sending** | Already in the stack — see below |
-| SEO research | **Semrush** | Data moat |
+| SEO research | **OpenSEO** | Data moat — see §6.2 |
+| ASO research | **Appeeky** | App Store data moat, plus ASC/ASA writes — see §6.2 |
 | Agents | **Claude + Codex** | |
 | Error tracking | **Sentry** | |
 | Web hosting | **Vercel** | §10.2 — every web surface, every size. Not Cloudflare Pages |
@@ -341,6 +342,32 @@ list a zone's existing records, so there is no way to see what is actually confi
 remove a
 parking record, from its UI. That is not a knock on Porkbun as a registrar — it is why DNS does not
 live there.
+
+### 6.2 Search: SEO is OpenSEO, ASO is Appeeky
+
+Two separate disciplines, two separate tools, and agents must not substitute one for the other.
+
+| Discipline | Tool | Scope |
+|---|---|---|
+| **Website SEO** | **OpenSEO** | Keywords, SERPs, backlinks, rank tracking, site audits, Search Console, AI-visibility |
+| **App store ASO** | **Appeeky** | App keywords, store metadata, competitor and chart intelligence, plus ASC / Apple Search Ads / Play writes |
+
+**Any request about ranking a *website* goes to OpenSEO. Any request about ranking an *app* goes
+to Appeeky.** The two vocabularies overlap enough — "keywords", "rank", "competitors",
+"visibility" — that an agent reaching for the wrong one will return plausible, wrong numbers:
+app-store search volume and Google search volume are different quantities that look identical in
+a table.
+
+**These replace Semrush and AppTweak**, which earlier drafts named. Semrush was chosen for the
+data moat and priced as a seat subscription; OpenSEO reaches comparable data billed by usage, is
+open-source and self-hostable, and — the reason that decides it here — ships an MCP server as a
+first-class surface rather than an afterthought. Appeeky replaces AppTweak on the same logic, and
+additionally writes: it reaches App Store Connect and Apple Search Ads, so an agent can act on
+what it finds instead of only reporting it.
+
+Both authenticate as remote MCP through claude.ai (§13.4), so neither puts a key in a repo.
+Credentials for the *downstream* accounts Appeeky writes to — App Store Connect, Apple Search Ads,
+Play Console — are a separate authorisation, granted once inside Appeeky.
 
 ### Built and maintained in Morpheus
 
@@ -528,7 +555,7 @@ Scheduled agent runs (GitHub Actions cron) that read the world and propose chang
 | Analytics review | Weekly | PostHog MCP | `/hq` KPI notes, roadmap proposals |
 | Support sweep | Daily | Chatwoot API | Draft replies queued for approval |
 | Finance sync | Weekly | Stripe, Mercury | `/hq/finance` update |
-| Market research | Monthly | Semrush, web | `hq/marketing/research/` |
+| Market research | Monthly | OpenSEO, Appeeky, web | `hq/marketing/research/` |
 | Roadmap proposal | Weekly | All of the above | **A PR against `hq/product/roadmap/`** |
 
 **Agent proposals arrive as pull requests.** Review is a diff, and the human edits the proposal in
@@ -656,6 +683,79 @@ The two directions are asymmetric, which is why one is a command and the other i
 to close with a spec that says it could not see the codebase and should be deferred to. That single
 line, in a handoff received on 2026-08-01, is what caused a prompt-based heartbeat design to be
 checked against reality and killed rather than built.
+
+### 7.10 Context freshness
+
+Everything above assumes an agent has read the records. Nothing made it prove that. A session can
+start without loading `decisions.md`, and a session that *did* load it six hours ago can keep
+working through changes another agent has since pushed — with a claim, a plan, and a draft PR all
+looking like evidence of an agent that knows the current state.
+
+Two assertions, both local and gitignored under `local/sessions/`:
+
+| | What it asserts |
+|---|---|
+| **Context receipt** | *I read these records, at these fingerprints, against this remote SHA* |
+| **Session lease** | *That receipt was checked against the remote at this time, and held* |
+
+**The remote SHA is the tip of `origin/main`**, not the branch tip. The whole `fresh` verdict turns
+on that field, so it gets one meaning: did the canonical trunk move under this session, which is
+what another agent merging does. A branch's own tip moving is a real but separate concern.
+
+Only the lease is a file today. Nothing constructs a receipt — `readInputs` supplies the `inputs`
+half and the rest has no producer, so a receipt store lands with the wiring item below.
+
+**A lease has a five-minute term**, which is the whole difference between the two. Past it the
+lease states a historical fact, not a fact about now, so it degrades to `refresh_required` rather
+than carrying its verdict forward. So does one whose check time is unreadable, or in the future
+because a clock moved.
+
+Three states, and the third is the point: an unreachable remote is `unknown`, never assumed
+unchanged. **`requireFresh` throws on anything but `fresh`** — the guard fails closed, and offline
+is a blocked state rather than a permitted one until the offline exception exists.
+
+Two rules keep the artefacts honest, both learned by getting them wrong first:
+
+- **A receipt is measured against a declared required set**, not just against itself. A receipt
+  listing nothing would otherwise be indistinguishable from one listing everything — the same
+  shape as a check that skips what is absent and reports the empty thing as correct. An *empty*
+  declared set switches the check off and is the only thing that does, so a project config must
+  distinguish "none declared" (take the default) from "declared as none": a blank or unparseable
+  field yielding `[]` would hand every generated project a check that passes for having read
+  nothing.
+- **Drift is derived, not asserted**, and the observation's fingerprints are a required argument
+  for the same reason. Optional, omitting them *is* the caller choosing to report no drift, under
+  another name. The comparison walks the *required* set rather than what the observation reported,
+  so an entry left out is unverified rather than unchanged — the same hole one level down.
+- **A record with no content never counts as read.** It fingerprints to a sentinel rather than
+  throwing, because a freshness check is the wrong place to abort with a raw filesystem error — but
+  the sentinel is then *excluded* from the comparison rather than compared. Both sentinels
+  fingerprint identically on each side, so equality alone makes *I could not read it* match itself,
+  and — the wider case — makes a wrong root, where every required record is missing, certify
+  `fresh`. Outside the required set `absent` does compare, because *nothing there and still nothing
+  there* is genuine knowledge. This is [`.agent/learned.md`](.agent/learned.md)'s sentinel rule; it
+  cost four review rounds to see once.
+- **What re-reading cannot fix is reported separately.** Folded into the flat changed list, a
+  record that yields no content is indistinguishable from one another agent edited, and a runner
+  told only "these ids changed" loops on a refresh that can never succeed — the wrong-root case
+  most of all, since a bad path is a caller mistake where a permission fault is a machine's. The
+  guard's message subtracts them from what it asks to be refreshed, and the adapter has **two
+  channels** rather than one — a runner given only `requestRefresh` has to guess, and the guess it
+  makes is the loop.
+
+**Local, and deliberately not shared.** A receipt says *this working copy read these files*, which
+is true of one machine. Committing it would turn a local observation into a claim about everyone.
+Shared evidence stays what it was: the worklog, the commit, the PR.
+
+Local state is validated on the way **out** as well as in, and strictly: the receipt's one
+privacy claim — safe source labels, never conversation text — is only a property of the artefact if
+something checks at the point of writing, and a strict schema is what makes the next persisted-key
+change loud rather than silently lossy.
+
+The policy is pure and provider-neutral, sitting behind a `SessionAdapter` that runners implement
+but do not own — so CI exercises fresh, stale, expired, offline and never-loaded paths with a mock,
+needing neither GitHub nor a Codex or Claude account. **Nothing calls the guard yet** — the policy
+makes the answer computable, and MO-26-08-05-16.27.56 wires it to hooks, commands, and runners.
 
 ## 8. Project management as files
 
@@ -1094,6 +1194,128 @@ cannot run in middleware. **Session cookies use a different key set and issuer t
 using the ID-token keys fails to verify every cookie silently, which reads as a broken login
 rather than a wrong constant.
 
+#### The session cookie is not the ID token
+
+The credential a project stores is the whole of how long a login lasts, and the two candidates look
+interchangeable until they are not.
+
+| | Firebase **ID token** | Firebase **session cookie** |
+|---|---|---|
+| Minted for | the client, by Google, at sign-in | **your server**, by Google, on request |
+| Lifetime | **1 hour**, fixed | **5 minutes – 14 days**, you choose |
+| Issuer | `securetoken.google.com/<project>` | `session.firebase.google.com/<project>` |
+| Signing keys | the ID-token certificates | **a different certificate endpoint** |
+| Created by | nothing — it arrives from the client | `createSessionCookie(idToken, { expiresIn })` |
+
+Storing the ID token directly is the mistake that looks like it works. `cpheinrich.com` did exactly
+that, and its session was one hour — which presented as being signed out again on every visit.
+**Raising the cookie's `maxAge` does not fix it**: the cookie outlives the token inside it,
+verification fails on `exp`, and the sign-in page returns on the same schedule. The fix is a
+different credential, not a longer one.
+
+```ts
+// morpheus-kit/hq — the mint half
+const { value, expiresInMs } = await createHqSessionCookie(adminAuth, idToken);
+response.cookies.set({ ...hqSessionCookieOptions({ expiresInMs }), value });
+```
+
+`HqCookieOptions` is deliberately Next's `ResponseCookie` minus `value`, so the two spread into the
+object form of `cookies.set`. That is the call that works: the two-argument overload is
+`(name, value)`, so passing the session JWT first sets a cookie *named* after the JWT — nothing
+lands under `hq_session`, the gate reads no cookie, and the visitor is signed out by the very code
+meant to sign them in.
+
+Sign-out is the same spread with an empty value — `set({ ...hqSessionClearOptions(), value: "" })`
+— rather than `cookies.delete("hq_session")`, which reintroduces the hardcoded name that
+`HQ_SESSION.cookieName` exists to prevent.
+
+`createHqSessionCookie` takes the caller's initialised Admin `Auth` **as a parameter and never
+imports `firebase-admin`** — the same argument as the gate returning a decision rather than a
+`NextResponse`. The kit is imported by edge middleware, and `firebase-admin` is Node-only; depending
+on it to reuse three lines of call would pin every consumer's runtime. The three lines are not the
+valuable part. The policy is: the 14-day ceiling is Firebase's and rejects anything longer, the
+floor is five minutes, and `sameSite` must be `lax` rather than `strict` or the cookie is withheld
+on the return from Google and the visitor arrives signed in while reading as signed out.
+
+**Renewal, not duration, is what makes a session permanent.** Two weeks is a ceiling per mint; a
+session re-minted whenever it is used never reaches it.
+
+Be precise about what the window costs when it is exceeded, because it is smaller than it looks.
+**A visitor returning within five days is renewed in place. One gone longer bounces through the
+sign-in page and is re-minted there** — the browser SDK still holds its refresh token, the
+`onIdTokenChanged` subscription fires on that page like any other, and the route re-mints from the
+ID token it posts. `safeReturnTo` carries them onward. Nobody sees Google again unless the refresh
+token itself was revoked or cleared.
+
+So the window buys a page bounce, not a re-authentication, and that is the argument for keeping the
+default short: a longer one trades a longer stale-authorization window — the thing the edge cannot
+close — for the removal of a redirect. A project that wants that removal passes ten days or so and
+owns the trade, which is why the value is a parameter.
+
+Renewal has two halves, in two places, and they are easy to conflate:
+
+- **The client supplies the material.** The browser SDK holds a long-lived refresh token and mints a
+  fresh ID token roughly hourly. A ~20-line `onIdTokenChanged` subscription re-posts each one to the
+  session route. The kit stays framework-free, so this is a convention rather than a component.
+- **The session route decides whether to act on it.** That route is the only place all three things
+  exist at once: the Admin `Auth`, a fresh ID token, and the current cookie.
+
+```ts
+// the session route — a Node handler, not middleware
+const decision = await decideHqAccess({ cookie, projectId });
+if (decision.kind === "allow" && !renewalDue(decision.claims)) {
+  return Response.json({ ok: true });   // still fresh; don't re-mint
+}
+const { value, expiresInMs } = await createHqSessionCookie(adminAuth, idToken);
+```
+
+**Not in middleware.** `decideHqAccess` is the edge call everywhere else in this section, and the
+re-mint cannot happen there: `firebase-admin` is Node-only, and there is no server-side path from a
+session cookie back to a fresh ID token — the refresh token that could mint one lives in the
+browser. Middleware holds the cookie and nothing else, so its job is to gate, not to renew.
+
+**What `renewalDue` is actually for**, given the client posts hourly: without it the route re-mints
+on every post — sixty times a day for a five-day cookie. It is a server-side rate limit on
+re-minting, so the cookie is re-issued at 2.5 days rather than continuously. The client loop keeps
+the session alive; this keeps that loop from being expensive.
+
+`SessionClaims` carries the verified `iat` and `exp` so the check composes directly with the gate's
+output — renewal reads the window already checked, which is what "no second store to keep
+consistent" has to mean. A predicate the gate's own output could not be passed to would leave a
+consumer re-verifying the cookie to recover two numbers, or decoding it unverified on the one path
+where that is least acceptable.
+
+Two consequences, both load-bearing and neither obvious:
+
+- **Minting needs a service-account key.** A project that had none now has one. That is a real
+  change to its secret posture and belongs in its own `infra/` notes rather than arriving as a side
+  effect of a session fix.
+- **Long sessions weaken revocation, and the edge cannot close that.** A one-hour credential
+  re-checks Google constantly by construction. A multi-day one does not, and the gate reads the role
+  out of the cookie payload — baked in at mint time — so **the window is also how long a revoked or
+  demoted account keeps working.**
+
+  Be precise about the mitigations, because the obvious one does less than it sounds like.
+  `revokeRefreshTokens(uid)` stops the *client* minting fresh ID tokens, which ends a renewal loop
+  within about an hour; it does **not** invalidate a session cookie already issued, and it does
+  nothing at all for a demotion. `checkRevoked` catches that, and structurally cannot run in
+  `verifySessionCookie`, which is edge-only by design — it needs the Admin SDK, on a server route.
+
+  So: the default window is five days rather than the fourteen-day ceiling, because defaulting to
+  the ceiling hands every project the most permissive value by accident. A project wanting a
+  same-session authorization check runs `checkRevoked` on its server routes, and one wanting instant
+  demotion re-reads the allowlist per request rather than trusting the payload's role. Both are
+  consumer-side by necessity, and both are worth knowing about before the window is chosen.
+
+The client half is a convention rather than a component, since the kit stays framework-free: the
+browser SDK holds a long-lived refresh token and mints a fresh ID token roughly hourly, so a
+~20-line `onIdTokenChanged` subscription that re-posts to the session endpoint keeps renewal
+supplied with material even on a page nobody is clicking.
+
+`safeReturnTo()` narrows the `next` parameter the gate produces back to a path under the route. It
+ships here rather than per project because the read side is where the open redirect lives, and
+`raw.startsWith("/")` — the check most people write — admits `//evil.example`.
+
 ```sh
 morpheus hq rules            # write or refresh the generated block in firestore.rules
 morpheus hq rules --check    # fail when it has drifted — for CI
@@ -1506,7 +1728,7 @@ Lakina resources in it.
 | **0** | `gh auth login`; install `gcloud`, `wrangler`, `firebase-tools`, `op` | Once, ever | You |
 | **1** | `gcloud auth login` + named configuration per Google identity | Once per Google account | You |
 | **2** | Cloudflare API token (broad), Vercel token | Once per account | You — paste into wizard |
-| **3** | Semrush, Stripe, Slack, PostHog | Optional, skippable | You — or skip |
+| **3** | OpenSEO, Appeeky, Stripe, Slack, PostHog | Optional, skippable | You — or skip |
 | **4** | GCP projects, service accounts, Firebase projects, PostHog projects, R2 buckets, DNS records, Vercel projects, GitHub repos, Chatwoot inboxes | Continuously | **Agent** |
 
 **Google Cloud and Firebase need no separate token.** `gcloud auth login` as an Owner is
@@ -1552,7 +1774,7 @@ flowchart TB
 
 The consumer is **the agent**, not the application — a third population. Three cases:
 
-**Remote MCP authenticated through claude.ai.** Semrush, Linear, Asana, Figma, Slack, Sentry: you
+**Remote MCP authenticated through claude.ai.** OpenSEO, Appeeky, Linear, Asana, Figma, Slack, Sentry: you
 authorise once and the credential lives in Claude's store, never in the repo. The catch is that
 these are **account-scoped, not project-scoped**.
 

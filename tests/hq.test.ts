@@ -66,10 +66,22 @@ describe("roles", () => {
 
 describe("toClaims", () => {
   it("maps a well-formed payload", () => {
-    expect(toClaims({ sub: "u1", email: "c@x.com", role: "admin" })).toEqual({
+    expect(toClaims({ sub: "u1", email: "c@x.com", role: "admin", iat: 100, exp: 200 })).toEqual({
       uid: "u1",
       email: "c@x.com",
       role: "admin",
+      // Carried, not projected away: `renewalDue` reads the window off the
+      // claims, and dropping it here left the kit's own renewal predicate with
+      // no reachable source of input.
+      iat: 100,
+      exp: 200,
+    });
+  });
+
+  it("reports an absent window as null rather than omitting it", () => {
+    expect(toClaims({ sub: "u1", email: "c@x.com", role: "admin" })).toMatchObject({
+      iat: null,
+      exp: null,
     });
   });
 
@@ -88,7 +100,15 @@ describe("toClaims", () => {
 });
 
 describe("decideFromClaims", () => {
-  const claims = (role: string | null) => ({ uid: "u1", email: "c@x.com", role: role as never });
+  const claims = (role: string | null) => ({
+    uid: "u1",
+    email: "c@x.com",
+    role: role as never,
+    // The verified window travels with the claims so `renewalDue` can read
+    // it off a decision — see tests/hq-session.test.ts.
+    iat: 1_000_000,
+    exp: 1_000_000 + 5 * 24 * 60 * 60,
+  });
 
   it("allows an employee", () => {
     expect(decideFromClaims(claims("employee")).kind).toBe("allow");

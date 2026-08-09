@@ -27,6 +27,17 @@ export interface SessionClaims {
   uid: string;
   email: string | null;
   role: Role | null;
+  /**
+   * The verified window, in seconds — what `renewalDue` reads.
+   *
+   * Carried rather than dropped because renewal is meant to need no second
+   * store: a consumer holding a decision has already paid for this
+   * verification, and projecting it away would leave them re-verifying the
+   * same cookie to recover two numbers, or decoding it unverified. Either is
+   * the second clock the design exists to avoid.
+   */
+  iat: number | null;
+  exp: number | null;
 }
 
 interface CertCache {
@@ -83,6 +94,8 @@ export function toClaims(payload: JWTPayload): SessionClaims | null {
     uid,
     email: typeof payload.email === "string" ? payload.email : null,
     role: isRole(payload.role) ? payload.role : null,
+    iat: typeof payload.iat === "number" ? payload.iat : null,
+    exp: typeof payload.exp === "number" ? payload.exp : null,
   };
 }
 
