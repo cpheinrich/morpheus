@@ -1912,10 +1912,9 @@ flowchart TB
 
 **Net: one interactive login per Google identity, one pasted token per Cloudflare account.**
 
-> **Gotcha.** `morpheus-kit` publishes under `cpheinrich`, but `darwin-health` and `lakinacapital`
-> repos install it. GitHub Packages permissions are owner-scoped and the automatic `GITHUB_TOKEN`
-> only reaches packages owned by the same account as the repo, so **cross-org consumption requires
-> an explicit PAT with `read:packages`** in each consuming repo's Actions secrets.
+> **Git dependencies need no package credential.** `morpheus-kit` is installed from the public
+> `cpheinrich/morpheus` repository, including by repos under other owners. No registry or
+> `read:packages` PAT sits in a consuming project's Actions secrets.
 
 ### 13.4 MCP credentials
 
@@ -2088,7 +2087,7 @@ an explicit IAM grant, which makes the rollup opt-in per dataset rather than imp
 | Mechanism | Reaches projects by | Updates | Use for |
 |---|---|---|---|
 | **Templates** | Copied at `init` / `add` | Never automatically | Scaffolding that should diverge |
-| **The kit** | npm dependency | Version bump | Runtime code that should not diverge |
+| **The kit** | Public git dependency | Ref bump | Runtime code that should not diverge |
 | **Reusable workflows** | Referenced by ref | Instantly, on ref | CI logic |
 
 The test for the first two: *if I improve this, do I want every existing project to get the
@@ -2097,10 +2096,15 @@ improvement?* Yes → kit. No → template.
 ### 18.1 Morpheus's own structure
 
 **One package, not many.** `morpheus-kit` ships everything with subpath exports, so a project
-imports only what it uses: one version number, one install, one registry entry. Heavy or
+imports only what it uses: one ref, one install, no registry. Heavy or
 surface-specific dependencies are **optional peer dependencies**, so a web-only project never
 installs iOS tooling. Splitting one package into several later is mechanical; starting split and
 merging later is not.
+
+The git dependency includes committed `dist/` output and exposes no install-time or npm git-build
+script. Consumers therefore unpack ready-to-run JavaScript rather than compiling Morpheus inside
+their own install. Morpheus contributors run `pnpm compile`; CI rebuilds and rejects any diff so the
+committed artifacts cannot drift from `src/`.
 
 ```
 morpheus/
@@ -2184,7 +2188,7 @@ anything encodes them.
 **Stage 1 — Extract what is already needed twice.** Each item has two consumers today: reusable
 workflows (`web-ci`, `pr-check`) across all repos; `morpheus-kit/pm` for Darwin and Evo;
 `morpheus-kit/analytics` for both, since the wrong event schema is expensive to fix later; and
-`morpheus-kit/hq` for Darwin, then Evo. Publishing infrastructure comes with this stage. **The
+`morpheus-kit/hq` for Darwin, then Evo. Git-dependency packaging comes with this stage. **The
 `/hq` auth model (§11.1) lands first within it**, because everything else in `/hq` sits behind it
 and retrofitting auth is materially harder than starting with it.
 

@@ -60,7 +60,7 @@ public repo.
 
 **Do not publish `morpheus-kit` to npm** — 2026-07-29. Publishing only helps strangers install
 it, which is the opposite of the goal. CI checks the repo out and builds the CLI; local use is
-`pnpm build && npm link`.
+`pnpm compile && npm link`.
 
 **Runtime code reaches projects as a git dependency** — 2026-07-29. `npm link` does not survive a
 Vercel build and a workflow reference cannot be imported, so components and token modules need to
@@ -71,6 +71,13 @@ than a semver range, which for four projects and one author is simpler, not hard
 Distribution splits three ways and the word "kit" was hiding it: the **CLI** is linked or built from
 a checkout, the **workflows** are referenced by path from the public repo, and only **runtime
 imports** need dependency resolution at all.
+
+**Git-dependency runtime artifacts are committed, never built by the consumer** — 2026-08-09.
+`dist/` travels with the public repo and CI fails if `pnpm compile` changes it. The root manifest
+deliberately has no `build`, `prepare`, `prepack`, or install lifecycle script: npm otherwise rebuilds
+a git dependency, and pnpm 11 refuses the prepare phase unless every consumer allowlists the exact
+resolved codeload URL. The repository command is named `compile` so the package stays inert when
+installed from a moving git ref.
 
 **A licence cannot prevent forks of a public repo** — GitHub's Terms of Service grant every
 user forking rights through GitHub's own functionality, regardless of the attached licence. If

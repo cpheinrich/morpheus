@@ -66,11 +66,9 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Build the Morpheus CLI
+      - name: Install the Morpheus CLI runtime
         working-directory: .morpheus
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
+        run: pnpm install --frozen-lockfile
 
       # Projects without Firestore rules should not gain a failing check merely
       # by updating @main. Consumers with the data gate opt in, while reusing

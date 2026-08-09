@@ -29,13 +29,12 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli/index.js",
-    "prepare": "npm run build",
+    "compile": "tsc -p tsconfig.build.json && chmod +x dist/cli/index.js",
     "dev": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:rules": "pnpm build && firebase emulators:exec --only firestore --project morpheus-rules-test 'node --test tests/firestore-rules.test.mjs'",
+    "test:rules": "pnpm compile && firebase emulators:exec --only firestore --project morpheus-rules-test 'node --test tests/firestore-rules.test.mjs'",
     "lint": "eslint src",
     "morpheus": "tsx src/cli/index.ts"
   },

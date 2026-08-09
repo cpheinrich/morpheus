@@ -11,6 +11,10 @@ on:
 jobs:
   node:
     uses: ./.github/workflows/node-ci.yml
+    with:
+      build-script: compile
+      verify-build-clean: true
+      build-output-directory: dist
 
   # Morpheus has the CLI in-tree, so it validates directly rather than via the
   # reusable workflow (which checks the CLI out of this very repo).
