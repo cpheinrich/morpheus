@@ -50,3 +50,8 @@ even though `pm block --dir` can write another product tree. The claims path now
 test's macOS temp path exposed `/var` versus `/private/var` as another way equivalent paths compare
 unequal). A non-default-directory test also dirties the default index and proves only the configured
 one is reported.
+
+The third review called out that leaving `productDir` optional preserved silent degradation for a
+future caller even though production passed it today. It is required now, and every test call names
+the directory whose index it expects the scan to cover. There is no supported call shape that turns
+index detection off by omission.

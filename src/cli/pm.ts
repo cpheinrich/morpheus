@@ -470,7 +470,7 @@ export interface UnsentRecords {
 export async function unsentBlockRecords(
   cwd: string,
   blockedIds: string[],
-  productDir?: string,
+  productDir: string,
 ): Promise<UnsentRecords> {
   if (!blockedIds.length) return { paths: [], unavailable: false };
   const ids = blockedIds.map((id) => id.toLowerCase());
@@ -525,22 +525,14 @@ export async function unsentBlockRecords(
   const named = candidates.filter((path) => ids.some((id) => path.toLowerCase().includes(id)));
   // `pm block` refreshes this generated view after changing the item. Its path
   // carries no item id, so the ordinary record matcher cannot discover it.
-  const productRoot = productDir
-    ? isAbsolute(productDir)
-      ? productDir
-      : join(rootDir, productDir)
-    : null;
+  const productRoot = isAbsolute(productDir) ? productDir : join(rootDir, productDir);
   const comparableRoot = await realpath(rootDir).catch(() => rootDir);
-  const comparableProduct = productRoot
-    ? await realpath(productRoot).catch(() => productRoot)
-    : null;
-  const indexPath = comparableProduct
-    ? relative(comparableRoot, join(comparableProduct, "roadmap", "README.md")).replaceAll(
-        "\\",
-        "/",
-      )
-    : null;
-  const indexes = indexPath ? candidates.filter((path) => path === indexPath) : [];
+  const comparableProduct = await realpath(productRoot).catch(() => productRoot);
+  const indexPath = relative(
+    comparableRoot,
+    join(comparableProduct, "roadmap", "README.md"),
+  ).replaceAll("\\", "/");
+  const indexes = candidates.filter((path) => path === indexPath);
 
   // An inbox has no id in its path, so ask its contents instead. `hq/team/`
   // also holds the roster, a README and meeting notes, none of which are ever
