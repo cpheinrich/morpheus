@@ -5,3 +5,4 @@ export * from "./new-item.js";
 export * from "./claim.js";
 export * from "./frontmatter.js";
 export * from "./block.js";
+export * from "./issues.js";

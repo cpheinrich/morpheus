@@ -409,8 +409,8 @@ needed.
 ### 7.2 Conventions and how they are enforced
 
 The conventions: every PR includes tests where testable, updates docs when behaviour changes,
-carries a staging link, updates roadmap status, states a test plan, lists open questions, and
-records self-review.
+carries a staging link, updates roadmap status, states a test plan, lists open questions, records
+self-review, and closes every GitHub issue the roadmap item declares it resolves.
 
 | Layer | Mechanism | Strength |
 |---|---|---|
@@ -421,7 +421,11 @@ records self-review.
 `morpheus check pr` fails the build when: source files changed without corresponding test changes
 and no `skip-tests` justification is present; a public API changed without a `docs/` change; the PR
 body is missing required sections; or the roadmap item named by the branch was not moved to
-`review`.
+`review`. A roadmap item created with `pm new roadmap --issue 123`, or updated with
+`pm link-issue <ID> 123`, carries `issues: [123]` in its frontmatter and displays it in the generated
+roadmap; `check pr` requires `Closes #123` (or another GitHub closing keyword) in the PR body.
+The structured field distinguishes completion from a merely related issue mention, while GitHub's
+native merge behaviour performs the actual close.
 
 Instructions get ignored eventually. A failing check does not.
 
@@ -762,7 +766,8 @@ needing neither GitHub nor a Codex or Claude account.
 #### Where the gate actually is
 
 **Inside the `morpheus` CLI**, not in per-project configuration. Every project already shells out
-to `pm claim`, `pm new`, `pm block` and `access sync` — those *are* the governed actions — so the
+to `pm claim`, `pm new`, `pm link-issue`, `pm block` and `access sync` — those *are* the governed
+actions — so the
 check is live everywhere the moment a project bumps its git dependency. Nothing to scaffold,
 nothing to migrate, and no per-provider wiring. Provider hooks reach one runner each for the same
 effort, which is why they are the last layer rather than the first.
@@ -774,9 +779,10 @@ effort, which is why they are the last layer rather than the first.
 | `.claude/settings.json` | Claude Code sessions | one scaffolded file, informational |
 | `AGENTS.md` | anything that reads instructions | scaffolded |
 
-**Four commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
-knowing what merged), `pm new` (filing an item that already exists), `pm block` (escalating a
-question the inbox answered), `access sync` (granting from an allowlist that moved). A gate that
+**Five commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
+knowing what merged), `pm new` (filing an item that already exists), `pm link-issue` (attaching an
+issue to obsolete or unrelated work), `pm block` (escalating a question the inbox answered),
+`access sync` (granting from an allowlist that moved). A gate that
 also fired on `pm index` or `check pr` would train people to route around it, and **the
 routing-around is permanent where the staleness was temporary.**
 

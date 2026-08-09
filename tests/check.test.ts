@@ -6,6 +6,7 @@ import {
   checkPr,
   formatFindings,
   hasSection,
+  closesIssue,
   roadmapIdFromBranch,
   waiverReason,
   type PrContext,
@@ -14,19 +15,19 @@ import { hasNoSubstantiveChange, isRecordsOnly } from "../src/paths.js";
 
 let product: string;
 
-const RM = (id: string, status: string) => `id: ${id}
+const RM = (id: string, status: string, issues: number[] = []) => `id: ${id}
 title: An item that exists
 status: ${status}
 priority: P1
 owner: agent
 prs: []
-created: 2026-07-01
+${issues.length ? `issues: [${issues.join(", ")}]\n` : ""}created: 2026-07-01
 updated: 2026-07-28`;
 
-async function seedRoadmap(id: string, status: string) {
+async function seedRoadmap(id: string, status: string, issues: number[] = []) {
   const dir = join(product, "roadmap");
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, `${id}.md`), `---\n${RM(id, status)}\n---\n\nBody.\n`);
+  await writeFile(join(dir, `${id}.md`), `---\n${RM(id, status, issues)}\n---\n\nBody.\n`);
 }
 
 /** A PR that satisfies every rule, so each test can break exactly one thing. */
@@ -93,9 +94,38 @@ describe("hasSection", () => {
     expect(hasSection("## Test plan\n\n## Next\n\nstuff", "Test plan")).toBe(false);
   });
 
+  it("rejects a heading whose only content is hidden template guidance", () => {
+    expect(hasSection("## Test plan\n\n<!-- What did you run? -->\n", "Test plan")).toBe(false);
+  });
+
   it("is case insensitive and works at any heading level", () => {
     expect(hasSection("#### test PLAN\n\ncontent", "Test plan")).toBe(true);
   });
+});
+
+describe("closesIssue", () => {
+  it.each(["Closes #70", "fix #70", "FIXED #70", "Resolves #70"])(
+    "recognises GitHub closing syntax: %s",
+    (body) => expect(closesIssue(body, 70)).toBe(true),
+  );
+
+  it("does not confuse a mention or a different issue for closure", () => {
+    expect(closesIssue("Related to #70. Closes #700.", 70)).toBe(false);
+  });
+
+  it("ignores the pull-request template example inside an HTML comment", () => {
+    expect(closesIssue("<!-- If applicable: Closes #70. -->", 70)).toBe(false);
+  });
+
+  it.each(["**Closes #70**", "(Closes #70)", "_Resolves #70_"])(
+    "accepts ordinary Markdown around the closing line: %s",
+    (body) => expect(closesIssue(body, 70)).toBe(true),
+  );
+
+  it.each(["`Closes #70`", "```text\nCloses #70\n```", "~~~\nFixes #70\n~~~"])(
+    "ignores closing syntax presented as code: %s",
+    (body) => expect(closesIssue(body, 70)).toBe(false),
+  );
 });
 
 describe("checkPr", () => {
@@ -148,6 +178,25 @@ describe("checkPr", () => {
   it("accepts an item already marked shipped", async () => {
     await seedRoadmap("EV-014", "shipped");
     expect(await checkPr(goodPr())).toHaveLength(0);
+  });
+
+  it("requires every issue declared by the roadmap item to close on merge", async () => {
+    await seedRoadmap("EV-014", "review", [70, 76]);
+    const findings = await checkPr(goodPr({ body: `${goodPr().body}\nCloses #70.\n` }));
+    const rule = findings.find((f) => f.rule === "issue-closure");
+
+    expect(rule?.level).toBe("error");
+    expect(rule?.message).toContain("#76");
+    expect(rule?.message).not.toContain("#70, #76");
+  });
+
+  it("passes when the PR closes every issue the item declares", async () => {
+    await seedRoadmap("EV-014", "review", [70, 76]);
+    const findings = await checkPr(
+      goodPr({ body: `${goodPr().body}\nCloses #70.\nResolves #76.\n` }),
+    );
+
+    expect(findings.find((f) => f.rule === "issue-closure")).toBeUndefined();
   });
 
   it("blocks a branch referencing an item that does not exist", async () => {

@@ -6,6 +6,7 @@ import {
   claims,
   create,
   index,
+  linkIssue,
   migrateIds,
   ship,
   unblock,
@@ -43,9 +44,11 @@ Usage
   morpheus pm validate [--dir <hq/product>]
   morpheus pm index    [--dir <hq/product>] [--check]
   morpheus pm new <roadmap|goals|requests> <title> [--priority P1] [--goal G-2026-Q3-01]
-                            [--slug fix-photo-picker] — name it like a branch; derived otherwise
+                            [--slug fix-photo-picker] [--issue 123]
+                            — name the slug like a branch; derived otherwise
   morpheus pm claim <RM-014>
   morpheus pm claims
+  morpheus pm link-issue <RM-014> <123>
   morpheus pm block <MO-051> --needs "<what would unblock this>" [--owner <handle>]
                             [--context "<where it stopped>"]
   morpheus pm unblock <MO-051>
@@ -74,7 +77,7 @@ Usage
   morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
   morpheus context status   what the current lease says, and how old it is
   morpheus context brief    session start: discards the last receipt, says what to read
-                            Governed commands (pm claim|new|block, access sync) refuse without
+                            Governed commands (pm claim|new|link-issue|block, access sync) refuse without
                             a fresh receipt. --offline, or MORPHEUS_OFFLINE=1, permits local
                             work on an unverified trunk and still refuses anything external.
   morpheus doctor           [--all] [--offline]
@@ -115,6 +118,7 @@ interface Flags {
   priority?: string;
   goal?: string;
   slug?: string;
+  issue?: string;
   needs?: string;
   context?: string;
   ceiling?: number;
@@ -199,6 +203,9 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--slug":
         flags.slug = argv[++i];
+        break;
+      case "--issue":
+        flags.issue = argv[++i] ?? "";
         break;
       case "--needs":
         flags.needs = argv[++i];
@@ -442,6 +449,16 @@ async function main(): Promise<number> {
     }
     case "claims":
       return claims(dir, process.cwd());
+    case "link-issue": {
+      const { refused } = await guard(
+        process.cwd(),
+        "pm link-issue",
+        GATED["pm link-issue"]!,
+        flags.offline,
+      );
+      if (refused !== null) return refused;
+      return linkIssue(dir, rest[0] ?? "", rest[1] ?? "");
+    }
     case "block": {
       const { refused, contained } = await guard(
         process.cwd(),
@@ -486,7 +503,7 @@ async function main(): Promise<number> {
         dir,
         kind ?? "",
         titleParts.join(" "),
-        { priority: flags.priority, goal: flags.goal, slug: flags.slug },
+        { priority: flags.priority, goal: flags.goal, slug: flags.slug, issue: flags.issue },
         process.cwd(),
       );
     }

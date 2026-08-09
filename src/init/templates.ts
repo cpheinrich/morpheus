@@ -594,7 +594,8 @@ fingerprinted against the tip of the trunk — \`origin/main\` unless \`context.
 otherwise, see the fork note below. It is good for five minutes, after which the next governed
 command re-checks the trunk and those records.
 
-**Until you have one, these are refused:** \`pm claim\`, \`pm new\`, \`pm block\`, \`access sync\`.
+**Until you have one, these are refused:** \`pm claim\`, \`pm new\`, \`pm link-issue\`, \`pm block\`,
+\`access sync\`.
 Read-only and mechanical commands are not gated.
 
 \`\`\`sh

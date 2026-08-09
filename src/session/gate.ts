@@ -32,13 +32,14 @@ export interface GateResult {
  *
  * **Deliberately not every command.** A gate that fires on `pm index` or
  * `check pr` trains people to route around it, and the routing-around is
- * permanent where the staleness was not. These four are the ones where acting
+ * permanent where the staleness was not. These five are the ones where acting
  * on stale context does identifiable harm:
  *
  * | Command | Harm | Reach |
  * |---|---|---|
  * | `pm claim` | claiming work you would not claim knowing what merged | external |
  * | `pm new` | filing an item that already exists on the board | local |
+ * | `pm link-issue` | attaching an issue to the wrong or obsolete work item | local |
  * | `pm block` | escalating a question the inbox already answered | local¹ |
  * | `access sync` | granting access from an allowlist that has moved | external |
  *
@@ -56,6 +57,7 @@ export interface GateResult {
 export const GATED: Record<string, Reach> = {
   "pm claim": "external",
   "pm new": "local",
+  "pm link-issue": "local",
   // `local`, and it takes work to keep it true: `block` normally ends in
   // `commitRecords` — add, commit, **push** — so an offline session skips the
   // push and says the block is on disk but not yet visible. The blunt
