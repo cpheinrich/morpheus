@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { doctor, EXPECTED, formatFindings } from "../src/doctor/index.js";
+import { analyticsSchema } from "../src/init/templates.js";
 
 let root: string;
 
@@ -114,10 +115,8 @@ describe("doctor", () => {
 
   it("warns when a user-facing analytics contract is still the empty scaffold", async () => {
     await scaffold("company");
-    await writeFile(
-      join(root, "packages/shared/schema/analytics.ts"),
-      "export type ProjectAnalyticsEvents = DefineAnalyticsEvents<\n  Record<never, AnalyticsEventProperties>\n>;\n",
-    );
+    await mkdir(join(root, "packages/shared/schema"), { recursive: true });
+    await writeFile(join(root, "packages/shared/schema/analytics.ts"), analyticsSchema());
 
     const f = await doctor({ root });
 
@@ -126,8 +125,36 @@ describe("doctor", () => {
     );
   });
 
+  it("warns when a user-facing project has no analytics contract", async () => {
+    await scaffold("company");
+
+    const f = await doctor({ root });
+
+    expect(f).toContainEqual(
+      expect.objectContaining({
+        check: "analytics",
+        severity: "warning",
+        message: expect.stringContaining("Missing analytics contract"),
+      }),
+    );
+  });
+
+  it("recognizes a differently named analytics contract", async () => {
+    await scaffold("company");
+    await mkdir(join(root, "packages/shared/schema"), { recursive: true });
+    await writeFile(
+      join(root, "packages/shared/schema/analytics.schema.ts"),
+      "export type ProjectAnalyticsEvents = { page_viewed: { event_version: 1 } };\n",
+    );
+
+    const f = await doctor({ root });
+
+    expect(has(f, "analytics")).toBe(false);
+  });
+
   it("does not warn after a project populates its analytics contract", async () => {
     await scaffold("company");
+    await mkdir(join(root, "packages/shared/schema"), { recursive: true });
     await writeFile(
       join(root, "packages/shared/schema/analytics.ts"),
       "export type ProjectAnalyticsEvents = { page_viewed: { event_version: 1 } };\n",

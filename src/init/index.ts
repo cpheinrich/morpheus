@@ -5,6 +5,11 @@ import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
 import * as t from "./templates.js";
 import type { Seed } from "./templates.js";
 import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
+import {
+  ANALYTICS_SCHEMA_DIRECTORY,
+  ANALYTICS_SCHEMA_PATH,
+  isAnalyticsContractFilename,
+} from "../analytics/contract.js";
 
 /**
  * Scaffold a Morpheus project.
@@ -180,19 +185,38 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   // transports differ. Keep that contract outside apps/ so web, mobile and
   // backend clients cannot silently invent incompatible names and properties.
   if (seed.kind !== "internal") {
-    const schemaDir = join(root, "packages/shared/schema");
-    const existingAnalytics = (await readdir(schemaDir).catch(() => []))
-      .filter((name) => /^analytics(?:\..+)?\.ts$/i.test(name))
-      .sort();
-    if (existingAnalytics.length > 0) {
-      for (const name of existingAnalytics) skipped.push(`packages/shared/schema/${name}`);
-    } else {
-      const path = "packages/shared/schema/analytics.ts";
-      await put(path, t.analyticsSchema());
-      if (written.includes(path)) {
+    const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
+    let schemaEntries: string[] | null = null;
+    try {
+      schemaEntries = await readdir(schemaDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") schemaEntries = [];
+      else {
+        skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/ (could not inspect)`);
         notes.push(
-          `Created ${path} as the provider-neutral product event contract. ` +
-            "Populate ProjectAnalyticsEvents before treating analytics setup as complete.",
+          `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/, so no analytics contract was written. ` +
+            "Fix the directory or its permissions before re-running init.",
+        );
+      }
+    }
+
+    const existingAnalytics = (schemaEntries ?? []).filter(isAnalyticsContractFilename).sort();
+    if (schemaEntries !== null && existingAnalytics.length > 0) {
+      for (const name of existingAnalytics) {
+        skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/${name}`);
+      }
+      notes.push(
+        `Kept the existing analytics contract${existingAnalytics.length === 1 ? "" : "s"}: ` +
+          existingAnalytics.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name}`).join(", ") +
+          ".",
+      );
+    } else if (schemaEntries !== null) {
+      await put(ANALYTICS_SCHEMA_PATH, t.analyticsSchema());
+      if (written.includes(ANALYTICS_SCHEMA_PATH)) {
+        notes.push(
+          `Created ${ANALYTICS_SCHEMA_PATH} as the provider-neutral product event contract. ` +
+            "Populate ProjectAnalyticsEvents before treating analytics setup as complete. This " +
+            "scaffold is not an importable runtime package until the project adds package metadata.",
         );
       }
     }

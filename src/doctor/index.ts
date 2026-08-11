@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { parseArtifact } from "../pm/parse.js";
@@ -7,6 +7,11 @@ import { readRegistry } from "../registry/index.js";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { projectPolicy } from "../session/policy.js";
 import { ABSENT, CANONICAL_INPUTS, UNREADABLE } from "../session/lease.js";
+import {
+  ANALYTICS_SCHEMA_DIRECTORY,
+  EMPTY_ANALYTICS_EVENT_MAP,
+  isAnalyticsContractFilename,
+} from "../analytics/contract.js";
 
 /**
  * Report drift without fixing it.
@@ -78,7 +83,6 @@ export const EXPECTED: Record<Kind, string[]> = {
     // every repo grew them by hand or not at all.
     "qa/acceptance",
     "infra",
-    "packages/shared/schema",
     ".agent/worklog",
     ".agent/inbox-archive",
   ],
@@ -88,7 +92,6 @@ export const EXPECTED: Record<Kind, string[]> = {
     "hq/team",
     "hq/brand",
     "qa/acceptance",
-    "packages/shared/schema",
     ".agent/worklog",
     ".agent/inbox-archive",
   ],
@@ -508,14 +511,44 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   }
 
   if (kind !== "internal") {
-    const analyticsPath = join(root, "packages/shared/schema/analytics.ts");
-    const analytics = await readFile(analyticsPath, "utf8").catch(() => null);
-    if (analytics?.includes("Record<never, AnalyticsEventProperties>")) {
+    const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
+    let entries: string[] | null = null;
+    try {
+      entries = await readdir(schemaDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") entries = [];
+      else {
+        add(
+          "warning",
+          "analytics",
+          `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/ for an analytics contract.`,
+        );
+      }
+    }
+    const contracts = entries?.filter(isAnalyticsContractFilename).sort() ?? [];
+    if (entries !== null && contracts.length === 0) {
       add(
         "warning",
         "analytics",
-        "Analytics contract is still the empty scaffold — populate ProjectAnalyticsEvents before launch.",
+        `Missing analytics contract in ${ANALYTICS_SCHEMA_DIRECTORY}/ — run morpheus init or add the provider-neutral schema.`,
       );
+    } else if (entries !== null && contracts.length > 1) {
+      add(
+        "warning",
+        "analytics",
+        `Multiple analytics contracts found in ${ANALYTICS_SCHEMA_DIRECTORY}/: ${contracts.join(", ")}. Keep one canonical vocabulary.`,
+      );
+    } else if (entries !== null) {
+      const analytics = await readFile(join(schemaDir, contracts[0]!), "utf8").catch(() => null);
+      if (analytics === null) {
+        add("warning", "analytics", `Could not read analytics contract ${contracts[0]}.`);
+      } else if (analytics.includes(EMPTY_ANALYTICS_EVENT_MAP)) {
+        add(
+          "warning",
+          "analytics",
+          "Analytics contract is still the empty scaffold — populate ProjectAnalyticsEvents before launch.",
+        );
+      }
     }
   }
 

@@ -10,6 +10,7 @@
  * not, which is worse than an absent file — the same rule the brand package
  * follows.
  */
+import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
 export const manifest = (s) => JSON.stringify({
     name: s.name,
     prefix: s.prefix,
@@ -347,17 +348,20 @@ export type AnalyticsEnvironment = (typeof ANALYTICS_ENVIRONMENTS)[number];
 
 export type AnalyticsScalar = string | number | boolean;
 
-export type AnalyticsEventProperties = {
-  event_version: number;
-  [property: string]: AnalyticsScalar | undefined;
-};
+export type AnalyticsEventProperties<Properties> = {
+  [Property in keyof Properties]: Property extends "event_version"
+    ? number
+    : AnalyticsScalar | undefined;
+} & { event_version: number };
 
 /**
  * Makes missing event versions and nested property values fail at typecheck.
  * Naming and sensitive-data semantics still require review.
  */
 export type DefineAnalyticsEvents<
-  Events extends Record<string, AnalyticsEventProperties>,
+  Events extends {
+    [Name in keyof Events]: AnalyticsEventProperties<Events[Name]>;
+  },
 > = Events;
 
 /** Attached by each surface's analytics adapter to every custom event. */
@@ -380,7 +384,7 @@ export interface AnalyticsContext {
  * Standard page and screen lifecycle events remain SDK-native.
  */
 export type ProjectAnalyticsEvents = DefineAnalyticsEvents<
-  Record<never, AnalyticsEventProperties>
+  ${EMPTY_ANALYTICS_EVENT_MAP}
 >;
 
 export type AnalyticsEventName = Extract<keyof ProjectAnalyticsEvents, string>;

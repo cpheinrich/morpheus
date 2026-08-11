@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
+import { analyticsSchema } from "../src/init/templates.js";
+import ts from "typescript";
 import { rules } from "../src/cli/hq.js";
 import { BEGIN, renderFirestoreRules } from "../src/hq/rules.js";
 import { parseInboxFile } from "../src/inbox/parse.js";
@@ -498,7 +500,7 @@ describe("morpheus init", () => {
       await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
       await writeFile(join(dir, "packages/shared/schema/analytics.schema.ts"), mine);
 
-      const { written, skipped } = await scaffold(dir, SEED);
+      const { written, skipped, notes } = await scaffold(dir, SEED);
 
       expect(skipped).toContain("packages/shared/schema/analytics.schema.ts");
       expect(written).not.toContain("packages/shared/schema/analytics.ts");
@@ -506,6 +508,7 @@ describe("morpheus init", () => {
         code: "ENOENT",
       });
       expect(await read("packages/shared/schema/analytics.schema.ts")).toBe(mine);
+      expect(notes.join(" ")).toContain("Kept the existing analytics contract");
     });
 
     it("is idempotent — a second run writes nothing", async () => {
@@ -603,8 +606,8 @@ describe("morpheus init", () => {
 
       expect(schema).toContain("ANALYTICS_SCHEMA_VERSION");
       expect(schema).toContain("DefineAnalyticsEvents");
-      expect(schema).toContain("event_version: number");
-      expect(schema).toContain("[property: string]: AnalyticsScalar | undefined");
+      expect(schema).toContain("AnalyticsEventProperties<Events[Name]>");
+      expect(schema).toContain("AnalyticsScalar | undefined");
       expect(schema).toContain("ProjectAnalyticsEvents");
       expect(schema).toContain("lower_snake_case");
       expect(schema).toContain("Do not add personal or sensitive data");
@@ -612,6 +615,53 @@ describe("morpheus init", () => {
       expect(notes.join(" ")).toContain("provider-neutral product event contract");
       expect(await read("packages/shared/README.md")).toContain("provider-neutral contracts");
       expect(await read("packages/shared/schema/README.md")).toContain("analytics event vocabularies");
+    });
+
+    it("emits a contract that TypeScript accepts and whose constraints reject invalid events", async () => {
+      const compile = async (source: string) => {
+        const path = join(dir, "analytics-fixture.ts");
+        await writeFile(path, source);
+        const program = ts.createProgram([path], {
+          strict: true,
+          noEmit: true,
+          skipLibCheck: true,
+          target: ts.ScriptTarget.ES2023,
+          module: ts.ModuleKind.NodeNext,
+          moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        });
+        return ts.getPreEmitDiagnostics(program);
+      };
+      const replaceEvents = (events: string) =>
+        analyticsSchema().replace(
+          /export type ProjectAnalyticsEvents = DefineAnalyticsEvents<[\s\S]*?>;/,
+          `export type ProjectAnalyticsEvents = DefineAnalyticsEvents<${events}>;`,
+        );
+
+      expect(await compile(analyticsSchema())).toEqual([]);
+      expect(
+        await compile(
+          replaceEvents(`{ account_created: { event_version: 1; method: "email" } }`),
+        ),
+      ).toEqual([]);
+      expect(
+        await compile(
+          replaceEvents(`{ account_created: { method: "email" } }`),
+        ),
+      ).not.toEqual([]);
+      expect(
+        await compile(
+          replaceEvents(`{ account_created: { event_version: 1; payload: { nested: true } } }`),
+        ),
+      ).not.toEqual([]);
+      expect(
+        await compile(
+          analyticsSchema().replace(
+            `export type ProjectAnalyticsEvents = DefineAnalyticsEvents<\n  Record<never, never>\n>;`,
+            `interface AccountCreated { event_version: 1; method: "email" }\n` +
+              `export type ProjectAnalyticsEvents = DefineAnalyticsEvents<{ account_created: AccountCreated }>;`,
+          ),
+        ),
+      ).toEqual([]);
     });
 
     it("scaffolds the analytics contract for personal projects too", async () => {
