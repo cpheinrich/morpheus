@@ -5,7 +5,7 @@ status: review
 priority: P1
 goal: MO-G-2026-Q3-01
 owner: agent
-prs: []
+prs: [113]
 created: 2026-07-28
 updated: 2026-08-11
 ---
