@@ -565,3 +565,13 @@ published, so there is nothing to drift.
 `hq/inbox`, the same rule `pm migrate-ids` applies to prose mentions. Live documentation gets
 repointed because somebody will act on it; a record of July is a record of the past. The test is
 *will somebody follow this link*, not *is this string current*.
+
+**Analytics vocabulary is project-owned and provider-neutral** — 2026-08-11. User-facing projects
+carry `packages/shared/schema/analytics.ts`; app-level PostHog or Firebase code only transports it.
+Names are semantic lower-snake-case outcomes, each event owns an explicit property allowlist and
+version, and common context is limited to schema version, surface, environment and release.
+
+**Why:** web and mobile need one product vocabulary, but nominally universal events such as
+`activation` conceal product-specific meanings and make cross-project reporting look more
+comparable than it is. Cross-project KPIs therefore map each project's explicit events to a metric
+later. The scaffold stays dependency-free and runtime helpers wait for a second proven consumer.

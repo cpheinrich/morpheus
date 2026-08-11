@@ -124,6 +124,14 @@ export async function scaffold(root, seed) {
     await put(".agent/README.md", t.agentReadme());
     await put(".agent/decisions.md", t.decisions(seed));
     await put(".agent/learned.md", t.learned());
+    // --- shared product contracts --------------------------------------------
+    //
+    // Product event meaning is shared across deployed surfaces, even when the
+    // transports differ. Keep that contract outside apps/ so web, mobile and
+    // backend clients cannot silently invent incompatible names and properties.
+    if (seed.kind !== "internal") {
+        await put("packages/shared/schema/analytics.ts", t.analyticsSchema());
+    }
     // Git does not track empty directories, so each carries a README explaining
     // itself. Without one the directory silently does not exist on clone — which
     // is exactly how Evo shipped without a worklog.

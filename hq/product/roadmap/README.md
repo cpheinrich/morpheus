@@ -6,13 +6,13 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
-| [MO-26-08-09-00.05.06](./MO-26-08-09-00.05.06-ship-prebuilt-git-artifacts.md) | Ship prebuilt git dependency artifacts | review | P2 | — | #82 | — |
+| [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | review | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
-| [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-02-02.48.16](./MO-26-08-02-02.48.16-detect-review-denials.md) | Agent review must report when it could not report | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-01-047](./MO-26-08-01-047-inbox-status-one-front.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-02-14.12.47](./MO-26-08-02-14.12.47-dns-cloudflare-only.md) | Make Cloudflare the only DNS manager, and name the approved registrars | backlog | P2 | — | — | — |
+| [MO-26-08-11-16.28.51](./MO-26-08-11-16.28.51-extract-analytics-adapters.md) | Extract shared analytics adapters and HQ KPIs | backlog | P2 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-28-001](./MO-26-07-28-001-project-mgmt-pkg-schemas.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-28-002](./MO-26-07-28-002-reusable-github-workflows.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-28-003](./MO-26-07-28-003-consume-kit-git-dependency.md) | Consume the kit as a git dependency, not a published package | shipped | P0 | MO-G-2026-Q3-01 | — | #26 |
@@ -92,5 +92,6 @@ item files, not this table.
 | [MO-26-08-05-16.50.38](./MO-26-08-05-16.50.38-close-out-team-migration.md) | Retire the hq/inbox fallback, scaffold meeting-notes | shipped | P2 | — | — | #97 |
 | [MO-26-08-05-19.05.35](./MO-26-08-05-19.05.35-swap-seo-aso-tools.md) | SEO and ASO canonical tools become OpenSEO and Appeeky | shipped | P2 | — | — | #98 |
 | [MO-26-08-08-23.48.59](./MO-26-08-08-23.48.59-document-backend-app.md) | Give non-client deployables a backend home | shipped | P2 | — | #89 | #108 |
+| [MO-26-08-09-00.05.06](./MO-26-08-09-00.05.06-ship-prebuilt-git-artifacts.md) | Ship prebuilt git dependency artifacts | shipped | P2 | — | #82 | #109 |
 | [MO-26-07-29-012](./MO-26-07-29-012-make-morpheus-private-adjust.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — | — |
 <!-- morpheus:end -->

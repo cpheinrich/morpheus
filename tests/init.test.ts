@@ -481,6 +481,18 @@ describe("morpheus init", () => {
       expect(await read("AGENTS.md")).toBe(mine);
     });
 
+    it("never overwrites an existing analytics contract", async () => {
+      const mine = "export type AnalyticsEvents = { mine: true };\n";
+      await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
+      await writeFile(join(dir, "packages/shared/schema/analytics.ts"), mine);
+
+      const { written, skipped } = await scaffold(dir, SEED);
+
+      expect(skipped).toContain("packages/shared/schema/analytics.ts");
+      expect(written).not.toContain("packages/shared/schema/analytics.ts");
+      expect(await read("packages/shared/schema/analytics.ts")).toBe(mine);
+    });
+
     it("is idempotent — a second run writes nothing", async () => {
       await scaffold(dir, SEED);
       const { written } = await scaffold(dir, SEED);
@@ -568,6 +580,25 @@ describe("morpheus init", () => {
       for (const d of ["product", "team", "brand", "marketing", "finance", "ops"]) {
         expect(hq).toContain(d);
       }
+    });
+
+    it("scaffolds one provider-neutral analytics contract for user-facing projects", async () => {
+      await scaffold(dir, SEED);
+      const schema = await read("packages/shared/schema/analytics.ts");
+
+      expect(schema).toContain("ANALYTICS_SCHEMA_VERSION");
+      expect(schema).toContain("ProjectAnalyticsEvents");
+      expect(schema).toContain("lower_snake_case");
+      expect(schema).toContain("Do not add personal or sensitive data");
+      expect(schema).not.toContain("posthog");
+    });
+
+    it("does not impose a product analytics contract on internal tooling", async () => {
+      await scaffold(dir, { ...SEED, kind: "internal" });
+
+      await expect(read("packages/shared/schema/analytics.ts")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
     });
   });
 });
