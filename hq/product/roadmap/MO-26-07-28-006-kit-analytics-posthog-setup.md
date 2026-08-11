@@ -1,6 +1,6 @@
 ---
 id: MO-26-07-28-006
-title: "kit/analytics: PostHog setup and event schema"
+title: "kit/analytics: canonical event contract"
 status: review
 priority: P1
 goal: MO-G-2026-Q3-01

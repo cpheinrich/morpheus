@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { EXPECTED } from "../doctor/index.js";
 import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
@@ -180,7 +180,24 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   // transports differ. Keep that contract outside apps/ so web, mobile and
   // backend clients cannot silently invent incompatible names and properties.
   if (seed.kind !== "internal") {
-    await put("packages/shared/schema/analytics.ts", t.analyticsSchema());
+    const schemaDir = join(root, "packages/shared/schema");
+    const existingAnalytics = (await readdir(schemaDir).catch(() => []))
+      .filter((name) => /^analytics(?:\..+)?\.ts$/i.test(name))
+      .sort();
+    if (existingAnalytics.length > 0) {
+      for (const name of existingAnalytics) skipped.push(`packages/shared/schema/${name}`);
+    } else {
+      const path = "packages/shared/schema/analytics.ts";
+      await put(path, t.analyticsSchema());
+      if (written.includes(path)) {
+        notes.push(
+          `Created ${path} as the provider-neutral product event contract. ` +
+            "Populate ProjectAnalyticsEvents before treating analytics setup as complete.",
+        );
+      }
+    }
+    await put("packages/shared/README.md", t.sharedReadme());
+    await put("packages/shared/schema/README.md", t.sharedSchemaReadme());
   }
 
   // Git does not track empty directories, so each carries a README explaining

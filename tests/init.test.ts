@@ -493,6 +493,21 @@ describe("morpheus init", () => {
       expect(await read("packages/shared/schema/analytics.ts")).toBe(mine);
     });
 
+    it("does not create a competing contract beside a differently named analytics schema", async () => {
+      const mine = "export type AnalyticsEvents = { mine: true };\n";
+      await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
+      await writeFile(join(dir, "packages/shared/schema/analytics.schema.ts"), mine);
+
+      const { written, skipped } = await scaffold(dir, SEED);
+
+      expect(skipped).toContain("packages/shared/schema/analytics.schema.ts");
+      expect(written).not.toContain("packages/shared/schema/analytics.ts");
+      await expect(read("packages/shared/schema/analytics.ts")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      expect(await read("packages/shared/schema/analytics.schema.ts")).toBe(mine);
+    });
+
     it("is idempotent — a second run writes nothing", async () => {
       await scaffold(dir, SEED);
       const { written } = await scaffold(dir, SEED);
@@ -583,14 +598,28 @@ describe("morpheus init", () => {
     });
 
     it("scaffolds one provider-neutral analytics contract for user-facing projects", async () => {
-      await scaffold(dir, SEED);
+      const { notes } = await scaffold(dir, SEED);
       const schema = await read("packages/shared/schema/analytics.ts");
 
       expect(schema).toContain("ANALYTICS_SCHEMA_VERSION");
+      expect(schema).toContain("DefineAnalyticsEvents");
+      expect(schema).toContain("event_version: number");
+      expect(schema).toContain("[property: string]: AnalyticsScalar | undefined");
       expect(schema).toContain("ProjectAnalyticsEvents");
       expect(schema).toContain("lower_snake_case");
       expect(schema).toContain("Do not add personal or sensitive data");
-      expect(schema).not.toContain("posthog");
+      expect(schema).not.toMatch(/(?:import|from).*posthog/i);
+      expect(notes.join(" ")).toContain("provider-neutral product event contract");
+      expect(await read("packages/shared/README.md")).toContain("provider-neutral contracts");
+      expect(await read("packages/shared/schema/README.md")).toContain("analytics event vocabularies");
+    });
+
+    it("scaffolds the analytics contract for personal projects too", async () => {
+      await scaffold(dir, { ...SEED, kind: "personal" });
+
+      expect(await read("packages/shared/schema/analytics.ts")).toContain(
+        "ProjectAnalyticsEvents",
+      );
     });
 
     it("does not impose a product analytics contract on internal tooling", async () => {

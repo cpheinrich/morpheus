@@ -386,7 +386,7 @@ export const TASKS: Task[] = [
     group: "Product telemetry",
     title: "Analytics installed",
     why: "Retrofitting events onto a shipped product means guessing what past users did.",
-    how: "PostHog, self-hosted or cloud — install before launch, not after",
+    how: "PostHog Cloud — populate packages/shared/schema/analytics.ts, then install before launch",
     optional: true,
   },
   {

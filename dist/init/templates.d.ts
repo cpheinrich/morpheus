@@ -59,6 +59,8 @@ export declare const learned: () => string;
  * of truth that web, mobile and backend adapters can implement.
  */
 export declare const analyticsSchema: () => string;
+export declare const sharedReadme: () => string;
+export declare const sharedSchemaReadme: () => string;
 export declare const agentReadme: () => string;
 export declare const worklogReadme: () => string;
 export declare const inboxArchiveReadme: () => string;

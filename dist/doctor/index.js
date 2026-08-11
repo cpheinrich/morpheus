@@ -65,6 +65,7 @@ export const EXPECTED = {
         // every repo grew them by hand or not at all.
         "qa/acceptance",
         "infra",
+        "packages/shared/schema",
         ".agent/worklog",
         ".agent/inbox-archive",
     ],
@@ -74,6 +75,7 @@ export const EXPECTED = {
         "hq/team",
         "hq/brand",
         "qa/acceptance",
+        "packages/shared/schema",
         ".agent/worklog",
         ".agent/inbox-archive",
     ],
@@ -371,6 +373,13 @@ export async function doctor(opts) {
     for (const file of EXPECTED_FILES) {
         if (!(await exists(join(root, file)))) {
             add("warning", "structure", `Missing ${file}.`);
+        }
+    }
+    if (kind !== "internal") {
+        const analyticsPath = join(root, "packages/shared/schema/analytics.ts");
+        const analytics = await readFile(analyticsPath, "utf8").catch(() => null);
+        if (analytics?.includes("Record<never, AnalyticsEventProperties>")) {
+            add("warning", "analytics", "Analytics contract is still the empty scaffold — populate ProjectAnalyticsEvents before launch.");
         }
     }
     // --- registry -----------------------------------------------------------

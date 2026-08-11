@@ -185,7 +185,8 @@ packages/shared/
 ├── generated/              # Style Dictionary output
 │   ├── web/tokens.css, tokens.js, tokens.json
 │   └── ios/Tokens.swift
-├── schema/                 # Firestore collections + document shapes (source of truth)
+├── schema/                 # Product contracts: analytics events and database shapes
+│   ├── analytics.ts
 │   └── *.schema.ts
 ├── generated/schema/       # codegen output
 │   ├── web/types.ts
@@ -241,7 +242,7 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | Android product | `apps/android/` | Deferred — bolt-on template later |
 | Backend product | `apps/backend/` | Worker, service, scheduled job, inference or execution loop |
 | Design tokens | `hq/brand/tokens.json` → `packages/shared/` | DTCG JSON → generated (§12.1) |
-| Database schema | `packages/shared/schema/` | TS source → generated types + rules |
+| Shared product schemas | `packages/shared/schema/` | Analytics contracts and database TS source → generated types + rules |
 | Brand messaging | `hq/brand/messaging.json` | Imported by web |
 | Analytics | PostHog Cloud + `/hq` KPIs | SaaS + dashboard |
 | Automations | `.claude/skills/`, `.github/workflows/` | Skills + Actions |

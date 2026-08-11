@@ -111,6 +111,32 @@ describe("doctor", () => {
     const agents = f.find((x) => x.message.includes("AGENTS.md"));
     expect(agents?.severity).toBe("warning");
   });
+
+  it("warns when a user-facing analytics contract is still the empty scaffold", async () => {
+    await scaffold("company");
+    await writeFile(
+      join(root, "packages/shared/schema/analytics.ts"),
+      "export type ProjectAnalyticsEvents = DefineAnalyticsEvents<\n  Record<never, AnalyticsEventProperties>\n>;\n",
+    );
+
+    const f = await doctor({ root });
+
+    expect(f).toContainEqual(
+      expect.objectContaining({ check: "analytics", severity: "warning" }),
+    );
+  });
+
+  it("does not warn after a project populates its analytics contract", async () => {
+    await scaffold("company");
+    await writeFile(
+      join(root, "packages/shared/schema/analytics.ts"),
+      "export type ProjectAnalyticsEvents = { page_viewed: { event_version: 1 } };\n",
+    );
+
+    const f = await doctor({ root });
+
+    expect(has(f, "analytics")).toBe(false);
+  });
 });
 
 describe("formatFindings", () => {

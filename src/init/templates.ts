@@ -382,6 +382,19 @@ export type AnalyticsEnvironment = (typeof ANALYTICS_ENVIRONMENTS)[number];
 
 export type AnalyticsScalar = string | number | boolean;
 
+export type AnalyticsEventProperties = {
+  event_version: number;
+  [property: string]: AnalyticsScalar | undefined;
+};
+
+/**
+ * Makes missing event versions and nested property values fail at typecheck.
+ * Naming and sensitive-data semantics still require review.
+ */
+export type DefineAnalyticsEvents<
+  Events extends Record<string, AnalyticsEventProperties>,
+> = Events;
+
 /** Attached by each surface's analytics adapter to every custom event. */
 export interface AnalyticsContext {
   schema_version: typeof ANALYTICS_SCHEMA_VERSION;
@@ -401,13 +414,27 @@ export interface AnalyticsContext {
  * raw URLs, query strings, or values already supplied by the analytics SDK.
  * Standard page and screen lifecycle events remain SDK-native.
  */
-export type ProjectAnalyticsEvents = Record<never, never>;
+export type ProjectAnalyticsEvents = DefineAnalyticsEvents<
+  Record<never, AnalyticsEventProperties>
+>;
 
 export type AnalyticsEventName = Extract<keyof ProjectAnalyticsEvents, string>;
 export type AnalyticsEvent<Name extends AnalyticsEventName> = {
   name: Name;
   properties: AnalyticsContext & ProjectAnalyticsEvents[Name];
 };
+`;
+
+export const sharedReadme = (): string => `# Shared product contracts
+
+This package boundary holds provider-neutral contracts and generated assets used by more than one
+deployable surface. Applications under \`apps/\` own their provider adapters and runtime wiring.
+`;
+
+export const sharedSchemaReadme = (): string => `# Shared schemas
+
+Product-owned source contracts live here. This includes analytics event vocabularies as well as
+database document shapes; generated client types and provider-specific adapters live elsewhere.
 `;
 
 export const agentReadme = (): string => `# .agent
