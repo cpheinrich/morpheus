@@ -87,7 +87,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Turn a hostname or bare origin into a stable, deployable origin. */
+/** Turn a hostname or bare origin into a stable, deployable HTTP(S) origin. */
 export function normalizeOrigin(value: string): string {
   const candidate = value.trim();
   if (!candidate) throw new Error("A Firebase Auth domain cannot be empty.");
@@ -102,6 +102,8 @@ export function normalizeOrigin(value: string): string {
 /** Domains Firebase Auth must recognize before a web app can return from Google. */
 export function expectedAuthorizedDomains(project: string, domain?: string): string[] {
   const customHost = domain ? new URL(normalizeOrigin(domain)).hostname : undefined;
+  // Morpheus supports local web/HQ development as a first-class flow, so
+  // localhost is deliberately restored rather than merely tolerated remotely.
   return unique([
     "localhost",
     `${project}.firebaseapp.com`,
@@ -112,6 +114,9 @@ export function expectedAuthorizedDomains(project: string, domain?: string): str
 
 /** Origins Firebase's Google-provider configuration should carry as code. */
 export function expectedRedirectUris(project: string, domain?: string): string[] {
+  // Keep this paired with the localhost authorized-domain policy above. A
+  // project that needs a non-default local port can declare it explicitly in
+  // firebase.json alongside the generated provider configuration.
   return unique([
     "http://localhost:3000",
     `https://${project}.firebaseapp.com`,
@@ -201,7 +206,11 @@ async function gcloudEmail(runner: CommandRunner, root: string): Promise<string>
   return email;
 }
 
-async function ensureFirebaseLogin(runner: CommandRunner, root: string): Promise<void> {
+async function ensureFirebaseLogin(
+  runner: CommandRunner,
+  root: string,
+  allowBrowserLogin: boolean,
+): Promise<void> {
   try {
     await runner("firebase", ["projects:list", "--json"], root);
     return;
@@ -209,6 +218,12 @@ async function ensureFirebaseLogin(runner: CommandRunner, root: string): Promise
     // The Firebase CLI owns its OAuth session. Let it open the browser now,
     // instead of reporting "configured" and deferring the first human step to
     // a later deploy.
+  }
+
+  if (!allowBrowserLogin) {
+    throw new Error(
+      "Firebase CLI is not authenticated. Run `firebase login`, then retry without --no-browser.",
+    );
   }
 
   try {
@@ -353,11 +368,12 @@ export async function setupGoogleAuth(opts: GoogleAuthSetupOptions): Promise<Goo
   const runner = opts.runner ?? systemRunner;
   const fetcher = opts.fetcher ?? fetch;
 
-  const token = await gcloudToken(runner, opts.root, true);
+  const allowBrowserLogin = opts.openBrowser !== false;
+  const token = await gcloudToken(runner, opts.root, allowBrowserLogin);
   const supportEmail = opts.supportEmail ?? await gcloudEmail(runner, opts.root);
 
   try {
-    await ensureFirebaseLogin(runner, opts.root);
+    await ensureFirebaseLogin(runner, opts.root, allowBrowserLogin);
   } catch (error) {
     return throwSetupFailure(error, opts, runner);
   }

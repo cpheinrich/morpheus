@@ -61,3 +61,20 @@ Follow-up verification after the repair:
 - `vitest run --maxWorkers=1`: 828 tests passed across 28 files.
 - `tsc --noEmit`, `tsc -p tsconfig.build.json`, `morpheus pm validate`,
   `morpheus pm index --check`, and `git diff --check`: passed.
+
+The observed CLI evidence is deliberately recorded verbatim enough to prevent a
+later reviewer from having to infer it again:
+
+```text
+auth  Deploys configuration settings for Firebase Authentication providers.
+```
+
+The second review found a real non-interactive regression: `--no-browser` had
+suppressed console recovery but not the `gcloud auth login` or `firebase login`
+commands that can block a headless run. Both are now gated after a read-only
+session check, with tests proving existing credentials still work and missing
+credentials fail fast without invoking either browser command. `publicDomain`
+now accepts the same bare hostname or HTTP(S) origin that `--domain` accepts,
+so recording the durable value cannot break the separate `access sync` parser.
+
+- `vitest run --maxWorkers=1`: 829 tests passed across 28 files.

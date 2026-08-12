@@ -73,7 +73,7 @@ describe("schema", () => {
     expect(HqConfig.safeParse({ route: "hq" }).success).toBe(false);
   });
 
-  it("keeps a canonical public origin in the portable project manifest", () => {
+  it("keeps a canonical public origin or hostname in the portable project manifest", () => {
     const manifest = ProjectManifest.parse({
       name: "Acme",
       publicDomain: "https://app.example.com",
@@ -81,18 +81,24 @@ describe("schema", () => {
     });
 
     expect(manifest.publicDomain).toBe("https://app.example.com");
-  });
 
-  it("rejects a non-origin public domain", () => {
-    expect(ProjectManifest.safeParse({
+    expect(ProjectManifest.parse({
       name: "Acme",
       publicDomain: "app.example.com",
+      hq: {},
+    }).publicDomain).toBe("app.example.com");
+  });
+
+  it("rejects a public domain that is not an HTTP(S) hostname or origin", () => {
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      publicDomain: "https://app.example.com/hq",
       hq: {},
     }).success).toBe(false);
 
     expect(ProjectManifest.safeParse({
       name: "Acme",
-      publicDomain: "https://app.example.com/hq",
+      publicDomain: "ftp://app.example.com",
       hq: {},
     }).success).toBe(false);
   });

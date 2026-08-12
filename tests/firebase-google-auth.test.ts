@@ -151,6 +151,41 @@ describe("Firebase Google Auth configuration", () => {
     await expect(readFile(join(root, "firebase.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("keeps --no-browser non-interactive when Google or Firebase CLI sessions are absent", async () => {
+    const root = await mkdtemp(join(tmpdir(), "firebase-google-auth-no-browser-"));
+    roots.push(root);
+
+    const googleCalls: string[][] = [];
+    await expect(setupGoogleAuth({
+      root,
+      project: "acme-123",
+      domain: "app.example",
+      brand: "Acme",
+      runner: runner(googleCalls, {
+        failures: { "gcloud auth print-access-token": new Error("not logged in") },
+      }),
+      fetcher: async () => response({}),
+      openBrowser: false,
+    })).rejects.toThrow(/Could not read a Google access token/);
+    expect(googleCalls).not.toContainEqual(["gcloud", "auth", "login"]);
+    expect(googleCalls).not.toContainEqual(["firebase", "login"]);
+
+    const firebaseCalls: string[][] = [];
+    await expect(setupGoogleAuth({
+      root,
+      project: "acme-123",
+      domain: "app.example",
+      brand: "Acme",
+      runner: runner(firebaseCalls, {
+        failures: { "firebase projects:list --json": new Error("not logged in") },
+      }),
+      fetcher: async () => response({}),
+      openBrowser: false,
+    })).rejects.toThrow(/Firebase CLI is not authenticated/);
+    expect(firebaseCalls).not.toContainEqual(["gcloud", "auth", "login"]);
+    expect(firebaseCalls).not.toContainEqual(["firebase", "login"]);
+  });
+
   it("fails closed when verification sees a disabled provider or missing app domain", async () => {
     const check = await checkGoogleAuth({
       root: "/tmp",

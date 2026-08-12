@@ -43,7 +43,7 @@ export interface GoogleAuthSetupResult extends GoogleAuthCheck {
     supportEmail: string;
 }
 type Json = Record<string, unknown>;
-/** Turn a hostname or bare origin into a stable, deployable origin. */
+/** Turn a hostname or bare origin into a stable, deployable HTTP(S) origin. */
 export declare function normalizeOrigin(value: string): string;
 /** Domains Firebase Auth must recognize before a web app can return from Google. */
 export declare function expectedAuthorizedDomains(project: string, domain?: string): string[];

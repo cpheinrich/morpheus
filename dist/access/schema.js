@@ -37,16 +37,19 @@ export const ProjectManifest = z.object({
     /** 2-4 uppercase letters; namespaces every id in this repo. */
     prefix: z.string().regex(/^[A-Z]{2,4}$/).optional(),
     displayName: z.string().optional(),
-    /** Canonical production origin, used by OAuth and public-service setup. */
-    publicDomain: z.string().url().refine((value) => {
+    /** Canonical production hostname/origin, used by OAuth and public-service setup. */
+    publicDomain: z.string().min(1).refine((value) => {
         try {
-            const url = new URL(value);
-            return url.pathname === "/" && !url.search && !url.hash;
+            const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+            return (url.protocol === "https:" || url.protocol === "http:")
+                && url.pathname === "/"
+                && !url.search
+                && !url.hash;
         }
         catch {
             return false;
         }
-    }, "publicDomain must be an origin, not a path").optional(),
+    }, "publicDomain must be an HTTP(S) hostname or origin, not a path").optional(),
     hq: HqConfig,
     accounts: z.record(z.string(), z.string()).optional(),
 });
