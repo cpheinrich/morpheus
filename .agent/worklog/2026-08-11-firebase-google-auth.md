@@ -83,7 +83,8 @@ intentional preview or secondary Auth hosts in `authorizedDomains`; those are
 restored and verified while undeclared remote hosts remain advisory rather
 than being silently revoked.
 
-- `vitest run --maxWorkers=1`: 841 tests passed across 29 files.
+- After merging current `main`, `vitest run --maxWorkers=1`: 867 tests passed
+  across 29 files.
 - `tsc --noEmit`, `tsc -p tsconfig.build.json`, focused Firebase/access/onboarding
   tests, PM validation/index checks, and `git diff --check`: passed.
 
