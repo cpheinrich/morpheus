@@ -10,7 +10,7 @@ export declare const NO_PRIOR_COMMENT = "__none__";
 export declare const REVIEW_FINISHED_PREFIX = "**Claude finished @";
 /** Morpheus-owned positive evidence required by the versioned reviewer persona. */
 export declare const REVIEW_DELIVERED_SENTINEL = "<!-- morpheus:review-delivered -->";
-/** Pinned action asset kept on the first line of an unfinished progress body. */
+/** Pinned action asset rendered in an unfinished progress body. */
 export declare const REVIEW_PROGRESS_SPINNER_ID = "5ac382c7-e004-429b-8e35-7feb3e8f9c6f";
 export interface ReviewDelivery {
     beforeCommentId?: string;

@@ -10,6 +10,7 @@ import {
   REVIEW_ERROR_PREFIX,
   REVIEW_FINISHED_PREFIX,
   REVIEW_PLACEHOLDER,
+  REVIEW_PROGRESS_SPINNER_ID,
   UNREADABLE_COMMENT_SNAPSHOT,
 } from "../src/review/delivery.js";
 import { pathsMentioned } from "../src/review/findings.js";
@@ -459,7 +460,7 @@ describe("review delivery", () => {
       body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Review — MO-26-08-02-02.48.16 <img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" />\n\n- [ ] Read the diff\n- [ ] Report`,
     });
     expect(result.delivered).toBe(false);
-    expect(result.why).toContain("progress spinner");
+    expect(result.why).toContain("unfinished progress");
   });
 
   it("requires the Morpheus-owned positive delivery sentinel", () => {
@@ -474,10 +475,27 @@ describe("review delivery", () => {
   it("does not accept a progress body that merely mentions the sentinel", () => {
     const result = assessReviewDelivery({
       ...delivered,
-      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Reviewing <img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" />\n\nRemember to add ${REVIEW_DELIVERED_SENTINEL} after reporting.\n\n- [ ] Report`,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Reviewing\n\n<img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" />\n\nRemember to add ${REVIEW_DELIVERED_SENTINEL} after reporting.\n\n- [ ] Report`,
     });
     expect(result.delivered).toBe(false);
-    expect(result.why).toContain("progress spinner");
+    expect(result.why).toContain("unfinished progress");
+  });
+
+  it("rejects an unfinished checklist without relying on spinner placement", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Reviewing\n\n- [ ] Report findings\n\n${REVIEW_DELIVERED_SENTINEL}`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("unfinished progress");
+  });
+
+  it("allows delivered reviews to quote progress signals as code or prose", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nThe prior body referenced the bare asset id ${REVIEW_PROGRESS_SPINNER_ID}.\n\n\`\`\`markdown\n- [ ] This quoted checklist is not live progress\n\`\`\`\n\n${REVIEW_DELIVERED_SENTINEL}`,
+    });
+    expect(result.delivered).toBe(true);
   });
 
   it("allows a completed review to discuss the placeholder and error markers", () => {

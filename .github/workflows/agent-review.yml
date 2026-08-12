@@ -302,7 +302,7 @@ jobs:
   # final success/error header when it is inspected.
   delivery:
     needs: review
-    if: always() && needs.review.outputs.configured != 'false' && needs.review.outputs.review_requested != 'false'
+    if: github.event_name == 'pull_request' && always() && needs.review.outputs.configured != 'false' && needs.review.outputs.review_requested != 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: read

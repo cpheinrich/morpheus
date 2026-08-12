@@ -214,6 +214,7 @@ describe("agent-review.yml", () => {
 
     expect(review?.id).toBe("review");
     expect(deliveryJob?.needs).toBe("review");
+    expect(deliveryJob?.if).toContain("github.event_name == 'pull_request'");
     expect(deliveryJob?.if).toContain("always()");
     expect(deliveryJob?.if).toContain("configured != 'false'");
     expect(deliveryJob?.if).not.toContain("configured == 'true'");

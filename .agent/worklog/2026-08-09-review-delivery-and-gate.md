@@ -96,3 +96,14 @@ The same pass tightened two fail-closed seams: `configured` and `review_requeste
 use `!= 'false'`, so an early review-job failure does not silently skip delivery; and the exact run
 selector includes the closing `)` after the numeric id, so a run id cannot match a longer id by
 prefix. The error marker now covers the pinned action's no-duration abort header as well.
+
+## The fourth live run removed two model-position assumptions
+
+The dependent delivery job now explicitly shares the review job's `pull_request` event scope. That
+keeps the fail-closed late-output checks on PR runs without emitting a false delivery warning on
+every healthy push to `main`, where no review is due and no pull request number exists.
+
+Unfinished progress is also structural rather than positional: an actual pinned-action spinner image
+is rejected anywhere in the review body, and an unticked checklist line is rejected outside fenced
+code. A delivered review may still quote the bare asset id or a checklist inside a code sample, so
+reviews of the detector itself do not trip the guard merely by explaining it.

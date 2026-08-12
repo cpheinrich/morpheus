@@ -1049,9 +1049,10 @@ a review landed. A separate dependent job runs after the action's post step, ide
 by this workflow run's URL, and requires a new id, the pinned action's finished marker, and a
 Morpheus-owned delivery sentinel that the CLI appends to every assembled prompt after the caller's
 persona and item context. Requiring that sentinel with substantive text identifies arbitrary
-model-authored progress bodies without borrowing their unstable prose; the pinned action's spinner
-on the first line rejects a progress body that merely mentions it, and action headers identify
-errors. Any missing evidence fails closed to a warning. Permission-denial counts are diagnostic
+model-authored progress bodies without borrowing their unstable prose; an actual pinned-action
+spinner image or an unticked checklist outside quoted code rejects unfinished progress wherever
+the model puts it, and action headers identify errors. Any missing evidence fails closed to a
+warning. Permission-denial counts are diagnostic
 only: healthy runs can contain denials, while a broken reporting path need not.
 
 **The reviewer persona is a versioned file**, `.github/agent-review-prompt.md`, not a string inside

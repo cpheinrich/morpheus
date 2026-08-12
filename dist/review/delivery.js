@@ -10,8 +10,33 @@ export const NO_PRIOR_COMMENT = "__none__";
 export const REVIEW_FINISHED_PREFIX = "**Claude finished @";
 /** Morpheus-owned positive evidence required by the versioned reviewer persona. */
 export const REVIEW_DELIVERED_SENTINEL = "<!-- morpheus:review-delivered -->";
-/** Pinned action asset kept on the first line of an unfinished progress body. */
+/** Pinned action asset rendered in an unfinished progress body. */
 export const REVIEW_PROGRESS_SPINNER_ID = "5ac382c7-e004-429b-8e35-7feb3e8f9c6f";
+function hasUnfinishedProgress(reviewBody) {
+    const spinnerImage = new RegExp(`<img\\b[^>]*${REVIEW_PROGRESS_SPINNER_ID}[^>]*>`, "i");
+    if (spinnerImage.test(reviewBody))
+        return true;
+    let fence;
+    for (const line of reviewBody.split("\n")) {
+        const fenceMarker = line.trimStart().match(/^(`{3,}|~{3,})/);
+        if (fenceMarker) {
+            const matchedFence = fenceMarker[1];
+            const marker = matchedFence?.[0];
+            if (!matchedFence || !marker)
+                continue;
+            if (!fence) {
+                fence = { marker, length: matchedFence.length };
+            }
+            else if (fence.marker === marker && matchedFence.length >= fence.length) {
+                fence = undefined;
+            }
+            continue;
+        }
+        if (!fence && /^\s*-\s+\[\s\]\s+/.test(line))
+            return true;
+    }
+    return false;
+}
 /**
  * Whether this run left a new tracking comment that contains an actual review.
  *
@@ -52,9 +77,8 @@ export function assessReviewDelivery(input) {
     if (reviewBody === REVIEW_PLACEHOLDER) {
         return { delivered: false, why: "the finalized tracking comment still contains only the initial placeholder" };
     }
-    const firstLine = reviewBody.split("\n", 1)[0] ?? "";
-    if (firstLine.includes(REVIEW_PROGRESS_SPINNER_ID)) {
-        return { delivered: false, why: "the finalized tracking comment still has the action's progress spinner" };
+    if (hasUnfinishedProgress(reviewBody)) {
+        return { delivered: false, why: "the finalized tracking comment still contains unfinished progress" };
     }
     if (!reviewBody.includes(REVIEW_DELIVERED_SENTINEL)) {
         return { delivered: false, why: "the finalized tracking comment lacks Morpheus's delivery sentinel" };
