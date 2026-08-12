@@ -1,4 +1,4 @@
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { parseArtifact } from "../pm/parse.js";
@@ -7,7 +7,7 @@ import { readRegistry } from "../registry/index.js";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { projectPolicy } from "../session/policy.js";
 import { ABSENT, CANONICAL_INPUTS, UNREADABLE } from "../session/lease.js";
-import { ANALYTICS_SCHEMA_DIRECTORY, EMPTY_ANALYTICS_EVENT_MAP, isAnalyticsContractFilename, } from "../analytics/contract.js";
+import { ANALYTICS_SCHEMA_DIRECTORY, EMPTY_ANALYTICS_EVENT_MAP, findAnalyticsContracts, } from "../analytics/contract.js";
 /**
  * Report drift without fixing it.
  *
@@ -376,31 +376,33 @@ export async function doctor(opts) {
     }
     if (kind !== "internal") {
         const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
-        let entries = null;
+        let contracts = null;
         try {
-            entries = await readdir(schemaDir);
+            contracts = await findAnalyticsContracts(schemaDir);
         }
         catch (error) {
             if (error.code === "ENOENT")
-                entries = [];
+                contracts = [];
             else {
                 add("warning", "analytics", `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/ for an analytics contract.`);
             }
         }
-        const contracts = entries?.filter(isAnalyticsContractFilename).sort() ?? [];
-        if (entries !== null && contracts.length === 0) {
+        if (contracts !== null && contracts.length === 0) {
             add("warning", "analytics", `Missing analytics contract in ${ANALYTICS_SCHEMA_DIRECTORY}/ — run morpheus init or add the provider-neutral schema.`);
         }
-        else if (entries !== null && contracts.length > 1) {
+        else if (contracts !== null && contracts.length > 1) {
             add("warning", "analytics", `Multiple analytics contracts found in ${ANALYTICS_SCHEMA_DIRECTORY}/: ${contracts.join(", ")}. Keep one canonical vocabulary.`);
         }
-        else if (entries !== null) {
+        else if (contracts !== null) {
             const analytics = await readFile(join(schemaDir, contracts[0]), "utf8").catch(() => null);
             if (analytics === null) {
                 add("warning", "analytics", `Could not read analytics contract ${contracts[0]}.`);
             }
             else if (analytics.includes(EMPTY_ANALYTICS_EVENT_MAP)) {
                 add("warning", "analytics", "Analytics contract is still the empty scaffold — populate ProjectAnalyticsEvents before launch.");
+            }
+            else if (!analytics.includes("DefineAnalyticsEvents<")) {
+                add("warning", "analytics", "Analytics contract bypasses DefineAnalyticsEvents — restore the validation wrapper around ProjectAnalyticsEvents.");
             }
         }
     }

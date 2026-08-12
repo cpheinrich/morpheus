@@ -5,6 +5,7 @@ import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
 import { analyticsSchema } from "../src/init/templates.js";
+import { EMPTY_ANALYTICS_EVENT_MAP } from "../src/analytics/contract.js";
 import ts from "typescript";
 import { rules } from "../src/cli/hq.js";
 import { BEGIN, renderFirestoreRules } from "../src/hq/rules.js";
@@ -496,7 +497,7 @@ describe("morpheus init", () => {
     });
 
     it("does not create a competing contract beside a differently named analytics schema", async () => {
-      const mine = "export type AnalyticsEvents = { mine: true };\n";
+      const mine = "export type ProjectAnalyticsEvents = { mine: true };\n";
       await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
       await writeFile(join(dir, "packages/shared/schema/analytics.schema.ts"), mine);
 
@@ -509,6 +510,21 @@ describe("morpheus init", () => {
       });
       expect(await read("packages/shared/schema/analytics.schema.ts")).toBe(mine);
       expect(notes.join(" ")).toContain("Kept the existing analytics contract");
+    });
+
+    it("does not mistake an analytics test file for the canonical contract", async () => {
+      await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
+      await writeFile(
+        join(dir, "packages/shared/schema/analytics.test.ts"),
+        "export type ProjectAnalyticsEvents = { fixture: true };\n",
+      );
+
+      const { written } = await scaffold(dir, SEED);
+
+      expect(written).toContain("packages/shared/schema/analytics.ts");
+      expect(await read("packages/shared/schema/analytics.ts")).toContain(
+        "DefineAnalyticsEvents",
+      );
     });
 
     it("is idempotent — a second run writes nothing", async () => {
@@ -631,11 +647,20 @@ describe("morpheus init", () => {
         });
         return ts.getPreEmitDiagnostics(program);
       };
-      const replaceEvents = (events: string) =>
-        analyticsSchema().replace(
+      const replaceEvents = (events: string, prefix = "") => {
+        const source = analyticsSchema();
+        const replaced = source.replace(
           /export type ProjectAnalyticsEvents = DefineAnalyticsEvents<[\s\S]*?>;/,
           `export type ProjectAnalyticsEvents = DefineAnalyticsEvents<${events}>;`,
         );
+        expect(replaced).not.toBe(source);
+        expect(source).toContain(EMPTY_ANALYTICS_EVENT_MAP);
+        return prefix + replaced;
+      };
+      const diagnosticText = (diagnostics: readonly ts.Diagnostic[]) =>
+        diagnostics
+          .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))
+          .join("\n");
 
       expect(await compile(analyticsSchema())).toEqual([]);
       expect(
@@ -644,21 +669,24 @@ describe("morpheus init", () => {
         ),
       ).toEqual([]);
       expect(
-        await compile(
-          replaceEvents(`{ account_created: { method: "email" } }`),
+        diagnosticText(
+          await compile(replaceEvents(`{ account_created: { method: "email" } }`)),
         ),
-      ).not.toEqual([]);
+      ).toContain("event_version");
+      expect(
+        diagnosticText(
+          await compile(
+            replaceEvents(
+              `{ account_created: { event_version: 1; payload: { nested: true } } }`,
+            ),
+          ),
+        ),
+      ).toContain("payload");
       expect(
         await compile(
-          replaceEvents(`{ account_created: { event_version: 1; payload: { nested: true } } }`),
-        ),
-      ).not.toEqual([]);
-      expect(
-        await compile(
-          analyticsSchema().replace(
-            `export type ProjectAnalyticsEvents = DefineAnalyticsEvents<\n  Record<never, never>\n>;`,
-            `interface AccountCreated { event_version: 1; method: "email" }\n` +
-              `export type ProjectAnalyticsEvents = DefineAnalyticsEvents<{ account_created: AccountCreated }>;`,
+          replaceEvents(
+            `{ account_created: AccountCreated }`,
+            `interface AccountCreated { event_version: 1; method: "email" }\n`,
           ),
         ),
       ).toEqual([]);

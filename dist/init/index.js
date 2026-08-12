@@ -1,10 +1,10 @@
-import { access, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { EXPECTED } from "../doctor/index.js";
 import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
 import * as t from "./templates.js";
 import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
-import { ANALYTICS_SCHEMA_DIRECTORY, ANALYTICS_SCHEMA_PATH, isAnalyticsContractFilename, } from "../analytics/contract.js";
+import { ANALYTICS_SCHEMA_DIRECTORY, ANALYTICS_SCHEMA_PATH, findAnalyticsContracts, } from "../analytics/contract.js";
 async function exists(p) {
     try {
         await access(p);
@@ -132,21 +132,20 @@ export async function scaffold(root, seed) {
     // backend clients cannot silently invent incompatible names and properties.
     if (seed.kind !== "internal") {
         const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
-        let schemaEntries = null;
+        let existingAnalytics = null;
         try {
-            schemaEntries = await readdir(schemaDir);
+            existingAnalytics = await findAnalyticsContracts(schemaDir);
         }
         catch (error) {
             if (error.code === "ENOENT")
-                schemaEntries = [];
+                existingAnalytics = [];
             else {
                 skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/ (could not inspect)`);
                 notes.push(`Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/, so no analytics contract was written. ` +
                     "Fix the directory or its permissions before re-running init.");
             }
         }
-        const existingAnalytics = (schemaEntries ?? []).filter(isAnalyticsContractFilename).sort();
-        if (schemaEntries !== null && existingAnalytics.length > 0) {
+        if (existingAnalytics !== null && existingAnalytics.length > 0) {
             for (const name of existingAnalytics) {
                 skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/${name}`);
             }
@@ -154,7 +153,7 @@ export async function scaffold(root, seed) {
                 existingAnalytics.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name}`).join(", ") +
                 ".");
         }
-        else if (schemaEntries !== null) {
+        else if (existingAnalytics !== null) {
             await put(ANALYTICS_SCHEMA_PATH, t.analyticsSchema());
             if (written.includes(ANALYTICS_SCHEMA_PATH)) {
                 notes.push(`Created ${ANALYTICS_SCHEMA_PATH} as the provider-neutral product event contract. ` +

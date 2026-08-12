@@ -144,7 +144,7 @@ describe("doctor", () => {
     await mkdir(join(root, "packages/shared/schema"), { recursive: true });
     await writeFile(
       join(root, "packages/shared/schema/analytics.schema.ts"),
-      "export type ProjectAnalyticsEvents = { page_viewed: { event_version: 1 } };\n",
+      "type DefineAnalyticsEvents<T> = T;\nexport type ProjectAnalyticsEvents = DefineAnalyticsEvents<{ page_viewed: { event_version: 1 } }>;\n",
     );
 
     const f = await doctor({ root });
@@ -152,12 +152,48 @@ describe("doctor", () => {
     expect(has(f, "analytics")).toBe(false);
   });
 
-  it("does not warn after a project populates its analytics contract", async () => {
+  it("does not mistake an analytics test file for the canonical contract", async () => {
+    await scaffold("company");
+    await mkdir(join(root, "packages/shared/schema"), { recursive: true });
+    await writeFile(
+      join(root, "packages/shared/schema/analytics.test.ts"),
+      "export type ProjectAnalyticsEvents = { fixture: true };\n",
+    );
+
+    const f = await doctor({ root });
+
+    expect(f).toContainEqual(
+      expect.objectContaining({
+        check: "analytics",
+        message: expect.stringContaining("Missing analytics contract"),
+      }),
+    );
+  });
+
+  it("warns when a populated contract bypasses the validation wrapper", async () => {
     await scaffold("company");
     await mkdir(join(root, "packages/shared/schema"), { recursive: true });
     await writeFile(
       join(root, "packages/shared/schema/analytics.ts"),
       "export type ProjectAnalyticsEvents = { page_viewed: { event_version: 1 } };\n",
+    );
+
+    const f = await doctor({ root });
+
+    expect(f).toContainEqual(
+      expect.objectContaining({
+        check: "analytics",
+        message: expect.stringContaining("bypasses DefineAnalyticsEvents"),
+      }),
+    );
+  });
+
+  it("does not warn after a project populates its analytics contract", async () => {
+    await scaffold("company");
+    await mkdir(join(root, "packages/shared/schema"), { recursive: true });
+    await writeFile(
+      join(root, "packages/shared/schema/analytics.ts"),
+      "type DefineAnalyticsEvents<T> = T;\nexport type ProjectAnalyticsEvents = DefineAnalyticsEvents<{ page_viewed: { event_version: 1 } }>;\n",
     );
 
     const f = await doctor({ root });

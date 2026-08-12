@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { EXPECTED } from "../doctor/index.js";
 import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
@@ -8,7 +8,7 @@ import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
 import {
   ANALYTICS_SCHEMA_DIRECTORY,
   ANALYTICS_SCHEMA_PATH,
-  isAnalyticsContractFilename,
+  findAnalyticsContracts,
 } from "../analytics/contract.js";
 
 /**
@@ -186,11 +186,11 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   // backend clients cannot silently invent incompatible names and properties.
   if (seed.kind !== "internal") {
     const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
-    let schemaEntries: string[] | null = null;
+    let existingAnalytics: string[] | null = null;
     try {
-      schemaEntries = await readdir(schemaDir);
+      existingAnalytics = await findAnalyticsContracts(schemaDir);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") schemaEntries = [];
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") existingAnalytics = [];
       else {
         skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/ (could not inspect)`);
         notes.push(
@@ -200,8 +200,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
       }
     }
 
-    const existingAnalytics = (schemaEntries ?? []).filter(isAnalyticsContractFilename).sort();
-    if (schemaEntries !== null && existingAnalytics.length > 0) {
+    if (existingAnalytics !== null && existingAnalytics.length > 0) {
       for (const name of existingAnalytics) {
         skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/${name}`);
       }
@@ -210,7 +209,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
           existingAnalytics.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name}`).join(", ") +
           ".",
       );
-    } else if (schemaEntries !== null) {
+    } else if (existingAnalytics !== null) {
       await put(ANALYTICS_SCHEMA_PATH, t.analyticsSchema());
       if (written.includes(ANALYTICS_SCHEMA_PATH)) {
         notes.push(
