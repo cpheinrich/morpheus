@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { doctor, EXPECTED, formatFindings } from "../src/doctor/index.js";
+import { analyticsSchema } from "../src/init/templates.js";
 
 let root: string;
 
@@ -110,6 +111,92 @@ describe("doctor", () => {
     const f = await doctor({ root });
     const agents = f.find((x) => x.message.includes("AGENTS.md"));
     expect(agents?.severity).toBe("warning");
+  });
+
+  it("warns when a user-facing analytics contract is still the empty scaffold", async () => {
+    await scaffold("company");
+    await mkdir(join(root, "packages/shared/schema"), { recursive: true });
+    await writeFile(join(root, "packages/shared/schema/analytics.ts"), analyticsSchema());
+
+    const f = await doctor({ root });
+
+    expect(f).toContainEqual(
+      expect.objectContaining({ check: "analytics", severity: "warning" }),
+    );
+  });
+
+  it("warns when a user-facing project has no analytics contract", async () => {
+    await scaffold("company");
+
+    const f = await doctor({ root });
+
+    expect(f).toContainEqual(
+      expect.objectContaining({
+        check: "analytics",
+        severity: "warning",
+        message: expect.stringContaining("Missing analytics contract"),
+      }),
+    );
+  });
+
+  it("recognizes a differently named analytics contract", async () => {
+    await scaffold("company");
+    await mkdir(join(root, "packages/shared/schema"), { recursive: true });
+    await writeFile(
+      join(root, "packages/shared/schema/analytics.schema.ts"),
+      "type DefineAnalyticsEvents<T> = T;\nexport type ProjectAnalyticsEvents = DefineAnalyticsEvents<{ page_viewed: { event_version: 1 } }>;\n",
+    );
+
+    const f = await doctor({ root });
+
+    expect(has(f, "analytics")).toBe(false);
+  });
+
+  it("does not mistake an analytics test file for the canonical contract", async () => {
+    await scaffold("company");
+    await mkdir(join(root, "packages/shared/schema"), { recursive: true });
+    await writeFile(
+      join(root, "packages/shared/schema/analytics.test.ts"),
+      "export type ProjectAnalyticsEvents = { fixture: true };\n",
+    );
+
+    const f = await doctor({ root });
+
+    expect(f).toContainEqual(
+      expect.objectContaining({
+        check: "analytics",
+        message: expect.stringContaining("Missing analytics contract"),
+      }),
+    );
+  });
+
+  it("reports an unreadable schema candidate as unknown rather than missing", async () => {
+    await scaffold("company");
+    await mkdir(join(root, "packages/shared/schema"), { recursive: true });
+    await symlink("missing.ts", join(root, "packages/shared/schema/analytics.schema.ts"));
+
+    const f = await doctor({ root });
+
+    expect(f).toContainEqual(
+      expect.objectContaining({
+        check: "analytics",
+        message: expect.stringContaining("Contract state is unknown"),
+      }),
+    );
+    expect(f.some((finding) => finding.message.includes("Missing analytics contract"))).toBe(false);
+  });
+
+  it("does not warn after a project populates its analytics contract", async () => {
+    await scaffold("company");
+    await mkdir(join(root, "packages/shared/schema"), { recursive: true });
+    await writeFile(
+      join(root, "packages/shared/schema/analytics.ts"),
+      "type DefineAnalyticsEvents<T> = T;\nexport type ProjectAnalyticsEvents = DefineAnalyticsEvents<{ page_viewed: { event_version: 1 } }>;\n",
+    );
+
+    const f = await doctor({ root });
+
+    expect(has(f, "analytics")).toBe(false);
   });
 });
 

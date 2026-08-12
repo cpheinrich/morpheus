@@ -1,9 +1,12 @@
-import { lstat, mkdtemp, readFile, readdir, rm, writeFile, mkdir } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, readdir, rm, symlink, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
+import { analyticsSchema } from "../src/init/templates.js";
+import { EMPTY_ANALYTICS_EVENT_MAP } from "../src/analytics/contract.js";
+import ts from "typescript";
 import { rules } from "../src/cli/hq.js";
 import { BEGIN, renderFirestoreRules } from "../src/hq/rules.js";
 import { parseInboxFile } from "../src/inbox/parse.js";
@@ -481,6 +484,72 @@ describe("morpheus init", () => {
       expect(await read("AGENTS.md")).toBe(mine);
     });
 
+    it("never overwrites an existing analytics contract", async () => {
+      const mine = "export type AnalyticsEvents = { mine: true };\n";
+      await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
+      await writeFile(join(dir, "packages/shared/schema/analytics.ts"), mine);
+
+      const { written, skipped } = await scaffold(dir, SEED);
+
+      expect(skipped).toContain("packages/shared/schema/analytics.ts");
+      expect(written).not.toContain("packages/shared/schema/analytics.ts");
+      expect(await read("packages/shared/schema/analytics.ts")).toBe(mine);
+    });
+
+    it("does not create a competing contract beside a differently named analytics schema", async () => {
+      const mine = "export type ProjectAnalyticsEvents = { mine: true };\n";
+      await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
+      await writeFile(join(dir, "packages/shared/schema/analytics.schema.ts"), mine);
+
+      const { written, skipped, notes } = await scaffold(dir, SEED);
+
+      expect(skipped).toContain("packages/shared/schema/analytics.schema.ts");
+      expect(written).not.toContain("packages/shared/schema/analytics.ts");
+      await expect(read("packages/shared/schema/analytics.ts")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      expect(await read("packages/shared/schema/analytics.schema.ts")).toBe(mine);
+      expect(notes.join(" ")).toContain("Kept the existing analytics contract");
+    });
+
+    it("does not mistake an analytics test file for the canonical contract", async () => {
+      await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
+      await writeFile(
+        join(dir, "packages/shared/schema/analytics.test.ts"),
+        "export type ProjectAnalyticsEvents = { fixture: true };\n",
+      );
+
+      const { written } = await scaffold(dir, SEED);
+
+      expect(written).toContain("packages/shared/schema/analytics.ts");
+      expect(await read("packages/shared/schema/analytics.ts")).toContain(
+        "DefineAnalyticsEvents",
+      );
+    });
+
+    it("does not write a competing contract when a schema candidate is unreadable", async () => {
+      await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
+      await symlink("missing.ts", join(dir, "packages/shared/schema/analytics.schema.ts"));
+
+      const { written, notes } = await scaffold(dir, SEED);
+
+      expect(written).not.toContain("packages/shared/schema/analytics.ts");
+      expect(notes.join(" ")).toContain("no analytics contract was written");
+    });
+
+    it("recognizes a barrel re-export of the canonical event map", async () => {
+      await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
+      await writeFile(
+        join(dir, "packages/shared/schema/analytics.ts"),
+        'export { type ProjectAnalyticsEvents } from "./events.js";\n',
+      );
+
+      const { written, notes } = await scaffold(dir, SEED);
+
+      expect(written).not.toContain("packages/shared/schema/analytics.ts");
+      expect(notes.join(" ")).toContain("Kept the existing analytics contract");
+    });
+
     it("is idempotent — a second run writes nothing", async () => {
       await scaffold(dir, SEED);
       const { written } = await scaffold(dir, SEED);
@@ -568,6 +637,98 @@ describe("morpheus init", () => {
       for (const d of ["product", "team", "brand", "marketing", "finance", "ops"]) {
         expect(hq).toContain(d);
       }
+    });
+
+    it("scaffolds one provider-neutral analytics contract for user-facing projects", async () => {
+      const { notes } = await scaffold(dir, SEED);
+      const schema = await read("packages/shared/schema/analytics.ts");
+
+      expect(schema).toContain("ANALYTICS_SCHEMA_VERSION");
+      expect(schema).toContain("DefineAnalyticsEvents");
+      expect(schema).toContain("AnalyticsEventProperties<Events[Name]>");
+      expect(schema).toContain("AnalyticsScalar | undefined");
+      expect(schema).toContain("ProjectAnalyticsEvents");
+      expect(schema).toContain("lower_snake_case");
+      expect(schema).toContain("Do not add personal or sensitive data");
+      expect(schema).not.toMatch(/(?:import|from).*posthog/i);
+      expect(notes.join(" ")).toContain("provider-neutral product event contract");
+      expect(await read("packages/shared/README.md")).toContain("provider-neutral contracts");
+      expect(await read("packages/shared/schema/README.md")).toContain("analytics event vocabularies");
+    });
+
+    it("emits a contract that TypeScript accepts and whose constraints reject invalid events", async () => {
+      const compile = async (source: string) => {
+        const path = join(dir, "analytics-fixture.ts");
+        await writeFile(path, source);
+        const program = ts.createProgram([path], {
+          strict: true,
+          noEmit: true,
+          skipLibCheck: true,
+          target: ts.ScriptTarget.ES2023,
+          module: ts.ModuleKind.NodeNext,
+          moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        });
+        return ts.getPreEmitDiagnostics(program);
+      };
+      const replaceEvents = (events: string, prefix = "") => {
+        const source = analyticsSchema();
+        const replaced = source.replace(
+          /export type ProjectAnalyticsEvents = DefineAnalyticsEvents<[\s\S]*?>;/,
+          `export type ProjectAnalyticsEvents = DefineAnalyticsEvents<${events}>;`,
+        );
+        expect(replaced).not.toBe(source);
+        expect(source).toContain(EMPTY_ANALYTICS_EVENT_MAP);
+        return prefix + replaced;
+      };
+      const diagnosticText = (diagnostics: readonly ts.Diagnostic[]) =>
+        diagnostics
+          .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))
+          .join("\n");
+
+      expect(await compile(analyticsSchema())).toEqual([]);
+      expect(
+        await compile(
+          replaceEvents(`{ account_created: { event_version: 1; method: "email" } }`),
+        ),
+      ).toEqual([]);
+      expect(
+        diagnosticText(
+          await compile(replaceEvents(`{ account_created: { method: "email" } }`)),
+        ),
+      ).toContain("event_version");
+      expect(
+        diagnosticText(
+          await compile(
+            replaceEvents(
+              `{ account_created: { event_version: 1; payload: { nested: true } } }`,
+            ),
+          ),
+        ),
+      ).toContain("payload");
+      expect(
+        await compile(
+          replaceEvents(
+            `{ account_created: AccountCreated }`,
+            `interface AccountCreated { event_version: 1; method: "email" }\n`,
+          ),
+        ),
+      ).toEqual([]);
+    });
+
+    it("scaffolds the analytics contract for personal projects too", async () => {
+      await scaffold(dir, { ...SEED, kind: "personal" });
+
+      expect(await read("packages/shared/schema/analytics.ts")).toContain(
+        "ProjectAnalyticsEvents",
+      );
+    });
+
+    it("does not impose a product analytics contract on internal tooling", async () => {
+      await scaffold(dir, { ...SEED, kind: "internal" });
+
+      await expect(read("packages/shared/schema/analytics.ts")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
     });
   });
 });

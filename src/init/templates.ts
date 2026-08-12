@@ -11,6 +11,8 @@
  * follows.
  */
 
+import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
+
 export interface Seed {
   name: string;
   prefix: string;
@@ -349,6 +351,95 @@ Things that have bitten us. Not decisions — those live in \`decisions.md\` —
 worth not rediscovering.
 
 Add an entry when something cost you more than ten minutes and the cause was not obvious.
+`;
+
+/**
+ * The provider-neutral analytics contract every user-facing project owns.
+ *
+ * It is deliberately dependency-free. A fresh Morpheus project may not use
+ * TypeScript at runtime, but the repository still needs one reviewable source
+ * of truth that web, mobile and backend adapters can implement.
+ */
+export const analyticsSchema = (): string => `/**
+ * Canonical analytics contract for this project.
+ *
+ * Keep this file provider-neutral. PostHog, Firebase Analytics and other SDKs
+ * are transports; product event names and properties are product decisions.
+ * Non-TypeScript clients conform to this contract manually until generated
+ * schemas earn their complexity.
+ */
+
+export const ANALYTICS_SCHEMA_VERSION = 1 as const;
+
+export const ANALYTICS_SURFACES = ["web", "ios", "android", "backend"] as const;
+export type AnalyticsSurface = (typeof ANALYTICS_SURFACES)[number];
+
+export const ANALYTICS_ENVIRONMENTS = [
+  "development",
+  "preview",
+  "production",
+  "test",
+] as const;
+export type AnalyticsEnvironment = (typeof ANALYTICS_ENVIRONMENTS)[number];
+
+export type AnalyticsScalar = string | number | boolean;
+
+export type AnalyticsEventProperties<Properties> = {
+  [Property in keyof Properties]: Property extends "event_version"
+    ? number
+    : AnalyticsScalar | undefined;
+} & { event_version: number };
+
+/**
+ * Makes missing event versions and nested property values fail at typecheck.
+ * Naming and sensitive-data semantics still require review.
+ */
+export type DefineAnalyticsEvents<
+  Events extends {
+    [Name in keyof Events]: AnalyticsEventProperties<Events[Name]>;
+  },
+> = Events;
+
+/** Attached by each surface's analytics adapter to every custom event. */
+export interface AnalyticsContext {
+  schema_version: typeof ANALYTICS_SCHEMA_VERSION;
+  surface: AnalyticsSurface;
+  environment: AnalyticsEnvironment;
+  release?: string;
+}
+
+/**
+ * Add product events here as lower_snake_case semantic outcomes.
+ *
+ * Example shape:
+ *   account_created: { event_version: 1; method: "email" | "apple" };
+ *
+ * Every event has an explicit property allowlist and its own event_version.
+ * Do not add personal or sensitive data, health inputs or results, free text,
+ * raw URLs, query strings, or values already supplied by the analytics SDK.
+ * Standard page and screen lifecycle events remain SDK-native.
+ */
+export type ProjectAnalyticsEvents = DefineAnalyticsEvents<
+  ${EMPTY_ANALYTICS_EVENT_MAP}
+>;
+
+export type AnalyticsEventName = Extract<keyof ProjectAnalyticsEvents, string>;
+export type AnalyticsEvent<Name extends AnalyticsEventName> = {
+  name: Name;
+  properties: AnalyticsContext & ProjectAnalyticsEvents[Name];
+};
+`;
+
+export const sharedReadme = (): string => `# Shared product contracts
+
+This package boundary holds provider-neutral contracts and generated assets used by more than one
+deployable surface. Applications under \`apps/\` own their provider adapters and runtime wiring.
+`;
+
+export const sharedSchemaReadme = (): string => `# Shared schemas
+
+Product-owned source contracts live here. This includes analytics event vocabularies as well as
+database document shapes; generated client types and provider-specific adapters live elsewhere.
 `;
 
 export const agentReadme = (): string => `# .agent

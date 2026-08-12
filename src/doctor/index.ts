@@ -7,6 +7,11 @@ import { readRegistry } from "../registry/index.js";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { projectPolicy } from "../session/policy.js";
 import { ABSENT, CANONICAL_INPUTS, UNREADABLE } from "../session/lease.js";
+import {
+  ANALYTICS_SCHEMA_DIRECTORY,
+  EMPTY_ANALYTICS_EVENT_MAP,
+  findAnalyticsContracts,
+} from "../analytics/contract.js";
 
 /**
  * Report drift without fixing it.
@@ -502,6 +507,60 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   for (const file of EXPECTED_FILES) {
     if (!(await exists(join(root, file)))) {
       add("warning", "structure", `Missing ${file}.`);
+    }
+  }
+
+  if (kind !== "internal") {
+    const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
+    let discovery: Awaited<ReturnType<typeof findAnalyticsContracts>> | null = null;
+    try {
+      discovery = await findAnalyticsContracts(schemaDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        discovery = { contracts: [], unreadable: [] };
+      } else {
+        add(
+          "warning",
+          "analytics",
+          `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/ for an analytics contract.`,
+        );
+      }
+    }
+    if (discovery?.unreadable.length) {
+      add(
+        "warning",
+        "analytics",
+        `Could not read analytics schema candidate${discovery.unreadable.length === 1 ? "" : "s"}: ${discovery.unreadable.join(", ")}. Contract state is unknown.`,
+      );
+    } else if (discovery !== null && discovery.contracts.length === 0) {
+      add(
+        "warning",
+        "analytics",
+        `Missing analytics contract in ${ANALYTICS_SCHEMA_DIRECTORY}/ — run morpheus init or add the provider-neutral schema.`,
+      );
+    } else if (discovery !== null && discovery.contracts.length > 1) {
+      add(
+        "warning",
+        "analytics",
+        `Multiple analytics contracts found in ${ANALYTICS_SCHEMA_DIRECTORY}/: ${discovery.contracts.join(", ")}. Keep one canonical vocabulary.`,
+      );
+    } else if (discovery !== null) {
+      const analytics = await readFile(join(schemaDir, discovery.contracts[0]!), "utf8").catch(
+        () => null,
+      );
+      if (analytics === null) {
+        add(
+          "warning",
+          "analytics",
+          `Could not read analytics contract ${discovery.contracts[0]}.`,
+        );
+      } else if (analytics.includes(EMPTY_ANALYTICS_EVENT_MAP)) {
+        add(
+          "warning",
+          "analytics",
+          "Analytics contract is still the empty scaffold — populate ProjectAnalyticsEvents before launch.",
+        );
+      }
     }
   }
 
