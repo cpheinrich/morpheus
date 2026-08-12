@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseOnboarding, renderOnboarding, setState, type TaskStatus } from "../src/onboarding/state.js";
 import { collectStatus, summarise } from "../src/onboarding/status.js";
-import { TASKS, projectLabel, tasksFor, type Task } from "../src/onboarding/tasks.js";
+import { firebaseGoogleAuthReady, TASKS, projectLabel, tasksFor, type Task } from "../src/onboarding/tasks.js";
 import { appendOpenItem } from "../src/inbox/append.js";
 import { TEAM_RESERVED } from "../src/paths.js";
 
@@ -61,6 +61,13 @@ describe("the checklist catalogue", () => {
       const firebaseAuth = tasksFor(kind).find((candidate) => candidate.id === "firebase-google-auth");
       expect(firebaseAuth?.how).toContain("morpheus firebase auth setup");
     }
+  });
+
+  it("keeps the Firebase terms hint alongside the automated setup command", () => {
+    const firebase = TASKS.find((candidate) => candidate.id === "firebase");
+
+    expect(firebase?.how).toContain("Firebase terms");
+    expect(firebase?.how).toContain("morpheus firebase auth setup");
   });
 });
 
@@ -283,6 +290,19 @@ describe("detection outranks the file, except when it cannot answer", () => {
 
     // Offline means unasked, not unprotected.
     expect(protection?.detected).toBe(false);
+  });
+
+  it("does not declare Firebase Google Auth ready without a recorded public origin", async () => {
+    await writeFile(join(dir, "morpheus.json"), JSON.stringify({
+      name: "Evo",
+      prefix: "EV",
+      kind: "company",
+      accounts: { firebase: "evo-123" },
+    }));
+
+    // This exits before any cloud request. An absent public domain is unknown,
+    // not evidence that Firebase's default domains are sufficient for the app.
+    await expect(firebaseGoogleAuthReady(dir)).resolves.toBeNull();
   });
 });
 

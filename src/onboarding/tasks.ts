@@ -106,21 +106,24 @@ async function hasValidArtifact(
  * domain state. The reusable CLI checks both. A missing gcloud login or an
  * unreachable API is deliberately `null`, never a false "not configured".
  */
-async function firebaseGoogleAuthReady(root: string): Promise<Detection> {
+export async function firebaseGoogleAuthReady(root: string): Promise<Detection> {
   const manifest = await readJson<{
     accounts?: Record<string, string>;
-    domain?: string;
     publicDomain?: string;
   }>(join(root, "morpheus.json"));
   const project = manifest?.accounts?.firebase ?? manifest?.accounts?.gcpProject;
   if (!project) return false;
+  // A public app origin is the thing most likely to be missing when a popup
+  // spins. Never pronounce Auth ready based only on Firebase's generated
+  // domains when Morpheus cannot determine the real one.
+  if (!manifest?.publicDomain) return null;
 
   try {
     const { checkGoogleAuth } = await import("../firebase/google-auth.js");
     return (await checkGoogleAuth({
       root,
       project,
-      domain: manifest?.publicDomain ?? manifest?.domain,
+      domain: manifest.publicDomain,
     })).ready;
   } catch {
     return null;
@@ -394,7 +397,7 @@ export const TASKS: Task[] = [
     group: "Google Cloud",
     title: "Firebase enabled, with Auth turned on",
     why: "Custom claims gate both the Next.js middleware and the Firestore rules.",
-    how: "Create the Firebase project, then run `morpheus firebase auth setup --project <id> --domain <origin>`",
+    how: "Accept the Firebase terms first — a 403 here is usually unaccepted ToS, not a policy problem. Then create the Firebase project and run `morpheus firebase auth setup --project <id> --domain <origin>`",
   },
   {
     id: "firebase-google-auth",

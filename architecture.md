@@ -1910,7 +1910,9 @@ An agent can manage essentially all of GSM — creating projects, enabling APIs,
 granting IAM, rotating versions. Only the initial billing-account link and first OAuth consent need
 a human. Firebase Google sign-in is not left as an implied console click: immediately after creating
 a Firebase project, the agent runs `morpheus firebase auth setup --project <id> --domain <origin>`.
-That command writes the provider configuration as code, deploys it, repairs Firebase Auth's
+The public origin is also recorded as `publicDomain` in `morpheus.json`, so later checks prove the
+real app domain is authorized rather than silently checking only Firebase's generated domains. That
+command writes the provider configuration as code, deploys it, repairs Firebase Auth's
 authorized-domain set, and checks the remote result. It uses browser-backed `gcloud`/Firebase CLI
 login automatically when their sessions are absent; when the console still needs a human ToS or
 consent acceptance, it opens Firebase Authentication and stops with that explicit state.

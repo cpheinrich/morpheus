@@ -32,3 +32,32 @@ verifies the post-deploy remote state rather than trusting a successful PATCH.
 - `pnpm lint` could not run in this isolated clone because this package does
   not declare or install an `eslint` executable; CI does not enable the
   reusable lint step for this repository.
+
+## Review follow-up
+
+Independent review correctly caught three ways the first pass could become a
+false positive or leave a project in a confusing state. The setup path now
+authenticates the Firebase CLI before it writes shared configuration, the
+domain repair checks set membership rather than list length, and the tests fail
+on an unexpected CLI command rather than silently treating it as success.
+
+The review questioned the `auth` deployment target itself. That concern was
+checked against the current Firebase documentation and the installed Firebase
+CLI: `firebase.json` Authentication provider configuration and `firebase
+deploy --only auth` are supported. The documented CLI path remains the
+implementation; it does not need an Identity Toolkit write that would require
+provider-specific client credentials.
+
+The durable app origin is now an explicit optional `publicDomain` field in
+`morpheus.json`. Setup/check may take `--domain` or use that field, while the
+onboarding detector returns unknown—not ready—when a Firebase project has no
+recorded public origin. The existing Firebase ToS recovery hint is retained
+alongside the new command.
+
+Follow-up verification after the repair:
+
+- `firebase deploy --help` lists `auth` as the Authentication provider
+  configuration target.
+- `vitest run --maxWorkers=1`: 828 tests passed across 28 files.
+- `tsc --noEmit`, `tsc -p tsconfig.build.json`, `morpheus pm validate`,
+  `morpheus pm index --check`, and `git diff --check`: passed.

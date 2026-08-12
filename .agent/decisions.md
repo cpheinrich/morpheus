@@ -575,3 +575,10 @@ version, and common context is limited to schema version, surface, environment a
 `activation` conceal product-specific meanings and make cross-project reporting look more
 comparable than it is. Cross-project KPIs therefore map each project's explicit events to a metric
 later. The scaffold stays dependency-free and runtime helpers wait for a second proven consumer.
+
+**Firebase Google Auth records the public origin explicitly** — 2026-08-11. `publicDomain` in
+`morpheus.json` is the canonical production origin for OAuth and other public-service setup.
+`morpheus firebase auth setup` accepts `--domain` for an immediate invocation, but future checks
+must read the durable manifest record; absent origin is unknown rather than proof that Firebase's
+generated domains are enough. This prevents the most deceptive Auth failure: a provider marked
+enabled while the actual app domain still loops in the browser.

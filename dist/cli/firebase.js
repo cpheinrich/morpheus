@@ -12,6 +12,9 @@ async function manifest(root) {
 function targetProject(config, explicit) {
     return explicit ?? config.accounts?.firebase ?? config.accounts?.gcpProject ?? null;
 }
+function targetDomain(config, explicit) {
+    return explicit ?? config.publicDomain ?? null;
+}
 function printCheck(prefix, result) {
     const domains = result.missingDomains.length ? `missing ${result.missingDomains.join(", ")}` : "all requested domains present";
     console.log(`${prefix} ${result.project}: Google provider ${result.googleEnabled ? "enabled" : "disabled"}; ${domains}.`);
@@ -24,10 +27,15 @@ export async function configureGoogleAuth(root, opts) {
             console.error("No Firebase project. Pass --project, or set accounts.firebase in morpheus.json.");
             return 1;
         }
+        const domain = targetDomain(config, opts.domain);
+        if (!domain) {
+            console.error("No public app origin. Pass --domain, or set publicDomain in morpheus.json.");
+            return 1;
+        }
         const result = await setupGoogleAuth({
             root,
             project,
-            domain: opts.domain,
+            domain,
             supportEmail: opts.supportEmail,
             brand: opts.brand ?? config.displayName ?? config.name ?? project,
             openBrowser: opts.openBrowser,
@@ -51,7 +59,12 @@ export async function checkGoogleAuthConfiguration(root, opts) {
             console.error("No Firebase project. Pass --project, or set accounts.firebase in morpheus.json.");
             return 1;
         }
-        const result = await checkGoogleAuth({ root, project, domain: opts.domain });
+        const domain = targetDomain(config, opts.domain);
+        if (!domain) {
+            console.error("No public app origin. Pass --domain, or set publicDomain in morpheus.json.");
+            return 1;
+        }
+        const result = await checkGoogleAuth({ root, project, domain });
         printCheck(result.ready ? "✓" : "✗", result);
         return result.ready ? 0 : 1;
     }

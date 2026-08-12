@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessHq, HqConfig, resolveEntries, Role } from "../src/access/schema.js";
+import { canAccessHq, HqConfig, ProjectManifest, resolveEntries, Role } from "../src/access/schema.js";
 
 const cfg = (o: Partial<HqConfig>): HqConfig =>
   HqConfig.parse({ route: "/hq", allowlist: [], investorAllowlist: [], admins: [], ...o });
@@ -71,5 +71,29 @@ describe("schema", () => {
 
   it("rejects a route that is not a path", () => {
     expect(HqConfig.safeParse({ route: "hq" }).success).toBe(false);
+  });
+
+  it("keeps a canonical public origin in the portable project manifest", () => {
+    const manifest = ProjectManifest.parse({
+      name: "Acme",
+      publicDomain: "https://app.example.com",
+      hq: {},
+    });
+
+    expect(manifest.publicDomain).toBe("https://app.example.com");
+  });
+
+  it("rejects a non-origin public domain", () => {
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      publicDomain: "app.example.com",
+      hq: {},
+    }).success).toBe(false);
+
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      publicDomain: "https://app.example.com/hq",
+      hq: {},
+    }).success).toBe(false);
   });
 });

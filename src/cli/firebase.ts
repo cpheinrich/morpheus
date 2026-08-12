@@ -5,6 +5,8 @@ import { checkGoogleAuth, setupGoogleAuth } from "../firebase/google-auth.js";
 interface FirebaseManifest {
   name?: string;
   displayName?: string;
+  /** Canonical public origin used by Firebase Google sign-in. */
+  publicDomain?: string;
   accounts?: Record<string, string>;
 }
 
@@ -18,6 +20,10 @@ async function manifest(root: string): Promise<FirebaseManifest> {
 
 function targetProject(config: FirebaseManifest, explicit?: string): string | null {
   return explicit ?? config.accounts?.firebase ?? config.accounts?.gcpProject ?? null;
+}
+
+function targetDomain(config: FirebaseManifest, explicit?: string): string | null {
+  return explicit ?? config.publicDomain ?? null;
 }
 
 function printCheck(prefix: string, result: Awaited<ReturnType<typeof checkGoogleAuth>>): void {
@@ -41,10 +47,15 @@ export async function configureGoogleAuth(root: string, opts: FirebaseAuthOption
       console.error("No Firebase project. Pass --project, or set accounts.firebase in morpheus.json.");
       return 1;
     }
+    const domain = targetDomain(config, opts.domain);
+    if (!domain) {
+      console.error("No public app origin. Pass --domain, or set publicDomain in morpheus.json.");
+      return 1;
+    }
     const result = await setupGoogleAuth({
       root,
       project,
-      domain: opts.domain,
+      domain,
       supportEmail: opts.supportEmail,
       brand: opts.brand ?? config.displayName ?? config.name ?? project,
       openBrowser: opts.openBrowser,
@@ -68,7 +79,12 @@ export async function checkGoogleAuthConfiguration(root: string, opts: FirebaseA
       console.error("No Firebase project. Pass --project, or set accounts.firebase in morpheus.json.");
       return 1;
     }
-    const result = await checkGoogleAuth({ root, project, domain: opts.domain });
+    const domain = targetDomain(config, opts.domain);
+    if (!domain) {
+      console.error("No public app origin. Pass --domain, or set publicDomain in morpheus.json.");
+      return 1;
+    }
+    const result = await checkGoogleAuth({ root, project, domain });
     printCheck(result.ready ? "✓" : "✗", result);
     return result.ready ? 0 : 1;
   } catch (error) {

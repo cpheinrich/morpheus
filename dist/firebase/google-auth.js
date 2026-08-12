@@ -54,6 +54,9 @@ export function expectedRedirectUris(project, domain) {
     ]);
 }
 export function mergeGoogleProviderConfig(existing, input) {
+    // Firebase CLI supports Authentication provider configuration as code. Keep
+    // this structure isolated so we neither overwrite unrelated deploy settings
+    // nor ask every new project to repeat the console workflow.
     const auth = existing.auth === undefined ? {} : asObject(existing.auth, "firebase.json auth");
     const providers = auth.providers === undefined ? {} : asObject(auth.providers, "firebase.json auth.providers");
     const previousGoogle = providers.googleSignIn === undefined
@@ -186,7 +189,7 @@ async function ensureAuthorizedDomains(project, token, requested, fetcher) {
     const current = await fetchProjectConfig(project, token, fetcher);
     const existing = stringArray(current.authorizedDomains);
     const next = unique([...existing, ...requested]);
-    if (next.length === existing.length)
+    if (requested.every((domain) => existing.includes(domain)))
         return;
     const response = await fetcher(`${projectConfigUrl(project)}?updateMask=authorizedDomains`, {
         method: "PATCH",
@@ -231,8 +234,8 @@ async function throwSetupFailure(error, opts, runner) {
     const consoleUrl = `https://console.firebase.google.com/project/${encodeURIComponent(opts.project)}/authentication/providers`;
     throw new Error(`Firebase Google sign-in setup could not finish: ${errorMessage(error)}. ` +
         (opened
-            ? "Morpheus opened Firebase Authentication in your browser; finish any consent screen, then rerun the command."
-            : `Open ${consoleUrl}, complete any consent screen, then rerun the command.`));
+            ? "Morpheus opened Firebase Authentication in your browser; finish any Firebase consent or terms screen, then rerun the command."
+            : `Open ${consoleUrl}, complete any Firebase consent or terms screen, then rerun the command.`));
 }
 /**
  * Configure Google Auth as deployable Firebase configuration, then prove the
@@ -244,6 +247,14 @@ export async function setupGoogleAuth(opts) {
     const fetcher = opts.fetcher ?? fetch;
     const token = await gcloudToken(runner, opts.root, true);
     const supportEmail = opts.supportEmail ?? await gcloudEmail(runner, opts.root);
+    try {
+        await ensureFirebaseLogin(runner, opts.root);
+    }
+    catch (error) {
+        return throwSetupFailure(error, opts, runner);
+    }
+    // Authenticate first. If the browser-backed Firebase session cannot be
+    // established, do not mutate a project's shared firebase.json at all.
     const configPath = await writeGoogleProviderConfig(opts.root, {
         project: opts.project,
         domain: opts.domain,
@@ -251,7 +262,6 @@ export async function setupGoogleAuth(opts) {
         brand: opts.brand,
     });
     try {
-        await ensureFirebaseLogin(runner, opts.root);
         await runner("firebase", ["deploy", "--only", "auth", "--project", opts.project], opts.root);
     }
     catch (error) {

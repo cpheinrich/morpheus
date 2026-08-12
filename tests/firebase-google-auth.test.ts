@@ -21,19 +21,28 @@ function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function runner(calls: string[][], failures: Record<string, Error> = {}): CommandRunner {
+interface RunnerOptions {
+  failures?: Record<string, Error>;
+  onCall?: (command: string, args: string[]) => void;
+}
+
+function runner(calls: string[][], options: RunnerOptions = {}): CommandRunner {
   return async (command, args) => {
     calls.push([command, ...args]);
-    const failure = failures[[command, ...args].join(" ")];
+    options.onCall?.(command, args);
+    const failure = options.failures?.[[command, ...args].join(" ")];
     if (failure) throw failure;
     if (command === "gcloud" && args.join(" ") === "auth print-access-token") return { stdout: "token\n", stderr: "" };
     if (command === "gcloud" && args.join(" ") === "config get-value account") return { stdout: "founder@example.com\n", stderr: "" };
-    return { stdout: "{}", stderr: "" };
+    if (command === "firebase" && args.join(" ") === "projects:list --json") return { stdout: "{}", stderr: "" };
+    if (command === "firebase" && args.join(" ") === "deploy --only auth --project acme-123") return { stdout: "{}", stderr: "" };
+    if (command === "firebase" && args.join(" ") === "open auth --project acme-123") return { stdout: "", stderr: "" };
+    throw new Error(`Unexpected command: ${[command, ...args].join(" ")}`);
   };
 }
 
 describe("Firebase Google Auth configuration", () => {
-  it("merges a deployable Google provider config without discarding other Firebase settings", () => {
+  it("merges Firebase CLI Google provider configuration without discarding other settings", () => {
     const merged = mergeGoogleProviderConfig(
       {
         hosting: { public: "out" },
@@ -70,9 +79,10 @@ describe("Firebase Google Auth configuration", () => {
     const calls: string[][] = [];
     const fetchCalls: Array<{ url: string; method?: string; body?: string }> = [];
     let authorizedDomains = ["localhost"];
+    let googleEnabled = false;
     const fetcher: Fetcher = async (url, init) => {
       fetchCalls.push({ url, method: init?.method, body: typeof init?.body === "string" ? init.body : undefined });
-      if (url.includes("defaultSupportedIdpConfigs/google.com")) return response({ enabled: true });
+      if (url.includes("defaultSupportedIdpConfigs/google.com")) return response({ enabled: googleEnabled });
       if (init?.method === "PATCH") {
         authorizedDomains = JSON.parse(String(init.body)).authorizedDomains;
         return response({ authorizedDomains });
@@ -85,7 +95,13 @@ describe("Firebase Google Auth configuration", () => {
       project: "acme-123",
       domain: "app.example",
       brand: "Acme",
-      runner: runner(calls),
+      runner: runner(calls, {
+        onCall(command, args) {
+          if (command === "firebase" && args.join(" ") === "deploy --only auth --project acme-123") {
+            googleEnabled = true;
+          }
+        },
+      }),
       fetcher,
       openBrowser: false,
     });
@@ -109,11 +125,30 @@ describe("Firebase Google Auth configuration", () => {
       root,
       project: "acme-123",
       brand: "Acme",
-      runner: runner(calls, { [deploy]: new Error("permission denied") }),
+      runner: runner(calls, { failures: { [deploy]: new Error("permission denied") } }),
       fetcher: async () => response({}),
     })).rejects.toThrow(/Morpheus opened Firebase Authentication/);
 
     expect(calls).toContainEqual(["firebase", "open", "auth", "--project", "acme-123"]);
+  });
+
+  it("does not touch firebase.json before Firebase CLI authentication succeeds", async () => {
+    const root = await mkdtemp(join(tmpdir(), "firebase-google-auth-login-"));
+    roots.push(root);
+    const calls: string[][] = [];
+    const projectsList = "firebase projects:list --json";
+
+    await expect(setupGoogleAuth({
+      root,
+      project: "acme-123",
+      domain: "https://app.example",
+      brand: "Acme",
+      runner: runner(calls, { failures: { [projectsList]: new Error("not logged in") } }),
+      fetcher: async () => response({}),
+      openBrowser: false,
+    })).rejects.toThrow(/Firebase Google sign-in setup could not finish/);
+
+    await expect(readFile(join(root, "firebase.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("fails closed when verification sees a disabled provider or missing app domain", async () => {

@@ -43,6 +43,7 @@ export declare const ProjectManifest: z.ZodObject<{
     name: z.ZodString;
     prefix: z.ZodOptional<z.ZodString>;
     displayName: z.ZodOptional<z.ZodString>;
+    publicDomain: z.ZodOptional<z.ZodString>;
     hq: z.ZodObject<{
         route: z.ZodDefault<z.ZodString>;
         allowlist: z.ZodDefault<z.ZodArray<z.ZodEmail>>;
