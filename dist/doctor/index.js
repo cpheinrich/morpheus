@@ -58,7 +58,7 @@ export const EXPECTED = {
         "hq/product/goals",
         "hq/team",
         "hq/brand",
-        "hq/marketing",
+        "hq/marketing/seo",
         "hq/finance",
         "hq/ops",
         // `qa/` feeds verifier rung 3 and `infra/` holds the generated Firestore
@@ -74,6 +74,7 @@ export const EXPECTED = {
         "hq/product/goals",
         "hq/team",
         "hq/brand",
+        "hq/marketing/seo",
         "qa/acceptance",
         ".agent/worklog",
         ".agent/inbox-archive",

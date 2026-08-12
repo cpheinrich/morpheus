@@ -214,6 +214,41 @@ Positioning and voice live in \`hq/brand/\` and are **read** from here, not rest
 copy of the messaging is one that drifts from the brand package that generates it.
 `,
 
+  "hq/marketing/seo": (s) => `# SEO
+
+Website search strategy, research, and operating notes for ${s.name}. Use OpenSEO for website
+research; app-store search belongs in \`hq/marketing/aso/\` and uses Appeeky.
+
+## Google Search Console is part of setup
+
+When setting up or materially reviewing SEO, **try to complete Search Console setup yourself in
+the authenticated browser**. Do not leave it as a list of clicks for the user merely because it is
+in a web console.
+
+1. Read the production domain and intended Google identity from \`morpheus.json\` and its account
+   records. Confirm the canonical site, \`robots.txt\`, and \`sitemap.xml\` are publicly reachable.
+2. Open the domain property in Google Search Console. Pin Google links with
+   \`authuser=<email>\` when the identity is known. If the property is absent, create it and complete
+   verification; use the project's canonical Cloudflare DNS when a domain-property TXT record is
+   required.
+3. Submit \`sitemap.xml\`; inspect Page indexing, Manual actions, and Security issues; fix safe,
+   in-scope problems; then request indexing for the homepage and a small set of launch-priority
+   routes. An accepted request is a crawl-queue request, **not evidence that Google indexed it**.
+4. Record the property, submitted sitemap, requested URLs, observed status, remaining issues, and
+   check date in this folder. Never validate a fix that was not made, and do not remove an existing
+   Google verification token unless every service using it has been ruled out.
+
+If the browser cannot proceed, **prompt the user immediately for the smallest missing prerequisite**:
+sign in to the named Google account, complete an interactive security check, grant Search Console
+access, approve an external DNS change, or choose between genuinely ambiguous identities. Say what
+you tried and name the exact blocker; do not ask for passwords or verification codes in chat. Keep
+the page ready and resume the setup when the prerequisite is supplied.
+
+Search Console is Google's operational indexing surface; OpenSEO is the SEO research surface.
+Missing one is not a reason to skip the other. See [search tooling and browser-first operation](${SPEC})
+in the specification.
+`,
+
   "hq/finance": (s) => `# Finance
 
 Revenue and expense model, pricing, and runway for ${s.name}.
