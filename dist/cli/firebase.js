@@ -18,13 +18,17 @@ function targetDomain(config, explicit) {
 function printCheck(prefix, result) {
     const domains = result.missingDomains.length ? `missing ${result.missingDomains.join(", ")}` : "all requested domains present";
     console.log(`${prefix} ${result.project}: Google provider ${result.googleEnabled ? "enabled" : "disabled"}; ${domains}.`);
+    if (result.unexpectedDomains.length) {
+        console.log(`  Review unexpected authorized domains: ${result.unexpectedDomains.join(", ")}.`);
+    }
 }
-async function recordPublicDomain(root, config, domain) {
+async function recordGoogleAuthDefaults(root, config, domain, supportEmail) {
     const publicDomain = normalizeOrigin(domain);
-    if (config.publicDomain === publicDomain)
-        return publicDomain;
-    await writeFile(join(root, "morpheus.json"), `${JSON.stringify({ ...config, publicDomain }, null, 2)}\n`, "utf8");
-    return publicDomain;
+    if (config.publicDomain === publicDomain && config.supportEmail === supportEmail) {
+        return { publicDomain, supportEmail };
+    }
+    await writeFile(join(root, "morpheus.json"), `${JSON.stringify({ ...config, publicDomain, supportEmail }, null, 2)}\n`, "utf8");
+    return { publicDomain, supportEmail };
 }
 export async function configureGoogleAuth(root, opts) {
     try {
@@ -43,16 +47,26 @@ export async function configureGoogleAuth(root, opts) {
             root,
             project,
             domain,
-            supportEmail: opts.supportEmail,
+            supportEmail: opts.supportEmail ?? config.supportEmail,
             brand: opts.brand ?? config.displayName ?? config.name ?? project,
             openBrowser: opts.openBrowser,
         });
-        const publicDomain = await recordPublicDomain(root, config, domain);
+        let recorded;
+        try {
+            recorded = await recordGoogleAuthDefaults(root, config, domain, result.supportEmail);
+        }
+        catch (error) {
+            throw new Error("Firebase Google sign-in is configured and verified, but Morpheus could not record " +
+                `publicDomain/supportEmail in morpheus.json: ${error instanceof Error ? error.message : String(error)}`);
+        }
         console.log(`✓ Firebase Google sign-in configured for ${result.project}.`);
         console.log(`  Firebase configuration: ${result.configPath}`);
-        console.log(`  Support email: ${result.supportEmail}`);
-        console.log(`  Public origin: ${publicDomain}`);
+        console.log(`  Support email: ${recorded.supportEmail}`);
+        console.log(`  Public origin: ${recorded.publicDomain}`);
         console.log(`  Authorized domains: ${result.authorizedDomains.join(", ")}`);
+        if (result.unexpectedDomains.length) {
+            console.log(`  Review unexpected authorized domains: ${result.unexpectedDomains.join(", ")}.`);
+        }
         return 0;
     }
     catch (error) {

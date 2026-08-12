@@ -28,13 +28,14 @@ describe("Firebase Auth CLI", () => {
       prefix: "AC",
       accounts: { firebase: "acme-123" },
     }));
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     setup.mockResolvedValue({
       project: "acme-123",
       googleEnabled: true,
       authorizedDomains: ["app.example"],
       expectedDomains: ["app.example"],
       missingDomains: [],
+      unexpectedDomains: ["old.example"],
       ready: true,
       configPath: join(root, "firebase.json"),
       supportEmail: "founder@example.com",
@@ -51,7 +52,38 @@ describe("Firebase Auth CLI", () => {
       prefix: "AC",
       accounts: { firebase: "acme-123" },
       publicDomain: "https://app.example",
+      supportEmail: "founder@example.com",
     });
+    expect(log.mock.calls.flat().join("\n")).toContain("Review unexpected authorized domains: old.example");
+  });
+
+  it("reuses the durable support email when the flag is omitted", async () => {
+    const root = await mkdtemp(join(tmpdir(), "firebase-google-auth-cli-support-"));
+    roots.push(root);
+    await writeFile(join(root, "morpheus.json"), JSON.stringify({
+      name: "Acme",
+      accounts: { firebase: "acme-123" },
+      publicDomain: "https://app.example",
+      supportEmail: "support@example.com",
+    }));
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    setup.mockResolvedValue({
+      project: "acme-123",
+      googleEnabled: true,
+      authorizedDomains: ["app.example"],
+      expectedDomains: ["app.example"],
+      missingDomains: [],
+      unexpectedDomains: [],
+      ready: true,
+      configPath: join(root, "firebase.json"),
+      supportEmail: "support@example.com",
+    });
+
+    expect(await configureGoogleAuth(root, { openBrowser: false })).toBe(0);
+    expect(setup).toHaveBeenCalledWith(expect.objectContaining({
+      domain: "https://app.example",
+      supportEmail: "support@example.com",
+    }));
   });
 
   it("does not record the public origin when setup fails", async () => {

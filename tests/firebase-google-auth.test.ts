@@ -225,6 +225,27 @@ describe("Firebase Google Auth configuration", () => {
     expect(check.ready).toBe(false);
   });
 
+  it("reports authorized domains that are no longer expected without auto-revoking them", async () => {
+    const check = await checkGoogleAuth({
+      root: "/tmp",
+      project: "acme-123",
+      domain: "app.example",
+      runner: runner([]),
+      fetcher: async (url) => url.includes("defaultSupportedIdpConfigs/google.com")
+        ? response({ enabled: true })
+        : response({ authorizedDomains: [
+          "localhost",
+          "acme-123.firebaseapp.com",
+          "acme-123.web.app",
+          "app.example",
+          "old.example",
+        ] }),
+    });
+
+    expect(check.ready).toBe(true);
+    expect(check.unexpectedDomains).toEqual(["old.example"]);
+  });
+
   it("bounds token and Firebase API reads used by status checks", async () => {
     const commandTimeouts: Array<number | undefined> = [];
     const requestSignals: AbortSignal[] = [];

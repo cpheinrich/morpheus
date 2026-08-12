@@ -381,8 +381,10 @@ Google authorization, the CLI launches its browser flow; if a Firebase consent/T
 blocks deployment, it opens Firebase Authentication and fails with the exact recovery step. Use
 `morpheus firebase auth check` in a later session or CI to fail closed rather than rediscovering a
 disabled provider or missing custom domain from a spinning sign-in screen. Successful setup records
-the normalized origin as `publicDomain` in `morpheus.json`; pass `--domain` explicitly on the first
-run. The check refuses to call an app ready when it cannot determine that origin.
+the normalized origin and user-visible OAuth support identity as `publicDomain` and `supportEmail`
+in `morpheus.json`; pass `--domain` explicitly on the first run. The check refuses to call an app
+ready when it cannot determine that origin, and reports extra authorized domains for manual review
+instead of silently retaining or automatically revoking them.
 
 ## Folder documentation
 

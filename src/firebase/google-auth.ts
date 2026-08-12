@@ -59,6 +59,8 @@ export interface GoogleAuthCheck {
   authorizedDomains: string[];
   expectedDomains: string[];
   missingDomains: string[];
+  /** Authorized remotely but no longer required by the current manifest. */
+  unexpectedDomains: string[];
   ready: boolean;
 }
 
@@ -386,6 +388,7 @@ async function inspectWithToken(
   const authorizedDomains = stringArray(config.authorizedDomains);
   const expectedDomains = expectedAuthorizedDomains(project, domain);
   const missingDomains = expectedDomains.filter((entry) => !authorizedDomains.includes(entry));
+  const unexpectedDomains = authorizedDomains.filter((entry) => !expectedDomains.includes(entry));
   const googleEnabled = provider?.enabled === true;
 
   return {
@@ -394,6 +397,7 @@ async function inspectWithToken(
     authorizedDomains,
     expectedDomains,
     missingDomains,
+    unexpectedDomains,
     ready: googleEnabled && missingDomains.length === 0,
   };
 }

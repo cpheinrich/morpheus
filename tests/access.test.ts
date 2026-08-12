@@ -102,4 +102,17 @@ describe("schema", () => {
       hq: {},
     }).success).toBe(false);
   });
+
+  it("keeps a valid durable support identity and rejects malformed email", () => {
+    expect(ProjectManifest.parse({
+      name: "Acme",
+      supportEmail: "support@example.com",
+      hq: {},
+    }).supportEmail).toBe("support@example.com");
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      supportEmail: "not-an-email",
+      hq: {},
+    }).success).toBe(false);
+  });
 });

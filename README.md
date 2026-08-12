@@ -44,9 +44,10 @@ morpheus firebase auth setup --project <firebase-project> --domain <public-origi
 morpheus firebase auth check --project <firebase-project> --domain <public-origin>
 ```
 
-After a successful setup, Morpheus records the normalized origin in `morpheus.json` as
-`"publicDomain": "https://app.example.com"`. The Firebase commands use that value when `--domain`
-is omitted and refuse to report Google sign-in ready when the public origin is unknown.
+After a successful setup, Morpheus records the normalized origin and user-visible OAuth support
+identity in `morpheus.json` as `publicDomain` and `supportEmail`. Later runs reuse both values and
+report authorized domains that are no longer expected so an operator can decide whether to revoke
+them. The check refuses to report Google sign-in ready when the public origin is unknown.
 
 Not yet implemented:
 

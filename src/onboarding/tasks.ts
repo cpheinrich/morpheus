@@ -405,7 +405,7 @@ export const TASKS: Task[] = [
     group: "Google Cloud",
     title: "Firebase Google sign-in configured and verified",
     why: "A project can exist while HQ authentication is still broken by a disabled provider or missing app domain.",
-    how: "morpheus firebase auth setup --project <id> --domain <public-origin>; on success it records publicDomain in morpheus.json and opens Google/Firebase only when an interactive step is actually needed",
+    how: "morpheus firebase auth setup --project <id> --domain <public-origin>; on success it records publicDomain and supportEmail in morpheus.json and opens Google/Firebase only when an interactive step is actually needed",
     network: true,
     detect: firebaseGoogleAuthReady,
   },

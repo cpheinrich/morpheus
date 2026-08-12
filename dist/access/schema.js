@@ -50,6 +50,8 @@ export const ProjectManifest = z.object({
             return false;
         }
     }, "publicDomain must be an HTTP(S) hostname or origin, not a path").optional(),
+    /** User-visible support identity deployed to services such as the Google OAuth brand. */
+    supportEmail: z.email().optional(),
     hq: HqConfig,
     accounts: z.record(z.string(), z.string()).optional(),
 });

@@ -100,7 +100,7 @@ Options
   --prefix <str> Two-letter token prefix for brand init
   --project <id> Firebase project id for access and Auth commands
   --domain <url> Public app origin/hostname for Firebase Google sign-in
-  --support-email <email> OAuth support email (defaults to the active gcloud account)
+  --support-email <email> OAuth support email (defaults to morpheus.json, then active gcloud account)
   --brand <name> OAuth brand name (defaults to the project display name)
   --no-browser   Do not open browser-backed login or Firebase-console recovery
   --check        Verify indexes are current without writing; exits non-zero if stale

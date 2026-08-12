@@ -39,6 +39,8 @@ export interface GoogleAuthCheck {
     authorizedDomains: string[];
     expectedDomains: string[];
     missingDomains: string[];
+    /** Authorized remotely but no longer required by the current manifest. */
+    unexpectedDomains: string[];
     ready: boolean;
 }
 export interface GoogleAuthSetupResult extends GoogleAuthCheck {

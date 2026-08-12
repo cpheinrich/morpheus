@@ -62,6 +62,24 @@ Follow-up verification after the repair:
 - `tsc --noEmit`, `tsc -p tsconfig.build.json`, `morpheus pm validate`,
   `morpheus pm index --check`, and `git diff --check`: passed.
 
+## Final lifecycle review
+
+Authorized-domain reconciliation remains additive because automatic OAuth
+revocation is a judgment call, but it is no longer silent. The remote check now
+returns `unexpectedDomains`, and both setup and check print any authorized
+domain outside the current manifest-derived set for explicit review.
+
+The OAuth support identity now follows the same durable-state rule as the app
+origin. Successful setup records `supportEmail` beside `publicDomain` in
+`morpheus.json`; later runs prefer that value over the active gcloud operator.
+The manifest schema validates it as an email. If the remote work succeeds but
+the manifest write fails, the error now says plainly that Firebase is already
+configured and only the durable record failed.
+
+- `vitest run --maxWorkers=1`: 836 tests passed across 29 files.
+- `tsc --noEmit`, `tsc -p tsconfig.build.json`, focused Firebase/access tests,
+  PM validation/index checks, and `git diff --check`: passed.
+
 The observed CLI evidence is deliberately recorded verbatim enough to prevent a
 later reviewer from having to infer it again:
 

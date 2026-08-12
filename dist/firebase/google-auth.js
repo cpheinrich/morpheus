@@ -248,6 +248,7 @@ async function inspectWithToken(project, domain, token, fetcher) {
     const authorizedDomains = stringArray(config.authorizedDomains);
     const expectedDomains = expectedAuthorizedDomains(project, domain);
     const missingDomains = expectedDomains.filter((entry) => !authorizedDomains.includes(entry));
+    const unexpectedDomains = authorizedDomains.filter((entry) => !expectedDomains.includes(entry));
     const googleEnabled = provider?.enabled === true;
     return {
         project,
@@ -255,6 +256,7 @@ async function inspectWithToken(project, domain, token, fetcher) {
         authorizedDomains,
         expectedDomains,
         missingDomains,
+        unexpectedDomains,
         ready: googleEnabled && missingDomains.length === 0,
     };
 }
