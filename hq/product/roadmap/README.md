@@ -6,9 +6,6 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
-| [MO-26-08-02-02.48.16](./MO-26-08-02-02.48.16-detect-review-denials.md) | Agent review must report when it could not report | review | P1 | MO-G-2026-Q3-01 | #70, #76 | — |
-| [MO-26-08-11-18.39.11](./MO-26-08-11-18.39.11-automate-firebase-google-auth.md) | Automate Firebase Google sign-in setup and verification | review | P1 | — | #115 | #116 |
-| [MO-26-08-11-18.23.10](./MO-26-08-11-18.23.10-setup-search-console.md) | Make Search Console setup part of project SEO work | review | P2 | — | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-01-047](./MO-26-08-01-047-inbox-status-one-front.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — | — |
@@ -64,6 +61,7 @@ item files, not this table.
 | [MO-26-08-01-16.40.29](./MO-26-08-01-16.40.29-migrate-roadmap-ids.md) | Migrate Morpheus roadmap ids to the dated scheme | shipped | P1 | — | — | #61 |
 | [MO-26-08-01-17.28.41](./MO-26-08-01-17.28.41-voice-handoff.md) | Voice session handoff, out and back | shipped | P1 | MO-G-2026-Q3-01 | — | #64 |
 | [MO-26-08-01-23.03.19](./MO-26-08-01-23.03.19-update-contributor-guidance.md) | External contributors open an issue, and may open a PR carrying the roadmap item | shipped | P1 | MO-G-2026-Q3-01 | — | #59 |
+| [MO-26-08-02-02.48.16](./MO-26-08-02-02.48.16-detect-review-denials.md) | Agent review must report when it could not report | shipped | P1 | MO-G-2026-Q3-01 | #70, #76 | #110 |
 | [MO-26-08-02-03.16.10](./MO-26-08-02-03.16.10-pm-index-crashes-when.md) | pm index crashes when an artifact directory is absent | shipped | P1 | — | — | — |
 | [MO-26-08-02-03.30.25](./MO-26-08-02-03.30.25-scaffold-folder-readmes.md) | Every folder that earns one gets a README, scaffolded by init | shipped | P1 | — | — | #73 |
 | [MO-26-08-02-13.23.35](./MO-26-08-02-13.23.35-gate-re-reviews.md) | Re-review only what a new push actually changed | shipped | P1 | MO-G-2026-Q3-01 | — | #75 |
@@ -79,6 +77,7 @@ item files, not this table.
 | [MO-26-08-08-21.30.49](./MO-26-08-08-21.30.49-enforce-issue-closure.md) | Make issue closure explicit and enforced | shipped | P1 | — | — | #105 |
 | [MO-26-08-08-21.50.05](./MO-26-08-08-21.50.05-fix-block-lifecycle.md) | Make blocked work safe and durable | shipped | P1 | — | #80, #83, #91 | #106 |
 | [MO-26-08-08-22.20.35](./MO-26-08-08-22.20.35-check-hq-rules.md) | Let PM CI verify generated HQ rules | shipped | P1 | — | #81 | #107 |
+| [MO-26-08-11-18.39.11](./MO-26-08-11-18.39.11-automate-firebase-google-auth.md) | Automate Firebase Google sign-in setup and verification | shipped | P1 | — | #115 | #116 |
 | [MO-26-07-28-008](./MO-26-07-28-008-morpheus-init.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | — | #22 |
 | [MO-26-07-28-009](./MO-26-07-28-009-retrofit-darwin.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-010](./MO-26-07-29-010-simplify-architecture-md-first.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | — | #46 |
@@ -95,5 +94,6 @@ item files, not this table.
 | [MO-26-08-05-19.05.35](./MO-26-08-05-19.05.35-swap-seo-aso-tools.md) | SEO and ASO canonical tools become OpenSEO and Appeeky | shipped | P2 | — | — | #98 |
 | [MO-26-08-08-23.48.59](./MO-26-08-08-23.48.59-document-backend-app.md) | Give non-client deployables a backend home | shipped | P2 | — | #89 | #108 |
 | [MO-26-08-09-00.05.06](./MO-26-08-09-00.05.06-ship-prebuilt-git-artifacts.md) | Ship prebuilt git dependency artifacts | shipped | P2 | — | #82 | #109 |
+| [MO-26-08-11-18.23.10](./MO-26-08-11-18.23.10-setup-search-console.md) | Make Search Console setup part of project SEO work | shipped | P2 | — | — | #114 |
 | [MO-26-07-29-012](./MO-26-07-29-012-make-morpheus-private-adjust.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — | — |
 <!-- morpheus:end -->
