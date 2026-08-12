@@ -10,6 +10,7 @@
  * not, which is worse than an absent file — the same rule the brand package
  * follows.
  */
+import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
 export const manifest = (s) => JSON.stringify({
     name: s.name,
     prefix: s.prefix,
@@ -185,6 +186,40 @@ SEO, content plans, and campaign notes for ${s.name}.
 Positioning and voice live in \`hq/brand/\` and are **read** from here, not restated — a second
 copy of the messaging is one that drifts from the brand package that generates it.
 `,
+    "hq/marketing/seo": (s) => `# SEO
+
+Website search strategy, research, and operating notes for ${s.name}. Use OpenSEO for website
+research; app-store search belongs in \`hq/marketing/aso/\` and uses Appeeky.
+
+## Google Search Console is part of setup
+
+When setting up or materially reviewing SEO, **try to complete Search Console setup yourself in
+the authenticated browser**. Do not leave it as a list of clicks for the user merely because it is
+in a web console.
+
+1. Read the production domain and intended Google identity from \`morpheus.json\` and its account
+   records. Confirm the canonical site, \`robots.txt\`, and \`sitemap.xml\` are publicly reachable.
+2. Open the domain property in Google Search Console. Pin Google links with
+   \`authuser=<email>\` when the identity is known. If the property is absent, create it and complete
+   verification; use the project's canonical DNS provider when a domain-property TXT record is
+   required (Cloudflare unless the §6.1 deviation table records otherwise).
+3. Submit \`sitemap.xml\`; inspect Page indexing, Manual actions, and Security issues; fix safe,
+   in-scope problems; then request indexing for the homepage and a small set of launch-priority
+   routes. An accepted request is a crawl-queue request, **not evidence that Google indexed it**.
+4. Record the property, submitted sitemap, requested URLs, observed status, remaining issues, and
+   check date in this folder. Never validate a fix that was not made, and do not remove an existing
+   Google verification token unless every service using it has been ruled out.
+
+If the browser cannot proceed, **prompt the user immediately for the smallest missing prerequisite**:
+sign in to the named Google account, complete an interactive security check, grant Search Console
+access, approve an external DNS change, or choose between genuinely ambiguous identities. Say what
+you tried and name the exact blocker; do not ask for passwords or verification codes in chat. Keep
+the page ready and resume the setup when the prerequisite is supplied.
+
+Search Console is Google's operational indexing surface; OpenSEO is the SEO research surface.
+Missing one is not a reason to skip the other. See [search tooling and browser-first operation](${SPEC})
+in the specification.
+`,
     "hq/finance": (s) => `# Finance
 
 Revenue and expense model, pricing, and runway for ${s.name}.
@@ -315,6 +350,92 @@ Things that have bitten us. Not decisions — those live in \`decisions.md\` —
 worth not rediscovering.
 
 Add an entry when something cost you more than ten minutes and the cause was not obvious.
+`;
+/**
+ * The provider-neutral analytics contract every user-facing project owns.
+ *
+ * It is deliberately dependency-free. A fresh Morpheus project may not use
+ * TypeScript at runtime, but the repository still needs one reviewable source
+ * of truth that web, mobile and backend adapters can implement.
+ */
+export const analyticsSchema = () => `/**
+ * Canonical analytics contract for this project.
+ *
+ * Keep this file provider-neutral. PostHog, Firebase Analytics and other SDKs
+ * are transports; product event names and properties are product decisions.
+ * Non-TypeScript clients conform to this contract manually until generated
+ * schemas earn their complexity.
+ */
+
+export const ANALYTICS_SCHEMA_VERSION = 1 as const;
+
+export const ANALYTICS_SURFACES = ["web", "ios", "android", "backend"] as const;
+export type AnalyticsSurface = (typeof ANALYTICS_SURFACES)[number];
+
+export const ANALYTICS_ENVIRONMENTS = [
+  "development",
+  "preview",
+  "production",
+  "test",
+] as const;
+export type AnalyticsEnvironment = (typeof ANALYTICS_ENVIRONMENTS)[number];
+
+export type AnalyticsScalar = string | number | boolean;
+
+export type AnalyticsEventProperties<Properties> = {
+  [Property in keyof Properties]: Property extends "event_version"
+    ? number
+    : AnalyticsScalar | undefined;
+} & { event_version: number };
+
+/**
+ * Makes missing event versions and nested property values fail at typecheck.
+ * Naming and sensitive-data semantics still require review.
+ */
+export type DefineAnalyticsEvents<
+  Events extends {
+    [Name in keyof Events]: AnalyticsEventProperties<Events[Name]>;
+  },
+> = Events;
+
+/** Attached by each surface's analytics adapter to every custom event. */
+export interface AnalyticsContext {
+  schema_version: typeof ANALYTICS_SCHEMA_VERSION;
+  surface: AnalyticsSurface;
+  environment: AnalyticsEnvironment;
+  release?: string;
+}
+
+/**
+ * Add product events here as lower_snake_case semantic outcomes.
+ *
+ * Example shape:
+ *   account_created: { event_version: 1; method: "email" | "apple" };
+ *
+ * Every event has an explicit property allowlist and its own event_version.
+ * Do not add personal or sensitive data, health inputs or results, free text,
+ * raw URLs, query strings, or values already supplied by the analytics SDK.
+ * Standard page and screen lifecycle events remain SDK-native.
+ */
+export type ProjectAnalyticsEvents = DefineAnalyticsEvents<
+  ${EMPTY_ANALYTICS_EVENT_MAP}
+>;
+
+export type AnalyticsEventName = Extract<keyof ProjectAnalyticsEvents, string>;
+export type AnalyticsEvent<Name extends AnalyticsEventName> = {
+  name: Name;
+  properties: AnalyticsContext & ProjectAnalyticsEvents[Name];
+};
+`;
+export const sharedReadme = () => `# Shared product contracts
+
+This package boundary holds provider-neutral contracts and generated assets used by more than one
+deployable surface. Applications under \`apps/\` own their provider adapters and runtime wiring.
+`;
+export const sharedSchemaReadme = () => `# Shared schemas
+
+Product-owned source contracts live here. This includes analytics event vocabularies as well as
+database document shapes; generated client types and provider-specific adapters live elsewhere.
 `;
 export const agentReadme = () => `# .agent
 

@@ -185,7 +185,8 @@ packages/shared/
 ├── generated/              # Style Dictionary output
 │   ├── web/tokens.css, tokens.js, tokens.json
 │   └── ios/Tokens.swift
-├── schema/                 # Firestore collections + document shapes (source of truth)
+├── schema/                 # Product contracts: analytics events and database shapes
+│   ├── analytics.ts
 │   └── *.schema.ts
 ├── generated/schema/       # codegen output
 │   ├── web/types.ts
@@ -241,7 +242,7 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | Android product | `apps/android/` | Deferred — bolt-on template later |
 | Backend product | `apps/backend/` | Worker, service, scheduled job, inference or execution loop |
 | Design tokens | `hq/brand/tokens.json` → `packages/shared/` | DTCG JSON → generated (§12.1) |
-| Database schema | `packages/shared/schema/` | TS source → generated types + rules |
+| Shared product schemas | `packages/shared/schema/` | Analytics contracts and database TS source → generated types + rules |
 | Brand messaging | `hq/brand/messaging.json` | Imported by web |
 | Analytics | PostHog Cloud + `/hq` KPIs | SaaS + dashboard |
 | Automations | `.claude/skills/`, `.github/workflows/` | Skills + Actions |
@@ -382,6 +383,21 @@ what it finds instead of only reporting it.
 Both authenticate as remote MCP through claude.ai (§13.4), so neither puts a key in a repo.
 Credentials for the *downstream* accounts Appeeky writes to — App Store Connect, Apple Search Ads,
 Play Console — are a separate authorisation, granted once inside Appeeky.
+
+**Search Console setup is part of website SEO setup, not a later human errand.** The agent first
+tries to create or open the domain property in the authenticated browser, complete verification,
+submit the sitemap, inspect indexing plus Manual actions and Security issues, and request indexing
+for a small set of launch-priority URLs. A request entering Google's crawl queue is recorded as a
+request, never as proof of indexing. The project-local checklist and dated operating record live in
+`hq/marketing/seo/`.
+
+If the browser cannot proceed, the agent asks for the **smallest exact prerequisite** — the named
+Google identity to sign into, an interactive security check, Search Console permission, approval
+for an external DNS change, or a choice between genuinely ambiguous identities — and resumes once
+it is supplied. It does not replace the attempt with generic click instructions, ask for a password
+or verification code in chat, or mark setup complete because access could not be checked. This is
+the browser-reachable-work rule in §7.3 applied to SEO. Search Console is Google's operational
+indexing surface; OpenSEO remains the research surface, and neither substitutes for the other.
 
 ### Built and maintained in Morpheus
 
@@ -1250,6 +1266,40 @@ events/month — a ceiling below the free Cloud tier.
 
 `/hq/analytics` renders a handful of KPIs pulled server-side and cached, each linking out to the
 corresponding PostHog dashboard. We do not rebuild PostHog's UI.
+
+#### 10.3.1 Event contracts
+
+Every user-facing project owns one provider-neutral event contract at
+`packages/shared/schema/analytics.ts`. It is in `packages/shared/`, not an app: web, iOS, Android
+and backend surfaces should import or conform to the same product vocabulary even when their SDKs
+differ. PostHog configuration and transport code stay in the consuming app.
+
+The contract follows five rules:
+
+1. Custom event names are lower snake case and describe a semantic outcome or state
+   (`account_created`, not `signup_button_clicked`). Provider-native lifecycle events such as
+   `$pageview` and `$screen` remain provider-native rather than being wrapped under new names.
+2. Every event has an explicit property allowlist and a numeric `event_version`, conventionally a
+   positive integer literal. TypeScript enforces the numeric shape; review enforces the integer
+   convention. Common metadata is limited to `schema_version`, `surface`, `environment`, and
+   optional `release`; SDK-supplied browser, device, session, acquisition, and geographic properties
+   are not copied into events.
+3. Event properties are low-cardinality dimensions used by a named decision or metric. They never
+   include personal or sensitive data, health inputs or results, free text, raw URLs, or query
+   strings. Analytics is not a shadow product database.
+4. Projects extend their own event map. Morpheus does not impose universal `signup`, `activation`,
+   or `purchase` events whose meanings would differ between products. Cross-project reporting is
+   built from explicit project-to-metric mappings in `/hq/analytics`, not false name equivalence.
+5. `morpheus init` scaffolds the dependency-free TypeScript contract for company and personal
+   projects without overwriting an existing file. Non-TypeScript clients conform manually until
+   repeated implementations justify schema generation.
+
+Runtime adapters remain project-owned for now. A `morpheus-kit/analytics` helper is extracted only
+after a second real client proves the common initialization, privacy, and validation behavior; it
+will consume the project contract rather than own the event vocabulary.
+
+`morpheus doctor` reports missing, unreadable, duplicate, and still-empty analytics contracts as
+warnings. These are adoption signals rather than governed-command failures.
 
 ## 11. The `/hq` dashboard
 
@@ -2265,22 +2315,17 @@ a placeholder.
 
 ## 21. Open questions
 
-**Q1 — Event schema design.** Analytics is stage 1 and the event schema is the expensive thing to
-get wrong. Do we define a small canonical set every project emits (`signup`, `activation`,
-`purchase`, `retention_ping`) so cross-project dashboards work, and let projects extend it? Or is
-each project's schema fully its own?
-
-**Q2 — Which agent does what.** Codex is better at image asset generation. Should `AGENTS.md`
+**Q1 — Which agent does what.** Codex is better at image asset generation. Should `AGENTS.md`
 encode a division of labour (Codex for assets and bulk mechanical edits, Claude for architecture
 and review), or stay agent-agnostic and let you route by hand?
 
-**Q3 — `hq/` for non-software businesses.** The structure assumes a software product. If a company
+**Q2 — `hq/` for non-software businesses.** The structure assumes a software product. If a company
 is purely hardware or services, `apps/` is nearly empty. Support it, or explicitly out of scope?
 
-**Q4 — Worklog growth.** `.agent/worklog/` grows monotonically. When does it need compaction, and
+**Q3 — Worklog growth.** `.agent/worklog/` grows monotonically. When does it need compaction, and
 should a scheduled agent fold old entries into `learned.md`?
 
-**Q5 — `personal` projects that handle sensitive data.** `heinrich.money` is `kind: personal` by
+**Q4 — `personal` projects that handle sensitive data.** `heinrich.money` is `kind: personal` by
 collaborator count but handles financial data, which implies real auth, bank-aggregator
 credentials, and a stricter security posture than `cpheinrich.com` needs. Does `personal` need a
 `sensitive: true` flag that pulls in the security scaffolding a `company` project gets, or is that

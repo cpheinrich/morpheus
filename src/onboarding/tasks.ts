@@ -379,6 +379,16 @@ export const TASKS: Task[] = [
     optional: true,
   },
 
+  // -------------------------------------------------------- website: seo ---
+  {
+    id: "search-console",
+    kinds: ["company", "personal"],
+    group: "Website SEO",
+    title: "Google Search Console verified and sitemap submitted",
+    why: "A deployed site can remain undiscovered when property verification and sitemap submission are left as later human errands.",
+    how: "Open hq/marketing/seo/README.md and complete its browser-first Search Console checklist; if blocked, ask for the exact missing prerequisite",
+  },
+
   // ------------------------------------------------------------- optional ---
   {
     id: "analytics",
@@ -386,7 +396,7 @@ export const TASKS: Task[] = [
     group: "Product telemetry",
     title: "Analytics installed",
     why: "Retrofitting events onto a shipped product means guessing what past users did.",
-    how: "PostHog, self-hosted or cloud — install before launch, not after",
+    how: "PostHog Cloud — populate packages/shared/schema/analytics.ts, then install before launch",
     optional: true,
   },
   {

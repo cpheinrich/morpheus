@@ -7,11 +7,12 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
 | [MO-26-08-02-02.48.16](./MO-26-08-02-02.48.16-detect-review-denials.md) | Agent review must report when it could not report | review | P1 | MO-G-2026-Q3-01 | #70, #76 | — |
+| [MO-26-08-11-18.23.10](./MO-26-08-11-18.23.10-setup-search-console.md) | Make Search Console setup part of project SEO work | review | P2 | — | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
-| [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: PostHog setup and event schema | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-01-047](./MO-26-08-01-047-inbox-status-one-front.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-02-14.12.47](./MO-26-08-02-14.12.47-dns-cloudflare-only.md) | Make Cloudflare the only DNS manager, and name the approved registrars | backlog | P2 | — | — | — |
+| [MO-26-08-11-16.28.51](./MO-26-08-11-16.28.51-extract-analytics-adapters.md) | Extract shared analytics adapters and HQ KPIs | backlog | P2 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-28-001](./MO-26-07-28-001-project-mgmt-pkg-schemas.md) | Project management package: schemas, parser, index generator, CLI | shipped | P0 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-28-002](./MO-26-07-28-002-reusable-github-workflows.md) | Reusable GitHub workflows | shipped | P0 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-28-003](./MO-26-07-28-003-consume-kit-git-dependency.md) | Consume the kit as a git dependency, not a published package | shipped | P0 | MO-G-2026-Q3-01 | — | #26 |
@@ -34,6 +35,7 @@ item files, not this table.
 | [MO-26-08-01-23.09.54](./MO-26-08-01-23.09.54-prune-stale-claims.md) | Prune before listing claims | shipped | P0 | MO-G-2026-Q3-01 | — | #66 |
 | [MO-26-08-02-02.34.24](./MO-26-08-02-02.34.24-fix-review-posting.md) | The reviewer could not post its review | shipped | P0 | MO-G-2026-Q3-01 | — | #69 |
 | [MO-26-08-02-03.25.14](./MO-26-08-02-03.25.14-cheapen-ci-agents.md) | Make the CI agents cheap enough to leave on | shipped | P0 | MO-G-2026-Q3-01 | — | #72 |
+| [MO-26-07-28-006](./MO-26-07-28-006-kit-analytics-posthog-setup.md) | kit/analytics: canonical event contract | shipped | P1 | MO-G-2026-Q3-01 | — | #113 |
 | [MO-26-07-28-007](./MO-26-07-28-007-retrofit-evo-morpheus-structure.md) | Retrofit Evo to the Morpheus structure | shipped | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-013](./MO-26-07-29-013-claim-mechanism-pm-claim.md) | Claim mechanism: pm claim and pm claims | shipped | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-015](./MO-26-07-29-015-init-must-scaffold-agent.md) | init must scaffold .agent and hq/inbox | shipped | P1 | MO-G-2026-Q3-01 | — | #22 |

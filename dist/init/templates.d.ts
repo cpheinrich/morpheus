@@ -51,6 +51,16 @@ export declare const dirReadmes: Record<string, (s: Seed) => string>;
 export declare const agents: (s: Seed) => string;
 export declare const decisions: (s: Seed) => string;
 export declare const learned: () => string;
+/**
+ * The provider-neutral analytics contract every user-facing project owns.
+ *
+ * It is deliberately dependency-free. A fresh Morpheus project may not use
+ * TypeScript at runtime, but the repository still needs one reviewable source
+ * of truth that web, mobile and backend adapters can implement.
+ */
+export declare const analyticsSchema: () => string;
+export declare const sharedReadme: () => string;
+export declare const sharedSchemaReadme: () => string;
 export declare const agentReadme: () => string;
 export declare const worklogReadme: () => string;
 export declare const inboxArchiveReadme: () => string;
