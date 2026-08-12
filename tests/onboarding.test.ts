@@ -45,6 +45,16 @@ describe("the checklist catalogue", () => {
   it("asks a company for everything", () => {
     expect(tasksFor("company").length).toBe(TASKS.length);
   });
+
+  it("makes Search Console required for user-facing projects", () => {
+    const task = TASKS.find((t) => t.id === "search-console");
+
+    expect(task?.optional).not.toBe(true);
+    expect(task?.how).toContain("hq/marketing/seo/README.md");
+    expect(tasksFor("company")).toContain(task);
+    expect(tasksFor("personal")).toContain(task);
+    expect(tasksFor("internal")).not.toContain(task);
+  });
 });
 
 describe("persistence across interruptions", () => {

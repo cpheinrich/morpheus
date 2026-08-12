@@ -229,8 +229,8 @@ in a web console.
    records. Confirm the canonical site, \`robots.txt\`, and \`sitemap.xml\` are publicly reachable.
 2. Open the domain property in Google Search Console. Pin Google links with
    \`authuser=<email>\` when the identity is known. If the property is absent, create it and complete
-   verification; use the project's canonical Cloudflare DNS when a domain-property TXT record is
-   required.
+   verification; use the project's canonical DNS provider when a domain-property TXT record is
+   required (Cloudflare unless the §6.1 deviation table records otherwise).
 3. Submit \`sitemap.xml\`; inspect Page indexing, Manual actions, and Security issues; fix safe,
    in-scope problems; then request indexing for the homepage and a small set of launch-priority
    routes. An accepted request is a crawl-queue request, **not evidence that Google indexed it**.

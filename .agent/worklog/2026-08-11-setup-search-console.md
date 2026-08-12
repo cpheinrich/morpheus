@@ -24,10 +24,18 @@ permission, approval for an external DNS change, or an identity choice—and res
 It does not request passwords or verification codes in chat or substitute generic click directions
 for an attempt.
 
+Independent review caught that making `hq/marketing/seo` an expected nested directory broke the
+existing `inherits: { marketing: ... }` escape hatch, whose skip logic matched only an exact parent
+path. The doctor now treats an inherited parent as owning its full subtree, with a regression test.
+The review also correctly challenged calling this "part of setup" while omitting it from `morpheus
+init status`; Search Console is now a required manual onboarding task for company and personal
+projects. The README points to the canonical DNS provider rather than assuming Cloudflare in the
+one documented deviation case.
+
 ## Verification
 
-- Focused init and doctor tests: 73 passed.
-- Full suite: 816 tests passed across 27 files.
+- Focused init, doctor, and onboarding tests: 102 passed.
+- Full suite: 818 tests passed across 27 files.
 - `pnpm typecheck` passed.
 - `pnpm compile` regenerated the committed distribution.
 - `pnpm morpheus pm index` regenerated the roadmap index.

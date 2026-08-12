@@ -364,8 +364,9 @@ export async function doctor(opts) {
     }
     const inherited = new Set(Object.keys(inherits).map((k) => `hq/${k}`));
     for (const dir of EXPECTED[kind ?? "personal"]) {
-        if (inherited.has(dir))
-            continue; // owned by a parent project
+        if ([...inherited].some((parent) => dir === parent || dir.startsWith(`${parent}/`))) {
+            continue; // owned by a parent project, including the whole declared subtree
+        }
         if (!(await exists(join(root, dir)))) {
             add("error", "structure", `Missing ${dir}/ — expected for kind "${kind ?? "personal"}".`);
         }

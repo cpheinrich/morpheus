@@ -304,6 +304,15 @@ export const TASKS = [
         how: "morpheus access sync — reads hq/ops/employees and writes the claims",
         optional: true,
     },
+    // -------------------------------------------------------- website: seo ---
+    {
+        id: "search-console",
+        kinds: ["company", "personal"],
+        group: "Website SEO",
+        title: "Google Search Console verified and sitemap submitted",
+        why: "A deployed site can remain undiscovered when property verification and sitemap submission are left as later human errands.",
+        how: "Open hq/marketing/seo/README.md and complete its browser-first Search Console checklist; if blocked, ask for the exact missing prerequisite",
+    },
     // ------------------------------------------------------------- optional ---
     {
         id: "analytics",
