@@ -1,13 +1,18 @@
 import { execFile } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
 const exec = promisify(execFile);
+const NETWORK_TIMEOUT_MS = 10_000;
 
 export interface CommandResult {
   stdout: string;
   stderr: string;
+}
+
+export interface CommandOptions {
+  timeoutMs?: number;
 }
 
 /** Injectable boundary so setup behaviour is covered without a live cloud account. */
@@ -15,6 +20,7 @@ export type CommandRunner = (
   command: string,
   args: string[],
   cwd: string,
+  options?: CommandOptions,
 ) => Promise<CommandResult>;
 
 export type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
@@ -63,9 +69,35 @@ export interface GoogleAuthSetupResult extends GoogleAuthCheck {
 
 type Json = Record<string, unknown>;
 
-async function systemRunner(command: string, args: string[], cwd: string): Promise<CommandResult> {
-  const { stdout, stderr } = await exec(command, args, { cwd });
+async function systemRunner(
+  command: string,
+  args: string[],
+  cwd: string,
+  options?: CommandOptions,
+): Promise<CommandResult> {
+  const { stdout, stderr } = await exec(command, args, { cwd, timeout: options?.timeoutMs });
   return { stdout, stderr };
+}
+
+async function readIfPresent(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function restoreFile(path: string, previous: string | null): Promise<void> {
+  if (previous === null) {
+    try {
+      await unlink(path);
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+    }
+    return;
+  }
+  await writeFile(path, previous, "utf8");
 }
 
 function asObject(value: unknown, label: string): Json {
@@ -114,9 +146,9 @@ export function expectedAuthorizedDomains(project: string, domain?: string): str
 
 /** Origins Firebase's Google-provider configuration should carry as code. */
 export function expectedRedirectUris(project: string, domain?: string): string[] {
-  // Keep this paired with the localhost authorized-domain policy above. A
-  // project that needs a non-default local port can declare it explicitly in
-  // firebase.json alongside the generated provider configuration.
+  // Keep this paired with the localhost authorized-domain policy above.
+  // Port 3000 remains Morpheus's required local default; projects may add a
+  // non-default local port alongside it, but setup deliberately restores 3000.
   return unique([
     "http://localhost:3000",
     `https://${project}.firebaseapp.com`,
@@ -138,6 +170,9 @@ export function mergeGoogleProviderConfig(existing: Json, input: GoogleAuthConfi
   const configuredUris = stringArray(previousGoogle.authorizedRedirectUris);
   const googleSignIn: Json = {
     ...previousGoogle,
+    // The Firebase CLI schema enables Google Sign-In by the presence of this
+    // object. `enabled` belongs to the remote Identity Platform resource and
+    // is deliberately not written into firebase.json.
     oAuthBrandDisplayName: input.brand,
     supportEmail: input.supportEmail,
     authorizedRedirectUris: unique([...configuredUris, ...expectedRedirectUris(input.project, input.domain)]),
@@ -174,7 +209,12 @@ export async function writeGoogleProviderConfig(
 
 async function gcloudToken(runner: CommandRunner, root: string, allowBrowserLogin: boolean): Promise<string> {
   try {
-    const { stdout } = await runner("gcloud", ["auth", "print-access-token"], root);
+    const { stdout } = await runner(
+      "gcloud",
+      ["auth", "print-access-token"],
+      root,
+      { timeoutMs: NETWORK_TIMEOUT_MS },
+    );
     if (stdout.trim()) return stdout.trim();
   } catch (error) {
     if (!allowBrowserLogin) {
@@ -186,7 +226,12 @@ async function gcloudToken(runner: CommandRunner, root: string, allowBrowserLogi
 
   try {
     await runner("gcloud", ["auth", "login"], root);
-    const { stdout } = await runner("gcloud", ["auth", "print-access-token"], root);
+    const { stdout } = await runner(
+      "gcloud",
+      ["auth", "print-access-token"],
+      root,
+      { timeoutMs: NETWORK_TIMEOUT_MS },
+    );
     if (!stdout.trim()) throw new Error("gcloud returned an empty access token after login.");
     return stdout.trim();
   } catch (error) {
@@ -198,7 +243,12 @@ async function gcloudToken(runner: CommandRunner, root: string, allowBrowserLogi
 }
 
 async function gcloudEmail(runner: CommandRunner, root: string): Promise<string> {
-  const { stdout } = await runner("gcloud", ["config", "get-value", "account"], root);
+  const { stdout } = await runner(
+    "gcloud",
+    ["config", "get-value", "account"],
+    root,
+    { timeoutMs: NETWORK_TIMEOUT_MS },
+  );
   const email = stdout.trim();
   if (!email || email === "(unset)") {
     throw new Error("No active Google account. Run `gcloud auth login`, then retry.");
@@ -212,7 +262,12 @@ async function ensureFirebaseLogin(
   allowBrowserLogin: boolean,
 ): Promise<void> {
   try {
-    await runner("firebase", ["projects:list", "--json"], root);
+    await runner(
+      "firebase",
+      ["projects:list", "--json"],
+      root,
+      { timeoutMs: NETWORK_TIMEOUT_MS },
+    );
     return;
   } catch {
     // The Firebase CLI owns its OAuth session. Let it open the browser now,
@@ -228,7 +283,12 @@ async function ensureFirebaseLogin(
 
   try {
     await runner("firebase", ["login"], root);
-    await runner("firebase", ["projects:list", "--json"], root);
+    await runner(
+      "firebase",
+      ["projects:list", "--json"],
+      root,
+      { timeoutMs: NETWORK_TIMEOUT_MS },
+    );
   } catch (error) {
     throw new Error(
       `Firebase browser authorization could not complete: ${errorMessage(error)}. ` +
@@ -271,6 +331,7 @@ async function fetchProjectConfig(
 ): Promise<{ authorizedDomains?: unknown }> {
   const response = await fetcher(projectConfigUrl(project), {
     headers: { Authorization: `Bearer ${token}`, "x-goog-user-project": project },
+    signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
   });
   return json(response, "Reading Firebase Auth project configuration");
 }
@@ -282,6 +343,7 @@ async function fetchGoogleProvider(
 ): Promise<{ enabled?: unknown } | null> {
   const response = await fetcher(googleProviderUrl(project), {
     headers: { Authorization: `Bearer ${token}`, "x-goog-user-project": project },
+    signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
   });
   if (response.status === 404) return null;
   return json(response, "Reading Firebase Google provider configuration");
@@ -306,6 +368,7 @@ async function ensureAuthorizedDomains(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ authorizedDomains: next }),
+    signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
   });
   await json(response, "Updating Firebase Auth authorized domains");
 }
@@ -380,7 +443,9 @@ export async function setupGoogleAuth(opts: GoogleAuthSetupOptions): Promise<Goo
 
   // Authenticate first. If the browser-backed Firebase session cannot be
   // established, do not mutate a project's shared firebase.json at all.
-  const configPath = await writeGoogleProviderConfig(opts.root, {
+  const configPath = join(opts.root, "firebase.json");
+  const previousConfig = await readIfPresent(configPath);
+  await writeGoogleProviderConfig(opts.root, {
     project: opts.project,
     domain: opts.domain,
     supportEmail,
@@ -390,6 +455,13 @@ export async function setupGoogleAuth(opts: GoogleAuthSetupOptions): Promise<Goo
   try {
     await runner("firebase", ["deploy", "--only", "auth", "--project", opts.project], opts.root);
   } catch (error) {
+    try {
+      await restoreFile(configPath, previousConfig);
+    } catch (rollbackError) {
+      throw new Error(
+        `Firebase Auth deploy failed (${errorMessage(error)}) and firebase.json could not be restored: ${errorMessage(rollbackError)}`,
+      );
+    }
     return throwSetupFailure(error, opts, runner);
   }
 

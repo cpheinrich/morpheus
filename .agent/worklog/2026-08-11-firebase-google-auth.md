@@ -78,3 +78,29 @@ now accepts the same bare hostname or HTTP(S) origin that `--domain` accepts,
 so recording the durable value cannot break the separate `access sync` parser.
 
 - `vitest run --maxWorkers=1`: 829 tests passed across 28 files.
+
+## Final review follow-up
+
+The setup command now records the normalized `publicDomain` in `morpheus.json`
+only after the deploy and remote verification succeed. That closes the loop
+between the command and the onboarding detector without turning a failed setup
+into a durable false record. A failed provider deploy also restores the exact
+prior `firebase.json` (or removes the newly created file), so recovery does not
+leave an unverified configuration behind.
+
+Status-path network work is bounded: gcloud token reads and Identity Toolkit
+requests time out after ten seconds and still return the existing fail-closed
+unknown state. Interactive login and provider deployment are intentionally not
+given that short status timeout.
+
+The provider-enable question is settled by Firebase's current primary
+documentation, not an inferred remote field. The documented `firebase.json`
+schema represents Google Sign-In as the `googleSignIn` object and says
+`firebase deploy --only auth` enables configured providers; `enabled` belongs
+to the remote Identity Platform resource that the command verifies after
+deploy. Source:
+https://firebase.google.com/docs/auth/configure-providers-cli
+
+- `vitest run --maxWorkers=1`: 833 tests passed across 29 files.
+- `tsc --noEmit`, `tsc -p tsconfig.build.json`, `morpheus pm validate`,
+  `morpheus pm index --check`, and `git diff --check`: passed.

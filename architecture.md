@@ -1912,10 +1912,14 @@ a human. Firebase Google sign-in is not left as an implied console click: immedi
 a Firebase project, the agent runs `morpheus firebase auth setup --project <id> --domain <origin>`.
 The public origin is also recorded as `publicDomain` in `morpheus.json`, so later checks prove the
 real app domain is authorized rather than silently checking only Firebase's generated domains. That
-command writes the provider configuration as code, deploys it, repairs Firebase Auth's
-authorized-domain set, and checks the remote result. It uses browser-backed `gcloud`/Firebase CLI
-login automatically when their sessions are absent; when the console still needs a human ToS or
-consent acceptance, it opens Firebase Authentication and stops with that explicit state.
+command writes the provider configuration as code, deploys it, then records the normalized public
+origin only after success. Firebase's CLI schema enables Google Sign-In through the presence of the
+`googleSignIn` provider object; the remote-only `enabled` field is verified after deploy rather than
+written into `firebase.json`. Setup repairs Firebase Auth's authorized-domain set and checks the
+remote result. Read-path CLI and API calls time out after ten seconds so `init status` cannot hang on
+a blackholed network. It uses browser-backed `gcloud`/Firebase CLI login automatically when their
+sessions are absent; when the console still needs a human ToS or consent acceptance, it opens
+Firebase Authentication and stops with that explicit state.
 
 ### 13.3 Credential bootstrap
 

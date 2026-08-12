@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { checkGoogleAuth, setupGoogleAuth } from "../firebase/google-auth.js";
+import { checkGoogleAuth, normalizeOrigin, setupGoogleAuth, } from "../firebase/google-auth.js";
 async function manifest(root) {
     try {
         return JSON.parse(await readFile(join(root, "morpheus.json"), "utf8"));
@@ -18,6 +18,13 @@ function targetDomain(config, explicit) {
 function printCheck(prefix, result) {
     const domains = result.missingDomains.length ? `missing ${result.missingDomains.join(", ")}` : "all requested domains present";
     console.log(`${prefix} ${result.project}: Google provider ${result.googleEnabled ? "enabled" : "disabled"}; ${domains}.`);
+}
+async function recordPublicDomain(root, config, domain) {
+    const publicDomain = normalizeOrigin(domain);
+    if (config.publicDomain === publicDomain)
+        return publicDomain;
+    await writeFile(join(root, "morpheus.json"), `${JSON.stringify({ ...config, publicDomain }, null, 2)}\n`, "utf8");
+    return publicDomain;
 }
 export async function configureGoogleAuth(root, opts) {
     try {
@@ -40,9 +47,11 @@ export async function configureGoogleAuth(root, opts) {
             brand: opts.brand ?? config.displayName ?? config.name ?? project,
             openBrowser: opts.openBrowser,
         });
+        const publicDomain = await recordPublicDomain(root, config, domain);
         console.log(`✓ Firebase Google sign-in configured for ${result.project}.`);
         console.log(`  Firebase configuration: ${result.configPath}`);
         console.log(`  Support email: ${result.supportEmail}`);
+        console.log(`  Public origin: ${publicDomain}`);
         console.log(`  Authorized domains: ${result.authorizedDomains.join(", ")}`);
         return 0;
     }

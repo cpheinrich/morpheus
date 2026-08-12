@@ -2,8 +2,11 @@ export interface CommandResult {
     stdout: string;
     stderr: string;
 }
+export interface CommandOptions {
+    timeoutMs?: number;
+}
 /** Injectable boundary so setup behaviour is covered without a live cloud account. */
-export type CommandRunner = (command: string, args: string[], cwd: string) => Promise<CommandResult>;
+export type CommandRunner = (command: string, args: string[], cwd: string, options?: CommandOptions) => Promise<CommandResult>;
 export type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 export interface GoogleAuthConfigInput {
     project: string;

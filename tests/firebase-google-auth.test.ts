@@ -7,6 +7,7 @@ import {
   expectedAuthorizedDomains,
   mergeGoogleProviderConfig,
   setupGoogleAuth,
+  type CommandOptions,
   type CommandRunner,
   type Fetcher,
 } from "../src/firebase/google-auth.js";
@@ -23,13 +24,13 @@ function response(body: unknown, status = 200): Response {
 
 interface RunnerOptions {
   failures?: Record<string, Error>;
-  onCall?: (command: string, args: string[]) => void;
+  onCall?: (command: string, args: string[], options?: CommandOptions) => void;
 }
 
 function runner(calls: string[][], options: RunnerOptions = {}): CommandRunner {
-  return async (command, args) => {
+  return async (command, args, _cwd, commandOptions) => {
     calls.push([command, ...args]);
-    options.onCall?.(command, args);
+    options.onCall?.(command, args, commandOptions);
     const failure = options.failures?.[[command, ...args].join(" ")];
     if (failure) throw failure;
     if (command === "gcloud" && args.join(" ") === "auth print-access-token") return { stdout: "token\n", stderr: "" };
@@ -71,7 +72,7 @@ describe("Firebase Google Auth configuration", () => {
     });
   });
 
-  it("deploys provider configuration, repairs custom domains, and verifies the remote state", async () => {
+  it("deploys the Google provider object to enable it, repairs domains, and verifies remote state", async () => {
     const root = await mkdtemp(join(tmpdir(), "firebase-google-auth-"));
     roots.push(root);
     await writeFile(join(root, "firebase.json"), JSON.stringify({ firestore: { rules: "firestore.rules" } }));
@@ -113,6 +114,7 @@ describe("Firebase Google Auth configuration", () => {
     expect(config.firestore).toEqual({ rules: "firestore.rules" });
     expect(config.auth.providers.googleSignIn.supportEmail).toBe("founder@example.com");
     expect(config.auth.providers.googleSignIn.authorizedRedirectUris).toContain("https://app.example");
+    expect(config.auth.providers.googleSignIn).not.toHaveProperty("enabled");
   });
 
   it("opens Firebase Authentication when deployment needs interactive recovery", async () => {
@@ -130,6 +132,27 @@ describe("Firebase Google Auth configuration", () => {
     })).rejects.toThrow(/Morpheus opened Firebase Authentication/);
 
     expect(calls).toContainEqual(["firebase", "open", "auth", "--project", "acme-123"]);
+    await expect(readFile(join(root, "firebase.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("restores an existing firebase.json when deployment fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "firebase-google-auth-rollback-"));
+    roots.push(root);
+    const original = '{"hosting":{"public":"out"}}\n';
+    await writeFile(join(root, "firebase.json"), original);
+
+    await expect(setupGoogleAuth({
+      root,
+      project: "acme-123",
+      brand: "Acme",
+      runner: runner([], {
+        failures: { "firebase deploy --only auth --project acme-123": new Error("permission denied") },
+      }),
+      fetcher: async () => response({}),
+      openBrowser: false,
+    })).rejects.toThrow(/permission denied/);
+
+    expect(await readFile(join(root, "firebase.json"), "utf8")).toBe(original);
   });
 
   it("does not touch firebase.json before Firebase CLI authentication succeeds", async () => {
@@ -200,5 +223,38 @@ describe("Firebase Google Auth configuration", () => {
     expect(check.googleEnabled).toBe(false);
     expect(check.missingDomains).toContain("app.example");
     expect(check.ready).toBe(false);
+  });
+
+  it("bounds token and Firebase API reads used by status checks", async () => {
+    const commandTimeouts: Array<number | undefined> = [];
+    const requestSignals: AbortSignal[] = [];
+
+    await checkGoogleAuth({
+      root: "/tmp",
+      project: "acme-123",
+      domain: "app.example",
+      runner: runner([], {
+        onCall(command, args, options) {
+          if (command === "gcloud" && args.join(" ") === "auth print-access-token") {
+            commandTimeouts.push(options?.timeoutMs);
+          }
+        },
+      }),
+      fetcher: async (url, init) => {
+        if (init?.signal) requestSignals.push(init.signal);
+        return url.includes("defaultSupportedIdpConfigs/google.com")
+          ? response({ enabled: true })
+          : response({ authorizedDomains: [
+            "localhost",
+            "acme-123.firebaseapp.com",
+            "acme-123.web.app",
+            "app.example",
+          ] });
+      },
+    });
+
+    expect(commandTimeouts).toEqual([10_000]);
+    expect(requestSignals).toHaveLength(2);
+    expect(requestSignals.every((signal) => !signal.aborted)).toBe(true);
   });
 });

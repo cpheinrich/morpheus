@@ -380,9 +380,9 @@ facts. It first tries the existing `gcloud` and Firebase CLI sessions. If either
 Google authorization, the CLI launches its browser flow; if a Firebase consent/ToS screen still
 blocks deployment, it opens Firebase Authentication and fails with the exact recovery step. Use
 `morpheus firebase auth check` in a later session or CI to fail closed rather than rediscovering a
-disabled provider or missing custom domain from a spinning sign-in screen. Record the canonical
-origin or hostname as `publicDomain` in `morpheus.json`, or pass `--domain` explicitly; the check refuses to
-call an app ready when it cannot determine that origin.
+disabled provider or missing custom domain from a spinning sign-in screen. Successful setup records
+the normalized origin as `publicDomain` in `morpheus.json`; pass `--domain` explicitly on the first
+run. The check refuses to call an app ready when it cannot determine that origin.
 
 ## Folder documentation
 
