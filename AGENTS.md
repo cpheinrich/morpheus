@@ -59,6 +59,8 @@ pnpm morpheus brand status         # what the brand package still needs
 pnpm morpheus brand build          # regenerate from an edited hq/brand/answers.md
 pnpm morpheus init                 # scaffold a project — safe to re-run, never overwrites
 pnpm morpheus init status          # how far through project setup this repo is
+pnpm morpheus firebase auth setup --project <id> --domain <public-origin>
+pnpm morpheus firebase auth check --project <id> --domain <public-origin>
 pnpm morpheus access sync          # apply morpheus.json's allowlist to Firebase custom claims
 pnpm morpheus hq rules --rules-path infra/firebase/firestore.rules
 pnpm morpheus hq rules --check --rules-path infra/firebase/firestore.rules
@@ -362,6 +364,28 @@ Never let an inbox accumulate history. It is a snapshot; the archive is the reco
 console, Firebase, payments, admin. Without it the link opens under whichever identity the
 account switcher last used, and switching loses the link context. Use the email address rather
 than an index.
+
+## Firebase Google sign-in bootstrap
+
+**Do not call Firebase-ready just because the project, SDK config, or Auth tab exists.** Immediately
+after an agent creates a Firebase project for a web/HQ surface, run:
+
+```sh
+morpheus firebase auth setup --project <firebase-project> --domain <public-origin>
+```
+
+The command writes the Google-provider configuration into `firebase.json`, deploys it with the
+Firebase CLI, adds the app's authorized domain through the Firebase API, and verifies both remote
+facts. It first tries the existing `gcloud` and Firebase CLI sessions. If either needs an interactive
+Google authorization, the CLI launches its browser flow; if a Firebase consent/ToS screen still
+blocks deployment, it opens Firebase Authentication and fails with the exact recovery step. Use
+`morpheus firebase auth check` in a later session or CI to fail closed rather than rediscovering a
+disabled provider or missing custom domain from a spinning sign-in screen. Successful setup records
+the normalized origin and user-visible OAuth support identity as `publicDomain` and `supportEmail`
+in `morpheus.json`; pass `--domain` explicitly on the first run. The check refuses to call an app
+ready when it cannot determine that origin. Declare legitimate preview or secondary Auth hosts in
+`authorizedDomains` as bare hostnames; the command reports any other remote domains for manual
+review instead of silently retaining or automatically revoking them.
 
 ## Folder documentation
 

@@ -7,6 +7,7 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
 | [MO-26-08-02-02.48.16](./MO-26-08-02-02.48.16-detect-review-denials.md) | Agent review must report when it could not report | review | P1 | MO-G-2026-Q3-01 | #70, #76 | — |
+| [MO-26-08-11-18.39.11](./MO-26-08-11-18.39.11-automate-firebase-google-auth.md) | Automate Firebase Google sign-in setup and verification | review | P1 | — | #115 | #116 |
 | [MO-26-08-11-18.23.10](./MO-26-08-11-18.23.10-setup-search-console.md) | Make Search Console setup part of project SEO work | review | P2 | — | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |

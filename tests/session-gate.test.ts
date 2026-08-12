@@ -98,11 +98,12 @@ describe("session identity", () => {
 });
 
 describe("what is gated", () => {
-  it("gates the five commands where stale context does identifiable harm", () => {
+  it("gates the six commands where stale context does identifiable harm", () => {
     // Deliberately not every command: a gate that fires on `pm index` trains
     // people to route around it, and the routing-around is permanent.
     expect(Object.keys(GATED).sort()).toEqual([
       "access sync",
+      "firebase auth setup",
       "pm block",
       "pm claim",
       "pm link-issue",
@@ -113,6 +114,7 @@ describe("what is gated", () => {
   it("treats anything that leaves the machine as external", () => {
     expect(GATED["pm claim"]).toBe("external");
     expect(GATED["access sync"]).toBe("external");
+    expect(GATED["firebase auth setup"]).toBe("external");
     // `pm block` is local *conditionally* — it normally pushes, and offline it
     // writes the records and skips the push, which is what makes the
     // classification true rather than merely asserted. The blunt alternative

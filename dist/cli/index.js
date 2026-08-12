@@ -7,6 +7,7 @@ import { validate as validateInbox } from "./inbox.js";
 import { build as brandBuild, check as brandCheck, init as brandInit } from "./brand.js";
 import { status as brandStatus } from "./brand-status.js";
 import { sync as accessSync } from "./access.js";
+import { checkGoogleAuthConfiguration, configureGoogleAuth } from "./firebase.js";
 import { printRules, rules as hqRules } from "./hq.js";
 import * as registry from "./registry.js";
 import { run as doctorRun } from "./doctor.js";
@@ -49,6 +50,9 @@ Usage
   morpheus brand status           [--dir <hq/brand>] [--name <Acme>]
   morpheus brand check            [--dir <hq/brand>] — generated files vs answers.md
   morpheus access sync      [--project <firebase-project>] [--dry-run]
+  morpheus firebase auth setup [--project <firebase-project>] [--domain <public-origin>]
+                            [--support-email <email>] [--brand <name>] [--no-browser]
+  morpheus firebase auth check [--project <firebase-project>] [--domain <public-origin>]
   morpheus hq rules         --rules-path <path> [--check]
                             — role helpers in the deployed rules file, from the vocabulary
   morpheus hq rules --print print the generated block, to paste into existing rules
@@ -78,6 +82,12 @@ Options
   --base <ref>   Base ref for the PR diff (default: origin/main)
   --name <str>   Display name for brand init
   --prefix <str> Two-letter token prefix for brand init
+  --project <id> Firebase project id for access and Auth commands
+  --domain <url> Public app origin/hostname for Firebase Google sign-in
+  --support-email <email> OAuth support email; successful setup records it in morpheus.json
+                            (defaults to the recorded value, then active gcloud account)
+  --brand <name> OAuth brand name (defaults to the project display name)
+  --no-browser   Do not open browser-backed login or Firebase-console recovery
   --check        Verify indexes are current without writing; exits non-zero if stale
   --offline      Declare the context-freshness offline exception (same as
                  MORPHEUS_OFFLINE=1), and skip the network checks in "init status",
@@ -96,6 +106,7 @@ function parseArgs(argv) {
         json: false,
         dispatch: false,
         print: false,
+        openBrowser: true,
         positional: [],
     };
     for (let i = 0; i < argv.length; i++) {
@@ -124,6 +135,18 @@ function parseArgs(argv) {
                 break;
             case "--project":
                 flags.project = argv[++i];
+                break;
+            case "--domain":
+                flags.domain = argv[++i];
+                break;
+            case "--support-email":
+                flags.supportEmail = argv[++i];
+                break;
+            case "--brand":
+                flags.brand = argv[++i];
+                break;
+            case "--no-browser":
+                flags.openBrowser = false;
                 break;
             case "--name":
                 flags.name = argv[++i];
@@ -312,6 +335,30 @@ async function main() {
         if (command === "sync")
             return accessSync(process.cwd(), flags.project, flags.dryRun);
         console.error(`Unknown access command "${command ?? ""}".\n\n${HELP}`);
+        return 1;
+    }
+    if (group === "firebase") {
+        if (command !== "auth") {
+            console.error(`Unknown firebase command "${command ?? ""}".\n\n${HELP}`);
+            return 1;
+        }
+        const action = rest[0];
+        const options = {
+            project: flags.project,
+            domain: flags.domain,
+            supportEmail: flags.supportEmail,
+            brand: flags.brand,
+            openBrowser: flags.openBrowser,
+        };
+        if (action === "setup") {
+            const { refused } = await guard(process.cwd(), "firebase auth setup", GATED["firebase auth setup"], flags.offline);
+            if (refused !== null)
+                return refused;
+            return configureGoogleAuth(process.cwd(), options);
+        }
+        if (action === "check")
+            return checkGoogleAuthConfiguration(process.cwd(), options);
+        console.error(`Unknown firebase auth command "${action ?? ""}".\n\n${HELP}`);
         return 1;
     }
     if (group === "brand") {

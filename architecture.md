@@ -1922,7 +1922,23 @@ alternative there in any case, since `cpheinrich` is a personal account rather t
 
 An agent can manage essentially all of GSM — creating projects, enabling APIs, creating secrets,
 granting IAM, rotating versions. Only the initial billing-account link and first OAuth consent need
-a human.
+a human. Firebase Google sign-in is not left as an implied console click: immediately after creating
+a Firebase project, the agent runs `morpheus firebase auth setup --project <id> --domain <origin>`.
+The public origin is also recorded as `publicDomain` in `morpheus.json`, so later checks prove the
+real app domain is authorized rather than silently checking only Firebase's generated domains. That
+command writes the provider configuration as code, deploys it, then records the normalized public
+origin and user-visible OAuth support identity only after success. Later runs reuse both values, so
+another operator does not silently replace the consent-screen support address with their active
+gcloud account. Firebase's CLI schema enables Google Sign-In through the presence of the
+`googleSignIn` provider object; the remote-only `enabled` field is verified after deploy rather than
+written into `firebase.json`. Setup adds missing authorized domains. Intentional preview or
+secondary hosts belong in the manifest's `authorizedDomains`; any remote host outside the
+generated, public, and declared set is reported for manual review and never auto-revoked.
+Read-path CLI and API calls time out after
+ten seconds so `init status` cannot hang on a blackholed network. It uses browser-backed
+`gcloud`/Firebase CLI login automatically when their sessions are absent; when the console still
+needs a human ToS or consent acceptance, it opens Firebase Authentication and stops with that
+explicit state.
 
 ### 13.3 Credential bootstrap
 
@@ -1944,7 +1960,9 @@ Lakina resources in it.
 
 **Google Cloud and Firebase need no separate token.** `gcloud auth login` as an Owner is
 sufficient: the Firebase CLI reads Application Default Credentials, and Firebase projects are
-creatable through the Management API via `gcloud`. Multiple Google identities are handled by
+creatable through the Management API via `gcloud`. The Firebase Google-auth bootstrap first uses
+those existing sessions and only attempts the interactive browser handoff when either CLI does not
+have a usable login. Multiple Google identities are handled by
 **named `gcloud` configurations**, selected per repo via `CLOUDSDK_ACTIVE_CONFIG_NAME` in
 `.env.local`, so opening a repo puts the agent on the right account with no switching ritual.
 

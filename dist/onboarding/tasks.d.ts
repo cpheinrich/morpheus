@@ -42,6 +42,13 @@ export interface Task {
      */
     detect?: (root: string) => Promise<Detection>;
 }
+/**
+ * Firebase Auth has two surfaces that can drift: `firebase.json` describes
+ * the provider, while the remote project owns the provider and authorized
+ * domain state. The reusable CLI checks both. A missing gcloud login or an
+ * unreachable API is deliberately `null`, never a false "not configured".
+ */
+export declare function firebaseGoogleAuthReady(root: string): Promise<Detection>;
 export declare const TASKS: Task[];
 export declare const appliesTo: (t: Task, kind: Kind) => boolean;
 export declare const tasksFor: (kind: Kind) => Task[];

@@ -40,7 +40,16 @@ cd ~/your-project && morpheus registry add
 morpheus pm validate                      # validate hq/product frontmatter against the schemas
 morpheus pm index                         # regenerate the README index tables
 morpheus pm new roadmap "Ship analytics" --priority P1
+morpheus firebase auth setup --project <firebase-project> --domain <public-origin>
+morpheus firebase auth check --project <firebase-project> --domain <public-origin>
 ```
+
+After a successful setup, Morpheus records the normalized origin and user-visible OAuth support
+identity in `morpheus.json` as `publicDomain` and `supportEmail`. Later runs reuse both values and
+report authorized domains that are no longer expected so an operator can decide whether to revoke
+them. Add legitimate preview or secondary Auth hosts to `authorizedDomains` (hostnames only) so
+they remain part of the expected set. The check refuses to report Google sign-in ready when the
+public origin is unknown.
 
 Not yet implemented:
 

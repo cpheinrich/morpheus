@@ -46,6 +46,35 @@ async function hasValidArtifact(root, kind) {
     const { items, issues } = await parseArtifact(join(root, "hq/product"), kind);
     return items.length > 0 && issues.length === 0;
 }
+/**
+ * Firebase Auth has two surfaces that can drift: `firebase.json` describes
+ * the provider, while the remote project owns the provider and authorized
+ * domain state. The reusable CLI checks both. A missing gcloud login or an
+ * unreachable API is deliberately `null`, never a false "not configured".
+ */
+export async function firebaseGoogleAuthReady(root) {
+    const manifest = await readJson(join(root, "morpheus.json"));
+    const project = manifest?.accounts?.firebase ?? manifest?.accounts?.gcpProject;
+    if (!project)
+        return false;
+    // A public app origin is the thing most likely to be missing when a popup
+    // spins. Never pronounce Auth ready based only on Firebase's generated
+    // domains when Morpheus cannot determine the real one.
+    if (!manifest?.publicDomain)
+        return null;
+    try {
+        const { checkGoogleAuth } = await import("../firebase/google-auth.js");
+        return (await checkGoogleAuth({
+            root,
+            project,
+            domain: manifest.publicDomain,
+            authorizedDomains: manifest.authorizedDomains,
+        })).ready;
+    }
+    catch {
+        return null;
+    }
+}
 /** Read the whole `.github/workflows` directory as one string. */
 async function workflowText(root) {
     const dir = join(root, ".github/workflows");
@@ -289,11 +318,21 @@ export const TASKS = [
     },
     {
         id: "firebase",
-        kinds: ["company"],
+        kinds: ["company", "personal"],
         group: "Google Cloud",
         title: "Firebase enabled, with Auth turned on",
         why: "Custom claims gate both the Next.js middleware and the Firestore rules.",
-        how: "Accept the Firebase terms first — a 403 here is usually unaccepted ToS, not a policy problem",
+        how: "Accept the Firebase terms first — a 403 here is usually unaccepted ToS, not a policy problem. Then create the Firebase project and run `morpheus firebase auth setup --project <id> --domain <origin>`",
+    },
+    {
+        id: "firebase-google-auth",
+        kinds: ["company", "personal"],
+        group: "Google Cloud",
+        title: "Firebase Google sign-in configured and verified",
+        why: "A project can exist while HQ authentication is still broken by a disabled provider or missing app domain.",
+        how: "morpheus firebase auth setup --project <id> --domain <public-origin>; on success it records publicDomain and supportEmail in morpheus.json and opens Google/Firebase only when an interactive step is actually needed",
+        network: true,
+        detect: firebaseGoogleAuthReady,
     },
     {
         id: "firebase-claims",

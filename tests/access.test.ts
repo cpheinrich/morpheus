@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessHq, HqConfig, resolveEntries, Role } from "../src/access/schema.js";
+import { canAccessHq, HqConfig, ProjectManifest, resolveEntries, Role } from "../src/access/schema.js";
 
 const cfg = (o: Partial<HqConfig>): HqConfig =>
   HqConfig.parse({ route: "/hq", allowlist: [], investorAllowlist: [], admins: [], ...o });
@@ -71,5 +71,66 @@ describe("schema", () => {
 
   it("rejects a route that is not a path", () => {
     expect(HqConfig.safeParse({ route: "hq" }).success).toBe(false);
+  });
+
+  it("keeps a canonical public origin or hostname in the portable project manifest", () => {
+    const manifest = ProjectManifest.parse({
+      name: "Acme",
+      publicDomain: "https://app.example.com",
+      hq: {},
+    });
+
+    expect(manifest.publicDomain).toBe("https://app.example.com");
+
+    expect(ProjectManifest.parse({
+      name: "Acme",
+      publicDomain: "app.example.com",
+      hq: {},
+    }).publicDomain).toBe("app.example.com");
+  });
+
+  it("rejects a public domain that is not an HTTP(S) hostname or origin", () => {
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      publicDomain: "https://app.example.com/hq",
+      hq: {},
+    }).success).toBe(false);
+
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      publicDomain: "ftp://app.example.com",
+      hq: {},
+    }).success).toBe(false);
+  });
+
+  it("keeps a valid durable support identity and rejects malformed email", () => {
+    expect(ProjectManifest.parse({
+      name: "Acme",
+      supportEmail: "support@example.com",
+      hq: {},
+    }).supportEmail).toBe("support@example.com");
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      supportEmail: "not-an-email",
+      hq: {},
+    }).success).toBe(false);
+  });
+
+  it("accepts additional Firebase Auth hostnames and rejects origins or paths", () => {
+    expect(ProjectManifest.parse({
+      name: "Acme",
+      authorizedDomains: ["preview.example.com", "localhost"],
+      hq: {},
+    }).authorizedDomains).toEqual(["preview.example.com", "localhost"]);
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      authorizedDomains: ["https://preview.example.com"],
+      hq: {},
+    }).success).toBe(false);
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      authorizedDomains: ["preview.example.com/auth"],
+      hq: {},
+    }).success).toBe(false);
   });
 });
