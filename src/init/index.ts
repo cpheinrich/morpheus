@@ -1,9 +1,15 @@
 import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { EXPECTED } from "../doctor/index.js";
+import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
 import * as t from "./templates.js";
 import type { Seed } from "./templates.js";
 import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
+import {
+  ANALYTICS_SCHEMA_DIRECTORY,
+  ANALYTICS_SCHEMA_PATH,
+  findAnalyticsContracts,
+} from "../analytics/contract.js";
 
 /**
  * Scaffold a Morpheus project.
@@ -22,7 +28,7 @@ import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
 export interface InitResult {
   written: string[];
   skipped: string[];
-  /** Directories created that git will not track until something lands in them. */
+  /** Explanations and follow-up constraints that do not belong in written/skipped. */
   notes: string[];
 }
 
@@ -32,6 +38,52 @@ async function exists(p: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+type ConfiguredFirestoreRules =
+  | { kind: "path"; path: string }
+  | { kind: "missing" }
+  | { kind: "invalid"; message: string };
+
+type OptionalFile =
+  | { kind: "absent" }
+  | { kind: "content"; content: string }
+  | { kind: "unreadable"; message: string };
+
+async function readOptional(path: string): Promise<OptionalFile> {
+  try {
+    return { kind: "content", content: await readFile(path, "utf8") };
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code: unknown }).code)
+        : undefined;
+    if (code === "ENOENT") return { kind: "absent" };
+    return {
+      kind: "unreadable",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function configuredFirestoreRules(content: string): ConfiguredFirestoreRules {
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { kind: "missing" };
+    const firestore = (parsed as { firestore?: unknown }).firestore;
+    if (!firestore || typeof firestore !== "object" || Array.isArray(firestore)) {
+      return { kind: "missing" };
+    }
+    const path = (firestore as { rules?: unknown }).rules;
+    return typeof path === "string" && path.trim()
+      ? { kind: "path", path }
+      : { kind: "missing" };
+  } catch (error) {
+    return {
+      kind: "invalid",
+      message: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -53,6 +105,50 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     written.push(rel);
   };
 
+  const prepareRules = async (path: string): Promise<string | undefined> => {
+    const existing = await readFile(join(root, path), "utf8").catch(() => null);
+    if (existing === null) {
+      await put(path, renderFirestoreRules());
+      if (!written.includes(path)) {
+        notes.push(
+          `Could not read or create the rules file ${path}; left its CI check off. ` +
+            "Verify the file and permissions before enabling hq-rules-path.",
+        );
+        return undefined;
+      }
+      const configWarning = written.includes("firebase.json")
+        ? " This run also created firebase.json, so the next Firebase deploy will use this file."
+        : "";
+      notes.push(
+        `Created the deployed rules file ${path} with deny-by-default starter policy.` +
+          configWarning +
+          " Review its match blocks before the next Firebase deploy.",
+      );
+      return path;
+    }
+
+    const update = updateRoleHelpers(existing);
+    if (!update) {
+      skipped.push(`${path} (rules file has no complete generated role marker block)`);
+      notes.push(
+        `Kept the deployed rules file ${path} and did not enable its generated CI check because ` +
+          "it has no " +
+          "complete generated role marker block. Review `morpheus hq rules --print`, add the " +
+          "block inside the database match scope, then enable hq-rules-path.",
+      );
+      return undefined;
+    }
+
+    skipped.push(path);
+    if (update.changed) {
+      notes.push(
+        `${path} has stale generated role helpers. Run ` +
+          `\`morpheus hq rules --rules-path ${path}\` before the first PR.`,
+      );
+    }
+    return path;
+  };
+
   // --- the manifest and the instructions -----------------------------------
   await put("morpheus.json", t.manifest(seed));
   await put("AGENTS.md", t.agents(seed));
@@ -72,10 +168,71 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     written.push("CLAUDE.md -> AGENTS.md");
   }
 
+  // Claude Code's session hook. Informational, not blocking — the refusal
+  // lives in the `morpheus` CLI, which every provider goes through and which
+  // needs no per-project wiring. Codex reads AGENTS.md instead, which is why
+  // the instruction is in both and the enforcement is in neither.
+  await put(".claude/settings.json", t.claudeSettings());
+
   // --- agent memory ---------------------------------------------------------
   await put(".agent/README.md", t.agentReadme());
   await put(".agent/decisions.md", t.decisions(seed));
   await put(".agent/learned.md", t.learned());
+
+  // --- shared product contracts --------------------------------------------
+  //
+  // Product event meaning is shared across deployed surfaces, even when the
+  // transports differ. Keep that contract outside apps/ so web, mobile and
+  // backend clients cannot silently invent incompatible names and properties.
+  if (seed.kind !== "internal") {
+    const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
+    let discovery: Awaited<ReturnType<typeof findAnalyticsContracts>> | null = null;
+    try {
+      discovery = await findAnalyticsContracts(schemaDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        discovery = { contracts: [], unreadable: [] };
+      } else {
+        skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/ (could not inspect)`);
+        notes.push(
+          `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/, so no analytics contract was written. ` +
+            "Fix the directory or its permissions before re-running init.",
+        );
+      }
+    }
+
+    if (discovery?.unreadable.length) {
+      skipped.push(
+        ...discovery.unreadable.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name} (unreadable)`),
+      );
+      notes.push(
+        `Could not inspect ${discovery.unreadable.join(", ")} in ${ANALYTICS_SCHEMA_DIRECTORY}/, ` +
+          "so no analytics contract was written. Fix or remove the unreadable files before re-running init.",
+      );
+    } else if (discovery !== null && discovery.contracts.length > 0) {
+      for (const name of discovery.contracts) {
+        skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/${name}`);
+      }
+      notes.push(
+        `Kept the existing analytics contract${discovery.contracts.length === 1 ? "" : "s"}: ` +
+          discovery.contracts.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name}`).join(", ") +
+          ".",
+      );
+    } else if (discovery !== null) {
+      await put(ANALYTICS_SCHEMA_PATH, t.analyticsSchema());
+      if (written.includes(ANALYTICS_SCHEMA_PATH)) {
+        notes.push(
+          `Created ${ANALYTICS_SCHEMA_PATH} as the provider-neutral product event contract. ` +
+            "Populate ProjectAnalyticsEvents before treating analytics setup as complete. This " +
+            "scaffold is not an importable runtime package until the project adds package metadata.",
+        );
+      }
+    }
+    if (discovery !== null) {
+      await put("packages/shared/README.md", t.sharedReadme());
+      await put("packages/shared/schema/README.md", t.sharedSchemaReadme());
+    }
+  }
 
   // Git does not track empty directories, so each carries a README explaining
   // itself. Without one the directory silently does not exist on clone — which
@@ -93,8 +250,17 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     await put(`hq/product/${kind}/README.md`, t.productReadme(kind, seed));
   }
 
+  // The inbox is written for **every** kind, not only those whose directory
+  // list includes `hq/team`. `manifest()` declares `context.handle`, which
+  // puts `hq/team/<owner>.md` into the session-freshness required set — so a
+  // kind that skipped the file would scaffold a project whose gate can never
+  // open: the record reads ABSENT, therefore unresolvable, therefore
+  // `refresh_required` forever, with no offline escape and no `requiredInputs`
+  // override that reaches it. A declared record that is never created is the
+  // worst shape this protocol has.
+  await put(`${INBOX_DIR}/${seed.owner}.md`, t.inbox(seed));
+
   if (dirs.includes(INBOX_DIR)) {
-    await put(`${INBOX_DIR}/${seed.owner}.md`, t.inbox(seed));
 
     // Meeting notes get their directory up front rather than on first use.
     // The folder carries a redaction gate — `redacted: true` is a claim, and
@@ -104,6 +270,45 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     // repos ended up with this and scaffolded ones without, which is the wrong
     // way round.
     await put(`${MEETING_NOTES_DIR}/README.md`, t.meetingNotesReadme());
+  }
+
+  // The company layout declares this as the deployed data gate, and every
+  // documented `hq rules` command names it. Scaffold the deny-by-default
+  // starter so the first CI check is meaningful and its remedy is executable.
+  let rulesPath: string | undefined;
+  if (seed.kind === "company") {
+    const canonicalRules = "infra/firebase/firestore.rules";
+    const firebaseConfig = await readOptional(join(root, "firebase.json"));
+    const configured =
+      firebaseConfig.kind === "content"
+        ? configuredFirestoreRules(firebaseConfig.content)
+        : null;
+    if (configured?.kind === "path") {
+      rulesPath = await prepareRules(configured.path);
+    } else if (firebaseConfig.kind === "unreadable") {
+      const reason = `firebase.json could not be read: ${firebaseConfig.message}`;
+      skipped.push(`${canonicalRules} (${reason})`);
+      notes.push(
+        `${reason}. Left the Firestore gate alone and did not guess a rules path; fix or ` +
+          "confirm the configuration.",
+      );
+    } else if (firebaseConfig.kind === "content") {
+      const reason =
+        configured?.kind === "invalid"
+          ? `firebase.json could not be parsed: ${configured.message}`
+          : "firebase.json does not name one string Firestore rules path";
+      skipped.push(`${canonicalRules} (${reason})`);
+      notes.push(`${reason}. Kept the configuration and did not guess a path; fix or confirm it.`);
+    } else if (await exists(join(root, "firestore.rules"))) {
+      skipped.push(`${canonicalRules} (root firestore.rules already exists)`);
+      notes.push(
+        "Kept the existing root firestore.rules and did not create a second rules file. " +
+          "Set hq-rules-path to the file Firebase actually deploys.",
+      );
+    } else {
+      await put("firebase.json", t.firebaseConfig(canonicalRules));
+      rulesPath = await prepareRules(canonicalRules);
+    }
   }
 
   // Remaining expected directories get a placeholder so they survive a clone.
@@ -148,7 +353,26 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   const isNode =
     (await exists(join(root, "pnpm-lock.yaml"))) ||
     (await exists(join(root, "pnpm-workspace.yaml")));
-  await put(".github/workflows/ci.yml", t.ci({ node: isNode }));
+  const ciPath = ".github/workflows/ci.yml";
+  const existingCi = await readOptional(join(root, ciPath));
+  await put(ciPath, t.ci({ node: isNode, ...(rulesPath ? { rulesPath } : {}) }));
+  const wiredRulesPath =
+    existingCi.kind === "content"
+      ? /\bhq-rules-path:\s*["']?([^\s"']+)/.exec(existingCi.content)?.[1]
+      : undefined;
+  if (rulesPath && existingCi.kind === "unreadable") {
+    notes.push(
+      `Could not read the existing ${ciPath}: ${existingCi.message}. It was left unchanged; ` +
+        `after fixing access, wire hq-rules-path to ${rulesPath}.`,
+    );
+  } else if (rulesPath && existingCi.kind === "content" && wiredRulesPath !== rulesPath) {
+    notes.push(
+      `The deployed gate is ${rulesPath}, but the existing ${ciPath} does not check that path. ` +
+        "Add this to its pm job to verify the deployed gate:\n" +
+        "    with:\n" +
+        `      hq-rules-path: ${rulesPath}`,
+    );
+  }
   if (!isNode) {
     notes.push(
       "No pnpm lockfile here, so CI wires only the convention checks. Add the\n" +

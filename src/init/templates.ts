@@ -11,6 +11,8 @@
  * follows.
  */
 
+import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
+
 export interface Seed {
   name: string;
   prefix: string;
@@ -20,7 +22,23 @@ export interface Seed {
 }
 
 export const manifest = (s: Seed): string =>
-  JSON.stringify({ name: s.name, prefix: s.prefix, kind: s.kind }, null, 2) + "\n";
+  JSON.stringify(
+    {
+      name: s.name,
+      prefix: s.prefix,
+      kind: s.kind,
+      // The handle puts `hq/team/<handle>.md` into the session-freshness
+      // required set. It is the record a human actually replies in, so an
+      // agent resuming without re-reading it is the failure the protocol
+      // exists for — and the policy cannot derive a handle on its own.
+      context: { handle: s.owner },
+    },
+    null,
+    2,
+  ) + "\n";
+
+export const firebaseConfig = (rulesPath: string): string =>
+  JSON.stringify({ firestore: { rules: rulesPath } }, null, 2) + "\n";
 
 /**
  * The public Morpheus repository.
@@ -196,6 +214,41 @@ Positioning and voice live in \`hq/brand/\` and are **read** from here, not rest
 copy of the messaging is one that drifts from the brand package that generates it.
 `,
 
+  "hq/marketing/seo": (s) => `# SEO
+
+Website search strategy, research, and operating notes for ${s.name}. Use OpenSEO for website
+research; app-store search belongs in \`hq/marketing/aso/\` and uses Appeeky.
+
+## Google Search Console is part of setup
+
+When setting up or materially reviewing SEO, **try to complete Search Console setup yourself in
+the authenticated browser**. Do not leave it as a list of clicks for the user merely because it is
+in a web console.
+
+1. Read the production domain and intended Google identity from \`morpheus.json\` and its account
+   records. Confirm the canonical site, \`robots.txt\`, and \`sitemap.xml\` are publicly reachable.
+2. Open the domain property in Google Search Console. Pin Google links with
+   \`authuser=<email>\` when the identity is known. If the property is absent, create it and complete
+   verification; use the project's canonical DNS provider when a domain-property TXT record is
+   required (Cloudflare unless the §6.1 deviation table records otherwise).
+3. Submit \`sitemap.xml\`; inspect Page indexing, Manual actions, and Security issues; fix safe,
+   in-scope problems; then request indexing for the homepage and a small set of launch-priority
+   routes. An accepted request is a crawl-queue request, **not evidence that Google indexed it**.
+4. Record the property, submitted sitemap, requested URLs, observed status, remaining issues, and
+   check date in this folder. Never validate a fix that was not made, and do not remove an existing
+   Google verification token unless every service using it has been ruled out.
+
+If the browser cannot proceed, **prompt the user immediately for the smallest missing prerequisite**:
+sign in to the named Google account, complete an interactive security check, grant Search Console
+access, approve an external DNS change, or choose between genuinely ambiguous identities. Say what
+you tried and name the exact blocker; do not ask for passwords or verification codes in chat. Keep
+the page ready and resume the setup when the prerequisite is supplied.
+
+Search Console is Google's operational indexing surface; OpenSEO is the SEO research surface.
+Missing one is not a reason to skip the other. See [search tooling and browser-first operation](${SPEC})
+in the specification.
+`,
+
   "hq/finance": (s) => `# Finance
 
 Revenue and expense model, pricing, and runway for ${s.name}.
@@ -239,7 +292,9 @@ verified by reading the diff, it is a test, not an acceptance criterion.
 Deployment configuration, security rules, and environment definitions.
 
 \`firestore.rules\` is partly **generated** — the role helpers between the \`morpheus:begin roles\`
-markers come from the role vocabulary and are rewritten by \`morpheus hq rules\`. The \`match\`
+markers come from the role vocabulary and are rewritten by
+\`morpheus hq rules --rules-path <the rules file firebase.json deploys>\`. Verify that path before
+running the command: the checked file and the deployed file must be the same gate. The \`match\`
 blocks around them are yours. Never hand-edit inside the markers.
 
 Provisioning is not here: consoles, DNS and hosting need credentials this repo should not hold.
@@ -267,6 +322,7 @@ ${morpheusCalloutForAgents()}
 | \`.agent/learned.md\` | Things that have bitten us |
 | \`.agent/worklog/\` | What was attempted per task, including dead ends |
 
+${contextFreshness()}
 ## Working conventions
 
 **Claim work before starting it:**
@@ -330,6 +386,95 @@ Things that have bitten us. Not decisions — those live in \`decisions.md\` —
 worth not rediscovering.
 
 Add an entry when something cost you more than ten minutes and the cause was not obvious.
+`;
+
+/**
+ * The provider-neutral analytics contract every user-facing project owns.
+ *
+ * It is deliberately dependency-free. A fresh Morpheus project may not use
+ * TypeScript at runtime, but the repository still needs one reviewable source
+ * of truth that web, mobile and backend adapters can implement.
+ */
+export const analyticsSchema = (): string => `/**
+ * Canonical analytics contract for this project.
+ *
+ * Keep this file provider-neutral. PostHog, Firebase Analytics and other SDKs
+ * are transports; product event names and properties are product decisions.
+ * Non-TypeScript clients conform to this contract manually until generated
+ * schemas earn their complexity.
+ */
+
+export const ANALYTICS_SCHEMA_VERSION = 1 as const;
+
+export const ANALYTICS_SURFACES = ["web", "ios", "android", "backend"] as const;
+export type AnalyticsSurface = (typeof ANALYTICS_SURFACES)[number];
+
+export const ANALYTICS_ENVIRONMENTS = [
+  "development",
+  "preview",
+  "production",
+  "test",
+] as const;
+export type AnalyticsEnvironment = (typeof ANALYTICS_ENVIRONMENTS)[number];
+
+export type AnalyticsScalar = string | number | boolean;
+
+export type AnalyticsEventProperties<Properties> = {
+  [Property in keyof Properties]: Property extends "event_version"
+    ? number
+    : AnalyticsScalar | undefined;
+} & { event_version: number };
+
+/**
+ * Makes missing event versions and nested property values fail at typecheck.
+ * Naming and sensitive-data semantics still require review.
+ */
+export type DefineAnalyticsEvents<
+  Events extends {
+    [Name in keyof Events]: AnalyticsEventProperties<Events[Name]>;
+  },
+> = Events;
+
+/** Attached by each surface's analytics adapter to every custom event. */
+export interface AnalyticsContext {
+  schema_version: typeof ANALYTICS_SCHEMA_VERSION;
+  surface: AnalyticsSurface;
+  environment: AnalyticsEnvironment;
+  release?: string;
+}
+
+/**
+ * Add product events here as lower_snake_case semantic outcomes.
+ *
+ * Example shape:
+ *   account_created: { event_version: 1; method: "email" | "apple" };
+ *
+ * Every event has an explicit property allowlist and its own event_version.
+ * Do not add personal or sensitive data, health inputs or results, free text,
+ * raw URLs, query strings, or values already supplied by the analytics SDK.
+ * Standard page and screen lifecycle events remain SDK-native.
+ */
+export type ProjectAnalyticsEvents = DefineAnalyticsEvents<
+  ${EMPTY_ANALYTICS_EVENT_MAP}
+>;
+
+export type AnalyticsEventName = Extract<keyof ProjectAnalyticsEvents, string>;
+export type AnalyticsEvent<Name extends AnalyticsEventName> = {
+  name: Name;
+  properties: AnalyticsContext & ProjectAnalyticsEvents[Name];
+};
+`;
+
+export const sharedReadme = (): string => `# Shared product contracts
+
+This package boundary holds provider-neutral contracts and generated assets used by more than one
+deployable surface. Applications under \`apps/\` own their provider adapters and runtime wiring.
+`;
+
+export const sharedSchemaReadme = (): string => `# Shared schemas
+
+Product-owned source contracts live here. This includes analytics event vocabularies as well as
+database document shapes; generated client types and provider-specific adapters live elsewhere.
 `;
 
 export const agentReadme = (): string => `# .agent
@@ -442,7 +587,7 @@ shape, and CI runs it too.
  * The convention checks are toolchain-agnostic — they build the Morpheus CLI
  * from a checkout — so every project gets those.
  */
-export const ci = (opts: { node: boolean } = { node: true }): string => `name: CI
+export const ci = (opts: { node: boolean; rulesPath?: string } = { node: true }): string => `name: CI
 
 # Delegates to the Morpheus reusable workflows, so improving CI for every
 # project is one commit there rather than a change in every repository.
@@ -461,7 +606,13 @@ jobs:${
     : ""
 }
   pm:
-    uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main
+    uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main${
+      opts.rulesPath
+        ? `
+    with:
+      hq-rules-path: ${opts.rulesPath}`
+        : ""
+    }
 
   pr:
     uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
@@ -517,4 +668,99 @@ local/
 /*.jpg
 /*.jpeg
 local/**/*.png
+`;
+
+/**
+ * Claude Code's session hooks.
+ *
+ * One hook, and it is deliberately **informational rather than blocking**.
+ * `context brief` prints what the session is missing and always exits 0; the
+ * refusal lives in the `morpheus` CLI, which is provider-neutral and needs no
+ * per-project wiring. A blocking `PreToolUse` hook would fire on every edit,
+ * and a gate that fires constantly is a gate people disable — permanently,
+ * where the staleness was temporary.
+ *
+ * Codex reads `AGENTS.md`, not this file, which is why the instruction is in
+ * both places and the enforcement is in neither.
+ */
+export const claudeSettings = (): string =>
+  JSON.stringify(
+    {
+      hooks: {
+        SessionStart: [
+          {
+            hooks: [
+              {
+                type: "command",
+                // Bare, not `pnpm morpheus`. `init` writes no `package.json`,
+                // so a scaffolded project has nothing for pnpm to resolve —
+                // and AGENTS.md documents `npm link` putting `morpheus` on
+                // PATH. Wrapping it also puts a layer in front that fails for
+                // its own reasons, which is what `context brief` exiting 0 by
+                // design was meant to avoid.
+                command: "morpheus context brief",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  ) + "\n";
+
+/**
+ * The freshness section every project's AGENTS.md carries.
+ *
+ * Short, and pointing rather than repeating — the reasoning is one copy, in
+ * `architecture.md` §7.10. What has to be local is the two commands and the
+ * list of what is refused, because an agent that has to follow a link to find
+ * out it is about to be refused will not follow it.
+ */
+export const contextFreshness = (): string =>
+  `## Context freshness
+
+**Read \`.agent/decisions.md\`, \`.agent/learned.md\` and your inbox, then:**
+
+\`\`\`sh
+morpheus context refresh
+\`\`\`
+
+This takes a *context receipt* — your assertion that you have loaded current project state,
+fingerprinted against the tip of the trunk — \`origin/main\` unless \`context.trunk\` says
+otherwise, see the fork note below. It is good for five minutes, after which the next governed
+command re-checks the trunk and those records.
+
+**Until you have one, these are refused:** \`pm claim\`, \`pm new\`, \`pm link-issue\`, \`pm block\`,
+\`access sync\`.
+Read-only and mechanical commands are not gated.
+
+\`\`\`sh
+morpheus context status    # what the current lease says, and how old it is
+morpheus context check     # exit non-zero unless fresh — for hooks and scripts
+morpheus context brief     # session start: discards the last receipt, says what to read
+\`\`\`
+
+\`context brief\` is what \`.claude/settings.json\` runs at the start of a session — the only
+Morpheus command this project runs automatically.
+
+**When something has moved**, \`context refresh\` prints what landed on the trunk and which
+records changed. Re-read those, then refresh again — the delta is the point, not the ceremony.
+
+**Offline**, set \`MORPHEUS_OFFLINE=1\` — or pass \`--offline\`. Local work proceeds; anything that leaves the machine —
+pushing a claim, granting access — is still refused, because an unverified trunk is exactly
+when you should not be operating external controls. **\`pm block\` still works**: it writes the
+records and skips the push, telling you the block is not visible to other sessions yet. Blocking
+rather than guessing is the one escape hatch a stuck session needs most.
+
+**On a fork**, set \`"context": { "trunk": "upstream/main" }\` in \`morpheus.json\`. \`origin\` is
+your fork, whose \`main\` sits still while the real trunk moves — measured against it, a lease
+certifies fresh forever.
+
+Receipts live in \`local/sessions/\`, which is gitignored. A receipt says *this working copy read
+these files*, which is true of one machine — committing it would turn a local observation into a
+claim about everyone. Shared evidence stays the worklog, the commit and the PR.
+
+Why this exists, and the failure modes it is built against:
+[\`architecture.md\` §7.10](${MORPHEUS_REPO}/blob/main/architecture.md).
 `;

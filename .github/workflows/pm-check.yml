@@ -19,6 +19,10 @@ on:
         description: Set to "" to skip inbox validation.
         type: string
         default: "hq/team"
+      hq-rules-path:
+        description: Path to firestore.rules; leave empty to skip the generated-helper check.
+        type: string
+        default: ""
       morpheus-ref:
         type: string
         default: "main"
@@ -62,11 +66,18 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Build the Morpheus CLI
+      - name: Install the Morpheus CLI runtime
         working-directory: .morpheus
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
+        run: pnpm install --frozen-lockfile
+
+      # Projects without Firestore rules should not gain a failing check merely
+      # by updating @main. Consumers with the data gate opt in, while reusing
+      # the checkout and build this job has already paid for.
+      - name: Verify generated HQ role helpers
+        if: inputs.hq-rules-path != ''
+        env:
+          MORPHEUS_RULES_PATH: ${{ inputs.hq-rules-path }}
+        run: node .morpheus/dist/cli/index.js hq rules --check --rules-path "$MORPHEUS_RULES_PATH"
 
       - name: Validate frontmatter
         run: node .morpheus/dist/cli/index.js pm validate --dir ${{ inputs.product-dir }}

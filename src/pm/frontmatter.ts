@@ -14,13 +14,20 @@
  * Render a YAML scalar, quoting when the value would otherwise be misparsed.
  *
  * Same rule as `new-item.ts`: a colon in a value ("blocked on: the API key")
- * reads as a nested mapping and breaks the file. Kept separate from that copy
- * because they serialise different things — this one never sees arrays.
+ * reads as a nested mapping and breaks the file. Arrays stay on one line so a
+ * targeted `issues:` edit remains a targeted diff.
  */
-function scalar(value: string): string {
+function scalar(value: string | number): string {
+  if (typeof value === "number") return String(value);
   return /^[\w.\-/]+$/.test(value)
     ? value
     : `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+type FrontmatterValue = string | number | readonly (string | number)[] | null;
+
+function render(value: Exclude<FrontmatterValue, null>): string {
+  return Array.isArray(value) ? `[${value.map(scalar).join(", ")}]` : scalar(value as string | number);
 }
 
 /**
@@ -39,7 +46,7 @@ function scalar(value: string): string {
  */
 export function updateFrontmatter(
   raw: string,
-  fields: Record<string, string | null>,
+  fields: Record<string, FrontmatterValue>,
 ): string {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(raw);
   if (!match) return raw;
@@ -55,7 +62,7 @@ export function updateFrontmatter(
       continue;
     }
 
-    const line = `${key}: ${scalar(value)}`;
+    const line = `${key}: ${render(value)}`;
     if (at === -1) lines.push(line);
     else lines[at] = line;
   }

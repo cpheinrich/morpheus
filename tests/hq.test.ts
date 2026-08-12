@@ -1,5 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Role as RoleSchema } from "../src/access/schema.js";
+import { rules } from "../src/cli/hq.js";
 import { canAccessHq, HQ_ROLES, isAdmin, isRole, ROLES } from "../src/hq/roles.js";
 import { decideFromClaims, decideHqAccess } from "../src/hq/gate.js";
 import { resetCertificateCache, toClaims } from "../src/hq/session-cookie.js";
@@ -204,5 +208,54 @@ describe("firestore rules", () => {
 
   it("returns null when the markers are inverted", () => {
     expect(updateRoleHelpers(`${END}\n${BEGIN}\n`)).toBeNull();
+  });
+});
+
+describe("hq rules command", () => {
+  let root: string;
+  const rulesPath = "infra/firebase/firestore.rules";
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-hq-rules-"));
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("checks the configured rules path in each file state", async () => {
+    const path = join(root, rulesPath);
+    expect(await rules(root, true, rulesPath)).toBe(1);
+
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, "rules_version = '2';\nservice cloud.firestore {}\n", "utf8");
+    expect(await rules(root, true, rulesPath)).toBe(1);
+
+    await writeFile(path, renderFirestoreRules(), "utf8");
+    expect(await rules(root, true, rulesPath)).toBe(0);
+
+    const current = renderFirestoreRules();
+    const stale = current.replace("role() == 'admin';", "role() == 'owner';");
+    await writeFile(path, stale, "utf8");
+    expect(await rules(root, true, rulesPath)).toBe(1);
+    expect(await readFile(path, "utf8")).toBe(stale);
+    expect(await rules(root, false, rulesPath)).toBe(0);
+    expect(await readFile(path, "utf8")).toBe(current);
+  });
+
+  it("refuses to invent parent directories for a mistyped path", async () => {
+    expect(await rules(root, false, rulesPath)).toBe(1);
+    await expect(readFile(join(root, rulesPath), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("requires a non-empty path instead of falling back to the repository root", async () => {
+    expect(await rules(root, true)).toBe(1);
+    expect(await rules(root, true, "")).toBe(1);
+    await expect(readFile(join(root, "firestore.rules"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 });

@@ -27,6 +27,22 @@ on:
       run-lint:
         type: boolean
         default: false
+      build-script:
+        description: Package script that produces the deployable output.
+        type: string
+        default: "build"
+      verify-build-clean:
+        description: >
+          Fail when the build changes committed output inside build-output-directory.
+          Requires build-output-directory.
+        type: boolean
+        default: false
+      build-output-directory:
+        description: >
+          Safe relative path to the tracked generated directory cleaned and checked by a
+          verified build.
+        type: string
+        default: ""
 
 jobs:
   check:
@@ -60,5 +76,36 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Clean committed build output
+        if: ${{ inputs.verify-build-clean && inputs.build-output-directory != '' }}
+        env:
+          BUILD_OUTPUT_DIRECTORY: ${{ inputs.build-output-directory }}
+        run: |
+          case "$BUILD_OUTPUT_DIRECTORY" in
+            "."|"/"|/*|*".."*|*"*"*|*"?"*|*"["*|*":"*)
+              echo "build-output-directory must be a safe relative path" >&2
+              exit 1
+              ;;
+          esac
+          git ls-files --error-unmatch -- "$BUILD_OUTPUT_DIRECTORY" >/dev/null || {
+            echo "build-output-directory '$BUILD_OUTPUT_DIRECTORY' has no tracked files" >&2
+            exit 1
+          }
+          git rm -r -f -- "$BUILD_OUTPUT_DIRECTORY"
+
       - name: Build
-        run: pnpm build
+        env:
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+        run: pnpm run "$BUILD_SCRIPT"
+
+      - name: Verify committed build output
+        if: ${{ inputs.verify-build-clean }}
+        env:
+          BUILD_OUTPUT_DIRECTORY: ${{ inputs.build-output-directory }}
+        run: |
+          if [ -z "$BUILD_OUTPUT_DIRECTORY" ]; then
+            echo "verify-build-clean requires build-output-directory" >&2
+            exit 1
+          fi
+          git add --all -- "$BUILD_OUTPUT_DIRECTORY"
+          git diff --cached --exit-code -- "$BUILD_OUTPUT_DIRECTORY"

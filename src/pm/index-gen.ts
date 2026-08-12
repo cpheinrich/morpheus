@@ -54,13 +54,14 @@ export function renderRoadmap(items: Item<RoadmapItem>[]): string {
       a.data.id.localeCompare(b.data.id),
   );
   return table(
-    ["ID", "Title", "Status", "Pri", "Goal", "PRs"],
+    ["ID", "Title", "Status", "Pri", "Goal", "Issues", "PRs"],
     sorted.map((i) => [
       link(i.data.id, i.path),
       cell(i.data.title),
       i.data.status,
       i.data.priority,
       cell(i.data.goal),
+      i.data.issues.length ? i.data.issues.map((n) => `#${n}`).join(", ") : "—",
       i.data.prs.length ? i.data.prs.map((n) => `#${n}`).join(", ") : "—",
     ]),
   );

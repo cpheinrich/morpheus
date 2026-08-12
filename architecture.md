@@ -92,6 +92,7 @@ acme/
 │   │   └── tests/             # unit + component tests, colocated
 │   ├── ios/                   # SwiftUI — optional
 │   │   └── Tests/
+│   ├── backend/               # workers, services, scheduled jobs — optional
 │   └── hardware/              # designs, BOM, vendors — optional (§19)
 │
 ├── packages/
@@ -117,7 +118,7 @@ acme/
 
 ### `apps/` and `hq/`
 
-**`apps/` is deployed and has users; `hq/` is read, decided, and written down.**
+**`apps/` runs as the deployed product; `hq/` is read, decided, and written down.**
 
 Named `hq/` rather than `company/` because not every project is a company — `cpheinrich.com` is
 personal, Morpheus is an internal tool — and because it makes the naming coherent across all three
@@ -131,6 +132,15 @@ morpheus-kit/hq   the renderer      (package)
 
 Whatever is in `hq/` is what `/hq` shows. Where `apps/` needs a fact from `hq/`, it imports rather
 than copies (§12.3).
+
+`apps/backend/` is the conventional home for a deployable product surface with no client UI: a
+worker, scheduled job, inference service, execution loop, or similar long-running system. Name the
+directory for that stable role rather than for one company's implementation (`trader/`, `bot/`).
+Code that is imported by two or more surfaces still belongs in `packages/shared/`; code that runs
+as the product belongs in `apps/backend/`, even when no other surface imports it.
+That boundary is about ownership, not language: a non-TypeScript backend treats the canonical
+schemas in `packages/shared/schema/` as contracts and conforms manually until a generator for its
+language exists; it does not need to import the TypeScript package.
 
 ### Project kinds
 
@@ -175,7 +185,8 @@ packages/shared/
 ├── generated/              # Style Dictionary output
 │   ├── web/tokens.css, tokens.js, tokens.json
 │   └── ios/Tokens.swift
-├── schema/                 # Firestore collections + document shapes (source of truth)
+├── schema/                 # Product contracts: analytics events and database shapes
+│   ├── analytics.ts
 │   └── *.schema.ts
 ├── generated/schema/       # codegen output
 │   ├── web/types.ts
@@ -197,7 +208,7 @@ canonical and lives in this document. Only *deviations* are recorded.
   "org": "darwin-health",            // groups sibling repos (§17); omit for personal/internal
   "domain": "evo.med",
   "description": "One-sentence description.",
-  "surfaces": { "web": true, "ios": true, "hardware": false },
+  "surfaces": { "web": true, "ios": true, "backend": false, "hardware": false },
   "integrations": ["firebase", "stripe", "posthog", "github", "slack", "openseo"],
   "accounts": { /* which identity per service — see §13.3 */ },
   "hq": {
@@ -219,6 +230,9 @@ The manifest names *which* identity a project operates as; the values live in Se
 (§13). An agent opening the repo reads this and knows which account it is — the thing that most
 often goes wrong when one person runs several companies.
 
+`surfaces` is an optional, advisory declaration for agents; it does not make a surface mandatory or
+cause `init` to scaffold an application directory. Projects record only the surfaces they need.
+
 ## 5. Where each business function lives
 
 | Function | Location | Form |
@@ -226,8 +240,9 @@ often goes wrong when one person runs several companies.
 | Web product | `apps/web/` | Next.js app |
 | iOS product | `apps/ios/` | SwiftUI app |
 | Android product | `apps/android/` | Deferred — bolt-on template later |
+| Backend product | `apps/backend/` | Worker, service, scheduled job, inference or execution loop |
 | Design tokens | `hq/brand/tokens.json` → `packages/shared/` | DTCG JSON → generated (§12.1) |
-| Database schema | `packages/shared/schema/` | TS source → generated types + rules |
+| Shared product schemas | `packages/shared/schema/` | Analytics contracts and database TS source → generated types + rules |
 | Brand messaging | `hq/brand/messaging.json` | Imported by web |
 | Analytics | PostHog Cloud + `/hq` KPIs | SaaS + dashboard |
 | Automations | `.claude/skills/`, `.github/workflows/` | Skills + Actions |
@@ -369,6 +384,21 @@ Both authenticate as remote MCP through claude.ai (§13.4), so neither puts a ke
 Credentials for the *downstream* accounts Appeeky writes to — App Store Connect, Apple Search Ads,
 Play Console — are a separate authorisation, granted once inside Appeeky.
 
+**Search Console setup is part of website SEO setup, not a later human errand.** The agent first
+tries to create or open the domain property in the authenticated browser, complete verification,
+submit the sitemap, inspect indexing plus Manual actions and Security issues, and request indexing
+for a small set of launch-priority URLs. A request entering Google's crawl queue is recorded as a
+request, never as proof of indexing. The project-local checklist and dated operating record live in
+`hq/marketing/seo/`.
+
+If the browser cannot proceed, the agent asks for the **smallest exact prerequisite** — the named
+Google identity to sign into, an interactive security check, Search Console permission, approval
+for an external DNS change, or a choice between genuinely ambiguous identities — and resumes once
+it is supplied. It does not replace the attempt with generic click instructions, ask for a password
+or verification code in chat, or mark setup complete because access could not be checked. This is
+the browser-reachable-work rule in §7.3 applied to SEO. Search Console is Google's operational
+indexing surface; OpenSEO remains the research surface, and neither substitutes for the other.
+
 ### Built and maintained in Morpheus
 
 | Function | Why build it |
@@ -409,8 +439,8 @@ needed.
 ### 7.2 Conventions and how they are enforced
 
 The conventions: every PR includes tests where testable, updates docs when behaviour changes,
-carries a staging link, updates roadmap status, states a test plan, lists open questions, and
-records self-review.
+carries a staging link, updates roadmap status, states a test plan, lists open questions, records
+self-review, and closes every GitHub issue the roadmap item declares it resolves.
 
 | Layer | Mechanism | Strength |
 |---|---|---|
@@ -421,7 +451,11 @@ records self-review.
 `morpheus check pr` fails the build when: source files changed without corresponding test changes
 and no `skip-tests` justification is present; a public API changed without a `docs/` change; the PR
 body is missing required sections; or the roadmap item named by the branch was not moved to
-`review`.
+`review`. A roadmap item created with `pm new roadmap --issue 123`, or updated with
+`pm link-issue <ID> 123`, carries `issues: [123]` in its frontmatter and displays it in the generated
+roadmap; `check pr` requires `Closes #123` (or another GitHub closing keyword) in the PR body.
+The structured field distinguishes completion from a merely related issue mention, while GitHub's
+native merge behaviour performs the actual close.
 
 Instructions get ignored eventually. A failing check does not.
 
@@ -465,14 +499,20 @@ morpheus pm block MO-051 --needs "which model, and whose subscription pays for i
 ```
 
 Which sets `status: blocked` and `needs:` on the item, writes a worklog entry with
-`outcome: blocked`, and raises an open `❗` item in the owner's inbox. **A blocked item must name
-its unblocker** — `needs` is required by the schema when the status is `blocked`, so "I am
-blocked" without "here is what I need" does not validate. It would otherwise be a crash with
-better manners.
+`outcome: blocked`, raises an open `❗` item in the owner's inbox, refreshes the generated roadmap,
+and commits and pushes those records on the claimed branch. Online it refuses the protected trunk
+before writing; the explicit offline path may write locally because it never commits or pushes.
+**A blocked item must name its unblocker** — `needs` is required by the schema when the
+status is `blocked`, so "I am blocked" without "here is what I need" does not validate. It would
+otherwise be a crash with better manners. Calling it on an already-blocked item replaces the reason,
+including repairing the hand-edited `blocked`-without-`needs` state that the schema rejects.
 
 A blocked item keeps its claim: the partial work lives on that branch, and re-taking it means
 checking it out rather than starting over. But **blocked is not in-flight** — it holds a branch
 and consumes no lane, or one unanswered question would permanently cost a slot (§7.8).
+The blocked branch is therefore not merged. Block records that must reach trunk travel on a
+records-only branch staking no item; `check pr` points there instead of falsely suggesting
+`status: review`.
 
 #### What blocked is not
 
@@ -698,12 +738,12 @@ Two assertions, both local and gitignored under `local/sessions/`:
 | **Context receipt** | *I read these records, at these fingerprints, against this remote SHA* |
 | **Session lease** | *That receipt was checked against the remote at this time, and held* |
 
-**The remote SHA is the tip of `origin/main`**, not the branch tip. The whole `fresh` verdict turns
-on that field, so it gets one meaning: did the canonical trunk move under this session, which is
-what another agent merging does. A branch's own tip moving is a real but separate concern.
+**The remote SHA is the tip of the trunk**, not the branch tip. The whole `fresh` verdict turns on
+that field, so it gets one meaning: did the canonical trunk move under this session, which is what
+another agent merging does. Which ref *is* the trunk is declared rather than assumed — see below.
 
-Only the lease is a file today. Nothing constructs a receipt — `readInputs` supplies the `inputs`
-half and the rest has no producer, so a receipt store lands with the wiring item below.
+One file: `morpheus context refresh` builds the receipt and the lease that carries it, and the
+lease is what persists. The receipt is not stored separately because it has no separate reader.
 
 **A lease has a five-minute term**, which is the whole difference between the two. Past it the
 lease states a historical fact, not a fact about now, so it degrades to `refresh_required` rather
@@ -711,8 +751,11 @@ than carrying its verdict forward. So does one whose check time is unreadable, o
 because a clock moved.
 
 Three states, and the third is the point: an unreachable remote is `unknown`, never assumed
-unchanged. **`requireFresh` throws on anything but `fresh`** — the guard fails closed, and offline
-is a blocked state rather than a permitted one until the offline exception exists.
+unchanged. **The guard refuses anything but `fresh`** — `gate()`, against the `GATED` table of
+commands and their `Reach`. It fails closed, and offline is *contained* rather than blocked: see
+below. (`requireFresh` is the policy module's own boundary and has no production caller; `gate` is
+what commands go through, because refusing well needs the reach and the message as well as the
+verdict.)
 
 Two rules keep the artefacts honest, both learned by getting them wrong first:
 
@@ -754,8 +797,98 @@ change loud rather than silently lossy.
 
 The policy is pure and provider-neutral, sitting behind a `SessionAdapter` that runners implement
 but do not own — so CI exercises fresh, stale, expired, offline and never-loaded paths with a mock,
-needing neither GitHub nor a Codex or Claude account. **Nothing calls the guard yet** — the policy
-makes the answer computable, and MO-26-08-05-16.27.56 wires it to hooks, commands, and runners.
+needing neither GitHub nor a Codex or Claude account.
+
+#### Where the gate actually is
+
+**Inside the `morpheus` CLI**, not in per-project configuration. Every project already shells out
+to `pm claim`, `pm new`, `pm link-issue`, `pm block` and `access sync` — those *are* the governed
+actions — so the
+check is live everywhere the moment a project bumps its git dependency. Nothing to scaffold,
+nothing to migrate, and no per-provider wiring. Provider hooks reach one runner each for the same
+effort, which is why they are the last layer rather than the first.
+
+| Surface | Reaches | Per-project work |
+|---|---|---|
+| The CLI gate | every project, agent and human | none — bump the dependency |
+| `check pr`'s `context-drift` | every PR | already centralised |
+| `.claude/settings.json` | Claude Code sessions | one scaffolded file, informational |
+| `AGENTS.md` | anything that reads instructions | scaffolded |
+
+**Five commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
+knowing what merged), `pm new` (filing an item that already exists), `pm link-issue` (attaching an
+issue to obsolete or unrelated work), `pm block` (escalating a question the inbox answered),
+`access sync` (granting from an allowlist that moved). A gate that
+also fired on `pm index` or `check pr` would train people to route around it, and **the
+routing-around is permanent where the staleness was temporary.**
+
+**A hook may not certify, but it may discard.** The lease is keyed on the worktree, so a session
+starting where another refreshed minutes ago would inherit its ✓ — the failure this whole section
+is about, arriving through the surface added to prevent it. `context brief` discards the stored
+receipt before reporting: that asserts nothing, so it does not violate the rule below, and it is
+what makes the lease session-scoped rather than merely working-copy-scoped. It is also **entirely
+local** — everything it prints comes from the records, so the hook in front of every session makes
+no network call at all. It also lands correctly
+on a session *resumed* after a context compaction, which is exactly when an agent has lost what it
+read. Discarding rather than downgrading, because flipping the stored status does not survive the
+next check — which re-observes from the receipt, and the receipt is still valid.
+
+**The branch is part of what a receipt is about.** A `git checkout` inside the five minutes puts
+different canonical records on disk, so `check` compares `receipt.branch` before trusting the term.
+When a re-observation proves the receipt still true on a different branch, `check` **re-anchors it
+there** — otherwise the mismatch is permanent for the session and every gated command goes back to
+the network. It sits in `check` rather than at a call site because two prescribed workflows switch
+branches: `pm claim` checks out the branch it stakes, and resuming blocked work is a bare `git
+checkout`. Fixing either call site would leave the other.
+
+**Taking a receipt is a command, never a side effect.** `morpheus context refresh` is the agent
+asserting it has loaded current state. A hook that took one at session start would certify the
+records were read by the act of not reading them, so the Claude hook prints `context brief` and
+takes nothing. That command exits 0 by design rather than by `|| true`, so a missing binary does
+not get swallowed the way a stale lease would be.
+
+**The term is how often the network is consulted.** Inside five minutes the last observation
+stands and the check costs one file read. Past it, the stored *receipt* — not the stored verdict —
+is re-observed against `git ls-remote origin main` and the records as they are now. `ls-remote`
+rather than `rev-parse origin/main`, which reads a local ref only as current as the last fetch:
+the exact looks-checked-is-not failure the lease exists to catch.
+
+**The trunk is declared, not assumed.** `origin` is not always canonical — on a fork it *is* the
+fork, whose `main` sits still while the real trunk moves, and a lease measured against it certifies
+`fresh` indefinitely. `context.trunk` in `morpheus.json` names it; undeclared, `origin/HEAD` is
+asked before falling back to `origin/main`. And a ref that does not exist is distinguished from a
+remote that cannot be reached (`ls-remote --exit-code`), because both produce an `unknown` lease
+and only one of them is a network problem — conflated, a repo whose default branch is `master` was
+permanently refused with a message blaming connectivity.
+
+**A command that writes a required record re-fingerprints it — but only what it actually read.**
+`pm block` appends to the owner's inbox, which the required set names, so the next gated command
+past the term would be refused for drift the session authored. Re-fingerprinting keeps the
+assertion *true* rather than having it re-asserted blindly, and refusals with no informational
+content are the fastest route to the gate being routed around.
+
+The caller passes the content it read immediately *before* writing, and the receipt is updated only
+where that still matches what it asserts. Otherwise this is the one path that can **destroy**
+evidence rather than fail to act on it: `check` returns early for an in-term lease without
+re-reading anything, so a human replying in the inbox inside the five minutes is invisible — and a
+blind re-fingerprint would absorb their reply into the receipt, which is the only record of what
+was read.
+
+**Offline is contained, not permitted.** `MORPHEUS_OFFLINE=1` lets local work proceed on an
+`unknown` lease and still refuses anything that leaves the machine. `pm block` is the one command
+that changes shape rather than being refused: it writes the records and skips the push, reporting
+that the block is not yet visible. AGENTS.md tells an agent facing real ambiguity to block rather
+than guess, and refusing that offline leaves guessing or stopping — for exactly the session that
+most needs the third option. It has to be *declared*: an
+unreachable remote is `unknown` either way, and inferring the exception from the symptom would
+make every network blip an unlocked gate.
+
+**CI answers the question it can.** A receipt is local and gitignored, so no workflow can validate
+one — it is one machine's observation by construction. What CI *can* see is whether the canonical
+records moved on the base branch while a PR was open, which is the same freshness question from
+outside. `check pr` reports it as a warning: a moving trunk is nobody's mistake, and blocking on it
+would fail PRs for something outside the author's control at write time. Refusal belongs at the
+local gate; visibility belongs here.
 
 ## 8. Project management as files
 
@@ -1121,6 +1254,40 @@ events/month — a ceiling below the free Cloud tier.
 `/hq/analytics` renders a handful of KPIs pulled server-side and cached, each linking out to the
 corresponding PostHog dashboard. We do not rebuild PostHog's UI.
 
+#### 10.3.1 Event contracts
+
+Every user-facing project owns one provider-neutral event contract at
+`packages/shared/schema/analytics.ts`. It is in `packages/shared/`, not an app: web, iOS, Android
+and backend surfaces should import or conform to the same product vocabulary even when their SDKs
+differ. PostHog configuration and transport code stay in the consuming app.
+
+The contract follows five rules:
+
+1. Custom event names are lower snake case and describe a semantic outcome or state
+   (`account_created`, not `signup_button_clicked`). Provider-native lifecycle events such as
+   `$pageview` and `$screen` remain provider-native rather than being wrapped under new names.
+2. Every event has an explicit property allowlist and a numeric `event_version`, conventionally a
+   positive integer literal. TypeScript enforces the numeric shape; review enforces the integer
+   convention. Common metadata is limited to `schema_version`, `surface`, `environment`, and
+   optional `release`; SDK-supplied browser, device, session, acquisition, and geographic properties
+   are not copied into events.
+3. Event properties are low-cardinality dimensions used by a named decision or metric. They never
+   include personal or sensitive data, health inputs or results, free text, raw URLs, or query
+   strings. Analytics is not a shadow product database.
+4. Projects extend their own event map. Morpheus does not impose universal `signup`, `activation`,
+   or `purchase` events whose meanings would differ between products. Cross-project reporting is
+   built from explicit project-to-metric mappings in `/hq/analytics`, not false name equivalence.
+5. `morpheus init` scaffolds the dependency-free TypeScript contract for company and personal
+   projects without overwriting an existing file. Non-TypeScript clients conform manually until
+   repeated implementations justify schema generation.
+
+Runtime adapters remain project-owned for now. A `morpheus-kit/analytics` helper is extracted only
+after a second real client proves the common initialization, privacy, and validation behavior; it
+will consume the project contract rather than own the event vocabulary.
+
+`morpheus doctor` reports missing, unreadable, duplicate, and still-empty analytics contracts as
+warnings. These are adoption signals rather than governed-command failures.
+
 ## 11. The `/hq` dashboard
 
 Mounted at `<domain>/hq` in the project's own Next.js app — not a separate deployment — so it
@@ -1171,7 +1338,22 @@ derived from one exported list rather than restated:
 |---|---|---|
 | The claim **writer** — `morpheus access sync` | `Role` zod enum, built from `ROLES` | typecheck |
 | The **route** gate — a project's `proxy.ts` | `canAccessHq()` from `morpheus-kit/hq` | typecheck |
-| The **data** gate — `firestore.rules` | generated helpers | `morpheus hq rules --check` |
+| The **data** gate — `firestore.rules` | generated helpers | `morpheus hq rules --rules-path <deployed path> --check` |
+
+Projects using the data gate enable that last check in the reusable PM workflow instead of
+rebuilding the CLI in a second job:
+
+```yaml
+jobs:
+  pm:
+    uses: cpheinrich/morpheus/.github/workflows/pm-check.yml@main
+    with:
+      hq-rules-path: infra/firebase/firestore.rules
+```
+
+The empty default leaves the check off because a project with no `firestore.rules` has no data
+gate to verify. The explicit path keeps the check attached to the file Firebase actually deploys;
+`morpheus hq rules --rules-path infra/firebase/firestore.rules` uses the same contract locally.
 
 Darwin's first cut carried a comment asking the next reader to keep two lists identical by hand.
 An invariant a comment is asking for is one the code should be enforcing — a role added on one
@@ -1317,8 +1499,8 @@ ships here rather than per project because the read side is where the open redir
 `raw.startsWith("/")` — the check most people write — admits `//evil.example`.
 
 ```sh
-morpheus hq rules            # write or refresh the generated block in firestore.rules
-morpheus hq rules --check    # fail when it has drifted — for CI
+morpheus hq rules --rules-path infra/firebase/firestore.rules
+morpheus hq rules --check --rules-path infra/firebase/firestore.rules
 ```
 
 Only the role helpers are generated, between markers. The `match` blocks stay the project's own:
@@ -1589,7 +1771,21 @@ billing account.
 
 `morpheus init` writes the manifest, `README.md`, `AGENTS.md` with `CLAUDE.md` symlinked to it,
 the `.agent/` records, the `hq/` tree for the project's kind, an inbox, a CI workflow delegating to
-the reusable ones, and `.gitignore` entries. Then it registers the prefix and prints `init status`.
+the reusable ones, and `.gitignore` entries. A company scaffold also writes the deny-by-default
+Firestore gate at `infra/firebase/firestore.rules` and a minimal `firebase.json` that deploys that
+same file. Then it registers the prefix and prints `init status`.
+
+The Firestore branch is migration-aware because a second security file is worse than no generated
+one. A fresh company gets the canonical rules file, deployment config and matching
+`hq-rules-path` CI input together. A pre-existing canonical file goes through the same adoption
+check. When an existing `firebase.json` names one string rules path, that path is authoritative: a
+missing file receives the starter with an explicit deployment warning; a complete generated block
+is wired (and reported if stale); an unmarked or partial file is preserved with CI left off and an
+explicit `hq rules --print` migration. Unreadable, malformed, multi-database or otherwise ambiguous
+configurations are preserved and reported rather than guessed. Without `firebase.json`, an
+established root `firestore.rules` is likewise preserved and
+left unwired until its deployed path is confirmed. Existing CI files are never overwritten; the
+result repeats the exact input block until the deployed path is wired.
 
 **Every project points back here.** `README.md` and `AGENTS.md` both carry a Morpheus callout —
 the repo link, `architecture.md`, and these operating principles — and `AGENTS.md` carries it
@@ -1612,9 +1808,10 @@ source of improvements to it.
 established repository — so *initialise a new project* and *bring an old one up to the standard*
 are the same command rather than two that drift apart.
 
-**It provisions nothing.** No GCP, no DNS, no Vercel — those live in someone else's console and
-need credentials this command should not hold. Drawing the seam there means `init` can never be
-blocked on a token.
+**It provisions nothing.** Repository-local deployment configuration and a deny-by-default rules
+file are scaffolding, not a cloud mutation. No GCP, no DNS, no Vercel — those live in someone else's
+console and need credentials this command should not hold. Drawing the seam there means `init` can
+never be blocked on a token.
 
 > **Gotchas.** `CLAUDE.md` is a **symlink**, not a copy; two files would drift invisibly until an
 > agent acted on the stale one. `hq/brand/` gets a `.gitkeep`, not a `README.md`, because the brand
@@ -1765,10 +1962,9 @@ flowchart TB
 
 **Net: one interactive login per Google identity, one pasted token per Cloudflare account.**
 
-> **Gotcha.** `morpheus-kit` publishes under `cpheinrich`, but `darwin-health` and `lakinacapital`
-> repos install it. GitHub Packages permissions are owner-scoped and the automatic `GITHUB_TOKEN`
-> only reaches packages owned by the same account as the repo, so **cross-org consumption requires
-> an explicit PAT with `read:packages`** in each consuming repo's Actions secrets.
+> **Git dependencies need no package credential.** `morpheus-kit` is installed from the public
+> `cpheinrich/morpheus` repository, including by repos under other owners. No registry or
+> `read:packages` PAT sits in a consuming project's Actions secrets.
 
 ### 13.4 MCP credentials
 
@@ -1805,10 +2001,11 @@ types inferred from them** — validation at boundaries and types for free. A ge
 Swift structs and Firestore rules from the same source is deferred until iOS actually starts.
 
 **Most of the value comes from having one file, not from the codegen.** A single
-`packages/shared/schema/user.schema.ts` that both surfaces must conform to already prevents drift,
-because there is an unambiguous answer to "what shape is this document." Codegen removes the manual
-transcription step, which matters once a second consumer exists and not before — and a codegen
-pipeline is another CI step that can break.
+`packages/shared/schema/user.schema.ts` that every surface must conform to already prevents drift,
+because there is an unambiguous answer to "what shape is this document." A non-TypeScript backend
+conforms to that contract manually as described in §3. Codegen removes the manual transcription
+step, which matters once a second consumer exists and not before — and a codegen pipeline is
+another CI step that can break.
 
 ```ts
 // packages/shared/schema/entry.schema.ts — the source of truth
@@ -1940,7 +2137,7 @@ an explicit IAM grant, which makes the rollup opt-in per dataset rather than imp
 | Mechanism | Reaches projects by | Updates | Use for |
 |---|---|---|---|
 | **Templates** | Copied at `init` / `add` | Never automatically | Scaffolding that should diverge |
-| **The kit** | npm dependency | Version bump | Runtime code that should not diverge |
+| **The kit** | Public git dependency | Ref bump | Runtime code that should not diverge |
 | **Reusable workflows** | Referenced by ref | Instantly, on ref | CI logic |
 
 The test for the first two: *if I improve this, do I want every existing project to get the
@@ -1949,10 +2146,15 @@ improvement?* Yes → kit. No → template.
 ### 18.1 Morpheus's own structure
 
 **One package, not many.** `morpheus-kit` ships everything with subpath exports, so a project
-imports only what it uses: one version number, one install, one registry entry. Heavy or
+imports only what it uses: one ref, one install, no registry. Heavy or
 surface-specific dependencies are **optional peer dependencies**, so a web-only project never
 installs iOS tooling. Splitting one package into several later is mechanical; starting split and
 merging later is not.
+
+The git dependency includes committed `dist/` output and exposes no install-time or npm git-build
+script. Consumers therefore unpack ready-to-run JavaScript rather than compiling Morpheus inside
+their own install. Morpheus contributors run `pnpm compile`; CI rebuilds and rejects any diff so the
+committed artifacts cannot drift from `src/`.
 
 ```
 morpheus/
@@ -2036,7 +2238,7 @@ anything encodes them.
 **Stage 1 — Extract what is already needed twice.** Each item has two consumers today: reusable
 workflows (`web-ci`, `pr-check`) across all repos; `morpheus-kit/pm` for Darwin and Evo;
 `morpheus-kit/analytics` for both, since the wrong event schema is expensive to fix later; and
-`morpheus-kit/hq` for Darwin, then Evo. Publishing infrastructure comes with this stage. **The
+`morpheus-kit/hq` for Darwin, then Evo. Git-dependency packaging comes with this stage. **The
 `/hq` auth model (§11.1) lands first within it**, because everything else in `/hq` sits behind it
 and retrofitting auth is materially harder than starting with it.
 
@@ -2100,22 +2302,17 @@ a placeholder.
 
 ## 21. Open questions
 
-**Q1 — Event schema design.** Analytics is stage 1 and the event schema is the expensive thing to
-get wrong. Do we define a small canonical set every project emits (`signup`, `activation`,
-`purchase`, `retention_ping`) so cross-project dashboards work, and let projects extend it? Or is
-each project's schema fully its own?
-
-**Q2 — Which agent does what.** Codex is better at image asset generation. Should `AGENTS.md`
+**Q1 — Which agent does what.** Codex is better at image asset generation. Should `AGENTS.md`
 encode a division of labour (Codex for assets and bulk mechanical edits, Claude for architecture
 and review), or stay agent-agnostic and let you route by hand?
 
-**Q3 — `hq/` for non-software businesses.** The structure assumes a software product. If a company
+**Q2 — `hq/` for non-software businesses.** The structure assumes a software product. If a company
 is purely hardware or services, `apps/` is nearly empty. Support it, or explicitly out of scope?
 
-**Q4 — Worklog growth.** `.agent/worklog/` grows monotonically. When does it need compaction, and
+**Q3 — Worklog growth.** `.agent/worklog/` grows monotonically. When does it need compaction, and
 should a scheduled agent fold old entries into `learned.md`?
 
-**Q5 — `personal` projects that handle sensitive data.** `heinrich.money` is `kind: personal` by
+**Q4 — `personal` projects that handle sensitive data.** `heinrich.money` is `kind: personal` by
 collaborator count but handles financial data, which implies real auth, bank-aggregator
 credentials, and a stricter security posture than `cpheinrich.com` needs. Does `personal` need a
 `sensitive: true` flag that pulls in the security scaffolding a `company` project gets, or is that

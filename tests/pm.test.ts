@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseClaimedNumbers } from "../src/pm/claim.js";
 import { findDuplicateIds, parseArtifact, parseDir } from "../src/pm/parse.js";
 import {
@@ -13,8 +13,9 @@ import {
   spliceIndex,
   writeIndex,
 } from "../src/pm/index-gen.js";
-import { index } from "../src/cli/pm.js";
+import { create, index, linkIssue as linkIssueCli } from "../src/cli/pm.js";
 import { createItem, nextId } from "../src/pm/new-item.js";
+import { linkIssue, parseIssueNumber } from "../src/pm/issues.js";
 import { Goal, RoadmapItem } from "../src/pm/schema.js";
 
 const execFileAsync = promisify(execFile);
@@ -52,6 +53,21 @@ describe("schema", () => {
     expect(parsed.priority).toBe("P2");
     expect(parsed.owner).toBe("agent");
     expect(parsed.prs).toEqual([]);
+    expect(parsed.issues).toEqual([]);
+  });
+
+  it("accepts only positive GitHub issue numbers", () => {
+    const item = {
+      id: "MO-002",
+      title: "Something",
+      status: "backlog" as const,
+      created: "2026-07-01",
+      updated: "2026-07-01",
+    };
+
+    expect(RoadmapItem.safeParse({ ...item, issues: [70, 76] }).success).toBe(true);
+    expect(RoadmapItem.safeParse({ ...item, issues: [0] }).success).toBe(false);
+    expect(RoadmapItem.safeParse({ ...item, issues: ["70"] }).success).toBe(false);
   });
 
   it("rejects a malformed id", () => {
@@ -316,6 +332,15 @@ describe("index generation", () => {
     expect(renderRoadmap(items)).toContain("[MO-001](./MO-001.md)");
   });
 
+  it("shows declared GitHub issues on the generated board", async () => {
+    await seed("roadmap", "MO-001", `${VALID_RM}\nissues: [70, 76]`);
+    const { items } = await parseArtifact(product, "roadmap");
+    const rendered = renderRoadmap(items);
+
+    expect(rendered).toContain("| ID | Title | Status | Pri | Goal | Issues | PRs |");
+    expect(rendered).toContain("| #70, #76 | #12 |");
+  });
+
   it("replaces only the marked block, preserving surrounding prose", () => {
     const existing = `# Roadmap\n\nIntro prose.\n\n${BEGIN}\nOLD\n${END}\n\nTrailing note.\n`;
     const next = spliceIndex(existing, "NEW");
@@ -385,6 +410,85 @@ describe("new item", () => {
     expect(issues).toHaveLength(0);
     expect(items[0]!.data.title).toBe("Wire up analytics");
     expect(items[0]!.data.priority).toBe("P1");
+  });
+
+  it("records the GitHub issues a roadmap item promises to close", async () => {
+    await createItem({
+      productDir: product,
+      kind: "roadmap",
+      prefix: "MO",
+      title: "Close the loop",
+      issues: [70],
+      cwd: product,
+    });
+
+    const { items, issues } = await parseArtifact(product, "roadmap");
+    expect(issues).toHaveLength(0);
+    expect(items[0]!.data.issues).toEqual([70]);
+  });
+
+  it("accepts --issue for a roadmap item through the CLI boundary", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-pm-issue-"));
+    const productDir = join(root, "hq/product");
+    await mkdir(productDir, { recursive: true });
+    await writeFile(join(root, "morpheus.json"), '{"prefix":"MO"}\n');
+
+    expect(await create(productDir, "roadmap", "Close the loop", { issue: "70" }, root)).toBe(0);
+    const { items, issues } = await parseArtifact(productDir, "roadmap");
+    expect(issues).toHaveLength(0);
+    expect(items[0]!.data.issues).toEqual([70]);
+  });
+
+  it.each(["0", "-1", "7e1", " 70 ", "not-a-number"])("refuses invalid --issue value %s before writing", async (issue) => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await create(product, "roadmap", "Close the loop", { issue }, product)).toBe(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("positive GitHub issue number"));
+    error.mockRestore();
+  });
+
+  it("parses only positive safe decimal issue numbers", () => {
+    expect(parseIssueNumber("70")).toBe(70);
+    for (const raw of ["0", "-1", "7e1", " 70 ", "9007199254740992"]) {
+      expect(parseIssueNumber(raw)).toBeNull();
+    }
+  });
+
+  it("adds, sorts and deduplicates issues on an existing roadmap item", async () => {
+    await seed("roadmap", "MO-001", `${VALID_RM}\nissues: [76]`);
+
+    const first = await linkIssue(product, "mo-001", 70, new Date("2026-08-08T19:00:00-07:00"));
+    expect(first).toMatchObject({ issues: [70, 76], written: true });
+    const raw = await readFile(first.path, "utf8");
+    expect(raw).toContain("issues: [70, 76]");
+    expect(raw).toContain("updated: 2026-08-08");
+
+    expect(await linkIssue(product, "MO-001", 70)).toMatchObject({ issues: [70, 76], written: false });
+  });
+
+  it("links an issue through the CLI boundary and refreshes the index", async () => {
+    await seed("roadmap", "MO-001", VALID_RM);
+
+    expect(await linkIssueCli(product, "MO-001", "70")).toBe(0);
+    const { items, issues } = await parseArtifact(product, "roadmap");
+    expect(issues).toEqual([]);
+    expect(items[0]!.data.issues).toEqual([70]);
+    expect(await readFile(join(product, "roadmap", "README.md"), "utf8")).toContain("#70");
+  });
+
+  it("refuses a missing item or malformed issue without writing", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await linkIssueCli(product, "MO-404", "70")).toBe(1);
+    expect(await linkIssueCli(product, "MO-404", "7e1")).toBe(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("No roadmap item MO-404"));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("positive decimal integer"));
+    error.mockRestore();
+  });
+
+  it("refuses --issue on non-roadmap items", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await create(product, "goals", "Wrong kind", { issue: "70" }, product)).toBe(1);
+    expect(error).toHaveBeenCalledWith("--issue is only valid for roadmap items.");
+    error.mockRestore();
   });
 
   // The bug this replaces: `pm new goals` wrote `MO-G-001` against a `GOAL_ID`
@@ -469,6 +573,7 @@ describe("new item", () => {
     const [file] = (await readdir(join(product, "roadmap"))).filter((f) => f.endsWith(".md"));
     const raw = await readFile(join(product, "roadmap", file!), "utf8");
     expect(raw).not.toContain("goal:");
+    expect(raw).not.toContain("issues:");
   });
 });
 

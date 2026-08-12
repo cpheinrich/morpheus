@@ -8,11 +8,15 @@
   "surfaces": {
     "web": false,
     "ios": false,
+    "backend": false,
     "hardware": false
   },
   "heartbeat": {
     "ceiling": 3,
     "dispatch": false
+  },
+  "context": {
+    "handle": "cpheinrich"
   },
   "hq": {
     "route": "/hq",

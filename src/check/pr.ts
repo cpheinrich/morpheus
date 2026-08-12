@@ -13,6 +13,14 @@ import { parseArtifact } from "../pm/parse.js";
 export interface PrContext {
   /** PR body markdown. */
   body: string;
+  /**
+   * Files that changed **on the base branch** since this branch left it — not
+   * files this PR changed. CI cannot see a context receipt (`local/` is
+   * gitignored, and a receipt is one machine's observation anyway), so this is
+   * the freshness question CI *can* answer: did the canonical records move
+   * under this branch while it was being written?
+   */
+  trunkChanges?: string[];
   /** Branch name, e.g. rm-014-calorie-pipeline. */
   branch: string;
   /** Paths changed in the PR, repo-relative. */
@@ -62,9 +70,42 @@ function isRealReason(reason: string): boolean {
   return reason.length >= 4 && !NON_REASONS.has(reason.toLowerCase());
 }
 
+function stripHtmlComments(body: string): string {
+  return body.replace(/<!--[\s\S]*?-->/g, "");
+}
+
+/** Remove places where Markdown presents text as an example rather than prose. */
+function stripCode(body: string): string {
+  return body
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/~~~[\s\S]*?~~~/g, "")
+    .replace(/`[^`\r\n]*`/g, "");
+}
+
+/** Whether the PR body uses one of GitHub's same-repository closing keywords. */
+export function closesIssue(body: string, issue: number): boolean {
+  const keyword = String.raw`(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)`;
+  // The pull-request template carries an example inside an HTML comment.
+  // GitHub does not treat hidden template guidance as closure intent, so the
+  // verifier must not let that example satisfy the rule either.
+  const visible = stripCode(stripHtmlComments(body));
+  // `_` is a regex word character but also Markdown emphasis, so `\b` would
+  // reject `_Resolves #70_`. Exclude letters and digits explicitly instead.
+  return new RegExp(String.raw`(?:^|[^A-Za-z0-9])${keyword}\s+#${issue}(?!\d)`, "im").test(
+    visible,
+  );
+}
+
 const SOURCE = /^src\/.*\.(ts|tsx)$/;
 const TEST = /(^tests\/|\.test\.tsx?$)/;
 const DOCS = /^(docs\/|architecture\.md$|README\.md$|AGENTS\.md$)/;
+/**
+ * The records a session is required to have loaded. Kept as a pattern rather
+ * than imported from `session/lease.ts` so this check stays a pure function of
+ * paths — `CANONICAL_INPUTS` is per-project and resolved from a manifest, and
+ * `hq/team/` is matched wholesale because CI does not know whose branch it is.
+ */
+const CANONICAL = /^(AGENTS\.md$|CLAUDE\.md$|\.agent\/(decisions|learned)\.md$|hq\/team\/[^/]+\.md$)/;
 const GENERATED = /README\.md$/;
 
 // `roadmapIdFromBranch` now lives in `pm/id.ts`, beside the patterns it has to
@@ -83,7 +124,10 @@ export { roadmapIdFromBranch };
  */
 export function hasSection(body: string, heading: string): boolean {
   const want = heading.trim().toLowerCase();
-  const lines = body.split("\n");
+  // Template guidance is not author input. Without stripping it, a heading
+  // followed only by `<!-- what did you test? -->` satisfies the error-level
+  // test-plan rule before the author writes one character.
+  const lines = stripHtmlComments(body).split("\n");
 
   let inSection = false;
   for (const line of lines) {
@@ -214,15 +258,52 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
           `Create it with \`morpheus pm new roadmap "<title>"\`, then \`morpheus pm claim\` ` +
           `the id it allocates — claiming derives the branch, so the two cannot disagree.`,
       });
-    } else if (!["review", "shipped"].includes(item.data.status)) {
-      findings.push({
-        level: "error",
-        rule: "roadmap-status",
-        message:
-          `${id} is "${item.data.status}" — set it to "review" when opening a PR, ` +
-          `so the board does not lag the work.`,
-      });
+    } else {
+      const missingClosures = item.data.issues.filter((issue) => !closesIssue(body, issue));
+      if (missingClosures.length) {
+        findings.push({
+          level: "error",
+          rule: "issue-closure",
+          message:
+            `${id} declares GitHub issue${missingClosures.length === 1 ? "" : "s"} ` +
+            `${missingClosures.map((issue) => `#${issue}`).join(", ")}, but the PR body does not ` +
+            `close ${missingClosures.length === 1 ? "it" : "them"}. Add ` +
+            missingClosures.map((issue) => `\"Closes #${issue}.\"`).join(" ") +
+            " so GitHub closes the issue when this PR merges.",
+        });
+      }
+
+      if (!["review", "shipped"].includes(item.data.status)) {
+        findings.push({
+          level: "error",
+          rule: "roadmap-status",
+          message:
+            item.data.status === "blocked"
+              ? `${id} is "blocked" and must keep its claimed branch for the partial work. ` +
+                `Do not set it to "review" or merge this branch. Publish the block records on ` +
+                `a branch that stakes no item (for example "inbox-<YYYY-MM-DD>").`
+              : `${id} is "${item.data.status}" — set it to "review" when opening a PR, ` +
+                `so the board does not lag the work.`,
+        });
+      }
     }
+  }
+
+  // The freshness protocol, from the outside. A warning rather than an error:
+  // a trunk that moved mid-branch is nobody's mistake, and blocking on it
+  // would fail PRs for something outside the author's control at write time.
+  // The local gate is where refusal belongs; this is where it becomes visible
+  // to whoever reads the check.
+  const staleContext = (ctx.trunkChanges ?? []).filter((f: string) => CANONICAL.test(f));
+  if (staleContext.length) {
+    findings.push({
+      level: "warning",
+      rule: "context-drift",
+      message:
+        `Canonical records changed on the base branch while this one was open: ` +
+        `${staleContext.join(", ")}. Merge the base and re-read them — ` +
+        `\`morpheus context refresh\` prints what landed.`,
+    });
   }
 
   // Behaviour changes should land with the docs that describe them.

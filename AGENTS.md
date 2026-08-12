@@ -37,14 +37,15 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 
 ```sh
 pnpm install
-pnpm build && npm link      # once — puts `morpheus` on PATH for every project
+pnpm compile && npm link    # once — puts `morpheus` on PATH for every project
 pnpm typecheck             # tsc --noEmit
 pnpm test                  # vitest run
 pnpm test:rules            # generated firestore.rules vs the emulator — needs Java
-pnpm build                 # tsc -p tsconfig.build.json
+pnpm compile               # tsc -p tsconfig.build.json; refreshes committed dist/
 pnpm morpheus pm validate   # validate hq/product frontmatter
 pnpm morpheus pm index      # regenerate README index tables
-pnpm morpheus pm new roadmap "Title here" --priority P1
+pnpm morpheus pm new roadmap "Title here" --priority P1 [--issue 123]
+pnpm morpheus pm link-issue MO-014 123  # attach an issue to existing work
 pnpm morpheus pm migrate-ids --check   # integer roadmap ids → the dated scheme (MO-057)
 pnpm morpheus pm block MO-051 --needs "what would unblock this"
 pnpm morpheus pm unblock MO-051
@@ -59,9 +60,55 @@ pnpm morpheus brand build          # regenerate from an edited hq/brand/answers.
 pnpm morpheus init                 # scaffold a project — safe to re-run, never overwrites
 pnpm morpheus init status          # how far through project setup this repo is
 pnpm morpheus access sync          # apply morpheus.json's allowlist to Firebase custom claims
-pnpm morpheus hq rules             # write/refresh the role helpers in firestore.rules
-pnpm morpheus hq rules --check     # fail if they have drifted from the role vocabulary
+pnpm morpheus hq rules --rules-path infra/firebase/firestore.rules
+pnpm morpheus hq rules --check --rules-path infra/firebase/firestore.rules
+pnpm morpheus context refresh      # take a context receipt — after reading the records
+pnpm morpheus context status       # what the current lease says, and how old it is
 ```
+
+## Context freshness
+
+**Read `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md`, then:**
+
+```sh
+morpheus context refresh
+```
+
+This takes a *context receipt* — your assertion that you have loaded current project state,
+fingerprinted against the tip of `origin/main`. It is good for **five minutes**, after which the
+next governed command re-checks the trunk and those records rather than trusting the old verdict.
+
+**Until you have one, these are refused:** `pm claim`, `pm new`, `pm link-issue`, `pm block`,
+`access sync`. Nothing
+else is gated — a check that fires on `pm index` trains you to route around it, and the
+routing-around outlives the staleness.
+
+```sh
+morpheus context status    # what the current lease says, and how old it is
+morpheus context check     # exit non-zero unless fresh — for hooks and scripts
+morpheus context brief     # session start: discards the last receipt, says what to read
+```
+
+**When something has moved**, `context refresh` prints what landed on the trunk and which records
+changed. Re-read those and refresh again — the delta is the point, not the ceremony. **Do not
+refresh without reading.** The receipt is your assertion, and a receipt taken to clear a gate is
+the one failure mode the whole protocol cannot detect.
+
+**Offline**, set `MORPHEUS_OFFLINE=1` — or pass `--offline`. Local work proceeds; anything that leaves the machine —
+pushing a claim, granting access — stays refused, because an unverified trunk is exactly when you
+should not be operating external controls. **`pm block` still works**: it writes the records and
+skips the push, telling you the block is not visible to other sessions yet. Blocking rather than
+guessing is the one escape hatch a stuck session needs most, so it is not the one to take away.
+
+**On a fork**, set `"context": { "trunk": "upstream/main" }` in `morpheus.json`. `origin` is
+your fork, whose `main` sits still while the real trunk moves — measured against it, a lease
+certifies fresh forever. `morpheus doctor` reports a trunk that does not resolve.
+
+Receipts live in `local/sessions/`, keyed by worktree, and are gitignored. A receipt says *this
+working copy read these files*, which is true of one machine — committing it would turn a local
+observation into a claim about everyone. Shared evidence stays the worklog, the commit and the PR.
+
+Why it exists and what it is built against: [`architecture.md` §7.10](./architecture.md).
 
 ## Working conventions
 
@@ -118,8 +165,11 @@ morpheus pm unblock MO-051    # once answered
 ```
 
 This sets `status: blocked` and `needs:` on the item, writes a worklog entry, and raises an open
-`❗` item in the inbox. **Escalating is cheap; shipping half-baked is expensive** — a plausible
-guess costs far more to discover later than a question costs to ask now.
+`❗` item in the inbox, refreshes the roadmap index, then commits and pushes those records on the
+claimed branch. Online it refuses the protected trunk before writing anything; the explicitly
+offline path may write locally there because it never commits or pushes. **Escalating is cheap;
+shipping half-baked is expensive** — a plausible guess costs far more to discover later than a
+question costs to ask now.
 
 `needs` is required by the schema when an item is blocked, so say what would actually unblock you.
 "Blocked on Chris" is not an answer; "which model, and whose subscription pays for it" is.
@@ -132,6 +182,11 @@ print exactly this:
 git checkout mo-051-agent-code-review
 morpheus pm unblock MO-051
 ```
+
+Do not open a PR from the blocked branch: it must retain the partial work. If the block records
+need to land on trunk, copy them to a records branch that stakes no item (for example
+`inbox-YYYY-MM-DD`). `check pr` names this route and explicitly refuses the tempting but false
+answer of changing the item to `review`.
 
 **Browser-reachable work is not blocked.** If the only thing standing between you and finishing is
 that something has to happen in a browser — a console to click through, a dashboard to read, a
@@ -150,6 +205,13 @@ changes nothing. The rule applies only when browser use is the *single, entire* 
 - A test plan: what you verified and how
 - Any open questions you could not resolve, stated plainly rather than guessed at
 - The roadmap item moved to `review`
+- `Closes #<number>` for every GitHub issue declared in the roadmap item's `issues:` field
+
+When an issue becomes roadmap work, create it with `morpheus pm new roadmap "<title>" --issue 123`.
+For an existing item, use `morpheus pm link-issue <ID> 123`. Both write structured closure intent
+into the item, and the generated roadmap makes the linked issues visible. `check pr` then requires GitHub's closing
+keyword in the PR body, so merging the fix cannot leave the issue open as a second, stale backlog.
+An issue merely mentioned as related is not declared and is not closed.
 
 **Except a PR that only touches records** — `hq/team/` and `.agent/`. An inbox cycle belongs to
 no feature and has no item to move. Branch it as `inbox-<YYYY-MM-DD>`, staking no id, and
@@ -172,7 +234,7 @@ reads the check.
 **A waiver needs a real reason.** `skip-tests: yes` is refused, as are `true`, `n/a` and an empty
 value. Say what cannot be tested and why.
 
-**Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm morpheus pm index`, and commit
+**Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm compile && pnpm morpheus pm index`, and commit
 any index changes. CI runs the same checks and will fail otherwise.
 
 ## Branch protection

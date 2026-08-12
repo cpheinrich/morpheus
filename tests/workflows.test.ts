@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
+import { ci as ciTemplate } from "../src/init/templates.js";
 
 /**
  * The workflows are shipped to every project, so a mistake here breaks repos
@@ -41,11 +42,20 @@ describe("callers match what they call", () => {
    */
   it("passes only inputs the called workflow declares", async () => {
     const files = (await readdir(DIR)).filter((f) => f.endsWith(".yml"));
+    const workflows: Array<{ file: string; wf: Workflow }> = [];
+    for (const file of files) workflows.push({ file, wf: await read(file) });
+    workflows.push({
+      file: "generated company ci.yml",
+      wf: load(
+        ciTemplate({ node: true, rulesPath: "infra/firebase/firestore.rules" }),
+      ) as Workflow,
+    });
 
-    for (const file of files) {
-      const wf = await read(file);
+    for (const { file, wf } of workflows) {
       for (const [name, job] of Object.entries(wf.jobs ?? {})) {
-        const local = job.uses?.match(/^\.\/\.github\/workflows\/(.+)$/)?.[1];
+        const local =
+          job.uses?.match(/^\.\/\.github\/workflows\/(.+)$/)?.[1] ??
+          job.uses?.match(/^cpheinrich\/morpheus\/\.github\/workflows\/(.+)@.+$/)?.[1];
         if (!local || !job.with) continue;
 
         const called = (await read(local)) as {
@@ -82,6 +92,40 @@ describe("heartbeat.yml", () => {
       on?: { workflow_call?: { inputs?: { dispatch?: { default?: unknown } } } };
     };
     expect(wf.on?.workflow_call?.inputs?.dispatch?.default).toBe(false);
+  });
+});
+
+describe("pm-check.yml", () => {
+  it("offers the HQ rules check without breaking projects that have no rules", async () => {
+    const wf = (await read("pm-check.yml")) as {
+      on?: {
+        workflow_call?: {
+          inputs?: Record<string, { type?: string; default?: unknown }>;
+        };
+      };
+      jobs?: Record<
+        string,
+        {
+          steps?: Array<{
+            name?: string;
+            if?: string;
+            env?: Record<string, string>;
+            run?: string;
+          }>;
+        }
+      >;
+    };
+    const input = wf.on?.workflow_call?.inputs?.["hq-rules-path"];
+    expect(input).toEqual(expect.objectContaining({ type: "string", default: "" }));
+
+    const step = wf.jobs?.["pm"]?.steps?.find(
+      (candidate) => candidate.name === "Verify generated HQ role helpers",
+    );
+    expect(step?.if).toContain("inputs.hq-rules-path != ''");
+    expect(step?.env?.MORPHEUS_RULES_PATH).toBe("${{ inputs.hq-rules-path }}");
+    expect(step?.run).toBe(
+      'node .morpheus/dist/cli/index.js hq rules --check --rules-path "$MORPHEUS_RULES_PATH"',
+    );
   });
 });
 
@@ -131,6 +175,17 @@ describe("agent-review.yml", () => {
 });
 
 describe("ci.yml", () => {
+  it("compiles Morpheus and rejects stale committed artifacts", async () => {
+    const wf = await read("ci.yml");
+    expect(wf.jobs?.node?.with).toEqual(
+      expect.objectContaining({
+        "build-script": "compile",
+        "verify-build-clean": true,
+        "build-output-directory": "dist",
+      }),
+    );
+  });
+
   it("calls the agent review rung", async () => {
     const wf = await read("ci.yml");
     expect(wf.jobs?.["agent-review"]?.uses).toContain("agent-review.yml");
@@ -148,6 +203,33 @@ describe("ci.yml", () => {
     for (const [name, job] of Object.entries(wf.jobs ?? {})) {
       const needs = [job.needs ?? []].flat();
       expect(needs, `${name} must not depend on agent-review`).not.toContain("agent-review");
+    }
+  });
+});
+
+describe("committed build output", () => {
+  it("cleans stale files and stages additions before comparing", async () => {
+    const wf = (await read("node-ci.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
+    };
+    const steps = wf.jobs?.check?.steps ?? [];
+    const clean = steps.find((step) => step.name === "Clean committed build output");
+    const verify = steps.find((step) => step.name === "Verify committed build output");
+
+    expect(clean?.run).toContain("git ls-files --error-unmatch");
+    expect(clean?.run).toContain('git rm -r -f -- "$BUILD_OUTPUT_DIRECTORY"');
+    expect(clean?.run).not.toContain("--ignore-unmatch");
+    expect(clean?.run).toContain('*"*"*|*"?"*|*"["*|*":"*');
+    expect(verify?.run).toContain("verify-build-clean requires build-output-directory");
+    expect(verify?.run).toContain('git add --all -- "$BUILD_OUTPUT_DIRECTORY"');
+    expect(verify?.run).toContain("git diff --cached --exit-code");
+  });
+
+  it("consumer workflows use the selected ref's packaged CLI", async () => {
+    for (const file of ["agent-review.yml", "heartbeat.yml", "pm-check.yml", "pr-check.yml"]) {
+      const raw = await readFile(join(DIR, file), "utf8");
+      expect(raw, file).toContain("pnpm install --frozen-lockfile");
+      expect(raw, file).not.toContain("pnpm compile");
     }
   });
 });

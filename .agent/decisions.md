@@ -16,8 +16,10 @@ behave. This file holds judgment calls, which could have gone the other way.
 **`hq/`, not `company/`** — not every project is a company, and it makes the three layers
 coherent: `hq/` is the data, `/hq` is the view, `morpheus-kit/hq` is the renderer.
 
-**`apps/` + `hq/` split** — `apps/` is deployed and has users; `hq/` is read, decided, and
-written down. Cross-references solved by importing, never by a sync step.
+**`apps/` + `hq/` split** — `apps/` runs as the deployed product; `hq/` is read, decided, and
+written down. A headless worker, service, scheduled job, inference system, or execution loop is an
+`apps/backend/` surface even when no person interacts with it directly. Cross-references are solved
+by importing, never by a sync step.
 
 **One file per roadmap item, with a generated index** — several agents run concurrently, and a
 single `roadmap.md` conflicts on every status change.
@@ -58,7 +60,7 @@ public repo.
 
 **Do not publish `morpheus-kit` to npm** — 2026-07-29. Publishing only helps strangers install
 it, which is the opposite of the goal. CI checks the repo out and builds the CLI; local use is
-`pnpm build && npm link`.
+`pnpm compile && npm link`.
 
 **Runtime code reaches projects as a git dependency** — 2026-07-29. `npm link` does not survive a
 Vercel build and a workflow reference cannot be imported, so components and token modules need to
@@ -69,6 +71,13 @@ than a semver range, which for four projects and one author is simpler, not hard
 Distribution splits three ways and the word "kit" was hiding it: the **CLI** is linked or built from
 a checkout, the **workflows** are referenced by path from the public repo, and only **runtime
 imports** need dependency resolution at all.
+
+**Git-dependency runtime artifacts are committed, never built by the consumer** — 2026-08-09.
+`dist/` travels with the public repo and CI fails if `pnpm compile` changes it. The root manifest
+deliberately has no `build`, `prepare`, `prepack`, or install lifecycle script: npm otherwise rebuilds
+a git dependency, and pnpm 11 refuses the prepare phase unless every consumer allowlists the exact
+resolved codeload URL. The repository command is named `compile` so the package stays inert when
+installed from a moving git ref.
 
 **A licence cannot prevent forks of a public repo** — GitHub's Terms of Service grant every
 user forking rights through GitHub's own functionality, regardless of the attached licence. If
@@ -556,3 +565,13 @@ published, so there is nothing to drift.
 `hq/inbox`, the same rule `pm migrate-ids` applies to prose mentions. Live documentation gets
 repointed because somebody will act on it; a record of July is a record of the past. The test is
 *will somebody follow this link*, not *is this string current*.
+
+**Analytics vocabulary is project-owned and provider-neutral** — 2026-08-11. User-facing projects
+carry `packages/shared/schema/analytics.ts`; app-level PostHog or Firebase code only transports it.
+Names are semantic lower-snake-case outcomes, each event owns an explicit property allowlist and
+version, and common context is limited to schema version, surface, environment and release.
+
+**Why:** web and mobile need one product vocabulary, but nominally universal events such as
+`activation` conceal product-specific meanings and make cross-project reporting look more
+comparable than it is. Cross-project KPIs therefore map each project's explicit events to a metric
+later. The scaffold stays dependency-free and runtime helpers wait for a second proven consumer.

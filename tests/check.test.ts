@@ -6,6 +6,7 @@ import {
   checkPr,
   formatFindings,
   hasSection,
+  closesIssue,
   roadmapIdFromBranch,
   waiverReason,
   type PrContext,
@@ -14,19 +15,19 @@ import { hasNoSubstantiveChange, isRecordsOnly } from "../src/paths.js";
 
 let product: string;
 
-const RM = (id: string, status: string) => `id: ${id}
+const RM = (id: string, status: string, issues: number[] = []) => `id: ${id}
 title: An item that exists
 status: ${status}
 priority: P1
 owner: agent
 prs: []
-created: 2026-07-01
+${issues.length ? `issues: [${issues.join(", ")}]\n` : ""}created: 2026-07-01
 updated: 2026-07-28`;
 
-async function seedRoadmap(id: string, status: string) {
+async function seedRoadmap(id: string, status: string, issues: number[] = []) {
   const dir = join(product, "roadmap");
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, `${id}.md`), `---\n${RM(id, status)}\n---\n\nBody.\n`);
+  await writeFile(join(dir, `${id}.md`), `---\n${RM(id, status, issues)}\n---\n\nBody.\n`);
 }
 
 /** A PR that satisfies every rule, so each test can break exactly one thing. */
@@ -93,9 +94,38 @@ describe("hasSection", () => {
     expect(hasSection("## Test plan\n\n## Next\n\nstuff", "Test plan")).toBe(false);
   });
 
+  it("rejects a heading whose only content is hidden template guidance", () => {
+    expect(hasSection("## Test plan\n\n<!-- What did you run? -->\n", "Test plan")).toBe(false);
+  });
+
   it("is case insensitive and works at any heading level", () => {
     expect(hasSection("#### test PLAN\n\ncontent", "Test plan")).toBe(true);
   });
+});
+
+describe("closesIssue", () => {
+  it.each(["Closes #70", "fix #70", "FIXED #70", "Resolves #70"])(
+    "recognises GitHub closing syntax: %s",
+    (body) => expect(closesIssue(body, 70)).toBe(true),
+  );
+
+  it("does not confuse a mention or a different issue for closure", () => {
+    expect(closesIssue("Related to #70. Closes #700.", 70)).toBe(false);
+  });
+
+  it("ignores the pull-request template example inside an HTML comment", () => {
+    expect(closesIssue("<!-- If applicable: Closes #70. -->", 70)).toBe(false);
+  });
+
+  it.each(["**Closes #70**", "(Closes #70)", "_Resolves #70_"])(
+    "accepts ordinary Markdown around the closing line: %s",
+    (body) => expect(closesIssue(body, 70)).toBe(true),
+  );
+
+  it.each(["`Closes #70`", "```text\nCloses #70\n```", "~~~\nFixes #70\n~~~"])(
+    "ignores closing syntax presented as code: %s",
+    (body) => expect(closesIssue(body, 70)).toBe(false),
+  );
 });
 
 describe("checkPr", () => {
@@ -145,9 +175,39 @@ describe("checkPr", () => {
     expect(findings.find((f) => f.rule === "roadmap-status")?.level).toBe("error");
   });
 
+  it("routes a blocked item to a records branch without telling it to claim completion", async () => {
+    await seedRoadmap("EV-014", "blocked\nneeds: an owner decision");
+    const findings = await checkPr(goodPr());
+    const rule = findings.find((finding) => finding.rule === "roadmap-status");
+
+    expect(rule?.level).toBe("error");
+    expect(rule?.message).toContain("must keep its claimed branch");
+    expect(rule?.message).toContain("inbox-<YYYY-MM-DD>");
+    expect(rule?.message).toContain('Do not set it to "review"');
+  });
+
   it("accepts an item already marked shipped", async () => {
     await seedRoadmap("EV-014", "shipped");
     expect(await checkPr(goodPr())).toHaveLength(0);
+  });
+
+  it("requires every issue declared by the roadmap item to close on merge", async () => {
+    await seedRoadmap("EV-014", "review", [70, 76]);
+    const findings = await checkPr(goodPr({ body: `${goodPr().body}\nCloses #70.\n` }));
+    const rule = findings.find((f) => f.rule === "issue-closure");
+
+    expect(rule?.level).toBe("error");
+    expect(rule?.message).toContain("#76");
+    expect(rule?.message).not.toContain("#70, #76");
+  });
+
+  it("passes when the PR closes every issue the item declares", async () => {
+    await seedRoadmap("EV-014", "review", [70, 76]);
+    const findings = await checkPr(
+      goodPr({ body: `${goodPr().body}\nCloses #70.\nResolves #76.\n` }),
+    );
+
+    expect(findings.find((f) => f.rule === "issue-closure")).toBeUndefined();
   });
 
   it("blocks a branch referencing an item that does not exist", async () => {
@@ -385,5 +445,40 @@ describe("waiverReason", () => {
 
   it("does not read a key that is part of a longer word", () => {
     expect(waiverReason("noskip-tests: x", "skip-tests")).toBeNull();
+  });
+});
+
+describe("context drift", () => {
+  it("flags canonical records that moved on the base while the branch was open", async () => {
+    // CI cannot see a context receipt — `local/` is gitignored, and a receipt
+    // is one machine's observation anyway. This is the freshness question CI
+    // *can* answer: did the records move under this branch?
+    const findings = await checkPr(
+      goodPr({ trunkChanges: [".agent/decisions.md", "src/unrelated.ts"] }),
+    );
+    const drift = findings.find((f) => f.rule === "context-drift");
+
+    expect(drift?.level).toBe("warning");
+    expect(drift?.message).toContain(".agent/decisions.md");
+    expect(drift?.message).not.toContain("src/unrelated.ts");
+  });
+
+  it("warns rather than blocks, because a moving trunk is nobody's mistake", async () => {
+    const findings = await checkPr(goodPr({ trunkChanges: ["hq/team/cpheinrich.md"] }));
+    expect(findings.filter((f) => f.level === "error")).toEqual([]);
+  });
+
+  it("says nothing when the trunk moved somewhere that is not canonical", async () => {
+    const findings = await checkPr(
+      goodPr({ trunkChanges: ["src/pm/parse.ts", "hq/product/roadmap/README.md"] }),
+    );
+    expect(findings.find((f) => f.rule === "context-drift")).toBeUndefined();
+  });
+
+  it("says nothing when the caller supplies no trunk history at all", async () => {
+    // Absent is not empty: a checkout with no base ref must not read as "the
+    // trunk did not move", which is the whole sentinel rule one layer up.
+    const findings = await checkPr(goodPr());
+    expect(findings.find((f) => f.rule === "context-drift")).toBeUndefined();
   });
 });

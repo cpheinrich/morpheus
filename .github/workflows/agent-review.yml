@@ -80,11 +80,9 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Build the Morpheus CLI
+      - name: Install the Morpheus CLI runtime
         working-directory: .morpheus
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
+        run: pnpm install --frozen-lockfile
 
       # What has changed since anyone last *looked*, not since the merge base.
       #

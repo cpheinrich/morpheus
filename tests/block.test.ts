@@ -1,8 +1,9 @@
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { block, BlockError, unblock } from "../src/pm/block.js";
+import { block as blockCli } from "../src/cli/pm.js";
 import { updateFrontmatter } from "../src/pm/frontmatter.js";
 import { appendOpenItem, lastItemNumber } from "../src/inbox/append.js";
 import { parseInbox } from "../src/inbox/parse.js";
@@ -21,10 +22,10 @@ prs: []
 created: 2026-07-01
 updated: 2026-07-28`;
 
-async function seedItem(frontmatter = ITEM, id = "MO-051") {
+async function seedItem(frontmatter = ITEM, id = "MO-051", file = `${id}.md`) {
   const dir = join(product, "roadmap");
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, `${id}.md`), `---\n${frontmatter}\n---\n\n## Context\n\nBody.\n`);
+  await writeFile(join(dir, file), `---\n${frontmatter}\n---\n\n## Context\n\nBody.\n`);
 }
 
 beforeEach(async () => {
@@ -138,6 +139,17 @@ describe("appendOpenItem", () => {
     expect(parseInbox("cpheinrich.md", out).items[0]!.roadmap).toBe("MO-051");
   });
 
+  it("uses the real roadmap filename when it carries a slug", () => {
+    const out = appendOpenItem(
+      null,
+      { ...item, roadmapFile: "MO-051-agent-code-review.md" },
+      meta,
+    );
+    expect(out).toContain(
+      "[MO-051](../product/roadmap/MO-051-agent-code-review.md)",
+    );
+  });
+
   it("omits the roadmap tail when there is no id", () => {
     const { roadmap: _drop, ...noId } = item;
     const out = appendOpenItem(null, noId, meta);
@@ -183,12 +195,13 @@ describe("block", () => {
     owner: "cpheinrich",
   });
 
-  it("writes all three records", async () => {
+  it("writes all three records and refreshes the generated index", async () => {
     await seedItem();
     const r = await block(opts());
 
-    expect(r.written).toHaveLength(3);
+    expect(r.written).toHaveLength(4);
     expect(r.inboxCreated).toBe(true);
+    expect(r.inboxPath).toBe(join(root, "hq/team/cpheinrich.md"));
 
     const item = await readFile(join(product, "roadmap/MO-051.md"), "utf8");
     expect(item).toContain("status: blocked");
@@ -200,6 +213,9 @@ describe("block", () => {
 
     const inbox = await readFile(join(root, "hq/team/cpheinrich.md"), "utf8");
     expect(inbox).toContain("Blocked: Agent code review");
+
+    const index = await readFile(join(product, "roadmap/README.md"), "utf8");
+    expect(index).toContain("| blocked |");
   });
 
   it("leaves the board valid — a blocked item still parses", async () => {
@@ -255,6 +271,27 @@ describe("block", () => {
     await expect(block({ ...opts(), id: "MO-999" })).rejects.toThrow(/No roadmap item/);
   });
 
+  it("repairs an already-blocked item whose missing needs made it invalid", async () => {
+    await seedItem(ITEM.replace("status: in-progress", "status: blocked"));
+
+    const result = await block(opts());
+    expect(result.alreadyBlocked).toBe(true);
+    const { items, issues } = await parseArtifact(product, "roadmap");
+    expect(issues).toEqual([]);
+    expect(items[0]!.data.status).toBe("blocked");
+    expect(items[0]!.data.needs).toContain("which model");
+  });
+
+  it("links a blocked inbox item to its slugged roadmap file", async () => {
+    await seedItem(ITEM, "MO-051", "MO-051-agent-code-review.md");
+    await block(opts());
+
+    const inbox = await readFile(join(root, "hq/team/cpheinrich.md"), "utf8");
+    expect(inbox).toContain(
+      "[MO-051](../product/roadmap/MO-051-agent-code-review.md)",
+    );
+  });
+
   it("survives a needs containing a colon", async () => {
     await seedItem();
     await block({ ...opts(), needs: "decide: Claude or Codex" });
@@ -262,6 +299,44 @@ describe("block", () => {
     const { items, issues } = await parseArtifact(product, "roadmap");
     expect(issues).toEqual([]);
     expect(items[0]!.data.needs).toBe("decide: Claude or Codex");
+  });
+});
+
+describe("pm block CLI safeguards", () => {
+  it("refuses the trunk branch before writing anything", async () => {
+    const { execFileSync } = await import("node:child_process");
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+    await seedItem();
+    const before = await readFile(join(product, "roadmap/MO-051.md"), "utf8");
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const result = await blockCli(product, root, "MO-051", {
+      owner: "cpheinrich",
+      needs: "which model",
+    });
+
+    expect(result.code).toBe(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("protected trunk branch \"main\""));
+    expect(await readFile(join(product, "roadmap/MO-051.md"), "utf8")).toBe(before);
+    error.mockRestore();
+  });
+
+  it("lists the inboxes that make owner selection ambiguous", async () => {
+    const { execFileSync } = await import("node:child_process");
+    execFileSync("git", ["init", "-q", "-b", "work"], { cwd: root });
+    await seedItem();
+    await mkdir(join(root, "hq/team"), { recursive: true });
+    await writeFile(join(root, "hq/team/alexoedelman.md"), "# Inbox\n");
+    await writeFile(join(root, "hq/team/cpheinrich.md"), "# Inbox\n");
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const result = await blockCli(product, root, "MO-051", { needs: "which model" });
+
+    expect(result.code).toBe(1);
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("Found 2 inboxes: alexoedelman, cpheinrich"),
+    );
+    error.mockRestore();
   });
 });
 
