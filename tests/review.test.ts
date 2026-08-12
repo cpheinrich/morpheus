@@ -3,6 +3,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { needed } from "../src/cli/review.js";
+import {
+  assessReviewDelivery,
+  NO_PRIOR_COMMENT,
+  REVIEW_DELIVERED_SENTINEL,
+  REVIEW_ERROR_PREFIX,
+  REVIEW_FINISHED_PREFIX,
+  REVIEW_PLACEHOLDER,
+  REVIEW_PROGRESS_SPINNER_ID,
+  UNREADABLE_COMMENT_SNAPSHOT,
+} from "../src/review/delivery.js";
 import { pathsMentioned } from "../src/review/findings.js";
 import { loadReviewContext, PERSONA_PATH, ReviewError } from "../src/review/context.js";
 import { acceptancePath, buildReviewPrompt } from "../src/review/prompt.js";
@@ -94,6 +104,15 @@ describe("buildReviewPrompt", () => {
     const out = buildReviewPrompt({ persona: PERSONA, id: "MO-051", title: "t", intent: "  " });
     expect(out).toContain("records no detail beyond its title");
   });
+
+  it("appends the delivery contract even when the caller's persona predates it", () => {
+    const out = buildReviewPrompt({ persona: PERSONA, id: "MO-051", title: "t" });
+    expect(out).toContain("## Delivery contract");
+    expect(out).toContain(REVIEW_DELIVERED_SENTINEL);
+    expect(out.indexOf("## Delivery contract")).toBeGreaterThan(
+      out.indexOf("What this change was supposed to do"),
+    );
+  });
 });
 
 describe("acceptancePath", () => {
@@ -181,6 +200,7 @@ describe("the shipped persona", () => {
     // it — no test encodes a decision.
     expect(text).toContain("decisions.md");
     expect(text).toContain("do not block");
+    expect(text).toContain("delivery sentinel");
   });
 });
 
@@ -215,19 +235,20 @@ describe("review needed", () => {
     expect(needed([".github/workflows/agent-review.yml"]).review).toBe(true);
   });
 
-  /**
-   * An unreadable diff is not an empty one. Skipping here would silently
-   * disable the rung the day `git diff` changes shape — the exact failure this
-   * repo keeps finding, so it errs toward spending a dollar.
-   */
-  it("reviews rather than assumes when the diff could not be read", () => {
+  it("skips an empty diff because nothing changed since anyone looked", () => {
     const r = needed([]);
+    expect(r.review).toBe(false);
+    expect(r.why).toContain("nothing changed");
+  });
+
+  it("reviews rather than assumes when the diff could not be read", () => {
+    const r = needed(null);
     expect(r.review).toBe(true);
     expect(r.why).toContain("could not read");
   });
 
   it("always gives a reason, so a skip is legible in the log", () => {
-    for (const files of [[], ["src/x.ts"], [".agent/x.md"]]) {
+    for (const files of [null, [], ["src/x.ts"], [".agent/x.md"]]) {
       expect(needed(files).why.length).toBeGreaterThan(0);
     }
   });
@@ -262,6 +283,21 @@ describe("pathsMentioned", () => {
   it("ignores URLs", () => {
     const out = pathsMentioned("see https://docs.github.com/en/actions/foo.html");
     expect(out).toHaveLength(0);
+  });
+
+  it("extracts a repo path from a GitHub blob permalink", () => {
+    const out = pathsMentioned(
+      "see https://github.com/cpheinrich/morpheus/blob/abc123/src/review/findings.ts#L50",
+    );
+    expect(out).toEqual(["src/review/findings.ts"]);
+  });
+
+  it("extracts paths from a percent-encoded Fix-this link", () => {
+    const out = pathsMentioned(
+      "[Fix this →](https://claude.ai/code?q=Fix%20src%2Freview%2Ffindings.ts%20and%20tests%2Freview.test.ts&repo=cpheinrich/morpheus)",
+    );
+    expect(out).toContain("src/review/findings.ts");
+    expect(out).toContain("tests/review.test.ts");
   });
 
   it("deduplicates a path cited several times", () => {
@@ -350,5 +386,146 @@ describe("pathsMentioned across citation styles", () => {
   it("keeps a repo path that appears alongside a URL", () => {
     const out = pathsMentioned("per https://docs.github.com/x.html, fix `src/a.ts`");
     expect(out).toEqual(["src/a.ts"]);
+  });
+});
+
+describe("review delivery", () => {
+  const delivered = {
+    beforeCommentId: NO_PRIOR_COMMENT,
+    commentId: "101",
+    body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task in 2m 4s** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Agent review\n\nNo findings worth a human's time.\n\n${REVIEW_DELIVERED_SENTINEL}\n · branch [example](https://github.com/cpheinrich/morpheus/tree/example)`,
+  };
+
+  it("accepts a new comment containing a completed review", () => {
+    expect(assessReviewDelivery(delivered)).toEqual(
+      expect.objectContaining({ delivered: true }),
+    );
+  });
+
+  it("does not let an earlier successful comment certify this run", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      beforeCommentId: "100",
+      commentId: "100",
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("earlier run");
+  });
+
+  it("does not confuse a missing snapshot with a successful no-prior-comment read", () => {
+    const result = assessReviewDelivery({ ...delivered, beforeCommentId: "" });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("no pre-run");
+  });
+
+  it("fails closed when the pre-run comment snapshot was unreadable", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      beforeCommentId: UNREADABLE_COMMENT_SNAPSHOT,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("before the run");
+  });
+
+  it("rejects a new comment that still holds the initial placeholder", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n${REVIEW_PLACEHOLDER}`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("placeholder");
+  });
+
+  it("rejects the action's final error body", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_ERROR_PREFIX}**`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("error");
+  });
+
+  it("rejects a comment that has not been finalized by the action's post step", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: "### Agent review\n\nNo findings worth a human's time.",
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("completed-review marker");
+  });
+
+  it("rejects a literal live progress body even after the action finalizes it", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Review — MO-26-08-02-02.48.16 <img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" />\n\n- [ ] Read the diff\n- [ ] Report`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("unfinished progress");
+  });
+
+  it("requires the Morpheus-owned positive delivery sentinel", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nA plausible body without positive evidence.`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("delivery sentinel");
+  });
+
+  it("does not accept a progress body that merely mentions the sentinel", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Reviewing\n\n<img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" />\n\nRemember to add ${REVIEW_DELIVERED_SENTINEL} after reporting.\n\n- [ ] Report`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("unfinished progress");
+  });
+
+  it("rejects an unfinished checklist without relying on spinner placement", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Reviewing\n\n- [ ] Report findings\n\n${REVIEW_DELIVERED_SENTINEL}`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("unfinished progress");
+  });
+
+  it("allows delivered reviews to quote progress signals as code or prose", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nThe prior body referenced the bare asset id ${REVIEW_PROGRESS_SPINNER_ID}.\n\n\`\`\`markdown\n- [ ] This quoted checklist is not live progress\n\`\`\`\n\n${REVIEW_DELIVERED_SENTINEL}`,
+    });
+    expect(result.delivered).toBe(true);
+  });
+
+  it("allows a delivered review to quote the actual spinner HTML inside a fence", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nThe prior progress body used:\n\n\`\`\`html\n<img src="https://github.com/user-attachments/assets/${REVIEW_PROGRESS_SPINNER_ID}" />\n\`\`\`\n\n${REVIEW_DELIVERED_SENTINEL}`,
+    });
+    expect(result.delivered).toBe(true);
+  });
+
+  it("fails closed when an unbalanced fence makes progress signals ambiguous", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Review\n\n\`\`\`text\nunfinished quote\n\n${REVIEW_DELIVERED_SENTINEL}`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("unfinished progress");
+  });
+
+  it("keeps the delivery marker after the action strips HTML comments", () => {
+    const sanitizedBody = delivered.body.replace(/<!--[\s\S]*?-->/g, "");
+    expect(sanitizedBody).toContain(REVIEW_DELIVERED_SENTINEL);
+    expect(assessReviewDelivery({ ...delivered, body: sanitizedBody }).delivered).toBe(true);
+  });
+
+  it("allows a completed review to discuss the placeholder and error markers", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nThe old body was \`${REVIEW_PLACEHOLDER}\` and errors began \`${REVIEW_ERROR_PREFIX}\`.\n\n${REVIEW_DELIVERED_SENTINEL}`,
+    });
+    expect(result.delivered).toBe(true);
   });
 });

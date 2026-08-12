@@ -23,6 +23,51 @@ const PATH_LIKE = /((?:[\w.-]+\/)+[\w.-]+\.\w{1,6})(?::\d+)?/g;
 const URL_LIKE = /\b(?:[a-z][\w+.-]*:\/\/|www\.)\S+/gi;
 /** A scheme-less web address — `docs.github.com/en/actions/foo.yml`. */
 const BARE_DOMAIN = /\b[\w-]+(?:\.[\w-]+)*\.(?:com|org|net|io|dev|ai|gov|edu|co|sh)\/\S*/gi;
+function decodeUrlText(value) {
+    let decoded = value;
+    // Fix-this links are encoded once today. A second bounded pass also handles
+    // a query value embedded inside another query without turning malformed
+    // percent sequences into an exception that discards the whole review.
+    for (let i = 0; i < 2; i++) {
+        try {
+            const next = decodeURIComponent(decoded);
+            if (next === decoded)
+                break;
+            decoded = next;
+        }
+        catch {
+            break;
+        }
+    }
+    return decoded;
+}
+function addPathMatches(value, found) {
+    for (const match of value.matchAll(PATH_LIKE))
+        found.add(match[1]);
+}
+/** Paths carried by the two URL shapes the reviewer emits for findings. */
+function pathsFromUrl(raw, found) {
+    try {
+        const url = new URL(raw.startsWith("www.") ? `https://${raw}` : raw);
+        // A GitHub blob/tree permalink names a file more explicitly than prose.
+        // The owner and repository are intentionally not pinned: this workflow is
+        // reusable and the review is about the caller, not necessarily Morpheus.
+        if (url.hostname === "github.com") {
+            const repoPath = decodeUrlText(url.pathname).match(/^\/[^/]+\/[^/]+\/(?:blob|tree)\/[^/]+\/(.+)$/)?.[1];
+            if (repoPath)
+                addPathMatches(repoPath, found);
+        }
+        // Claude's generated Fix-this links put the finding — including its file
+        // paths — in a percent-encoded `q` parameter.
+        if (url.hostname === "claude.ai" && url.pathname === "/code") {
+            addPathMatches(decodeUrlText(url.search), found);
+        }
+    }
+    catch {
+        // URL_LIKE is deliberately broad. A malformed URL should be discarded as
+        // web text, not make every subsequent citation disappear.
+    }
+}
 /**
  * Repo-relative paths a review mentions.
  *
@@ -45,6 +90,8 @@ const BARE_DOMAIN = /\b[\w-]+(?:\.[\w-]+)*\.(?:com|org|net|io|dev|ai|gov|edu|co|
  */
 export function pathsMentioned(reviewBody) {
     const found = new Set();
+    for (const match of reviewBody.matchAll(URL_LIKE))
+        pathsFromUrl(match[0], found);
     // Strip fenced code blocks' *fences* but keep their content: reviews quote
     // the offending code, and the path is often in the line above it inside the
     // same block.

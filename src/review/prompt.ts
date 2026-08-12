@@ -14,6 +14,8 @@
  * Pure, so the judgment encoded here is testable without a model.
  */
 
+import { REVIEW_DELIVERED_SENTINEL } from "./delivery.js";
+
 export interface ReviewContext {
   /** The reviewer persona, from `.github/agent-review-prompt.md`. */
   persona: string;
@@ -85,6 +87,19 @@ export function buildReviewPrompt(ctx: ReviewContext): string {
       ),
     );
   }
+
+  // This instruction travels with the detector in `.morpheus`, not with the
+  // caller's copied persona. Appending it last also keeps it after item intent
+  // and acceptance text, where the reviewer is least likely to lose it.
+  parts.push(
+    section(
+      "Delivery contract",
+      `After the completed review text, include this exact raw line:\n\n` +
+        `${REVIEW_DELIVERED_SENTINEL}\n\n` +
+        "Do not wrap it in backticks or a code fence, and never include it in a progress update. " +
+        "The workflow uses it only as evidence that the final review was delivered.",
+    ),
+  );
 
   return parts.join("");
 }

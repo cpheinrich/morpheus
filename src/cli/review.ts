@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { hasNoSubstantiveChange } from "../paths.js";
 import { addressesPriorFindings, pathsMentioned } from "../review/findings.js";
+import { assessReviewDelivery } from "../review/delivery.js";
 import { loadReviewContext, ReviewError } from "../review/context.js";
 import { buildReviewPrompt } from "../review/prompt.js";
 
@@ -64,14 +65,18 @@ export interface NeededOptions {
 }
 
 export function needed(
-  changedFiles: string[],
+  changedFiles: string[] | null,
   opts: NeededOptions = {},
 ): { review: boolean; why: string } {
-  if (changedFiles.length === 0) {
+  if (changedFiles === null) {
     // An unreadable diff is not an empty one. Review rather than skip: the cost
     // of a wasted run is a dollar, the cost of silently skipping every review
     // the day `git diff` changes shape is the rung.
     return { review: true, why: "could not read the changed files — reviewing rather than assuming" };
+  }
+
+  if (changedFiles.length === 0) {
+    return { review: false, why: "nothing changed since the last review" };
   }
 
   // A re-review has a second reason to run, and it is the one the code test
@@ -100,14 +105,14 @@ export function needed(
   return { review: true, why: `${changedFiles.length} file(s) changed` };
 }
 
-function changedFiles(base: string): string[] {
+function changedFiles(base: string): string[] | null {
   try {
     const out = execFileSync("git", ["diff", "--name-only", `${base}...HEAD`], {
       encoding: "utf8",
     }).trim();
     return out ? out.split("\n").filter(Boolean) : [];
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -130,10 +135,35 @@ function readIfGiven(path?: string): string | undefined {
  * base — so the question asked is "what has changed since anyone looked", which
  * is the one that decides whether looking again is worth it.
  */
-export function reviewNeeded(base: string, priorReviewPath?: string): number {
+export function reviewNeeded(base: string, priorReviewPath?: string, json = false): number {
   const prior = readIfGiven(priorReviewPath);
   const { review, why } = needed(changedFiles(base), ...(prior ? [{ priorReview: prior }] : []));
-  console.log(String(review));
-  console.error(review ? `Reviewing: ${why}` : `Skipping: ${why}`);
+  if (json) {
+    console.log(JSON.stringify({ review, why }));
+  } else {
+    console.log(String(review));
+    console.error(review ? `Reviewing: ${why}` : `Skipping: ${why}`);
+  }
   return 0;
+}
+
+/** Verify that a reviewer run delivered a new, substantive tracking comment. */
+export function reviewDelivery(
+  beforeCommentId?: string,
+  commentId?: string,
+  bodyPath?: string,
+): number {
+  let body: string | undefined;
+  if (bodyPath) {
+    try {
+      body = readFileSync(bodyPath, "utf8");
+    } catch {
+      console.log(`could not read the tracking comment body at ${bodyPath}`);
+      return 1;
+    }
+  }
+
+  const result = assessReviewDelivery({ beforeCommentId, commentId, body });
+  console.log(result.why);
+  return result.delivered ? 0 : 1;
 }
