@@ -39,12 +39,15 @@ export declare const HqConfig: z.ZodObject<{
     admins: z.ZodDefault<z.ZodArray<z.ZodEmail>>;
 }, z.core.$strip>;
 export type HqConfig = z.infer<typeof HqConfig>;
+export declare const SupportEmail: z.ZodEmail;
+export declare const AuthorizedDomain: z.ZodString;
 export declare const ProjectManifest: z.ZodObject<{
     name: z.ZodString;
     prefix: z.ZodOptional<z.ZodString>;
     displayName: z.ZodOptional<z.ZodString>;
     publicDomain: z.ZodOptional<z.ZodString>;
     supportEmail: z.ZodOptional<z.ZodEmail>;
+    authorizedDomains: z.ZodDefault<z.ZodArray<z.ZodString>>;
     hq: z.ZodObject<{
         route: z.ZodDefault<z.ZodString>;
         allowlist: z.ZodDefault<z.ZodArray<z.ZodEmail>>;

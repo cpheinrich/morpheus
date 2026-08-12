@@ -383,8 +383,9 @@ blocks deployment, it opens Firebase Authentication and fails with the exact rec
 disabled provider or missing custom domain from a spinning sign-in screen. Successful setup records
 the normalized origin and user-visible OAuth support identity as `publicDomain` and `supportEmail`
 in `morpheus.json`; pass `--domain` explicitly on the first run. The check refuses to call an app
-ready when it cannot determine that origin, and reports extra authorized domains for manual review
-instead of silently retaining or automatically revoking them.
+ready when it cannot determine that origin. Declare legitimate preview or secondary Auth hosts in
+`authorizedDomains` as bare hostnames; the command reports any other remote domains for manual
+review instead of silently retaining or automatically revoking them.
 
 ## Folder documentation
 

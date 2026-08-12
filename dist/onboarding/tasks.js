@@ -68,6 +68,7 @@ export async function firebaseGoogleAuthReady(root) {
             root,
             project,
             domain: manifest.publicDomain,
+            authorizedDomains: manifest.authorizedDomains,
         })).ready;
     }
     catch {

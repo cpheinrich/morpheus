@@ -115,4 +115,22 @@ describe("schema", () => {
       hq: {},
     }).success).toBe(false);
   });
+
+  it("accepts additional Firebase Auth hostnames and rejects origins or paths", () => {
+    expect(ProjectManifest.parse({
+      name: "Acme",
+      authorizedDomains: ["preview.example.com", "localhost"],
+      hq: {},
+    }).authorizedDomains).toEqual(["preview.example.com", "localhost"]);
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      authorizedDomains: ["https://preview.example.com"],
+      hq: {},
+    }).success).toBe(false);
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      authorizedDomains: ["preview.example.com/auth"],
+      hq: {},
+    }).success).toBe(false);
+  });
 });

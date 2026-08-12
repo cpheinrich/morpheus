@@ -76,6 +76,17 @@ The manifest schema validates it as an email. If the remote work succeeds but
 the manifest write fails, the error now says plainly that Firebase is already
 configured and only the durable record failed.
 
+The final review caught two remaining writer/reader asymmetries. The CLI now
+validates `supportEmail` before remote setup and again before persistence, using
+the same schema as governed manifest reads. Projects can also declare
+intentional preview or secondary Auth hosts in `authorizedDomains`; those are
+restored and verified while undeclared remote hosts remain advisory rather
+than being silently revoked.
+
+- `vitest run --maxWorkers=1`: 841 tests passed across 29 files.
+- `tsc --noEmit`, `tsc -p tsconfig.build.json`, focused Firebase/access/onboarding
+  tests, PM validation/index checks, and `git diff --check`: passed.
+
 - `vitest run --maxWorkers=1`: 836 tests passed across 29 files.
 - `tsc --noEmit`, `tsc -p tsconfig.build.json`, focused Firebase/access tests,
   PM validation/index checks, and `git diff --check`: passed.

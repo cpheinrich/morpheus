@@ -41,6 +41,18 @@ export const HqConfig = z.object({
 });
 export type HqConfig = z.infer<typeof HqConfig>;
 
+export const SupportEmail = z.email();
+
+export const AuthorizedDomain = z.string().trim().min(1).refine((value) => {
+  if (/^https?:\/\//i.test(value) || value.includes("/") || value.includes("@")) return false;
+  try {
+    const url = new URL(`https://${value}`);
+    return !url.port && url.host.toLowerCase() === value.toLowerCase();
+  } catch {
+    return false;
+  }
+}, "authorizedDomains entries must be hostnames without a scheme, port, or path");
+
 export const ProjectManifest = z.object({
   name: z.string(),
   /** 2-4 uppercase letters; namespaces every id in this repo. */
@@ -59,7 +71,9 @@ export const ProjectManifest = z.object({
     }
   }, "publicDomain must be an HTTP(S) hostname or origin, not a path").optional(),
   /** User-visible support identity deployed to services such as the Google OAuth brand. */
-  supportEmail: z.email().optional(),
+  supportEmail: SupportEmail.optional(),
+  /** Additional intentional Firebase Auth hosts beyond generated and public domains. */
+  authorizedDomains: z.array(AuthorizedDomain).default([]),
   hq: HqConfig,
   accounts: z.record(z.string(), z.string()).optional(),
 });

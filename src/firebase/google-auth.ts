@@ -37,6 +37,8 @@ export interface GoogleAuthSetupOptions {
   root: string;
   project: string;
   domain?: string;
+  /** Additional intentional Firebase Auth hostnames declared by the project. */
+  authorizedDomains?: string[];
   supportEmail?: string;
   brand: string;
   /** Defaults to true. Opens Firebase's console only when recovery is needed. */
@@ -49,6 +51,8 @@ export interface GoogleAuthCheckOptions {
   root: string;
   project: string;
   domain?: string;
+  /** Additional intentional Firebase Auth hostnames declared by the project. */
+  authorizedDomains?: string[];
   runner?: CommandRunner;
   fetcher?: Fetcher;
 }
@@ -134,7 +138,11 @@ export function normalizeOrigin(value: string): string {
 }
 
 /** Domains Firebase Auth must recognize before a web app can return from Google. */
-export function expectedAuthorizedDomains(project: string, domain?: string): string[] {
+export function expectedAuthorizedDomains(
+  project: string,
+  domain?: string,
+  additionalDomains: string[] = [],
+): string[] {
   const customHost = domain ? new URL(normalizeOrigin(domain)).hostname : undefined;
   // Morpheus supports local web/HQ development as a first-class flow, so
   // localhost is deliberately restored rather than merely tolerated remotely.
@@ -143,6 +151,7 @@ export function expectedAuthorizedDomains(project: string, domain?: string): str
     `${project}.firebaseapp.com`,
     `${project}.web.app`,
     ...(customHost ? [customHost] : []),
+    ...additionalDomains,
   ]);
 }
 
@@ -378,6 +387,7 @@ async function ensureAuthorizedDomains(
 async function inspectWithToken(
   project: string,
   domain: string | undefined,
+  additionalDomains: string[],
   token: string,
   fetcher: Fetcher,
 ): Promise<GoogleAuthCheck> {
@@ -386,7 +396,7 @@ async function inspectWithToken(
     fetchGoogleProvider(project, token, fetcher),
   ]);
   const authorizedDomains = stringArray(config.authorizedDomains);
-  const expectedDomains = expectedAuthorizedDomains(project, domain);
+  const expectedDomains = expectedAuthorizedDomains(project, domain, additionalDomains);
   const missingDomains = expectedDomains.filter((entry) => !authorizedDomains.includes(entry));
   const unexpectedDomains = authorizedDomains.filter((entry) => !expectedDomains.includes(entry));
   const googleEnabled = provider?.enabled === true;
@@ -470,8 +480,19 @@ export async function setupGoogleAuth(opts: GoogleAuthSetupOptions): Promise<Goo
   }
 
   try {
-    await ensureAuthorizedDomains(opts.project, token, expectedAuthorizedDomains(opts.project, opts.domain), fetcher);
-    const check = await inspectWithToken(opts.project, opts.domain, token, fetcher);
+    await ensureAuthorizedDomains(
+      opts.project,
+      token,
+      expectedAuthorizedDomains(opts.project, opts.domain, opts.authorizedDomains),
+      fetcher,
+    );
+    const check = await inspectWithToken(
+      opts.project,
+      opts.domain,
+      opts.authorizedDomains ?? [],
+      token,
+      fetcher,
+    );
     if (!check.ready) {
       throw new Error(
         `verification found Google enabled=${check.googleEnabled} and missing domains=${check.missingDomains.join(", ") || "none"}`,
@@ -488,5 +509,5 @@ export async function checkGoogleAuth(opts: GoogleAuthCheckOptions): Promise<Goo
   const runner = opts.runner ?? systemRunner;
   const fetcher = opts.fetcher ?? fetch;
   const token = await gcloudToken(runner, opts.root, false);
-  return inspectWithToken(opts.project, opts.domain, token, fetcher);
+  return inspectWithToken(opts.project, opts.domain, opts.authorizedDomains ?? [], token, fetcher);
 }

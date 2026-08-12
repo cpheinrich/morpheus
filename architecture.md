@@ -1917,8 +1917,10 @@ origin and user-visible OAuth support identity only after success. Later runs re
 another operator does not silently replace the consent-screen support address with their active
 gcloud account. Firebase's CLI schema enables Google Sign-In through the presence of the
 `googleSignIn` provider object; the remote-only `enabled` field is verified after deploy rather than
-written into `firebase.json`. Setup adds missing authorized domains and reports unexpected ones for
-manual review; it never auto-revokes an OAuth boundary. Read-path CLI and API calls time out after
+written into `firebase.json`. Setup adds missing authorized domains. Intentional preview or
+secondary hosts belong in the manifest's `authorizedDomains`; any remote host outside the
+generated, public, and declared set is reported for manual review and never auto-revoked.
+Read-path CLI and API calls time out after
 ten seconds so `init status` cannot hang on a blackholed network. It uses browser-backed
 `gcloud`/Firebase CLI login automatically when their sessions are absent; when the console still
 needs a human ToS or consent acceptance, it opens Firebase Authentication and stops with that

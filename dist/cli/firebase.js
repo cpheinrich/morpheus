@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { AuthorizedDomain, SupportEmail } from "../access/schema.js";
 import { checkGoogleAuth, normalizeOrigin, setupGoogleAuth, } from "../firebase/google-auth.js";
 async function manifest(root) {
     try {
@@ -14,6 +15,23 @@ function targetProject(config, explicit) {
 }
 function targetDomain(config, explicit) {
     return explicit ?? config.publicDomain ?? null;
+}
+function validatedSupportEmail(value) {
+    if (value === undefined)
+        return undefined;
+    const parsed = SupportEmail.safeParse(value);
+    if (!parsed.success)
+        throw new Error(`supportEmail must be a valid email address: ${value}`);
+    return parsed.data;
+}
+function validatedAuthorizedDomains(values) {
+    if (values === undefined)
+        return [];
+    const parsed = AuthorizedDomain.array().safeParse(values);
+    if (!parsed.success) {
+        throw new Error("authorizedDomains must contain hostnames without a scheme, port, or path.");
+    }
+    return parsed.data;
 }
 function printCheck(prefix, result) {
     const domains = result.missingDomains.length ? `missing ${result.missingDomains.join(", ")}` : "all requested domains present";
@@ -47,13 +65,14 @@ export async function configureGoogleAuth(root, opts) {
             root,
             project,
             domain,
-            supportEmail: opts.supportEmail ?? config.supportEmail,
+            supportEmail: validatedSupportEmail(opts.supportEmail ?? config.supportEmail),
+            authorizedDomains: validatedAuthorizedDomains(config.authorizedDomains),
             brand: opts.brand ?? config.displayName ?? config.name ?? project,
             openBrowser: opts.openBrowser,
         });
         let recorded;
         try {
-            recorded = await recordGoogleAuthDefaults(root, config, domain, result.supportEmail);
+            recorded = await recordGoogleAuthDefaults(root, config, domain, validatedSupportEmail(result.supportEmail));
         }
         catch (error) {
             throw new Error("Firebase Google sign-in is configured and verified, but Morpheus could not record " +
@@ -87,7 +106,12 @@ export async function checkGoogleAuthConfiguration(root, opts) {
             console.error("No public app origin. Pass --domain, or set publicDomain in morpheus.json.");
             return 1;
         }
-        const result = await checkGoogleAuth({ root, project, domain });
+        const result = await checkGoogleAuth({
+            root,
+            project,
+            domain,
+            authorizedDomains: validatedAuthorizedDomains(config.authorizedDomains),
+        });
         printCheck(result.ready ? "✓" : "✗", result);
         return result.ready ? 0 : 1;
     }

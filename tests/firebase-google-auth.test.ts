@@ -43,6 +43,21 @@ function runner(calls: string[][], options: RunnerOptions = {}): CommandRunner {
 }
 
 describe("Firebase Google Auth configuration", () => {
+  it("treats manifest-declared Firebase Auth hosts as intentional", () => {
+    expect(expectedAuthorizedDomains(
+      "acme-123",
+      "app.example",
+      ["preview.example", "accounts.example"],
+    )).toEqual([
+      "localhost",
+      "acme-123.firebaseapp.com",
+      "acme-123.web.app",
+      "app.example",
+      "preview.example",
+      "accounts.example",
+    ]);
+  });
+
   it("merges Firebase CLI Google provider configuration without discarding other settings", () => {
     const merged = mergeGoogleProviderConfig(
       {
@@ -244,6 +259,28 @@ describe("Firebase Google Auth configuration", () => {
 
     expect(check.ready).toBe(true);
     expect(check.unexpectedDomains).toEqual(["old.example"]);
+  });
+
+  it("does not warn about an additional authorized domain declared by the project", async () => {
+    const check = await checkGoogleAuth({
+      root: "/tmp",
+      project: "acme-123",
+      domain: "app.example",
+      authorizedDomains: ["preview.example"],
+      runner: runner([]),
+      fetcher: async (url) => url.includes("defaultSupportedIdpConfigs/google.com")
+        ? response({ enabled: true })
+        : response({ authorizedDomains: [
+          "localhost",
+          "acme-123.firebaseapp.com",
+          "acme-123.web.app",
+          "app.example",
+          "preview.example",
+        ] }),
+    });
+
+    expect(check.ready).toBe(true);
+    expect(check.unexpectedDomains).toEqual([]);
   });
 
   it("bounds token and Firebase API reads used by status checks", async () => {

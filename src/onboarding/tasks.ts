@@ -110,6 +110,7 @@ export async function firebaseGoogleAuthReady(root: string): Promise<Detection> 
   const manifest = await readJson<{
     accounts?: Record<string, string>;
     publicDomain?: string;
+    authorizedDomains?: string[];
   }>(join(root, "morpheus.json"));
   const project = manifest?.accounts?.firebase ?? manifest?.accounts?.gcpProject;
   if (!project) return false;
@@ -124,6 +125,7 @@ export async function firebaseGoogleAuthReady(root: string): Promise<Detection> 
       root,
       project,
       domain: manifest.publicDomain,
+      authorizedDomains: manifest.authorizedDomains,
     })).ready;
   } catch {
     return null;

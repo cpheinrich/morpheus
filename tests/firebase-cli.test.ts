@@ -65,6 +65,7 @@ describe("Firebase Auth CLI", () => {
       accounts: { firebase: "acme-123" },
       publicDomain: "https://app.example",
       supportEmail: "support@example.com",
+      authorizedDomains: ["preview.example"],
     }));
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     setup.mockResolvedValue({
@@ -83,7 +84,51 @@ describe("Firebase Auth CLI", () => {
     expect(setup).toHaveBeenCalledWith(expect.objectContaining({
       domain: "https://app.example",
       supportEmail: "support@example.com",
+      authorizedDomains: ["preview.example"],
     }));
+  });
+
+  it("rejects a malformed support email before changing remote or local state", async () => {
+    const root = await mkdtemp(join(tmpdir(), "firebase-google-auth-cli-invalid-email-"));
+    roots.push(root);
+    const original = JSON.stringify({ name: "Acme", accounts: { firebase: "acme-123" } });
+    await writeFile(join(root, "morpheus.json"), original);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    expect(await configureGoogleAuth(root, {
+      domain: "app.example",
+      supportEmail: "not-an-email",
+      openBrowser: false,
+    })).toBe(1);
+
+    expect(setup).not.toHaveBeenCalled();
+    expect(await readFile(join(root, "morpheus.json"), "utf8")).toBe(original);
+    expect(error.mock.calls.flat().join("\n")).toContain("supportEmail must be a valid email address");
+  });
+
+  it("rejects a malformed support email returned by setup instead of recording it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "firebase-google-auth-cli-invalid-result-"));
+    roots.push(root);
+    const original = JSON.stringify({ name: "Acme", accounts: { firebase: "acme-123" } });
+    await writeFile(join(root, "morpheus.json"), original);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    setup.mockResolvedValue({
+      project: "acme-123",
+      googleEnabled: true,
+      authorizedDomains: ["app.example"],
+      expectedDomains: ["app.example"],
+      missingDomains: [],
+      unexpectedDomains: [],
+      ready: true,
+      configPath: join(root, "firebase.json"),
+      supportEmail: "not-an-email",
+    });
+
+    expect(await configureGoogleAuth(root, {
+      domain: "app.example",
+      openBrowser: false,
+    })).toBe(1);
+    expect(await readFile(join(root, "morpheus.json"), "utf8")).toBe(original);
   });
 
   it("does not record the public origin when setup fails", async () => {

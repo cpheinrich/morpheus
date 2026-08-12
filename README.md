@@ -47,7 +47,9 @@ morpheus firebase auth check --project <firebase-project> --domain <public-origi
 After a successful setup, Morpheus records the normalized origin and user-visible OAuth support
 identity in `morpheus.json` as `publicDomain` and `supportEmail`. Later runs reuse both values and
 report authorized domains that are no longer expected so an operator can decide whether to revoke
-them. The check refuses to report Google sign-in ready when the public origin is unknown.
+them. Add legitimate preview or secondary Auth hosts to `authorizedDomains` (hostnames only) so
+they remain part of the expected set. The check refuses to report Google sign-in ready when the
+public origin is unknown.
 
 Not yet implemented:
 

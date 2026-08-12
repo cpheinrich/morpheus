@@ -19,6 +19,8 @@ export interface GoogleAuthSetupOptions {
     root: string;
     project: string;
     domain?: string;
+    /** Additional intentional Firebase Auth hostnames declared by the project. */
+    authorizedDomains?: string[];
     supportEmail?: string;
     brand: string;
     /** Defaults to true. Opens Firebase's console only when recovery is needed. */
@@ -30,6 +32,8 @@ export interface GoogleAuthCheckOptions {
     root: string;
     project: string;
     domain?: string;
+    /** Additional intentional Firebase Auth hostnames declared by the project. */
+    authorizedDomains?: string[];
     runner?: CommandRunner;
     fetcher?: Fetcher;
 }
@@ -51,7 +55,7 @@ type Json = Record<string, unknown>;
 /** Turn a hostname or bare origin into a stable, deployable HTTP(S) origin. */
 export declare function normalizeOrigin(value: string): string;
 /** Domains Firebase Auth must recognize before a web app can return from Google. */
-export declare function expectedAuthorizedDomains(project: string, domain?: string): string[];
+export declare function expectedAuthorizedDomains(project: string, domain?: string, additionalDomains?: string[]): string[];
 /** Origins Firebase's Google-provider configuration should carry as code. */
 export declare function expectedRedirectUris(project: string, domain?: string): string[];
 export declare function mergeGoogleProviderConfig(existing: Json, input: GoogleAuthConfigInput): Json;
