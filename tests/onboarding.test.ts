@@ -55,6 +55,13 @@ describe("the checklist catalogue", () => {
     expect(tasksFor("personal")).toContain(task);
     expect(tasksFor("internal")).not.toContain(task);
   });
+
+  it("makes verified Firebase Google sign-in a setup requirement for app projects", () => {
+    for (const kind of ["company", "personal"] as const) {
+      const firebaseAuth = tasksFor(kind).find((candidate) => candidate.id === "firebase-google-auth");
+      expect(firebaseAuth?.how).toContain("morpheus firebase auth setup");
+    }
+  });
 });
 
 describe("persistence across interruptions", () => {

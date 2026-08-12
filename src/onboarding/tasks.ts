@@ -100,6 +100,33 @@ async function hasValidArtifact(
   return items.length > 0 && issues.length === 0;
 }
 
+/**
+ * Firebase Auth has two surfaces that can drift: `firebase.json` describes
+ * the provider, while the remote project owns the provider and authorized
+ * domain state. The reusable CLI checks both. A missing gcloud login or an
+ * unreachable API is deliberately `null`, never a false "not configured".
+ */
+async function firebaseGoogleAuthReady(root: string): Promise<Detection> {
+  const manifest = await readJson<{
+    accounts?: Record<string, string>;
+    domain?: string;
+    publicDomain?: string;
+  }>(join(root, "morpheus.json"));
+  const project = manifest?.accounts?.firebase ?? manifest?.accounts?.gcpProject;
+  if (!project) return false;
+
+  try {
+    const { checkGoogleAuth } = await import("../firebase/google-auth.js");
+    return (await checkGoogleAuth({
+      root,
+      project,
+      domain: manifest?.publicDomain ?? manifest?.domain,
+    })).ready;
+  } catch {
+    return null;
+  }
+}
+
 /** Read the whole `.github/workflows` directory as one string. */
 async function workflowText(root: string): Promise<string> {
   const dir = join(root, ".github/workflows");
@@ -363,11 +390,21 @@ export const TASKS: Task[] = [
   },
   {
     id: "firebase",
-    kinds: ["company"],
+    kinds: ["company", "personal"],
     group: "Google Cloud",
     title: "Firebase enabled, with Auth turned on",
     why: "Custom claims gate both the Next.js middleware and the Firestore rules.",
-    how: "Accept the Firebase terms first — a 403 here is usually unaccepted ToS, not a policy problem",
+    how: "Create the Firebase project, then run `morpheus firebase auth setup --project <id> --domain <origin>`",
+  },
+  {
+    id: "firebase-google-auth",
+    kinds: ["company", "personal"],
+    group: "Google Cloud",
+    title: "Firebase Google sign-in configured and verified",
+    why: "A project can exist while HQ authentication is still broken by a disabled provider or missing app domain.",
+    how: "morpheus firebase auth setup --project <id> --domain <public-origin>; it opens Google/Firebase only when an interactive step is actually needed",
+    network: true,
+    detect: firebaseGoogleAuthReady,
   },
   {
     id: "firebase-claims",

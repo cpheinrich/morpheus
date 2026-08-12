@@ -40,6 +40,8 @@ cd ~/your-project && morpheus registry add
 morpheus pm validate                      # validate hq/product frontmatter against the schemas
 morpheus pm index                         # regenerate the README index tables
 morpheus pm new roadmap "Ship analytics" --priority P1
+morpheus firebase auth setup --project <firebase-project> --domain <public-origin>
+morpheus firebase auth check --project <firebase-project> --domain <public-origin>
 ```
 
 Not yet implemented:

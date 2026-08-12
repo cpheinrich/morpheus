@@ -27,7 +27,7 @@ export interface GateResult {
  *
  * **Deliberately not every command.** A gate that fires on `pm index` or
  * `check pr` trains people to route around it, and the routing-around is
- * permanent where the staleness was not. These five are the ones where acting
+ * permanent where the staleness was not. These six are the ones where acting
  * on stale context does identifiable harm:
  *
  * | Command | Harm | Reach |
@@ -37,6 +37,7 @@ export interface GateResult {
  * | `pm link-issue` | attaching an issue to the wrong or obsolete work item | local |
  * | `pm block` | escalating a question the inbox already answered | local¹ |
  * | `access sync` | granting access from an allowlist that has moved | external |
+ * | `firebase auth setup` | changing an authentication provider and OAuth domains | external |
  *
  * ¹ `pm block` is local *conditionally*: offline it writes the records and
  * skips the push. `pm new`'s only remote use is a read-only `ls-remote` for id

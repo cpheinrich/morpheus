@@ -19,6 +19,7 @@
     "./heartbeat": "./dist/heartbeat/index.js",
     "./brand": "./dist/brand/index.js",
     "./access": "./dist/access/index.js",
+    "./firebase": "./dist/firebase/index.js",
     "./hq": "./dist/hq/index.js",
     "./registry": "./dist/registry/index.js",
     "./doctor": "./dist/doctor/index.js",
