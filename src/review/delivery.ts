@@ -13,19 +13,15 @@ export const NO_PRIOR_COMMENT = "__none__";
 /** Written by the action's post step only after it has finalized successfully. */
 export const REVIEW_FINISHED_PREFIX = "**Claude finished @";
 
-/** Morpheus-owned positive evidence required by the versioned reviewer persona. */
-export const REVIEW_DELIVERED_SENTINEL = "<!-- morpheus:review-delivered -->";
+/** Morpheus-owned positive evidence that survives the pinned action's sanitizer. */
+export const REVIEW_DELIVERED_SENTINEL =
+  "[morpheus-review-delivered]: https://morpheus.invalid/review-delivered";
 
 /** Pinned action asset rendered in an unfinished progress body. */
 export const REVIEW_PROGRESS_SPINNER_ID = "5ac382c7-e004-429b-8e35-7feb3e8f9c6f";
 
 function hasUnfinishedProgress(reviewBody: string): boolean {
-  const spinnerImage = new RegExp(
-    `<img\\b[^>]*${REVIEW_PROGRESS_SPINNER_ID}[^>]*>`,
-    "i",
-  );
-  if (spinnerImage.test(reviewBody)) return true;
-
+  const outsideFences: string[] = [];
   let fence: { marker: string; length: number } | undefined;
   for (const line of reviewBody.split("\n")) {
     const fenceMarker = line.trimStart().match(/^(`{3,}|~{3,})/);
@@ -40,10 +36,18 @@ function hasUnfinishedProgress(reviewBody: string): boolean {
       }
       continue;
     }
-    if (!fence && /^\s*-\s+\[\s\]\s+/.test(line)) return true;
+    if (!fence) outsideFences.push(line);
   }
 
-  return false;
+  // An unfinished fence makes the quoted/unquoted boundary unknowable. Treat
+  // that as unfinished rather than letting it suppress every later signal.
+  if (fence) return true;
+  const visibleReview = outsideFences.join("\n");
+  const spinnerImage = new RegExp(
+    `<img\\b[^>]*${REVIEW_PROGRESS_SPINNER_ID}[^>]*>`,
+    "i",
+  );
+  return spinnerImage.test(visibleReview) || /^\s*-\s+\[\s\]\s+/m.test(visibleReview);
 }
 
 export interface ReviewDelivery {
@@ -106,7 +110,7 @@ export function assessReviewDelivery(input: ReviewDelivery): DeliveryAssessment 
     return { delivered: false, why: "the finalized tracking comment lacks Morpheus's delivery sentinel" };
   }
 
-  const substantiveReview = reviewBody.replace(REVIEW_DELIVERED_SENTINEL, "").trim();
+  const substantiveReview = reviewBody.split(REVIEW_DELIVERED_SENTINEL).join("").trim();
   if (!substantiveReview) {
     return { delivered: false, why: "the finalized tracking comment contains no review" };
   }

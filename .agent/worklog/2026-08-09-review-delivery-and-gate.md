@@ -107,3 +107,17 @@ Unfinished progress is also structural rather than positional: an actual pinned-
 is rejected anywhere in the review body, and an unticked checklist line is rejected outside fenced
 code. A delivered review may still quote the bare asset id or a checklist inside a code sample, so
 reviews of the detector itself do not trip the guard merely by explaining it.
+
+## The fifth live run moved the marker past the action sanitizer
+
+The pinned action sanitizes every body written through its comment tools and strips HTML comments.
+That made the original `<!-- morpheus:review-delivered -->` marker impossible to deliver even when
+the reviewer followed the prompt; the prior live delivery job had already warned for exactly that
+reason. The marker is now a Markdown link-reference definition, which renders no visible prose but
+survives the sanitizer. A regression fixture passes a completed body through an HTML-comment
+stripper before assessment.
+
+Progress detection now removes fenced code before looking for either the actual spinner image or an
+unticked checklist, and an unbalanced fence fails closed instead of hiding every later signal. The
+workflow's final selector also requires the pinned action's finished or error header, so a newer
+second-channel model comment cannot displace the tracking comment merely by repeating the run URL.

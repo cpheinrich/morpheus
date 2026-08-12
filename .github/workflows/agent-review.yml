@@ -173,7 +173,8 @@ jobs:
               [.[][]
                 | select(.user.login == "github-actions[bot]")
                 | select((.body // "") | contains("[View job"))
-                | select((.body // "") | contains($marker))]
+                | select((.body // "") | contains($marker))
+                | select((.body // "") | startswith("**Claude finished @") or startswith("**Claude encountered an error"))]
               | .[-1].id // "__none__"
             ' /tmp/comments-before.json)
 

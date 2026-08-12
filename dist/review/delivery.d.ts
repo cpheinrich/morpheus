@@ -8,8 +8,8 @@ export declare const UNREADABLE_COMMENT_SNAPSHOT = "__unreadable__";
 export declare const NO_PRIOR_COMMENT = "__none__";
 /** Written by the action's post step only after it has finalized successfully. */
 export declare const REVIEW_FINISHED_PREFIX = "**Claude finished @";
-/** Morpheus-owned positive evidence required by the versioned reviewer persona. */
-export declare const REVIEW_DELIVERED_SENTINEL = "<!-- morpheus:review-delivered -->";
+/** Morpheus-owned positive evidence that survives the pinned action's sanitizer. */
+export declare const REVIEW_DELIVERED_SENTINEL = "[morpheus-review-delivered]: https://morpheus.invalid/review-delivered";
 /** Pinned action asset rendered in an unfinished progress body. */
 export declare const REVIEW_PROGRESS_SPINNER_ID = "5ac382c7-e004-429b-8e35-7feb3e8f9c6f";
 export interface ReviewDelivery {

@@ -498,6 +498,29 @@ describe("review delivery", () => {
     expect(result.delivered).toBe(true);
   });
 
+  it("allows a delivered review to quote the actual spinner HTML inside a fence", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nThe prior progress body used:\n\n\`\`\`html\n<img src="https://github.com/user-attachments/assets/${REVIEW_PROGRESS_SPINNER_ID}" />\n\`\`\`\n\n${REVIEW_DELIVERED_SENTINEL}`,
+    });
+    expect(result.delivered).toBe(true);
+  });
+
+  it("fails closed when an unbalanced fence makes progress signals ambiguous", () => {
+    const result = assessReviewDelivery({
+      ...delivered,
+      body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\n### Review\n\n\`\`\`text\nunfinished quote\n\n${REVIEW_DELIVERED_SENTINEL}`,
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.why).toContain("unfinished progress");
+  });
+
+  it("keeps the delivery marker after the action strips HTML comments", () => {
+    const sanitizedBody = delivered.body.replace(/<!--[\s\S]*?-->/g, "");
+    expect(sanitizedBody).toContain(REVIEW_DELIVERED_SENTINEL);
+    expect(assessReviewDelivery({ ...delivered, body: sanitizedBody }).delivered).toBe(true);
+  });
+
   it("allows a completed review to discuss the placeholder and error markers", () => {
     const result = assessReviewDelivery({
       ...delivered,

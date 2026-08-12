@@ -233,6 +233,8 @@ describe("agent-review.yml", () => {
     expect(raw.match(/--paginate --slurp/g)).toHaveLength(2);
     expect(raw).toContain('contains("[View job")');
     expect(raw).toContain('run_marker="/actions/runs/$GITHUB_RUN_ID)"');
+    expect(raw).toContain('startswith("**Claude finished @")');
+    expect(raw).toContain('startswith("**Claude encountered an error")');
   });
 
   it("pins the action whose final comment contract the detector parses", async () => {
