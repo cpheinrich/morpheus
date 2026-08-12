@@ -1,7 +1,7 @@
 ---
 id: MO-26-07-28-006
 title: "kit/analytics: canonical event contract"
-status: review
+status: shipped
 priority: P1
 goal: MO-G-2026-Q3-01
 owner: agent

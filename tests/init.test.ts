@@ -131,6 +131,7 @@ describe("morpheus init", () => {
       for (const [d, must] of [
         ["hq/team", "GitHub handle"],
         ["hq/marketing", "hq/brand"],
+        ["hq/marketing/seo", "Google Search Console"],
         ["qa", "verifier rung 3"],
         ["qa/acceptance", "before"],
         ["infra", "morpheus hq rules"],
@@ -145,9 +146,19 @@ describe("morpheus init", () => {
       await scaffold(dir, SEED);
 
       // Depth lives in one place; the README buys locality, not a second copy.
-      for (const d of ["qa", "infra", "hq/team"]) {
+      for (const d of ["qa", "infra", "hq/team", "hq/marketing/seo"]) {
         expect(await read(`${d}/README.md`), d).toContain("architecture.md");
       }
+    });
+
+    it("makes Search Console setup browser-first and names the fallback", async () => {
+      await scaffold(dir, SEED);
+      const seo = await read("hq/marketing/seo/README.md");
+
+      expect(seo).toContain("try to complete Search Console setup yourself");
+      expect(seo).toContain("prompt the user immediately for the smallest missing prerequisite");
+      expect(seo).toContain("do not ask for passwords or verification codes in chat");
+      expect(seo).toContain("not evidence that Google indexed it");
     });
 
     it("scaffolds qa/ and infra/, which the spec described and no project had", async () => {
@@ -721,6 +732,7 @@ describe("morpheus init", () => {
       expect(await read("packages/shared/schema/analytics.ts")).toContain(
         "ProjectAnalyticsEvents",
       );
+      expect(await read("hq/marketing/seo/README.md")).toContain("Google Search Console");
     });
 
     it("does not impose a product analytics contract on internal tooling", async () => {

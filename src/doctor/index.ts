@@ -75,7 +75,7 @@ export const EXPECTED: Record<Kind, string[]> = {
     "hq/product/goals",
     "hq/team",
     "hq/brand",
-    "hq/marketing",
+    "hq/marketing/seo",
     "hq/finance",
     "hq/ops",
     // `qa/` feeds verifier rung 3 and `infra/` holds the generated Firestore
@@ -91,6 +91,7 @@ export const EXPECTED: Record<Kind, string[]> = {
     "hq/product/goals",
     "hq/team",
     "hq/brand",
+    "hq/marketing/seo",
     "qa/acceptance",
     ".agent/worklog",
     ".agent/inbox-archive",
@@ -499,7 +500,9 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   const inherited = new Set(Object.keys(inherits).map((k) => `hq/${k}`));
 
   for (const dir of EXPECTED[kind ?? "personal"]) {
-    if (inherited.has(dir)) continue; // owned by a parent project
+    if ([...inherited].some((parent) => dir === parent || dir.startsWith(`${parent}/`))) {
+      continue; // owned by a parent project, including the whole declared subtree
+    }
     if (!(await exists(join(root, dir)))) {
       add("error", "structure", `Missing ${dir}/ — expected for kind "${kind ?? "personal"}".`);
     }

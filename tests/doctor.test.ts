@@ -240,4 +240,22 @@ describe("inherits", () => {
     expect(f.some((x) => x.message.includes("hq/finance"))).toBe(false);
     expect(f.some((x) => x.message.includes("hq/ops"))).toBe(true);
   });
+
+  it("does not expect descendants of an inherited subtree", async () => {
+    await scaffold("company");
+    const { rm } = await import("node:fs/promises");
+    await rm(join(root, "hq/marketing"), { recursive: true });
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({
+        name: "t",
+        kind: "company",
+        prefix: "TS",
+        inherits: { marketing: "parent" },
+      }),
+    );
+
+    const f = await doctor({ root });
+    expect(f.some((x) => x.message.includes("hq/marketing/seo"))).toBe(false);
+  });
 });

@@ -384,6 +384,21 @@ Both authenticate as remote MCP through claude.ai (§13.4), so neither puts a ke
 Credentials for the *downstream* accounts Appeeky writes to — App Store Connect, Apple Search Ads,
 Play Console — are a separate authorisation, granted once inside Appeeky.
 
+**Search Console setup is part of website SEO setup, not a later human errand.** The agent first
+tries to create or open the domain property in the authenticated browser, complete verification,
+submit the sitemap, inspect indexing plus Manual actions and Security issues, and request indexing
+for a small set of launch-priority URLs. A request entering Google's crawl queue is recorded as a
+request, never as proof of indexing. The project-local checklist and dated operating record live in
+`hq/marketing/seo/`.
+
+If the browser cannot proceed, the agent asks for the **smallest exact prerequisite** — the named
+Google identity to sign into, an interactive security check, Search Console permission, approval
+for an external DNS change, or a choice between genuinely ambiguous identities — and resumes once
+it is supplied. It does not replace the attempt with generic click instructions, ask for a password
+or verification code in chat, or mark setup complete because access could not be checked. This is
+the browser-reachable-work rule in §7.3 applied to SEO. Search Console is Google's operational
+indexing surface; OpenSEO remains the research surface, and neither substitutes for the other.
+
 ### Built and maintained in Morpheus
 
 | Function | Why build it |
