@@ -13,6 +13,7 @@
  *
  * Pure, so the judgment encoded here is testable without a model.
  */
+import { REVIEW_DELIVERED_SENTINEL } from "./delivery.js";
 function section(heading, body) {
     return `\n\n## ${heading}\n\n${body.trim()}`;
 }
@@ -46,6 +47,13 @@ export function buildReviewPrompt(ctx) {
             `file exists. Report this: a dangling reference is a defect in its own right, and it ` +
             `means nobody can check conformance for this change.`));
     }
+    // This instruction travels with the detector in `.morpheus`, not with the
+    // caller's copied persona. Appending it last also keeps it after item intent
+    // and acceptance text, where the reviewer is least likely to lose it.
+    parts.push(section("Delivery contract", `After the completed review text, include this exact raw line:\n\n` +
+        `${REVIEW_DELIVERED_SENTINEL}\n\n` +
+        "Do not wrap it in backticks or a code fence, and never include it in a progress update. " +
+        "The workflow uses it only as evidence that the final review was delivered."));
     return parts.join("");
 }
 /**

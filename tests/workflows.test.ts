@@ -171,6 +171,91 @@ describe("agent-review.yml", () => {
     };
     const perms = wf.jobs?.["review"]?.permissions;
     expect(perms).toEqual({ contents: "read", "pull-requests": "write" });
+    expect(wf.jobs?.["delivery"]?.permissions).toEqual({
+      contents: "read",
+      "pull-requests": "read",
+    });
+  });
+
+  it("keeps the cursor in the cost gate and gives the reviewer the full PR", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<Record<string, unknown>> }>;
+    };
+    const steps = wf.jobs?.["review"]?.steps ?? [];
+    const gate = steps.find((step) => step.name === "Is this worth a review?");
+    const review = steps.find((step) => step.name === "Review");
+    const cursorConsumers = steps.filter((step) =>
+      JSON.stringify(step).includes("steps.since.outputs.base"),
+    );
+
+    expect(JSON.stringify(gate)).toContain("steps.since.outputs.base");
+    expect(JSON.stringify(review)).not.toContain("steps.since.outputs.base");
+    expect(cursorConsumers).toEqual([gate]);
+  });
+
+  it("checks delivery after the review even when the action fails", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<
+        string,
+        {
+          needs?: string;
+          if?: string;
+          outputs?: Record<string, string>;
+          steps?: Array<Record<string, unknown>>;
+        }
+      >;
+    };
+    const reviewJob = wf.jobs?.["review"];
+    const deliveryJob = wf.jobs?.["delivery"];
+    const review = reviewJob?.steps?.find((step) => step.name === "Review");
+    const delivery = deliveryJob?.steps?.find(
+      (step) => step.name === "Verify the review was delivered",
+    );
+
+    expect(review?.id).toBe("review");
+    expect(deliveryJob?.needs).toBe("review");
+    expect(deliveryJob?.if).toContain("github.event_name == 'pull_request'");
+    expect(deliveryJob?.if).toContain("always()");
+    expect(deliveryJob?.if).toContain("configured != 'false'");
+    expect(deliveryJob?.if).not.toContain("configured == 'true'");
+    expect(deliveryJob?.if).toContain("review_requested != 'false'");
+    expect(deliveryJob?.if).not.toContain("review_requested == 'true'");
+    expect(reviewJob?.outputs?.comment_id_before).toContain(
+      "steps.since.outputs.comment_id_before",
+    );
+    expect(JSON.stringify(delivery)).toContain("review delivery");
+    expect(JSON.stringify(delivery)).toContain("needs.review.outputs.comment_id_before");
+    expect(JSON.stringify(delivery)).toContain("needs.review.outputs.action_conclusion");
+  });
+
+  it("reads every comment page and selects this action's own tracking comment", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw.match(/--paginate --slurp/g)).toHaveLength(2);
+    expect(raw).toContain('contains("[View job")');
+    expect(raw).toContain('run_marker="/actions/runs/$GITHUB_RUN_ID)"');
+    expect(raw).toContain('startswith("**Claude finished @")');
+    expect(raw).toContain('startswith("**Claude encountered an error")');
+  });
+
+  it("pins the action whose final comment contract the detector parses", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw).toMatch(/anthropics\/claude-code-action@[0-9a-f]{40}/);
+    expect(raw).not.toContain("anthropics/claude-code-action@v1");
+    expect(raw).toContain("# v1.0.189");
+  });
+
+  it("passes the honest skip reason through to the job summary", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw).toContain("--json");
+    expect(raw).toContain("SKIP_WHY:");
+    expect(raw).toContain("Rung 2 did not run: $SKIP_WHY.");
+  });
+
+  it("uses jq itself for the run cursor instead of passing jq flags to gh", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw).not.toContain("--jq --arg");
+    expect(raw).toContain('jq -r --arg sha "$HEAD_SHA"');
+    expect(raw).toContain('-f branch="$HEAD_REF"');
   });
 });
 

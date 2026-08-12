@@ -1058,6 +1058,20 @@ have run. A verifier that reports green because it never executed is worse than 
 same shape as *a check that skips what is absent will report an empty thing as correct* in
 `.agent/learned.md`.
 
+**A configured verifier must prove delivery, not merely execution.** The review action creates a
+tracking comment before the model reads the change, and the model may replace that with an
+in-progress checklist before it reports, so neither existence nor non-placeholder text proves that
+a review landed. A separate dependent job runs after the action's post step, identifies the comment
+by this workflow run's URL, and requires a new id, the pinned action's finished marker, and a
+Morpheus-owned Markdown link-reference sentinel that the CLI appends to every assembled prompt after
+the caller's persona and item context. The reference marker renders invisibly but survives the pinned
+action's sanitizer, unlike an HTML comment. Requiring it with substantive text identifies arbitrary
+model-authored progress bodies without borrowing their unstable prose; an actual pinned-action
+spinner image or an unticked checklist outside quoted code rejects unfinished progress wherever
+the model puts it, and action headers identify errors. Any missing evidence fails closed to a
+warning. Permission-denial counts are diagnostic only: healthy runs can contain denials, while a
+broken reporting path need not.
+
 **The reviewer persona is a versioned file**, `.github/agent-review-prompt.md`, not a string inside
 YAML. It is the part that gets tuned most often and the part a human most wants to read, and a
 prompt buried in a workflow is invisible in review. `morpheus review prompt` assembles it with the

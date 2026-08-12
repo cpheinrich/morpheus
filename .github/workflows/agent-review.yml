@@ -50,6 +50,11 @@ jobs:
   review:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    outputs:
+      configured: ${{ steps.configuration.outputs.configured }}
+      review_requested: ${{ steps.needed.outputs.review }}
+      comment_id_before: ${{ steps.since.outputs.comment_id_before }}
+      action_conclusion: ${{ steps.review.outputs.conclusion }}
     permissions:
       contents: read
       pull-requests: write
@@ -60,6 +65,10 @@ jobs:
       # the rung would skip even when configured.
       HAS_KEY: ${{ secrets.anthropic_api_key != '' }}
     steps:
+      - name: Record reviewer configuration
+        id: configuration
+        run: echo "configured=$HAS_KEY" >> "$GITHUB_OUTPUT"
+
       # The reviewer compares the change against its base, so it needs history.
       - uses: actions/checkout@v4
         with:
@@ -119,9 +128,16 @@ jobs:
           caller=$(basename "${GITHUB_WORKFLOW_REF%%@*}")
           echo "Caller workflow: $caller"
 
-          prev=$(gh api "repos/$REPO/actions/workflows/$caller/runs?branch=$HEAD_REF&status=success&per_page=20" \
-            --jq --arg sha "$HEAD_SHA" \
-            '[.workflow_runs[] | select(.head_sha != $sha)] | .[0].head_sha // ""' 2>/dev/null || echo "")
+          if gh api --method GET "repos/$REPO/actions/workflows/$caller/runs" \
+            -f branch="$HEAD_REF" -f status=success -F per_page=20 \
+            > /tmp/review-runs.json 2>/dev/null; then
+            prev=$(jq -r --arg sha "$HEAD_SHA" \
+              '[.workflow_runs[] | select(.head_sha != $sha)] | .[0].head_sha // ""' \
+              /tmp/review-runs.json)
+          else
+            prev=""
+            echo "::warning title=Review cursor unavailable::could not read earlier workflow runs — comparing against the base branch"
+          fi
 
           if [ -n "$prev" ] && git cat-file -e "$prev^{commit}" 2>/dev/null; then
             echo "base=$prev" >> "$GITHUB_OUTPUT"
@@ -144,10 +160,35 @@ jobs:
           # Passing mentions in prose are a known remaining looseness: the input
           # is the wrong shape for a regex to separate, and tuning the matcher
           # will not fix it. Recorded so the matcher is not blamed for it.
-          gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
-            --jq '[.[] | select(.user.login == "github-actions[bot]")] | .[-1].body // ""' \
-            2>/dev/null | grep -v -E '^\s*-\s*\[[ x]\]' > /tmp/prior-review.md \
-            || : > /tmp/prior-review.md
+          run_marker="/actions/runs/$GITHUB_RUN_ID)"
+          if ! gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
+            --paginate --slurp > /tmp/comments-before.json 2>/dev/null; then
+            comment_id_before="__unreadable__"
+            : > /tmp/prior-review.md
+          else
+            # A rerun keeps its run id. Snapshot the current run's own tracking
+            # comment so an earlier attempt cannot certify this one. `__none__`
+            # is distinct from a missing or unreadable output at the verifier.
+            comment_id_before=$(jq -r --arg marker "$run_marker" '
+              [.[][]
+                | select(.user.login == "github-actions[bot]")
+                | select((.body // "") | contains("[View job"))
+                | select((.body // "") | contains($marker))
+                | select((.body // "") | startswith("**Claude finished @") or startswith("**Claude encountered an error"))]
+              | .[-1].id // "__none__"
+            ' /tmp/comments-before.json)
+
+            jq -r '
+              [.[][]
+                | select(.user.login == "github-actions[bot]")
+                | select((.body // "") | contains("[View job"))
+                | select((.body // "") | contains("/actions/runs/"))]
+              | .[-1].body // ""
+            ' /tmp/comments-before.json \
+              | grep -v -E '^\s*-\s*\[[ x]\]' > /tmp/prior-review.md \
+              || : > /tmp/prior-review.md
+          fi
+          echo "comment_id_before=$comment_id_before" >> "$GITHUB_OUTPUT"
 
       - name: Is this worth a review?
         id: needed
@@ -159,20 +200,24 @@ jobs:
           # the fail-open that `needed()` deliberately provides for an
           # unreadable diff. A crash here must review, not go quiet.
           if ! out=$(node .morpheus/dist/cli/index.js review needed \
-            --base "$BASE" --prior-review /tmp/prior-review.md); then
+            --base "$BASE" --prior-review /tmp/prior-review.md --json); then
             echo "review=true" >> "$GITHUB_OUTPUT"
+            echo "why=the review gate failed, so the workflow failed open" >> "$GITHUB_OUTPUT"
             echo "::warning title=Review gate failed::could not decide — reviewing rather than skipping"
             exit 0
           fi
-          echo "review=$out" >> "$GITHUB_OUTPUT"
+          echo "review=$(jq -r '.review' <<< "$out")" >> "$GITHUB_OUTPUT"
+          echo "why=$(jq -r '.why' <<< "$out")" >> "$GITHUB_OUTPUT"
 
       - name: Report the review as skipped
         if: steps.needed.outputs.review != 'true'
+        env:
+          SKIP_WHY: ${{ steps.needed.outputs.why }}
         run: |
           {
             echo "## Agent review — nothing to review"
             echo
-            echo "This change touches only records and board bookkeeping, so rung 2 did not run."
+            echo "Rung 2 did not run: $SKIP_WHY."
             echo "Green here means skipped, not passed."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -208,9 +253,17 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::warning title=Agent review skipped::rung 2 is unconfigured — no reviewer ran"
 
+      # The cursor above is only a cost gate. The action deliberately receives
+      # no incremental base: every review reads the full PR, so a commit missed
+      # by the cursor is still visible on the next run. Keep that invariant —
+      # `steps.since.outputs.base` must never scope this step.
       - name: Review
+        id: review
         if: env.HAS_KEY == 'true' && steps.needed.outputs.review == 'true'
-        uses: anthropics/claude-code-action@v1
+        # Pinned because delivery parsing depends on this action's final comment
+        # contract. A moving v1 tag could otherwise make the detector fail open
+        # with no diff in this repository.
+        uses: anthropics/claude-code-action@6b082c41935b4c8a3b8b0ef85ba4ba4d9eeb8975 # v1.0.189
         with:
           prompt: ${{ steps.prompt.outputs.text }}
           anthropic_api_key: ${{ secrets.anthropic_api_key }}
@@ -243,3 +296,87 @@ jobs:
             --model ${{ inputs.model }}
             --max-turns 40
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+
+  # A normal step after a composite action runs *before* that action's post
+  # step. Delivery is a separate job so the comment has already received its
+  # final success/error header when it is inspected.
+  delivery:
+    needs: review
+    if: github.event_name == 'pull_request' && always() && needs.review.outputs.configured != 'false' && needs.review.outputs.review_requested != 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.morpheus-ref }}
+          path: .morpheus
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+          package_json_file: .morpheus/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install the Morpheus CLI runtime
+        working-directory: .morpheus
+        run: pnpm install --frozen-lockfile
+
+      # The action creates a tracking comment before the model reads anything,
+      # and can update it with an in-progress checklist before it reports. The
+      # exact run URL identifies this action's comment; the final body then has
+      # to carry both the action's finished marker and substantive review text.
+      - name: Verify the review was delivered
+        id: delivery
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMENT_ID_BEFORE: ${{ needs.review.outputs.comment_id_before }}
+          ACTION_CONCLUSION: ${{ needs.review.outputs.action_conclusion }}
+        run: |
+          reason=""
+          run_marker="/actions/runs/$GITHUB_RUN_ID)"
+          if ! gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
+            --paginate --slurp > /tmp/final-review-comments.json; then
+            reason="could not read the final tracking comment"
+          else
+            jq --arg marker "$run_marker" '
+              [.[][]
+                | select(.user.login == "github-actions[bot]")
+                | select((.body // "") | contains("[View job"))
+                | select((.body // "") | contains($marker))]
+              | .[-1] // {}
+            ' /tmp/final-review-comments.json > /tmp/final-review-comment.json
+            comment_id=$(jq -r '.id // ""' /tmp/final-review-comment.json)
+            jq -r '.body // ""' /tmp/final-review-comment.json > /tmp/final-review-comment.md
+
+            if reason=$(node .morpheus/dist/cli/index.js review delivery \
+              --before-comment-id "$COMMENT_ID_BEFORE" \
+              --comment-id "$comment_id" \
+              --body-file /tmp/final-review-comment.md); then
+              {
+                echo "## Agent review — delivery confirmed"
+                echo
+                echo "$reason."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+
+          {
+            echo "## Agent review — delivery not confirmed"
+            echo
+            echo "Verifier rung 2 did **not** leave a completed review on this pull request."
+            echo "Reason: $reason."
+            echo "Action conclusion: ${ACTION_CONCLUSION:-unavailable}."
+            echo
+            echo "This warning is infrastructure evidence, not a clean review."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning title=Agent review not delivered::$reason"
