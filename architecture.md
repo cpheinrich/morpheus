@@ -1251,9 +1251,11 @@ The contract follows five rules:
 1. Custom event names are lower snake case and describe a semantic outcome or state
    (`account_created`, not `signup_button_clicked`). Provider-native lifecycle events such as
    `$pageview` and `$screen` remain provider-native rather than being wrapped under new names.
-2. Every event has an explicit property allowlist and an integer `event_version`. Common metadata
-   is limited to `schema_version`, `surface`, `environment`, and optional `release`; SDK-supplied
-   browser, device, session, acquisition, and geographic properties are not copied into events.
+2. Every event has an explicit property allowlist and a numeric `event_version`, conventionally a
+   positive integer literal. TypeScript enforces the numeric shape; review enforces the integer
+   convention. Common metadata is limited to `schema_version`, `surface`, `environment`, and
+   optional `release`; SDK-supplied browser, device, session, acquisition, and geographic properties
+   are not copied into events.
 3. Event properties are low-cardinality dimensions used by a named decision or metric. They never
    include personal or sensitive data, health inputs or results, free text, raw URLs, or query
    strings. Analytics is not a shadow product database.
@@ -1267,6 +1269,9 @@ The contract follows five rules:
 Runtime adapters remain project-owned for now. A `morpheus-kit/analytics` helper is extracted only
 after a second real client proves the common initialization, privacy, and validation behavior; it
 will consume the project contract rather than own the event vocabulary.
+
+`morpheus doctor` reports missing, unreadable, duplicate, and still-empty analytics contracts as
+warnings. These are adoption signals rather than governed-command failures.
 
 ## 11. The `/hq` dashboard
 

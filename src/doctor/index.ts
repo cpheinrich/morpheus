@@ -512,12 +512,13 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
 
   if (kind !== "internal") {
     const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
-    let contracts: string[] | null = null;
+    let discovery: Awaited<ReturnType<typeof findAnalyticsContracts>> | null = null;
     try {
-      contracts = await findAnalyticsContracts(schemaDir);
+      discovery = await findAnalyticsContracts(schemaDir);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") contracts = [];
-      else {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        discovery = { contracts: [], unreadable: [] };
+      } else {
         add(
           "warning",
           "analytics",
@@ -525,33 +526,39 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
         );
       }
     }
-    if (contracts !== null && contracts.length === 0) {
+    if (discovery?.unreadable.length) {
+      add(
+        "warning",
+        "analytics",
+        `Could not read analytics schema candidate${discovery.unreadable.length === 1 ? "" : "s"}: ${discovery.unreadable.join(", ")}. Contract state is unknown.`,
+      );
+    } else if (discovery !== null && discovery.contracts.length === 0) {
       add(
         "warning",
         "analytics",
         `Missing analytics contract in ${ANALYTICS_SCHEMA_DIRECTORY}/ — run morpheus init or add the provider-neutral schema.`,
       );
-    } else if (contracts !== null && contracts.length > 1) {
+    } else if (discovery !== null && discovery.contracts.length > 1) {
       add(
         "warning",
         "analytics",
-        `Multiple analytics contracts found in ${ANALYTICS_SCHEMA_DIRECTORY}/: ${contracts.join(", ")}. Keep one canonical vocabulary.`,
+        `Multiple analytics contracts found in ${ANALYTICS_SCHEMA_DIRECTORY}/: ${discovery.contracts.join(", ")}. Keep one canonical vocabulary.`,
       );
-    } else if (contracts !== null) {
-      const analytics = await readFile(join(schemaDir, contracts[0]!), "utf8").catch(() => null);
+    } else if (discovery !== null) {
+      const analytics = await readFile(join(schemaDir, discovery.contracts[0]!), "utf8").catch(
+        () => null,
+      );
       if (analytics === null) {
-        add("warning", "analytics", `Could not read analytics contract ${contracts[0]}.`);
+        add(
+          "warning",
+          "analytics",
+          `Could not read analytics contract ${discovery.contracts[0]}.`,
+        );
       } else if (analytics.includes(EMPTY_ANALYTICS_EVENT_MAP)) {
         add(
           "warning",
           "analytics",
           "Analytics contract is still the empty scaffold — populate ProjectAnalyticsEvents before launch.",
-        );
-      } else if (!analytics.includes("DefineAnalyticsEvents<")) {
-        add(
-          "warning",
-          "analytics",
-          "Analytics contract bypasses DefineAnalyticsEvents — restore the validation wrapper around ProjectAnalyticsEvents.",
         );
       }
     }

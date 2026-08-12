@@ -1,4 +1,4 @@
-import { lstat, mkdtemp, readFile, readdir, rm, writeFile, mkdir } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, readdir, rm, symlink, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { load } from "js-yaml";
@@ -525,6 +525,29 @@ describe("morpheus init", () => {
       expect(await read("packages/shared/schema/analytics.ts")).toContain(
         "DefineAnalyticsEvents",
       );
+    });
+
+    it("does not write a competing contract when a schema candidate is unreadable", async () => {
+      await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
+      await symlink("missing.ts", join(dir, "packages/shared/schema/analytics.schema.ts"));
+
+      const { written, notes } = await scaffold(dir, SEED);
+
+      expect(written).not.toContain("packages/shared/schema/analytics.ts");
+      expect(notes.join(" ")).toContain("no analytics contract was written");
+    });
+
+    it("recognizes a barrel re-export of the canonical event map", async () => {
+      await mkdir(join(dir, "packages/shared/schema"), { recursive: true });
+      await writeFile(
+        join(dir, "packages/shared/schema/analytics.ts"),
+        'export { type ProjectAnalyticsEvents } from "./events.js";\n',
+      );
+
+      const { written, notes } = await scaffold(dir, SEED);
+
+      expect(written).not.toContain("packages/shared/schema/analytics.ts");
+      expect(notes.join(" ")).toContain("Kept the existing analytics contract");
     });
 
     it("is idempotent — a second run writes nothing", async () => {

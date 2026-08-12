@@ -186,12 +186,13 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   // backend clients cannot silently invent incompatible names and properties.
   if (seed.kind !== "internal") {
     const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
-    let existingAnalytics: string[] | null = null;
+    let discovery: Awaited<ReturnType<typeof findAnalyticsContracts>> | null = null;
     try {
-      existingAnalytics = await findAnalyticsContracts(schemaDir);
+      discovery = await findAnalyticsContracts(schemaDir);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") existingAnalytics = [];
-      else {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        discovery = { contracts: [], unreadable: [] };
+      } else {
         skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/ (could not inspect)`);
         notes.push(
           `Could not inspect ${ANALYTICS_SCHEMA_DIRECTORY}/, so no analytics contract was written. ` +
@@ -200,16 +201,24 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
       }
     }
 
-    if (existingAnalytics !== null && existingAnalytics.length > 0) {
-      for (const name of existingAnalytics) {
+    if (discovery?.unreadable.length) {
+      skipped.push(
+        ...discovery.unreadable.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name} (unreadable)`),
+      );
+      notes.push(
+        `Could not inspect ${discovery.unreadable.join(", ")} in ${ANALYTICS_SCHEMA_DIRECTORY}/, ` +
+          "so no analytics contract was written. Fix or remove the unreadable files before re-running init.",
+      );
+    } else if (discovery !== null && discovery.contracts.length > 0) {
+      for (const name of discovery.contracts) {
         skipped.push(`${ANALYTICS_SCHEMA_DIRECTORY}/${name}`);
       }
       notes.push(
-        `Kept the existing analytics contract${existingAnalytics.length === 1 ? "" : "s"}: ` +
-          existingAnalytics.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name}`).join(", ") +
+        `Kept the existing analytics contract${discovery.contracts.length === 1 ? "" : "s"}: ` +
+          discovery.contracts.map((name) => `${ANALYTICS_SCHEMA_DIRECTORY}/${name}`).join(", ") +
           ".",
       );
-    } else if (existingAnalytics !== null) {
+    } else if (discovery !== null) {
       await put(ANALYTICS_SCHEMA_PATH, t.analyticsSchema());
       if (written.includes(ANALYTICS_SCHEMA_PATH)) {
         notes.push(
@@ -219,8 +228,10 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
         );
       }
     }
-    await put("packages/shared/README.md", t.sharedReadme());
-    await put("packages/shared/schema/README.md", t.sharedSchemaReadme());
+    if (discovery !== null) {
+      await put("packages/shared/README.md", t.sharedReadme());
+      await put("packages/shared/schema/README.md", t.sharedSchemaReadme());
+    }
   }
 
   // Git does not track empty directories, so each carries a README explaining

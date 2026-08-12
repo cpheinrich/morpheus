@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -170,22 +170,20 @@ describe("doctor", () => {
     );
   });
 
-  it("warns when a populated contract bypasses the validation wrapper", async () => {
+  it("reports an unreadable schema candidate as unknown rather than missing", async () => {
     await scaffold("company");
     await mkdir(join(root, "packages/shared/schema"), { recursive: true });
-    await writeFile(
-      join(root, "packages/shared/schema/analytics.ts"),
-      "export type ProjectAnalyticsEvents = { page_viewed: { event_version: 1 } };\n",
-    );
+    await symlink("missing.ts", join(root, "packages/shared/schema/analytics.schema.ts"));
 
     const f = await doctor({ root });
 
     expect(f).toContainEqual(
       expect.objectContaining({
         check: "analytics",
-        message: expect.stringContaining("bypasses DefineAnalyticsEvents"),
+        message: expect.stringContaining("Contract state is unknown"),
       }),
     );
+    expect(f.some((finding) => finding.message.includes("Missing analytics contract"))).toBe(false);
   });
 
   it("does not warn after a project populates its analytics contract", async () => {
