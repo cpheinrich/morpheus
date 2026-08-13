@@ -158,7 +158,7 @@ export async function scaffoldWeb(opts) {
             await app("lib/auth/session-cookie.ts", t.authSessionCookie(ctx));
             await app("lib/auth/current-user.ts", t.authCurrentUser(ctx));
             await app("app/api/auth/session/route.ts", t.apiAuthSession(ctx, name));
-            await app("app/sign-in/page.tsx", t.signInPage(ctx, name, opts.emailDomain));
+            await app("app/sign-in/page.tsx", t.signInPage(ctx, name));
             await app("app/sign-in/SignInForm.tsx", t.signInForm(ctx));
             await app("app/hq/layout.tsx", t.hqLayout(ctx, name));
             await app("app/hq/page.tsx", t.hqPage(ctx, name));

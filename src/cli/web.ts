@@ -63,18 +63,6 @@ async function manifest(root: string): Promise<Manifest> {
   }
 }
 
-/** The email domain to name on the sign-in page, from the HQ allowlist. */
-function allowlistDomain(config: Manifest): string | undefined {
-  const domains = new Set(
-    (config.hq?.allowlist ?? [])
-      .map((address) => address.split("@")[1]?.trim().toLowerCase())
-      .filter((domain): domain is string => Boolean(domain)),
-  );
-  // Only when the whole team shares one. Naming a domain that half the
-  // allowlist does not use tells the other half their account is wrong.
-  return domains.size === 1 ? [...domains][0] : undefined;
-}
-
 const MARK: Record<StepResult["state"], string> = {
   already: "·",
   created: "+",
@@ -149,7 +137,6 @@ export async function webInit(opts: WebInitOptions): Promise<number> {
     description: config.description?.trim() || `${name} — coming soon.`,
     scope: `@${config.name ?? "app"}`,
     ...(firebase ? { firebase } : {}),
-    ...(allowlistDomain(config) ? { emailDomain: allowlistDomain(config) } : {}),
     waitlist: opts.waitlist,
     hq: opts.hq,
   });

@@ -36,8 +36,6 @@ export interface ScaffoldOptions {
   scope: string;
   /** Present once a Firebase project exists and its SDK config was read. */
   firebase?: FirebaseFacts;
-  /** Email domain named on the sign-in page, e.g. `darwin.health`. */
-  emailDomain?: string;
   waitlist: boolean;
   hq: boolean;
 }
@@ -234,7 +232,7 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
       await app("lib/auth/session-cookie.ts", t.authSessionCookie(ctx));
       await app("lib/auth/current-user.ts", t.authCurrentUser(ctx));
       await app("app/api/auth/session/route.ts", t.apiAuthSession(ctx, name));
-      await app("app/sign-in/page.tsx", t.signInPage(ctx, name, opts.emailDomain));
+      await app("app/sign-in/page.tsx", t.signInPage(ctx, name));
       await app("app/sign-in/SignInForm.tsx", t.signInForm(ctx));
       await app("app/hq/layout.tsx", t.hqLayout(ctx, name));
       await app("app/hq/page.tsx", t.hqPage(ctx, name));
