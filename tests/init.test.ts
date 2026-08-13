@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
-import { analyticsSchema } from "../src/init/templates.js";
+import { analyticsSchema, brandReviewSkill } from "../src/init/templates.js";
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../src/analytics/contract.js";
 import ts from "typescript";
 import { rules } from "../src/cli/hq.js";
@@ -406,17 +406,23 @@ describe("morpheus init", () => {
       await scaffold(dir, SEED);
       const files = await readdir(join(dir, "hq/brand"));
 
-      // The brand wizard owns that filename and never overwrites, so a
+      // The brand workflow owns that filename and never overwrites, so a
       // placeholder here would block the real one permanently.
       expect(files).not.toContain("README.md");
     });
   });
 
-  it("leaves hq/brand/README.md to the brand wizard", async () => {
+  it("makes visual-first brand review discoverable in every public project", async () => {
+    await scaffold(dir, SEED);
+
+    expect(await read(".claude/skills/brand-review/SKILL.md")).toBe(brandReviewSkill());
+  });
+
+  it("leaves hq/brand/README.md to the brand workflow", async () => {
     await scaffold(dir, SEED);
     const files = await readdir(join(dir, "hq/brand"));
 
-    // The wizard never overwrites, so a placeholder README here would block
+    // The workflow never overwrites, so a placeholder README here would block
     // the real one permanently.
     expect(files).not.toContain("README.md");
     expect(files).toContain(".gitkeep");
@@ -577,14 +583,16 @@ describe("morpheus init", () => {
       expect(ignore).toContain("# Morpheus");
     });
 
-    it("does not ignore design assets a brand session will produce", async () => {
+    it("keeps raw moodboard input local without ignoring selected design assets", async () => {
       await scaffold(dir, SEED);
       const ignore = await read(".gitignore");
 
-      // A blanket *.png would hide moodboards, mockups and logo exports —
-      // exactly the output the brand session is asked to commit.
+      // A blanket *.png would hide selected assets such as logos and social
+      // cards, while raw moodboard reference media should not inflate Git.
       expect(ignore).not.toMatch(/^\*\.png$/m);
       expect(ignore).toContain("/*.png");
+      expect(ignore).toContain("hq/brand/moodboard/*");
+      expect(ignore).toContain("!hq/brand/moodboard/README.md");
     });
 
     it("does not append to .gitignore twice", async () => {

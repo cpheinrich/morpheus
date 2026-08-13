@@ -1,38 +1,27 @@
-export interface BrandInitOptions {
+export interface BrandWorkflowOptions {
     brandDir: string;
     name: string;
     prefix: string;
-    /** Prefill from previously recorded answers and regenerate derived files. */
-    refresh?: boolean;
 }
 /**
- * Report which generated files no longer follow from `answers.md`.
- *
- * Writes nothing and asks nothing, so it is safe in CI. Exits non-zero on any
- * drift — a package whose prose disagrees with its own answers is wrong even
- * though every file is present.
+ * Scaffold the visual-first brand workflow. It deliberately asks no terminal
+ * questions: the editable brief and the moodboard are better design input
+ * than a forced questionnaire, and a stopped command leaves useful files.
  */
-export declare function check(opts: {
-    brandDir: string;
-    name: string;
-    prefix: string;
-}): Promise<number>;
+export declare function init(opts: BrandWorkflowOptions): Promise<number>;
+/** Refresh only derived handoff material after the brief or reference set moves. */
+export declare function explore(opts: BrandWorkflowOptions): Promise<number>;
 /**
- * Walk the brand questions and write the package.
- *
- * Validation happens once at the end rather than per-question, so a wrong
- * answer late does not discard everything typed before it.
+ * Legacy compatibility for projects which still invoke `brand build`.
+ * There is no longer an answers file to generate from; refreshing the
+ * exploration handoff is the safe equivalent.
  */
-export declare function init(opts: BrandInitOptions): Promise<number>;
-/**
- * Generate from the edited file, asking nothing.
- *
- * The other half of `init`: the wizard is one way to fill `answers.md`, and
- * this is the path for people who filled it in an editor. Both end in the same
- * place because there is only one place the answers live.
- */
-export declare function build(opts: {
-    brandDir: string;
-    name: string;
-    prefix: string;
+export declare function build(opts: BrandWorkflowOptions): Promise<number>;
+/** Create a finalization prompt only after a valid review page exists. */
+export declare function finalize(opts: BrandWorkflowOptions & {
+    selection?: string;
 }): Promise<number>;
+/** Copy, never delete, a legacy questionnaire into a free-form exploration brief. */
+export declare function migrate(opts: Omit<BrandWorkflowOptions, "prefix">): Promise<number>;
+/** A CI-safe completeness check that never writes. */
+export declare function check(opts: Pick<BrandWorkflowOptions, "brandDir" | "name">): Promise<number>;

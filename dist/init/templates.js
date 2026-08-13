@@ -612,6 +612,52 @@ local/
 /*.jpg
 /*.jpeg
 local/**/*.png
+
+# Raw reference material is design input, not the final asset library. Keep
+# the folder and its README visible, but retain the selected board's source and
+# provenance in hq/brand/moodboards.md and approved delivery art in imagery.json.
+hq/brand/moodboard/*
+!hq/brand/moodboard/README.md
+`;
+/**
+ * A local, discoverable instruction for the visual-first brand workflow.
+ *
+ * `explore-prompt.md` is the handoff for one particular brand session; this
+ * stays with every new project so a later agent knows how to resume the work
+ * after that handoff has been archived or revised.
+ */
+export const brandReviewSkill = () => `---
+name: brand-review
+description: Create, iterate, or finalize a visual-first Morpheus brand exploration. Use when a project has hq/brand/vibes.txt and moodboard references, when reviewing research/brand.html, or when applying a selected direction to a home page or app.
+---
+
+# Visual-first brand review
+
+Read \`hq/brand/README.md\`, \`vibes.txt\`, the useful files in \`moodboard/\`, the current
+\`research/brand.html\`, and \`decisions.md\` before making a visual call.
+
+## Explore
+
+Create one standalone \`research/brand.html\` with five genuinely distinct, stable named
+directions. Keep the same product content, hierarchy, sample screens, and CTA in every direction
+so people can compare the visual system rather than five different briefs.
+
+Give each direction a Brand System, Home mock, Marketing mock, and Typography view. Include a
+substantial Compare All view with art, palette, type, UI primitives, and product snapshots. Keep
+the required \`data-morpheus-concept\` and \`data-morpheus-view\` markers from
+\`explore-prompt.md\`, make the page usable at desktop and mobile widths, and record settled,
+rejected, and open choices in \`decisions.md\` after each review.
+
+## Finalize
+
+Do not promote a direction until a person chooses it or names an intentional hybrid. Run
+\`morpheus brand finalize --selection "Name"\`, then write the canonical records it names.
+
+Retain the concept page. Preserve selected moodboards in \`moodboards.md\` and approved diagrams,
+photography, illustrations, or textures in \`imagery.json\` with provenance, alt text, and named
+placements. In \`application.md\`, map every asset id to a public-web or product surface. The first
+homepage or app screen must visibly use the full selected package — messaging, tokens, type,
+layout, and mapped imagery — not tokens and copy alone.
 `;
 /**
  * Claude Code's session hooks.

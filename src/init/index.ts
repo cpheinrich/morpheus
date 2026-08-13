@@ -174,6 +174,14 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   // the instruction is in both and the enforcement is in neither.
   await put(".claude/settings.json", t.claudeSettings());
 
+  // The generated exploration prompt is the session-specific handoff. This
+  // small skill is the durable discovery point for any agent that returns once
+  // the first review is complete, and makes visual-first review the default
+  // rather than a convention people need to rediscover from another project.
+  if (seed.kind !== "internal") {
+    await put(".claude/skills/brand-review/SKILL.md", t.brandReviewSkill());
+  }
+
   // --- agent memory ---------------------------------------------------------
   await put(".agent/README.md", t.agentReadme());
   await put(".agent/decisions.md", t.decisions(seed));
@@ -315,9 +323,10 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   for (const dir of dirs) {
     if (dir.startsWith(".agent/") || dir.startsWith("hq/product/") || dir === INBOX_DIR) continue;
 
-    // `hq/brand/README.md` belongs to the brand wizard, which never overwrites
-    // an existing file — so a placeholder here would permanently block the
-    // real one. A `.gitkeep` holds the directory without claiming the name.
+    // `hq/brand/README.md` belongs to the brand workflow, which never
+    // overwrites a person's current exploration input — so a placeholder here
+    // would permanently block the real one. A `.gitkeep` holds the directory
+    // without claiming the name.
     if (dir === "hq/brand") {
       await put("hq/brand/.gitkeep", "");
       continue;
@@ -417,7 +426,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
 
   if (seed.kind !== "internal") {
     notes.push(
-      "hq/brand/ is empty until you run `morpheus brand init` — the wizard owns that directory.",
+      "hq/brand/ is empty until you run `morpheus brand init` — the visual-first workflow owns that directory.",
     );
   }
 

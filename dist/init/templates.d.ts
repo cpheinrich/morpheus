@@ -95,6 +95,14 @@ export declare const productReadme: (kind: "roadmap" | "goals" | "requests", s: 
 export declare const hqReadme: (s: Seed) => string;
 export declare const gitignore: () => string;
 /**
+ * A local, discoverable instruction for the visual-first brand workflow.
+ *
+ * `explore-prompt.md` is the handoff for one particular brand session; this
+ * stays with every new project so a later agent knows how to resume the work
+ * after that handoff has been archived or revised.
+ */
+export declare const brandReviewSkill: () => string;
+/**
  * Claude Code's session hooks.
  *
  * One hook, and it is deliberately **informational rather than blocking**.

@@ -1540,14 +1540,20 @@ height, muted surface) that *derive from* brand colours rather than introducing 
 
 ```
 hq/brand/
-├── README.md              # index, reading order
-├── answers.md             # the owner's input — the single source (§12.6)
+├── README.md              # workflow, reading order, and final package index
+├── vibes.txt              # free-form brief for visual exploration (§12.6)
+├── moodboard/             # source photographs, scans, screenshots, and references
+├── research/
+│   └── brand.html         # five-direction comparison surface, retained as evidence
 ├── strategy.md            # positioning, mission, vision, audiences
 ├── voice.md               # tone, vocabulary, patterns
 ├── visual-system.md       # color, type, layout, imagery, logo usage
 ├── decisions.md           # session record: Settled / Rejected / Open (§12.7)
 ├── tokens.json            # primitives — the raw palette and type scale
 ├── messaging.json         # taglines, mission, audience — structured (§12.3)
+├── moodboards.md          # selected references and what survived from each
+├── imagery.json           # approved art, source/provenance, alt text, placements
+├── application.md         # image-to-surface plan for web and product
 └── assets/                # logo.svg, logo-reverse.svg, monogram.svg, icon.png, og-image.png
 ```
 
@@ -1571,9 +1577,10 @@ Only one project has a semantic layer today, and inventing a shared vocabulary f
 would be guessing — principle 10 applies with particular force to a vocabulary, since a wrong one
 propagates into every project that adopts it.
 
-**A project that already has a token system keeps it.** `morpheus brand init` writes no
-`tokens.json` when `visualSource` is set and never overwrites an existing file, so adopting the
-brand format cannot destroy or duplicate a working visual system.
+**A project that already has a token system keeps it.** `morpheus brand init` never overwrites an
+existing final record, so adopting the brand format cannot destroy or duplicate a working visual
+system. The selected direction records whether its live token source is a tracked `tokens.json` or
+an established project module in `visual-system.md` and `application.md`.
 
 ### 12.2 How the design system is split
 
@@ -1657,105 +1664,121 @@ the showcase arrive with a kit upgrade for every project at once. This is the li
 vendor or contractor. It excludes strategy, audiences, and positioning, which stay internal;
 `/hq/design` is the internal counterpart and may include them.
 
-### 12.5 The brand package has a declared required set
+### 12.5 The brand workflow has a declared required set
 
-`src/brand/package.ts` declares what a brand package must contain, and is the **single source of
-that list**. Three consumers read it: the design-session prompt, `morpheus brand status`, and the
-generated `hq/brand/README.md`. Written separately these would drift silently — a prompt asking for
-something nothing checks looks exactly like a prompt asking for the right thing.
+`src/brand/package.ts` declares what a visual-first brand workflow must contain. It is the **single
+source of that list** for the agent handoff, `morpheus brand status`, onboarding, and the generated
+`hq/brand/README.md`. Written separately, a prompt can ask for a comparison page or image mapping
+that nothing checks; that looks identical to a real requirement until the selected brand vanishes
+in the first site build.
 
-| File | Produced by |
-|---|---|
-| `README.md`, `strategy.md`, `voice.md`, `messaging.json` | the wizard |
-| `tokens.json`, `visual-system.md`, `assets/logo.svg` | the design session |
+The workflow is deliberately staged:
 
-Deliberately short: a required list long enough to be thorough is one nobody completes, and a
-checklist that is never green stops being read.
+| Stage | Required evidence | Why it exists |
+|---|---|---|
+| Input | `vibes.txt`, at least one image under `moodboard/` | Visual exploration needs a loose human brief and actual material, not a forced form. |
+| Exploration | `research/brand.html` | Five comparable directions let the team choose a system rather than accidentally choose a single pleasant hero. |
+| Final package | strategy, voice, messaging, tokens, visual system, moodboards, imagery, application, logo, and decisions | The winning direction can be applied by an agent who was not in the review. |
 
-**Existence is not completeness.** The wizard writes an empty `tokens.json` scaffold, and an empty
-scaffold beside a finished design looks done in a file listing — the exact failure this check
-exists to catch. So `tokens.json` must carry real values under `color`, `font`, and `space`, and
-`visual-system.md` is scanned for the generator's own placeholder sentences, reporting *which*
-section was never written.
+**Existence is not completeness.** `tokens.json` must carry real values under `color`, `font`, and
+`space`; `visual-system.md` may not retain scaffold copy; `imagery.json` must parse, name a source,
+provenance, alt text, and a live placement for every approved asset. `application.md` must cover
+both Public web and Product surfaces and map every manifest id to a real use. A package that has
+good tokens but leaves its diagrams on disk is incomplete.
 
 **Optional entries carry a trigger, not a deadline** — `motion.md` when transitions start being
 invented per screen, `components.md` when the same pattern is rebuilt a third time. Nothing
 optional affects the exit code: treating an unmet trigger as a failure trains people to ignore the
 output.
 
-### 12.6 The answers are a file, not a wizard transcript
+### 12.6 Start visual exploration with vibes and a moodboard
 
-`hq/brand/answers.md` is the single source of the owner's input. The wizard fills it in; editing it
-directly is the other way, and for most projects the better one.
+`hq/brand/vibes.txt` is the free-form discovery brief. It can hold product intent, audiences,
+references, half-formed visual instincts, materials, colours, typography, hard no's, and future
+scope in ordinary language. `hq/brand/moodboard/` holds the associated photographs, scans,
+screenshots, and source images. Together they are exploration input, **not** a second final strategy
+or asset library.
 
-**The answers refer to each other** — `never` is written against `feels`, `mission` sharpens once
-`primaryAudience` is concrete — and a sequential prompt makes you commit to each before seeing the
-next. A file lets you write them in any order, revise three at once, and leave one blank.
+`morpheus brand init` creates those inputs and the durable handoff without a terminal wizard.
+After the brief or moodboard changes, `morpheus brand explore` refreshes `explore-prompt.md`; the
+agent reads the actual files and creates `research/brand.html`.
 
-`morpheus brand init` writes the file *before* asking anything, so quitting the wizard leaves a
-usable artefact. `morpheus brand build` regenerates from the edited file and asks nothing.
-Questions are anchored by `<!-- morpheus:q <key> -->` rather than by heading text, so rewording a
-heading does not break parsing.
+That page is one standalone, locally readable comparison surface, with at least five stable,
+genuinely distinct initial packages. It must provide:
 
-There is no `answers.json`: a JSON record beside the editable file would be a second source of
-truth by another name.
+1. **Brand System** — palette, type, logo or icon direction, UI primitives, motif, and imagery.
+2. **Home** — a usable product or app-home mock, not only an expressive splash screen.
+3. **Marketing** — a public landing-page mock with the same information hierarchy and CTA.
+4. **Typography** — controlled large and small specimens using the actual product name.
+5. **Compare All** — substantial side-by-side art, palette, type, UI, and product snapshots.
 
-### 12.7 Generated, seeded, and authored
+The same representative product content, hierarchy, screens, and CTA appear in every direction so
+the visual system is the independent variable. A row of colour rectangles is not a comparison
+surface. The page declares a small `morpheus-brand-review` metadata contract and marks each package
+with `data-morpheus-concept` and each view panel with `data-morpheus-view`; status can then verify
+five concepts and all five views without prescribing a framework or aesthetic.
 
-"Never overwrite anything" was right about not destroying work and wrong about treating every file
-the same — a changed mission could sit in the answers while the old one stayed in
-`messaging.json`, which the web app imports, and refresh reported success while the stale value
-shipped. So every file the generator writes declares its owner:
+`answers.md` is retired from new projects. `morpheus brand migrate` copies an existing legacy
+answers file into `vibes.txt` and leaves the original intact, so migration is reversible. There is
+no replacement structured discovery record: the canonical structured files are written only when a
+person selects a direction.
 
-| Ownership | Files | On refresh |
+### 12.7 Exploration is durable; finalization promotes rather than flattens
+
+The review page is not throwaway mockup work. It remains at `hq/brand/research/brand.html` through
+and after selection, alongside a running `decisions.md` with `## Settled`, `## Rejected`, and
+`## Open`. **Scrollback is not a design record.** Stable direction names and rejected components
+matter because the useful result is often a hybrid — *keep Direction B's framing but reject its
+palette* — rather than the page that won a vote.
+
+Once a person selects a named direction or intentional hybrid, `morpheus brand finalize --selection
+"Name"` writes a finalization handoff. The agent reads the full review, input, and decisions, then
+writes the authoritative package. It does not overwrite a person's current prose merely to make a
+generator report green.
+
+| Ownership | Files | On explore or finalize |
 |---|---|---|
-| `derived` | `messaging.json`, `explore-prompt.md`, `README.md`, `assets/README.md` | Regenerated |
-| `seeded` | `strategy.md`, `voice.md`, `visual-system.md` | Reported as disagreeing |
-| `authored` | `tokens.json`, `assets/*` | Never touched |
+| `derived` | `README.md`, `explore-prompt.md`, moodboard/research/assets READMEs | Refreshed from the workflow contract; never hides edited input. |
+| `authored exploration` | `vibes.txt`, source moodboard material, `research/brand.html`, `decisions.md` | Preserved; the review is evidence, not a build artifact. |
+| `authored final` | `strategy.md`, `voice.md`, `messaging.json`, `tokens.json`, `visual-system.md`, `moodboards.md`, `imagery.json`, `application.md`, `assets/*` | Written after selection and retained as the canonical package. |
 
-**Morpheus will not revert your prose to close a gap it noticed.** A seeded file that disagrees
-with the answers is named, not rewritten — silently reverting someone's writing is the same class
-of bug as silently keeping a stale mission. To take the regenerated version, delete the file and
-re-run.
+`morpheus brand check` writes nothing and is safe in CI. It exits non-zero until the workflow has
+both its review evidence and a complete final package; an early exploration is intentionally not
+reported as a final brand.
 
-`morpheus brand check` reports drift, writes nothing, and is safe in CI. It exits non-zero on any
-drift: a package whose prose disagrees with its own answers is wrong even though every file is
-present.
+### 12.8 The selected brand owns imagery, not just visual tokens
 
-### 12.8 A design session records decisions, not just outcomes
+`moodboards.md` records the one or two source boards that influenced the selected direction and
+what survived from each. `imagery.json` is the final asset manifest: every approved diagram,
+illustration, photograph, texture, or other art gets a stable id, source or delivery key, useful alt
+text, provenance or licence note, and named intended placements. Small build-time assets remain in
+Git; heavy source or delivery media can live in the project's public-media store, with its stable
+key recorded in the manifest.
 
-`hq/brand/decisions.md` is a required session output — `## Settled`, `## Rejected`, `## Open`, with
-a reason on every line, written **after each round rather than at the end**.
+`application.md` is the last guard against the most common loss during a concept-to-code handoff.
+It maps every image id to a concrete **Public web** and/or **Product** surface. The first home page
+must visibly use the selected imagery and follow its cropping, contrast, and hierarchy rules; it
+may not import only `tokens.json` and `messaging.json` while leaving the asset library unused.
 
-**Scrollback is not a design record.** Brand work spans rounds, context compaction, more than one
-day, and sometimes a different agent. Without a checkpoint, a rejected direction returns in round
-four and a fresh session cannot tell an abandoned idea from an unexplored one. The negative and
-compositional entries carry most of the value — *Direction B rejected as too institutional, keep
-its type pairing* — so directions get stable names in round one.
+This is an import boundary, not a copy exercise. Page-specific prose still belongs in the app, but
+the site consumes the approved messaging, tokens, and imagery manifest as source records. A later
+site rebuild therefore preserves the direction's orbital diagram, alchemical geometry, or material
+photography instead of silently reducing it to "warm beige plus serif."
 
-`brand status` checks all three sections are present. A session that rejected nothing did not
-diverge, so a missing `## Rejected` is a real signal.
+### 12.9 Convergence needs evidence beyond a good hero
 
-Scratch mockups live in gitignored `local/brand/`. The decision and its reason are durable; the
-artefact is not.
+A hero section flatters almost any direction. The Brand System, Home, Marketing, Typography, and
+Compare All views require a leading direction to hold across expressive and dense surfaces, at both
+desktop and mobile widths. This is where a palette without a quiet neutral or a display face that
+cannot set small labels becomes visible. *If it holds on both it is a direction; if it only holds on
+the hero it is a poster.*
 
-### 12.9 Convergence needs evidence, not a good hero
-
-A hero section flatters almost any direction. Before converging, the session renders the leading
-direction on **one expressive surface** and **one dense functional surface** — real inputs, labels,
-an error state, a result — each at mobile and desktop. The second is where a palette with no quiet
-neutral, or a display face that cannot set 13px, shows up. *If it holds on both it is a direction;
-if it only holds on the first it is a poster.*
-
-A fuller acceptance set (every interactive state, dark mode, contrast, reduced motion, imagery
-provenance) is named in the prompt as things to look at, with the instruction to **say which were
-not checked** rather than imply they were — shipping it as a gate would produce one that gets
-skipped while looking enforced.
-
-The session ends by writing `## Completion` into `decisions.md`: files written, surfaces reviewed,
-decisions still open, temporary assets needing replacement, departures from the brief, and checks
-run **and not run**. That last line is what makes "first working version" a claim with evidence and
-named gaps rather than the note a conversation happened to end on.
+A fuller acceptance set (interactive states, dark mode, contrast, reduced motion, imagery
+provenance) is named in the exploration and finalization handoffs as things to inspect, with the
+instruction to say which were not checked rather than imply they were. `## Completion` in
+`decisions.md` names the selected direction, rejected or retained components, production asset
+replacements, reviewed surfaces, and checks run or not run. That makes "first working version" a
+claim with evidence and named gaps rather than the note a conversation happened to end on.
 
 ### 12.10 Setup is a checklist, not a wizard
 
@@ -1829,7 +1852,7 @@ never be blocked on a token.
 
 > **Gotchas.** `CLAUDE.md` is a **symlink**, not a copy; two files would drift invisibly until an
 > agent acted on the stale one. `hq/brand/` gets a `.gitkeep`, not a `README.md`, because the brand
-> wizard owns that filename and never overwrites — a placeholder would block the real file
+> workflow owns that filename and never overwrites — a placeholder would block the real file
 > permanently.
 
 The scaffold was written after two retrofits rather than before, and every template in it exists
