@@ -62,3 +62,7 @@ brand placeholder and the separate command a founder could forget. The manual
 `morpheus brand init` command remains useful as an idempotent repair or
 retrofit path, and the initializer preserves an existing `vibes.txt` rather
 than replacing a real brief.
+
+The safe-upgrade path also appends only missing moodboard ignore rules to an
+older Morpheus `.gitignore`; it does not replace a repository's existing
+ignore policy or duplicate rules that are already present.

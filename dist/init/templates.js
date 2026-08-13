@@ -776,6 +776,10 @@ Everything about running ${s.name} that is not code.
 Markdown with YAML frontmatter is the source of truth. Index tables are generated between the
 \`morpheus:\` markers and are never edited by hand.
 `;
+export const BRAND_MOODBOARD_IGNORE_RULES = [
+    "hq/brand/moodboard/*",
+    "!hq/brand/moodboard/README.md",
+];
 export const gitignore = () => `
 # Morpheus
 local/
@@ -796,8 +800,7 @@ local/**/*.png
 # Raw reference material is design input, not the final asset library. Keep
 # the folder and its README visible, but retain the selected board's source and
 # provenance in hq/brand/moodboards.md and approved delivery art in imagery.json.
-hq/brand/moodboard/*
-!hq/brand/moodboard/README.md
+${BRAND_MOODBOARD_IGNORE_RULES.join("\n")}
 `;
 /**
  * A local, discoverable instruction for the visual-first brand workflow.

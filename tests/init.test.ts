@@ -622,6 +622,17 @@ describe("morpheus init", () => {
       expect(ignore).toContain("# Morpheus");
     });
 
+    it("upgrades an older Morpheus ignore block with the local moodboard boundary", async () => {
+      await writeFile(join(dir, ".gitignore"), "# Morpheus\nlocal/\n");
+
+      const { written } = await scaffold(dir, SEED);
+      const ignore = await read(".gitignore");
+
+      expect(written).toContain(".gitignore (brand moodboard input appended)");
+      expect(ignore).toContain("hq/brand/moodboard/*");
+      expect(ignore).toContain("!hq/brand/moodboard/README.md");
+    });
+
     it("keeps raw moodboard input local without ignoring selected design assets", async () => {
       await scaffold(dir, SEED);
       const ignore = await read(".gitignore");
