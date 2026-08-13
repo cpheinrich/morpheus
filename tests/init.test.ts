@@ -436,13 +436,15 @@ describe("morpheus init", () => {
       expect(text).toContain("blob/main/hq/team/meeting-notes/README.md");
     });
 
-    it("writes no README for a directory it has nothing to say about", async () => {
-      await scaffold(dir, SEED);
-      const files = await readdir(join(dir, "hq/brand"));
+    it("starts user-facing projects with a usable visual brand workflow", async () => {
+      const { written } = await scaffold(dir, SEED);
 
-      // The brand workflow owns that filename and never overwrites, so a
-      // placeholder here would block the real one permanently.
-      expect(files).not.toContain("README.md");
+      expect(await read("hq/brand/README.md")).toContain("The workflow");
+      expect(await read("hq/brand/vibes.txt")).toContain("[Replace this guidance");
+      expect(await read("hq/brand/moodboard/README.md")).toContain("intentionally ignored by Git");
+      expect(await read("hq/brand/research/README.md")).toContain("Brand concept review");
+      expect(written).toContain("hq/brand/moodboard/README.md");
+      await expect(read("hq/brand/.gitkeep")).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
 
@@ -450,16 +452,6 @@ describe("morpheus init", () => {
     await scaffold(dir, SEED);
 
     expect(await read(".claude/skills/brand-review/SKILL.md")).toBe(brandReviewSkill());
-  });
-
-  it("leaves hq/brand/README.md to the brand workflow", async () => {
-    await scaffold(dir, SEED);
-    const files = await readdir(join(dir, "hq/brand"));
-
-    // The workflow never overwrites, so a placeholder README here would block
-    // the real one permanently.
-    expect(files).not.toContain("README.md");
-    expect(files).toContain(".gitkeep");
   });
 
   it("gives every directory a tracked file, since git drops empty ones", async () => {
@@ -533,6 +525,19 @@ describe("morpheus init", () => {
       expect(skipped).toContain("AGENTS.md");
       expect(written).not.toContain("AGENTS.md");
       expect(await read("AGENTS.md")).toBe(mine);
+    });
+
+    it("keeps an authored brand brief while filling in the missing starter files", async () => {
+      const brief = "We need a lucid, diagram-led system with a warm paper ground.\n";
+      await mkdir(join(dir, "hq/brand"), { recursive: true });
+      await writeFile(join(dir, "hq/brand/vibes.txt"), brief);
+
+      const { skipped } = await scaffold(dir, SEED);
+
+      expect(await read("hq/brand/vibes.txt")).toBe(brief);
+      expect(skipped).toContain("hq/brand/vibes.txt");
+      expect(await read("hq/brand/moodboard/README.md")).toContain("visual-inspiration");
+      expect(await read("hq/brand/README.md")).toContain("morpheus init");
     });
 
     it("never overwrites an existing analytics contract", async () => {

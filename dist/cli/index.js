@@ -46,7 +46,7 @@ Usage
   morpheus inbox validate   [--dir <hq/team>]
   morpheus team validate    the roster and every meeting note
   morpheus brand init             [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
-                            — scaffold a free-form brief and moodboard input
+                            — repair or retrofit the default free-form brief and moodboard input
   morpheus brand explore          refresh the agent handoff for five concept packages
   morpheus brand finalize --selection "Name"
                             — write the finalization handoff after a concept wins

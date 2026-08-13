@@ -12,9 +12,9 @@ function moodboardReadme() {
     return [
         "# Moodboard input",
         "",
-        "Put reference photographs, scans, screenshots, and source imagery for this brand exploration in this folder. They are input, not the final visual system. Keep filenames readable enough for a reviewer to refer to in conversation.",
+        "This local visual-inspiration folder is created with every user-facing Morpheus project. Put reference photographs, scans, screenshots, and source imagery for this brand exploration here. They are input, not the final visual system. Keep filenames readable enough for a reviewer to refer to in conversation.",
         "",
-        "Large binary files are intentionally ignored by the default project rules. If a reference needs to survive beyond the local session, record its URL, licence or provenance, and what survived from it in `../moodboards.md` once a direction is selected. The final package should point to approved delivery assets in `../imagery.json`, not make an application depend on this raw folder.",
+        "Everything in this folder except this README is intentionally ignored by Git, so pasted or downloaded inspiration never inflates repository history. If a reference needs to survive beyond the local session, record its URL, licence or provenance, and what survived from it in `../moodboards.md` once a direction is selected. The final package should point to approved delivery assets in `../imagery.json`, not make an application depend on this raw folder.",
     ].join("\n");
 }
 function researchReadme() {
@@ -46,6 +46,8 @@ function assetsReadme() {
 function readme(name) {
     return [
         `# ${name} brand`,
+        "",
+        "This starter is created automatically by `morpheus init` for company and personal projects. `morpheus brand init` remains the safe, idempotent repair command for an older or partial project.",
         "",
         "## The workflow",
         "",

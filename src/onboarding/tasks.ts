@@ -314,7 +314,7 @@ export const TASKS: Task[] = [
     group: "Brand",
     title: "Brand brief and moodboard prepared",
     why: "A free-form brief plus visual source material gives the first five brand directions something real to respond to.",
-    how: "Run morpheus brand init, write hq/brand/vibes.txt, and add reference imagery to hq/brand/moodboard/",
+    how: "The project initializer already created hq/brand/. Write hq/brand/vibes.txt and add reference imagery to the Git-ignored hq/brand/moodboard/ folder; use morpheus brand init only to repair or retrofit a partial project.",
     detect: async (root) => {
       const status = await packageStatus(join(root, "hq/brand"));
       return ["vibes.txt", "moodboard/"].every(

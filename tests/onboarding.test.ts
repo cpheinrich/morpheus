@@ -73,6 +73,14 @@ describe("the checklist catalogue", () => {
     }
   });
 
+  it("treats the brand workflow as scaffolded rather than a separate setup command", () => {
+    const brand = TASKS.find((candidate) => candidate.id === "brand-exploration-input");
+
+    expect(brand?.how).toContain("initializer already created hq/brand");
+    expect(brand?.how).toContain("Git-ignored hq/brand/moodboard/");
+    expect(brand?.how).toContain("repair or retrofit");
+  });
+
   it("keeps the Firebase terms hint alongside the automated setup command", () => {
     const firebase = TASKS.find((candidate) => candidate.id === "firebase");
 

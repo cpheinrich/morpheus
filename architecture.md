@@ -1568,7 +1568,7 @@ height, muted surface) that *derive from* brand colours rather than introducing 
 hq/brand/
 ├── README.md              # workflow, reading order, and final package index
 ├── vibes.txt              # free-form brief for visual exploration (§12.6)
-├── moodboard/             # source photographs, scans, screenshots, and references
+├── moodboard/             # Git-ignored raw visual inspiration; README stays tracked
 ├── research/
 │   └── brand.html         # five-direction comparison surface, retained as evidence
 ├── strategy.md            # positioning, mission, vision, audiences
@@ -1725,9 +1725,13 @@ scope in ordinary language. `hq/brand/moodboard/` holds the associated photograp
 screenshots, and source images. Together they are exploration input, **not** a second final strategy
 or asset library.
 
-`morpheus brand init` creates those inputs and the durable handoff without a terminal wizard.
-After the brief or moodboard changes, `morpheus brand explore` refreshes `explore-prompt.md`; the
-agent reads the actual files and creates `research/brand.html`.
+`morpheus init` creates these inputs and the durable handoff for every company and personal project,
+so a founder never has to remember a separate brand-initialization step. The folder itself is
+present because its README is tracked, while the raw visual-inspiration files inside
+`hq/brand/moodboard/` are Git-ignored by default. `morpheus brand init` remains a safe,
+idempotent repair and retrofit command for an older or partial project. After the brief or
+moodboard changes, `morpheus brand explore` refreshes `explore-prompt.md`; the agent reads the
+actual files and creates `research/brand.html`.
 
 That page is one standalone, locally readable comparison surface, with at least five stable,
 genuinely distinct initial packages. It must provide:
@@ -1877,9 +1881,9 @@ console and need credentials this command should not hold. Drawing the seam ther
 never be blocked on a token.
 
 > **Gotchas.** `CLAUDE.md` is a **symlink**, not a copy; two files would drift invisibly until an
-> agent acted on the stale one. `hq/brand/` gets a `.gitkeep`, not a `README.md`, because the brand
-> workflow owns that filename and never overwrites — a placeholder would block the real file
-> permanently.
+> agent acted on the stale one. Every company and personal project starts with the brand workflow,
+> including a tracked `hq/brand/moodboard/README.md`; raw inspiration next to it is intentionally
+> ignored so it stays local without the directory disappearing on clone.
 
 The scaffold was written after two retrofits rather than before, and every template in it exists
 because Evo or Darwin needed it.

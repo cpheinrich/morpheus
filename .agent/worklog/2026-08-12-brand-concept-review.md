@@ -51,3 +51,14 @@ artifacts were deleted and the clean-build check was repeated.
 `eslint` executable; the repository's CI does not currently provide a lint
 script dependency for this package. That is a pre-existing tooling gap, not
 silently treated as a passing check.
+
+## Follow-up: scaffold the input instead of asking people to remember it
+
+The workflow already had the correct local input boundary:
+`hq/brand/moodboard/` is created with a tracked README while every other item
+inside it is Git-ignored. The refinement is to invoke that workflow from
+ordinary `morpheus init` for company and personal projects, removing the empty
+brand placeholder and the separate command a founder could forget. The manual
+`morpheus brand init` command remains useful as an idempotent repair or
+retrofit path, and the initializer preserves an existing `vibes.txt` rather
+than replacing a real brief.

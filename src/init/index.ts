@@ -1,5 +1,6 @@
 import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
+import { initializeWorkflow } from "../brand/workflow.js";
 import { EXPECTED } from "../doctor/index.js";
 import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
 import * as t from "./templates.js";
@@ -259,6 +260,21 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   const dirs = KIND_DIRS[seed.kind];
   if (dirs.some((d) => d.startsWith("hq/"))) await put("hq/README.md", t.hqReadme(seed));
 
+  // A visual-first brand is a project primitive, not an optional wizard a
+  // founder has to remember before the first design session. The workflow is
+  // still independently idempotent, so this also safely repairs a partial
+  // brand directory in an established user-facing project without touching
+  // any authored brief or review.
+  if (dirs.includes("hq/brand")) {
+    const brand = await initializeWorkflow({
+      brandDir: join(root, "hq/brand"),
+      name: seed.name,
+      prefix: seed.prefix.slice(0, 2).toLowerCase(),
+    });
+    written.push(...brand.files.map((path) => relative(root, path)));
+    skipped.push(...brand.skipped.map((path) => relative(root, path)));
+  }
+
   for (const kind of ["roadmap", "goals", "requests"] as const) {
     if (!dirs.includes(`hq/product/${kind}`) && kind !== "requests") continue;
     if (kind === "requests" && !dirs.includes("hq/product/roadmap")) continue;
@@ -330,12 +346,11 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   for (const dir of dirs) {
     if (dir.startsWith(".agent/") || dir.startsWith("hq/product/") || dir === INBOX_DIR) continue;
 
-    // `hq/brand/README.md` belongs to the brand workflow, which never
-    // overwrites a person's current exploration input — so a placeholder here
-    // would permanently block the real one. A `.gitkeep` holds the directory
-    // without claiming the name.
+    // The brand workflow above owns this directory and never overwrites a
+    // person's current exploration input. Its tracked README and moodboard
+    // README keep the directory present after clone, so no placeholder is
+    // needed.
     if (dir === "hq/brand") {
-      await put("hq/brand/.gitkeep", "");
       continue;
     }
     // A written README where we have something to say, and nothing at all where
@@ -429,12 +444,6 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
       const rendered = (renderers[kind] as (i: any) => string)(items);
       await gen.writeIndex(join(productDir, kind), rendered);
     }
-  }
-
-  if (seed.kind !== "internal") {
-    notes.push(
-      "hq/brand/ is empty until you run `morpheus brand init` — the visual-first workflow owns that directory.",
-    );
   }
 
   return { written, skipped, notes };
