@@ -14,15 +14,6 @@ async function manifest(root) {
             "into a bare directory.");
     }
 }
-/** The email domain to name on the sign-in page, from the HQ allowlist. */
-function allowlistDomain(config) {
-    const domains = new Set((config.hq?.allowlist ?? [])
-        .map((address) => address.split("@")[1]?.trim().toLowerCase())
-        .filter((domain) => Boolean(domain)));
-    // Only when the whole team shares one. Naming a domain that half the
-    // allowlist does not use tells the other half their account is wrong.
-    return domains.size === 1 ? [...domains][0] : undefined;
-}
 const MARK = {
     already: "·",
     created: "+",
@@ -90,7 +81,6 @@ export async function webInit(opts) {
         description: config.description?.trim() || `${name} — coming soon.`,
         scope: `@${config.name ?? "app"}`,
         ...(firebase ? { firebase } : {}),
-        ...(allowlistDomain(config) ? { emailDomain: allowlistDomain(config) } : {}),
         waitlist: opts.waitlist,
         hq: opts.hq,
     });

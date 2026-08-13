@@ -31,8 +31,6 @@ export interface ScaffoldOptions {
     scope: string;
     /** Present once a Firebase project exists and its SDK config was read. */
     firebase?: FirebaseFacts;
-    /** Email domain named on the sign-in page, e.g. `darwin.health`. */
-    emailDomain?: string;
     waitlist: boolean;
     hq: boolean;
 }

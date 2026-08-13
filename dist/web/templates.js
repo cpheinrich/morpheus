@@ -1604,15 +1604,15 @@ export async function DELETE(request: Request) {
 /**
  * The sign-in page.
  *
- * The domain sentence is deliberately hedged — *usually* a `@domain` account,
- * rather than "personal Google accounts are not on the allowlist". That
- * stronger claim is true when generated and stops being true the first time
- * someone adds a personal address to the allowlist, which is a one-line change
- * nobody would think to pair with a copy edit. It then tells exactly the people
- * who were just granted access not to bother trying. Both Darwin and Evo shipped
- * that sentence and both had to be corrected by hand on 2026-08-13.
+ * **It does not say what kind of account to use.** The allowlist is a list of
+ * addresses and nothing more — personal or work is not a distinction it makes,
+ * so the page must not imply one. The earlier version derived a domain from the
+ * allowlist and said "personal Google accounts are not on the allowlist", which
+ * was true when generated and false the first time anyone added one: a one-line
+ * manifest change nobody pairs with a copy edit, telling exactly the people just
+ * granted access not to bother trying. Darwin and Evo both shipped it.
  */
-export const signInPage = (ctx, name, emailDomain) => {
+export const signInPage = (ctx, name) => {
     const self = "app/sign-in/page.tsx";
     return `import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -1649,8 +1649,7 @@ export default async function SignInPage({
         <p className="text-xs uppercase tracking-widest opacity-60">${name} HQ</p>
         <h1 className="text-3xl font-medium tracking-tight">Sign in</h1>
         <p className="text-sm leading-6 opacity-80">
-          Access is limited to the ${name} team${emailDomain ? `, usually with a
-          <strong>@${emailDomain}</strong> account` : ""}. The allowlist lives in{" "}
+          Access is limited to the ${name} team. The allowlist lives in{" "}
           <code>morpheus.json</code>.
         </p>
       </div>
