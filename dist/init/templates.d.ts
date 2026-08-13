@@ -111,6 +111,16 @@ export declare const gitignore: () => string;
  */
 export declare const brandReviewSkill: () => string;
 /**
+ * The website initializer's discovery point.
+ *
+ * `morpheus web init` is only useful if it is found at the moment somebody asks
+ * for a website, which is exactly when an agent is least likely to go looking
+ * for a CLI it has never run. The same reasoning as `brand-review`: the command
+ * is the durable thing, and this file is how an agent standing in the project
+ * learns the command exists before hand-rolling a worse version of it.
+ */
+export declare const websiteInitSkill: () => string;
+/**
  * Claude Code's session hooks.
  *
  * One hook, and it is deliberately **informational rather than blocking**.

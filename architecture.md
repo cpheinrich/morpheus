@@ -1894,7 +1894,8 @@ are the same command rather than two that drift apart.
 **It provisions nothing.** Repository-local deployment configuration and a deny-by-default rules
 file are scaffolding, not a cloud mutation. No GCP, no DNS, no Vercel — those live in someone else's
 console and need credentials this command should not hold. Drawing the seam there means `init` can
-never be blocked on a token.
+never be blocked on a token. Provisioning lives in `morpheus web init` (§12.12), which is allowed
+to be blocked on one.
 
 > **Gotchas.** `CLAUDE.md` is a **symlink**, not a copy; two files would drift invisibly until an
 > agent acted on the stale one. Every company and personal project starts with the brand workflow,
@@ -1904,6 +1905,68 @@ never be blocked on a token.
 
 The scaffold was written after two retrofits rather than before, and every template in it exists
 because Evo or Darwin needed it.
+
+### 12.12 `morpheus web init` provisions the cloud, then scaffolds the site
+
+The website initializer. It is a separate command from `init` precisely so that §12.11's property
+survives: `init` scaffolds a repository and can never be blocked on a credential, and this one
+provisions real resources and is allowed to be.
+
+**Two halves, in this order.** Provision, then write the code that depends on what was
+provisioned:
+
+| Provisioned | Scaffolded |
+|---|---|
+| GCP project, required APIs | A Next.js app, if there is none |
+| Firebase enabled on it | Email waitlist capture — form, route handler, record schema |
+| Firestore in `nam5` | `/hq` behind Google sign-in, and the route gate |
+| A registered web app, and its public SDK config | The Firestore deny block for `waitlist` |
+| Workload Identity Federation for Vercel | `.env.example`, and the dependencies the code imports |
+
+Then it calls `firebase auth setup` (§ Firebase Google sign-in), which is the only step that can
+need a human at a consent screen — and is therefore last, so everything before it survives a stop.
+
+**The order is the whole design.** The Firebase-dependent half is written only once a project is
+real and its SDK config has been *read* — `apiKey` and `appId` cannot be derived, and a config with
+a guessed field fails at sign-in naming none of it. With `--no-provision`, or when provisioning is
+blocked, the waitlist and `/hq` are skipped and reported rather than written against placeholders.
+A sign-in page holding a placeholder config looks finished and cannot work, which is the same shape
+as *a check that skips what is absent reports the empty thing as correct*.
+
+**Every step detects, acts, then reports what is true** — `already`, `created`, `skipped` or
+`blocked`. Nothing returns success on the strength of a command exiting zero, and a permission
+error is never read as absence: *refused a look at the project* and *the project does not exist*
+are different answers, and only the second may lead to a create. That distinction is what stops a
+duplicate project being made under the wrong identity, which is a mistake with no clean undo.
+
+**It never overwrites**, so it is the same command for a new site and for a live one. Evo had a
+home page, a token pipeline and a Vercel link before it had any of this. Three files are *merged*
+rather than skipped, because skipping them would leave the generated code unable to resolve — the
+app's `package.json` dependencies, the shared package's `exports` map (an explicit map is a closed
+list, so an unnamed subpath resolves nowhere), and the Firestore rules. The rules merge is anchored
+on the generated catch-all comment and refuses to insert at a guessed position, for the reason
+`updateRoleHelpers` refuses a file with no markers: rules are a security boundary, and a `match`
+block written outside the scope it was meant to be inside does not fail loudly.
+
+**The waitlist is a default, not a feature request.** A launch page that asks for nothing captures
+nothing, and the list is the only asset a pre-product site can build. The write is server-side:
+a browser write needs a rule letting anyone create documents in the collection, the web config is
+committed (correctly), and a rule cannot see an IP, cannot throttle, and cannot reduce a referrer
+to its origin. The endpoint answers identically whether an address is new or already present,
+because any variation is a free oracle for testing who is on the list.
+
+**Generated components carry no semantic tokens.** Tailwind core utilities only — `border`, not
+`border-line`. §12.1 assigns the semantic layer to each project, so a template reaching into it
+would render unstyled everywhere the vocabulary differs, and would look finished doing it.
+
+Scaffolded projects get a `website-init` skill alongside `brand-review`, for the same reason: a
+command is only useful if it is found at the moment it is needed, and that is exactly when an agent
+is least likely to go looking for a CLI it has never run.
+
+The templates were extracted from Darwin — the waitlist from
+[darwin-health/darwin#35](https://github.com/darwin-health/darwin/pull/35), the `/hq` gate from
+DW-002, whose sign-in Chris verified renders `chris@darwin.health · admin`. Same rule as the
+repository scaffold: the retrofit is the specification.
 
 ## 13. Secrets and credentials
 

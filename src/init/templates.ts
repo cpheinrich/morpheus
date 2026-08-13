@@ -916,6 +916,58 @@ its README; \`research/brand.html\` itself remains versioned evidence.
 `;
 
 /**
+ * The website initializer's discovery point.
+ *
+ * `morpheus web init` is only useful if it is found at the moment somebody asks
+ * for a website, which is exactly when an agent is least likely to go looking
+ * for a CLI it has never run. The same reasoning as `brand-review`: the command
+ * is the durable thing, and this file is how an agent standing in the project
+ * learns the command exists before hand-rolling a worse version of it.
+ */
+export const websiteInitSkill = (): string => `---
+name: website-init
+description: Create or extend this project's website — a Next.js app, email waitlist capture, and /hq behind Google sign-in. Use whenever someone asks to create the website, add a landing page, capture emails or signups, add a waitlist or contact form, or set up the internal dashboard or its login.
+---
+
+# Website initialization
+
+**Run \`morpheus web init\` before writing any of this by hand.** It provisions the GCP and
+Firebase project, Firestore, the registered web app and the Vercel deployment identity, then
+scaffolds the code that depends on them: waitlist email capture and \`/hq\` behind Google sign-in.
+
+\`\`\`sh
+morpheus web status   # what the surface has, and what it is missing
+morpheus web init     # add whatever is missing; never overwrites a file
+\`\`\`
+
+It is safe on a live site. Every existing file is skipped and reported, so a project with a
+working home page gets the missing half and keeps what it has — including the home page, which
+the command deliberately never edits.
+
+## After it runs
+
+1. \`pnpm install\`, then render \`<WaitlistForm source="hero" />\` where the page currently asks
+   for nothing. A \`mailto:\` link or an anchor to another section is usually what it replaces.
+2. Add a \`waitlist_joined\` event to the project's analytics contract and pass it to the form's
+   \`onJoined\` prop. The generated form imports no analytics module on purpose — the event name
+   belongs to this project's vocabulary.
+3. \`morpheus access sync\`, so the allowlist in \`morpheus.json\` becomes the \`role\` custom claim.
+   Until it runs, a signed-in account has no role and \`/hq\` refuses it — the gate working, not a
+   broken sign-in.
+4. Deploy the Firestore rules. The generated \`waitlist\` block denies every client operation; the
+   collection is written only by the server, through the route handler.
+
+## What not to do
+
+Do not add a client-side Firestore write for a public form. A rule cannot see an IP, cannot
+throttle, and cannot reduce a referrer to its origin — and the web config is committed, so
+"anyone" means anyone who views source.
+
+Do not hand-write a second route gate. If \`proxy.ts\` or \`middleware.ts\` already exists, the
+command leaves it alone and says so; add the \`/hq\` matcher to the existing one.
+`;
+
+/**
  * Claude Code's session hooks.
  *
  * One hook, and it is deliberately **informational rather than blocking**.
