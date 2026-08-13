@@ -48,6 +48,13 @@ export declare const morpheusCalloutForReadme: () => string;
  */
 export declare const readme: (s: Seed) => string;
 export declare const dirReadmes: Record<string, (s: Seed) => string>;
+/**
+ * Project-owned marketing briefs. They are deliberately useful before any provider is configured,
+ * and the marker lets doctor distinguish a copied starting point from completed project work.
+ */
+export declare const marketingAnalytics: (s: Seed) => string;
+export declare const marketingSeoStrategy: (s: Seed) => string;
+export declare const marketingLaunchPlan: (s: Seed) => string;
 export declare const agents: (s: Seed) => string;
 export declare const decisions: (s: Seed) => string;
 export declare const learned: () => string;

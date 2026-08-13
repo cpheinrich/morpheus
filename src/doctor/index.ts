@@ -102,6 +102,13 @@ export const EXPECTED: Record<Kind, string[]> = {
 /** Files every project should carry regardless of kind. */
 const EXPECTED_FILES = ["morpheus.json", "AGENTS.md"];
 
+/** Durable briefs expected in every user-facing project. */
+const MARKETING_BRIEFS = [
+  ["hq/marketing/analytics.md", "marketing-analytics"],
+  ["hq/marketing/launch-plan.md", "marketing-launch"],
+  ["hq/marketing/seo/strategy.md", "marketing-seo"],
+] as const;
+
 /**
  * Records `AGENTS.md` tells every session to read, whether or not a lease
  * measures them.
@@ -514,6 +521,26 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   }
 
   if (kind !== "internal") {
+    for (const [path, marker] of MARKETING_BRIEFS) {
+      if ([...inherited].some((parent) => path === parent || path.startsWith(`${parent}/`))) {
+        continue;
+      }
+      const content = await readFile(join(root, path), "utf8").catch(() => null);
+      if (content === null) {
+        add(
+          "warning",
+          "marketing",
+          `Missing ${path} — run morpheus init to add the project-owned initialization brief.`,
+        );
+      } else if (content.includes(`morpheus:template ${marker}`)) {
+        add(
+          "warning",
+          "marketing",
+          `${path} is still the initialization scaffold — replace it with current project evidence before treating this area as ready.`,
+        );
+      }
+    }
+
     const schemaDir = join(root, ANALYTICS_SCHEMA_DIRECTORY);
     let discovery: Awaited<ReturnType<typeof findAnalyticsContracts>> | null = null;
     try {
