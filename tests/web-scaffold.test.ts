@@ -223,6 +223,20 @@ describe("scaffoldWeb", () => {
     expect(result.written).toContain("apps/web/lib/waitlist/firestore-value.ts");
   });
 
+  it("does not tell people something an allowlist change makes false", async () => {
+    const root = await establishedProject();
+    await scaffoldWeb({ ...options(root, await surveyWeb(root)), emailDomain: "acme.com" });
+
+    const page = await readFile(join(root, "apps/web/app/sign-in/page.tsx"), "utf8");
+    expect(page).toContain("@acme.com");
+    // Darwin and Evo both shipped "personal Google accounts are not on the
+    // allowlist", and both had to be corrected by hand the day a personal
+    // address was added — a one-line manifest change nobody pairs with a copy
+    // edit, aimed at exactly the people just granted access.
+    expect(page).not.toContain("personal Google accounts are not on the allowlist");
+    expect(page).toContain("morpheus.json");
+  });
+
   it("keeps an existing route gate rather than shipping a second one", async () => {
     const root = await establishedProject();
     await write(root, "apps/web/middleware.ts", "export default function middleware() {}\n");
