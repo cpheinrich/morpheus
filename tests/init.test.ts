@@ -161,6 +161,40 @@ describe("morpheus init", () => {
       expect(seo).toContain("not evidence that Google indexed it");
     });
 
+    it("scaffolds project-owned marketing initialization briefs", async () => {
+      await scaffold(dir, SEED);
+
+      const analytics = await read("hq/marketing/analytics.md");
+      expect(analytics).toContain("morpheus:template marketing-analytics");
+      expect(analytics).toContain("Event contract first");
+      expect(analytics).toContain("PostHog initialization");
+      expect(analytics).toContain("not evidence that analytics is installed");
+
+      const strategy = await read("hq/marketing/seo/strategy.md");
+      expect(strategy).toContain("morpheus:template marketing-seo");
+      expect(strategy).toContain("OpenSEO");
+      expect(strategy).toContain("Appeeky");
+      expect(strategy).toContain("never substitute website-search data for ASO");
+
+      const launch = await read("hq/marketing/launch-plan.md");
+      expect(launch).toContain("Website launch plan");
+      expect(launch).toContain("App launch plan — placeholder");
+      expect(launch).toContain("does not authorize publishing");
+      expect(launch).toContain("Appeeky");
+    });
+
+    it("preserves established marketing records while adding missing briefs", async () => {
+      await mkdir(join(dir, "hq/marketing/seo"), { recursive: true });
+      await writeFile(join(dir, "hq/marketing/seo/strategy.md"), "# Real strategy\n");
+
+      const result = await scaffold(dir, SEED);
+
+      expect(await read("hq/marketing/seo/strategy.md")).toBe("# Real strategy\n");
+      expect(result.skipped).toContain("hq/marketing/seo/strategy.md");
+      expect(await read("hq/marketing/analytics.md")).toContain("Analytics initialization");
+      expect(await read("hq/marketing/launch-plan.md")).toContain("Website launch plan");
+    });
+
     it("scaffolds qa/ and infra/, which the spec described and no project had", async () => {
       await scaffold(dir, SEED);
 
@@ -741,6 +775,9 @@ describe("morpheus init", () => {
       await expect(read("packages/shared/schema/analytics.ts")).rejects.toMatchObject({
         code: "ENOENT",
       });
+      await expect(read("hq/marketing/analytics.md")).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(read("hq/marketing/launch-plan.md")).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(read("hq/marketing/seo/strategy.md")).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
 });

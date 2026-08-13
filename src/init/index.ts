@@ -232,6 +232,13 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
       await put("packages/shared/README.md", t.sharedReadme());
       await put("packages/shared/schema/README.md", t.sharedSchemaReadme());
     }
+
+    // Marketing starts with durable briefs, not a provider account or a one-off prompt. These
+    // files are intentionally independent: an established project may already have one real
+    // strategy while still needing the other two, and init must preserve every existing record.
+    await put("hq/marketing/analytics.md", t.marketingAnalytics(seed));
+    await put("hq/marketing/launch-plan.md", t.marketingLaunchPlan(seed));
+    await put("hq/marketing/seo/strategy.md", t.marketingSeoStrategy(seed));
   }
 
   // Git does not track empty directories, so each carries a README explaining

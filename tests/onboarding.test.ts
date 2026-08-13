@@ -50,10 +50,20 @@ describe("the checklist catalogue", () => {
     const task = TASKS.find((t) => t.id === "search-console");
 
     expect(task?.optional).not.toBe(true);
+    expect(task?.how).toContain("hq/marketing/seo/strategy.md");
     expect(task?.how).toContain("hq/marketing/seo/README.md");
     expect(tasksFor("company")).toContain(task);
     expect(tasksFor("personal")).toContain(task);
     expect(tasksFor("internal")).not.toContain(task);
+  });
+
+  it("ties analytics onboarding to the durable brief and shared contract", () => {
+    const analytics = TASKS.find((candidate) => candidate.id === "analytics");
+
+    expect(analytics?.how).toContain("hq/marketing/analytics.md");
+    expect(analytics?.how).toContain("packages/shared/schema/analytics.ts");
+    expect(analytics?.how).toContain("privacy controls");
+    expect(analytics?.how).toContain("production events");
   });
 
   it("makes verified Firebase Google sign-in a setup requirement for app projects", () => {

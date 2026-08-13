@@ -1,9 +1,14 @@
-import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { doctor, EXPECTED, formatFindings } from "../src/doctor/index.js";
-import { analyticsSchema } from "../src/init/templates.js";
+import {
+  analyticsSchema,
+  marketingAnalytics,
+  marketingLaunchPlan,
+  marketingSeoStrategy,
+} from "../src/init/templates.js";
 
 let root: string;
 
@@ -257,5 +262,56 @@ describe("inherits", () => {
 
     const f = await doctor({ root });
     expect(f.some((x) => x.message.includes("hq/marketing/seo"))).toBe(false);
+  });
+
+  it("distinguishes missing and still-uninitialized marketing briefs", async () => {
+    await scaffold("company");
+    await writeFile(join(root, "hq/marketing/analytics.md"), marketingAnalytics({ name: "Test" } as never));
+    await writeFile(
+      join(root, "hq/marketing/launch-plan.md"),
+      marketingLaunchPlan({ name: "Test" } as never),
+    );
+    await writeFile(
+      join(root, "hq/marketing/seo/strategy.md"),
+      marketingSeoStrategy({ name: "Test" } as never),
+    );
+
+    let findings = await doctor({ root });
+    expect(
+      findings.some((x) => x.message.includes("analytics.md is still the initialization scaffold")),
+    ).toBe(true);
+    expect(
+      findings.some((x) => x.message.includes("launch-plan.md is still the initialization scaffold")),
+    ).toBe(true);
+    expect(
+      findings.some((x) => x.message.includes("strategy.md is still the initialization scaffold")),
+    ).toBe(true);
+
+    await rm(join(root, "hq/marketing/launch-plan.md"));
+    findings = await doctor({ root });
+    expect(findings.some((x) => x.message.includes("Missing hq/marketing/launch-plan.md"))).toBe(
+      true,
+    );
+  });
+
+  it("does not report marketing briefs for internal or inherited projects", async () => {
+    await scaffold("internal");
+    let findings = await doctor({ root });
+    expect(findings.some((x) => x.check === "marketing")).toBe(false);
+
+    await rm(root, { recursive: true, force: true });
+    root = await mkdtemp(join(tmpdir(), "doctor-"));
+    await scaffold("company");
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({
+        name: "t",
+        kind: "company",
+        prefix: "TS",
+        inherits: { marketing: "parent" },
+      }),
+    );
+    findings = await doctor({ root });
+    expect(findings.some((x) => x.check === "marketing")).toBe(false);
   });
 });
