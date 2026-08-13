@@ -255,6 +255,8 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | SEO | `hq/marketing/seo/` | Docs + OpenSEO |
 | ASO | `hq/marketing/aso/` | Docs + Appeeky + ASC integration |
 | Marketing content | `hq/marketing/content/` | Markdown |
+| Analytics initialization | `hq/marketing/analytics.md` | Decision, privacy, provider and verification brief |
+| Launch planning | `hq/marketing/launch-plan.md` | Website plan + placeholder for a future app plan |
 | Identity, mission, audiences | `hq/brand/strategy.md` | Markdown |
 | Finance | `hq/finance/` → `/hq/finance` | Config + dashboard |
 | Legal, contracts, ToS | `hq/ops/legal/` | Markdown + PDFs |
@@ -398,6 +400,21 @@ it is supplied. It does not replace the attempt with generic click instructions,
 or verification code in chat, or mark setup complete because access could not be checked. This is
 the browser-reachable-work rule in §7.3 applied to SEO. Search Console is Google's operational
 indexing surface; OpenSEO remains the research surface, and neither substitutes for the other.
+
+Every user-facing project starts with `hq/marketing/seo/strategy.md`. It is an initialization
+brief, not a synthetic strategy: an agent replaces it only after recording current site, OpenSEO,
+Search Console, audience, competitive, safety and editorial evidence. The strategy states the
+discovery thesis, current baseline, query-to-page portfolio, exclusions, technical/trust work,
+authority plan, measurement cadence and phased milestones. Search estimates stay directional and
+unknown state stays unknown.
+
+`hq/marketing/launch-plan.md` connects that strategy to a staged website launch: readiness gates,
+assets, channels, exact approvals, placements, measurement and stop conditions. Its app section is
+deliberately a placeholder until a real build, store identity, listing, privacy disclosures,
+screenshots, analytics and release candidate exist. At that point Appeeky supplies ASO evidence;
+OpenSEO website data is not reused as app-store demand data. A launch plan prepares external
+actions but never authorizes publishing, posting, outreach, account creation, spending or store
+submission.
 
 ### Built and maintained in Morpheus
 
@@ -1301,6 +1318,15 @@ will consume the project contract rather than own the event vocabulary.
 
 `morpheus doctor` reports missing, unreadable, duplicate, and still-empty analytics contracts as
 warnings. These are adoption signals rather than governed-command failures.
+
+`hq/marketing/analytics.md` is the companion initialization brief. It begins with the decisions
+measurement must serve, then drives the project-owned contract, privacy boundary, current PostHog
+organization/project resolution, provider settings, per-surface integration, production payload
+inspection and decision-linked reporting. The brief distinguishes provider setup from verified
+instrumentation: its existence is not evidence that events arrive or that privacy controls are
+active. `morpheus init` writes the analytics, website SEO and launch briefs only when missing and
+never overwrites project-specific records; `morpheus doctor` reports both missing briefs and briefs
+still carrying their initialization marker.
 
 ## 11. The `/hq` dashboard
 

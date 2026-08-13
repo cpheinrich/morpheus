@@ -212,6 +212,9 @@ SEO, content plans, and campaign notes for ${s.name}.
 
 Positioning and voice live in \`hq/brand/\` and are **read** from here, not restated — a second
 copy of the messaging is one that drifts from the brand package that generates it.
+
+Start with \`analytics.md\`, \`launch-plan.md\`, and \`seo/strategy.md\`. Each begins as an
+initialization brief, not evidence that setup or launch work has happened.
 `,
 
   "hq/marketing/seo": (s) => `# SEO
@@ -302,6 +305,186 @@ Provisioning is not here: consoles, DNS and hosting need credentials this repo s
 See [access control](${SPEC}) in the specification.
 `,
 };
+
+/**
+ * Project-owned marketing briefs. They are deliberately useful before any provider is configured,
+ * and the marker lets doctor distinguish a copied starting point from completed project work.
+ */
+export const marketingAnalytics = (s: Seed): string => `<!-- morpheus:template marketing-analytics -->
+# Analytics initialization — ${s.name}
+
+> **Scaffold status:** this is an initialization brief, not evidence that analytics is installed.
+> Replace this callout and remove the template marker after the project-specific setup, privacy
+> choices, dashboards, and production verification are recorded here.
+
+## Outcome and decisions
+
+State which product and marketing decisions measurement should inform. Inventory the deployed
+surfaces, important user journeys, launch channels, and existing analytics before naming events.
+Do not collect data merely because a provider makes it available.
+
+## Event contract first
+
+1. Populate \`packages/shared/schema/analytics.ts\` with project-owned semantic events and explicit
+   property allowlists. Keep provider-native lifecycle events such as pageviews provider-native.
+2. Name the decision or metric served by every custom property. Prefer low-cardinality dimensions
+   and version each event.
+3. Keep PostHog transport and framework-specific helpers in the consuming app. A provider binding
+   must not become the product vocabulary.
+
+## Privacy boundary
+
+Record the project's actual boundary before instrumentation. The default is no personal or
+sensitive data, health or financial inputs/results, free text, raw URLs or query strings, broad
+autocapture, session replay, or console capture without an explicit reviewed exception.
+
+PostHog can provide acquisition, approximate geography, browser, operating-system, and device
+context. Do not represent those as reliable age, gender, income, ethnicity, medical, or other
+demographic attributes. Classify every credential: a browser-visible project token is not a
+personal API key, and private credentials never belong in public environment variables or this
+record.
+
+## PostHog initialization
+
+1. Resolve the intended organization, account identity, and existing project from \`morpheus.json\`
+   and current provider state. Do not create, delete, or replace a project merely because it was
+   not found under the first identity checked.
+2. Configure privacy controls in PostHog as well as in code. Record raw-IP handling, person-profile
+   behavior, autocapture, replay, console capture, retention, and any consent requirement.
+3. Install the SDK per real surface and environment. Separate production from local and preview
+   traffic, and attach only the common context allowed by the shared contract.
+4. Build a small dashboard or saved views tied to the decisions above. Record durable provider
+   identifiers and links, never secret values.
+
+## Verification
+
+- Exercise each canonical event through the production product and confirm it arrives once with
+  the expected name, environment, release, and allowlisted properties.
+- Inspect raw payloads for accidental inputs, results, identifiers, query strings, or preview data.
+- Confirm disabled collection remains absent and dashboard filters use actual production schema.
+- Record the verification date, tested routes/surfaces, known gaps, and the weekly review owner.
+
+Analytics is initialized only when the contract, provider configuration, live ingestion, privacy
+inspection, and decision-linked reporting agree.
+`;
+
+export const marketingSeoStrategy = (s: Seed): string => `<!-- morpheus:template marketing-seo -->
+# Website SEO strategy — ${s.name}
+
+> **Scaffold status:** this is an initialization brief, not a completed strategy. Replace this
+> callout and remove the template marker after current site, OpenSEO, Search Console, audience, and
+> competitive evidence have been recorded.
+
+## Strategy in one sentence
+
+State the audience, problem, differentiated asset, and discovery wedge. Read positioning and voice
+from \`hq/brand/\`; do not create a second brand strategy here.
+
+## Evidence and baseline
+
+1. Confirm the canonical production domain, market and language, route inventory, redirects,
+   canonicals, robots policy, sitemap, structured data, performance, and index boundaries.
+2. Use **OpenSEO** for website audits, keyword research, SERPs, competitors, backlinks, and search
+   opportunities. Use Google Search Console for operational indexing state and performance.
+3. Record the date range, properties/project ids, crawl scope, failures, and unknowns. Search-volume
+   and difficulty estimates are directional; never turn unavailable evidence into a confident zero.
+4. Reconcile opportunities with product truth, brand, legal, safety, editorial, and evidence limits.
+
+App-store discovery is a different discipline. Use **Appeeky** for App Store or Google Play
+keywords, ranks, competitors, reviews, and charts; never substitute website-search data for ASO.
+
+## Search portfolio
+
+- Document current strengths and gaps.
+- Map each priority query or intent cluster to one canonical existing or proposed page.
+- Separate utility, commercial, navigational, and supporting-information intent.
+- List exclusions: queries the project will not pursue because fit, evidence, safety, or trust is
+  insufficient.
+
+## Foundation and authority
+
+Record required technical fixes, internal linking, trust/authorship, editorial standards,
+structured data, and original evidence. Define link-worthy assets and earned-distribution ideas
+without treating outreach, posting, or paid placement as authorized.
+
+## Measurement and phased plan
+
+Define weekly Search Console and PostHog review, periodic OpenSEO research, and 14/30/60/90-day
+milestones. Keep indexing requests distinct from indexed results, referral discovery distinct from
+backlink authority, and scheduled paid research/rank tracking behind an explicit cost decision.
+`;
+
+export const marketingLaunchPlan = (s: Seed): string => `<!-- morpheus:template marketing-launch -->
+# Launch plan — ${s.name}
+
+> **Scaffold status:** this brief does not authorize publishing, posting, outreach, account
+> creation, spending, moderator contact, or store submission. Replace this callout and remove the
+> template marker only after a project-specific plan and its approval gates are recorded.
+
+## Shared launch frame
+
+Define the launch objective, audience, promise, differentiated asset, current readiness, named
+owner, measurement window, and stop conditions. Read positioning from \`hq/brand/\`, website search
+work from \`seo/strategy.md\`, and event definitions from \`analytics.md\` plus
+\`packages/shared/schema/analytics.ts\`.
+
+Separate referral discovery, product learning, earned authority, and conversion goals. A raw link,
+download, impression, or account total is not a strategy by itself.
+
+## Website launch plan
+
+### Readiness and assets
+
+- Inventory production routes and classify each as ready, conditional, deferred, or excluded.
+- Verify product behavior, mobile/accessibility basics, metadata, canonicals, robots, sitemap,
+  trust/legal surfaces, sources and claims, analytics privacy, and production event delivery.
+- Establish a current Search Console/OpenSEO baseline before interpreting launch movement.
+
+### Channels and sequence
+
+Choose channels from actual audience fit: owned profiles or newsletters, communities, direct
+answers, partners/resource lists, press, and durable search. For every channel record current rules,
+relationship/disclosure requirements, exact asset, useful contribution, approval owner, and risk.
+
+Use staged phases rather than a single announcement:
+
+1. **Foundation:** finish readiness, establish measurement, and participate without links where
+   reputation or community fit must be earned.
+2. **Constrained soft launch:** approve a small number of attributable placements, spaced so their
+   effects and reputation cost can be understood.
+3. **Learn before expanding:** review removals, replies, referrals, meaningful product events, and
+   qualitative feedback; pause when safety, policy, or trust concerns appear.
+4. **Durable discovery:** turn validated questions into useful owned content and pursue earned
+   citations or partnerships without manufacturing links.
+
+### Placement and measurement log
+
+For each planned external action, record the live destination and rules, exact copy, disclosure,
+approval, permalink, moderation outcome, referred visits, meaningful events, and product learning.
+The plan prepares drafts; the user separately approves the actual external action.
+
+Define go/no-go gates and review points for launch day, 72 hours, 14 days, and 30 days. Connect each
+decision rule to events that already exist; never collect sensitive inputs or invent a completion
+event merely to improve attribution.
+
+## App launch plan — placeholder
+
+No app launch is implied by this scaffold. Leave this section as a placeholder until a real iOS or
+Android build, bundle identity, store account, listing, privacy disclosures, screenshots, app
+analytics, review process, and release candidate exist.
+
+When those prerequisites are real, replace this section with:
+
+- store and market scope, release type, ownership, and launch objective;
+- App Store/Google Play readiness, privacy labels, review risks, support and rollback plan;
+- **Appeeky** ASO research and store-specific keyword/competitor evidence, never OpenSEO web data;
+- beta/TestFlight or staged-rollout gates, crash and analytics verification, launch assets and copy;
+- store submission authorization, review monitoring, ratings/review response policy, and
+  1/7/14/30-day decision rules.
+
+Until then, record only the missing prerequisites and do not create speculative store metadata or
+claim an app launch date.
+`;
 
 export const agents = (s: Seed): string => `# ${s.name} — agent instructions
 
