@@ -1601,6 +1601,17 @@ export async function DELETE(request: Request) {
 }
 `;
 };
+/**
+ * The sign-in page.
+ *
+ * The domain sentence is deliberately hedged — *usually* a `@domain` account,
+ * rather than "personal Google accounts are not on the allowlist". That
+ * stronger claim is true when generated and stops being true the first time
+ * someone adds a personal address to the allowlist, which is a one-line change
+ * nobody would think to pair with a copy edit. It then tells exactly the people
+ * who were just granted access not to bother trying. Both Darwin and Evo shipped
+ * that sentence and both had to be corrected by hand on 2026-08-13.
+ */
 export const signInPage = (ctx, name, emailDomain) => {
     const self = "app/sign-in/page.tsx";
     return `import type { Metadata } from "next";
@@ -1638,8 +1649,9 @@ export default async function SignInPage({
         <p className="text-xs uppercase tracking-widest opacity-60">${name} HQ</p>
         <h1 className="text-3xl font-medium tracking-tight">Sign in</h1>
         <p className="text-sm leading-6 opacity-80">
-          Access is limited to the ${name} team${emailDomain ? `. Use your <strong>@${emailDomain}</strong> account —
-          personal Google accounts are not on the allowlist` : ""}.
+          Access is limited to the ${name} team${emailDomain ? `, usually with a
+          <strong>@${emailDomain}</strong> account` : ""}. The allowlist lives in{" "}
+          <code>morpheus.json</code>.
         </p>
       </div>
 

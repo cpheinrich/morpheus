@@ -95,6 +95,17 @@ export declare const authSessionCookie: (ctx: TemplateContext) => string;
 export declare const authCurrentUser: (ctx: TemplateContext) => string;
 export declare const routeGate: (ctx: TemplateContext) => string;
 export declare const apiAuthSession: (ctx: TemplateContext, name: string) => string;
+/**
+ * The sign-in page.
+ *
+ * The domain sentence is deliberately hedged — *usually* a `@domain` account,
+ * rather than "personal Google accounts are not on the allowlist". That
+ * stronger claim is true when generated and stops being true the first time
+ * someone adds a personal address to the allowlist, which is a one-line change
+ * nobody would think to pair with a copy edit. It then tells exactly the people
+ * who were just granted access not to bother trying. Both Darwin and Evo shipped
+ * that sentence and both had to be corrected by hand on 2026-08-13.
+ */
 export declare const signInPage: (ctx: TemplateContext, name: string, emailDomain?: string) => string;
 export declare const signInForm: (ctx: TemplateContext) => string;
 export declare const signOutButton: (ctx: TemplateContext) => string;
