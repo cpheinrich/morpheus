@@ -168,6 +168,10 @@ describe("morpheus init", () => {
         ["hq/team", "GitHub handle"],
         ["hq/marketing", "hq/brand"],
         ["hq/marketing/seo", "Google Search Console"],
+        ["hq/marketing/instagram", "Recommendation eligibility"],
+        ["hq/marketing/linkedin", "professional insight"],
+        ["hq/marketing/x", "real-time conversation"],
+        ["hq/marketing/reddit", "community-participation"],
         ["qa", "verifier rung 3"],
         ["qa/acceptance", "before"],
         ["infra", "morpheus hq rules"],
@@ -219,14 +223,45 @@ describe("morpheus init", () => {
       expect(launch).toContain("Appeeky");
     });
 
+    it("scaffolds a virtual CMO and project-owned social channel records", async () => {
+      await scaffold(dir, SEED);
+
+      const marketing = await read("hq/marketing/README.md");
+      expect(marketing).toContain("virtual AI CMO");
+      expect(marketing).toContain("GEO/AI visibility");
+      expect(marketing).toContain("default to research, drafting, validation, or dry-run mode");
+
+      const instagram = await read("hq/marketing/instagram/README.md");
+      expect(instagram).toContain("| Username | — |");
+      expect(instagram).toContain("non-follower reach");
+
+      const linkedin = await read("hq/marketing/linkedin/README.md");
+      expect(linkedin).toContain("| Page username | — |");
+      expect(linkedin).toContain("Page analytics");
+
+      const x = await read("hq/marketing/x/README.md");
+      expect(x).toContain("| @handle | — |");
+      expect(x).toContain("conversational");
+
+      const reddit = await read("hq/marketing/reddit/README.md");
+      expect(reddit).toContain("| u/username | — |");
+      expect(reddit).toContain("community's rules");
+      expect(reddit).toContain("must never auto-post");
+    });
+
     it("preserves established marketing records while adding missing briefs", async () => {
       await mkdir(join(dir, "hq/marketing/seo"), { recursive: true });
       await writeFile(join(dir, "hq/marketing/seo/strategy.md"), "# Real strategy\n");
+      await mkdir(join(dir, "hq/marketing/reddit"), { recursive: true });
+      await writeFile(join(dir, "hq/marketing/reddit/README.md"), "# Real community plan\n");
 
       const result = await scaffold(dir, SEED);
 
       expect(await read("hq/marketing/seo/strategy.md")).toBe("# Real strategy\n");
+      expect(await read("hq/marketing/reddit/README.md")).toBe("# Real community plan\n");
       expect(result.skipped).toContain("hq/marketing/seo/strategy.md");
+      expect(result.skipped).not.toContain("hq/marketing/reddit/README.md");
+      expect(await read("hq/marketing/instagram/README.md")).toContain("# Instagram");
       expect(await read("hq/marketing/analytics.md")).toContain("Analytics initialization");
       expect(await read("hq/marketing/launch-plan.md")).toContain("Website launch plan");
     });
@@ -844,6 +879,10 @@ describe("morpheus init", () => {
       await expect(read("hq/marketing/analytics.md")).rejects.toMatchObject({ code: "ENOENT" });
       await expect(read("hq/marketing/launch-plan.md")).rejects.toMatchObject({ code: "ENOENT" });
       await expect(read("hq/marketing/seo/strategy.md")).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(read("hq/marketing/instagram/README.md")).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(read("hq/marketing/linkedin/README.md")).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(read("hq/marketing/x/README.md")).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(read("hq/marketing/reddit/README.md")).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
 });
