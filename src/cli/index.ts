@@ -31,6 +31,7 @@ import * as registry from "./registry.js";
 import { run as doctorRun } from "./doctor.js";
 import { mark as initMark, status as initStatus } from "./onboarding.js";
 import { init as initScaffold } from "./init.js";
+import { webInit, webStatus } from "./web.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
 import { prompt as reviewPrompt, reviewDelivery, reviewNeeded } from "./review.js";
@@ -80,6 +81,14 @@ Usage
   morpheus brand build            legacy alias for brand explore
   morpheus brand status           [--dir <hq/brand>] [--name <Acme>]
   morpheus brand check            [--dir <hq/brand>] — required workflow and final package
+  morpheus web init         [--project <gcp-project>] [--domain <public-origin>]
+                            [--account <google-email>] [--organization <gcp-org-id>]
+                            [--vercel-team <slug>] [--no-provision]
+                            [--no-waitlist] [--no-hq] [--no-browser]
+                            provision the cloud resources, then scaffold the site:
+                            a Next.js app, waitlist email capture, and /hq behind
+                            Google sign-in. Never overwrites an existing file.
+  morpheus web status       what the web surface has, and what it is missing
   morpheus access sync      [--project <firebase-project>] [--dry-run]
   morpheus firebase auth setup [--project <firebase-project>] [--domain <public-origin>]
                             [--support-email <email>] [--brand <name>] [--no-browser]
@@ -121,6 +130,12 @@ Options
   --support-email <email> OAuth support email; successful setup records it in morpheus.json
                             (defaults to the recorded value, then active gcloud account)
   --brand <name> OAuth brand name (defaults to the project display name)
+  --account <email> Google account to provision as; passed to gcloud explicitly
+  --organization <id> GCP organisation that should own a newly created project
+  --vercel-team <slug> Vercel team slug, for the Workload Identity issuer
+  --no-provision Scaffold only; create nothing in GCP, Firebase or Vercel
+  --no-waitlist  Skip email capture
+  --no-hq        Skip /hq and Google sign-in
   --no-browser   Do not open browser-backed login or Firebase-console recovery
   --check        Verify indexes are current without writing; exits non-zero if stale
   --offline      Declare the context-freshness offline exception (same as
@@ -139,6 +154,12 @@ interface Flags {
   domain?: string;
   supportEmail?: string;
   brand?: string;
+  account?: string;
+  organization?: string;
+  vercelTeam?: string;
+  provision: boolean;
+  waitlist: boolean;
+  hq: boolean;
   openBrowser: boolean;
   dryRun: boolean;
   all: boolean;
@@ -184,6 +205,9 @@ function parseArgs(argv: string[]): Flags {
     dispatch: false,
     print: false,
     openBrowser: true,
+    provision: true,
+    waitlist: true,
+    hq: true,
     positional: [],
   };
 
@@ -225,6 +249,24 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--no-browser":
         flags.openBrowser = false;
+        break;
+      case "--account":
+        flags.account = argv[++i];
+        break;
+      case "--organization":
+        flags.organization = argv[++i];
+        break;
+      case "--vercel-team":
+        flags.vercelTeam = argv[++i];
+        break;
+      case "--no-provision":
+        flags.provision = false;
+        break;
+      case "--no-waitlist":
+        flags.waitlist = false;
+        break;
+      case "--no-hq":
+        flags.hq = false;
         break;
       case "--name":
         flags.name = argv[++i];
@@ -396,6 +438,32 @@ async function main(): Promise<number> {
       return initMark(process.cwd(), rest[0], state, flags.name);
     }
     console.error(`Unknown init command "${command}".\n\n${HELP}`);
+    return 1;
+  }
+
+  if (group === "web") {
+    if (command === "status") return webStatus(process.cwd());
+    if (command === "init" || command === undefined) {
+      // Only the provisioning half is gated. Scaffolding is repository-local
+      // and safe on a stale trunk; creating a GCP project on one is not.
+      if (flags.provision) {
+        const { refused } = await guard(process.cwd(), "web init", GATED["web init"]!, flags.offline);
+        if (refused !== null) return refused;
+      }
+      return webInit({
+        root: process.cwd(),
+        project: flags.project,
+        domain: flags.domain,
+        account: flags.account,
+        organization: flags.organization,
+        vercelTeam: flags.vercelTeam,
+        provision: flags.provision,
+        waitlist: flags.waitlist,
+        hq: flags.hq,
+        openBrowser: flags.openBrowser,
+      });
+    }
+    console.error(`Unknown web command "${command}".\n\n${HELP}`);
     return 1;
   }
 

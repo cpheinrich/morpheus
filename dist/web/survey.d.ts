@@ -1,0 +1,139 @@
+import type { FirebaseFacts } from "./templates.js";
+/**
+ * What a repository's web surface already has.
+ *
+ * `web init` runs on established projects far more often than on empty ones —
+ * Evo has a home page, a token pipeline and a Vercel link before it has any of
+ * this — so every template decision is made from what is *there*, not from a
+ * fixed idea of what a project looks like. The survey is the whole of that
+ * reading, kept separate from the writing so it can be tested against fixture
+ * trees with no filesystem mutation at all.
+ *
+ * Nothing here decides what to write. It answers *where does code live here*
+ * and *what is already done*, and `scaffold.ts` decides.
+ */
+export interface SharedPackage {
+    /** Directory relative to the repository root, e.g. `packages/shared`. */
+    dir: string;
+    /** Package name, e.g. `@evo/shared`. */
+    name: string;
+    /** True when `exports` is an explicit map that must gain an entry. */
+    hasExportsMap: boolean;
+    /** True when the waitlist schema is already exported. */
+    exportsWaitlist: boolean;
+}
+export interface WebSurvey {
+    /** Directory of the Next.js app relative to the root, e.g. `apps/web`. */
+    webRoot: string;
+    /** True when that directory already holds an app — anything but a bare path. */
+    webAppExists: boolean;
+    /**
+     * Import prefix for the app's own modules. `@/` when the app's tsconfig
+     * declares it, otherwise null, and generated files use relative specifiers.
+     * Guessing `@/` where it is not configured produces files that do not
+     * compile, which is the one failure a scaffold must not ship.
+     */
+    alias: string | null;
+    shared: SharedPackage | null;
+    /** `vitest` or `node:test`, from the app's devDependencies. */
+    testRunner: "vitest" | "node" | null;
+    hasTailwind: boolean;
+    /** Already-present pieces. Each one is skipped rather than rewritten. */
+    hasWaitlist: boolean;
+    hasHqRoute: boolean;
+    hasSignIn: boolean;
+    hasFirebaseConfig: boolean;
+    hasRouteGate: boolean;
+    /** Path of the deployed Firestore rules, when one is configured. */
+    firestoreRulesPath: string | null;
+    /** `.vercel/project.json`, at the root or in the web root. */
+    vercelLinked: boolean;
+    /**
+     * True when the app is a static export.
+     *
+     * `output: "export"` produces HTML files and nothing else: no route
+     * handlers, no route gate, no server rendering. Every server-side thing this
+     * scaffold writes would build locally and fail at `next build` — Evo's did,
+     * with `export const dynamic = "force-dynamic" ... cannot be used with
+     * "output: export"`. Detected so the refusal is a sentence rather than a
+     * build log.
+     */
+    staticExport: boolean;
+    /**
+     * True when the app sets `trailingSlash: true`.
+     *
+     * Next then answers `/api/waitlist` with a 308 to `/api/waitlist/`. A browser
+     * follows that and preserves the method, so a form posting to the unslashed
+     * path *works* — at the cost of a second round trip on every signup, and of
+     * looking wrong in a codebase where every other route carries the slash.
+     * Cheap to get right, and invisible if you do not look.
+     */
+    trailingSlash: boolean;
+}
+/**
+ * Where the Next.js app lives.
+ *
+ * `apps/web` is the canonical answer (§3), and it is also the answer for a
+ * repository that has nothing yet. A root-level `app/` directory is accepted
+ * because two personal sites predate the convention, and writing a second app
+ * beside a working one would be worse than following it.
+ */
+export declare function findWebRoot(root: string): Promise<{
+    webRoot: string;
+    exists: boolean;
+}>;
+/**
+ * The shared workspace package, if there is one.
+ *
+ * The waitlist record shape is product vocabulary, so it belongs beside
+ * `schema/analytics.ts` under the same rule (§ analytics decision): one
+ * meaning, many transports. Without a shared package the schema goes inside
+ * the app instead — a project with one surface does not need a package
+ * boundary invented for it.
+ */
+export declare function findSharedPackage(root: string): Promise<SharedPackage | null>;
+/**
+ * Whether the Next config asks for a static export.
+ *
+ * Read as text rather than imported: the config is TypeScript, may import from
+ * the project, and evaluating a repository's code to answer a question about it
+ * is a much larger thing to do than matching one key. A commented-out line
+ * would be a false positive; the comment stripping keeps that from happening
+ * for the one shape that actually occurs.
+ */
+export declare function withoutComments(source: string): string;
+export declare function readsStaticExport(source: string): Promise<boolean>;
+/** Whether the config asks Next to canonicalise every route with a trailing slash. */
+export declare function readsTrailingSlash(source: string): boolean;
+/** The Firestore rules file Firebase actually deploys, when one is configured. */
+export declare function deployedRulesPath(root: string): Promise<string | null>;
+export declare function surveyWeb(root: string): Promise<WebSurvey>;
+/**
+ * Import specifier for one of the app's own modules.
+ *
+ * `from` is the generated file's path inside the web root; `to` is the target.
+ * With an alias configured the result is idiomatic; without one it is relative
+ * and still correct, which is the property that matters.
+ */
+export declare function importPath(survey: Pick<WebSurvey, "alias">, from: string, to: string): string;
+/**
+ * Read the Firebase facts back out of a config this scaffold already wrote.
+ *
+ * Re-running to pick up an improved template is the whole point of a scaffold
+ * that never overwrites, and without this `--no-provision` could not do it: the
+ * Firebase-dependent half is written only when the facts are known, and with
+ * provisioning skipped they were known to nobody — so a re-run silently
+ * produced nothing.
+ *
+ * Parsed rather than imported: the file is TypeScript, and reading a
+ * repository's code to answer a question about it is a much larger thing to do
+ * than matching the keys we generated. Any missing key returns null, so a
+ * hand-edited or foreign config is treated as unknown rather than
+ * half-understood.
+ */
+export declare function readFirebaseFacts(root: string, webRoot: string): Promise<FirebaseFacts | null>;
+/** Where the waitlist schema lives, and how the app imports it. */
+export declare function waitlistSchemaLocation(survey: WebSurvey): {
+    path: string;
+    specifier: (from: string) => string;
+};

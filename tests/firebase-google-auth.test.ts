@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   checkGoogleAuth,
   expectedAuthorizedDomains,
+  expectedRedirectUris,
   mergeGoogleProviderConfig,
   setupGoogleAuth,
   type CommandOptions,
@@ -43,6 +44,22 @@ function runner(calls: string[][], options: RunnerOptions = {}): CommandRunner {
 }
 
 describe("Firebase Google Auth configuration", () => {
+  it("keeps the implicit redirect handlers out of the deployed list", () => {
+    // Two separate deploy failures, both found the first time this ran against
+    // a freshly created project (cph-evo, 2026-08-13):
+    //
+    //   naming the default → `OAuth 2 redirect URLs have duplicate
+    //                        [https://<project>.firebaseapp.com/__/auth/handler]`
+    //   naming a port      → `INVALID_AUTHORIZED_DOMAIN : localhost:3000
+    //                        should only contain the valid domain`
+    //
+    // Local development keeps working because `localhost` reaches Auth through
+    // the authorized-domains list below, which is a different API.
+    expect(expectedRedirectUris("acme-123", "https://app.example")).toEqual(["https://app.example"]);
+    expect(expectedRedirectUris("acme-123")).toEqual([]);
+    expect(expectedAuthorizedDomains("acme-123", "app.example")).toContain("localhost");
+  });
+
   it("treats manifest-declared Firebase Auth hosts as intentional", () => {
     expect(expectedAuthorizedDomains(
       "acme-123",
@@ -75,13 +92,12 @@ describe("Firebase Google Auth configuration", () => {
           existing: "kept",
           oAuthBrandDisplayName: "Acme",
           supportEmail: "support@example.com",
-          authorizedRedirectUris: [
-            "https://old.example",
-            "http://localhost:3000",
-            "https://acme-123.firebaseapp.com",
-            "https://acme-123.web.app",
-            "https://app.example",
-          ],
+          // Only the custom origin. Firebase adds its own default handler, so
+          // naming `<project>.firebaseapp.com` fails the deploy as a duplicate,
+          // and it derives an authorized domain from each entry, so anything
+          // with a port fails as an invalid domain. Both were found the first
+          // time this ran against a freshly created project.
+          authorizedRedirectUris: ["https://old.example", "https://app.example"],
         },
       },
     });

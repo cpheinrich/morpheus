@@ -98,7 +98,7 @@ describe("session identity", () => {
 });
 
 describe("what is gated", () => {
-  it("gates the six commands where stale context does identifiable harm", () => {
+  it("gates the seven commands where stale context does identifiable harm", () => {
     // Deliberately not every command: a gate that fires on `pm index` trains
     // people to route around it, and the routing-around is permanent.
     expect(Object.keys(GATED).sort()).toEqual([
@@ -108,6 +108,7 @@ describe("what is gated", () => {
       "pm claim",
       "pm link-issue",
       "pm new",
+      "web init",
     ]);
   });
 
@@ -115,6 +116,10 @@ describe("what is gated", () => {
     expect(GATED["pm claim"]).toBe("external");
     expect(GATED["access sync"]).toBe("external");
     expect(GATED["firebase auth setup"]).toBe("external");
+    // `web init` is gated on its provisioning half only. The CLI does not
+    // consult the gate for `--no-provision`, which writes files and touches
+    // nothing outside the repository.
+    expect(GATED["web init"]).toBe("external");
     // `pm block` is local *conditionally* — it normally pushes, and offline it
     // writes the records and skips the push, which is what makes the
     // classification true rather than merely asserted. The blunt alternative

@@ -42,6 +42,10 @@ export const GATED = {
     "pm block": "local",
     "access sync": "external",
     "firebase auth setup": "external",
+    // Only the provisioning half. `web init --no-provision` writes files and
+    // nothing else, and gating that would refuse a repository-local scaffold for
+    // the sake of a trunk it never touches.
+    "web init": "external",
 };
 /**
  * True when the operator has declared this session offline. An env var as

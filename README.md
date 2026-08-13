@@ -40,9 +40,25 @@ cd ~/your-project && morpheus registry add
 morpheus pm validate                      # validate hq/product frontmatter against the schemas
 morpheus pm index                         # regenerate the README index tables
 morpheus pm new roadmap "Ship analytics" --priority P1
+morpheus web status                       # what the web surface has, and what it is missing
+morpheus web init                         # provision the cloud resources, then scaffold the site
 morpheus firebase auth setup --project <firebase-project> --domain <public-origin>
 morpheus firebase auth check --project <firebase-project> --domain <public-origin>
 ```
+
+`morpheus web init` is the website initializer. It provisions the GCP project, Firebase,
+Firestore, the registered web app and the Workload Identity that a Vercel deployment
+authenticates as, then scaffolds the code that depends on them: a Next.js app if there is none,
+**email waitlist capture on the home page**, and **`/hq` behind Google sign-in**, gated on the
+same `role` custom claim that Firestore rules read.
+
+It never overwrites. Every existing file is skipped and reported, so the same command creates a
+site from nothing and adds the missing half to one that has been live for months — it will not
+touch a working home page. The Firebase-dependent half is written **only once a Firebase project
+is real**: a sign-in page holding a placeholder config looks finished and cannot work.
+
+This is deliberately not part of `morpheus init`, which scaffolds the repository and provisions
+nothing so it can never be blocked on a token.
 
 After a successful setup, Morpheus records the normalized origin and user-visible OAuth support
 identity in `morpheus.json` as `publicDomain` and `supportEmail`. Later runs reuse both values and

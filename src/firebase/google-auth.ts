@@ -155,17 +155,29 @@ export function expectedAuthorizedDomains(
   ]);
 }
 
-/** Origins Firebase's Google-provider configuration should carry as code. */
-export function expectedRedirectUris(project: string, domain?: string): string[] {
-  // Keep this paired with the localhost authorized-domain policy above.
-  // Port 3000 remains Morpheus's required local default; projects may add a
-  // non-default local port alongside it, but setup deliberately restores 3000.
-  return unique([
-    "http://localhost:3000",
-    `https://${project}.firebaseapp.com`,
-    `https://${project}.web.app`,
-    ...(domain ? [normalizeOrigin(domain)] : []),
-  ]);
+/**
+ * Origins Firebase's Google-provider configuration should carry as code.
+ *
+ * **The project's own `firebaseapp.com` and `web.app` origins are deliberately
+ * absent, and so is localhost.** Firebase derives the OAuth client's redirect
+ * handlers from this list *and* adds its own default, so naming the default
+ * fails the deploy with `OAuth 2 redirect URLs have duplicate
+ * [https://<project>.firebaseapp.com/__/auth/handler]`; and it derives an
+ * authorized *domain* from each entry, so anything carrying a port fails with
+ * `INVALID_AUTHORIZED_DOMAIN : localhost:3000 should only contain the valid
+ * domain`.
+ *
+ * Local development is not lost with it: `localhost` reaches Auth through
+ * {@link expectedAuthorizedDomains}, which is a different list on a different
+ * API and is where a host without a scheme or port belongs.
+ *
+ * All three facts were found the first time this ran against a freshly created
+ * project (`cph-evo`, 2026-08-13). The previous list was written from the
+ * documentation and had only ever run against projects whose provider was
+ * already configured by hand, where the deploy is a no-op.
+ */
+export function expectedRedirectUris(_project: string, domain?: string): string[] {
+  return unique(domain ? [normalizeOrigin(domain)] : []);
 }
 
 export function mergeGoogleProviderConfig(existing: Json, input: GoogleAuthConfigInput): Json {

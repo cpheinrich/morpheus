@@ -192,6 +192,11 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   // rather than a convention people need to rediscover from another project.
   if (seed.kind !== "internal") {
     await put(".claude/skills/brand-review/SKILL.md", t.brandReviewSkill());
+
+    // Same reason, one surface over: `morpheus web init` has to be found at the
+    // moment somebody asks for a website, not by an agent that thought to go
+    // looking for a CLI it has never run.
+    await put(".claude/skills/website-init/SKILL.md", t.websiteInitSkill());
   }
 
   // --- agent memory ---------------------------------------------------------
