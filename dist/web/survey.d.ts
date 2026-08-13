@@ -47,6 +47,17 @@ export interface WebSurvey {
     firestoreRulesPath: string | null;
     /** `.vercel/project.json`, at the root or in the web root. */
     vercelLinked: boolean;
+    /**
+     * True when the app is a static export.
+     *
+     * `output: "export"` produces HTML files and nothing else: no route
+     * handlers, no route gate, no server rendering. Every server-side thing this
+     * scaffold writes would build locally and fail at `next build` — Evo's did,
+     * with `export const dynamic = "force-dynamic" ... cannot be used with
+     * "output: export"`. Detected so the refusal is a sentence rather than a
+     * build log.
+     */
+    staticExport: boolean;
 }
 /**
  * Where the Next.js app lives.
@@ -70,6 +81,16 @@ export declare function findWebRoot(root: string): Promise<{
  * boundary invented for it.
  */
 export declare function findSharedPackage(root: string): Promise<SharedPackage | null>;
+/**
+ * Whether the Next config asks for a static export.
+ *
+ * Read as text rather than imported: the config is TypeScript, may import from
+ * the project, and evaluating a repository's code to answer a question about it
+ * is a much larger thing to do than matching one key. A commented-out line
+ * would be a false positive; the comment stripping keeps that from happening
+ * for the one shape that actually occurs.
+ */
+export declare function readsStaticExport(source: string): Promise<boolean>;
 /** The Firestore rules file Firebase actually deploys, when one is configured. */
 export declare function deployedRulesPath(root: string): Promise<string | null>;
 export declare function surveyWeb(root: string): Promise<WebSurvey>;

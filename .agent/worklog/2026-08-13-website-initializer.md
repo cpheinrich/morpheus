@@ -72,3 +72,29 @@ unstyled in Evo while looking finished in the diff.
 - **Analytics import in the generated form.** Darwin's form captures `waitlist_joined` through its
   own PostHog module. A scaffold cannot import that — the event belongs to the project's
   vocabulary — so the form takes an `onJoined` callback and a note says to wire it.
+
+## Verified against a real project, and it found two defects
+
+The templates typechecked in Morpheus's own suite and were still wrong in two ways that only a
+real checkout could show. Both were found by scaffolding into a throwaway worktree of Evo, running
+`tsc`, `node --test` and `next build`.
+
+**1. The generated test could not resolve its own import, twice.** First `@/lib/waitlist/record` —
+`@/` is a tsconfig-paths alias that Next resolves and `node --test` reads as a package name
+(`Cannot find package '@/lib'`). Made relative, it then failed again on `Cannot find module
+.../record`, because node ESM wants a real extension and `tsc` rejects a `.ts` specifier without
+`allowImportingTsExtensions`. The answer was in the project already: Evo's own tests are `.mjs`
+importing `./thing.ts`, and its tsconfig `include` lists `**/*.mts` but not `**/*.mjs`, so they run
+without being typechecked. A vitest project keeps the `.ts` test.
+
+The general form: **every other generated file is resolved by the bundler, and a test run directly
+by node is not.** One file, one different resolver, and the template treated them alike.
+
+**2. Evo is `output: "export"`.** A static export builds HTML and nothing else — no route handlers,
+no route gate, no server rendering. Everything server-side here compiles and then fails
+`next build` with `export const dynamic = "force-dynamic" ... cannot be used with "output: export"`.
+`web init` now detects it and writes nothing, because the fix is a decision about how the site
+deploys and that is not a scaffold's to take.
+
+Worth stating plainly: **the Morpheus test suite passed at every point during both defects.** A
+scaffold's output is code in someone else's project, and the only test of it is being that code.

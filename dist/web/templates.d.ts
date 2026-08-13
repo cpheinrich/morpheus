@@ -38,6 +38,11 @@ export interface TemplateContext {
     name: string;
     /** Import specifier for one of the app's own modules. */
     imp: Specifier;
+    /**
+     * The same, forced relative. For files a bundler does not resolve — which is
+     * only ever a test run directly by `node --test`.
+     */
+    relative: Specifier;
     /** Import specifier for the waitlist schema, wherever it landed. */
     schema: (from: string) => string;
     firebase?: FirebaseFacts;
@@ -56,7 +61,10 @@ export declare const waitlistForm: (ctx: TemplateContext) => string;
  * runner the app already uses: a scaffold that brought its own runner would be
  * adding a dependency to make its own output pass.
  */
-export declare const waitlistRecordTest: (ctx: TemplateContext, runner: "vitest" | "node") => string;
+export declare const waitlistRecordTest: (ctx: TemplateContext, runner: "vitest" | "node") => {
+    path: string;
+    content: string;
+};
 /**
  * The Firestore block for the waitlist collection.
  *

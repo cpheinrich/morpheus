@@ -1959,6 +1959,19 @@ because any variation is a free oracle for testing who is on the list.
 `border-line`. §12.1 assigns the semantic layer to each project, so a template reaching into it
 would render unstyled everywhere the vocabulary differs, and would look finished doing it.
 
+**A statically exported app is refused, not worked around.** `output: "export"` builds HTML and
+nothing else: no route handlers, no route gate, no server rendering. Both halves would compile and
+then fail the project's own `next build` — which is how Evo's was found. The command says so in a
+sentence and writes nothing, because the fix is a decision about how the site deploys and a
+scaffold does not get to take it.
+
+**The generated test is the one file a bundler does not resolve**, and it took two goes to get
+right: `@/` is a tsconfig-paths alias that `node --test` reads as a package name, and node ESM then
+wants a real extension that `tsc` refuses without `allowImportingTsExtensions`. So a vitest project
+gets a `.ts` test with an extensionless relative import, and a `node --test` project gets a `.mjs`
+one importing `../lib/waitlist/record.ts` — which is exactly what such projects already write, and
+what their tsconfig `include` leaves out.
+
 Scaffolded projects get a `website-init` skill alongside `brand-review`, for the same reason: a
 command is only useful if it is found at the moment it is needed, and that is exactly when an agent
 is least likely to go looking for a CLI it has never run.

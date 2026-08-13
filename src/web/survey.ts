@@ -52,6 +52,17 @@ export interface WebSurvey {
   firestoreRulesPath: string | null;
   /** `.vercel/project.json`, at the root or in the web root. */
   vercelLinked: boolean;
+  /**
+   * True when the app is a static export.
+   *
+   * `output: "export"` produces HTML files and nothing else: no route
+   * handlers, no route gate, no server rendering. Every server-side thing this
+   * scaffold writes would build locally and fail at `next build` — Evo's did,
+   * with `export const dynamic = "force-dynamic" ... cannot be used with
+   * "output: export"`. Detected so the refusal is a sentence rather than a
+   * build log.
+   */
+  staticExport: boolean;
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -142,6 +153,22 @@ async function readTestRunner(
   return null;
 }
 
+/**
+ * Whether the Next config asks for a static export.
+ *
+ * Read as text rather than imported: the config is TypeScript, may import from
+ * the project, and evaluating a repository's code to answer a question about it
+ * is a much larger thing to do than matching one key. A commented-out line
+ * would be a false positive; the comment stripping keeps that from happening
+ * for the one shape that actually occurs.
+ */
+export async function readsStaticExport(source: string): Promise<boolean> {
+  const withoutComments = source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  return /output\s*:\s*["']export["']/.test(withoutComments);
+}
+
 /** The Firestore rules file Firebase actually deploys, when one is configured. */
 export async function deployedRulesPath(root: string): Promise<string | null> {
   const config = await readJson<{ firestore?: { rules?: unknown } }>(join(root, "firebase.json"));
@@ -185,6 +212,15 @@ export async function surveyWeb(root: string): Promise<WebSurvey> {
     exists(app(".vercel/project.json")),
   ]);
 
+  const nextConfig = await Promise.all(
+    ["next.config.ts", "next.config.mjs", "next.config.js"].map((name) =>
+      readFile(app(name), "utf8").catch(() => ""),
+    ),
+  );
+  const staticExport = (
+    await Promise.all(nextConfig.map((source) => readsStaticExport(source)))
+  ).some(Boolean);
+
   return {
     webRoot,
     webAppExists,
@@ -199,6 +235,7 @@ export async function surveyWeb(root: string): Promise<WebSurvey> {
     hasRouteGate: proxyGate || middlewareGate,
     firestoreRulesPath,
     vercelLinked: vercelRoot || vercelApp,
+    staticExport,
   };
 }
 

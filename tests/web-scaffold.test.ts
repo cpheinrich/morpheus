@@ -136,11 +136,33 @@ describe("scaffoldWeb", () => {
   it("writes the test in the runner the app already uses", async () => {
     const root = await establishedProject();
     await scaffoldWeb(options(root, await surveyWeb(root)));
-    const test = await readFile(join(root, "apps/web/__tests__/waitlist-record.test.ts"), "utf8");
+    const test = await readFile(join(root, "apps/web/__tests__/waitlist-record.test.mjs"), "utf8");
     // Evo runs `node --test` and has no vitest at all; a scaffold that brought
     // its own runner would add a dependency to make its own output pass.
     expect(test).toContain('from "node:test"');
     expect(test).not.toContain('from "vitest"');
+    // Plain JS, because `.mjs` is not type-stripped as TypeScript source.
+    expect(test).not.toContain("actual: unknown");
+  });
+
+  it("writes a test import that the runner can actually resolve", async () => {
+    const root = await establishedProject();
+    const survey = await surveyWeb(root);
+    expect(survey.alias).toBe("@/");
+    await scaffoldWeb(options(root, survey));
+
+    const test = await readFile(join(root, "apps/web/__tests__/waitlist-record.test.mjs"), "utf8");
+    // Both halves were found by running the generated test in a real Evo
+    // checkout. `@/` is a tsconfig-paths alias that `node --test` reads as a
+    // package name (`Cannot find package '@/lib'`), and node ESM then needs a
+    // real extension (`Cannot find module .../record`). Every other generated
+    // file is resolved by Next, and this one is not.
+    expect(test).toContain('from "../lib/waitlist/record.ts"');
+    expect(test).not.toContain("@/lib");
+
+    // ...while the app's own modules still use the idiomatic alias.
+    const route = await readFile(join(root, "apps/web/app/api/waitlist/route.ts"), "utf8");
+    expect(route).toContain('from "@/lib/waitlist/record"');
   });
 
   it("refuses the Firebase-dependent half when no project is known", async () => {
@@ -162,6 +184,38 @@ describe("scaffoldWeb", () => {
 
     expect(result.written).not.toContain("apps/web/proxy.ts");
     expect(result.notes.some((note) => note.includes("two gates on one route"))).toBe(true);
+  });
+
+  it("refuses the server half of a statically exported app", async () => {
+    const root = await establishedProject();
+    await write(
+      root,
+      "apps/web/next.config.ts",
+      'const nextConfig = { output: "export", trailingSlash: true };\nexport default nextConfig;\n',
+    );
+    const survey = await surveyWeb(root);
+    expect(survey.staticExport).toBe(true);
+
+    const result = await scaffoldWeb(options(root, survey));
+
+    // Found on Evo: these files compile and then fail `next build` with
+    // `export const dynamic = "force-dynamic" ... cannot be used with
+    // "output: export"`. A static export has no server to run them.
+    expect(result.written).toEqual([]);
+    expect(result.merged).toEqual([]);
+    expect(result.notes.some((note) => note.includes('output: "export"'))).toBe(true);
+    const manifest = JSON.parse(await readFile(join(root, "apps/web/package.json"), "utf8"));
+    expect(manifest.dependencies["firebase-admin"]).toBeUndefined();
+  });
+
+  it("does not read a commented-out export as one", async () => {
+    const root = await establishedProject();
+    await write(
+      root,
+      "apps/web/next.config.ts",
+      '// output: "export" was removed when /hq landed\nconst nextConfig = {};\nexport default nextConfig;\n',
+    );
+    expect((await surveyWeb(root)).staticExport).toBe(false);
   });
 
   it("creates a whole app when there is none", async () => {

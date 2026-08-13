@@ -81,6 +81,7 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
   const ctx: t.TemplateContext = {
     name,
     imp: (from, to) => importPath(survey, from, to),
+    relative: (from, to) => importPath({ alias: null }, from, to),
     schema: (from) => schema.specifier(from),
     ...(opts.firebase ? { firebase: opts.firebase } : {}),
   };
@@ -116,8 +117,23 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
     );
   }
 
+  // A static export has no server at all, so both halves below would be
+  // written, compile, and then fail the project's next build. Refusing here
+  // makes that a sentence instead of a build log — and the fix is a decision
+  // about how the site deploys, which is not one a scaffold may take.
+  const serverless = survey.staticExport && survey.webAppExists;
+  if (serverless && (opts.waitlist || opts.hq)) {
+    notes.push(
+      "This app sets `output: \"export\"`, which builds HTML and nothing else — no route " +
+        "handlers, no route gate, no server rendering. The waitlist endpoint and /hq cannot " +
+        "run under it, so neither was written. Removing `output: \"export\"` puts the app on " +
+        "the canonical Vercel stack (§10.2) and keeps every page that has no dynamic API " +
+        "statically prerendered; keep `trailingSlash` as it is so no live URL moves.",
+    );
+  }
+
   // --- waitlist -------------------------------------------------------------
-  if (opts.waitlist) {
+  if (opts.waitlist && !serverless) {
     if (!opts.firebase) {
       notes.push(
         "Skipped the waitlist: it writes to Firestore, and no Firebase project is known " +
@@ -132,10 +148,14 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
       await app("app/WaitlistForm.tsx", t.waitlistForm(ctx));
 
       if (survey.testRunner) {
-        await app(
-          "__tests__/waitlist-record.test.ts",
-          t.waitlistRecordTest(ctx, survey.testRunner),
-        );
+        const test = t.waitlistRecordTest(ctx, survey.testRunner);
+        await app(test.path, test.content);
+        if (survey.testRunner === "node") {
+          notes.push(
+            `Add ${test.path} to the web app's \`test\` script — a \`node --test\` project ` +
+              "names its files explicitly, so a new one runs nowhere until it is listed.",
+          );
+        }
       } else {
         notes.push(
           "No test runner detected in the web app, so no test was generated. " +
@@ -162,7 +182,7 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
   }
 
   // --- /hq and Google sign-in ----------------------------------------------
-  if (opts.hq) {
+  if (opts.hq && !serverless) {
     if (!opts.firebase) {
       notes.push(
         "Skipped /hq: Google sign-in needs a Firebase project, and none is known yet. " +
@@ -201,10 +221,12 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
     }
   }
 
-  await app(".env.example", t.envExample(opts.firebase));
+  // Documents server credentials, so it belongs to the half a static export
+  // does not have.
+  if (!serverless) await app(".env.example", t.envExample(opts.firebase));
 
   // --- merges ---------------------------------------------------------------
-  if (opts.firebase) {
+  if (opts.firebase && !serverless) {
     const dependencies = {
       ...(opts.waitlist ? WAITLIST_DEPENDENCIES : {}),
       ...(opts.hq ? HQ_DEPENDENCIES : {}),
@@ -224,7 +246,7 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
     }
   }
 
-  if (opts.waitlist && opts.firebase) {
+  if (opts.waitlist && opts.firebase && !serverless) {
     const rules = await addWaitlistRules(root, survey.firestoreRulesPath);
     if (rules.kind === "merged") merged.push(`${rules.path} (+waitlist deny block)`);
     if (rules.kind === "note") notes.push(rules.message);

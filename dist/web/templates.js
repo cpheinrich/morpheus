@@ -693,12 +693,29 @@ export function WaitlistForm({
  * adding a dependency to make its own output pass.
  */
 export const waitlistRecordTest = (ctx, runner) => {
-    const self = "__tests__/waitlist-record.test.ts";
-    const record = ctx.imp(self, "lib/waitlist/record");
+    // Two runners, two file extensions, and the extension is not cosmetic.
+    //
+    // A `node --test` project runs the file directly, so the specifier has to be
+    // real ESM — relative *and* extensioned. TypeScript rejects a `.ts` specifier
+    // unless `allowImportingTsExtensions` is set, so such a test cannot both
+    // typecheck and run as `.ts`. It is `.mjs`, which is what these projects
+    // already write and what their tsconfig `include` deliberately leaves out.
+    //
+    // Vitest resolves like a bundler, so there the idiomatic `.ts` test with an
+    // extensionless import is right.
+    const path = runner === "vitest"
+        ? "__tests__/waitlist-record.test.ts"
+        : "__tests__/waitlist-record.test.mjs";
+    // Relative, never the alias, and this is the one file where that is true.
+    // `@/` comes from tsconfig paths: Next resolves it, `node --test` reads it as
+    // a package name and fails with `Cannot find package '@/lib'`, and vitest
+    // resolves it only when the project has configured it to — which a scaffold
+    // cannot know.
+    const record = ctx.relative(path, "lib/waitlist/record") + (runner === "node" ? ".ts" : "");
     const header = runner === "vitest"
         ? `import { describe, expect, it } from "vitest";\n\nconst eq = (actual: unknown, expected: unknown) => expect(actual).toEqual(expected);`
-        : `import assert from "node:assert/strict";\nimport { describe, it } from "node:test";\n\nconst eq = (actual: unknown, expected: unknown) => assert.deepStrictEqual(actual, expected);`;
-    return `${header}
+        : `import assert from "node:assert/strict";\nimport { describe, it } from "node:test";\n\nconst eq = (actual, expected) => assert.deepStrictEqual(actual, expected);`;
+    const content = `${header}
 
 import {
   docId,
@@ -776,6 +793,7 @@ describe("waitlist record", () => {
   });
 });
 `;
+    return { path, content };
 };
 /**
  * The Firestore block for the waitlist collection.

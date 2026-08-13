@@ -216,6 +216,12 @@ export async function webStatus(root: string): Promise<number> {
   console.log(line("Route gate", survey.hasRouteGate));
   console.log(line("Firestore rules", survey.firestoreRulesPath ?? "none configured"));
   console.log(line("Vercel linked", survey.vercelLinked));
+  if (survey.staticExport) {
+    console.log(
+      '\n\x1b[33mThis app sets `output: "export"` — HTML only, no route handlers, no route ' +
+        "gate, no server rendering. The waitlist endpoint and /hq cannot run under it.\x1b[0m",
+    );
+  }
 
   const missing = !survey.hasWaitlist || !survey.hasHqRoute || !survey.hasFirebaseConfig;
   if (missing) console.log("\n\x1b[2mRun `morpheus web init` to add what is missing.\x1b[0m");

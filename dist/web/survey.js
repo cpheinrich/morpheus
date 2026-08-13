@@ -80,6 +80,21 @@ async function readTestRunner(root, webRoot) {
         return "node";
     return null;
 }
+/**
+ * Whether the Next config asks for a static export.
+ *
+ * Read as text rather than imported: the config is TypeScript, may import from
+ * the project, and evaluating a repository's code to answer a question about it
+ * is a much larger thing to do than matching one key. A commented-out line
+ * would be a false positive; the comment stripping keeps that from happening
+ * for the one shape that actually occurs.
+ */
+export async function readsStaticExport(source) {
+    const withoutComments = source
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+    return /output\s*:\s*["']export["']/.test(withoutComments);
+}
 /** The Firestore rules file Firebase actually deploys, when one is configured. */
 export async function deployedRulesPath(root) {
     const config = await readJson(join(root, "firebase.json"));
@@ -108,6 +123,8 @@ export async function surveyWeb(root) {
         exists(join(root, ".vercel/project.json")),
         exists(app(".vercel/project.json")),
     ]);
+    const nextConfig = await Promise.all(["next.config.ts", "next.config.mjs", "next.config.js"].map((name) => readFile(app(name), "utf8").catch(() => "")));
+    const staticExport = (await Promise.all(nextConfig.map((source) => readsStaticExport(source)))).some(Boolean);
     return {
         webRoot,
         webAppExists,
@@ -122,6 +139,7 @@ export async function surveyWeb(root) {
         hasRouteGate: proxyGate || middlewareGate,
         firestoreRulesPath,
         vercelLinked: vercelRoot || vercelApp,
+        staticExport,
     };
 }
 /**
