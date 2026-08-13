@@ -55,6 +55,15 @@ export interface TemplateContext {
 export declare const waitlistSchema: () => string;
 export declare const waitlistRecord: (ctx: TemplateContext) => string;
 export declare const waitlistThrottle: () => string;
+/**
+ * The Firestore REST encoding, kept pure and apart from the request.
+ *
+ * Separate from `store.ts` for the same reason `record.ts` is separate from the
+ * route: this is a total function from a record to a wire shape, it is the part
+ * that silently corrupts data when it is wrong, and it can be tested without a
+ * credential, a network, or `server-only`.
+ */
+export declare const firestoreValue: () => string;
 export declare const waitlistStore: (ctx: TemplateContext) => string;
 export declare const waitlistRoute: (ctx: TemplateContext) => string;
 export declare const waitlistForm: (ctx: TemplateContext) => string;

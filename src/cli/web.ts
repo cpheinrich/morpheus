@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { scaffoldWeb } from "../web/scaffold.js";
 import { outstanding, provisionWeb, type StepResult } from "../web/provision.js";
-import { surveyWeb, type WebSurvey } from "../web/survey.js";
+import { readFirebaseFacts, surveyWeb, type WebSurvey } from "../web/survey.js";
 import type { FirebaseFacts } from "../web/templates.js";
 import { configureGoogleAuth } from "./firebase.js";
 
@@ -129,10 +129,17 @@ export async function webInit(opts: WebInitOptions): Promise<number> {
     });
     steps = result.steps;
     firebase = result.firebase;
-  } else if (survey.hasFirebaseConfig) {
-    // Already scaffolded against a real project: the rest can be added around
-    // it without re-reading anything from Google.
-    console.log("Skipping provisioning; lib/firebase/config.ts is already present.");
+  } else {
+    // Already scaffolded against a real project: read the facts back out of the
+    // config rather than asking Google again. Without this a re-run to pick up
+    // an improved template produces nothing at all, which is the opposite of
+    // what a never-overwrite scaffold is for.
+    firebase = (await readFirebaseFacts(opts.root, survey.webRoot)) ?? undefined;
+    console.log(
+      firebase
+        ? `Skipping provisioning; using the recorded config for ${firebase.projectId}.`
+        : "Skipping provisioning, and no usable lib/firebase/config.ts was found.",
+    );
   }
 
   const { written, skipped, merged, notes } = await scaffoldWeb({

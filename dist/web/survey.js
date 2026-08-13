@@ -168,6 +168,50 @@ export function importPath(survey, from, to) {
     const prefix = up === 0 ? "./" : "../".repeat(up);
     return `${prefix}${toParts.slice(shared).join("/")}`;
 }
+/**
+ * Read the Firebase facts back out of a config this scaffold already wrote.
+ *
+ * Re-running to pick up an improved template is the whole point of a scaffold
+ * that never overwrites, and without this `--no-provision` could not do it: the
+ * Firebase-dependent half is written only when the facts are known, and with
+ * provisioning skipped they were known to nobody — so a re-run silently
+ * produced nothing.
+ *
+ * Parsed rather than imported: the file is TypeScript, and reading a
+ * repository's code to answer a question about it is a much larger thing to do
+ * than matching the keys we generated. Any missing key returns null, so a
+ * hand-edited or foreign config is treated as unknown rather than
+ * half-understood.
+ */
+export async function readFirebaseFacts(root, webRoot) {
+    const source = await readFile(join(root, webRoot === "." ? "lib/firebase/config.ts" : `${webRoot}/lib/firebase/config.ts`), "utf8").catch(() => null);
+    if (!source)
+        return null;
+    const read = (key) => new RegExp(`${key}\\s*:\\s*"([^"]+)"`).exec(source)?.[1];
+    const projectId = read("projectId");
+    const apiKey = read("apiKey");
+    const authDomain = read("authDomain");
+    const storageBucket = read("storageBucket");
+    const messagingSenderId = read("messagingSenderId");
+    const appId = read("appId");
+    if (!projectId || !apiKey || !authDomain || !storageBucket || !messagingSenderId || !appId) {
+        return null;
+    }
+    const poolId = read("poolId");
+    const providerId = read("providerId");
+    const serviceAccount = read("serviceAccount");
+    return {
+        projectId,
+        apiKey,
+        authDomain,
+        storageBucket,
+        messagingSenderId,
+        appId,
+        ...(poolId && providerId && serviceAccount
+            ? { workloadIdentity: { poolId, providerId, serviceAccount } }
+            : {}),
+    };
+}
 /** Where the waitlist schema lives, and how the app imports it. */
 export function waitlistSchemaLocation(survey) {
     if (survey.shared) {

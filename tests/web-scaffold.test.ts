@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderFirestoreRules } from "../src/hq/rules.js";
 import { addWaitlistRules, mergeDependencies, scaffoldWeb } from "../src/web/scaffold.js";
-import { importPath, surveyWeb, waitlistSchemaLocation } from "../src/web/survey.js";
+import {
+  importPath,
+  readFirebaseFacts,
+  surveyWeb,
+  waitlistSchemaLocation,
+} from "../src/web/survey.js";
 import type { FirebaseFacts } from "../src/web/templates.js";
 
 const roots: string[] = [];
@@ -195,16 +200,27 @@ describe("scaffoldWeb", () => {
     expect(note).toContain("lib/firebase/admin.ts");
   });
 
-  it("says that federation alone will not carry the Firestore write", async () => {
+  it("writes to Firestore over REST, not through the client that refuses federation", async () => {
     const root = await establishedProject();
     const result = await scaffoldWeb(options(root, await surveyWeb(root)));
 
-    // Evo's first production deploy: sign-in worked, every write returned
-    // `firestore/invalid-credential`. Auth and Firestore fail independently
-    // behind one credential, and only Auth had been tested.
-    const note = result.notes.find((entry) => entry.includes("firestore/invalid-credential"));
-    expect(note).toBeDefined();
-    expect(note).toContain("FIREBASE_SERVICE_ACCOUNT");
+    const store = await readFile(join(root, "apps/web/lib/waitlist/store.ts"), "utf8");
+    // Evo's first production deploy: sign-in worked and every write returned
+    // `firestore/invalid-credential`, because firebase-admin's Firestore client
+    // goes through google-gax and rejects the credential federation mints.
+    expect(store).toContain("https://firestore.googleapis.com/v1");
+    expect(store).not.toContain("firebase-admin/firestore");
+    expect(store).toContain("googleAccessToken");
+    // The merge must name its mask, or the commit drops createdAt and
+    // signupCount and silently resets both.
+    expect(store).toContain("updateMask");
+    expect(store).toContain("updateTransforms");
+
+    // And the admin module no longer offers the helper that cannot work.
+    const admin = await readFile(join(root, "apps/web/lib/firebase/admin.ts"), "utf8");
+    expect(admin).not.toContain("adminFirestore");
+    expect(admin).toContain("googleAccessToken");
+    expect(result.written).toContain("apps/web/lib/waitlist/firestore-value.ts");
   });
 
   it("keeps an existing route gate rather than shipping a second one", async () => {
@@ -305,6 +321,31 @@ describe("merges", () => {
     // cannot be imported at all.
     expect(manifest.exports["./schema/waitlist"]).toBe("./schema/waitlist.ts");
     expect(manifest.exports["./analytics"]).toBe("./schema/analytics.ts");
+  });
+});
+
+describe("re-running without provisioning", () => {
+  it("reads the facts back out of the config it wrote", async () => {
+    const root = await establishedProject();
+    await scaffoldWeb(options(root, await surveyWeb(root)));
+
+    const facts = await readFirebaseFacts(root, "apps/web");
+    // Without this, `--no-provision` on an established project knows nothing
+    // and regenerates nothing — the opposite of what a never-overwrite
+    // scaffold is for.
+    expect(facts?.projectId).toBe("dh-acme");
+    expect(facts?.appId).toBe("1:12345:web:abc");
+    expect(facts?.workloadIdentity?.serviceAccount).toBe(
+      "vercel-hq@dh-acme.iam.gserviceaccount.com",
+    );
+  });
+
+  it("treats a config it cannot fully read as unknown", async () => {
+    const root = await establishedProject();
+    await write(root, "apps/web/lib/firebase/config.ts", 'export const firebaseConfig = { projectId: "x" };\n');
+    // Half-understood is worse than unknown: the missing keys would be
+    // generated as empty strings into a file that looks finished.
+    expect(await readFirebaseFacts(root, "apps/web")).toBeNull();
   });
 });
 

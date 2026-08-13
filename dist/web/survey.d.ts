@@ -1,3 +1,4 @@
+import type { FirebaseFacts } from "./templates.js";
 /**
  * What a repository's web surface already has.
  *
@@ -115,6 +116,22 @@ export declare function surveyWeb(root: string): Promise<WebSurvey>;
  * and still correct, which is the property that matters.
  */
 export declare function importPath(survey: Pick<WebSurvey, "alias">, from: string, to: string): string;
+/**
+ * Read the Firebase facts back out of a config this scaffold already wrote.
+ *
+ * Re-running to pick up an improved template is the whole point of a scaffold
+ * that never overwrites, and without this `--no-provision` could not do it: the
+ * Firebase-dependent half is written only when the facts are known, and with
+ * provisioning skipped they were known to nobody — so a re-run silently
+ * produced nothing.
+ *
+ * Parsed rather than imported: the file is TypeScript, and reading a
+ * repository's code to answer a question about it is a much larger thing to do
+ * than matching the keys we generated. Any missing key returns null, so a
+ * hand-edited or foreign config is treated as unknown rather than
+ * half-understood.
+ */
+export declare function readFirebaseFacts(root: string, webRoot: string): Promise<FirebaseFacts | null>;
 /** Where the waitlist schema lives, and how the app imports it. */
 export declare function waitlistSchemaLocation(survey: WebSurvey): {
     path: string;

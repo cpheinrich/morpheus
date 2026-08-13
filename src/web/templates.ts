@@ -433,45 +433,158 @@ export function resetThrottle() {
 }
 `;
 
+/**
+ * The Firestore REST encoding, kept pure and apart from the request.
+ *
+ * Separate from `store.ts` for the same reason `record.ts` is separate from the
+ * route: this is a total function from a record to a wire shape, it is the part
+ * that silently corrupts data when it is wrong, and it can be tested without a
+ * credential, a network, or `server-only`.
+ */
+export const firestoreValue = (): string => `/**
+ * Firestore's REST value encoding.
+ *
+ * The REST API does not take plain JSON. Every field is a tagged union —
+ * \`{"stringValue": "…"}\`, \`{"integerValue": "1"}\`, \`{"mapValue": {"fields": …}}\`
+ * — and an untagged value is rejected rather than coerced. Integers travel as
+ * *strings*, which is the detail most likely to be got wrong: JSON numbers
+ * would silently become doubles.
+ *
+ * Only the shapes a waitlist record actually contains are handled. An
+ * unsupported one throws rather than being dropped, because a field that
+ * vanishes on the way to storage is the failure nobody notices.
+ */
+
+export type FirestoreValue =
+  | { stringValue: string }
+  | { integerValue: string }
+  | { booleanValue: boolean }
+  | { mapValue: { fields: Record<string, FirestoreValue> } };
+
+export function toFirestoreValue(value: unknown): FirestoreValue {
+  if (typeof value === "string") return { stringValue: value };
+  if (typeof value === "boolean") return { booleanValue: value };
+  if (typeof value === "number") {
+    if (!Number.isInteger(value)) {
+      throw new Error(\`Refusing to store a non-integer number: \${value}\`);
+    }
+    // A string, deliberately. \`{"integerValue": 1}\` is read as a double.
+    return { integerValue: String(value) };
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return { mapValue: { fields: toFirestoreFields(value as Record<string, unknown>) } };
+  }
+  throw new Error(\`Unsupported Firestore value: \${Object.prototype.toString.call(value)}\`);
+}
+
+/** Encode a record, dropping \`undefined\` so an absent field stays absent. */
+export function toFirestoreFields(
+  record: Record<string, unknown>,
+): Record<string, FirestoreValue> {
+  const fields: Record<string, FirestoreValue> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (value === undefined) continue;
+    fields[key] = toFirestoreValue(value);
+  }
+  return fields;
+}
+
+/** Every field path in an encoded record, for an update mask. */
+export function fieldPaths(fields: Record<string, FirestoreValue>): string[] {
+  // Top level only. A mask naming \`campaign\` replaces the whole map, which is
+  // what a resubmission should do — naming \`campaign.utm_source\` would leave a
+  // stale key behind from a previous submission.
+  return Object.keys(fields);
+}
+
+/**
+ * The resource name of one document.
+ *
+ * **Not URL-encoded**, and that is the whole point of this function existing.
+ * A resource name in a request *body* is an identifier, not a URL: encoding it
+ * makes \`a@b.com\` into the literal id \`a%40b.com\`, which is a different
+ * document. Firestore then happily writes it and answers 200, so a returning
+ * subscriber silently gets a second row and \`signupCount\` never increments —
+ * exactly what happened on Evo's first resubmission test.
+ *
+ * The \`documentId\` *query parameter* on create is the opposite case and must
+ * be encoded. Safe either way because \`docId\` has already refused anything
+ * that is not a valid address, and a valid address cannot contain \`/\`.
+ */
+export function documentName(project: string, collection: string, id: string): string {
+  return \`projects/\${project}/databases/(default)/documents/\${collection}/\${id}\`;
+}
+`;
+
 export const waitlistStore = (ctx: TemplateContext): string => {
   const self = "lib/waitlist/store.ts";
   return `import "server-only";
 
-import { FieldValue } from "firebase-admin/firestore";
-
 import { WAITLIST_COLLECTION } from "${ctx.schema(self)}";
 
-import { adminFirestore } from "${ctx.imp(self, "lib/firebase/admin")}";
+import { googleAccessToken } from "${ctx.imp(self, "lib/firebase/admin")}";
+import { PROJECT_ID } from "${ctx.imp(self, "lib/firebase/config")}";
 import { docId, mutableFields, type ParsedSubmission } from "${ctx.imp(self, "lib/waitlist/record")}";
+import {
+  documentName,
+  fieldPaths,
+  toFirestoreFields,
+} from "${ctx.imp(self, "lib/waitlist/firestore-value")}";
 
 /**
- * The Firestore write, and the one decision inside it: what happens when an
- * address is already on the list.
+ * The Firestore write, over the REST API.
+ *
+ * Not through \`firebase-admin\`'s Firestore client, and the reason is worth
+ * keeping: that client goes through google-gax, which rejects the credential
+ * federation mints and answers \`firestore/invalid-credential\` — on a
+ * deployment whose Google sign-in works, because Auth and Firestore fail
+ * independently behind one credential. REST takes a plain bearer token, so
+ * every environment authenticates the same way.
+ *
+ * The one decision inside it is unchanged: what happens when an address is
+ * already on the list.
  */
 
 export type SaveOutcome = "created" | "updated";
 
-/** gRPC \`ALREADY_EXISTS\`. The Admin SDK surfaces the numeric code, not a name. */
-const ALREADY_EXISTS = 6;
+const BASE = "https://firestore.googleapis.com/v1";
 
-function isAlreadyExists(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { code?: unknown }).code === ALREADY_EXISTS
-  );
+/** Firestore answers 409 when \`documentId\` is already taken. */
+const ALREADY_EXISTS = 409;
+
+async function firestore(
+  path: string,
+  init: { method: string; body: unknown; query?: string },
+): Promise<Response> {
+  const token = await googleAccessToken();
+  return fetch(\`\${BASE}/\${path}\${init.query ?? ""}\`, {
+    method: init.method,
+    headers: {
+      Authorization: \`Bearer \${token}\`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(init.body),
+  });
+}
+
+async function failure(response: Response, context: string): Promise<Error> {
+  // The body names the project, the collection and the refused identity, which
+  // is exactly what the route must log and must not return.
+  const detail = await response.text().catch(() => "");
+  return new Error(\`\${context} failed (\${response.status}): \${detail.slice(0, 500)}\`);
 }
 
 /**
  * Write a signup, keyed by the normalised address.
  *
- * \`create()\` first, then fall back to a merge, rather than a transaction: the
- * overwhelmingly common case is a new address and that path is a single round
- * trip. A transaction would make every signup pay for the rare one.
+ * Create first, then fall back to a commit that merges, rather than a
+ * transaction: the overwhelmingly common case is a new address and that path is
+ * a single round trip. A transaction would make every signup pay for the rare
+ * one.
  *
  * A repeat submission refreshes the metadata and increments \`signupCount\` but
- * leaves \`createdAt\` alone — when someone first asked is a fact about them, and
- * re-entering an address should not rewrite it.
+ * leaves \`createdAt\` alone — when someone first asked is a fact about them,
+ * and re-entering an address should not rewrite it.
  *
  * The outcome is returned for the caller's telemetry only. It must not reach
  * the browser: a response distinguishing "added" from "already here" turns this
@@ -482,18 +595,43 @@ export async function saveSignup(
   context: { country?: string; userAgent?: string; now?: string } = {},
 ): Promise<SaveOutcome> {
   const now = context.now ?? new Date().toISOString();
-  const fields = mutableFields(parsed, { ...context, now });
-  const reference = adminFirestore().collection(WAITLIST_COLLECTION).doc(docId(parsed.email));
+  const id = docId(parsed.email);
+  const mutable = toFirestoreFields({ ...mutableFields(parsed, { ...context, now }) });
 
-  try {
-    await reference.create({ ...fields, createdAt: now, signupCount: 1 });
-    return "created";
-  } catch (error) {
-    if (!isAlreadyExists(error)) throw error;
+  const created = await firestore(
+    \`projects/\${PROJECT_ID}/databases/(default)/documents/\${WAITLIST_COLLECTION}\`,
+    {
+      method: "POST",
+      query: \`?documentId=\${encodeURIComponent(id)}\`,
+      body: { fields: { ...mutable, ...toFirestoreFields({ createdAt: now, signupCount: 1 }) } },
+    },
+  );
+  if (created.ok) return "created";
+  if (created.status !== ALREADY_EXISTS) throw await failure(created, "Creating a waitlist signup");
 
-    await reference.set({ ...fields, signupCount: FieldValue.increment(1) }, { merge: true });
-    return "updated";
-  }
+  // Already present. \`updateMask\` is what keeps this a merge rather than a
+  // replace — without it the commit would drop \`createdAt\` and \`signupCount\`,
+  // silently resetting both. The increment is a server-side transform, so two
+  // simultaneous resubmissions cannot read the same count and write it twice.
+  const updated = await firestore(
+    \`projects/\${PROJECT_ID}/databases/(default)/documents:commit\`,
+    {
+      method: "POST",
+      body: {
+        writes: [
+          {
+            update: { name: documentName(PROJECT_ID, WAITLIST_COLLECTION, id), fields: mutable },
+            updateMask: { fieldPaths: fieldPaths(mutable) },
+            updateTransforms: [
+              { fieldPath: "signupCount", increment: { integerValue: "1" } },
+            ],
+          },
+        ],
+      },
+    },
+  );
+  if (!updated.ok) throw await failure(updated, "Updating a waitlist signup");
+  return "updated";
 }
 `;
 };
@@ -764,6 +902,7 @@ export const waitlistRecordTest = (
   // resolves it only when the project has configured it to — which a scaffold
   // cannot know.
   const record = ctx.relative(path, "lib/waitlist/record") + (runner === "node" ? ".ts" : "");
+  const encoder = ctx.relative(path, "lib/waitlist/firestore-value") + (runner === "node" ? ".ts" : "");
   const header =
     runner === "vitest"
       ? `import { describe, expect, it } from "vitest";\n\nconst eq = (actual: unknown, expected: unknown) => expect(actual).toEqual(expected);`
@@ -781,6 +920,7 @@ import {
   safePath,
   safeReferrerOrigin,
 } from "${record}";
+import {\n  documentName,\n  fieldPaths,\n  toFirestoreFields,\n  toFirestoreValue,\n} from "${encoder}";
 
 /**
  * The pure half of the waitlist. Every case here is a shape a real form or a
@@ -844,6 +984,59 @@ describe("waitlist record", () => {
     eq(parsed.path, "/");
     eq(parsed.referrer, "https://news.example");
     eq(parsed.campaign, { utm_source: "x", utm_medium: "social" });
+  });
+});
+
+/**
+ * The wire encoding. Firestore's REST API rejects untagged JSON rather than
+ * coercing it, and an integer sent as a JSON number silently becomes a double.
+ */
+describe("firestore value encoding", () => {
+  it("tags every scalar, and sends integers as strings", () => {
+    eq(toFirestoreValue("hello"), { stringValue: "hello" });
+    eq(toFirestoreValue(1), { integerValue: "1" });
+    eq(toFirestoreValue(true), { booleanValue: true });
+  });
+
+  it("refuses what it cannot represent rather than dropping it", () => {
+    for (const bad of [1.5, [], null]) {
+      let threw = false;
+      try {
+        toFirestoreValue(bad);
+      } catch {
+        threw = true;
+      }
+      eq(threw, true);
+    }
+  });
+
+  it("encodes a record, drops undefined, and nests a campaign map", () => {
+    const fields = toFirestoreFields({
+      email: "chris@example.com",
+      signupCount: 2,
+      referrer: undefined,
+      campaign: { utm_source: "x" },
+    });
+    eq(fields, {
+      email: { stringValue: "chris@example.com" },
+      signupCount: { integerValue: "2" },
+      campaign: { mapValue: { fields: { utm_source: { stringValue: "x" } } } },
+    });
+    // An absent referrer is an absent field, not a stored null.
+    eq(Object.keys(fields).includes("referrer"), false);
+    // The mask names top-level paths only, so a resubmission replaces the whole
+    // campaign map instead of leaving a stale key from a previous one.
+    eq(fieldPaths(fields), ["email", "signupCount", "campaign"]);
+  });
+
+  it("does not encode the document name, because a body is not a URL", () => {
+    // Encoding turns a@b.com into the *different* document a%40b.com, which
+    // Firestore writes happily and answers 200 to — so a returning subscriber
+    // gets a second row and signupCount never increments.
+    eq(
+      documentName("p", "waitlist", "chris@example.com"),
+      "projects/p/databases/(default)/documents/waitlist/chris@example.com",
+    );
   });
 });
 `;
@@ -997,7 +1190,6 @@ import {
   type Credential,
 } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
 ${
   wif
     ? `import { getVercelOidcToken } from "@vercel/functions/oidc";
@@ -1129,28 +1321,32 @@ export function adminAuth() {
 }
 
 /**
- * Firestore through the Admin SDK, which bypasses security rules entirely.
- * That is the point rather than a caveat: the rules deny the client every
- * operation on server-owned collections, so the only way in is through a route
- * handler where input can be validated, throttled, and stripped of everything
- * the browser had no business sending.
+ * A Google access token for the identity this deployment runs as.
  *
- * Requires \`roles/datastore.user\` on whichever identity the deployment runs
- * as. A missing grant surfaces as \`PERMISSION_DENIED\` on the first write and
- * nowhere earlier.
+ * Firestore is reached over its REST API rather than through
+ * \`firebase-admin\`'s Firestore client, and that is not a style preference —
+ * that client goes through google-gax, which wants a real GoogleAuth credential
+ * and rejects the token-minting object \`firebase-admin\` accepts everywhere
+ * else. The symptom is \`firestore/invalid-credential\` on the first write of a
+ * deployment whose sign-in works perfectly, because Auth and Firestore fail
+ * independently behind one credential. Found in production on Evo.
  *
- * **Federation is not enough for this one.** Firestore goes through google-gax,
- * which wants a real GoogleAuth credential rather than the token-minting object
- * \`firebase-admin\` accepts for its REST services — so a deployment whose
- * sign-in works can still fail every write with
- * \`firestore/invalid-credential\`: *Must initialize the SDK with a certificate
- * credential or application default credentials.* Auth and Firestore fail
- * independently behind the same credential. Set \`FIREBASE_SERVICE_ACCOUNT\`
- * for this path, or write through the Firestore REST API with a federated
- * token.
+ * Going through the credential resolved above means all three strategies —
+ * service-account key, federation, local ADC — mint a token the same way, so
+ * there is one path to test rather than one per environment.
+ *
+ * Still requires \`roles/datastore.user\` on that identity. A missing grant
+ * surfaces as a 403 on the first write and nowhere earlier.
  */
-export function adminFirestore() {
-  return getFirestore(getAdminApp());
+let cachedCredential: Credential | undefined;
+
+export async function googleAccessToken(): Promise<string> {
+  cachedCredential ??= resolveCredential();
+  const token = await cachedCredential.getAccessToken();
+  if (!token?.access_token) {
+    throw new Error("Could not mint a Google access token for the Firestore REST API.");
+  }
+  return token.access_token;
 }
 `;
 };

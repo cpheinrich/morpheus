@@ -371,3 +371,22 @@ signup there is expected to 500 the same way.
 The generalisation is the one this repo keeps rediscovering: **two capabilities behind one
 credential can fail independently, and the one you tested is not evidence for the other.** Auth
 was verified end to end; Firestore was assumed to come along with it.
+
+## A resource name in a request body is an identifier, not a URL
+
+The Firestore REST write encoded the document name with `encodeURIComponent`, turning
+`a@b.com` into the id `a%40b.com`. Firestore wrote it and answered **200**. So a returning
+subscriber silently got a second document, `signupCount` never incremented past 1, and the
+original row never refreshed — with nothing anywhere reporting a problem.
+
+Two lessons, and the second is the transferable one:
+
+1. **Encode the `documentId` query parameter; never the `name` inside the body.** One is a URL, the
+   other is an identifier that happens to look like a path.
+2. **A 200 is not evidence the right thing happened.** The create path was verified end to end and
+   looked complete; the bug lived entirely in the *second* submission, which nobody would exercise
+   until a real person signed up twice. Testing the happy path of a two-path function tests half a
+   function.
+
+Sibling of *a check that skips what is absent reports the empty thing as correct* — there the check
+had nothing to look at, here it looked at the wrong object and found it in perfect order.

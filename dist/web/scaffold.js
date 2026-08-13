@@ -83,6 +83,7 @@ export async function scaffoldWeb(opts) {
         else {
             await put(schema.path, t.waitlistSchema());
             await app("lib/waitlist/record.ts", t.waitlistRecord(ctx));
+            await app("lib/waitlist/firestore-value.ts", t.firestoreValue());
             await app("lib/waitlist/throttle.ts", t.waitlistThrottle());
             await app("lib/waitlist/store.ts", t.waitlistStore(ctx));
             await app("app/api/waitlist/route.ts", t.waitlistRoute(ctx));
@@ -110,17 +111,10 @@ export async function scaffoldWeb(opts) {
             notes.push("Wire a `waitlist_joined` event into the project's analytics contract and pass " +
                 "it to the form's `onJoined` prop. The form deliberately imports no analytics " +
                 "module: the event name belongs to the project's vocabulary, not to Morpheus.");
-            if (opts.firebase.workloadIdentity) {
-                // Verified on Evo's first production deploy: sign-in worked and every
-                // write failed. Two capabilities behind one credential, failing
-                // independently — and only one of them was tested.
-                notes.push("Workload Identity alone will not carry the Firestore write. `firebase-admin`'s " +
-                    "Firestore client goes through google-gax and refuses a token-minting credential " +
-                    "with `firestore/invalid-credential`, while Auth accepts the same one — so " +
-                    "sign-in can work while every signup 500s. Set FIREBASE_SERVICE_ACCOUNT on the " +
-                    "deployment for this path, or write through the Firestore REST API with a " +
-                    "federated token.");
-            }
+            notes.push("The signup write needs `roles/datastore.user` on whichever identity the deployment " +
+                "runs as. It goes over the Firestore REST API rather than through " +
+                "`firebase-admin`'s Firestore client, which rejects a federated credential — so a " +
+                "403 here is a missing role, not the credential shape.");
         }
     }
     // --- /hq and Google sign-in ----------------------------------------------
