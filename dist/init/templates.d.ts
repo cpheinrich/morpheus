@@ -111,20 +111,6 @@ export declare const gitignore: () => string;
  */
 export declare const brandReviewSkill: () => string;
 /**
- * Claude Code's session hooks.
- *
- * One hook, and it is deliberately **informational rather than blocking**.
- * `context brief` prints what the session is missing and always exits 0; the
- * refusal lives in the `morpheus` CLI, which is provider-neutral and needs no
- * per-project wiring. A blocking `PreToolUse` hook would fire on every edit,
- * and a gate that fires constantly is a gate people disable — permanently,
- * where the staleness was temporary.
- *
- * Codex reads `AGENTS.md`, not this file, which is why the instruction is in
- * both places and the enforcement is in neither.
- */
-export declare const claudeSettings: () => string;
-/**
  * The freshness section every project's AGENTS.md carries.
  *
  * Short, and pointing rather than repeating — the reasoning is one copy, in

@@ -3,6 +3,7 @@ import { dirname, join, relative } from "node:path";
 import { initializeWorkflow } from "../brand/workflow.js";
 import { EXPECTED } from "../doctor/index.js";
 import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
+import { installContext } from "../session/install.js";
 import * as t from "./templates.js";
 import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
 import { ANALYTICS_SCHEMA_DIRECTORY, ANALYTICS_SCHEMA_PATH, findAnalyticsContracts, } from "../analytics/contract.js";
@@ -117,11 +118,25 @@ export async function scaffold(root, seed) {
         await symlink("AGENTS.md", claude);
         written.push("CLAUDE.md -> AGENTS.md");
     }
-    // Claude Code's session hook. Informational, not blocking — the refusal
+    // Both providers' session hooks. Informational, not blocking — the refusal
     // lives in the `morpheus` CLI, which every provider goes through and which
-    // needs no per-project wiring. Codex reads AGENTS.md instead, which is why
-    // the instruction is in both and the enforcement is in neither.
-    await put(".claude/settings.json", t.claudeSettings());
+    // needs no per-project wiring.
+    //
+    // Merged rather than `put`, which skips any file already present: a repo
+    // that has a `.claude/settings.json` for permissions would otherwise never
+    // receive the hook, and would report as scaffolded while starting every
+    // session unwarned. `installContext` never overwrites — a file it cannot
+    // read safely is reported here instead.
+    for (const repair of await installContext(root, { write: true, handle: seed.owner })) {
+        if (repair.target === "morpheus.json")
+            continue; // written above, with the handle
+        if (repair.outcome === "created")
+            written.push(repair.target);
+        else if (repair.outcome === "present")
+            skipped.push(repair.target);
+        else
+            notes.push(`${repair.target}: ${repair.detail}`);
+    }
     // The generated exploration prompt is the session-specific handoff. This
     // small skill is the durable discovery point for any agent that returns once
     // the first review is complete, and makes visual-first review the default
