@@ -5,28 +5,43 @@ import { join } from "node:path";
  *
  * A finished identity needs more than a questionnaire can capture: visual
  * material, compositional instincts, half-formed references and the things a
- * founder notices before they have vocabulary for them. `vibes.txt` keeps that
- * input in one editable place without pretending it is already the final
+ * founder notices before they have vocabulary for them. `brand-vibes.md` keeps
+ * that input in one editable place without pretending it is already the final
  * strategy or visual system.
  */
-export const VIBES_FILE = "vibes.txt";
-const TEMPLATE_MARKER = "[Replace this guidance with the actual brief.]";
+export const VIBES_FILE = "brand-vibes.md";
+export const LEGACY_VIBES_FILE = "vibes.txt";
+const OPTIONAL_RESPONSE = "<!-- optional response -->";
 export function renderVibes(name) {
-    return `# ${name} — brand exploration brief
+    return `# ${name} — brand vibes
 
-${TEMPLATE_MARKER}
+> This optional scratchpad guides visual exploration. Answer any prompt in ordinary language and leave the rest blank. It is not a canonical brand record and should not be cited in the final package.
 
-Write freely. Include whatever will help a designer make useful visual bets:
-the product and audience, the emotional territory, reference points, materials
-or motifs, colors or typography you are drawn to, hard no's, and anything the
-eventual brand needs to be broad enough to hold. This is a brief, not a
-questionnaire; delete this guidance and use your own words.
+## What are some adjectives you would use to describe the brand?
+
+${OPTIONAL_RESPONSE}
+
+## Describe some initial thoughts on who the audience will be? (The final audience will be refined with quantitative market research)
+
+${OPTIONAL_RESPONSE}
+
+## How should someone feel when they interact with the brand through the website or other places?
+
+${OPTIONAL_RESPONSE}
+
+## Is there anything else you would like to share about the brand?
+
+${OPTIONAL_RESPONSE}
 `;
 }
 export function vibesReady(text) {
-    if (text.includes(TEMPLATE_MARKER))
-        return false;
-    return text.trim().length >= 80;
+    const answers = text
+        .replace(/^#\s+.*brand vibes.*$/gim, "")
+        .replace(/^>.*$/gm, "")
+        .replace(/^##\s+.*$/gm, "")
+        .replaceAll(OPTIONAL_RESPONSE, "")
+        .trim();
+    return answers.length >= 20;
 }
 export async function readVibes(brandDir) {
     try {

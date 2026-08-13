@@ -162,7 +162,7 @@ const checkDecisions: Check = async (dir) => {
  */
 export const REQUIRED: PackageEntry[] = [
   { path: "README.md", purpose: "Reading order and the workflow contract", source: "scaffold" },
-  { path: VIBES_FILE, purpose: "The free-form discovery brief", source: "input", check: checkVibes },
+  { path: VIBES_FILE, purpose: "Optional brand-exploration scratchpad", source: "input", check: checkVibes },
   { path: "moodboard/", purpose: "Source visual material", source: "input", check: checkMoodboard },
   { path: "research/brand.html", purpose: "Five-concept comparison surface", source: "exploration", check: checkConceptReview },
   { path: "strategy.md", purpose: "Positioning, mission, audience, and boundaries", source: "final", check: (dir) => nonEmpty(dir, "strategy.md", 180) },

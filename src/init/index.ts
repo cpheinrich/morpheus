@@ -416,18 +416,19 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   const existing = await readFile(ignorePath, "utf8").catch(() => "");
   if (existing.includes("# Morpheus")) {
     // Older Morpheus scaffolds have the marker but predate the local
-    // moodboard boundary. Append only the missing rules: an initializer must
-    // never replace a project's ignore policy just to protect design input.
-    const missingBrandIgnore = t.BRAND_MOODBOARD_IGNORE_RULES.filter(
+    // brand-exploration boundaries. Append only the missing rules: an
+    // initializer must never replace a project's ignore policy just to
+    // protect local design input or generated concept media.
+    const missingBrandIgnore = t.BRAND_EXPLORATION_IGNORE_RULES.filter(
       (rule) => !existing.includes(rule),
     );
     if (dirs.includes("hq/brand") && missingBrandIgnore.length) {
       await writeFile(
         ignorePath,
-        `${existing.trimEnd()}\n\n# Morpheus brand moodboard input\n${missingBrandIgnore.join("\n")}\n`,
+        `${existing.trimEnd()}\n\n# Morpheus brand exploration input\n${missingBrandIgnore.join("\n")}\n`,
         "utf8",
       );
-      written.push(".gitignore (brand moodboard input appended)");
+      written.push(".gitignore (brand exploration input appended)");
     } else {
       skipped.push(".gitignore");
     }

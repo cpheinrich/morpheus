@@ -21,7 +21,7 @@ export async function init(opts) {
     const result = await initializeWorkflow(opts);
     printWrites(result);
     console.log(`\n\x1b[1mStart the exploration in three moves.\x1b[0m\n` +
-        `  1. Write ${opts.brandDir}/vibes.txt in ordinary language\n` +
+        `  1. Add any useful notes to ${opts.brandDir}/brand-vibes.md\n` +
         `  2. Add visual reference files to ${opts.brandDir}/moodboard/\n` +
         `  3. Run \x1b[1mmorpheus brand explore\x1b[0m and give its prompt to a design agent\n` +
         "\n\x1b[2mThe agent creates research/brand.html with five comparable directions. " +
@@ -73,7 +73,7 @@ export async function migrate(opts) {
         return 1;
     }
     console.log(`\x1b[32mCopied legacy context to ${result.path}.\x1b[0m\n` +
-        "\x1b[2manswers.md was retained so the migration is reversible. Rewrite vibes.txt, " +
+        "\x1b[2manswers.md was retained so the migration is reversible. Rewrite brand-vibes.md, " +
         "then run `morpheus brand explore`.\x1b[0m");
     return 0;
 }

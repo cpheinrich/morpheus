@@ -584,10 +584,12 @@ generated domains are enough. This prevents the most deceptive Auth failure: a p
 enabled while the actual app domain still loops in the browser.
 
 **Brand exploration is visual-first and durable** — 2026-08-12. New projects start from
-`hq/brand/vibes.txt` and a `moodboard/` folder rather than an `answers.md` questionnaire. The first
-agent handoff produces one `research/brand.html` review surface with five stable, comparable
-directions: Brand System, Home, Marketing, Typography, and Compare All. The selected package is
-promoted only after human review; the concept page remains as evidence rather than being replaced
+`hq/brand/brand-vibes.md` and a `moodboard/` folder rather than an `answers.md` questionnaire. The
+optional scratchpad has four open prompts and guides exploration only; final canonical records never
+cite it. The first agent handoff produces one versioned `research/brand.html` review surface with
+five stable, comparable directions: Brand System, Home, Marketing, Typography, and Compare All.
+Heavy local concept media lives in Git-ignored `research/assets/`, while the selected package is
+promoted only after human review and the concept page remains as evidence rather than being replaced
 by a prose summary.
 
 **Imagery is part of the canonical package, not optional styling.** `moodboards.md` preserves the

@@ -776,9 +776,11 @@ Everything about running ${s.name} that is not code.
 Markdown with YAML frontmatter is the source of truth. Index tables are generated between the
 \`morpheus:\` markers and are never edited by hand.
 `;
-export const BRAND_MOODBOARD_IGNORE_RULES = [
+export const BRAND_EXPLORATION_IGNORE_RULES = [
     "hq/brand/moodboard/*",
     "!hq/brand/moodboard/README.md",
+    "hq/brand/research/assets/*",
+    "!hq/brand/research/assets/README.md",
 ];
 export const gitignore = () => `
 # Morpheus
@@ -797,10 +799,11 @@ local/
 /*.jpeg
 local/**/*.png
 
-# Raw reference material is design input, not the final asset library. Keep
-# the folder and its README visible, but retain the selected board's source and
-# provenance in hq/brand/moodboards.md and approved delivery art in imagery.json.
-${BRAND_MOODBOARD_IGNORE_RULES.join("\n")}
+# Raw reference material and heavyweight generated concept media are local
+# exploration input, not the final asset library. Keep each folder's README
+# visible, but retain the selected board's provenance in hq/brand/moodboards.md
+# and approved delivery art in imagery.json.
+${BRAND_EXPLORATION_IGNORE_RULES.join("\n")}
 `;
 /**
  * A local, discoverable instruction for the visual-first brand workflow.
@@ -811,13 +814,14 @@ ${BRAND_MOODBOARD_IGNORE_RULES.join("\n")}
  */
 export const brandReviewSkill = () => `---
 name: brand-review
-description: Create, iterate, or finalize a visual-first Morpheus brand exploration. Use when a project has hq/brand/vibes.txt and moodboard references, when reviewing research/brand.html, or when applying a selected direction to a home page or app.
+description: Create, iterate, or finalize a visual-first Morpheus brand exploration. Use when a project has hq/brand/brand-vibes.md and moodboard references, when reviewing research/brand.html, or when applying a selected direction to a home page or app.
 ---
 
 # Visual-first brand review
 
-Read \`hq/brand/README.md\`, \`vibes.txt\`, the useful files in \`moodboard/\`, the current
-\`research/brand.html\`, and \`decisions.md\` before making a visual call.
+Read \`hq/brand/README.md\`, \`brand-vibes.md\`, the useful files in \`moodboard/\`, the current
+\`research/brand.html\`, its local \`research/assets/\` when present, and \`decisions.md\` before
+making a visual call.
 
 ## Explore
 
@@ -841,6 +845,11 @@ photography, illustrations, or textures in \`imagery.json\` with provenance, alt
 placements. In \`application.md\`, map every asset id to a public-web or product surface. The first
 homepage or app screen must visibly use the full selected package — messaging, tokens, type,
 layout, and mapped imagery — not tokens and copy alone.
+
+Treat \`brand-vibes.md\` as a working scratchpad, not a final source to cite. Final canonical
+brand records should state the decisions directly without linking to or naming that file. Keep
+heavy temporary concept media in \`research/assets/\`, which is local and Git-ignored except for
+its README; \`research/brand.html\` itself remains versioned evidence.
 `;
 /**
  * Claude Code's session hooks.

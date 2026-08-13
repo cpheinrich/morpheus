@@ -100,7 +100,7 @@ export declare const ci: (opts?: {
 }) => string;
 export declare const productReadme: (kind: "roadmap" | "goals" | "requests", s: Seed) => string;
 export declare const hqReadme: (s: Seed) => string;
-export declare const BRAND_MOODBOARD_IGNORE_RULES: readonly ["hq/brand/moodboard/*", "!hq/brand/moodboard/README.md"];
+export declare const BRAND_EXPLORATION_IGNORE_RULES: readonly ["hq/brand/moodboard/*", "!hq/brand/moodboard/README.md", "hq/brand/research/assets/*", "!hq/brand/research/assets/README.md"];
 export declare const gitignore: () => string;
 /**
  * A local, discoverable instruction for the visual-first brand workflow.

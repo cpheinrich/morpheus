@@ -8,8 +8,8 @@ roadmap: MO-26-08-12-17.00.05
 Kairos made the missing handoff visible: a thoughtful visual review can settle
 imagery, materiality, layout, typography, and density, then lose all but a
 palette and a display font when the result is transcribed into a generic brand
-record. The new Morpheus path therefore begins with a free-form `vibes.txt`
-brief plus raw visual reference material, produces a durable five-direction
+record. The new Morpheus path therefore begins with an optional `brand-vibes.md`
+scratchpad plus raw visual reference material, produces a durable five-direction
 `research/brand.html` review, and only writes canonical package records after
 a person selects a direction or explicit hybrid.
 
@@ -28,9 +28,9 @@ source/provenance and approved delivery asset keys become the durable record.
 
 ## Verification
 
-- `pnpm exec vitest run tests/brand-workflow.test.ts tests/onboarding.test.ts tests/init.test.ts`:
-  90 tests passed.
-- `pnpm test`: 801 tests passed across 27 files.
+- `pnpm exec vitest run --maxWorkers=1 tests/brand-workflow.test.ts tests/onboarding.test.ts tests/init.test.ts`:
+  99 tests passed.
+- `pnpm test`: 811 tests passed across 27 files.
 - `pnpm typecheck` and `pnpm compile`: passed; committed `dist/` artifacts
   regenerated.
 - Exercised `morpheus brand init` in a temporary directory and confirmed it
@@ -60,9 +60,33 @@ inside it is Git-ignored. The refinement is to invoke that workflow from
 ordinary `morpheus init` for company and personal projects, removing the empty
 brand placeholder and the separate command a founder could forget. The manual
 `morpheus brand init` command remains useful as an idempotent repair or
-retrofit path, and the initializer preserves an existing `vibes.txt` rather
+retrofit path, and the initializer preserves an existing `brand-vibes.md` rather
 than replacing a real brief.
 
 The safe-upgrade path also appends only missing moodboard ignore rules to an
 older Morpheus `.gitignore`; it does not replace a repository's existing
 ignore policy or duplicate rules that are already present.
+
+## Follow-up: retain a durable review without checking in its heavy media
+
+The review surface belongs at `hq/brand/research/brand.html` and remains
+versioned so a future agent can understand the actual decision. Its generated
+images and temporary fonts do not: `hq/brand/research/assets/` is created with
+a tracked README and ignored contents, parallel to the raw `moodboard/`
+input. The final package graduates selected media through `imagery.json` and
+the public-media store rather than carrying the workshop cache in Git.
+
+The free-form input is now `brand-vibes.md`, an optional Markdown scratchpad
+seeded with prompts for adjectives, audience, felt experience, and any other
+context. A single substantive response is sufficient. The finalization prompt
+explicitly prohibits final canonical records from citing or naming that
+scratchpad; it informs the exploration but does not become an authority.
+
+## Follow-up: generated prompts pass repository hygiene checks
+
+The first Kairos retrofit exposed that an untouched optional answer created an
+empty Markdown blockquote with a trailing space in `explore-prompt.md`. The
+prompt generator now emits a bare `>` for blank quote lines instead. A focused
+test verifies that a refreshed prompt has no trailing whitespace, so the
+workflow works cleanly in repositories that run `git diff --check` before
+committing generated handoffs.

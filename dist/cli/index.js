@@ -46,11 +46,11 @@ Usage
   morpheus inbox validate   [--dir <hq/team>]
   morpheus team validate    the roster and every meeting note
   morpheus brand init             [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
-                            — repair or retrofit the default free-form brief and moodboard input
+                            — repair or retrofit the optional brand-vibes scratchpad and moodboard input
   morpheus brand explore          refresh the agent handoff for five concept packages
   morpheus brand finalize --selection "Name"
                             — write the finalization handoff after a concept wins
-  morpheus brand migrate          copy legacy answers.md into vibes.txt, retaining the original
+  morpheus brand migrate          copy legacy answers.md into brand-vibes.md, retaining the original
   morpheus brand build            legacy alias for brand explore
   morpheus brand status           [--dir <hq/brand>] [--name <Acme>]
   morpheus brand check            [--dir <hq/brand>] — required workflow and final package

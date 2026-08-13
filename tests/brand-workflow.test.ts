@@ -30,7 +30,7 @@ const review = (metadata = conceptReviewMeta()): string => `<!doctype html>
 </body></html>`;
 
 async function completeFinalPackage(dir: string): Promise<void> {
-  await writeFile(join(dir, "vibes.txt"), `${BRIEF}\n`);
+  await writeFile(join(dir, "brand-vibes.md"), `${BRIEF}\n`);
   await writeFile(join(dir, "moodboard", "archive-map.jpg"), "source-image");
   await writeFile(join(dir, "research", "brand.html"), review());
   await writeFile(join(dir, "strategy.md"), `# Strategy\n\n${BRIEF}\n\nThe audience is willing to pay for a calm, credible daily practice that helps them reflect without claiming certainty. The product must remain broad enough for future wellbeing features.`);
@@ -75,21 +75,27 @@ describe("brand concept review workflow", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("starts with vibes and moodboard input, never an answers questionnaire", async () => {
+  it("starts with an optional Markdown scratchpad and moodboard input, never an answers questionnaire", async () => {
     await initializeWorkflow({ brandDir: dir, name: "Kairos", prefix: "ka" });
 
     const files = await Promise.all([
-      readFile(join(dir, "vibes.txt"), "utf8"),
+      readFile(join(dir, "brand-vibes.md"), "utf8"),
       readFile(join(dir, "moodboard", "README.md"), "utf8"),
+      readFile(join(dir, "research", "assets", "README.md"), "utf8"),
       readFile(join(dir, "explore-prompt.md"), "utf8"),
     ]);
-    expect(files[0]).toContain("brand exploration brief");
+    expect(files[0]).toContain("brand vibes");
+    expect(files[0]).toContain("What are some adjectives you would use to describe the brand?");
+    expect(files[0]).toContain("Describe some initial thoughts on who the audience will be?");
+    expect(files[0]).toContain("How should someone feel when they interact with the brand");
+    expect(files[0]).toContain("Is there anything else you would like to share about the brand?");
     expect(files[1]).toContain("reference photographs");
-    expect(files[2]).toContain("five genuinely distinct initial brand packages");
+    expect(files[2]).toContain("intentionally ignored by Git");
+    expect(files[3]).toContain("five genuinely distinct initial brand packages");
     await expect(readFile(join(dir, "answers.md"), "utf8")).rejects.toThrow();
 
     const status = await packageStatus(dir);
-    expect(status.required.find((entry) => entry.path === "vibes.txt")?.state).toBe("incomplete");
+    expect(status.required.find((entry) => entry.path === "brand-vibes.md")?.state).toBe("incomplete");
   });
 
   it("asks the agent for comparable systems, home, marketing, type, and a substantial comparison", async () => {
@@ -104,6 +110,16 @@ describe("brand concept review workflow", () => {
     expect(prompt).toContain("morpheus-brand-review");
     expect(prompt).toContain("data-morpheus-concept");
     expect(prompt).toContain("data-morpheus-view");
+  });
+
+  it("renders empty scratchpad lines as valid blockquotes without trailing whitespace", async () => {
+    await initializeWorkflow({ brandDir: dir, name: "Kairos", prefix: "ka" });
+    await writeFile(join(dir, "brand-vibes.md"), "# Kairos — brand vibes\n\n## Notes\n\nQuiet geometry\n", "utf8");
+    await initializeWorkflow({ brandDir: dir, name: "Kairos", prefix: "ka", refresh: true });
+
+    const prompt = await readFile(join(dir, "explore-prompt.md"), "utf8");
+    expect(prompt.split("\n").some((line) => /[ \t]$/.test(line))).toBe(false);
+    expect(prompt).toContain(">\n> ## Notes\n>");
   });
 
   it("does not permit finalization until a five-concept review declares every required view", async () => {
@@ -125,6 +141,7 @@ describe("brand concept review workflow", () => {
     const prompt = await readFile(join(dir, "finalize-prompt.md"), "utf8");
     expect(prompt).toContain("imagery.json");
     expect(prompt).toContain("first home page must visibly use");
+    expect(prompt).toContain("do not cite, link to, or name `brand-vibes.md`");
   });
 
   it("treats imagery, selected moodboards, and their surface mappings as final package requirements", async () => {
@@ -145,21 +162,43 @@ describe("brand concept review workflow", () => {
 
   it("refreshes the handoff from an edited free-form brief without overwriting the brief", async () => {
     await initializeWorkflow({ brandDir: dir, name: "Kairos", prefix: "ka" });
-    await writeFile(join(dir, "vibes.txt"), `${BRIEF}\n`);
+    await writeFile(join(dir, "brand-vibes.md"), `${BRIEF}\n`);
     await initializeWorkflow({ brandDir: dir, name: "Kairos", prefix: "ka", refresh: true });
 
-    expect(await readFile(join(dir, "vibes.txt"), "utf8")).toBe(`${BRIEF}\n`);
+    expect(await readFile(join(dir, "brand-vibes.md"), "utf8")).toBe(`${BRIEF}\n`);
     const prompt = await readFile(join(dir, "explore-prompt.md"), "utf8");
     expect(prompt.replace(/\s*>\s*/g, " ")).toContain("quiet celestial diagrams");
   });
 
-  it("migrates legacy answers into vibes without deleting the original", async () => {
+  it("accepts one substantive scratchpad answer without requiring every prompt", async () => {
+    await initializeWorkflow({ brandDir: dir, name: "Kairos", prefix: "ka" });
+    await writeFile(
+      join(dir, "brand-vibes.md"),
+      "## What are some adjectives you would use to describe the brand?\n\nLearned, warm, restrained, and quietly celestial.\n",
+    );
+
+    const status = await packageStatus(dir);
+    expect(status.required.find((entry) => entry.path === "brand-vibes.md")?.state).toBe("ok");
+  });
+
+  it("migrates legacy answers into the scratchpad without deleting the original", async () => {
     const legacy = "# Old answers\n\nA short legacy strategic record.\n";
     await writeFile(join(dir, "answers.md"), legacy);
     const migrated = await migrateLegacyAnswers({ brandDir: dir, name: "Kairos" });
 
     expect(migrated.error).toBeUndefined();
     expect(await readFile(join(dir, "answers.md"), "utf8")).toBe(legacy);
-    expect(await readFile(join(dir, "vibes.txt"), "utf8")).toContain(legacy.trim());
+    expect(await readFile(join(dir, "brand-vibes.md"), "utf8")).toContain(legacy.trim());
+  });
+
+  it("copies a prior vibes.txt into the new scratchpad without deleting it", async () => {
+    const legacy = `${BRIEF}\n`;
+    await writeFile(join(dir, "vibes.txt"), legacy);
+
+    await initializeWorkflow({ brandDir: dir, name: "Kairos", prefix: "ka" });
+
+    expect(await readFile(join(dir, "vibes.txt"), "utf8")).toBe(legacy);
+    expect(await readFile(join(dir, "brand-vibes.md"), "utf8")).toContain(BRIEF.trim());
+    expect((await packageStatus(dir)).required.find((entry) => entry.path === "brand-vibes.md")?.state).toBe("ok");
   });
 });

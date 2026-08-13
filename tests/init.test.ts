@@ -440,10 +440,12 @@ describe("morpheus init", () => {
       const { written } = await scaffold(dir, SEED);
 
       expect(await read("hq/brand/README.md")).toContain("The workflow");
-      expect(await read("hq/brand/vibes.txt")).toContain("[Replace this guidance");
+      expect(await read("hq/brand/brand-vibes.md")).toContain("What are some adjectives you would use to describe the brand?");
       expect(await read("hq/brand/moodboard/README.md")).toContain("intentionally ignored by Git");
       expect(await read("hq/brand/research/README.md")).toContain("Brand concept review");
+      expect(await read("hq/brand/research/assets/README.md")).toContain("Local concept media");
       expect(written).toContain("hq/brand/moodboard/README.md");
+      expect(written).toContain("hq/brand/research/assets/README.md");
       await expect(read("hq/brand/.gitkeep")).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
@@ -527,15 +529,15 @@ describe("morpheus init", () => {
       expect(await read("AGENTS.md")).toBe(mine);
     });
 
-    it("keeps an authored brand brief while filling in the missing starter files", async () => {
+    it("keeps an authored brand scratchpad while filling in the missing starter files", async () => {
       const brief = "We need a lucid, diagram-led system with a warm paper ground.\n";
       await mkdir(join(dir, "hq/brand"), { recursive: true });
-      await writeFile(join(dir, "hq/brand/vibes.txt"), brief);
+      await writeFile(join(dir, "hq/brand/brand-vibes.md"), brief);
 
       const { skipped } = await scaffold(dir, SEED);
 
-      expect(await read("hq/brand/vibes.txt")).toBe(brief);
-      expect(skipped).toContain("hq/brand/vibes.txt");
+      expect(await read("hq/brand/brand-vibes.md")).toBe(brief);
+      expect(skipped).toContain("hq/brand/brand-vibes.md");
       expect(await read("hq/brand/moodboard/README.md")).toContain("visual-inspiration");
       expect(await read("hq/brand/README.md")).toContain("morpheus init");
     });
@@ -622,18 +624,20 @@ describe("morpheus init", () => {
       expect(ignore).toContain("# Morpheus");
     });
 
-    it("upgrades an older Morpheus ignore block with the local moodboard boundary", async () => {
+    it("upgrades an older Morpheus ignore block with local brand-exploration boundaries", async () => {
       await writeFile(join(dir, ".gitignore"), "# Morpheus\nlocal/\n");
 
       const { written } = await scaffold(dir, SEED);
       const ignore = await read(".gitignore");
 
-      expect(written).toContain(".gitignore (brand moodboard input appended)");
+      expect(written).toContain(".gitignore (brand exploration input appended)");
       expect(ignore).toContain("hq/brand/moodboard/*");
       expect(ignore).toContain("!hq/brand/moodboard/README.md");
+      expect(ignore).toContain("hq/brand/research/assets/*");
+      expect(ignore).toContain("!hq/brand/research/assets/README.md");
     });
 
-    it("keeps raw moodboard input local without ignoring selected design assets", async () => {
+    it("keeps raw inputs and heavyweight concept media local without ignoring selected design assets", async () => {
       await scaffold(dir, SEED);
       const ignore = await read(".gitignore");
 
@@ -643,6 +647,8 @@ describe("morpheus init", () => {
       expect(ignore).toContain("/*.png");
       expect(ignore).toContain("hq/brand/moodboard/*");
       expect(ignore).toContain("!hq/brand/moodboard/README.md");
+      expect(ignore).toContain("hq/brand/research/assets/*");
+      expect(ignore).toContain("!hq/brand/research/assets/README.md");
     });
 
     it("does not append to .gitignore twice", async () => {

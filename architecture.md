@@ -1567,10 +1567,11 @@ height, muted surface) that *derive from* brand colours rather than introducing 
 ```
 hq/brand/
 ├── README.md              # workflow, reading order, and final package index
-├── vibes.txt              # free-form brief for visual exploration (§12.6)
+├── brand-vibes.md         # optional scratchpad for visual exploration (§12.6)
 ├── moodboard/             # Git-ignored raw visual inspiration; README stays tracked
 ├── research/
-│   └── brand.html         # five-direction comparison surface, retained as evidence
+│   ├── brand.html         # five-direction comparison surface, retained as evidence
+│   └── assets/            # Git-ignored heavyweight concept media; README stays tracked
 ├── strategy.md            # positioning, mission, vision, audiences
 ├── voice.md               # tone, vocabulary, patterns
 ├── visual-system.md       # color, type, layout, imagery, logo usage
@@ -1702,7 +1703,7 @@ The workflow is deliberately staged:
 
 | Stage | Required evidence | Why it exists |
 |---|---|---|
-| Input | `vibes.txt`, at least one image under `moodboard/` | Visual exploration needs a loose human brief and actual material, not a forced form. |
+| Input | substantive notes in `brand-vibes.md`, at least one image under `moodboard/` | Visual exploration needs a loose human brief and actual material, not a forced form. |
 | Exploration | `research/brand.html` | Five comparable directions let the team choose a system rather than accidentally choose a single pleasant hero. |
 | Final package | strategy, voice, messaging, tokens, visual system, moodboards, imagery, application, logo, and decisions | The winning direction can be applied by an agent who was not in the review. |
 
@@ -1717,19 +1718,22 @@ invented per screen, `components.md` when the same pattern is rebuilt a third ti
 optional affects the exit code: treating an unmet trigger as a failure trains people to ignore the
 output.
 
-### 12.6 Start visual exploration with vibes and a moodboard
+### 12.6 Start visual exploration with a scratchpad and moodboard
 
-`hq/brand/vibes.txt` is the free-form discovery brief. It can hold product intent, audiences,
-references, half-formed visual instincts, materials, colours, typography, hard no's, and future
-scope in ordinary language. `hq/brand/moodboard/` holds the associated photographs, scans,
-screenshots, and source images. Together they are exploration input, **not** a second final strategy
-or asset library.
+`hq/brand/brand-vibes.md` is an optional Markdown scratchpad, seeded with four questions about
+adjectives, audience, felt experience, and any other useful context. A founder may answer one,
+several, or none of them; it can hold product intent, audiences, references, half-formed visual
+instincts, materials, colours, typography, hard no's, and future scope in ordinary language.
+`hq/brand/moodboard/` holds the associated photographs, scans, screenshots, and source images.
+Together they are exploration input, **not** a second final strategy or asset library. An agent may
+use the scratchpad to make initial concept decisions, but final canonical records state the resulting
+decisions directly and never cite, link to, or name `brand-vibes.md`.
 
 `morpheus init` creates these inputs and the durable handoff for every company and personal project,
 so a founder never has to remember a separate brand-initialization step. The folder itself is
 present because its README is tracked, while the raw visual-inspiration files inside
 `hq/brand/moodboard/` are Git-ignored by default. `morpheus brand init` remains a safe,
-idempotent repair and retrofit command for an older or partial project. After the brief or
+idempotent repair and retrofit command for an older or partial project. After the scratchpad or
 moodboard changes, `morpheus brand explore` refreshes `explore-prompt.md`; the agent reads the
 actual files and creates `research/brand.html`.
 
@@ -1749,9 +1753,10 @@ with `data-morpheus-concept` and each view panel with `data-morpheus-view`; stat
 five concepts and all five views without prescribing a framework or aesthetic.
 
 `answers.md` is retired from new projects. `morpheus brand migrate` copies an existing legacy
-answers file into `vibes.txt` and leaves the original intact, so migration is reversible. There is
-no replacement structured discovery record: the canonical structured files are written only when a
-person selects a direction.
+answers file into `brand-vibes.md` and leaves the original intact, so migration is reversible. An
+older `vibes.txt` is also copied forward if the new scratchpad is absent; it remains untouched.
+There is no replacement structured discovery record: the canonical structured files are written
+only when a person selects a direction.
 
 ### 12.7 Exploration is durable; finalization promotes rather than flattens
 
@@ -1761,6 +1766,13 @@ and after selection, alongside a running `decisions.md` with `## Settled`, `## R
 matter because the useful result is often a hybrid — *keep Direction B's framing but reject its
 palette* — rather than the page that won a vote.
 
+`research/brand.html` is intentionally versioned so the review is readable after a clone. Its
+heavy local images, generated diagrams, and temporary fonts live in
+`hq/brand/research/assets/`, which is Git-ignored except for a tracked README. The page may refer
+to them with relative `assets/...` paths during review. When an asset becomes part of the selected
+brand, its delivery source belongs in `imagery.json`; do not turn `hq/brand/assets/` into a dump
+for heavyweight concept media.
+
 Once a person selects a named direction or intentional hybrid, `morpheus brand finalize --selection
 "Name"` writes a finalization handoff. The agent reads the full review, input, and decisions, then
 writes the authoritative package. It does not overwrite a person's current prose merely to make a
@@ -1768,8 +1780,9 @@ generator report green.
 
 | Ownership | Files | On explore or finalize |
 |---|---|---|
-| `derived` | `README.md`, `explore-prompt.md`, moodboard/research/assets READMEs | Refreshed from the workflow contract; never hides edited input. |
-| `authored exploration` | `vibes.txt`, source moodboard material, `research/brand.html`, `decisions.md` | Preserved; the review is evidence, not a build artifact. |
+| `derived` | `README.md`, `explore-prompt.md`, `moodboard/README.md`, `research/README.md`, `research/assets/README.md`, `assets/README.md` | Refreshed from the workflow contract; never hides edited input. |
+| `authored exploration` | `brand-vibes.md`, `research/brand.html`, `decisions.md` | Preserved; the review is evidence, not a build artifact. |
+| `local exploration media` | `moodboard/*`, `research/assets/*` (except their READMEs) | Git-ignored so raw inspiration and heavyweight temporary media stay local; selected deliverables graduate through the manifest. |
 | `authored final` | `strategy.md`, `voice.md`, `messaging.json`, `tokens.json`, `visual-system.md`, `moodboards.md`, `imagery.json`, `application.md`, `assets/*` | Written after selection and retained as the canonical package. |
 
 `morpheus brand check` writes nothing and is safe in CI. It exits non-zero until the workflow has
@@ -1783,7 +1796,8 @@ what survived from each. `imagery.json` is the final asset manifest: every appro
 illustration, photograph, texture, or other art gets a stable id, source or delivery key, useful alt
 text, provenance or licence note, and named intended placements. Small build-time assets remain in
 Git; heavy source or delivery media can live in the project's public-media store, with its stable
-key recorded in the manifest.
+key recorded in the manifest. The final package takes conclusions from exploration; it does not
+refer back to `brand-vibes.md` as though a scratchpad were an authoritative record.
 
 `application.md` is the last guard against the most common loss during a concept-to-code handoff.
 It maps every image id to a concrete **Public web** and/or **Product** surface. The first home page
@@ -1882,8 +1896,9 @@ never be blocked on a token.
 
 > **Gotchas.** `CLAUDE.md` is a **symlink**, not a copy; two files would drift invisibly until an
 > agent acted on the stale one. Every company and personal project starts with the brand workflow,
-> including a tracked `hq/brand/moodboard/README.md`; raw inspiration next to it is intentionally
-> ignored so it stays local without the directory disappearing on clone.
+> including tracked `hq/brand/moodboard/README.md` and `hq/brand/research/assets/README.md`; raw
+> inspiration and heavyweight concept media next to them are intentionally ignored so they stay
+> local without either directory disappearing on clone.
 
 The scaffold was written after two retrofits rather than before, and every template in it exists
 because Evo or Darwin needed it.

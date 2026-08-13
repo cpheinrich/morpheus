@@ -8,10 +8,16 @@ import {
   conceptReviewMeta,
 } from "./concepts.js";
 import { REQUIRED } from "./package.js";
-import { readVibes, renderVibes, VIBES_FILE } from "./vibes.js";
+import {
+  LEGACY_VIBES_FILE,
+  readVibes,
+  renderVibes,
+  VIBES_FILE,
+} from "./vibes.js";
 
 export const MOODBOARD_DIR = "moodboard";
 export const RESEARCH_DIR = "research";
+export const CONCEPT_ASSETS_DIR = `${RESEARCH_DIR}/assets`;
 export const EXPLORE_PROMPT_FILE = "explore-prompt.md";
 export const FINALIZE_PROMPT_FILE = "finalize-prompt.md";
 
@@ -55,6 +61,18 @@ function researchReadme(): string {
     `Mark each stable package with \`${CONCEPT_REVIEW_CONCEPT_ATTRIBUTE}="stable-name"\`, and mark the five rendered panels with \`${CONCEPT_REVIEW_VIEW_ATTRIBUTE}="system"\`, \`home\`, \`marketing\`, \`type\`, and \`compare\`. Those portable markers let Morpheus validate the durable review without constraining its layout or JavaScript.`,
     "",
     "Keep the page and its working assets available through selection and finalization. Its role is to make decisions traceable; the canonical selected brand is written back to the parent directory only after a person chooses a direction or an intentional hybrid.",
+    "",
+    "`brand.html` stays in Git. When the review needs heavyweight generated diagrams, images, or font files, put them in [`assets/`](./assets); that local folder is ignored by Git except for its README. Reference them from the review with relative `assets/...` paths so the page still opens locally.",
+  ].join("\n");
+}
+
+function conceptAssetsReadme(): string {
+  return [
+    "# Local concept media",
+    "",
+    "Put heavyweight images, generated diagrams, and temporary fonts used by [`../brand.html`](../brand.html) here. This is a local review cache, not the canonical brand asset library. Keep filenames stable while a concept is under review so collaborators can discuss an asset precisely.",
+    "",
+    "Everything in this directory except this README is intentionally ignored by Git. The review page itself remains versioned. Once an image is approved for a real site or app, deliver it through the project's public-media store or retain it as a small tracked build asset when appropriate, then record its stable source, provenance, alt text, and placements in `../../imagery.json`. Do not move bulky concept media into `../../assets/` just to make it survive Git.",
   ].join("\n");
 }
 
@@ -76,12 +94,12 @@ function readme(name: string): string {
     "",
     "## The workflow",
     "",
-    "1. Write a loose brief in [`vibes.txt`](./vibes.txt) and add source material to [`moodboard/`](./moodboard).",
+    "1. Add any useful notes to [`brand-vibes.md`](./brand-vibes.md) and source material to [`moodboard/`](./moodboard). The scratchpad prompts are optional; it is exploration input, not a final record.",
     "2. Run `morpheus brand explore`, then give [`explore-prompt.md`](./explore-prompt.md) to an agent. It creates [`research/brand.html`](./research/brand.html): five genuinely distinct, comparable directions in one review page.",
     "3. Iterate in that page. Keep [`decisions.md`](./decisions.md) current after each round.",
     "4. Once a direction is selected, run `morpheus brand finalize --selection \"Name\"` and use the resulting prompt to write the final records below. The concept page remains as research; it is not thrown away when the package becomes official.",
     "",
-    "`answers.md` is legacy and is deliberately not created. A moodboard plus a free-form brief is better source material for visual exploration than a constrained questionnaire. Existing projects can run `morpheus brand migrate` to copy legacy context into `vibes.txt` without destroying their established records.",
+    "`answers.md` is legacy and is deliberately not created. A moodboard plus a loose Markdown scratchpad is better source material for visual exploration than a constrained questionnaire. Existing projects can run `morpheus brand migrate` to copy legacy context into `brand-vibes.md` without destroying their established records.",
     "",
     "## Canonical final package",
     "",
@@ -103,7 +121,13 @@ function readme(name: string): string {
 }
 
 function explorePrompt(name: string, prefix: string, vibes: string): string {
-  const quotedBrief = vibes.trim() ? vibes.trim().replace(/\n/g, "\n> ") : "No brief has been written yet.";
+  const quotedBrief = vibes.trim()
+    ? vibes
+        .trim()
+        .split("\n")
+        .map((line) => (line ? `> ${line}` : ">"))
+        .join("\n")
+    : "> No brief has been written yet.";
   return [
     `# ${name} — brand concept exploration`,
     "",
@@ -113,15 +137,15 @@ function explorePrompt(name: string, prefix: string, vibes: string): string {
     "",
     "## Inputs to read before designing",
     "",
-    `1. [\`hq/brand/${VIBES_FILE}\`](./${VIBES_FILE}) — the current free-form brief.`,
+    `1. [\`hq/brand/${VIBES_FILE}\`](./${VIBES_FILE}) — an optional exploration scratchpad.`,
     `2. Every file under [\`hq/brand/${MOODBOARD_DIR}/\`](./${MOODBOARD_DIR}) — the visual reference set.`,
     "3. Any existing [`hq/brand/decisions.md`](./decisions.md) and concept page — avoid reviving a rejected direction without a reason.",
     "",
     "The brief currently says:",
     "",
-    `> ${quotedBrief}`,
+    quotedBrief,
     "",
-    "If the brief is still template guidance or the moodboard folder is empty, say so before inventing meaning from nothing. Otherwise, inspect the actual material rather than treating filenames as visual evidence.",
+    "If the scratchpad has no substantive notes or the moodboard folder is empty, say so before inventing meaning from nothing. Otherwise, inspect the actual material rather than treating filenames as visual evidence.",
     "",
     "## Produce one comparison surface",
     "",
@@ -145,7 +169,7 @@ function explorePrompt(name: string, prefix: string, vibes: string): string {
     "",
     "Use the same representative copy, information hierarchy, screens, and CTA across all five. The visual system is the independent variable. Make the page responsive enough to inspect at desktop and mobile widths. Preserve reference provenance in captions or a compact source note; do not copy another brand's proprietary marks or imagery.",
     "",
-    `Use the --${prefix}- token prefix when you show candidate CSS variables. If generated imagery or fonts are temporary, label that truthfully in the concept page.`,
+    `Use the --${prefix}- token prefix when you show candidate CSS variables. If generated imagery or fonts are temporary, label that truthfully in the concept page. Put heavyweight concept media in \`hq/brand/${CONCEPT_ASSETS_DIR}/\`, which is local and Git-ignored except for its README; keep \`brand.html\` versioned and reference those files with relative \`assets/...\` paths.`,
     "",
     "## Iterate responsibly",
     "",
@@ -177,9 +201,9 @@ function finalizePrompt(name: string, selection: string): string {
   return [
     `# ${name} — finalize the selected brand`,
     "",
-    `The selected direction is **${selection}**. Read the complete concept archive at \`hq/brand/${CONCEPT_REVIEW_FILE}\`, the original brief at \`hq/brand/${VIBES_FILE}\`, the moodboard folder, and every settled/rejected decision before writing the final package.`,
+    `The selected direction is **${selection}**. Read the complete concept archive at \`hq/brand/${CONCEPT_REVIEW_FILE}\`, the exploration scratchpad at \`hq/brand/${VIBES_FILE}\`, the moodboard folder, and every settled/rejected decision before writing the final package.`,
     "",
-    "Do not reduce the selected direction to colors and a font. Preserve its approved imagery, visual hierarchy, and usage rules in the canonical records below. Keep the concept review HTML intact; it is evidence for why this direction was selected and a reference for future refinements.",
+    "Do not reduce the selected direction to colors and a font. Preserve its approved imagery, visual hierarchy, and usage rules in the canonical records below. Keep the concept review HTML intact; it is evidence for why this direction was selected and a reference for future refinements. The scratchpad is only working input: do not cite, link to, or name `brand-vibes.md` in any final canonical brand record.",
     "",
     "## Write the canonical package",
     "",
@@ -200,10 +224,37 @@ function plan(name: string, prefix: string, vibes: string): PlannedFile[] {
     { path: VIBES_FILE, content: renderVibes(name), ownership: "authored" },
     { path: `${MOODBOARD_DIR}/README.md`, content: moodboardReadme(), ownership: "derived" },
     { path: `${RESEARCH_DIR}/README.md`, content: researchReadme(), ownership: "derived" },
+    { path: `${CONCEPT_ASSETS_DIR}/README.md`, content: conceptAssetsReadme(), ownership: "derived" },
     { path: "README.md", content: readme(name), ownership: "derived" },
     { path: EXPLORE_PROMPT_FILE, content: explorePrompt(name, prefix, vibes), ownership: "derived" },
     { path: "assets/README.md", content: assetsReadme(), ownership: "derived" },
   ];
+}
+
+async function migrateLegacyVibes(brandDir: string, name: string): Promise<string | undefined> {
+  const target = join(brandDir, VIBES_FILE);
+  try {
+    await readFile(target, "utf8");
+    return undefined;
+  } catch {
+    // A missing new scratchpad is the only case where a previous workflow is copied forward.
+  }
+
+  let legacy: string;
+  try {
+    legacy = await readFile(join(brandDir, LEGACY_VIBES_FILE), "utf8");
+  } catch {
+    return undefined;
+  }
+
+  await writeFile(
+    target,
+    normalise(
+      `# ${name} — brand vibes\n\n> This optional scratchpad carries forward a previous free-form brief. It guides exploration only and is not a canonical brand record.\n\n## Legacy notes carried forward\n\n${legacy}`,
+    ),
+    "utf8",
+  );
+  return target;
 }
 
 async function writePlan(
@@ -243,14 +294,21 @@ export async function initializeWorkflow(opts: {
 }): Promise<WorkflowWriteResult> {
   await mkdir(join(opts.brandDir, MOODBOARD_DIR), { recursive: true });
   await mkdir(join(opts.brandDir, RESEARCH_DIR), { recursive: true });
+  await mkdir(join(opts.brandDir, CONCEPT_ASSETS_DIR), { recursive: true });
   await mkdir(join(opts.brandDir, "assets"), { recursive: true });
 
+  const migrated = await migrateLegacyVibes(opts.brandDir, opts.name);
   const vibes = await readVibes(opts.brandDir);
-  return writePlan(
+  const result = await writePlan(
     opts.brandDir,
     plan(opts.name, opts.prefix, vibes.text || renderVibes(opts.name)),
     Boolean(opts.refresh),
   );
+  if (!migrated) return result;
+  return {
+    files: [migrated, ...result.files.filter((path) => path !== migrated)],
+    skipped: result.skipped.filter((path) => path !== migrated),
+  };
 }
 
 export async function writeFinalizePrompt(opts: {
