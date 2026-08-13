@@ -42,6 +42,11 @@ source/provenance and approved delivery asset keys become the durable record.
 - New public-project scaffolds now include a compact `brand-review` agent skill,
   so the visual-first workflow remains discoverable after the initial handoff.
 
+The first PR CI pass caught stale compiled copies of the removed legacy brand
+modules. Local `tsc` does not clean `dist/`, while the reusable CI workflow
+does, so the old `dist/brand/{answers,answers-md,generate,questions}.*`
+artifacts were deleted and the clean-build check was repeated.
+
 `pnpm lint` could not run because this package does not declare or install an
 `eslint` executable; the repository's CI does not currently provide a lint
 script dependency for this package. That is a pre-existing tooling gap, not
