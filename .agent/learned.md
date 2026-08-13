@@ -348,3 +348,26 @@ different properties**, and the difference was two characters: key the opener on
 (`/**` or `/* `, never `/*.`) and the guard stops depending on where in the file anything sits.
 Appending a comment below those globs is the normal way that file grows, so "no miss today" had a
 short shelf life.
+
+## firebase-admin's Firestore refuses a hand-built credential; Auth accepts one
+
+2026-08-13, found on Evo's first production deploy. The Workload Identity credential
+`web init` generates is an object implementing `getAccessToken()`. **Firebase Auth works with it.
+Firestore does not**, and says so at the first write:
+
+> `firestore/invalid-credential` — Failed to initialize Google Cloud Firestore client with the
+> available credentials. Must initialize the SDK with a certificate credential or application
+> default credentials to use Cloud Firestore API.
+
+The Firestore client goes through google-gax, which wants a real `GoogleAuth`-compatible
+credential rather than the token-minting shim `firebase-admin` accepts for its REST-based
+services. So a project can have federation correctly provisioned — pool, provider, service
+account, `roles/datastore.user` all bound — and still fail every write, while sign-in works.
+
+**This is latent in Darwin too.** DW's waitlist shipped with the same credential shape and its PR
+verified the failure path locally rather than a successful write in production, so the first real
+signup there is expected to 500 the same way.
+
+The generalisation is the one this repo keeps rediscovering: **two capabilities behind one
+credential can fail independently, and the one you tested is not evidence for the other.** Auth
+was verified end to end; Firestore was assumed to come along with it.

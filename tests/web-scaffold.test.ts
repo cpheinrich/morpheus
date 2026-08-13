@@ -177,6 +177,36 @@ describe("scaffoldWeb", () => {
     expect(result.notes.some((note) => note.includes("Skipped the waitlist"))).toBe(true);
   });
 
+  it("reports a config that predates federation instead of leaving it silent", async () => {
+    const root = await establishedProject();
+    // Exactly what a run whose federation step failed leaves behind.
+    const { workloadIdentity: _dropped, ...withoutFederation } = FIREBASE;
+    await scaffoldWeb({ ...options(root, await surveyWeb(root)), firebase: withoutFederation });
+
+    const second = await scaffoldWeb(options(root, await surveyWeb(root)));
+
+    // Never-overwrite keeps the stale file, which is right — but a deployment
+    // that silently falls back to ADC works locally and fails on Vercel.
+    expect(second.skipped).toContain("apps/web/lib/firebase/config.ts");
+    const note = second.notes.find((entry) => entry.includes("Application Default Credentials"));
+    // Both files carry a federation branch, and Evo went out with a stale
+    // `admin.ts` after only `config.ts` was regenerated.
+    expect(note).toContain("lib/firebase/config.ts");
+    expect(note).toContain("lib/firebase/admin.ts");
+  });
+
+  it("says that federation alone will not carry the Firestore write", async () => {
+    const root = await establishedProject();
+    const result = await scaffoldWeb(options(root, await surveyWeb(root)));
+
+    // Evo's first production deploy: sign-in worked, every write returned
+    // `firestore/invalid-credential`. Auth and Firestore fail independently
+    // behind one credential, and only Auth had been tested.
+    const note = result.notes.find((entry) => entry.includes("firestore/invalid-credential"));
+    expect(note).toBeDefined();
+    expect(note).toContain("FIREBASE_SERVICE_ACCOUNT");
+  });
+
   it("keeps an existing route gate rather than shipping a second one", async () => {
     const root = await establishedProject();
     await write(root, "apps/web/middleware.ts", "export default function middleware() {}\n");
@@ -206,6 +236,30 @@ describe("scaffoldWeb", () => {
     expect(result.notes.some((note) => note.includes('output: "export"'))).toBe(true);
     const manifest = JSON.parse(await readFile(join(root, "apps/web/package.json"), "utf8"));
     expect(manifest.dependencies["firebase-admin"]).toBeUndefined();
+  });
+
+  it("posts to the path the app actually serves under trailingSlash", async () => {
+    const root = await establishedProject();
+    await write(
+      root,
+      "apps/web/next.config.ts",
+      "const nextConfig = { trailingSlash: true };\nexport default nextConfig;\n",
+    );
+    const survey = await surveyWeb(root);
+    expect(survey.trailingSlash).toBe(true);
+    await scaffoldWeb(options(root, survey));
+
+    // Evo sets trailingSlash, so `/api/waitlist` answers 308 and every signup
+    // pays a second round trip. Confirmed against its production build.
+    const form = await readFile(join(root, "apps/web/app/WaitlistForm.tsx"), "utf8");
+    expect(form).toContain('fetch("/api/waitlist/"');
+  });
+
+  it("posts to the unslashed path when the app does not set trailingSlash", async () => {
+    const root = await establishedProject();
+    await scaffoldWeb(options(root, await surveyWeb(root)));
+    const form = await readFile(join(root, "apps/web/app/WaitlistForm.tsx"), "utf8");
+    expect(form).toContain('fetch("/api/waitlist"');
   });
 
   it("does not read a commented-out export as one", async () => {
@@ -251,6 +305,47 @@ describe("merges", () => {
     // cannot be imported at all.
     expect(manifest.exports["./schema/waitlist"]).toBe("./schema/waitlist.ts");
     expect(manifest.exports["./analytics"]).toBe("./schema/analytics.ts");
+  });
+});
+
+describe("the jwks-rsa jose pin", () => {
+  it("is added for /hq, because without it the session route 500s on Vercel", async () => {
+    const root = await establishedProject();
+    await write(root, "pnpm-workspace.yaml", "packages:\n  - apps/web\n  - packages/*\n");
+
+    const result = await scaffoldWeb(options(root, await surveyWeb(root)));
+
+    const workspace = await readFile(join(root, "pnpm-workspace.yaml"), "utf8");
+    expect(workspace).toContain("jwks-rsa>jose: ^5.10.0");
+    // The reason travels with it: this is invisible until production.
+    expect(workspace).toContain("require(esm)");
+    expect(workspace).toContain("packages:");
+    expect(result.merged.some((entry) => entry.includes("pnpm-workspace.yaml"))).toBe(true);
+  });
+
+  it("leaves an existing overrides block alone rather than guessing its indentation", async () => {
+    const root = await establishedProject();
+    await write(
+      root,
+      "pnpm-workspace.yaml",
+      "packages:\n  - apps/web\n\noverrides:\n  something>else: ^1.0.0\n",
+    );
+
+    await scaffoldWeb(options(root, await surveyWeb(root)));
+
+    const workspace = await readFile(join(root, "pnpm-workspace.yaml"), "utf8");
+    expect(workspace).toContain("something>else: ^1.0.0");
+    expect(workspace).not.toContain("jwks-rsa>jose");
+  });
+
+  it("is not added twice", async () => {
+    const root = await establishedProject();
+    await write(root, "pnpm-workspace.yaml", "packages:\n  - apps/web\n");
+    await scaffoldWeb(options(root, await surveyWeb(root)));
+    await scaffoldWeb(options(root, await surveyWeb(root)));
+
+    const workspace = await readFile(join(root, "pnpm-workspace.yaml"), "utf8");
+    expect(workspace.match(/jwks-rsa>jose/g)).toHaveLength(1);
   });
 });
 

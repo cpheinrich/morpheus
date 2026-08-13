@@ -89,11 +89,15 @@ async function readTestRunner(root, webRoot) {
  * would be a false positive; the comment stripping keeps that from happening
  * for the one shape that actually occurs.
  */
+export function withoutComments(source) {
+    return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+}
 export async function readsStaticExport(source) {
-    const withoutComments = source
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/^\s*\/\/.*$/gm, "");
-    return /output\s*:\s*["']export["']/.test(withoutComments);
+    return /output\s*:\s*["']export["']/.test(withoutComments(source));
+}
+/** Whether the config asks Next to canonicalise every route with a trailing slash. */
+export function readsTrailingSlash(source) {
+    return /trailingSlash\s*:\s*true/.test(withoutComments(source));
 }
 /** The Firestore rules file Firebase actually deploys, when one is configured. */
 export async function deployedRulesPath(root) {
@@ -125,6 +129,7 @@ export async function surveyWeb(root) {
     ]);
     const nextConfig = await Promise.all(["next.config.ts", "next.config.mjs", "next.config.js"].map((name) => readFile(app(name), "utf8").catch(() => "")));
     const staticExport = (await Promise.all(nextConfig.map((source) => readsStaticExport(source)))).some(Boolean);
+    const trailingSlash = nextConfig.some((source) => readsTrailingSlash(source));
     return {
         webRoot,
         webAppExists,
@@ -140,6 +145,7 @@ export async function surveyWeb(root) {
         firestoreRulesPath,
         vercelLinked: vercelRoot || vercelApp,
         staticExport,
+        trailingSlash,
     };
 }
 /**

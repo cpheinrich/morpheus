@@ -45,6 +45,11 @@ export interface TemplateContext {
     relative: Specifier;
     /** Import specifier for the waitlist schema, wherever it landed. */
     schema: (from: string) => string;
+    /**
+     * The waitlist endpoint as the app serves it. Carries a trailing slash when
+     * the project sets `trailingSlash: true`, where the unslashed path is a 308.
+     */
+    waitlistEndpoint: string;
     firebase?: FirebaseFacts;
 }
 export declare const waitlistSchema: () => string;

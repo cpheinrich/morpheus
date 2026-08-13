@@ -33,6 +33,7 @@ export async function scaffoldWeb(opts) {
         name,
         imp: (from, to) => importPath(survey, from, to),
         relative: (from, to) => importPath({ alias: null }, from, to),
+        waitlistEndpoint: survey.trailingSlash ? "/api/waitlist/" : "/api/waitlist",
         schema: (from) => schema.specifier(from),
         ...(opts.firebase ? { firebase: opts.firebase } : {}),
     };
@@ -109,6 +110,17 @@ export async function scaffoldWeb(opts) {
             notes.push("Wire a `waitlist_joined` event into the project's analytics contract and pass " +
                 "it to the form's `onJoined` prop. The form deliberately imports no analytics " +
                 "module: the event name belongs to the project's vocabulary, not to Morpheus.");
+            if (opts.firebase.workloadIdentity) {
+                // Verified on Evo's first production deploy: sign-in worked and every
+                // write failed. Two capabilities behind one credential, failing
+                // independently — and only one of them was tested.
+                notes.push("Workload Identity alone will not carry the Firestore write. `firebase-admin`'s " +
+                    "Firestore client goes through google-gax and refuses a token-minting credential " +
+                    "with `firestore/invalid-credential`, while Auth accepts the same one — so " +
+                    "sign-in can work while every signup 500s. Set FIREBASE_SERVICE_ACCOUNT on the " +
+                    "deployment for this path, or write through the Firestore REST API with a " +
+                    "federated token.");
+            }
         }
     }
     // --- /hq and Google sign-in ----------------------------------------------
@@ -119,6 +131,33 @@ export async function scaffoldWeb(opts) {
         }
         else {
             await app("lib/firebase/config.ts", t.firebaseConfigFile(opts.firebase));
+            // Never-overwrite has one sharp edge, and this is it. An earlier run whose
+            // federation step failed wrote a config with no `WORKLOAD_IDENTITY` block;
+            // a later run that provisions federation successfully then *keeps* that
+            // file, and the deployment silently falls back to Application Default
+            // Credentials — which do not exist on Vercel. Local dev works, production
+            // does not, and nothing says so. Reported rather than rewritten: the file
+            // may have been edited since.
+            if (opts.firebase.workloadIdentity) {
+                const stale = [];
+                for (const [file, marker] of [
+                    ["lib/firebase/config.ts", "WORKLOAD_IDENTITY"],
+                    ["lib/firebase/admin.ts", "workloadIdentity"],
+                ]) {
+                    const path = join(root, survey.webRoot === "." ? file : `${survey.webRoot}/${file}`);
+                    const existing = await readFile(path, "utf8").catch(() => "");
+                    if (existing && !existing.includes(marker))
+                        stale.push(file);
+                }
+                if (stale.length) {
+                    notes.push(`${stale.join(" and ")} predate${stale.length === 1 ? "s" : ""} this run's Workload ` +
+                        "Identity setup and carr" +
+                        (stale.length === 1 ? "ies" : "y") +
+                        " no federation branch, so the deployment would fall back to Application Default " +
+                        "Credentials — which Vercel does not have. Delete them and re-run; they are " +
+                        "generated, and nothing here rewrites a file you may have edited.");
+                }
+            }
             await app("lib/firebase/client.ts", t.firebaseClient(ctx));
             await app("lib/firebase/admin.ts", t.firebaseAdmin(ctx, opts.firebase));
             await app("lib/auth/roles.ts", t.authRoles());
@@ -159,6 +198,11 @@ export async function scaffoldWeb(opts) {
         if (added.length) {
             merged.push(`${survey.webRoot === "." ? "" : `${survey.webRoot}/`}package.json (+${added.join(", ")})`);
             notes.push("Run `pnpm install` — the generated code imports dependencies just added.");
+        }
+        if (opts.hq) {
+            const override = await addJwksJoseOverride(root);
+            if (override)
+                merged.push("pnpm-workspace.yaml (+jwks-rsa>jose override)");
         }
         if (survey.shared && !survey.shared.exportsWaitlist && survey.shared.hasExportsMap) {
             const path = `${survey.shared.dir}/package.json`;
@@ -230,6 +274,54 @@ async function addSharedExport(root, relativePath) {
         return false;
     manifest.exports = { ...map, "./schema/waitlist": "./schema/waitlist.ts" };
     await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    return true;
+}
+/**
+ * Pin `jose@5` for `jwks-rsa` in the workspace.
+ *
+ * This is the difference between `/hq` working and returning 500 in production,
+ * and nothing in the repository would tell you why. `firebase-admin@14` pulls
+ * `jwks-rsa@4`, which is CommonJS and does a plain `require('jose')`; `jose@6`
+ * is ESM-only, so that require needs `require(esm)` — and Vercel's Node runtime
+ * launches functions with `--no-experimental-require-module`, so it is off there
+ * whatever the Node version. `firebase-admin/auth` then cannot load at all, and
+ * the session route fails before it reaches the credential or the role check.
+ *
+ * `jose@5` ships a real CJS build and `jwks-rsa` only uses `importJWK` and
+ * `exportSPKI`, unchanged between 5 and 6. The pin is scoped to `jwks-rsa`, so
+ * the app keeps `jose@6` for its own Edge route gate.
+ *
+ * Darwin found this in production and carried the fix in its own workspace file.
+ * It is here because the second project to need it should not have to find it
+ * the same way. Appended textually rather than through a YAML round-trip: this
+ * file carries comments that explain a lockfile, and a rewrite would drop them.
+ */
+export async function addJwksJoseOverride(root) {
+    const path = join(root, "pnpm-workspace.yaml");
+    const existing = await readFile(path, "utf8").catch(() => null);
+    if (existing === null || /jwks-rsa>jose/.test(existing))
+        return false;
+    // Only when the file has no `overrides:` block of its own. Merging into one
+    // means understanding its indentation, and getting that wrong silently
+    // changes which package the pin applies to.
+    if (/^overrides:/m.test(existing))
+        return false;
+    const block = [
+        "",
+        "# firebase-admin@14 pulls jwks-rsa@4, which is CommonJS and does a plain",
+        "# `require('jose')`. jose@6 is ESM-only, and Vercel's Node runtime disables",
+        "# require(esm), so firebase-admin/auth cannot load in a function at all and",
+        "# the session route returns 500 before it reaches the role check.",
+        "#",
+        "# jose@5 ships a real CJS build and jwks-rsa only uses importJWK/exportSPKI,",
+        "# unchanged between 5 and 6. Scoped to jwks-rsa; the app keeps jose@6 for its",
+        "# own Edge route gate. Remove when firebase-admin ships a jwks-rsa that does",
+        "# not require(esm).",
+        "overrides:",
+        "  jwks-rsa>jose: ^5.10.0",
+        "",
+    ].join("\n");
+    await writeFile(path, `${existing.trimEnd()}\n${block}`, "utf8");
     return true;
 }
 /** Anchor the insertion on the catch-all, which every generated rules file ends with. */

@@ -75,6 +75,13 @@ const FIRESTORE_LOCATION = "nam5";
 const REQUIRED_SERVICES = [
   "firestore.googleapis.com",
   "identitytoolkit.googleapis.com",
+  // `iam` owns workload-identity pools and service accounts; `iamcredentials`
+  // only owns the token exchange. Enabling the second without the first is the
+  // shape that got shipped first, and it fails much later and much less
+  // legibly: pool creation returns `PERMISSION_DENIED ... on resource
+  // //iam.googleapis.com/projects/<id>/locations/global (or it may not exist)`,
+  // which reads as a missing role on a fresh project rather than a missing API.
+  "iam.googleapis.com",
   "iamcredentials.googleapis.com",
   "sts.googleapis.com",
 ];
@@ -208,13 +215,20 @@ export async function provisionWeb(opts: ProvisionOptions): Promise<ProvisionRes
 
   // --- Firestore ------------------------------------------------------------
   await step(steps, "firestore", `Firestore database (${FIRESTORE_LOCATION})`, async () => {
-    if (
-      await describes(() =>
-        gcloud(["firestore", "databases", "describe", "--project", opts.project, "--format=value(name)"]),
-      )
-    ) {
-      return { state: "already", detail: "exists" };
-    }
+    // `list`, not `describe`. On a project with no database, `describe` answers
+    // `PERMISSION_DENIED` rather than `NOT_FOUND` — so the absent case is
+    // indistinguishable from a real refusal and the step blocks forever. `list`
+    // returns an empty result for absent and still errors for refused, which is
+    // the distinction this whole file is built on.
+    const { stdout } = await gcloud([
+      "firestore",
+      "databases",
+      "list",
+      "--project",
+      opts.project,
+      "--format=value(name)",
+    ]);
+    if (stdout.trim()) return { state: "already", detail: "exists" };
     // Multi-region, and unchangeable after creation — which is why it is worth
     // stating rather than defaulting.
     await gcloud([

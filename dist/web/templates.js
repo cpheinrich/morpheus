@@ -610,7 +610,7 @@ export function WaitlistForm({
     setMessage(null);
 
     try {
-      const response = await fetch("/api/waitlist", {
+      const response = await fetch("${ctx.waitlistEndpoint}", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1072,6 +1072,16 @@ export function adminAuth() {
  * Requires \`roles/datastore.user\` on whichever identity the deployment runs
  * as. A missing grant surfaces as \`PERMISSION_DENIED\` on the first write and
  * nowhere earlier.
+ *
+ * **Federation is not enough for this one.** Firestore goes through google-gax,
+ * which wants a real GoogleAuth credential rather than the token-minting object
+ * \`firebase-admin\` accepts for its REST services — so a deployment whose
+ * sign-in works can still fail every write with
+ * \`firestore/invalid-credential\`: *Must initialize the SDK with a certificate
+ * credential or application default credentials.* Auth and Firestore fail
+ * independently behind the same credential. Set \`FIREBASE_SERVICE_ACCOUNT\`
+ * for this path, or write through the Firestore REST API with a federated
+ * token.
  */
 export function adminFirestore() {
   return getFirestore(getAdminApp());

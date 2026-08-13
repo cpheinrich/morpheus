@@ -76,11 +76,21 @@ const options = (calls: string[][], world?: World) => ({
 describe("provisionWeb", () => {
   it("adopts everything that already exists and creates nothing", async () => {
     const calls: string[][] = [];
-    const result = await provisionWeb(options(calls));
+    const result = await provisionWeb(
+      options(calls, {
+        responses: {
+          "gcloud firestore databases list": "projects/dh-acme/databases/(default)",
+        },
+      }),
+    );
 
     expect(result.steps.find((step) => step.id === "gcp-project")?.state).toBe("already");
     expect(result.steps.find((step) => step.id === "firebase")?.state).toBe("already");
+    expect(result.steps.find((step) => step.id === "firestore")?.state).toBe("already");
     expect(result.steps.find((step) => step.id === "web-app")?.state).toBe("already");
+    expect(
+      calls.filter(([, ...args]) => args[0] === "firestore" && args[2] === "create"),
+    ).toEqual([]);
     expect(calls.some(([command, ...args]) => command === "gcloud" && args[1] === "create")).toBe(false);
     expect(calls.some(([, ...args]) => args.join(" ").startsWith("projects:addfirebase"))).toBe(false);
   });
@@ -170,6 +180,34 @@ describe("provisionWeb", () => {
     expect(federation?.state).toBe("skipped");
     expect(result.firebase?.workloadIdentity).toBeUndefined();
     expect(outstanding(result.steps)).toContain(federation);
+  });
+
+  it("asks Firestore for a list, because describe cannot say 'absent'", async () => {
+    const calls: string[][] = [];
+    // Exactly what a real project with no database returns: `list` is empty,
+    // and `describe` would have said PERMISSION_DENIED — which the first
+    // version of this step read as a refusal and blocked on.
+    const result = await provisionWeb(
+      options(calls, { responses: { "gcloud firestore databases list": "" } }),
+    );
+
+    expect(result.steps.find((step) => step.id === "firestore")?.state).toBe("created");
+    const firestoreCalls = calls.filter(([, ...args]) => args[0] === "firestore").map((c) => c.join(" "));
+    expect(firestoreCalls.some((line) => line.includes("databases list"))).toBe(true);
+    expect(firestoreCalls.some((line) => line.includes("databases describe"))).toBe(false);
+    expect(firestoreCalls.some((line) => line.includes("--location=nam5"))).toBe(true);
+  });
+
+  it("enables the IAM API, not only the credentials one", async () => {
+    const calls: string[][] = [];
+    await provisionWeb(options(calls));
+
+    const enabled = calls.find(([, ...args]) => args[0] === "services" && args[1] === "enable")?.join(" ");
+    // Found on cph-evo: without `iam`, pool creation fails with a
+    // PERMISSION_DENIED that reads like a missing role rather than a missing
+    // API, several steps later.
+    expect(enabled).toContain("iam.googleapis.com");
+    expect(enabled).toContain("iamcredentials.googleapis.com");
   });
 
   it("binds both roles, because auth and the waitlist need different ones", async () => {

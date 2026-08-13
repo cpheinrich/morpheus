@@ -58,6 +58,16 @@ export interface WebSurvey {
      * build log.
      */
     staticExport: boolean;
+    /**
+     * True when the app sets `trailingSlash: true`.
+     *
+     * Next then answers `/api/waitlist` with a 308 to `/api/waitlist/`. A browser
+     * follows that and preserves the method, so a form posting to the unslashed
+     * path *works* — at the cost of a second round trip on every signup, and of
+     * looking wrong in a codebase where every other route carries the slash.
+     * Cheap to get right, and invisible if you do not look.
+     */
+    trailingSlash: boolean;
 }
 /**
  * Where the Next.js app lives.
@@ -90,7 +100,10 @@ export declare function findSharedPackage(root: string): Promise<SharedPackage |
  * would be a false positive; the comment stripping keeps that from happening
  * for the one shape that actually occurs.
  */
+export declare function withoutComments(source: string): string;
 export declare function readsStaticExport(source: string): Promise<boolean>;
+/** Whether the config asks Next to canonicalise every route with a trailing slash. */
+export declare function readsTrailingSlash(source: string): boolean;
 /** The Firestore rules file Firebase actually deploys, when one is configured. */
 export declare function deployedRulesPath(root: string): Promise<string | null>;
 export declare function surveyWeb(root: string): Promise<WebSurvey>;

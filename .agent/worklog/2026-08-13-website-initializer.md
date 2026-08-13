@@ -98,3 +98,41 @@ deploys and that is not a scaffold's to take.
 
 Worth stating plainly: **the Morpheus test suite passed at every point during both defects.** A
 scaffold's output is code in someone else's project, and the only test of it is being that code.
+
+## Provisioning against a real cloud found four more
+
+Evo was the first real consumer, on a freshly created project (`cph-evo`), and every one of these
+was invisible to a scripted runner:
+
+1. **`iam.googleapis.com` was never enabled** — only `iamcredentials`. Pool creation then fails
+   with a `PERMISSION_DENIED` naming a resource, which reads like a missing role on a new project
+   rather than a missing API.
+2. **`gcloud firestore databases describe` answers `PERMISSION_DENIED` when there is no
+   database**, not `NOT_FOUND`. The whole provisioner is built on absent-vs-refused being
+   different answers, and this one collapsed them — the step blocked forever instead of creating.
+   `databases list` is empty for absent and still errors for refused.
+3. **Two bugs in `expectedRedirectUris`**, shipped in #116 and never run against a fresh project:
+   Firebase adds its own OAuth handler, so naming `<project>.firebaseapp.com` fails the deploy as
+   a duplicate; and it derives an authorized *domain* per entry, so `http://localhost:3000` fails
+   as an invalid domain. Only the custom origin belongs there.
+4. **Files written before federation existed were kept and silently stale.** `config.ts` and
+   `admin.ts` both carry a federation branch; never-overwrite is right, but the result deploys and
+   falls back to credentials Vercel does not have. `tsc` caught `admin.ts`; nothing would have
+   caught `config.ts`.
+
+The pattern across all four: **a scripted runner tests the shape of a call, not what the far side
+does with it.** Three of them are cases where the real API answered something the fixture never
+would have.
+
+## And one that survived provisioning: Firestore refuses the credential Auth accepts
+
+The last one is the most interesting, because everything was correct and it still did not work.
+Pool, provider, service account, both roles bound, Google sign-in configured and verified — and
+the first production signup returned `firestore/invalid-credential`. `firebase-admin`'s Firestore
+client goes through google-gax and wants a real GoogleAuth credential, not the token-minting object
+the REST-based services accept.
+
+**Two capabilities behind one credential, failing independently.** Auth was verified end to end,
+Firestore was assumed to come along with it, and the assumption is the defect. Recorded in
+`learned.md`; the fix is a decision (a service-account key, or a REST write path) rather than
+something to pick unilaterally, and it is latent in Darwin as well.

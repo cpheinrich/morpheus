@@ -56,8 +56,28 @@ type Json = Record<string, unknown>;
 export declare function normalizeOrigin(value: string): string;
 /** Domains Firebase Auth must recognize before a web app can return from Google. */
 export declare function expectedAuthorizedDomains(project: string, domain?: string, additionalDomains?: string[]): string[];
-/** Origins Firebase's Google-provider configuration should carry as code. */
-export declare function expectedRedirectUris(project: string, domain?: string): string[];
+/**
+ * Origins Firebase's Google-provider configuration should carry as code.
+ *
+ * **The project's own `firebaseapp.com` and `web.app` origins are deliberately
+ * absent, and so is localhost.** Firebase derives the OAuth client's redirect
+ * handlers from this list *and* adds its own default, so naming the default
+ * fails the deploy with `OAuth 2 redirect URLs have duplicate
+ * [https://<project>.firebaseapp.com/__/auth/handler]`; and it derives an
+ * authorized *domain* from each entry, so anything carrying a port fails with
+ * `INVALID_AUTHORIZED_DOMAIN : localhost:3000 should only contain the valid
+ * domain`.
+ *
+ * Local development is not lost with it: `localhost` reaches Auth through
+ * {@link expectedAuthorizedDomains}, which is a different list on a different
+ * API and is where a host without a scheme or port belongs.
+ *
+ * All three facts were found the first time this ran against a freshly created
+ * project (`cph-evo`, 2026-08-13). The previous list was written from the
+ * documentation and had only ever run against projects whose provider was
+ * already configured by hand, where the deploy is a no-op.
+ */
+export declare function expectedRedirectUris(_project: string, domain?: string): string[];
 export declare function mergeGoogleProviderConfig(existing: Json, input: GoogleAuthConfigInput): Json;
 export declare function writeGoogleProviderConfig(root: string, input: GoogleAuthConfigInput): Promise<string>;
 /**
