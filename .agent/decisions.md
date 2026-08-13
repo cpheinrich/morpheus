@@ -582,3 +582,18 @@ later. The scaffold stays dependency-free and runtime helpers wait for a second 
 must read the durable manifest record; absent origin is unknown rather than proof that Firebase's
 generated domains are enough. This prevents the most deceptive Auth failure: a provider marked
 enabled while the actual app domain still loops in the browser.
+
+**Brand exploration is visual-first and durable** — 2026-08-12. New projects start from
+`hq/brand/brand-vibes.md` and a `moodboard/` folder rather than an `answers.md` questionnaire. The
+optional scratchpad has four open prompts and guides exploration only; final canonical records never
+cite it. The first agent handoff produces one versioned `research/brand.html` review surface with
+five stable, comparable directions: Brand System, Home, Marketing, Typography, and Compare All.
+Heavy local concept media lives in Git-ignored `research/assets/`, while the selected package is
+promoted only after human review and the concept page remains as evidence rather than being replaced
+by a prose summary.
+
+**Imagery is part of the canonical package, not optional styling.** `moodboards.md` preserves the
+references that survived selection, `imagery.json` identifies approved art and stable sources, and
+`application.md` maps every asset to an actual public-web or product surface. `brand status` stays
+red when a package has a token set but no approved imagery or no image-to-surface mapping. This is
+the guard against a carefully reviewed direction turning into a neutral first home page.

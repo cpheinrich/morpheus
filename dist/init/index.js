@@ -1,5 +1,6 @@
 import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
+import { initializeWorkflow } from "../brand/workflow.js";
 import { EXPECTED } from "../doctor/index.js";
 import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
 import * as t from "./templates.js";
@@ -121,6 +122,13 @@ export async function scaffold(root, seed) {
     // needs no per-project wiring. Codex reads AGENTS.md instead, which is why
     // the instruction is in both and the enforcement is in neither.
     await put(".claude/settings.json", t.claudeSettings());
+    // The generated exploration prompt is the session-specific handoff. This
+    // small skill is the durable discovery point for any agent that returns once
+    // the first review is complete, and makes visual-first review the default
+    // rather than a convention people need to rediscover from another project.
+    if (seed.kind !== "internal") {
+        await put(".claude/skills/brand-review/SKILL.md", t.brandReviewSkill());
+    }
     // --- agent memory ---------------------------------------------------------
     await put(".agent/README.md", t.agentReadme());
     await put(".agent/decisions.md", t.decisions(seed));
@@ -187,6 +195,20 @@ export async function scaffold(root, seed) {
     const dirs = KIND_DIRS[seed.kind];
     if (dirs.some((d) => d.startsWith("hq/")))
         await put("hq/README.md", t.hqReadme(seed));
+    // A visual-first brand is a project primitive, not an optional wizard a
+    // founder has to remember before the first design session. The workflow is
+    // still independently idempotent, so this also safely repairs a partial
+    // brand directory in an established user-facing project without touching
+    // any authored brief or review.
+    if (dirs.includes("hq/brand")) {
+        const brand = await initializeWorkflow({
+            brandDir: join(root, "hq/brand"),
+            name: seed.name,
+            prefix: seed.prefix.slice(0, 2).toLowerCase(),
+        });
+        written.push(...brand.files.map((path) => relative(root, path)));
+        skipped.push(...brand.skipped.map((path) => relative(root, path)));
+    }
     for (const kind of ["roadmap", "goals", "requests"]) {
         if (!dirs.includes(`hq/product/${kind}`) && kind !== "requests")
             continue;
@@ -253,11 +275,11 @@ export async function scaffold(root, seed) {
     for (const dir of dirs) {
         if (dir.startsWith(".agent/") || dir.startsWith("hq/product/") || dir === INBOX_DIR)
             continue;
-        // `hq/brand/README.md` belongs to the brand wizard, which never overwrites
-        // an existing file — so a placeholder here would permanently block the
-        // real one. A `.gitkeep` holds the directory without claiming the name.
+        // The brand workflow above owns this directory and never overwrites a
+        // person's current exploration input. Its tracked README and moodboard
+        // README keep the directory present after clone, so no placeholder is
+        // needed.
         if (dir === "hq/brand") {
-            await put("hq/brand/.gitkeep", "");
             continue;
         }
         // A written README where we have something to say, and nothing at all where
@@ -316,7 +338,18 @@ export async function scaffold(root, seed) {
     const ignorePath = join(root, ".gitignore");
     const existing = await readFile(ignorePath, "utf8").catch(() => "");
     if (existing.includes("# Morpheus")) {
-        skipped.push(".gitignore");
+        // Older Morpheus scaffolds have the marker but predate the local
+        // brand-exploration boundaries. Append only the missing rules: an
+        // initializer must never replace a project's ignore policy just to
+        // protect local design input or generated concept media.
+        const missingBrandIgnore = t.BRAND_EXPLORATION_IGNORE_RULES.filter((rule) => !existing.includes(rule));
+        if (dirs.includes("hq/brand") && missingBrandIgnore.length) {
+            await writeFile(ignorePath, `${existing.trimEnd()}\n\n# Morpheus brand exploration input\n${missingBrandIgnore.join("\n")}\n`, "utf8");
+            written.push(".gitignore (brand exploration input appended)");
+        }
+        else {
+            skipped.push(".gitignore");
+        }
     }
     else {
         await writeFile(ignorePath, existing.trimEnd() + "\n" + t.gitignore(), "utf8");
@@ -345,9 +378,6 @@ export async function scaffold(root, seed) {
             const rendered = renderers[kind](items);
             await gen.writeIndex(join(productDir, kind), rendered);
         }
-    }
-    if (seed.kind !== "internal") {
-        notes.push("hq/brand/ is empty until you run `morpheus brand init` — the wizard owns that directory.");
     }
     return { written, skipped, notes };
 }

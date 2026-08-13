@@ -309,24 +309,26 @@ export const TASKS: Task[] = [
 
   // --------------------------------------------------------------- brand ---
   {
-    id: "brand-answers",
+    id: "brand-exploration-input",
     kinds: ["company", "personal"],
     group: "Brand",
-    title: "Brand answers filled in",
-    why: "Every generated brand document derives from these; nothing downstream can be written without them.",
-    how: "morpheus brand init — or edit hq/brand/answers.md directly and run morpheus brand build",
+    title: "Brand brief and moodboard prepared",
+    why: "A free-form brief plus visual source material gives the first five brand directions something real to respond to.",
+    how: "The project initializer already created hq/brand/. Add any useful notes to hq/brand/brand-vibes.md and reference imagery to the Git-ignored hq/brand/moodboard/ folder; use morpheus brand init only to repair or retrofit a partial project.",
     detect: async (root) => {
-      const { readAnswers } = await import("../brand/answers.js");
-      return (await readAnswers(join(root, "hq/brand"))) !== null;
+      const status = await packageStatus(join(root, "hq/brand"));
+      return ["brand-vibes.md", "moodboard/"].every(
+        (path) => status.required.find((entry) => entry.path === path)?.state === "ok",
+      );
     },
   },
   {
     id: "brand-package",
     kinds: ["company", "personal"],
     group: "Brand",
-    title: "Design session done — tokens, visual system, logo, decisions",
-    why: "A brand strategy with no visual system cannot be applied by anyone who was not in the room.",
-    how: "Paste hq/brand/explore-prompt.md into a Claude or Codex session; morpheus brand status shows what is left",
+    title: "Brand review selected and canonical package applied",
+    why: "A selected visual system must retain its imagery and map it to real web and product surfaces, not collapse into colours and copy.",
+    how: "Run morpheus brand explore, review hq/brand/research/brand.html, then use morpheus brand finalize --selection \"Name\" and morpheus brand status",
     detect: async (root) => (await packageStatus(join(root, "hq/brand"))).complete,
   },
 

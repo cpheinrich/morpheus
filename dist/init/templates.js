@@ -776,6 +776,12 @@ Everything about running ${s.name} that is not code.
 Markdown with YAML frontmatter is the source of truth. Index tables are generated between the
 \`morpheus:\` markers and are never edited by hand.
 `;
+export const BRAND_EXPLORATION_IGNORE_RULES = [
+    "hq/brand/moodboard/*",
+    "!hq/brand/moodboard/README.md",
+    "hq/brand/research/assets/*",
+    "!hq/brand/research/assets/README.md",
+];
 export const gitignore = () => `
 # Morpheus
 local/
@@ -792,6 +798,60 @@ local/
 /*.jpg
 /*.jpeg
 local/**/*.png
+
+# Raw reference material and heavyweight generated concept media are local
+# exploration input, not the final asset library. Keep each folder's README
+# visible, but retain the selected board's provenance in hq/brand/moodboards.md
+# and approved delivery art in imagery.json.
+${BRAND_EXPLORATION_IGNORE_RULES.join("\n")}
+`;
+/**
+ * A local, discoverable instruction for the visual-first brand workflow.
+ *
+ * `explore-prompt.md` is the handoff for one particular brand session; this
+ * stays with every new project so a later agent knows how to resume the work
+ * after that handoff has been archived or revised.
+ */
+export const brandReviewSkill = () => `---
+name: brand-review
+description: Create, iterate, or finalize a visual-first Morpheus brand exploration. Use when a project has hq/brand/brand-vibes.md and moodboard references, when reviewing research/brand.html, or when applying a selected direction to a home page or app.
+---
+
+# Visual-first brand review
+
+Read \`hq/brand/README.md\`, \`brand-vibes.md\`, the useful files in \`moodboard/\`, the current
+\`research/brand.html\`, its local \`research/assets/\` when present, and \`decisions.md\` before
+making a visual call.
+
+## Explore
+
+Create one standalone \`research/brand.html\` with five genuinely distinct, stable named
+directions. Keep the same product content, hierarchy, sample screens, and CTA in every direction
+so people can compare the visual system rather than five different briefs.
+
+Give each direction a Brand System, Home mock, Marketing mock, Typography view, and Graphics view.
+The Graphics view should compare multiple candidates in the concept's illustration, diagram, icon,
+or image-making language, including restrained and dense examples. Include a substantial Compare
+All view with art, palette, type, UI primitives, and product snapshots. Keep
+the required \`data-morpheus-concept\` and \`data-morpheus-view\` markers from
+\`explore-prompt.md\`, make the page usable at desktop and mobile widths, and record settled,
+rejected, and open choices in \`decisions.md\` after each review.
+
+## Finalize
+
+Do not promote a direction until a person chooses it or names an intentional hybrid. Run
+\`morpheus brand finalize --selection "Name"\`, then write the canonical records it names.
+
+Retain the concept page. Preserve selected moodboards in \`moodboards.md\` and approved diagrams,
+photography, illustrations, or textures in \`imagery.json\` with provenance, alt text, and named
+placements. In \`application.md\`, map every asset id to a public-web or product surface. The first
+homepage or app screen must visibly use the full selected package — messaging, tokens, type,
+layout, and mapped imagery — not tokens and copy alone.
+
+Treat \`brand-vibes.md\` as a working scratchpad, not a final source to cite. Final canonical
+brand records should state the decisions directly without linking to or naming that file. Keep
+heavy temporary concept media in \`research/assets/\`, which is local and Git-ignored except for
+its README; \`research/brand.html\` itself remains versioned evidence.
 `;
 /**
  * Claude Code's session hooks.

@@ -56,7 +56,9 @@ pnpm morpheus voice brief "topic"  # today's state, to paste into a voice sessio
 pnpm morpheus team validate        # the roster, and every meeting note
 pnpm morpheus registry list        # every Morpheus project on this machine
 pnpm morpheus brand status         # what the brand package still needs
-pnpm morpheus brand build          # regenerate from an edited hq/brand/answers.md
+pnpm morpheus brand init           # scaffold brand-vibes.md, local moodboard, and concept-media folders
+pnpm morpheus brand explore        # refresh the five-direction brand review handoff
+pnpm morpheus brand finalize --selection "Name" # promote a reviewed direction into canonical records
 pnpm morpheus init                 # scaffold a project — safe to re-run, never overwrites
 pnpm morpheus init status          # how far through project setup this repo is
 pnpm morpheus firebase auth setup --project <id> --domain <public-origin>

@@ -15,7 +15,14 @@ import {
 import { INBOX_DIR } from "../paths.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
-import { build as brandBuild, check as brandCheck, init as brandInit } from "./brand.js";
+import {
+  build as brandBuild,
+  check as brandCheck,
+  explore as brandExplore,
+  finalize as brandFinalize,
+  init as brandInit,
+  migrate as brandMigrate,
+} from "./brand.js";
 import { status as brandStatus } from "./brand-status.js";
 import { sync as accessSync } from "./access.js";
 import { checkGoogleAuthConfiguration, configureGoogleAuth } from "./firebase.js";
@@ -63,10 +70,15 @@ Usage
                             [--body-file <file>] — confirm the review was posted
   morpheus inbox validate   [--dir <hq/team>]
   morpheus team validate    the roster and every meeting note
-  morpheus brand init | refresh   [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
-  morpheus brand build            regenerate from an edited hq/brand/answers.md
+  morpheus brand init             [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
+                            — repair or retrofit the optional brand-vibes scratchpad and moodboard input
+  morpheus brand explore          refresh the agent handoff for five concept packages
+  morpheus brand finalize --selection "Name"
+                            — write the finalization handoff after a concept wins
+  morpheus brand migrate          copy legacy answers.md into brand-vibes.md, retaining the original
+  morpheus brand build            legacy alias for brand explore
   morpheus brand status           [--dir <hq/brand>] [--name <Acme>]
-  morpheus brand check            [--dir <hq/brand>] — generated files vs answers.md
+  morpheus brand check            [--dir <hq/brand>] — required workflow and final package
   morpheus access sync      [--project <firebase-project>] [--dry-run]
   morpheus firebase auth setup [--project <firebase-project>] [--domain <public-origin>]
                             [--support-email <email>] [--brand <name>] [--no-browser]
@@ -144,6 +156,7 @@ interface Flags {
   beforeCommentId?: string;
   commentId?: string;
   bodyFile?: string;
+  selection?: string;
   rulesPath?: string;
   out?: string;
   full: boolean;
@@ -269,6 +282,9 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--body-file":
         flags.bodyFile = argv[++i];
+        break;
+      case "--selection":
+        flags.selection = argv[++i];
         break;
       case "--rules-path":
         flags.rulesPath = argv[++i];
@@ -437,27 +453,31 @@ async function main(): Promise<number> {
     if (command === "status") {
       return brandStatus(brandDir, brandName);
     }
+    const options = {
+      brandDir,
+      name: brandName,
+      prefix: flags.prefix ?? brandName.slice(0, 2).toLowerCase(),
+    };
     if (command === "build") {
-      return brandBuild({
-        brandDir,
-        name: brandName,
-        prefix: flags.prefix ?? brandName.slice(0, 2).toLowerCase(),
-      });
+      return brandBuild(options);
+    }
+    if (command === "explore" || command === "refresh") {
+      return brandExplore(options);
+    }
+    if (command === "finalize") {
+      return brandFinalize({ ...options, selection: flags.selection });
+    }
+    if (command === "migrate") {
+      return brandMigrate(options);
     }
     if (command === "check") {
-      return brandCheck({
-        brandDir,
-        name: brandName,
-        prefix: flags.prefix ?? brandName.slice(0, 2).toLowerCase(),
-      });
+      return brandCheck(options);
     }
-    if (command === "init" || command === "refresh") {
-      return brandInit({
-        brandDir,
-        name: brandName,
-        prefix: flags.prefix ?? brandName.slice(0, 2).toLowerCase(),
-        refresh: command === "refresh",
-      });
+    if (command === "init") {
+      return brandInit(options);
+    }
+    if (command === undefined) {
+      return brandInit(options);
     }
     console.error(`Unknown brand command "${command ?? ""}".\n\n${HELP}`);
     return 1;
