@@ -19,7 +19,7 @@ import { heartbeat } from "./heartbeat.js";
 import { prompt as reviewPrompt, reviewDelivery, reviewNeeded } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
-import { check as contextCheck, guard, brief as contextBrief, refresh as contextRefresh, status as contextStatus, } from "./context.js";
+import { check as contextCheck, guard, brief as contextBrief, install as contextInstall, refresh as contextRefresh, status as contextStatus, } from "./context.js";
 import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 const HELP = `morpheus — an operating system for building and running companies
@@ -80,6 +80,9 @@ Usage
   morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
   morpheus context status   what the current lease says, and how old it is
   morpheus context brief    session start: discards the last receipt, says what to read
+  morpheus context install  [--check] [--handle <github-handle>]
+                            wire .claude/settings.json, .codex/hooks.json and context.handle
+                            — the repair path for a project scaffolded before they existed
                             Governed commands (pm claim|new|link-issue|block, access sync) refuse without
                             a fresh receipt. --offline, or MORPHEUS_OFFLINE=1, permits local
                             work on an unverified trunk and still refuses anything external.
@@ -209,6 +212,9 @@ function parseArgs(argv) {
                 break;
             case "--owner":
                 flags.owner = argv[++i];
+                break;
+            case "--handle":
+                flags.handle = argv[++i];
                 break;
             case "--priority":
                 flags.priority = argv[++i];
@@ -503,6 +509,12 @@ async function main() {
             return contextCheck(process.cwd(), off);
         if (command === "brief")
             return contextBrief(process.cwd());
+        // Not gated, and deliberately: this is the command that makes a project
+        // able to be fresh, so refusing it without a receipt would lock out the
+        // repair for the state it is diagnosing.
+        if (command === "install") {
+            return contextInstall(process.cwd(), { check: flags.check, handle: flags.handle });
+        }
         if (command === "status" || command === undefined)
             return contextStatus(process.cwd(), off);
         console.error(`Unknown context command "${command}".\n\n${HELP}`);

@@ -70,6 +70,7 @@ pnpm morpheus hq rules --rules-path infra/firebase/firestore.rules
 pnpm morpheus hq rules --check --rules-path infra/firebase/firestore.rules
 pnpm morpheus context refresh      # take a context receipt — after reading the records
 pnpm morpheus context status       # what the current lease says, and how old it is
+pnpm morpheus context install      # wire the session-start hooks — run it once per project
 ```
 
 ## Context freshness
@@ -93,7 +94,27 @@ routing-around outlives the staleness.
 morpheus context status    # what the current lease says, and how old it is
 morpheus context check     # exit non-zero unless fresh — for hooks and scripts
 morpheus context brief     # session start: discards the last receipt, says what to read
+morpheus context install   # wire the hooks that run `brief`, and declare the inbox
 ```
+
+**`brief` runs by itself only where something is wired to run it.** Two files, one per
+provider, both scaffolded by `morpheus init` and both repairable by `morpheus context install`:
+
+| File | Read by |
+|---|---|
+| `.claude/settings.json` | Claude Code — `hooks.SessionStart` |
+| `.codex/hooks.json` | Codex — the same schema, its own file |
+
+`context install` is the path for a project that already exists, because `init` skips any file
+already present — correct for a scaffold, and the reason six of eight projects had no hook months
+after the protocol shipped. It merges rather than overwrites, is safe to re-run, and also declares
+`context.handle` so `hq/team/<handle>.md` joins the required set. Without that declaration a
+session certifies `fresh` having never opened the file a human replies in.
+
+**Codex will not run an untrusted hook, and says nothing when it declines.** Once per project, run
+`/hooks` in a Codex session and trust it. Trust is recorded against the hook's hash, so editing the
+file means trusting it again — and until then `.codex/hooks.json` exists and does nothing, which
+looks exactly like working.
 
 **When something has moved**, `context refresh` prints what landed on the trunk and which records
 changed. Re-read those and refresh again — the delta is the point, not the ceremony. **Do not

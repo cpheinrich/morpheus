@@ -967,44 +967,13 @@ Do not hand-write a second route gate. If \`proxy.ts\` or \`middleware.ts\` alre
 command leaves it alone and says so; add the \`/hq\` matcher to the existing one.
 `;
 
-/**
- * Claude Code's session hooks.
- *
- * One hook, and it is deliberately **informational rather than blocking**.
- * `context brief` prints what the session is missing and always exits 0; the
- * refusal lives in the `morpheus` CLI, which is provider-neutral and needs no
- * per-project wiring. A blocking `PreToolUse` hook would fire on every edit,
- * and a gate that fires constantly is a gate people disable — permanently,
- * where the staleness was temporary.
- *
- * Codex reads `AGENTS.md`, not this file, which is why the instruction is in
- * both places and the enforcement is in neither.
- */
-export const claudeSettings = (): string =>
-  JSON.stringify(
-    {
-      hooks: {
-        SessionStart: [
-          {
-            hooks: [
-              {
-                type: "command",
-                // Bare, not `pnpm morpheus`. `init` writes no `package.json`,
-                // so a scaffolded project has nothing for pnpm to resolve —
-                // and AGENTS.md documents `npm link` putting `morpheus` on
-                // PATH. Wrapping it also puts a layer in front that fails for
-                // its own reasons, which is what `context brief` exiting 0 by
-                // design was meant to avoid.
-                command: "morpheus context brief",
-              },
-            ],
-          },
-        ],
-      },
-    },
-    null,
-    2,
-  ) + "\n";
+// The session hooks both providers read live in `src/session/install.ts`, with
+// the protocol they belong to rather than beside the scaffold's strings. They
+// are deliberately **informational rather than blocking**: `context brief`
+// always exits 0, and the refusal lives in the `morpheus` CLI, which every
+// provider goes through. A blocking `PreToolUse` hook would fire on every
+// edit, and a gate that fires constantly is a gate people disable —
+// permanently, where the staleness was temporary.
 
 /**
  * The freshness section every project's AGENTS.md carries.
@@ -1036,10 +1005,17 @@ Read-only and mechanical commands are not gated.
 morpheus context status    # what the current lease says, and how old it is
 morpheus context check     # exit non-zero unless fresh — for hooks and scripts
 morpheus context brief     # session start: discards the last receipt, says what to read
+morpheus context install   # wire the hooks that run \`brief\` — safe to re-run
 \`\`\`
 
-\`context brief\` is what \`.claude/settings.json\` runs at the start of a session — the only
-Morpheus command this project runs automatically.
+\`context brief\` is the only Morpheus command this project runs automatically, from a
+session-start hook in **both** \`.claude/settings.json\` (Claude Code) and \`.codex/hooks.json\`
+(Codex). They carry the same schema in two files. \`morpheus context install\` writes or repairs
+both, merging rather than overwriting, and is the command to run on a repository scaffolded before
+either existed.
+
+**Codex will not run an untrusted hook and says nothing when it declines.** Once, run \`/hooks\` in
+a Codex session and trust it; trust is keyed on the hook's hash, so an edit needs trusting again.
 
 **When something has moved**, \`context refresh\` prints what landed on the trunk and which
 records changed. Re-read those, then refresh again — the delta is the point, not the ceremony.

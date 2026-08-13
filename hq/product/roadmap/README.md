@@ -7,6 +7,7 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
 | [MO-26-08-13-09.57.08](./MO-26-08-13-09.57.08-add-web-init.md) | Website initializer: morpheus web init | review | P1 | — | — | — |
+| [MO-26-08-13-11.59.20](./MO-26-08-13-11.59.20-install-session-hook.md) | The session-start context hook reaches every project, not only newly scaffolded ones | review | P1 | — | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-01-047](./MO-26-08-01-047-inbox-status-one-front.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — | — |

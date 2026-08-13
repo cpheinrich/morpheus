@@ -329,22 +329,28 @@ export async function doctor(opts) {
     if (!handle) {
         add("warning", "context", 'No "context.handle" in morpheus.json — `hq/team/<handle>.md` is not in the ' +
             "session-freshness required set, so an agent can resume without re-reading the " +
-            "inbox a human replies in. Add the owner's GitHub handle.");
+            "inbox a human replies in. Run `morpheus context install`.");
     }
     // Read, not merely stat'd. A settings file that exists but wires nothing is
     // the "check skips what is absent and reports the empty thing as correct"
     // shape — and it would report the hook adopted in exactly the projects
     // where it does nothing.
-    const hookPath = join(root, ".claude", "settings.json");
-    const hook = await readFile(hookPath, "utf8").catch(() => null);
-    if (hook === null) {
-        add("warning", "context", "No .claude/settings.json — a Claude session starts with no notice that its context " +
-            "is stale. `morpheus init` scaffolds one; the CLI gate still refuses governed " +
-            "actions either way.");
-    }
-    else if (!hook.includes("context brief")) {
-        add("warning", "context", ".claude/settings.json has no `morpheus context brief` hook — the file is present but a " +
-            "session still starts with no notice that its context is stale.");
+    //
+    // Both providers, because reporting only Claude's is that same defect one
+    // level up: a project wired for one agent and not the other reads as wired.
+    for (const [rel, provider] of [
+        [".claude/settings.json", "Claude"],
+        [".codex/hooks.json", "Codex"],
+    ]) {
+        const hook = await readFile(join(root, rel), "utf8").catch(() => null);
+        if (hook === null) {
+            add("warning", "context", `No ${rel} — a ${provider} session starts with no notice that its context is stale. ` +
+                "Run `morpheus context install`; the CLI gate still refuses governed actions either way.");
+        }
+        else if (!hook.includes("context brief")) {
+            add("warning", "context", `${rel} has no \`morpheus context brief\` hook — the file is present but a ${provider} ` +
+                "session still starts with no notice that its context is stale.");
+        }
     }
     const { droppedInputs } = await projectPolicy(root);
     if (droppedInputs?.length) {

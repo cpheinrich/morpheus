@@ -10,6 +10,7 @@ import { check as checkContext, endTerm, refresh as takeReceipt } from "../sessi
 import { resolveTrunk, trunkLog, worktreeRoot } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
 import { gate as gateAction, offlineDeclared, type Reach } from "../session/gate.js";
+import { CODEX_HOOKS, installContext, type Repair } from "../session/install.js";
 
 const OK = "✓";
 const NO = "✗";
@@ -321,6 +322,66 @@ export async function brief(root: string): Promise<number> {
   } else {
     console.log("Claiming work, filing items, blocking and granting access stay refused until");
     console.log("those records are readable.");
+  }
+  return 0;
+}
+
+/**
+ * Wire the session-start hooks and the inbox declaration, or say why not.
+ *
+ * The counterpart to `brief`: that command runs *because* this one has been
+ * run. `morpheus init` writes the same wiring into a new project, and nothing
+ * carried it into a project that already existed — so this is the repair path,
+ * idempotent, and the one to reach for on an established repository.
+ *
+ * `--check` reports without writing, for CI and for `doctor`'s
+ * recommendation to be worth making.
+ */
+export async function install(
+  root: string,
+  opts: { check: boolean; handle?: string },
+): Promise<number> {
+  const repairs = await installContext(root, { write: !opts.check, handle: opts.handle });
+
+  const mark = (r: Repair): string =>
+    r.outcome === "blocked" ? NO : r.outcome === "present" ? "·" : OK;
+  const width = Math.max(...repairs.map((r) => r.target.length));
+  for (const r of repairs) {
+    console.log(`${mark(r)} ${r.target.padEnd(width)}  ${r.detail}`);
+  }
+
+  // Named whenever the file is newly wired, because Codex **will not run an
+  // untrusted hook** and says nothing when it declines to. A hooks file that
+  // exists and never fires is indistinguishable from one that works until
+  // somebody notices the brief is missing — the same shape as a check that
+  // reports an empty thing as correct, one layer out in the toolchain.
+  const codex = repairs.find((r) => r.target === CODEX_HOOKS);
+  if (codex && (codex.outcome === "created" || codex.outcome === "updated")) {
+    console.log("");
+    console.log(`Codex will not run ${CODEX_HOOKS} until the hook is trusted. Once, per project:`);
+    console.log("  run `/hooks` in a Codex session and trust it.");
+    console.log("  Trust is recorded against the hook's hash, so an edit needs trusting again.");
+  }
+
+  const blocked = repairs.filter((r) => r.outcome === "blocked");
+  if (blocked.length) {
+    console.log("");
+    console.log(`${NO} ${blocked.length} of ${repairs.length} could not be wired.`);
+    return 1;
+  }
+
+  // `--check` fails on anything that is not already true, where a write run
+  // fails only on what it could not do. Same data, two questions: *is this
+  // project wired* and *did this command wire it*.
+  if (opts.check) {
+    const missing = repairs.filter((r) => r.outcome !== "present");
+    if (missing.length) {
+      console.log("");
+      console.log(`${NO} Not wired. Run \`morpheus context install\`.`);
+      return 1;
+    }
+    console.log("");
+    console.log(`${OK} Wired for both Claude and Codex.`);
   }
   return 0;
 }
