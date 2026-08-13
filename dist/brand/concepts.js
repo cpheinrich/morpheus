@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 export const CONCEPT_REVIEW_FILE = "research/brand.html";
 export const CONCEPT_REVIEW_META_NAME = "morpheus-brand-review";
-export const CONCEPT_REVIEW_VIEWS = ["system", "home", "marketing", "type", "compare"];
+export const CONCEPT_REVIEW_VIEWS = ["system", "home", "marketing", "type", "graphics", "compare"];
 export const CONCEPT_REVIEW_CONCEPT_ATTRIBUTE = "data-morpheus-concept";
 export const CONCEPT_REVIEW_VIEW_ATTRIBUTE = "data-morpheus-view";
 /**

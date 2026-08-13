@@ -1744,13 +1744,15 @@ genuinely distinct initial packages. It must provide:
 2. **Home** — a usable product or app-home mock, not only an expressive splash screen.
 3. **Marketing** — a public landing-page mock with the same information hierarchy and CTA.
 4. **Typography** — controlled large and small specimens using the actual product name.
-5. **Compare All** — substantial side-by-side art, palette, type, UI, and product snapshots.
+5. **Graphics** — multiple illustration, diagram, icon, or image-language candidates at a
+   consistent scale, including restrained and dense compositions with placement context.
+6. **Compare All** — substantial side-by-side art, palette, type, UI, and product snapshots.
 
 The same representative product content, hierarchy, screens, and CTA appear in every direction so
 the visual system is the independent variable. A row of colour rectangles is not a comparison
 surface. The page declares a small `morpheus-brand-review` metadata contract and marks each package
 with `data-morpheus-concept` and each view panel with `data-morpheus-view`; status can then verify
-five concepts and all five views without prescribing a framework or aesthetic.
+five concepts and all six views without prescribing a framework or aesthetic.
 
 `answers.md` is retired from new projects. `morpheus brand migrate` copies an existing legacy
 answers file into `brand-vibes.md` and leaves the original intact, so migration is reversible. An
@@ -1811,9 +1813,9 @@ photography instead of silently reducing it to "warm beige plus serif."
 
 ### 12.9 Convergence needs evidence beyond a good hero
 
-A hero section flatters almost any direction. The Brand System, Home, Marketing, Typography, and
-Compare All views require a leading direction to hold across expressive and dense surfaces, at both
-desktop and mobile widths. This is where a palette without a quiet neutral or a display face that
+A hero section flatters almost any direction. The Brand System, Home, Marketing, Typography,
+Graphics, and Compare All views require a leading direction to hold across expressive and dense
+surfaces, at both desktop and mobile widths. This is where a palette without a quiet neutral or a display face that
 cannot set small labels becomes visible. *If it holds on both it is a direction; if it only holds on
 the hero it is a poster.*
 

@@ -26,6 +26,7 @@ const review = (metadata = conceptReviewMeta()): string => `<!doctype html>
   <section ${CONCEPT_REVIEW_VIEW_ATTRIBUTE}="home"></section>
   <section ${CONCEPT_REVIEW_VIEW_ATTRIBUTE}="marketing"></section>
   <section ${CONCEPT_REVIEW_VIEW_ATTRIBUTE}="type"></section>
+  <section ${CONCEPT_REVIEW_VIEW_ATTRIBUTE}="graphics"></section>
   <section ${CONCEPT_REVIEW_VIEW_ATTRIBUTE}="compare"></section>
 </body></html>`;
 
@@ -98,11 +99,11 @@ describe("brand concept review workflow", () => {
     expect(status.required.find((entry) => entry.path === "brand-vibes.md")?.state).toBe("incomplete");
   });
 
-  it("asks the agent for comparable systems, home, marketing, type, and a substantial comparison", async () => {
+  it("asks the agent for comparable systems, home, marketing, type, graphics, and a substantial comparison", async () => {
     await initializeWorkflow({ brandDir: dir, name: "Kairos", prefix: "ka" });
     const prompt = await readFile(join(dir, "explore-prompt.md"), "utf8");
 
-    for (const view of ["Brand System", "Home", "Marketing", "Typography", "Compare All"]) {
+    for (const view of ["Brand System", "Home", "Marketing", "Typography", "Graphics", "Compare All"]) {
       expect(prompt).toContain(view);
     }
     expect(prompt).toContain("same representative copy");
@@ -128,12 +129,18 @@ describe("brand concept review workflow", () => {
       .resolves.toMatchObject({ error: expect.stringContaining("research/brand.html") });
 
     await mkdir(join(dir, "research"), { recursive: true });
-    await writeFile(join(dir, "research", "brand.html"), review(`<meta name="morpheus-brand-review" content="concepts=4; views=system,home,marketing,type,compare">`));
+    await writeFile(join(dir, "research", "brand.html"), review(`<meta name="morpheus-brand-review" content="concepts=4; views=system,home,marketing,type,graphics,compare">`));
     expect(await checkConceptReview(dir)).toContain("at least five");
 
     await writeFile(
       join(dir, "research", "brand.html"),
       review(`<meta content="concepts=5; views=system,home,marketing,type,compare" name="morpheus-brand-review">`),
+    );
+    expect(await checkConceptReview(dir)).toBe("missing graphics view");
+
+    await writeFile(
+      join(dir, "research", "brand.html"),
+      review(`<meta content="concepts=5; views=system,home,marketing,type,graphics,compare" name="morpheus-brand-review">`),
     );
     expect(await checkConceptReview(dir)).toBeNull();
     const result = await writeFinalizePrompt({ brandDir: dir, name: "Kairos", selection: "Modern Mystic" });

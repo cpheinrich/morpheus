@@ -890,8 +890,10 @@ Create one standalone \`research/brand.html\` with five genuinely distinct, stab
 directions. Keep the same product content, hierarchy, sample screens, and CTA in every direction
 so people can compare the visual system rather than five different briefs.
 
-Give each direction a Brand System, Home mock, Marketing mock, and Typography view. Include a
-substantial Compare All view with art, palette, type, UI primitives, and product snapshots. Keep
+Give each direction a Brand System, Home mock, Marketing mock, Typography view, and Graphics view.
+The Graphics view should compare multiple candidates in the concept's illustration, diagram, icon,
+or image-making language, including restrained and dense examples. Include a substantial Compare
+All view with art, palette, type, UI primitives, and product snapshots. Keep
 the required \`data-morpheus-concept\` and \`data-morpheus-view\` markers from
 \`explore-prompt.md\`, make the page usable at desktop and mobile widths, and record settled,
 rejected, and open choices in \`decisions.md\` after each review.

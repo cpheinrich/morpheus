@@ -20,10 +20,12 @@ Give every direction these views:
 2. Home: expressive entry plus enough dense product UI to prove it works.
 3. Marketing: a public landing-page mock using the common CTA and hierarchy.
 4. Typography: the actual product name large and small, body, label, and control.
-5. Compare All: meaningful side-by-side art, palette, type, UI, and product snapshots.
+5. Graphics: multiple illustration, diagram, icon, or image-language candidates at a consistent
+   scale, including restrained and dense compositions plus placement context.
+6. Compare All: meaningful side-by-side art, palette, type, UI, and product snapshots.
 
 Keep the metadata and attributes required by `explore-prompt.md`: five or more
-`data-morpheus-concept` markers and the five `data-morpheus-view` markers.
+`data-morpheus-concept` markers and the six `data-morpheus-view` markers.
 Make the page responsive at desktop and mobile widths. Record settled, rejected,
 and open choices in `decisions.md` after each round.
 

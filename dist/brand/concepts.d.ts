@@ -1,6 +1,6 @@
 export declare const CONCEPT_REVIEW_FILE = "research/brand.html";
 export declare const CONCEPT_REVIEW_META_NAME = "morpheus-brand-review";
-export declare const CONCEPT_REVIEW_VIEWS: readonly ["system", "home", "marketing", "type", "compare"];
+export declare const CONCEPT_REVIEW_VIEWS: readonly ["system", "home", "marketing", "type", "graphics", "compare"];
 export declare const CONCEPT_REVIEW_CONCEPT_ATTRIBUTE = "data-morpheus-concept";
 export declare const CONCEPT_REVIEW_VIEW_ATTRIBUTE = "data-morpheus-view";
 /**

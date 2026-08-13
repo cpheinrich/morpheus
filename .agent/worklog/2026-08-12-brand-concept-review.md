@@ -90,3 +90,23 @@ prompt generator now emits a bare `>` for blank quote lines instead. A focused
 test verifies that a refreshed prompt has no trailing whitespace, so the
 workflow works cleanly in repositories that run `git diff --check` before
 committing generated handoffs.
+
+## Follow-up: review graphic language as its own surface
+
+The personal-site refinement exposed a gap in a package that otherwise compared
+systems, pages, and type well: graphic candidates could only be judged inside a
+hero or compressed into Compare All. The review contract now requires a sixth
+`Graphics` view. It asks for several candidates at a consistent scale, including
+restrained and dense compositions plus placement context, so illustration,
+diagram, icon, or image-making language can be selected deliberately rather
+than being inherited accidentally from one page mock.
+
+The checker fails closed when `graphics` is missing from the metadata contract
+or the page marker, and the generated project skill, handoff, architecture, and
+tests all describe the same six-view package.
+
+Focused verification passed with 66 workflow and initializer tests; the full
+suite passed 811 tests across 27 files. `pnpm typecheck`, `pnpm compile`,
+`pnpm morpheus pm index`, and `git diff --check` also passed. The index command
+needed a retry outside the restricted sandbox because `tsx` could not create
+its IPC socket there; it reported the generated indexes unchanged.
