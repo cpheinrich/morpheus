@@ -40,6 +40,21 @@ export declare function status(root: string, offline?: boolean): Promise<number>
  * not loading them.
  */
 export declare function brief(root: string): Promise<number>;
+/**
+ * Wire the session-start hooks and the inbox declaration, or say why not.
+ *
+ * The counterpart to `brief`: that command runs *because* this one has been
+ * run. `morpheus init` writes the same wiring into a new project, and nothing
+ * carried it into a project that already existed — so this is the repair path,
+ * idempotent, and the one to reach for on an established repository.
+ *
+ * `--check` reports without writing, for CI and for `doctor`'s
+ * recommendation to be worth making.
+ */
+export declare function install(root: string, opts: {
+    check: boolean;
+    handle?: string;
+}): Promise<number>;
 export interface Guarded {
     /** Non-null is the caller's exit code. */
     refused: number | null;

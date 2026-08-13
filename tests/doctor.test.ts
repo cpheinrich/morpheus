@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { doctor, EXPECTED, formatFindings } from "../src/doctor/index.js";
 import {
@@ -60,6 +60,41 @@ describe("doctor", () => {
     expect(await doctor({ root })).toEqual(
       expect.arrayContaining([]) && expect.not.arrayContaining([expect.objectContaining({ check: "structure" })]),
     );
+  });
+
+  // Nothing asserted this before, which is how six of eight projects came to
+  // start every session unwarned while `doctor` had been reporting it all
+  // along — for Claude only, so a project wired for one agent and not the
+  // other read as wired.
+  it.each([
+    [".claude/settings.json", "Claude"],
+    [".codex/hooks.json", "Codex"],
+  ])("warns when %s carries no session-start hook", async (rel, provider) => {
+    await scaffold("internal");
+    const f = await doctor({ root });
+    const absent = f.filter((x) => x.check === "context" && x.message.includes(rel));
+    expect(absent).toHaveLength(1);
+    expect(absent[0]!.message).toContain(provider);
+
+    // Present but wiring nothing is the failure the read exists for: a file
+    // that satisfies a stat and starts every session in silence.
+    await mkdir(join(root, dirname(rel)), { recursive: true });
+    await writeFile(join(root, rel), JSON.stringify({ hooks: {} }));
+    const inert = (await doctor({ root })).filter(
+      (x) => x.check === "context" && x.message.includes(rel),
+    );
+    expect(inert).toHaveLength(1);
+    expect(inert[0]!.message).toContain("no `morpheus context brief` hook");
+
+    await writeFile(
+      join(root, rel),
+      JSON.stringify({
+        hooks: { SessionStart: [{ hooks: [{ type: "command", command: "morpheus context brief" }] }] },
+      }),
+    );
+    expect(
+      (await doctor({ root })).filter((x) => x.check === "context" && x.message.includes(rel)),
+    ).toEqual([]);
   });
 
   it("errors on a missing expected directory", async () => {

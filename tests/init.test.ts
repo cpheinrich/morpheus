@@ -51,6 +51,42 @@ describe("morpheus init", () => {
     expect(stat.isSymbolicLink()).toBe(true);
   });
 
+  it("wires the session-start hook for both providers, and declares the inbox", async () => {
+    await scaffold(dir, SEED);
+
+    for (const rel of [".claude/settings.json", ".codex/hooks.json"]) {
+      const doc = JSON.parse(await read(rel)) as { hooks: { SessionStart: unknown[] } };
+      expect(doc.hooks.SessionStart).toEqual([
+        { hooks: [{ type: "command", command: "morpheus context brief" }] },
+      ]);
+    }
+
+    // The handle is what puts the inbox in the required set. Scaffolding the
+    // file without declaring it certifies a session that never opened the one
+    // record a human replies in.
+    const manifest = JSON.parse(await read("morpheus.json")) as { context: { handle: string } };
+    expect(manifest.context.handle).toBe(SEED.owner);
+  });
+
+  it("adds the hook to a settings file it did not write", async () => {
+    // `put` skips anything already present, which is right for a scaffold and
+    // wrong for this file: a repo with settings for permissions would never
+    // receive the hook, and would report as fully scaffolded.
+    await mkdir(join(dir, ".claude"), { recursive: true });
+    await writeFile(
+      join(dir, ".claude/settings.json"),
+      JSON.stringify({ permissions: { defaultMode: "auto" } }),
+    );
+
+    await scaffold(dir, SEED);
+    const doc = JSON.parse(await read(".claude/settings.json")) as {
+      permissions: unknown;
+      hooks: { SessionStart: unknown[] };
+    };
+    expect(doc.permissions).toEqual({ defaultMode: "auto" });
+    expect(doc.hooks.SessionStart).toHaveLength(1);
+  });
+
   describe("pointing back at Morpheus", () => {
     // MO-054. The readers who most need this are the ones nobody can brief: a
     // code review agent starts with no memory by design, and an agent working

@@ -830,7 +830,35 @@ effort, which is why they are the last layer rather than the first.
 | The CLI gate | every project, agent and human | none — bump the dependency |
 | `check pr`'s `context-drift` | every PR | already centralised |
 | `.claude/settings.json` | Claude Code sessions | one scaffolded file, informational |
+| `.codex/hooks.json` | Codex sessions | the same, in Codex's own file |
 | `AGENTS.md` | anything that reads instructions | scaffolded |
+
+**Both providers read the same hook schema** — `hooks.SessionStart[].hooks[]`, a `type` and a
+`command` — from two files, so the wiring is one fact written twice rather than two designs. The
+literal lives in `src/session/install.ts`, beside the protocol, and the scaffold imports it.
+
+Codex adds a step Claude does not: **a command hook must be reviewed and trusted before it runs**,
+keyed on the hook's hash, via `/hooks` in a session. Until then the file exists and fires nothing.
+That is a gate rather than an obstacle — it is a human approving code that will run automatically —
+so `context install` names it rather than routing around it.
+
+#### A scaffold only reaches new projects
+
+`morpheus init` writes both files, and `init`'s writer skips anything already present. That is
+right for a scaffold and it means **nothing carries a new scaffold file into a repository that
+already exists**: six of eight projects had no session-start hook months after the protocol
+shipped, and seven of eight never declared `context.handle`, so their sessions certified `fresh`
+without the inbox in the required set at all. `doctor` had been reporting both the whole time,
+which is the tell — the gap was not detection, it was that nothing could act on it.
+
+So the repair is its own command, `morpheus context install`: idempotent, **merging rather than
+overwriting**, and refusing any file it cannot parse rather than replacing it. A repo that added
+`.claude/settings.json` for permissions gets the hook alongside what is already there, where the
+scaffold would have skipped the file forever while reporting the project complete.
+
+It declines to declare a handle whose `hq/team/<handle>.md` does not exist. A declared record that
+is absent is unresolvable, therefore never `fresh`, and no flag reaches it — writing that to clear
+a warning would be the repair causing the outage.
 
 **Five commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
 knowing what merged), `pm new` (filing an item that already exists), `pm link-issue` (attaching an
