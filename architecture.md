@@ -935,6 +935,207 @@ outside. `check pr` reports it as a warning: a moving trunk is nobody's mistake,
 would fail PRs for something outside the author's control at write time. Refusal belongs at the
 local gate; visibility belongs here.
 
+### 7.11 Code-health routines — proposed, not built
+
+> **Status: a proposal.** Nothing in this section exists yet. It is written here rather than in a
+> scratch document because the decisions it needs are architectural, and because the argument
+> against the obvious version of it belongs next to §7.8, which is the decision it must not quietly
+> reverse.
+
+Everything in §7 improves the codebase **one item at a time**. Nothing looks at the whole of it.
+Duplication accumulates between modules that no single item touches, dead code survives because
+deleting it is nobody's task, abstractions outlive the requirement that justified them, and a flaky
+test is tolerated by every session that is busy doing something else. These are real costs, they
+compound, and they are invisible to a board whose unit is the feature.
+
+A **routine** is a scheduled agent whose job is one narrow, repeatable improvement across a whole
+repository, opening pull requests for what it finds.
+
+**The prior art is Anthropic's own.** Boris Cherny reported running roughly a dozen such routines
+daily across Claude Code's iOS, Android, desktop, web, CLI and SDK repositories: a crash fuzzer, a
+duplicate unifier, a dead-code remover, an abstraction police, a flaky-test fixer, and others. Over
+a few weeks they opened **388 pull requests, of which 180 merged.**
+
+That last number is the design input that matters, and it should be read twice. A 46% merge rate is
+a good result for a machine that costs nothing to run — and it means **208 pull requests were
+opened that a human had to look at and reject.** Anthropic can absorb that. A one-operator company
+cannot: Chris's review time is already the bottleneck the inbox format was redesigned around, and a
+routine fleet at that hit rate would consume it entirely while feeling productive.
+
+So the whole design below is about earning the right to open a pull request, rather than about
+generating more of them.
+
+#### The line this must not cross
+
+§7.8 says the heartbeat is **a dispatcher, not a doer**, and dispatch remains off — not for want of
+a credential, but because nobody has yet read a week of beats to see whether the ranker picks what
+Chris would have picked. Routines are, precisely, doers on a timer. Adopting them casually would
+reverse that decision by the back door, and reverse it *harder*, since a routine does not merely
+pick work, it writes it.
+
+Two things keep the decisions coherent:
+
+1. **Routines never enter the feature lane.** They do not claim roadmap items, they do not consume
+   the heartbeat's ceiling, and the heartbeat does not schedule them. Two independent surfaces with
+   two independent budgets. A routine flood must not be able to starve the board, and a full board
+   must not silence maintenance.
+2. **A routine earns its way up the same ladder dispatch is still climbing** — report first, act
+   later, and only on evidence. §7.11.4.
+
+#### 7.11.1 What a routine is, exactly
+
+A routine is a declaration, not a script:
+
+```jsonc
+{
+  "id": "dead-code",
+  "title": "Remove provably unreachable code",
+  "requires": ["typescript", "test-runner"],   // skipped, loudly, where unmet
+  "scan": "morpheus routine scan dead-code",   // deterministic, no model
+  "prompt": ".github/routines/dead-code.md",   // versioned persona, reviewable
+  "evidence": "build passes, full suite passes, and each deletion is named in the body",
+  "blastRadius": ["src/**", "apps/**", "packages/**"],
+  "budget": { "prsPerWeek": 2, "tokensPerRun": 400000 }
+}
+```
+
+Four properties, each of which is a decision:
+
+**A deterministic scan runs before any model.** The scan finds candidates — unreferenced exports,
+duplicated blocks, tests with no failing assertion — and if it finds none, the run ends having
+spent no tokens. This is the property that made an hourly heartbeat affordable (§7.8), and it is
+the same one here: *a routine that finds nothing must cost nothing.* It is also why the catalogue
+starts with mechanically-detectable problems and not with "improve the abstractions".
+
+**The prompt is a versioned file**, for the reason `.github/agent-review-prompt.md` is: it is the
+part that gets tuned most, the part a human most wants to read, and a prompt buried in YAML is
+invisible in review.
+
+**Every routine declares its evidence obligation** — what would demonstrate the change is safe —
+and the pull request body must carry it. This is rung 3's `qa/acceptance/` idea applied to work
+that has no roadmap item: the routine cannot be the only witness to its own correctness.
+
+**Every routine declares its blast radius**, and it is enforced rather than requested. No routine
+may touch `.agent/`, `hq/`, `morpheus.json`, `.github/workflows/`, or any file the Firestore rules
+gate — records, board, configuration and security boundaries are not maintenance. A routine that
+wants to change one of those files has found a *decision*, and decisions go to §7.11.5.
+
+#### 7.11.2 One pull request per routine per run, not one per finding
+
+The most consequential mechanic, and the one that most separates this from the prior art. 388 pull
+requests for a dozen routines over a few weeks is roughly one PR per finding.
+
+A routine opens **at most one pull request per run**, containing every finding of that one kind:
+twelve dead-code deletions in one reviewable diff, not twelve pull requests. The reviewer's
+question is then *"is this class of change correct here?"* asked once, which is the question a human
+can actually answer, rather than the same question twelve times with the context reloaded each
+time.
+
+It also makes rejection cheap and informative: closing one pull request rejects a batch and tells
+the routine something, where closing twelve tells it the same thing twelve times at twelve times
+the cost.
+
+The cost arithmetic is the second reason. Rung 2 reviews every pull request, at a measured ~$1.14
+each (`.agent/decisions.md`), so per-finding pull requests would multiply the *review* bill, not
+just the generation bill. **The gate, not the model, moves the bill** — already learned once, on
+this same rung.
+
+#### 7.11.3 Merge rate is the control loop
+
+Every routine run records its outcome, and the record is a fact GitHub already has: opened, merged,
+closed-unmerged, and how long it sat. From that:
+
+- **A routine below its merge-rate floor is suspended automatically**, and says so. A routine whose
+  pull requests are mostly rejected is not a neutral cost — it is an active tax on the one resource
+  the company cannot buy more of.
+- **Budgets are counted in pull requests, not tokens alone.** Tokens measure what it cost us;
+  open pull requests measure what it costs *Chris*, which is the scarcer number.
+- **Suspension is reported, never silent.** Same rule as an unconfigured verifier: a routine that
+  stopped running must not look like a routine that found nothing.
+
+This is the mechanism that makes the whole thing safe to leave switched on. Without it, every
+routine is permanently as good as the day it was written, and the failure mode is not a bad pull
+request but a slow erosion of the habit of reading them.
+
+#### 7.11.4 Three stages, and the first one opens nothing
+
+Directly modelled on two decisions already recorded: *the review rung proves itself on one repo
+first*, and *dispatch stays refusing until the beats have been read*.
+
+| Stage | What runs | What it may do | Exit criterion |
+|---|---|---|---|
+| **0 — Report** | Scan + model, on Morpheus only | Writes a findings report to the job summary and one `❗` inbox item per week | Chris has read a week of reports and agrees the findings are real |
+| **1 — Propose** | Same, on Morpheus only | Opens pull requests, one per routine per run | Merge rate holds above the floor for a fortnight |
+| **2 — Adopt** | Opt-in per project via `morpheus.json` | Same, in projects that ask for it | — |
+
+A routine never skips a stage, and each new routine starts at stage 0 on its own. Stage 0 is cheap
+insurance against the failure this design is most likely to have: routines that produce plausible,
+confident, wrong findings, discovered only after they have been trusted for a month.
+
+#### 7.11.5 Not every finding is a pull request
+
+A routine produces one of three things, and only the first is automatic:
+
+- **A pull request**, when the change is mechanical and its evidence obligation is satisfiable.
+- **A roadmap item**, when the finding is real work with a judgment call in it — a duplicated
+  abstraction whose unification changes behaviour at one of the call sites.
+- **An inbox item**, when the finding is a question — a flag that has been on for four months, where
+  deleting the flag and deleting the feature are both defensible and the routine cannot know which.
+
+This is what stops "improve the abstractions" from becoming a machine for confidently wrong
+refactors. The routine's job is to *notice*; deciding stays where deciding lives.
+
+#### 7.11.6 Reuse across projects
+
+The three distribution mechanisms (§18) already answer this, and the split falls out cleanly:
+
+| Piece | Mechanism | Why there |
+|---|---|---|
+| The catalogue and prompts | Morpheus repository, versioned files | Reviewable, and one copy to tune |
+| `code-health.yml` | Reusable workflow, referenced `@main` | Improving every project's routines is one commit here |
+| `morpheus routine …` | The CLI | Selection, budgets and reporting are judgment with a type checker and tests behind them, rather than YAML with neither |
+| Which routines run, and their budgets | `morpheus.json` | A property of the project, like the heartbeat's ceiling |
+
+The calling repository owns the cron, because cadence is a project's own business — the same seam
+as the heartbeat.
+
+**A routine that does not apply must skip loudly.** `requires` is checked against the project, and
+an unmet requirement produces a job summary saying the routine did not run and why. A routine
+silently doing nothing in a repository that has no test runner is indistinguishable from a
+routine that ran and found nothing, which is the failure this codebase has now written down four
+times.
+
+#### 7.11.7 Where Morpheus's own routines differ
+
+Most of the prior-art catalogue is about code. Morpheus can run routines nothing else can, because
+it has a written specification and a scaffold to compare a project against:
+
+- **Convention drift** — `morpheus init` already reports every file it skipped because the project
+  predates it. Evo was three scaffold generations behind and nobody knew until `web init` needed
+  `firebase.json`. A routine that opens the adoption pull request turns that from an archaeology
+  problem into a diff.
+- **Deviation drift** — `morpheus.json` declares deviations from the canonical stack; a routine can
+  check whether each is still true. Evo carried `output: "export"` as an *undeclared* deviation for
+  months, and the cost surfaced as a blocked roadmap item.
+- **Record drift** — a decision in `.agent/decisions.md` that the code no longer honours. This is
+  the highest-value and the least mechanical, so it is a stage-0 reporter for a long time.
+
+These are the routines to build second, and the reason to build the machinery at all rather than
+one-off scripts: they are the ones no other project's fleet would ever have.
+
+#### 7.11.8 What has to be decided before any of this is built
+
+- **Cadence, and queue depth.** Daily is the prior art. Weekly may be right for one operator; the
+  binding constraint is unreviewed pull requests outstanding, not runs per week.
+- **The merge-rate floor**, and the window it is measured over.
+- **Whether routine pull requests get rung 2 at all.** They are agent-written and would be
+  agent-reviewed, which is thin independence for a doubled bill; the alternative is that a
+  routine's declared evidence obligation *is* its rung 2.
+- **Whether a proven routine class may ever auto-merge on green CI.** Dead-code removal with a full
+  suite passing is the candidate, and it is also the point at which this stops being a proposal
+  about tidiness and becomes one about unattended agents merging to `main`. Not now, but the design
+  should not foreclose it.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.

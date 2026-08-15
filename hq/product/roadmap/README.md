@@ -6,8 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
-| [MO-26-08-13-09.57.08](./MO-26-08-13-09.57.08-add-web-init.md) | Website initializer: morpheus web init | review | P1 | — | — | — |
-| [MO-26-08-13-11.59.20](./MO-26-08-13-11.59.20-install-session-hook.md) | The session-start context hook reaches every project, not only newly scaffolded ones | review | P1 | — | — | — |
+| [MO-26-08-15-01.34.00](./MO-26-08-15-01.34.00-propose-code-routines.md) | Code-health routines: scheduled agents that maintain the codebase | review | P1 | — | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-01-047](./MO-26-08-01-047-inbox-status-one-front.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — | — |
@@ -82,6 +81,8 @@ item files, not this table.
 | [MO-26-08-11-18.39.11](./MO-26-08-11-18.39.11-automate-firebase-google-auth.md) | Automate Firebase Google sign-in setup and verification | shipped | P1 | — | #115 | #116 |
 | [MO-26-08-12-17.00.05](./MO-26-08-12-17.00.05-brand-concept-review.md) | Default brand concept review workflow and rich visual package | shipped | P1 | — | #118 | #120 |
 | [MO-26-08-12-17.03.52](./MO-26-08-12-17.03.52-scaffold-marketing-briefs.md) | Scaffold marketing initialization briefs | shipped | P1 | — | — | #119 |
+| [MO-26-08-13-09.57.08](./MO-26-08-13-09.57.08-add-web-init.md) | Website initializer: morpheus web init | shipped | P1 | — | — | #124 |
+| [MO-26-08-13-11.59.20](./MO-26-08-13-11.59.20-install-session-hook.md) | The session-start context hook reaches every project, not only newly scaffolded ones | shipped | P1 | — | — | #125 |
 | [MO-26-07-28-008](./MO-26-07-28-008-morpheus-init.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | — | #22 |
 | [MO-26-07-28-009](./MO-26-07-28-009-retrofit-darwin.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-010](./MO-26-07-29-010-simplify-architecture-md-first.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | — | #46 |
