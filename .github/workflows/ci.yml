@@ -7,6 +7,11 @@ on:
   push:
     branches: [main]
   pull_request:
+    # Spelled out only to add `ready_for_review`; the other three are the
+    # default set. The list is load-bearing rather than decorative — rung 2
+    # below keys off which of these fired, and a draft being marked ready is
+    # the moment a review is wanted most.
+    types: [opened, reopened, synchronize, ready_for_review]
 
 jobs:
   node:
@@ -39,6 +44,20 @@ jobs:
   # reports itself as skipped rather than green when no key is configured.
   agent-review:
     uses: ./.github/workflows/agent-review.yml
+    # Once, when the pull request becomes reviewable — not on every push.
+    #
+    # `pull_request` includes `synchronize`, so acting on a review and pushing
+    # used to buy another review. That is how $8.01 happened across seven runs,
+    # and `learned.md` records the general form: the cost of a paid check is per
+    # push, and an agent that iterates diligently is the worst case.
+    #
+    # A second look is still available and is now asked for by name —
+    # `agent-review-request.yml`, triggered by `@claude` on the pull request.
+    # That trades a trigger nobody chose for a signal somebody did.
+    if: >-
+      github.event.action == 'opened' ||
+      github.event.action == 'reopened' ||
+      github.event.action == 'ready_for_review'
     # A called workflow cannot request more than its caller was granted, and a
     # caller job with no `permissions` block gets the repository default —
     # read-only here. Without this the *entire* workflow file is rejected and
