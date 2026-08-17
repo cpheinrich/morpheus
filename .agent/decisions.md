@@ -592,6 +592,30 @@ Heavy local concept media lives in Git-ignored `research/assets/`, while the sel
 promoted only after human review and the concept page remains as evidence rather than being replaced
 by a prose summary.
 
+**Rung 2 reviews once on open, then only when asked** — 2026-08-17. Chris's call. `opened`,
+`reopened` and `ready_for_review` fire the review; `synchronize` no longer does. A second look is
+requested by name with `@claude` in a comment.
+
+This is the follow-through on *the gate, not the model, moves the bill*, one level up: the gate
+skipped records-only pushes and left every code push paying again, because the trigger cannot tell a
+push worth re-reading from one that is not. **A human typing `@claude` is that judgment, made by
+someone who has read the thing** — so the honest fix was to stop guessing rather than to guess
+better. Requiring the request also puts the spend behind an intent, which is the shape the inbox
+format was already redesigned around.
+
+The trade is named rather than hidden: the most useful re-review this rung has done was unprompted,
+confirming a fix it had itself asked for. Under this it would have needed one comment. That is
+judged the cheaper side.
+
+**Only `OWNER`, `MEMBER` or `COLLABORATOR` can request one.** Same rule as everywhere else, and the
+default here is spending money — the workflow holds the key and write access to comment.
+
+**The re-review cursor narrows with the trigger.** It reads the caller's successful runs as a
+stand-in for "someone reviewed this commit", which is true only while the caller reviews every push.
+Left unscoped it would find a green run that reviewed nothing and decline in silence — the one
+direction a verifier must never fail in. It stays scoped to `synchronize` for consumers whose caller
+still runs on every push, rather than being deleted.
+
 **Imagery is part of the canonical package, not optional styling.** `moodboards.md` preserves the
 references that survived selection, `imagery.json` identifies approved art and stable sources, and
 `application.md` maps every asset to an actual public-web or product surface. `brand status` stays

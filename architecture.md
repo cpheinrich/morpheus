@@ -1091,6 +1091,34 @@ Four of them, each catching what it can so the rung above only sees what genuine
 Rung 2 does not block. A model-graded gate that can fail on its own noise trains everyone to
 bypass it, and rung 4 is still a human.
 
+**Rung 2 runs once when a pull request becomes reviewable, and again only when asked.** `opened`,
+`reopened` and `ready_for_review` fire it; `synchronize` does not. A second look is requested by
+name — `@claude` in a comment, handled by `agent-review-request.yml` — which is the same judgment
+the trigger was a proxy for, made by someone who has read the thing.
+
+The reason is cost, and the shape of it generalises past this rung: **a paid check on
+`pull_request` is billed per push, not per pull request, and an agent that iterates diligently is
+the worst case.** Seven runs cost $8.01, four of them reading pushes that changed no code. The first
+answer was a gate — skip a push whose diff is all records — which removed the cheapest half of the
+waste and left every code push paying again. The trigger is the lever.
+
+Two consequences worth stating, because both are the kind of thing that fails silently:
+
+- **The request path carries no pull request payload.** An `issue_comment` event knows an issue
+  number; the head sha, the branch and the base are resolved from it once, and every later step
+  reads the resolved values. A step that reaches for `github.event.pull_request` on that path gets
+  an empty string, checks out trunk, and reports a clean review of code the pull request does not
+  contain — a false negative that looks exactly like a good result.
+- **The re-review cursor narrows to `synchronize`.** It infers "someone reviewed this commit" from
+  the caller's successful runs, which is only true while the caller reviews every push. Left
+  unscoped under the new trigger it would find a green run that reviewed nothing, diff against it,
+  and decline — and the one direction this rung must never fail in is silently not running. The
+  mechanism stays for consumers whose caller still runs on every push.
+
+**Only someone with repo collaboration access can request a review.** `OWNER`, `MEMBER` or
+`COLLABORATOR` — the same rule as everywhere else in §13, and load-bearing here because the default
+would be spending the API budget: the workflow already holds the key and write access to comment.
+
 **This is a concept, not a directory.** The rungs already live in four places — `.github/workflows/`
 for 1 and 2, `qa/acceptance/` for 3, a pull request for 4 — and a `verifiers/` directory would hold
 nothing but pointers to them. What was missing was the vocabulary: with no word for *the thing that

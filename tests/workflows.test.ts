@@ -257,6 +257,207 @@ describe("agent-review.yml", () => {
     expect(raw).toContain('jq -r --arg sha "$HEAD_SHA"');
     expect(raw).toContain('-f branch="$HEAD_REF"');
   });
+
+  it("takes a pull request number, for a caller with no pull request event", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      on?: { workflow_call?: { inputs?: Record<string, { type?: string; default?: unknown }> } };
+      jobs?: Record<string, { if?: string }>;
+    };
+    expect(wf.on?.workflow_call?.inputs?.["pr-number"]).toEqual(
+      expect.objectContaining({ type: "number", default: 0 }),
+    );
+    // Both jobs still refuse to run when neither source names a pull request.
+    expect(wf.jobs?.["review"]?.if).toContain("inputs.pr-number > 0");
+    expect(wf.jobs?.["delivery"]?.if).toContain("inputs.pr-number > 0");
+  });
+
+  /**
+   * The regression this exists for is silent and expensive: an `issue_comment`
+   * run has no `github.event.pull_request`, so any *other* step reading it gets
+   * an empty string. A checkout with an empty `ref` lands on trunk, the diff
+   * comes out clean, and the rung reports a confident review of code the pull
+   * request does not contain.
+   *
+   * So the payload is read in exactly one place, and everything downstream
+   * takes the resolved outputs. Adding a step that reaches for the payload
+   * again fails here rather than in production.
+   */
+  it("reads the pull request payload in one step and nowhere else", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<Record<string, unknown>> }>;
+    };
+    const steps = Object.values(wf.jobs ?? {}).flatMap((job) => job.steps ?? []);
+    const payloadReaders = steps.filter((step) =>
+      /github\.event\.pull_request|github\.head_ref|github\.base_ref/.test(JSON.stringify(step)),
+    );
+
+    expect(payloadReaders.map((step) => step.name)).toEqual(["Resolve the pull request"]);
+  });
+
+  it("checks out the pull request's head, not whatever branch the event points at", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<
+        string,
+        { steps?: Array<{ uses?: string; with?: Record<string, unknown> }> }
+      >;
+    };
+    const checkout = wf.jobs?.["review"]?.steps?.find(
+      (step) => step.uses?.startsWith("actions/checkout") && step.with?.["fetch-depth"] === 0,
+    );
+
+    expect(checkout?.with?.ref).toBe("${{ steps.pr.outputs.checkout_ref }}");
+  });
+
+  /**
+   * A resolve that half-fails is worse than one that fails: an empty head ref
+   * reviews the wrong thing and says nothing about it.
+   */
+  it("fails the run rather than resolving a pull request partially", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
+    };
+    const resolve = wf.jobs?.["review"]?.steps?.find(
+      (step) => step.name === "Resolve the pull request",
+    );
+
+    expect(resolve?.run).toContain("set -euo pipefail");
+    expect(resolve?.run).toContain('gh api "repos/$REPO/pulls/$INPUT_NUMBER"');
+    // A fork's head commit is on no branch of this repository.
+    expect(resolve?.run).toContain('checkout_ref=refs/pull/$INPUT_NUMBER/head');
+  });
+
+  /**
+   * The cursor reads the caller's successful runs as a stand-in for "someone
+   * reviewed this commit". Once the caller stops reviewing every push that
+   * proxy is false in the unsafe direction — a green run that reviewed nothing
+   * becomes the base, the diff is empty, and the rung declines in silence.
+   */
+  it("consults the run cursor only on a push to an already-reviewed branch", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<
+        string,
+        { steps?: Array<{ name?: string; run?: string; env?: Record<string, string> }> }
+      >;
+    };
+    const since = wf.jobs?.["review"]?.steps?.find(
+      (step) => step.name === "What has changed since the last review?",
+    );
+
+    expect(since?.env?.EVENT_ACTION).toBe("${{ github.event.action }}");
+    expect(since?.run).toContain('if [ "$EVENT_ACTION" = "synchronize" ]; then');
+    // The lookup itself must sit inside that branch, not beside it.
+    const guarded = since?.run?.slice(since.run.indexOf('"$EVENT_ACTION" = "synchronize"'));
+    expect(guarded).toContain("actions/workflows/$caller/runs");
+    // `refs/pull/<n>/head` is the only ref a comment-triggered checkout fetches.
+    expect(since?.run).toContain('"+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"');
+  });
+
+  it("honours an explicit request over the cost gate, and skips a closed PR", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<
+        string,
+        { steps?: Array<{ name?: string; run?: string; env?: Record<string, string> }> }
+      >;
+    };
+    const gate = wf.jobs?.["review"]?.steps?.find(
+      (step) => step.name === "Is this worth a review?",
+    );
+
+    expect(gate?.env?.REQUESTED).toBe("${{ steps.pr.outputs.requested }}");
+    expect(gate?.env?.PR_OPEN).toBe("${{ steps.pr.outputs.open }}");
+    // Both short-circuits must precede the CLI call, or they decide nothing.
+    const cli = gate?.run?.indexOf("review needed") ?? -1;
+    expect(cli).toBeGreaterThan(-1);
+    expect(gate?.run?.indexOf('"$PR_OPEN" != "true"')).toBeLessThan(cli);
+    expect(gate?.run?.indexOf('"$REQUESTED" = "true"')).toBeLessThan(cli);
+  });
+
+  /**
+   * `review prompt` derives the roadmap id from the branch via
+   * `GITHUB_HEAD_REF`, which only a `pull_request` event sets. Unset, the
+   * reviewer gets the persona and no intent — a generic "look for bugs" pass,
+   * which is rung 1 with a model attached.
+   */
+  it("tells the prompt which branch it is reviewing", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; env?: Record<string, string> }> }>;
+    };
+    const prompt = wf.jobs?.["review"]?.steps?.find(
+      (step) => step.name === "Assemble the reviewer prompt",
+    );
+
+    expect(prompt?.env?.MORPHEUS_BRANCH).toBe("${{ steps.pr.outputs.head_ref }}");
+  });
+
+  it("hands the resolved pull request number to the delivery check", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<
+        string,
+        {
+          outputs?: Record<string, string>;
+          steps?: Array<{ name?: string; env?: Record<string, string> }>;
+        }
+      >;
+    };
+    expect(wf.jobs?.["review"]?.outputs?.pr_number).toBe("${{ steps.pr.outputs.number }}");
+
+    const delivery = wf.jobs?.["delivery"]?.steps?.find(
+      (step) => step.name === "Verify the review was delivered",
+    );
+    expect(delivery?.env?.PR_NUMBER).toBe("${{ needs.review.outputs.pr_number }}");
+  });
+});
+
+describe("agent-review-request.yml", () => {
+  it("fires on a comment, and only on a pull request", async () => {
+    const wf = (await read("agent-review-request.yml")) as {
+      on?: { issue_comment?: { types?: string[] } };
+      jobs?: Record<string, { if?: string; uses?: string; with?: Record<string, unknown> }>;
+    };
+    expect(wf.on?.issue_comment?.types).toEqual(["created"]);
+
+    const job = wf.jobs?.["agent-review"];
+    expect(job?.uses).toContain("agent-review.yml");
+    expect(job?.if).toContain("github.event.issue.pull_request != null");
+    expect(job?.if).toContain("@claude");
+    expect(job?.with?.["pr-number"]).toBe("${{ github.event.issue.number }}");
+  });
+
+  /**
+   * This repo is public and takes external contributions. Morpheus does nothing
+   * by default for anyone without repo collaboration access, and here the
+   * default would be spending the API budget — the workflow already holds the
+   * key and write access to comment.
+   */
+  it("acts only on a comment from someone with repo access", async () => {
+    const wf = (await read("agent-review-request.yml")) as {
+      jobs?: Record<string, { if?: string }>;
+    };
+    const guard = wf.jobs?.["agent-review"]?.if ?? "";
+
+    for (const association of ["OWNER", "MEMBER", "COLLABORATOR"]) {
+      expect(guard).toContain(`github.event.comment.author_association == '${association}'`);
+    }
+    // Anything looser would let a first-time commenter trigger a paid run.
+    expect(guard).not.toContain("CONTRIBUTOR");
+    expect(guard).not.toContain("NONE");
+  });
+
+  /**
+   * Untrusted text reaching a `run:` block is string substitution, not a
+   * variable — and a comment body is the most attacker-controlled input on the
+   * repository. This caller must only ever *match* on it.
+   */
+  it("never puts the comment body into a shell", async () => {
+    const wf = (await read("agent-review-request.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ run?: string }> }>;
+    };
+    for (const job of Object.values(wf.jobs ?? {})) {
+      for (const step of job.steps ?? []) {
+        expect(step.run ?? "").not.toContain("github.event.comment");
+      }
+    }
+  });
 });
 
 describe("ci.yml", () => {
@@ -274,6 +475,36 @@ describe("ci.yml", () => {
   it("calls the agent review rung", async () => {
     const wf = await read("ci.yml");
     expect(wf.jobs?.["agent-review"]?.uses).toContain("agent-review.yml");
+  });
+
+  /**
+   * `pull_request` includes `synchronize`, so acting on a review and pushing
+   * bought another review — $8.01 across seven runs, four of which read pushes
+   * that changed no code. The cost of a paid check is per push, not per pull
+   * request, and an agent that iterates diligently is the worst case.
+   *
+   * A second look is still available; it is asked for by name in
+   * `agent-review-request.yml` rather than fired by a trigger nobody chose.
+   */
+  it("reviews when a pull request becomes reviewable, not on every push", async () => {
+    const wf = (await read("ci.yml")) as {
+      on?: { pull_request?: { types?: string[] } };
+      jobs?: Record<string, { if?: string }>;
+    };
+    // `ready_for_review` is not in the default set, so the list has to be spelled out.
+    expect(wf.on?.pull_request?.types).toContain("ready_for_review");
+
+    const guard = wf.jobs?.["agent-review"]?.if ?? "";
+    for (const action of ["opened", "reopened", "ready_for_review"]) {
+      expect(guard).toContain(`github.event.action == '${action}'`);
+    }
+    expect(guard).not.toContain("synchronize");
+
+    // Every other rung still runs on every push — this trims one job, not CI.
+    for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+      if (name === "agent-review") continue;
+      expect(job.if, `${name} must keep running on every push`).toBeUndefined();
+    }
   });
 
   /**

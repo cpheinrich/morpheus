@@ -1,0 +1,49 @@
+name: Agent review on request
+
+# Rung 2, asked for by name. `ci.yml` reviews a pull request once, when it
+# becomes reviewable; this is how anyone gets a second look afterwards — a
+# comment containing `@claude`.
+#
+# A separate file rather than another trigger on `ci.yml`, because an
+# `issue_comment` run of `ci.yml` would start every other rung too — typecheck,
+# tests, conventions — against a checkout of trunk, for a comment.
+#
+# Note that GitHub runs the copy of this file on the **default branch**, not the
+# one on the pull request's branch. A change here only takes effect once merged,
+# and cannot be tested by pushing it.
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  agent-review:
+    # Three conditions, and the third is the one that matters.
+    #
+    # `issue_comment` fires for issues as well, so the comment has to be on a
+    # pull request at all. Then the mention. Then the author: Morpheus does
+    # nothing by default for anyone without repo collaboration access, and this
+    # repo is public — without the guard any stranger can spend the API budget
+    # by typing seven characters, on a workflow that has already been given a
+    # key and write access to comment.
+    if: >-
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '@claude') &&
+      (github.event.comment.author_association == 'OWNER' ||
+       github.event.comment.author_association == 'MEMBER' ||
+       github.event.comment.author_association == 'COLLABORATOR')
+    uses: ./.github/workflows/agent-review.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      product-dir: hq/product
+      # An `issue_comment` payload has an issue number and no pull request. The
+      # called workflow resolves the head, the branch and the base from it.
+      pr-number: ${{ github.event.issue.number }}
+      # Trunk's CLI, which is what `github.sha` is on this event. Deliberate
+      # rather than incidental: the pull request under review may be the thing
+      # that breaks the reviewer.
+      morpheus-ref: ${{ github.sha }}
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

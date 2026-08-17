@@ -280,6 +280,19 @@ Prefer `--auto` — it hands the merge to GitHub so the session is not held open
 failing check simply leaves the PR unmerged rather than merging something broken. Use `--watch`
 only when the next step depends on the merge having landed.
 
+**The agent review reads your pull request once, when it opens** — pushing a fix does not buy
+another review. When you have acted on findings and want them checked, or a later push changed
+enough to be worth a second pass, ask for one:
+
+```sh
+gh pr comment <n> --body "@claude re-review — I have addressed the findings above."
+```
+
+Only a comment from someone with repo access triggers it, and only on an open pull request. It is
+the same rung with the same persona; the difference is that a human decided it was worth a dollar,
+rather than a trigger deciding on every push. **Do not push empty commits to provoke a review** —
+that was the behaviour the trigger change removed.
+
 **`pm claim` reconciles the board first**, marking merged work shipped and recording its PR number,
 so those status changes ride along in the claim commit. Nothing else advances an item to `shipped`,
 and a board that lags reality stops being read — thirteen items had drifted before anyone noticed.
