@@ -18,24 +18,11 @@ reporting, and `docs/runbooks/consumer-auth.md` for the console half. Rung 2 rev
 found eight real problems in the fresh scaffold layer; all eight are fixed with tests. One decision
 survived both rounds and is yours:
 
-## ❗ 1. Transactional mail: the scaffold ships Resend, the canon says Cloudflare · `claude`
+## ✅ 1. Transactional mail: Resend for customers, Cloudflare for admins · `claude`
 
-Your 2026-08-01 decision names Cloudflare Email Sending as the canonical transactional provider.
-Evo's consumer accounts shipped on Resend, verified end to end on launch day — and the new scaffold
-extracts Evo faithfully, so it now makes Resend the default mail path (and the runbook's procedure)
-for every future project. The reviewer flagged that this quietly generalises a per-project
-deviation into a template default. Everything sits behind one `deliver()` seam, so any answer is
-one function; the seam files are exempt from drift checking either way.
+Settled 2026-08-19, decided by Chris in session — a sharper cut than any option below: the split
+is by **audience**. Resend is canonical for anything a *customer* receives (auth mail, receipts,
+product email); Cloudflare Email Sending keeps *admin and internal* mail. Architecture §6, the
+2026-08-01 decision entry, the consumer-auth runbook and the scaffold's seam comment all updated
+in the same change. The scaffold's Resend default is therefore canonical, not a deviation.
 
-- **A — adopt Resend as canon for auth mail (recommended).** It is the implementation that has
-  actually delivered verification and reset mail to real users, including the burned-link and
-  console-fallback semantics the tests pin. Record the 2026-08-01 entry as superseded for
-  transactional *auth* mail, keep Cloudflare canonical elsewhere.
-- **B — keep Cloudflare canon.** One follow-up item: a Cloudflare Email Sending `deliver()`
-  template swapped in as the scaffold default, verified on the next project that scaffolds; Evo
-  records its Resend as a `deviations` entry.
-- **C — explicitly per-project.** The scaffold keeps Resend as the reference implementation, the
-  runbook presents both, and each project records its choice in `deviations`.
-- **Other —** something else, or the framing is wrong.
-
-~

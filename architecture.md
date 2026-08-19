@@ -284,9 +284,10 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | Email, accounts | **Google Workspace** | Human mailboxes — not application email |
 | Code hosting, CI, packages | **GitHub** | Substrate for everything else |
 | Messaging | **Slack** | Agent notification target |
-| DNS, CDN, public media | **Cloudflare** | CDN, R2 (§14.3), transactional email — and DNS for every domain, see §6.1 |
+| DNS, CDN, public media | **Cloudflare** | CDN, R2 (§14.3), admin email — and DNS for every domain, see §6.1 |
 | Domain registration | **Porkbun**, or **Cloudflare** where it carries the TLD | §6.1 |
-| Transactional email | **Cloudflare Email Sending** | Already in the stack — see below |
+| Customer email | **Resend** | Anything a customer receives — auth mail, receipts, product email. See below |
+| Admin & internal email | **Cloudflare Email Sending** | Operator and agent notifications — see below |
 | SEO research | **OpenSEO** | Data moat — see §6.2 |
 | ASO research | **Appeeky** | App Store data moat, plus ASC/ASA writes — see §6.2 |
 | Agents | **Claude + Codex** | |
@@ -295,19 +296,28 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | Product analytics | **PostHog Cloud** | §10.3 |
 | Hardware | **Macs** | |
 
-**Transactional email is Cloudflare's, not a new vendor's.** Cloudflare is already load-bearing
-and is not going away: it is the DNS for every domain (§6.1) — including `darwin.health` and
-`evo.med`, which *host* on Vercel — and it holds R2 for public media. Email Sending is a
-service inside a vendor already in the stack, reachable as an ordinary bearer-token REST endpoint
-from any runtime, so it does not tie a project to Cloudflare hosting.
+**Application email splits by audience, not by vendor loyalty.**
 
-Resend or Postmark would be a net-new dependency, a second account, and another credential to
-rotate, to replace something that works. Reach for one only when Cloudflare cannot do the job —
-and record that as a `deviations` entry (§4) when it happens.
+**Anything a customer receives is Resend's** — verification links, password resets, receipts,
+product email. Customer mail is deliverability-critical: the first message a new domain sends is
+a password-reset-shaped email to a stranger's Gmail, and whether it lands in the inbox is the
+whole feature. Resend earned the row on Evo's launch day — domain verified in under an hour,
+auth mail delivered to the inbox (not spam) from a domain that had never sent email, and the
+`deliver()` semantics the consumer-auth scaffold's tests now pin were field-tested the same day.
+That evidence is worth more than vendor consolidation for the mail that customers judge.
 
-Note the distinction the table now makes: **Google Workspace is human mailboxes, Cloudflare is
-application email.** Conflating them is how `cpheinrich.com` came to pick a provider per-project
-instead of reading one off the spec.
+**Anything an operator or agent receives stays Cloudflare's.** Email Sending is a service inside
+a vendor already load-bearing for every domain's DNS (§6.1) and R2 media, reachable as a plain
+bearer-token REST endpoint. Internal notifications have no sender-reputation stakes — the
+recipients are your own mailboxes — so the already-in-the-stack vendor wins by default there.
+
+Both are one seam in the scaffold (`deliver()` in `lib/email/send.ts`), so neither choice ties a
+project's code to a provider. A project that departs from either row records a `deviations`
+entry (§4).
+
+Note the distinction the table makes: **Google Workspace is human mailboxes; Resend and
+Cloudflare are application email.** Conflating them is how `cpheinrich.com` came to pick a
+provider per-project instead of reading one off the spec.
 
 ### 6.1 Domains: DNS and registration are separate decisions
 
