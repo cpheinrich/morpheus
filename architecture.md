@@ -1151,6 +1151,18 @@ prompt buried in a workflow is invisible in review. `morpheus review prompt` ass
 item's intent and acceptance criteria; the workflow pipes the result to the model, so the judgment
 lives in a module with a type checker and tests behind it rather than in YAML, which has neither.
 
+**Every consumer needs its own persona, and it is written rather than copied.** `loadReviewContext`
+throws without one instead of falling back, so a repo adopting the rung is not one `uses:` block —
+it is a `uses:` block and a persona. What transfers between repos is the *structure*: intent
+mismatch, silently widened scope, absent-reads-as-correct, contradicted decisions, how to report,
+what not to do. The worked examples must be that repo's own recorded failures, which makes
+`.agent/learned.md` the input to a persona and a repo without one not yet ready for the rung.
+Copying Morpheus's would point Evo's reviewer at `ParseIssue[]` in `src/pm/parse.ts`, a convention
+Evo does not have — telling a reviewer to check for something untrue is the first step toward
+manufacturing findings, which is the failure that gets this rung ignored. The order changes too:
+Evo's leads on arithmetic and the information/advice boundary, because a wrong calculator number
+there is acted on by someone taking prescription medication.
+
 **Rung 3's input is `RoadmapItem.acceptance`** — a path into `qa/acceptance/`. An item that declares
 one has its criteria handed to the reviewer; an item that declares one pointing nowhere is reported
 as a defect rather than read as "no criteria", which is the distinction that kept the field dead

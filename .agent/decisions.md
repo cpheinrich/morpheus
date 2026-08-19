@@ -404,6 +404,24 @@ request, and if it turns out noisy the cost of tuning it in one repo is far belo
 turning it off in five — a model-graded reviewer that gets ignored is worse than none, because the
 rung then reads as covered. Rolling out later is one `uses:` block per repo.
 
+**Rolled out to Evo on 2026-08-18**, which is this decision's own next step rather than a reversal
+of it — the rung had by then caught guard bugs, a superseded design it retracted itself a pass
+later, and a test passing for a reason nobody had written. Darwin and Lakina are still to come.
+
+**It was not one `uses:` block.** The estimate missed a required input:
+`.github/agent-review-prompt.md`, which `loadReviewContext` **throws** without rather than falling
+back, because rung 2 with a generic prompt is rung 1 with a model attached. So every consumer needs
+a persona, and **a persona cannot be copied.** Morpheus's closes on `ParseIssue[]` in
+`src/pm/parse.ts` — a file and a convention Evo does not have, which would have told Evo's reviewer
+to check for something untrue, the first step toward manufacturing findings.
+
+What transfers is the *structure*: intent mismatch, silently widened scope, absent-reads-as-correct,
+contradicted decisions, how to report, what not to do. The worked examples have to be that repo's
+own recorded failures — which means **`learned.md` is the input to a persona**, and a repo without
+one is not ready for the rung. Evo's also reorders the list, leading on arithmetic and the
+information/advice boundary, because a wrong calculator number there is acted on by someone taking
+prescription medication.
+
 **Voice context splits static from live** — 2026-08-01. A voice session starts cold and cannot read
 the repo, so context arrives as text and competes with the conversation for room. What the project
 *is* goes into claude.ai project knowledge once; what the board looks like *today* is regenerated per
