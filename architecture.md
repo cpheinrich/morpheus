@@ -207,6 +207,7 @@ canonical and lives in this document. Only *deviations* are recorded.
   "kind": "company",                 // company | personal | internal (§3)
   "org": "darwin-health",            // groups sibling repos (§17); omit for personal/internal
   "domain": "evo.med",
+  "stagingDomain": "staging.evo.med", // only with a staging Firebase project (§13.2)
   "description": "One-sentence description.",
   "surfaces": { "web": true, "ios": true, "backend": false, "hardware": false },
   "integrations": ["firebase", "stripe", "posthog", "github", "slack", "openseo"],
@@ -285,9 +286,10 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | Email, accounts | **Google Workspace** | Human mailboxes — not application email |
 | Code hosting, CI, packages | **GitHub** | Substrate for everything else |
 | Messaging | **Slack** | Agent notification target |
-| DNS, CDN, public media | **Cloudflare** | CDN, R2 (§14.3), transactional email — and DNS for every domain, see §6.1 |
+| DNS, CDN, public media | **Cloudflare** | CDN, R2 (§14.3), admin email — and DNS for every domain, see §6.1 |
 | Domain registration | **Porkbun**, or **Cloudflare** where it carries the TLD | §6.1 |
-| Transactional email | **Cloudflare Email Sending** | Already in the stack — see below |
+| Customer email | **Resend** | Anything a customer receives — auth mail, receipts, product email. See below |
+| Admin & internal email | **Cloudflare Email Sending** | Operator and agent notifications — see below |
 | SEO research | **OpenSEO** | Data moat — see §6.2 |
 | ASO research | **Appeeky** | App Store data moat, plus ASC/ASA writes — see §6.2 |
 | Agents | **Claude + Codex** | |
@@ -296,19 +298,28 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | Product analytics | **PostHog Cloud** | §10.3 |
 | Hardware | **Macs** | |
 
-**Transactional email is Cloudflare's, not a new vendor's.** Cloudflare is already load-bearing
-and is not going away: it is the DNS for every domain (§6.1) — including `darwin.health` and
-`evo.med`, which *host* on Vercel — and it holds R2 for public media. Email Sending is a
-service inside a vendor already in the stack, reachable as an ordinary bearer-token REST endpoint
-from any runtime, so it does not tie a project to Cloudflare hosting.
+**Application email splits by audience, not by vendor loyalty.**
 
-Resend or Postmark would be a net-new dependency, a second account, and another credential to
-rotate, to replace something that works. Reach for one only when Cloudflare cannot do the job —
-and record that as a `deviations` entry (§4) when it happens.
+**Anything a customer receives is Resend's** — verification links, password resets, receipts,
+product email. Customer mail is deliverability-critical: the first message a new domain sends is
+a password-reset-shaped email to a stranger's Gmail, and whether it lands in the inbox is the
+whole feature. Resend earned the row on Evo's launch day — domain verified in under an hour,
+auth mail delivered to the inbox (not spam) from a domain that had never sent email, and the
+`deliver()` semantics the consumer-auth scaffold's tests now pin were field-tested the same day.
+That evidence is worth more than vendor consolidation for the mail that customers judge.
 
-Note the distinction the table now makes: **Google Workspace is human mailboxes, Cloudflare is
-application email.** Conflating them is how `cpheinrich.com` came to pick a provider per-project
-instead of reading one off the spec.
+**Anything an operator or agent receives stays Cloudflare's.** Email Sending is a service inside
+a vendor already load-bearing for every domain's DNS (§6.1) and R2 media, reachable as a plain
+bearer-token REST endpoint. Internal notifications have no sender-reputation stakes — the
+recipients are your own mailboxes — so the already-in-the-stack vendor wins by default there.
+
+Both are one seam in the scaffold (`deliver()` in `lib/email/send.ts`), so neither choice ties a
+project's code to a provider. A project that departs from either row records a `deviations`
+entry (§4).
+
+Note the distinction the table makes: **Google Workspace is human mailboxes; Resend and
+Cloudflare are application email.** Conflating them is how `cpheinrich.com` came to pick a
+provider per-project instead of reading one off the spec.
 
 ### 6.1 Domains: DNS and registration are separate decisions
 
@@ -1114,14 +1125,43 @@ Four of them, each catching what it can so the rung above only sees what genuine
 Rung 2 does not block. A model-graded gate that can fail on its own noise trains everyone to
 bypass it, and rung 4 is still a human.
 
+**Rung 2 runs once when a pull request becomes reviewable, and again only when asked.** `opened`,
+`reopened` and `ready_for_review` fire it; `synchronize` does not. A second look is requested by
+name — `@claude` in a comment, handled by `agent-review-request.yml` — which is the same judgment
+the trigger was a proxy for, made by someone who has read the thing.
+
+The reason is cost, and the shape of it generalises past this rung: **a paid check on
+`pull_request` is billed per push, not per pull request, and an agent that iterates diligently is
+the worst case.** Seven runs cost $8.01, four of them reading pushes that changed no code. The first
+answer was a gate — skip a push whose diff is all records — which removed the cheapest half of the
+waste and left every code push paying again. The trigger is the lever.
+
+Two consequences worth stating, because both are the kind of thing that fails silently:
+
+- **The request path carries no pull request payload.** An `issue_comment` event knows an issue
+  number; the head sha, the branch and the base are resolved from it once, and every later step
+  reads the resolved values. A step that reaches for `github.event.pull_request` on that path gets
+  an empty string, checks out trunk, and reports a clean review of code the pull request does not
+  contain — a false negative that looks exactly like a good result.
+- **The re-review cursor narrows to `synchronize`.** It infers "someone reviewed this commit" from
+  the caller's successful runs, which is only true while the caller reviews every push. Left
+  unscoped under the new trigger it would find a green run that reviewed nothing, diff against it,
+  and decline — and the one direction this rung must never fail in is silently not running. The
+  mechanism stays for consumers whose caller still runs on every push.
+
+**Only someone with repo collaboration access can request a review.** `OWNER`, `MEMBER` or
+`COLLABORATOR` — the same rule as everywhere else in §13, and load-bearing here because the default
+would be spending the API budget: the workflow already holds the key and write access to comment.
+
 **This is a concept, not a directory.** The rungs already live in four places — `.github/workflows/`
 for 1 and 2, `qa/acceptance/` for 3, a pull request for 4 — and a `verifiers/` directory would hold
 nothing but pointers to them. What was missing was the vocabulary: with no word for *the thing that
 checks the doer*, the rungs could not be reasoned about as a stack, and nobody noticed that rung 3
 had no input. `qa/` keeps holding artifacts; the stack is how they are read.
 
-**An unconfigured verifier must not report success.** Rung 2 needs a model credential, and where it
-is absent the step says so — a job summary plus a warning annotation — and exits without claiming to
+**An unconfigured verifier must not report success.** Rung 2 needs a model credential — a Claude
+subscription token (`claude_code_oauth_token`, preferred: its limit throttles where a prepaid
+balance dies silently) or an API key — and where both are absent the step says so — a job summary plus a warning annotation — and exits without claiming to
 have run. A verifier that reports green because it never executed is worse than no verifier, the
 same shape as *a check that skips what is absent will report an empty thing as correct* in
 `.agent/learned.md`.
@@ -1140,11 +1180,46 @@ the model puts it, and action headers identify errors. Any missing evidence fail
 warning. Permission-denial counts are diagnostic only: healthy runs can contain denials, while a
 broken reporting path need not.
 
+**The review's content gates nothing; its process gates the merge.** Two branch-protection
+settings on every repo with the rung turn the advisory review into something that cannot be
+outrun or ignored, without ever letting it block on its own noise:
+
+- **`agent-review / delivery` is a required status check.** It fails when a requested, configured
+  review was not delivered, and because it depends on the review job, an in-progress review holds
+  it pending — so neither `--auto` nor a manual merge can land mid-review. Legitimate skips
+  (records-only pull requests, unconfigured repos, `synchronize` pushes) leave the job skipped,
+  which satisfies a required check. When the reviewer itself is broken, `review-waived: <reason>`
+  in the PR body passes the check and is reported as waived — the same contract as `skip-tests:`,
+  validated the same way, so merging unreviewed is possible but never silent. Rung 1's checks are
+  required alongside it; zero required checks is how `--auto` once merged a stale head.
+- **Conversation resolution is required.** Findings land inline, so each is a resolvable thread,
+  and the merge refuses while any is open. Resolving is the read receipt: the developing agent
+  applies what it judges worthy, replies where it declines, and resolves every thread. This
+  enforces the *act* of disposition, not its quality — the same limit human review has.
+
+One seam is accepted rather than engineered around: a push made while the previous commit's
+review is still running carries its own skipped delivery check, so a merge in that window can
+outrun the in-flight review. The window is minutes wide, requires the author to push and merge
+inside it, and closing it would mean re-running reviews on every push — the cost the trigger
+change exists to avoid.
+
 **The reviewer persona is a versioned file**, `.github/agent-review-prompt.md`, not a string inside
 YAML. It is the part that gets tuned most often and the part a human most wants to read, and a
 prompt buried in a workflow is invisible in review. `morpheus review prompt` assembles it with the
 item's intent and acceptance criteria; the workflow pipes the result to the model, so the judgment
 lives in a module with a type checker and tests behind it rather than in YAML, which has neither.
+
+**Every consumer needs its own persona, and it is written rather than copied.** `loadReviewContext`
+throws without one instead of falling back, so a repo adopting the rung is not one `uses:` block —
+it is a `uses:` block and a persona. What transfers between repos is the *structure*: intent
+mismatch, silently widened scope, absent-reads-as-correct, contradicted decisions, how to report,
+what not to do. The worked examples must be that repo's own recorded failures, which makes
+`.agent/learned.md` the input to a persona and a repo without one not yet ready for the rung.
+Copying Morpheus's would point Evo's reviewer at `ParseIssue[]` in `src/pm/parse.ts`, a convention
+Evo does not have — telling a reviewer to check for something untrue is the first step toward
+manufacturing findings, which is the failure that gets this rung ignored. The order changes too:
+Evo's leads on arithmetic and the information/advice boundary, because a wrong calculator number
+there is acted on by someone taking prescription medication.
 
 **Rung 3's input is `RoadmapItem.acceptance`** — a path into `qa/acceptance/`. An item that declares
 one has its criteria handed to the reviewer; an item that declares one pointing nowhere is reported
@@ -2032,6 +2107,24 @@ The templates were extracted from Darwin — the waitlist from
 DW-002, whose sign-in Chris verified renders `chris@darwin.health · admin`. Same rule as the
 repository scaffold: the retrofit is the specification.
 
+#### `morpheus web add-consumer-auth` extends it with consumer accounts
+
+The same extraction rule, one project later: Evo shipped consumer accounts on this stack
+(darwin-health/evo#58, #62), two agent-review rounds found fifteen real security and correctness
+issues, and the scaffold carries all of it (cpheinrich/morpheus#135). Four layers: verbatim
+plumbing (edge cookie verification with the emulator's `alg:none` branch dead unless the emulator
+env var is present; the CSRF origin check; backslash-proof redirect validation; the oobCode
+rewrite; the revocation-checked writer; the Firestore REST store), codified policy (two Firebase
+projects with **staging as the default** — §13.2; mail-your-own action links, because Firebase
+refuses a custom action URL with `EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`; Firestore over REST, because
+google-gax rejects the federated credential; route-based profile provisioning, because Spark has
+no Functions; the readable hint cookie that keeps marketing pages static; scoped sign-out; the
+five-minute `auth_time` recency window with its same-account re-issue exception), starter surfaces
+the project owns afterwards, and **the three test suites as the contract** — unit, Firestore
+rules, and Playwright E2E, all emulator-backed, all secret-free, wired into CI through the
+reusable `firebase-tests.yml`. `--check` reports drift between a project's shared auth files and
+the current templates. The console half lives in `docs/runbooks/consumer-auth.md`.
+
 ## 13. Secrets and credentials
 
 Values never enter git. What enters git is a manifest declaring which secrets exist and where they
@@ -2103,6 +2196,16 @@ secret fails before deploy rather than at runtime.
 have separate user bases and therefore separate Auth pools and Firestore databases — so they must
 be separate GCP projects. This falls out of how Firebase is built rather than being a design
 choice.
+
+**An app with consumer accounts gets a second Firebase project for staging** — `cph-evo` and
+`cph-evo-staging` — because the alternative to a staging user pool is testing sign-up against real
+users. The pair is recorded in the manifest as `accounts.gcpProjectStaging` /
+`accounts.firebaseStaging`, with the staging origin in `stagingDomain`. **Staging is the default
+and production is the exception**: only a Vercel *Production* build resolves to the production
+project — previews, local dev, and any unrecognised environment name all land on staging with
+nothing to configure. Defaulting the other way round means the day someone forgets, test rows land
+in the real database, which is exactly what the second project exists to prevent. (Evo shipped
+this with consumer accounts; cpheinrich/morpheus#135 tracks lifting the rest.)
 
 Grouping happens at the **billing account**, not the project: `darwin` and `evo` roll up to the
 Darwin billing account while personal projects roll up to a personal one.
@@ -2435,6 +2538,12 @@ and a broken workflow is noticed and fixed in minutes.
 
 Planned: `web-ci`, `ios-ci`, `deploy`, `pr-check`, `agent-triage`, `agent-analytics-review`,
 `release-kit`.
+
+`firebase-tests` is the one workflow a project opts into rather than getting by default: it runs
+the emulator-backed suites (unit, Firestore rules, Playwright E2E) against the Firebase Emulator
+Suite, needs no secrets — so it passes on fork pull requests — and is deliberately not folded into
+`web-ci`, because most projects have no Firebase and would pay for a JRE, a 100 MB emulator jar and
+a boot to run nothing.
 
 > **Gotcha.** Cross-repo workflow access is not on by default. In Morpheus's **Settings → Actions →
 > Access**, the policy must allow access from your other repositories, or calling repos fail with a

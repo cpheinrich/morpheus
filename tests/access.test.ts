@@ -116,6 +116,33 @@ describe("schema", () => {
     }).success).toBe(false);
   });
 
+  it("keeps a staging origin, held to the same shape as the public one", () => {
+    // The two-Firebase-project setup (§13.2): the staging origin and the
+    // staging account pair are read from the durable manifest, never inferred
+    // from a deployment.
+    const manifest = ProjectManifest.parse({
+      name: "Acme",
+      publicDomain: "https://app.example.com",
+      stagingDomain: "staging.app.example.com",
+      accounts: {
+        gcpProject: "ac-app",
+        firebase: "ac-app",
+        gcpProjectStaging: "ac-app-staging",
+        firebaseStaging: "ac-app-staging",
+      },
+      hq: {},
+    });
+
+    expect(manifest.stagingDomain).toBe("staging.app.example.com");
+    expect(manifest.accounts?.["firebaseStaging"]).toBe("ac-app-staging");
+
+    expect(ProjectManifest.safeParse({
+      name: "Acme",
+      stagingDomain: "https://staging.example.com/app",
+      hq: {},
+    }).success).toBe(false);
+  });
+
   it("accepts additional Firebase Auth hostnames and rejects origins or paths", () => {
     expect(ProjectManifest.parse({
       name: "Acme",

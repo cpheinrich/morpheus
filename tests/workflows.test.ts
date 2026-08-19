@@ -143,14 +143,71 @@ describe("schedule.yml", () => {
 });
 
 describe("agent-review.yml", () => {
-  it("is reusable and takes the key as an optional secret", async () => {
+  it("is reusable and takes both credentials as optional secrets", async () => {
     const wf = (await read("agent-review.yml")) as {
       on?: { workflow_call?: { secrets?: Record<string, { required?: boolean }> } };
     };
-    const secret = wf.on?.workflow_call?.secrets?.["anthropic_api_key"];
-    expect(secret).toBeDefined();
     // Required would fail every repo that has not configured the rung.
-    expect(secret?.required).toBe(false);
+    for (const name of ["anthropic_api_key", "claude_code_oauth_token"]) {
+      const secret = wf.on?.workflow_call?.secrets?.[name];
+      expect(secret, name).toBeDefined();
+      expect(secret?.required, name).toBe(false);
+    }
+  });
+
+  /**
+   * The subscription token must win when both credentials exist, and winning
+   * means the API key is *withheld*, not merely accompanied. The action
+   * exports whatever it receives and Claude Code prefers an ANTHROPIC_API_KEY
+   * in its environment — handed both, reviews would silently keep billing the
+   * prepaid credits the token exists to stop billing, with a green check and
+   * no diff to show for it. That is this repo's named failure shape: a check
+   * that cannot tell the wrong success from the right one.
+   */
+  it("prefers the subscription token and withholds the API key beside it", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ with?: Record<string, unknown> }> }>;
+    };
+    const step = wf.jobs?.["review"]?.steps?.find((s) =>
+      Object.hasOwn(s.with ?? {}, "claude_code_oauth_token"),
+    );
+    expect(step, "no step passes claude_code_oauth_token").toBeDefined();
+    expect(step?.with?.["claude_code_oauth_token"]).toBe(
+      "${{ secrets.claude_code_oauth_token }}",
+    );
+    expect(step?.with?.["anthropic_api_key"]).toBe(
+      "${{ secrets.claude_code_oauth_token == '' && secrets.anthropic_api_key || '' }}",
+    );
+  });
+
+  it("counts either credential as configured", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw).toContain(
+      "HAS_KEY: ${{ secrets.anthropic_api_key != '' || secrets.claude_code_oauth_token != '' }}",
+    );
+  });
+
+  /**
+   * A secret a caller does not pass is silently empty in the called workflow —
+   * no error, no warning. Dropping one of these lines would quietly fall back
+   * to the other credential (or to unconfigured), which is exactly the silent
+   * substitution the preference logic above exists to prevent.
+   */
+  it("both callers hand through both credentials", async () => {
+    for (const file of ["ci.yml", "agent-review-request.yml"]) {
+      const wf = (await read(file)) as {
+        jobs?: Record<string, { uses?: string; secrets?: Record<string, string> }>;
+      };
+      const job = Object.values(wf.jobs ?? {}).find((j) =>
+        j.uses?.includes("agent-review.yml"),
+      );
+      expect(job?.secrets?.["claude_code_oauth_token"], file).toBe(
+        "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}",
+      );
+      expect(job?.secrets?.["anthropic_api_key"], file).toBe(
+        "${{ secrets.ANTHROPIC_API_KEY }}",
+      );
+    }
   });
 
   /**
@@ -257,6 +314,238 @@ describe("agent-review.yml", () => {
     expect(raw).toContain('jq -r --arg sha "$HEAD_SHA"');
     expect(raw).toContain('-f branch="$HEAD_REF"');
   });
+
+  it("takes a pull request number, for a caller with no pull request event", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      on?: { workflow_call?: { inputs?: Record<string, { type?: string; default?: unknown }> } };
+      jobs?: Record<string, { if?: string }>;
+    };
+    expect(wf.on?.workflow_call?.inputs?.["pr-number"]).toEqual(
+      expect.objectContaining({ type: "number", default: 0 }),
+    );
+    // Both jobs still refuse to run when neither source names a pull request.
+    expect(wf.jobs?.["review"]?.if).toContain("inputs.pr-number > 0");
+    expect(wf.jobs?.["delivery"]?.if).toContain("inputs.pr-number > 0");
+  });
+
+  /**
+   * The regression this exists for is silent and expensive: an `issue_comment`
+   * run has no `github.event.pull_request`, so any *other* step reading it gets
+   * an empty string. A checkout with an empty `ref` lands on trunk, the diff
+   * comes out clean, and the rung reports a confident review of code the pull
+   * request does not contain.
+   *
+   * So the payload is read in exactly one place, and everything downstream
+   * takes the resolved outputs. Adding a step that reaches for the payload
+   * again fails here rather than in production.
+   */
+  it("reads the pull request payload in one step and nowhere else", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<Record<string, unknown>> }>;
+    };
+    const steps = Object.values(wf.jobs ?? {}).flatMap((job) => job.steps ?? []);
+    const payloadReaders = steps.filter((step) =>
+      /github\.event\.pull_request|github\.head_ref|github\.base_ref/.test(JSON.stringify(step)),
+    );
+
+    expect(payloadReaders.map((step) => step.name)).toEqual(["Resolve the pull request"]);
+  });
+
+  it("checks out the pull request's head, not whatever branch the event points at", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<
+        string,
+        { steps?: Array<{ uses?: string; with?: Record<string, unknown> }> }
+      >;
+    };
+    const checkout = wf.jobs?.["review"]?.steps?.find(
+      (step) => step.uses?.startsWith("actions/checkout") && step.with?.["fetch-depth"] === 0,
+    );
+
+    expect(checkout?.with?.ref).toBe("${{ steps.pr.outputs.checkout_ref }}");
+  });
+
+  /**
+   * A resolve that half-fails is worse than one that fails: an empty head ref
+   * reviews the wrong thing and says nothing about it.
+   */
+  it("fails the run rather than resolving a pull request partially", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
+    };
+    const resolve = wf.jobs?.["review"]?.steps?.find(
+      (step) => step.name === "Resolve the pull request",
+    );
+
+    expect(resolve?.run).toContain("set -euo pipefail");
+    expect(resolve?.run).toContain('gh api "repos/$REPO/pulls/$INPUT_NUMBER"');
+    // A fork's head commit is on no branch of this repository.
+    expect(resolve?.run).toContain('checkout_ref=refs/pull/$INPUT_NUMBER/head');
+  });
+
+  /**
+   * The cursor reads the caller's successful runs as a stand-in for "someone
+   * reviewed this commit". Once the caller stops reviewing every push that
+   * proxy is false in the unsafe direction — a green run that reviewed nothing
+   * becomes the base, the diff is empty, and the rung declines in silence.
+   */
+  it("consults the run cursor only on a push to an already-reviewed branch", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<
+        string,
+        { steps?: Array<{ name?: string; run?: string; env?: Record<string, string> }> }
+      >;
+    };
+    const since = wf.jobs?.["review"]?.steps?.find(
+      (step) => step.name === "What has changed since the last review?",
+    );
+
+    expect(since?.env?.EVENT_ACTION).toBe("${{ github.event.action }}");
+    expect(since?.run).toContain('if [ "$EVENT_ACTION" = "synchronize" ]; then');
+    // The lookup itself must sit inside that branch, not beside it.
+    const guarded = since?.run?.slice(since.run.indexOf('"$EVENT_ACTION" = "synchronize"'));
+    expect(guarded).toContain("actions/workflows/$caller/runs");
+    // `refs/pull/<n>/head` is the only ref a comment-triggered checkout fetches.
+    expect(since?.run).toContain('"+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"');
+  });
+
+  it("honours an explicit request over the cost gate, and skips a closed PR", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<
+        string,
+        { steps?: Array<{ name?: string; run?: string; env?: Record<string, string> }> }
+      >;
+    };
+    const gate = wf.jobs?.["review"]?.steps?.find(
+      (step) => step.name === "Is this worth a review?",
+    );
+
+    expect(gate?.env?.REQUESTED).toBe("${{ steps.pr.outputs.requested }}");
+    expect(gate?.env?.PR_OPEN).toBe("${{ steps.pr.outputs.open }}");
+    // Both short-circuits must precede the CLI call, or they decide nothing.
+    const cli = gate?.run?.indexOf("review needed") ?? -1;
+    expect(cli).toBeGreaterThan(-1);
+    expect(gate?.run?.indexOf('"$PR_OPEN" != "true"')).toBeLessThan(cli);
+    expect(gate?.run?.indexOf('"$REQUESTED" = "true"')).toBeLessThan(cli);
+  });
+
+  /**
+   * `review prompt` derives the roadmap id from the branch via
+   * `GITHUB_HEAD_REF`, which only a `pull_request` event sets. Unset, the
+   * reviewer gets the persona and no intent — a generic "look for bugs" pass,
+   * which is rung 1 with a model attached.
+   */
+  it("tells the prompt which branch it is reviewing", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; env?: Record<string, string> }> }>;
+    };
+    const prompt = wf.jobs?.["review"]?.steps?.find(
+      (step) => step.name === "Assemble the reviewer prompt",
+    );
+
+    expect(prompt?.env?.MORPHEUS_BRANCH).toBe("${{ steps.pr.outputs.head_ref }}");
+  });
+
+  /**
+   * Delivery is meant to be a *required* status check: it is what stops a merge
+   * outrunning the reviewer. That only works if the job actually fails on a
+   * non-delivery — the previous shape warned and exited 0, which as a required
+   * check is a gate that never closes. The waiver is the pressure valve that
+   * makes requiring it survivable when the reviewer itself is broken.
+   */
+  it("fails on a non-delivery, and honours a spoken waiver", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
+    };
+    const delivery = wf.jobs?.["delivery"]?.steps?.find(
+      (step) => step.name === "Verify the review was delivered",
+    );
+    const run = delivery?.run ?? "";
+
+    // The not-confirmed path must end the job in failure, not a warning.
+    expect(run).toContain("::error title=Agent review not delivered");
+    expect(run.trimEnd().endsWith("exit 1")).toBe(true);
+
+    // The waiver is read from the PR body at verification time, so editing the
+    // body and re-running the job is the recovery path.
+    expect(run).toContain('gh api "repos/$REPO/pulls/$PR_NUMBER" --jq \'.body // ""\'');
+    expect(run).toContain("--pr-body-file /tmp/pr-body.md");
+    // An unreadable body is no waiver — fail closed.
+    expect(run).toContain(': > /tmp/pr-body.md');
+    // Waived is reported as waived, never as confirmed.
+    expect(run).toContain("waived:*)");
+    expect(run).toContain("::warning title=Agent review waived");
+  });
+
+  it("hands the resolved pull request number to the delivery check", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<
+        string,
+        {
+          outputs?: Record<string, string>;
+          steps?: Array<{ name?: string; env?: Record<string, string> }>;
+        }
+      >;
+    };
+    expect(wf.jobs?.["review"]?.outputs?.pr_number).toBe("${{ steps.pr.outputs.number }}");
+
+    const delivery = wf.jobs?.["delivery"]?.steps?.find(
+      (step) => step.name === "Verify the review was delivered",
+    );
+    expect(delivery?.env?.PR_NUMBER).toBe("${{ needs.review.outputs.pr_number }}");
+  });
+});
+
+describe("agent-review-request.yml", () => {
+  it("fires on a comment, and only on a pull request", async () => {
+    const wf = (await read("agent-review-request.yml")) as {
+      on?: { issue_comment?: { types?: string[] } };
+      jobs?: Record<string, { if?: string; uses?: string; with?: Record<string, unknown> }>;
+    };
+    expect(wf.on?.issue_comment?.types).toEqual(["created"]);
+
+    const job = wf.jobs?.["agent-review"];
+    expect(job?.uses).toContain("agent-review.yml");
+    expect(job?.if).toContain("github.event.issue.pull_request != null");
+    expect(job?.if).toContain("@claude");
+    expect(job?.with?.["pr-number"]).toBe("${{ github.event.issue.number }}");
+  });
+
+  /**
+   * This repo is public and takes external contributions. Morpheus does nothing
+   * by default for anyone without repo collaboration access, and here the
+   * default would be spending the API budget — the workflow already holds the
+   * key and write access to comment.
+   */
+  it("acts only on a comment from someone with repo access", async () => {
+    const wf = (await read("agent-review-request.yml")) as {
+      jobs?: Record<string, { if?: string }>;
+    };
+    const guard = wf.jobs?.["agent-review"]?.if ?? "";
+
+    for (const association of ["OWNER", "MEMBER", "COLLABORATOR"]) {
+      expect(guard).toContain(`github.event.comment.author_association == '${association}'`);
+    }
+    // Anything looser would let a first-time commenter trigger a paid run.
+    expect(guard).not.toContain("CONTRIBUTOR");
+    expect(guard).not.toContain("NONE");
+  });
+
+  /**
+   * Untrusted text reaching a `run:` block is string substitution, not a
+   * variable — and a comment body is the most attacker-controlled input on the
+   * repository. This caller must only ever *match* on it.
+   */
+  it("never puts the comment body into a shell", async () => {
+    const wf = (await read("agent-review-request.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ run?: string }> }>;
+    };
+    for (const job of Object.values(wf.jobs ?? {})) {
+      for (const step of job.steps ?? []) {
+        expect(step.run ?? "").not.toContain("github.event.comment");
+      }
+    }
+  });
 });
 
 describe("ci.yml", () => {
@@ -274,6 +563,53 @@ describe("ci.yml", () => {
   it("calls the agent review rung", async () => {
     const wf = await read("ci.yml");
     expect(wf.jobs?.["agent-review"]?.uses).toContain("agent-review.yml");
+  });
+
+  /**
+   * Reviews still run once per pull request, but the skip must live *inside*
+   * the reusable workflow, never in the caller's `if:`. A caller-level skip on
+   * `synchronize` leaves the nested `agent-review / delivery` check
+   * *unreported* — and an unreported required check blocks the merge forever,
+   * where a job-level skip is reported as skipped and satisfies it. Caught by
+   * rung 2 on the PR that nearly required the check in the broken shape.
+   */
+  it("reviews once per pull request, decided inside the workflow", async () => {
+    const wf = (await read("ci.yml")) as {
+      on?: { pull_request?: { types?: string[] } };
+      jobs?: Record<string, { if?: string }>;
+    };
+    // `ready_for_review` is not in the default set, so the list has to be spelled out.
+    expect(wf.on?.pull_request?.types).toContain("ready_for_review");
+    expect(wf.on?.pull_request?.types).toContain("synchronize");
+
+    // No caller-level skip, on this job or any other: the delivery check must
+    // be reported on every push for required-check protection to be satisfiable.
+    for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+      expect(job.if, `${name} must run on every push`).toBeUndefined();
+    }
+
+    // The once-per-PR economics live in the called workflow's gate instead.
+    const called = (await read("agent-review.yml")) as {
+      on?: {
+        workflow_call?: {
+          inputs?: Record<string, { type?: string; default?: unknown }>;
+        };
+      };
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string; env?: Record<string, string> }> }>;
+    };
+    expect(called.on?.workflow_call?.inputs?.["synchronize-reviews"]).toEqual(
+      expect.objectContaining({ type: "boolean", default: false }),
+    );
+    const gate = called.jobs?.["review"]?.steps?.find(
+      (step) => step.name === "Is this worth a review?",
+    );
+    expect(gate?.env?.EVENT_ACTION).toBe("${{ github.event.action }}");
+    expect(gate?.env?.SYNCHRONIZE_REVIEWS).toBe("${{ inputs.synchronize-reviews }}");
+    // The skip must precede the CLI call, or it decides nothing.
+    const cli = gate?.run?.indexOf("review needed") ?? -1;
+    const skip = gate?.run?.indexOf('"$EVENT_ACTION" = "synchronize"') ?? -1;
+    expect(skip).toBeGreaterThan(-1);
+    expect(skip).toBeLessThan(cli);
   });
 
   /**
@@ -543,5 +879,129 @@ describe("the review gate fails open", () => {
     const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
     // `- [x] Read src/x.ts` names a file without raising anything.
     expect(raw).toContain("\\[[ x]\\]");
+  });
+});
+
+describe("firebase-tests.yml", () => {
+  type FirebaseTests = {
+    on?: {
+      workflow_call?: {
+        inputs?: Record<string, { type?: string; default?: unknown }>;
+        secrets?: Record<string, unknown>;
+      };
+    };
+    jobs?: Record<string, { steps?: Array<Record<string, unknown>> }>;
+  };
+
+  it("is reusable, so a project can call it", async () => {
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    expect(wf.on).toHaveProperty("workflow_call");
+  });
+
+  it("declares no secrets, so it passes on a fork pull request", async () => {
+    // The emulators authenticate nobody; the moment this workflow needs a
+    // secret it silently stops running the suites external contributors need
+    // most.
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    expect(wf.on?.workflow_call?.secrets).toBeUndefined();
+  });
+
+  it("pins a JDK the emulators support, rather than trusting the runner image", async () => {
+    // firebase-tools 15 refuses a JDK older than 21, and ubuntu-latest's
+    // preinstalled JRE is older than that — a failure that only appears in CI,
+    // because a developer machine with a current JDK passes locally.
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    expect(wf.on?.workflow_call?.inputs?.["java-version"]?.default).toBe("21");
+    const raw = await readFile(join(DIR, "firebase-tests.yml"), "utf8");
+    expect(raw).toContain("actions/setup-java@v4");
+  });
+
+  it("pins firebase-tools to a major", async () => {
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    expect(wf.on?.workflow_call?.inputs?.["firebase-tools-version"]?.default).toBe("15");
+  });
+
+  it("leaves pnpm-version empty so packageManager decides", async () => {
+    // Setting both makes pnpm/action-setup fail with "Multiple versions of
+    // pnpm specified" — found by the repo following the stricter practice.
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    expect(wf.on?.workflow_call?.inputs?.["pnpm-version"]?.default).toBe("");
+  });
+
+  it("caches the emulator jars keyed on firebase.json, in both jobs", async () => {
+    // The emulators are ~100 MB of Java fetched from Google on first use.
+    // firebase.json is what names the emulators, so it is the key.
+    const raw = await readFile(join(DIR, "firebase-tests.yml"), "utf8");
+    const matches = raw.match(/hashFiles\('firebase\.json'\)/g) ?? [];
+    expect(matches.length).toBe(2);
+  });
+
+  it("caches Playwright browsers keyed on the lockfile", async () => {
+    // The lockfile pins the Playwright version the downloaded browser must
+    // match; keying on anything else serves a stale browser to a new runner.
+    const raw = await readFile(join(DIR, "firebase-tests.yml"), "utf8");
+    expect(raw).toContain("~/.cache/ms-playwright");
+    expect(raw).toContain("hashFiles('pnpm-lock.yaml')");
+  });
+
+  it("installs the browser only — never --with-deps", async () => {
+    // --with-deps' sudo apt-get path hung indefinitely on ubuntu-latest,
+    // three runs in a row, 40+ minutes each. The runner image already ships
+    // headless Chromium's libraries; a future image dropping one fails at
+    // launch with the library named, which is the legible failure. Asserted
+    // on the parsed step, not the raw file — the comment explaining the rule
+    // legitimately names the flag.
+    const wf = (await read("firebase-tests.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
+    };
+    const install = wf.jobs?.["e2e"]?.steps?.find((s) => s.name === "Install Chromium");
+    expect(install?.run).toContain("playwright install chromium");
+    expect(install?.run).not.toContain("--with-deps");
+  });
+
+  it("bounds the hang-prone steps with timeouts", async () => {
+    // A hung step otherwise runs to GitHub's 6-hour default on paid minutes.
+    const wf = (await read("firebase-tests.yml")) as {
+      jobs?: Record<string, {
+        "timeout-minutes"?: number;
+        steps?: Array<Record<string, unknown>>;
+      }>;
+    };
+    expect(wf.jobs?.["e2e"]?.["timeout-minutes"]).toBe(15);
+    const install = wf.jobs?.["e2e"]?.steps?.find((s) => s["name"] === "Install Chromium");
+    expect(install?.["timeout-minutes"]).toBe(5);
+  });
+
+  it("cancels a superseded run instead of racing it", async () => {
+    // Two pushes minutes apart left two hung jobs burning in parallel. The
+    // groups are per job and keyed on ref — workflow-level concurrency in a
+    // *called* workflow does not govern the caller's run, and one shared group
+    // would make a single run's two jobs cancel each other.
+    const wf = (await read("firebase-tests.yml")) as {
+      jobs?: Record<string, {
+        concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+      }>;
+    };
+    const groups = new Set<string>();
+    for (const name of ["emulators", "e2e"]) {
+      const concurrency = wf.jobs?.[name]?.concurrency;
+      expect(concurrency?.["cancel-in-progress"], `${name} must cancel-in-progress`).toBe(true);
+      expect(concurrency?.group, `${name} group must key on ref`).toContain("${{ github.ref }}");
+      groups.add(concurrency!.group!);
+    }
+    expect(groups.size).toBe(2);
+  });
+
+  it("keeps traces from failures", async () => {
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    const steps = wf.jobs?.["e2e"]?.steps ?? [];
+    const upload = steps.find((s) => String(s["uses"] ?? "").startsWith("actions/upload-artifact"));
+    expect(upload).toBeDefined();
+    expect(upload?.["if"]).toBe("failure()");
+  });
+
+  it("asks for read access and no more", async () => {
+    const wf = (await read("firebase-tests.yml")) as { permissions?: Record<string, string> };
+    expect(wf.permissions).toEqual({ contents: "read" });
   });
 });

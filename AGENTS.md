@@ -21,6 +21,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `src/cli/` | The `morpheus` command |
 | `hq/product/` | Morpheus's own roadmap and goals — it eats its own dog food |
 | `.github/workflows/` | Reusable workflows called by every project |
+| `docs/runbooks/` | Operational steps a human performs — consoles, DNS, keys |
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
 | `.claude/skills/` | Named, repeatable procedures — `voice-handoff`, `voice-import` |
 | `local/handoffs/` | Handoff docs, both directions. Gitignored — never committed |
@@ -62,6 +63,7 @@ pnpm morpheus brand finalize --selection "Name" # promote a reviewed direction i
 pnpm morpheus init                 # scaffold a project — safe to re-run, never overwrites
 pnpm morpheus init status          # how far through project setup this repo is
 pnpm morpheus web init             # provision and scaffold the website: waitlist + /hq sign-in
+pnpm morpheus web add-consumer-auth # consumer accounts: staging project, auth plumbing, three suites
 pnpm morpheus web status           # what the web surface has, and what it is missing
 pnpm morpheus firebase auth setup --project <id> --domain <public-origin>
 pnpm morpheus firebase auth check --project <id> --domain <public-origin>
@@ -280,6 +282,47 @@ Prefer `--auto` — it hands the merge to GitHub so the session is not held open
 failing check simply leaves the PR unmerged rather than merging something broken. Use `--watch`
 only when the next step depends on the merge having landed.
 
+**The agent review reads your pull request once, when it opens** — pushing a fix does not buy
+another review. When you have acted on findings and want them checked, or a later push changed
+enough to be worth a second pass, ask for one:
+
+```sh
+gh pr comment <n> --body "@claude re-review — I have addressed the findings above."
+```
+
+Only a comment from someone with repo access triggers it, and only on an open pull request. It is
+the same rung with the same persona; the difference is that a human decided it was worth a dollar,
+rather than a trigger deciding on every push. **Do not push empty commits to provoke a review** —
+that was the behaviour the trigger change removed.
+
+**Act on the review before merging — the merge will refuse until you do.** Two required
+protections enforce this: `agent-review / delivery` fails while a requested review is undelivered
+(and stays pending while one is running, which is what makes `--auto` safe to set early), and
+conversation resolution blocks the merge while any inline finding's thread is open. The loop:
+
+1. Wait for the review to land. Delivery pending means it is still reading.
+2. Read every finding. Apply the ones you judge worthy.
+3. Where you decline one, **reply in its thread saying why** — a resolved thread with no answer
+   reads as agreement, and the reviewer's finding may be wrong in a way worth recording.
+4. Resolve every thread. Resolution is the read receipt, not a verdict. `gh` has no subcommand
+   for it — it is a GraphQL mutation, and burning turns rediscovering that is how an agent ends
+   up reaching for `--admin`:
+
+   ```sh
+   # List the PR's threads with their ids and state:
+   gh api graphql -f owner=OWNER -f repo=REPO -F pr=N -f query='
+     query($owner:String!,$repo:String!,$pr:Int!){ repository(owner:$owner,name:$repo){
+       pullRequest(number:$pr){ reviewThreads(first:50){ nodes{ id isResolved path line } } } } }'
+   # Resolve one:
+   gh api graphql -f id=THREAD_ID -f query='
+     mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }'
+   ```
+
+**Never merge with `--admin`** — it exists to bypass exactly these protections. If the reviewer
+itself is broken (it fails in seconds at $0), put `review-waived: <reason>` in the PR body and
+re-run the delivery job: the waiver passes the check and is reported on it, so merging unreviewed
+is always a statement, never a default.
+
 **`pm claim` reconciles the board first**, marking merged work shipped and recording its PR number,
 so those status changes ride along in the claim commit. Nothing else advances an item to `shipped`,
 and a board that lags reality stops being read — thirteen items had drifted before anyone noticed.
@@ -427,6 +470,18 @@ Afterwards: `pnpm install`, render `<WaitlistForm source="hero" />` on the page,
 `waitlist_joined` event to the project's analytics contract and pass it to the form's `onJoined`
 prop, then `morpheus access sync` so the allowlist becomes the `role` claim. Until that sync runs,
 a signed-in account has no role and `/hq` refuses it — the gate working, not a broken sign-in.
+
+**When a project wants people to sign themselves up, run `morpheus web add-consumer-auth`** — do
+not hand-build Firebase auth. It extends `web init` with what Evo shipped and hardened
+(cpheinrich/morpheus#135): a second Firebase project for staging with **staging as the default**
+(only a Vercel Production build reaches production data), the auth plumbing whose review findings
+are already encoded (login CSRF, the enumeration-oracle-proof reset route, the backslash open
+redirect, the cross-device verification remint), starter sign-in/sign-up/reset/action pages, and
+**three test suites that run against the Firebase emulators with no secrets** — wired into CI via
+the reusable `firebase-tests.yml`. `--check` reports drift between a project's shared auth files
+and the current templates. The console half — providers, authorized domains, the service-account
+key scoped to Vercel Preview *only*, mail keys, the staging domain — is
+[`docs/runbooks/consumer-auth.md`](docs/runbooks/consumer-auth.md).
 
 `--no-provision` skips the cloud entirely; the provisioning half is what makes `web init` a
 context-gated command, and the scaffolding half is not gated at all.

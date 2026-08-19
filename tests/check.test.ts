@@ -426,6 +426,51 @@ describe("waivers are surfaced, not swallowed", () => {
   });
 });
 
+describe("the review waiver is surfaced beside the other two", () => {
+  /** A well-formed body plus the line under test. */
+  function withWaiver(line: string): string {
+    return `## Test plan\n\nRan it.\n\n## Open questions\n\nNone.\n\n${line}\n`;
+  }
+
+  /**
+   * `review-waived:` is honoured by the delivery job, which reports it only as
+   * an annotation on a green-or-red check. The conventions output is what a
+   * human reads, so the third waiver appears there with the same contract as
+   * `skip-tests:` — reported when real, refused out loud when it says nothing.
+   */
+  it("reports a real review waiver as waived", async () => {
+    const findings = await checkPr(
+      goodPr({ body: withWaiver("review-waived: the reviewer is down, tracked upstream") }),
+    );
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        rule: "review-waived",
+        level: "waived",
+        message: expect.stringContaining("the reviewer is down"),
+      }),
+    );
+  });
+
+  it("refuses a review waiver that says nothing", async () => {
+    const findings = await checkPr(goodPr({ body: withWaiver("review-waived: yes") }));
+    expect(findings).toContainEqual(
+      expect.objectContaining({ rule: "review-waived", level: "error" }),
+    );
+  });
+
+  it("does not read a fenced example as a waiver", async () => {
+    const findings = await checkPr(
+      goodPr({ body: withWaiver("```\nreview-waived: an example, not a waiver\n```") }),
+    );
+    expect(findings.filter((f) => f.rule === "review-waived")).toEqual([]);
+  });
+
+  it("stays silent when no waiver is present", async () => {
+    const findings = await checkPr(goodPr());
+    expect(findings.filter((f) => f.rule === "review-waived")).toEqual([]);
+  });
+});
+
 describe("waiverReason", () => {
   it("returns null when the key is absent", () => {
     expect(waiverReason("## Test plan\n\nx.", "skip-tests")).toBeNull();

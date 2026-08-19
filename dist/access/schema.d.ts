@@ -46,6 +46,7 @@ export declare const ProjectManifest: z.ZodObject<{
     prefix: z.ZodOptional<z.ZodString>;
     displayName: z.ZodOptional<z.ZodString>;
     publicDomain: z.ZodOptional<z.ZodString>;
+    stagingDomain: z.ZodOptional<z.ZodString>;
     supportEmail: z.ZodOptional<z.ZodEmail>;
     authorizedDomains: z.ZodDefault<z.ZodArray<z.ZodString>>;
     hq: z.ZodObject<{

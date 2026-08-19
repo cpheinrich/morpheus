@@ -7,6 +7,10 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
 | [MO-26-08-13-16.24.31](./MO-26-08-13-16.24.31-scaffold-social-channels.md) | Scaffold organic social channels | review | P1 | — | — | — |
+| [MO-26-08-19-00.30.22](./MO-26-08-19-00.30.22-firebase-ci-staging.md) | Reusable Firebase emulator CI and staging manifest fields | review | P1 | — | — | — |
+| [MO-26-08-19-00.39.34](./MO-26-08-19-00.39.34-add-consumer-auth.md) | Consumer-auth scaffold: morpheus web add-consumer-auth, and its runbook | review | P1 | — | #135 | — |
+| [MO-26-08-19-15.34.01](./MO-26-08-19-15.34.01-enforce-review-disposition.md) | Reviews are acted on before merge | review | P1 | — | — | — |
+| [MO-26-08-19-15.22.10](./MO-26-08-19-15.22.10-resend-canon-customer-email.md) | Resend is canon for customer email; Cloudflare for admin mail | review | P2 | — | — | #139 |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-01-047](./MO-26-08-01-047-inbox-status-one-front.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — | — |
@@ -83,6 +87,7 @@ item files, not this table.
 | [MO-26-08-12-17.03.52](./MO-26-08-12-17.03.52-scaffold-marketing-briefs.md) | Scaffold marketing initialization briefs | shipped | P1 | — | — | #119 |
 | [MO-26-08-13-09.57.08](./MO-26-08-13-09.57.08-add-web-init.md) | Website initializer: morpheus web init | shipped | P1 | — | — | #124 |
 | [MO-26-08-13-11.59.20](./MO-26-08-13-11.59.20-install-session-hook.md) | The session-start context hook reaches every project, not only newly scaffolded ones | shipped | P1 | — | — | #125 |
+| [MO-26-08-18-22.27.07](./MO-26-08-18-22.27.07-review-oauth-token.md) | Reviews bill the Max plan, not API credits | shipped | P1 | — | — | #133 |
 | [MO-26-07-28-008](./MO-26-07-28-008-morpheus-init.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | — | #22 |
 | [MO-26-07-28-009](./MO-26-07-28-009-retrofit-darwin.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-010](./MO-26-07-29-010-simplify-architecture-md-first.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | — | #46 |
@@ -100,5 +105,7 @@ item files, not this table.
 | [MO-26-08-08-23.48.59](./MO-26-08-08-23.48.59-document-backend-app.md) | Give non-client deployables a backend home | shipped | P2 | — | #89 | #108 |
 | [MO-26-08-09-00.05.06](./MO-26-08-09-00.05.06-ship-prebuilt-git-artifacts.md) | Ship prebuilt git dependency artifacts | shipped | P2 | — | #82 | #109 |
 | [MO-26-08-11-18.23.10](./MO-26-08-11-18.23.10-setup-search-console.md) | Make Search Console setup part of project SEO work | shipped | P2 | — | — | #114 |
+| [MO-26-08-17-15.23.36](./MO-26-08-17-15.23.36-trim-review-triggers.md) | Rung 2 reviews once on open, then on request | shipped | P2 | — | — | #130 |
+| [MO-26-08-18-22.59.53](./MO-26-08-18-22.59.53-inline-review-comments.md) | Findings land inline on the diff | shipped | P2 | — | — | #134 |
 | [MO-26-07-29-012](./MO-26-07-29-012-make-morpheus-private-adjust.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — | — |
 <!-- morpheus:end -->

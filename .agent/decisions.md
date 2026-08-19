@@ -404,6 +404,24 @@ request, and if it turns out noisy the cost of tuning it in one repo is far belo
 turning it off in five — a model-graded reviewer that gets ignored is worse than none, because the
 rung then reads as covered. Rolling out later is one `uses:` block per repo.
 
+**Rolled out to Evo on 2026-08-18**, which is this decision's own next step rather than a reversal
+of it — the rung had by then caught guard bugs, a superseded design it retracted itself a pass
+later, and a test passing for a reason nobody had written. Darwin and Lakina are still to come.
+
+**It was not one `uses:` block.** The estimate missed a required input:
+`.github/agent-review-prompt.md`, which `loadReviewContext` **throws** without rather than falling
+back, because rung 2 with a generic prompt is rung 1 with a model attached. So every consumer needs
+a persona, and **a persona cannot be copied.** Morpheus's closes on `ParseIssue[]` in
+`src/pm/parse.ts` — a file and a convention Evo does not have, which would have told Evo's reviewer
+to check for something untrue, the first step toward manufacturing findings.
+
+What transfers is the *structure*: intent mismatch, silently widened scope, absent-reads-as-correct,
+contradicted decisions, how to report, what not to do. The worked examples have to be that repo's
+own recorded failures — which means **`learned.md` is the input to a persona**, and a repo without
+one is not ready for the rung. Evo's also reorders the list, leading on arithmetic and the
+information/advice boundary, because a wrong calculator number there is acted on by someone taking
+prescription medication.
+
 **Voice context splits static from live** — 2026-08-01. A voice session starts cold and cannot read
 the repo, so context arrives as text and competes with the conversation for room. What the project
 *is* goes into claude.ai project knowledge once; what the board looks like *today* is regenerated per
@@ -433,7 +451,9 @@ Cloudflare Workers with no `deviations` entry, and neither it, `cpheinrich.com`,
 `domain`. A deviation nobody recorded is indistinguishable from the canonical choice, which is how
 a stale premise survives three inbox cycles.
 
-**Cloudflare Email Sending is the canonical transactional email service** — 2026-08-01. Chris's
+**Cloudflare Email Sending is the canonical transactional email service** — 2026-08-01.
+*Superseded 2026-08-19 for customer-facing mail — see the audience-split entry below. Still
+canonical for admin and internal mail.* Chris's
 call, made while moving `cpheinrich.com` off Cloudflare Pages onto Vercel. Cloudflare is already
 load-bearing and permanent: registrar and DNS for every domain — including the two that host on
 Vercel — plus R2 for public media. Email Sending is a service inside a vendor already in the
@@ -445,6 +465,16 @@ The §6 row `Email, accounts | Google Workspace` was about human mailboxes and s
 application email, which is exactly how a project ends up choosing a provider per-project rather
 than reading one off the spec. Both rows now say which they are. Reach for another provider only
 when Cloudflare cannot do the job, and record it as a `deviations` entry.
+
+**Resend is canonical for customer email; Cloudflare Email Sending for admin mail only** —
+2026-08-19. Chris's call, resolving the inbox item the consumer-auth extraction raised. The
+2026-08-01 decision predated any field evidence; Evo's launch supplied it — Resend verified
+`evo.med` in 52 minutes and delivered auth mail to Gmail inboxes (not spam) from a domain with no
+sending history, and the scaffold's tested `deliver()` semantics were built against it. Customer
+mail is deliverability-critical, so the field-proven vendor wins that audience; admin and
+internal mail has no sender-reputation stakes, so the already-in-the-stack vendor keeps it. The
+split is by *audience*, sharper than the options the inbox item offered: not "which vendor for
+transactional mail" but "who is the recipient".
 
 **Inbox items propose options, not open questions** — 2026-08-01. Chris's idea. An open `❗`
 item that is a decision carries three concrete options plus `Other`, one recommended and first, so
@@ -591,6 +621,81 @@ five stable, comparable directions: Brand System, Home, Marketing, Typography, a
 Heavy local concept media lives in Git-ignored `research/assets/`, while the selected package is
 promoted only after human review and the concept page remains as evidence rather than being replaced
 by a prose summary.
+
+**Rung 2 reviews once on open, then only when asked** — 2026-08-17. Chris's call. `opened`,
+`reopened` and `ready_for_review` fire the review; `synchronize` no longer does. A second look is
+requested by name with `@claude` in a comment.
+
+This is the follow-through on *the gate, not the model, moves the bill*, one level up: the gate
+skipped records-only pushes and left every code push paying again, because the trigger cannot tell a
+push worth re-reading from one that is not. **A human typing `@claude` is that judgment, made by
+someone who has read the thing** — so the honest fix was to stop guessing rather than to guess
+better. Requiring the request also puts the spend behind an intent, which is the shape the inbox
+format was already redesigned around.
+
+The trade is named rather than hidden: the most useful re-review this rung has done was unprompted,
+confirming a fix it had itself asked for. Under this it would have needed one comment. That is
+judged the cheaper side.
+
+**Only `OWNER`, `MEMBER` or `COLLABORATOR` can request one.** Same rule as everywhere else, and the
+default here is spending money — the workflow holds the key and write access to comment.
+
+**The re-review cursor narrows with the trigger.** It reads the caller's successful runs as a
+stand-in for "someone reviewed this commit", which is true only while the caller reviews every push.
+Left unscoped it would find a green run that reviewed nothing and decline in silence — the one
+direction a verifier must never fail in. It stays scoped to `synchronize` for consumers whose caller
+still runs on every push, rather than being deleted.
+
+**Reviews bill the Max subscription; the API key is the fallback, not a companion** — 2026-08-18.
+Chris's call, after the month's bill: $243.36 of prepaid credits, all of it rung 2, $123.91 of it
+one day of per-push reviews. `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) now feeds
+`claude-code-action`'s `claude_code_oauth_token` input on morpheus and evo.
+
+The money is the smaller half of the reason. **A prepaid balance fails as an outage; a
+subscription limit fails as a throttle.** The empty balance turned the verifier off for six days
+while every check stayed green — the exact shape `learned.md` warns about, bought as billing
+configuration. The same event on the subscription slows Chris's own sessions instead, which is a
+failure someone notices.
+
+**When both credentials exist, the token wins and the key is withheld** — not passed alongside.
+The action exports whatever it receives and Claude Code prefers an `ANTHROPIC_API_KEY` in its
+environment, so passing both would keep billing the credits silently, with nothing anywhere to say
+so. The key stays declared as a working fallback for consumers without a token; revoking it here
+is a separate decision, deliberately not taken as a side effect.
+
+**Review findings land inline on the diff; the tracking comment is the verdict** — 2026-08-18.
+Chris's call. A block of prose citing `file:line` makes the human do the join by hand; an inline
+comment sits on the code and threads its own reply. The tool was always allowed — the persona's
+"post a single review comment" is what routed everything into the block, so this is a prose change
+to the personas, one per repo.
+
+Two constraints keep the tracking comment load-bearing rather than vestigial: **delivery is proved
+only by the tracking comment** (inline comments are separate API objects the delivery check cannot
+see, so a review that is only inline comments reads as undelivered), and **the re-review gate reads
+file mentions from it** — hence the verdict's one-line-per-finding `file:line` summary. Findings on
+lines outside the diff also stay in the verdict, because the inline tool can only anchor inside the
+diff and a comment forced onto the nearest diff line reads as being about that line.
+
+**Reviews are acted on before merge; the content still gates nothing** — 2026-08-19. Chris's
+call. A review could be merged past unread, or merged mid-flight — Morpheus's `main` required
+*zero* status checks. The settled decision that rung 2 does not block is untouched by the fix,
+because what it forbids is the review's **verdict** gating the merge; what ships here gates the
+**process**: `agent-review / delivery` is a required check that fails on a requested-but-undelivered
+review (pending while one runs, skipped-and-satisfied when none was owed), and conversation
+resolution is required, so every inline finding must be visibly closed — reply where declining,
+resolve everywhere. The reviewer can insist on being read; it still cannot stop a merge by being
+wrong.
+
+**The waiver is the load-bearing half.** Requiring delivery without `review-waived: <reason>`
+would have turned the six-day credit outage into six days of blocked merges — a gate that fails on
+its own infrastructure trains the same bypass the content rule guards against. Same validation and
+same reporting as `skip-tests:`: merging unreviewed stays possible, and stops being silent.
+
+**Enforcement buys the act of disposition, not its quality.** An agent can resolve a thread
+without engaging, as a human can. The accepted seam: a push made during the previous commit's
+in-flight review carries its own skipped delivery check, so a merge inside that minutes-wide
+window can outrun the reviewer — closing it costs per-push reviews, which is the bill already
+declined.
 
 **Imagery is part of the canonical package, not optional styling.** `moodboards.md` preserves the
 references that survived selection, `imagery.json` identifies approved art and stable sources, and

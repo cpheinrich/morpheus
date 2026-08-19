@@ -377,7 +377,7 @@ export const TASKS = [
         group: "Product telemetry",
         title: "Transactional email sending",
         why: "Password resets and receipts are load-bearing long before marketing email is.",
-        how: "Resend or Postmark, with SPF and DKIM on the Cloudflare zone",
+        how: "Resend (canonical for customer email — §6), with SPF and DKIM on the Cloudflare zone",
         optional: true,
     },
 ];
