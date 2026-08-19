@@ -7,6 +7,7 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
 | [MO-26-08-19-00.30.22](./MO-26-08-19-00.30.22-firebase-ci-staging.md) | Reusable Firebase emulator CI and staging manifest fields | review | P1 | — | — | — |
+| [MO-26-08-19-00.39.34](./MO-26-08-19-00.39.34-add-consumer-auth.md) | Consumer-auth scaffold: morpheus web add-consumer-auth, and its runbook | review | P1 | — | #135 | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-01-047](./MO-26-08-01-047-inbox-status-one-front.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — | — |

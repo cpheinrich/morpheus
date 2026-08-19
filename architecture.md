@@ -2050,6 +2050,24 @@ The templates were extracted from Darwin — the waitlist from
 DW-002, whose sign-in Chris verified renders `chris@darwin.health · admin`. Same rule as the
 repository scaffold: the retrofit is the specification.
 
+#### `morpheus web add-consumer-auth` extends it with consumer accounts
+
+The same extraction rule, one project later: Evo shipped consumer accounts on this stack
+(darwin-health/evo#58, #62), two agent-review rounds found fifteen real security and correctness
+issues, and the scaffold carries all of it (cpheinrich/morpheus#135). Four layers: verbatim
+plumbing (edge cookie verification with the emulator's `alg:none` branch dead unless the emulator
+env var is present; the CSRF origin check; backslash-proof redirect validation; the oobCode
+rewrite; the revocation-checked writer; the Firestore REST store), codified policy (two Firebase
+projects with **staging as the default** — §13.2; mail-your-own action links, because Firebase
+refuses a custom action URL with `EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`; Firestore over REST, because
+google-gax rejects the federated credential; route-based profile provisioning, because Spark has
+no Functions; the readable hint cookie that keeps marketing pages static; scoped sign-out; the
+five-minute `auth_time` recency window with its same-account re-issue exception), starter surfaces
+the project owns afterwards, and **the three test suites as the contract** — unit, Firestore
+rules, and Playwright E2E, all emulator-backed, all secret-free, wired into CI through the
+reusable `firebase-tests.yml`. `--check` reports drift between a project's shared auth files and
+the current templates. The console half lives in `docs/runbooks/consumer-auth.md`.
+
 ## 13. Secrets and credentials
 
 Values never enter git. What enters git is a manifest declaring which secrets exist and where they
