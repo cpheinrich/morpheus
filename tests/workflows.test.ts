@@ -446,6 +446,37 @@ describe("agent-review.yml", () => {
     expect(prompt?.env?.MORPHEUS_BRANCH).toBe("${{ steps.pr.outputs.head_ref }}");
   });
 
+  /**
+   * Delivery is meant to be a *required* status check: it is what stops a merge
+   * outrunning the reviewer. That only works if the job actually fails on a
+   * non-delivery — the previous shape warned and exited 0, which as a required
+   * check is a gate that never closes. The waiver is the pressure valve that
+   * makes requiring it survivable when the reviewer itself is broken.
+   */
+  it("fails on a non-delivery, and honours a spoken waiver", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
+    };
+    const delivery = wf.jobs?.["delivery"]?.steps?.find(
+      (step) => step.name === "Verify the review was delivered",
+    );
+    const run = delivery?.run ?? "";
+
+    // The not-confirmed path must end the job in failure, not a warning.
+    expect(run).toContain("::error title=Agent review not delivered");
+    expect(run.trimEnd().endsWith("exit 1")).toBe(true);
+
+    // The waiver is read from the PR body at verification time, so editing the
+    // body and re-running the job is the recovery path.
+    expect(run).toContain('gh api "repos/$REPO/pulls/$PR_NUMBER" --jq \'.body // ""\'');
+    expect(run).toContain("--pr-body-file /tmp/pr-body.md");
+    // An unreadable body is no waiver — fail closed.
+    expect(run).toContain(': > /tmp/pr-body.md');
+    // Waived is reported as waived, never as confirmed.
+    expect(run).toContain("waived:*)");
+    expect(run).toContain("::warning title=Agent review waived");
+  });
+
   it("hands the resolved pull request number to the delivery check", async () => {
     const wf = (await read("agent-review.yml")) as {
       jobs?: Record<

@@ -47,6 +47,8 @@ export interface Finding {
  * the author has to state something a human can weigh.
  */
 export declare function waiverReason(body: string, key: string): string | null;
+/** Exported for every waiver consumer — `check pr` and `review delivery` must agree. */
+export declare function isRealReason(reason: string): boolean;
 /** Whether the PR body uses one of GitHub's same-repository closing keywords. */
 export declare function closesIssue(body: string, issue: number): boolean;
 export { roadmapIdFromBranch };

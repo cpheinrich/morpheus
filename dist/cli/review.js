@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { hasNoSubstantiveChange } from "../paths.js";
+import { isRealReason, waiverReason } from "../check/pr.js";
 import { addressesPriorFindings, pathsMentioned } from "../review/findings.js";
 import { assessReviewDelivery } from "../review/delivery.js";
 import { loadReviewContext, ReviewError } from "../review/context.js";
@@ -117,8 +118,18 @@ export function reviewNeeded(base, priorReviewPath, json = false) {
     }
     return 0;
 }
-/** Verify that a reviewer run delivered a new, substantive tracking comment. */
-export function reviewDelivery(beforeCommentId, commentId, bodyPath) {
+/**
+ * Verify that a reviewer run delivered a new, substantive tracking comment.
+ *
+ * A non-delivery can be waived from the PR body with `review-waived: <reason>`,
+ * because delivery is a *required* check downstream: without an escape hatch a
+ * broken reviewer blocks every merge, and the six-day credit outage is exactly
+ * that event. The same validation as `skip-tests:` applies — the reason has to
+ * say something a human can weigh, and the waiver is reported, never silent.
+ * A waiver never upgrades the outcome to "delivered": the caller can tell the
+ * two apart, and must, because one is evidence and the other is a say-so.
+ */
+export function reviewDelivery(beforeCommentId, commentId, bodyPath, prBodyPath) {
     let body;
     if (bodyPath) {
         try {
@@ -130,7 +141,32 @@ export function reviewDelivery(beforeCommentId, commentId, bodyPath) {
         }
     }
     const result = assessReviewDelivery({ beforeCommentId, commentId, body });
+    if (result.delivered) {
+        console.log(result.why);
+        return 0;
+    }
+    // An unreadable PR body is treated as carrying no waiver. Fail closed: a
+    // waiver that cannot be verified must not be honoured.
+    let prBody = "";
+    if (prBodyPath) {
+        try {
+            prBody = readFileSync(prBodyPath, "utf8");
+        }
+        catch {
+            prBody = "";
+        }
+    }
+    const reason = waiverReason(prBody, "review-waived");
+    if (reason !== null && isRealReason(reason)) {
+        console.log(`waived: "${reason}" — the review was not delivered (${result.why})`);
+        return 0;
+    }
+    if (reason !== null) {
+        console.log(`${result.why}; "review-waived: ${reason}" is refused — ` +
+            `say why merging without the review is right`);
+        return 1;
+    }
     console.log(result.why);
-    return result.delivered ? 0 : 1;
+    return 1;
 }
 //# sourceMappingURL=review.js.map

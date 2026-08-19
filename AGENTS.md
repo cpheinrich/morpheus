@@ -293,6 +293,22 @@ the same rung with the same persona; the difference is that a human decided it w
 rather than a trigger deciding on every push. **Do not push empty commits to provoke a review** —
 that was the behaviour the trigger change removed.
 
+**Act on the review before merging — the merge will refuse until you do.** Two required
+protections enforce this: `agent-review / delivery` fails while a requested review is undelivered
+(and stays pending while one is running, which is what makes `--auto` safe to set early), and
+conversation resolution blocks the merge while any inline finding's thread is open. The loop:
+
+1. Wait for the review to land. Delivery pending means it is still reading.
+2. Read every finding. Apply the ones you judge worthy.
+3. Where you decline one, **reply in its thread saying why** — a resolved thread with no answer
+   reads as agreement, and the reviewer's finding may be wrong in a way worth recording.
+4. Resolve every thread. Resolution is the read receipt, not a verdict.
+
+**Never merge with `--admin`** — it exists to bypass exactly these protections. If the reviewer
+itself is broken (it fails in seconds at $0), put `review-waived: <reason>` in the PR body and
+re-run the delivery job: the waiver passes the check and is reported on it, so merging unreviewed
+is always a statement, never a default.
+
 **`pm claim` reconciles the board first**, marking merged work shipped and recording its PR number,
 so those status changes ride along in the claim commit. Nothing else advances an item to `shipped`,
 and a board that lags reality stops being read — thirteen items had drifted before anyone noticed.

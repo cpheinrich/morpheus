@@ -1125,8 +1125,9 @@ nothing but pointers to them. What was missing was the vocabulary: with no word 
 checks the doer*, the rungs could not be reasoned about as a stack, and nobody noticed that rung 3
 had no input. `qa/` keeps holding artifacts; the stack is how they are read.
 
-**An unconfigured verifier must not report success.** Rung 2 needs a model credential, and where it
-is absent the step says so — a job summary plus a warning annotation — and exits without claiming to
+**An unconfigured verifier must not report success.** Rung 2 needs a model credential — a Claude
+subscription token (`claude_code_oauth_token`, preferred: its limit throttles where a prepaid
+balance dies silently) or an API key — and where both are absent the step says so — a job summary plus a warning annotation — and exits without claiming to
 have run. A verifier that reports green because it never executed is worse than no verifier, the
 same shape as *a check that skips what is absent will report an empty thing as correct* in
 `.agent/learned.md`.
@@ -1144,6 +1145,29 @@ spinner image or an unticked checklist outside quoted code rejects unfinished pr
 the model puts it, and action headers identify errors. Any missing evidence fails closed to a
 warning. Permission-denial counts are diagnostic only: healthy runs can contain denials, while a
 broken reporting path need not.
+
+**The review's content gates nothing; its process gates the merge.** Two branch-protection
+settings on every repo with the rung turn the advisory review into something that cannot be
+outrun or ignored, without ever letting it block on its own noise:
+
+- **`agent-review / delivery` is a required status check.** It fails when a requested, configured
+  review was not delivered, and because it depends on the review job, an in-progress review holds
+  it pending — so neither `--auto` nor a manual merge can land mid-review. Legitimate skips
+  (records-only pull requests, unconfigured repos, `synchronize` pushes) leave the job skipped,
+  which satisfies a required check. When the reviewer itself is broken, `review-waived: <reason>`
+  in the PR body passes the check and is reported as waived — the same contract as `skip-tests:`,
+  validated the same way, so merging unreviewed is possible but never silent. Rung 1's checks are
+  required alongside it; zero required checks is how `--auto` once merged a stale head.
+- **Conversation resolution is required.** Findings land inline, so each is a resolvable thread,
+  and the merge refuses while any is open. Resolving is the read receipt: the developing agent
+  applies what it judges worthy, replies where it declines, and resolves every thread. This
+  enforces the *act* of disposition, not its quality — the same limit human review has.
+
+One seam is accepted rather than engineered around: a push made while the previous commit's
+review is still running carries its own skipped delivery check, so a merge in that window can
+outrun the in-flight review. The window is minutes wide, requires the author to push and merge
+inside it, and closing it would mean re-running reviews on every push — the cost the trigger
+change exists to avoid.
 
 **The reviewer persona is a versioned file**, `.github/agent-review-prompt.md`, not a string inside
 YAML. It is the part that gets tuned most often and the part a human most wants to read, and a

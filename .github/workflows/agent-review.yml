@@ -472,6 +472,11 @@ jobs:
       # and can update it with an in-progress checklist before it reports. The
       # exact run URL identifies this action's comment; the final body then has
       # to carry both the action's finished marker and substantive review text.
+      # This job is meant to be a *required* status check. It proves process,
+      # not verdict: the review finished and reached the pull request, or the
+      # author waived it out loud. The review's content still gates nothing —
+      # rung 2 stays advisory — but a merge can no longer outrun the reviewer
+      # or ignore that it never spoke.
       - name: Verify the review was delivered
         id: delivery
         env:
@@ -485,6 +490,15 @@ jobs:
         run: |
           reason=""
           run_marker="/actions/runs/$GITHUB_RUN_ID)"
+
+          # The waiver is read from the PR body at verification time, so adding
+          # `review-waived: <reason>` and re-running this job is the recovery
+          # path when the reviewer itself is broken. An unreadable body is
+          # treated as carrying no waiver — a waiver that cannot be verified
+          # must not be honoured.
+          gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""' \
+            > /tmp/pr-body.md 2>/dev/null || : > /tmp/pr-body.md
+
           if ! gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
             --paginate --slurp > /tmp/final-review-comments.json; then
             reason="could not read the final tracking comment"
@@ -502,12 +516,27 @@ jobs:
             if reason=$(node .morpheus/dist/cli/index.js review delivery \
               --before-comment-id "$COMMENT_ID_BEFORE" \
               --comment-id "$comment_id" \
-              --body-file /tmp/final-review-comment.md); then
-              {
-                echo "## Agent review — delivery confirmed"
-                echo
-                echo "$reason."
-              } >> "$GITHUB_STEP_SUMMARY"
+              --body-file /tmp/final-review-comment.md \
+              --pr-body-file /tmp/pr-body.md); then
+              case "$reason" in
+                waived:*)
+                  # Reported, never swallowed — the same contract as skip-tests.
+                  {
+                    echo "## Agent review — delivery waived"
+                    echo
+                    echo "The review was not delivered, and the PR body waives it: $reason"
+                    echo "This is the author's say-so, not a clean review."
+                  } >> "$GITHUB_STEP_SUMMARY"
+                  echo "::warning title=Agent review waived::$reason"
+                  ;;
+                *)
+                  {
+                    echo "## Agent review — delivery confirmed"
+                    echo
+                    echo "$reason."
+                  } >> "$GITHUB_STEP_SUMMARY"
+                  ;;
+              esac
               exit 0
             fi
           fi
@@ -519,6 +548,9 @@ jobs:
             echo "Reason: $reason."
             echo "Action conclusion: ${ACTION_CONCLUSION:-unavailable}."
             echo
-            echo "This warning is infrastructure evidence, not a clean review."
+            echo "This job fails so the merge waits for the reviewer. If the reviewer"
+            echo "itself is broken, add \`review-waived: <reason>\` to the PR body and"
+            echo "re-run this job — the waiver is reported on the check, not swallowed."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::warning title=Agent review not delivered::$reason"
+          echo "::error title=Agent review not delivered::$reason"
+          exit 1

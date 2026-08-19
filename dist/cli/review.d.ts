@@ -33,5 +33,15 @@ export declare function needed(changedFiles: string[] | null, opts?: NeededOptio
  * is the one that decides whether looking again is worth it.
  */
 export declare function reviewNeeded(base: string, priorReviewPath?: string, json?: boolean): number;
-/** Verify that a reviewer run delivered a new, substantive tracking comment. */
-export declare function reviewDelivery(beforeCommentId?: string, commentId?: string, bodyPath?: string): number;
+/**
+ * Verify that a reviewer run delivered a new, substantive tracking comment.
+ *
+ * A non-delivery can be waived from the PR body with `review-waived: <reason>`,
+ * because delivery is a *required* check downstream: without an escape hatch a
+ * broken reviewer blocks every merge, and the six-day credit outage is exactly
+ * that event. The same validation as `skip-tests:` applies — the reason has to
+ * say something a human can weigh, and the waiver is reported, never silent.
+ * A waiver never upgrades the outcome to "delivered": the caller can tell the
+ * two apart, and must, because one is evidence and the other is a say-so.
+ */
+export declare function reviewDelivery(beforeCommentId?: string, commentId?: string, bodyPath?: string, prBodyPath?: string): number;
