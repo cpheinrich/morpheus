@@ -49,6 +49,14 @@ export interface Finding {
 export declare function waiverReason(body: string, key: string): string | null;
 /** Exported for every waiver consumer — `check pr` and `review delivery` must agree. */
 export declare function isRealReason(reason: string): boolean;
+/**
+ * The prose a reader actually sees — HTML comments and code spans removed.
+ *
+ * Waivers must be read from this, never from the raw body: a fenced or
+ * backticked `review-waived: <reason>` is documentation *about* the waiver,
+ * and matching it raw lets an example self-waive a required check.
+ */
+export declare function visibleProse(body: string): string;
 /** Whether the PR body uses one of GitHub's same-repository closing keywords. */
 export declare function closesIssue(body: string, issue: number): boolean;
 export { roadmapIdFromBranch };
