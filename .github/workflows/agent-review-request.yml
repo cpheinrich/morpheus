@@ -46,4 +46,5 @@ jobs:
       # that breaks the reviewer.
       morpheus-ref: ${{ github.sha }}
     secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

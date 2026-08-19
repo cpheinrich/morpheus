@@ -7,6 +7,7 @@ name: Agent review
 #     agent-review:
 #       uses: cpheinrich/morpheus/.github/workflows/agent-review.yml@main
 #       secrets:
+#         claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 #         anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 #
 # It does NOT block the merge. A model-graded gate that can fail on its own
@@ -50,8 +51,19 @@ on:
         type: string
         default: ""
     secrets:
+      claude_code_oauth_token:
+        description: >
+          A Claude subscription token from `claude setup-token`. Preferred over
+          the API key when both are present: reviews then bill the subscription,
+          whose limit throttles, instead of a prepaid balance, whose floor is an
+          outage — an empty balance turned this rung off for six days while
+          every check stayed green.
+        required: false
       anthropic_api_key:
-        description: Absent means the rung is unconfigured and reports itself as skipped.
+        description: >
+          Prepaid API credits — the fallback when no subscription token is set.
+          With neither secret the rung is unconfigured and reports itself as
+          skipped.
         required: false
 
 jobs:
@@ -69,10 +81,11 @@ jobs:
       pull-requests: write
     env:
       # The `secrets` context is not available in a step-level `if`, so the
-      # presence of the key is resolved once here into a plain string. Testing
-      # `secrets.*` directly in a conditional silently evaluates to false and
-      # the rung would skip even when configured.
-      HAS_KEY: ${{ secrets.anthropic_api_key != '' }}
+      # presence of a credential is resolved once here into a plain string.
+      # Testing `secrets.*` directly in a conditional silently evaluates to
+      # false and the rung would skip even when configured. Either credential
+      # configures the rung; which one is *used* is decided at the Review step.
+      HAS_KEY: ${{ secrets.anthropic_api_key != '' || secrets.claude_code_oauth_token != '' }}
     steps:
       - name: Record reviewer configuration
         id: configuration
@@ -367,8 +380,9 @@ jobs:
             echo "This check being green means the rung was skipped, not that the change"
             echo "passed it."
             echo
-            echo "To enable: add \`ANTHROPIC_API_KEY\` to the repository or organisation"
-            echo "secrets and pass it through as \`anthropic_api_key\`."
+            echo "To enable: add \`CLAUDE_CODE_OAUTH_TOKEN\` (from \`claude setup-token\`,"
+            echo "billing a Claude subscription) or \`ANTHROPIC_API_KEY\` (prepaid API"
+            echo "credits) to the repository secrets and pass it through."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::warning title=Agent review skipped::rung 2 is unconfigured — no reviewer ran"
 
@@ -385,7 +399,14 @@ jobs:
         uses: anthropics/claude-code-action@6b082c41935b4c8a3b8b0ef85ba4ba4d9eeb8975 # v1.0.189
         with:
           prompt: ${{ steps.prompt.outputs.text }}
-          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+          # The subscription token wins when both credentials exist, and the
+          # API key is *withheld* rather than passed alongside it. The action
+          # exports whatever it receives, and Claude Code prefers an
+          # `ANTHROPIC_API_KEY` in its environment — handed both, it would
+          # silently keep billing the prepaid credits this input exists to
+          # stop billing, with a green check and no diff to show for it.
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          anthropic_api_key: ${{ secrets.claude_code_oauth_token == '' && secrets.anthropic_api_key || '' }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
           # Supplying `prompt` puts the action in automation mode, which in v1
