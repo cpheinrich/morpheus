@@ -71,6 +71,17 @@ export function isRealReason(reason: string): boolean {
   return reason.length >= 4 && !NON_REASONS.has(reason.toLowerCase());
 }
 
+/**
+ * The prose a reader actually sees — HTML comments and code spans removed.
+ *
+ * Waivers must be read from this, never from the raw body: a fenced or
+ * backticked `review-waived: <reason>` is documentation *about* the waiver,
+ * and matching it raw lets an example self-waive a required check.
+ */
+export function visibleProse(body: string): string {
+  return stripCode(stripHtmlComments(body));
+}
+
 function stripHtmlComments(body: string): string {
   return body.replace(/<!--[\s\S]*?-->/g, "");
 }
@@ -89,7 +100,7 @@ export function closesIssue(body: string, issue: number): boolean {
   // The pull-request template carries an example inside an HTML comment.
   // GitHub does not treat hidden template guidance as closure intent, so the
   // verifier must not let that example satisfy the rule either.
-  const visible = stripCode(stripHtmlComments(body));
+  const visible = visibleProse(body);
   // `_` is a regex word character but also Markdown emphasis, so `\b` would
   // reject `_Resolves #70_`. Exclude letters and digits explicitly instead.
   return new RegExp(String.raw`(?:^|[^A-Za-z0-9])${keyword}\s+#${issue}(?!\d)`, "im").test(
@@ -209,6 +220,28 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
   // code: MO-003's whole outcome was "do not publish, use a git dependency",
   // recorded in decisions.md. Stating the reason is cheap; the default must be
   // refusal, since the cost of a wrong shipped is that nobody looks again.
+  // The third waiver, reported here for the same reason the other two are:
+  // it is honoured by `review delivery` (a required check downstream), and a
+  // waiver the conventions reader never sees is a waiver swallowed. Validity
+  // is checked here too, so a non-reason surfaces before the delivery job
+  // refuses it. Read from visible prose — a documented example must not waive.
+  const reviewReason = waiverReason(visibleProse(body), "review-waived");
+  if (reviewReason !== null && isRealReason(reviewReason)) {
+    findings.push({
+      level: "waived",
+      rule: "review-waived",
+      message: `agent review waived — "${reviewReason}"`,
+    });
+  } else if (reviewReason !== null) {
+    findings.push({
+      level: "error",
+      rule: "review-waived",
+      message:
+        `"review-waived: ${reviewReason}" is not a reason — the delivery check will refuse it. ` +
+        `Say why merging without the review is right.`,
+    });
+  }
+
   const recordsReason = waiverReason(body, "records-only");
   const recordsWaived = recordsReason !== null && isRealReason(recordsReason);
 

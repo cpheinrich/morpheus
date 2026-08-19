@@ -304,7 +304,19 @@ conversation resolution blocks the merge while any inline finding's thread is op
 2. Read every finding. Apply the ones you judge worthy.
 3. Where you decline one, **reply in its thread saying why** — a resolved thread with no answer
    reads as agreement, and the reviewer's finding may be wrong in a way worth recording.
-4. Resolve every thread. Resolution is the read receipt, not a verdict.
+4. Resolve every thread. Resolution is the read receipt, not a verdict. `gh` has no subcommand
+   for it — it is a GraphQL mutation, and burning turns rediscovering that is how an agent ends
+   up reaching for `--admin`:
+
+   ```sh
+   # List the PR's threads with their ids and state:
+   gh api graphql -f owner=OWNER -f repo=REPO -F pr=N -f query='
+     query($owner:String!,$repo:String!,$pr:Int!){ repository(owner:$owner,name:$repo){
+       pullRequest(number:$pr){ reviewThreads(first:50){ nodes{ id isResolved path line } } } } }'
+   # Resolve one:
+   gh api graphql -f id=THREAD_ID -f query='
+     mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }'
+   ```
 
 **Never merge with `--admin`** — it exists to bypass exactly these protections. If the reviewer
 itself is broken (it fails in seconds at $0), put `review-waived: <reason>` in the PR body and

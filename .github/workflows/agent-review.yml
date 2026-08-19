@@ -29,6 +29,17 @@ on:
           which moved cost and quality with no diff to show for it.
         type: string
         default: "claude-opus-5"
+      synchronize-reviews:
+        description: >
+          Review every push, not just the pull request becoming reviewable.
+          Off by default: the cost of a paid check is per push, and an agent
+          that iterates diligently is the worst case — $123.91 of one day's
+          $243.36 was a single branch pushed 55 times. The gate lives here
+          rather than in the caller because a caller-level skip leaves the
+          delivery check unreported, and an unreported required check blocks
+          the merge forever, where a job-level skip is reported and satisfied.
+        type: boolean
+        default: false
       pr-number:
         description: >
           The pull request to review, for a caller triggered by something that
@@ -302,6 +313,8 @@ jobs:
           BASE: ${{ steps.since.outputs.base }}
           REQUESTED: ${{ steps.pr.outputs.requested }}
           PR_OPEN: ${{ steps.pr.outputs.open }}
+          EVENT_ACTION: ${{ github.event.action }}
+          SYNCHRONIZE_REVIEWS: ${{ inputs.synchronize-reviews }}
         run: |
           # A closed pull request cannot act on a review, so reviewing one
           # spends a dollar posting into a thread nobody will open again.
@@ -318,6 +331,16 @@ jobs:
           if [ "$REQUESTED" = "true" ]; then
             echo "review=true" >> "$GITHUB_OUTPUT"
             echo "why=a review was requested on the pull request" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Reviews run once, when the pull request becomes reviewable. This
+          # skip lives here — not in the caller's `if:` — so the delivery job
+          # downstream is *reported* as skipped rather than never created: a
+          # required check that is never reported blocks the merge forever.
+          if [ "$EVENT_ACTION" = "synchronize" ] && [ "$SYNCHRONIZE_REVIEWS" != "true" ]; then
+            echo "review=false" >> "$GITHUB_OUTPUT"
+            echo "why=reviews run once on open — ask with @claude for another" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 

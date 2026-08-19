@@ -51,9 +51,33 @@ skipped delivery check, so a merge inside that minutes-wide window can outrun th
 Closing it means reviewing every push — the bill already declined. Named in architecture §9
 rather than hidden.
 
+## Rung 2 caught the design's fatal flaw before the settings did
+
+The first shape of this change kept `ci.yml`'s caller-level `if:` and required
+`agent-review / delivery`. The reviewer's inline finding: **a caller-level skip leaves the nested
+delivery check *unreported*, not skipped** — and an unreported required check blocks the merge
+forever. The evidence was already in this session's own transcript: the fix-push to #134 showed a
+single check named `agent-review` (the skipped caller), with no `agent-review / delivery` row at
+all. Had the settings been applied against that shape, the first `synchronize` push would have
+frozen its PR with no recovery path.
+
+The fix moves the once-per-PR decision inside the reusable workflow: the caller always runs, a new
+`synchronize-reviews` input (default false) short-circuits the gate before any money is spent, and
+the delivery job's *job-level* skip is reported as skipped — which satisfies a required check. The
+economics are unchanged; the check is now always reported. Per-push reviews remain one input away
+for any consumer that wants them.
+
+Second finding, same review: `waiverReason` read the raw PR body, so a fenced or backticked
+`review-waived:` example would have waived the required check it documents. `closesIssue` already
+strips comments and code for exactly this reason — that composition is now exported as
+`visibleProse` and both the delivery waiver and `check pr`'s new review-waived reporting read
+through it. The sibling looseness — `skip-tests:` and `records-only:` still read raw — is
+pre-existing, milder (it self-waives conventions, not a required check), and deliberately not
+changed here.
+
 ## Verification
 
-Typecheck, 888 tests (7 new: five waiver behaviours on `reviewDelivery`, two workflow guards).
+Typecheck, 937 tests (13 new: five waiver behaviours on `reviewDelivery`, two workflow guards).
 The workflow guard was verified by breaking its subject — restoring the delivery step's
 final `exit 1` to a warning fails `fails on a non-delivery, and honours a spoken waiver`.
 

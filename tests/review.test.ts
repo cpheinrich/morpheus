@@ -626,6 +626,20 @@ describe("review delivery waiver", () => {
     expect(code).toBe(1);
   });
 
+  it("ignores a waiver that only exists inside a code fence", async () => {
+    const code = await run(
+      UNDELIVERED_BODY,
+      "If the reviewer is broken:\n\n```\nreview-waived: the reviewer is down\n```\n",
+    );
+    expect(code).toBe(1);
+    expect(logged.join("\n")).not.toContain("waived:");
+  });
+
+  it("ignores a backticked mention of the waiver", async () => {
+    const code = await run(UNDELIVERED_BODY, "add `review-waived: some reason` to the body");
+    expect(code).toBe(1);
+  });
+
   it("never lets a waiver relabel an actual delivery", async () => {
     const code = await run(DELIVERED_BODY, "review-waived: should be ignored entirely");
     expect(code).toBe(0);
