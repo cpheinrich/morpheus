@@ -65,10 +65,10 @@ the configuration it is.
 ## 5. Transactional mail
 
 The scaffolded mail path sits behind one `deliver()` seam and ships with a Resend
-implementation, because that is what Evo built and verified end to end. **Note the standing
-canon:** §6 names Cloudflare Email Sending as the canonical transactional provider, so treat
-Resend here as the extracted-and-working implementation, record it as a `deviations` entry if you
-keep it, and know that swapping providers is one new `deliver()` and no other change.
+implementation — which is the canonical choice, not a deviation: **§6 names Resend for anything
+a customer receives** (auth mail is exactly that), with Cloudflare Email Sending canonical only
+for admin and internal mail. Swapping providers remains one new `deliver()` and no other change,
+and a project that departs from the row records a `deviations` entry.
 
 For Resend specifically:
 
