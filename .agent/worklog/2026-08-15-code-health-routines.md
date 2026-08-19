@@ -56,3 +56,46 @@ smuggled in as an obvious next step.
 
 Writing implementation before those are answered would have encoded guesses about all three — the
 same mistake `morpheus init` avoided by being built after two retrofits rather than before.
+
+## Proposal V2 — a periodic technical-health audit
+
+The proposal above is **Proposal V1** and remains intact as the record of the first framing. This
+V2 refines it after live discussion: V1 over-focused on narrow routines and pull-request throughput.
+The primary concept is instead a periodic, codebase-wide technical-health audit — closer to a
+virtual CTO review than to a fleet of daily cleanup bots.
+
+Begin **monthly**. The first two or three audits are **report-only**, so usefulness can be calibrated
+against what a human actually finds worth acting on before the audit earns permission to change
+anything. The cadence creates a deliberate **audit day** rather than a background stream of small
+interruptions.
+
+Each audit should produce one review package:
+
+- an executive summary of the codebase's technical health
+- ranked findings, each with evidence, confidence, impact, and a concrete next action
+- optionally, a bounded and linked batch of focused pull requests, but only where the changes are
+  coherent, high-confidence, low-blast-radius, and reversible
+
+An audit is successful when it improves understanding and prioritisation. It is **not required to
+create code or pull requests**.
+
+The audit may examine dead code and assets, unused dependencies, obsolete files and configuration,
+a duplicate-code inventory, test and CI hygiene, and structural or convention drift. Duplicate-code
+work should usually remain report-only at first: identifying similarity is much easier than knowing
+whether two paths ought to share one abstraction.
+
+The initial action boundary is deliberately narrow. Architecture redesign, broad performance work,
+dependency upgrades, security-policy changes, and judgment-heavy consolidations become
+recommendations, not automatic modifications. Urgent security or production-risk findings do not
+wait for audit day; continuous guardrails should surface them immediately, outside the monthly
+cadence.
+
+Long term, the durable architecture is a **repository-owned, provider-neutral audit contract** plus
+a reusable GitHub Action that supplies scheduling, evidence, and artifacts. **Codex is the
+recommended initial executor**, but the provider is an implementation detail rather than part of
+the contract.
+
+This remains a proposal only. At this stage it adds no workflow, scheduler, CLI command,
+credentials, automatic pull-request creation, or other enabled automation. Those are later
+implementation decisions, after the report-only audits have established that the review package is
+useful.
