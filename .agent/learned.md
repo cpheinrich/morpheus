@@ -432,3 +432,28 @@ The general shape, and the reason this is here rather than in a worklog: **when 
 something failed but not why, the fastest route is usually to ask the failing dependency yourself
 rather than to coax the tool into confessing.** Two sessions of inference lost to a check that a
 one-file workflow settled.
+
+## A stale ref does not report as staleness; it reports as a full queue
+
+2026-08-19, found downstream. `heartbeat` counted five merged-but-undeleted claim branches toward
+the dispatch ceiling, reported **8/3 in flight**, and picked nothing for a week. Three items were
+actually underway.
+
+The reason it survived a week is the interesting part. Every surface that could have shown it
+showed something else instead:
+
+- `pm claims` listed the stale entries, which reads as untidiness.
+- `pm ship` printed the exact `git push origin --delete` lines every run, which reads as a chore.
+- `heartbeat` said *"finishing beats starting"*, which is **indistinguishable from the healthy
+  case** where three real items are in progress.
+
+So the diagnosis required connecting a cosmetic-looking list to a behavioural symptom nobody
+attributed to it. **When a guard's output on the failure looks like its output on success, the guard
+is not reporting — it is agreeing.** Sibling of *a verifier that runs but cannot report looks
+exactly like one that found nothing*, one layer out: there the check was mute, here it was fluent
+and wrong.
+
+The upstream cause is not Morpheus at all: a squash-merge leaves the branch unless the merger passes
+`--delete-branch` or the repo sets `delete_branch_on_merge`. Worth remembering that **a defect can
+be genuinely someone else's and still be yours to make harmless**, because Morpheus is where the
+consequence is felt.

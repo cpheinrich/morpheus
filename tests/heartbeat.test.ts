@@ -199,6 +199,37 @@ describe("the ceiling", () => {
     expect(beat.pick?.id).toBe("MO-009");
   });
 
+  // A squash-merge leaves the branch behind unless the merger passed
+  // --delete-branch or the repo sets delete_branch_on_merge, so a finished item
+  // keeps a ref that still parses as a claim. Counting it fills the ceiling with
+  // work that is already on the trunk, and the beat reports the resulting
+  // paralysis as "finishing beats starting".
+  it("does not count a shipped or dropped item's surviving branch against the ceiling", () => {
+    const beat = assess(
+      input({
+        items: [
+          item({ id: "MO-001", status: "shipped" }),
+          item({ id: "MO-002", status: "shipped" }),
+          item({ id: "MO-003", status: "dropped" }),
+          item({ id: "MO-009" }),
+        ],
+        claims: [claim("MO-001"), claim("MO-002"), claim("MO-003")],
+      }),
+    );
+    expect(beat.inFlight).toHaveLength(0);
+    expect(beat.pick?.id).toBe("MO-009");
+  });
+
+  it("still counts a genuinely in-progress claim beside a shipped one", () => {
+    const beat = assess(
+      input({
+        items: [item({ id: "MO-001", status: "shipped" }), item({ id: "MO-009" })],
+        claims: [claim("MO-001"), claim("MO-002")],
+      }),
+    );
+    expect(beat.inFlight.map((c) => c.id)).toEqual(["MO-002"]);
+  });
+
   it("counts unblocked claims and ignores blocked ones in the same set", () => {
     const beat = assess(
       input({

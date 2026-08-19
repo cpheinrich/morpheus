@@ -155,15 +155,20 @@ function compare(a: Candidate, b: Candidate): number {
  * - **Blocked work is re-surfaced, not re-raised.** `pm block` already filed an
  *   inbox item; a cron that duplicates it teaches people to ignore the inbox.
  */
+/**
+ * Statuses whose claim does not occupy a dispatch lane.
+ *
+ * `blocked` because the work is waiting on a person; `shipped` and `dropped`
+ * because it is over. All three can still have a branch on origin, and only the
+ * ceiling should ignore them.
+ */
+const SETTLED_FOR_DISPATCH = new Set(["blocked", "shipped", "dropped"]);
+
 export function assess(input: AssessInput): Beat {
   const { items, goals, claims, config, now } = input;
 
   const byId = new Map(items.map((i) => [i.data.id, i.data]));
   const goalStatus = new Map(goals.map((g) => [g.data.id, g.data.status]));
-
-  const blockedIds = new Set(
-    items.filter((i) => i.data.status === "blocked").map((i) => i.data.id),
-  );
 
   const blocked: BlockedItem[] = items
     .filter((i) => i.data.status === "blocked")
@@ -177,7 +182,28 @@ export function assess(input: AssessInput): Beat {
     }))
     .sort((a, b) => b.age - a.age);
 
-  const inFlight = claims.filter((c) => !blockedIds.has(c.id));
+  // A claim only holds a lane while its work is still moving. Blocked was
+  // already excluded — the work is stalled on a person, not occupying an agent.
+  // Shipped and dropped are the same argument one step further on: the branch
+  // survives a squash-merge unless the merger passed `--delete-branch` or the
+  // repository sets `delete_branch_on_merge`, and a branch left behind that way
+  // describes finished work.
+  //
+  // Leaving them in is not a cosmetic overcount. It consumes the dispatch
+  // ceiling, so the beat stops offering work on the strength of branches whose
+  // commits are already on the trunk — and it reports that as "finishing beats
+  // starting", which reads as deliberate. A downstream project sat at 8/3 with
+  // three real claims for a week before anyone attributed it to a branch.
+  //
+  // `claimedIds` deliberately still counts them, because `pm claim` really is
+  // blocked by the surviving ref: the drift and candidate lists should keep
+  // saying so. What changes is only whether a finished item occupies a lane.
+  const settledIds = new Set(
+    items
+      .filter((i) => SETTLED_FOR_DISPATCH.has(i.data.status))
+      .map((i) => i.data.id),
+  );
+  const inFlight = claims.filter((c) => !settledIds.has(c.id));
   const claimedIds = new Set(claims.map((c) => c.id));
 
   // A status of in-progress with no branch behind it is drift, not work. Report
