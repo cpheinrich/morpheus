@@ -207,6 +207,7 @@ canonical and lives in this document. Only *deviations* are recorded.
   "kind": "company",                 // company | personal | internal (§3)
   "org": "darwin-health",            // groups sibling repos (§17); omit for personal/internal
   "domain": "evo.med",
+  "stagingDomain": "staging.evo.med", // only with a staging Firebase project (§13.2)
   "description": "One-sentence description.",
   "surfaces": { "web": true, "ios": true, "backend": false, "hardware": false },
   "integrations": ["firebase", "stripe", "posthog", "github", "slack", "openseo"],
@@ -2121,6 +2122,16 @@ have separate user bases and therefore separate Auth pools and Firestore databas
 be separate GCP projects. This falls out of how Firebase is built rather than being a design
 choice.
 
+**An app with consumer accounts gets a second Firebase project for staging** — `cph-evo` and
+`cph-evo-staging` — because the alternative to a staging user pool is testing sign-up against real
+users. The pair is recorded in the manifest as `accounts.gcpProjectStaging` /
+`accounts.firebaseStaging`, with the staging origin in `stagingDomain`. **Staging is the default
+and production is the exception**: only a Vercel *Production* build resolves to the production
+project — previews, local dev, and any unrecognised environment name all land on staging with
+nothing to configure. Defaulting the other way round means the day someone forgets, test rows land
+in the real database, which is exactly what the second project exists to prevent. (Evo shipped
+this with consumer accounts; cpheinrich/morpheus#135 tracks lifting the rest.)
+
 Grouping happens at the **billing account**, not the project: `darwin` and `evo` roll up to the
 Darwin billing account while personal projects roll up to a personal one.
 
@@ -2452,6 +2463,12 @@ and a broken workflow is noticed and fixed in minutes.
 
 Planned: `web-ci`, `ios-ci`, `deploy`, `pr-check`, `agent-triage`, `agent-analytics-review`,
 `release-kit`.
+
+`firebase-tests` is the one workflow a project opts into rather than getting by default: it runs
+the emulator-backed suites (unit, Firestore rules, Playwright E2E) against the Firebase Emulator
+Suite, needs no secrets — so it passes on fork pull requests — and is deliberately not folded into
+`web-ci`, because most projects have no Firebase and would pay for a JRE, a 100 MB emulator jar and
+a boot to run nothing.
 
 > **Gotcha.** Cross-repo workflow access is not on by default. In Morpheus's **Settings → Actions →
 > Access**, the policy must allow access from your other repositories, or calling repos fail with a
