@@ -44,29 +44,53 @@ export const AuthorizedDomain = z.string().trim().min(1).refine((value) => {
         return false;
     }
 }, "authorizedDomains entries must be hostnames without a scheme, port, or path");
+/**
+ * An HTTP(S) hostname or origin with no path, query, or fragment.
+ *
+ * One definition for `publicDomain` and `stagingDomain`: the two fields must
+ * agree on what an origin is, and two hand-rolled refinements would drift the
+ * first time one of them is fixed.
+ */
+const httpOrigin = (field) => z.string().min(1).refine((value) => {
+    try {
+        const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+        return (url.protocol === "https:" || url.protocol === "http:")
+            && url.pathname === "/"
+            && !url.search
+            && !url.hash;
+    }
+    catch {
+        return false;
+    }
+}, `${field} must be an HTTP(S) hostname or origin, not a path`);
 export const ProjectManifest = z.object({
     name: z.string(),
     /** 2-4 uppercase letters; namespaces every id in this repo. */
     prefix: z.string().regex(/^[A-Z]{2,4}$/).optional(),
     displayName: z.string().optional(),
     /** Canonical production hostname/origin, used by OAuth and public-service setup. */
-    publicDomain: z.string().min(1).refine((value) => {
-        try {
-            const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
-            return (url.protocol === "https:" || url.protocol === "http:")
-                && url.pathname === "/"
-                && !url.search
-                && !url.hash;
-        }
-        catch {
-            return false;
-        }
-    }, "publicDomain must be an HTTP(S) hostname or origin, not a path").optional(),
+    publicDomain: httpOrigin("publicDomain").optional(),
+    /**
+     * The staging origin, when the project runs a two-Firebase-project setup
+     * (§13.2): the same build served from the same Vercel project — typically a
+     * custom domain on the Preview environment — resolving to the staging
+     * Firebase project. Recorded here so tooling reads the durable manifest
+     * rather than inferring an origin from a deployment that may not exist yet.
+     */
+    stagingDomain: httpOrigin("stagingDomain").optional(),
     /** User-visible support identity deployed to services such as the Google OAuth brand. */
     supportEmail: SupportEmail.optional(),
     /** Additional intentional Firebase Auth hosts beyond generated and public domains. */
     authorizedDomains: z.array(AuthorizedDomain).default([]),
     hq: HqConfig,
+    /**
+     * Which identity the project operates as, per service — `gcloud`,
+     * `gcpProject`, `firebase`, `vercel`, `github`. A consumer app with a
+     * staging Firebase project adds `gcpProjectStaging` / `firebaseStaging` for
+     * the second pair; a free-form record because the set of services grows, but
+     * those key names are the convention staging-aware tooling reads
+     * (cpheinrich/morpheus#135).
+     */
     accounts: z.record(z.string(), z.string()).optional(),
 });
 /**

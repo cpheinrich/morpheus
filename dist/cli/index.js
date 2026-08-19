@@ -13,7 +13,7 @@ import * as registry from "./registry.js";
 import { run as doctorRun } from "./doctor.js";
 import { mark as initMark, status as initStatus } from "./onboarding.js";
 import { init as initScaffold } from "./init.js";
-import { webInit, webStatus } from "./web.js";
+import { webAddConsumerAuth, webInit, webStatus } from "./web.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
 import { prompt as reviewPrompt, reviewDelivery, reviewNeeded } from "./review.js";
@@ -64,6 +64,12 @@ Usage
                             provision the cloud resources, then scaffold the site:
                             a Next.js app, waitlist email capture, and /hq behind
                             Google sign-in. Never overwrites an existing file.
+  morpheus web add-consumer-auth  [--staging-project <id>] [--account <google-email>]
+                            [--no-provision] [--check]
+                            consumer accounts on the two-project stack contract:
+                            auth plumbing, policy routes, starter pages, and the
+                            three emulator-backed test suites. --check reports
+                            drift against the current templates and writes nothing.
   morpheus web status       what the web surface has, and what it is missing
   morpheus access sync      [--project <firebase-project>] [--dry-run]
   morpheus firebase auth setup [--project <firebase-project>] [--domain <public-origin>]
@@ -175,6 +181,9 @@ function parseArgs(argv) {
                 break;
             case "--no-browser":
                 flags.openBrowser = false;
+                break;
+            case "--staging-project":
+                flags.stagingProject = argv[++i];
                 break;
             case "--account":
                 flags.account = argv[++i];
@@ -386,6 +395,23 @@ async function main() {
                 waitlist: flags.waitlist,
                 hq: flags.hq,
                 openBrowser: flags.openBrowser,
+            });
+        }
+        if (command === "add-consumer-auth") {
+            // Same split as `web init`: only the provisioning half — creating the
+            // staging GCP project — is gated on a fresh context receipt. `--check`
+            // provisions nothing and reads only the repository.
+            if (flags.provision && !flags.check) {
+                const { refused } = await guard(process.cwd(), "web init", GATED["web init"], flags.offline);
+                if (refused !== null)
+                    return refused;
+            }
+            return webAddConsumerAuth({
+                root: process.cwd(),
+                stagingProject: flags.stagingProject,
+                account: flags.account,
+                provision: flags.provision,
+                check: flags.check,
             });
         }
         console.error(`Unknown web command "${command}".\n\n${HELP}`);

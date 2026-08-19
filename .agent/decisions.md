@@ -451,7 +451,9 @@ Cloudflare Workers with no `deviations` entry, and neither it, `cpheinrich.com`,
 `domain`. A deviation nobody recorded is indistinguishable from the canonical choice, which is how
 a stale premise survives three inbox cycles.
 
-**Cloudflare Email Sending is the canonical transactional email service** — 2026-08-01. Chris's
+**Cloudflare Email Sending is the canonical transactional email service** — 2026-08-01.
+*Superseded 2026-08-19 for customer-facing mail — see the audience-split entry below. Still
+canonical for admin and internal mail.* Chris's
 call, made while moving `cpheinrich.com` off Cloudflare Pages onto Vercel. Cloudflare is already
 load-bearing and permanent: registrar and DNS for every domain — including the two that host on
 Vercel — plus R2 for public media. Email Sending is a service inside a vendor already in the
@@ -463,6 +465,16 @@ The §6 row `Email, accounts | Google Workspace` was about human mailboxes and s
 application email, which is exactly how a project ends up choosing a provider per-project rather
 than reading one off the spec. Both rows now say which they are. Reach for another provider only
 when Cloudflare cannot do the job, and record it as a `deviations` entry.
+
+**Resend is canonical for customer email; Cloudflare Email Sending for admin mail only** —
+2026-08-19. Chris's call, resolving the inbox item the consumer-auth extraction raised. The
+2026-08-01 decision predated any field evidence; Evo's launch supplied it — Resend verified
+`evo.med` in 52 minutes and delivered auth mail to Gmail inboxes (not spam) from a domain with no
+sending history, and the scaffold's tested `deliver()` semantics were built against it. Customer
+mail is deliverability-critical, so the field-proven vendor wins that audience; admin and
+internal mail has no sender-reputation stakes, so the already-in-the-stack vendor keeps it. The
+split is by *audience*, sharper than the options the inbox item offered: not "which vendor for
+transactional mail" but "who is the recipient".
 
 **Inbox items propose options, not open questions** — 2026-08-01. Chris's idea. An open `❗`
 item that is a decision carries three concrete options plus `Other`, one recommended and first, so

@@ -207,6 +207,7 @@ canonical and lives in this document. Only *deviations* are recorded.
   "kind": "company",                 // company | personal | internal (§3)
   "org": "darwin-health",            // groups sibling repos (§17); omit for personal/internal
   "domain": "evo.med",
+  "stagingDomain": "staging.evo.med", // only with a staging Firebase project (§13.2)
   "description": "One-sentence description.",
   "surfaces": { "web": true, "ios": true, "backend": false, "hardware": false },
   "integrations": ["firebase", "stripe", "posthog", "github", "slack", "openseo"],
@@ -283,9 +284,10 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | Email, accounts | **Google Workspace** | Human mailboxes — not application email |
 | Code hosting, CI, packages | **GitHub** | Substrate for everything else |
 | Messaging | **Slack** | Agent notification target |
-| DNS, CDN, public media | **Cloudflare** | CDN, R2 (§14.3), transactional email — and DNS for every domain, see §6.1 |
+| DNS, CDN, public media | **Cloudflare** | CDN, R2 (§14.3), admin email — and DNS for every domain, see §6.1 |
 | Domain registration | **Porkbun**, or **Cloudflare** where it carries the TLD | §6.1 |
-| Transactional email | **Cloudflare Email Sending** | Already in the stack — see below |
+| Customer email | **Resend** | Anything a customer receives — auth mail, receipts, product email. See below |
+| Admin & internal email | **Cloudflare Email Sending** | Operator and agent notifications — see below |
 | SEO research | **OpenSEO** | Data moat — see §6.2 |
 | ASO research | **Appeeky** | App Store data moat, plus ASC/ASA writes — see §6.2 |
 | Agents | **Claude + Codex** | |
@@ -294,19 +296,28 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | Product analytics | **PostHog Cloud** | §10.3 |
 | Hardware | **Macs** | |
 
-**Transactional email is Cloudflare's, not a new vendor's.** Cloudflare is already load-bearing
-and is not going away: it is the DNS for every domain (§6.1) — including `darwin.health` and
-`evo.med`, which *host* on Vercel — and it holds R2 for public media. Email Sending is a
-service inside a vendor already in the stack, reachable as an ordinary bearer-token REST endpoint
-from any runtime, so it does not tie a project to Cloudflare hosting.
+**Application email splits by audience, not by vendor loyalty.**
 
-Resend or Postmark would be a net-new dependency, a second account, and another credential to
-rotate, to replace something that works. Reach for one only when Cloudflare cannot do the job —
-and record that as a `deviations` entry (§4) when it happens.
+**Anything a customer receives is Resend's** — verification links, password resets, receipts,
+product email. Customer mail is deliverability-critical: the first message a new domain sends is
+a password-reset-shaped email to a stranger's Gmail, and whether it lands in the inbox is the
+whole feature. Resend earned the row on Evo's launch day — domain verified in under an hour,
+auth mail delivered to the inbox (not spam) from a domain that had never sent email, and the
+`deliver()` semantics the consumer-auth scaffold's tests now pin were field-tested the same day.
+That evidence is worth more than vendor consolidation for the mail that customers judge.
 
-Note the distinction the table now makes: **Google Workspace is human mailboxes, Cloudflare is
-application email.** Conflating them is how `cpheinrich.com` came to pick a provider per-project
-instead of reading one off the spec.
+**Anything an operator or agent receives stays Cloudflare's.** Email Sending is a service inside
+a vendor already load-bearing for every domain's DNS (§6.1) and R2 media, reachable as a plain
+bearer-token REST endpoint. Internal notifications have no sender-reputation stakes — the
+recipients are your own mailboxes — so the already-in-the-stack vendor wins by default there.
+
+Both are one seam in the scaffold (`deliver()` in `lib/email/send.ts`), so neither choice ties a
+project's code to a provider. A project that departs from either row records a `deviations`
+entry (§4).
+
+Note the distinction the table makes: **Google Workspace is human mailboxes; Resend and
+Cloudflare are application email.** Conflating them is how `cpheinrich.com` came to pick a
+provider per-project instead of reading one off the spec.
 
 ### 6.1 Domains: DNS and registration are separate decisions
 
@@ -2073,6 +2084,24 @@ The templates were extracted from Darwin — the waitlist from
 DW-002, whose sign-in Chris verified renders `chris@darwin.health · admin`. Same rule as the
 repository scaffold: the retrofit is the specification.
 
+#### `morpheus web add-consumer-auth` extends it with consumer accounts
+
+The same extraction rule, one project later: Evo shipped consumer accounts on this stack
+(darwin-health/evo#58, #62), two agent-review rounds found fifteen real security and correctness
+issues, and the scaffold carries all of it (cpheinrich/morpheus#135). Four layers: verbatim
+plumbing (edge cookie verification with the emulator's `alg:none` branch dead unless the emulator
+env var is present; the CSRF origin check; backslash-proof redirect validation; the oobCode
+rewrite; the revocation-checked writer; the Firestore REST store), codified policy (two Firebase
+projects with **staging as the default** — §13.2; mail-your-own action links, because Firebase
+refuses a custom action URL with `EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`; Firestore over REST, because
+google-gax rejects the federated credential; route-based profile provisioning, because Spark has
+no Functions; the readable hint cookie that keeps marketing pages static; scoped sign-out; the
+five-minute `auth_time` recency window with its same-account re-issue exception), starter surfaces
+the project owns afterwards, and **the three test suites as the contract** — unit, Firestore
+rules, and Playwright E2E, all emulator-backed, all secret-free, wired into CI through the
+reusable `firebase-tests.yml`. `--check` reports drift between a project's shared auth files and
+the current templates. The console half lives in `docs/runbooks/consumer-auth.md`.
+
 ## 13. Secrets and credentials
 
 Values never enter git. What enters git is a manifest declaring which secrets exist and where they
@@ -2144,6 +2173,16 @@ secret fails before deploy rather than at runtime.
 have separate user bases and therefore separate Auth pools and Firestore databases — so they must
 be separate GCP projects. This falls out of how Firebase is built rather than being a design
 choice.
+
+**An app with consumer accounts gets a second Firebase project for staging** — `cph-evo` and
+`cph-evo-staging` — because the alternative to a staging user pool is testing sign-up against real
+users. The pair is recorded in the manifest as `accounts.gcpProjectStaging` /
+`accounts.firebaseStaging`, with the staging origin in `stagingDomain`. **Staging is the default
+and production is the exception**: only a Vercel *Production* build resolves to the production
+project — previews, local dev, and any unrecognised environment name all land on staging with
+nothing to configure. Defaulting the other way round means the day someone forgets, test rows land
+in the real database, which is exactly what the second project exists to prevent. (Evo shipped
+this with consumer accounts; cpheinrich/morpheus#135 tracks lifting the rest.)
 
 Grouping happens at the **billing account**, not the project: `darwin` and `evo` roll up to the
 Darwin billing account while personal projects roll up to a personal one.
@@ -2476,6 +2515,12 @@ and a broken workflow is noticed and fixed in minutes.
 
 Planned: `web-ci`, `ios-ci`, `deploy`, `pr-check`, `agent-triage`, `agent-analytics-review`,
 `release-kit`.
+
+`firebase-tests` is the one workflow a project opts into rather than getting by default: it runs
+the emulator-backed suites (unit, Firestore rules, Playwright E2E) against the Firebase Emulator
+Suite, needs no secrets — so it passes on fork pull requests — and is deliberately not folded into
+`web-ci`, because most projects have no Firebase and would pay for a JRE, a 100 MB emulator jar and
+a boot to run nothing.
 
 > **Gotcha.** Cross-repo workflow access is not on by default. In Morpheus's **Settings → Actions →
 > Access**, the policy must allow access from your other repositories, or calling repos fail with a

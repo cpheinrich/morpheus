@@ -864,3 +864,127 @@ describe("the review gate fails open", () => {
     expect(raw).toContain("\\[[ x]\\]");
   });
 });
+
+describe("firebase-tests.yml", () => {
+  type FirebaseTests = {
+    on?: {
+      workflow_call?: {
+        inputs?: Record<string, { type?: string; default?: unknown }>;
+        secrets?: Record<string, unknown>;
+      };
+    };
+    jobs?: Record<string, { steps?: Array<Record<string, unknown>> }>;
+  };
+
+  it("is reusable, so a project can call it", async () => {
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    expect(wf.on).toHaveProperty("workflow_call");
+  });
+
+  it("declares no secrets, so it passes on a fork pull request", async () => {
+    // The emulators authenticate nobody; the moment this workflow needs a
+    // secret it silently stops running the suites external contributors need
+    // most.
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    expect(wf.on?.workflow_call?.secrets).toBeUndefined();
+  });
+
+  it("pins a JDK the emulators support, rather than trusting the runner image", async () => {
+    // firebase-tools 15 refuses a JDK older than 21, and ubuntu-latest's
+    // preinstalled JRE is older than that — a failure that only appears in CI,
+    // because a developer machine with a current JDK passes locally.
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    expect(wf.on?.workflow_call?.inputs?.["java-version"]?.default).toBe("21");
+    const raw = await readFile(join(DIR, "firebase-tests.yml"), "utf8");
+    expect(raw).toContain("actions/setup-java@v4");
+  });
+
+  it("pins firebase-tools to a major", async () => {
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    expect(wf.on?.workflow_call?.inputs?.["firebase-tools-version"]?.default).toBe("15");
+  });
+
+  it("leaves pnpm-version empty so packageManager decides", async () => {
+    // Setting both makes pnpm/action-setup fail with "Multiple versions of
+    // pnpm specified" — found by the repo following the stricter practice.
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    expect(wf.on?.workflow_call?.inputs?.["pnpm-version"]?.default).toBe("");
+  });
+
+  it("caches the emulator jars keyed on firebase.json, in both jobs", async () => {
+    // The emulators are ~100 MB of Java fetched from Google on first use.
+    // firebase.json is what names the emulators, so it is the key.
+    const raw = await readFile(join(DIR, "firebase-tests.yml"), "utf8");
+    const matches = raw.match(/hashFiles\('firebase\.json'\)/g) ?? [];
+    expect(matches.length).toBe(2);
+  });
+
+  it("caches Playwright browsers keyed on the lockfile", async () => {
+    // The lockfile pins the Playwright version the downloaded browser must
+    // match; keying on anything else serves a stale browser to a new runner.
+    const raw = await readFile(join(DIR, "firebase-tests.yml"), "utf8");
+    expect(raw).toContain("~/.cache/ms-playwright");
+    expect(raw).toContain("hashFiles('pnpm-lock.yaml')");
+  });
+
+  it("installs the browser only — never --with-deps", async () => {
+    // --with-deps' sudo apt-get path hung indefinitely on ubuntu-latest,
+    // three runs in a row, 40+ minutes each. The runner image already ships
+    // headless Chromium's libraries; a future image dropping one fails at
+    // launch with the library named, which is the legible failure. Asserted
+    // on the parsed step, not the raw file — the comment explaining the rule
+    // legitimately names the flag.
+    const wf = (await read("firebase-tests.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
+    };
+    const install = wf.jobs?.["e2e"]?.steps?.find((s) => s.name === "Install Chromium");
+    expect(install?.run).toContain("playwright install chromium");
+    expect(install?.run).not.toContain("--with-deps");
+  });
+
+  it("bounds the hang-prone steps with timeouts", async () => {
+    // A hung step otherwise runs to GitHub's 6-hour default on paid minutes.
+    const wf = (await read("firebase-tests.yml")) as {
+      jobs?: Record<string, {
+        "timeout-minutes"?: number;
+        steps?: Array<Record<string, unknown>>;
+      }>;
+    };
+    expect(wf.jobs?.["e2e"]?.["timeout-minutes"]).toBe(15);
+    const install = wf.jobs?.["e2e"]?.steps?.find((s) => s["name"] === "Install Chromium");
+    expect(install?.["timeout-minutes"]).toBe(5);
+  });
+
+  it("cancels a superseded run instead of racing it", async () => {
+    // Two pushes minutes apart left two hung jobs burning in parallel. The
+    // groups are per job and keyed on ref — workflow-level concurrency in a
+    // *called* workflow does not govern the caller's run, and one shared group
+    // would make a single run's two jobs cancel each other.
+    const wf = (await read("firebase-tests.yml")) as {
+      jobs?: Record<string, {
+        concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+      }>;
+    };
+    const groups = new Set<string>();
+    for (const name of ["emulators", "e2e"]) {
+      const concurrency = wf.jobs?.[name]?.concurrency;
+      expect(concurrency?.["cancel-in-progress"], `${name} must cancel-in-progress`).toBe(true);
+      expect(concurrency?.group, `${name} group must key on ref`).toContain("${{ github.ref }}");
+      groups.add(concurrency!.group!);
+    }
+    expect(groups.size).toBe(2);
+  });
+
+  it("keeps traces from failures", async () => {
+    const wf = (await read("firebase-tests.yml")) as FirebaseTests;
+    const steps = wf.jobs?.["e2e"]?.steps ?? [];
+    const upload = steps.find((s) => String(s["uses"] ?? "").startsWith("actions/upload-artifact"));
+    expect(upload).toBeDefined();
+    expect(upload?.["if"]).toBe("failure()");
+  });
+
+  it("asks for read access and no more", async () => {
+    const wf = (await read("firebase-tests.yml")) as { permissions?: Record<string, string> };
+    expect(wf.permissions).toEqual({ contents: "read" });
+  });
+});
