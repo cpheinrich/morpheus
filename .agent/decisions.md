@@ -634,6 +634,23 @@ Left unscoped it would find a green run that reviewed nothing and decline in sil
 direction a verifier must never fail in. It stays scoped to `synchronize` for consumers whose caller
 still runs on every push, rather than being deleted.
 
+**Reviews bill the Max subscription; the API key is the fallback, not a companion** — 2026-08-18.
+Chris's call, after the month's bill: $243.36 of prepaid credits, all of it rung 2, $123.91 of it
+one day of per-push reviews. `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) now feeds
+`claude-code-action`'s `claude_code_oauth_token` input on morpheus and evo.
+
+The money is the smaller half of the reason. **A prepaid balance fails as an outage; a
+subscription limit fails as a throttle.** The empty balance turned the verifier off for six days
+while every check stayed green — the exact shape `learned.md` warns about, bought as billing
+configuration. The same event on the subscription slows Chris's own sessions instead, which is a
+failure someone notices.
+
+**When both credentials exist, the token wins and the key is withheld** — not passed alongside.
+The action exports whatever it receives and Claude Code prefers an `ANTHROPIC_API_KEY` in its
+environment, so passing both would keep billing the credits silently, with nothing anywhere to say
+so. The key stays declared as a working fallback for consumers without a token; revoking it here
+is a separate decision, deliberately not taken as a side effect.
+
 **Imagery is part of the canonical package, not optional styling.** `moodboards.md` preserves the
 references that survived selection, `imagery.json` identifies approved art and stable sources, and
 `application.md` maps every asset to an actual public-web or product surface. `brand status` stays

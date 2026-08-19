@@ -143,14 +143,71 @@ describe("schedule.yml", () => {
 });
 
 describe("agent-review.yml", () => {
-  it("is reusable and takes the key as an optional secret", async () => {
+  it("is reusable and takes both credentials as optional secrets", async () => {
     const wf = (await read("agent-review.yml")) as {
       on?: { workflow_call?: { secrets?: Record<string, { required?: boolean }> } };
     };
-    const secret = wf.on?.workflow_call?.secrets?.["anthropic_api_key"];
-    expect(secret).toBeDefined();
     // Required would fail every repo that has not configured the rung.
-    expect(secret?.required).toBe(false);
+    for (const name of ["anthropic_api_key", "claude_code_oauth_token"]) {
+      const secret = wf.on?.workflow_call?.secrets?.[name];
+      expect(secret, name).toBeDefined();
+      expect(secret?.required, name).toBe(false);
+    }
+  });
+
+  /**
+   * The subscription token must win when both credentials exist, and winning
+   * means the API key is *withheld*, not merely accompanied. The action
+   * exports whatever it receives and Claude Code prefers an ANTHROPIC_API_KEY
+   * in its environment — handed both, reviews would silently keep billing the
+   * prepaid credits the token exists to stop billing, with a green check and
+   * no diff to show for it. That is this repo's named failure shape: a check
+   * that cannot tell the wrong success from the right one.
+   */
+  it("prefers the subscription token and withholds the API key beside it", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ with?: Record<string, unknown> }> }>;
+    };
+    const step = wf.jobs?.["review"]?.steps?.find((s) =>
+      Object.hasOwn(s.with ?? {}, "claude_code_oauth_token"),
+    );
+    expect(step, "no step passes claude_code_oauth_token").toBeDefined();
+    expect(step?.with?.["claude_code_oauth_token"]).toBe(
+      "${{ secrets.claude_code_oauth_token }}",
+    );
+    expect(step?.with?.["anthropic_api_key"]).toBe(
+      "${{ secrets.claude_code_oauth_token == '' && secrets.anthropic_api_key || '' }}",
+    );
+  });
+
+  it("counts either credential as configured", async () => {
+    const raw = await readFile(join(DIR, "agent-review.yml"), "utf8");
+    expect(raw).toContain(
+      "HAS_KEY: ${{ secrets.anthropic_api_key != '' || secrets.claude_code_oauth_token != '' }}",
+    );
+  });
+
+  /**
+   * A secret a caller does not pass is silently empty in the called workflow —
+   * no error, no warning. Dropping one of these lines would quietly fall back
+   * to the other credential (or to unconfigured), which is exactly the silent
+   * substitution the preference logic above exists to prevent.
+   */
+  it("both callers hand through both credentials", async () => {
+    for (const file of ["ci.yml", "agent-review-request.yml"]) {
+      const wf = (await read(file)) as {
+        jobs?: Record<string, { uses?: string; secrets?: Record<string, string> }>;
+      };
+      const job = Object.values(wf.jobs ?? {}).find((j) =>
+        j.uses?.includes("agent-review.yml"),
+      );
+      expect(job?.secrets?.["claude_code_oauth_token"], file).toBe(
+        "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}",
+      );
+      expect(job?.secrets?.["anthropic_api_key"], file).toBe(
+        "${{ secrets.ANTHROPIC_API_KEY }}",
+      );
+    }
   });
 
   /**
