@@ -104,21 +104,6 @@ export interface AssessInput {
         roadmap: string[];
     }>[];
 }
-/**
- * What should happen next, and whether anything should.
- *
- * The four guards, each closing a specific failure:
- *
- * - **The ceiling** is what stops a runaway queue, so it is checked before
- *   anything else and is never advisory.
- * - **Blocked is not in-flight.** A blocked item holds its branch on purpose;
- *   counting it would let one unanswered question consume a lane forever, and
- *   a ceiling that cannot be released is a deadlock with a schedule.
- * - **Nothing is a valid answer.** A beat with no pick returns a reason and
- *   succeeds. One that cannot do nothing will invent work to justify itself.
- * - **Blocked work is re-surfaced, not re-raised.** `pm block` already filed an
- *   inbox item; a cron that duplicates it teaches people to ignore the inbox.
- */
 export declare function assess(input: AssessInput): Beat;
 /**
  * How stale the meeting record is, and what it produced nothing from.
