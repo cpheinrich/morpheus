@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { hasNoSubstantiveChange } from "../paths.js";
-import { isRealReason, waiverReason } from "../check/pr.js";
+import { isRealReason, visibleProse, waiverReason } from "../check/pr.js";
 import { addressesPriorFindings, pathsMentioned } from "../review/findings.js";
 import { assessReviewDelivery } from "../review/delivery.js";
 import { loadReviewContext, ReviewError } from "../review/context.js";
@@ -156,7 +156,9 @@ export function reviewDelivery(beforeCommentId, commentId, bodyPath, prBodyPath)
             prBody = "";
         }
     }
-    const reason = waiverReason(prBody, "review-waived");
+    // Visible prose only: a fenced or backticked example documents the waiver
+    // and must not exercise it.
+    const reason = waiverReason(visibleProse(prBody), "review-waived");
     if (reason !== null && isRealReason(reason)) {
         console.log(`waived: "${reason}" — the review was not delivered (${result.why})`);
         return 0;
