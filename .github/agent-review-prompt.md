@@ -48,7 +48,10 @@ second comment with `gh pr comment`, which produces either a duplicate or a trac
 at "working…" while the review lands somewhere else. It carries three things:
 
 1. A one-line-per-finding summary, each line naming its `file:line` — this list is also what the
-   re-review gate reads, so a finding absent from it is invisible to the next push's gate.
+   re-review gate reads, so a finding absent from it is invisible to the next push's gate. **Plain
+   list lines only, never task-list checkboxes**: the workflow strips `- [x]`-shaped lines before
+   the gate reads the comment, and the delivery check reads an unticked `- [ ]` as unfinished
+   progress — either way a checkboxed summary defeats the machinery this list exists to feed.
 2. Anything that is about no particular line: missing tests, silently widened scope, a contradicted
    decision, or the finding that everything is fine. **A finding on a line the diff does not touch
    also goes here, with its `file:line` in prose** — the inline tool can only anchor inside the
