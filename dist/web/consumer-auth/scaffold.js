@@ -20,6 +20,23 @@ const ROOT_DEV_DEPENDENCIES = {
     "@firebase/rules-unit-testing": "^5.0.1",
     firebase: "^12.17.1",
 };
+/**
+ * Plumbing files excluded from drift reporting and `--check`.
+ *
+ * `deliver()` is a seam by design, and the provider behind it is a live
+ * decision: the standing record names Cloudflare Email Sending as canonical
+ * while the extracted implementation is Evo's verified Resend. A project that
+ * swaps the transport is doing the intended thing, and a check that reports
+ * the canonical choice as permanent drift — while the non-canonical default
+ * reads clean — inverts the report's meaning for exactly this file. The
+ * load-bearing part (generate only after `canDeliver()`) is pinned by the
+ * templates' own tests, not by byte-comparison here.
+ */
+const CHECK_EXEMPT = new Set(["lib/email/send.ts", "lib/email/templates.ts"]);
+function checkExempt(survey, path) {
+    const prefix = survey.webRoot === "." ? "" : `${survey.webRoot}/`;
+    return [...CHECK_EXEMPT].some((rel) => path === `${prefix}${rel}`);
+}
 async function exists(path) {
     try {
         await access(path);
@@ -118,8 +135,10 @@ export async function scaffoldConsumerAuth(opts) {
     const written = [];
     const skipped = [];
     const merged = [];
+    const upgraded = [];
     const drifted = [];
     const notes = [];
+    const configPath = survey.webRoot === "." ? "lib/firebase/config.ts" : `${survey.webRoot}/lib/firebase/config.ts`;
     for (const file of plannedFiles(survey, ctx)) {
         const abs = join(root, file.path);
         if (await exists(abs)) {
@@ -127,7 +146,16 @@ export async function scaffoldConsumerAuth(opts) {
             if (existing === file.content) {
                 skipped.push(file.path);
             }
-            else if (file.layer === "plumbing" || file.layer === "policy") {
+            else if (file.path === configPath &&
+                opts.webInitConfig !== undefined &&
+                existing === opts.webInitConfig) {
+                // Unedited `web init` output, proven byte-for-byte — the one upgrade
+                // in place. Anything else that differs is never touched.
+                await writeFile(abs, file.content, "utf8");
+                upgraded.push(file.path);
+            }
+            else if ((file.layer === "plumbing" || file.layer === "policy") &&
+                !checkExempt(survey, file.path)) {
                 // Starter and contract files are the project's to change; the shared
                 // plumbing and policy files are the ones worth naming when they lag.
                 drifted.push(file.path);
@@ -140,6 +168,14 @@ export async function scaffoldConsumerAuth(opts) {
         await mkdir(dirname(abs), { recursive: true });
         await writeFile(abs, file.content, "utf8");
         written.push(file.path);
+    }
+    if (drifted.includes(configPath)) {
+        notes.push(`${configPath} carries local edits, so it was neither replaced nor safe to ` +
+            "delete — it is the source of the production facts a re-run needs. Fold the " +
+            "two-environment shape in by hand: PRODUCTION_CONFIG/STAGING_CONFIG, " +
+            "resolveEnvironment(), credentialStrategy(), SESSION_COOKIE_NAME, " +
+            "SIGNED_IN_HINT_COOKIE_NAME and SESSION_MAX_AGE_MS are what the rest of the " +
+            "scaffold imports.");
     }
     if (drifted.length) {
         notes.push("Files marked ≠ exist with different content — usually `web init`'s HQ-only versions, " +
@@ -209,7 +245,7 @@ export async function scaffoldConsumerAuth(opts) {
         "service-account key scoped to Vercel Preview ONLY, Resend domain and keys, the staging " +
         "domain on the Vercel project — is a human runbook: docs/runbooks/consumer-auth.md in " +
         "the Morpheus repo.");
-    return { written, skipped, merged, drifted, notes };
+    return { written, skipped, merged, upgraded, drifted, notes };
 }
 /**
  * `--check`: layers A and B against the current templates.
@@ -224,6 +260,8 @@ export async function checkConsumerAuth(opts) {
     for (const file of plannedFiles(survey, ctx)) {
         if (file.layer !== "plumbing" && file.layer !== "policy")
             continue;
+        if (checkExempt(survey, file.path))
+            continue;
         const abs = join(root, file.path);
         if (!(await exists(abs))) {
             console.log(`  – ${file.path} (missing)`);
@@ -236,6 +274,18 @@ export async function checkConsumerAuth(opts) {
         }
         else {
             console.log(`  ≠ ${file.path}`);
+            drift += 1;
+        }
+    }
+    // The rules block is a merge rather than a whole file, and it is the one
+    // security boundary here — so its presence is checked verbatim.
+    if (survey.firestoreRulesPath) {
+        const rules = await readFile(join(root, survey.firestoreRulesPath), "utf8").catch(() => null);
+        if (rules?.includes(suites.CONSUMER_RULES_BLOCK.trimEnd())) {
+            console.log(`  · ${survey.firestoreRulesPath} (consumer block)`);
+        }
+        else {
+            console.log(`  ≠ ${survey.firestoreRulesPath} (consumer block absent or altered)`);
             drift += 1;
         }
     }
@@ -328,8 +378,21 @@ export async function addConsumerRules(root, rulesPath) {
             message: `Could not read ${rulesPath}; the consumer accounts block was not written.`,
         };
     }
-    if (/match\s+\/users\/\{uid\}/.test(existing))
+    // Idempotency and "someone else's block" are different answers, split
+    // deliberately: our own block present verbatim is a clean re-run; a foreign
+    // /users match means the collection is governed by rules this scaffold has
+    // not seen, which is exactly what must not pass silently.
+    if (existing.includes(suites.CONSUMER_RULES_BLOCK.trimEnd()))
         return { kind: "none" };
+    if (/match\s+\/users\/\{uid\}/.test(existing)) {
+        return {
+            kind: "note",
+            message: `${rulesPath} already declares match /users/{uid}, and it is not this scaffold's ` +
+                "block — the consumer rules were NOT inserted, and the users collection is governed " +
+                "by whatever that match says. Compare it against the scaffold's block by hand:\n" +
+                suites.CONSUMER_RULES_BLOCK.trimEnd(),
+        };
+    }
     const match = CATCH_ALL.exec(existing);
     if (!match) {
         return {
@@ -373,15 +436,37 @@ export async function ensureEmulatorsBlock(root, rulesPath) {
     }
     if (parsed.emulators !== undefined) {
         const current = parsed.emulators;
-        if (current.auth?.port !== 9099 || current.firestore?.port !== 8080) {
+        // A declared port that disagrees is a real conflict — the rules suite
+        // dials the literals, so rewriting would break whatever chose the ports
+        // and keeping them would make the suite hang. An *absent* emulator is not
+        // a conflict; a block that declares only `ui` just gains the two it lacks.
+        const conflicts = (current.auth !== undefined && current.auth.port !== 9099) ||
+            (current.firestore !== undefined && current.firestore.port !== 8080);
+        if (conflicts) {
             return {
                 kind: "note",
-                message: "firebase.json already declares emulators on different ports. The scaffolded " +
-                    "suites dial auth 9099 and firestore 8080 — align the ports or update the " +
-                    "suites, or the rules tests will hang rather than fail.",
+                message: "firebase.json already declares the auth or firestore emulator on different " +
+                    "ports. The scaffolded suites dial auth 9099 and firestore 8080 — align the " +
+                    "ports or update the suites, or the rules tests will hang rather than fail.",
             };
         }
-        return { kind: "none" };
+        let added = false;
+        if (current.auth === undefined) {
+            current.auth = { ...config.EMULATORS_BLOCK.auth };
+            added = true;
+        }
+        if (current.firestore === undefined) {
+            current.firestore = { ...config.EMULATORS_BLOCK.firestore };
+            added = true;
+        }
+        if (current["singleProjectMode"] === undefined) {
+            current["singleProjectMode"] = false;
+            added = true;
+        }
+        if (!added)
+            return { kind: "none" };
+        await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+        return { kind: "merged" };
     }
     parsed.emulators = config.EMULATORS_BLOCK;
     await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");

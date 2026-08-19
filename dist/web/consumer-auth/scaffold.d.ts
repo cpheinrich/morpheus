@@ -37,11 +37,22 @@ export interface ConsumerAuthOptions {
     root: string;
     survey: WebSurvey;
     ctx: ConsumerAuthContext;
+    /**
+     * `web init`'s own rendering of `lib/firebase/config.ts` for this project.
+     * When the file on disk is byte-identical to it, it is unedited scaffold
+     * output and the one safe upgrade-in-place this command performs: the
+     * two-environment config *replaces* it. Without this, the prescribed
+     * delete-and-re-run recovery is a dead end for exactly this file — deleting
+     * it destroys the only source of the production facts the re-run needs.
+     */
+    webInitConfig?: string;
 }
 export interface ConsumerAuthResult {
     written: string[];
     skipped: string[];
     merged: string[];
+    /** Files replaced because they were unedited output of an older scaffold. */
+    upgraded: string[];
     /** Existing files that differ from the current template. */
     drifted: string[];
     notes: string[];

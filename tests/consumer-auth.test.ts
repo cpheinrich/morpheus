@@ -305,6 +305,85 @@ describe("scaffoldConsumerAuth", () => {
     expect(outcome.kind).toBe("note");
   });
 
+  it("adds the missing emulators to a block that declares only the UI", async () => {
+    // A ui-only block declares no conflicting port; refusing it as "different
+    // ports" sends whoever reads the note hunting for a conflict that does
+    // not exist.
+    await writeFile(
+      join(root, "firebase.json"),
+      JSON.stringify({ emulators: { ui: { enabled: true, port: 4000 } } }),
+    );
+    const outcome = await ensureEmulatorsBlock(root, "infra/firebase/firestore.rules");
+    expect(outcome.kind).toBe("merged");
+    const parsed = JSON.parse(await readFile(join(root, "firebase.json"), "utf8")) as {
+      emulators: { auth: { port: number }; firestore: { port: number }; ui: { port: number } };
+    };
+    expect(parsed.emulators.auth.port).toBe(9099);
+    expect(parsed.emulators.firestore.port).toBe(8080);
+    expect(parsed.emulators.ui.port).toBe(4000);
+  });
+
+  it("reports a foreign /users match instead of silently standing down", async () => {
+    // A hand-written users rule means the collection is governed by rules this
+    // scaffold has not seen — the one merge that must not no-op quietly.
+    const rules = RULES.replace(
+      "    // Anything not named above is closed.",
+      "    match /users/{uid} {\n      allow read, write: if request.auth != null;\n    }\n\n    // Anything not named above is closed.",
+    );
+    await writeFile(join(root, "infra/firebase/firestore.rules"), rules);
+    const outcome = await addConsumerRules(root, "infra/firebase/firestore.rules");
+    expect(outcome.kind).toBe("note");
+    // And nothing was written over the foreign rule.
+    const after = await readFile(join(root, "infra/firebase/firestore.rules"), "utf8");
+    expect(after).toBe(rules);
+  });
+
+  it("upgrades an unedited web-init config in place, and only that", async () => {
+    const configPath = join(root, "apps/web/lib/firebase/config.ts");
+    await mkdir(join(root, "apps/web/lib/firebase"), { recursive: true });
+    await writeFile(configPath, "// what web init wrote\n");
+
+    // Matching the recorded web-init render: upgraded to the two-env shape.
+    const upgraded = await scaffoldConsumerAuth({
+      root,
+      survey,
+      ctx,
+      webInitConfig: "// what web init wrote\n",
+    });
+    expect(upgraded.upgraded).toContain("apps/web/lib/firebase/config.ts");
+    expect(upgraded.drifted).not.toContain("apps/web/lib/firebase/config.ts");
+    expect(await readFile(configPath, "utf8")).toContain("STAGING_CONFIG");
+  });
+
+  it("never upgrades a config that carries local edits", async () => {
+    const configPath = join(root, "apps/web/lib/firebase/config.ts");
+    await mkdir(join(root, "apps/web/lib/firebase"), { recursive: true });
+    await writeFile(configPath, "// edited by a human\n");
+
+    const result = await scaffoldConsumerAuth({
+      root,
+      survey,
+      ctx,
+      webInitConfig: "// what web init wrote\n",
+    });
+    expect(result.upgraded).toEqual([]);
+    expect(result.drifted).toContain("apps/web/lib/firebase/config.ts");
+    expect(await readFile(configPath, "utf8")).toBe("// edited by a human\n");
+  });
+
+  it("exempts the mail seam from drift, both in the run and in --check", async () => {
+    // Swapping deliver()'s transport is the intended move while the provider
+    // decision is open; the canonical choice must not read as drift.
+    await scaffoldConsumerAuth({ root, survey, ctx });
+    await writeFile(
+      join(root, "apps/web/lib/email/send.ts"),
+      "// a Cloudflare Email Sending deliver()\n",
+    );
+    const rerun = await scaffoldConsumerAuth({ root, survey, ctx });
+    expect(rerun.drifted).toEqual([]);
+    expect(await checkConsumerAuth({ root, survey, ctx })).toBe(0);
+  });
+
   it("writes a .firebaserc with no default alias", async () => {
     // `firebase deploy` with no --project uses the default alias; leaving it
     // out means a stray deploy asks instead of silently picking production.
@@ -339,6 +418,14 @@ describe("scaffoldConsumerAuth", () => {
     expect(await checkConsumerAuth({ root, survey, ctx })).toBe(0);
 
     await writeFile(join(root, "apps/web/lib/auth/request-origin.ts"), "// edited\n");
+    expect(await checkConsumerAuth({ root, survey, ctx })).toBe(1);
+  });
+
+  it("check covers the rules block, not only whole files", async () => {
+    await scaffoldConsumerAuth({ root, survey, ctx });
+    // Strip the consumer block back out: every whole file still matches, and
+    // the one security-boundary merge is what must not pass unnoticed.
+    await writeFile(join(root, "infra/firebase/firestore.rules"), RULES);
     expect(await checkConsumerAuth({ root, survey, ctx })).toBe(1);
   });
 });

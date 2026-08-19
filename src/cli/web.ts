@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { scaffoldWeb } from "../web/scaffold.js";
 import { outstanding, provisionWeb, type StepResult } from "../web/provision.js";
 import { readFirebaseFacts, surveyWeb, type WebSurvey } from "../web/survey.js";
-import type { FirebaseFacts } from "../web/templates.js";
+import { firebaseConfigFile, type FirebaseFacts } from "../web/templates.js";
 import { buildContext, environmentFacts } from "../web/consumer-auth/context.js";
 import { readTwoEnvFacts } from "../web/consumer-auth/facts.js";
 import { checkConsumerAuth, scaffoldConsumerAuth } from "../web/consumer-auth/scaffold.js";
@@ -285,6 +285,20 @@ export async function webAddConsumerAuth(opts: AddConsumerAuthOptions): Promise<
     console.error("No web app found. Run `morpheus web init` first — consumer auth extends it.");
     return 1;
   }
+  if (survey.webRoot === ".") {
+    // A root-level app makes the app manifest and the root manifest one file,
+    // so the app's `test:e2e` would claim the name before the emulator-wrapped
+    // root script could — and CI would run Playwright against no emulators,
+    // silently. The scripts, the pnpm --filter calls and the CI caller all
+    // assume the canonical layout; refusing is a sentence, threading a special
+    // case through all three is a standing hazard.
+    console.error(
+      "This app lives at the repository root. Consumer auth assumes the canonical " +
+        "apps/web layout (§3) — the root package.json must stay free for the " +
+        "emulator-wrapping scripts. Move the app to apps/web and re-run.",
+    );
+    return 1;
+  }
   if (survey.alias !== "@/") {
     console.error(
       "The web app's tsconfig does not declare the `@/*` path alias, which every generated " +
@@ -390,10 +404,18 @@ export async function webAddConsumerAuth(opts: AddConsumerAuthOptions): Promise<
     return checkConsumerAuth({ root: opts.root, survey, ctx });
   }
 
-  const { written, skipped, merged, drifted, notes } = await scaffoldConsumerAuth({
+  // What `web init` would have written for this project's facts. If the file
+  // on disk matches it byte-for-byte, it is unedited scaffold output and the
+  // scaffold may upgrade it in place to the two-environment shape — the one
+  // file where "delete and re-run" would otherwise destroy the facts the
+  // re-run needs.
+  const webInitConfig = single ? firebaseConfigFile(single) : undefined;
+
+  const { written, skipped, merged, upgraded, drifted, notes } = await scaffoldConsumerAuth({
     root: opts.root,
     survey,
     ctx,
+    ...(webInitConfig !== undefined ? { webInitConfig } : {}),
   });
 
   console.log(`\n\x1b[1m${name} · consumer auth\x1b[0m \x1b[2m· ${survey.webRoot}\x1b[0m`);
@@ -406,6 +428,10 @@ export async function webAddConsumerAuth(opts: AddConsumerAuthOptions): Promise<
   if (merged.length) {
     console.log(`\n\x1b[33mMerged into ${merged.length} existing file(s)\x1b[0m`);
     for (const file of merged) console.log(`  ${file}`);
+  }
+  if (upgraded.length) {
+    console.log(`\n\x1b[33mUpgraded ${upgraded.length} unedited scaffold file(s) in place\x1b[0m`);
+    for (const file of upgraded) console.log(`  ${file}`);
   }
   if (drifted.length) {
     console.log(`\n\x1b[33m${drifted.length} existing file(s) differ from the templates:\x1b[0m`);
