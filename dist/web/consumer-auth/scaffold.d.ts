@@ -58,6 +58,18 @@ export interface ConsumerAuthResult {
     notes: string[];
 }
 /**
+ * Where a unit-test file lands, which depends on the project's test runner.
+ *
+ * On a `node --test` project the files keep Evo's names. On a vitest project
+ * `*.test.mjs` is inside vitest's default include, and vitest cannot run
+ * `node:test` suites — it collects the file, finds no tests it recognises, and
+ * fails the project's own `pnpm test` the moment the file exists. So there
+ * they are named `*.node-test.mjs`, which vitest's default include does not
+ * match, and the `test:auth` script names them explicitly — `node --test`
+ * runs whatever paths it is given and does not care about the suffix.
+ */
+export declare function unitTestPath(survey: WebSurvey, base: string): string;
+/**
  * Everything the scaffold writes whole, as (path, content, layer).
  *
  * One list shared by the writer and `--check`, so the two cannot disagree
@@ -116,6 +128,24 @@ type FirebaseJsonOutcome = {
  * disagree — rewriting a project's ports would break whatever chose them.
  */
 export declare function ensureEmulatorsBlock(root: string, rulesPath: string | null): Promise<FirebaseJsonOutcome>;
+type TsconfigOutcome = {
+    kind: "merged";
+} | {
+    kind: "note";
+    message: string;
+} | {
+    kind: "none";
+};
+/**
+ * Make sure the app's tsconfig allows explicit `.ts` import specifiers.
+ *
+ * The unit-testable modules import their siblings by `./x.ts` path, because
+ * `node --experimental-strip-types` resolves neither tsconfig `paths` nor the
+ * `@/` alias — and without `allowImportingTsExtensions`, `tsc` refuses those
+ * specifiers (TS5097) and `pnpm typecheck` fails on a fresh scaffold. The
+ * option requires `noEmit`, which a Next.js tsconfig already sets.
+ */
+export declare function ensureTsExtensionImports(root: string, webRoot: string): Promise<TsconfigOutcome>;
 /**
  * Add `./schema/user` to the shared package's explicit exports map — the
  * whitelist that silently makes a file unimportable is worth checking before

@@ -131,7 +131,7 @@ silently does not go out.
 - `morpheus access sync` — unchanged by any of this; consumer accounts hold no role at all.
 - Walk the golden path against the real staging project once, then delete the test accounts:
   sign-up → automatic mail → verify link → display name saves; password reset end to end (old
-  password dies, new one works); `/hq` as a consumer lands on no-access; sign-out clears both
-  cookies.
+  password dies, new one works); `/hq` as a consumer answers 404 — never a sign-in wall, so the
+  internal surface's existence is not advertised; sign-out clears both cookies.
 - The same paths run continuously and credential-free in CI — the scaffold wires
   `firebase-tests.yml` — so the manual pass is for the console configuration above, not the code.

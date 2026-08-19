@@ -18,9 +18,11 @@ import {
   addConsumerRules,
   checkConsumerAuth,
   ensureEmulatorsBlock,
+  ensureTsExtensionImports,
   plannedFiles,
   rootScriptSet,
   scaffoldConsumerAuth,
+  unitTestPath,
 } from "../src/web/consumer-auth/scaffold.js";
 import * as libs from "../src/web/consumer-auth/templates-lib.js";
 import * as app from "../src/web/consumer-auth/templates-app.js";
@@ -419,6 +421,63 @@ describe("scaffoldConsumerAuth", () => {
 
     await writeFile(join(root, "apps/web/lib/auth/request-origin.ts"), "// edited\n");
     expect(await checkConsumerAuth({ root, survey, ctx })).toBe(1);
+  });
+
+  it("adds allowImportingTsExtensions to a plain-JSON tsconfig, and asks on JSONC", async () => {
+    // The unit-testable modules import siblings by `./x.ts` path; without the
+    // option, tsc refuses the specifiers (TS5097) and a fresh scaffold cannot
+    // typecheck or build.
+    await writeFile(
+      join(root, "apps/web/tsconfig.json"),
+      JSON.stringify({ compilerOptions: { noEmit: true } }),
+    );
+    expect((await ensureTsExtensionImports(root, "apps/web")).kind).toBe("merged");
+    const parsed = JSON.parse(await readFile(join(root, "apps/web/tsconfig.json"), "utf8")) as {
+      compilerOptions: Record<string, unknown>;
+    };
+    expect(parsed.compilerOptions["allowImportingTsExtensions"]).toBe(true);
+    expect((await ensureTsExtensionImports(root, "apps/web")).kind).toBe("none");
+
+    // Comments are legal in tsconfig.json and must not be rewritten away.
+    await writeFile(
+      join(root, "apps/web/tsconfig.json"),
+      "{\n  // hand-tuned\n  \"compilerOptions\": { \"noEmit\": true }\n}\n",
+    );
+    expect((await ensureTsExtensionImports(root, "apps/web")).kind).toBe("note");
+  });
+
+  it("names the unit suites so they run, whatever the project's test runner", async () => {
+    // `node --test` files nothing names run nowhere; on a vitest project the
+    // default include would collect *.test.mjs and fail on node:test suites.
+    expect(unitTestPath(survey, "auth-config")).toBe("__tests__/auth-config.test.mjs");
+    expect(unitTestPath({ ...survey, testRunner: "vitest" }, "auth-config")).toBe(
+      "__tests__/auth-config.node-test.mjs",
+    );
+
+    await scaffoldConsumerAuth({ root, survey, ctx });
+    const appPkg = JSON.parse(await readFile(join(root, "apps/web/package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(appPkg.scripts["test:auth"]).toContain("__tests__/auth-config.test.mjs");
+    // And the CI chain actually invokes it.
+    expect(rootScriptSet(survey, ctx)["test:emulator:run"]).toContain("test:auth");
+  });
+
+  it("treats an emulator declared without a port as the default, not a conflict", async () => {
+    // Firebase's defaults for auth and firestore are 9099 and 8080 — an
+    // absent port already means the ports the suites dial.
+    await writeFile(
+      join(root, "firebase.json"),
+      JSON.stringify({ emulators: { auth: { host: "127.0.0.1" }, firestore: { host: "127.0.0.1" } } }),
+    );
+    const outcome = await ensureEmulatorsBlock(root, "infra/firebase/firestore.rules");
+    expect(outcome.kind).not.toBe("note");
+  });
+
+  it("check reads a missing rules configuration as drift, not as clean", async () => {
+    await scaffoldConsumerAuth({ root, survey, ctx });
+    const noRules = { ...survey, firestoreRulesPath: null };
+    expect(await checkConsumerAuth({ root, survey: noRules, ctx })).toBe(1);
   });
 
   it("check covers the rules block, not only whole files", async () => {

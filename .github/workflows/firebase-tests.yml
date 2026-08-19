@@ -18,6 +18,10 @@ name: Firebase emulator tests
 # No secrets, by design as much as by convenience: the emulators authenticate
 # nobody, so these jobs pass identically on a pull request from a fork, where
 # secrets are not available. Nothing here can reach a real Firebase project.
+#
+# Honest runtimes, measured on Evo: emulators 1m29s; e2e 2m19s with cold
+# caches, ~1m30s warm. Anything far beyond that is a hang, which is what the
+# timeouts below are calibrated against.
 
 on:
   workflow_call:
@@ -92,6 +96,16 @@ permissions:
 jobs:
   emulators:
     runs-on: ubuntu-latest
+    # A superseded run must cancel, not run to completion beside its
+    # replacement. Discovered the expensive way on Evo: two pushes minutes
+    # apart left two hung e2e jobs burning runner minutes in parallel on the
+    # same dead step. Job-level rather than workflow-level because this file is
+    # called, and a called workflow's top-level concurrency does not govern the
+    # caller's run; one group per job so the two jobs of one run cannot cancel
+    # each other.
+    concurrency:
+      group: firebase-tests-emulators-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 
@@ -146,6 +160,12 @@ jobs:
   e2e:
     if: ${{ inputs.run-e2e }}
     runs-on: ubuntu-latest
+    # A ceiling well above the honest runtime (~2m19s cold-cache). Without it a
+    # hung step runs to GitHub's 6-hour default on paid minutes.
+    timeout-minutes: 15
+    concurrency:
+      group: firebase-tests-e2e-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 
@@ -194,11 +214,17 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
-      # --with-deps installs the system libraries headless Chromium needs on
-      # the runner; without it the browser downloads and then fails to launch.
+      # No `--with-deps`, deliberately: its sudo apt-get path hung indefinitely
+      # on ubuntu-latest — three runs in a row died on this step, one for 40+
+      # minutes — and the runner image already ships every library headless
+      # Chromium needs. If a future image drops one, the browser fails at
+      # *launch* with the missing library named, which is a five-minute fix;
+      # a silent hang on install is a forty-minute mystery. The step timeout
+      # turns any recurrence into a fast, legible failure.
       - name: Install Chromium
+        timeout-minutes: 5
         working-directory: ${{ inputs.working-directory }}
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install chromium
 
       # Builds with the emulator flag, then runs Playwright inside
       # emulators:exec. No secrets anywhere: the emulators authenticate nobody,

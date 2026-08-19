@@ -115,6 +115,24 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /**
+ * Where a unit-test file lands, which depends on the project's test runner.
+ *
+ * On a `node --test` project the files keep Evo's names. On a vitest project
+ * `*.test.mjs` is inside vitest's default include, and vitest cannot run
+ * `node:test` suites — it collects the file, finds no tests it recognises, and
+ * fails the project's own `pnpm test` the moment the file exists. So there
+ * they are named `*.node-test.mjs`, which vitest's default include does not
+ * match, and the `test:auth` script names them explicitly — `node --test`
+ * runs whatever paths it is given and does not care about the suffix.
+ */
+export function unitTestPath(survey: WebSurvey, base: string): string {
+  const suffix = survey.testRunner === "node" ? "test.mjs" : "node-test.mjs";
+  return `__tests__/${base}.${suffix}`;
+}
+
+const UNIT_TEST_BASES = ["auth-config", "action-link", "request-safety", "user-profile"] as const;
+
+/**
  * Everything the scaffold writes whole, as (path, content, layer).
  *
  * One list shared by the writer and `--check`, so the two cannot disagree
@@ -179,10 +197,10 @@ export function plannedFiles(survey: WebSurvey, ctx: ConsumerAuthContext): Plann
   ];
 
   const contract: Array<[string, string]> = [
-    [web("__tests__/auth-config.test.mjs"), suites.unitAuthConfigTest(ctx)],
-    [web("__tests__/action-link.test.mjs"), suites.unitActionLinkTest(ctx)],
-    [web("__tests__/request-safety.test.mjs"), suites.unitRequestSafetyTest(ctx)],
-    [web("__tests__/user-profile.test.mjs"), suites.unitUserProfileTest(ctx)],
+    [web(unitTestPath(survey, "auth-config")), suites.unitAuthConfigTest(ctx)],
+    [web(unitTestPath(survey, "action-link")), suites.unitActionLinkTest(ctx)],
+    [web(unitTestPath(survey, "request-safety")), suites.unitRequestSafetyTest(ctx)],
+    [web(unitTestPath(survey, "user-profile")), suites.unitUserProfileTest(ctx)],
     [posix.join(rulesDir, "firestore-rules.test.mjs"), suites.rulesTest(ctx)],
     [web("e2e/helpers/emulator.ts"), suites.e2eEmulatorHelper(ctx)],
     [web("e2e/helpers/accounts.ts"), suites.e2eAccountsHelper(ctx)],
@@ -294,6 +312,9 @@ export async function scaffoldConsumerAuth(
   const appScripts = await mergeJson(join(root, appManifest), "scripts", {
     "build:e2e": "NEXT_PUBLIC_USE_EMULATORS=1 next build",
     "test:e2e": "playwright test",
+    // Explicit paths: `node --test` runs only the files it is handed, so a
+    // suite nothing names runs nowhere — and this one guards the auth layer.
+    "test:auth": `node --experimental-strip-types --test ${UNIT_TEST_BASES.map((base) => unitTestPath(survey, base)).join(" ")}`,
   });
   if (appScripts.length) merged.push(`${appManifest} (scripts +${appScripts.join(", ")})`);
 
@@ -304,6 +325,12 @@ export async function scaffoldConsumerAuth(
   if (rootScripts.length) merged.push(`package.json (scripts +${rootScripts.join(", ")})`);
 
   if (await addJwksJoseOverride(root)) merged.push("pnpm-workspace.yaml (+jwks-rsa>jose override)");
+
+  const tsconfig = await ensureTsExtensionImports(root, survey.webRoot);
+  if (tsconfig.kind === "merged") {
+    merged.push(`${survey.webRoot === "." ? "" : `${survey.webRoot}/`}tsconfig.json (+allowImportingTsExtensions)`);
+  }
+  if (tsconfig.kind === "note") notes.push(tsconfig.message);
 
   if (await addSharedUserExport(root)) {
     merged.push("packages/shared/package.json (+./schema/user)");
@@ -383,7 +410,9 @@ export async function checkConsumerAuth(opts: ConsumerAuthOptions): Promise<numb
   }
 
   // The rules block is a merge rather than a whole file, and it is the one
-  // security boundary here — so its presence is checked verbatim.
+  // security boundary here — so its presence is checked verbatim. No rules
+  // file configured is itself drift: a check that skips what is absent
+  // reports the empty thing as correct.
   if (survey.firestoreRulesPath) {
     const rules = await readFile(join(root, survey.firestoreRulesPath), "utf8").catch(() => null);
     if (rules?.includes(suites.CONSUMER_RULES_BLOCK.trimEnd())) {
@@ -392,6 +421,9 @@ export async function checkConsumerAuth(opts: ConsumerAuthOptions): Promise<numb
       console.log(`  ≠ ${survey.firestoreRulesPath} (consumer block absent or altered)`);
       drift += 1;
     }
+  } else {
+    console.log("  – firestore rules (no deployed rules file is configured)");
+    drift += 1;
   }
 
   if (drift === 0) {
@@ -430,7 +462,11 @@ export function rootScriptSet(
   return {
     emulators: `firebase emulators:start --project ${project}`,
     "test:emulator": `firebase emulators:exec --project ${project} "pnpm run test:emulator:run"`,
-    "test:emulator:run": `node --experimental-strip-types ${emulatorEntry} && pnpm --filter ${ctx.scope}/web run --if-present test:emulator && pnpm run test:rules`,
+    // `test:auth` is in the chain even though it needs no emulator: it is how
+    // the four unit suites run in CI at all — `node --test` files that nothing
+    // names run nowhere, and on a vitest project the app's own `test` script
+    // cannot collect them.
+    "test:emulator:run": `node --experimental-strip-types ${emulatorEntry} && pnpm --filter ${ctx.scope}/web run --if-present test:auth && pnpm --filter ${ctx.scope}/web run --if-present test:emulator && pnpm run test:rules`,
     "test:rules": `if [ -f ${rulesTest} ]; then node --experimental-strip-types --test ${rulesTest}; fi`,
     "test:e2e": `pnpm --filter ${ctx.scope}/web run build:e2e && firebase emulators:exec --project ${project} "pnpm --filter ${ctx.scope}/web run test:e2e"`,
   };
@@ -587,9 +623,11 @@ export async function ensureEmulatorsBlock(
     // dials the literals, so rewriting would break whatever chose the ports
     // and keeping them would make the suite hang. An *absent* emulator is not
     // a conflict; a block that declares only `ui` just gains the two it lacks.
+    // An absent `port` is the CLI default, which for auth and firestore *is*
+    // 9099 / 8080 — not a conflict. Only a declared, different port is.
     const conflicts =
-      (current.auth !== undefined && current.auth.port !== 9099) ||
-      (current.firestore !== undefined && current.firestore.port !== 8080);
+      (current.auth?.port !== undefined && current.auth.port !== 9099) ||
+      (current.firestore?.port !== undefined && current.firestore.port !== 8080);
     if (conflicts) {
       return {
         kind: "note",
@@ -618,6 +656,48 @@ export async function ensureEmulatorsBlock(
   }
 
   parsed.emulators = config.EMULATORS_BLOCK;
+  await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+  return { kind: "merged" };
+}
+
+type TsconfigOutcome = { kind: "merged" } | { kind: "note"; message: string } | { kind: "none" };
+
+/**
+ * Make sure the app's tsconfig allows explicit `.ts` import specifiers.
+ *
+ * The unit-testable modules import their siblings by `./x.ts` path, because
+ * `node --experimental-strip-types` resolves neither tsconfig `paths` nor the
+ * `@/` alias — and without `allowImportingTsExtensions`, `tsc` refuses those
+ * specifiers (TS5097) and `pnpm typecheck` fails on a fresh scaffold. The
+ * option requires `noEmit`, which a Next.js tsconfig already sets.
+ */
+export async function ensureTsExtensionImports(
+  root: string,
+  webRoot: string,
+): Promise<TsconfigOutcome> {
+  const path = join(root, webRoot === "." ? "tsconfig.json" : `${webRoot}/tsconfig.json`);
+  const raw = await readFile(path, "utf8").catch(() => null);
+  if (raw === null) return { kind: "none" };
+
+  if (/allowImportingTsExtensions/.test(raw)) return { kind: "none" };
+
+  let parsed: { compilerOptions?: Record<string, unknown> };
+  try {
+    parsed = JSON.parse(raw) as { compilerOptions?: Record<string, unknown> };
+  } catch {
+    // tsconfig.json legitimately carries comments, which JSON.parse refuses —
+    // and a rewrite that dropped them would be worse than asking.
+    return {
+      kind: "note",
+      message:
+        "The app's tsconfig.json could not be parsed as plain JSON (comments, probably), so " +
+        '"allowImportingTsExtensions": true was not added to compilerOptions. Add it by ' +
+        "hand — without it, tsc refuses the `./x.ts` import specifiers the unit-testable " +
+        "modules use (TS5097) and typecheck fails on the scaffolded code.",
+    };
+  }
+
+  parsed.compilerOptions = { ...(parsed.compilerOptions ?? {}), allowImportingTsExtensions: true };
   await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
   return { kind: "merged" };
 }

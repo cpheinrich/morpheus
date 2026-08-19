@@ -896,11 +896,52 @@ describe("firebase-tests.yml", () => {
     expect(raw).toContain("hashFiles('pnpm-lock.yaml')");
   });
 
-  it("installs Chromium with its system dependencies", async () => {
-    // Without --with-deps the browser downloads and then fails to launch on
-    // the runner.
-    const raw = await readFile(join(DIR, "firebase-tests.yml"), "utf8");
-    expect(raw).toContain("playwright install --with-deps chromium");
+  it("installs the browser only — never --with-deps", async () => {
+    // --with-deps' sudo apt-get path hung indefinitely on ubuntu-latest,
+    // three runs in a row, 40+ minutes each. The runner image already ships
+    // headless Chromium's libraries; a future image dropping one fails at
+    // launch with the library named, which is the legible failure. Asserted
+    // on the parsed step, not the raw file — the comment explaining the rule
+    // legitimately names the flag.
+    const wf = (await read("firebase-tests.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
+    };
+    const install = wf.jobs?.["e2e"]?.steps?.find((s) => s.name === "Install Chromium");
+    expect(install?.run).toContain("playwright install chromium");
+    expect(install?.run).not.toContain("--with-deps");
+  });
+
+  it("bounds the hang-prone steps with timeouts", async () => {
+    // A hung step otherwise runs to GitHub's 6-hour default on paid minutes.
+    const wf = (await read("firebase-tests.yml")) as {
+      jobs?: Record<string, {
+        "timeout-minutes"?: number;
+        steps?: Array<Record<string, unknown>>;
+      }>;
+    };
+    expect(wf.jobs?.["e2e"]?.["timeout-minutes"]).toBe(15);
+    const install = wf.jobs?.["e2e"]?.steps?.find((s) => s["name"] === "Install Chromium");
+    expect(install?.["timeout-minutes"]).toBe(5);
+  });
+
+  it("cancels a superseded run instead of racing it", async () => {
+    // Two pushes minutes apart left two hung jobs burning in parallel. The
+    // groups are per job and keyed on ref — workflow-level concurrency in a
+    // *called* workflow does not govern the caller's run, and one shared group
+    // would make a single run's two jobs cancel each other.
+    const wf = (await read("firebase-tests.yml")) as {
+      jobs?: Record<string, {
+        concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+      }>;
+    };
+    const groups = new Set<string>();
+    for (const name of ["emulators", "e2e"]) {
+      const concurrency = wf.jobs?.[name]?.concurrency;
+      expect(concurrency?.["cancel-in-progress"], `${name} must cancel-in-progress`).toBe(true);
+      expect(concurrency?.group, `${name} group must key on ref`).toContain("${{ github.ref }}");
+      groups.add(concurrency!.group!);
+    }
+    expect(groups.size).toBe(2);
   });
 
   it("keeps traces from failures", async () => {

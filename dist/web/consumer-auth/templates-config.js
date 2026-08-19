@@ -59,6 +59,13 @@ on:
 permissions:
   contents: read
 
+# The reusable workflow carries per-job concurrency, but a caller-level group
+# cancels the whole superseded run at once — two pushes minutes apart must not
+# leave two runs racing.
+concurrency:
+  group: firebase-tests-\${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   firebase:
     uses: cpheinrich/morpheus/.github/workflows/firebase-tests.yml@main
