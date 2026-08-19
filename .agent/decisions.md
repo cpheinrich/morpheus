@@ -651,6 +651,19 @@ environment, so passing both would keep billing the credits silently, with nothi
 so. The key stays declared as a working fallback for consumers without a token; revoking it here
 is a separate decision, deliberately not taken as a side effect.
 
+**Review findings land inline on the diff; the tracking comment is the verdict** — 2026-08-18.
+Chris's call. A block of prose citing `file:line` makes the human do the join by hand; an inline
+comment sits on the code and threads its own reply. The tool was always allowed — the persona's
+"post a single review comment" is what routed everything into the block, so this is a prose change
+to the personas, one per repo.
+
+Two constraints keep the tracking comment load-bearing rather than vestigial: **delivery is proved
+only by the tracking comment** (inline comments are separate API objects the delivery check cannot
+see, so a review that is only inline comments reads as undelivered), and **the re-review gate reads
+file mentions from it** — hence the verdict's one-line-per-finding `file:line` summary. Findings on
+lines outside the diff also stay in the verdict, because the inline tool can only anchor inside the
+diff and a comment forced onto the nearest diff line reads as being about that line.
+
 **Imagery is part of the canonical package, not optional styling.** `moodboards.md` preserves the
 references that survived selection, `imagery.json` identifies approved art and stable sources, and
 `application.md` maps every asset to an actual public-web or product surface. `brand status` stays
