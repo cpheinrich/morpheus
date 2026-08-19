@@ -8,6 +8,7 @@ item files, not this table.
 |---|---|---|---|---|---|---|
 | [MO-26-08-19-00.30.22](./MO-26-08-19-00.30.22-firebase-ci-staging.md) | Reusable Firebase emulator CI and staging manifest fields | review | P1 | — | — | — |
 | [MO-26-08-19-00.39.34](./MO-26-08-19-00.39.34-add-consumer-auth.md) | Consumer-auth scaffold: morpheus web add-consumer-auth, and its runbook | review | P1 | — | #135 | — |
+| [MO-26-08-19-15.34.01](./MO-26-08-19-15.34.01-enforce-review-disposition.md) | Reviews are acted on before merge | review | P1 | — | — | — |
 | [MO-26-08-19-15.22.10](./MO-26-08-19-15.22.10-resend-canon-customer-email.md) | Resend is canon for customer email; Cloudflare for admin mail | review | P2 | — | — | #139 |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |

@@ -44,20 +44,14 @@ jobs:
   # reports itself as skipped rather than green when no key is configured.
   agent-review:
     uses: ./.github/workflows/agent-review.yml
-    # Once, when the pull request becomes reviewable — not on every push.
-    #
-    # `pull_request` includes `synchronize`, so acting on a review and pushing
-    # used to buy another review. That is how $8.01 happened across seven runs,
-    # and `learned.md` records the general form: the cost of a paid check is per
-    # push, and an agent that iterates diligently is the worst case.
-    #
-    # A second look is still available and is now asked for by name —
-    # `agent-review-request.yml`, triggered by `@claude` on the pull request.
-    # That trades a trigger nobody chose for a signal somebody did.
-    if: >-
-      github.event.action == 'opened' ||
-      github.event.action == 'reopened' ||
-      github.event.action == 'ready_for_review'
+    # No `if:` here, deliberately — the review-once-on-open decision lives in
+    # the called workflow's gate, not in this caller. A caller-level skip on
+    # `synchronize` leaves the nested `agent-review / delivery` check
+    # *unreported* rather than skipped, and an unreported required check blocks
+    # the merge forever. Inside the workflow the same skip is a job-level one,
+    # which GitHub reports as skipped — and a skipped required check is
+    # satisfied. Per-push reviews stay available to any consumer that sets
+    # `synchronize-reviews: true`.
     # A called workflow cannot request more than its caller was granted, and a
     # caller job with no `permissions` block gets the repository default —
     # read-only here. Without this the *entire* workflow file is rejected and

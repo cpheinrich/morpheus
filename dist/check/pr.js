@@ -21,7 +21,8 @@ export function waiverReason(body, key) {
 }
 /** Reasons that are present but say nothing. */
 const NON_REASONS = new Set(["yes", "y", "true", "n/a", "na", "none", "ok", "-"]);
-function isRealReason(reason) {
+/** Exported for every waiver consumer — `check pr` and `review delivery` must agree. */
+export function isRealReason(reason) {
     return reason.length >= 4 && !NON_REASONS.has(reason.toLowerCase());
 }
 function stripHtmlComments(body) {

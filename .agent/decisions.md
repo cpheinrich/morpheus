@@ -676,6 +676,27 @@ file mentions from it** — hence the verdict's one-line-per-finding `file:line`
 lines outside the diff also stay in the verdict, because the inline tool can only anchor inside the
 diff and a comment forced onto the nearest diff line reads as being about that line.
 
+**Reviews are acted on before merge; the content still gates nothing** — 2026-08-19. Chris's
+call. A review could be merged past unread, or merged mid-flight — Morpheus's `main` required
+*zero* status checks. The settled decision that rung 2 does not block is untouched by the fix,
+because what it forbids is the review's **verdict** gating the merge; what ships here gates the
+**process**: `agent-review / delivery` is a required check that fails on a requested-but-undelivered
+review (pending while one runs, skipped-and-satisfied when none was owed), and conversation
+resolution is required, so every inline finding must be visibly closed — reply where declining,
+resolve everywhere. The reviewer can insist on being read; it still cannot stop a merge by being
+wrong.
+
+**The waiver is the load-bearing half.** Requiring delivery without `review-waived: <reason>`
+would have turned the six-day credit outage into six days of blocked merges — a gate that fails on
+its own infrastructure trains the same bypass the content rule guards against. Same validation and
+same reporting as `skip-tests:`: merging unreviewed stays possible, and stops being silent.
+
+**Enforcement buys the act of disposition, not its quality.** An agent can resolve a thread
+without engaging, as a human can. The accepted seam: a push made during the previous commit's
+in-flight review carries its own skipped delivery check, so a merge inside that minutes-wide
+window can outrun the reviewer — closing it costs per-push reviews, which is the bill already
+declined.
+
 **Imagery is part of the canonical package, not optional styling.** `moodboards.md` preserves the
 references that survived selection, `imagery.json` identifies approved art and stable sources, and
 `application.md` maps every asset to an actual public-web or product surface. `brand status` stays

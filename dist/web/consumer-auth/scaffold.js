@@ -23,14 +23,14 @@ const ROOT_DEV_DEPENDENCIES = {
 /**
  * Plumbing files excluded from drift reporting and `--check`.
  *
- * `deliver()` is a seam by design, and the provider behind it is a live
- * decision: the standing record names Cloudflare Email Sending as canonical
- * while the extracted implementation is Evo's verified Resend. A project that
- * swaps the transport is doing the intended thing, and a check that reports
- * the canonical choice as permanent drift — while the non-canonical default
- * reads clean — inverts the report's meaning for exactly this file. The
- * load-bearing part (generate only after `canDeliver()`) is pinned by the
- * templates' own tests, not by byte-comparison here.
+ * `deliver()` is a seam by design. The shipped Resend transport is the
+ * canonical choice for customer email (architecture §6, decided 2026-08-19),
+ * but the seam exists precisely so a project can put a different provider
+ * behind it — recording a `deviations` entry — and a drift check that flags a
+ * deliberate, recorded swap as permanent drift inverts the report's meaning
+ * for exactly this file. The load-bearing part (generate only after
+ * `canDeliver()`) is pinned by the templates' own tests, not by
+ * byte-comparison here.
  */
 const CHECK_EXEMPT = new Set(["lib/email/send.ts", "lib/email/templates.ts"]);
 function checkExempt(survey, path) {

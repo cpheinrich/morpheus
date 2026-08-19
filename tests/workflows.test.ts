@@ -446,6 +446,37 @@ describe("agent-review.yml", () => {
     expect(prompt?.env?.MORPHEUS_BRANCH).toBe("${{ steps.pr.outputs.head_ref }}");
   });
 
+  /**
+   * Delivery is meant to be a *required* status check: it is what stops a merge
+   * outrunning the reviewer. That only works if the job actually fails on a
+   * non-delivery — the previous shape warned and exited 0, which as a required
+   * check is a gate that never closes. The waiver is the pressure valve that
+   * makes requiring it survivable when the reviewer itself is broken.
+   */
+  it("fails on a non-delivery, and honours a spoken waiver", async () => {
+    const wf = (await read("agent-review.yml")) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
+    };
+    const delivery = wf.jobs?.["delivery"]?.steps?.find(
+      (step) => step.name === "Verify the review was delivered",
+    );
+    const run = delivery?.run ?? "";
+
+    // The not-confirmed path must end the job in failure, not a warning.
+    expect(run).toContain("::error title=Agent review not delivered");
+    expect(run.trimEnd().endsWith("exit 1")).toBe(true);
+
+    // The waiver is read from the PR body at verification time, so editing the
+    // body and re-running the job is the recovery path.
+    expect(run).toContain('gh api "repos/$REPO/pulls/$PR_NUMBER" --jq \'.body // ""\'');
+    expect(run).toContain("--pr-body-file /tmp/pr-body.md");
+    // An unreadable body is no waiver — fail closed.
+    expect(run).toContain(': > /tmp/pr-body.md');
+    // Waived is reported as waived, never as confirmed.
+    expect(run).toContain("waived:*)");
+    expect(run).toContain("::warning title=Agent review waived");
+  });
+
   it("hands the resolved pull request number to the delivery check", async () => {
     const wf = (await read("agent-review.yml")) as {
       jobs?: Record<
@@ -535,33 +566,50 @@ describe("ci.yml", () => {
   });
 
   /**
-   * `pull_request` includes `synchronize`, so acting on a review and pushing
-   * bought another review — $8.01 across seven runs, four of which read pushes
-   * that changed no code. The cost of a paid check is per push, not per pull
-   * request, and an agent that iterates diligently is the worst case.
-   *
-   * A second look is still available; it is asked for by name in
-   * `agent-review-request.yml` rather than fired by a trigger nobody chose.
+   * Reviews still run once per pull request, but the skip must live *inside*
+   * the reusable workflow, never in the caller's `if:`. A caller-level skip on
+   * `synchronize` leaves the nested `agent-review / delivery` check
+   * *unreported* — and an unreported required check blocks the merge forever,
+   * where a job-level skip is reported as skipped and satisfies it. Caught by
+   * rung 2 on the PR that nearly required the check in the broken shape.
    */
-  it("reviews when a pull request becomes reviewable, not on every push", async () => {
+  it("reviews once per pull request, decided inside the workflow", async () => {
     const wf = (await read("ci.yml")) as {
       on?: { pull_request?: { types?: string[] } };
       jobs?: Record<string, { if?: string }>;
     };
     // `ready_for_review` is not in the default set, so the list has to be spelled out.
     expect(wf.on?.pull_request?.types).toContain("ready_for_review");
+    expect(wf.on?.pull_request?.types).toContain("synchronize");
 
-    const guard = wf.jobs?.["agent-review"]?.if ?? "";
-    for (const action of ["opened", "reopened", "ready_for_review"]) {
-      expect(guard).toContain(`github.event.action == '${action}'`);
-    }
-    expect(guard).not.toContain("synchronize");
-
-    // Every other rung still runs on every push — this trims one job, not CI.
+    // No caller-level skip, on this job or any other: the delivery check must
+    // be reported on every push for required-check protection to be satisfiable.
     for (const [name, job] of Object.entries(wf.jobs ?? {})) {
-      if (name === "agent-review") continue;
-      expect(job.if, `${name} must keep running on every push`).toBeUndefined();
+      expect(job.if, `${name} must run on every push`).toBeUndefined();
     }
+
+    // The once-per-PR economics live in the called workflow's gate instead.
+    const called = (await read("agent-review.yml")) as {
+      on?: {
+        workflow_call?: {
+          inputs?: Record<string, { type?: string; default?: unknown }>;
+        };
+      };
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string; env?: Record<string, string> }> }>;
+    };
+    expect(called.on?.workflow_call?.inputs?.["synchronize-reviews"]).toEqual(
+      expect.objectContaining({ type: "boolean", default: false }),
+    );
+    const gate = called.jobs?.["review"]?.steps?.find(
+      (step) => step.name === "Is this worth a review?",
+    );
+    expect(gate?.env?.EVENT_ACTION).toBe("${{ github.event.action }}");
+    expect(gate?.env?.SYNCHRONIZE_REVIEWS).toBe("${{ inputs.synchronize-reviews }}");
+    // The skip must precede the CLI call, or it decides nothing.
+    const cli = gate?.run?.indexOf("review needed") ?? -1;
+    const skip = gate?.run?.indexOf('"$EVENT_ACTION" = "synchronize"') ?? -1;
+    expect(skip).toBeGreaterThan(-1);
+    expect(skip).toBeLessThan(cli);
   });
 
   /**

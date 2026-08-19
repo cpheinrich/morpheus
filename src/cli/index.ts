@@ -69,7 +69,9 @@ Usage
   morpheus review needed    [--base <ref>] [--prior-review <file>]
                             is this change worth a review, or a re-review?
   morpheus review delivery  [--before-comment-id <id>] [--comment-id <id>]
-                            [--body-file <file>] — confirm the review was posted
+                            [--body-file <file>] [--pr-body-file <file>]
+                            confirm the review was posted; the PR body may
+                            carry "review-waived: <reason>" when it was not
   morpheus inbox validate   [--dir <hq/team>]
   morpheus team validate    the roster and every meeting note
   morpheus brand init             [--dir <hq/brand>] [--name <Acme>] [--prefix <ac>]
@@ -189,6 +191,7 @@ interface Flags {
   beforeCommentId?: string;
   commentId?: string;
   bodyFile?: string;
+  prBodyFile?: string;
   selection?: string;
   rulesPath?: string;
   out?: string;
@@ -342,6 +345,9 @@ function parseArgs(argv: string[]): Flags {
         break;
       case "--body-file":
         flags.bodyFile = argv[++i];
+        break;
+      case "--pr-body-file":
+        flags.prBodyFile = argv[++i];
         break;
       case "--selection":
         flags.selection = argv[++i];
@@ -597,7 +603,7 @@ async function main(): Promise<number> {
     if (command === "prompt") return reviewPrompt(dir, process.cwd());
     if (command === "needed") return reviewNeeded(flags.base, flags.priorReview, flags.json);
     if (command === "delivery") {
-      return reviewDelivery(flags.beforeCommentId, flags.commentId, flags.bodyFile);
+      return reviewDelivery(flags.beforeCommentId, flags.commentId, flags.bodyFile, flags.prBodyFile);
     }
     console.error(`Unknown review command "${command ?? ""}".\n\n${HELP}`);
     return 1;
