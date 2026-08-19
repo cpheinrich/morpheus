@@ -21,6 +21,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `src/cli/` | The `morpheus` command |
 | `hq/product/` | Morpheus's own roadmap and goals — it eats its own dog food |
 | `.github/workflows/` | Reusable workflows called by every project |
+| `docs/runbooks/` | Operational steps a human performs — consoles, DNS, keys |
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
 | `.claude/skills/` | Named, repeatable procedures — `voice-handoff`, `voice-import` |
 | `local/handoffs/` | Handoff docs, both directions. Gitignored — never committed |
@@ -62,6 +63,7 @@ pnpm morpheus brand finalize --selection "Name" # promote a reviewed direction i
 pnpm morpheus init                 # scaffold a project — safe to re-run, never overwrites
 pnpm morpheus init status          # how far through project setup this repo is
 pnpm morpheus web init             # provision and scaffold the website: waitlist + /hq sign-in
+pnpm morpheus web add-consumer-auth # consumer accounts: staging project, auth plumbing, three suites
 pnpm morpheus web status           # what the web surface has, and what it is missing
 pnpm morpheus firebase auth setup --project <id> --domain <public-origin>
 pnpm morpheus firebase auth check --project <id> --domain <public-origin>
@@ -440,6 +442,18 @@ Afterwards: `pnpm install`, render `<WaitlistForm source="hero" />` on the page,
 `waitlist_joined` event to the project's analytics contract and pass it to the form's `onJoined`
 prop, then `morpheus access sync` so the allowlist becomes the `role` claim. Until that sync runs,
 a signed-in account has no role and `/hq` refuses it — the gate working, not a broken sign-in.
+
+**When a project wants people to sign themselves up, run `morpheus web add-consumer-auth`** — do
+not hand-build Firebase auth. It extends `web init` with what Evo shipped and hardened
+(cpheinrich/morpheus#135): a second Firebase project for staging with **staging as the default**
+(only a Vercel Production build reaches production data), the auth plumbing whose review findings
+are already encoded (login CSRF, the enumeration-oracle-proof reset route, the backslash open
+redirect, the cross-device verification remint), starter sign-in/sign-up/reset/action pages, and
+**three test suites that run against the Firebase emulators with no secrets** — wired into CI via
+the reusable `firebase-tests.yml`. `--check` reports drift between a project's shared auth files
+and the current templates. The console half — providers, authorized domains, the service-account
+key scoped to Vercel Preview *only*, mail keys, the staging domain — is
+[`docs/runbooks/consumer-auth.md`](docs/runbooks/consumer-auth.md).
 
 `--no-provision` skips the cloud entirely; the provisioning half is what makes `web init` a
 context-gated command, and the scaffolding half is not gated at all.

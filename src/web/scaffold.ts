@@ -407,8 +407,12 @@ export async function addJwksJoseOverride(root: string): Promise<boolean> {
   return true;
 }
 
-/** Anchor the insertion on the catch-all, which every generated rules file ends with. */
-const CATCH_ALL = /\n([ \t]*)\/\/ Anything not named above is closed/;
+/**
+ * Anchor the insertion on the catch-all, which every generated rules file ends
+ * with. Exported for the consumer-auth scaffold, whose rules merge anchors on
+ * the same comment — two copies of a security-boundary anchor would drift.
+ */
+export const CATCH_ALL = /\n([ \t]*)\/\/ Anything not named above is closed/;
 
 type RulesOutcome =
   | { kind: "merged"; path: string }
