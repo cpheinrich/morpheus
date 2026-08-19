@@ -6,7 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
-| [MO-26-08-18-22.59.53](./MO-26-08-18-22.59.53-inline-review-comments.md) | Findings land inline on the diff | review | P2 | — | — | — |
+| [MO-26-08-19-00.30.22](./MO-26-08-19-00.30.22-firebase-ci-staging.md) | Reusable Firebase emulator CI and staging manifest fields | review | P1 | — | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-01-047](./MO-26-08-01-047-inbox-status-one-front.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — | — |
@@ -102,5 +102,6 @@ item files, not this table.
 | [MO-26-08-09-00.05.06](./MO-26-08-09-00.05.06-ship-prebuilt-git-artifacts.md) | Ship prebuilt git dependency artifacts | shipped | P2 | — | #82 | #109 |
 | [MO-26-08-11-18.23.10](./MO-26-08-11-18.23.10-setup-search-console.md) | Make Search Console setup part of project SEO work | shipped | P2 | — | — | #114 |
 | [MO-26-08-17-15.23.36](./MO-26-08-17-15.23.36-trim-review-triggers.md) | Rung 2 reviews once on open, then on request | shipped | P2 | — | — | #130 |
+| [MO-26-08-18-22.59.53](./MO-26-08-18-22.59.53-inline-review-comments.md) | Findings land inline on the diff | shipped | P2 | — | — | #134 |
 | [MO-26-07-29-012](./MO-26-07-29-012-make-morpheus-private-adjust.md) | Make Morpheus private and adjust CI for it | dropped | P1 | MO-G-2026-Q3-01 | — | — |
 <!-- morpheus:end -->

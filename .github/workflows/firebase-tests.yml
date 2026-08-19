@@ -1,0 +1,216 @@
+name: Firebase emulator tests
+
+# Auth, Firestore rules, and Playwright E2E, run against the Firebase Emulator
+# Suite. Extracted from Evo, where it shipped alongside consumer accounts
+# (darwin-health/evo#58, #62) — every pin below was paid for there.
+#
+#   jobs:
+#     firebase:
+#       uses: cpheinrich/morpheus/.github/workflows/firebase-tests.yml@main
+#       with:
+#         working-directory: apps/web
+#
+# Deliberately separate from web-ci.yml. Most Morpheus projects have no
+# Firebase at all, and every one of them would pay for a JRE, a 100 MB jar
+# download and an emulator boot to run nothing. A project calls this *beside*
+# web-ci.yml the day it grows a Firebase surface.
+#
+# No secrets, by design as much as by convenience: the emulators authenticate
+# nobody, so these jobs pass identically on a pull request from a fork, where
+# secrets are not available. Nothing here can reach a real Firebase project.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: >
+          The Next.js app directory. Playwright is installed and run from here,
+          and its traces are collected from here on failure. The emulator and
+          E2E scripts themselves run at the repository root, which is where
+          firebase.json lives.
+        type: string
+        default: "apps/web"
+      emulator-script:
+        description: >
+          Root package.json script for the emulator-backed suites — typically
+          `firebase emulators:exec` wrapping the unit and rules tests. Living in
+          package.json keeps a local run and a CI run the same one line.
+        type: string
+        default: "test:emulator"
+      e2e-script:
+        description: >
+          Root package.json script for the Playwright suite. It should build
+          with the emulator flag baked in and wrap `playwright test` in
+          `firebase emulators:exec --project <staging-id>` — the exec project
+          must match what the client bundle resolves, or the Auth emulator
+          splits one logical account across two project ids.
+        type: string
+        default: "test:e2e"
+      run-e2e:
+        description: >
+          Set false for a project that has emulator-backed unit and rules tests
+          but no Playwright suite yet.
+        type: boolean
+        default: true
+      build-tokens:
+        description: >
+          Run the design-token build before the E2E build, for projects whose
+          app cannot compile until the generated tokens exist. The emulators job
+          never needs it — it neither typechecks nor builds the app.
+        type: boolean
+        default: true
+      firebase-tools-version:
+        description: >
+          Major version of firebase-tools. Pinned to the major: ports and the
+          emulator wire protocol are stable within one, but `emulators:exec`
+          flags have changed across them.
+        type: string
+        default: "15"
+      java-version:
+        description: >
+          JDK for the emulators. firebase-tools 15 refuses to start on a JDK
+          older than 21, and ubuntu-latest's preinstalled JRE is older than that
+          — so "the runner already ships a JRE" is true and not sufficient. The
+          failure only appears in CI: a developer machine with a current JDK
+          passes locally and tells you nothing.
+        type: string
+        default: "21"
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        description: >
+          Leave empty to let package.json's `packageManager` field decide, which
+          is the modern default. Setting both makes pnpm/action-setup fail with
+          "Multiple versions of pnpm specified".
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  emulators:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # No token build here, unlike the e2e job below: this job neither
+      # typechecks nor builds the app, so the generated tokens are never read.
+
+      - name: Install the Firebase CLI
+        run: npm install --global firebase-tools@${{ inputs.firebase-tools-version }}
+
+      # Pinned rather than left to the runner image, so an image update cannot
+      # move the version underneath this job in either direction.
+      - name: Install a JDK the emulators support
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-version }}
+
+      # The emulators are Java, downloaded on first use — about 100 MB fetched
+      # from Google on every run otherwise.
+      #
+      # Keyed on firebase.json because that is what names the emulators, and
+      # restore-keys means adding one reuses the cache for the others instead of
+      # starting from empty.
+      - name: Cache emulator jars
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('firebase.json') }}
+          restore-keys: |
+            firebase-emulators-${{ runner.os }}-
+
+      # `emulators:exec` is the entry point rather than a start/wait/kill trio:
+      # it boots the suite, waits for ready, runs the command, tears down, and
+      # exits with the command's status. A backgrounded `emulators:start` leaks
+      # a process when the tests fail, and the leak is what turns one red run
+      # into a port conflict on the next.
+      - name: Auth and Firestore tests
+        run: pnpm run ${{ inputs.emulator-script }}
+
+  e2e:
+    if: ${{ inputs.run-e2e }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The E2E job builds the real app, which cannot typecheck until the
+      # generated tokens exist (web-ci.yml makes the same move for the same
+      # reason).
+      - name: Build design tokens
+        if: ${{ inputs.build-tokens }}
+        run: pnpm run build:tokens
+
+      # Same JDK pin and jar cache as the emulators job, for the same reasons.
+      - name: Install a JDK the emulators support
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-version }}
+
+      - name: Install the Firebase CLI
+        run: npm install --global firebase-tools@${{ inputs.firebase-tools-version }}
+
+      - name: Cache emulator jars
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('firebase.json') }}
+          restore-keys: |
+            firebase-emulators-${{ runner.os }}-
+
+      # The browser download is ~100 MB; keyed on the lockfile because that is
+      # what pins the Playwright version the browser must match.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      # --with-deps installs the system libraries headless Chromium needs on
+      # the runner; without it the browser downloads and then fails to launch.
+      - name: Install Chromium
+        working-directory: ${{ inputs.working-directory }}
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Builds with the emulator flag, then runs Playwright inside
+      # emulators:exec. No secrets anywhere: the emulators authenticate nobody,
+      # a scaffolded mail path delivers to the console, and nothing can reach a
+      # real project — so this job passes identically on a fork.
+      - name: Playwright over the emulators
+        run: pnpm run ${{ inputs.e2e-script }}
+
+      - name: Keep traces from failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: ${{ inputs.working-directory }}/test-results/
+          retention-days: 7
