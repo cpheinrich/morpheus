@@ -202,6 +202,28 @@ describe("the shipped persona", () => {
     expect(text).toContain("do not block");
     expect(text).toContain("delivery sentinel");
   });
+
+  /**
+   * The reporting contract, pinned. "Post a single review comment" is how
+   * findings ended up in one block for two weeks with the inline tool sitting
+   * allowlisted and unused — the persona is what routes them, so the persona is
+   * what a test has to hold in place.
+   */
+  it("routes findings inline and keeps the verdict load-bearing", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const text = await readFile(
+      join(import.meta.dirname, "..", PERSONA_PATH),
+      "utf8",
+    );
+    expect(text).toContain("Findings go inline");
+    expect(text).toContain("never open a\nsecond comment");
+    // The summary feeds pathsMentioned and delivery. Checkbox syntax defeats
+    // both: the workflow strips `- [x]` lines before the gate reads them, and
+    // delivery reads an unticked `- [ ]` as unfinished progress.
+    expect(text).toContain("never task-list checkboxes");
+    // Inline comments are API objects the delivery check never fetches.
+    expect(text).toContain("reads as undelivered");
+  });
 });
 
 /**
