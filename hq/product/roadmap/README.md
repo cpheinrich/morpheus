@@ -6,6 +6,7 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
+| [MO-26-08-13-16.24.31](./MO-26-08-13-16.24.31-scaffold-social-channels.md) | Scaffold organic social channels | review | P1 | — | — | — |
 | [MO-26-08-19-00.30.22](./MO-26-08-19-00.30.22-firebase-ci-staging.md) | Reusable Firebase emulator CI and staging manifest fields | review | P1 | — | — | — |
 | [MO-26-08-19-00.39.34](./MO-26-08-19-00.39.34-add-consumer-auth.md) | Consumer-auth scaffold: morpheus web add-consumer-auth, and its runbook | review | P1 | — | #135 | — |
 | [MO-26-08-19-15.34.01](./MO-26-08-19-15.34.01-enforce-review-disposition.md) | Reviews are acted on before merge | review | P1 | — | — | — |

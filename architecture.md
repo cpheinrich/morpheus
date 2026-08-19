@@ -256,6 +256,8 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | SEO | `hq/marketing/seo/` | Docs + OpenSEO |
 | ASO | `hq/marketing/aso/` | Docs + Appeeky + ASC integration |
 | Marketing content | `hq/marketing/content/` | Markdown |
+| Organic social channels | `hq/marketing/{instagram,linkedin,x,reddit}/` | Account record + platform guidance + drafts/scripts |
+| Virtual AI CMO | `hq/marketing/README.md` | Cross-channel evidence, prioritization and learning loop |
 | Analytics initialization | `hq/marketing/analytics.md` | Decision, privacy, provider and verification brief |
 | Launch planning | `hq/marketing/launch-plan.md` | Website plan + placeholder for a future app plan |
 | Identity, mission, audiences | `hq/brand/strategy.md` | Markdown |
@@ -426,6 +428,26 @@ screenshots, analytics and release candidate exist. At that point Appeeky suppli
 OpenSEO website data is not reused as app-store demand data. A launch plan prepares external
 actions but never authorizes publishing, posting, outreach, account creation, spending or store
 submission.
+
+Every user-facing project also starts with `hq/marketing/instagram/`, `linkedin/`, `x/`, and
+`reddit/`, whether or not those accounts exist yet. Each channel README holds the public account
+identity, current platform-native creation and measurement guidance, and the boundary for future
+scripts. The empty account fields are a deliberate setup reminder. Credentials, recovery methods,
+session material, and private tokens never belong there.
+
+Together these records form the operating surface for a virtual AI CMO. Its continuing loop reads
+product analytics, Search Console, OpenSEO or Appeeky evidence, channel analytics, customer
+language, market movement, and competitors; distinguishes attention from qualified traffic and
+product outcomes; proposes a small cross-channel portfolio; adapts truthful work to each platform;
+and records results back into research, experiments, content, and the roadmap. GEO and AI-answer
+visibility are part of that portfolio, grounded in the same product truth and source evidence as
+SEO rather than a separate collection of unsupported claims.
+
+Continuing work does not mean unattended publication. Automation defaults to research, drafting,
+validation, metric collection, or dry-run mode, with an exact account, current rules/API access,
+duplicate prevention, and an audit trail. Posting, replying, direct messaging, outreach, spending,
+account creation, and credential changes follow the project's explicit approval policy. Votes,
+follows, fake engagement, unsolicited interaction, and rule evasion are never automated.
 
 ### Built and maintained in Morpheus
 
@@ -621,6 +643,7 @@ Scheduled agent runs (GitHub Actions cron) that read the world and propose chang
 |---|---|---|---|
 | Bug triage | Daily | Sentry, Chatwoot, bug form | Labeled issues, roadmap entries |
 | Analytics review | Weekly | PostHog MCP | `/hq` KPI notes, roadmap proposals |
+| Organic growth review | Weekly | Search Console, PostHog, channel analytics, approved live data | Marketing experiments, drafts, roadmap proposals |
 | Support sweep | Daily | Chatwoot API | Draft replies queued for approval |
 | Finance sync | Weekly | Stripe, Mercury | `/hq/finance` update |
 | Market research | Monthly | OpenSEO, Appeeky, web | `hq/marketing/research/` |
