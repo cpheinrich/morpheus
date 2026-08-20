@@ -635,6 +635,8 @@ which is the part git history cannot capture.
 request containing only the factual canonical record. Roadmap changes, strategy refinement,
 implementation, decision promotion, and every other follow-up belong in separate pull requests, so
 reviewers can distinguish what happened in the meeting from what an agent later inferred from it.
+A roadmap follow-up backfills filed ids into the note's `roadmap:` field; that link is bookkeeping,
+not interpretation.
 
 Git rather than cloud storage because these are small, textual, appear in PR diffs, and are
 greppable with no authentication. Indexing markdown later is easy; migrating off a bespoke store is

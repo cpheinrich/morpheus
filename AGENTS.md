@@ -246,6 +246,12 @@ An issue merely mentioned as related is not declared and is not closed.
 no feature and has no item to move. Branch it as `inbox-<YYYY-MM-DD>`, staking no id, and
 `check pr` will not ask for one.
 
+**Meeting notes are delivered in isolated PRs.** Put each note on an `inbox-<YYYY-MM-DD>` branch,
+staking no id, in a PR that contains only the factual, canonical meeting record. Roadmap changes,
+strategy refinement, implementation work, decision promotion, and any other follow-up
+interpretation go in separate PRs. When a follow-up PR files roadmap items, it backfills their ids
+into the note's `roadmap:` field as bookkeeping.
+
 **Never borrow an unrelated item's branch for this.** Merging a branch that stakes an id marks
 that item shipped, so a PR which changes only records and `hq/product/` bookkeeping is refused on
 a claimed branch — it demonstrably did not do that item's work. That is how MO-010 came to read as
@@ -254,11 +260,6 @@ shipped against a PR that only moved the inbox, and a shipped item is never look
 When the deliverable genuinely *is* the record — a decision item like MO-003, whose whole outcome
 was "do not publish, use a git dependency" — put `records-only: <reason>` in the PR body, the same
 shape as `skip-tests:`.
-
-**Meeting notes are delivered in isolated PRs.** A meeting-note PR contains only the factual,
-canonical meeting record. Roadmap changes, strategy refinement, implementation work, decision
-promotion, and any other follow-up interpretation go in separate PRs. The note is the source; its
-downstream consequences are independently reviewable changes.
 
 **Both waivers are reported, not swallowed.** They are your own say-so about your own PR, so
 `check pr` prints them as `~ waived` with the reason attached and never says "conventions

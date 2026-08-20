@@ -18,3 +18,11 @@ project would recreate the drift the existing short scaffold intentionally avoid
 
 No Lakina file changed. This change does not automate enforcement or reinterpret any meeting; it
 makes the delivery boundary explicit and adds one scaffold regression assertion.
+
+## Review findings
+
+The first version left the later `roadmap:` backfill implicit, placed the contributor rule beside
+the claimed-branch waiver rather than the records-only branch convention, and split the existing
+redaction decision from its public-repo continuation. Agent review caught all three. The final rule
+names the unclaimed `inbox-<YYYY-MM-DD>` branch, treats roadmap-id backfilling as bookkeeping, and
+keeps the older decision intact.

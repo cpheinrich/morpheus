@@ -324,15 +324,16 @@ the canonical format, with a redaction pass that strips off-topic personal conve
 that would embarrass a participant. `redacted:` is a schema field rather than a convention, so CI
 refuses a note that skipped it — the note-taker has to make a positive claim rather than forget.
 
-**Meeting records land in isolated pull requests** — 2026-08-19. The meeting-note PR contains only
-the factual, canonical record. Roadmap changes, strategy refinement, implementation, decision
-promotion, and other follow-up interpretation are separate PRs, so the evidence of what happened is
-reviewed independently from conclusions drawn from it.
-
 For a **public repo, a meeting about that project may be summarised publicly.** That is not new
 exposure: issue threads and PR reviews are already public discussion of the same work, and a redacted
 summary says less than a review usually does. What changes is that the redaction passes stop being
 tidiness and become the gate.
+
+**Meeting records land in isolated pull requests** — 2026-08-19. The meeting-note PR contains only
+the factual, canonical record. Roadmap changes, strategy refinement, implementation, decision
+promotion, and other follow-up interpretation are separate PRs, so the evidence of what happened is
+reviewed independently from conclusions drawn from it. A roadmap follow-up backfills filed ids into
+the note's `roadmap:` field as bookkeeping, not interpretation.
 
 **The heartbeat reports the gap, it does not fetch.** Granola is a claude.ai connector and iMessage
 is a local database; neither is reachable from a CI runner. A beat that tried to pull meetings would

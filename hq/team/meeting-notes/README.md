@@ -18,6 +18,10 @@ separate pull requests after the record itself is reviewable.
 The distinction is evidentiary: the note says what happened in the meeting; later changes say what
 the project should do about it.
 
+When a follow-up pull request files roadmap items from the note, it also backfills their ids into
+the note's `roadmap:` frontmatter field. That linkage is bookkeeping, not interpretation; it clears
+the heartbeat's list of notes whose outputs have not been promoted.
+
 ## The format
 
 One file per meeting: `PREFIX-YY-MM-DD-HH.MM.SS-short-handle.md`.
