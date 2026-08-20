@@ -78,8 +78,10 @@ export interface MeetingContext {
     }[];
 }
 export interface Beat {
-    /** Claims doing actual work — blocked ones excluded. */
+    /** Claims doing actual work — blocked and completed ones excluded. */
     inFlight: Claim[];
+    /** Completed claim branches that still exist on origin. */
+    staleClaims: Claim[];
     blocked: BlockedItem[];
     drift: Drift[];
     ceiling: number;
@@ -94,6 +96,8 @@ export interface AssessInput {
     items: Item<RoadmapItem>[];
     goals: Item<Goal>[];
     claims: Claim[];
+    /** Claims proven merged while their item still says `review`. */
+    mergedClaimIds?: string[];
     config: HeartbeatConfig;
     now: Date;
     /** Meeting notes, when the project keeps any. Absent is not empty. */
@@ -104,6 +108,21 @@ export interface AssessInput {
         roadmap: string[];
     }>[];
 }
+/**
+ * What should happen next, and whether anything should.
+ *
+ * The four guards, each closing a specific failure:
+ *
+ * - **The ceiling** is what stops a runaway queue, so it is checked before
+ *   anything else and is never advisory.
+ * - **Settled is not in-flight.** A blocked item holds its branch on purpose;
+ *   shipped and dropped branches can survive after the work ends. Counting any
+ *   of them can consume a lane forever, deadlocking a scheduled beat.
+ * - **Nothing is a valid answer.** A beat with no pick returns a reason and
+ *   succeeds. One that cannot do nothing will invent work to justify itself.
+ * - **Blocked work is re-surfaced, not re-raised.** `pm block` already filed an
+ *   inbox item; a cron that duplicates it teaches people to ignore the inbox.
+ */
 export declare function assess(input: AssessInput): Beat;
 /**
  * How stale the meeting record is, and what it produced nothing from.

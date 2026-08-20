@@ -86,8 +86,10 @@ export interface MeetingContext {
 }
 
 export interface Beat {
-  /** Claims doing actual work — blocked ones excluded. */
+  /** Claims doing actual work — blocked and completed ones excluded. */
   inFlight: Claim[];
+  /** Completed claim branches that still exist on origin. */
+  staleClaims: Claim[];
   blocked: BlockedItem[];
   drift: Drift[];
   ceiling: number;
@@ -103,6 +105,8 @@ export interface AssessInput {
   items: Item<RoadmapItem>[];
   goals: Item<Goal>[];
   claims: Claim[];
+  /** Claims proven merged while their item still says `review`. */
+  mergedClaimIds?: string[];
   config: HeartbeatConfig;
   now: Date;
   /** Meeting notes, when the project keeps any. Absent is not empty. */
@@ -113,6 +117,19 @@ const PRIORITY_ORDER: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 
 /** A goal still worth serving. Achieved and missed goals pull nothing forward. */
 const LIVE_GOAL = new Set(["on-track", "at-risk"]);
+
+/**
+ * Statuses whose claim does not occupy a dispatch lane.
+ *
+ * `blocked` because the work is waiting on a person; `shipped` and `dropped`
+ * because it is over. All three can still have a branch on origin, and only the
+ * ceiling should ignore them.
+ */
+const SETTLED_FOR_DISPATCH = new Set<RoadmapItem["status"]>([
+  "blocked",
+  "shipped",
+  "dropped",
+]);
 
 function daysSince(iso: string, now: Date): number {
   const then = new Date(`${iso}T00:00:00Z`).getTime();
@@ -147,23 +164,14 @@ function compare(a: Candidate, b: Candidate): number {
  *
  * - **The ceiling** is what stops a runaway queue, so it is checked before
  *   anything else and is never advisory.
- * - **Blocked is not in-flight.** A blocked item holds its branch on purpose;
- *   counting it would let one unanswered question consume a lane forever, and
- *   a ceiling that cannot be released is a deadlock with a schedule.
+ * - **Settled is not in-flight.** A blocked item holds its branch on purpose;
+ *   shipped and dropped branches can survive after the work ends. Counting any
+ *   of them can consume a lane forever, deadlocking a scheduled beat.
  * - **Nothing is a valid answer.** A beat with no pick returns a reason and
  *   succeeds. One that cannot do nothing will invent work to justify itself.
  * - **Blocked work is re-surfaced, not re-raised.** `pm block` already filed an
  *   inbox item; a cron that duplicates it teaches people to ignore the inbox.
  */
-/**
- * Statuses whose claim does not occupy a dispatch lane.
- *
- * `blocked` because the work is waiting on a person; `shipped` and `dropped`
- * because it is over. All three can still have a branch on origin, and only the
- * ceiling should ignore them.
- */
-const SETTLED_FOR_DISPATCH = new Set(["blocked", "shipped", "dropped"]);
-
 export function assess(input: AssessInput): Beat {
   const { items, goals, claims, config, now } = input;
 
@@ -198,11 +206,19 @@ export function assess(input: AssessInput): Beat {
   // `claimedIds` deliberately still counts them, because `pm claim` really is
   // blocked by the surviving ref: the drift and candidate lists should keep
   // saying so. What changes is only whether a finished item occupies a lane.
-  const settledIds = new Set(
-    items
+  const settledIds = new Set([
+    ...(input.mergedClaimIds ?? []),
+    ...items
       .filter((i) => SETTLED_FOR_DISPATCH.has(i.data.status))
       .map((i) => i.data.id),
-  );
+  ]);
+  const staleIds = new Set([
+    ...(input.mergedClaimIds ?? []),
+    ...items
+      .filter((i) => i.data.status === "shipped" || i.data.status === "dropped")
+      .map((i) => i.data.id),
+  ]);
+  const staleClaims = claims.filter((c) => staleIds.has(c.id));
   const inFlight = claims.filter((c) => !settledIds.has(c.id));
   const claimedIds = new Set(claims.map((c) => c.id));
 
@@ -245,6 +261,7 @@ export function assess(input: AssessInput): Beat {
   if (headroom <= 0) {
     return {
       inFlight,
+      staleClaims,
       blocked,
       drift,
       ceiling: config.ceiling,
@@ -267,6 +284,7 @@ export function assess(input: AssessInput): Beat {
           : "Nothing in the backlog is unclaimed.";
     return {
       inFlight,
+      staleClaims,
       blocked,
       drift,
       ceiling: config.ceiling,
@@ -281,6 +299,7 @@ export function assess(input: AssessInput): Beat {
   const pick = ranked[0]!;
   return {
     inFlight,
+    staleClaims,
     blocked,
     drift,
     ceiling: config.ceiling,

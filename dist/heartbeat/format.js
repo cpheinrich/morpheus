@@ -23,6 +23,7 @@ export function formatBeat(beat) {
     }
     lines.push(beat.reason, "");
     lines.push(...bullet("In flight:", beat.inFlight.map((c) => `${c.id.padEnd(8)} ${c.branch}`)));
+    lines.push(...bullet("Settled claims — branch still exists on origin:", beat.staleClaims.map((c) => `${c.id.padEnd(8)} ${c.branch}`)));
     lines.push(...bullet("Blocked — waiting on a person, not an agent:", beat.blocked.map((b) => `${b.id.padEnd(8)} ${b.age}d — needs: ${b.needs}`)));
     lines.push(...bullet("Drift:", beat.drift.map((d) => `${d.id.padEnd(8)} ${d.why}`)));
     if (beat.meetings.sinceLastNote !== null) {
@@ -54,6 +55,9 @@ export function formatSummary(beat) {
         : "**Pick: nothing.**", "", beat.reason, "", `In flight ${beat.inFlight.length}/${beat.ceiling} · blocked ${beat.blocked.length} · backlog ${beat.ranked.length}`, "");
     if (beat.blocked.length) {
         out.push("### Blocked — waiting on a person", "", table(["ID", "Waiting", "Needs"], beat.blocked.map((b) => [b.id, `${b.age}d`, b.needs.replace(/\|/g, "\\|")])), "");
+    }
+    if (beat.staleClaims.length) {
+        out.push("### Settled claims with a surviving branch", "", "These branches do not occupy dispatch lanes, but still block a claim with the same id.", "", table(["ID", "Branch"], beat.staleClaims.map((claim) => [claim.id, claim.branch])), "");
     }
     if (beat.drift.length) {
         out.push("### Drift", "", table(["ID", "Problem"], beat.drift.map((d) => [d.id, d.why])), "");

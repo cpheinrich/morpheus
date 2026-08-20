@@ -457,3 +457,9 @@ The upstream cause is not Morpheus at all: a squash-merge leaves the branch unle
 `--delete-branch` or the repo sets `delete_branch_on_merge`. Worth remembering that **a defect can
 be genuinely someone else's and still be yours to make harmless**, because Morpheus is where the
 consequence is felt.
+
+The first fix trusted only terminal board statuses. Review caught the deadlock hiding one step
+earlier: reconciliation normally changes merged `review` items to `shipped`, but a full queue can
+prevent the next reconciling command from ever starting. The heartbeat now joins its existing
+claim list to one read-only merged-PR query, degrades to status-only evidence when `gh` is absent,
+and reports completed branches separately instead of making them vanish from every surface.
