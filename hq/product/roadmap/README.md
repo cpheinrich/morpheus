@@ -12,6 +12,7 @@ item files, not this table.
 | [MO-26-08-19-15.34.01](./MO-26-08-19-15.34.01-enforce-review-disposition.md) | Reviews are acted on before merge | review | P1 | — | — | — |
 | [MO-26-08-19-15.22.10](./MO-26-08-19-15.22.10-resend-canon-customer-email.md) | Resend is canon for customer email; Cloudflare for admin mail | review | P2 | — | — | #139 |
 | [MO-26-08-19-16.50.28](./MO-26-08-19-16.50.28-python-ci-reusable-workflow.md) | Ship a python-ci reusable workflow, so uv projects delegate like Node ones | review | P2 | — | — | — |
+| [MO-26-08-19-22.02.06](./MO-26-08-19-22.02.06-what-makes-a-test-count.md) | Say what makes a test count, not only that tests exist | review | P2 | — | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-01-047](./MO-26-08-01-047-inbox-status-one-front.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — | — |
