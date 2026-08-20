@@ -709,8 +709,10 @@ Guards, each closing a specific failure:
 
 - **Concurrency ceiling.** At or above it the beat picks nothing. This is what stops a runaway
   queue, so it is the one guard that must never be advisory.
-- **Blocked is not in-flight.** Otherwise one unanswered question permanently consumes a lane and
-  the ceiling stops meaning anything.
+- **Settled is not in-flight.** A blocked item waits on a person; a shipped or dropped item is over;
+  and a `review` claim whose PR is provably merged is only waiting on reconciliation. None consumes
+  a dispatch lane. Surviving completed branches are still reported because they block a future
+  claim with the same id.
 - **Nothing is a valid answer.** An empty beat exits successfully with a reason. A heartbeat that
   cannot do nothing will invent work to justify itself.
 - **Blocked-but-actionable work is re-surfaced, not re-raised.** `pm block` already filed it; a

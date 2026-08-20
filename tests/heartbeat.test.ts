@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { assess, DEFAULT_CONFIG, type AssessInput } from "../src/heartbeat/assess.js";
+import { mergedReviewClaimIds } from "../src/cli/heartbeat.js";
 import { hasDispatchCredential, readConfig } from "../src/heartbeat/config.js";
 import { formatBeat, formatSummary } from "../src/heartbeat/format.js";
 import { parseClaimRefs, type Claim } from "../src/pm/claim.js";
@@ -199,6 +200,55 @@ describe("the ceiling", () => {
     expect(beat.pick?.id).toBe("MO-009");
   });
 
+  // A squash-merge leaves the branch behind unless the merger passed
+  // --delete-branch or the repo sets delete_branch_on_merge, so a finished item
+  // keeps a ref that still parses as a claim. Counting it fills the ceiling with
+  // work that is already on the trunk, and the beat reports the resulting
+  // paralysis as "finishing beats starting".
+  it("does not count a shipped or dropped item's surviving branch against the ceiling", () => {
+    const beat = assess(
+      input({
+        items: [
+          item({ id: "MO-001", status: "shipped" }),
+          item({ id: "MO-002", status: "shipped" }),
+          item({ id: "MO-003", status: "dropped" }),
+          item({ id: "MO-009" }),
+        ],
+        claims: [claim("MO-001"), claim("MO-002"), claim("MO-003")],
+      }),
+    );
+    expect(beat.inFlight).toHaveLength(0);
+    expect(beat.pick?.id).toBe("MO-009");
+  });
+
+  it("still counts a genuinely in-progress claim beside a shipped one", () => {
+    const beat = assess(
+      input({
+        items: [
+          item({ id: "MO-001", status: "shipped" }),
+          item({ id: "MO-002", status: "in-progress" }),
+          item({ id: "MO-004", status: "review" }),
+          item({ id: "MO-009" }),
+        ],
+        claims: [claim("MO-001"), claim("MO-002"), claim("MO-004")],
+      }),
+    );
+    expect(beat.inFlight.map((c) => c.id)).toEqual(["MO-002", "MO-004"]);
+  });
+
+  it("does not count a merged review claim while reconciliation is pending", () => {
+    const beat = assess(
+      input({
+        items: [item({ id: "MO-001", status: "review" }), item({ id: "MO-009" })],
+        claims: [claim("MO-001")],
+        mergedClaimIds: ["MO-001"],
+      }),
+    );
+    expect(beat.inFlight).toHaveLength(0);
+    expect(beat.staleClaims.map((c) => c.id)).toEqual(["MO-001"]);
+    expect(beat.pick?.id).toBe("MO-009");
+  });
+
   it("counts unblocked claims and ignores blocked ones in the same set", () => {
     const beat = assess(
       input({
@@ -365,6 +415,39 @@ describe("formatting", () => {
       input({ items: [item({ id: "MO-001", status: "blocked", needs: "a | b" })] }),
     );
     expect(formatSummary(risky)).toContain("a \\| b");
+  });
+
+  it("reports settled claims instead of silently dropping their branches", () => {
+    const stale = assess(
+      input({
+        items: [item({ id: "MO-001", status: "shipped" })],
+        claims: [claim("MO-001")],
+      }),
+    );
+    expect(formatBeat(stale)).toContain("Settled claims");
+    expect(formatSummary(stale)).toContain("surviving branch");
+  });
+});
+
+describe("merged review evidence", () => {
+  it("joins merged PRs to review claims without treating active or records-only work as done", () => {
+    const items = [
+      item({ id: "MO-001", status: "review" }),
+      item({ id: "MO-002", status: "in-progress" }),
+      item({ id: "MO-003", status: "review" }),
+    ];
+    const claims = [claim("MO-001"), claim("MO-002"), claim("MO-003")];
+    const prs = [
+      { number: 1, branch: claims[0]!.branch, files: ["src/heartbeat/assess.ts"] },
+      { number: 2, branch: claims[1]!.branch, files: ["src/heartbeat/assess.ts"] },
+      {
+        number: 3,
+        branch: claims[2]!.branch,
+        files: ["hq/product/roadmap/MO-003.md", ".agent/learned.md"],
+      },
+    ];
+
+    expect(mergedReviewClaimIds(items, claims, prs)).toEqual(["MO-001"]);
   });
 });
 

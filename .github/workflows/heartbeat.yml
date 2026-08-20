@@ -53,6 +53,10 @@ on:
         type: string
         default: ""
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   beat:
     runs-on: ubuntu-latest
@@ -86,6 +90,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Beat
+        env:
+          # gh does not automatically read the Actions context. Without this,
+          # merged review claims degrade to status-only evidence on every
+          # scheduled run even though the caller token can read its own PRs.
+          GH_TOKEN: ${{ github.token }}
         run: >
           node .morpheus/dist/cli/index.js heartbeat
           --dir ${{ inputs.product-dir }}

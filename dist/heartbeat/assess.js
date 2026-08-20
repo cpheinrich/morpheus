@@ -21,6 +21,18 @@ export const DEFAULT_CONFIG = {
 const PRIORITY_ORDER = { P0: 0, P1: 1, P2: 2, P3: 3 };
 /** A goal still worth serving. Achieved and missed goals pull nothing forward. */
 const LIVE_GOAL = new Set(["on-track", "at-risk"]);
+/**
+ * Statuses whose claim does not occupy a dispatch lane.
+ *
+ * `blocked` because the work is waiting on a person; `shipped` and `dropped`
+ * because it is over. All three can still have a branch on origin, and only the
+ * ceiling should ignore them.
+ */
+const SETTLED_FOR_DISPATCH = new Set([
+    "blocked",
+    "shipped",
+    "dropped",
+]);
 function daysSince(iso, now) {
     const then = new Date(`${iso}T00:00:00Z`).getTime();
     if (Number.isNaN(then))
@@ -51,9 +63,9 @@ function compare(a, b) {
  *
  * - **The ceiling** is what stops a runaway queue, so it is checked before
  *   anything else and is never advisory.
- * - **Blocked is not in-flight.** A blocked item holds its branch on purpose;
- *   counting it would let one unanswered question consume a lane forever, and
- *   a ceiling that cannot be released is a deadlock with a schedule.
+ * - **Settled is not in-flight.** A blocked item holds its branch on purpose;
+ *   shipped and dropped branches can survive after the work ends. Counting any
+ *   of them can consume a lane forever, deadlocking a scheduled beat.
  * - **Nothing is a valid answer.** A beat with no pick returns a reason and
  *   succeeds. One that cannot do nothing will invent work to justify itself.
  * - **Blocked work is re-surfaced, not re-raised.** `pm block` already filed an
@@ -63,7 +75,6 @@ export function assess(input) {
     const { items, goals, claims, config, now } = input;
     const byId = new Map(items.map((i) => [i.data.id, i.data]));
     const goalStatus = new Map(goals.map((g) => [g.data.id, g.data.status]));
-    const blockedIds = new Set(items.filter((i) => i.data.status === "blocked").map((i) => i.data.id));
     const blocked = items
         .filter((i) => i.data.status === "blocked")
         .map((i) => ({
@@ -75,7 +86,36 @@ export function assess(input) {
         age: daysSince(i.data.updated, now),
     }))
         .sort((a, b) => b.age - a.age);
-    const inFlight = claims.filter((c) => !blockedIds.has(c.id));
+    // A claim only holds a lane while its work is still moving. Blocked was
+    // already excluded — the work is stalled on a person, not occupying an agent.
+    // Shipped and dropped are the same argument one step further on: the branch
+    // survives a squash-merge unless the merger passed `--delete-branch` or the
+    // repository sets `delete_branch_on_merge`, and a branch left behind that way
+    // describes finished work.
+    //
+    // Leaving them in is not a cosmetic overcount. It consumes the dispatch
+    // ceiling, so the beat stops offering work on the strength of branches whose
+    // commits are already on the trunk — and it reports that as "finishing beats
+    // starting", which reads as deliberate. A downstream project sat at 8/3 with
+    // three real claims for a week before anyone attributed it to a branch.
+    //
+    // `claimedIds` deliberately still counts them, because `pm claim` really is
+    // blocked by the surviving ref: the drift and candidate lists should keep
+    // saying so. What changes is only whether a finished item occupies a lane.
+    const settledIds = new Set([
+        ...(input.mergedClaimIds ?? []),
+        ...items
+            .filter((i) => SETTLED_FOR_DISPATCH.has(i.data.status))
+            .map((i) => i.data.id),
+    ]);
+    const staleIds = new Set([
+        ...(input.mergedClaimIds ?? []),
+        ...items
+            .filter((i) => i.data.status === "shipped" || i.data.status === "dropped")
+            .map((i) => i.data.id),
+    ]);
+    const staleClaims = claims.filter((c) => staleIds.has(c.id));
+    const inFlight = claims.filter((c) => !settledIds.has(c.id));
     const claimedIds = new Set(claims.map((c) => c.id));
     // A status of in-progress with no branch behind it is drift, not work. Report
     // it rather than picking it: something already went wrong there, and quietly
@@ -112,6 +152,7 @@ export function assess(input) {
     if (headroom <= 0) {
         return {
             inFlight,
+            staleClaims,
             blocked,
             drift,
             ceiling: config.ceiling,
@@ -131,6 +172,7 @@ export function assess(input) {
                 : "Nothing in the backlog is unclaimed.";
         return {
             inFlight,
+            staleClaims,
             blocked,
             drift,
             ceiling: config.ceiling,
@@ -144,6 +186,7 @@ export function assess(input) {
     const pick = ranked[0];
     return {
         inFlight,
+        staleClaims,
         blocked,
         drift,
         ceiling: config.ceiling,
