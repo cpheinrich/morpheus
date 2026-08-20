@@ -255,6 +255,11 @@ When the deliverable genuinely *is* the record — a decision item like MO-003, 
 was "do not publish, use a git dependency" — put `records-only: <reason>` in the PR body, the same
 shape as `skip-tests:`.
 
+**Meeting notes are delivered in isolated PRs.** A meeting-note PR contains only the factual,
+canonical meeting record. Roadmap changes, strategy refinement, implementation work, decision
+promotion, and any other follow-up interpretation go in separate PRs. The note is the source; its
+downstream consequences are independently reviewable changes.
+
 **Both waivers are reported, not swallowed.** They are your own say-so about your own PR, so
 `check pr` prints them as `~ waived` with the reason attached and never says "conventions
 satisfied" without listing them. They still pass — the reason just has to be visible to whoever

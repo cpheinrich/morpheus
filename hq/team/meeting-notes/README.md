@@ -8,6 +8,16 @@ storing transcripts would make an agent's context *worse*: it would read more an
 worth keeping is what was decided, what someone has to do, and enough of the reasoning that a
 decision can be argued with later.
 
+## Deliver the record on its own
+
+Each meeting note gets an isolated pull request containing only the factual, canonical meeting
+record. Do not bundle roadmap changes, strategy refinement, implementation work, promotion into
+`.agent/decisions.md`, or any other follow-up interpretation with it. Those consequences belong in
+separate pull requests after the record itself is reviewable.
+
+The distinction is evidentiary: the note says what happened in the meeting; later changes say what
+the project should do about it.
+
 ## The format
 
 One file per meeting: `PREFIX-YY-MM-DD-HH.MM.SS-short-handle.md`.

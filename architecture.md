@@ -631,6 +631,11 @@ Worklog entries carry frontmatter (`agent`, `date`, `roadmap`, `outcome`) and re
 attempted, what happened, and what was learned — **including dead ends that produced no code**,
 which is the part git history cannot capture.
 
+**A meeting record lands before its interpretation.** Deliver each meeting note in an isolated pull
+request containing only the factual canonical record. Roadmap changes, strategy refinement,
+implementation, decision promotion, and every other follow-up belong in separate pull requests, so
+reviewers can distinguish what happened in the meeting from what an agent later inferred from it.
+
 Git rather than cloud storage because these are small, textual, appear in PR diffs, and are
 greppable with no authentication. Indexing markdown later is easy; migrating off a bespoke store is
 not.

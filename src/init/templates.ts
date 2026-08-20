@@ -991,8 +991,9 @@ An inbox is a snapshot and never accumulates history. This is the record.
 /**
  * Deliberately short, and deliberately a pointer.
  *
- * The canonical version — frontmatter fields, both redaction passes, the
- * public-repo rule — is 130 lines in Morpheus's own `hq/team/meeting-notes/`.
+ * The canonical version — frontmatter fields, delivery boundary, both
+ * redaction passes, the public-repo rule — lives in Morpheus's own
+ * `hq/team/meeting-notes/`.
  * Copying it into every project would give one copy per repo to drift, and the
  * one that drifts is a document about what may be published. What locality
  * buys is the *gate* being visible where somebody is standing; the depth stays
@@ -1007,6 +1008,10 @@ the wall clock of the people who were in it, with the offset in \`occurred\`.
 A transcript is high volume and low signal; storing them would make an agent's context worse rather
 than better. What is worth keeping is what was decided, what someone has to do, and enough of the
 reasoning that a decision can be argued with later.
+
+**Deliver the note in an isolated pull request containing only the factual, canonical meeting
+record.** Roadmap changes, strategy refinement, implementation work, decision promotion, and every
+other follow-up interpretation belong in separate pull requests.
 
 **\`redacted: true\` is a claim you are making**, and \`morpheus team validate\` refuses a note without
 it. It means you have stripped everything not about this project, and checked that the note is
