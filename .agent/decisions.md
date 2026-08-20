@@ -329,6 +329,12 @@ exposure: issue threads and PR reviews are already public discussion of the same
 summary says less than a review usually does. What changes is that the redaction passes stop being
 tidiness and become the gate.
 
+**Meeting records land in isolated pull requests** — 2026-08-19. The meeting-note PR contains only
+the factual, canonical record. Roadmap changes, strategy refinement, implementation, decision
+promotion, and other follow-up interpretation are separate PRs, so the evidence of what happened is
+reviewed independently from conclusions drawn from it. A roadmap follow-up backfills filed ids into
+the note's `roadmap:` field as bookkeeping, not interpretation.
+
 **The heartbeat reports the gap, it does not fetch.** Granola is a claude.ai connector and iMessage
 is a local database; neither is reachable from a CI runner. A beat that tried to pull meetings would
 either need credentials it should not have, or would find nothing and report a clean sweep. So the

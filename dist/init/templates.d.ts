@@ -74,8 +74,9 @@ export declare const inboxArchiveReadme: () => string;
 /**
  * Deliberately short, and deliberately a pointer.
  *
- * The canonical version — frontmatter fields, both redaction passes, the
- * public-repo rule — is 130 lines in Morpheus's own `hq/team/meeting-notes/`.
+ * The canonical version — frontmatter fields, delivery boundary, both
+ * redaction passes, the public-repo rule — lives in Morpheus's own
+ * `hq/team/meeting-notes/`.
  * Copying it into every project would give one copy per repo to drift, and the
  * one that drifts is a document about what may be published. What locality
  * buys is the *gate* being visible where somebody is standing; the depth stays

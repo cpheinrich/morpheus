@@ -941,8 +941,9 @@ An inbox is a snapshot and never accumulates history. This is the record.
 /**
  * Deliberately short, and deliberately a pointer.
  *
- * The canonical version — frontmatter fields, both redaction passes, the
- * public-repo rule — is 130 lines in Morpheus's own `hq/team/meeting-notes/`.
+ * The canonical version — frontmatter fields, delivery boundary, both
+ * redaction passes, the public-repo rule — lives in Morpheus's own
+ * `hq/team/meeting-notes/`.
  * Copying it into every project would give one copy per repo to drift, and the
  * one that drifts is a document about what may be published. What locality
  * buys is the *gate* being visible where somebody is standing; the depth stays
@@ -958,12 +959,18 @@ A transcript is high volume and low signal; storing them would make an agent's c
 than better. What is worth keeping is what was decided, what someone has to do, and enough of the
 reasoning that a decision can be argued with later.
 
+**Deliver the note in an isolated pull request containing only the factual, canonical meeting
+record.** Roadmap changes, strategy refinement, implementation work, decision promotion, and every
+other follow-up interpretation belong in separate pull requests. When a follow-up pull request
+files roadmap items, it backfills their ids into the note's \`roadmap:\` field as bookkeeping.
+
 **\`redacted: true\` is a claim you are making**, and \`morpheus team validate\` refuses a note without
 it. It means you have stripped everything not about this project, and checked that the note is
 something you would be relaxed about being read back — by the team, by the person it is about, or
 by a stranger in a year.
 
-The canonical format, the frontmatter fields, and both redaction passes are documented once, in
+The canonical format, delivery boundary, frontmatter fields, and both redaction passes are
+documented once, in
 [Morpheus](https://github.com/cpheinrich/morpheus/blob/main/hq/team/meeting-notes/README.md).
 Depth stays in one place so two copies cannot drift.
 

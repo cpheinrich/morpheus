@@ -496,12 +496,15 @@ describe("morpheus init", () => {
      * Migrated repos had this and scaffolded ones did not, which was the wrong
      * way round — a fresh project got less than a retrofitted one.
      */
-    it("scaffolds meeting-notes with its redaction gate stated up front", async () => {
+    it("scaffolds meeting-notes with its redaction and delivery gates stated up front", async () => {
       await scaffold(dir, SEED);
       const text = await read("hq/team/meeting-notes/README.md");
 
       expect(text).toContain("never a transcript");
       expect(text).toContain("redacted: true");
+      expect(text).toContain("isolated pull request");
+      expect(text).toContain("follow-up interpretation belong in separate pull requests");
+      expect(text).toContain("backfills their ids into the note's `roadmap:` field as bookkeeping");
       // A pointer, not a copy — one document about what may be published, so
       // there is nothing to drift.
       expect(text).toContain("blob/main/hq/team/meeting-notes/README.md");

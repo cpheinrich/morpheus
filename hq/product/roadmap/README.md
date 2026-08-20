@@ -7,6 +7,7 @@ item files, not this table.
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
 | [MO-26-08-19-16.19.44](./MO-26-08-19-16.19.44-heartbeat-counts-shipped-item.md) | Heartbeat counts a shipped item's branch as in flight | review | P1 | — | — | — |
+| [MO-26-08-19-21.30.27](./MO-26-08-19-21.30.27-isolate-meeting-records.md) | Deliver meeting records in isolated pull requests | review | P1 | — | — | — |
 | [MO-26-08-19-16.50.28](./MO-26-08-19-16.50.28-python-ci-reusable-workflow.md) | Ship a python-ci reusable workflow, so uv projects delegate like Node ones | review | P2 | — | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
