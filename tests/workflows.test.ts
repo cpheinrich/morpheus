@@ -1005,3 +1005,67 @@ describe("firebase-tests.yml", () => {
     expect(wf.permissions).toEqual({ contents: "read" });
   });
 });
+
+/**
+ * `python-ci.yml` is the Python half of the pair `node-ci.yml` opens. It ships
+ * to every project that has a uv surface, so the same rule applies: a mistake
+ * here breaks repositories that changed nothing.
+ *
+ * Coverage is the part worth pinning. A coverage flag that silently measures
+ * the wrong thing is worse than no coverage at all — it reports a number
+ * somebody will put in a README, and `--cov` with no source measures whatever
+ * happens to be imported, dependency tree included.
+ */
+describe("python-ci", () => {
+  interface PythonCi {
+    on?: { workflow_call?: { inputs?: Record<string, { default?: unknown; type?: string }> } };
+    jobs?: Record<string, {
+      strategy?: { "fail-fast"?: boolean; matrix?: Record<string, unknown> };
+      steps?: Array<Record<string, unknown>>;
+    }>;
+  }
+
+  it("refuses to measure coverage without being told what to measure", async () => {
+    const wf = (await read("python-ci.yml")) as PythonCi;
+    const step = wf.jobs?.check?.steps?.find((s) => s["name"] === "Test with coverage");
+    expect(step, "python-ci must have a coverage step").toBeDefined();
+    expect(String(step?.["run"])).toContain("coverage-source is required when coverage is enabled");
+    // Not `--cov` bare: that measures every imported module, which is a number
+    // about the dependency tree rather than about the project.
+    expect(String(step?.["run"])).toContain('--cov="$COVERAGE_SOURCE"');
+  });
+
+  it("defaults coverage off, and its threshold to reporting rather than gating", async () => {
+    const inputs = (await read("python-ci.yml") as PythonCi).on?.workflow_call?.inputs ?? {};
+    expect(inputs["coverage"]?.default).toBe(false);
+    // A project that has never measured cannot know its floor. Shipping a
+    // non-zero default would fail repositories on their first delegation and
+    // teach them to lower it, which is how a threshold stops meaning anything.
+    expect(inputs["coverage-fail-under"]?.default).toBe(0);
+  });
+
+  it("installs from the lockfile rather than resolving afresh", async () => {
+    const wf = (await read("python-ci.yml")) as PythonCi;
+    const step = wf.jobs?.check?.steps?.find((s) => s["name"] === "Install dependencies");
+    expect(String(step?.["run"])).toContain("--locked");
+  });
+
+  it("runs the whole interpreter matrix even after one fails", async () => {
+    const wf = (await read("python-ci.yml")) as PythonCi;
+    // One version failing is a fact worth having about the others; cancelling
+    // the siblings turns a two-line answer into a second CI run.
+    expect(wf.jobs?.check?.strategy?.["fail-fast"]).toBe(false);
+    expect(String(wf.jobs?.check?.strategy?.matrix?.["python-version"]))
+      .toContain("fromJSON(inputs.python-versions)");
+  });
+
+  it("uploads one coverage report rather than one per interpreter", async () => {
+    const wf = (await read("python-ci.yml")) as PythonCi;
+    const upload = wf.jobs?.check?.steps?.find((s) =>
+      String(s["uses"] ?? "").startsWith("actions/upload-artifact"));
+    expect(upload).toBeDefined();
+    // Every matrix leg measures the same lines, and identical artifact names
+    // across a matrix collide rather than merge.
+    expect(String(upload?.["if"])).toContain("fromJSON(inputs.python-versions)[0]");
+  });
+});

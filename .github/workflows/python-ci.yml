@@ -1,0 +1,131 @@
+name: Python CI
+
+# Reusable workflow for a uv-managed Python surface. Projects delegate to this
+# rather than copying CI logic:
+#
+#   jobs:
+#     backend:
+#       uses: cpheinrich/morpheus/.github/workflows/python-ci.yml@main
+#       with:
+#         working-directory: apps/backend
+#         coverage-source: src/lakina
+#
+# Improving CI for every project is then one commit here.
+#
+# The Node side of this pair is node-ci.yml; the two deliberately read alike.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        default: "."
+      python-versions:
+        description: >
+          JSON array of versions for the test matrix. A library is tested
+          against every interpreter it claims to support; a single-target
+          service can pass '["3.12"]'.
+        type: string
+        default: '["3.12", "3.13"]'
+      sync-extra:
+        description: The optional-dependency group holding the dev toolchain.
+        type: string
+        default: "dev"
+      run-lint:
+        type: boolean
+        default: true
+      lint-paths:
+        description: Paths passed to `ruff check`.
+        type: string
+        default: "src/ tests/"
+      coverage:
+        description: >
+          Measure line coverage. Off by default because a project without
+          pytest-cov installed would fail on an unrecognised flag rather than
+          on its own tests.
+        type: boolean
+        default: false
+      coverage-source:
+        description: >
+          What coverage is measured over — a package name or an import path.
+          Required when coverage is on: measuring everything imported would
+          count the dependency tree, and measuring nothing reports 100%.
+        type: string
+        default: ""
+      coverage-fail-under:
+        description: >
+          Fail below this percentage. The default of 0 reports without gating,
+          which is the honest starting point for a project that has never
+          measured — a threshold picked before the first number is a guess
+          that gets lowered rather than a floor that holds.
+        type: number
+        default: 0
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    strategy:
+      # One interpreter failing is a fact worth having about the others, so
+      # the matrix runs to completion rather than cancelling its siblings.
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: ${{ inputs.working-directory }}/uv.lock
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      # --locked, not --frozen: the lockfile must already agree with
+      # pyproject.toml. A CI run that quietly resolves a different dependency
+      # set is not testing what a developer runs.
+      - name: Install dependencies
+        env:
+          SYNC_EXTRA: ${{ inputs.sync-extra }}
+        run: uv sync --locked --extra "$SYNC_EXTRA"
+
+      - name: Lint
+        if: ${{ inputs.run-lint }}
+        env:
+          LINT_PATHS: ${{ inputs.lint-paths }}
+        run: uv run ruff check $LINT_PATHS
+
+      - name: Test
+        if: ${{ !inputs.coverage }}
+        run: uv run pytest -v
+
+      - name: Test with coverage
+        if: ${{ inputs.coverage }}
+        env:
+          COVERAGE_SOURCE: ${{ inputs.coverage-source }}
+          FAIL_UNDER: ${{ inputs.coverage-fail-under }}
+        run: |
+          if [ -z "$COVERAGE_SOURCE" ]; then
+            echo "coverage-source is required when coverage is enabled" >&2
+            exit 1
+          fi
+          uv run pytest -v \
+            --cov="$COVERAGE_SOURCE" \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under="$FAIL_UNDER"
+
+      # One interpreter's report, not the matrix's — they measure the same
+      # lines, and uploading each would race for the same artifact name.
+      - name: Upload coverage report
+        if: ${{ inputs.coverage && matrix.python-version == fromJSON(inputs.python-versions)[0] }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: ${{ inputs.working-directory }}/coverage.xml
+          if-no-files-found: error
