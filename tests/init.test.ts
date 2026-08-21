@@ -145,6 +145,20 @@ describe("morpheus init", () => {
       expect(agents).toContain("without secrets");
     });
 
+    it("carries the build-vs-borrow convention into every project", async () => {
+      await scaffold(dir, SEED);
+
+      // The convention only changes behaviour if it ships with the project the
+      // agent is standing in — a preference stated nowhere fires never. The
+      // load-bearing halves: the check happens before building, and the agent
+      // proposes rather than silently deciding in either direction.
+      const agents = await read("AGENTS.md");
+      expect(agents).toContain("Build vs. borrow");
+      expect(agents).toContain("make one quick search");
+      expect(agents).toContain("Propose, don't decide silently");
+      expect(agents).toContain("Prefer lightweight");
+    });
+
     it("keeps a README the project already wrote", async () => {
       const mine = "# The real readme\n";
       await writeFile(join(dir, "README.md"), mine);

@@ -227,6 +227,23 @@ The boundary is about obstacles, not gates. Where a human is wanted for **judgme
 publishing, sending, granting access — the gate stands and the browser being where it happens
 changes nothing. The rule applies only when browser use is the *single, entire* obstacle.
 
+**Build vs. borrow — check before writing a generic module.** Before implementing any capability
+that is not specific to this product's domain — parsing, diffing, scheduling, retries, rate
+limiting, fuzzy search, date handling, CLI plumbing — make one quick search of the ecosystem's
+registry for a maintained package that already solves it. If a credible candidate appears, check
+its last publish and dependency footprint before deciding.
+
+**Propose, don't decide silently — in either direction.** If a credible package exists, say so
+before building: an ❗ inbox item when the choice shapes the architecture, a line in the PR body
+("considered X, built instead because Y" / "adopted X, N deps, maintained") when it is small.
+Silently building what a package solves and silently adopting a heavy dependency are the same
+mistake.
+
+**Prefer lightweight.** Zero-to-few dependencies beats featureful; a framework pulled in to save
+60 lines is worse than the 60 lines. Build when the need is small — roughly under 100 lines —
+genuinely domain-specific, or every candidate is unmaintained. Record the outcome in
+`.agent/decisions.md` so the choice is not relitigated next session.
+
 **Every PR must carry:**
 
 - Tests for anything testable — a source change with no test change needs an explicit reason
