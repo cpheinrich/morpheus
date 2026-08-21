@@ -1,7 +1,7 @@
 name: PM check
 
 # Reusable workflow. Validates hq/product/ frontmatter against the kit's schemas
-# and verifies the generated README indexes are current.
+# retires any legacy generated roadmap table, and verifies the remaining indexes are current.
 #
 #   jobs:
 #     pm:
@@ -82,9 +82,9 @@ jobs:
       - name: Validate frontmatter
         run: node .morpheus/dist/cli/index.js pm validate --dir ${{ inputs.product-dir }}
 
-      # --check writes nothing; it fails if regenerating would change anything,
-      # so a stale index cannot be merged.
-      - name: Verify indexes are current
+      # --check writes nothing. It fails on a legacy roadmap table or stale
+      # goal/request index; after migration, the roadmap README stays static.
+      - name: Verify product READMEs are current
         run: node .morpheus/dist/cli/index.js pm index --dir ${{ inputs.product-dir }} --check
 
       # Enforces the inbox invariants — an open item must offer a reply slot,

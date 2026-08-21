@@ -9,8 +9,8 @@ import { migrate } from "../pm/migrate-ids.js";
 import {
   renderGoals,
   renderRequests,
-  renderRoadmap,
   writeIndex,
+  writeStaticRoadmapReadme,
 } from "../pm/index-gen.js";
 import { createItem } from "../pm/new-item.js";
 import {
@@ -25,6 +25,8 @@ import { currentBranch, resolveTrunk } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
 
 const KINDS = Object.keys(ARTIFACTS) as ArtifactKind[];
+const INDEXED_KINDS = ["goals", "requests"] as const;
+type IndexedKind = (typeof INDEXED_KINDS)[number];
 
 const exec = promisify(execFile);
 
@@ -98,29 +100,45 @@ function isKind(v: string): v is ArtifactKind {
   return (KINDS as string[]).includes(v);
 }
 
-interface Rendered {
-  rendered: string;
+interface Validated {
   issues: ParseIssue[];
   count: number;
 }
 
-/**
- * Parse one kind and render its index table.
- *
- * The switch exists so each branch narrows to a concrete item type — the
- * renderers are type-specific, and a loop with casts would hide a mismatch
- * between a schema and its renderer.
- */
-async function renderKind(productDir: string, kind: ArtifactKind): Promise<Rendered> {
+/** Parse and validate one artifact kind without depending on a README view. */
+async function validateKind(productDir: string, kind: ArtifactKind): Promise<Validated> {
   switch (kind) {
     case "roadmap": {
       const { items, issues } = await parseArtifact(productDir, "roadmap");
       return {
-        rendered: renderRoadmap(items),
         issues: [...issues, ...findDuplicateIds(items)],
         count: items.length,
       };
     }
+    case "goals": {
+      const { items, issues } = await parseArtifact(productDir, "goals");
+      return {
+        issues: [...issues, ...findDuplicateIds(items)],
+        count: items.length,
+      };
+    }
+    case "requests": {
+      const { items, issues } = await parseArtifact(productDir, "requests");
+      return {
+        issues: [...issues, ...findDuplicateIds(items)],
+        count: items.length,
+      };
+    }
+  }
+}
+
+interface RenderedIndex extends Validated {
+  rendered: string;
+}
+
+/** Render only the low-churn goal and request indexes. Roadmap views read item files directly. */
+async function renderIndexKind(productDir: string, kind: IndexedKind): Promise<RenderedIndex> {
+  switch (kind) {
     case "goals": {
       const { items, issues } = await parseArtifact(productDir, "goals");
       return {
@@ -151,7 +169,7 @@ export async function validate(productDir: string): Promise<number> {
   let total = 0;
 
   for (const kind of KINDS) {
-    const { issues, count } = await renderKind(productDir, kind);
+    const { issues, count } = await validateKind(productDir, kind);
     if (issues.length) {
       console.error(`\n✗ ${ARTIFACTS[kind].label} — ${issues.length} issue(s)`);
       report(issues);
@@ -169,12 +187,25 @@ export async function validate(productDir: string): Promise<number> {
   return 0;
 }
 
-/** Regenerate the README index table for each artifact directory. */
+/** Retire legacy roadmap tables and regenerate the low-churn README indexes. */
 export async function index(productDir: string, check = false): Promise<number> {
   let stale = 0;
 
-  for (const kind of KINDS) {
-    const { rendered, issues } = await renderKind(productDir, kind);
+  const roadmapDir = join(productDir, ARTIFACTS.roadmap.dir);
+  if (await exists(roadmapDir)) {
+    const changed = await writeStaticRoadmapReadme(roadmapDir, check);
+    if (changed) {
+      stale++;
+      console.log(
+        `${check ? "✗ stale  " : "updated  "}${roadmapDir}/README.md — removed generated table`,
+      );
+    } else {
+      console.log(`unchanged ${roadmapDir}/README.md — static`);
+    }
+  }
+
+  for (const kind of INDEXED_KINDS) {
+    const { rendered, issues } = await renderIndexKind(productDir, kind);
     if (issues.length) {
       console.error(`✗ ${ARTIFACTS[kind].label} — fix validation issues first`);
       report(issues);
@@ -196,7 +227,7 @@ export async function index(productDir: string, check = false): Promise<number> 
       continue;
     }
 
-    const changed = await writeIndex(dir, rendered);
+    const changed = await writeIndex(dir, rendered, check);
 
     if (changed) {
       stale++;
@@ -208,7 +239,7 @@ export async function index(productDir: string, check = false): Promise<number> 
 
   if (check && stale) {
     console.error(
-      `\n${stale} index file(s) were out of date. Run \`morpheus pm index\` and commit the result.`,
+      `\n${stale} README file(s) were out of date. Run \`morpheus pm index\` and commit the result.`,
     );
     return 1;
   }
@@ -289,7 +320,7 @@ export async function create(
         `once you have a connection — \`pm claim\` will refuse the id if it is taken.\x1b[0m`,
     );
   }
-  return index(productDir);
+  return kind === "roadmap" ? 0 : index(productDir);
 }
 
 /** Add issue-closure intent to an item that already exists. */
@@ -311,7 +342,7 @@ export async function linkIssue(productDir: string, id: string, rawIssue: string
         ? `Linked ${id.toUpperCase()} to GitHub issue #${issue}.`
         : `${id.toUpperCase()} already links GitHub issue #${issue}.`,
     );
-    return result.written ? index(productDir) : 0;
+    return 0;
   } catch (error) {
     if (error instanceof IssueLinkError) {
       console.error(error.message);
@@ -650,11 +681,6 @@ export async function block(
     console.log(`Needs: ${opts.needs.trim()}`);
     for (const p of r.written) console.log(`  wrote ${p}`);
     if (r.inboxCreated) console.log(`  (created a new inbox for ${owner})`);
-    if (r.indexIssues.length) {
-      console.warn(
-        `  Roadmap index not refreshed: ${r.indexIssues.length} validation issue(s) remain.`,
-      );
-    }
 
     if (opts.push === false) {
       // Offline. The records are written, which is what keeps `pm block`
@@ -803,6 +829,6 @@ export async function migrateIds(
   if (result.linksUpdated.length) {
     console.log(`${result.linksUpdated.length} file(s) had markdown links repaired.`);
   }
-  if (!dryRun) console.log("Run `morpheus pm index` to regenerate the tables.");
+  if (!dryRun) console.log("Run `morpheus pm index` to refresh product README files.");
   return result.problems.length ? 1 : 0;
 }

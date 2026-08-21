@@ -35,6 +35,11 @@ export function buildBrief(input) {
     out.push(`**In flight** (${beat.inFlight.length} of a ceiling of ${beat.ceiling}):`);
     out.push(list(beat.inFlight.map((c) => `${c.id} — on branch \`${c.branch}\``)));
     out.push("");
+    if (beat.staleClaims.length) {
+        out.push("**Settled claims whose branch still exists on origin:**");
+        out.push(list(beat.staleClaims.map((c) => `${c.id} — branch \`${c.branch}\``)));
+        out.push("");
+    }
     // Blocked work is what a conversation is most likely to be able to unstick,
     // so it is stated with what it needs rather than merely counted.
     out.push("**Blocked, waiting on a person:**");

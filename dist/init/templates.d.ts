@@ -74,8 +74,9 @@ export declare const inboxArchiveReadme: () => string;
 /**
  * Deliberately short, and deliberately a pointer.
  *
- * The canonical version — frontmatter fields, both redaction passes, the
- * public-repo rule — is 130 lines in Morpheus's own `hq/team/meeting-notes/`.
+ * The canonical version — frontmatter fields, delivery boundary, both
+ * redaction passes, the public-repo rule — lives in Morpheus's own
+ * `hq/team/meeting-notes/`.
  * Copying it into every project would give one copy per repo to drift, and the
  * one that drifts is a document about what may be published. What locality
  * buys is the *gate* being visible where somebody is standing; the depth stays
@@ -98,7 +99,7 @@ export declare const ci: (opts?: {
     node: boolean;
     rulesPath?: string;
 }) => string;
-export declare const productReadme: (kind: "roadmap" | "goals" | "requests", s: Seed) => string;
+export declare const productReadme: (kind: "roadmap" | "goals" | "requests", _s: Seed) => string;
 export declare const hqReadme: (s: Seed) => string;
 export declare const BRAND_EXPLORATION_IGNORE_RULES: readonly ["hq/brand/moodboard/*", "!hq/brand/moodboard/README.md", "hq/brand/research/assets/*", "!hq/brand/research/assets/README.md"];
 export declare const gitignore: () => string;

@@ -93,6 +93,17 @@ describe("heartbeat.yml", () => {
     };
     expect(wf.on?.workflow_call?.inputs?.dispatch?.default).toBe(false);
   });
+
+  it("gives the beat read-only PR evidence for pre-reconciliation merges", async () => {
+    const wf = (await read("heartbeat.yml")) as {
+      permissions?: Record<string, string>;
+      jobs?: Record<string, { steps?: Array<{ name?: string; env?: Record<string, string> }> }>;
+    };
+    const beat = wf.jobs?.["beat"]?.steps?.find((step) => step.name === "Beat");
+
+    expect(wf.permissions).toEqual({ contents: "read", "pull-requests": "read" });
+    expect(beat?.env?.GH_TOKEN).toBe("${{ github.token }}");
+  });
 });
 
 describe("pm-check.yml", () => {

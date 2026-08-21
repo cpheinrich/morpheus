@@ -549,8 +549,8 @@ morpheus pm block MO-051 --needs "which model, and whose subscription pays for i
 ```
 
 Which sets `status: blocked` and `needs:` on the item, writes a worklog entry with
-`outcome: blocked`, raises an open `❗` item in the owner's inbox, refreshes the generated roadmap,
-and commits and pushes those records on the claimed branch. Online it refuses the protected trunk
+`outcome: blocked`, raises an open `❗` item in the owner's inbox, and commits and pushes those
+records on the claimed branch. Online it refuses the protected trunk
 before writing; the explicit offline path may write locally because it never commits or pushes.
 **A blocked item must name its unblocker** — `needs` is required by the schema when the
 status is `blocked`, so "I am blocked" without "here is what I need" does not validate. It would
@@ -631,6 +631,13 @@ Worklog entries carry frontmatter (`agent`, `date`, `roadmap`, `outcome`) and re
 attempted, what happened, and what was learned — **including dead ends that produced no code**,
 which is the part git history cannot capture.
 
+**A meeting record lands before its interpretation.** Deliver each meeting note in an isolated pull
+request containing only the factual canonical record. Roadmap changes, strategy refinement,
+implementation, decision promotion, and every other follow-up belong in separate pull requests, so
+reviewers can distinguish what happened in the meeting from what an agent later inferred from it.
+A roadmap follow-up backfills filed ids into the note's `roadmap:` field; that link is bookkeeping,
+not interpretation.
+
 Git rather than cloud storage because these are small, textual, appear in PR diffs, and are
 greppable with no authentication. Indexing markdown later is easy; migrating off a bespoke store is
 not.
@@ -709,8 +716,10 @@ Guards, each closing a specific failure:
 
 - **Concurrency ceiling.** At or above it the beat picks nothing. This is what stops a runaway
   queue, so it is the one guard that must never be advisory.
-- **Blocked is not in-flight.** Otherwise one unanswered question permanently consumes a lane and
-  the ceiling stops meaning anything.
+- **Settled is not in-flight.** A blocked item waits on a person; a shipped or dropped item is over;
+  and a `review` claim whose PR is provably merged is only waiting on reconciliation. None consumes
+  a dispatch lane. Surviving completed branches are still reported because they block a future
+  claim with the same id.
 - **Nothing is a valid answer.** An empty beat exits successfully with a reason. A heartbeat that
   cannot do nothing will invent work to justify itself.
 - **Blocked-but-actionable work is re-surfaced, not re-raised.** `pm block` already filed it; a
@@ -1179,7 +1188,7 @@ No Jira, no Linear. Markdown in git, with a validated schema.
 ```
 hq/product/
 ├── goals/      README.md (GENERATED index)  ·  MO-G-2026-Q3-01.md
-├── roadmap/    README.md (GENERATED index)  ·  MO-26-08-01-15.26.34-blocked-is-an-outcome.md
+├── roadmap/    README.md (static guidance)  ·  MO-26-08-01-15.26.34-blocked-is-an-outcome.md
 └── requests/   README.md (GENERATED index)  ·  MO-FR-007.md
 ```
 
@@ -1235,16 +1244,17 @@ agents updating status in a single file conflict every time. One file per item m
 writes conflict-free, gives each item exactly one frontmatter block to validate, and keeps diffs
 readable.
 
-The cost — you can no longer read the whole roadmap in one file open — is paid back by the
-**generated `README.md`** in each directory, rebuilt on every merge. GitHub renders a directory's
-README automatically, so opening `hq/product/roadmap/` shows a table of every item, its status, and
-its PRs. The index is derived and never hand-edited.
+The roadmap `README.md` is deliberately static. Agents, Morpheus commands and `/hq` parse the
+item files directly, so a generated table was presentation state rather than a system input. It
+also undid the concurrency benefit above: every independent status transition rewrote the same
+file. `pm index` removes a legacy table once; after that it leaves the README alone. Goals and
+requests change much less often and retain their generated indexes.
 
 ### 8.2 Schemas
 
 The source of truth for the *shape* is Zod, exported from `morpheus-kit/pm`. The same schemas
-validate frontmatter in CI, parse files for `/hq`, and generate the index tables — one definition,
-not three.
+validate frontmatter in CI, parse files for `/hq`, and generate the goal and request index
+tables — one definition, not three.
 
 Ids are project-prefixed, so an id is unambiguous across repos:
 
@@ -2815,7 +2825,8 @@ data and real stakes.
 
 | Data | Source of truth | How you view it |
 |---|---|---|
-| Roadmap, goals | `hq/product/**.md` | GitHub renders the generated `README.md` as a table |
+| Roadmap | `hq/product/roadmap/*.md` | GitHub's file list, `grep`, or a project's `/hq` roadmap |
+| Goals | `hq/product/goals/*.md` | GitHub renders the generated goals `README.md` as a table |
 | Docs | `docs/**.md` | GitHub renders markdown and Mermaid natively |
 | Worklog | `.agent/worklog/*.md` | GitHub, or `grep` |
 | Code review queue | Open pull requests | GitHub PR list |

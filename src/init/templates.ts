@@ -12,6 +12,7 @@
  */
 
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
+import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
 
 export interface Seed {
   name: string;
@@ -804,12 +805,28 @@ morpheus pm claim ${s.prefix}-001      # stakes the branch on origin, sets in-pr
 The remote branch **is** the claim. Never create the branch by hand — \`pm claim\` derives it from
 the item id, so the two cannot disagree.
 
+**Build vs. borrow — check before writing a generic module.** Before implementing any capability
+that is not specific to this product's domain — parsing, diffing, scheduling, retries, rate
+limiting, fuzzy search, date handling, CLI plumbing — make one quick search of the ecosystem's
+registry for a maintained package that already solves it. If a credible candidate appears, check
+its last publish and dependency footprint before deciding.
+
+**Propose, don't decide silently — in either direction.** If a credible package exists, say so
+before building: an open (❗) inbox item when the choice shapes the architecture, a line in the PR body
+("considered X, built instead because Y" / "adopted X, N deps, maintained") when it is small.
+Silently building what a package solves and silently adopting a heavy dependency are the same
+mistake. **Prefer lightweight** — zero-to-few dependencies beats featureful; a framework pulled
+in to save 60 lines is worse than the 60 lines. Build when the need is small — roughly under 100
+lines — genuinely domain-specific, or every candidate is unmaintained. Record the outcome in \`.agent/decisions.md\`
+so the choice is not relitigated next session.
+
 **Every PR must carry** tests for anything testable, a documentation update when behaviour
 changes, a test plan, any open questions stated plainly rather than guessed at, and the roadmap
 item moved to \`review\`.
 
-**Before opening a PR**, run \`morpheus pm index\` and commit any index changes. CI runs the same
-check and will fail otherwise.
+**Before opening a PR**, run \`morpheus pm index\` and commit any one-time roadmap README migration
+or generated goal/request index changes. The roadmap README is static after that migration. CI runs
+the same check and will fail otherwise.
 
 **Append a worklog entry** to \`.agent/worklog/YYYY-MM-DD-slug.md\`. Record dead ends especially —
 git history cannot hold work that produced no code, and that is the expensive knowledge.
@@ -991,8 +1008,9 @@ An inbox is a snapshot and never accumulates history. This is the record.
 /**
  * Deliberately short, and deliberately a pointer.
  *
- * The canonical version — frontmatter fields, both redaction passes, the
- * public-repo rule — is 130 lines in Morpheus's own `hq/team/meeting-notes/`.
+ * The canonical version — frontmatter fields, delivery boundary, both
+ * redaction passes, the public-repo rule — lives in Morpheus's own
+ * `hq/team/meeting-notes/`.
  * Copying it into every project would give one copy per repo to drift, and the
  * one that drifts is a document about what may be published. What locality
  * buys is the *gate* being visible where somebody is standing; the depth stays
@@ -1008,12 +1026,18 @@ A transcript is high volume and low signal; storing them would make an agent's c
 than better. What is worth keeping is what was decided, what someone has to do, and enough of the
 reasoning that a decision can be argued with later.
 
+**Deliver the note in an isolated pull request containing only the factual, canonical meeting
+record.** Roadmap changes, strategy refinement, implementation work, decision promotion, and every
+other follow-up interpretation belong in separate pull requests. When a follow-up pull request
+files roadmap items, it backfills their ids into the note's \`roadmap:\` field as bookkeeping.
+
 **\`redacted: true\` is a claim you are making**, and \`morpheus team validate\` refuses a note without
 it. It means you have stripped everything not about this project, and checked that the note is
 something you would be relaxed about being read back — by the team, by the person it is about, or
 by a stranger in a year.
 
-The canonical format, the frontmatter fields, and both redaction passes are documented once, in
+The canonical format, delivery boundary, frontmatter fields, and both redaction passes are
+documented once, in
 [Morpheus](https://github.com/cpheinrich/morpheus/blob/main/hq/team/meeting-notes/README.md).
 Depth stays in one place so two copies cannot drift.
 
@@ -1089,10 +1113,11 @@ jobs:${
 
 export const productReadme = (
   kind: "roadmap" | "goals" | "requests",
-  s: Seed,
+  _s: Seed,
 ): string => {
+  if (kind === "roadmap") return STATIC_ROADMAP_README;
+
   const blurb = {
-    roadmap: `Work, one file per item. Ids are \`${s.prefix}-001\` upward.\n\nCreate with \`morpheus pm new roadmap "Title"\`. The table below is generated — edit the item files, not this.`,
     goals: `What the work is for. A roadmap with no goal is a list nobody can decline.\n\nCreate with \`morpheus pm new goals "Title"\`.`,
     requests: `Incoming asks, before they become roadmap items. Triage, then accept or decline —\ndeclining explicitly is the point.`,
   }[kind];

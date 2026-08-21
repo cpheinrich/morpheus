@@ -5,6 +5,7 @@ import { hasDispatchCredential, readConfig } from "../heartbeat/config.js";
 import { formatBeat, formatSummary } from "../heartbeat/format.js";
 import { listClaims } from "../pm/claim.js";
 import { parseArtifact, parseDir } from "../pm/parse.js";
+import { didNoWork, mergedPrs } from "../pm/ship.js";
 import { MEETING_NOTES_DIR } from "../paths.js";
 import { MeetingNote } from "../team/schema.js";
 /**
@@ -16,6 +17,22 @@ import { MeetingNote } from "../team/schema.js";
  */
 /** Dispatch was asked for and refused. Distinct from "nothing to do". */
 export const EXIT_REFUSED = 2;
+/**
+ * Claims whose branch has merged while the board still says `review`.
+ *
+ * This is deliberately a pure join over one `gh pr list` result and the claims
+ * already fetched by the heartbeat. Calling `reconcile(..., { write: false })`
+ * would preserve the same semantics, but it also performs one remote branch
+ * lookup per roadmap item — too much network work for an hourly beat.
+ */
+export function mergedReviewClaimIds(items, claims, prs) {
+    const reviewIds = new Set(items.filter((i) => i.data.status === "review").map((i) => i.data.id));
+    const claimByBranch = new Map(claims.map((claim) => [claim.branch, claim]));
+    return prs.flatMap((pr) => {
+        const claim = claimByBranch.get(pr.branch);
+        return claim && reviewIds.has(claim.id) && !didNoWork(pr) ? [claim.id] : [];
+    });
+}
 /**
  * Append the beat to the Actions job summary, when running in Actions.
  *
@@ -57,10 +74,18 @@ export async function heartbeat(opts) {
             "queue is not an empty one, and treating it as empty would ignore the ceiling.");
         return 1;
     }
+    // Reconciliation normally moves merged review items to shipped, but it runs
+    // at the front of another command. A full queue can prevent that next command
+    // from ever starting, so the beat asks the same merged-PR question read-only.
+    // `mergedPrs` returns null when `gh` is unavailable; board statuses still give
+    // a useful answer in that case, without pretending the missing evidence is a
+    // clean result.
+    const prs = await mergedPrs(cwd);
+    const mergedClaimIds = prs ? mergedReviewClaimIds(items, claims, prs) : [];
     // Absent is not empty: a project with no meeting-notes directory reports
     // `sinceLastNote: null` rather than a stale record it does not keep.
     const { items: notes } = await parseDir(join(cwd, MEETING_NOTES_DIR), MeetingNote);
-    const beat = assess({ items, goals, claims, config, now: new Date(), notes });
+    const beat = assess({ items, goals, claims, mergedClaimIds, config, now: new Date(), notes });
     if (opts.json) {
         console.log(JSON.stringify(beat, null, 2));
     }

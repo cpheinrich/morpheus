@@ -3,8 +3,10 @@ import { join } from "node:path";
 import { assess, type Beat, type HeartbeatConfig } from "../heartbeat/assess.js";
 import { hasDispatchCredential, readConfig } from "../heartbeat/config.js";
 import { formatBeat, formatSummary } from "../heartbeat/format.js";
-import { listClaims } from "../pm/claim.js";
-import { parseArtifact, parseDir } from "../pm/parse.js";
+import { listClaims, type Claim } from "../pm/claim.js";
+import { parseArtifact, parseDir, type Item } from "../pm/parse.js";
+import type { RoadmapItem } from "../pm/schema.js";
+import { didNoWork, mergedPrs, type MergedPr } from "../pm/ship.js";
 import { MEETING_NOTES_DIR } from "../paths.js";
 import { MeetingNote } from "../team/schema.js";
 
@@ -25,6 +27,30 @@ export interface HeartbeatOptions {
   ceiling?: number;
   json?: boolean;
   dispatch?: boolean;
+}
+
+/**
+ * Claims whose branch has merged while the board still says `review`.
+ *
+ * This is deliberately a pure join over one `gh pr list` result and the claims
+ * already fetched by the heartbeat. Calling `reconcile(..., { write: false })`
+ * would preserve the same semantics, but it also performs one remote branch
+ * lookup per roadmap item — too much network work for an hourly beat.
+ */
+export function mergedReviewClaimIds(
+  items: Item<RoadmapItem>[],
+  claims: Claim[],
+  prs: MergedPr[],
+): string[] {
+  const reviewIds = new Set(
+    items.filter((i) => i.data.status === "review").map((i) => i.data.id),
+  );
+  const claimByBranch = new Map(claims.map((claim) => [claim.branch, claim]));
+
+  return prs.flatMap((pr) => {
+    const claim = claimByBranch.get(pr.branch);
+    return claim && reviewIds.has(claim.id) && !didNoWork(pr) ? [claim.id] : [];
+  });
 }
 
 /**
@@ -72,11 +98,20 @@ export async function heartbeat(opts: HeartbeatOptions): Promise<number> {
     return 1;
   }
 
+  // Reconciliation normally moves merged review items to shipped, but it runs
+  // at the front of another command. A full queue can prevent that next command
+  // from ever starting, so the beat asks the same merged-PR question read-only.
+  // `mergedPrs` returns null when `gh` is unavailable; board statuses still give
+  // a useful answer in that case, without pretending the missing evidence is a
+  // clean result.
+  const prs = await mergedPrs(cwd);
+  const mergedClaimIds = prs ? mergedReviewClaimIds(items, claims, prs) : [];
+
   // Absent is not empty: a project with no meeting-notes directory reports
   // `sinceLastNote: null` rather than a stale record it does not keep.
   const { items: notes } = await parseDir(join(cwd, MEETING_NOTES_DIR), MeetingNote);
 
-  const beat = assess({ items, goals, claims, config, now: new Date(), notes });
+  const beat = assess({ items, goals, claims, mergedClaimIds, config, now: new Date(), notes });
 
   if (opts.json) {
     console.log(JSON.stringify(beat, null, 2));
