@@ -705,6 +705,11 @@ in-flight review carries its own skipped delivery check, so a merge inside that 
 window can outrun the reviewer — closing it costs per-push reviews, which is the bill already
 declined.
 
+**Morpheus's agent review is temporarily off** — 2026-08-21. Chris's call. Both its automatic and
+`@claude` callers pass `enabled: false`; the reusable workflow stays intact and enabled by default
+for consumers. The switch is inside the called workflow so `agent-review / delivery` remains a
+reported, skipped-and-satisfied required check rather than disappearing and blocking every merge.
+
 **Imagery is part of the canonical package, not optional styling.** `moodboards.md` preserves the
 references that survived selection, `imagery.json` identifies approved art and stable sources, and
 `application.md` maps every asset to an actual public-web or product surface. `brand status` stays

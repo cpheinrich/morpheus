@@ -1135,10 +1135,16 @@ Four of them, each catching what it can so the rung above only sees what genuine
 Rung 2 does not block. A model-graded gate that can fail on its own noise trains everyone to
 bypass it, and rung 4 is still a human.
 
-**Rung 2 runs once when a pull request becomes reviewable, and again only when asked.** `opened`,
-`reopened` and `ready_for_review` fire it; `synchronize` does not. A second look is requested by
-name — `@claude` in a comment, handled by `agent-review-request.yml` — which is the same judgment
-the trigger was a proxy for, made by someone who has read the thing.
+**Rung 2 normally runs once when a pull request becomes reviewable, and again only when asked.**
+`opened`, `reopened` and `ready_for_review` fire it; `synchronize` does not. A second look is
+requested by name — `@claude` in a comment, handled by `agent-review-request.yml` — which is the
+same judgment the trigger was a proxy for, made by someone who has read the thing.
+
+The reusable workflow has an `enabled` input, defaulting to `true`, so a repository can pause the
+reviewer without dismantling its CI path. The switch belongs inside the called workflow: its jobs
+then report as skipped, including a required `agent-review / delivery` check; skipping the caller
+can leave that nested check unreported and block every merge. Morpheus currently passes
+`enabled: false` from both its automatic and on-request callers.
 
 The reason is cost, and the shape of it generalises past this rung: **a paid check on
 `pull_request` is billed per push, not per pull request, and an agent that iterates diligently is
