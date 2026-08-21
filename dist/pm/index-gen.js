@@ -2,17 +2,15 @@ import { readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 export const BEGIN = "<!-- morpheus:begin -->";
 export const END = "<!-- morpheus:end -->";
-// Blocked sorts above everything but active work: it is the row a reader most
-// needs to see, because nothing moves it without them.
-const STATUS_ORDER = {
-    "in-progress": 0,
-    blocked: 1,
-    review: 2,
-    backlog: 3,
-    shipped: 4,
-    dropped: 5,
-};
-const PRIORITY_ORDER = { P0: 0, P1: 1, P2: 2, P3: 3 };
+export const STATIC_ROADMAP_README = `# Roadmap
+
+One Markdown file per item. Item frontmatter is canonical: agents, Morpheus
+commands, and the \`/hq\` roadmap view parse those files directly.
+
+This README is deliberately static. Do not add a generated task table here:
+concurrent status changes would all rewrite this one file and create avoidable
+merge conflicts.
+`;
 function cell(value) {
     return value && value.length > 0 ? value.replace(/\|/g, "\\|") : "—";
 }
@@ -37,20 +35,6 @@ function table(headers, rows) {
  */
 function link(id, path) {
     return `[${id}](./${basename(path)})`;
-}
-export function renderRoadmap(items) {
-    const sorted = [...items].sort((a, b) => STATUS_ORDER[a.data.status] - STATUS_ORDER[b.data.status] ||
-        PRIORITY_ORDER[a.data.priority] - PRIORITY_ORDER[b.data.priority] ||
-        a.data.id.localeCompare(b.data.id));
-    return table(["ID", "Title", "Status", "Pri", "Goal", "Issues", "PRs"], sorted.map((i) => [
-        link(i.data.id, i.path),
-        cell(i.data.title),
-        i.data.status,
-        i.data.priority,
-        cell(i.data.goal),
-        i.data.issues.length ? i.data.issues.map((n) => `#${n}`).join(", ") : "—",
-        i.data.prs.length ? i.data.prs.map((n) => `#${n}`).join(", ") : "—",
-    ]));
 }
 export function renderGoals(items) {
     const sorted = [...items].sort((a, b) => a.data.id.localeCompare(b.data.id));
@@ -102,14 +86,30 @@ async function readIfExists(path) {
         throw err;
     }
 }
+/**
+ * Retire the old generated roadmap table once, without overwriting a README
+ * that is already hand-maintained. Future calls are no-ops.
+ */
+export async function writeStaticRoadmapReadme(dir, checkOnly = false) {
+    const path = join(dir, "README.md");
+    const existing = await readIfExists(path);
+    if (existing !== null && !existing.includes(BEGIN) && !existing.includes(END))
+        return false;
+    if (existing === STATIC_ROADMAP_README)
+        return false;
+    if (!checkOnly)
+        await writeFile(path, STATIC_ROADMAP_README, "utf8");
+    return true;
+}
 /** Write the generated table into `<dir>/README.md`. Returns true if changed. */
-export async function writeIndex(dir, generated) {
+export async function writeIndex(dir, generated, checkOnly = false) {
     const path = join(dir, "README.md");
     const existing = await readIfExists(path);
     const next = spliceIndex(existing, generated);
     if (existing === next)
         return false;
-    await writeFile(path, next, "utf8");
+    if (!checkOnly)
+        await writeFile(path, next, "utf8");
     return true;
 }
 //# sourceMappingURL=index-gen.js.map

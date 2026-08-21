@@ -6,7 +6,7 @@ import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { findDuplicateIds, parseArtifact } from "../pm/parse.js";
 import { block as blockItem, BlockError, unblock as unblockItem } from "../pm/block.js";
 import { migrate } from "../pm/migrate-ids.js";
-import { renderGoals, renderRequests, renderRoadmap, writeIndex, } from "../pm/index-gen.js";
+import { renderGoals, renderRequests, writeIndex, writeStaticRoadmapReadme, } from "../pm/index-gen.js";
 import { createItem } from "../pm/new-item.js";
 import { IssueLinkError, linkIssue as linkIssueItem, parseIssueNumber, } from "../pm/issues.js";
 import { ageInDays, claim as claimItem, ClaimError, listClaims } from "../pm/claim.js";
@@ -15,6 +15,7 @@ import { formatReconcile, markShipped, reconcile } from "../pm/ship.js";
 import { currentBranch, resolveTrunk } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
 const KINDS = Object.keys(ARTIFACTS);
+const INDEXED_KINDS = ["goals", "requests"];
 const exec = promisify(execFile);
 async function exists(path) {
     try {
@@ -72,23 +73,35 @@ async function commitRecords(root, paths, message) {
 function isKind(v) {
     return KINDS.includes(v);
 }
-/**
- * Parse one kind and render its index table.
- *
- * The switch exists so each branch narrows to a concrete item type — the
- * renderers are type-specific, and a loop with casts would hide a mismatch
- * between a schema and its renderer.
- */
-async function renderKind(productDir, kind) {
+/** Parse and validate one artifact kind without depending on a README view. */
+async function validateKind(productDir, kind) {
     switch (kind) {
         case "roadmap": {
             const { items, issues } = await parseArtifact(productDir, "roadmap");
             return {
-                rendered: renderRoadmap(items),
                 issues: [...issues, ...findDuplicateIds(items)],
                 count: items.length,
             };
         }
+        case "goals": {
+            const { items, issues } = await parseArtifact(productDir, "goals");
+            return {
+                issues: [...issues, ...findDuplicateIds(items)],
+                count: items.length,
+            };
+        }
+        case "requests": {
+            const { items, issues } = await parseArtifact(productDir, "requests");
+            return {
+                issues: [...issues, ...findDuplicateIds(items)],
+                count: items.length,
+            };
+        }
+    }
+}
+/** Render only the low-churn goal and request indexes. Roadmap views read item files directly. */
+async function renderIndexKind(productDir, kind) {
+    switch (kind) {
         case "goals": {
             const { items, issues } = await parseArtifact(productDir, "goals");
             return {
@@ -116,7 +129,7 @@ function report(issues) {
 export async function validate(productDir) {
     let total = 0;
     for (const kind of KINDS) {
-        const { issues, count } = await renderKind(productDir, kind);
+        const { issues, count } = await validateKind(productDir, kind);
         if (issues.length) {
             console.error(`\n✗ ${ARTIFACTS[kind].label} — ${issues.length} issue(s)`);
             report(issues);
@@ -133,11 +146,22 @@ export async function validate(productDir) {
     console.log("\nAll project management files are valid.");
     return 0;
 }
-/** Regenerate the README index table for each artifact directory. */
+/** Retire legacy roadmap tables and regenerate the low-churn README indexes. */
 export async function index(productDir, check = false) {
     let stale = 0;
-    for (const kind of KINDS) {
-        const { rendered, issues } = await renderKind(productDir, kind);
+    const roadmapDir = join(productDir, ARTIFACTS.roadmap.dir);
+    if (await exists(roadmapDir)) {
+        const changed = await writeStaticRoadmapReadme(roadmapDir, check);
+        if (changed) {
+            stale++;
+            console.log(`${check ? "✗ stale  " : "updated  "}${roadmapDir}/README.md — removed generated table`);
+        }
+        else {
+            console.log(`unchanged ${roadmapDir}/README.md — static`);
+        }
+    }
+    for (const kind of INDEXED_KINDS) {
+        const { rendered, issues } = await renderIndexKind(productDir, kind);
         if (issues.length) {
             console.error(`✗ ${ARTIFACTS[kind].label} — fix validation issues first`);
             report(issues);
@@ -156,7 +180,7 @@ export async function index(productDir, check = false) {
             console.log(`skipped   ${dir}/README.md — directory not present`);
             continue;
         }
-        const changed = await writeIndex(dir, rendered);
+        const changed = await writeIndex(dir, rendered, check);
         if (changed) {
             stale++;
             console.log(`${check ? "✗ stale  " : "updated  "}${dir}/README.md`);
@@ -166,7 +190,7 @@ export async function index(productDir, check = false) {
         }
     }
     if (check && stale) {
-        console.error(`\n${stale} index file(s) were out of date. Run \`morpheus pm index\` and commit the result.`);
+        console.error(`\n${stale} README file(s) were out of date. Run \`morpheus pm index\` and commit the result.`);
         return 1;
     }
     return 0;
@@ -230,7 +254,7 @@ export async function create(productDir, kind, title, opts, cwd) {
             `\x1b[2mAnother session may already hold it on a branch. Run \`morpheus pm claims\`\n` +
             `once you have a connection — \`pm claim\` will refuse the id if it is taken.\x1b[0m`);
     }
-    return index(productDir);
+    return kind === "roadmap" ? 0 : index(productDir);
 }
 /** Add issue-closure intent to an item that already exists. */
 export async function linkIssue(productDir, id, rawIssue) {
@@ -248,7 +272,7 @@ export async function linkIssue(productDir, id, rawIssue) {
         console.log(result.written
             ? `Linked ${id.toUpperCase()} to GitHub issue #${issue}.`
             : `${id.toUpperCase()} already links GitHub issue #${issue}.`);
-        return result.written ? index(productDir) : 0;
+        return 0;
     }
     catch (error) {
         if (error instanceof IssueLinkError) {
@@ -479,9 +503,6 @@ export async function block(productDir, root, id, opts) {
             console.log(`  wrote ${p}`);
         if (r.inboxCreated)
             console.log(`  (created a new inbox for ${owner})`);
-        if (r.indexIssues.length) {
-            console.warn(`  Roadmap index not refreshed: ${r.indexIssues.length} validation issue(s) remain.`);
-        }
         if (opts.push === false) {
             // Offline. The records are written, which is what keeps `pm block`
             // reachable when a session most needs it — but a block nobody can see
@@ -606,7 +627,7 @@ export async function migrateIds(productDir, dryRun, repoRoot = process.cwd()) {
         console.log(`${result.linksUpdated.length} file(s) had markdown links repaired.`);
     }
     if (!dryRun)
-        console.log("Run `morpheus pm index` to regenerate the tables.");
+        console.log("Run `morpheus pm index` to refresh product README files.");
     return result.problems.length ? 1 : 0;
 }
 //# sourceMappingURL=pm.js.map

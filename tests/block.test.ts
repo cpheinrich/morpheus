@@ -195,11 +195,13 @@ describe("block", () => {
     owner: "cpheinrich",
   });
 
-  it("writes all three records and refreshes the generated index", async () => {
+  it("writes all three records and leaves the static roadmap README untouched", async () => {
     await seedItem();
+    const staticReadme = "# Roadmap\n\nStatic guidance.\n";
+    await writeFile(join(product, "roadmap/README.md"), staticReadme);
     const r = await block(opts());
 
-    expect(r.written).toHaveLength(4);
+    expect(r.written).toHaveLength(3);
     expect(r.inboxCreated).toBe(true);
     expect(r.inboxPath).toBe(join(root, "hq/team/cpheinrich.md"));
 
@@ -214,8 +216,7 @@ describe("block", () => {
     const inbox = await readFile(join(root, "hq/team/cpheinrich.md"), "utf8");
     expect(inbox).toContain("Blocked: Agent code review");
 
-    const index = await readFile(join(product, "roadmap/README.md"), "utf8");
-    expect(index).toContain("| blocked |");
+    expect(await readFile(join(product, "roadmap/README.md"), "utf8")).toBe(staticReadme);
   });
 
   it("leaves the board valid — a blocked item still parses", async () => {

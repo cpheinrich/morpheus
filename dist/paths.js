@@ -57,7 +57,7 @@ export const TEAM_RESERVED = new Set(["readme.md", "members.md"]);
  * hide the mistake rather than surface it.
  */
 const RECORDS = /^(hq\/team\/|\.agent\/)/;
-/** Board bookkeeping: item frontmatter and the generated index tables. */
+/** Board bookkeeping: item frontmatter, the static roadmap README, and low-churn indexes. */
 const BOARD = /^hq\/product\//;
 /**
  * True when every change is a record, so the PR needs no roadmap item.
