@@ -38,7 +38,7 @@ cd ~/your-project && morpheus registry add
 ```sh
 
 morpheus pm validate                      # validate hq/product frontmatter against the schemas
-morpheus pm index                         # retire legacy roadmap tables; refresh other indexes
+morpheus pm index                         # one-time roadmap migration; refresh goal/request indexes
 morpheus pm new roadmap "Ship analytics" --priority P1
 morpheus web status                       # what the web surface has, and what it is missing
 morpheus web init                         # provision the cloud resources, then scaffold the site
