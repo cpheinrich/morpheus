@@ -130,6 +130,18 @@ describe("morpheus init", () => {
       expect(agents.indexOf("managed by Morpheus")).toBeLessThan(agents.indexOf("## Layout"));
     });
 
+    it("carries the test-quality convention into every project", async () => {
+      await scaffold(dir, SEED);
+      const agents = await read("AGENTS.md");
+
+      // The failure happened in a consumer repository, so fixing only
+      // Morpheus's own instructions would leave the active rule unchanged.
+      expect(agents).toContain("pin expected behaviour");
+      expect(agents).toContain("exercise guards at their boundaries");
+      expect(agents).toContain("coverage alone is not evidence of quality");
+      expect(agents).toContain("/blob/main/AGENTS.md#what-makes-a-test-count");
+    });
+
     it("tells a contributor to create the roadmap item themselves", async () => {
       await scaffold(dir, SEED);
 
@@ -143,6 +155,20 @@ describe("morpheus init", () => {
       // And the two pieces of GitHub behaviour a contributor would hit blind.
       expect(agents).toContain("needs a fork");
       expect(agents).toContain("without secrets");
+    });
+
+    it("carries the build-vs-borrow convention into every project", async () => {
+      await scaffold(dir, SEED);
+
+      // The convention only changes behaviour if it ships with the project the
+      // agent is standing in — a preference stated nowhere fires never. The
+      // load-bearing halves: the check happens before building, and the agent
+      // proposes rather than silently deciding in either direction.
+      const agents = await read("AGENTS.md");
+      expect(agents).toContain("Build vs. borrow");
+      expect(agents).toContain("make one quick search");
+      expect(agents).toContain("Propose, don't decide silently");
+      expect(agents).toContain("Prefer lightweight");
     });
 
     it("keeps a README the project already wrote", async () => {
@@ -496,12 +522,15 @@ describe("morpheus init", () => {
      * Migrated repos had this and scaffolded ones did not, which was the wrong
      * way round — a fresh project got less than a retrofitted one.
      */
-    it("scaffolds meeting-notes with its redaction gate stated up front", async () => {
+    it("scaffolds meeting-notes with its redaction and delivery gates stated up front", async () => {
       await scaffold(dir, SEED);
       const text = await read("hq/team/meeting-notes/README.md");
 
       expect(text).toContain("never a transcript");
       expect(text).toContain("redacted: true");
+      expect(text).toContain("isolated pull request");
+      expect(text).toContain("follow-up interpretation belong in separate pull requests");
+      expect(text).toContain("backfills their ids into the note's `roadmap:` field as bookkeeping");
       // A pointer, not a copy — one document about what may be published, so
       // there is nothing to drift.
       expect(text).toContain("blob/main/hq/team/meeting-notes/README.md");
@@ -535,34 +564,28 @@ describe("morpheus init", () => {
     }
   });
 
-  it("writes indexes that are already current, not bare markers", async () => {
+  it("writes a static roadmap README and current low-churn indexes", async () => {
     await scaffold(dir, SEED);
-    const readme = await read("hq/product/roadmap/README.md");
+    const roadmap = await read("hq/product/roadmap/README.md");
+    const requests = await read("hq/product/requests/README.md");
 
-    expect(readme).toContain("<!-- morpheus:begin -->");
-    expect(readme).toContain("<!-- morpheus:end -->");
+    expect(roadmap).toContain("deliberately static");
+    expect(roadmap).toContain("`/hq` roadmap view");
+    expect(roadmap).not.toContain("<!-- morpheus:begin -->");
+    expect(roadmap).not.toContain("<!-- morpheus:end -->");
 
     // The generator writes a placeholder between the markers even for an
-    // empty artifact, so bare markers are already stale and `pm index --check`
-    // fails on a project nobody has touched.
-    expect(readme).toContain("_Nothing here yet._");
+    // empty request set, so bare markers would already be stale.
+    expect(requests).toContain("<!-- morpheus:begin -->");
+    expect(requests).toContain("_Nothing here yet._");
   });
 
   it("passes pm index --check immediately after scaffolding", async () => {
     await scaffold(dir, SEED);
     const productDir = join(dir, "hq/product");
-    const gen = await import("../src/pm/index-gen.js");
-    const { parseArtifact } = await import("../src/pm/parse.js");
+    const { index } = await import("../src/cli/pm.js");
 
-    for (const kind of ["roadmap", "goals", "requests"] as const) {
-      const { items } = await parseArtifact(productDir, kind);
-      const render = { roadmap: gen.renderRoadmap, goals: gen.renderGoals, requests: gen.renderRequests }[kind];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const changed = await gen.writeIndex(join(productDir, kind), (render as (i: any) => string)(items));
-      // False means regenerating would not change the file — which is exactly
-      // what `pm index --check` asserts in CI.
-      expect(changed).toBe(false);
-    }
+    expect(await index(productDir, true)).toBe(0);
   });
 
   it("carries the project's own prefix into the instructions", async () => {

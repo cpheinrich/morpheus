@@ -374,21 +374,20 @@ export async function scaffold(root, seed) {
         await writeFile(ignorePath, existing.trimEnd() + "\n" + t.gitignore(), "utf8");
         written.push(existing ? ".gitignore (appended)" : ".gitignore");
     }
-    // Generate the index tables rather than leaving bare markers. The generator
-    // emits a header row even for an empty artifact, so a scaffolded README with
-    // only `<!-- morpheus:begin -->` is already stale — and `pm index --check`
-    // fails on a project nobody has touched yet. Third version of the same rule:
-    // a scaffold whose CI is red on the first push teaches people to ignore CI.
+    // Generate only the low-churn goal and request indexes. The roadmap README
+    // stays static: agents, Morpheus commands and `/hq` all parse its item files
+    // directly, while a generated table made every status transition rewrite a
+    // shared file. Goal and request markers still need real placeholder output
+    // so a fresh scaffold passes `pm index --check` on its first push.
     if (dirs.includes("hq/product/roadmap")) {
         const { parseArtifact } = await import("../pm/parse.js");
         const gen = await import("../pm/index-gen.js");
         const productDir = join(root, "hq/product");
         const renderers = {
-            roadmap: gen.renderRoadmap,
             goals: gen.renderGoals,
             requests: gen.renderRequests,
         };
-        for (const kind of ["roadmap", "goals", "requests"]) {
+        for (const kind of ["goals", "requests"]) {
             // `internal` projects have a roadmap and nothing else.
             if (!(await exists(join(productDir, kind))))
                 continue;

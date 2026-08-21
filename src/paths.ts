@@ -63,7 +63,7 @@ export const TEAM_RESERVED = new Set(["readme.md", "members.md"]);
  */
 const RECORDS = /^(hq\/team\/|\.agent\/)/;
 
-/** Board bookkeeping: item frontmatter and the generated index tables. */
+/** Board bookkeeping: item frontmatter, the static roadmap README, and low-churn indexes. */
 const BOARD = /^hq\/product\//;
 
 /**

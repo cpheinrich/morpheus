@@ -21,8 +21,10 @@ written down. A headless worker, service, scheduled job, inference system, or ex
 `apps/backend/` surface even when no person interacts with it directly. Cross-references are solved
 by importing, never by a sync step.
 
-**One file per roadmap item, with a generated index** — several agents run concurrently, and a
-single `roadmap.md` conflicts on every status change.
+**One file per roadmap item; the roadmap README stays static** — several agents run concurrently,
+and a single `roadmap.md` conflicts on every status change. Morpheus commands and `/hq` parse the
+item files directly. A generated README table made those independent edits converge on one derived
+file anyway, so it was removed; low-churn goal and request indexes remain generated.
 
 ## Tooling
 
@@ -328,6 +330,12 @@ For a **public repo, a meeting about that project may be summarised publicly.** 
 exposure: issue threads and PR reviews are already public discussion of the same work, and a redacted
 summary says less than a review usually does. What changes is that the redaction passes stop being
 tidiness and become the gate.
+
+**Meeting records land in isolated pull requests** — 2026-08-19. The meeting-note PR contains only
+the factual, canonical record. Roadmap changes, strategy refinement, implementation, decision
+promotion, and other follow-up interpretation are separate PRs, so the evidence of what happened is
+reviewed independently from conclusions drawn from it. A roadmap follow-up backfills filed ids into
+the note's `roadmap:` field as bookkeeping, not interpretation.
 
 **The heartbeat reports the gap, it does not fetch.** Granola is a claude.ai connector and iMessage
 is a local database; neither is reachable from a CI runner. A beat that tried to pull meetings would
@@ -696,6 +704,11 @@ without engaging, as a human can. The accepted seam: a push made during the prev
 in-flight review carries its own skipped delivery check, so a merge inside that minutes-wide
 window can outrun the reviewer — closing it costs per-push reviews, which is the bill already
 declined.
+
+**Morpheus's agent review is temporarily off** — 2026-08-21. Chris's call. Both its automatic and
+`@claude` callers pass `enabled: false`; the reusable workflow stays intact and enabled by default
+for consumers. The switch is inside the called workflow so `agent-review / delivery` remains a
+reported, skipped-and-satisfied required check rather than disappearing and blocking every merge.
 
 **Imagery is part of the canonical package, not optional styling.** `moodboards.md` preserves the
 references that survived selection, `imagery.json` identifies approved art and stable sources, and

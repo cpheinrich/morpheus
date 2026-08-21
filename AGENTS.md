@@ -44,7 +44,7 @@ pnpm test                  # vitest run
 pnpm test:rules            # generated firestore.rules vs the emulator — needs Java
 pnpm compile               # tsc -p tsconfig.build.json; refreshes committed dist/
 pnpm morpheus pm validate   # validate hq/product frontmatter
-pnpm morpheus pm index      # regenerate README index tables
+pnpm morpheus pm index      # retire legacy roadmap tables; refresh goal/request indexes
 pnpm morpheus pm new roadmap "Title here" --priority P1 [--issue 123]
 pnpm morpheus pm link-issue MO-014 123  # attach an issue to existing work
 pnpm morpheus pm migrate-ids --check   # integer roadmap ids → the dated scheme (MO-057)
@@ -193,9 +193,9 @@ morpheus pm block MO-051 --needs "which model, and whose subscription pays for i
 morpheus pm unblock MO-051    # once answered
 ```
 
-This sets `status: blocked` and `needs:` on the item, writes a worklog entry, and raises an open
-`❗` item in the inbox, refreshes the roadmap index, then commits and pushes those records on the
-claimed branch. Online it refuses the protected trunk before writing anything; the explicitly
+This sets `status: blocked` and `needs:` on the item, writes a worklog entry, raises an open
+`❗` item in the inbox, then commits and pushes those records on the claimed branch. Online it
+refuses the protected trunk before writing anything; the explicitly
 offline path may write locally there because it never commits or pushes. **Escalating is cheap;
 shipping half-baked is expensive** — a plausible guess costs far more to discover later than a
 question costs to ask now.
@@ -227,6 +227,23 @@ The boundary is about obstacles, not gates. Where a human is wanted for **judgme
 publishing, sending, granting access — the gate stands and the browser being where it happens
 changes nothing. The rule applies only when browser use is the *single, entire* obstacle.
 
+**Build vs. borrow — check before writing a generic module.** Before implementing any capability
+that is not specific to this product's domain — parsing, diffing, scheduling, retries, rate
+limiting, fuzzy search, date handling, CLI plumbing — make one quick search of the ecosystem's
+registry for a maintained package that already solves it. If a credible candidate appears, check
+its last publish and dependency footprint before deciding.
+
+**Propose, don't decide silently — in either direction.** If a credible package exists, say so
+before building: an ❗ inbox item when the choice shapes the architecture, a line in the PR body
+("considered X, built instead because Y" / "adopted X, N deps, maintained") when it is small.
+Silently building what a package solves and silently adopting a heavy dependency are the same
+mistake.
+
+**Prefer lightweight.** Zero-to-few dependencies beats featureful; a framework pulled in to save
+60 lines is worse than the 60 lines. Build when the need is small — roughly under 100 lines —
+genuinely domain-specific, or every candidate is unmaintained. Record the outcome in
+`.agent/decisions.md` so the choice is not relitigated next session.
+
 **Every PR must carry:**
 
 - Tests for anything testable — a source change with no test change needs an explicit reason,
@@ -239,13 +256,19 @@ changes nothing. The rule applies only when browser use is the *single, entire* 
 
 When an issue becomes roadmap work, create it with `morpheus pm new roadmap "<title>" --issue 123`.
 For an existing item, use `morpheus pm link-issue <ID> 123`. Both write structured closure intent
-into the item, and the generated roadmap makes the linked issues visible. `check pr` then requires GitHub's closing
-keyword in the PR body, so merging the fix cannot leave the issue open as a second, stale backlog.
+into the item. `check pr` then requires GitHub's closing keyword in the PR body, so merging the
+fix cannot leave the issue open as a second, stale backlog.
 An issue merely mentioned as related is not declared and is not closed.
 
 **Except a PR that only touches records** — `hq/team/` and `.agent/`. An inbox cycle belongs to
 no feature and has no item to move. Branch it as `inbox-<YYYY-MM-DD>`, staking no id, and
 `check pr` will not ask for one.
+
+**Meeting notes are delivered in isolated PRs.** Put each note on an `inbox-<YYYY-MM-DD>` branch,
+staking no id, in a PR that contains only the factual, canonical meeting record. Roadmap changes,
+strategy refinement, implementation work, decision promotion, and any other follow-up
+interpretation go in separate PRs. When a follow-up PR files roadmap items, it backfills their ids
+into the note's `roadmap:` field as bookkeeping.
 
 **Never borrow an unrelated item's branch for this.** Merging a branch that stakes an id marks
 that item shipped, so a PR which changes only records and `hq/product/` bookkeeping is refused on
@@ -260,6 +283,13 @@ shape as `skip-tests:`.
 `check pr` prints them as `~ waived` with the reason attached and never says "conventions
 satisfied" without listing them. They still pass — the reason just has to be visible to whoever
 reads the check.
+
+**A waiver needs a real reason.** `skip-tests: yes` is refused, as are `true`, `n/a` and an empty
+value. Say what cannot be tested and why.
+
+**Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm compile && pnpm morpheus pm index`,
+and commit any one-time roadmap README migration or generated goal/request index changes. The
+roadmap README is static after that migration. CI runs the same checks and will fail otherwise.
 
 ### What makes a test count
 
@@ -310,12 +340,6 @@ the lowest density in the suite was the file with the worst mutation score.
 Worked example, with the harness, the findings and the two mistakes made while fixing them:
 [`qa/audits/2026-08-19-python-test-quality.md`](https://github.com/cpheinrich/lakinacapital/blob/main/qa/audits/2026-08-19-python-test-quality.md)
 and [`qa/mutation/`](https://github.com/cpheinrich/lakinacapital/tree/main/qa/mutation) in Lakina.
-
-**A waiver needs a real reason.** `skip-tests: yes` is refused, as are `true`, `n/a` and an empty
-value. Say what cannot be tested and why.
-
-**Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm compile && pnpm morpheus pm index`, and commit
-any index changes. CI runs the same checks and will fail otherwise.
 
 ## Branch protection
 
@@ -568,7 +592,7 @@ Concretely, when any of these is true:
 |---|---|
 | It is an **input to something** | `hq/` feeds the dashboard; `qa/acceptance/` feeds verifier rung 3 |
 | It has a **convention filenames do not reveal** | worklog naming, inbox markers, id formats |
-| It is **generated**, or partly | `hq/product/*/README.md`, the role helpers in `firestore.rules` |
+| It is **generated**, or partly | `hq/product/goals/README.md`, the role helpers in `firestore.rules` |
 | It is a **seam** | shared packages, kit boundaries, anywhere two projects meet |
 
 **Not** for framework-standard directories — `app/`, `components/`, `__tests__/` — whose meaning

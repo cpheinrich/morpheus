@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import matter from "gray-matter";
 import { ARTIFACTS } from "./schema.js";
-/** README.md is generated output, not an item. */
+/** README.md documents the directory or presents an index; it is never an item. */
 const NOT_AN_ITEM = new Set(["README.md", "readme.md"]);
 async function listMarkdown(dir) {
     let entries;

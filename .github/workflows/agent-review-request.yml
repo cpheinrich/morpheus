@@ -37,6 +37,10 @@ jobs:
       contents: read
       pull-requests: write
     with:
+      # The Morpheus reviewer is temporarily off, including explicit requests.
+      # Keeping the caller preserves the trusted-author gate and makes
+      # re-enabling this a configuration change rather than a workflow rebuild.
+      enabled: false
       product-dir: hq/product
       # An `issue_comment` payload has an issue number and no pull request. The
       # called workflow resolves the head, the branch and the base from it.

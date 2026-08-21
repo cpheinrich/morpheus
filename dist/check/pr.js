@@ -58,7 +58,7 @@ export function closesIssue(body, issue) {
 }
 const SOURCE = /^src\/.*\.(ts|tsx)$/;
 const TEST = /(^tests\/|\.test\.tsx?$)/;
-const DOCS = /^(docs\/|architecture\.md$|README\.md$|AGENTS\.md$)/;
+const DOCS = /^(docs\/|architecture\.md$|AGENTS\.md$)|(^|\/)README\.md$/;
 /**
  * The records a session is required to have loaded. Kept as a pattern rather
  * than imported from `session/lease.ts` so this check stays a pure function of
@@ -66,7 +66,7 @@ const DOCS = /^(docs\/|architecture\.md$|README\.md$|AGENTS\.md$)/;
  * `hq/team/` is matched wholesale because CI does not know whose branch it is.
  */
 const CANONICAL = /^(AGENTS\.md$|CLAUDE\.md$|\.agent\/(decisions|learned)\.md$|hq\/team\/[^/]+\.md$)/;
-const GENERATED = /README\.md$/;
+const GENERATED = /^hq\/product\/(goals|requests)\/README\.md$/;
 // `roadmapIdFromBranch` now lives in `pm/id.ts`, beside the patterns it has to
 // agree with. Re-exported here because that is where it has always been
 // imported from — a re-export alone would not bring it into local scope, and
