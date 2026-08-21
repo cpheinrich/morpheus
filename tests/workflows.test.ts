@@ -154,6 +154,33 @@ describe("schedule.yml", () => {
 });
 
 describe("agent-review.yml", () => {
+  it("can be disabled inside the reusable workflow without removing its reported jobs", async () => {
+    const called = (await read("agent-review.yml")) as {
+      on?: {
+        workflow_call?: {
+          inputs?: Record<string, { type?: string; default?: unknown }>;
+        };
+      };
+      jobs?: Record<string, { if?: string }>;
+    };
+
+    expect(called.on?.workflow_call?.inputs?.enabled).toEqual(
+      expect.objectContaining({ type: "boolean", default: true }),
+    );
+    expect(called.jobs?.review?.if).toContain("inputs.enabled");
+    expect(called.jobs?.delivery?.if).toContain("inputs.enabled");
+
+    for (const file of ["ci.yml", "agent-review-request.yml"]) {
+      const caller = (await read(file)) as {
+        jobs?: Record<string, { uses?: string; with?: Record<string, unknown> }>;
+      };
+      const job = Object.values(caller.jobs ?? {}).find((candidate) =>
+        candidate.uses?.includes("agent-review.yml"),
+      );
+      expect(job?.with?.enabled, file).toBe(false);
+    }
+  });
+
   it("is reusable and takes both credentials as optional secrets", async () => {
     const wf = (await read("agent-review.yml")) as {
       on?: { workflow_call?: { secrets?: Record<string, { required?: boolean }> } };
