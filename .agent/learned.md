@@ -390,3 +390,45 @@ Two lessons, and the second is the transferable one:
 
 Sibling of *a check that skips what is absent reports the empty thing as correct* — there the check
 had nothing to look at, here it looked at the wrong object and found it in perfect order.
+
+## claude-code-action never tells you why the API refused, and debug mode does not change that
+
+Rung 2 failed on every run from 2026-08-12 22:36 UTC. The signature was always identical:
+
+```json
+{ "type": "result", "subtype": "success", "is_error": true,
+  "duration_ms": 326, "num_turns": 1, "total_cost_usd": 0 }
+```
+
+**One turn, zero dollars, a third of a second — the API rejected the very first request.** Everything
+upstream is fine and the log reads as though nothing went wrong, because the action runs the SDK
+with `show_full_output: false` and prints only that result object.
+
+Its own message says *"Rerun in debug mode or enable `show_full_output: true` for full output"*. The
+first half is wrong: `gh run rerun --debug` produces 14,000 lines of step debugging and **the SDK
+output stays redacted**. Two sessions were spent inferring the cause from timing and spend.
+
+**Ask the API directly instead.** A throwaway workflow on a pushed branch, using the same
+`ANTHROPIC_API_KEY` secret, printing the status and body of one `max_tokens: 1` request — which
+carry no secret, and GitHub masks the key anyway:
+
+```sh
+curl -sS -o /tmp/body.json -w '%{http_code}' https://api.anthropic.com/v1/messages \
+  -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" \
+  -H "content-type: application/json" \
+  -d '{"model":"claude-opus-5","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+Answer in ninety seconds, on both models:
+
+> `HTTP 400` — `invalid_request_error`: *Your credit balance is too low to access the Anthropic API.*
+
+**Read the status before assuming.** `400` with that message is an empty balance; `401`
+`authentication_error` is a revoked or wrong key. Those look identical through the action and need
+different fixes — buy credits versus mint a new key and update the secret — which is exactly why
+guessing was not good enough. Run the probe on a **private** repo and delete the branch after.
+
+The general shape, and the reason this is here rather than in a worklog: **when a tool reports that
+something failed but not why, the fastest route is usually to ask the failing dependency yourself
+rather than to coax the tool into confessing.** Two sessions of inference lost to a check that a
+one-file workflow settled.

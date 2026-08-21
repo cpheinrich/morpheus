@@ -7,6 +7,11 @@ on:
   push:
     branches: [main]
   pull_request:
+    # Spelled out only to add `ready_for_review`; the other three are the
+    # default set. The list is load-bearing rather than decorative — rung 2
+    # below keys off which of these fired, and a draft being marked ready is
+    # the moment a review is wanted most.
+    types: [opened, reopened, synchronize, ready_for_review]
 
 jobs:
   node:
@@ -39,6 +44,14 @@ jobs:
   # reports itself as skipped rather than green when no key is configured.
   agent-review:
     uses: ./.github/workflows/agent-review.yml
+    # No `if:` here, deliberately — the review-once-on-open decision lives in
+    # the called workflow's gate, not in this caller. A caller-level skip on
+    # `synchronize` leaves the nested `agent-review / delivery` check
+    # *unreported* rather than skipped, and an unreported required check blocks
+    # the merge forever. Inside the workflow the same skip is a job-level one,
+    # which GitHub reports as skipped — and a skipped required check is
+    # satisfied. Per-push reviews stay available to any consumer that sets
+    # `synchronize-reviews: true`.
     # A called workflow cannot request more than its caller was granted, and a
     # caller job with no `permissions` block gets the repository default —
     # read-only here. Without this the *entire* workflow file is rejected and
@@ -52,4 +65,5 @@ jobs:
       product-dir: hq/product
       morpheus-ref: ${{ github.sha }}
     secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

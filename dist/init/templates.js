@@ -181,13 +181,56 @@ See [the inbox cycle](${SPEC}) in the specification.
 `,
     "hq/marketing": (s) => `# Marketing
 
-SEO, content plans, and campaign notes for ${s.name}.
+This folder is the operating home for ${s.name}'s virtual AI CMO: a continuing growth system that
+maximizes qualified attention and traffic while protecting the project's brand, users, and
+reputation. It turns market, search, competitor, product, and channel evidence into prioritized
+experiments and durable project records.
 
 Positioning and voice live in \`hq/brand/\` and are **read** from here, not restated — a second
 copy of the messaging is one that drifts from the brand package that generates it.
 
-Start with \`analytics.md\`, \`launch-plan.md\`, and \`seo/strategy.md\`. Each begins as an
-initialization brief, not evidence that setup or launch work has happened.
+## The CMO loop
+
+1. **Observe:** ingest current product analytics, Search Console, website and store research,
+   channel-native analytics, customer language, market movement, and competitor evidence.
+2. **Diagnose:** distinguish reach, qualified traffic, activation, retention, trust, and revenue;
+   name uncertainty and data-quality limits instead of manufacturing precision.
+3. **Prioritize:** maintain a small portfolio across SEO, ASO, GEO/AI visibility, platform-native
+   social, community participation, partnerships, and launch work.
+4. **Create and distribute:** derive truthful channel-specific work from the product and brand.
+   Do not paste identical copy everywhere or manufacture a founder/customer voice.
+5. **Measure and learn:** use tagged destinations and semantic events, compare against a baseline,
+   record qualitative feedback and policy outcomes, and feed decisions back into the roadmap.
+
+This is a continuing operating loop, not permission for unattended publication. Every automated
+job must default to research, drafting, validation, or dry-run mode; resolve the exact account,
+current platform rules and API access; prevent duplicates; and retain an audit trail. Posting,
+replying, direct messaging, outreach, spending, creating accounts, and changing credentials require
+the project's explicit approval policy. Never automate votes, follows, fake engagement, or
+unsolicited interaction.
+
+## Working records
+
+| Area | Record |
+|---|---|
+| Measurement and privacy | \`analytics.md\` |
+| Website search (OpenSEO) | \`seo/strategy.md\` |
+| App-store search (Appeeky, when applicable) | \`aso/\` |
+| Website and future app launch | \`launch-plan.md\` |
+| Instagram | \`instagram/README.md\` |
+| LinkedIn | \`linkedin/README.md\` |
+| X | \`x/README.md\` |
+| Reddit | \`reddit/README.md\` |
+| Research, experiments, and reusable content | \`research/\`, \`experiments/\`, and \`content/\` |
+
+The channel folders are created even when no account exists. Their account fields are a setup
+reminder and their guidance is a starting point, not evidence that an account or posting program
+has been approved. Store public handles and profile URLs there; never store passwords, recovery
+codes, session cookies, tokens, or private account credentials in git.
+
+Start by replacing the initialization markers in \`analytics.md\`, \`launch-plan.md\`, and
+\`seo/strategy.md\` with verified project state. Then establish a weekly growth review and a
+monthly market/search/competitor refresh, adjusting cadence to the project's evidence and risk.
 `,
     "hq/marketing/seo": (s) => `# SEO
 
@@ -222,6 +265,245 @@ the page ready and resume the setup when the prerequisite is supplied.
 Search Console is Google's operational indexing surface; OpenSEO is the SEO research surface.
 Missing one is not a reason to skip the other. See [search tooling and browser-first operation](${SPEC})
 in the specification.
+`,
+    "hq/marketing/instagram": (s) => `# Instagram
+
+Instagram is a visual discovery and relationship channel for ${s.name}. Use it to earn qualified
+attention with original, useful, platform-native work — not as a mirror of every other feed.
+
+## Account
+
+| Field | Value |
+|---|---|
+| Status | Not created |
+| Username | — |
+| Profile URL | — |
+| Owner/admin | — |
+| Last verified | — |
+
+Update these public account fields when an account is created. Keep passwords, recovery methods,
+session cookies, tokens, and private admin details out of git. Record the exact professional
+account in any automation configuration before a job can leave dry-run mode.
+
+## What to publish
+
+- Start with one audience problem, insight, demonstration, or proof point. Make the first frame
+  understandable without relying on the caption.
+- Use Reels for motion, demonstrations, stories, and discovery; carousels for steps, comparisons,
+  and saveable reference material; feed images for a strong single idea; Stories for timely
+  follow-up and existing-audience interaction.
+- Create original work or add material analysis, explanation, or transformation. Do not repost
+  low-value copies, buy engagement, or use exaggerated health or financial claims.
+- Keep on-screen text readable, add accurate captions to spoken video and useful alt text, and
+  assume some people watch without sound.
+- Write a specific caption and one natural next step. Use only relevant tags, locations, mentions,
+  and hashtags; test them rather than treating a generic hashtag count as a rule.
+- Match the profile link and tagged destination to the post's promise. A click to an unrelated
+  homepage is not a useful conversion path.
+
+## Operating loop
+
+Plan from real product releases, customer questions, research, and proven owned content. Adapt the
+idea to Instagram instead of pasting cross-platform copy. Before publishing, verify claims,
+sources, rights, disclosures, visual accessibility, landing-page readiness, and recommendation
+eligibility in Account Status. Replies and direct messages are human-reviewed external actions.
+
+Review non-follower reach, watch behavior, shares, saves, profile actions, link actions, qualified
+sessions, and product activation together. Record what the audience actually did and said; do not
+optimize to impressions alone.
+
+Scripts may collect approved metrics, prepare drafts, validate assets, and assemble a review queue.
+They must not create accounts, publish, comment, message, follow, or manufacture engagement without
+an explicit project policy and approval for that external action.
+
+## Current official guidance
+
+- [Instagram Best Practices hub](https://about.fb.com/news/2024/10/best-practices-education-hub-creators-instagram/)
+- [Recommendations on Instagram](https://www.facebook.com/help/instagram/313829416281232)
+- [Recommendation eligibility and Account Status](https://www.facebook.com/help/instagram/653964212890722)
+
+Reviewed 2026-08-13. Recheck current platform rules, product capabilities, and recommendation
+eligibility before changing strategy or enabling automation.
+`,
+    "hq/marketing/linkedin": (s) => `# LinkedIn
+
+LinkedIn is the professional insight, credibility, and relationship channel for ${s.name}. Earn
+attention by helping a clearly defined professional audience think or work better; do not reduce
+the Page to a stream of promotions.
+
+## Account
+
+| Field | Value |
+|---|---|
+| Status | Not created |
+| Page username | — |
+| Page URL | — |
+| Owner/admin | — |
+| Last verified | — |
+
+Update these public fields when a Page is created. Keep passwords, recovery methods, session
+cookies, tokens, and private admin details out of git. Record the exact Page and authorized actor
+in any automation configuration before a job can leave dry-run mode.
+
+## What to publish
+
+- Lead with a recognizable professional problem, a concrete observation, or a clear thesis. Give
+  enough context for someone outside the immediate network to understand why it matters.
+- Prefer useful knowledge, specific advice, original evidence, product lessons, and a defensible
+  point of view. Credit other people's work and avoid an overly promotional or salesy tone.
+- Make the post skimmable, support claims with evidence, and end with one proportionate next step.
+  A thoughtful question can invite discussion; generic engagement bait cannot.
+- Choose the format for the idea: concise text, an accessible image, captioned video, a document
+  for structured depth, or a longer article/newsletter when sustained context is warranted.
+- Use employee or founder voices only when the named person approves and the words are genuinely
+  theirs. Never fabricate personal experience, customer endorsement, or executive opinion.
+- Begin with a sustainable weekly rhythm, as LinkedIn recommends for Pages, then let Page analytics
+  and content quality determine cadence rather than filling a quota.
+
+## Operating loop
+
+Build themes from industry questions, customer language, research, product changes, and credible
+internal expertise. Before publishing, verify claims, permissions, links, disclosures, visual
+accessibility, and the destination's readiness. Respond substantively and in context; replies,
+messages, invitations, and outreach remain human-reviewed external actions.
+
+Use LinkedIn Page analytics to review impressions, members reached, clicks, engagement rate, video
+behavior, followers, visitors, search appearances, and competitors. Connect those signals to tagged
+qualified sessions and product activation; follower count alone is not the outcome.
+
+Scripts may collect approved analytics, prepare drafts, check links, and assemble a review queue.
+They must not create Pages, publish, comment, message, invite, or imitate a person's voice without
+an explicit project policy and approval for that external action.
+
+## Current official guidance
+
+- [LinkedIn marketing fundamentals](https://business.linkedin.com/advertise/ads/how-to-market-on-linkedin)
+- [Content suggested beyond your network](https://www.linkedin.com/help/linkedin/answer/a1499047)
+- [Post and respond as a LinkedIn Page](https://www.linkedin.com/help/linkedin/answer/a1660869)
+- [LinkedIn Page analytics](https://www.linkedin.com/help/linkedin/answer/a547077)
+
+Reviewed 2026-08-13. Recheck current Page features, distribution guidance, and automation terms
+before changing strategy or enabling automation.
+`,
+    "hq/marketing/x": (s) => `# X
+
+X is the concise, real-time conversation and distribution channel for ${s.name}. Use it for timely
+ideas, useful replies, product evidence, and relevant moments rather than a one-way link feed.
+
+## Account
+
+| Field | Value |
+|---|---|
+| Status | Not created |
+| @handle | — |
+| Profile URL | — |
+| Owner/admin | — |
+| Last verified | — |
+
+Update these public fields when an account is created. Keep passwords, recovery methods, session
+cookies, tokens, and private admin details out of git. Record the exact account in any automation
+configuration before a job can leave dry-run mode.
+
+## What to publish
+
+- Be concise, conversational, and clear about the value before asking for an action. Avoid all
+  caps, vague teasers, and copy that reads like an ad when the contribution is an idea.
+- Attach useful images, GIFs, or video when they improve understanding. Avoid heavy text inside
+  images; add alt text and captions. X's current business guidance favors short video (15 seconds
+  or less) and sound-off comprehension as a starting point, not a timeless hard rule.
+- Use relevant current moments only when ${s.name} has a legitimate contribution. Maintain an
+  evergreen idea bank and content calendar so the account is not dependent on trend chasing.
+- Monitor product terms, questions, and indirect mentions as well as direct @mentions. Read the
+  thread before replying and personalize the response to its context.
+- Use hashtags sparingly and only when they improve discovery in a real conversation. Test current
+  behavior rather than copying a fixed hashtag formula.
+- Give a linked post enough native value to stand alone, and send people to a destination that
+  fulfills the exact promise.
+
+## Operating loop
+
+Mix original insights, product evidence, visual demonstrations, curated material with commentary,
+and approved contextual replies. Before publishing, verify claims, source context, media rights,
+disclosures, accessibility, link previews, and landing-page readiness. Keep a calm correction and
+escalation path for fast-moving or sensitive conversations.
+
+Review impressions, link clicks, replies, reposts, profile clicks, qualified sessions, and product
+activation together. Look for durable audience questions and relationships, not only viral reach.
+
+Scripts may monitor approved public terms, collect analytics, prepare drafts, validate media, and
+assemble a review queue. They must not publish, reply, message, follow, repost, or mass-mention
+people without an explicit project policy and approval for that external action.
+
+## Current official guidance
+
+- [X organic best practices](https://business.x.com/en/basics/organic-best-practices)
+- [Get a business started on X](https://business.x.com/en/basics/get-your-business-started-with-x)
+- [Post activity dashboard](https://business.x.com/en/help/campaign-measurement-and-analytics/tweet-activity-dashboard)
+
+Reviewed 2026-08-13. Recheck current product behavior, policies, API access, and automation terms
+before changing strategy or enabling automation.
+`,
+    "hq/marketing/reddit": (s) => `# Reddit
+
+Reddit is a community-participation and research channel for ${s.name}, not a broadcast list. Earn the
+right to mention the project by being useful in each community on that community's terms.
+
+## Account
+
+| Field | Value |
+|---|---|
+| Status | Not created |
+| u/username | — |
+| Profile URL | — |
+| Owner/operator | — |
+| Affiliation disclosure | — |
+| Last verified | — |
+
+Update these public fields when an account is created. Keep passwords, recovery methods, session
+cookies, tokens, and private admin details out of git. State the operator's project affiliation
+plainly wherever it is relevant.
+
+## How to participate
+
+- Research every subreddit before drafting: read its current rules, pinned posts, moderator
+  guidance, recurring formats, recent removals, and the language members use. Record the subreddit
+  and check date with a planned contribution.
+- Answer the question or contribute the useful substance first. Link to the project only when the
+  destination is directly useful, disclose the relationship, and make the answer valuable without
+  the click.
+- Use accurate, non-sensational titles; cite reliable sources; distinguish personal experience
+  from project evidence; and respond honestly to criticism.
+- Participate beyond the project's own links. Reddiquette's historical 9:1 rule of thumb does not
+  make self-promotion automatically acceptable: community rules and authentic behavior control.
+- Never repeatedly mass-post the same link or comment, send unsolicited messages or chat requests,
+  use multiple accounts to evade rules, ask for votes, manipulate voting, mask destinations, or
+  automate spam and low-value AI content.
+- Moderator contact, posting, commenting, direct messages, and any health, financial, or other
+  sensitive advice require explicit project review and approval.
+
+## Operating loop
+
+Use Reddit to learn real audience questions and vocabulary, identify missing product or content
+work, and prepare community-specific contributions. Keep a placement log with the current rules,
+draft, disclosure, approval, permalink, moderation outcome, meaningful replies, referrals, product
+events, removals, and warnings. A removed post is evidence to stop and learn, not a prompt to evade.
+
+Measure useful conversations, qualified referrals, product activation, recurring questions, and
+moderation outcomes. Do not optimize for karma or treat community members as acquisition inventory.
+
+Scripts may research public threads, collect approved analytics, detect duplicate drafts, and
+assemble a review queue. They must never auto-post, auto-comment, vote, message, evade a ban, or
+operate multiple identities.
+
+## Current official guidance
+
+- [Reddit spam policy](https://support.reddithelp.com/hc/en-us/articles/360043504051-Spam)
+- [Reddiquette](https://support.reddithelp.com/hc/en-us/articles/205926439-Reddiquette)
+- [Reddit Rules](https://redditinc.com/policies/reddit-rules)
+- [Reddit Pro organic playbook](https://redditinc.com/hubfs/Reddit%20Inc/Content/Reddit%20Pros%20organic%20playbook.pdf)
+
+Reviewed 2026-08-13. Recheck each community's rules and current Reddit policies immediately before
+drafting or approving participation.
 `,
     "hq/finance": (s) => `# Finance
 

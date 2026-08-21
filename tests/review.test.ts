@@ -1,8 +1,8 @@
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
-import { needed } from "../src/cli/review.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { needed, reviewDelivery } from "../src/cli/review.js";
 import {
   assessReviewDelivery,
   NO_PRIOR_COMMENT,
@@ -201,6 +201,28 @@ describe("the shipped persona", () => {
     expect(text).toContain("decisions.md");
     expect(text).toContain("do not block");
     expect(text).toContain("delivery sentinel");
+  });
+
+  /**
+   * The reporting contract, pinned. "Post a single review comment" is how
+   * findings ended up in one block for two weeks with the inline tool sitting
+   * allowlisted and unused — the persona is what routes them, so the persona is
+   * what a test has to hold in place.
+   */
+  it("routes findings inline and keeps the verdict load-bearing", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const text = await readFile(
+      join(import.meta.dirname, "..", PERSONA_PATH),
+      "utf8",
+    );
+    expect(text).toContain("Findings go inline");
+    expect(text).toContain("never open a\nsecond comment");
+    // The summary feeds pathsMentioned and delivery. Checkbox syntax defeats
+    // both: the workflow strips `- [x]` lines before the gate reads them, and
+    // delivery reads an unticked `- [ ]` as unfinished progress.
+    expect(text).toContain("never task-list checkboxes");
+    // Inline comments are API objects the delivery check never fetches.
+    expect(text).toContain("reads as undelivered");
   });
 });
 
@@ -527,5 +549,100 @@ describe("review delivery", () => {
       body: `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nThe old body was \`${REVIEW_PLACEHOLDER}\` and errors began \`${REVIEW_ERROR_PREFIX}\`.\n\n${REVIEW_DELIVERED_SENTINEL}`,
     });
     expect(result.delivered).toBe(true);
+  });
+});
+
+/**
+ * The waiver that makes delivery safe to require.
+ *
+ * Delivery is a required status check downstream, so a broken reviewer would
+ * block every merge — the six-day credit outage is exactly that event. The
+ * escape hatch is `review-waived: <reason>` in the PR body, with the same
+ * validation as `skip-tests:`: a reason has to say something a human can
+ * weigh, and the waiver is reported, never silent.
+ */
+describe("review delivery waiver", () => {
+  let dir: string;
+  let logged: string[];
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "morpheus-delivery-"));
+    logged = [];
+    vi.spyOn(console, "log").mockImplementation((line: string) => {
+      logged.push(String(line));
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** A tracking-comment body that fails delivery: no finished marker. */
+  const UNDELIVERED_BODY = "### Reviewing\n\nstill thinking";
+  const DELIVERED_BODY = `${REVIEW_FINISHED_PREFIX}cpheinrich's task** —— [View job](https://github.com/cpheinrich/morpheus/actions/runs/1)\n\n---\nNo findings worth a human's time.\n\n${REVIEW_DELIVERED_SENTINEL}`;
+
+  async function run(commentBody: string, prBody?: string): Promise<number> {
+    const bodyFile = join(dir, "comment.md");
+    await writeFile(bodyFile, commentBody);
+    let prBodyFile: string | undefined;
+    if (prBody !== undefined) {
+      prBodyFile = join(dir, "pr-body.md");
+      await writeFile(prBodyFile, prBody);
+    }
+    return reviewDelivery(NO_PRIOR_COMMENT, "101", bodyFile, prBodyFile);
+  }
+
+  it("passes a non-delivery carrying a real waiver, and says which it was", async () => {
+    const code = await run(UNDELIVERED_BODY, "review-waived: the reviewer is down, tracked upstream");
+    expect(code).toBe(0);
+    // The caller tells a waiver from a delivery by this prefix; the workflow
+    // reports it as waived rather than confirmed.
+    expect(logged.join("\n")).toMatch(/^waived: "the reviewer is down, tracked upstream"/);
+  });
+
+  it("refuses a waiver that says nothing", async () => {
+    const code = await run(UNDELIVERED_BODY, "review-waived: yes");
+    expect(code).toBe(1);
+    expect(logged.join("\n")).toContain("refused");
+  });
+
+  it("fails a non-delivery with no waiver", async () => {
+    const code = await run(UNDELIVERED_BODY, "an ordinary PR body");
+    expect(code).toBe(1);
+    expect(logged.join("\n")).not.toContain("waived");
+  });
+
+  it("treats a missing PR body as carrying no waiver", async () => {
+    const code = await reviewDelivery(
+      NO_PRIOR_COMMENT,
+      "101",
+      await (async () => {
+        const f = join(dir, "comment.md");
+        await writeFile(f, UNDELIVERED_BODY);
+        return f;
+      })(),
+      join(dir, "does-not-exist.md"),
+    );
+    expect(code).toBe(1);
+  });
+
+  it("ignores a waiver that only exists inside a code fence", async () => {
+    const code = await run(
+      UNDELIVERED_BODY,
+      "If the reviewer is broken:\n\n```\nreview-waived: the reviewer is down\n```\n",
+    );
+    expect(code).toBe(1);
+    expect(logged.join("\n")).not.toContain("waived:");
+  });
+
+  it("ignores a backticked mention of the waiver", async () => {
+    const code = await run(UNDELIVERED_BODY, "add `review-waived: some reason` to the body");
+    expect(code).toBe(1);
+  });
+
+  it("never lets a waiver relabel an actual delivery", async () => {
+    const code = await run(DELIVERED_BODY, "review-waived: should be ignored entirely");
+    expect(code).toBe(0);
+    expect(logged.join("\n")).not.toContain("waived");
   });
 });

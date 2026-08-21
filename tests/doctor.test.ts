@@ -108,7 +108,26 @@ describe("doctor", () => {
   it("expects more of a company than an internal project", async () => {
     expect(EXPECTED.company.length).toBeGreaterThan(EXPECTED.internal.length);
     expect(EXPECTED.company).toContain("hq/finance");
+    expect(EXPECTED.company).toContain("hq/marketing/instagram");
+    expect(EXPECTED.company).toContain("hq/marketing/linkedin");
+    expect(EXPECTED.company).toContain("hq/marketing/x");
+    expect(EXPECTED.company).toContain("hq/marketing/reddit");
     expect(EXPECTED.internal).not.toContain("hq/finance");
+    expect(EXPECTED.internal).not.toContain("hq/marketing/reddit");
+  });
+
+  it("reports a missing user-facing social channel scaffold", async () => {
+    await scaffold("company");
+    await rm(join(root, "hq/marketing/linkedin"), { recursive: true });
+
+    const findings = await doctor({ root });
+
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        check: "structure",
+        message: expect.stringContaining("hq/marketing/linkedin"),
+      }),
+    );
   });
 
   it("errors when the prefix is missing", async () => {

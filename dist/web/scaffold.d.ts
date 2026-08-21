@@ -70,6 +70,12 @@ export declare function mergeDependencies(root: string, webRoot: string, require
  * file carries comments that explain a lockfile, and a rewrite would drop them.
  */
 export declare function addJwksJoseOverride(root: string): Promise<boolean>;
+/**
+ * Anchor the insertion on the catch-all, which every generated rules file ends
+ * with. Exported for the consumer-auth scaffold, whose rules merge anchors on
+ * the same comment — two copies of a security-boundary anchor would drift.
+ */
+export declare const CATCH_ALL: RegExp;
 type RulesOutcome = {
     kind: "merged";
     path: string;
