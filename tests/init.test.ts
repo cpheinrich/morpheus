@@ -130,6 +130,18 @@ describe("morpheus init", () => {
       expect(agents.indexOf("managed by Morpheus")).toBeLessThan(agents.indexOf("## Layout"));
     });
 
+    it("carries the test-quality convention into every project", async () => {
+      await scaffold(dir, SEED);
+      const agents = await read("AGENTS.md");
+
+      // The failure happened in a consumer repository, so fixing only
+      // Morpheus's own instructions would leave the active rule unchanged.
+      expect(agents).toContain("pin expected behaviour");
+      expect(agents).toContain("exercise guards at their boundaries");
+      expect(agents).toContain("coverage alone is not evidence of quality");
+      expect(agents).toContain("/blob/main/AGENTS.md#what-makes-a-test-count");
+    });
+
     it("tells a contributor to create the roadmap item themselves", async () => {
       await scaffold(dir, SEED);
 

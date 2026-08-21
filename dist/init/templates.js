@@ -781,7 +781,9 @@ so the choice is not relitigated next session.
 
 **Every PR must carry** tests for anything testable, a documentation update when behaviour
 changes, a test plan, any open questions stated plainly rather than guessed at, and the roadmap
-item moved to \`review\`.
+item moved to \`review\`. Tests must pin expected behaviour, exercise guards at their boundaries,
+and fail when a stated invariant is broken; coverage alone is not evidence of quality. See
+[Morpheus's test guidance](${MORPHEUS_REPO}/blob/main/AGENTS.md#what-makes-a-test-count).
 
 **Before opening a PR**, run \`morpheus pm index\` and commit any one-time roadmap README migration
 or generated goal/request index changes. The roadmap README is static after that migration. CI runs
