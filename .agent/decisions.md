@@ -21,8 +21,10 @@ written down. A headless worker, service, scheduled job, inference system, or ex
 `apps/backend/` surface even when no person interacts with it directly. Cross-references are solved
 by importing, never by a sync step.
 
-**One file per roadmap item, with a generated index** — several agents run concurrently, and a
-single `roadmap.md` conflicts on every status change.
+**One file per roadmap item; the roadmap README stays static** — several agents run concurrently,
+and a single `roadmap.md` conflicts on every status change. Morpheus commands and `/hq` parse the
+item files directly. A generated README table made those independent edits converge on one derived
+file anyway, so it was removed; low-churn goal and request indexes remain generated.
 
 ## Tooling
 

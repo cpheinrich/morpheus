@@ -9,9 +9,11 @@ import { findDuplicateIds, parseArtifact, parseDir } from "../src/pm/parse.js";
 import {
   BEGIN,
   END,
-  renderRoadmap,
+  renderGoals,
   spliceIndex,
+  STATIC_ROADMAP_README,
   writeIndex,
+  writeStaticRoadmapReadme,
 } from "../src/pm/index-gen.js";
 import { create, index, linkIssue as linkIssueCli } from "../src/cli/pm.js";
 import { createItem, nextId } from "../src/pm/new-item.js";
@@ -36,6 +38,14 @@ owner: agent
 prs: [12]
 created: 2026-07-01
 updated: 2026-07-28`;
+
+const VALID_GOAL = `id: MO-G-2026-Q3-01
+title: Ship Morpheus
+horizon: quarterly
+period: 2026-Q3
+metric: projects scaffolded
+target: 2
+status: on-track`;
 
 beforeEach(async () => {
   product = await mkdtemp(join(tmpdir(), "morpheus-pm-"));
@@ -198,7 +208,7 @@ describe("parse", () => {
     expect(issues[0]!.message).toContain("filename must start with the id");
   });
 
-  it("ignores the generated README", async () => {
+  it("ignores the static roadmap README", async () => {
     await seed("roadmap", "MO-001", VALID_RM);
     await writeFile(join(product, "roadmap", "README.md"), "# Roadmap\n");
 
@@ -245,7 +255,7 @@ describe("parse", () => {
 });
 
 describe("index over a partial product directory", () => {
-  it("skips a kind whose directory does not exist", async () => {
+  it("skips absent indexed kinds and leaves the static roadmap README untouched", async () => {
     // A project need not use every kind. Darwin moved goals to
     // `hq/strategy/goals/` — a company has goals that are not product goals —
     // which left `hq/product/goals/` absent. `parseDir` already treats a
@@ -253,92 +263,70 @@ describe("index over a partial product directory", () => {
     // README into it, and `writeFile` cannot create the parent: the command
     // died with a bare ENOENT and took CI's index check with it.
     await seed("roadmap", "MO-001", VALID_RM);
+    const staticReadme = "# Roadmap\n\nStatic guidance.\n";
+    await writeFile(join(product, "roadmap", "README.md"), staticReadme);
 
     await expect(index(product)).resolves.toBe(0);
 
     // Skipped, not created. Materialising an empty directory would be a second
     // bug wearing the first one's clothes.
     await expect(readdir(join(product, "goals"))).rejects.toThrow();
-    expect(await readFile(join(product, "roadmap", "README.md"), "utf8")).toContain("MO-001");
+    expect(await readFile(join(product, "roadmap", "README.md"), "utf8")).toBe(staticReadme);
   });
 
   it("still reports stale under --check without crashing", async () => {
-    await seed("roadmap", "MO-001", VALID_RM);
-    expect(await index(product, true)).toBe(1); // roadmap README not written yet
+    await seed("goals", "MO-G-2026-Q3-01", VALID_GOAL);
+    expect(await index(product, true)).toBe(1); // goals README not written yet
 
     await index(product);
+    expect(await index(product, true)).toBe(0);
+  });
+
+  it("retires a legacy generated roadmap table exactly once", async () => {
+    await seed("roadmap", "MO-001", VALID_RM);
+    const legacy = `# Roadmap\n\nGenerated.\n\n${BEGIN}\nTABLE\n${END}\n`;
+    const dir = join(product, "roadmap");
+    await writeFile(join(dir, "README.md"), legacy);
+
+    expect(await index(product)).toBe(0);
+    expect(await readFile(join(dir, "README.md"), "utf8")).toBe(STATIC_ROADMAP_README);
+    expect(await writeStaticRoadmapReadme(dir)).toBe(false);
+  });
+
+  it("flags a legacy roadmap table under --check", async () => {
+    await seed("roadmap", "MO-001", VALID_RM);
+    const legacy = `${BEGIN}\nTABLE\n${END}\n`;
+    const path = join(product, "roadmap/README.md");
+    await writeFile(path, legacy);
+
+    expect(await index(product, true)).toBe(1);
+    expect(await readFile(path, "utf8")).toBe(legacy);
+    expect(await index(product)).toBe(0);
     expect(await index(product, true)).toBe(0);
   });
 });
 
 describe("index generation", () => {
-  it("orders in-progress before backlog before shipped", async () => {
-    await seed("roadmap", "MO-001", VALID_RM.replace("status: in-progress", "status: shipped"));
-    await seed("roadmap", "MO-002", VALID_RM.replace("MO-001", "MO-002"));
-    await seed(
-      "roadmap",
-      "MO-003",
-      VALID_RM.replace("MO-001", "MO-003").replace("status: in-progress", "status: backlog"),
-    );
-
-    const { items } = await parseArtifact(product, "roadmap");
-    const rows = renderRoadmap(items).split("\n").slice(2);
-
-    expect(rows[0]).toContain("MO-002"); // in-progress
-    expect(rows[1]).toContain("MO-003"); // backlog
-    expect(rows[2]).toContain("MO-001"); // shipped
+  it("renders a placeholder when there are no items", () => {
+    expect(renderGoals([])).toContain("Nothing here yet");
   });
 
-  // Blocked sits second because it is the row a reader most needs to see:
-  // nothing moves it without them.
-  it("sorts blocked above review, backlog and shipped", async () => {
-    await seed("roadmap", "MO-001", VALID_RM.replace("status: in-progress", "status: backlog"));
+  it("orders, links and escapes generated goal rows", async () => {
     await seed(
-      "roadmap",
-      "MO-002",
-      VALID_RM.replace("MO-001", "MO-002").replace(
-        "status: in-progress",
-        "status: blocked\nneeds: which model",
+      "goals",
+      "MO-G-2026-Q3-02",
+      VALID_GOAL.replace("MO-G-2026-Q3-01", "MO-G-2026-Q3-02").replace(
+        "Ship Morpheus",
+        "A | B",
       ),
     );
-    await seed(
-      "roadmap",
-      "MO-003",
-      VALID_RM.replace("MO-001", "MO-003").replace("status: in-progress", "status: review"),
-    );
+    await seed("goals", "MO-G-2026-Q3-01", VALID_GOAL);
+    const { items } = await parseArtifact(product, "goals");
+    const rendered = renderGoals(items);
+    const rows = rendered.split("\n").slice(2);
 
-    const { items, issues } = await parseArtifact(product, "roadmap");
-    expect(issues).toEqual([]);
-    const rows = renderRoadmap(items).split("\n").slice(2);
-
-    expect(rows[0]).toContain("MO-002"); // blocked
-    expect(rows[1]).toContain("MO-003"); // review
-    expect(rows[2]).toContain("MO-001"); // backlog
-  });
-
-  it("renders a placeholder when there are no items", () => {
-    expect(renderRoadmap([])).toContain("Nothing here yet");
-  });
-
-  it("escapes pipes so a title cannot break the table", async () => {
-    await seed("roadmap", "MO-001", VALID_RM.replace("Ship the parser", "A | B"));
-    const { items } = await parseArtifact(product, "roadmap");
-    expect(renderRoadmap(items)).toContain("A \\| B");
-  });
-
-  it("links each id to its own file", async () => {
-    await seed("roadmap", "MO-001", VALID_RM);
-    const { items } = await parseArtifact(product, "roadmap");
-    expect(renderRoadmap(items)).toContain("[MO-001](./MO-001.md)");
-  });
-
-  it("shows declared GitHub issues on the generated board", async () => {
-    await seed("roadmap", "MO-001", `${VALID_RM}\nissues: [70, 76]`);
-    const { items } = await parseArtifact(product, "roadmap");
-    const rendered = renderRoadmap(items);
-
-    expect(rendered).toContain("| ID | Title | Status | Pri | Goal | Issues | PRs |");
-    expect(rendered).toContain("| #70, #76 | #12 |");
+    expect(rows[0]).toContain("[MO-G-2026-Q3-01](./MO-G-2026-Q3-01.md)");
+    expect(rows[1]).toContain("A \\| B");
   });
 
   it("replaces only the marked block, preserving surrounding prose", () => {
@@ -358,10 +346,10 @@ describe("index generation", () => {
   });
 
   it("reports no change on a second identical write", async () => {
-    await seed("roadmap", "MO-001", VALID_RM);
-    const { items } = await parseArtifact(product, "roadmap");
-    const dir = join(product, "roadmap");
-    const rendered = renderRoadmap(items);
+    await seed("goals", "MO-G-2026-Q3-01", VALID_GOAL);
+    const { items } = await parseArtifact(product, "goals");
+    const dir = join(product, "goals");
+    const rendered = renderGoals(items);
 
     expect(await writeIndex(dir, rendered)).toBe(true);
     expect(await writeIndex(dir, rendered)).toBe(false);
@@ -430,13 +418,16 @@ describe("new item", () => {
   it("accepts --issue for a roadmap item through the CLI boundary", async () => {
     const root = await mkdtemp(join(tmpdir(), "morpheus-pm-issue-"));
     const productDir = join(root, "hq/product");
-    await mkdir(productDir, { recursive: true });
+    await mkdir(join(productDir, "roadmap"), { recursive: true });
     await writeFile(join(root, "morpheus.json"), '{"prefix":"MO"}\n');
+    const staticReadme = "# Roadmap\n\nStatic guidance.\n";
+    await writeFile(join(productDir, "roadmap/README.md"), staticReadme);
 
     expect(await create(productDir, "roadmap", "Close the loop", { issue: "70" }, root)).toBe(0);
     const { items, issues } = await parseArtifact(productDir, "roadmap");
     expect(issues).toHaveLength(0);
     expect(items[0]!.data.issues).toEqual([70]);
+    expect(await readFile(join(productDir, "roadmap/README.md"), "utf8")).toBe(staticReadme);
   });
 
   it.each(["0", "-1", "7e1", " 70 ", "not-a-number"])("refuses invalid --issue value %s before writing", async (issue) => {
@@ -465,14 +456,16 @@ describe("new item", () => {
     expect(await linkIssue(product, "MO-001", 70)).toMatchObject({ issues: [70, 76], written: false });
   });
 
-  it("links an issue through the CLI boundary and refreshes the index", async () => {
+  it("links an issue through the CLI boundary without rewriting the static README", async () => {
     await seed("roadmap", "MO-001", VALID_RM);
+    const staticReadme = "# Roadmap\n\nStatic guidance.\n";
+    await writeFile(join(product, "roadmap/README.md"), staticReadme);
 
     expect(await linkIssueCli(product, "MO-001", "70")).toBe(0);
     const { items, issues } = await parseArtifact(product, "roadmap");
     expect(issues).toEqual([]);
     expect(items[0]!.data.issues).toEqual([70]);
-    expect(await readFile(join(product, "roadmap", "README.md"), "utf8")).toContain("#70");
+    expect(await readFile(join(product, "roadmap", "README.md"), "utf8")).toBe(staticReadme);
   });
 
   it("refuses a missing item or malformed issue without writing", async () => {

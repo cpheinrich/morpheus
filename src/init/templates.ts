@@ -12,6 +12,7 @@
  */
 
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
+import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
 
 export interface Seed {
   name: string;
@@ -808,8 +809,9 @@ the item id, so the two cannot disagree.
 changes, a test plan, any open questions stated plainly rather than guessed at, and the roadmap
 item moved to \`review\`.
 
-**Before opening a PR**, run \`morpheus pm index\` and commit any index changes. CI runs the same
-check and will fail otherwise.
+**Before opening a PR**, run \`morpheus pm index\` and commit any one-time roadmap README migration
+or generated goal/request index changes. The roadmap README is static after that migration. CI runs
+the same check and will fail otherwise.
 
 **Append a worklog entry** to \`.agent/worklog/YYYY-MM-DD-slug.md\`. Record dead ends especially —
 git history cannot hold work that produced no code, and that is the expensive knowledge.
@@ -1096,10 +1098,11 @@ jobs:${
 
 export const productReadme = (
   kind: "roadmap" | "goals" | "requests",
-  s: Seed,
+  _s: Seed,
 ): string => {
+  if (kind === "roadmap") return STATIC_ROADMAP_README;
+
   const blurb = {
-    roadmap: `Work, one file per item. Ids are \`${s.prefix}-001\` upward.\n\nCreate with \`morpheus pm new roadmap "Title"\`. The table below is generated — edit the item files, not this.`,
     goals: `What the work is for. A roadmap with no goal is a list nobody can decline.\n\nCreate with \`morpheus pm new goals "Title"\`.`,
     requests: `Incoming asks, before they become roadmap items. Triage, then accept or decline —\ndeclining explicitly is the point.`,
   }[kind];

@@ -340,9 +340,16 @@ describe("a claimed branch that did none of its item's work", () => {
     expect(hasNoSubstantiveChange([])).toBe(false);
   });
 
-  it("ignores generated README files when looking for doc changes", async () => {
+  it("counts the static roadmap README as documentation", async () => {
     const findings = await checkPr(
       goodPr({ changedFiles: ["src/pm/index.ts", "tests/pm.test.ts", "hq/product/roadmap/README.md"] }),
+    );
+    expect(findings.find((f) => f.rule === "docs-with-api")).toBeUndefined();
+  });
+
+  it("ignores generated goal README files when looking for doc changes", async () => {
+    const findings = await checkPr(
+      goodPr({ changedFiles: ["src/pm/index.ts", "tests/pm.test.ts", "hq/product/goals/README.md"] }),
     );
     expect(findings.find((f) => f.rule === "docs-with-api")?.level).toBe("warning");
   });

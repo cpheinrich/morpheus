@@ -44,7 +44,7 @@ pnpm test                  # vitest run
 pnpm test:rules            # generated firestore.rules vs the emulator — needs Java
 pnpm compile               # tsc -p tsconfig.build.json; refreshes committed dist/
 pnpm morpheus pm validate   # validate hq/product frontmatter
-pnpm morpheus pm index      # regenerate README index tables
+pnpm morpheus pm index      # retire legacy roadmap tables; refresh goal/request indexes
 pnpm morpheus pm new roadmap "Title here" --priority P1 [--issue 123]
 pnpm morpheus pm link-issue MO-014 123  # attach an issue to existing work
 pnpm morpheus pm migrate-ids --check   # integer roadmap ids → the dated scheme (MO-057)
@@ -193,9 +193,9 @@ morpheus pm block MO-051 --needs "which model, and whose subscription pays for i
 morpheus pm unblock MO-051    # once answered
 ```
 
-This sets `status: blocked` and `needs:` on the item, writes a worklog entry, and raises an open
-`❗` item in the inbox, refreshes the roadmap index, then commits and pushes those records on the
-claimed branch. Online it refuses the protected trunk before writing anything; the explicitly
+This sets `status: blocked` and `needs:` on the item, writes a worklog entry, raises an open
+`❗` item in the inbox, then commits and pushes those records on the claimed branch. Online it
+refuses the protected trunk before writing anything; the explicitly
 offline path may write locally there because it never commits or pushes. **Escalating is cheap;
 shipping half-baked is expensive** — a plausible guess costs far more to discover later than a
 question costs to ask now.
@@ -238,8 +238,8 @@ changes nothing. The rule applies only when browser use is the *single, entire* 
 
 When an issue becomes roadmap work, create it with `morpheus pm new roadmap "<title>" --issue 123`.
 For an existing item, use `morpheus pm link-issue <ID> 123`. Both write structured closure intent
-into the item, and the generated roadmap makes the linked issues visible. `check pr` then requires GitHub's closing
-keyword in the PR body, so merging the fix cannot leave the issue open as a second, stale backlog.
+into the item. `check pr` then requires GitHub's closing keyword in the PR body, so merging the
+fix cannot leave the issue open as a second, stale backlog.
 An issue merely mentioned as related is not declared and is not closed.
 
 **Except a PR that only touches records** — `hq/team/` and `.agent/`. An inbox cycle belongs to
@@ -269,8 +269,9 @@ reads the check.
 **A waiver needs a real reason.** `skip-tests: yes` is refused, as are `true`, `n/a` and an empty
 value. Say what cannot be tested and why.
 
-**Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm compile && pnpm morpheus pm index`, and commit
-any index changes. CI runs the same checks and will fail otherwise.
+**Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm compile && pnpm morpheus pm index`,
+and commit any one-time roadmap README migration or generated goal/request index changes. The
+roadmap README is static after that migration. CI runs the same checks and will fail otherwise.
 
 ## Branch protection
 
@@ -523,7 +524,7 @@ Concretely, when any of these is true:
 |---|---|
 | It is an **input to something** | `hq/` feeds the dashboard; `qa/acceptance/` feeds verifier rung 3 |
 | It has a **convention filenames do not reveal** | worklog naming, inbox markers, id formats |
-| It is **generated**, or partly | `hq/product/*/README.md`, the role helpers in `firestore.rules` |
+| It is **generated**, or partly | `hq/product/goals/README.md`, the role helpers in `firestore.rules` |
 | It is a **seam** | shared packages, kit boundaries, anywhere two projects meet |
 
 **Not** for framework-standard directories — `app/`, `components/`, `__tests__/` — whose meaning
