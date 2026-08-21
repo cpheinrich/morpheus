@@ -46,12 +46,10 @@ export interface BlockResult {
     inboxBefore: string | null;
     /** True when the person had no inbox and one was created. */
     inboxCreated: boolean;
-    /** Explicit because generated files may be appended after it in `written`. */
+    /** Path of the inbox record written by this call. */
     inboxPath: string;
     /** True when this call repaired or replaced a block that already existed. */
     alreadyBlocked: boolean;
-    /** Validation problems that prevented a safe index refresh. */
-    indexIssues: string[];
 }
 /**
  * Mark an item blocked and route the question to its owner.

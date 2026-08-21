@@ -966,21 +966,6 @@ describe("records of a blocked item that reached nobody", () => {
     expect(paths).toContain("hq/team/cpheinrich.md");
   });
 
-  it("finds the generated index under a non-default product directory", async () => {
-    const { unsentBlockRecords } = await import("../src/cli/pm.js");
-    const root = await repo();
-    const id = "MO-26-08-05-16.27.56";
-    const productDir = join(root, "other/product");
-    await mkdir(join(productDir, "roadmap"), { recursive: true });
-    await mkdir(join(root, "hq/product/roadmap"), { recursive: true });
-    await writeFile(join(productDir, "roadmap/README.md"), `| ${id} | blocked |\n`, "utf8");
-    await writeFile(join(root, "hq/product/roadmap/README.md"), "unrelated dirty index\n", "utf8");
-
-    const { paths } = await unsentBlockRecords(root, [id], productDir);
-    expect(paths).toContain("other/product/roadmap/README.md");
-    expect(paths).not.toContain("hq/product/roadmap/README.md");
-  });
-
   it("names all block outputs, including records with no id in their path", async () => {
     // The roadmap file carries no information to the human; the inbox entry
     // *is* the escalation, and its path holds no id at all. Matching on the
@@ -997,11 +982,6 @@ describe("records of a blocked item that reached nobody", () => {
     await writeFile(join(root, `hq/product/roadmap/${id}-thing.md`), "item", "utf8");
     // Lowercased by `block`, which `String.includes` would not match.
     await writeFile(join(root, `.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`), "w", "utf8");
-    await writeFile(
-      join(root, "hq/product/roadmap/README.md"),
-      `| ${id} | blocked |\n`,
-      "utf8",
-    );
     // `appendOpenItem` writes the roadmap id into the entry as a link, which
     // is what makes matching by content possible where the path has no id.
     await writeFile(
@@ -1013,7 +993,6 @@ describe("records of a blocked item that reached nobody", () => {
     const { paths } = await unsentBlockRecords(root, [id], join(root, "hq/product"));
     expect(paths).toContain(`hq/product/roadmap/${id}-thing.md`);
     expect(paths).toContain(`.agent/worklog/2026-08-06-${id.toLowerCase()}-blocked.md`);
-    expect(paths).toContain("hq/product/roadmap/README.md");
     expect(paths).toContain("hq/team/cpheinrich.md");
   });
 

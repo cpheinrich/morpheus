@@ -154,6 +154,7 @@ describe("morpheus init", () => {
       // proposes rather than silently deciding in either direction.
       const agents = await read("AGENTS.md");
       expect(agents).toContain("Build vs. borrow");
+      expect(agents).toContain("make one quick search");
       expect(agents).toContain("Propose, don't decide silently");
       expect(agents).toContain("Prefer lightweight");
     });
@@ -551,34 +552,28 @@ describe("morpheus init", () => {
     }
   });
 
-  it("writes indexes that are already current, not bare markers", async () => {
+  it("writes a static roadmap README and current low-churn indexes", async () => {
     await scaffold(dir, SEED);
-    const readme = await read("hq/product/roadmap/README.md");
+    const roadmap = await read("hq/product/roadmap/README.md");
+    const requests = await read("hq/product/requests/README.md");
 
-    expect(readme).toContain("<!-- morpheus:begin -->");
-    expect(readme).toContain("<!-- morpheus:end -->");
+    expect(roadmap).toContain("deliberately static");
+    expect(roadmap).toContain("`/hq` roadmap view");
+    expect(roadmap).not.toContain("<!-- morpheus:begin -->");
+    expect(roadmap).not.toContain("<!-- morpheus:end -->");
 
     // The generator writes a placeholder between the markers even for an
-    // empty artifact, so bare markers are already stale and `pm index --check`
-    // fails on a project nobody has touched.
-    expect(readme).toContain("_Nothing here yet._");
+    // empty request set, so bare markers would already be stale.
+    expect(requests).toContain("<!-- morpheus:begin -->");
+    expect(requests).toContain("_Nothing here yet._");
   });
 
   it("passes pm index --check immediately after scaffolding", async () => {
     await scaffold(dir, SEED);
     const productDir = join(dir, "hq/product");
-    const gen = await import("../src/pm/index-gen.js");
-    const { parseArtifact } = await import("../src/pm/parse.js");
+    const { index } = await import("../src/cli/pm.js");
 
-    for (const kind of ["roadmap", "goals", "requests"] as const) {
-      const { items } = await parseArtifact(productDir, kind);
-      const render = { roadmap: gen.renderRoadmap, goals: gen.renderGoals, requests: gen.renderRequests }[kind];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const changed = await gen.writeIndex(join(productDir, kind), (render as (i: any) => string)(items));
-      // False means regenerating would not change the file — which is exactly
-      // what `pm index --check` asserts in CI.
-      expect(changed).toBe(false);
-    }
+    expect(await index(productDir, true)).toBe(0);
   });
 
   it("carries the project's own prefix into the instructions", async () => {

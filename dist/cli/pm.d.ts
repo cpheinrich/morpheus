@@ -1,6 +1,6 @@
 /** Validate every artifact under a product directory. Returns an exit code. */
 export declare function validate(productDir: string): Promise<number>;
-/** Regenerate the README index table for each artifact directory. */
+/** Retire legacy roadmap tables and regenerate the low-churn README indexes. */
 export declare function index(productDir: string, check?: boolean): Promise<number>;
 /** Create a new item and print its path. */
 export declare function create(productDir: string, kind: string, title: string, opts: {

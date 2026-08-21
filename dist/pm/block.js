@@ -6,7 +6,6 @@ import { updateFrontmatter, today } from "./frontmatter.js";
 import { INBOX_DIR } from "../paths.js";
 import { parseArtifact } from "./parse.js";
 import { slugify } from "./claim.js";
-import { renderRoadmap, writeIndex } from "./index-gen.js";
 import { RoadmapItem } from "./schema.js";
 /**
  * Blocking an item: the third exit.
@@ -161,17 +160,6 @@ export async function block(opts) {
         body: inboxBody(opts, item.data.title),
     }, { owner, date }), "utf8");
     written.push(inboxPath);
-    // The index is generated state, but `pm block` commits its own records. If
-    // it does not refresh the table before that commit, the next unrelated PR
-    // fails `pm index --check` for a status change this command made.
-    const refreshed = await parseArtifact(productDir, "roadmap");
-    const indexIssues = refreshed.issues.map((issue) => `${issue.path}: ${issue.message}`);
-    if (!indexIssues.length) {
-        const indexPath = join(productDir, "roadmap", "README.md");
-        if (await writeIndex(join(productDir, "roadmap"), renderRoadmap(refreshed.items))) {
-            written.push(indexPath);
-        }
-    }
     return {
         id,
         title: item.data.title,
@@ -180,7 +168,6 @@ export async function block(opts) {
         inboxCreated: existing === null,
         inboxPath,
         alreadyBlocked: item.alreadyBlocked,
-        indexIssues,
     };
 }
 /**

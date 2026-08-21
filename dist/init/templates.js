@@ -11,6 +11,7 @@
  * follows.
  */
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
+import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
 export const manifest = (s) => JSON.stringify({
     name: s.name,
     prefix: s.prefix,
@@ -765,25 +766,26 @@ the item id, so the two cannot disagree.
 
 **Build vs. borrow — check before writing a generic module.** Before implementing any capability
 that is not specific to this product's domain — parsing, diffing, scheduling, retries, rate
-limiting, fuzzy search, date handling, CLI plumbing — spend two minutes checking whether a
-maintained package already solves it: search the ecosystem's registry and look at last publish,
-weekly downloads, dependency count, and install size.
+limiting, fuzzy search, date handling, CLI plumbing — make one quick search of the ecosystem's
+registry for a maintained package that already solves it. If a credible candidate appears, check
+its last publish and dependency footprint before deciding.
 
 **Propose, don't decide silently — in either direction.** If a credible package exists, say so
-before building: an ❗ inbox item when the choice shapes the architecture, a line in the PR body
+before building: an open (❗) inbox item when the choice shapes the architecture, a line in the PR body
 ("considered X, built instead because Y" / "adopted X, N deps, maintained") when it is small.
 Silently building what a package solves and silently adopting a heavy dependency are the same
 mistake. **Prefer lightweight** — zero-to-few dependencies beats featureful; a framework pulled
-in to save 60 lines is worse than the 60 lines. Build when the need is small, genuinely
-domain-specific, or every candidate is unmaintained. Record the outcome in \`.agent/decisions.md\`
+in to save 60 lines is worse than the 60 lines. Build when the need is small — roughly under 100
+lines — genuinely domain-specific, or every candidate is unmaintained. Record the outcome in \`.agent/decisions.md\`
 so the choice is not relitigated next session.
 
 **Every PR must carry** tests for anything testable, a documentation update when behaviour
 changes, a test plan, any open questions stated plainly rather than guessed at, and the roadmap
 item moved to \`review\`.
 
-**Before opening a PR**, run \`morpheus pm index\` and commit any index changes. CI runs the same
-check and will fail otherwise.
+**Before opening a PR**, run \`morpheus pm index\` and commit any one-time roadmap README migration
+or generated goal/request index changes. The roadmap README is static after that migration. CI runs
+the same check and will fail otherwise.
 
 **Append a worklog entry** to \`.agent/worklog/YYYY-MM-DD-slug.md\`. Record dead ends especially —
 git history cannot hold work that produced no code, and that is the expensive knowledge.
@@ -1052,9 +1054,10 @@ jobs:${opts.node
   pr:
     uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
 `;
-export const productReadme = (kind, s) => {
+export const productReadme = (kind, _s) => {
+    if (kind === "roadmap")
+        return STATIC_ROADMAP_README;
     const blurb = {
-        roadmap: `Work, one file per item. Ids are \`${s.prefix}-001\` upward.\n\nCreate with \`morpheus pm new roadmap "Title"\`. The table below is generated — edit the item files, not this.`,
         goals: `What the work is for. A roadmap with no goal is a list nobody can decline.\n\nCreate with \`morpheus pm new goals "Title"\`.`,
         requests: `Incoming asks, before they become roadmap items. Triage, then accept or decline —\ndeclining explicitly is the point.`,
     }[kind];

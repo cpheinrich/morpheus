@@ -6,7 +6,6 @@ import { updateFrontmatter, today } from "./frontmatter.js";
 import { INBOX_DIR } from "../paths.js";
 import { parseArtifact } from "./parse.js";
 import { slugify } from "./claim.js";
-import { renderRoadmap, writeIndex } from "./index-gen.js";
 import { RoadmapItem, type RoadmapItem as RoadmapItemData } from "./schema.js";
 
 /**
@@ -59,12 +58,10 @@ export interface BlockResult {
   inboxBefore: string | null;
   /** True when the person had no inbox and one was created. */
   inboxCreated: boolean;
-  /** Explicit because generated files may be appended after it in `written`. */
+  /** Path of the inbox record written by this call. */
   inboxPath: string;
   /** True when this call repaired or replaced a block that already existed. */
   alreadyBlocked: boolean;
-  /** Validation problems that prevented a safe index refresh. */
-  indexIssues: string[];
 }
 
 async function readIfExists(path: string): Promise<string | null> {
@@ -242,18 +239,6 @@ export async function block(opts: BlockOptions): Promise<BlockResult> {
   );
   written.push(inboxPath);
 
-  // The index is generated state, but `pm block` commits its own records. If
-  // it does not refresh the table before that commit, the next unrelated PR
-  // fails `pm index --check` for a status change this command made.
-  const refreshed = await parseArtifact(productDir, "roadmap");
-  const indexIssues = refreshed.issues.map((issue) => `${issue.path}: ${issue.message}`);
-  if (!indexIssues.length) {
-    const indexPath = join(productDir, "roadmap", "README.md");
-    if (await writeIndex(join(productDir, "roadmap"), renderRoadmap(refreshed.items))) {
-      written.push(indexPath);
-    }
-  }
-
   return {
     id,
     title: item.data.title,
@@ -262,7 +247,6 @@ export async function block(opts: BlockOptions): Promise<BlockResult> {
     inboxCreated: existing === null,
     inboxPath,
     alreadyBlocked: item.alreadyBlocked,
-    indexIssues,
   };
 }
 

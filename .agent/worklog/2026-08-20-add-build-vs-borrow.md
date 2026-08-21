@@ -1,6 +1,9 @@
 ---
 date: 2026-08-20
+agent: claude
 roadmap: MO-26-08-20-18.58.00
+outcome: review
+summary: Added a visible build-vs-borrow decision point before agents write generic modules.
 ---
 
 # Build vs. borrow convention
@@ -14,6 +17,9 @@ forcing mechanism as the inbox options format.
 
 Added to Morpheus's `AGENTS.md` and the `agents()` scaffold template, with an init test pinning
 the three load-bearing phrases so the template cannot silently drop them.
+
+Follow-up review removed the arbitrary two-minute timebox. The convention now asks for one quick
+registry search and deeper candidate checks only when that search finds something credible.
 
 Learned along the way:
 
