@@ -763,6 +763,21 @@ morpheus pm claim ${s.prefix}-001      # stakes the branch on origin, sets in-pr
 The remote branch **is** the claim. Never create the branch by hand — \`pm claim\` derives it from
 the item id, so the two cannot disagree.
 
+**Build vs. borrow — check before writing a generic module.** Before implementing any capability
+that is not specific to this product's domain — parsing, diffing, scheduling, retries, rate
+limiting, fuzzy search, date handling, CLI plumbing — spend two minutes checking whether a
+maintained package already solves it: search the ecosystem's registry and look at last publish,
+weekly downloads, dependency count, and install size.
+
+**Propose, don't decide silently — in either direction.** If a credible package exists, say so
+before building: an ❗ inbox item when the choice shapes the architecture, a line in the PR body
+("considered X, built instead because Y" / "adopted X, N deps, maintained") when it is small.
+Silently building what a package solves and silently adopting a heavy dependency are the same
+mistake. **Prefer lightweight** — zero-to-few dependencies beats featureful; a framework pulled
+in to save 60 lines is worse than the 60 lines. Build when the need is small, genuinely
+domain-specific, or every candidate is unmaintained. Record the outcome in \`.agent/decisions.md\`
+so the choice is not relitigated next session.
+
 **Every PR must carry** tests for anything testable, a documentation update when behaviour
 changes, a test plan, any open questions stated plainly rather than guessed at, and the roadmap
 item moved to \`review\`.
