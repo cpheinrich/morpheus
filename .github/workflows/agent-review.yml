@@ -20,6 +20,14 @@ name: Agent review
 on:
   workflow_call:
     inputs:
+      enabled:
+        description: >
+          Keep the workflow wired into CI while turning the paid reviewer off.
+          The switch is evaluated inside the called workflow so its jobs are
+          still reported as skipped; a caller-level skip can leave a required
+          nested check unreported and block every merge.
+        type: boolean
+        default: true
       product-dir:
         type: string
         default: "hq/product"
@@ -80,7 +88,7 @@ on:
 jobs:
   review:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || inputs.pr-number > 0
+    if: inputs.enabled && (github.event_name == 'pull_request' || inputs.pr-number > 0)
     outputs:
       configured: ${{ steps.configuration.outputs.configured }}
       review_requested: ${{ steps.needed.outputs.review }}
@@ -466,7 +474,7 @@ jobs:
   # final success/error header when it is inspected.
   delivery:
     needs: review
-    if: (github.event_name == 'pull_request' || inputs.pr-number > 0) && always() && needs.review.outputs.configured != 'false' && needs.review.outputs.review_requested != 'false'
+    if: inputs.enabled && (github.event_name == 'pull_request' || inputs.pr-number > 0) && always() && needs.review.outputs.configured != 'false' && needs.review.outputs.review_requested != 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: read

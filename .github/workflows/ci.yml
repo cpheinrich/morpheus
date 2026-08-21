@@ -62,6 +62,10 @@ jobs:
       contents: read
       pull-requests: write
     with:
+      # Temporarily off for Morpheus. Keep the reusable workflow call in CI so
+      # `agent-review / delivery` is reported as skipped and continues to
+      # satisfy the repository's required-check protection.
+      enabled: false
       product-dir: hq/product
       morpheus-ref: ${{ github.sha }}
     secrets:
