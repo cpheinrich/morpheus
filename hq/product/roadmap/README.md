@@ -6,9 +6,8 @@ item files, not this table.
 <!-- morpheus:begin -->
 | ID | Title | Status | Pri | Goal | Issues | PRs |
 |---|---|---|---|---|---|---|
-| [MO-26-08-19-16.19.44](./MO-26-08-19-16.19.44-heartbeat-counts-shipped-item.md) | Heartbeat counts a shipped item's branch as in flight | review | P1 | — | — | — |
-| [MO-26-08-19-21.30.27](./MO-26-08-19-21.30.27-isolate-meeting-records.md) | Deliver meeting records in isolated pull requests | review | P1 | — | — | — |
 | [MO-26-08-19-16.50.28](./MO-26-08-19-16.50.28-python-ci-reusable-workflow.md) | Ship a python-ci reusable workflow, so uv projects delegate like Node ones | review | P2 | — | — | — |
+| [MO-26-08-20-18.58.00](./MO-26-08-20-18.58.00-add-build-vs-borrow.md) | Build vs. borrow: agents check for open-source packages before writing generic modules | review | P2 | — | — | — |
 | [MO-26-07-28-005](./MO-26-07-28-005-kit-hq-dashboard-shell.md) | kit/hq: dashboard shell | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-011](./MO-26-07-29-011-post-staging-url-pr.md) | Post the staging URL into the PR description automatically | backlog | P1 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-08-01-047](./MO-26-08-01-047-inbox-status-one-front.md) | inbox status: one front door across every repo | backlog | P2 | MO-G-2026-Q3-01 | — | — |
@@ -90,6 +89,8 @@ item files, not this table.
 | [MO-26-08-19-00.30.22](./MO-26-08-19-00.30.22-firebase-ci-staging.md) | Reusable Firebase emulator CI and staging manifest fields | shipped | P1 | — | — | #136 |
 | [MO-26-08-19-00.39.34](./MO-26-08-19-00.39.34-add-consumer-auth.md) | Consumer-auth scaffold: morpheus web add-consumer-auth, and its runbook | shipped | P1 | — | #135 | #137 |
 | [MO-26-08-19-15.34.01](./MO-26-08-19-15.34.01-enforce-review-disposition.md) | Reviews are acted on before merge | shipped | P1 | — | — | #140 |
+| [MO-26-08-19-16.19.44](./MO-26-08-19-16.19.44-heartbeat-counts-shipped-item.md) | Heartbeat counts a shipped item's branch as in flight | shipped | P1 | — | — | #143 |
+| [MO-26-08-19-21.30.27](./MO-26-08-19-21.30.27-isolate-meeting-records.md) | Deliver meeting records in isolated pull requests | shipped | P1 | — | — | #146 |
 | [MO-26-07-28-008](./MO-26-07-28-008-morpheus-init.md) | morpheus init | shipped | P2 | MO-G-2026-Q3-01 | — | #22 |
 | [MO-26-07-28-009](./MO-26-07-28-009-retrofit-darwin.md) | Retrofit Darwin | shipped | P2 | MO-G-2026-Q3-01 | — | — |
 | [MO-26-07-29-010](./MO-26-07-29-010-simplify-architecture-md-first.md) | Simplify architecture.md for first-time readers | shipped | P2 | MO-G-2026-Q3-01 | — | #46 |
