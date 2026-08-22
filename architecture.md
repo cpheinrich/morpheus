@@ -2762,6 +2762,13 @@ Suite, needs no secrets — so it passes on fork pull requests — and is delibe
 `web-ci`, because most projects have no Firebase and would pay for a JRE, a 100 MB emulator jar and
 a boot to run nothing.
 
+`osv-scan` is a second opt-in reusable workflow: a project schedules it weekly and on `main`, where
+it performs a full dependency-vulnerability scan and uploads SARIF to GitHub code scanning. The
+schedule matters: a dependency can become vulnerable without any repository change. It deliberately
+uses a pinned full-tree scan rather than OSV's PR-diff workflow, whose current result-file handling
+can be bypassed by a pull-request-controlled symlink. It needs only `actions: read`, `contents:
+read`, and `security-events: write`; it never receives application credentials.
+
 > **Gotcha.** Cross-repo workflow access is not on by default. In Morpheus's **Settings → Actions →
 > Access**, the policy must allow access from your other repositories, or calling repos fail with a
 > permissions error that does not obviously point at this setting.
