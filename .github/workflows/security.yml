@@ -9,6 +9,11 @@ on:
     - cron: "30 12 * * 1"
   workflow_dispatch:
 
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
 jobs:
   osv:
     uses: ./.github/workflows/osv-scan.yml
