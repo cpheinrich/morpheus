@@ -1,0 +1,14 @@
+name: Security
+
+# Morpheus exercises the reusable dependency scan itself. Weekly scans catch
+# newly disclosed vulnerabilities even when this repository has not changed.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 12 * * 1"
+  workflow_dispatch:
+
+jobs:
+  osv:
+    uses: ./.github/workflows/osv-scan.yml

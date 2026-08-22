@@ -1,0 +1,23 @@
+name: OSV dependency scan
+
+# Reusable workflow. Projects keep scheduling and branch policy in their thin
+# delegator, while Morpheus owns the scanner version and permissions contract.
+#
+#   jobs:
+#     osv:
+#       uses: cpheinrich/morpheus/.github/workflows/osv-scan.yml@main
+
+on:
+  workflow_call:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    # Full scans run against one tree. Do not use OSV's PR-diff workflow here:
+    # its current fixed-path result handling can be bypassed by a PR-controlled
+    # symlink (google/osv-scanner-action#136).
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@0c58c542420dfd23fcac08dd9c8ca3cca9c36f1a # v2.5.0

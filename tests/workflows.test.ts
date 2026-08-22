@@ -153,6 +153,26 @@ describe("schedule.yml", () => {
   });
 });
 
+describe("osv-scan.yml", () => {
+  it("is reusable and pins the full OSV scan workflow", async () => {
+    const wf = await read("osv-scan.yml");
+    const scan = wf.jobs?.scan;
+
+    expect(wf.on).toHaveProperty("workflow_call");
+    expect(scan?.uses).toBe(
+      "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@0c58c542420dfd23fcac08dd9c8ca3cca9c36f1a",
+    );
+  });
+
+  it("schedules scans and runs them after Morpheus reaches main", async () => {
+    const wf = await read("security.yml");
+
+    expect(wf.on).toHaveProperty("schedule");
+    expect(wf.on).toHaveProperty("workflow_dispatch");
+    expect(wf.jobs?.osv?.uses).toBe("./.github/workflows/osv-scan.yml");
+  });
+});
+
 describe("agent-review.yml", () => {
   it("can be disabled inside the reusable workflow without removing its reported jobs", async () => {
     const called = (await read("agent-review.yml")) as {
