@@ -1179,6 +1179,46 @@ one-off scripts: they are the ones no other project's fleet would ever have.
   about tidiness and becomes one about unattended agents merging to `main`. Not now, but the design
   should not foreclose it.
 
+### 7.12 Codebase knowledge is a device capability with an exact-checkout proof
+
+Structural code discovery uses `codebase-memory-mcp` before filesystem search. That convention is
+only real when the tool is available to the agent, its index follows the repository, and the graph
+describes the checkout actually being edited. A binary somewhere on `PATH`, or a ready index for a
+sibling worktree, is not operational evidence.
+
+`morpheus codebase-memory install` is the explicit, idempotent trusted-device bootstrap. It:
+
+1. inspects before writing and returns immediately when the device and checkout are operational;
+2. installs a reviewed, exact package pin through the official npm wrapper when the native binary
+   is absent or reports another version;
+3. delegates client-specific file merging to the upstream installer, then sets `auto_index=true`
+   and `auto_watch=true` as Morpheus policy;
+4. creates a full index for the exact real path of the current checkout; and
+5. verifies a ready project at that path whose recorded Git SHA equals `HEAD`, with at least one
+   supported local agent client configured.
+
+`--check` is read-only, and `morpheus doctor` carries the same finding with the repair command.
+Generated `AGENTS.md` and README files put the check at the start of work, so a newly cloned
+Morpheus project declares the device dependency rather than assuming another machine configured
+it. Worktrees are deliberately separate: their code can differ, so sharing the main clone's graph
+would turn fast search into confidently stale search.
+
+**Installation is never an npm lifecycle side effect.** Morpheus is public and a clone or package
+install must not run downloaded native code merely because dependencies were resolved. The command
+is an operator-visible action on a trusted device, uses `execFile` rather than a shell, and keeps
+the upstream version pinned in source. Freshness has two meanings and they stay separate:
+
+- **Operational freshness** is proved every check: automatic maintenance is on and the exact
+  checkout index equals `HEAD`.
+- **Upstream freshness** requires the installed version to equal the reviewed Morpheus pin. The pin
+  advances through an ordinary Morpheus change, not an implicit `latest` download from a hook.
+
+The Morpheus CLI itself remains a link into the canonical clone. Committed `dist/` and the CI
+rebuild check mean a fast-forward pull updates source and runnable artifacts through one reviewed
+commit; `pnpm compile && npm link` is the repair for local build/link drift. Context freshness
+still reports when the canonical trunk moves. No background updater may rewrite a dirty checkout
+or execute a newly published upstream package without review.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.
@@ -2469,7 +2509,7 @@ Lakina resources in it.
 
 | Tier | What | How often | Who |
 |---|---|---|---|
-| **0** | `gh auth login`; install `gcloud`, `wrangler`, `firebase-tools`, `op` | Once, ever | You |
+| **0** | `gh auth login`; install `gcloud`, `wrangler`, `firebase-tools`, `op`; run `morpheus codebase-memory install` | Once per device, then idempotent repair | You or the local agent |
 | **1** | `gcloud auth login` + named configuration per Google identity | Once per Google account | You |
 | **2** | Cloudflare API token (broad), Vercel token | Once per account | You — paste into wizard |
 | **3** | OpenSEO, Appeeky, Stripe, Slack, PostHog | Optional, skippable | You — or skip |

@@ -1,6 +1,7 @@
 import { doctor, formatFindings } from "../doctor/index.js";
 import { readRegistry } from "../registry/index.js";
 import { offlineDeclared } from "../session/gate.js";
+import { codebaseMemoryStatus } from "../codebase-memory.js";
 /**
  * Report drift for one project, or every registered project with --all.
  *
@@ -11,6 +12,7 @@ import { offlineDeclared } from "../session/gate.js";
  * doing nothing.
  */
 export async function run(cwd, all, offline) {
+    const isOffline = offlineDeclared(offline);
     const roots = all
         ? (await readRegistry()).projects.map((p) => ({ label: `${p.prefix}  ${p.name}`, root: p.path }))
         : [{ label: "", root: cwd }];
@@ -20,7 +22,16 @@ export async function run(cwd, all, offline) {
     }
     let errors = 0;
     for (const { label, root } of roots) {
-        const findings = await doctor({ root, offline: offlineDeclared(offline) });
+        const findings = await doctor({ root, offline: isOffline });
+        const memory = await codebaseMemoryStatus(root, { checkMorpheusRemote: !isOffline });
+        if (!memory.ready) {
+            findings.push({
+                severity: "warning",
+                check: "codebase-memory",
+                message: memory.issues.join("; ") +
+                    ". Run `morpheus codebase-memory install` on this trusted device.",
+            });
+        }
         errors += findings.filter((f) => f.severity === "error").length;
         console.log(formatFindings(findings, all ? label : undefined));
         if (all)
