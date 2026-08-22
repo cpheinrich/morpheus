@@ -170,6 +170,11 @@ describe("osv-scan.yml", () => {
     expect(wf.on).toHaveProperty("schedule");
     expect(wf.on).toHaveProperty("workflow_dispatch");
     expect(wf.jobs?.osv?.uses).toBe("./.github/workflows/osv-scan.yml");
+    expect((wf as { permissions?: Record<string, string> }).permissions).toEqual({
+      actions: "read",
+      contents: "read",
+      "security-events": "write",
+    });
   });
 });
 
