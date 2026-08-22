@@ -27,6 +27,25 @@ cd ~/code/morpheus && pnpm install && pnpm compile && npm link
 `npm link` puts `morpheus` on your PATH, so it works from any project directory. There is no
 published package — see the licence below.
 
+Finish the trusted-device bootstrap from either Morpheus or a Morpheus project:
+
+```sh
+morpheus codebase-memory install
+```
+
+That command is idempotent. It installs Morpheus's reviewed pin of the official
+`codebase-memory-mcp` package when the binary is absent or at another version, configures supported local agent clients,
+enables automatic indexing and watching, fully indexes the exact checkout, and then verifies the
+index against its current Git HEAD. `morpheus codebase-memory install --check` and
+`morpheus doctor` report drift without repairing it.
+
+The global Morpheus CLI is a link into this clone, and `dist/` is committed and checked against
+source in CI. A fast-forward pull therefore updates both source and runnable output through the
+same reviewed commit; `pnpm compile && npm link` repairs a local build or link. Morpheus does not
+silently execute an unreviewed upstream `latest` package from a session hook: the codebase-memory
+version is advanced as an ordinary reviewed Morpheus change, and the device check requires the
+installed version to match that pin.
+
 Register each project once so ids and prefixes stay unique:
 
 ```sh
@@ -44,6 +63,8 @@ morpheus web status                       # what the web surface has, and what i
 morpheus web init                         # provision the cloud resources, then scaffold the site
 morpheus firebase auth setup --project <firebase-project> --domain <public-origin>
 morpheus firebase auth check --project <firebase-project> --domain <public-origin>
+morpheus codebase-memory install             # trusted-device bootstrap, safe to re-run
+morpheus codebase-memory install --check     # verify operational mode without changing it
 ```
 
 `morpheus web init` is the website initializer. It provisions the GCP project, Firebase,

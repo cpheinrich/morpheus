@@ -8,4 +8,5 @@ export * from "./firebase/index.js";
 // the whole CLI into an edge bundle. Consumers use `morpheus-kit/hq`.
 export * from "./registry/index.js";
 export * from "./doctor/index.js";
+export * from "./codebase-memory.js";
 export * from "./session/index.js";

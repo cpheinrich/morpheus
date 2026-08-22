@@ -81,6 +81,15 @@ a git dependency, and pnpm 11 refuses the prepare phase unless every consumer al
 resolved codeload URL. The repository command is named `compile` so the package stays inert when
 installed from a moving git ref.
 
+**Codebase-memory is an explicit, pinned device bootstrap, not an install side effect** —
+2026-08-22. Every Morpheus checkout should have graph-first structural search, but cloning a public
+repo or resolving its dependency must not execute downloaded native code. The operator or local
+agent runs `morpheus codebase-memory install`; Morpheus requires the installed version to equal its
+upstream package pin, enables automatic indexing and watching, and verifies a separate exact-HEAD
+index for each worktree. Operational
+freshness is checked locally; advancing the upstream version is an ordinary reviewed Morpheus
+change, never an implicit `latest` download.
+
 **A licence cannot prevent forks of a public repo** — GitHub's Terms of Service grant every
 user forking rights through GitHub's own functionality, regardless of the attached licence. If
 the goal is minimal external use, the mechanism is private visibility, not a stricter licence.

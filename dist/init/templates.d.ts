@@ -37,6 +37,7 @@ export declare const MORPHEUS_REPO = "https://github.com/cpheinrich/morpheus";
  */
 export declare const morpheusCalloutForAgents: () => string;
 export declare const morpheusCalloutForReadme: () => string;
+export declare const codebaseMemoryBootstrap: () => string;
 /**
  * A README for humans.
  *

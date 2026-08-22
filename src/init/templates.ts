@@ -124,6 +124,19 @@ means anything recorded at the moment you hit the problem.
 
 ${MORPHEUS_REPO}/issues`;
 
+export const codebaseMemoryBootstrap = (): string => `## Device bootstrap
+
+Before structural code discovery, run \`morpheus codebase-memory install --check\`. If it is not
+operational, run \`morpheus codebase-memory install\` on the trusted device. It is idempotent: it
+installs Morpheus's reviewed package pin when absent or at another version, configures supported
+local agent clients, enables automatic indexing and watching, and fully indexes this exact
+checkout. It verifies the index against \`HEAD\`. A worktree needs its own exact-checkout index even
+when the main clone is indexed.
+
+This is an explicit device action, never an npm lifecycle script or a session-hook download. The
+version remains pinned until a reviewed Morpheus change advances it, and the check requires the
+installed version to match.`;
+
 /**
  * A README for humans.
  *
@@ -143,6 +156,7 @@ ${morpheusCalloutForReadme()}
 
 \`\`\`sh
 morpheus init status    # how far through setup this repo is
+morpheus codebase-memory install --check   # verify this device and exact checkout
 morpheus pm claims      # what work is already taken
 morpheus pm claim ${s.prefix}-001   # stake a branch and start
 \`\`\`
@@ -793,6 +807,7 @@ ${morpheusCalloutForAgents()}
 | \`.agent/worklog/\` | What was attempted per task, including dead ends |
 
 ${contextFreshness()}
+${codebaseMemoryBootstrap()}
 ## Working conventions
 
 **Claim work before starting it:**
