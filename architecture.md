@@ -2793,6 +2793,13 @@ Improving CI for every project becomes one commit in Morpheus. **Projects pin `@
 with one operator and a handful of repos, instant propagation is worth more than staged rollout,
 and a broken workflow is noticed and fixed in minutes.
 
+Deployment follows the same boundary as validation. `vercel-deploy.yml` owns the Vercel CLI
+sequence, fork guard, environment receipt and pull-request preview comment. Each project owns only
+its triggers, application directory and encrypted `VERCEL_TOKEN`, `VERCEL_ORG_ID` and
+`VERCEL_PROJECT_ID` values. Deployment stays separate from agent review: one publishes an exact
+build, while the other spends model budget to judge a change, so neither workflow controls or
+implicitly enables the other.
+
 Planned: `web-ci`, `ios-ci`, `deploy`, `pr-check`, `agent-triage`, `agent-analytics-review`,
 `release-kit`.
 

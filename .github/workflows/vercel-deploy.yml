@@ -1,0 +1,140 @@
+name: Vercel deploy
+
+# Reusable deployment workflow. Projects own their triggers and credentials;
+# Morpheus owns the Vercel CLI sequence and preview-link delivery.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory containing the Vercel-linked web application.
+        type: string
+        default: "apps/web"
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        description: Leave empty to use the app package.json packageManager field.
+        type: string
+        default: ""
+      vercel-cli-version:
+        description: Pinned Vercel CLI version used to build and deploy.
+        type: string
+        default: "59.3.0"
+    secrets:
+      VERCEL_TOKEN:
+        required: true
+      VERCEL_ORG_ID:
+        required: true
+      VERCEL_PROJECT_ID:
+        required: true
+
+concurrency:
+  group: vercel-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: deploy
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    environment:
+      name: ${{ github.event_name == 'push' && 'Production' || 'Preview' }}
+      url: ${{ steps.deploy.outputs.url }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+          package_json_file: ${{ inputs.working-directory }}/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install Vercel CLI
+        env:
+          VERCEL_CLI_VERSION: ${{ inputs.vercel-cli-version }}
+        run: npm install --global "vercel@$VERCEL_CLI_VERSION"
+
+      - name: Pull Vercel project settings
+        env:
+          VERCEL_ENVIRONMENT: ${{ github.event_name == 'push' && 'production' || 'preview' }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment="$VERCEL_ENVIRONMENT" --token="$VERCEL_TOKEN"
+
+      - name: Build deployment
+        env:
+          PRODUCTION_FLAG: ${{ github.event_name == 'push' && '--prod' || '' }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build $PRODUCTION_FLAG --token="$VERCEL_TOKEN"
+
+      - name: Deploy prebuilt output
+        id: deploy
+        env:
+          PRODUCTION_FLAG: ${{ github.event_name == 'push' && '--prod' || '' }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          deployment_url="$(vercel deploy --prebuilt $PRODUCTION_FLAG --token="$VERCEL_TOKEN")"
+          case "$deployment_url" in
+            https://*) ;;
+            *) echo "Vercel did not return a deployment URL." >&2; exit 1 ;;
+          esac
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - name: Add or update preview link
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+        with:
+          script: |
+            const marker = '<!-- morpheus-vercel-preview -->';
+            const body = [
+              marker,
+              '## Vercel preview',
+              '',
+              `[Open this pull request's preview](${process.env.DEPLOYMENT_URL})`,
+              '',
+              `Deployed from commit \`${context.sha.slice(0, 7)}\`. This comment updates after every push.`,
+            ].join('\n');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker)
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
