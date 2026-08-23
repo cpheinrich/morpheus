@@ -7,9 +7,9 @@ on:
   workflow_call:
     inputs:
       working-directory:
-        description: Directory containing the Vercel-linked web application.
+        description: Directory from which Vercel resolves the project's configured Root Directory.
         type: string
-        default: "apps/web"
+        default: "."
       node-version:
         type: string
         default: "22"

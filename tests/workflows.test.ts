@@ -223,6 +223,17 @@ describe("vercel-deploy.yml", () => {
     const setup = wf.jobs?.deploy?.steps?.find((step) => step.name === "Set up pnpm");
     expect(setup?.with?.package_json_file).toBe("${{ inputs.package-manager-file }}");
   });
+
+  it("runs from repository root so Vercel applies its configured Root Directory once", async () => {
+    const wf = (await read("vercel-deploy.yml")) as {
+      on?: {
+        workflow_call?: {
+          inputs?: Record<string, { default?: unknown }>;
+        };
+      };
+    };
+    expect(wf.on?.workflow_call?.inputs?.["working-directory"]?.default).toBe(".");
+  });
 });
 
 describe("agent-review.yml", () => {
