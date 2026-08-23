@@ -209,6 +209,20 @@ describe("vercel-deploy.yml", () => {
     expect(raw).toContain("<!-- morpheus-vercel-preview -->");
     expect(raw).toContain("steps.deploy.outputs.url");
   });
+
+  it("lets monorepos and app-only repos identify the manifest that pins pnpm", async () => {
+    const wf = (await read("vercel-deploy.yml")) as {
+      on?: {
+        workflow_call?: {
+          inputs?: Record<string, { default?: unknown }>;
+        };
+      };
+      jobs?: Record<string, { steps?: Array<{ name?: string; with?: Record<string, unknown> }> }>;
+    };
+    expect(wf.on?.workflow_call?.inputs?.["package-manager-file"]?.default).toBe("package.json");
+    const setup = wf.jobs?.deploy?.steps?.find((step) => step.name === "Set up pnpm");
+    expect(setup?.with?.package_json_file).toBe("${{ inputs.package-manager-file }}");
+  });
 });
 
 describe("agent-review.yml", () => {
