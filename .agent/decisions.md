@@ -45,6 +45,11 @@ instance, per-company inboxes. ~$30/month beats migrating under pressure.
 **Reusable workflows pin `@main`, not a tag** — with one operator and a handful of repos,
 instant propagation beats staged rollout. Revisit if a simultaneous CI break gets expensive.
 
+**Vercel deployment and agent review are separate reusable workflows** — 2026-08-23. Deployment
+is deterministic delivery with project credentials; review is optional model judgment with its own
+cost and failure modes. Projects call `vercel-deploy.yml` independently, so pausing review never
+pauses previews and enabling deployment never spends review budget.
+
 ## Repo and licence
 
 **Public repo, and staying public** — 2026-07-29 confirmed. Originally for CI friction; the

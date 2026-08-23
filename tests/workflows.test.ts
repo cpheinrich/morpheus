@@ -173,6 +173,44 @@ describe("osv-scan.yml", () => {
   });
 });
 
+describe("vercel-deploy.yml", () => {
+  it("is an atomic reusable deploy workflow with explicit credentials", async () => {
+    const wf = (await read("vercel-deploy.yml")) as {
+      on?: {
+        workflow_call?: {
+          secrets?: Record<string, { required?: boolean }>;
+        };
+      };
+      jobs?: Record<string, { permissions?: Record<string, string>; if?: string }>;
+    };
+
+    expect(Object.keys(wf.on ?? {})).toEqual(["workflow_call"]);
+    for (const secret of ["VERCEL_TOKEN", "VERCEL_ORG_ID", "VERCEL_PROJECT_ID"]) {
+      expect(wf.on?.workflow_call?.secrets?.[secret]?.required, secret).toBe(true);
+    }
+    expect(wf.jobs?.deploy?.permissions).toEqual({
+      contents: "read",
+      "pull-requests": "write",
+    });
+  });
+
+  it("does not expose caller secrets to fork pull requests", async () => {
+    const wf = (await read("vercel-deploy.yml")) as {
+      jobs?: Record<string, { if?: string }>;
+    };
+    expect(wf.jobs?.deploy?.if).toContain(
+      "github.event.pull_request.head.repo.full_name == github.repository",
+    );
+  });
+
+  it("publishes the exact Vercel URL and updates one PR comment", async () => {
+    const raw = await readFile(join(DIR, "vercel-deploy.yml"), "utf8");
+    expect(raw).toContain('echo "url=$deployment_url" >> "$GITHUB_OUTPUT"');
+    expect(raw).toContain("<!-- morpheus-vercel-preview -->");
+    expect(raw).toContain("steps.deploy.outputs.url");
+  });
+});
+
 describe("agent-review.yml", () => {
   it("can be disabled inside the reusable workflow without removing its reported jobs", async () => {
     const called = (await read("agent-review.yml")) as {
