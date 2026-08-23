@@ -234,6 +234,17 @@ describe("vercel-deploy.yml", () => {
     };
     expect(wf.on?.workflow_call?.inputs?.["working-directory"]?.default).toBe(".");
   });
+
+  it("uses a dedicated preview environment rather than inheriting a caller's old policy", async () => {
+    const wf = (await read("vercel-deploy.yml")) as {
+      on?: { workflow_call?: { inputs?: Record<string, { default?: unknown }> } };
+      jobs?: Record<string, { environment?: { name?: string } }>;
+    };
+    expect(wf.on?.workflow_call?.inputs?.["preview-environment"]?.default).toBe(
+      "Vercel Preview",
+    );
+    expect(wf.jobs?.deploy?.environment?.name).toContain("inputs.preview-environment");
+  });
 });
 
 describe("agent-review.yml", () => {

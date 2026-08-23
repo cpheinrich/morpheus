@@ -25,6 +25,14 @@ on:
         description: Pinned Vercel CLI version used to build and deploy.
         type: string
         default: "59.3.0"
+      preview-environment:
+        description: GitHub environment used for pull-request deployment receipts.
+        type: string
+        default: "Vercel Preview"
+      production-environment:
+        description: GitHub environment used for main-branch deployment receipts.
+        type: string
+        default: "Production"
     secrets:
       VERCEL_TOKEN:
         required: true
@@ -49,7 +57,7 @@ jobs:
       contents: read
       pull-requests: write
     environment:
-      name: ${{ github.event_name == 'push' && 'Production' || 'Preview' }}
+      name: ${{ github.event_name == 'push' && inputs.production-environment || inputs.preview-environment }}
       url: ${{ steps.deploy.outputs.url }}
     defaults:
       run:
