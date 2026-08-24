@@ -1,0 +1,256 @@
+name: iOS CI
+
+# Reusable workflow for a native Xcode project. Projects keep only a thin
+# trigger and delegate the macOS runner, toolchain, package lock, simulator,
+# result bundles, and failure artifacts here:
+#
+#   jobs:
+#     ios:
+#       uses: cpheinrich/morpheus/.github/workflows/ios-ci.yml@main
+#       with:
+#         project: Evo.xcodeproj
+#         scheme: Evo
+#
+# The defaults track Evo's current iOS 26 test surface. A different native app
+# normally needs to pass only its project and scheme.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: GitHub-hosted macOS image with the requested Xcode and simulator runtime.
+        type: string
+        default: "macos-26"
+      xcode-version:
+        description: Exact Xcode version installed as /Applications/Xcode_<version>.app.
+        type: string
+        default: "26.6"
+      working-directory:
+        description: Directory containing the Xcode project.
+        type: string
+        default: "apps/ios"
+      project:
+        description: Xcode project path, relative to working-directory.
+        type: string
+        default: "Evo.xcodeproj"
+      scheme:
+        description: Shared scheme whose test action owns the unit and UI test targets.
+        type: string
+        default: "Evo"
+      configuration:
+        type: string
+        default: "Debug"
+      sdk:
+        description: SDK passed to xcodebuild.
+        type: string
+        default: "iphonesimulator"
+      platform:
+        description: Destination platform; destination supplies the remaining qualifiers.
+        type: string
+        default: "iOS Simulator"
+      destination:
+        description: Destination qualifiers appended after platform.
+        type: string
+        default: "OS=26.5,name=iPhone 17 Pro Max"
+      test-plan:
+        description: Optional shared Xcode test plan. Empty uses the scheme's default test action.
+        type: string
+        default: ""
+      run-tests:
+        description: Run every unit and UI test enabled by the shared scheme or selected test plan.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    concurrency:
+      group: ios-ci-${{ github.repository }}-${{ github.ref }}-${{ inputs.scheme }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # GitHub's macos-26 image carries Xcode 26.6, the iOS 26.5 SDK and the
+      # iPhone 17 Pro Max simulator. Selecting DEVELOPER_DIR directly is a
+      # small, auditable operation and avoids a third-party setup action in
+      # every consuming repository's trusted CI path.
+      - name: Select Xcode
+        env:
+          XCODE_VERSION: ${{ inputs.xcode-version }}
+        run: |
+          if [[ ! "$XCODE_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
+            echo "xcode-version must be an exact numeric version such as 26.6" >&2
+            exit 1
+          fi
+
+          xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ ! -d "$xcode_app" ]; then
+            echo "Xcode $XCODE_VERSION is not installed on this runner. Installed versions:" >&2
+            find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' -print >&2
+            exit 1
+          fi
+
+          echo "DEVELOPER_DIR=$xcode_app/Contents/Developer" >> "$GITHUB_ENV"
+          "$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version
+
+      - name: Validate locked project inputs
+        env:
+          PROJECT: ${{ inputs.project }}
+          SCHEME: ${{ inputs.scheme }}
+        run: |
+          case "$PROJECT" in
+            ""|/*|*".."*)
+              echo "project must be a non-empty relative path without '..'" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ ! -d "$PROJECT" ]; then
+            echo "Xcode project '$PROJECT' was not found in $PWD" >&2
+            exit 1
+          fi
+          if [ -z "$SCHEME" ]; then
+            echo "scheme must not be empty" >&2
+            exit 1
+          fi
+
+          lockfile=$(find . -type f -name Package.resolved -print -quit)
+          if [ -z "$lockfile" ]; then
+            echo "A checked-in Package.resolved is required for reproducible SwiftPM resolution" >&2
+            exit 1
+          fi
+          git ls-files --error-unmatch -- "$lockfile" >/dev/null || {
+            echo "Package.resolved must be committed: $lockfile" >&2
+            exit 1
+          }
+
+      - name: Prepare isolated build directories
+        run: |
+          ios_ci_root="$RUNNER_TEMP/ios-ci"
+          mkdir -p \
+            "$ios_ci_root/SourcePackages" \
+            "$ios_ci_root/DerivedData" \
+            "$ios_ci_root/Results" \
+            "$ios_ci_root/Logs"
+          echo "SOURCE_PACKAGES=$ios_ci_root/SourcePackages" >> "$GITHUB_ENV"
+          echo "DERIVED_DATA=$ios_ci_root/DerivedData" >> "$GITHUB_ENV"
+          echo "RESULTS=$ios_ci_root/Results" >> "$GITHUB_ENV"
+          echo "LOGS=$ios_ci_root/Logs" >> "$GITHUB_ENV"
+
+      - name: Cache resolved Swift packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ios-ci/SourcePackages
+          key: swiftpm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-${{ hashFiles(format('{0}/**/Package.resolved', inputs.working-directory)) }}
+
+      - name: Resolve locked Swift packages
+        env:
+          PROJECT: ${{ inputs.project }}
+          SCHEME: ${{ inputs.scheme }}
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            2>&1 | tee "$LOGS/package-resolution.log"
+
+      - name: Build for testing
+        if: ${{ inputs.run-tests }}
+        env:
+          PROJECT: ${{ inputs.project }}
+          SCHEME: ${{ inputs.scheme }}
+          CONFIGURATION: ${{ inputs.configuration }}
+          SDK: ${{ inputs.sdk }}
+          PLATFORM: ${{ inputs.platform }}
+          DESTINATION: ${{ inputs.destination }}
+          TEST_PLAN: ${{ inputs.test-plan }}
+        run: |
+          set -o pipefail
+          args=(
+            -project "$PROJECT"
+            -scheme "$SCHEME"
+            -configuration "$CONFIGURATION"
+            -sdk "$SDK"
+            -destination "platform=$PLATFORM,$DESTINATION"
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
+            -derivedDataPath "$DERIVED_DATA"
+            -resultBundlePath "$RESULTS/Build.xcresult"
+            -onlyUsePackageVersionsFromResolvedFile
+          )
+          if [ -n "$TEST_PLAN" ]; then
+            args+=(-testPlan "$TEST_PLAN")
+          fi
+          xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log"
+
+      - name: Build
+        if: ${{ !inputs.run-tests }}
+        env:
+          PROJECT: ${{ inputs.project }}
+          SCHEME: ${{ inputs.scheme }}
+          CONFIGURATION: ${{ inputs.configuration }}
+          SDK: ${{ inputs.sdk }}
+          PLATFORM: ${{ inputs.platform }}
+          DESTINATION: ${{ inputs.destination }}
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
+            -sdk "$SDK" \
+            -destination "platform=$PLATFORM,$DESTINATION" \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -resultBundlePath "$RESULTS/Build.xcresult" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            2>&1 | tee "$LOGS/build.log"
+
+      - name: Run unit and UI tests
+        if: ${{ inputs.run-tests }}
+        env:
+          PROJECT: ${{ inputs.project }}
+          SCHEME: ${{ inputs.scheme }}
+          CONFIGURATION: ${{ inputs.configuration }}
+          SDK: ${{ inputs.sdk }}
+          PLATFORM: ${{ inputs.platform }}
+          DESTINATION: ${{ inputs.destination }}
+          TEST_PLAN: ${{ inputs.test-plan }}
+        run: |
+          set -o pipefail
+          args=(
+            -project "$PROJECT"
+            -scheme "$SCHEME"
+            -configuration "$CONFIGURATION"
+            -sdk "$SDK"
+            -destination "platform=$PLATFORM,$DESTINATION"
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
+            -derivedDataPath "$DERIVED_DATA"
+            -resultBundlePath "$RESULTS/Tests.xcresult"
+            -onlyUsePackageVersionsFromResolvedFile
+          )
+          if [ -n "$TEST_PLAN" ]; then
+            args+=(-testPlan "$TEST_PLAN")
+          fi
+          xcodebuild test-without-building "${args[@]}" 2>&1 | tee "$LOGS/tests.log"
+
+      - name: Upload Xcode failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ios-ci/Results
+            ${{ runner.temp }}/ios-ci/Logs
+          if-no-files-found: warn
+          retention-days: 14

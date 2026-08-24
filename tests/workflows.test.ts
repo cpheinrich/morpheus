@@ -1139,6 +1139,122 @@ describe("firebase-tests.yml", () => {
 });
 
 /**
+ * `ios-ci.yml` is the native Apple equivalent of node-ci and python-ci. The
+ * lock and simulator defaults are part of its public caller contract: if
+ * package resolution mutates the lock, or the destination names a runtime the
+ * runner does not carry, every delegated repository fails despite changing
+ * nothing itself.
+ */
+describe("ios-ci.yml", () => {
+  type IosCi = {
+    on?: {
+      workflow_call?: {
+        inputs?: Record<string, { type?: string; default?: unknown }>;
+        secrets?: Record<string, unknown>;
+      };
+    };
+    permissions?: Record<string, string>;
+    jobs?: Record<string, {
+      "runs-on"?: string;
+      "timeout-minutes"?: number;
+      concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+      env?: Record<string, string>;
+      steps?: Array<Record<string, unknown>>;
+    }>;
+  };
+
+  it("is a secret-free reusable workflow with read-only source access", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    expect(wf.on).toHaveProperty("workflow_call");
+    expect(wf.on?.workflow_call?.secrets).toBeUndefined();
+    expect(wf.permissions).toEqual({ contents: "read" });
+  });
+
+  it("pins the current iOS 26 runner, Xcode, and simulator contract", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const inputs = wf.on?.workflow_call?.inputs ?? {};
+    expect(inputs.runner?.default).toBe("macos-26");
+    expect(inputs["xcode-version"]?.default).toBe("26.6");
+    expect(inputs.platform?.default).toBe("iOS Simulator");
+    expect(inputs.destination?.default).toBe("OS=26.5,name=iPhone 17 Pro Max");
+    expect(inputs["working-directory"]?.default).toBe("apps/ios");
+    expect(inputs.project?.default).toBe("Evo.xcodeproj");
+    expect(inputs.scheme?.default).toBe("Evo");
+  });
+
+  it("bounds and cancels superseded simulator runs", async () => {
+    const job = ((await read("ios-ci.yml")) as IosCi).jobs?.test;
+    expect(job?.["timeout-minutes"]).toBe(30);
+    expect(job?.concurrency?.["cancel-in-progress"]).toBe(true);
+    expect(job?.concurrency?.group).toContain("${{ github.repository }}");
+    expect(job?.concurrency?.group).toContain("${{ github.ref }}");
+    expect(job?.concurrency?.group).toContain("${{ inputs.scheme }}");
+  });
+
+  it("requires a committed SwiftPM lock and forbids package updates", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const steps = wf.jobs?.test?.steps ?? [];
+    const validate = steps.find((step) => step.name === "Validate locked project inputs");
+    const resolve = steps.find((step) => step.name === "Resolve locked Swift packages");
+
+    expect(String(validate?.run)).toContain("Package.resolved is required");
+    expect(String(validate?.run)).toContain("git ls-files --error-unmatch");
+    expect(String(resolve?.run)).toContain("-onlyUsePackageVersionsFromResolvedFile");
+    expect(String(resolve?.run)).toContain("-resolvePackageDependencies");
+  });
+
+  it("keeps packages, build products, results, and logs in isolated paths", async () => {
+    const job = ((await read("ios-ci.yml")) as IosCi).jobs?.test;
+    const prepare = job?.steps?.find((step) => step.name === "Prepare isolated build directories");
+    expect(String(prepare?.run)).toContain('$RUNNER_TEMP/ios-ci');
+    expect(String(prepare?.run)).toContain('SOURCE_PACKAGES=$ios_ci_root/SourcePackages');
+    expect(String(prepare?.run)).toContain('DERIVED_DATA=$ios_ci_root/DerivedData');
+    expect(String(prepare?.run)).toContain('RESULTS=$ios_ci_root/Results');
+    expect(String(prepare?.run)).toContain('LOGS=$ios_ci_root/Logs');
+
+    const raw = await readFile(join(DIR, "ios-ci.yml"), "utf8");
+    expect(raw).toContain("${{ runner.temp }}/ios-ci/SourcePackages");
+    expect(raw).toContain("hashFiles(format('{0}/**/Package.resolved'");
+    expect(raw).toContain('"$RESULTS/Build.xcresult"');
+    expect(raw).toContain('"$RESULTS/Tests.xcresult"');
+  });
+
+  it("builds once, then runs the scheme's unit and UI tests without rebuilding", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const build = steps.find((step) => step.name === "Build for testing");
+    const test = steps.find((step) => step.name === "Run unit and UI tests");
+    expect(String(build?.run)).toContain("xcodebuild build-for-testing");
+    expect(String(test?.run)).toContain("xcodebuild test-without-building");
+    expect(build?.if).toBe("${{ inputs.run-tests }}");
+    expect(test?.if).toBe("${{ inputs.run-tests }}");
+  });
+
+  it("uploads both xcresults and raw logs only when the run fails", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
+    expect(upload?.if).toBe("failure()");
+    expect(String(upload?.uses)).toContain("actions/upload-artifact@v4");
+    const withBlock = upload?.with as Record<string, unknown> | undefined;
+    expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Results");
+    expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Logs");
+  });
+
+  it("passes caller-controlled values through env rather than script substitution", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    for (const step of steps) {
+      if (typeof step.run !== "string") continue;
+      expect(step.run, String(step.name)).not.toContain("${{ inputs.");
+    }
+  });
+
+  it("selects the hosted Xcode directly instead of adding a third-party action", async () => {
+    const raw = await readFile(join(DIR, "ios-ci.yml"), "utf8");
+    expect(raw).toContain('/Applications/Xcode_${XCODE_VERSION}.app');
+    expect(raw).not.toContain("setup-xcode@");
+  });
+});
+
+/**
  * `python-ci.yml` is the Python half of the pair `node-ci.yml` opens. It ships
  * to every project that has a uv surface, so the same rule applies: a mistake
  * here breaks repositories that changed nothing.
