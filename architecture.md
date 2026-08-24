@@ -2800,8 +2800,22 @@ its triggers, application directory and encrypted `VERCEL_TOKEN`, `VERCEL_ORG_ID
 build, while the other spends model budget to judge a change, so neither workflow controls or
 implicitly enables the other.
 
-Planned: `web-ci`, `ios-ci`, `deploy`, `pr-check`, `agent-triage`, `agent-analytics-review`,
-`release-kit`.
+Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `firebase-tests`, `osv-scan`, `pm-check`,
+`pr-check`, `vercel-deploy`, `heartbeat`, and `agent-review`. Planned: `agent-triage`,
+`agent-analytics-review`, and `release-kit`.
+
+`ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
+[GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
+Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination.
+The caller supplies a shared Xcode scheme; that scheme or its optional test plan remains the source
+of truth for which unit and UI targets run. The workflow refuses an absent or uncommitted
+`Package.resolved`, passes `-onlyUsePackageVersionsFromResolvedFile` to resolution and every build
+action, and separates SourcePackages, DerivedData, logs, and `.xcresult` bundles under the runner's
+temporary directory. A failed run retains both result bundles and raw `xcodebuild` logs; a
+superseding push cancels the older 30-minute-bounded simulator job. Selecting the requested
+`/Applications/Xcode_<version>.app` through `DEVELOPER_DIR` is deliberately inlined: the operation
+is small enough to audit here and does not put a third-party setup action in every consumer's CI
+trust path.
 
 `firebase-tests` is the one workflow a project opts into rather than getting by default: it runs
 the emulator-backed suites (unit, Firestore rules, Playwright E2E) against the Firebase Emulator

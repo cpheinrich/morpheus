@@ -45,6 +45,13 @@ instance, per-company inboxes. ~$30/month beats migrating under pressure.
 **Reusable workflows pin `@main`, not a tag** — with one operator and a handful of repos,
 instant propagation beats staged rollout. Revisit if a simultaneous CI break gets expensive.
 
+**Native iOS CI selects hosted Xcode directly, without a setup action** — 2026-08-24. The maintained
+`maxim-lobanov/setup-xcode` action was considered (three runtime dependencies, active in 2026), but
+the exact-version operation is only validating `/Applications/Xcode_<version>.app` and exporting
+`DEVELOPER_DIR`. Keeping those auditable lines in `ios-ci.yml` avoids adding a third-party action to
+every native project's trusted build path. Revisit if hosted-runner Xcode discovery stops having a
+stable path contract or the workflow needs installation rather than selection.
+
 **Vercel deployment and agent review are separate reusable workflows** — 2026-08-23. Deployment
 is deterministic delivery with project credentials; review is optional model judgment with its own
 cost and failure modes. Projects call `vercel-deploy.yml` independently, so pausing review never
