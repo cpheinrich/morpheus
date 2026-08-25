@@ -178,6 +178,80 @@ describe("osv-scan.yml", () => {
   });
 });
 
+describe("vercel-deploy.yml", () => {
+  it("is an atomic reusable deploy workflow with explicit credentials", async () => {
+    const wf = (await read("vercel-deploy.yml")) as {
+      on?: {
+        workflow_call?: {
+          secrets?: Record<string, { required?: boolean }>;
+        };
+      };
+      jobs?: Record<string, { permissions?: Record<string, string>; if?: string }>;
+    };
+
+    expect(Object.keys(wf.on ?? {})).toEqual(["workflow_call"]);
+    for (const secret of ["VERCEL_TOKEN", "VERCEL_ORG_ID", "VERCEL_PROJECT_ID"]) {
+      expect(wf.on?.workflow_call?.secrets?.[secret]?.required, secret).toBe(true);
+    }
+    expect(wf.jobs?.deploy?.permissions).toEqual({
+      contents: "read",
+      "pull-requests": "write",
+    });
+  });
+
+  it("does not expose caller secrets to fork pull requests", async () => {
+    const wf = (await read("vercel-deploy.yml")) as {
+      jobs?: Record<string, { if?: string }>;
+    };
+    expect(wf.jobs?.deploy?.if).toContain(
+      "github.event.pull_request.head.repo.full_name == github.repository",
+    );
+  });
+
+  it("publishes the exact Vercel URL and updates one PR comment", async () => {
+    const raw = await readFile(join(DIR, "vercel-deploy.yml"), "utf8");
+    expect(raw).toContain('echo "url=$deployment_url" >> "$GITHUB_OUTPUT"');
+    expect(raw).toContain("<!-- morpheus-vercel-preview -->");
+    expect(raw).toContain("steps.deploy.outputs.url");
+  });
+
+  it("lets monorepos and app-only repos identify the manifest that pins pnpm", async () => {
+    const wf = (await read("vercel-deploy.yml")) as {
+      on?: {
+        workflow_call?: {
+          inputs?: Record<string, { default?: unknown }>;
+        };
+      };
+      jobs?: Record<string, { steps?: Array<{ name?: string; with?: Record<string, unknown> }> }>;
+    };
+    expect(wf.on?.workflow_call?.inputs?.["package-manager-file"]?.default).toBe("package.json");
+    const setup = wf.jobs?.deploy?.steps?.find((step) => step.name === "Set up pnpm");
+    expect(setup?.with?.package_json_file).toBe("${{ inputs.package-manager-file }}");
+  });
+
+  it("runs from repository root so Vercel applies its configured Root Directory once", async () => {
+    const wf = (await read("vercel-deploy.yml")) as {
+      on?: {
+        workflow_call?: {
+          inputs?: Record<string, { default?: unknown }>;
+        };
+      };
+    };
+    expect(wf.on?.workflow_call?.inputs?.["working-directory"]?.default).toBe(".");
+  });
+
+  it("uses a dedicated preview environment rather than inheriting a caller's old policy", async () => {
+    const wf = (await read("vercel-deploy.yml")) as {
+      on?: { workflow_call?: { inputs?: Record<string, { default?: unknown }> } };
+      jobs?: Record<string, { environment?: { name?: string } }>;
+    };
+    expect(wf.on?.workflow_call?.inputs?.["preview-environment"]?.default).toBe(
+      "Vercel Preview",
+    );
+    expect(wf.jobs?.deploy?.environment?.name).toContain("inputs.preview-environment");
+  });
+});
+
 describe("agent-review.yml", () => {
   it("can be disabled inside the reusable workflow without removing its reported jobs", async () => {
     const called = (await read("agent-review.yml")) as {
@@ -1066,6 +1140,122 @@ describe("firebase-tests.yml", () => {
   it("asks for read access and no more", async () => {
     const wf = (await read("firebase-tests.yml")) as { permissions?: Record<string, string> };
     expect(wf.permissions).toEqual({ contents: "read" });
+  });
+});
+
+/**
+ * `ios-ci.yml` is the native Apple equivalent of node-ci and python-ci. The
+ * lock and simulator defaults are part of its public caller contract: if
+ * package resolution mutates the lock, or the destination names a runtime the
+ * runner does not carry, every delegated repository fails despite changing
+ * nothing itself.
+ */
+describe("ios-ci.yml", () => {
+  type IosCi = {
+    on?: {
+      workflow_call?: {
+        inputs?: Record<string, { type?: string; default?: unknown }>;
+        secrets?: Record<string, unknown>;
+      };
+    };
+    permissions?: Record<string, string>;
+    jobs?: Record<string, {
+      "runs-on"?: string;
+      "timeout-minutes"?: number;
+      concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+      env?: Record<string, string>;
+      steps?: Array<Record<string, unknown>>;
+    }>;
+  };
+
+  it("is a secret-free reusable workflow with read-only source access", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    expect(wf.on).toHaveProperty("workflow_call");
+    expect(wf.on?.workflow_call?.secrets).toBeUndefined();
+    expect(wf.permissions).toEqual({ contents: "read" });
+  });
+
+  it("pins the current iOS 26 runner, Xcode, and simulator contract", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const inputs = wf.on?.workflow_call?.inputs ?? {};
+    expect(inputs.runner?.default).toBe("macos-26");
+    expect(inputs["xcode-version"]?.default).toBe("26.6");
+    expect(inputs.platform?.default).toBe("iOS Simulator");
+    expect(inputs.destination?.default).toBe("OS=26.5,name=iPhone 17 Pro Max");
+    expect(inputs["working-directory"]?.default).toBe("apps/ios");
+    expect(inputs.project?.default).toBe("Evo.xcodeproj");
+    expect(inputs.scheme?.default).toBe("Evo");
+  });
+
+  it("bounds and cancels superseded simulator runs", async () => {
+    const job = ((await read("ios-ci.yml")) as IosCi).jobs?.test;
+    expect(job?.["timeout-minutes"]).toBe(30);
+    expect(job?.concurrency?.["cancel-in-progress"]).toBe(true);
+    expect(job?.concurrency?.group).toContain("${{ github.repository }}");
+    expect(job?.concurrency?.group).toContain("${{ github.ref }}");
+    expect(job?.concurrency?.group).toContain("${{ inputs.scheme }}");
+  });
+
+  it("requires a committed SwiftPM lock and forbids package updates", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const steps = wf.jobs?.test?.steps ?? [];
+    const validate = steps.find((step) => step.name === "Validate locked project inputs");
+    const resolve = steps.find((step) => step.name === "Resolve locked Swift packages");
+
+    expect(String(validate?.run)).toContain("Package.resolved is required");
+    expect(String(validate?.run)).toContain("git ls-files --error-unmatch");
+    expect(String(resolve?.run)).toContain("-onlyUsePackageVersionsFromResolvedFile");
+    expect(String(resolve?.run)).toContain("-resolvePackageDependencies");
+  });
+
+  it("keeps packages, build products, results, and logs in isolated paths", async () => {
+    const job = ((await read("ios-ci.yml")) as IosCi).jobs?.test;
+    const prepare = job?.steps?.find((step) => step.name === "Prepare isolated build directories");
+    expect(String(prepare?.run)).toContain('$RUNNER_TEMP/ios-ci');
+    expect(String(prepare?.run)).toContain('SOURCE_PACKAGES=$ios_ci_root/SourcePackages');
+    expect(String(prepare?.run)).toContain('DERIVED_DATA=$ios_ci_root/DerivedData');
+    expect(String(prepare?.run)).toContain('RESULTS=$ios_ci_root/Results');
+    expect(String(prepare?.run)).toContain('LOGS=$ios_ci_root/Logs');
+
+    const raw = await readFile(join(DIR, "ios-ci.yml"), "utf8");
+    expect(raw).toContain("${{ runner.temp }}/ios-ci/SourcePackages");
+    expect(raw).toContain("hashFiles(format('{0}/**/Package.resolved'");
+    expect(raw).toContain('"$RESULTS/Build.xcresult"');
+    expect(raw).toContain('"$RESULTS/Tests.xcresult"');
+  });
+
+  it("builds once, then runs the scheme's unit and UI tests without rebuilding", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const build = steps.find((step) => step.name === "Build for testing");
+    const test = steps.find((step) => step.name === "Run unit and UI tests");
+    expect(String(build?.run)).toContain("xcodebuild build-for-testing");
+    expect(String(test?.run)).toContain("xcodebuild test-without-building");
+    expect(build?.if).toBe("${{ inputs.run-tests }}");
+    expect(test?.if).toBe("${{ inputs.run-tests }}");
+  });
+
+  it("uploads both xcresults and raw logs only when the run fails", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
+    expect(upload?.if).toBe("failure()");
+    expect(String(upload?.uses)).toContain("actions/upload-artifact@v4");
+    const withBlock = upload?.with as Record<string, unknown> | undefined;
+    expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Results");
+    expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Logs");
+  });
+
+  it("passes caller-controlled values through env rather than script substitution", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    for (const step of steps) {
+      if (typeof step.run !== "string") continue;
+      expect(step.run, String(step.name)).not.toContain("${{ inputs.");
+    }
+  });
+
+  it("selects the hosted Xcode directly instead of adding a third-party action", async () => {
+    const raw = await readFile(join(DIR, "ios-ci.yml"), "utf8");
+    expect(raw).toContain('/Applications/Xcode_${XCODE_VERSION}.app');
+    expect(raw).not.toContain("setup-xcode@");
   });
 });
 

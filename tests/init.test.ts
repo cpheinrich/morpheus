@@ -99,6 +99,18 @@ describe("morpheus init", () => {
       expect(readme).toContain("Built and managed with Morpheus");
     });
 
+    it("puts the trusted-device graph check in both entry points", async () => {
+      await scaffold(dir, SEED);
+
+      for (const file of ["README.md", "AGENTS.md"]) {
+        const text = await read(file);
+        expect(text, file).toContain("morpheus codebase-memory install --check");
+      }
+      const agents = await read("AGENTS.md");
+      expect(agents).toContain("A worktree needs its own exact-checkout index");
+      expect(agents).toContain("never an npm lifecycle script");
+    });
+
     it("links to the public repo from both README.md and AGENTS.md", async () => {
       await scaffold(dir, SEED);
 

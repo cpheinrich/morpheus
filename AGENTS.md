@@ -73,7 +73,25 @@ pnpm morpheus hq rules --check --rules-path infra/firebase/firestore.rules
 pnpm morpheus context refresh      # take a context receipt — after reading the records
 pnpm morpheus context status       # what the current lease says, and how old it is
 pnpm morpheus context install      # wire the session-start hooks — run it once per project
+pnpm morpheus codebase-memory install         # trusted-device bootstrap, safe to re-run
+pnpm morpheus codebase-memory install --check # verify operational mode without changing it
 ```
+
+## Device bootstrap
+
+Before structural code discovery, run `morpheus codebase-memory install --check`. If it is not
+operational, run `morpheus codebase-memory install` on the trusted device. The repair is
+idempotent: it installs Morpheus's reviewed package pin when absent or at another version, configures supported local
+agent clients, enables automatic indexing and watching, fully indexes this exact checkout, and
+verifies the index against `HEAD`. A worktree needs its own exact-checkout index even when the main
+clone is already indexed.
+
+This is an explicit device action, never an npm lifecycle script or a session-hook download.
+Morpheus's global CLI is linked into the canonical clone, whose committed `dist/` is rebuilt and
+checked in CI; update that clone with a fast-forward pull when the context protocol reports the
+Morpheus trunk has moved. The codebase-memory version stays pinned until a reviewed Morpheus change
+advances it, and the check requires the installed version to match, so “fresh” cannot silently mean
+“executed whatever upstream published today.”
 
 ## Context freshness
 

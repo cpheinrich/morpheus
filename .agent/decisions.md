@@ -45,6 +45,18 @@ instance, per-company inboxes. ~$30/month beats migrating under pressure.
 **Reusable workflows pin `@main`, not a tag** — with one operator and a handful of repos,
 instant propagation beats staged rollout. Revisit if a simultaneous CI break gets expensive.
 
+**Native iOS CI selects hosted Xcode directly, without a setup action** — 2026-08-24. The maintained
+`maxim-lobanov/setup-xcode` action was considered (three runtime dependencies, active in 2026), but
+the exact-version operation is only validating `/Applications/Xcode_<version>.app` and exporting
+`DEVELOPER_DIR`. Keeping those auditable lines in `ios-ci.yml` avoids adding a third-party action to
+every native project's trusted build path. Revisit if hosted-runner Xcode discovery stops having a
+stable path contract or the workflow needs installation rather than selection.
+
+**Vercel deployment and agent review are separate reusable workflows** — 2026-08-23. Deployment
+is deterministic delivery with project credentials; review is optional model judgment with its own
+cost and failure modes. Projects call `vercel-deploy.yml` independently, so pausing review never
+pauses previews and enabling deployment never spends review budget.
+
 ## Repo and licence
 
 **Public repo, and staying public** — 2026-07-29 confirmed. Originally for CI friction; the
@@ -80,6 +92,15 @@ deliberately has no `build`, `prepare`, `prepack`, or install lifecycle script: 
 a git dependency, and pnpm 11 refuses the prepare phase unless every consumer allowlists the exact
 resolved codeload URL. The repository command is named `compile` so the package stays inert when
 installed from a moving git ref.
+
+**Codebase-memory is an explicit, pinned device bootstrap, not an install side effect** —
+2026-08-22. Every Morpheus checkout should have graph-first structural search, but cloning a public
+repo or resolving its dependency must not execute downloaded native code. The operator or local
+agent runs `morpheus codebase-memory install`; Morpheus requires the installed version to equal its
+upstream package pin, enables automatic indexing and watching, and verifies a separate exact-HEAD
+index for each worktree. Operational
+freshness is checked locally; advancing the upstream version is an ordinary reviewed Morpheus
+change, never an implicit `latest` download.
 
 **A licence cannot prevent forks of a public repo** — GitHub's Terms of Service grant every
 user forking rights through GitHub's own functionality, regardless of the attached licence. If

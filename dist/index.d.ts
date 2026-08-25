@@ -5,4 +5,5 @@ export * from "./access/index.js";
 export * from "./firebase/index.js";
 export * from "./registry/index.js";
 export * from "./doctor/index.js";
+export * from "./codebase-memory.js";
 export * from "./session/index.js";

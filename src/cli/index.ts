@@ -47,6 +47,7 @@ import {
 } from "./context.js";
 import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
+import { install as codebaseMemoryInstall } from "./codebase-memory.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -120,6 +121,10 @@ Usage
                             Governed commands (pm claim|new|link-issue|block, access sync) refuse without
                             a fresh receipt. --offline, or MORPHEUS_OFFLINE=1, permits local
                             work on an unverified trunk and still refuses anything external.
+  morpheus codebase-memory install [--check]
+                            install the pinned official package when absent,
+                            configure detected agent clients, enable auto-index
+                            and auto-watch, and fully index this exact checkout
   morpheus doctor           [--all] [--offline]
                             --offline skips the one network check (does the trunk resolve)
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
@@ -384,6 +389,14 @@ async function main(): Promise<number> {
   const dir = resolve(process.cwd(), flags.dir);
 
   if (group === "doctor") return doctorRun(process.cwd(), flags.all, flags.offline);
+
+  if (group === "codebase-memory") {
+    if (command === "install" || command === undefined) {
+      return codebaseMemoryInstall(process.cwd(), flags.check);
+    }
+    console.error(`Unknown codebase-memory command "${command}".\n\n${HELP}`);
+    return 1;
+  }
 
   if (group === "heartbeat") {
     return heartbeat({
