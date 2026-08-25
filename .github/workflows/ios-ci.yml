@@ -56,6 +56,34 @@ on:
         description: Optional shared Xcode test plan. Empty uses the scheme's default test action.
         type: string
         default: ""
+      parallel-testing:
+        description: Allow Xcode to run test targets in parallel. Off by default for deterministic UI tests.
+        type: boolean
+        default: false
+      firebase-emulators:
+        description: Run the test action inside Firebase Emulator Suite when the app depends on local services.
+        type: boolean
+        default: false
+      firebase-cli-version:
+        description: Exact firebase-tools version installed when Firebase emulators are enabled.
+        type: string
+        default: "15.28.1"
+      firebase-config:
+        description: Firebase config path relative to the repository root.
+        type: string
+        default: "firebase.json"
+      firebase-project:
+        description: Synthetic Firebase project id used by the emulator-backed test run.
+        type: string
+        default: "demo-ios-ci"
+      firebase-only:
+        description: Comma-separated Firebase emulators needed by the iOS tests.
+        type: string
+        default: "auth,firestore"
+      pre-test-script:
+        description: Optional repository-relative script run immediately before tests, inside emulators when enabled.
+        type: string
+        default: ""
       run-tests:
         description: Run every unit and UI test enabled by the shared scheme or selected test plan.
         type: boolean
@@ -105,6 +133,12 @@ jobs:
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
+          FIREBASE_EMULATORS: ${{ inputs.firebase-emulators }}
+          FIREBASE_CLI_VERSION: ${{ inputs.firebase-cli-version }}
+          FIREBASE_CONFIG: ${{ inputs.firebase-config }}
+          FIREBASE_PROJECT: ${{ inputs.firebase-project }}
+          FIREBASE_ONLY: ${{ inputs.firebase-only }}
+          PRE_TEST_SCRIPT: ${{ inputs.pre-test-script }}
         run: |
           case "$PROJECT" in
             ""|/*|*".."*)
@@ -132,6 +166,44 @@ jobs:
             exit 1
           }
 
+          if [ -n "$PRE_TEST_SCRIPT" ]; then
+            case "$PRE_TEST_SCRIPT" in
+              /*|*".."*)
+                echo "pre-test-script must be relative to the repository root without '..'" >&2
+                exit 1
+                ;;
+            esac
+            if [ ! -f "$GITHUB_WORKSPACE/$PRE_TEST_SCRIPT" ]; then
+              echo "pre-test-script was not found: $PRE_TEST_SCRIPT" >&2
+              exit 1
+            fi
+          fi
+
+          if [ "$FIREBASE_EMULATORS" = "true" ]; then
+            case "$FIREBASE_CONFIG" in
+              ""|/*|*".."*)
+                echo "firebase-config must be a non-empty repository-relative path without '..'" >&2
+                exit 1
+                ;;
+            esac
+            if [ ! -f "$GITHUB_WORKSPACE/$FIREBASE_CONFIG" ]; then
+              echo "firebase-config was not found: $FIREBASE_CONFIG" >&2
+              exit 1
+            fi
+            if [[ ! "$FIREBASE_CLI_VERSION" =~ ^[0-9]+(\.[0-9]+){2}$ ]]; then
+              echo "firebase-cli-version must be an exact semantic version" >&2
+              exit 1
+            fi
+            if [[ ! "$FIREBASE_PROJECT" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]; then
+              echo "firebase-project must be a valid explicit project id" >&2
+              exit 1
+            fi
+            if [[ ! "$FIREBASE_ONLY" =~ ^[a-z]+(,[a-z]+)*$ ]]; then
+              echo "firebase-only must be a comma-separated emulator list" >&2
+              exit 1
+            fi
+          fi
+
       - name: Prepare isolated build directories
         run: |
           ios_ci_root="$RUNNER_TEMP/ios-ci"
@@ -139,11 +211,15 @@ jobs:
             "$ios_ci_root/SourcePackages" \
             "$ios_ci_root/DerivedData" \
             "$ios_ci_root/Results" \
-            "$ios_ci_root/Logs"
-          echo "SOURCE_PACKAGES=$ios_ci_root/SourcePackages" >> "$GITHUB_ENV"
-          echo "DERIVED_DATA=$ios_ci_root/DerivedData" >> "$GITHUB_ENV"
-          echo "RESULTS=$ios_ci_root/Results" >> "$GITHUB_ENV"
-          echo "LOGS=$ios_ci_root/Logs" >> "$GITHUB_ENV"
+            "$ios_ci_root/Logs" \
+            "$ios_ci_root/Screenshots"
+          {
+            echo "SOURCE_PACKAGES=$ios_ci_root/SourcePackages"
+            echo "DERIVED_DATA=$ios_ci_root/DerivedData"
+            echo "RESULTS=$ios_ci_root/Results"
+            echo "LOGS=$ios_ci_root/Logs"
+            echo "SCREENSHOTS=$ios_ci_root/Screenshots"
+          } >> "$GITHUB_ENV"
 
       - name: Cache resolved Swift packages
         uses: actions/cache@v4
@@ -165,6 +241,19 @@ jobs:
             -onlyUsePackageVersionsFromResolvedFile \
             2>&1 | tee "$LOGS/package-resolution.log"
 
+      - name: Use Java 21 for Firebase emulators
+        if: ${{ inputs.run-tests && inputs.firebase-emulators }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install the locked Firebase emulator CLI
+        if: ${{ inputs.run-tests && inputs.firebase-emulators }}
+        env:
+          FIREBASE_CLI_VERSION: ${{ inputs.firebase-cli-version }}
+        run: npm install --global "firebase-tools@$FIREBASE_CLI_VERSION"
+
       - name: Build for testing
         if: ${{ inputs.run-tests }}
         env:
@@ -175,6 +264,7 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
           DESTINATION: ${{ inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
+          PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
         run: |
           set -o pipefail
           args=(
@@ -187,6 +277,8 @@ jobs:
             -derivedDataPath "$DERIVED_DATA"
             -resultBundlePath "$RESULTS/Build.xcresult"
             -onlyUsePackageVersionsFromResolvedFile
+            -disableAutomaticPackageResolution
+            -parallel-testing-enabled "$PARALLEL_TESTING"
           )
           if [ -n "$TEST_PLAN" ]; then
             args+=(-testPlan "$TEST_PLAN")
@@ -214,6 +306,7 @@ jobs:
             -derivedDataPath "$DERIVED_DATA" \
             -resultBundlePath "$RESULTS/Build.xcresult" \
             -onlyUsePackageVersionsFromResolvedFile \
+            -disableAutomaticPackageResolution \
             2>&1 | tee "$LOGS/build.log"
 
       - name: Run unit and UI tests
@@ -226,6 +319,12 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
           DESTINATION: ${{ inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
+          PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
+          FIREBASE_EMULATORS: ${{ inputs.firebase-emulators }}
+          FIREBASE_CONFIG: ${{ inputs.firebase-config }}
+          FIREBASE_PROJECT: ${{ inputs.firebase-project }}
+          FIREBASE_ONLY: ${{ inputs.firebase-only }}
+          PRE_TEST_SCRIPT: ${{ inputs.pre-test-script }}
         run: |
           set -o pipefail
           args=(
@@ -238,11 +337,58 @@ jobs:
             -derivedDataPath "$DERIVED_DATA"
             -resultBundlePath "$RESULTS/Tests.xcresult"
             -onlyUsePackageVersionsFromResolvedFile
+            -disableAutomaticPackageResolution
+            -parallel-testing-enabled "$PARALLEL_TESTING"
           )
           if [ -n "$TEST_PLAN" ]; then
             args+=(-testPlan "$TEST_PLAN")
           fi
-          xcodebuild test-without-building "${args[@]}" 2>&1 | tee "$LOGS/tests.log"
+          if [ "$FIREBASE_EMULATORS" = "true" ]; then
+            printf -v test_command '%q ' xcodebuild test-without-building "${args[@]}"
+            test_command+=" 2>&1"
+            if [ -n "$PRE_TEST_SCRIPT" ]; then
+              printf -v pre_test_command 'bash %q' "$GITHUB_WORKSPACE/$PRE_TEST_SCRIPT"
+              test_command="$pre_test_command && $test_command"
+            fi
+
+            firebase emulators:exec \
+              --config "$GITHUB_WORKSPACE/$FIREBASE_CONFIG" \
+              --project "$FIREBASE_PROJECT" \
+              --only "$FIREBASE_ONLY" \
+              "$test_command" \
+              2>&1 | tee "$LOGS/tests.log"
+          else
+            if [ -n "$PRE_TEST_SCRIPT" ]; then
+              bash "$GITHUB_WORKSPACE/$PRE_TEST_SCRIPT"
+            fi
+            xcodebuild test-without-building "${args[@]}" 2>&1 | tee "$LOGS/tests.log"
+          fi
+
+      - name: Export rendered test attachments
+        if: ${{ always() && inputs.run-tests }}
+        run: |
+          set -o pipefail
+          result_bundle="$RESULTS/Tests.xcresult"
+          if [ ! -d "$result_bundle" ]; then
+            echo "No test result bundle exists; there are no rendered attachments to export."
+            exit 0
+          fi
+
+          if ! xcrun xcresulttool export attachments \
+            --path "$result_bundle" \
+            --output-path "$SCREENSHOTS" \
+            2>&1 | tee "$LOGS/attachments.log"; then
+            echo "::warning title=Rendered attachments unavailable::xcresulttool could not export test attachments"
+          fi
+
+      - name: Upload rendered test attachments
+        if: ${{ always() && inputs.run-tests }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ios-ci/Screenshots
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload Xcode failure evidence
         if: failure()

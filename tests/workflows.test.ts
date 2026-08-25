@@ -1185,6 +1185,9 @@ describe("ios-ci.yml", () => {
     expect(inputs["working-directory"]?.default).toBe("apps/ios");
     expect(inputs.project?.default).toBe("Evo.xcodeproj");
     expect(inputs.scheme?.default).toBe("Evo");
+    expect(inputs["parallel-testing"]?.default).toBe(false);
+    expect(inputs["firebase-emulators"]?.default).toBe(false);
+    expect(inputs["pre-test-script"]?.default).toBe("");
   });
 
   it("bounds and cancels superseded simulator runs", async () => {
@@ -1216,6 +1219,7 @@ describe("ios-ci.yml", () => {
     expect(String(prepare?.run)).toContain('DERIVED_DATA=$ios_ci_root/DerivedData');
     expect(String(prepare?.run)).toContain('RESULTS=$ios_ci_root/Results');
     expect(String(prepare?.run)).toContain('LOGS=$ios_ci_root/Logs');
+    expect(String(prepare?.run)).toContain('SCREENSHOTS=$ios_ci_root/Screenshots');
 
     const raw = await readFile(join(DIR, "ios-ci.yml"), "utf8");
     expect(raw).toContain("${{ runner.temp }}/ios-ci/SourcePackages");
@@ -1230,8 +1234,43 @@ describe("ios-ci.yml", () => {
     const test = steps.find((step) => step.name === "Run unit and UI tests");
     expect(String(build?.run)).toContain("xcodebuild build-for-testing");
     expect(String(test?.run)).toContain("xcodebuild test-without-building");
+    expect(String(build?.run)).toContain("-disableAutomaticPackageResolution");
+    expect(String(test?.run)).toContain("-disableAutomaticPackageResolution");
+    expect(String(test?.run)).toContain('-parallel-testing-enabled "$PARALLEL_TESTING"');
     expect(build?.if).toBe("${{ inputs.run-tests }}");
     expect(test?.if).toBe("${{ inputs.run-tests }}");
+  });
+
+  it("can run app tests inside locked Firebase emulators with an in-context fixture", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const inputs = wf.on?.workflow_call?.inputs ?? {};
+    const steps = wf.jobs?.test?.steps ?? [];
+    const java = steps.find((step) => step.name === "Use Java 21 for Firebase emulators");
+    const install = steps.find((step) => step.name === "Install the locked Firebase emulator CLI");
+    const test = steps.find((step) => step.name === "Run unit and UI tests");
+
+    expect(inputs["firebase-cli-version"]?.default).toBe("15.28.1");
+    expect(inputs["firebase-config"]?.default).toBe("firebase.json");
+    expect(inputs["firebase-only"]?.default).toBe("auth,firestore");
+    expect(String(java?.if)).toContain("inputs.firebase-emulators");
+    expect(String(install?.run)).toContain('firebase-tools@$FIREBASE_CLI_VERSION');
+    expect(String(test?.run)).toContain("firebase emulators:exec");
+    expect(String(test?.run)).toContain('test_command="$pre_test_command && $test_command"');
+    expect(String(test?.run)).toContain('--config "$GITHUB_WORKSPACE/$FIREBASE_CONFIG"');
+  });
+
+  it("preserves rendered test attachments independently of test success", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const exportStep = steps.find((step) => step.name === "Export rendered test attachments");
+    const upload = steps.find((step) => step.name === "Upload rendered test attachments");
+
+    expect(String(exportStep?.if)).toContain("always()");
+    expect(String(exportStep?.run)).toContain("xcresulttool export attachments");
+    expect(String(upload?.if)).toContain("always()");
+    expect(String(upload?.uses)).toContain("actions/upload-artifact@v4");
+    expect(String((upload?.with as Record<string, unknown>)?.path)).toContain(
+      "${{ runner.temp }}/ios-ci/Screenshots",
+    );
   });
 
   it("uploads both xcresults and raw logs only when the run fails", async () => {

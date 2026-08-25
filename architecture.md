@@ -1503,6 +1503,12 @@ QA script), `simctl io` to screenshot and record video, and Firebase App Distrib
 via `fastlane` for real builds. So an agent can implement a change, run it in a simulator, drive
 the flow, and attach a screenshot per step plus a video to the PR.
 
+The reusable `ios-ci.yml` owns the hosted runner, exact Xcode and simulator destination, locked
+SwiftPM resolution, build-for-testing/test-without-building split, result bundles, logs, and
+rendered XCTest attachments. Firebase-backed clients opt into a secret-free emulator boundary and
+may name one repository script to seed local fixtures; that script runs after the emulators start
+and before XCTest, so it never has to race a separately managed service.
+
 Physical devices additionally need a provisioning profile and a connected device, so simulator is
 the default for the review loop.
 
@@ -2810,9 +2816,15 @@ Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination
 The caller supplies a shared Xcode scheme; that scheme or its optional test plan remains the source
 of truth for which unit and UI targets run. The workflow refuses an absent or uncommitted
 `Package.resolved`, passes `-onlyUsePackageVersionsFromResolvedFile` to resolution and every build
-action, and separates SourcePackages, DerivedData, logs, and `.xcresult` bundles under the runner's
-temporary directory. A failed run retains both result bundles and raw `xcodebuild` logs; a
-superseding push cancels the older 30-minute-bounded simulator job. Selecting the requested
+action, disables automatic package resolution after the explicit locked resolve, and separates
+SourcePackages, DerivedData, logs, screenshots, and `.xcresult` bundles under the runner's temporary
+directory. Rendered XCTest attachments are retained on every run; a failed run additionally keeps
+both result bundles and raw `xcodebuild` logs. Firebase-backed apps can opt into an exact
+`firebase-tools` version, a repository config, an explicit synthetic project id and emulator list,
+plus one repository-relative fixture script that runs inside the live emulator environment before
+XCTest. Every service input is validated, the boundary stays secret-free, and apps without Firebase
+pay none of its JDK or CLI setup cost. A superseding push cancels the older 30-minute-bounded
+simulator job. Selecting the requested
 `/Applications/Xcode_<version>.app` through `DEVELOPER_DIR` is deliberately inlined: the operation
 is small enough to audit here and does not put a third-party setup action in every consumer's CI
 trust path.
