@@ -1202,7 +1202,7 @@ describe("ios-ci.yml", () => {
 
   it("does not expose the checkout credential to caller-controlled test code", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
-    const checkout = steps.find((step) => step.uses === "actions/checkout@v4");
+    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
 
     expect((checkout?.with as Record<string, unknown>)?.["persist-credentials"]).toBe(false);
   });
@@ -1281,7 +1281,7 @@ describe("ios-ci.yml", () => {
     expect(String(exportStep?.if)).toContain("always()");
     expect(String(exportStep?.run)).toContain("xcresulttool export attachments");
     expect(String(upload?.if)).toContain("always()");
-    expect(String(upload?.uses)).toContain("actions/upload-artifact@v4");
+    expect(String(upload?.uses)).toContain("actions/upload-artifact@v7");
     expect(String((upload?.with as Record<string, unknown>)?.path)).toContain(
       "${{ runner.temp }}/ios-ci/Screenshots",
     );
@@ -1291,7 +1291,7 @@ describe("ios-ci.yml", () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
     expect(upload?.if).toBe("failure()");
-    expect(String(upload?.uses)).toContain("actions/upload-artifact@v4");
+    expect(String(upload?.uses)).toContain("actions/upload-artifact@v7");
     const withBlock = upload?.with as Record<string, unknown> | undefined;
     expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Results");
     expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Logs");
@@ -1309,6 +1309,18 @@ describe("ios-ci.yml", () => {
     const raw = await readFile(join(DIR, "ios-ci.yml"), "utf8");
     expect(raw).toContain('/Applications/Xcode_${XCODE_VERSION}.app');
     expect(raw).not.toContain("setup-xcode@");
+  });
+
+  it("uses the current official Node 24 action majors", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const actionUses = steps.flatMap((step) =>
+      typeof step.uses === "string" ? [step.uses] : [],
+    );
+
+    expect(actionUses).toContain("actions/checkout@v7");
+    expect(actionUses).toContain("actions/cache@v6");
+    expect(actionUses).toContain("actions/setup-java@v6");
+    expect(actionUses).toContain("actions/upload-artifact@v7");
   });
 });
 
