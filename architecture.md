@@ -2822,9 +2822,10 @@ directory. Rendered XCTest attachments are retained on every run; a failed run a
 both result bundles and raw `xcodebuild` logs. Firebase-backed apps can opt into an exact
 `firebase-tools` version, a repository config, an explicit synthetic project id and emulator list,
 plus one repository-relative fixture script that runs inside the live emulator environment before
-XCTest. Every service input is validated, the boundary stays secret-free, and apps without Firebase
-pay none of its JDK or CLI setup cost. A superseding push cancels the older 30-minute-bounded
-simulator job. Selecting the requested
+XCTest; failures retain Firebase's debug log with the Xcode evidence. Every service input is
+validated, the boundary stays secret-free, and apps without Firebase pay none of its JDK or CLI
+setup cost. A superseding push cancels the older bounded simulator job; the default is 30 minutes
+and consumers with broader UI suites can explicitly request more headroom. Selecting the requested
 `/Applications/Xcode_<version>.app` through `DEVELOPER_DIR` is deliberately inlined: the operation
 is small enough to audit here and does not put a third-party setup action in every consumer's CI
 trust path.

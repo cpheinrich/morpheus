@@ -1161,7 +1161,7 @@ describe("ios-ci.yml", () => {
     permissions?: Record<string, string>;
     jobs?: Record<string, {
       "runs-on"?: string;
-      "timeout-minutes"?: number;
+      "timeout-minutes"?: number | string;
       concurrency?: { group?: string; "cancel-in-progress"?: boolean };
       env?: Record<string, string>;
       steps?: Array<Record<string, unknown>>;
@@ -1179,6 +1179,7 @@ describe("ios-ci.yml", () => {
     const wf = (await read("ios-ci.yml")) as IosCi;
     const inputs = wf.on?.workflow_call?.inputs ?? {};
     expect(inputs.runner?.default).toBe("macos-26");
+    expect(inputs["timeout-minutes"]?.default).toBe(30);
     expect(inputs["xcode-version"]?.default).toBe("26.6");
     expect(inputs.platform?.default).toBe("iOS Simulator");
     expect(inputs.destination?.default).toBe("OS=26.5,name=iPhone 17 Pro Max");
@@ -1192,11 +1193,18 @@ describe("ios-ci.yml", () => {
 
   it("bounds and cancels superseded simulator runs", async () => {
     const job = ((await read("ios-ci.yml")) as IosCi).jobs?.test;
-    expect(job?.["timeout-minutes"]).toBe(30);
+    expect(job?.["timeout-minutes"]).toBe("${{ inputs.timeout-minutes }}");
     expect(job?.concurrency?.["cancel-in-progress"]).toBe(true);
     expect(job?.concurrency?.group).toContain("${{ github.repository }}");
     expect(job?.concurrency?.group).toContain("${{ github.ref }}");
     expect(job?.concurrency?.group).toContain("${{ inputs.scheme }}");
+  });
+
+  it("does not expose the checkout credential to caller-controlled test code", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const checkout = steps.find((step) => step.uses === "actions/checkout@v4");
+
+    expect((checkout?.with as Record<string, unknown>)?.["persist-credentials"]).toBe(false);
   });
 
   it("requires a committed SwiftPM lock and forbids package updates", async () => {
@@ -1257,6 +1265,12 @@ describe("ios-ci.yml", () => {
     expect(String(test?.run)).toContain("firebase emulators:exec");
     expect(String(test?.run)).toContain('test_command="$pre_test_command && $test_command"');
     expect(String(test?.run)).toContain('--config "$GITHUB_WORKSPACE/$FIREBASE_CONFIG"');
+
+    const diagnostics = steps.find(
+      (step) => step.name === "Collect Firebase emulator diagnostics",
+    );
+    expect(String(diagnostics?.if)).toContain("inputs.firebase-emulators");
+    expect(String(diagnostics?.run)).toContain("firebase-debug.log");
   });
 
   it("preserves rendered test attachments independently of test success", async () => {

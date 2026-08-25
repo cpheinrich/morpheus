@@ -16,7 +16,10 @@ outcome: complete
   after Firebase publishes the emulator environment and before XCTest, which supports deterministic
   fixture seeding without a separately managed service race.
 - Defaulted parallel testing off, disabled automatic SwiftPM resolution after the explicit locked
-  resolve, and retained rendered XCTest attachments independently from failure evidence.
+  resolve, retained rendered XCTest attachments independently from failure evidence, and made the
+  bounded job duration configurable for larger UI suites.
+- Disabled checkout credential persistence before any caller-controlled build phase or fixture
+  runs, and included Firebase's debug log in emulator failure evidence.
 - Documented the caller contract and added workflow tests for its disabled defaults, conditional
   setup, command boundary, package lock, and artifact behavior.
 
@@ -31,8 +34,8 @@ with shell escaping rather than interpolating caller text as source.
 
 - `pnpm typecheck`
 - `pnpm compile`
-- `pnpm vitest run tests/workflows.test.ts --maxWorkers=1` — 90 tests passed
-- `pnpm vitest run --maxWorkers=1` — 977 tests passed
+- `pnpm vitest run tests/workflows.test.ts --maxWorkers=1` — 91 tests passed
+- `pnpm vitest run --maxWorkers=1` — 978 tests passed
 - `pnpm morpheus pm index` — every index unchanged/current
 - `pnpm morpheus pm validate` — 120 roadmap items, one goal, zero requests valid
 - `actionlint` 1.7.7 and `git diff --check`

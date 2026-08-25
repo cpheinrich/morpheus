@@ -21,6 +21,10 @@ on:
         description: GitHub-hosted macOS image with the requested Xcode and simulator runtime.
         type: string
         default: "macos-26"
+      timeout-minutes:
+        description: Maximum hosted job duration, including package resolution and artifact export.
+        type: number
+        default: 30
       xcode-version:
         description: Exact Xcode version installed as /Applications/Xcode_<version>.app.
         type: string
@@ -95,7 +99,7 @@ permissions:
 jobs:
   test:
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     concurrency:
       group: ios-ci-${{ github.repository }}-${{ github.ref }}-${{ inputs.scheme }}
       cancel-in-progress: true
@@ -105,6 +109,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # GitHub's macos-26 image carries Xcode 26.6, the iOS 26.5 SDK and the
       # iPhone 17 Pro Max simulator. Selecting DEVELOPER_DIR directly is a
@@ -389,6 +395,21 @@ jobs:
           path: ${{ runner.temp }}/ios-ci/Screenshots
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Collect Firebase emulator diagnostics
+        if: ${{ always() && inputs.run-tests && inputs.firebase-emulators }}
+        run: |
+          candidate_logs=(
+            "$GITHUB_WORKSPACE/firebase-debug.log"
+            "$PWD/firebase-debug.log"
+          )
+          for candidate in "${candidate_logs[@]}"; do
+            if [ -f "$candidate" ]; then
+              cp "$candidate" "$LOGS/firebase-debug.log"
+              exit 0
+            fi
+          done
+          echo "Firebase did not produce a debug log."
 
       - name: Upload Xcode failure evidence
         if: failure()
