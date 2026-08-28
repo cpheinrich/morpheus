@@ -74,7 +74,15 @@ public repo.
 
 **Do not publish `morpheus-kit` to npm** — 2026-07-29. Publishing only helps strangers install
 it, which is the opposite of the goal. CI checks the repo out and builds the CLI; local use is
-`pnpm compile && npm link`.
+an explicit self-contained install from reviewed `main`, with no registry publication.
+
+**The global CLI is copied, never linked to a checkout** — 2026-08-28. This supersedes the linked
+CLI part of the original distribution decision. A link makes the source directory runtime state:
+the clean worktree created to protect unrelated dirty work then cannot be removed without breaking
+every project on the machine. `morpheus self install` instead packs one clean exact-main checkout,
+installs a standalone directory, and records its commit. `morpheus self update` does that from a
+disposable clone and removes it. Session start and `doctor` detect drift; neither updates. This keeps
+convergence on `main` explicit without letting installation own or rewrite a working repository.
 
 **Runtime code reaches projects as a git dependency** — 2026-07-29. `npm link` does not survive a
 Vercel build and a workflow reference cannot be imported, so components and token modules need to
@@ -82,8 +90,8 @@ resolve as a real dependency. `"morpheus-kit": "github:cpheinrich/morpheus#main"
 registry, no token, and nothing published — the repo is public. The cost is pinning to a ref rather
 than a semver range, which for four projects and one author is simpler, not harder.
 
-Distribution splits three ways and the word "kit" was hiding it: the **CLI** is linked or built from
-a checkout, the **workflows** are referenced by path from the public repo, and only **runtime
+Distribution splits three ways and the word "kit" was hiding it: the **CLI** is a copied package
+built from an exact reviewed checkout, the **workflows** are referenced by path from the public repo, and only **runtime
 imports** need dependency resolution at all.
 
 **Git-dependency runtime artifacts are committed, never built by the consumer** — 2026-08-09.

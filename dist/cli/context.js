@@ -5,6 +5,7 @@ import { resolveTrunk, trunkLog, worktreeRoot } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
 import { gate as gateAction, offlineDeclared } from "../session/gate.js";
 import { CODEX_HOOKS, installContext } from "../session/install.js";
+import { morpheusInstallStatus } from "../self.js";
 const OK = "✓";
 const NO = "✗";
 function ago(checkedAt, now) {
@@ -225,30 +226,10 @@ async function sinceReceipt(root, receipt, now) {
     // front of the session. `null` is the honest input: the trunk was not asked.
     return observeLease(receipt, { checkedAt: now.toISOString(), remoteSha: null, inputs }, policy);
 }
-/**
- * The session-start message, injected into a new session's context by a hook.
- *
- * **Entirely local.** It makes no network call, so it takes no `offline`
- * argument: everything it prints comes from `localDelta`, which is computed
- * from the records alone. That matters because it runs from a hook at the
- * start of every session — a round trip here is bought for nothing, and on a
- * slow link its timeout would sit in front of the session.
- *
- * **Not read-only.** It discards the stored receipt, which is what makes the
- * lease session-scoped — so it belongs in a session-start hook and nowhere
- * else. Running it by hand mid-session costs one `context refresh`.
- *
- * **Always exits 0**, and that is the point rather than convenience. A hook
- * written as `morpheus context status || true` swallows a missing binary
- * exactly the way it swallows a stale lease — the check that skips what is
- * absent and reports the empty thing as correct. Exiting 0 deliberately, from
- * a command whose job is to inform, keeps the masking out of the shell.
- *
- * It does **not** take a receipt. At session start the agent has read nothing,
- * so a receipt minted here would certify the records were loaded by the act of
- * not loading them.
- */
-export async function brief(root) {
+export async function brief(root, opts = {}) {
+    const morpheusPromise = opts.morpheus
+        ? Promise.resolve(opts.morpheus)
+        : morpheusInstallStatus({ offline: opts.offline });
     // **Decertify first.** The lease is keyed on the worktree, so a session
     // starting where a previous one refreshed minutes ago would otherwise
     // inherit its certification — and this command would tell a session that
@@ -261,6 +242,14 @@ export async function brief(root) {
     // discarded, so `endTerm` returns it rather than dropping it.
     const now = new Date();
     const moved = previous ? await sinceReceipt(root, previous.receipt, now) : null;
+    const morpheus = await morpheusPromise;
+    if (morpheus.fresh === false) {
+        const installed = morpheus.installedSha?.slice(0, 7) ?? "unknown";
+        const current = morpheus.remoteSha?.slice(0, 7) ?? "unknown";
+        console.log(`! Morpheus CLI is not current (${installed} → ${current}). Run \`morpheus self update\`; ` +
+            "it will not touch active source work.");
+        console.log("");
+    }
     if (previous) {
         console.log(`This session has no context receipt — the last one was taken ${ago(previous.checkedAt, now)} ` +
             `by another session, covering ${previous.receipt.inputs.length} records.`);

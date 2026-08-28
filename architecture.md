@@ -914,9 +914,10 @@ routing-around is permanent where the staleness was temporary.**
 starting where another refreshed minutes ago would inherit its ✓ — the failure this whole section
 is about, arriving through the surface added to prevent it. `context brief` discards the stored
 receipt before reporting: that asserts nothing, so it does not violate the rule below, and it is
-what makes the lease session-scoped rather than merely working-copy-scoped. It is also **entirely
-local** — everything it prints comes from the records, so the hook in front of every session makes
-no network call at all. It also lands correctly
+what makes the lease session-scoped rather than merely working-copy-scoped. Its **project-context
+report is entirely local**; one separate, bounded `ls-remote` compares the installed Morpheus
+receipt to canonical `main`, because this hook is the only device-wide chokepoint before local tools
+can disagree with CI. Offline skips that advisory check. It also lands correctly
 on a session *resumed* after a context compaction, which is exactly when an agent has lost what it
 read. Discarding rather than downgrading, because flipping the stored status does not survive the
 next check — which re-observes from the receipt, and the receipt is still valid.
@@ -1213,11 +1214,19 @@ the upstream version pinned in source. Freshness has two meanings and they stay 
 - **Upstream freshness** requires the installed version to equal the reviewed Morpheus pin. The pin
   advances through an ordinary Morpheus change, not an implicit `latest` download from a hook.
 
-The Morpheus CLI itself remains a link into the canonical clone. Committed `dist/` and the CI
-rebuild check mean a fast-forward pull updates source and runnable artifacts through one reviewed
-commit; `pnpm compile && npm link` is the repair for local build/link drift. Context freshness
-still reports when the canonical trunk moves. No background updater may rewrite a dirty checkout
-or execute a newly published upstream package without review.
+The Morpheus CLI itself is installed as a self-contained global package, not linked to any clone or
+worktree. The explicit `morpheus self install` command accepts only a clean checkout at current
+`main`, rebuilds it, proves committed `dist/` still matches source, packs it, installs the copy, and
+writes a receipt naming the exact commit. `morpheus self update` performs the same operation from a
+disposable shallow clone and removes it afterwards, so the update cannot turn a temporary worktree
+into permanent runtime state or rewrite active work.
+
+`morpheus self check` compares that receipt to the canonical `main` ref. The same bounded check is
+reported by `context brief` at session start and by `doctor`; it is advisory and silent when current.
+An explicit offline declaration skips it. A legacy linked checkout is trusted only when the package
+root is the exact Git root (never merely nested inside one), is clean, and contains current main.
+The session hook detects drift but never downloads or executes new code; update remains a visible
+operator action.
 
 ## 8. Project management as files
 

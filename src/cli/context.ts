@@ -11,6 +11,7 @@ import { resolveTrunk, trunkLog, worktreeRoot } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
 import { gate as gateAction, offlineDeclared, type Reach } from "../session/gate.js";
 import { CODEX_HOOKS, installContext, type Repair } from "../session/install.js";
+import { morpheusInstallStatus, type MorpheusInstallStatus } from "../self.js";
 
 const OK = "✓";
 const NO = "✗";
@@ -248,11 +249,11 @@ async function sinceReceipt(
 /**
  * The session-start message, injected into a new session's context by a hook.
  *
- * **Entirely local.** It makes no network call, so it takes no `offline`
- * argument: everything it prints comes from `localDelta`, which is computed
- * from the records alone. That matters because it runs from a hook at the
- * start of every session — a round trip here is bought for nothing, and on a
- * slow link its timeout would sit in front of the session.
+ * The project-context half is entirely local. One bounded `ls-remote` also
+ * checks the installed Morpheus commit: this hook is the one device-wide
+ * chokepoint that reaches every project and is where CLI drift can be noticed
+ * before a local generator disagrees with canonical CI. An explicit offline
+ * declaration skips that check and prints no stale claim.
  *
  * **Not read-only.** It discards the stored receipt, which is what makes the
  * lease session-scoped — so it belongs in a session-start hook and nowhere
@@ -268,7 +269,15 @@ async function sinceReceipt(
  * so a receipt minted here would certify the records were loaded by the act of
  * not loading them.
  */
-export async function brief(root: string): Promise<number> {
+export interface BriefOptions {
+  offline?: boolean;
+  morpheus?: MorpheusInstallStatus;
+}
+
+export async function brief(root: string, opts: BriefOptions = {}): Promise<number> {
+  const morpheusPromise = opts.morpheus
+    ? Promise.resolve(opts.morpheus)
+    : morpheusInstallStatus({ offline: opts.offline });
   // **Decertify first.** The lease is keyed on the worktree, so a session
   // starting where a previous one refreshed minutes ago would otherwise
   // inherit its certification — and this command would tell a session that
@@ -282,6 +291,17 @@ export async function brief(root: string): Promise<number> {
   // discarded, so `endTerm` returns it rather than dropping it.
   const now = new Date();
   const moved = previous ? await sinceReceipt(root, previous.receipt, now) : null;
+  const morpheus = await morpheusPromise;
+
+  if (morpheus.fresh === false) {
+    const installed = morpheus.installedSha?.slice(0, 7) ?? "unknown";
+    const current = morpheus.remoteSha?.slice(0, 7) ?? "unknown";
+    console.log(
+      `! Morpheus CLI is not current (${installed} → ${current}). Run \`morpheus self update\`; ` +
+        "it will not touch active source work.",
+    );
+    console.log("");
+  }
 
   if (previous) {
     console.log(

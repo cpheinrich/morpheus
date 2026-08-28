@@ -2,8 +2,8 @@ import { execFile } from "node:child_process";
 import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { MORPHEUS_PACKAGE_ROOT, morpheusInstallStatus, } from "./self.js";
 const exec = promisify(execFile);
 /**
  * Pin the bootstrap package rather than piping a moving shell script into a
@@ -44,7 +44,6 @@ const npmInvocation = {
         "codebase-memory-mcp",
     ],
 };
-const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 async function invoke(runner, invocation, args, cwd) {
     return runner(invocation.command, [...invocation.prefix, ...args], cwd);
 }
@@ -79,28 +78,8 @@ async function configuredClients(home) {
     }
     return found;
 }
-let defaultFreshness;
-async function readMorpheusFreshness(runner, source) {
-    const [head, remote] = await Promise.all([
-        runner("git", ["rev-parse", "HEAD"], source),
-        runner("git", ["ls-remote", "--exit-code", "origin", "refs/heads/main"], source),
-    ]);
-    if (head.code !== 0 || remote.code !== 0)
-        return { source, fresh: null };
-    const remoteHead = remote.stdout.trim().split(/\s+/)[0];
-    if (!remoteHead)
-        return { source, fresh: null };
-    const contains = await runner("git", ["merge-base", "--is-ancestor", remoteHead, head.stdout.trim()], source);
-    return { source, fresh: contains.code === 0 };
-}
-function morpheusFreshness(runner, source, cache) {
-    if (!cache)
-        return readMorpheusFreshness(runner, source);
-    defaultFreshness ??= readMorpheusFreshness(runner, source);
-    return defaultFreshness;
-}
 /**
- * Read operational state without changing it. Morpheus source freshness asks
+ * Read operational state without changing it. Morpheus installation freshness asks
  * origin unless `checkMorpheusRemote` is false; every codebase-memory check is
  * local.
  *
@@ -112,10 +91,10 @@ export async function codebaseMemoryStatus(root, opts = {}) {
     const runner = opts.runner ?? runCommand;
     const invocation = opts.invocation ?? nativeInvocation;
     const cwd = resolve(root);
-    const source = resolve(opts.packageRoot ?? packageRoot);
+    const source = resolve(opts.packageRoot ?? MORPHEUS_PACKAGE_ROOT);
     const morpheus = opts.checkMorpheusRemote === false
         ? { source, fresh: null }
-        : await morpheusFreshness(runner, source, !opts.runner && !opts.packageRoot);
+        : await morpheusInstallStatus({ runner, packageRoot: source });
     const versionResult = await invoke(runner, invocation, ["--version"], cwd);
     if (versionResult.code !== 0) {
         return {
@@ -137,7 +116,7 @@ export async function codebaseMemoryStatus(root, opts = {}) {
     const issues = [];
     const codebaseIssues = [];
     if (morpheus.fresh === false) {
-        issues.push(`the linked Morpheus CLI is behind origin/main (${morpheus.source})`);
+        issues.push(`the installed Morpheus CLI does not contain current main (${morpheus.source})`);
     }
     const version = versionResult.stdout.trim().replace(/^codebase-memory-mcp\s+/, "");
     if (version !== CODEBASE_MEMORY_VERSION) {
@@ -240,10 +219,10 @@ export function formatCodebaseMemoryStatus(status, installerWarning) {
         ? `${yes} codebase-memory-mcp ${status.version ?? ""}`.trimEnd()
         : `${no} codebase-memory-mcp unavailable`);
     lines.push(status.morpheusFresh === true
-        ? `${yes} Linked Morpheus source contains current origin/main`
+        ? `${yes} Morpheus CLI contains current main`
         : status.morpheusFresh === false
-            ? `${no} Linked Morpheus source is behind origin/main (${status.morpheusSource})`
-            : `\x1b[33m?\x1b[0m Morpheus source freshness could not be verified (${status.morpheusSource})`);
+            ? `${no} Morpheus CLI does not contain current main (${status.morpheusSource})`
+            : `\x1b[33m?\x1b[0m Morpheus CLI freshness could not be verified (${status.morpheusSource})`);
     lines.push(status.configuredClients.length
         ? `${yes} Agent clients: ${status.configuredClients.join(", ")}`
         : `${no} No supported agent client configuration found`);

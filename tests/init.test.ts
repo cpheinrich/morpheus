@@ -107,6 +107,9 @@ describe("morpheus init", () => {
         expect(text, file).toContain("morpheus codebase-memory install --check");
       }
       const agents = await read("AGENTS.md");
+      expect(agents).toContain("morpheus self check");
+      expect(agents).toContain("morpheus self update");
+      expect(agents).toContain("disposable clone");
       expect(agents).toContain("A worktree needs its own exact-checkout index");
       expect(agents).toContain("never an npm lifecycle script");
     });

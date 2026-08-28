@@ -103,6 +103,11 @@ means anything recorded at the moment you hit the problem.
 ${MORPHEUS_REPO}/issues`;
 export const codebaseMemoryBootstrap = () => `## Device bootstrap
 
+Run \`morpheus self check\` at session start when the hook reports CLI drift; repair it explicitly
+with \`morpheus self update\`. The update builds current Morpheus \`main\` in a disposable clone,
+installs a self-contained copy with its commit receipt, removes the clone, and never touches active
+source work.
+
 Before structural code discovery, run \`morpheus codebase-memory install --check\`. If it is not
 operational, run \`morpheus codebase-memory install\` on the trusted device. It is idempotent: it
 installs Morpheus's reviewed package pin when absent or at another version, configures supported
@@ -112,7 +117,8 @@ when the main clone is indexed.
 
 This is an explicit device action, never an npm lifecycle script or a session-hook download. The
 version remains pinned until a reviewed Morpheus change advances it, and the check requires the
-installed version to match.`;
+installed version to match. The Morpheus CLI is likewise updated only by the explicit self command;
+the session hook detects drift but never downloads or executes it.`;
 /**
  * A README for humans.
  *

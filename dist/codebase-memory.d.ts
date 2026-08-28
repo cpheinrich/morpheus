@@ -39,7 +39,7 @@ export interface CodebaseMemoryOptions {
     checkMorpheusRemote?: boolean;
 }
 /**
- * Read operational state without changing it. Morpheus source freshness asks
+ * Read operational state without changing it. Morpheus installation freshness asks
  * origin unless `checkMorpheusRemote` is false; every codebase-memory check is
  * local.
  *

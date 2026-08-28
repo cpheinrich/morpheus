@@ -1,4 +1,5 @@
 import { type Reach } from "../session/gate.js";
+import { type MorpheusInstallStatus } from "../self.js";
 /**
  * Take a receipt, and **show the delta rather than just recording it**.
  *
@@ -19,11 +20,11 @@ export declare function status(root: string, offline?: boolean): Promise<number>
 /**
  * The session-start message, injected into a new session's context by a hook.
  *
- * **Entirely local.** It makes no network call, so it takes no `offline`
- * argument: everything it prints comes from `localDelta`, which is computed
- * from the records alone. That matters because it runs from a hook at the
- * start of every session — a round trip here is bought for nothing, and on a
- * slow link its timeout would sit in front of the session.
+ * The project-context half is entirely local. One bounded `ls-remote` also
+ * checks the installed Morpheus commit: this hook is the one device-wide
+ * chokepoint that reaches every project and is where CLI drift can be noticed
+ * before a local generator disagrees with canonical CI. An explicit offline
+ * declaration skips that check and prints no stale claim.
  *
  * **Not read-only.** It discards the stored receipt, which is what makes the
  * lease session-scoped — so it belongs in a session-start hook and nowhere
@@ -39,7 +40,11 @@ export declare function status(root: string, offline?: boolean): Promise<number>
  * so a receipt minted here would certify the records were loaded by the act of
  * not loading them.
  */
-export declare function brief(root: string): Promise<number>;
+export interface BriefOptions {
+    offline?: boolean;
+    morpheus?: MorpheusInstallStatus;
+}
+export declare function brief(root: string, opts?: BriefOptions): Promise<number>;
 /**
  * Wire the session-start hooks and the inbox declaration, or say why not.
  *

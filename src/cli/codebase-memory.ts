@@ -11,8 +11,7 @@ export async function install(root: string, check: boolean): Promise<number> {
     if (!status.ready) {
       console.log("\nRun `morpheus codebase-memory install` on this trusted device.");
       if (status.morpheusFresh === false) {
-        console.log(`First update the linked Morpheus checkout at ${status.morpheusSource}.`);
-        console.log("Use a clean main clone and `git pull --ff-only`; do not rewrite active work.");
+        console.log("First run `morpheus self update`; it does not touch active source work.");
       }
     }
     return status.ready ? 0 : 1;
@@ -30,8 +29,7 @@ export async function install(root: string, check: boolean): Promise<number> {
   }
   console.log("\nCould not reach operational mode. Resolve the findings above, then run --check.");
   if (result.status.morpheusFresh === false) {
-    console.log(`Update the linked Morpheus checkout at ${result.status.morpheusSource}.`);
-    console.log("Use a clean main clone and `git pull --ff-only`; do not rewrite active work.");
+    console.log("Run `morpheus self update`; it does not touch active source work.");
   }
   return 1;
 }
