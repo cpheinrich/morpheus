@@ -186,6 +186,20 @@ describe("morpheus init", () => {
       expect(agents).toContain("Prefer lightweight");
     });
 
+    it("routes conversational requests and external actions through the governed lifecycle", async () => {
+      await scaffold(dir, SEED);
+      const agents = await read("AGENTS.md");
+
+      expect(agents).toContain("conversation is intake, not a release path");
+      expect(agents).toContain("create or link the roadmap item");
+      expect(agents).toContain("one-shot CLI command");
+      expect(agents).toContain("verification probe and expected result");
+      expect(agents).toContain("proves delivery, not acceptance");
+      expect(agents).toContain("release-preflight.yml@main");
+      expect(agents).toContain("check out its `sha` output");
+      expect(agents).toContain("until a second project needs the same one");
+    });
+
     it("keeps a README the project already wrote", async () => {
       const mine = "# The real readme\n";
       await writeFile(join(dir, "README.md"), mine);

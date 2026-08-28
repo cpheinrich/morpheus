@@ -135,6 +135,15 @@ in CI. Validation is not bureaucracy; it is what permits the ergonomic surface.
 **Extract on the second use, never the first** — nothing enters the kit until a second project
 needs it.
 
+**External actions use one lifecycle from intake through acceptance** — 2026-08-28. A trusted
+request received in Messages, Slack, email, voice or browser chat is authorization to enter the
+roadmap; it is not permission to skip the item, claim, branch, tests or PR. Manual mutations prefer
+one-shot commands with explicit targets and always carry a caller-perspective verification probe.
+Release workflows first prove that the source is a clean, current `main` commit associated with a
+merged PR, then the release job checks out that exact SHA. An upload receipt is delivery; completion
+needs evidence of the requested user-visible behavior. A recurring production probe remains local
+until a second project needs the same shape.
+
 **The kit generates primitives only; each project owns its semantic layer** — 2026-07-29. Three
 projects had hand-rolled the same tokens-to-CSS script, which is the extraction trigger; the
 semantic layer had exactly **one** use, which is not. `--ember` from `color.vermilion` is a brand

@@ -1,5 +1,8 @@
-import { readdir, readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
 import { ci as ciTemplate } from "../src/init/templates.js";
@@ -15,6 +18,7 @@ import { ci as ciTemplate } from "../src/init/templates.js";
  */
 
 const DIR = join(import.meta.dirname, "../.github/workflows");
+const execFileAsync = promisify(execFile);
 
 interface Workflow {
   on?: Record<string, unknown>;
@@ -31,6 +35,146 @@ describe("every workflow", () => {
     expect(files.length).toBeGreaterThan(0);
     for (const f of files) {
       await expect(read(f), `${f} should parse`).resolves.toBeTruthy();
+    }
+  });
+});
+
+describe("release-preflight.yml", () => {
+  type ReleasePreflight = {
+    on?: {
+      workflow_call?: {
+        inputs?: Record<string, unknown>;
+        outputs?: Record<string, { value?: string }>;
+        secrets?: Record<string, unknown>;
+      };
+    };
+    permissions?: Record<string, string>;
+    jobs?: Record<
+      string,
+      {
+        outputs?: Record<string, string>;
+        steps?: Array<{
+          name?: string;
+          id?: string;
+          uses?: string;
+          with?: Record<string, unknown>;
+          env?: Record<string, string>;
+          run?: string;
+        }>;
+      }
+    >;
+  };
+
+  it("is a secret-free read-only gate that returns the reviewed SHA", async () => {
+    const wf = (await read("release-preflight.yml")) as ReleasePreflight;
+    const call = wf.on?.workflow_call;
+
+    expect(call).toBeDefined();
+    expect(wf.on).toHaveProperty("workflow_dispatch");
+    expect(call?.inputs).toBeUndefined();
+    expect(call?.secrets).toBeUndefined();
+    expect(call?.outputs?.sha?.value).toBe("${{ jobs.verify.outputs.sha }}");
+    expect(wf.permissions).toEqual({ contents: "read", "pull-requests": "read" });
+  });
+
+  it("checks out only the requested SHA without persisting credentials", async () => {
+    const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify
+      ?.steps ?? [];
+    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+
+    expect(checkout?.with).toEqual({
+      ref: "${{ github.sha }}",
+      "fetch-depth": 1,
+      "persist-credentials": false,
+    });
+  });
+
+  it("pins clean current main to an exact merged pull request", async () => {
+    const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify
+      ?.steps ?? [];
+    const verify = steps.find((step) => step.name === "Verify reviewed release source");
+    const script = String(verify?.run);
+
+    expect(verify?.env?.GH_TOKEN).toBe("${{ github.token }}");
+    expect(script).toContain('GITHUB_REF" != "refs/heads/main');
+    expect(script).toContain("git rev-parse HEAD");
+    expect(script).toContain("git status --porcelain --untracked-files=all");
+    expect(script).toContain("/git/ref/heads/main");
+    expect(script).toContain("/commits/${EXPECTED_SHA}/pulls");
+    expect(script).toContain("[.number, .base.ref, .merge_commit_sha] | @tsv");
+    expect(script).toContain('candidate_base" = "main');
+    expect(script).toContain('candidate_sha" = "$EXPECTED_SHA');
+    expect(script).toContain('echo "sha=$EXPECTED_SHA"');
+  });
+
+  it("rejects dirty and direct-push fixtures before a release can run", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-release-preflight-"));
+    const repo = join(root, "repo");
+    const bin = join(root, "bin");
+    const output = join(root, "output");
+
+    try {
+      await mkdir(repo, { recursive: true });
+      await mkdir(bin, { recursive: true });
+      await execFileAsync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: repo });
+      await execFileAsync("git", ["config", "user.name", "Morpheus Test"], { cwd: repo });
+      await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
+      await writeFile(join(repo, "source.txt"), "reviewed\n", "utf8");
+      await execFileAsync("git", ["add", "source.txt"], { cwd: repo });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "reviewed"], { cwd: repo });
+      const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repo });
+      const sha = stdout.trim();
+
+      const fakeGh = join(bin, "gh");
+      await writeFile(
+        fakeGh,
+        `#!/usr/bin/env bash
+case "$*" in
+  *"/git/ref/heads/main"*) printf '%s\\n' "$EXPECTED_SHA" ;;
+  *"/commits/"*"/pulls"*)
+    if [ "$PREFLIGHT_ASSOCIATED_PR" = "true" ]; then
+      printf '42\\tmain\\t%s\\n' "$EXPECTED_SHA"
+    fi
+    ;;
+  *) exit 2 ;;
+esac
+`,
+        "utf8",
+      );
+      await chmod(fakeGh, 0o755);
+
+      const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify
+        ?.steps ?? [];
+      const script = steps.find((step) => step.name === "Verify reviewed release source")?.run;
+      expect(script).toBeTruthy();
+
+      const run = (associated: boolean) =>
+        execFileAsync("bash", ["-c", script!], {
+          cwd: repo,
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            GITHUB_REF: "refs/heads/main",
+            GITHUB_REPOSITORY: "cpheinrich/example",
+            GITHUB_OUTPUT: output,
+            EXPECTED_SHA: sha,
+            GH_TOKEN: "fixture",
+            PREFLIGHT_ASSOCIATED_PR: String(associated),
+          },
+        });
+
+      await expect(run(true)).resolves.toBeDefined();
+      expect(await readFile(output, "utf8")).toContain(`sha=${sha}`);
+
+      await writeFile(join(repo, "dirty.txt"), "unreviewed\n", "utf8");
+      await expect(run(true)).rejects.toMatchObject({ stderr: expect.stringContaining("not clean") });
+      await rm(join(repo, "dirty.txt"));
+
+      await expect(run(false)).rejects.toMatchObject({
+        stderr: expect.stringContaining("not associated with a merged pull request"),
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });
