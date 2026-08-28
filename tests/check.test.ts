@@ -162,6 +162,7 @@ describe("checkPr", () => {
   it("blocks a missing test plan", async () => {
     const findings = await checkPr(goodPr({ body: "## Open questions\n\nNone.\n" }));
     expect(findings.find((f) => f.rule === "test-plan")?.level).toBe("error");
+    expect(findings.find((f) => f.rule === "test-plan")?.message).toContain("MORPHEUS_PR_BODY");
   });
 
   it("warns rather than blocks on missing open questions", async () => {

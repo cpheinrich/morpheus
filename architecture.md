@@ -2109,7 +2109,10 @@ The workflow is deliberately staged:
 `space`; `visual-system.md` may not retain scaffold copy; `imagery.json` must parse, name a source,
 provenance, alt text, and a live placement for every approved asset. `application.md` must cover
 both Public web and Product surfaces and map every manifest id to a real use. A package that has
-good tokens but leaves its diagrams on disk is incomplete.
+good tokens but leaves its diagrams on disk is incomplete. An asset may also carry an optional
+non-empty `editorialBoundary`: the project-owned explanation of where visual material must not
+influence editorial or product judgment. Morpheus preserves that contract without requiring it of
+projects whose imagery has no such boundary.
 
 **Optional entries carry a trigger, not a deadline** — `motion.md` when transitions start being
 invented per screen, `components.md` when the same pattern is rebuilt a third time. Nothing
@@ -2134,6 +2137,12 @@ present because its README is tracked, while the raw visual-inspiration files in
 idempotent repair and retrofit command for an older or partial project. After the scratchpad or
 moodboard changes, `morpheus brand explore` refreshes `explore-prompt.md`; the agent reads the
 actual files and creates `research/brand.html`.
+
+The retrofit reads `name` and the two-letter token prefix from `morpheus.json` before falling back
+to the working-directory name; explicit `--name` and `--prefix` flags still win. This matters in the
+recommended worktree workflow, where the directory is a branch handle rather than the product.
+`brand init` also appends only the missing moodboard and concept-media rules to `.gitignore`, keeping
+every existing project rule intact and making the READMEs' local-media promise true on a retrofit.
 
 That page is one standalone, locally readable comparison surface, with at least five stable,
 genuinely distinct initial packages. It must provide:

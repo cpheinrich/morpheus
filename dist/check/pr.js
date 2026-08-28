@@ -132,7 +132,8 @@ export async function checkPr(ctx) {
         findings.push({
             level: "error",
             rule: "test-plan",
-            message: 'PR body needs a non-empty "## Test plan" section.',
+            message: 'PR body needs a non-empty "## Test plan" section. ' +
+                "For a local check, pass the GitHub body with MORPHEUS_PR_BODY.",
         });
     }
     // Open questions are surfaced, not guessed at.

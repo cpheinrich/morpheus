@@ -3,12 +3,25 @@ export interface BrandWorkflowOptions {
     name: string;
     prefix: string;
 }
+export interface BrandIdentity {
+    name: string;
+    prefix: string;
+}
+/** Explicit flags win; the durable project manifest wins over a worktree name. */
+export declare function resolveBrandIdentity(root: string, overrides?: {
+    name?: string;
+    prefix?: string;
+}): Promise<BrandIdentity>;
+/** Add only the local exploration boundaries; never replace project ignore policy. */
+export declare function ensureBrandExplorationIgnored(root: string): Promise<string | null>;
 /**
  * Scaffold the visual-first brand workflow. It deliberately asks no terminal
  * questions: the editable brief and the moodboard are better design input
  * than a forced questionnaire, and a stopped command leaves useful files.
  */
-export declare function init(opts: BrandWorkflowOptions): Promise<number>;
+export declare function init(opts: BrandWorkflowOptions & {
+    root?: string;
+}): Promise<number>;
 /** Refresh only derived handoff material after the brief or reference set moves. */
 export declare function explore(opts: BrandWorkflowOptions): Promise<number>;
 /**

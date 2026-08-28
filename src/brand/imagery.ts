@@ -15,6 +15,7 @@ export const BrandImageAsset = z.object({
   alt: z.string().min(8),
   placements: z.array(z.string().min(2)).min(1),
   provenance: z.string().min(8),
+  editorialBoundary: z.string().trim().min(1).optional(),
 });
 
 export const BrandImagery = z.object({

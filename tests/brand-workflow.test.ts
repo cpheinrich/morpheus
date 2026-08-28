@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   checkConceptReview,
   CONCEPT_REVIEW_CONCEPT_ATTRIBUTE,
@@ -10,6 +10,8 @@ import {
 } from "../src/brand/concepts.js";
 import { migrateLegacyAnswers, writeFinalizePrompt, initializeWorkflow } from "../src/brand/workflow.js";
 import { REQUIRED, packageStatus } from "../src/brand/package.js";
+import { init as brandInit, resolveBrandIdentity } from "../src/cli/brand.js";
+import { readImagery } from "../src/brand/imagery.js";
 
 const BRIEF = `Kairos is a warm, thoughtful companion for people who are curious about astrology as a
 tool for self-reflection. It should feel learned and grounded rather than dogmatic, use quiet
@@ -99,6 +101,43 @@ describe("brand concept review workflow", () => {
     expect(status.required.find((entry) => entry.path === "brand-vibes.md")?.state).toBe("incomplete");
   });
 
+  it("retrofits from manifest identity and establishes the promised local-media boundary", async () => {
+    const root = dir;
+    const brandDir = join(root, "hq", "brand");
+    await writeFile(
+      join(root, "morpheus.json"),
+      JSON.stringify({ name: "cpheinrich.com", prefix: "CPH", kind: "personal" }),
+    );
+    await writeFile(join(root, ".gitignore"), "# Project rules\ncoverage/\n");
+    const identity = await resolveBrandIdentity(root);
+    expect(identity).toEqual({ name: "cpheinrich.com", prefix: "cp" });
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await brandInit({ root, brandDir, ...identity });
+      const firstIgnore = await readFile(join(root, ".gitignore"), "utf8");
+      await brandInit({ root, brandDir, ...identity });
+      expect(await readFile(join(root, ".gitignore"), "utf8")).toBe(firstIgnore);
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(await readFile(join(brandDir, "brand-vibes.md"), "utf8")).toContain("cpheinrich.com");
+    expect(await readFile(join(brandDir, "explore-prompt.md"), "utf8")).toContain("--cp-");
+    const ignored = await readFile(join(root, ".gitignore"), "utf8");
+    expect(ignored).toContain("# Project rules");
+    expect(ignored).toContain("hq/brand/moodboard/*");
+    expect(ignored).toContain("!hq/brand/research/assets/README.md");
+  });
+
+  it("lets explicit brand identity flags override the manifest", async () => {
+    await writeFile(join(dir, "morpheus.json"), JSON.stringify({ name: "Manifest", prefix: "MF" }));
+    expect(await resolveBrandIdentity(dir, { name: "Selected Name", prefix: "sn" })).toEqual({
+      name: "Selected Name",
+      prefix: "sn",
+    });
+  });
+
   it("asks the agent for comparable systems, home, marketing, type, graphics, and a substantial comparison", async () => {
     await initializeWorkflow({ brandDir: dir, name: "Kairos", prefix: "ka" });
     const prompt = await readFile(join(dir, "explore-prompt.md"), "utf8");
@@ -165,6 +204,26 @@ describe("brand concept review workflow", () => {
     await writeFile(appPath, application.replaceAll("orbital-overview", "the orbital asset"));
     const incomplete = await packageStatus(dir);
     expect(incomplete.required.find((entry) => entry.path === "application.md")?.detail).toContain("orbital-overview");
+  });
+
+  it("preserves an optional per-asset editorial boundary while accepting manifests without one", async () => {
+    await initializeWorkflow({ brandDir: dir, name: "Kairos", prefix: "ka" });
+    await completeFinalPackage(dir);
+    const path = join(dir, "imagery.json");
+    const raw = JSON.parse(await readFile(path, "utf8")) as {
+      assets: Array<Record<string, unknown>>;
+    };
+    raw.assets[0]!["editorialBoundary"] =
+      "This diagram supplies atmosphere only and cannot influence product rankings.";
+    await writeFile(path, JSON.stringify(raw, null, 2));
+
+    const imagery = await readImagery(dir);
+    expect(imagery?.assets[0]?.editorialBoundary).toBe(
+      "This diagram supplies atmosphere only and cannot influence product rankings.",
+    );
+    delete raw.assets[0]!["editorialBoundary"];
+    await writeFile(path, JSON.stringify(raw, null, 2));
+    expect(await readImagery(dir)).not.toBeNull();
   });
 
   it("refreshes the handoff from an edited free-form brief without overwriting the brief", async () => {
