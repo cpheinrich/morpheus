@@ -18,6 +18,7 @@ export declare const BrandImageAsset: z.ZodObject<{
     alt: z.ZodString;
     placements: z.ZodArray<z.ZodString>;
     provenance: z.ZodString;
+    editorialBoundary: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 export declare const BrandImagery: z.ZodObject<{
     direction: z.ZodString;
@@ -41,6 +42,7 @@ export declare const BrandImagery: z.ZodObject<{
         alt: z.ZodString;
         placements: z.ZodArray<z.ZodString>;
         provenance: z.ZodString;
+        editorialBoundary: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>;
 }, z.core.$strip>;
 export type BrandImagery = z.infer<typeof BrandImagery>;

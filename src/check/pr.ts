@@ -191,7 +191,9 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
     findings.push({
       level: "error",
       rule: "test-plan",
-      message: 'PR body needs a non-empty "## Test plan" section.',
+      message:
+        'PR body needs a non-empty "## Test plan" section. ' +
+        "For a local check, pass the GitHub body with MORPHEUS_PR_BODY.",
     });
   }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
   block,
   claim,
@@ -22,6 +22,7 @@ import {
   finalize as brandFinalize,
   init as brandInit,
   migrate as brandMigrate,
+  resolveBrandIdentity,
 } from "./brand.js";
 import { status as brandStatus } from "./brand-status.js";
 import { sync as accessSync } from "./access.js";
@@ -582,14 +583,18 @@ async function main(): Promise<number> {
 
   if (group === "brand") {
     const brandDir = resolve(process.cwd(), flags.dir === "hq/product" ? "hq/brand" : flags.dir);
-    const brandName = flags.name ?? basename(process.cwd());
+    const identity = await resolveBrandIdentity(process.cwd(), {
+      name: flags.name,
+      prefix: flags.prefix,
+    });
+    const brandName = identity.name;
     if (command === "status") {
       return brandStatus(brandDir, brandName);
     }
     const options = {
       brandDir,
       name: brandName,
-      prefix: flags.prefix ?? brandName.slice(0, 2).toLowerCase(),
+      prefix: identity.prefix,
     };
     if (command === "build") {
       return brandBuild(options);
@@ -607,10 +612,10 @@ async function main(): Promise<number> {
       return brandCheck(options);
     }
     if (command === "init") {
-      return brandInit(options);
+      return brandInit({ ...options, root: process.cwd() });
     }
     if (command === undefined) {
-      return brandInit(options);
+      return brandInit({ ...options, root: process.cwd() });
     }
     console.error(`Unknown brand command "${command ?? ""}".\n\n${HELP}`);
     return 1;

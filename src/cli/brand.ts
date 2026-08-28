@@ -1,14 +1,64 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { formatStatus, packageStatus } from "../brand/package.js";
 import {
   initializeWorkflow,
   migrateLegacyAnswers,
   writeFinalizePrompt,
 } from "../brand/workflow.js";
+import { BRAND_EXPLORATION_IGNORE_RULES } from "../init/templates.js";
 
 export interface BrandWorkflowOptions {
   brandDir: string;
   name: string;
   prefix: string;
+}
+
+export interface BrandIdentity {
+  name: string;
+  prefix: string;
+}
+
+/** Explicit flags win; the durable project manifest wins over a worktree name. */
+export async function resolveBrandIdentity(
+  root: string,
+  overrides: { name?: string; prefix?: string } = {},
+): Promise<BrandIdentity> {
+  let manifest: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(await readFile(join(root, "morpheus.json"), "utf8")) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      manifest = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Brand exploration remains usable before full Morpheus adoption. The
+    // worktree basename is only the last fallback, never preferred over a
+    // readable project identity.
+  }
+
+  const declaredName = typeof manifest["name"] === "string" ? manifest["name"].trim() : "";
+  const name = overrides.name?.trim() || declaredName || basename(root);
+  const declaredPrefix =
+    typeof manifest["prefix"] === "string"
+      ? manifest["prefix"].trim().slice(0, 2).toLowerCase()
+      : "";
+  return {
+    name,
+    prefix: overrides.prefix?.trim() || declaredPrefix || name.slice(0, 2).toLowerCase(),
+  };
+}
+
+/** Add only the local exploration boundaries; never replace project ignore policy. */
+export async function ensureBrandExplorationIgnored(root: string): Promise<string | null> {
+  const path = join(root, ".gitignore");
+  const existing = await readFile(path, "utf8").catch(() => "");
+  const missing = BRAND_EXPLORATION_IGNORE_RULES.filter((rule) => !existing.includes(rule));
+  if (!missing.length) return null;
+
+  const marker = "# Morpheus brand exploration input";
+  const section = `${existing.includes(marker) ? "" : `${marker}\n`}${missing.join("\n")}\n`;
+  await writeFile(path, `${existing.trimEnd()}${existing.trim() ? "\n\n" : ""}${section}`, "utf8");
+  return path;
 }
 
 function printWrites(result: { files: string[]; skipped: string[] }): void {
@@ -27,8 +77,10 @@ function printWrites(result: { files: string[]; skipped: string[] }): void {
  * questions: the editable brief and the moodboard are better design input
  * than a forced questionnaire, and a stopped command leaves useful files.
  */
-export async function init(opts: BrandWorkflowOptions): Promise<number> {
+export async function init(opts: BrandWorkflowOptions & { root?: string }): Promise<number> {
   const result = await initializeWorkflow(opts);
+  const ignore = opts.root ? await ensureBrandExplorationIgnored(opts.root) : null;
+  if (ignore) result.files.push(ignore);
   printWrites(result);
   console.log(
     `\n\x1b[1mStart the exploration in three moves.\x1b[0m\n` +
