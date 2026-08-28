@@ -2326,7 +2326,7 @@ provisioned:
 |---|---|
 | GCP project, required APIs | A Next.js app, if there is none |
 | Firebase enabled on it | Email waitlist capture — form, route handler, record schema |
-| Firestore in `nam5` | `/hq` behind Google sign-in, and the route gate |
+| Firestore in `nam5` | `/hq` behind Google sign-in, its private search index, and the route gate |
 | A registered web app, and its public SDK config | The Firestore deny block for `waitlist` |
 | Workload Identity Federation for Vercel | `.env.example`, and the dependencies the code imports |
 
@@ -2811,6 +2811,12 @@ keys the URL to the deployment commit. The dialog and MiniSearch chunk are prese
 bundle only as a lazy import, and the private index is fetched only when an authorized user opens
 search. At the current repository scale this avoids a service and operational state; consumers
 should revisit the architecture when the compressed index becomes materially large.
+
+`morpheus web init` includes this path whenever it scaffolds `/hq`: the visible search control,
+private static index route, deployment-versioned URL, neutral styling, and a working overview
+document. The starter catalogue is intentionally explicit rather than a repository-wide scan.
+Projects extend it from the same allowlisted catalogue that renders their HQ pages, because search
+is another publication surface and must not discover content the dashboard itself withholds.
 
 ### 18.2 Reusable GitHub workflows
 

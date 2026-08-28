@@ -120,12 +120,28 @@ describe("scaffoldWeb", () => {
     expect(result.written).toContain("apps/web/app/api/waitlist/route.ts");
     expect(result.written).toContain("apps/web/app/sign-in/page.tsx");
     expect(result.written).toContain("apps/web/app/hq/page.tsx");
+    expect(result.written).toContain("apps/web/app/hq/HqSearch.tsx");
+    expect(result.written).toContain("apps/web/app/hq/search-index/route.ts");
+    expect(result.written).toContain("apps/web/lib/hq/search.ts");
     expect(result.written).toContain("apps/web/proxy.ts");
     expect(result.written).toContain("packages/shared/schema/waitlist.ts");
     // The live home page is the thing a project most needs kept.
     expect(result.written).not.toContain("apps/web/app/page.tsx");
     expect(await readFile(join(root, "apps/web/app/page.tsx"), "utf8")).toBe(before);
     expect(result.notes.some((note) => note.includes("home page was left alone"))).toBe(true);
+
+    const layout = await readFile(join(root, "apps/web/app/hq/layout.tsx"), "utf8");
+    expect(layout).toContain("<HqSearch");
+    expect(layout).toContain("VERCEL_GIT_COMMIT_SHA");
+
+    const route = await readFile(join(root, "apps/web/app/hq/search-index/route.ts"), "utf8");
+    expect(route).toContain("hqSearchResponseHeaders");
+    expect(route).toContain('export const dynamic = "force-static"');
+
+    const manifest = JSON.parse(
+      await readFile(join(root, "apps/web/package.json"), "utf8"),
+    ) as { dependencies: Record<string, string> };
+    expect(manifest.dependencies["morpheus-kit"]).toBe("github:cpheinrich/morpheus#main");
   });
 
   it("is safe to run twice", async () => {
@@ -135,6 +151,8 @@ describe("scaffoldWeb", () => {
 
     expect(second.written).toEqual([]);
     expect(second.skipped).toContain("apps/web/app/api/waitlist/route.ts");
+    expect(second.skipped).toContain("apps/web/app/hq/HqSearch.tsx");
+    expect(second.skipped).toContain("apps/web/app/hq/search-index/route.ts");
     expect(second.merged).toEqual([]);
   });
 
@@ -177,6 +195,7 @@ describe("scaffoldWeb", () => {
 
     expect(result.written).not.toContain("apps/web/app/sign-in/page.tsx");
     expect(result.written).not.toContain("apps/web/app/api/waitlist/route.ts");
+    expect(result.written).not.toContain("apps/web/app/hq/search-index/route.ts");
     // A sign-in page with a placeholder config looks finished and cannot work.
     expect(result.notes.some((note) => note.includes("Skipped /hq"))).toBe(true);
     expect(result.notes.some((note) => note.includes("Skipped the waitlist"))).toBe(true);

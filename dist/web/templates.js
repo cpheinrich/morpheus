@@ -1789,6 +1789,111 @@ export function SignOutButton() {
 }
 `;
 };
+export const hqSearch = (name) => `"use client";
+
+import { HqSearchDialog } from "morpheus-kit/hq-search/react";
+
+/**
+ * The shared interaction and ranking behavior stays in Morpheus. This wrapper
+ * is deliberately project-owned: replace these neutral Tailwind classes with
+ * the HQ's semantic tokens once its visual system is established.
+ */
+export function HqSearch({ indexUrl }: Readonly<{ indexUrl: string }>) {
+  return (
+    <HqSearchDialog
+      indexUrl={indexUrl}
+      copy={{
+        dialogLabel: "Search ${name} HQ",
+        emptyPrompt: "Search documents, plans, notes, and roadmap items.",
+      }}
+      classes={{
+        trigger:
+          "group flex min-w-[240px] items-center gap-3 rounded-lg border bg-transparent px-4 py-2.5 text-left text-xs shadow-sm transition-colors hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2 max-[700px]:min-w-[160px] max-[700px]:px-3",
+        triggerIcon: "opacity-70",
+        triggerLabel: "font-medium",
+        shortcut: "ml-auto rounded border px-1.5 py-0.5 font-mono text-[10px] opacity-60 max-[900px]:hidden",
+        overlay:
+          "fixed inset-0 z-[100] overflow-y-auto bg-black/55 px-4 py-[min(12vh,96px)] backdrop-blur-[2px] max-[600px]:px-3 max-[600px]:py-4",
+        panel:
+          "mx-auto flex max-h-[min(76vh,720px)] w-full max-w-[760px] flex-col rounded-xl border bg-white text-black shadow-2xl dark:bg-neutral-950 dark:text-white max-[600px]:max-h-[calc(100vh-32px)]",
+        header: "flex items-center gap-3 border-b px-5",
+        input: "min-w-0 flex-1 bg-transparent py-5 text-base outline-none placeholder:opacity-55",
+        closeButton: "text-xs uppercase tracking-widest opacity-60 hover:opacity-100",
+        content: "min-h-[220px] overflow-y-auto",
+        status: "px-5 py-8 text-sm opacity-70",
+        results: "divide-y",
+        resultLink: "block px-5 py-4 transition-colors hover:bg-black/5 dark:hover:bg-white/5",
+        resultHeading: "flex items-start justify-between gap-4",
+        resultTitle: "text-sm font-medium",
+        resultKind: "shrink-0 text-[10px] uppercase tracking-widest opacity-55",
+        resultPath: "mt-1 font-mono text-[10px] opacity-55",
+        resultSnippet: "mt-2 text-xs leading-5 opacity-75",
+        footer: "border-t px-5 py-3 text-[10px] leading-4 opacity-55",
+        icon: "h-4 w-4 shrink-0 fill-none stroke-current",
+      }}
+    />
+  );
+}
+`;
+export const hqSearchBuild = (name) => `import {
+  createHqSearchPayload,
+  markdownSearchDocument,
+} from "morpheus-kit/hq-search/build";
+
+/**
+ * The starter document keeps a new HQ's search path executable and testable.
+ * Replace or extend this list from the same allowlisted catalogue that renders
+ * the project's HQ pages. Never scan private repository files independently of
+ * that catalogue: a search result is another way of publishing the document.
+ */
+const documents = [
+  markdownSearchDocument({
+    id: "hq:overview",
+    title: "${name} HQ",
+    href: "/hq",
+    path: "hq/README.md",
+    source:
+      "${name} HQ is the private operating workspace. Access is granted by the allowlist in morpheus.json and applied with morpheus access sync.",
+  }),
+];
+
+let payload: ReturnType<typeof createHqSearchPayload> | undefined;
+
+/** Built once per process; Vercel prerenders the route once for each deployment. */
+export function buildHqSearchPayload() {
+  payload ??= createHqSearchPayload(documents);
+  return payload;
+}
+`;
+export const hqSearchRoute = (ctx) => {
+    const self = "app/hq/search-index/route.ts";
+    return `import { gzipSync } from "node:zlib";
+
+import { hqSearchResponseHeaders } from "morpheus-kit/hq-search/build";
+
+import { buildHqSearchPayload } from "${ctx.imp(self, "lib/hq/search")}";
+
+export const dynamic = "force-static";
+
+const WARNING_BYTES = 5 * 1024 * 1024;
+
+export function GET() {
+  const payload = buildHqSearchPayload();
+  const body = JSON.stringify(payload);
+  const compressedBytes = gzipSync(body).byteLength;
+
+  if (compressedBytes > WARNING_BYTES) {
+    console.warn(
+      \`[hq-search] \${payload.documentCount} documents, \${(
+        compressedBytes / 1024 / 1024
+      ).toFixed(2)} MB gzip. Review the search architecture.\`,
+    );
+  }
+
+  return new Response(body, { headers: hqSearchResponseHeaders() });
+}
+`;
+};
 export const hqLayout = (ctx, name) => {
     const self = "app/hq/layout.tsx";
     return `import type { Metadata } from "next";
@@ -1796,6 +1901,7 @@ import Link from "next/link";
 
 import { currentUser } from "${ctx.imp(self, "lib/auth/current-user")}";
 
+import { HqSearch } from "./HqSearch";
 import { SignOutButton } from "./SignOutButton";
 
 export const metadata: Metadata = {
@@ -1809,6 +1915,7 @@ const NAV = [{ href: "/hq", label: "Overview" }];
 
 export default async function HqLayout({ children }: { children: React.ReactNode }) {
   const user = await currentUser();
+  const searchVersion = process.env.VERCEL_GIT_COMMIT_SHA ?? "dev";
 
   return (
     <div className="min-h-screen">
@@ -1827,6 +1934,7 @@ export default async function HqLayout({ children }: { children: React.ReactNode
             </nav>
           </div>
           <div className="flex items-center gap-4">
+            <HqSearch indexUrl={\`/hq/search-index?v=\${encodeURIComponent(searchVersion)}\`} />
             {user?.email && <span className="hidden text-xs opacity-60 md:block">{user.email}</span>}
             <SignOutButton />
           </div>
