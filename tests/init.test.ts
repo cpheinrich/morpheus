@@ -745,6 +745,7 @@ describe("morpheus init", () => {
 
       expect(ignore).toContain("node_modules");
       expect(ignore).toContain("# Morpheus");
+      expect(ignore).toContain(".obsidian/");
     });
 
     it("upgrades an older Morpheus ignore block with local brand-exploration boundaries", async () => {
