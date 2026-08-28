@@ -77,6 +77,9 @@ morpheus codebase-memory install             # trusted-device bootstrap, safe to
 morpheus codebase-memory install --check     # verify operational mode without changing it
 ```
 
+Web projects can import the build-time, browser, optional PDF, and React pieces of private HQ
+search from `morpheus-kit/hq-search` subpaths. The source catalogue and auth gate stay project-owned.
+
 `morpheus web init` is the website initializer. It provisions the GCP project, Firebase,
 Firestore, the registered web app and the Workload Identity that a Vercel deployment
 authenticates as, then scaffolds the code that depends on them: a Next.js app if there is none,
