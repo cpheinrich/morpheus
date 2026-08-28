@@ -21,6 +21,10 @@
     "./access": "./dist/access/index.js",
     "./firebase": "./dist/firebase/index.js",
     "./hq": "./dist/hq/index.js",
+    "./hq-search": "./dist/hq-search/index.js",
+    "./hq-search/build": "./dist/hq-search/build.js",
+    "./hq-search/pdf": "./dist/hq-search/pdf.js",
+    "./hq-search/react": "./dist/hq-search/react.js",
     "./registry": "./dist/registry/index.js",
     "./doctor": "./dist/doctor/index.js",
     "./codebase-memory": "./dist/codebase-memory.js",
@@ -44,14 +48,33 @@
   "dependencies": {
     "gray-matter": "^4.0.3",
     "jose": "^6.2.5",
+    "minisearch": "^7.2.0",
     "zod": "^4.1.12"
+  },
+  "peerDependencies": {
+    "pdf-parse": "^2.4.5",
+    "react": ">=19",
+    "react-dom": ">=19"
+  },
+  "peerDependenciesMeta": {
+    "pdf-parse": { "optional": true },
+    "react": { "optional": true },
+    "react-dom": { "optional": true }
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
     "firebase": "^12.17.0",
     "js-yaml": "^5.2.2",
+    "jsdom": "^26.1.0",
+    "pdf-parse": "^2.4.5",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^7.3.6",

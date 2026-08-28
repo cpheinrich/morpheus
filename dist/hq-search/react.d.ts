@@ -1,0 +1,44 @@
+export type HqSearchClassNames = {
+    trigger: string;
+    triggerIcon: string;
+    triggerLabel: string;
+    shortcut: string;
+    overlay: string;
+    panel: string;
+    header: string;
+    input: string;
+    closeButton: string;
+    content: string;
+    status: string;
+    results: string;
+    resultItem: string;
+    resultLink: string;
+    resultHeading: string;
+    resultTitle: string;
+    resultKind: string;
+    resultPath: string;
+    resultSnippet: string;
+    footer: string;
+    icon: string;
+};
+export type HqSearchCopy = {
+    trigger: string;
+    dialogLabel: string;
+    inputLabel: string;
+    placeholder: string;
+    shortcut: string;
+    close: string;
+    loading: string;
+    loadError: string;
+    emptyPrompt: string;
+    noResults: (query: string) => string;
+    markdownKind: string;
+    pdfKind: string;
+    footer: string;
+};
+export type HqSearchDialogProps = {
+    indexUrl: string;
+    classes?: Partial<HqSearchClassNames>;
+    copy?: Partial<HqSearchCopy>;
+};
+export declare function HqSearchDialog({ indexUrl, classes, copy }: HqSearchDialogProps): import("react").JSX.Element;

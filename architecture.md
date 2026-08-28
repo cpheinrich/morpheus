@@ -2796,6 +2796,22 @@ makes it a useful test: if the roadmap schema is awkward here, it is awkward eve
 `src/hq/` (the renderer, shipped in the package) and `hq/` (Morpheus's own data) sit side by side
 without colliding — one is code the kit exports, the other is content this repo owns.
 
+#### HQ search
+
+Repository-backed HQs use build-time lexical search rather than sending private company material to
+a hosted search service. `morpheus-kit/hq-search` owns the MiniSearch document contract, ranking,
+snippets and browser loader; `/build`, `/pdf` and `/react` subpaths isolate build-time conversion,
+optional embedded-PDF-text extraction, and the interaction shell. OCR and image search are outside
+the first version. A PDF with no embedded text is indexed honestly by filename and path.
+
+Each project still owns the consequential boundaries: its allowlisted content catalogue, route
+mapping, authorization gate, and visual system. It emits a versioned static index during the web
+build, serves that file only behind the HQ gate with `private, max-age=31536000, immutable`, and
+keys the URL to the deployment commit. The dialog and MiniSearch chunk are present in the page
+bundle only as a lazy import, and the private index is fetched only when an authorized user opens
+search. At the current repository scale this avoids a service and operational state; consumers
+should revisit the architecture when the compressed index becomes materially large.
+
 ### 18.2 Reusable GitHub workflows
 
 Workflows with an `on: workflow_call` trigger live in Morpheus; each project keeps a thin delegator

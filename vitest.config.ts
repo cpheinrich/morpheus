@@ -6,7 +6,7 @@ export default defineConfig({
     // it needs the Firestore emulator and a JDK, so it runs under
     // `pnpm test:rules` instead. Vitest would otherwise collect it, find no
     // vitest suite, and fail the default run on a file that is working fine.
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.{ts,tsx}"],
 
     // The session-freshness suites stand up real git repositories — `init`,
     // commits, bare remotes, `ls-remote`, `fetch` — and vitest runs files in
