@@ -2861,6 +2861,29 @@ uses a pinned full-tree scan rather than OSV's PR-diff workflow, whose current r
 can be bypassed by a pull-request-controlled symlink. It needs only `actions: read`, `contents:
 read`, and `security-events: write`; it never receives application credentials.
 
+`release-preflight` is the secret-free gate before any job that publishes outside GitHub. It accepts
+no caller-selected source: the workflow requires `refs/heads/main`, checks out `github.sha`, refuses
+a dirty tree, confirms the SHA is still the repository's current `main`, and requires GitHub to
+associate that exact commit with a merged pull request into `main`. It returns the verified SHA;
+the release job depends on the preflight and checks out that output rather than resolving a branch
+again. A direct push, stale main run, branch run or modified checkout therefore cannot reach a
+properly wired release job.
+
+The workflow is only the middle of the external-action contract:
+
+1. **Intake.** Requests from Messages, Slack, email, voice and browser conversations become normal
+   roadmap work. The trusted sender may authorize the work, but the channel does not replace the
+   item, claim, branch, tests, PR or merge.
+2. **Execution.** A manual mutation is delivered as a one-shot CLI command with the account,
+   project and full resource named explicitly. Console directions are a fallback. The same handoff
+   includes a caller-perspective read or probe and its expected result.
+3. **Acceptance.** Archive, upload and deploy receipts prove delivery only. Completion requires the
+   requested user-visible evidence — for TestFlight, for example, the processed build number plus
+   the control or behavior observed in that build on the target device.
+
+This stays deliberately small. A project may keep a credential-free scheduled production probe;
+it becomes a Morpheus workflow only after a second project needs the same probe contract.
+
 > **Gotcha.** Cross-repo workflow access is not on by default. In Morpheus's **Settings → Actions →
 > Access**, the policy must allow access from your other repositories, or calling repos fail with a
 > permissions error that does not obviously point at this setting.

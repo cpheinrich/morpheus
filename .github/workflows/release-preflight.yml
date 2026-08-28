@@ -1,0 +1,94 @@
+name: Release Preflight
+
+# Reusable gate for anything that publishes outside GitHub: TestFlight, an app
+# store, a production deploy, or another irreversible release surface. The
+# caller's release job must depend on this job and check out its exact output:
+#
+#   jobs:
+#     preflight:
+#       uses: cpheinrich/morpheus/.github/workflows/release-preflight.yml@main
+#     release:
+#       needs: preflight
+#       steps:
+#         - uses: actions/checkout@v7
+#           with:
+#             ref: ${{ needs.preflight.outputs.sha }}
+
+on:
+  workflow_call:
+    outputs:
+      sha:
+        description: Exact reviewed main commit the release job must check out.
+        value: ${{ jobs.verify.outputs.sha }}
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify reviewed release source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Release source must be refs/heads/main; got $GITHUB_REF" >&2
+            exit 1
+          fi
+
+          actual_sha="$(git rev-parse HEAD)"
+          if [ "$actual_sha" != "$EXPECTED_SHA" ]; then
+            echo "Checked-out source $actual_sha does not equal requested source $EXPECTED_SHA" >&2
+            exit 1
+          fi
+
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "Release source is not clean" >&2
+            git status --short >&2
+            exit 1
+          fi
+
+          main_sha="$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" \
+            --jq '.object.sha')"
+          if [ "$main_sha" != "$EXPECTED_SHA" ]; then
+            echo "Release source $EXPECTED_SHA is not current origin/main ($main_sha)" >&2
+            exit 1
+          fi
+
+          merged_pr_rows="$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/commits/${EXPECTED_SHA}/pulls" \
+            --jq '.[] | select(.merged_at != null) | [.number, .base.ref, .merge_commit_sha] | @tsv')"
+          merged_pr=""
+          while IFS=$'\t' read -r candidate_pr candidate_base candidate_sha; do
+            if [ "$candidate_base" = "main" ] && [ "$candidate_sha" = "$EXPECTED_SHA" ]; then
+              merged_pr="$candidate_pr"
+              break
+            fi
+          done <<< "$merged_pr_rows"
+          if [ -z "$merged_pr" ]; then
+            echo "Release source $EXPECTED_SHA is not associated with a merged pull request into main" >&2
+            exit 1
+          fi
+
+          {
+            echo "sha=$EXPECTED_SHA"
+            echo "pr=$merged_pr"
+          } >> "$GITHUB_OUTPUT"

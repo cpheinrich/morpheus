@@ -784,6 +784,19 @@ morpheus pm claim ${s.prefix}-001      # stakes the branch on origin, sets in-pr
 The remote branch **is** the claim. Never create the branch by hand — \`pm claim\` derives it from
 the item id, so the two cannot disagree.
 
+**A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
+voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work on
+its branch, test it, open a PR and merge it. A trusted author can authorize the work; the channel
+cannot waive the records or review path. Never edit or release directly from a transcript.
+
+**An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
+with explicit account, project and full resource identifiers; console prose is fallback only. Put
+the caller-perspective verification probe and expected result beside the mutation. Upload, archive
+or deploy success proves delivery, not acceptance: close the item only with evidence of the
+requested user-visible result. Release jobs must depend on
+\`cpheinrich/morpheus/.github/workflows/release-preflight.yml@main\` and check out its \`sha\` output.
+Do not extract a recurring production probe until a second project needs the same one.
+
 **Build vs. borrow — check before writing a generic module.** Before implementing any capability
 that is not specific to this product's domain — parsing, diffing, scheduling, retries, rate
 limiting, fuzzy search, date handling, CLI plumbing — make one quick search of the ecosystem's
