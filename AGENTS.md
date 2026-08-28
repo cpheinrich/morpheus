@@ -79,6 +79,18 @@ pnpm morpheus codebase-memory install --check # verify operational mode without 
 
 ## Device bootstrap
 
+When `morpheus context brief` reports that the CLI is stale and automatic updates are not yet
+configured, ask the user exactly: **"Morpheus is stale. Enable automatic updates after pulls on
+this device?"** Do not infer consent. If yes, run `morpheus self auto-update enable`; if no, run
+`morpheus self auto-update disable` so the choice is remembered. If the installed CLI does not
+recognise `auto-update`, run `morpheus self update` first and then carry out the answer.
+
+Consent installs managed `post-merge` and `post-rewrite` blocks in every registered Morpheus
+project, beside rather than over any existing hook. Later pulls and rebases check the reviewed
+Morpheus `main` commit and update through a disposable clone only when stale. Git deliberately does
+not activate a hook delivered by the pull that contains it, so the session brief and these checked-in
+instructions are the first-use bridge; no repository may silently turn consent on.
+
 Before structural code discovery, run `morpheus codebase-memory install --check`. If it is not
 operational, run `morpheus codebase-memory install` on the trusted device. The repair is
 idempotent: it installs Morpheus's reviewed package pin when absent or at another version, configures supported local
@@ -86,13 +98,14 @@ agent clients, enables automatic indexing and watching, fully indexes this exact
 verifies the index against `HEAD`. A worktree needs its own exact-checkout index even when the main
 clone is already indexed.
 
-This is an explicit device action, never an npm lifecycle script or a session-hook download.
+Installing codebase-memory is an explicit device action, never an npm lifecycle script or a
+session-hook download.
 Morpheus's global CLI is a self-contained copy, never a link to a source checkout or worktree.
 `morpheus self check` compares its commit receipt to current `main`; `context brief` and `doctor`
-surface the same drift. Run `morpheus self update` explicitly to build in a disposable clone,
-install the copy, and remove the clone without touching active work. The codebase-memory version
-stays pinned until a reviewed Morpheus change advances it, so “fresh” cannot silently mean
-“executed whatever upstream published today.”
+surface the same drift. `morpheus self update` is the one-time/manual repair; consented Git hooks
+call `morpheus self ensure` after later pulls and rebases. Both build in a disposable clone, install
+the copy, and remove the clone without touching active work. The codebase-memory version stays
+pinned until a reviewed Morpheus change advances it.
 
 ## Context freshness
 

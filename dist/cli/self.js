@@ -1,4 +1,5 @@
 import { formatMorpheusInstallStatus, installCurrentMorpheus, morpheusInstallStatus, updateMorpheus, } from "../self.js";
+import { autoUpdateStatus, disableAutoUpdate, enableAutoUpdate, ensureAutoUpdate, } from "../self-auto-update.js";
 export async function check(offline) {
     const status = await morpheusInstallStatus({ offline });
     console.log(formatMorpheusInstallStatus(status));
@@ -27,5 +28,52 @@ export async function update() {
         console.error(`Could not update Morpheus: ${error.message}`);
         return 1;
     }
+}
+function printEnsure(result, quietCurrent = false) {
+    if (quietCurrent && result.outcome === "current")
+        return;
+    const mark = result.outcome === "updated" || result.outcome === "current"
+        ? "✓"
+        : result.outcome === "failed"
+            ? "✗"
+            : "~";
+    const output = result.outcome === "failed" ? console.error : console.log;
+    output(`${mark} ${result.detail}`);
+}
+function printAutoUpdate(change) {
+    console.log(`Morpheus auto-update: ${change.config.preference} (${change.config.path})`);
+    for (const repair of change.hooks) {
+        const mark = repair.outcome === "blocked" ? "✗" : repair.outcome === "absent" ? "~" : "✓";
+        console.log(`${mark} ${repair.root} · ${repair.hook} — ${repair.detail}`);
+    }
+    if (change.ensure)
+        printEnsure(change.ensure);
+    return change.hooks.some((repair) => repair.outcome === "blocked") ||
+        change.ensure?.outcome === "failed"
+        ? 1
+        : 0;
+}
+/** Called by managed Git hooks. Current is deliberately silent. */
+export async function ensure() {
+    const result = await ensureAutoUpdate();
+    printEnsure(result, true);
+    return result.outcome === "failed" ? 1 : 0;
+}
+export async function autoUpdate(action, root) {
+    try {
+        if (action === "enable")
+            return printAutoUpdate(await enableAutoUpdate(root));
+        if (action === "disable")
+            return printAutoUpdate(await disableAutoUpdate(root));
+        if (action === "status" || action === undefined) {
+            return printAutoUpdate(await autoUpdateStatus(root));
+        }
+    }
+    catch (error) {
+        console.error(`Could not ${action ?? "inspect"} Morpheus auto-update: ${error.message}`);
+        return 1;
+    }
+    console.error(`Unknown auto-update command "${action}". Use enable, disable, or status.`);
+    return 1;
 }
 //# sourceMappingURL=self.js.map

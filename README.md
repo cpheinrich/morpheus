@@ -33,10 +33,15 @@ node dist/cli/index.js self install
 ```sh
 morpheus self check
 morpheus self update
+morpheus self auto-update enable
 ```
 
 `self update` builds current `main` in a disposable clone, installs the copied package with its
 commit receipt, and removes the clone. It never pulls, rewrites, or becomes linked to active work.
+`self auto-update enable` remembers device-level consent and installs managed `post-merge` and
+`post-rewrite` blocks across the local Morpheus project registry. They preserve existing hooks and
+run the same disposable update after later pulls or rebases only when the installed commit is
+stale. `morpheus self auto-update disable` removes only Morpheus's managed blocks.
 
 Finish the trusted-device bootstrap from either Morpheus or a Morpheus project:
 
@@ -52,9 +57,9 @@ index against its current Git HEAD. `morpheus codebase-memory install --check` a
 
 The global Morpheus CLI is a self-contained copy with a receipt naming the exact reviewed commit.
 `morpheus context brief` and `morpheus doctor` compare that receipt to current `main`; neither
-updates it. Morpheus does not silently execute an upstream `latest` package from a session hook:
-`self update` is explicit, and the codebase-memory version advances as an ordinary reviewed
-Morpheus change.
+updates it. On a device where the user has enabled auto-update, Git hooks call `self ensure` after
+pulls and rebases. Morpheus never executes a registry `latest`: the update installs reviewed
+Morpheus `main`, and codebase-memory advances only through an ordinary reviewed Morpheus change.
 
 Register each project once so ids and prefixes stay unique:
 

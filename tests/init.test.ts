@@ -109,6 +109,10 @@ describe("morpheus init", () => {
       const agents = await read("AGENTS.md");
       expect(agents).toContain("morpheus self check");
       expect(agents).toContain("morpheus self update");
+      expect(agents).toContain('"Morpheus is stale. Enable automatic updates after pulls on');
+      expect(agents).toContain('this device?"');
+      expect(agents).toContain("morpheus self auto-update enable");
+      expect(agents).toContain("Do not infer consent");
       expect(agents).toContain("disposable clone");
       expect(agents).toContain("A worktree needs its own exact-checkout index");
       expect(agents).toContain("never an npm lifecycle script");
