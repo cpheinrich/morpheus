@@ -8,6 +8,7 @@ const HQ_DEPENDENCIES = {
     firebase: "^12.16.0",
     "firebase-admin": "^14.2.0",
     jose: "^6.2.4",
+    "morpheus-kit": "github:cpheinrich/morpheus#main",
 };
 const WORKLOAD_IDENTITY_DEPENDENCIES = {
     "@vercel/functions": "^3.7.6",
@@ -162,8 +163,11 @@ export async function scaffoldWeb(opts) {
             await app("app/sign-in/SignInForm.tsx", t.signInForm(ctx));
             await app("app/hq/layout.tsx", t.hqLayout(ctx, name));
             await app("app/hq/page.tsx", t.hqPage(ctx, name));
+            await app("app/hq/HqSearch.tsx", t.hqSearch(name));
+            await app("app/hq/search-index/route.ts", t.hqSearchRoute(ctx));
             await app("app/hq/SignOutButton.tsx", t.signOutButton(ctx));
             await app("app/hq/no-access/page.tsx", t.noAccessPage());
+            await app("lib/hq/search.ts", t.hqSearchBuild(name));
             if (survey.hasRouteGate) {
                 notes.push("An existing proxy.ts or middleware.ts was left untouched. Add the `/hq` " +
                     "matcher and the session check to it by hand — two gates on one route is " +
