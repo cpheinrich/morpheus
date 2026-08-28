@@ -1398,6 +1398,7 @@ describe("what a lease is scoped to", () => {
     console.log = (...args: unknown[]) => void printed.push(args.join(" "));
     try {
       await brief(root, {
+        autoUpdatePreference: "unconfigured",
         morpheus: {
           source: "/installed/morpheus",
           kind: "package",
@@ -1438,7 +1439,11 @@ describe("what a lease is scoped to", () => {
     }
 
     expect(printed.join("\n")).toContain("Morpheus CLI is not current (aaaaaaa → bbbbbbb)");
-    expect(printed.join("\n")).toContain("morpheus self update");
+    expect(printed.join("\n")).toContain(
+      'ask the user: "Morpheus is stale. Enable automatic updates after pulls on this device?"',
+    );
+    expect(printed.join("\n")).toContain("morpheus self auto-update enable");
+    expect(printed.join("\n")).toContain("morpheus self auto-update disable");
   });
 
   it("re-anchors the receipt when the session itself switched branches", async () => {

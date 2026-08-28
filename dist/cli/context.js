@@ -6,6 +6,7 @@ import { projectPolicy } from "../session/policy.js";
 import { gate as gateAction, offlineDeclared } from "../session/gate.js";
 import { CODEX_HOOKS, installContext } from "../session/install.js";
 import { morpheusInstallStatus } from "../self.js";
+import { readAutoUpdateConfig, } from "../self-auto-update.js";
 const OK = "✓";
 const NO = "✗";
 function ago(checkedAt, now) {
@@ -246,8 +247,23 @@ export async function brief(root, opts = {}) {
     if (morpheus.fresh === false) {
         const installed = morpheus.installedSha?.slice(0, 7) ?? "unknown";
         const current = morpheus.remoteSha?.slice(0, 7) ?? "unknown";
-        console.log(`! Morpheus CLI is not current (${installed} → ${current}). Run \`morpheus self update\`; ` +
-            "it will not touch active source work.");
+        const preference = opts.autoUpdatePreference ?? (await readAutoUpdateConfig()).preference;
+        console.log(`! Morpheus CLI is not current (${installed} → ${current}).`);
+        if (preference === "unconfigured") {
+            console.log('Before starting work, ask the user: "Morpheus is stale. Enable automatic updates after pulls on this device?"');
+            console.log("If yes, run `morpheus self auto-update enable`. If no, run " +
+                "`morpheus self auto-update disable` so the choice is remembered.");
+        }
+        else if (preference === "enabled") {
+            console.log("Automatic updates are enabled but this install remains stale. Run `morpheus self ensure`; " +
+                "it will not touch active source work.");
+        }
+        else if (preference === "disabled") {
+            console.log("Automatic updates are disabled on this device. Run `morpheus self update` to update once.");
+        }
+        else {
+            console.log("The auto-update preference is invalid. Run `morpheus self auto-update status` to inspect it.");
+        }
         console.log("");
     }
     if (previous) {
