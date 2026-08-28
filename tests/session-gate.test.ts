@@ -1397,7 +1397,16 @@ describe("what a lease is scoped to", () => {
     const log = console.log;
     console.log = (...args: unknown[]) => void printed.push(args.join(" "));
     try {
-      await brief(root);
+      await brief(root, {
+        morpheus: {
+          source: "/installed/morpheus",
+          kind: "package",
+          relation: "current",
+          installedSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          remoteSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          fresh: true,
+        },
+      });
     } finally {
       console.log = log;
     }
@@ -1405,6 +1414,31 @@ describe("what a lease is scoped to", () => {
     const out = printed.join("\n");
     expect(out).toContain("no context receipt");
     expect(out).toContain(".agent/learned.md");
+  });
+
+  it("reports installed CLI drift from the session-start chokepoint", async () => {
+    const { brief } = await import("../src/cli/context.js");
+    const { root } = await certified();
+    const printed: string[] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => void printed.push(args.join(" "));
+    try {
+      await brief(root, {
+        morpheus: {
+          source: "/installed/morpheus",
+          kind: "package",
+          relation: "stale",
+          installedSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          remoteSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          fresh: false,
+        },
+      });
+    } finally {
+      console.log = log;
+    }
+
+    expect(printed.join("\n")).toContain("Morpheus CLI is not current (aaaaaaa → bbbbbbb)");
+    expect(printed.join("\n")).toContain("morpheus self update");
   });
 
   it("re-anchors the receipt when the session itself switched branches", async () => {

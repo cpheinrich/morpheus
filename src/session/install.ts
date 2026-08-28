@@ -15,8 +15,8 @@ const exec = promisify(execFile);
  * to; the scaffold imports it.
  *
  * Bare `morpheus`, not `pnpm morpheus`: `init` writes no `package.json`, so a
- * scaffolded project has nothing for pnpm to resolve, and AGENTS.md documents
- * `npm link` putting the binary on PATH.
+ * scaffolded project has nothing for pnpm to resolve. The self-contained
+ * global install puts the reviewed binary on PATH without linking a checkout.
  */
 export const SESSION_START_COMMAND = "morpheus context brief";
 

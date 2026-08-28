@@ -24,6 +24,7 @@
     "./registry": "./dist/registry/index.js",
     "./doctor": "./dist/doctor/index.js",
     "./codebase-memory": "./dist/codebase-memory.js",
+    "./self": "./dist/self.js",
     "./design": "./dist/design/index.js",
     "./team": "./dist/team/index.js"
   },

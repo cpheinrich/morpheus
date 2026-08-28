@@ -2,6 +2,7 @@ import { doctor, formatFindings } from "../doctor/index.js";
 import { readRegistry } from "../registry/index.js";
 import { offlineDeclared } from "../session/gate.js";
 import { codebaseMemoryStatus } from "../codebase-memory.js";
+import { morpheusInstallStatus } from "../self.js";
 /**
  * Report drift for one project, or every registered project with --all.
  *
@@ -21,9 +22,19 @@ export async function run(cwd, all, offline) {
         return 0;
     }
     let errors = 0;
-    for (const { label, root } of roots) {
+    const self = await morpheusInstallStatus({ offline: isOffline });
+    for (const [index, { label, root }] of roots.entries()) {
         const findings = await doctor({ root, offline: isOffline });
-        const memory = await codebaseMemoryStatus(root, { checkMorpheusRemote: !isOffline });
+        if (index === 0 && self.fresh !== true && self.relation !== "offline") {
+            findings.push({
+                severity: "warning",
+                check: "morpheus",
+                message: self.fresh === false
+                    ? "The installed Morpheus CLI does not contain current main. Run `morpheus self update`; it leaves source checkouts unchanged."
+                    : "The installed Morpheus CLI provenance or current main could not be verified. Run `morpheus self check`.",
+            });
+        }
+        const memory = await codebaseMemoryStatus(root, { checkMorpheusRemote: false });
         if (!memory.ready) {
             findings.push({
                 severity: "warning",

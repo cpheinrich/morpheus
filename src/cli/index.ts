@@ -48,6 +48,7 @@ import {
 import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
+import { check as selfCheck, install as selfInstall, update as selfUpdate } from "./self.js";
 
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -125,8 +126,11 @@ Usage
                             install the pinned official package when absent,
                             configure detected agent clients, enable auto-index
                             and auto-watch, and fully index this exact checkout
+  morpheus self check       verify the installed CLI contains current Morpheus main
+  morpheus self update      install current main from a disposable clean checkout
+  morpheus self install     install this clean current-main checkout as a copied package
   morpheus doctor           [--all] [--offline]
-                            --offline skips the one network check (does the trunk resolve)
+                            --offline skips project-trunk and Morpheus-main network checks
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge
@@ -388,6 +392,14 @@ async function main(): Promise<number> {
   const [group, command, ...rest] = flags.positional;
   const dir = resolve(process.cwd(), flags.dir);
 
+  if (group === "self") {
+    if (command === "check" || command === undefined) return selfCheck(flags.offline);
+    if (command === "update") return selfUpdate();
+    if (command === "install") return selfInstall(process.cwd());
+    console.error(`Unknown self command "${command}".\n\n${HELP}`);
+    return 1;
+  }
+
   if (group === "doctor") return doctorRun(process.cwd(), flags.all, flags.offline);
 
   if (group === "codebase-memory") {
@@ -629,14 +641,14 @@ async function main(): Promise<number> {
   }
 
   if (group === "context") {
-    // `--offline` reaches these the way it reaches `doctor`: each consults the
-    // trunk, and on an unreachable remote the 15s timeout buys an `unknown`
-    // the declaration already stated. `brief` is not among them — it makes no
-    // network call at all, which is why it takes no argument here.
+    // `--offline` reaches these the way it reaches `doctor`: each consults a
+    // remote, and on an unreachable one the declaration already answers the
+    // question. `brief` also checks the installed CLI now, but remains
+    // informational and always exits zero.
     const off = offlineDeclared(flags.offline);
     if (command === "refresh") return contextRefresh(process.cwd(), off);
     if (command === "check") return contextCheck(process.cwd(), off);
-    if (command === "brief") return contextBrief(process.cwd());
+    if (command === "brief") return contextBrief(process.cwd(), { offline: off });
     // Not gated, and deliberately: this is the command that makes a project
     // able to be fresh, so refusing it without a receipt would lock out the
     // repair for the state it is diagnosing.

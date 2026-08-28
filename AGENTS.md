@@ -38,7 +38,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 
 ```sh
 pnpm install
-pnpm compile && npm link    # once — puts `morpheus` on PATH for every project
+pnpm compile && node dist/cli/index.js self install  # clean current main — copied, never linked
 pnpm typecheck             # tsc --noEmit
 pnpm test                  # vitest run
 pnpm test:rules            # generated firestore.rules vs the emulator — needs Java
@@ -87,10 +87,11 @@ verifies the index against `HEAD`. A worktree needs its own exact-checkout index
 clone is already indexed.
 
 This is an explicit device action, never an npm lifecycle script or a session-hook download.
-Morpheus's global CLI is linked into the canonical clone, whose committed `dist/` is rebuilt and
-checked in CI; update that clone with a fast-forward pull when the context protocol reports the
-Morpheus trunk has moved. The codebase-memory version stays pinned until a reviewed Morpheus change
-advances it, and the check requires the installed version to match, so “fresh” cannot silently mean
+Morpheus's global CLI is a self-contained copy, never a link to a source checkout or worktree.
+`morpheus self check` compares its commit receipt to current `main`; `context brief` and `doctor`
+surface the same drift. Run `morpheus self update` explicitly to build in a disposable clone,
+install the copy, and remove the clone without touching active work. The codebase-memory version
+stays pinned until a reviewed Morpheus change advances it, so “fresh” cannot silently mean
 “executed whatever upstream published today.”
 
 ## Context freshness

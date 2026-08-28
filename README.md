@@ -21,11 +21,22 @@ generates with its own tooling.
 
 ```sh
 git clone https://github.com/cpheinrich/morpheus.git ~/code/morpheus
-cd ~/code/morpheus && pnpm install && pnpm compile && npm link
+cd ~/code/morpheus
+pnpm install --frozen-lockfile && pnpm compile
+node dist/cli/index.js self install
 ```
 
-`npm link` puts `morpheus` on your PATH, so it works from any project directory. There is no
-published package — see the licence below.
+`self install` packs the reviewed checkout and copies it into the global npm package directory, so
+`morpheus` works from any project without depending on that checkout. There is no published package
+— see the licence below. Later updates need no source checkout:
+
+```sh
+morpheus self check
+morpheus self update
+```
+
+`self update` builds current `main` in a disposable clone, installs the copied package with its
+commit receipt, and removes the clone. It never pulls, rewrites, or becomes linked to active work.
 
 Finish the trusted-device bootstrap from either Morpheus or a Morpheus project:
 
@@ -39,12 +50,11 @@ enables automatic indexing and watching, fully indexes the exact checkout, and t
 index against its current Git HEAD. `morpheus codebase-memory install --check` and
 `morpheus doctor` report drift without repairing it.
 
-The global Morpheus CLI is a link into this clone, and `dist/` is committed and checked against
-source in CI. A fast-forward pull therefore updates both source and runnable output through the
-same reviewed commit; `pnpm compile && npm link` repairs a local build or link. Morpheus does not
-silently execute an unreviewed upstream `latest` package from a session hook: the codebase-memory
-version is advanced as an ordinary reviewed Morpheus change, and the device check requires the
-installed version to match that pin.
+The global Morpheus CLI is a self-contained copy with a receipt naming the exact reviewed commit.
+`morpheus context brief` and `morpheus doctor` compare that receipt to current `main`; neither
+updates it. Morpheus does not silently execute an upstream `latest` package from a session hook:
+`self update` is explicit, and the codebase-memory version advances as an ordinary reviewed
+Morpheus change.
 
 Register each project once so ids and prefixes stay unique:
 

@@ -9,5 +9,6 @@ export * from "./firebase/index.js";
 export * from "./registry/index.js";
 export * from "./doctor/index.js";
 export * from "./codebase-memory.js";
+export * from "./self.js";
 export * from "./session/index.js";
 //# sourceMappingURL=index.js.map

@@ -27,7 +27,7 @@ interface FakeState {
 }
 
 function fakeRunner(root: string, state: FakeState, calls: string[]): CodebaseMemoryCommandRunner {
-  return async (command, args) => {
+  return async (command, args, cwd) => {
     calls.push([command, ...args].join(" "));
     const isNative = command === "codebase-memory-mcp";
     const cbmArgs = isNative ? args : args.slice(5);
@@ -75,11 +75,19 @@ function fakeRunner(root: string, state: FakeState, calls: string[]): CodebaseMe
         }),
       );
     }
-    if (command === "git" && args.join(" ") === "rev-parse HEAD") return ok("abc123\n");
-    if (command === "git" && args.join(" ") === "ls-remote --exit-code origin refs/heads/main") {
-      return ok("abc123\trefs/heads/main\n");
+    if (command === "git" && args.join(" ") === "rev-parse --show-toplevel") return ok(`${cwd}\n`);
+    if (command === "git" && args.join(" ") === "rev-parse HEAD") {
+      return ok(cwd === resolve(root) ? "abc123\n" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
     }
-    if (command === "git" && args.join(" ") === "merge-base --is-ancestor abc123 abc123") {
+    if (command === "git" && args.join(" ") === "status --porcelain") return ok();
+    if (command === "git" && args[0] === "ls-remote") {
+      return ok("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/heads/main\n");
+    }
+    if (
+      command === "git" &&
+      args.join(" ") ===
+        "merge-base --is-ancestor aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ) {
       return ok();
     }
     return failed(`unexpected command: ${command} ${args.join(" ")}`);
@@ -142,7 +150,7 @@ describe("codebase-memory operational mode", () => {
     expect(status.issues).toContain("the index does not match this checkout's current HEAD");
   });
 
-  it("rejects a linked Morpheus checkout that does not contain current main", async () => {
+  it("rejects an installed Morpheus CLI that does not contain current main", async () => {
     const state: FakeState = {
       nativeAvailable: true,
       autoIndex: true,
@@ -152,6 +160,9 @@ describe("codebase-memory operational mode", () => {
     };
     const base = fakeRunner(root, state, []);
     const runner: CodebaseMemoryCommandRunner = async (command, args, cwd) => {
+      if (command === "git" && args[0] === "ls-remote") {
+        return ok("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\trefs/heads/main\n");
+      }
       if (command === "git" && args[0] === "merge-base") return failed("not an ancestor");
       return base(command, args, cwd);
     };
@@ -162,7 +173,7 @@ describe("codebase-memory operational mode", () => {
     expect(status.codebaseMemoryReady).toBe(true);
     expect(status.ready).toBe(false);
     expect(
-      status.issues.some((issue) => issue.includes("the linked Morpheus CLI is behind origin/main")),
+      status.issues.some((issue) => issue.includes("the installed Morpheus CLI does not contain current main")),
     ).toBe(true);
     expect(result.changed).toBe(false);
   });
