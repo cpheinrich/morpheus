@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { addProject, readRegistry, removeProject, RegistryError, suggestPrefix, takenPrefixes, } from "../registry/index.js";
+import { findMorpheusBinary, installProjectAutoUpdate, readAutoUpdateConfig, } from "../self-auto-update.js";
 async function manifest(root) {
     try {
         return JSON.parse(await readFile(join(root, "morpheus.json"), "utf8"));
@@ -39,6 +40,19 @@ export async function add(cwd, prefixArg) {
         return 1;
     }
     console.log(`Registered ${name} as ${prefix} — ${root}`);
+    const autoUpdate = await readAutoUpdateConfig();
+    if (autoUpdate.preference === "enabled") {
+        const binary = await findMorpheusBinary();
+        if (!binary) {
+            console.warn("Morpheus auto-update is enabled, but its executable was not found on PATH.");
+        }
+        else {
+            const repairs = await installProjectAutoUpdate(root, binary);
+            for (const repair of repairs.filter((entry) => entry.outcome === "blocked")) {
+                console.warn(`Could not install ${repair.hook}: ${repair.detail}`);
+            }
+        }
+    }
     if (!m.prefix) {
         console.log(`\nAdd "prefix": "${prefix}" to morpheus.json. The registry is a local index;\n` +
             "the manifest is what travels with the repo and is authoritative.");

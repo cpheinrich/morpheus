@@ -103,10 +103,15 @@ means anything recorded at the moment you hit the problem.
 ${MORPHEUS_REPO}/issues`;
 export const codebaseMemoryBootstrap = () => `## Device bootstrap
 
-Run \`morpheus self check\` at session start when the hook reports CLI drift; repair it explicitly
-with \`morpheus self update\`. The update builds current Morpheus \`main\` in a disposable clone,
-installs a self-contained copy with its commit receipt, removes the clone, and never touches active
-source work.
+When the session brief reports that Morpheus is stale and automatic updates have not been
+configured, ask the user exactly: **"Morpheus is stale. Enable automatic updates after pulls on
+this device?"** Do not infer consent. If yes, run \`morpheus self auto-update enable\`; if no, run
+\`morpheus self auto-update disable\` so the choice is remembered. If the installed CLI does not
+recognise \`auto-update\`, run \`morpheus self update\` first and then carry out the answer. The
+update builds current Morpheus \`main\` in a disposable clone, installs a self-contained copy with
+its commit receipt, removes the clone, and never touches active source work. Once enabled, managed
+\`post-merge\` and \`post-rewrite\` hooks update Morpheus after later pulls and rebases while
+preserving any hook already present. \`morpheus self check\` remains the read-only freshness check.
 
 Before structural code discovery, run \`morpheus codebase-memory install --check\`. If it is not
 operational, run \`morpheus codebase-memory install\` on the trusted device. It is idempotent: it
@@ -115,10 +120,10 @@ local agent clients, enables automatic indexing and watching, and fully indexes 
 checkout. It verifies the index against \`HEAD\`. A worktree needs its own exact-checkout index even
 when the main clone is indexed.
 
-This is an explicit device action, never an npm lifecycle script or a session-hook download. The
-version remains pinned until a reviewed Morpheus change advances it, and the check requires the
-installed version to match. The Morpheus CLI is likewise updated only by the explicit self command;
-the session hook detects drift but never downloads or executes it.`;
+Installing codebase-memory is an explicit device action, never an npm lifecycle script or a
+session-hook download. Its version remains pinned until a reviewed Morpheus change advances it,
+and the check requires the installed version to match. Morpheus auto-update is separately gated by
+the user's remembered device-level consent.`;
 /**
  * A README for humans.
  *

@@ -1,5 +1,6 @@
 import { type Reach } from "../session/gate.js";
 import { type MorpheusInstallStatus } from "../self.js";
+import { type AutoUpdatePreference } from "../self-auto-update.js";
 /**
  * Take a receipt, and **show the delta rather than just recording it**.
  *
@@ -43,6 +44,7 @@ export declare function status(root: string, offline?: boolean): Promise<number>
 export interface BriefOptions {
     offline?: boolean;
     morpheus?: MorpheusInstallStatus;
+    autoUpdatePreference?: AutoUpdatePreference;
 }
 export declare function brief(root: string, opts?: BriefOptions): Promise<number>;
 /**

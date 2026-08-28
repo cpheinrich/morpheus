@@ -81,8 +81,17 @@ CLI part of the original distribution decision. A link makes the source director
 the clean worktree created to protect unrelated dirty work then cannot be removed without breaking
 every project on the machine. `morpheus self install` instead packs one clean exact-main checkout,
 installs a standalone directory, and records its commit. `morpheus self update` does that from a
-disposable clone and removes it. Session start and `doctor` detect drift; neither updates. This keeps
-convergence on `main` explicit without letting installation own or rewrite a working repository.
+disposable clone and removes it. Session start and `doctor` detect drift. This keeps installation
+from owning or rewriting a working repository.
+
+**CLI auto-update is device-consented and project-local** — 2026-08-28. Git will not activate a
+hook delivered by the pull that contains it; allowing that would let an arbitrary clone execute
+code. Therefore checked-in agent instructions and the existing session-start brief ask once when
+the CLI is stale. `enable` or `disable` records the answer in `~/.morpheus/auto-update.json`.
+Consent installs marked blocks in each registered project's `post-merge` and `post-rewrite` hooks,
+preserving existing content such as Git LFS. The blocks call the self-contained CLI, update through
+a locked disposable clone only when canonical `main` is verifiably newer, and never fail a completed
+pull. New registry entries inherit an existing yes. Disable removes only Morpheus's marked blocks.
 
 **Runtime code reaches projects as a git dependency** — 2026-07-29. `npm link` does not survive a
 Vercel build and a workflow reference cannot be imported, so components and token modules need to

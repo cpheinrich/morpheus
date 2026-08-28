@@ -23,7 +23,7 @@ import { check as contextCheck, guard, brief as contextBrief, install as context
 import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
-import { check as selfCheck, install as selfInstall, update as selfUpdate } from "./self.js";
+import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
 const HELP = `morpheus — an operating system for building and running companies
 
 Usage
@@ -103,6 +103,9 @@ Usage
   morpheus self check       verify the installed CLI contains current Morpheus main
   morpheus self update      install current main from a disposable clean checkout
   morpheus self install     install this clean current-main checkout as a copied package
+  morpheus self ensure      update if consented and stale; used by managed Git hooks
+  morpheus self auto-update enable|disable|status
+                            manage consented post-pull updates across the local registry
   morpheus doctor           [--all] [--offline]
                             --offline skips project-trunk and Morpheus-main network checks
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
@@ -318,6 +321,10 @@ async function main() {
             return selfUpdate();
         if (command === "install")
             return selfInstall(process.cwd());
+        if (command === "ensure")
+            return selfEnsure();
+        if (command === "auto-update")
+            return selfAutoUpdate(rest[0], process.cwd());
         console.error(`Unknown self command "${command}".\n\n${HELP}`);
         return 1;
     }

@@ -1225,8 +1225,26 @@ into permanent runtime state or rewrite active work.
 reported by `context brief` at session start and by `doctor`; it is advisory and silent when current.
 An explicit offline declaration skips it. A legacy linked checkout is trusted only when the package
 root is the exact Git root (never merely nested inside one), is clean, and contains current main.
-The session hook detects drift but never downloads or executes new code; update remains a visible
-operator action.
+
+Automatic update is a remembered **device decision**, never repository-implied consent.
+`morpheus self auto-update enable` writes schema-versioned state under `~/.morpheus/` and installs a
+marked block in `post-merge` and `post-rewrite` for every local registry entry. The block is appended
+to recognised shell hooks rather than replacing them, so Git LFS and project-specific behaviour
+remain intact. A new registry entry inherits an existing yes. Disable removes only the marked
+Morpheus block. Status reports every project and malformed or incompatible hooks without editing
+them.
+
+The managed block invokes the absolute path of the copied CLI and calls `self ensure`. Ensure is
+silent when current, serialises updates with a device lock, defers when canonical `main` cannot be
+verified, and uses the same disposable-clone installation as `self update` when stale. Hook failures
+are reported but swallowed so an already-completed pull or rebase is not presented as failed.
+
+Git intentionally cannot activate a hook delivered by that same pull; otherwise cloning or pulling
+an arbitrary repository could execute code on the device. The first-use bridge is therefore the
+existing agent session-start brief plus checked-in `AGENTS.md`: when drift is detected and no choice
+exists, the agent asks the user once, then performs enable or disable. An older CLI is updated through
+its existing explicit `self update` command after yes, then enables the managed hooks. No package
+lifecycle or session hook infers consent.
 
 ## 8. Project management as files
 
