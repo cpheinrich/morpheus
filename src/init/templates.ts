@@ -1194,6 +1194,7 @@ export const gitignore = (): string => `
 local/
 .env
 .env.local
+.obsidian/
 
 # Editor-pasted images, which land at the repo root or in the folder that
 # happens to be open. A 448 KB screenshot reached a public repository that way.
