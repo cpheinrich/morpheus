@@ -766,3 +766,8 @@ references that survived selection, `imagery.json` identifies approved art and s
 `application.md` maps every asset to an actual public-web or product surface. `brand status` stays
 red when a package has a token set but no approved imagery or no image-to-surface mapping. This is
 the guard against a carefully reviewed direction turning into a neutral first home page.
+
+**Third-party GitHub Actions use immutable commit SHAs** — 2026-08-28. Human-readable comments keep
+the upstream major visible. Morpheus-owned reusable workflows remain on the established `@main`
+contract so consuming repositories receive fixes without coordinated version bumps; external tags
+do not receive that trust.
