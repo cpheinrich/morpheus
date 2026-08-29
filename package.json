@@ -57,9 +57,15 @@
     "react-dom": ">=19"
   },
   "peerDependenciesMeta": {
-    "pdf-parse": { "optional": true },
-    "react": { "optional": true },
-    "react-dom": { "optional": true }
+    "pdf-parse": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
@@ -69,6 +75,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "eslint": "^10.9.1",
     "firebase": "^12.17.0",
     "js-yaml": "^5.2.2",
     "jsdom": "^26.1.0",
@@ -77,6 +84,7 @@
     "react-dom": "^19.2.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.68.0",
     "vite": "^7.3.6",
     "vitest": "^4.1.10"
   },

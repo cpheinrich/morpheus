@@ -5,10 +5,10 @@ date: 2026-08-28
 
 # Weekly code-health audit
 
-Ran the first report-only weekly audit from fresh `origin/main` in an isolated clone. Inventoried
+Ran the first weekly audit from fresh `origin/main` in an isolated clone. Inventoried
 the repository, ran the core validation suite, inspected workflow state and dependency/configuration
 contracts, and recorded ranked findings in `qa/audits/2026-08-28-technical-health.md`.
 
-The exact codebase-memory index installed successfully, but the MCP transport closed before it could
-be queried; direct source and command evidence were used instead. No product code, workflow,
-scheduler, credentials, dependency, or automatic-remediation change was made.
+The audit PR now installs and enables the missing lint control and removes the unused declaration it
+surfaced. The scheduled-workflow repair and immutable action pins are implemented separately in
+draft PR #177, which the audit PR links and does not merge.
