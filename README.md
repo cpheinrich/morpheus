@@ -45,10 +45,10 @@ stale. `morpheus self auto-update disable` removes only Morpheus's managed block
 
 Projects also carry a version-independent first-use bridge. Their session hook runs
 `.morpheus/session-start.sh`, which only inspects the installed CLI. If the CLI predates `self`, the
-agent asks for consent and, after yes, runs `sh .morpheus/bootstrap.sh enable`. That script invokes
-the committed CLI from a disposable current-main clone rather than the stale binary, installs the
-standalone package, registers the project, and enables the same managed Git hooks. No records the
-choice without installing anything.
+agent asks for consent and, after yes, runs `sh .morpheus/bootstrap.sh enable`. That script installs
+the reviewed lockfile in a disposable current-main clone, invokes its committed CLI rather than the
+stale binary, installs the standalone package, registers the project, and enables the same managed
+Git hooks. No records the choice without installing anything.
 
 Finish the trusted-device bootstrap from either Morpheus or a Morpheus project:
 

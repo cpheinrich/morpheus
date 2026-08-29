@@ -90,8 +90,9 @@ updates after pulls on this device?"** Do not infer consent.
   `morpheus self auto-update disable`.
 
 The legacy bootstrap never calls the installed `morpheus` binary. A yes clones reviewed current
-`main`, invokes that clone's committed CLI directly, installs the standalone package, registers the
-current project and installs the managed hooks. A no only records the choice.
+`main`, installs that clone's reviewed lockfile, invokes its committed CLI directly, installs the
+standalone package, registers the current project and installs the managed hooks. A no only records
+the choice.
 
 Consent installs managed `post-merge` and `post-rewrite` blocks in every registered Morpheus
 project, beside rather than over any existing hook. Later pulls and rebases check the reviewed

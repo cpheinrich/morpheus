@@ -112,7 +112,10 @@ describe("version-independent Morpheus bootstrap", () => {
       "npm",
       '#!/bin/sh\nif [ "$1" = "prefix" ] && [ "$2" = "--global" ]; then printf \'%s\\n\' "$MORPHEUS_TEST_PREFIX"; exit 0; fi\nexit 1\n',
     );
-    await executable("pnpm", "#!/bin/sh\nexit 0\n");
+    await executable(
+      "pnpm",
+      '#!/bin/sh\nprintf \'pnpm|%s|%s\\n\' "$PWD" "$*" >> "$MORPHEUS_TEST_LOG"\nexit 0\n',
+    );
     await executable("morpheus", `#!/bin/sh\nprintf called >> "${staleLog}"\nexit 1\n`);
 
     const { stdout } = await runFile("sh", [MORPHEUS_BOOTSTRAP, "enable"], {
@@ -125,6 +128,9 @@ describe("version-independent Morpheus bootstrap", () => {
     });
 
     const commands = await readFile(commandLog, "utf8");
+    expect(commands).toContain("pnpm|");
+    expect(commands).toContain("|install --frozen-lockfile");
+    expect(commands.indexOf("pnpm|")).toBeLessThan(commands.indexOf("node|"));
     expect(commands).toContain("dist/cli/index.js self install");
     expect(commands).toContain("dist/cli/index.js registry add");
     expect(commands).toContain("dist/cli/index.js self auto-update enable");

@@ -64,6 +64,7 @@ fi
 
 (
   cd "$clone"
+  pnpm install --frozen-lockfile
   node dist/cli/index.js self install
 )
 npm_prefix=$(npm prefix --global)

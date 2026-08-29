@@ -137,10 +137,11 @@ updates after pulls on this device?"** Do not infer consent.
   \`morpheus self auto-update disable\`.
 
 The legacy bootstrap never invokes the installed \`morpheus\` binary. After yes it clones reviewed
-Morpheus \`main\` into a disposable directory and invokes that clone's committed CLI directly. That
-installs the current self-contained package, registers this project, enables managed \`post-merge\`
-and \`post-rewrite\` hooks, then removes the clone. No records the choice without installing
-anything. \`morpheus self check\` remains the read-only freshness check.
+Morpheus \`main\` into a disposable directory, installs that clone's reviewed lockfile, and invokes
+its committed CLI directly. That installs the current self-contained package, registers this
+project, enables managed \`post-merge\` and \`post-rewrite\` hooks, then removes the clone. No
+records the choice without installing anything. \`morpheus self check\` remains the read-only
+freshness check.
 
 Before structural code discovery, run \`morpheus codebase-memory install --check\`. If it is not
 operational, run \`morpheus codebase-memory install\` on the trusted device. It is idempotent: it

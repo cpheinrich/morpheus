@@ -1246,9 +1246,10 @@ continues into `context brief`, while a missing CLI or one that predates the ent
 emits the exact consent instruction.
 
 After yes, `.morpheus/bootstrap.sh enable` clones reviewed current `main` into a disposable
-directory and invokes that clone's committed CLI directly — never the stale installed binary. It
-installs the standalone package, registers the current project, enables the managed hooks across
-the registry, and removes the clone. After no, `bootstrap.sh disable` writes the schema-versioned
+directory, installs its reviewed lockfile, and invokes that clone's committed CLI directly — never
+the stale installed binary. It installs the standalone package, registers the current project,
+enables the managed hooks across the registry, and removes the clone. After no, `bootstrap.sh
+disable` writes the schema-versioned
 disabled choice without installing code. The provider SessionStart files call the shim, and
 `morpheus context install` safely creates or refreshes all three generated `.morpheus/` files while
 replacing the legacy direct `context brief` hook. No package lifecycle or session hook infers
