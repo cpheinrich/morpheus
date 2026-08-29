@@ -103,15 +103,21 @@ means anything recorded at the moment you hit the problem.
 ${MORPHEUS_REPO}/issues`;
 export const codebaseMemoryBootstrap = () => `## Device bootstrap
 
-When the session brief reports that Morpheus is stale and automatic updates have not been
-configured, ask the user exactly: **"Morpheus is stale. Enable automatic updates after pulls on
-this device?"** Do not infer consent. If yes, run \`morpheus self auto-update enable\`; if no, run
-\`morpheus self auto-update disable\` so the choice is remembered. If the installed CLI does not
-recognise \`auto-update\`, run \`morpheus self update\` first and then carry out the answer. The
-update builds current Morpheus \`main\` in a disposable clone, installs a self-contained copy with
-its commit receipt, removes the clone, and never touches active source work. Once enabled, managed
-\`post-merge\` and \`post-rewrite\` hooks update Morpheus after later pulls and rebases while
-preserving any hook already present. \`morpheus self check\` remains the read-only freshness check.
+The checked-in \`.morpheus/session-start.sh\` shim first asks whether the installed CLI supports
+current self-update. When it or \`morpheus context brief\` reports that Morpheus is stale and
+automatic updates are unconfigured, ask the user exactly: **"Morpheus is stale. Enable automatic
+updates after pulls on this device?"** Do not infer consent.
+
+- If the shim reports **Morpheus bootstrap required**, a yes runs
+  \`sh .morpheus/bootstrap.sh enable\`; a no runs \`sh .morpheus/bootstrap.sh disable\`.
+- Otherwise a yes runs \`morpheus self auto-update enable\`; a no runs
+  \`morpheus self auto-update disable\`.
+
+The legacy bootstrap never invokes the installed \`morpheus\` binary. After yes it clones reviewed
+Morpheus \`main\` into a disposable directory and invokes that clone's committed CLI directly. That
+installs the current self-contained package, registers this project, enables managed \`post-merge\`
+and \`post-rewrite\` hooks, then removes the clone. No records the choice without installing
+anything. \`morpheus self check\` remains the read-only freshness check.
 
 Before structural code discovery, run \`morpheus codebase-memory install --check\`. If it is not
 operational, run \`morpheus codebase-memory install\` on the trusted device. It is idempotent: it
@@ -1291,11 +1297,11 @@ morpheus context brief     # session start: discards the last receipt, says what
 morpheus context install   # wire the hooks that run \`brief\` — safe to re-run
 \`\`\`
 
-\`context brief\` is the only Morpheus command this project runs automatically, from a
+\`.morpheus/session-start.sh\` is the only Morpheus bridge this project runs automatically, from a
 session-start hook in **both** \`.claude/settings.json\` (Claude Code) and \`.codex/hooks.json\`
-(Codex). They carry the same schema in two files. \`morpheus context install\` writes or repairs
-both, merging rather than overwriting, and is the command to run on a repository scaffolded before
-either existed.
+(Codex). It only inspects: a current CLI continues into \`context brief\`; a missing or pre-\`self\`
+CLI emits the exact consent instructions above. \`morpheus context install\` writes or repairs the
+shim, bootstrap, and both provider files, merging rather than overwriting.
 
 **Codex will not run an untrusted hook and says nothing when it declines.** Once, run \`/hooks\` in
 a Codex session and trust it; trust is keyed on the hook's hash, so an edit needs trusting again.

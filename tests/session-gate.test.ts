@@ -1425,6 +1425,7 @@ describe("what a lease is scoped to", () => {
     console.log = (...args: unknown[]) => void printed.push(args.join(" "));
     try {
       await brief(root, {
+        autoUpdatePreference: "unconfigured",
         morpheus: {
           source: "/installed/morpheus",
           kind: "package",

@@ -1240,11 +1240,19 @@ verified, and uses the same disposable-clone installation as `self update` when 
 are reported but swallowed so an already-completed pull or rebase is not presented as failed.
 
 Git intentionally cannot activate a hook delivered by that same pull; otherwise cloning or pulling
-an arbitrary repository could execute code on the device. The first-use bridge is therefore the
-existing agent session-start brief plus checked-in `AGENTS.md`: when drift is detected and no choice
-exists, the agent asks the user once, then performs enable or disable. An older CLI is updated through
-its existing explicit `self update` command after yes, then enables the managed hooks. No package
-lifecycle or session hook infers consent.
+an arbitrary repository could execute code on the device. The first-use bridge is therefore a
+checked-in `.morpheus/session-start.sh` plus `AGENTS.md`. The shim only inspects: a current CLI
+continues into `context brief`, while a missing CLI or one that predates the entire `self` command
+emits the exact consent instruction.
+
+After yes, `.morpheus/bootstrap.sh enable` clones reviewed current `main` into a disposable
+directory and invokes that clone's committed CLI directly — never the stale installed binary. It
+installs the standalone package, registers the current project, enables the managed hooks across
+the registry, and removes the clone. After no, `bootstrap.sh disable` writes the schema-versioned
+disabled choice without installing code. The provider SessionStart files call the shim, and
+`morpheus context install` safely creates or refreshes all three generated `.morpheus/` files while
+replacing the legacy direct `context brief` hook. No package lifecycle or session hook infers
+consent.
 
 ## 8. Project management as files
 

@@ -463,3 +463,17 @@ earlier: reconciliation normally changes merged `review` items to `shipped`, but
 prevent the next reconciling command from ever starting. The heartbeat now joins its existing
 claim list to one read-only merged-PR query, degrades to status-only evidence when `gh` is absent,
 and reports completed branches separately instead of making them vanish from every surface.
+
+## A bootstrap cannot depend on the capability it is bootstrapping
+
+2026-08-28. The first auto-update rollout told an old installation to run `morpheus self update`
+before enabling hooks. `self` had only been introduced in PR #167, so a collaborator whose global
+CLI predated that change got `Unknown command "self"` and had no path forward. Lakina's rollout
+contained only prose, so every test passed while the stated first-use bridge was impossible on the
+one device class it existed to repair.
+
+The durable boundary is a checked-in, version-independent script that invokes the committed CLI
+from a disposable current-main clone. The session hook may inspect and print the exact consent
+question, but it may not install. A yes authorizes the clone, standalone install, registry entry and
+managed Git hooks; a no records only the choice. Test the bridge with a fake pre-`self` binary, not
+only with the CLI version that contains the fix.

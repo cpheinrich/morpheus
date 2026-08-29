@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "morpheus context brief"
+            "command": "sh .morpheus/session-start.sh"
           }
         ]
       }

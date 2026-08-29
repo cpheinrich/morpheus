@@ -79,17 +79,25 @@ pnpm morpheus codebase-memory install --check # verify operational mode without 
 
 ## Device bootstrap
 
-When `morpheus context brief` reports that the CLI is stale and automatic updates are not yet
-configured, ask the user exactly: **"Morpheus is stale. Enable automatic updates after pulls on
-this device?"** Do not infer consent. If yes, run `morpheus self auto-update enable`; if no, run
-`morpheus self auto-update disable` so the choice is remembered. If the installed CLI does not
-recognise `auto-update`, run `morpheus self update` first and then carry out the answer.
+The checked-in `.morpheus/session-start.sh` shim detects a CLI that is missing or predates the
+entire `self` command. When it or `morpheus context brief` reports that Morpheus is stale and
+automatic updates are unconfigured, ask the user exactly: **"Morpheus is stale. Enable automatic
+updates after pulls on this device?"** Do not infer consent.
+
+- If the shim reports **Morpheus bootstrap required**, yes means
+  `sh .morpheus/bootstrap.sh enable`; no means `sh .morpheus/bootstrap.sh disable`.
+- Otherwise yes means `morpheus self auto-update enable`; no means
+  `morpheus self auto-update disable`.
+
+The legacy bootstrap never calls the installed `morpheus` binary. A yes clones reviewed current
+`main`, invokes that clone's committed CLI directly, installs the standalone package, registers the
+current project and installs the managed hooks. A no only records the choice.
 
 Consent installs managed `post-merge` and `post-rewrite` blocks in every registered Morpheus
 project, beside rather than over any existing hook. Later pulls and rebases check the reviewed
 Morpheus `main` commit and update through a disposable clone only when stale. Git deliberately does
-not activate a hook delivered by the pull that contains it, so the session brief and these checked-in
-instructions are the first-use bridge; no repository may silently turn consent on.
+not activate a hook delivered by the pull that contains it, so the checked-in session shim and
+these instructions are the first-use bridge; no repository may silently turn consent on.
 
 Before structural code discovery, run `morpheus codebase-memory install --check`. If it is not
 operational, run `morpheus codebase-memory install` on the trusted device. The repair is

@@ -7,11 +7,11 @@
  * rather than in `init/templates.ts` puts it beside the protocol it belongs
  * to; the scaffold imports it.
  *
- * Bare `morpheus`, not `pnpm morpheus`: `init` writes no `package.json`, so a
- * scaffolded project has nothing for pnpm to resolve. The self-contained
- * global install puts the reviewed binary on PATH without linking a checkout.
+ * The checked-in shim can detect a binary that predates `self` without asking
+ * that binary to update itself. It only inspects; consented installation is a
+ * separate bootstrap command.
  */
-export declare const SESSION_START_COMMAND = "morpheus context brief";
+export declare const SESSION_START_COMMAND = "sh .morpheus/session-start.sh";
 /**
  * The two files, byte-identical when neither exists yet.
  *
