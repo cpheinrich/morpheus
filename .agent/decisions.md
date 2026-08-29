@@ -86,8 +86,12 @@ from owning or rewriting a working repository.
 
 **CLI auto-update is device-consented and project-local** — 2026-08-28. Git will not activate a
 hook delivered by the pull that contains it; allowing that would let an arbitrary clone execute
-code. Therefore checked-in agent instructions and the existing session-start brief ask once when
-the CLI is stale. `enable` or `disable` records the answer in `~/.morpheus/auto-update.json`.
+code. Therefore checked-in agent instructions and a generated session-start shim ask once when
+the CLI is stale. The first implementation assumed every old install already had `self update`;
+that was false for pre-#167 installations and made the fallback circular. The shim now detects that
+state, and the consented bootstrap invokes the committed CLI from a disposable current-main clone
+rather than calling the stale binary. `enable` or `disable` records the answer in
+`~/.morpheus/auto-update.json`.
 Consent installs marked blocks in each registered project's `post-merge` and `post-rewrite` hooks,
 preserving existing content such as Git LFS. The blocks call the self-contained CLI, update through
 a locked disposable clone only when canonical `main` is verifiably newer, and never fail a completed

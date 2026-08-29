@@ -8,6 +8,12 @@ import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { projectPolicy } from "../session/policy.js";
 import { ABSENT, CANONICAL_INPUTS, UNREADABLE } from "../session/lease.js";
 import {
+  BOOTSTRAP_MARKER,
+  MORPHEUS_BOOTSTRAP,
+  MORPHEUS_SESSION_START,
+  SESSION_START_MARKER,
+} from "../session/bootstrap.js";
+import {
   ANALYTICS_SCHEMA_DIRECTORY,
   EMPTY_ANALYTICS_EVENT_MAP,
   findAnalyticsContracts,
@@ -454,6 +460,21 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
         "inbox a human replies in. Run `morpheus context install`.",
     );
   }
+  for (const [rel, marker] of [
+    [MORPHEUS_BOOTSTRAP, BOOTSTRAP_MARKER],
+    [MORPHEUS_SESSION_START, SESSION_START_MARKER],
+  ] as const) {
+    const script = await readFile(join(root, rel), "utf8").catch(() => null);
+    if (script === null || !script.includes(marker)) {
+      add(
+        "warning",
+        "context",
+        `${rel} is missing or not the generated Morpheus version — the first-use bridge cannot ` +
+          "repair an absent or pre-self CLI. Run `morpheus context install`.",
+      );
+    }
+  }
+
   // Read, not merely stat'd. A settings file that exists but wires nothing is
   // the "check skips what is absent and reports the empty thing as correct"
   // shape — and it would report the hook adopted in exactly the projects
@@ -473,12 +494,12 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
         `No ${rel} — a ${provider} session starts with no notice that its context is stale. ` +
           "Run `morpheus context install`; the CLI gate still refuses governed actions either way.",
       );
-    } else if (!hook.includes("context brief")) {
+    } else if (!hook.includes(MORPHEUS_SESSION_START)) {
       add(
         "warning",
         "context",
-        `${rel} has no \`morpheus context brief\` hook — the file is present but a ${provider} ` +
-          "session still starts with no notice that its context is stale.",
+        `${rel} has no Morpheus session shim — the file is present but a ${provider} session ` +
+          "cannot bootstrap an absent or pre-self CLI. Run `morpheus context install`.",
       );
     }
   }

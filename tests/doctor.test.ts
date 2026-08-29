@@ -84,17 +84,47 @@ describe("doctor", () => {
       (x) => x.check === "context" && x.message.includes(rel),
     );
     expect(inert).toHaveLength(1);
-    expect(inert[0]!.message).toContain("no `morpheus context brief` hook");
+    expect(inert[0]!.message).toContain("no Morpheus session shim");
 
     await writeFile(
       join(root, rel),
       JSON.stringify({
-        hooks: { SessionStart: [{ hooks: [{ type: "command", command: "morpheus context brief" }] }] },
+        hooks: {
+          SessionStart: [
+            { hooks: [{ type: "command", command: "sh .morpheus/session-start.sh" }] },
+          ],
+        },
       }),
     );
     expect(
       (await doctor({ root })).filter((x) => x.check === "context" && x.message.includes(rel)),
     ).toEqual([]);
+  });
+
+  it("warns when the provider hook points at missing bootstrap scripts", async () => {
+    await scaffold("internal");
+    await mkdir(join(root, ".morpheus"), { recursive: true });
+    await writeFile(
+      join(root, ".morpheus", "session-start.sh"),
+      "#!/bin/sh\n# morpheus:session-start:v1\n",
+    );
+    await mkdir(join(root, ".claude"), { recursive: true });
+    await writeFile(
+      join(root, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          SessionStart: [
+            { hooks: [{ type: "command", command: "sh .morpheus/session-start.sh" }] },
+          ],
+        },
+      }),
+    );
+
+    const findings = (await doctor({ root })).filter(
+      (x) => x.check === "context" && x.message.includes(".morpheus/bootstrap.sh"),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.message).toContain("pre-self CLI");
   });
 
   it("errors on a missing expected directory", async () => {

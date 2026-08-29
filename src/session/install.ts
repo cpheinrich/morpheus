@@ -2,6 +2,16 @@ import { execFile } from "node:child_process";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import {
+  BOOTSTRAP_MARKER,
+  MORPHEUS_BOOTSTRAP,
+  MORPHEUS_BOOTSTRAP_README,
+  MORPHEUS_SESSION_START,
+  SESSION_START_MARKER,
+  bootstrapReadme,
+  bootstrapScript,
+  sessionStartScript,
+} from "./bootstrap.js";
 
 const exec = promisify(execFile);
 
@@ -14,11 +24,11 @@ const exec = promisify(execFile);
  * rather than in `init/templates.ts` puts it beside the protocol it belongs
  * to; the scaffold imports it.
  *
- * Bare `morpheus`, not `pnpm morpheus`: `init` writes no `package.json`, so a
- * scaffolded project has nothing for pnpm to resolve. The self-contained
- * global install puts the reviewed binary on PATH without linking a checkout.
+ * The checked-in shim can detect a binary that predates `self` without asking
+ * that binary to update itself. It only inspects; consented installation is a
+ * separate bootstrap command.
  */
-export const SESSION_START_COMMAND = "morpheus context brief";
+export const SESSION_START_COMMAND = `sh ${MORPHEUS_SESSION_START}`;
 
 /** No `matcher`, so it fires on a fresh start, a resume and a clear alike. */
 const sessionStartBlock = () => ({
@@ -120,20 +130,40 @@ const isObject = (v: unknown): v is Json =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
- * Does this `SessionStart` array already run the brief?
+ * Does this `SessionStart` array already run the generated shim?
  *
- * Substring rather than equality, because a project may legitimately spell it
- * `pnpm morpheus context brief` or wrap it in a script. Installing a second
- * copy beside a working one would print the brief twice every session, which
- * reads as a bug in the protocol rather than in this command.
+ * Substring rather than equality, because a project may wrap the checked-in
+ * script. Installing a second copy beside a working one would print the brief
+ * twice every session, which reads as a bug in the protocol rather than in
+ * this command.
  */
 function alreadyWired(entries: unknown[]): boolean {
   return entries.some((entry) => {
     if (!isObject(entry) || !Array.isArray(entry["hooks"])) return false;
     return (entry["hooks"] as unknown[]).some(
-      (h) => isObject(h) && typeof h["command"] === "string" && h["command"].includes("context brief"),
+      (h) =>
+        isObject(h) &&
+        typeof h["command"] === "string" &&
+        h["command"].includes(MORPHEUS_SESSION_START),
     );
   });
+}
+
+function withoutLegacyBrief(entries: unknown[]): { entries: unknown[]; removed: boolean } {
+  let removed = false;
+  const next = entries.flatMap((entry) => {
+    if (!isObject(entry) || !Array.isArray(entry["hooks"])) return [entry];
+    const hooks = (entry["hooks"] as unknown[]).filter((hook) => {
+      const legacy =
+        isObject(hook) &&
+        typeof hook["command"] === "string" &&
+        hook["command"].includes("context brief");
+      if (legacy) removed = true;
+      return !legacy;
+    });
+    return hooks.length > 0 ? [{ ...entry, hooks }] : [];
+  });
+  return { entries: next, removed };
 }
 
 async function writeJson(path: string, value: Json): Promise<void> {
@@ -193,18 +223,64 @@ async function ensureHook(
   }
   const entries: unknown[] = Array.isArray(sessionStart) ? sessionStart : [];
   if (alreadyWired(entries)) {
-    return { target: rel, outcome: "present", detail: "Already runs the brief at session start." };
+    return { target: rel, outcome: "present", detail: "Already runs the Morpheus session shim." };
   }
 
-  block["SessionStart"] = [...entries, sessionStartBlock().SessionStart[0]];
+  const legacy = withoutLegacyBrief(entries);
+  block["SessionStart"] = [...legacy.entries, sessionStartBlock().SessionStart[0]];
   if (write) await writeJson(path, { ...doc, hooks: block });
   return {
     target: rel,
     outcome: "updated",
     detail:
-      entries.length > 0
-        ? "Added the brief alongside the SessionStart hooks already there."
-        : "Added the session-start hook, keeping the rest of the file.",
+      legacy.removed
+        ? "Replaced the legacy direct brief with the version-independent session shim."
+        : entries.length > 0
+          ? "Added the Morpheus session shim alongside the SessionStart hooks already there."
+          : "Added the session-start hook, keeping the rest of the file.",
+  };
+}
+
+async function ensureManagedFile(
+  root: string,
+  rel: string,
+  expected: string,
+  marker: string,
+  write: boolean,
+): Promise<Repair> {
+  const path = join(root, rel);
+  let current: string | null;
+  try {
+    current = await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      return {
+        target: rel,
+        outcome: "blocked",
+        detail: `Left untouched — ${error instanceof Error ? error.message : String(error)}.`,
+      };
+    }
+    current = null;
+  }
+
+  if (current === expected) {
+    return { target: rel, outcome: "present", detail: "Generated Morpheus file is current." };
+  }
+  if (current !== null && !current.includes(marker)) {
+    return {
+      target: rel,
+      outcome: "blocked",
+      detail: "Left untouched — the existing file is not marked as Morpheus-managed.",
+    };
+  }
+  if (write) {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, expected, "utf8");
+  }
+  return {
+    target: rel,
+    outcome: current === null ? "created" : "updated",
+    detail: current === null ? "Wrote the generated Morpheus file." : "Refreshed the generated Morpheus file.",
   };
 }
 
@@ -316,9 +392,43 @@ async function ensureHandle(root: string, opts: InstallOptions): Promise<Repair>
  * wrong file.
  */
 export async function installContext(root: string, opts: InstallOptions): Promise<Repair[]> {
+  const bootstrap = await ensureManagedFile(
+    root,
+    MORPHEUS_BOOTSTRAP,
+    bootstrapScript(),
+    BOOTSTRAP_MARKER,
+    opts.write,
+  );
+  const sessionStart = await ensureManagedFile(
+    root,
+    MORPHEUS_SESSION_START,
+    sessionStartScript(),
+    SESSION_START_MARKER,
+    opts.write,
+  );
+  const readme = await ensureManagedFile(
+    root,
+    MORPHEUS_BOOTSTRAP_README,
+    bootstrapReadme(),
+    "# Morpheus device bootstrap",
+    opts.write,
+  );
+  const scriptsReady = bootstrap.outcome !== "blocked" && sessionStart.outcome !== "blocked";
+  const blockedHook = (target: string): Repair => ({
+    target,
+    outcome: "blocked",
+    detail: "Left untouched — the version-independent bootstrap files are unavailable.",
+  });
   return [
-    await ensureHook(root, CLAUDE_SETTINGS, claudeSettingsFile, opts.write),
-    await ensureHook(root, CODEX_HOOKS, codexHooksFile, opts.write),
+    bootstrap,
+    sessionStart,
+    readme,
+    scriptsReady
+      ? await ensureHook(root, CLAUDE_SETTINGS, claudeSettingsFile, opts.write)
+      : blockedHook(CLAUDE_SETTINGS),
+    scriptsReady
+      ? await ensureHook(root, CODEX_HOOKS, codexHooksFile, opts.write)
+      : blockedHook(CODEX_HOOKS),
     await ensureHandle(root, opts),
   ];
 }

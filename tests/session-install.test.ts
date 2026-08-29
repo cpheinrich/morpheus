@@ -9,6 +9,11 @@ import {
   installContext,
   type Repair,
 } from "../src/session/install.js";
+import {
+  MORPHEUS_BOOTSTRAP,
+  MORPHEUS_BOOTSTRAP_README,
+  MORPHEUS_SESSION_START,
+} from "../src/session/bootstrap.js";
 import { projectPolicy } from "../src/session/policy.js";
 
 const HANDLE = "cpheinrich";
@@ -35,12 +40,23 @@ describe("morpheus context install", () => {
 
   it("wires both providers and the inbox declaration from nothing", async () => {
     const repairs = await run();
-    expect(repairs.map((r) => r.outcome)).toEqual(["created", "created", "updated"]);
+    expect(repairs.map((r) => r.outcome)).toEqual([
+      "created",
+      "created",
+      "created",
+      "created",
+      "created",
+      "updated",
+    ]);
+
+    expect(await read(MORPHEUS_BOOTSTRAP)).toContain("morpheus:bootstrap:v1");
+    expect(await read(MORPHEUS_SESSION_START)).toContain("morpheus:session-start:v1");
+    expect(await read(MORPHEUS_BOOTSTRAP_README)).toContain("explicit yes");
 
     for (const rel of [CLAUDE_SETTINGS, CODEX_HOOKS]) {
       const doc = (await json(rel)) as { hooks: { SessionStart: unknown[] } };
       expect(doc.hooks.SessionStart).toEqual([
-        { hooks: [{ type: "command", command: "morpheus context brief" }] },
+        { hooks: [{ type: "command", command: "sh .morpheus/session-start.sh" }] },
       ]);
     }
 
@@ -55,7 +71,14 @@ describe("morpheus context install", () => {
     const before = await Promise.all([read(CLAUDE_SETTINGS), read(CODEX_HOOKS), read(MANIFEST)]);
 
     const repairs = await run();
-    expect(repairs.map((r) => r.outcome)).toEqual(["present", "present", "present"]);
+    expect(repairs.map((r) => r.outcome)).toEqual([
+      "present",
+      "present",
+      "present",
+      "present",
+      "present",
+      "present",
+    ]);
     expect(await Promise.all([read(CLAUDE_SETTINGS), read(CODEX_HOOKS), read(MANIFEST)])).toEqual(
       before,
     );
@@ -97,9 +120,7 @@ describe("morpheus context install", () => {
     expect(doc.hooks.SessionStart[0]).toEqual(theirs);
   });
 
-  it("counts a differently-spelled invocation as already wired", async () => {
-    // A project wrapping the command is wired. Installing a second copy would
-    // print the brief twice a session, which reads as a bug in the protocol.
+  it("replaces a differently-spelled legacy brief instead of running both", async () => {
     await mkdir(join(dir, ".codex"), { recursive: true });
     await writeFile(
       join(dir, CODEX_HOOKS),
@@ -107,7 +128,22 @@ describe("morpheus context install", () => {
         hooks: { SessionStart: [{ hooks: [{ type: "command", command: "pnpm morpheus context brief" }] }] },
       }),
     );
-    expect(at(await run(), CODEX_HOOKS).outcome).toBe("present");
+    expect(at(await run(), CODEX_HOOKS).outcome).toBe("updated");
+    const doc = (await json(CODEX_HOOKS)) as { hooks: { SessionStart: unknown[] } };
+    expect(doc.hooks.SessionStart).toEqual([
+      { hooks: [{ type: "command", command: "sh .morpheus/session-start.sh" }] },
+    ]);
+  });
+
+  it("will not wire a hook to an unowned bootstrap file", async () => {
+    await mkdir(join(dir, ".morpheus"), { recursive: true });
+    await writeFile(join(dir, MORPHEUS_BOOTSTRAP), "#!/bin/sh\necho mine\n");
+
+    const repairs = await run();
+    expect(at(repairs, MORPHEUS_BOOTSTRAP).outcome).toBe("blocked");
+    expect(at(repairs, CLAUDE_SETTINGS).outcome).toBe("blocked");
+    expect(at(repairs, CODEX_HOOKS).outcome).toBe("blocked");
+    await expect(read(CLAUDE_SETTINGS)).rejects.toThrow();
   });
 
   it("refuses to clobber a file it cannot parse", async () => {
@@ -166,8 +202,17 @@ describe("morpheus context install", () => {
 
   it("write: false reports what it would do and touches nothing", async () => {
     const repairs = await run(HANDLE, false);
-    expect(repairs.map((r) => r.outcome)).toEqual(["created", "created", "updated"]);
+    expect(repairs.map((r) => r.outcome)).toEqual([
+      "created",
+      "created",
+      "created",
+      "created",
+      "created",
+      "updated",
+    ]);
 
+    await expect(read(MORPHEUS_BOOTSTRAP)).rejects.toThrow();
+    await expect(read(MORPHEUS_SESSION_START)).rejects.toThrow();
     await expect(read(CLAUDE_SETTINGS)).rejects.toThrow();
     await expect(read(CODEX_HOOKS)).rejects.toThrow();
     expect((await json(MANIFEST))["context"]).toBeUndefined();

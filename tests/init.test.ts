@@ -57,9 +57,14 @@ describe("morpheus init", () => {
     for (const rel of [".claude/settings.json", ".codex/hooks.json"]) {
       const doc = JSON.parse(await read(rel)) as { hooks: { SessionStart: unknown[] } };
       expect(doc.hooks.SessionStart).toEqual([
-        { hooks: [{ type: "command", command: "morpheus context brief" }] },
+        { hooks: [{ type: "command", command: "sh .morpheus/session-start.sh" }] },
       ]);
     }
+
+    expect(await read(".morpheus/bootstrap.sh")).toContain("morpheus:bootstrap:v1");
+    expect(await read(".morpheus/bootstrap.sh")).toContain("node dist/cli/index.js self install");
+    expect(await read(".morpheus/session-start.sh")).toContain("predates version-independent");
+    expect(await read(".morpheus/README.md")).toContain("explicit yes");
 
     // The handle is what puts the inbox in the required set. Scaffolding the
     // file without declaring it certifies a session that never opened the one
@@ -108,12 +113,12 @@ describe("morpheus init", () => {
       }
       const agents = await read("AGENTS.md");
       expect(agents).toContain("morpheus self check");
-      expect(agents).toContain("morpheus self update");
-      expect(agents).toContain('"Morpheus is stale. Enable automatic updates after pulls on');
-      expect(agents).toContain('this device?"');
+      expect(agents).not.toContain("morpheus self update");
+      expect(agents).toContain("Morpheus is stale. Enable automatic");
+      expect(agents).toContain("updates after pulls on this device?");
       expect(agents).toContain("morpheus self auto-update enable");
       expect(agents).toContain("Do not infer consent");
-      expect(agents).toContain("disposable clone");
+      expect(agents).toContain("disposable directory");
       expect(agents).toContain("A worktree needs its own exact-checkout index");
       expect(agents).toContain("never an npm lifecycle script");
     });
