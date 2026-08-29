@@ -477,3 +477,15 @@ from a disposable current-main clone. The session hook may inspect and print the
 question, but it may not install. A yes authorizes the clone, standalone install, registry entry and
 managed Git hooks; a no records only the choice. Test the bridge with a fake pre-`self` binary, not
 only with the CLI version that contains the fix.
+
+## Committed JavaScript is not a standalone CLI when it imports packages
+
+2026-08-28. The first real post-merge bootstrap cloned current `main` and invoked
+`node dist/cli/index.js self install`. Node failed before dispatch with `ERR_MODULE_NOT_FOUND` for
+`gray-matter`: committed `dist/` removes the compile step for consumers, but it does not embed the
+runtime dependency tree. The fake-Node harness passed because it recorded arguments without loading
+the program.
+
+A disposable clone must install its reviewed lockfile before invoking the committed CLI. A test of
+the bootstrap now asserts that ordering; the acceptance test still has to use real Node and an
+isolated package prefix, because faking a process proves command routing, not module resolution.
