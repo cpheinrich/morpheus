@@ -110,8 +110,6 @@ export function isLegacyId(id: string): boolean {
   return parseRoadmapId(id)?.legacy ?? false;
 }
 
-const two = (n: number): string => String(n).padStart(2, "0");
-
 /**
  * **Ids are in Pacific time (America/Los_Angeles), on every machine.**
  *
