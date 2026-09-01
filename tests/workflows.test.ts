@@ -1426,6 +1426,9 @@ describe("nightly-ios-build.yml", () => {
     const upload = wf.jobs?.upload;
     const steps = upload?.steps ?? [];
     const checkout = steps.find((step) => step.name === "Check out verified main commit");
+    const validate = steps.find(
+      (step) => step.name === "Validate release inputs and select Xcode",
+    );
     const release = steps.find((step) => step.name === "Archive, sign, and upload to TestFlight");
 
     expect(preflight?.uses).toBe(
@@ -1440,6 +1443,10 @@ describe("nightly-ios-build.yml", () => {
     expect(upload?.env?.ASC_APP_ID).toBe("${{ inputs.app-store-connect-app-id }}");
     expect(upload?.env?.TESTFLIGHT_BETA_GROUP_IDS).toBe(
       "${{ inputs.testflight-beta-group-ids }}",
+    );
+    expect(upload?.env?.SOURCE_PACKAGES_PATH).toBeUndefined();
+    expect(validate?.run).toContain(
+      'echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"',
     );
     expect(release?.env?.ASC_API_KEY_ID).toBe("${{ secrets.APP_STORE_CONNECT_KEY_ID }}");
     expect(release?.run).toBe('"$GITHUB_WORKSPACE/$UPLOAD_SCRIPT"');
