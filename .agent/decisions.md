@@ -60,6 +60,14 @@ SHA from GitHub's Actions API and uses native `git diff` over caller-declared pa
 shell avoids another third-party action in the signed-release trust path; any missing, unreadable,
 or non-ancestor cursor builds conservatively rather than reporting a false skip.
 
+**The iOS caller owns TestFlight build numbers and beta groups** — 2026-09-01. GitHub run IDs are
+globally unique but are not an app's version-specific build sequence and can create enormous
+user-visible numbers. The reusable workflow therefore forwards caller-declared App Store Connect
+app and group identifiers, installs `asccli` before credentials are exposed, and leaves allocation,
+processing checks, and assignment to the repository-owned upload script. This keeps manual and
+automated uploads on one App Store Connect sequence without moving app-specific release policy into
+Morpheus.
+
 **Vercel deployment and agent review are separate reusable workflows** — 2026-08-23. Deployment
 is deterministic delivery with project credentials; review is optional model judgment with its own
 cost and failure modes. Projects call `vercel-deploy.yml` independently, so pausing review never

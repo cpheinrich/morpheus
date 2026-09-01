@@ -1327,6 +1327,8 @@ describe("nightly-ios-build.yml", () => {
     expect(call?.inputs?.["workflow-file"]?.required).toBe(true);
     expect(call?.inputs?.["watch-paths"]?.required).toBe(true);
     expect(call?.inputs?.["force-build"]?.default).toBe(false);
+    expect(call?.inputs?.["app-store-connect-app-id"]?.required).toBe(true);
+    expect(call?.inputs?.["testflight-beta-group-ids"]?.required).toBe(true);
     expect(call?.inputs?.environment?.default).toBe("testflight-internal");
     expect(wf.permissions).toEqual({
       actions: "read",
@@ -1434,12 +1436,19 @@ describe("nightly-ios-build.yml", () => {
     expect(upload?.needs).toEqual(["changes", "preflight", "test"]);
     expect(upload?.environment).toBe("${{ inputs.environment }}");
     expect(checkout?.with?.ref).toBe("${{ needs.preflight.outputs.sha }}");
-    expect(upload?.env?.BUILD_NUMBER).toBe("${{ github.run_id }}");
+    expect(upload?.env?.BUILD_NUMBER).toBeUndefined();
+    expect(upload?.env?.ASC_APP_ID).toBe("${{ inputs.app-store-connect-app-id }}");
+    expect(upload?.env?.TESTFLIGHT_BETA_GROUP_IDS).toBe(
+      "${{ inputs.testflight-beta-group-ids }}",
+    );
     expect(release?.env?.ASC_API_KEY_ID).toBe("${{ secrets.APP_STORE_CONNECT_KEY_ID }}");
     expect(release?.run).toBe('"$GITHUB_WORKSPACE/$UPLOAD_SCRIPT"');
     expect(steps.indexOf(release!)).toBeGreaterThan(
       steps.findIndex((step) => step.name === "Install release tooling"),
     );
+    expect(
+      steps.find((step) => step.name === "Install release tooling")?.run,
+    ).toContain("brew install openssl@3 asccli");
 
     for (const step of steps) {
       expect(step.run ?? "").not.toContain("${{ inputs.upload-script }}");
