@@ -2893,8 +2893,8 @@ its triggers, application directory and encrypted `VERCEL_TOKEN`, `VERCEL_ORG_ID
 build, while the other spends model budget to judge a change, so neither workflow controls or
 implicitly enables the other.
 
-Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `firebase-tests`, `osv-scan`, `pm-check`,
-`pr-check`, `vercel-deploy`, `heartbeat`, and `agent-review`. Planned: `agent-triage`,
+Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `nightly-ios-build`, `firebase-tests`,
+`osv-scan`, `pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`, and `agent-review`. Planned: `agent-triage`,
 `agent-analytics-review`, and `release-kit`.
 
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
@@ -2916,6 +2916,15 @@ and consumers with broader UI suites can explicitly request more headroom. Selec
 `/Applications/Xcode_<version>.app` through `DEVELOPER_DIR` is deliberately inlined: the operation
 is small enough to audit here and does not put a third-party setup action in every consumer's CI
 trust path.
+
+`nightly-ios-build` composes `release-preflight` and `ios-ci` before entering a caller-owned
+protected environment and invoking a caller-owned archive/upload script. The caller owns the cron,
+watched app paths, environment policy, app identifiers, and credentials. Scheduled runs compare
+those paths from the caller workflow's latest successful upload to the current `main` SHA; an empty
+diff reports the skip from a Linux job and provisions no macOS runner. A missing, unavailable, or
+non-ancestor baseline builds conservatively. Manual callers may force a build. Keeping the caller
+workflow filename stable makes its successful runs the durable release cursor without a second
+state store.
 
 `firebase-tests` is the one workflow a project opts into rather than getting by default: it runs
 the emulator-backed suites (unit, Firestore rules, Playwright E2E) against the Firebase Emulator

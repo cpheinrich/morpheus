@@ -52,6 +52,14 @@ the exact-version operation is only validating `/Applications/Xcode_<version>.ap
 every native project's trusted build path. Revisit if hosted-runner Xcode discovery stops having a
 stable path contract or the workflow needs installation rather than selection.
 
+**Nightly iOS releases use the prior successful caller run as their change cursor** — 2026-09-01.
+The maintained `dorny/paths-filter` and `tj-actions/changed-files` actions were considered, but both
+classify a supplied commit range and neither owns the release-specific question: which commit last
+uploaded successfully from this caller workflow. The reusable workflow therefore reads that one
+SHA from GitHub's Actions API and uses native `git diff` over caller-declared paths. The bounded
+shell avoids another third-party action in the signed-release trust path; any missing, unreadable,
+or non-ancestor cursor builds conservatively rather than reporting a false skip.
+
 **Vercel deployment and agent review are separate reusable workflows** — 2026-08-23. Deployment
 is deterministic delivery with project credentials; review is optional model judgment with its own
 cost and failure modes. Projects call `vercel-deploy.yml` independently, so pausing review never

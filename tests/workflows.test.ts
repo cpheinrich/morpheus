@@ -1287,6 +1287,166 @@ describe("firebase-tests.yml", () => {
   });
 });
 
+describe("nightly-ios-build.yml", () => {
+  type NightlyIosBuild = {
+    on?: {
+      workflow_call?: {
+        inputs?: Record<string, { type?: string; default?: unknown; required?: boolean }>;
+        secrets?: Record<string, unknown>;
+      };
+    };
+    permissions?: Record<string, string>;
+    jobs?: Record<
+      string,
+      {
+        uses?: string;
+        needs?: string | string[];
+        if?: string;
+        environment?: string;
+        outputs?: Record<string, string>;
+        with?: Record<string, unknown>;
+        env?: Record<string, string>;
+        steps?: Array<{
+          name?: string;
+          id?: string;
+          uses?: string;
+          with?: Record<string, unknown>;
+          env?: Record<string, string>;
+          run?: string;
+        }>;
+      }
+    >;
+  };
+
+  it("keeps the release cursor read-only and caller-owned", async () => {
+    const wf = (await read("nightly-ios-build.yml")) as NightlyIosBuild;
+    const call = wf.on?.workflow_call;
+
+    expect(call).toBeDefined();
+    expect(call?.secrets).toBeUndefined();
+    expect(call?.inputs?.["workflow-file"]?.required).toBe(true);
+    expect(call?.inputs?.["watch-paths"]?.required).toBe(true);
+    expect(call?.inputs?.["force-build"]?.default).toBe(false);
+    expect(call?.inputs?.environment?.default).toBe("testflight-internal");
+    expect(wf.permissions).toEqual({
+      actions: "read",
+      contents: "read",
+      "pull-requests": "read",
+    });
+  });
+
+  it("uses a full checkout and the last successful caller run for its diff", async () => {
+    const wf = (await read("nightly-ios-build.yml")) as NightlyIosBuild;
+    const steps = wf.jobs?.changes?.steps ?? [];
+    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const decision = steps.find((step) => step.name === "Compare with the last successful upload");
+    const script = String(decision?.run);
+
+    expect(checkout?.with).toEqual({ "fetch-depth": 0, "persist-credentials": false });
+    expect(decision?.env?.GH_TOKEN).toBe("${{ github.token }}");
+    expect(script).toContain("/actions/workflows/${WORKFLOW_FILE}/runs?branch=main&status=success");
+    expect(script).toContain('git diff --quiet "$baseline" "$CURRENT_SHA" -- "${paths[@]}"');
+    expect(script).toContain("building conservatively");
+  });
+
+  it("skips an unchanged app and builds after a watched-path change", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-nightly-ios-"));
+    const repo = join(root, "repo");
+    const bin = join(root, "bin");
+    const output = join(root, "output");
+    const summary = join(root, "summary");
+
+    try {
+      await mkdir(join(repo, "apps/ios"), { recursive: true });
+      await mkdir(join(repo, "docs"), { recursive: true });
+      await mkdir(bin, { recursive: true });
+      await execFileAsync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: repo });
+      await execFileAsync("git", ["config", "user.name", "Morpheus Test"], { cwd: repo });
+      await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
+      await writeFile(join(repo, "apps/ios/app.txt"), "one\n", "utf8");
+      await writeFile(join(repo, "docs/readme.md"), "one\n", "utf8");
+      await execFileAsync("git", ["add", "."], { cwd: repo });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "baseline"], { cwd: repo });
+      const baseline = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim();
+
+      await writeFile(join(repo, "docs/readme.md"), "two\n", "utf8");
+      await execFileAsync("git", ["add", "."], { cwd: repo });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "docs"], { cwd: repo });
+
+      const fakeGh = join(bin, "gh");
+      await writeFile(fakeGh, "#!/usr/bin/env bash\nprintf '%s\\n' \"$BASELINE_SHA\"\n", "utf8");
+      await chmod(fakeGh, 0o755);
+
+      const wf = (await read("nightly-ios-build.yml")) as NightlyIosBuild;
+      const script = wf.jobs?.changes?.steps?.find(
+        (step) => step.name === "Compare with the last successful upload",
+      )?.run;
+      expect(script).toBeTruthy();
+
+      const run = async () => {
+        const current = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim();
+        await writeFile(output, "", "utf8");
+        await writeFile(summary, "", "utf8");
+        await execFileAsync("bash", ["-c", script!], {
+          cwd: repo,
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            BASELINE_SHA: baseline,
+            CURRENT_SHA: current,
+            FORCE_BUILD: "false",
+            GH_TOKEN: "fixture",
+            GITHUB_OUTPUT: output,
+            GITHUB_REPOSITORY: "cpheinrich/example",
+            GITHUB_STEP_SUMMARY: summary,
+            WATCH_PATHS: "apps/ios\npackages/shared",
+            WORKFLOW_FILE: "testflight.yml",
+          },
+        });
+        return readFile(output, "utf8");
+      };
+
+      expect(await run()).toContain("build=false");
+
+      await writeFile(join(repo, "apps/ios/app.txt"), "two\n", "utf8");
+      await execFileAsync("git", ["add", "."], { cwd: repo });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "ios"], { cwd: repo });
+      expect(await run()).toContain("build=true");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("gates signed upload on exact-main preflight and independent tests", async () => {
+    const wf = (await read("nightly-ios-build.yml")) as NightlyIosBuild;
+    const preflight = wf.jobs?.preflight;
+    const test = wf.jobs?.test;
+    const upload = wf.jobs?.upload;
+    const steps = upload?.steps ?? [];
+    const checkout = steps.find((step) => step.name === "Check out verified main commit");
+    const release = steps.find((step) => step.name === "Archive, sign, and upload to TestFlight");
+
+    expect(preflight?.uses).toBe(
+      "cpheinrich/morpheus/.github/workflows/release-preflight.yml@main",
+    );
+    expect(test?.uses).toBe("cpheinrich/morpheus/.github/workflows/ios-ci.yml@main");
+    expect(test?.with?.["run-tests"]).toBe(true);
+    expect(upload?.needs).toEqual(["changes", "preflight", "test"]);
+    expect(upload?.environment).toBe("${{ inputs.environment }}");
+    expect(checkout?.with?.ref).toBe("${{ needs.preflight.outputs.sha }}");
+    expect(upload?.env?.BUILD_NUMBER).toBe("${{ github.run_id }}");
+    expect(release?.env?.ASC_API_KEY_ID).toBe("${{ secrets.APP_STORE_CONNECT_KEY_ID }}");
+    expect(release?.run).toBe('"$GITHUB_WORKSPACE/$UPLOAD_SCRIPT"');
+    expect(steps.indexOf(release!)).toBeGreaterThan(
+      steps.findIndex((step) => step.name === "Install release tooling"),
+    );
+
+    for (const step of steps) {
+      expect(step.run ?? "").not.toContain("${{ inputs.upload-script }}");
+    }
+  });
+});
+
 /**
  * `ios-ci.yml` is the native Apple equivalent of node-ci and python-ci. The
  * lock and simulator defaults are part of its public caller contract: if
