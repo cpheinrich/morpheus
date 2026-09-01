@@ -769,10 +769,12 @@ the guard against a carefully reviewed direction turning into a neutral first ho
 
 **Front-end visual evidence is a declared path contract, default-on per repository** — 2026-09-01.
 `review.visualEvidence` in `morpheus.json` owns the include/exclude globs. A matching change blocks
-without a GitHub-attached recording or screenshot; recording is preferred but screenshot-only
-evidence remains valid. CI validates the attachment reference without network fetching and makes no
-claim about whether it meaningfully demonstrates the UI. Heuristic-looking paths outside the
-contract warn only. Existing manifests roll out explicitly one repository at a time; `morpheus
-init` adds the default block without replacing authored review settings. A repository may disable
-the gate only with a substantive reason, so an opt-out is durable and reviewable rather than an
-environment toggle.
+without a recording or screenshot at either GitHub's attachment service or an exact public HTTPS
+prefix approved in `allowedUrlPrefixes`; recording is preferred but screenshot-only evidence
+remains valid. Prefixes are path-scoped rather than hostname-scoped so a repository can approve its
+own bucket without trusting every tenant on a shared provider. CI validates the URL without network
+fetching and makes no claim about whether it meaningfully demonstrates the UI. Heuristic-looking
+paths outside the contract warn only. Existing manifests roll out explicitly one repository at a
+time; `morpheus init` adds the default block without replacing authored review settings. A
+repository may disable the gate only with a substantive reason, so an opt-out is durable and
+reviewable rather than an environment toggle.

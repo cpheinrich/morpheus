@@ -7,6 +7,8 @@ export interface VisualEvidenceConfig {
     enabled: true;
     include: string[];
     exclude: string[];
+    /** Repository-approved public media locations, scoped to an exact URL path prefix. */
+    allowedUrlPrefixes?: string[];
 }
 export type VisualEvidencePolicy = {
     state: "absent";

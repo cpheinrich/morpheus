@@ -877,9 +877,10 @@ and fail when a stated invariant is broken; coverage alone is not evidence of qu
 **Front-end changes must carry visual evidence.** When a changed path matches
 \`review.visualEvidence.include\` in \`morpheus.json\` (minus \`exclude\`), attach a screen recording
 to the PR when practical, otherwise screenshots, and list them under \`## Visual evidence\`.
-\`morpheus check pr\` validates GitHub attachment references without fetching them. The path
-contract is deterministic; it does not claim to infer whether rendered pixels changed. A repository
-may disable the rule only with \`enabled: false\` and a substantive \`reason\` in the manifest.
+\`morpheus check pr\` accepts GitHub attachments and exact public HTTPS prefixes declared in
+\`allowedUrlPrefixes\`, without fetching them. The path and media-location contracts are
+deterministic; they do not claim to infer whether rendered pixels changed. A repository may disable
+the rule only with \`enabled: false\` and a substantive \`reason\` in the manifest.
 
 **Before opening a PR**, run \`morpheus pm index\` and commit any one-time roadmap README migration
 or generated goal/request index changes. The roadmap README is static after that migration. CI runs
@@ -1178,10 +1179,11 @@ export const pullRequestTemplate = (): string => `## Summary
 
 <!--
 Required when changed paths match review.visualEvidence in morpheus.json.
-Paste GitHub attachments here. Prefer a screen recording; screenshots are accepted otherwise.
+Paste GitHub attachments or link media under an allowedUrlPrefixes location. Prefer a screen
+recording; screenshots are accepted otherwise.
 
-- Recording: <GitHub attachment URL>
-- Screenshot: <GitHub attachment or pasted image>
+- Recording: <approved evidence URL>
+- Screenshot: <approved evidence URL or pasted image>
 -->
 
 ## Test plan

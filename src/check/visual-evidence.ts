@@ -11,6 +11,8 @@ export interface VisualEvidenceConfig {
   enabled: true;
   include: string[];
   exclude: string[];
+  /** Repository-approved public media locations, scoped to an exact URL path prefix. */
+  allowedUrlPrefixes?: string[];
 }
 
 export type VisualEvidencePolicy =
@@ -41,6 +43,7 @@ export const DEFAULT_VISUAL_EVIDENCE: VisualEvidenceConfig = {
     "apps/web/e2e/**",
     "apps/ios/**/*Tests/**",
   ],
+  allowedUrlPrefixes: [],
 };
 
 const NON_REASONS = new Set(["yes", "y", "true", "n/a", "na", "none", "ok", "-"]);
@@ -62,11 +65,31 @@ const Pattern = z
     "must not leave the repository with '..'",
   );
 
+const AllowedUrlPrefix = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .refine((value) => {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:"
+        && !url.username
+        && !url.password
+        && !url.search
+        && !url.hash
+        && url.pathname.endsWith("/");
+    } catch {
+      return false;
+    }
+  }, "must be an HTTPS URL prefix ending in '/' with no credentials, query, or fragment");
+
 const EnabledConfig = z
   .object({
     enabled: z.literal(true),
     include: z.array(Pattern).min(1).max(32),
     exclude: z.array(Pattern).max(32).default([]),
+    allowedUrlPrefixes: z.array(AllowedUrlPrefix).max(16).default([]),
   })
   .strict();
 
@@ -119,10 +142,37 @@ export function unreadableVisualEvidencePolicy(message: string): VisualEvidenceP
 
 const FRONTEND_LIKE =
   /(?:\.(?:avif|css|gif|ico|jpeg|jpg|jsx|png|scss|storyboard|svg|swift|tsx|webp)$|\.xcassets\/)/i;
-const ATTACHMENT =
+const GITHUB_ATTACHMENT =
   /https:\/\/(?:github\.com\/user-attachments\/assets\/[A-Za-z0-9-]+|user-images\.githubusercontent\.com\/[^\s)]+)/gi;
-const ATTACHMENT_ON_LINE =
+const GITHUB_ATTACHMENT_ON_LINE =
   /https:\/\/(?:github\.com\/user-attachments\/assets\/[A-Za-z0-9-]+|user-images\.githubusercontent\.com\/[^\s)]+)/i;
+const HTTPS_URL = /https:\/\/[^\s)<>"']+/gi;
+
+function matchesAllowedPrefix(value: string, prefixes: string[]): boolean {
+  try {
+    const candidate = new URL(value);
+    return prefixes.some((prefix) => {
+      const allowed = new URL(prefix);
+      return candidate.protocol === "https:"
+        && !candidate.username
+        && !candidate.password
+        && !candidate.search
+        && !candidate.hash
+        && candidate.origin === allowed.origin
+        && candidate.pathname.startsWith(allowed.pathname)
+        && candidate.pathname.length > allowed.pathname.length;
+    });
+  } catch {
+    return false;
+  }
+}
+
+function evidenceUrls(content: string, prefixes: string[]): string[] {
+  const github = content.match(GITHUB_ATTACHMENT) ?? [];
+  const external = (content.match(HTTPS_URL) ?? [])
+    .filter((value) => matchesAllowedPrefix(value, prefixes));
+  return [...new Set([...github, ...external])];
+}
 
 function matches(path: string, patterns: string[]): boolean {
   return patterns.some((pattern) => minimatch(path, pattern, { dot: true, nocase: false }));
@@ -224,19 +274,21 @@ export function checkVisualEvidence(input: {
       rule: "visual-evidence",
       message:
         `Declared front-end paths changed (${paths(required)}). Add a non-empty ` +
-        '"## Visual evidence" section with a GitHub-attached screen recording or screenshots.',
+        '"## Visual evidence" section with an approved screen recording or screenshots.',
     });
     return findings;
   }
 
-  const attachments = content.match(ATTACHMENT) ?? [];
+  const allowedUrlPrefixes = policy.config.allowedUrlPrefixes ?? [];
+  const attachments = evidenceUrls(content, allowedUrlPrefixes);
   if (!attachments.length) {
     findings.push({
       level: "error",
       rule: "visual-evidence",
       message:
-        'The "## Visual evidence" section has no GitHub attachment. Paste a recording or screenshot ' +
-        "into the PR body; CI validates the stable attachment reference without fetching it.",
+        'The "## Visual evidence" section has no approved evidence URL. Paste a GitHub attachment ' +
+        "or link media under review.visualEvidence.allowedUrlPrefixes; CI validates the URL " +
+        "without fetching it.",
     });
     return findings;
   }
@@ -246,7 +298,7 @@ export function checkVisualEvidence(input: {
     .some(
       (line) =>
         /(?:screen\s+recording|recording|video)(?:\*\*)?\s*:/i.test(line) &&
-        ATTACHMENT_ON_LINE.test(line),
+        (GITHUB_ATTACHMENT_ON_LINE.test(line) || evidenceUrls(line, allowedUrlPrefixes).length > 0),
     );
   if (!recording) {
     findings.push({
