@@ -72,6 +72,14 @@ on:
         description: Fallback bundle id when IOS_BUNDLE_ID is not set in the environment.
         type: string
         required: true
+      app-store-connect-app-id:
+        description: Numeric App Store Connect app id forwarded to the caller's upload script.
+        type: string
+        required: true
+      testflight-beta-group-ids:
+        description: Newline-separated TestFlight beta-group ids assigned after processing.
+        type: string
+        required: true
       sentry-org:
         description: Optional fallback Sentry organization for debug-symbol upload.
         type: string
@@ -230,7 +238,8 @@ jobs:
     env:
       APPLE_TEAM_ID: ${{ vars.IOS_APPLE_TEAM_ID || inputs.apple-team-id }}
       IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || inputs.ios-bundle-id }}
-      BUILD_NUMBER: ${{ github.run_id }}
+      ASC_APP_ID: ${{ inputs.app-store-connect-app-id }}
+      TESTFLIGHT_BETA_GROUP_IDS: ${{ inputs.testflight-beta-group-ids }}
       SENTRY_ORG: ${{ vars.SENTRY_ORG || inputs.sentry-org }}
       SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT || inputs.sentry-project }}
       SENTRY_DSN: ${{ vars.SENTRY_DSN }}
@@ -315,7 +324,7 @@ jobs:
           INSTALL_SENTRY_CLI: ${{ inputs.install-sentry-cli }}
         run: |
           set -euo pipefail
-          brew install openssl@3
+          brew install openssl@3 asccli
           if [ "$INSTALL_SENTRY_CLI" = "true" ]; then
             brew install getsentry/tools/sentry-cli
           fi

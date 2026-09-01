@@ -2919,7 +2919,10 @@ trust path.
 
 `nightly-ios-build` composes `release-preflight` and `ios-ci` before entering a caller-owned
 protected environment and invoking a caller-owned archive/upload script. The caller owns the cron,
-watched app paths, environment policy, app identifiers, and credentials. Scheduled runs compare
+watched app paths, environment policy, app identifiers, TestFlight beta-group targets, build-number
+allocation, and credentials. The reusable workflow installs `asccli` but does not derive a build
+number from GitHub metadata; the caller's upload script must allocate against App Store Connect so
+manual and automated uploads share one sequence. Scheduled runs compare
 those paths from the caller workflow's latest successful upload to the current `main` SHA; an empty
 diff reports the skip from a Linux job and provisions no macOS runner. A missing, unavailable, or
 non-ancestor baseline builds conservatively. Manual callers may force a build. Keeping the caller
