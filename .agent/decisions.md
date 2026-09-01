@@ -766,3 +766,11 @@ references that survived selection, `imagery.json` identifies approved art and s
 `application.md` maps every asset to an actual public-web or product surface. `brand status` stays
 red when a package has a token set but no approved imagery or no image-to-surface mapping. This is
 the guard against a carefully reviewed direction turning into a neutral first home page.
+
+**Motion-design exploration is a repository skill before it is a plugin** — 2026-08-31. Chris's
+call. The repeatable value is the procedure itself: inspect the real shell and brand, research
+current references, compare six genuinely different motion systems under one visual theme, and
+stop before production implementation. Morpheus owns the canonical Codex skill under
+`.agents/skills/motion-design-exploration`, `morpheus init` copies it into every project kind, and
+Evo carries the same file directly. Plugin packaging is deliberately deferred until distribution
+beyond Morpheus repositories is worth another lifecycle and manifest.

@@ -113,6 +113,15 @@ export declare const gitignore: () => string;
  */
 export declare const brandReviewSkill: () => string;
 /**
+ * A project-generic, reusable Codex motion-concept review procedure.
+ *
+ * Unlike the brand-review skill, this is useful even to an internal project:
+ * the live product can supply its visual system when no hq/brand package exists.
+ * Keep this template byte-identical to the repository-level skill; init.test.ts
+ * holds that distribution boundary.
+ */
+export declare const motionDesignExplorationSkill: () => string;
+/**
  * The website initializer's discovery point.
  *
  * `morpheus web init` is only useful if it is found at the moment somebody asks
