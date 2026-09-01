@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
-import { analyticsSchema, brandReviewSkill } from "../src/init/templates.js";
+import {
+  analyticsSchema,
+  brandReviewSkill,
+  motionDesignExplorationSkill,
+} from "../src/init/templates.js";
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../src/analytics/contract.js";
 import ts from "typescript";
 import { rules } from "../src/cli/hq.js";
@@ -594,6 +598,23 @@ describe("morpheus init", () => {
     expect(await read(".claude/skills/brand-review/SKILL.md")).toBe(brandReviewSkill());
   });
 
+  it("scaffolds the repository's motion-design skill without content drift", async () => {
+    await scaffold(dir, SEED);
+    const repositorySkill = await readFile(
+      join(
+        import.meta.dirname,
+        "..",
+        ".agents/skills/motion-design-exploration/SKILL.md",
+      ),
+      "utf8",
+    );
+
+    expect(motionDesignExplorationSkill()).toBe(repositorySkill);
+    expect(await read(".agents/skills/motion-design-exploration/SKILL.md")).toBe(
+      repositorySkill,
+    );
+  });
+
   it("gives every directory a tracked file, since git drops empty ones", async () => {
     await scaffold(dir, SEED);
 
@@ -836,6 +857,9 @@ describe("morpheus init", () => {
       expect(hq).not.toContain("brand");
       expect(hq).not.toContain("finance");
       expect(hq).toContain("product");
+      expect(await read(".agents/skills/motion-design-exploration/SKILL.md")).toBe(
+        motionDesignExplorationSkill(),
+      );
     });
 
     it("gives a company the full set", async () => {

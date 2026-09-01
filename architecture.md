@@ -246,7 +246,7 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | Shared product schemas | `packages/shared/schema/` | Analytics contracts and database TS source → generated types + rules |
 | Brand messaging | `hq/brand/messaging.json` | Imported by web |
 | Analytics | PostHog Cloud + `/hq` KPIs | SaaS + dashboard |
-| Automations | `.claude/skills/`, `.github/workflows/` | Skills + Actions |
+| Automations | `.agents/skills/`, `.claude/skills/`, `.github/workflows/` | Skills + Actions |
 | Staging | Vercel preview per PR | Ephemeral — no permanent staging environment |
 | Unit tests | `apps/*/tests/` | Colocated |
 | E2E tests | `qa/e2e/` | Playwright |
@@ -266,7 +266,7 @@ cause `init` to scaffold an application directory. Projects record only the surf
 | Vendors, procurement | `hq/ops/vendors/`, `apps/hardware/` | YAML |
 | Secrets | `secrets.manifest.json` + GSM | Manifest; values external (§13) |
 | Customer support | Chatwoot + `/hq/support` | Self-hosted + dashboard |
-| Agent instructions | `AGENTS.md`, `.claude/skills/` | Markdown |
+| Agent instructions | `AGENTS.md`, `.agents/skills/`, `.claude/skills/` | Markdown |
 | Agent records | `.agent/` | Markdown (§7.5) |
 | Goals, roadmap, requests | `hq/product/` | Markdown (§8) |
 | Engineering docs | `docs/` → `/hq/docs` | Markdown + Mermaid |
@@ -484,7 +484,10 @@ needed.
   read exactly one file. Generated at init from `morpheus-kit/agent` fragments plus project
   specifics, with a marked region the CLI can update on `morpheus upgrade`.
 - **`apps/web/AGENTS.md`** — surface-specific.
-- **`.claude/skills/`** — named, repeatable procedures.
+- **`.agents/skills/`** — repository-owned Codex skills: named, repeatable procedures shared by
+  everyone who clones the project.
+- **`.claude/skills/`** — repository-owned Claude skills where that provider needs the same kind
+  of discoverable procedure.
 
 ### 7.2 Conventions and how they are enforced
 
@@ -2260,6 +2263,15 @@ instruction to say which were not checked rather than imply they were. `## Compl
 replacements, reviewed surfaces, and checks run or not run. That makes "first working version" a
 claim with evidence and named gaps rather than the note a conversation happened to end on.
 
+The repository-level `.agents/skills/motion-design-exploration` procedure applies the same
+comparison discipline to loading, upload, scanning, analysis, processing, and transition graphics.
+It defaults to six genuinely different motion systems in the real product shell, holds one theme
+and the surrounding UI constant, and prefers an interactive HTML review surface when timing is the
+thing being judged. Where stills are more honest, each direction gets matched entry, mid-loop, and
+transition or exit frames. Determinate progress is shown only when the product knows it; every
+direction carries a static or reduced-motion state; and the procedure stops before production
+implementation so selection remains a separate human decision.
+
 ### 12.10 Setup is a checklist, not a wizard
 
 `morpheus init status` reports how far through setup a project is, writing the full list to
@@ -2287,10 +2299,11 @@ billing account.
 ### 12.11 `init` scaffolds the repository and nothing else
 
 `morpheus init` writes the manifest, `README.md`, `AGENTS.md` with `CLAUDE.md` symlinked to it,
-the `.agent/` records, the `hq/` tree for the project's kind, an inbox, a CI workflow delegating to
-the reusable ones, and `.gitignore` entries. A company scaffold also writes the deny-by-default
-Firestore gate at `infra/firebase/firestore.rules` and a minimal `firebase.json` that deploys that
-same file. Then it registers the prefix and prints `init status`.
+the `.agent/` records, the repository-level motion-design skill, the `hq/` tree for the project's
+kind, an inbox, a CI workflow delegating to the reusable ones, and `.gitignore` entries. A company
+scaffold also writes the deny-by-default Firestore gate at `infra/firebase/firestore.rules` and a
+minimal `firebase.json` that deploys that same file. Then it registers the prefix and prints
+`init status`.
 
 The Firestore branch is migration-aware because a second security file is worse than no generated
 one. A fresh company gets the canonical rules file, deployment config and matching

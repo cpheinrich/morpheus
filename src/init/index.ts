@@ -186,6 +186,13 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     else notes.push(`${repair.target}: ${repair.detail}`);
   }
 
+  // Motion exploration is useful in every project kind: when there is no brand
+  // package, the skill deliberately takes the live product as its visual source.
+  await put(
+    ".agents/skills/motion-design-exploration/SKILL.md",
+    t.motionDesignExplorationSkill(),
+  );
+
   // The generated exploration prompt is the session-specific handoff. This
   // small skill is the durable discovery point for any agent that returns once
   // the first review is complete, and makes visual-first review the default
