@@ -766,3 +766,13 @@ references that survived selection, `imagery.json` identifies approved art and s
 `application.md` maps every asset to an actual public-web or product surface. `brand status` stays
 red when a package has a token set but no approved imagery or no image-to-surface mapping. This is
 the guard against a carefully reviewed direction turning into a neutral first home page.
+
+**Front-end visual evidence is a declared path contract, default-on per repository** — 2026-09-01.
+`review.visualEvidence` in `morpheus.json` owns the include/exclude globs. A matching change blocks
+without a GitHub-attached recording or screenshot; recording is preferred but screenshot-only
+evidence remains valid. CI validates the attachment reference without network fetching and makes no
+claim about whether it meaningfully demonstrates the UI. Heuristic-looking paths outside the
+contract warn only. Existing manifests roll out explicitly one repository at a time; `morpheus
+init` adds the default block without replacing authored review settings. A repository may disable
+the gate only with a substantive reason, so an opt-out is durable and reviewable rather than an
+environment toggle.

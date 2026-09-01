@@ -48,6 +48,7 @@
   "dependencies": {
     "gray-matter": "^4.0.3",
     "jose": "^6.2.5",
+    "minimatch": "10.2.6",
     "minisearch": "^7.2.0",
     "zod": "^4.1.12"
   },

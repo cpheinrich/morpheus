@@ -308,6 +308,15 @@ genuinely domain-specific, or every candidate is unmaintained. Record the outcom
 - Any open questions you could not resolve, stated plainly rather than guessed at
 - The roadmap item moved to `review`
 - `Closes #<number>` for every GitHub issue declared in the roadmap item's `issues:` field
+- For changed paths declared by `review.visualEvidence` in `morpheus.json`, a screen recording
+  attached under `## Visual evidence` when practical, otherwise screenshots
+
+The visual-evidence gate is a deterministic repository-owned path contract, not an attempt to
+infer whether rendered pixels changed. CI validates the presence of a GitHub attachment reference
+without fetching it; a human or independent reviewer still decides whether the evidence actually
+demonstrates the change. A repository may opt out only with `enabled: false` and a substantive
+`reason` in its manifest. A legacy manifest with no declaration warns rather than blocks until its
+explicit rollout commit lands.
 
 When an issue becomes roadmap work, create it with `morpheus pm new roadmap "<title>" --issue 123`.
 For an existing item, use `morpheus pm link-issue <ID> 123`. Both write structured closure intent

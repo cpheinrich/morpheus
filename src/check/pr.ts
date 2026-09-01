@@ -1,6 +1,10 @@
 import { hasNoSubstantiveChange, isRecordsOnly } from "../paths.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { parseArtifact } from "../pm/parse.js";
+import {
+  checkVisualEvidence,
+  type VisualEvidencePolicy,
+} from "./visual-evidence.js";
 
 /**
  * PR conventions, enforced rather than requested.
@@ -25,6 +29,8 @@ export interface PrContext {
   branch: string;
   /** Paths changed in the PR, repo-relative. */
   changedFiles: string[];
+  /** Repo-owned declaration of which changed paths require visual evidence. */
+  visualEvidence?: VisualEvidencePolicy;
   /** Product directory to resolve roadmap items from. */
   productDir: string;
 }
@@ -206,6 +212,17 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
         'No "## Open questions" section. Write "None" explicitly rather than omitting it.',
     });
   }
+
+  findings.push(
+    ...checkVisualEvidence({
+      body,
+      changedFiles,
+      // Direct callers predating the policy are legacy manifests, not proof
+      // that evidence is disabled. The CLI supplies an explicit invalid state
+      // when morpheus.json itself cannot be read.
+      policy: ctx.visualEvidence ?? { state: "absent" },
+    }),
+  );
 
   // A branch naming a roadmap item must move that item to review.
   //

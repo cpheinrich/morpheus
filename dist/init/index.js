@@ -1,6 +1,7 @@
 import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { initializeWorkflow } from "../brand/workflow.js";
+import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { EXPECTED } from "../doctor/index.js";
 import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
 import { installContext } from "../session/install.js";
@@ -53,6 +54,34 @@ function configuredFirestoreRules(content) {
         };
     }
 }
+/** Add the default to established manifests without changing an authored policy. */
+async function ensureVisualEvidencePolicy(path) {
+    let parsed;
+    try {
+        parsed = JSON.parse(await readFile(path, "utf8"));
+    }
+    catch (error) {
+        return {
+            kind: "invalid",
+            message: error instanceof Error ? error.message : String(error),
+        };
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { kind: "invalid", message: "morpheus.json is not an object" };
+    }
+    const manifest = parsed;
+    const currentReview = manifest["review"];
+    if (currentReview !== undefined &&
+        (!currentReview || typeof currentReview !== "object" || Array.isArray(currentReview))) {
+        return { kind: "invalid", message: "review is not an object" };
+    }
+    const review = (currentReview ?? {});
+    if (review["visualEvidence"] !== undefined)
+        return { kind: "present" };
+    manifest["review"] = { ...review, visualEvidence: DEFAULT_VISUAL_EVIDENCE };
+    await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    return { kind: "updated" };
+}
 export const KIND_DIRS = EXPECTED;
 export async function scaffold(root, seed) {
     const written = [];
@@ -103,6 +132,17 @@ export async function scaffold(root, seed) {
     };
     // --- the manifest and the instructions -----------------------------------
     await put("morpheus.json", t.manifest(seed));
+    const visualPolicy = await ensureVisualEvidencePolicy(join(root, "morpheus.json"));
+    if (visualPolicy.kind === "updated") {
+        const skippedManifest = skipped.lastIndexOf("morpheus.json");
+        if (skippedManifest >= 0)
+            skipped.splice(skippedManifest, 1);
+        written.push("morpheus.json (visual evidence policy added)");
+    }
+    else if (visualPolicy.kind === "invalid") {
+        notes.push(`Could not add the default visual-evidence policy: ${visualPolicy.message}. ` +
+            "Kept morpheus.json unchanged; fix it before enabling the PR gate.");
+    }
     await put("AGENTS.md", t.agents(seed));
     // A README for humans, and for agents that read one before anything else.
     // Absent until MO-054, which is why cpheinrich.com had none at all — the
@@ -333,6 +373,7 @@ export async function scaffold(root, seed) {
     // immediately teaches people to ignore failing CI.
     const isNode = (await exists(join(root, "pnpm-lock.yaml"))) ||
         (await exists(join(root, "pnpm-workspace.yaml")));
+    await put(".github/pull_request_template.md", t.pullRequestTemplate());
     const ciPath = ".github/workflows/ci.yml";
     const existingCi = await readOptional(join(root, ciPath));
     await put(ciPath, t.ci({ node: isNode, ...(rulesPath ? { rulesPath } : {}) }));

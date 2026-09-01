@@ -217,6 +217,13 @@ canonical and lives in this document. Only *deviations* are recorded.
     "allowlist": ["you@example.com"],
     "investorAllowlist": []
   },
+  "review": {
+    "visualEvidence": {
+      "enabled": true,
+      "include": ["apps/web/**/*.tsx", "apps/ios/**/*.swift"],
+      "exclude": ["apps/web/**/*.test.tsx", "apps/ios/**/*Tests/**"]
+    }
+  },
   "inherits": {                       // §17 — what comes from the parent company
     "legal": "darwin",
     "hr": "darwin"
@@ -233,6 +240,13 @@ often goes wrong when one person runs several companies.
 
 `surfaces` is an optional, advisory declaration for agents; it does not make a surface mandatory or
 cause `init` to scaffold an application directory. Projects record only the surfaces they need.
+
+`review.visualEvidence` is default-on in the scaffold. `include` and `exclude` are explicit,
+repo-relative glob contracts; exclusions win. This makes the blocking fact exact — a declared path
+changed — without pretending CI can determine whether rendered pixels changed. An established
+manifest with no block warns during the staged rollout, then `morpheus init` adds the default
+without replacing authored review settings. A repository with no meaningful rendered surface can
+set `enabled: false`, but must carry a substantive `reason` beside the opt-out.
 
 ## 5. Where each business function lives
 
@@ -500,8 +514,9 @@ self-review, and closes every GitHub issue the roadmap item declares it resolves
 
 `morpheus check pr` fails the build when: source files changed without corresponding test changes
 and no `skip-tests` justification is present; a public API changed without a `docs/` change; the PR
-body is missing required sections; or the roadmap item named by the branch was not moved to
-`review`. A roadmap item created with `pm new roadmap --issue 123`, or updated with
+body is missing required sections; a declared visual-evidence path changed without a GitHub screen
+capture attachment; or the roadmap item named by the branch was not moved to `review`. A roadmap
+item created with `pm new roadmap --issue 123`, or updated with
 `pm link-issue <ID> 123`, carries `issues: [123]` in its frontmatter and displays it in the generated
 roadmap; `check pr` requires `Closes #123` (or another GitHub closing keyword) in the PR body.
 The structured field distinguishes completion from a merely related issue mention, while GitHub's
@@ -1526,9 +1541,12 @@ waiver is a fact the next rung needs, not an exemption from being looked at.
 
 ### The human review artifact
 
-Every PR carries a Vercel preview link, screenshots of changed screens captured in CI, a
-"what to test" list generated from the acceptance criteria, and for iOS a simulator recording plus
-a build link. Web feedback returns as Vercel comments anchored to page elements and synced into the
+Every front-end PR carries a Vercel preview or build link when available, a screen recording when
+practical (screenshots otherwise), and a "what to test" list. The author attaches captures to the
+PR under `## Visual evidence`; `check pr` verifies a stable GitHub attachment reference exists but
+does not fetch it, classify its pixels, or claim it meaningfully demonstrates the UI. Recording is
+a warning-level preference so a screenshot-only change is never blocked merely because video was
+impractical. Web feedback returns as Vercel comments anchored to page elements and synced into the
 PR (§10.2).
 
 ### iOS: agents QA their own work
