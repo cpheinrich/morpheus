@@ -1543,11 +1543,13 @@ waiver is a fact the next rung needs, not an exemption from being looked at.
 
 Every front-end PR carries a Vercel preview or build link when available, a screen recording when
 practical (screenshots otherwise), and a "what to test" list. The author attaches captures to the
-PR under `## Visual evidence`; `check pr` verifies a stable GitHub attachment reference exists but
-does not fetch it, classify its pixels, or claim it meaningfully demonstrates the UI. Recording is
-a warning-level preference so a screenshot-only change is never blocked merely because video was
-impractical. Web feedback returns as Vercel comments anchored to page elements and synced into the
-PR (§10.2).
+PR under `## Visual evidence`; `check pr` verifies either a stable GitHub attachment reference or an
+HTTPS URL under a repository-approved `allowedUrlPrefixes` location. External locations are exact
+path prefixes, so approving one bucket on a shared provider does not approve every bucket there.
+The check does not fetch the URL, classify its pixels, or claim it meaningfully demonstrates the
+UI. Recording is a warning-level preference so a screenshot-only change is never blocked merely
+because video was impractical. Web feedback returns as Vercel comments anchored to page elements
+and synced into the PR (§10.2).
 
 ### iOS: agents QA their own work
 

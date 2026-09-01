@@ -542,12 +542,18 @@ describe("context drift", () => {
 });
 
 describe("visual evidence", () => {
-  const enabled = (include = ["apps/web/**"], exclude: string[] = []): VisualEvidencePolicy => ({
+  const enabled = (
+    include = ["apps/web/**"],
+    exclude: string[] = [],
+    allowedUrlPrefixes: string[] = [],
+  ): VisualEvidencePolicy => ({
     state: "configured",
-    config: { enabled: true, include, exclude },
+    config: { enabled: true, include, exclude, allowedUrlPrefixes },
   });
   const attachment =
     "https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc";
+  const bucketPrefix = "https://storage.googleapis.com/evo-staging-pr-evidence/";
+  const bucketScreenshot = `${bucketPrefix}sha256/meal-review-linked.png`;
 
   it("blocks a declared front-end path without an evidence section", async () => {
     const findings = await checkPr(
@@ -599,6 +605,80 @@ describe("visual evidence", () => {
     );
 
     expect(findings.find((finding) => finding.rule === "visual-evidence")?.level).toBe("error");
+  });
+
+  it("accepts evidence under a repository-approved HTTPS prefix", async () => {
+    const findings = await checkPr(
+      goodPr({
+        body: `${goodPr().body}\n## Visual evidence\n\nScreenshot: ![Meal Review](${bucketScreenshot})\n`,
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(undefined, undefined, [bucketPrefix]),
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence")?.level).toBeUndefined();
+    expect(findings.find((finding) => finding.rule === "visual-evidence-recording")?.level).toBe(
+      "warning",
+    );
+  });
+
+  it("accepts a labeled recording under a repository-approved HTTPS prefix", async () => {
+    const findings = await checkPr(
+      goodPr({
+        body: `${goodPr().body}\n## Visual evidence\n\nRecording: ${bucketPrefix}sha256/meal-review.mov\n`,
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(undefined, undefined, [bucketPrefix]),
+      }),
+    );
+
+    expect(findings.filter((finding) => finding.rule.startsWith("visual-evidence"))).toEqual([]);
+  });
+
+  it("does not trust a sibling bucket on the same provider host", async () => {
+    const findings = await checkPr(
+      goodPr({
+        body: `${goodPr().body}\n## Visual evidence\n\nScreenshot: https://storage.googleapis.com/another-bucket/home.png\n`,
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(undefined, undefined, [bucketPrefix]),
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence")?.level).toBe("error");
+  });
+
+  it.each([
+    bucketPrefix,
+    `${bucketScreenshot}?X-Goog-Signature=temporary`,
+    `${bucketScreenshot}#local-only`,
+  ])("does not accept a bucket root or unstable evidence URL: %s", async (url) => {
+    const findings = await checkPr(
+      goodPr({
+        body: `${goodPr().body}\n## Visual evidence\n\nScreenshot: ${url}\n`,
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(undefined, undefined, [bucketPrefix]),
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence")?.level).toBe("error");
+  });
+
+  it.each([
+    "http://storage.googleapis.com/evo-staging-pr-evidence/",
+    "https://storage.googleapis.com/evo-staging-pr-evidence",
+    "https://user:password@storage.googleapis.com/evo-staging-pr-evidence/",
+    "https://storage.googleapis.com/evo-staging-pr-evidence/?token=secret",
+  ])("rejects an unsafe approved prefix: %s", (prefix) => {
+    const policy = visualEvidencePolicy({
+      review: {
+        visualEvidence: {
+          enabled: true,
+          include: ["apps/web/**"],
+          allowedUrlPrefixes: [prefix],
+        },
+      },
+    });
+
+    expect(policy).toEqual(expect.objectContaining({ state: "invalid" }));
   });
 
   it("does not let a fenced attachment example satisfy the rule", async () => {
