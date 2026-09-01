@@ -245,7 +245,6 @@ jobs:
       SENTRY_DSN: ${{ vars.SENTRY_DSN }}
       PROJECT_PATH: ${{ github.workspace }}/${{ inputs.working-directory }}/${{ inputs.project }}
       SCHEME_NAME: ${{ inputs.scheme }}
-      SOURCE_PACKAGES_PATH: ${{ runner.temp }}/${{ inputs.source-packages-directory }}
       UPLOAD_SCRIPT: ${{ inputs.upload-script }}
     steps:
       - name: Check out verified main commit
@@ -299,6 +298,8 @@ jobs:
             echo "Xcode project not found at $PROJECT_PATH" >&2
             exit 1
           fi
+
+          echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"
 
           xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
           if [ ! -d "$xcode_app" ]; then
