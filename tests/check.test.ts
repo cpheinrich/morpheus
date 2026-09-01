@@ -12,6 +12,11 @@ import {
   type PrContext,
 } from "../src/check/pr.js";
 import { hasNoSubstantiveChange, isRecordsOnly } from "../src/paths.js";
+import {
+  DEFAULT_VISUAL_EVIDENCE,
+  visualEvidencePolicy,
+  type VisualEvidencePolicy,
+} from "../src/check/visual-evidence.js";
 
 let product: string;
 
@@ -533,5 +538,188 @@ describe("context drift", () => {
     // trunk did not move", which is the whole sentinel rule one layer up.
     const findings = await checkPr(goodPr());
     expect(findings.find((f) => f.rule === "context-drift")).toBeUndefined();
+  });
+});
+
+describe("visual evidence", () => {
+  const enabled = (include = ["apps/web/**"], exclude: string[] = []): VisualEvidencePolicy => ({
+    state: "configured",
+    config: { enabled: true, include, exclude },
+  });
+  const attachment =
+    "https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc";
+
+  it("blocks a declared front-end path without an evidence section", async () => {
+    const findings = await checkPr(
+      goodPr({
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(),
+      }),
+    );
+
+    expect(findings).toContainEqual(
+      expect.objectContaining({ rule: "visual-evidence", level: "error" }),
+    );
+  });
+
+  it("accepts a labeled screen recording attachment without a preference warning", async () => {
+    const findings = await checkPr(
+      goodPr({
+        body: `${goodPr().body}\n## Visual evidence\n\nRecording: ${attachment}\n`,
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(),
+      }),
+    );
+
+    expect(findings.filter((finding) => finding.rule.startsWith("visual-evidence"))).toEqual([]);
+  });
+
+  it("accepts screenshots and reports recording as a preference, not a blocker", async () => {
+    const findings = await checkPr(
+      goodPr({
+        body: `${goodPr().body}\n## Visual evidence\n\nScreenshot: ![Home](${attachment})\n`,
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(),
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence")?.level).toBeUndefined();
+    expect(findings.find((finding) => finding.rule === "visual-evidence-recording")?.level).toBe(
+      "warning",
+    );
+  });
+
+  it("does not accept prose or an arbitrary external link as an attachment", async () => {
+    const findings = await checkPr(
+      goodPr({
+        body: `${goodPr().body}\n## Visual evidence\n\nRecording: https://example.com/video.mp4\n`,
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(),
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence")?.level).toBe("error");
+  });
+
+  it("does not let a fenced attachment example satisfy the rule", async () => {
+    const findings = await checkPr(
+      goodPr({
+        body: `${goodPr().body}\n## Visual evidence\n\n\`\`\`\nRecording: ${attachment}\n\`\`\`\n`,
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(),
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence")?.level).toBe("error");
+  });
+
+  it("lets an explicit exclusion override an include", async () => {
+    const findings = await checkPr(
+      goodPr({
+        changedFiles: ["apps/web/e2e/home.spec.tsx"],
+        visualEvidence: enabled(["apps/web/**"], ["apps/web/e2e/**"]),
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence")).toBeUndefined();
+  });
+
+  it("warns rather than blocks a legacy project with no policy", async () => {
+    const findings = await checkPr(
+      goodPr({
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: { state: "absent" },
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence-config")?.level).toBe(
+      "warning",
+    );
+    expect(findings.filter((finding) => finding.level === "error")).toEqual([]);
+  });
+
+  it("warns rather than blocks a front-end-looking path outside the contract", async () => {
+    const findings = await checkPr(
+      goodPr({
+        changedFiles: ["apps/ios/Evo/HomeView.swift"],
+        visualEvidence: enabled(["apps/web/**"]),
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence-paths")?.level).toBe(
+      "warning",
+    );
+    expect(findings.filter((finding) => finding.level === "error")).toEqual([]);
+  });
+
+  it("surfaces a repository opt-out with its reason", async () => {
+    const policy = visualEvidencePolicy({
+      review: {
+        visualEvidence: {
+          enabled: false,
+          reason: "This repository has no rendered user interface.",
+        },
+      },
+    });
+    const findings = await checkPr(
+      goodPr({ changedFiles: ["apps/ios/Evo/HomeView.swift"], visualEvidence: policy }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence")?.level).toBe("waived");
+  });
+
+  it("blocks a meaningless opt-out reason", async () => {
+    const policy = visualEvidencePolicy({
+      review: { visualEvidence: { enabled: false, reason: "yes" } },
+    });
+    const findings = await checkPr(goodPr({ visualEvidence: policy }));
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence-config")?.level).toBe(
+      "error",
+    );
+  });
+
+  it("covers the default React, SwiftUI, asset, and shared-token contracts", async () => {
+    const policy = visualEvidencePolicy({
+      review: { visualEvidence: DEFAULT_VISUAL_EVIDENCE },
+    });
+
+    expect(policy).toEqual(expect.objectContaining({ state: "configured" }));
+    if (policy.state !== "configured") throw new Error("expected configured policy");
+    for (const path of [
+      "apps/web/app/page.tsx",
+      "apps/web/app/globals.css",
+      "apps/ios/Evo/Features/Home/HomeView.swift",
+      "apps/ios/Evo/Assets.xcassets/AppIcon.appiconset/Contents.json",
+      "packages/shared/tokens/colors.json",
+      "hq/brand/tokens.json",
+    ]) {
+      // Exercise the public checker rather than duplicating minimatch in the
+      // assertion: every path must become evidence-required.
+      const findings = await checkPr(
+        goodPr({ changedFiles: [path], visualEvidence: policy }),
+      );
+      expect(findings).toContainEqual(
+        expect.objectContaining({ rule: "visual-evidence", level: "error" }),
+      );
+    }
+  });
+
+  it("does not require captures for default web or iOS test paths", async () => {
+    const policy = visualEvidencePolicy({
+      review: { visualEvidence: DEFAULT_VISUAL_EVIDENCE },
+    });
+    const findings = await checkPr(
+      goodPr({
+        changedFiles: [
+          "apps/web/app/home.test.tsx",
+          "apps/web/e2e/home.spec.tsx",
+          "apps/ios/EvoTests/HomeViewTests.swift",
+        ],
+        visualEvidence: policy,
+      }),
+    );
+
+    expect(findings.filter((finding) => finding.rule.startsWith("visual-evidence"))).toEqual([]);
   });
 });

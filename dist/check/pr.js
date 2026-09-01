@@ -1,6 +1,7 @@
 import { hasNoSubstantiveChange, isRecordsOnly } from "../paths.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { parseArtifact } from "../pm/parse.js";
+import { checkVisualEvidence, } from "./visual-evidence.js";
 /**
  * A waiver line and the reason it gives.
  *
@@ -144,6 +145,14 @@ export async function checkPr(ctx) {
             message: 'No "## Open questions" section. Write "None" explicitly rather than omitting it.',
         });
     }
+    findings.push(...checkVisualEvidence({
+        body,
+        changedFiles,
+        // Direct callers predating the policy are legacy manifests, not proof
+        // that evidence is disabled. The CLI supplies an explicit invalid state
+        // when morpheus.json itself cannot be read.
+        policy: ctx.visualEvidence ?? { state: "absent" },
+    }));
     // A branch naming a roadmap item must move that item to review.
     //
     // Both failures below name the command that fixes them. The rule against

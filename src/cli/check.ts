@@ -1,6 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { checkPr, formatFindings } from "../check/pr.js";
+import {
+  unreadableVisualEvidencePolicy,
+  visualEvidencePolicy,
+  type VisualEvidencePolicy,
+} from "../check/visual-evidence.js";
 
 /**
  * Resolve PR context from the environment.
@@ -68,12 +73,23 @@ function prBody(): string {
   return process.env["MORPHEUS_PR_BODY"] ?? "";
 }
 
+function projectVisualEvidencePolicy(): VisualEvidencePolicy {
+  try {
+    return visualEvidencePolicy(JSON.parse(readFileSync("morpheus.json", "utf8")) as unknown);
+  } catch (error) {
+    return unreadableVisualEvidencePolicy(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
 export async function pr(productDir: string, base: string): Promise<number> {
   const findings = await checkPr({
     body: prBody(),
     branch: currentBranch(),
     changedFiles: changedFiles(base),
     trunkChanges: trunkChanges(base),
+    visualEvidence: projectVisualEvidencePolicy(),
     productDir,
   });
 

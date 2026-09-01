@@ -11,6 +11,7 @@
  * follows.
  */
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
+import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
 export const manifest = (s) => JSON.stringify({
     name: s.name,
@@ -21,6 +22,7 @@ export const manifest = (s) => JSON.stringify({
     // agent resuming without re-reading it is the failure the protocol
     // exists for — and the policy cannot derive a handle on its own.
     context: { handle: s.owner },
+    review: { visualEvidence: DEFAULT_VISUAL_EVIDENCE },
 }, null, 2) + "\n";
 export const firebaseConfig = (rulesPath) => JSON.stringify({ firestore: { rules: rulesPath } }, null, 2) + "\n";
 /**
@@ -830,6 +832,13 @@ item moved to \`review\`. Tests must pin expected behaviour, exercise guards at 
 and fail when a stated invariant is broken; coverage alone is not evidence of quality. See
 [Morpheus's test guidance](${MORPHEUS_REPO}/blob/main/AGENTS.md#what-makes-a-test-count).
 
+**Front-end changes must carry visual evidence.** When a changed path matches
+\`review.visualEvidence.include\` in \`morpheus.json\` (minus \`exclude\`), attach a screen recording
+to the PR when practical, otherwise screenshots, and list them under \`## Visual evidence\`.
+\`morpheus check pr\` validates GitHub attachment references without fetching them. The path
+contract is deterministic; it does not claim to infer whether rendered pixels changed. A repository
+may disable the rule only with \`enabled: false\` and a substantive \`reason\` in the manifest.
+
 **Before opening a PR**, run \`morpheus pm index\` and commit any one-time roadmap README migration
 or generated goal/request index changes. The roadmap README is static after that migration. CI runs
 the same check and will fail otherwise.
@@ -1100,6 +1109,30 @@ jobs:${opts.node
 
   pr:
     uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
+`;
+export const pullRequestTemplate = () => `## Summary
+
+<!-- What changed, and why? -->
+
+<!-- If the roadmap item declares GitHub issues, close each explicitly: Closes #123. -->
+
+## Visual evidence
+
+<!--
+Required when changed paths match review.visualEvidence in morpheus.json.
+Paste GitHub attachments here. Prefer a screen recording; screenshots are accepted otherwise.
+
+- Recording: <GitHub attachment URL>
+- Screenshot: <GitHub attachment or pasted image>
+-->
+
+## Test plan
+
+<!-- What was verified, and how? -->
+
+## Open questions
+
+<!-- State unresolved questions, or write None explicitly. -->
 `;
 export const productReadme = (kind, _s) => {
     if (kind === "roadmap")

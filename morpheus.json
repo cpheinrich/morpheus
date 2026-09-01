@@ -18,6 +18,12 @@
   "context": {
     "handle": "cpheinrich"
   },
+  "review": {
+    "visualEvidence": {
+      "enabled": false,
+      "reason": "Morpheus is a CLI and reusable-workflow repository with no rendered web or iOS product surface."
+    }
+  },
   "hq": {
     "route": "/hq",
     "allowlist": [],
