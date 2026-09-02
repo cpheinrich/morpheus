@@ -175,6 +175,43 @@ describe("checkPr", () => {
     expect(findings.find((f) => f.rule === "open-questions")?.level).toBe("warning");
   });
 
+  it("waives human authoring conventions for exact Dependabot dependency-only changes", async () => {
+    const findings = await checkPr(
+      goodPr({
+        author: "dependabot[bot]",
+        body: "",
+        branch: "dependabot/npm_and_yarn/apps/web/next-16.3.3",
+        changedFiles: ["apps/web/package.json", "apps/web/package-lock.json"],
+      }),
+    );
+
+    expect(findings).toEqual([
+      expect.objectContaining({ rule: "dependabot-contract", level: "waived" }),
+    ]);
+  });
+
+  it("does not trust a bot-shaped user or a Dependabot source change", async () => {
+    const namedLikeBot = await checkPr(
+      goodPr({
+        author: "dependabot",
+        body: "",
+        branch: "dependabot/npm_and_yarn/apps/web/next-16.3.3",
+        changedFiles: ["apps/web/package.json", "apps/web/package-lock.json"],
+      }),
+    );
+    expect(namedLikeBot.find((finding) => finding.rule === "test-plan")?.level).toBe("error");
+
+    const sourceChange = await checkPr(
+      goodPr({
+        author: "dependabot[bot]",
+        changedFiles: ["apps/web/package.json", "apps/web/app/page.tsx"],
+      }),
+    );
+    expect(sourceChange).toContainEqual(
+      expect.objectContaining({ rule: "dependabot-scope", level: "error" }),
+    );
+  });
+
   it("blocks when the roadmap item was not moved to review", async () => {
     await seedRoadmap("EV-014", "in-progress");
     const findings = await checkPr(goodPr());

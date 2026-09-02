@@ -10,6 +10,8 @@ import { type VisualEvidencePolicy } from "./visual-evidence.js";
 export interface PrContext {
     /** PR body markdown. */
     body: string;
+    /** Pull-request author login. Absent outside GitHub unless explicitly supplied. */
+    author?: string;
     /**
      * Files that changed **on the base branch** since this branch left it — not
      * files this PR changed. CI cannot see a context receipt (`local/` is

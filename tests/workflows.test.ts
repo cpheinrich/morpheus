@@ -39,6 +39,56 @@ describe("every workflow", () => {
   });
 });
 
+describe("dependabot-maintainer.yml", () => {
+  type Step = {
+    name?: string;
+    id?: string;
+    uses?: string;
+    with?: Record<string, unknown>;
+    env?: Record<string, string>;
+    run?: string;
+  };
+  type Maintainer = {
+    on?: { workflow_call?: { inputs?: Record<string, { default?: unknown }>; secrets?: Record<string, unknown> } };
+    jobs?: Record<string, { permissions?: Record<string, string>; needs?: string | string[]; steps?: Step[] }>;
+  };
+
+  it("is reusable, cheap by default, and keeps the key optional", async () => {
+    const wf = (await read("dependabot-maintainer.yml")) as Maintainer;
+    expect(wf.on).toHaveProperty("workflow_call");
+    expect(wf.on?.workflow_call?.inputs?.model?.default).toBe("gpt-5.6-luna");
+    expect(wf.on?.workflow_call?.secrets?.openai_api_key).toBeDefined();
+  });
+
+  it("gives Codex no GitHub write permission and makes it the final step", async () => {
+    const wf = (await read("dependabot-maintainer.yml")) as Maintainer;
+    const agent = wf.jobs?.agent;
+    const steps = agent?.steps ?? [];
+    const codex = steps.at(-1);
+
+    expect(agent?.permissions).toEqual({ contents: "read" });
+    expect(codex?.uses).toMatch(/^openai\/codex-action@[0-9a-f]{40}$/);
+    expect(codex?.with?.["permission-profile"]).toBe(":read-only");
+    expect(codex?.with?.["safety-strategy"]).toBe("drop-sudo");
+  });
+
+  it("delivers in a separate job that revalidates the inspection", async () => {
+    const wf = (await read("dependabot-maintainer.yml")) as Maintainer;
+    const delivery = wf.jobs?.delivery;
+    const deliver = delivery?.steps?.find((step) => step.name === "Revalidate and deliver decisions");
+
+    expect([delivery?.needs ?? []].flat()).toEqual(["inspect", "agent"]);
+    expect(delivery?.permissions).toEqual({
+      contents: "write",
+      "pull-requests": "write",
+      issues: "write",
+      checks: "read",
+    });
+    expect(deliver?.run).toContain("dependabot-maintainer.mjs deliver");
+    expect(deliver?.env?.AGENT_RESULT).toBe("${{ needs.agent.outputs.result }}");
+  });
+});
+
 describe("release-preflight.yml", () => {
   type ReleasePreflight = {
     on?: {

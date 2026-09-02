@@ -28,6 +28,13 @@ file anyway, so it was removed; low-churn goal and request indexes remain genera
 
 ## Tooling
 
+**Dependabot automation separates policy, model judgment, and write authority.** Projects own
+exact dependency/update-type allowlists and holds. The shared workflow sends only unmatched,
+dependency-only changes to a low-cost read-only model, then a separate credential-free delivery
+job revalidates live author, head, file scope, and checks. A model may approve auto-merge or ask for
+a human; only project policy may close. CI completion is the fast trigger and nightly reconciliation
+repairs missed events.
+
 **Vercel over Firebase App Hosting** — decided on the review loop, not hosting quality. Vercel
 Comments anchor feedback to page elements and sync into the PR, which is the mechanism that
 makes human review work. Revisit if Firebase ships an equivalent.

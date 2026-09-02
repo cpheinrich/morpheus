@@ -2894,8 +2894,22 @@ build, while the other spends model budget to judge a change, so neither workflo
 implicitly enables the other.
 
 Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `ios-nightly-build`, `firebase-tests`,
-`osv-scan`, `pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`, and `agent-review`. Planned: `agent-triage`,
-`agent-analytics-review`, and `release-kit`.
+`osv-scan`, `pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`, `agent-review`, and
+`dependabot-maintainer`. Planned: `agent-triage`, `agent-analytics-review`, and `release-kit`.
+
+Dependency maintenance splits policy, judgment, and authority. The project owns a versioned list
+of exact dependency/update-type auto-merge rules and explicit holds. `dependabot-maintainer`
+applies those deterministic rules first and sends only unmatched dependency-only changes to a
+low-cost Codex model. The model runs read-only, receives no GitHub write permission, and may return
+only auto-merge or human-review advice. A separate job with no model credential re-reads the live
+pull request and checks the exact Dependabot App author, head SHA, file scope, and current check
+rollup before it changes a label, comment, pull-request state, or auto-merge setting. A model can
+never close a pull request; that requires an explicit project rule.
+
+Projects trigger the workflow after CI for the fast path and on a nightly schedule for
+reconciliation. GitHub event delivery, a transient workflow failure, and a policy change can each
+leave work behind; the scheduled pass makes the open pull-request set the source of truth rather
+than treating one event as a durable queue.
 
 Every reusable job carries a `timeout-minutes` ceiling set well above its honest runtime, so it
 fires only on a hang. Without one a stuck step runs to GitHub's six-hour default on billed
