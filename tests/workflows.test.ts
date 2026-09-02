@@ -87,6 +87,16 @@ describe("dependabot-maintainer.yml", () => {
     expect(deliver?.run).toContain("dependabot-maintainer.mjs deliver");
     expect(deliver?.env?.AGENT_RESULT).toBe("${{ needs.agent.outputs.result }}");
   });
+
+  it("uploads the dot-prefixed inspection receipt explicitly", async () => {
+    const wf = (await read("dependabot-maintainer.yml")) as Maintainer;
+    const upload = wf.jobs?.inspect?.steps?.find((step) =>
+      step.uses?.startsWith("actions/upload-artifact@"),
+    );
+
+    expect(upload?.with?.path).toBe(".dependabot-maintainer");
+    expect(upload?.with?.["include-hidden-files"]).toBe(true);
+  });
 });
 
 describe("release-preflight.yml", () => {
