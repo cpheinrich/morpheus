@@ -104,6 +104,10 @@ jobs:
           name: dependabot-inspection
           path: .dependabot-maintainer
           if-no-files-found: error
+          # upload-artifact excludes dot-prefixed paths unless this is explicit.
+          # The path is exact, so this does not broaden the artifact to secrets
+          # from the workspace.
+          include-hidden-files: true
           retention-days: 1
 
   agent:
