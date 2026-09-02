@@ -1330,6 +1330,13 @@ describe("nightly-ios-build.yml", () => {
     expect(call?.inputs?.["app-store-connect-app-id"]?.required).toBe(true);
     expect(call?.inputs?.["testflight-beta-group-ids"]?.required).toBe(true);
     expect(call?.inputs?.environment?.default).toBe("testflight-internal");
+    expect(call?.inputs?.["parallel-testing"]?.default).toBe(false);
+    expect(call?.inputs?.["firebase-emulators"]?.default).toBe(false);
+    expect(call?.inputs?.["firebase-cli-version"]?.default).toBe("15.28.1");
+    expect(call?.inputs?.["firebase-config"]?.default).toBe("firebase.json");
+    expect(call?.inputs?.["firebase-project"]?.default).toBe("demo-ios-ci");
+    expect(call?.inputs?.["firebase-only"]?.default).toBe("auth,firestore");
+    expect(call?.inputs?.["pre-test-script"]?.default).toBe("");
     expect(wf.permissions).toEqual({
       actions: "read",
       contents: "read",
@@ -1436,6 +1443,13 @@ describe("nightly-ios-build.yml", () => {
     );
     expect(test?.uses).toBe("cpheinrich/morpheus/.github/workflows/ios-ci.yml@main");
     expect(test?.with?.["run-tests"]).toBe(true);
+    expect(test?.with?.["parallel-testing"]).toBe("${{ inputs.parallel-testing }}");
+    expect(test?.with?.["firebase-emulators"]).toBe("${{ inputs.firebase-emulators }}");
+    expect(test?.with?.["firebase-cli-version"]).toBe("${{ inputs.firebase-cli-version }}");
+    expect(test?.with?.["firebase-config"]).toBe("${{ inputs.firebase-config }}");
+    expect(test?.with?.["firebase-project"]).toBe("${{ inputs.firebase-project }}");
+    expect(test?.with?.["firebase-only"]).toBe("${{ inputs.firebase-only }}");
+    expect(test?.with?.["pre-test-script"]).toBe("${{ inputs.pre-test-script }}");
     expect(upload?.needs).toEqual(["changes", "preflight", "test"]);
     expect(upload?.environment).toBe("${{ inputs.environment }}");
     expect(checkout?.with?.ref).toBe("${{ needs.preflight.outputs.sha }}");
@@ -1449,6 +1463,9 @@ describe("nightly-ios-build.yml", () => {
       'echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"',
     );
     expect(release?.env?.ASC_API_KEY_ID).toBe("${{ secrets.APP_STORE_CONNECT_KEY_ID }}");
+    expect(release?.env?.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64).toBe(
+      "${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}",
+    );
     expect(release?.run).toBe('"$GITHUB_WORKSPACE/$UPLOAD_SCRIPT"');
     expect(steps.indexOf(release!)).toBeGreaterThan(
       steps.findIndex((step) => step.name === "Install release tooling"),
