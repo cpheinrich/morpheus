@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { ci as ciTemplate } from "../src/init/templates.js";
+import { ci as ciTemplate, iosNightly } from "../src/init/templates.js";
 
 /**
  * The workflows are shipped to every project, so a mistake here breaks repos
@@ -193,6 +193,10 @@ describe("callers match what they call", () => {
       wf: load(
         ciTemplate({ node: true, rulesPath: "infra/firebase/firestore.rules" }),
       ) as Workflow,
+    });
+    workflows.push({
+      file: "generated ios-nightly-build.yml",
+      wf: load(iosNightly({ app: "Example" })) as Workflow,
     });
 
     for (const { file, wf } of workflows) {
@@ -1851,5 +1855,79 @@ describe("every reusable job", () => {
         expect(job.concurrency?.group, `${file} job ${name}`).toContain("${{ github.ref }}");
       }
     }
+  });
+});
+
+describe("the scaffolded iOS nightly caller", () => {
+  /**
+   * The schedule is the one value in this template that is not app-specific,
+   * so it is the one worth pinning. 06:00 America/Los_Angeles is the standard
+   * slot; a project that wants another time edits its own copy.
+   */
+  it("offers 06:00 America/Los_Angeles as the nightly slot", () => {
+    const rendered = iosNightly({ app: "Example" });
+    expect(rendered).toContain('#   - cron: "0 6 * * *"');
+    expect(rendered).toContain("#     timezone: America/Los_Angeles");
+  });
+
+  /**
+   * A scaffolded project has no signing credentials yet, so a live cron would
+   * fail every night until someone configured them. A scaffold that is red
+   * before anyone has touched it teaches people to ignore red CI — the same
+   * reason \`ci\` does not wire node-ci into a non-pnpm repository.
+   */
+  it("releases only on demand until the schedule is uncommented", () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const triggers = Object.keys(wf.on ?? {});
+    expect(triggers).toContain("workflow_dispatch");
+    expect(triggers).not.toContain("schedule");
+  });
+
+  /**
+   * The upload job must stay in the caller. GitHub does not pass a caller
+   * repository's environment secrets into a cross-repository reusable
+   * workflow, so an upload job inside ios-nightly-build.yml reads every secret
+   * as an empty string. Evo and Kairos each lost a day to that separately.
+   */
+  it("keeps the signed upload in the caller, reading the environment there", () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const release = wf.jobs?.release as { with?: Record<string, unknown> };
+    expect(release?.with?.["run-upload"]).toBe(false);
+
+    const upload = wf.jobs?.upload as {
+      environment?: string;
+      steps?: Array<{ env?: Record<string, string> }>;
+    };
+    expect(upload?.environment).toBe("testflight-internal");
+
+    const env = upload?.steps?.at(-1)?.env ?? {};
+    expect(Object.keys(env)).toContain("IOS_DISTRIBUTION_P12_BASE64");
+    for (const value of Object.values(env)) {
+      expect(value).toMatch(/^\$\{\{ secrets\./);
+    }
+  });
+
+  /**
+   * The app-specific values cannot be guessed from the filesystem, so they are
+   * markers rather than plausible-looking defaults. A wrong-but-plausible team
+   * id fails much later and much less clearly than TODO does.
+   */
+  it("marks every value it cannot know", () => {
+    const rendered = iosNightly({ app: "Example" });
+    for (const key of [
+      "apple-team-id",
+      "ios-bundle-id",
+      "app-store-connect-app-id",
+      "testflight-beta-group-ids",
+    ]) {
+      expect(rendered).toMatch(new RegExp(key + ": .*TODO"));
+    }
+  });
+
+  it("names the project's own scheme and Xcode project", () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const release = wf.jobs?.release as { with?: Record<string, unknown> };
+    expect(release?.with?.project).toBe("Example.xcodeproj");
+    expect(release?.with?.scheme).toBe("Example");
   });
 });
