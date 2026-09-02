@@ -96,6 +96,18 @@ on:
         description: Run every unit and UI test enabled by the shared scheme or selected test plan.
         type: boolean
         default: true
+      optimize-test-build:
+        description: >
+          Override the caller's Debug configuration with the optimization level
+          Xcode actually resolves for a configuration named Release (-O for
+          Swift, -Os for C/Objective-C, whole-module compilation), CI-only.
+          Local Xcode debugging is unaffected — a developer's own Debug build
+          never passes this. Measured on Evo: the build itself got faster, not
+          slower, and every downstream UI test ran faster too, since Debug's
+          default -Onone was the thing making its own graphics-heavy screens
+          slow to render under test.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -296,6 +308,7 @@ jobs:
           TEST_PLAN: ${{ inputs.test-plan }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
           MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
+          OPTIMIZE_TEST_BUILD: ${{ inputs.optimize-test-build }}
         run: |
           set -o pipefail
           args=(
@@ -321,6 +334,12 @@ jobs:
           if [ "$MAXIMUM_PARALLEL_TESTING_WORKERS" != "0" ]; then
             args+=(-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS")
           fi
+          if [ "$OPTIMIZE_TEST_BUILD" = "true" ]; then
+            # A command-line override beats whatever CONFIGURATION resolves to
+            # in the project file, and only reaches this invocation — a
+            # developer's own Debug build in Xcode never passes these.
+            args+=(SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule GCC_OPTIMIZATION_LEVEL=s)
+          fi
           xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log"
 
       - name: Build
@@ -332,21 +351,26 @@ jobs:
           SDK: ${{ inputs.sdk }}
           PLATFORM: ${{ inputs.platform }}
           DESTINATION: ${{ inputs.destination }}
+          OPTIMIZE_TEST_BUILD: ${{ inputs.optimize-test-build }}
         run: |
           set -o pipefail
-          xcodebuild build \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -configuration "$CONFIGURATION" \
-            -sdk "$SDK" \
-            -destination "platform=$PLATFORM,$DESTINATION" \
-            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
-            -derivedDataPath "$DERIVED_DATA" \
-            -resultBundlePath "$RESULTS/Build.xcresult" \
-            -onlyUsePackageVersionsFromResolvedFile \
-            -disableAutomaticPackageResolution \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            2>&1 | tee "$LOGS/build.log"
+          args=(
+            -project "$PROJECT"
+            -scheme "$SCHEME"
+            -configuration "$CONFIGURATION"
+            -sdk "$SDK"
+            -destination "platform=$PLATFORM,$DESTINATION"
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
+            -derivedDataPath "$DERIVED_DATA"
+            -resultBundlePath "$RESULTS/Build.xcresult"
+            -onlyUsePackageVersionsFromResolvedFile
+            -disableAutomaticPackageResolution
+            COMPILER_INDEX_STORE_ENABLE=NO
+          )
+          if [ "$OPTIMIZE_TEST_BUILD" = "true" ]; then
+            args+=(SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule GCC_OPTIMIZATION_LEVEL=s)
+          fi
+          xcodebuild build "${args[@]}" 2>&1 | tee "$LOGS/build.log"
 
       - name: Run unit and UI tests
         if: ${{ inputs.run-tests }}

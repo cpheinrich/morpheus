@@ -1568,6 +1568,30 @@ describe("ios-ci.yml", () => {
     );
   });
 
+  it("optimizes the test build only when the caller opts in, and never for local Xcode debugging", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const inputs = wf.on?.workflow_call?.inputs ?? {};
+    // Off by default: an existing caller's build is unchanged until it asks.
+    expect(inputs["optimize-test-build"]?.default).toBe(false);
+
+    const steps = wf.jobs?.test?.steps ?? [];
+    const buildForTesting = steps.find((step) => step.name === "Build for testing");
+    const build = steps.find((step) => step.name === "Build");
+    const test = steps.find((step) => step.name === "Run unit and UI tests");
+
+    // A command-line xcodebuild override reaches only this CI invocation — a
+    // developer's own Debug build in Xcode never passes these, so -Onone
+    // stays intact for local breakpoint debugging regardless of this input.
+    for (const step of [buildForTesting, build]) {
+      expect(String(step?.run)).toContain("SWIFT_OPTIMIZATION_LEVEL=-O");
+      expect(String(step?.run)).toContain("SWIFT_COMPILATION_MODE=wholemodule");
+      expect(String(step?.run)).toContain("GCC_OPTIMIZATION_LEVEL=s");
+      expect(String(step?.env?.OPTIMIZE_TEST_BUILD)).toBe("${{ inputs.optimize-test-build }}");
+    }
+    // test-without-building compiles nothing, so an optimization override is noise there.
+    expect(String(test?.run)).not.toContain("SWIFT_OPTIMIZATION_LEVEL");
+  });
+
   it("does not expose the checkout credential to caller-controlled test code", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const checkout = steps.find((step) => step.uses === "actions/checkout@v7");

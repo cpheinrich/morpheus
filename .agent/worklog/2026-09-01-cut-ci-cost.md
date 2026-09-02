@@ -41,3 +41,19 @@ cancelled at exactly thirty-one minutes, which is that ceiling firing. The run l
 - Whether a caller should enable parallel testing is the caller's decision, and `ios-ci.yml`'s
   own default stays `false`.
 - The largest remaining cost is Evo's serial UI suite, which belongs to Evo.
+
+## Follow-up: optimize-test-build (2026-09-02)
+
+Added after Evo profiled a Debug-vs-Release-optimization-level question on its own PR. A real
+Release build's compiler invocations were grepped (not assumed from the project file — Release has
+no explicit `SWIFT_OPTIMIZATION_LEVEL` line, and an unset setting can still carry an Xcode-internal
+default keyed to the configuration's name): `-O` for Swift, `-Os` for C/Objective-C, whole-module
+compilation. `optimize-test-build` (default `false`) passes those as command-line overrides on both
+build actions, which reaches only that `xcodebuild` invocation — a caller's own Debug configuration
+in the project file, and a developer's local Xcode build, are untouched either way.
+
+Measured on Evo with it enabled: the build itself got faster (2m57s → 1m32s), not slower, and every
+UI test exercising real rendering work ran faster too — `-Onone` was costing more in per-file
+compile overhead than whole-module optimization added back, and the app's own compute-heavy screens
+render measurably faster once optimized. Combined with two parallel workers and Evo's own
+reduce-motion default, total suite time went 28m13s → 18m25s with 134/134 tests passing.

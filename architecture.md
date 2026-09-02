@@ -2916,7 +2916,16 @@ directory. Both build actions pass `COMPILER_INDEX_STORE_ENABLE=NO`: index-while
 Xcode's editor, and a runner has no editor and discards the store with the machine. The
 SourcePackages cache carries a prefix `restore-keys`, so bumping one dependency reuses the
 unchanged checkouts instead of re-cloning every package — the locked-resolution flags keep the
-restored result exact either way.
+restored result exact either way. `optimize-test-build` overrides both build actions'
+optimization settings with what Xcode actually resolves for a configuration literally named
+Release — `-O` for Swift, `-Os` for C/Objective-C, whole-module compilation — confirmed by
+grepping a real Release build's compiler invocations rather than assumed from the project file,
+since an unset build setting can still carry an Xcode-internal default tied to the configuration's
+name. Off by default: a command-line override on `xcodebuild` reaches only that invocation, so a
+caller opts in without touching its project file or its developers' own Debug builds in Xcode.
+Measured on Evo with it on, the build itself got faster, not slower — Debug's default `-Onone`
+was costing more in per-file compile overhead than whole-module optimization added back — and
+every UI test that exercises real rendering work ran faster too.
 Rendered XCTest attachments are retained on every run; a failed run additionally keeps
 both result bundles and raw `xcodebuild` logs. Firebase-backed apps can opt into an exact
 `firebase-tools` version, a repository config, an explicit synthetic project id and emulator list,
