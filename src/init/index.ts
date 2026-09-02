@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { initializeWorkflow } from "../brand/workflow.js";
 import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
@@ -475,6 +475,42 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
       "No pnpm lockfile here, so CI wires only the convention checks. Add the\n" +
         "node-ci job to .github/workflows/ci.yml once this is a pnpm project.",
     );
+  }
+
+  // --- ios nightly release --------------------------------------------------
+  //
+  // Only for a repository that actually has an Xcode project. Every value in
+  // this workflow except the schedule is app-specific — team id, bundle id,
+  // App Store Connect app id, beta group — and none of them can be guessed
+  // from the filesystem, so the template writes TODO markers and this note
+  // says what has to be filled in.
+  //
+  // The point of shipping it anyway is the shape, not the values: 06:00
+  // America/Los_Angeles as the standard slot, and the upload job in the
+  // caller. Both Evo and Kairos hand-wrote this file and both lost a day to
+  // the same discovery, that a cross-repository reusable workflow never
+  // receives the caller's environment secrets.
+  const iosDirectory = join(root, "apps/ios");
+  const xcodeProject = (await readdir(iosDirectory).catch(() => [])).find((entry) =>
+    entry.endsWith(".xcodeproj"),
+  );
+  if (xcodeProject) {
+    const app = xcodeProject.slice(0, -".xcodeproj".length);
+    const workflow = ".github/workflows/ios-nightly-build.yml";
+    if (await exists(join(root, workflow))) {
+      skipped.push(workflow);
+    } else {
+      await put(workflow, t.iosNightly({ app }));
+      notes.push(
+        "Scaffolded " +
+          workflow +
+          " for " +
+          app +
+          ". Replace every TODO value, add the seven release\n" +
+          "secrets to a protected testflight-internal environment, then uncomment the 06:00\n" +
+          "schedule. Until then it releases only on manual dispatch.",
+      );
+    }
   }
 
   // --- gitignore ------------------------------------------------------------
