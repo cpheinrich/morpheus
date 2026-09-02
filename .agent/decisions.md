@@ -68,6 +68,14 @@ processing checks, and assignment to the repository-owned upload script. This ke
 automated uploads on one App Store Connect sequence without moving app-specific release policy into
 Morpheus.
 
+**Cross-repository iOS signing stays in the caller's environment job** — 2026-09-02. GitHub does
+not pass caller environment secrets through `workflow_call`; a job-level environment inside a
+reusable workflow resolves outside the caller's protected environment. The shared nightly workflow
+therefore exposes its build decision and exact verified SHA, and cross-repository callers disable
+its built-in upload job and gate a local upload job on those outputs. Repository-scoped secret
+inheritance was rejected because it would widen credentials that are intentionally available only
+after the protected environment gate.
+
 **Vercel deployment and agent review are separate reusable workflows** — 2026-08-23. Deployment
 is deterministic delivery with project credentials; review is optional model judgment with its own
 cost and failure modes. Projects call `vercel-deploy.yml` independently, so pausing review never

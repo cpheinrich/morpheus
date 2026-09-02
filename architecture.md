@@ -2947,18 +2947,21 @@ the caller in the group one would cancel the other. Selecting the requested
 is small enough to audit here and does not put a third-party setup action in every consumer's CI
 trust path.
 
-`ios-nightly-build` composes `release-preflight` and `ios-ci` before entering a caller-owned
-protected environment and invoking a caller-owned archive/upload script. The caller owns the cron,
-watched app paths, environment policy, app identifiers, TestFlight beta-group targets, build-number
-allocation, and credentials. It forwards the complete secret-free test contract — including
+`ios-nightly-build` composes `release-preflight` and `ios-ci`, then exposes the build decision and
+the exact verified main SHA. The caller owns the cron, watched app paths, environment policy, app
+identifiers, TestFlight beta-group targets, build-number allocation, and credentials. GitHub does
+not pass a caller repository's environment secrets into a cross-repository reusable workflow, so
+those callers disable the workflow's upload job and use its outputs to gate a caller-owned upload
+job inside their protected environment. Same-repository callers may retain the built-in upload job.
+The workflow forwards the complete secret-free test contract — including
 parallel-test policy and optional maximum simulator-worker count, Firebase Emulator Suite
 configuration, and the pre-test fixture script — to `ios-ci`. Release builds default to the
 five-core M2 Pro `macos-26-xlarge` runner with parallel testing enabled and at most six simulator
 workers; callers may dial those inputs down after observing resource pressure. An app that needs
 an ignored Google service plist for its signed archive may keep its
 base64 value in the protected environment as `IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64`; only the
-caller-owned upload script receives it. The reusable workflow installs `asccli` but does not derive
-a build number from GitHub metadata; the caller's upload script must allocate against App Store
+caller-owned upload script receives it. The built-in upload path installs `asccli` but does not
+derive a build number from GitHub metadata; the caller's upload script must allocate against App Store
 Connect so manual and automated uploads share one sequence. Scheduled runs compare
 those paths from the caller workflow's latest successful upload to the current `main` SHA; an empty
 diff reports the skip from a Linux job and provisions no macOS runner. A missing, unavailable, or
