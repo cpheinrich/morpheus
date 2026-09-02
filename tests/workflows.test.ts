@@ -1447,7 +1447,7 @@ describe("ios-nightly-build.yml", () => {
     expect(test?.with?.["run-tests"]).toBe(true);
     expect(test?.with?.["parallel-testing"]).toBe("${{ inputs.parallel-testing }}");
     expect(test?.with?.["maximum-parallel-testing-workers"]).toBe(
-      "${{ inputs.maximum-parallel-testing-workers }}",
+      "${{ inputs.parallel-testing && inputs.maximum-parallel-testing-workers || 0 }}",
     );
     expect(test?.with?.["firebase-emulators"]).toBe("${{ inputs.firebase-emulators }}");
     expect(test?.with?.["firebase-cli-version"]).toBe("${{ inputs.firebase-cli-version }}");

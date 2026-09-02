@@ -489,3 +489,15 @@ the program.
 A disposable clone must install its reviewed lockfile before invoking the committed CLI. A test of
 the bootstrap now asserts that ordering; the acceptance test still has to use real Node and an
 isolated package prefix, because faking a process proves command routing, not module resolution.
+
+## Coupled reusable-workflow inputs need one boundary that owns their invariant
+
+2026-09-02. The nightly iOS workflow defaulted to parallel testing with six workers, while its
+delegated `ios-ci` workflow correctly rejected a nonzero worker limit when parallel testing was
+off. A downstream caller overrode only `parallel-testing: false`, inherited the independent
+six-worker default, and the scheduled build failed before tests or signing.
+
+When one input changes whether another input is valid, normalize the pair before forwarding it.
+The nightly workflow now preserves the requested worker ceiling when parallel testing is enabled
+and passes zero when it is disabled, so callers do not have to restate an implementation default
+just to disable the feature.
