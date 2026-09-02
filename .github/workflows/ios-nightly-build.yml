@@ -263,7 +263,7 @@ jobs:
       scheme: ${{ inputs.scheme }}
       destination: ${{ inputs.destination }}
       parallel-testing: ${{ inputs.parallel-testing }}
-      maximum-parallel-testing-workers: ${{ inputs.maximum-parallel-testing-workers }}
+      maximum-parallel-testing-workers: ${{ inputs.parallel-testing && inputs.maximum-parallel-testing-workers || 0 }}
       optimize-test-build: ${{ inputs.optimize-test-build }}
       firebase-emulators: ${{ inputs.firebase-emulators }}
       firebase-cli-version: ${{ inputs.firebase-cli-version }}
