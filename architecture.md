@@ -2897,6 +2897,13 @@ Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `ios-nightly-build`, `fireb
 `osv-scan`, `pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`, and `agent-review`. Planned: `agent-triage`,
 `agent-analytics-review`, and `release-kit`.
 
+Every reusable job carries a `timeout-minutes` ceiling set well above its honest runtime, so it
+fires only on a hang. Without one a stuck step runs to GitHub's six-hour default on billed
+minutes, which is how a hung Playwright install once cost forty. The jobs that gate a pull request
+also carry a job-level concurrency group so a superseded push cancels rather than running beside
+its replacement — job-level rather than workflow-level, because a called workflow's top-level
+`concurrency` does not govern the caller's run.
+
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
 Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination.
@@ -2905,14 +2912,22 @@ of truth for which unit and UI targets run. The workflow refuses an absent or un
 `Package.resolved`, passes `-onlyUsePackageVersionsFromResolvedFile` to resolution and every build
 action, disables automatic package resolution after the explicit locked resolve, and separates
 SourcePackages, DerivedData, logs, screenshots, and `.xcresult` bundles under the runner's temporary
-directory. Rendered XCTest attachments are retained on every run; a failed run additionally keeps
+directory. Both build actions pass `COMPILER_INDEX_STORE_ENABLE=NO`: index-while-building serves
+Xcode's editor, and a runner has no editor and discards the store with the machine. The
+SourcePackages cache carries a prefix `restore-keys`, so bumping one dependency reuses the
+unchanged checkouts instead of re-cloning every package — the locked-resolution flags keep the
+restored result exact either way.
+Rendered XCTest attachments are retained on every run; a failed run additionally keeps
 both result bundles and raw `xcodebuild` logs. Firebase-backed apps can opt into an exact
 `firebase-tools` version, a repository config, an explicit synthetic project id and emulator list,
 plus one repository-relative fixture script that runs inside the live emulator environment before
 XCTest; failures retain Firebase's debug log with the Xcode evidence. Every service input is
 validated, the boundary stays secret-free, and apps without Firebase pay none of its JDK or CLI
 setup cost. A superseding push cancels the older bounded simulator job; the default is 30 minutes
-and consumers with broader UI suites can explicitly request more headroom. Selecting the requested
+and consumers with broader UI suites can explicitly request more headroom. The concurrency group
+names the calling workflow as well as the repository, ref and scheme, because a release workflow
+calls this same job on `refs/heads/main` where a push-to-main CI run is already using it; without
+the caller in the group one would cancel the other. Selecting the requested
 `/Applications/Xcode_<version>.app` through `DEVELOPER_DIR` is deliberately inlined: the operation
 is small enough to audit here and does not put a third-party setup action in every consumer's CI
 trust path.

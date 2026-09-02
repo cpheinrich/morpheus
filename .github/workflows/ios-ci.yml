@@ -104,8 +104,12 @@ jobs:
   test:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
+    # `github.workflow` names the *caller*, which is what separates a pull
+    # request's CI run from a release workflow that calls this same job on
+    # refs/heads/main. Without it both land in one group and the release's
+    # tests can be cancelled by an unrelated push — or cancel it.
     concurrency:
-      group: ios-ci-${{ github.repository }}-${{ github.ref }}-${{ inputs.scheme }}
+      group: ios-ci-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-${{ inputs.scheme }}
       cancel-in-progress: true
     defaults:
       run:
@@ -246,6 +250,12 @@ jobs:
         with:
           path: ${{ runner.temp }}/ios-ci/SourcePackages
           key: swiftpm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-${{ hashFiles(format('{0}/**/Package.resolved', inputs.working-directory)) }}
+          # Without a prefix restore, bumping one dependency in Package.resolved
+          # misses the cache entirely and re-clones every package from scratch.
+          # A partial hit still leaves the unchanged checkouts in place, and
+          # -onlyUsePackageVersionsFromResolvedFile keeps the result exact.
+          restore-keys: |
+            swiftpm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-
 
       - name: Resolve locked Swift packages
         env:
@@ -300,6 +310,10 @@ jobs:
             -onlyUsePackageVersionsFromResolvedFile
             -disableAutomaticPackageResolution
             -parallel-testing-enabled "$PARALLEL_TESTING"
+            # Index-while-building exists to serve Xcode's editor. A CI runner
+            # has no editor and discards the store with the machine, so this is
+            # compiler work nothing ever reads.
+            COMPILER_INDEX_STORE_ENABLE=NO
           )
           if [ -n "$TEST_PLAN" ]; then
             args+=(-testPlan "$TEST_PLAN")
@@ -331,6 +345,7 @@ jobs:
             -resultBundlePath "$RESULTS/Build.xcresult" \
             -onlyUsePackageVersionsFromResolvedFile \
             -disableAutomaticPackageResolution \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             2>&1 | tee "$LOGS/build.log"
 
       - name: Run unit and UI tests
