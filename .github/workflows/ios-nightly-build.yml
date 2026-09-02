@@ -1,4 +1,4 @@
-name: Nightly iOS TestFlight build
+name: iOS nightly TestFlight build
 
 # Reusable release workflow for native Apple apps. The calling repository owns
 # the schedule, watched paths, protected environment, and app-specific upload
@@ -23,7 +23,7 @@ on:
       runner:
         description: GitHub-hosted macOS image used for testing and release.
         type: string
-        default: "macos-26"
+        default: "macos-26-xlarge"
       test-timeout-minutes:
         description: Maximum duration of the delegated iOS test job.
         type: number
@@ -55,7 +55,11 @@ on:
       parallel-testing:
         description: Allow Xcode to run test targets in parallel.
         type: boolean
-        default: false
+        default: true
+      maximum-parallel-testing-workers:
+        description: Maximum simulator test workers when parallel testing is enabled; zero lets Xcode decide.
+        type: number
+        default: 6
       firebase-emulators:
         description: Run the delegated test action inside Firebase Emulator Suite.
         type: boolean
@@ -255,6 +259,7 @@ jobs:
       scheme: ${{ inputs.scheme }}
       destination: ${{ inputs.destination }}
       parallel-testing: ${{ inputs.parallel-testing }}
+      maximum-parallel-testing-workers: ${{ inputs.maximum-parallel-testing-workers }}
       firebase-emulators: ${{ inputs.firebase-emulators }}
       firebase-cli-version: ${{ inputs.firebase-cli-version }}
       firebase-config: ${{ inputs.firebase-config }}

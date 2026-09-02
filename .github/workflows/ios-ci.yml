@@ -64,6 +64,10 @@ on:
         description: Allow Xcode to run test targets in parallel. Off by default for deterministic UI tests.
         type: boolean
         default: false
+      maximum-parallel-testing-workers:
+        description: Maximum simulator test workers when parallel testing is enabled; zero lets Xcode decide.
+        type: number
+        default: 0
       firebase-emulators:
         description: Run the test action inside Firebase Emulator Suite when the app depends on local services.
         type: boolean
@@ -139,6 +143,8 @@ jobs:
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
+          PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
+          MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
           FIREBASE_EMULATORS: ${{ inputs.firebase-emulators }}
           FIREBASE_CLI_VERSION: ${{ inputs.firebase-cli-version }}
           FIREBASE_CONFIG: ${{ inputs.firebase-config }}
@@ -159,6 +165,14 @@ jobs:
           fi
           if [ -z "$SCHEME" ]; then
             echo "scheme must not be empty" >&2
+            exit 1
+          fi
+          if [[ ! "$MAXIMUM_PARALLEL_TESTING_WORKERS" =~ ^[0-9]+$ ]]; then
+            echo "maximum-parallel-testing-workers must be a non-negative integer" >&2
+            exit 1
+          fi
+          if [ "$PARALLEL_TESTING" != "YES" ] && [ "$MAXIMUM_PARALLEL_TESTING_WORKERS" != "0" ]; then
+            echo "maximum-parallel-testing-workers requires parallel-testing" >&2
             exit 1
           fi
 
@@ -271,6 +285,7 @@ jobs:
           DESTINATION: ${{ inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
+          MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
         run: |
           set -o pipefail
           args=(
@@ -288,6 +303,9 @@ jobs:
           )
           if [ -n "$TEST_PLAN" ]; then
             args+=(-testPlan "$TEST_PLAN")
+          fi
+          if [ "$MAXIMUM_PARALLEL_TESTING_WORKERS" != "0" ]; then
+            args+=(-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS")
           fi
           xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log"
 
@@ -326,6 +344,7 @@ jobs:
           DESTINATION: ${{ inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
+          MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
           FIREBASE_EMULATORS: ${{ inputs.firebase-emulators }}
           FIREBASE_CONFIG: ${{ inputs.firebase-config }}
           FIREBASE_PROJECT: ${{ inputs.firebase-project }}
@@ -348,6 +367,9 @@ jobs:
           )
           if [ -n "$TEST_PLAN" ]; then
             args+=(-testPlan "$TEST_PLAN")
+          fi
+          if [ "$MAXIMUM_PARALLEL_TESTING_WORKERS" != "0" ]; then
+            args+=(-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS")
           fi
           if [ "$FIREBASE_EMULATORS" = "true" ]; then
             printf -v test_command '%q ' xcodebuild test-without-building "${args[@]}"

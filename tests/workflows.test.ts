@@ -1287,7 +1287,7 @@ describe("firebase-tests.yml", () => {
   });
 });
 
-describe("nightly-ios-build.yml", () => {
+describe("ios-nightly-build.yml", () => {
   type NightlyIosBuild = {
     on?: {
       workflow_call?: {
@@ -1319,7 +1319,7 @@ describe("nightly-ios-build.yml", () => {
   };
 
   it("keeps the release cursor read-only and caller-owned", async () => {
-    const wf = (await read("nightly-ios-build.yml")) as NightlyIosBuild;
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const call = wf.on?.workflow_call;
 
     expect(call).toBeDefined();
@@ -1330,7 +1330,9 @@ describe("nightly-ios-build.yml", () => {
     expect(call?.inputs?.["app-store-connect-app-id"]?.required).toBe(true);
     expect(call?.inputs?.["testflight-beta-group-ids"]?.required).toBe(true);
     expect(call?.inputs?.environment?.default).toBe("testflight-internal");
-    expect(call?.inputs?.["parallel-testing"]?.default).toBe(false);
+    expect(call?.inputs?.runner?.default).toBe("macos-26-xlarge");
+    expect(call?.inputs?.["parallel-testing"]?.default).toBe(true);
+    expect(call?.inputs?.["maximum-parallel-testing-workers"]?.default).toBe(6);
     expect(call?.inputs?.["firebase-emulators"]?.default).toBe(false);
     expect(call?.inputs?.["firebase-cli-version"]?.default).toBe("15.28.1");
     expect(call?.inputs?.["firebase-config"]?.default).toBe("firebase.json");
@@ -1345,7 +1347,7 @@ describe("nightly-ios-build.yml", () => {
   });
 
   it("uses a full checkout and the last successful caller run for its diff", async () => {
-    const wf = (await read("nightly-ios-build.yml")) as NightlyIosBuild;
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const steps = wf.jobs?.changes?.steps ?? [];
     const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
     const decision = steps.find((step) => step.name === "Compare with the last successful upload");
@@ -1386,7 +1388,7 @@ describe("nightly-ios-build.yml", () => {
       await writeFile(fakeGh, "#!/usr/bin/env bash\nprintf '%s\\n' \"$BASELINE_SHA\"\n", "utf8");
       await chmod(fakeGh, 0o755);
 
-      const wf = (await read("nightly-ios-build.yml")) as NightlyIosBuild;
+      const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
       const script = wf.jobs?.changes?.steps?.find(
         (step) => step.name === "Compare with the last successful upload",
       )?.run;
@@ -1427,7 +1429,7 @@ describe("nightly-ios-build.yml", () => {
   });
 
   it("gates signed upload on exact-main preflight and independent tests", async () => {
-    const wf = (await read("nightly-ios-build.yml")) as NightlyIosBuild;
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const preflight = wf.jobs?.preflight;
     const test = wf.jobs?.test;
     const upload = wf.jobs?.upload;
@@ -1444,6 +1446,9 @@ describe("nightly-ios-build.yml", () => {
     expect(test?.uses).toBe("cpheinrich/morpheus/.github/workflows/ios-ci.yml@main");
     expect(test?.with?.["run-tests"]).toBe(true);
     expect(test?.with?.["parallel-testing"]).toBe("${{ inputs.parallel-testing }}");
+    expect(test?.with?.["maximum-parallel-testing-workers"]).toBe(
+      "${{ inputs.maximum-parallel-testing-workers }}",
+    );
     expect(test?.with?.["firebase-emulators"]).toBe("${{ inputs.firebase-emulators }}");
     expect(test?.with?.["firebase-cli-version"]).toBe("${{ inputs.firebase-cli-version }}");
     expect(test?.with?.["firebase-config"]).toBe("${{ inputs.firebase-config }}");
@@ -1524,6 +1529,7 @@ describe("ios-ci.yml", () => {
     expect(inputs.project?.default).toBe("Evo.xcodeproj");
     expect(inputs.scheme?.default).toBe("Evo");
     expect(inputs["parallel-testing"]?.default).toBe(false);
+    expect(inputs["maximum-parallel-testing-workers"]?.default).toBe(0);
     expect(inputs["firebase-emulators"]?.default).toBe(false);
     expect(inputs["pre-test-script"]?.default).toBe("");
   });
@@ -1582,6 +1588,9 @@ describe("ios-ci.yml", () => {
     expect(String(build?.run)).toContain("-disableAutomaticPackageResolution");
     expect(String(test?.run)).toContain("-disableAutomaticPackageResolution");
     expect(String(test?.run)).toContain('-parallel-testing-enabled "$PARALLEL_TESTING"');
+    expect(String(test?.run)).toContain(
+      '-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS"',
+    );
     expect(build?.if).toBe("${{ inputs.run-tests }}");
     expect(test?.if).toBe("${{ inputs.run-tests }}");
   });
