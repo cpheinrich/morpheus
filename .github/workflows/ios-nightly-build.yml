@@ -1,12 +1,21 @@
 name: iOS nightly TestFlight build
 
 # Reusable release workflow for native Apple apps. The calling repository owns
-# the schedule, watched paths, protected environment, and app-specific upload
-# script. A scheduled run spends a macOS runner only when those paths changed
-# since this caller workflow last uploaded successfully.
+# the schedule, watched paths, and app-specific upload policy. A scheduled run
+# spends a macOS runner only when those paths changed since this caller workflow
+# last uploaded successfully. Cross-repository callers keep environment-secret
+# signing in a caller-owned job by disabling this workflow's upload job and
+# consuming its verified outputs.
 
 on:
   workflow_call:
+    outputs:
+      build:
+        description: Whether watched changes or a manual override require a release build.
+        value: ${{ jobs.changes.outputs.build }}
+      sha:
+        description: Exact reviewed main SHA that passed preflight and testing.
+        value: ${{ jobs.preflight.outputs.sha }}
     inputs:
       workflow-file:
         description: Caller workflow filename whose latest successful run is the change baseline.
@@ -88,8 +97,14 @@ on:
         description: Optional caller-repository script run immediately before tests.
         type: string
         default: ""
+      run-upload:
+        description: >
+          Run the upload job in this workflow. Cross-repository callers whose credentials are
+          environment secrets must disable this and upload from a caller-owned environment job.
+        type: boolean
+        default: true
       environment:
-        description: Protected caller-repository environment holding Apple release credentials.
+        description: Protected environment used only when run-upload is enabled.
         type: string
         default: "testflight-internal"
       upload-script:
@@ -276,7 +291,7 @@ jobs:
   upload:
     name: Upload TestFlight build
     needs: [changes, preflight, test]
-    if: ${{ needs.changes.outputs.build == 'true' && needs.preflight.result == 'success' && needs.test.result == 'success' }}
+    if: ${{ inputs.run-upload && needs.changes.outputs.build == 'true' && needs.preflight.result == 'success' && needs.test.result == 'success' }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.upload-timeout-minutes }}
     environment: ${{ inputs.environment }}

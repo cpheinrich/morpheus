@@ -1292,6 +1292,7 @@ describe("ios-nightly-build.yml", () => {
     on?: {
       workflow_call?: {
         inputs?: Record<string, { type?: string; default?: unknown; required?: boolean }>;
+        outputs?: Record<string, { description?: string; value?: string }>;
         secrets?: Record<string, unknown>;
       };
     };
@@ -1339,6 +1340,9 @@ describe("ios-nightly-build.yml", () => {
     expect(call?.inputs?.["firebase-project"]?.default).toBe("demo-ios-ci");
     expect(call?.inputs?.["firebase-only"]?.default).toBe("auth,firestore");
     expect(call?.inputs?.["pre-test-script"]?.default).toBe("");
+    expect(call?.inputs?.["run-upload"]?.default).toBe(true);
+    expect(call?.outputs?.build?.value).toBe("${{ jobs.changes.outputs.build }}");
+    expect(call?.outputs?.sha?.value).toBe("${{ jobs.preflight.outputs.sha }}");
     expect(wf.permissions).toEqual({
       actions: "read",
       contents: "read",
@@ -1456,6 +1460,7 @@ describe("ios-nightly-build.yml", () => {
     expect(test?.with?.["firebase-only"]).toBe("${{ inputs.firebase-only }}");
     expect(test?.with?.["pre-test-script"]).toBe("${{ inputs.pre-test-script }}");
     expect(upload?.needs).toEqual(["changes", "preflight", "test"]);
+    expect(upload?.if).toContain("inputs.run-upload");
     expect(upload?.environment).toBe("${{ inputs.environment }}");
     expect(checkout?.with?.ref).toBe("${{ needs.preflight.outputs.sha }}");
     expect(upload?.env?.BUILD_NUMBER).toBeUndefined();

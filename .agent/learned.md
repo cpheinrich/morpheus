@@ -501,3 +501,16 @@ When one input changes whether another input is valid, normalize the pair before
 The nightly workflow now preserves the requested worker ceiling when parallel testing is enabled
 and passes zero when it is disabled, so callers do not have to restate an implementation default
 just to disable the feature.
+
+## A called workflow cannot enter the caller repository's protected environment
+
+2026-09-02. Evo delegated its TestFlight upload job to a reusable workflow in Morpheus and passed
+the name `testflight-internal`. Change detection, exact-main verification, and all iOS tests passed;
+then every Apple credential was empty. The credentials still existed in Evo's environment. GitHub's
+boundary is the cause: caller environment secrets cannot pass through `workflow_call`, and an
+environment on the called workflow's job is not the caller repository's environment.
+
+Keep reusable release gates secret-free. Return the build decision and verified SHA, then let a
+cross-repository caller use those outputs to gate a local job that names its own protected
+environment. Do not move signing credentials to repository scope just to make `secrets: inherit`
+possible; that weakens the boundary instead of fixing it.
