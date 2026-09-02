@@ -60,6 +60,16 @@ on:
         description: Optional shared Xcode test plan. Empty uses the scheme's default test action.
         type: string
         default: ""
+      skip-testing:
+        description: >
+          Newline-separated xcodebuild -skip-testing identifiers
+          (TestTarget[/TestClass[/testMethod]]), for excluding specific tests
+          from this run — for example a caller keeping an expensive
+          XCTMeasureOptions performance test out of the per-PR job while a
+          separate nightly caller runs the full scheme. Empty runs everything
+          the scheme or test plan already selects.
+        type: string
+        default: ""
       parallel-testing:
         description: Allow Xcode to run test targets in parallel. Off by default for deterministic UI tests.
         type: boolean
@@ -382,6 +392,7 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
           DESTINATION: ${{ inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
+          SKIP_TESTING: ${{ inputs.skip-testing }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
           MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
           FIREBASE_EMULATORS: ${{ inputs.firebase-emulators }}
@@ -406,6 +417,12 @@ jobs:
           )
           if [ -n "$TEST_PLAN" ]; then
             args+=(-testPlan "$TEST_PLAN")
+          fi
+          if [ -n "$SKIP_TESTING" ]; then
+            while IFS= read -r identifier; do
+              [ -z "$identifier" ] && continue
+              args+=(-skip-testing:"$identifier")
+            done <<< "$SKIP_TESTING"
           fi
           if [ "$MAXIMUM_PARALLEL_TESTING_WORKERS" != "0" ]; then
             args+=(-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS")

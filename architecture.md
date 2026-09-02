@@ -2925,7 +2925,13 @@ name. Off by default: a command-line override on `xcodebuild` reaches only that 
 caller opts in without touching its project file or its developers' own Debug builds in Xcode.
 Measured on Evo with it on, the build itself got faster, not slower — Debug's default `-Onone`
 was costing more in per-file compile overhead than whole-module optimization added back — and
-every UI test that exercises real rendering work ran faster too.
+every UI test that exercises real rendering work ran faster too. `skip-testing` takes
+newline-separated `xcodebuild -skip-testing:` identifiers, applied only to the run step — the
+build-for-testing step compiles the whole scheme regardless of which subset will execute, so a
+build-time exclusion would be a no-op. The intended use is a per-PR caller keeping an expensive
+`XCTMeasureOptions` performance test out of every pull request while a separate nightly caller
+(which never sets this input) runs the full scheme; empty by default, so an existing caller's
+selection is unchanged.
 Rendered XCTest attachments are retained on every run; a failed run additionally keeps
 both result bundles and raw `xcodebuild` logs. Firebase-backed apps can opt into an exact
 `firebase-tools` version, a repository config, an explicit synthetic project id and emulator list,

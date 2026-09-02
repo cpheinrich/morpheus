@@ -1594,6 +1594,26 @@ describe("ios-ci.yml", () => {
     expect(String(test?.run)).not.toContain("SWIFT_OPTIMIZATION_LEVEL");
   });
 
+  it("can exclude specific tests from a run without affecting the build", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const inputs = wf.on?.workflow_call?.inputs ?? {};
+    // Empty by default: an existing caller's test selection is unchanged.
+    expect(inputs["skip-testing"]?.default).toBe("");
+
+    const steps = wf.jobs?.test?.steps ?? [];
+    const buildForTesting = steps.find((step) => step.name === "Build for testing");
+    const test = steps.find((step) => step.name === "Run unit and UI tests");
+
+    // build-for-testing compiles the whole scheme regardless of which subset
+    // will execute — only the run step needs to know what to exclude.
+    expect(String(buildForTesting?.run)).not.toContain("SKIP_TESTING");
+    expect(String(test?.env && (test.env as Record<string, unknown>).SKIP_TESTING)).toBe(
+      "${{ inputs.skip-testing }}",
+    );
+    expect(String(test?.run)).toContain("-skip-testing:");
+    expect(String(test?.run)).toContain('while IFS= read -r identifier');
+  });
+
   it("does not expose the checkout credential to caller-controlled test code", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
