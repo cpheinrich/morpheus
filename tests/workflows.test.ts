@@ -1539,8 +1539,59 @@ describe("ios-ci.yml", () => {
     expect(job?.["timeout-minutes"]).toBe("${{ inputs.timeout-minutes }}");
     expect(job?.concurrency?.["cancel-in-progress"]).toBe(true);
     expect(job?.concurrency?.group).toContain("${{ github.repository }}");
+    // A release workflow calls this same job on refs/heads/main, where a
+    // push-to-main CI run is already using it. Without the caller in the
+    // group the two cancel each other.
+    expect(job?.concurrency?.group).toContain("${{ github.workflow }}");
     expect(job?.concurrency?.group).toContain("${{ github.ref }}");
     expect(job?.concurrency?.group).toContain("${{ inputs.scheme }}");
+  });
+
+  it("skips compiler work no runner ever reads and restores a partial package cache", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const buildForTesting = steps.find((step) => step.name === "Build for testing");
+    const build = steps.find((step) => step.name === "Build");
+    const test = steps.find((step) => step.name === "Run unit and UI tests");
+    const cache = steps.find((step) => step.name === "Cache resolved Swift packages");
+
+    // Index-while-building serves Xcode's editor; a runner has none and
+    // discards the store with the machine.
+    expect(String(buildForTesting?.run)).toContain("COMPILER_INDEX_STORE_ENABLE=NO");
+    expect(String(build?.run)).toContain("COMPILER_INDEX_STORE_ENABLE=NO");
+    // test-without-building compiles nothing, and its arguments are re-quoted
+    // into the emulator exec string, so a build-setting override is noise there.
+    expect(String(test?.run)).not.toContain("COMPILER_INDEX_STORE_ENABLE");
+
+    // Without a prefix restore, bumping one dependency re-clones every package.
+    expect(String((cache?.with as Record<string, unknown>)?.["restore-keys"])).toContain(
+      "swiftpm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-",
+    );
+  });
+
+  it("optimizes the test build only when the caller opts in, and never for local Xcode debugging", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const inputs = wf.on?.workflow_call?.inputs ?? {};
+    // Off by default: an existing caller's build is unchanged until it asks.
+    expect(inputs["optimize-test-build"]?.default).toBe(false);
+
+    const steps = wf.jobs?.test?.steps ?? [];
+    const buildForTesting = steps.find((step) => step.name === "Build for testing");
+    const build = steps.find((step) => step.name === "Build");
+    const test = steps.find((step) => step.name === "Run unit and UI tests");
+
+    // A command-line xcodebuild override reaches only this CI invocation — a
+    // developer's own Debug build in Xcode never passes these, so -Onone
+    // stays intact for local breakpoint debugging regardless of this input.
+    for (const step of [buildForTesting, build]) {
+      expect(String(step?.run)).toContain("SWIFT_OPTIMIZATION_LEVEL=-O");
+      expect(String(step?.run)).toContain("SWIFT_COMPILATION_MODE=wholemodule");
+      expect(String(step?.run)).toContain("GCC_OPTIMIZATION_LEVEL=s");
+      expect(String((step?.env as Record<string, unknown> | undefined)?.OPTIMIZE_TEST_BUILD)).toBe(
+        "${{ inputs.optimize-test-build }}",
+      );
+    }
+    // test-without-building compiles nothing, so an optimization override is noise there.
+    expect(String(test?.run)).not.toContain("SWIFT_OPTIMIZATION_LEVEL");
   });
 
   it("does not expose the checkout credential to caller-controlled test code", async () => {
@@ -1731,5 +1782,49 @@ describe("python-ci", () => {
     // Every matrix leg measures the same lines, and identical artifact names
     // across a matrix collide rather than merge.
     expect(String(upload?.["if"])).toContain("fromJSON(inputs.python-versions)[0]");
+  });
+});
+
+/**
+ * A job with no `timeout-minutes` runs a hung step to GitHub's six-hour default
+ * on billed minutes. That has already happened here once, to a Playwright
+ * install that hung for forty. Every reusable job must bound itself, and every
+ * job that gates a pull request must cancel rather than run beside its
+ * replacement.
+ */
+describe("every reusable job", () => {
+  type Bounded = {
+    jobs?: Record<
+      string,
+      {
+        uses?: string;
+        "timeout-minutes"?: number | string;
+        concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+      }
+    >;
+  };
+
+  const GATES = ["web-ci.yml", "pm-check.yml", "pr-check.yml", "firebase-tests.yml", "ios-ci.yml"];
+
+  it("bounds its own runtime", async () => {
+    for (const file of GATES) {
+      const jobs = ((await read(file)) as Bounded).jobs ?? {};
+      for (const [name, job] of Object.entries(jobs)) {
+        // A job that only delegates inherits the callee's ceiling.
+        if (job.uses) continue;
+        expect(job["timeout-minutes"], `${file} job ${name} needs a ceiling`).toBeDefined();
+      }
+    }
+  });
+
+  it("cancels a superseded push on the checks that gate a pull request", async () => {
+    for (const file of GATES) {
+      const jobs = ((await read(file)) as Bounded).jobs ?? {};
+      for (const [name, job] of Object.entries(jobs)) {
+        if (job.uses) continue;
+        expect(job.concurrency?.["cancel-in-progress"], `${file} job ${name}`).toBe(true);
+        expect(job.concurrency?.group, `${file} job ${name}`).toContain("${{ github.ref }}");
+      }
+    }
   });
 });

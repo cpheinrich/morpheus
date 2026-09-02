@@ -30,6 +30,17 @@ on:
 jobs:
   conventions:
     runs-on: ubuntu-latest
+    # A hung step otherwise runs to GitHub's six-hour default on billed
+    # minutes. This ceiling sits far above the honest runtime, so it only ever
+    # fires on a hang — which it then reports quickly and legibly.
+    timeout-minutes: 10
+    # A superseded push must cancel rather than run to completion
+    # beside its replacement. Job-level because this file is called,
+    # and a called workflow's top-level concurrency does not govern
+    # the caller's run.
+    concurrency:
+      group: pr-check-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
     # Only meaningful on a pull request — there is no PR body on a push.
     if: github.event_name == 'pull_request'
     steps:
