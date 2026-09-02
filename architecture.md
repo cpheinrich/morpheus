@@ -2920,9 +2920,13 @@ trust path.
 `nightly-ios-build` composes `release-preflight` and `ios-ci` before entering a caller-owned
 protected environment and invoking a caller-owned archive/upload script. The caller owns the cron,
 watched app paths, environment policy, app identifiers, TestFlight beta-group targets, build-number
-allocation, and credentials. The reusable workflow installs `asccli` but does not derive a build
-number from GitHub metadata; the caller's upload script must allocate against App Store Connect so
-manual and automated uploads share one sequence. Scheduled runs compare
+allocation, and credentials. It forwards the complete secret-free test contract — including
+parallel-test policy, Firebase Emulator Suite configuration, and the pre-test fixture script — to
+`ios-ci`. An app that needs an ignored Google service plist for its signed archive may keep its
+base64 value in the protected environment as `IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64`; only the
+caller-owned upload script receives it. The reusable workflow installs `asccli` but does not derive
+a build number from GitHub metadata; the caller's upload script must allocate against App Store
+Connect so manual and automated uploads share one sequence. Scheduled runs compare
 those paths from the caller workflow's latest successful upload to the current `main` SHA; an empty
 diff reports the skip from a Linux job and provisions no macOS runner. A missing, unavailable, or
 non-ancestor baseline builds conservatively. Manual callers may force a build. Keeping the caller

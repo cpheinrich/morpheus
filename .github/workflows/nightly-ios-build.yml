@@ -52,6 +52,34 @@ on:
         description: Simulator destination qualifiers appended after platform.
         type: string
         default: "OS=26.5,name=iPhone 17 Pro Max"
+      parallel-testing:
+        description: Allow Xcode to run test targets in parallel.
+        type: boolean
+        default: false
+      firebase-emulators:
+        description: Run the delegated test action inside Firebase Emulator Suite.
+        type: boolean
+        default: false
+      firebase-cli-version:
+        description: Exact firebase-tools version installed when Firebase emulators are enabled.
+        type: string
+        default: "15.28.1"
+      firebase-config:
+        description: Firebase config path relative to the caller repository root.
+        type: string
+        default: "firebase.json"
+      firebase-project:
+        description: Synthetic Firebase project id used by the emulator-backed test run.
+        type: string
+        default: "demo-ios-ci"
+      firebase-only:
+        description: Comma-separated Firebase emulators needed by the iOS tests.
+        type: string
+        default: "auth,firestore"
+      pre-test-script:
+        description: Optional caller-repository script run immediately before tests.
+        type: string
+        default: ""
       environment:
         description: Protected caller-repository environment holding Apple release credentials.
         type: string
@@ -226,6 +254,13 @@ jobs:
       project: ${{ inputs.project }}
       scheme: ${{ inputs.scheme }}
       destination: ${{ inputs.destination }}
+      parallel-testing: ${{ inputs.parallel-testing }}
+      firebase-emulators: ${{ inputs.firebase-emulators }}
+      firebase-cli-version: ${{ inputs.firebase-cli-version }}
+      firebase-config: ${{ inputs.firebase-config }}
+      firebase-project: ${{ inputs.firebase-project }}
+      firebase-only: ${{ inputs.firebase-only }}
+      pre-test-script: ${{ inputs.pre-test-script }}
       run-tests: true
 
   upload:
@@ -342,5 +377,6 @@ jobs:
           IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
           IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
           IOS_DISTRIBUTION_PROFILE_BASE64: ${{ secrets.IOS_DISTRIBUTION_PROFILE_BASE64 }}
+          IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: '"$GITHUB_WORKSPACE/$UPLOAD_SCRIPT"'
