@@ -1586,7 +1586,9 @@ describe("ios-ci.yml", () => {
       expect(String(step?.run)).toContain("SWIFT_OPTIMIZATION_LEVEL=-O");
       expect(String(step?.run)).toContain("SWIFT_COMPILATION_MODE=wholemodule");
       expect(String(step?.run)).toContain("GCC_OPTIMIZATION_LEVEL=s");
-      expect(String(step?.env?.OPTIMIZE_TEST_BUILD)).toBe("${{ inputs.optimize-test-build }}");
+      expect(String((step?.env as Record<string, unknown> | undefined)?.OPTIMIZE_TEST_BUILD)).toBe(
+        "${{ inputs.optimize-test-build }}",
+      );
     }
     // test-without-building compiles nothing, so an optimization override is noise there.
     expect(String(test?.run)).not.toContain("SWIFT_OPTIMIZATION_LEVEL");
