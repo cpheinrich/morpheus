@@ -73,6 +73,21 @@ function prBody(): string {
   return process.env["MORPHEUS_PR_BODY"] ?? "";
 }
 
+function prAuthor(): string | undefined {
+  const eventPath = process.env["GITHUB_EVENT_PATH"];
+  if (eventPath) {
+    try {
+      const payload = JSON.parse(readFileSync(eventPath, "utf8")) as {
+        pull_request?: { user?: { login?: string } };
+      };
+      return payload.pull_request?.user?.login;
+    } catch {
+      /* fall through to the env override */
+    }
+  }
+  return process.env["MORPHEUS_PR_AUTHOR"];
+}
+
 function projectVisualEvidencePolicy(): VisualEvidencePolicy {
   try {
     return visualEvidencePolicy(JSON.parse(readFileSync("morpheus.json", "utf8")) as unknown);
@@ -86,6 +101,7 @@ function projectVisualEvidencePolicy(): VisualEvidencePolicy {
 export async function pr(productDir: string, base: string): Promise<number> {
   const findings = await checkPr({
     body: prBody(),
+    author: prAuthor(),
     branch: currentBranch(),
     changedFiles: changedFiles(base),
     trunkChanges: trunkChanges(base),

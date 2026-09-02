@@ -2,6 +2,7 @@ import { hasNoSubstantiveChange, isRecordsOnly } from "../paths.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { parseArtifact } from "../pm/parse.js";
 import { checkVisualEvidence, } from "./visual-evidence.js";
+import { DEPENDABOT_LOGIN, isDependencyOnly } from "../dependabot/policy.js";
 /**
  * A waiver line and the reason it gives.
  *
@@ -104,6 +105,27 @@ export function hasSection(body, heading) {
 export async function checkPr(ctx) {
     const findings = [];
     const { body, branch, changedFiles, productDir } = ctx;
+    // Dependabot cannot write a human PR body or claim a roadmap item. Waive
+    // those authoring conventions only when both independent facts agree: the
+    // exact GitHub App login opened it, and every changed file is a recognized
+    // dependency manifest or lockfile. A bot-named account or a source change
+    // gets the normal checks plus an explicit scope failure.
+    if (ctx.author === DEPENDABOT_LOGIN) {
+        if (isDependencyOnly(changedFiles)) {
+            return [
+                {
+                    level: "waived",
+                    rule: "dependabot-contract",
+                    message: "human PR-body, visual-evidence, branch, and roadmap conventions waived for an exact Dependabot dependency-only change",
+                },
+            ];
+        }
+        findings.push({
+            level: "error",
+            rule: "dependabot-scope",
+            message: "Dependabot changed a path outside the dependency manifest allowlist; refusing the bot waiver.",
+        });
+    }
     const source = changedFiles.filter((f) => SOURCE.test(f) && !TEST.test(f));
     const tests = changedFiles.filter((f) => TEST.test(f));
     const docs = changedFiles.filter((f) => DOCS.test(f) && !GENERATED.test(f));

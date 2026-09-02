@@ -1,0 +1,211 @@
+name: Dependabot maintainer
+
+# Reusable workflow. The project owns triggers and its explicit dependency
+# policy; Morpheus owns the security boundary and delivery mechanics.
+on:
+  workflow_call:
+    inputs:
+      policy-file:
+        description: Project-owned deterministic dependency policy.
+        type: string
+        default: ".github/dependabot-policy.json"
+      pr-number:
+        description: One PR to inspect, or zero to reconcile every open Dependabot PR.
+        type: number
+        default: 0
+      dry-run:
+        description: Report decisions without labels, comments, closes, or auto-merge.
+        type: boolean
+        default: false
+      model:
+        description: Pinned low-cost model used only when project policy cannot decide.
+        type: string
+        default: "gpt-5.6-luna"
+      effort:
+        type: string
+        default: "low"
+      max-prs:
+        type: number
+        default: 25
+      target-ref:
+        description: Trusted target-repository ref from which policy is read.
+        type: string
+        default: "main"
+      morpheus-ref:
+        type: string
+        default: "main"
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        type: string
+        default: ""
+    secrets:
+      openai_api_key:
+        description: OpenAI API key. It reaches only the read-only triage job.
+        required: false
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    outputs:
+      has_prs: ${{ steps.inspect.outputs.has_prs }}
+      needs_agent: ${{ steps.inspect.outputs.needs_agent }}
+      count: ${{ steps.inspect.outputs.count }}
+    steps:
+      - name: Check out trusted project policy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target-ref }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out Morpheus maintainer
+        uses: actions/checkout@v4
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.morpheus-ref }}
+          path: .morpheus
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+          package_json_file: .morpheus/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install the Morpheus maintainer runtime
+        working-directory: .morpheus
+        run: pnpm install --frozen-lockfile
+
+      - name: Inspect open Dependabot pull requests
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          POLICY_FILE: target/${{ inputs.policy-file }}
+          OUTPUT_DIR: .dependabot-maintainer
+          PR_NUMBER: ${{ inputs.pr-number }}
+          MAX_PRS: ${{ inputs.max-prs }}
+        run: node .morpheus/scripts/dependabot-maintainer.mjs inspect
+
+      - name: Upload bounded triage context
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependabot-inspection
+          path: .dependabot-maintainer
+          if-no-files-found: error
+          retention-days: 1
+
+  agent:
+    needs: inspect
+    if: needs.inspect.outputs.needs_agent == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      result: ${{ steps.codex.outputs.final-message }}
+      configured: ${{ steps.configuration.outputs.configured }}
+    env:
+      HAS_KEY: ${{ secrets.openai_api_key != '' }}
+    steps:
+      - name: Check out trusted target base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target-ref }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Record Codex configuration
+        id: configuration
+        run: echo "configured=$HAS_KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Download bounded triage context
+        uses: actions/download-artifact@v4
+        with:
+          name: dependabot-inspection
+          path: .dependabot-maintainer
+
+      - name: Report unconfigured triage
+        if: env.HAS_KEY != 'true'
+        run: |
+          echo "::warning title=Codex triage skipped::OPENAI_API_KEY was not supplied"
+          {
+            echo "## Codex triage — not configured"
+            echo
+            echo "Ambiguous updates will be sent to human review."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Last in the job. No GitHub write token is available here, and the next
+      # job distrusts and revalidates this output before any mutation.
+      - name: Triage ambiguous dependency updates
+        id: codex
+        if: env.HAS_KEY == 'true'
+        uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1
+        with:
+          openai-api-key: ${{ secrets.openai_api_key }}
+          prompt-file: .dependabot-maintainer/agent-prompt.md
+          output-schema-file: .dependabot-maintainer/agent-decision.schema.json
+          working-directory: .dependabot-maintainer
+          model: ${{ inputs.model }}
+          effort: ${{ inputs.effort }}
+          permission-profile: ":read-only"
+          safety-strategy: drop-sudo
+          allow-bot-users: "dependabot[bot],github-actions[bot]"
+
+  delivery:
+    needs: [inspect, agent]
+    if: always() && needs.inspect.result == 'success' && needs.inspect.outputs.has_prs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      checks: read
+    steps:
+      - name: Check out trusted Morpheus delivery code
+        uses: actions/checkout@v4
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.morpheus-ref }}
+          path: .morpheus
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+          package_json_file: .morpheus/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install the Morpheus delivery runtime
+        working-directory: .morpheus
+        run: pnpm install --frozen-lockfile
+
+      - name: Download inspection receipt
+        uses: actions/download-artifact@v4
+        with:
+          name: dependabot-inspection
+          path: .dependabot-maintainer
+
+      - name: Revalidate and deliver decisions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSPECTION_FILE: .dependabot-maintainer/inspection.json
+          AGENT_RESULT: ${{ needs.agent.outputs.result }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: node .morpheus/scripts/dependabot-maintainer.mjs deliver

@@ -62,6 +62,19 @@ function prBody() {
     }
     return process.env["MORPHEUS_PR_BODY"] ?? "";
 }
+function prAuthor() {
+    const eventPath = process.env["GITHUB_EVENT_PATH"];
+    if (eventPath) {
+        try {
+            const payload = JSON.parse(readFileSync(eventPath, "utf8"));
+            return payload.pull_request?.user?.login;
+        }
+        catch {
+            /* fall through to the env override */
+        }
+    }
+    return process.env["MORPHEUS_PR_AUTHOR"];
+}
 function projectVisualEvidencePolicy() {
     try {
         return visualEvidencePolicy(JSON.parse(readFileSync("morpheus.json", "utf8")));
@@ -73,6 +86,7 @@ function projectVisualEvidencePolicy() {
 export async function pr(productDir, base) {
     const findings = await checkPr({
         body: prBody(),
+        author: prAuthor(),
         branch: currentBranch(),
         changedFiles: changedFiles(base),
         trunkChanges: trunkChanges(base),

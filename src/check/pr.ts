@@ -5,6 +5,7 @@ import {
   checkVisualEvidence,
   type VisualEvidencePolicy,
 } from "./visual-evidence.js";
+import { DEPENDABOT_LOGIN, isDependencyOnly } from "../dependabot/policy.js";
 
 /**
  * PR conventions, enforced rather than requested.
@@ -17,6 +18,8 @@ import {
 export interface PrContext {
   /** PR body markdown. */
   body: string;
+  /** Pull-request author login. Absent outside GitHub unless explicitly supplied. */
+  author?: string;
   /**
    * Files that changed **on the base branch** since this branch left it — not
    * files this PR changed. CI cannot see a context receipt (`local/` is
@@ -164,6 +167,31 @@ export function hasSection(body: string, heading: string): boolean {
 export async function checkPr(ctx: PrContext): Promise<Finding[]> {
   const findings: Finding[] = [];
   const { body, branch, changedFiles, productDir } = ctx;
+
+  // Dependabot cannot write a human PR body or claim a roadmap item. Waive
+  // those authoring conventions only when both independent facts agree: the
+  // exact GitHub App login opened it, and every changed file is a recognized
+  // dependency manifest or lockfile. A bot-named account or a source change
+  // gets the normal checks plus an explicit scope failure.
+  if (ctx.author === DEPENDABOT_LOGIN) {
+    if (isDependencyOnly(changedFiles)) {
+      return [
+        {
+          level: "waived",
+          rule: "dependabot-contract",
+          message:
+            "human PR-body, visual-evidence, branch, and roadmap conventions waived for an exact Dependabot dependency-only change",
+        },
+      ];
+    }
+
+    findings.push({
+      level: "error",
+      rule: "dependabot-scope",
+      message:
+        "Dependabot changed a path outside the dependency manifest allowlist; refusing the bot waiver.",
+    });
+  }
 
   const source = changedFiles.filter((f) => SOURCE.test(f) && !TEST.test(f));
   const tests = changedFiles.filter((f) => TEST.test(f));
