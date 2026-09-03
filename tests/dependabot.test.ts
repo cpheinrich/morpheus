@@ -4,6 +4,7 @@ import {
   isDependencyFile,
   isDependencyOnly,
   parseDependabotTitle,
+  shouldAdvanceAutoMerge,
   updateType,
   type DependabotPolicy,
 } from "../src/dependabot/policy.js";
@@ -82,6 +83,15 @@ describe("dependency-only scope", () => {
 
   it("refuses an empty file list instead of treating absence as assent", () => {
     expect(isDependencyOnly([])).toBe(false);
+  });
+});
+
+describe("auto-merge convergence", () => {
+  it("advances only approved heads that are behind their protected base", () => {
+    expect(shouldAdvanceAutoMerge("auto_merge", "BEHIND")).toBe(true);
+    expect(shouldAdvanceAutoMerge("auto_merge", "CLEAN")).toBe(false);
+    expect(shouldAdvanceAutoMerge("human_review", "BEHIND")).toBe(false);
+    expect(shouldAdvanceAutoMerge("close", "BEHIND")).toBe(false);
   });
 });
 

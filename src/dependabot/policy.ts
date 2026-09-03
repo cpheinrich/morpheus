@@ -114,6 +114,14 @@ export function isDependencyOnly(paths: string[]): boolean {
   return paths.length > 0 && paths.every(isDependencyFile);
 }
 
+/** A strict protected branch cannot finish auto-merge while its head is behind the base. */
+export function shouldAdvanceAutoMerge(
+  route: PolicyDecision["route"],
+  mergeStateStatus: string,
+): boolean {
+  return route === "auto_merge" && mergeStateStatus.toUpperCase() === "BEHIND";
+}
+
 function matchingRule(rules: PolicyRule[], update: DependencyUpdate): PolicyRule | undefined {
   return rules.find(
     (rule) =>

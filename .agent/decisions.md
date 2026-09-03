@@ -33,7 +33,9 @@ exact dependency/update-type allowlists and holds. The shared workflow sends onl
 dependency-only changes to a low-cost read-only model, then a separate credential-free delivery
 job revalidates live author, head, file scope, and checks. A model may approve auto-merge or ask for
 a human; only project policy may close. CI completion is the fast trigger and nightly reconciliation
-repairs missed events.
+repairs missed events. An approved head behind a strict protected base is advanced with GitHub's
+head-SHA-guarded update endpoint after auto-merge is enabled; its new CI run feeds back through the
+same fast path until the queue converges.
 
 **Vercel over Firebase App Hosting** — decided on the review loop, not hosting quality. Vercel
 Comments anchor feedback to page elements and sync into the PR, which is the mechanism that
