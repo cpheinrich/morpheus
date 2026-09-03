@@ -30,13 +30,14 @@
     "./codebase-memory": "./dist/codebase-memory.js",
     "./self": "./dist/self.js",
     "./design": "./dist/design/index.js",
-    "./team": "./dist/team/index.js"
+    "./team": "./dist/team/index.js",
+    "./research-library": "./dist/research-library/index.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "compile": "tsc -p tsconfig.build.json && chmod +x dist/cli/index.js",
+    "compile": "tsc -p tsconfig.build.json && cp src/research-library/*.py dist/research-library/ && chmod +x dist/cli/index.js dist/research-library/library.py dist/research-library/docling_html.py",
     "dev": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
