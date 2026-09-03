@@ -72,6 +72,15 @@ describe("dependabot-maintainer.yml", () => {
     expect(codex?.with?.["safety-strategy"]).toBe("drop-sudo");
   });
 
+  it("can read both check-run and commit-status protection results", async () => {
+    const wf = (await read("dependabot-maintainer.yml")) as Maintainer;
+
+    expect(wf.jobs?.inspect?.permissions).toMatchObject({
+      checks: "read",
+      statuses: "read",
+    });
+  });
+
   it("delivers in a separate job that revalidates the inspection", async () => {
     const wf = (await read("dependabot-maintainer.yml")) as Maintainer;
     const delivery = wf.jobs?.delivery;
@@ -83,6 +92,7 @@ describe("dependabot-maintainer.yml", () => {
       "pull-requests": "write",
       issues: "write",
       checks: "read",
+      statuses: "read",
     });
     expect(deliver?.run).toContain("dependabot-maintainer.mjs deliver");
     expect(deliver?.env?.AGENT_RESULT).toBe("${{ needs.agent.outputs.result }}");
