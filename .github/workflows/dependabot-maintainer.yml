@@ -53,6 +53,7 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
+      statuses: read
     outputs:
       has_prs: ${{ steps.inspect.outputs.has_prs }}
       needs_agent: ${{ steps.inspect.outputs.needs_agent }}
@@ -177,6 +178,7 @@ jobs:
       pull-requests: write
       issues: write
       checks: read
+      statuses: read
     steps:
       - name: Check out trusted Morpheus delivery code
         uses: actions/checkout@v4
