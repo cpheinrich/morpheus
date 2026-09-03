@@ -60,6 +60,15 @@ on:
         description: Optional shared Xcode test plan. Empty uses the scheme's default test action.
         type: string
         default: ""
+      test-iterations:
+        description: >
+          Re-run only the tests that failed, up to this many attempts in total.
+          Zero disables retries. A test that fails every attempt still fails, so
+          this hides a flake rather than a defect — a suite that needs it is
+          telling you something, and the retry count belongs in the caller where
+          that is visible.
+        type: number
+        default: 0
       skip-testing:
         description: >
           Newline-separated xcodebuild -skip-testing identifiers
@@ -458,6 +467,7 @@ jobs:
           DESTINATION: ${{ inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
           SKIP_TESTING: ${{ inputs.skip-testing }}
+          TEST_ITERATIONS: ${{ inputs.test-iterations }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
           MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
           FIREBASE_EMULATORS: ${{ inputs.firebase-emulators }}
@@ -491,6 +501,12 @@ jobs:
           fi
           if [ "$MAXIMUM_PARALLEL_TESTING_WORKERS" != "0" ]; then
             args+=(-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS")
+          fi
+          # `-retry-tests-on-failure` re-runs only the tests that failed, so a
+          # flake costs seconds instead of the whole job. It does not weaken the
+          # gate: a test that fails every attempt still fails the run.
+          if [ "${TEST_ITERATIONS:-0}" != "0" ]; then
+            args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS")
           fi
           if [ "$FIREBASE_EMULATORS" = "true" ]; then
             printf -v test_command '%q ' xcodebuild test-without-building "${args[@]}"
