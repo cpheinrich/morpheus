@@ -112,6 +112,13 @@ public repo.
 
 ## Distribution
 
+**Babel converts; Morpheus publishes research libraries** — 2026-09-02. Babel stays an independent
+source-neutral package whose stable output is canonical Docling JSON/Markdown. On the second
+consumer, Lakina's deterministic bundle, embedded HTML reader, immutable Storage identity, catalog
+validation, and browser byte verification moved into Morpheus. Projects own catalog content,
+Firebase rules/principals, routes, and visual treatment. This avoids both coupling acquisition to
+the operating system and copying integrity-sensitive transport code between projects.
+
 **Do not publish `morpheus-kit` to npm** — 2026-07-29. Publishing only helps strangers install
 it, which is the opposite of the goal. CI checks the repo out and builds the CLI; local use is
 an explicit self-contained install from reviewed `main`, with no registry publication.

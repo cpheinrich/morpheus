@@ -2456,6 +2456,35 @@ rules, and Playwright E2E, all emulator-backed, all secret-free, wired into CI t
 reusable `firebase-tests.yml`. `--check` reports drift between a project's shared auth files and
 the current templates. The console half lives in `docs/runbooks/consumer-auth.md`.
 
+#### `morpheus research-library` publishes private books without owning acquisition
+
+Babel remains an independent package and owns acquisition plus conversion into canonical Docling
+JSON and Markdown. Morpheus begins at that stable directory boundary. Its research-library
+capability creates deterministic ZIPs, generates an inert self-contained HTML reader from
+`docling/source.json`, uploads both objects create-only, verifies their size and SHA-256, and only
+then advances the checked-in catalog pointer.
+
+The reusable runtime is split deliberately:
+
+- `morpheus research-library init` records the Firebase project/bucket, creates an empty catalog,
+  and ignores `local/research-library/`. It never creates, deletes, moves, or replaces a local book.
+- `push`, `pull`, and `verify` use the shared publisher shipped with the CLI. Pull refuses a
+  divergent directory unless the operator explicitly passes `--replace`.
+- `morpheus-kit/research-library` validates project-specific manifests and verifies browser bytes
+  before a project exposes a download or sandboxed reader.
+- Each project still owns its routes, Firebase rules, catalog entries, and visual shell. The kit
+  owns integrity and transport, not the meaning or presentation of a book.
+
+Objects have no floating name: `research-library/books/<slug>/<sha256>.zip` and `.html`. The
+shape id is `research-library-book-2`, not a sequence disguised as a schema version. The browser
+may read only through its existing Firebase HQ role; browser writes remain denied. Provisioning and
+the exact rules merge are documented in `docs/runbooks/research-library.md`.
+
+The implementation uses Python's archive/hash standard library, the already-required Google Cloud
+CLI, and Docling through Babel's managed environment. No third-party archive or upload dependency
+was adopted: the maintained packages considered would add a second implementation of capabilities
+already present at these boundaries without reducing the security-critical code.
+
 ## 13. Secrets and credentials
 
 Values never enter git. What enters git is a manifest declaring which secrets exist and where they
