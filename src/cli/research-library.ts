@@ -78,7 +78,7 @@ export async function runResearchLibrary(
     );
     const script = fileURLToPath(new URL("../research-library/library.py", import.meta.url));
     const forwarded = [...args];
-    if (command === "push" || command === "pull") {
+    if (command === "push" || command === "pull" || command === "publish") {
       forwarded.push("--local-root", resolve(options.root, config.localRoot ?? DEFAULT_LOCAL_ROOT));
     } else if (command === "fetch") {
       forwarded.push("--output-root", resolve(options.root, config.localRoot ?? DEFAULT_LOCAL_ROOT));

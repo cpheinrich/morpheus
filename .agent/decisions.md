@@ -825,3 +825,11 @@ paths outside the contract warn only. Existing manifests roll out explicitly one
 time; `morpheus init` adds the default block without replacing authored review settings. A
 repository may disable the gate only with a substantive reason, so an opt-out is durable and
 reviewable rather than an environment toggle.
+
+**A first research-library publish commits its catalog pointer last** — 2026-09-02. Babel remains
+the independent acquisition and canonical-conversion package. Morpheus reads one completed local
+directory, deterministically derives the ZIP and embedded HTML identities, creates missing remote
+objects with generation-match zero, verifies their metadata, and only then creates the project
+catalog manifest with exclusive-create semantics. It never edits the local directory. A failed
+publish may leave harmless content-addressed objects for an identical retry, but cannot leave a
+catalog entry pointing at a partial upload.

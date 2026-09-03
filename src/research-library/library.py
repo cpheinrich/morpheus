@@ -742,6 +742,75 @@ def push_book(
     )
 
 
+def publish_book(
+    source_directory: str,
+    slug: str,
+    title: str,
+    authors: list[str],
+    local_root: Path = LOCAL_LIBRARY_DIR,
+    gcloud: str = "gcloud",
+    *,
+    metadata: Mapping[str, str | int | list[str] | None] | None = None,
+) -> PushResult:
+    """Create one catalog entry only after immutable objects verify remotely."""
+    if not _valid_slug(slug):
+        raise LibraryError(f"invalid slug: {slug}")
+    if PurePosixPath(source_directory).name != source_directory or source_directory in {
+        ".",
+        "..",
+    }:
+        raise LibraryError("source directory must be one directory name")
+    if not title.strip():
+        raise LibraryError("title is required")
+    clean_authors = [author.strip() for author in authors if author.strip()]
+    if not clean_authors:
+        raise LibraryError("at least one author is required")
+
+    local_path = local_root / source_directory
+    if not local_path.is_dir():
+        raise LibraryError(f"{local_path}: source is not a directory")
+    target = CATALOG_DIR / f"{slug}.json"
+    if target.exists():
+        raise LibraryError(f"{target}: catalog manifest already exists; use push")
+    CATALOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    placeholder_digest = "0" * 64
+    value: dict[str, Any] = {
+        "schemaVersion": "research-library-book-1",
+        "slug": slug,
+        "title": title.strip(),
+        "authors": clean_authors,
+        "sourceDirectory": source_directory,
+        "bundle": {
+            "bucket": BUCKET,
+            "object": f"{OBJECT_PREFIX}/{slug}/{placeholder_digest}.zip",
+            "sha256": placeholder_digest,
+            "bytes": 1,
+            "files": 1,
+        },
+    }
+    for key, field_value in (metadata or {}).items():
+        if field_value is not None and field_value != "":
+            value[key] = field_value
+
+    with tempfile.TemporaryDirectory(prefix="morpheus-library-publish-") as temporary:
+        seed_path = Path(temporary) / f"{slug}.json"
+        seed_path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+        result = push_book(load_manifest(seed_path), local_root, gcloud)
+        # No committed pointer can exist until both create-only uploads have
+        # been observed and checked. A retry safely reuses those same hashes.
+        try:
+            with target.open("x", encoding="utf-8", errors="strict") as catalog_file:
+                catalog_file.write(result.manifest.path.read_text(encoding="utf-8"))
+        except FileExistsError as error:
+            raise LibraryError(f"{target}: catalog manifest already exists") from error
+    return replace(
+        result,
+        manifest=replace(result.manifest, path=target),
+        catalog_updated=True,
+    )
+
+
 def fetch_book(
     manifest: BookManifest,
     output_root: Path = LOCAL_LIBRARY_DIR,
@@ -923,6 +992,21 @@ def _parser() -> argparse.ArgumentParser:
     push.add_argument("slugs", nargs="*", metavar="SLUG")
     push.add_argument("--local-root", type=Path, default=LOCAL_LIBRARY_DIR)
 
+    publish = subparsers.add_parser(
+        "publish",
+        help="publish one new canonical local book and create its catalog manifest",
+    )
+    publish.add_argument("source_directory")
+    publish.add_argument("--slug", required=True)
+    publish.add_argument("--title", required=True)
+    publish.add_argument("--author", action="append", required=True, dest="authors")
+    publish.add_argument("--edition")
+    publish.add_argument("--publisher")
+    publish.add_argument("--year", type=int)
+    publish.add_argument("--isbn", action="append", dest="isbns")
+    publish.add_argument("--language")
+    publish.add_argument("--local-root", type=Path, default=LOCAL_LIBRARY_DIR)
+
     pull = subparsers.add_parser(
         "pull",
         help="synchronize catalogued remote books into the local library",
@@ -997,6 +1081,23 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 print(f"{action} {manifest.slug}: {result.local_path}")
             print(f"synchronized {len(selected)} book(s) local -> remote")
+        elif args.command == "publish":
+            result = publish_book(
+                args.source_directory,
+                args.slug,
+                args.title,
+                args.authors,
+                local_root=args.local_root,
+                gcloud=args.gcloud,
+                metadata={
+                    "edition": args.edition,
+                    "publisher": args.publisher,
+                    "year": args.year,
+                    "isbn": args.isbns,
+                    "language": args.language,
+                },
+            )
+            print(f"published {result.manifest.slug}: {result.local_path}")
         elif args.command == "pull":
             selected = select_manifests(args.slugs)
             for manifest in selected:

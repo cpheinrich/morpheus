@@ -60,7 +60,7 @@ export async function runResearchLibrary(command, args, options) {
             throw new Error("researchLibrary is absent from morpheus.json; run `morpheus research-library init`.");
         const script = fileURLToPath(new URL("../research-library/library.py", import.meta.url));
         const forwarded = [...args];
-        if (command === "push" || command === "pull") {
+        if (command === "push" || command === "pull" || command === "publish") {
             forwarded.push("--local-root", resolve(options.root, config.localRoot ?? DEFAULT_LOCAL_ROOT));
         }
         else if (command === "fetch") {

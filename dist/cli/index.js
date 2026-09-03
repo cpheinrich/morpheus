@@ -83,6 +83,7 @@ Usage
   morpheus hq rules --print print the generated block, to paste into existing rules
   morpheus research-library init --project <firebase-project> --bucket <bucket>
                             configure the immutable private library without touching local books
+  morpheus research-library publish <source-directory> --slug <slug> --title <title> --author <name>
   morpheus research-library push|pull|verify|bundle|verify-bundle [arguments]
                             publish, restore, and verify canonical Babel book directories
   morpheus registry list | add [--prefix XX] | remove <name>
@@ -159,6 +160,8 @@ function parseArgs(argv) {
         waitlist: true,
         hq: true,
         positional: [],
+        authors: [],
+        isbns: [],
     };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
@@ -307,6 +310,31 @@ function parseArgs(argv) {
             case "--selection":
                 flags.selection = argv[++i];
                 break;
+            case "--title":
+                flags.title = argv[++i];
+                break;
+            case "--author": {
+                const author = argv[++i];
+                if (author)
+                    flags.authors.push(author);
+                break;
+            }
+            case "--edition":
+                flags.edition = argv[++i];
+                break;
+            case "--publisher":
+                flags.publisher = argv[++i];
+                break;
+            case "--year":
+                flags.year = argv[++i];
+                break;
+            case "--isbn":
+                if (argv[i + 1])
+                    flags.isbns.push(argv[++i]);
+                break;
+            case "--language":
+                flags.language = argv[++i];
+                break;
             case "--rules-path":
                 flags.rulesPath = argv[++i];
                 break;
@@ -412,9 +440,22 @@ async function main() {
                 localRoot: flags.localRoot,
             });
         }
-        const commands = new Set(["bundle", "upload", "fetch", "push", "pull", "verify", "verify-bundle"]);
+        const commands = new Set([
+            "bundle", "upload", "fetch", "publish", "push", "pull", "verify", "verify-bundle",
+        ]);
         if (command && commands.has(command)) {
-            return runResearchLibrary(command, rest, {
+            const publishArgs = command === "publish" ? [
+                ...rest,
+                ...(flags.slug ? ["--slug", flags.slug] : []),
+                ...(flags.title ? ["--title", flags.title] : []),
+                ...flags.authors.flatMap((author) => ["--author", author]),
+                ...(flags.edition ? ["--edition", flags.edition] : []),
+                ...(flags.publisher ? ["--publisher", flags.publisher] : []),
+                ...(flags.year ? ["--year", flags.year] : []),
+                ...flags.isbns.flatMap((isbn) => ["--isbn", isbn]),
+                ...(flags.language ? ["--language", flags.language] : []),
+            ] : rest;
+            return runResearchLibrary(command, publishArgs, {
                 root: process.cwd(),
                 gcloud: flags.gcloud,
             });

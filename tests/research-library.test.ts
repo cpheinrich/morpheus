@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -104,6 +104,81 @@ describe("research library", () => {
     expect(await runResearchLibrary("bundle", [source, second], { root })).toBe(0);
     expect(await readFile(first)).toEqual(await readFile(second));
     expect((await stat(first)).size).toBeGreaterThan(0);
+  });
+
+  it("publishes a new book only after both immutable objects verify", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "morpheus-library-publish-"));
+    const bucket = CONTRACT.bucket;
+    await writeFile(path.join(root, "morpheus.json"), JSON.stringify({
+      researchLibrary: { project: "example", bucket },
+    }));
+    const source = path.join(root, "local/research-library/researcher_example-book");
+    await mkdir(path.join(source, "docling"), { recursive: true });
+    await writeFile(path.join(source, "docling/source.json"), "{}");
+    await writeFile(path.join(source, "source.md"), "unchanged");
+    const tools = path.join(root, "tools");
+    const remote = path.join(root, "remote");
+    await mkdir(tools);
+    await mkdir(remote);
+    const docling = path.join(tools, "docling-python");
+    await writeFile(docling, "#!/bin/sh\nprintf '<!doctype html><title>Book</title>' > \"$3\"\n");
+    await chmod(docling, 0o755);
+    const gcloud = path.join(tools, "gcloud");
+    await writeFile(gcloud, `#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+const crypto = require("node:crypto");
+const args = process.argv.slice(2);
+const stateFor = (uri) => path.join(process.env.MOCK_GCLOUD_DIR, crypto.createHash("sha256").update(uri).digest("hex") + ".json");
+if (args[0] === "storage" && args[1] === "objects" && args[2] === "describe") {
+  const state = stateFor(args[3]);
+  if (!fs.existsSync(state)) { console.error("not found"); process.exit(1); }
+  process.stdout.write(fs.readFileSync(state));
+} else if (args[0] === "storage" && args[1] === "cp") {
+  const source = args[2]; const uri = args[3]; const without = uri.slice(5);
+  const slash = without.indexOf("/");
+  const option = (name) => args.find((arg) => arg.startsWith(name + "="))?.slice(name.length + 1);
+  const custom = Object.fromEntries((option("--custom-metadata") || "").split(",").filter(Boolean).map((part) => part.split("=")));
+  const metadata = { bucket: without.slice(0, slash), name: without.slice(slash + 1),
+    size: fs.statSync(source).size, content_type: option("--content-type"),
+    content_disposition: option("--content-disposition"), cache_control: option("--cache-control"),
+    custom_fields: custom };
+  const state = stateFor(uri);
+  fs.writeFileSync(state, JSON.stringify(metadata));
+} else process.exit(2);
+`);
+    await chmod(gcloud, 0o755);
+
+    const previousDocling = process.env.DOCLING_PYTHON;
+    const previousRemote = process.env.MOCK_GCLOUD_DIR;
+    process.env.DOCLING_PYTHON = docling;
+    process.env.MOCK_GCLOUD_DIR = remote;
+    try {
+      expect(await runResearchLibrary("publish", [
+        "researcher_example-book", "--slug", "an-example-book",
+        "--title", "An Example Book", "--author", "A. Researcher",
+      ], { root, gcloud })).toBe(0);
+      expect(await runResearchLibrary("publish", [
+        "researcher_example-book", "--slug", "failed-book",
+        "--title", "Failed Book", "--author", "A. Researcher",
+      ], { root, gcloud: "/usr/bin/false" })).toBe(1);
+    } finally {
+      if (previousDocling === undefined) delete process.env.DOCLING_PYTHON;
+      else process.env.DOCLING_PYTHON = previousDocling;
+      if (previousRemote === undefined) delete process.env.MOCK_GCLOUD_DIR;
+      else process.env.MOCK_GCLOUD_DIR = previousRemote;
+    }
+    const manifestPath = path.join(root, "hq/research/library/catalog/an-example-book.json");
+    await expect(readFile(path.join(root, "hq/research/library/catalog/failed-book.json")))
+      .rejects.toThrow();
+    const published = JSON.parse(await readFile(manifestPath, "utf8"));
+    expect(published).toMatchObject({
+      schemaVersion: "research-library-book-2",
+      slug: "an-example-book",
+      sourceDirectory: "researcher_example-book",
+      bundle: { bucket }, reader: { bucket, format: "docling-html-embedded-v1" },
+    });
+    expect(await readFile(path.join(source, "source.md"), "utf8")).toBe("unchanged");
   });
 
   it("keeps the browser entry free of Node-only imports", async () => {

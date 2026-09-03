@@ -38,12 +38,13 @@ names are not reusable configuration.
 
 ## Catalog and publish
 
-One `research-library-book-2` JSON manifest lives at
-`hq/research/library/catalog/<slug>.json`. `sourceDirectory` is one directory name under the
-configured local root. The publisher replaces only the manifest's derived `bundle` and `reader`
-identities after both remote objects verify.
+Publish a completed Babel directory by its one directory name under the configured local root.
+The command creates the `research-library-book-2` catalog manifest only after both immutable
+remote objects verify; it never writes within the source directory.
 
 ```sh
+morpheus research-library publish <source-directory> \
+  --slug <slug> --title "<title>" --author "<author>"
 morpheus research-library push <slug>       # omit slug for the complete catalog
 morpheus research-library verify --remote
 morpheus research-library pull <slug>
