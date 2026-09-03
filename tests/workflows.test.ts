@@ -2297,3 +2297,41 @@ describe("every reusable job", () => {
     }
   });
 });
+
+describe("beta app review submission", () => {
+  const actionDir = join(import.meta.dirname, "../.github/actions/ios-testflight-upload");
+
+  it("is opt-in, so a caller that only tests internally is unaffected", async () => {
+    const action = load(await readFile(join(actionDir, "action.yml"), "utf8")) as {
+      inputs?: Record<string, { default?: unknown }>;
+    };
+    expect(action.inputs?.["submit-for-beta-review"]?.default).toBe("false");
+  });
+
+  /**
+   * Apple refuses a second submission while one is pending, and a nightly
+   * cadence hits that most nights. Failing the release there would make the
+   * whole pipeline red for a condition that is entirely normal — so the script
+   * asks Apple for the build's actual review state rather than reading meaning
+   * into an error code, and only fails when no submission exists at all.
+   */
+  it("treats a pending review as success and a genuine error as failure", async () => {
+    const script = await readFile(join(actionDir, "upload-testflight.sh"), "utf8");
+    expect(script).toMatch(/pending:sibling-build-in-review/);
+    expect(script).toMatch(/pending:this-build-/);
+    expect(script).toMatch(/betaAppReviewSubmission"/);
+    expect(script).toMatch(/sys\.exit\(1\)/);
+  });
+
+  /**
+   * bash misparses an apostrophe inside a heredoc nested in a command
+   * substitution, and the failure is an unhelpful "unexpected EOF" pointing at
+   * the wrong line. This cost a debugging round; the guard is one line.
+   */
+  it("keeps apostrophes out of the embedded python heredoc", async () => {
+    const script = await readFile(join(actionDir, "upload-testflight.sh"), "utf8");
+    const body = script.split("<<'PYTHON'\n")[1]?.split("\nPYTHON")[0] ?? "";
+    expect(body.length).toBeGreaterThan(0);
+    expect(body).not.toMatch(/'/);
+  });
+});

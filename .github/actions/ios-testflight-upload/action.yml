@@ -51,6 +51,15 @@ inputs:
   testflight-beta-group-ids:
     description: Newline- or comma-separated TestFlight beta-group ids, one to four.
     required: true
+  submit-for-beta-review:
+    description: >
+      Submit the uploaded build for Apple's Beta App Review, which external
+      testers require before they can install it. "Another build in the same
+      train is already in review" is treated as success, not failure: Apple
+      refuses a second submission while one is pending, and a nightly cadence
+      hits that routinely. Once a version's first build is approved, later
+      builds of that version are approved automatically.
+    default: "false"
   beta-group-policy:
     description: >
       "any" accepts one to four groups of any kind. "one-internal-one-external"
@@ -217,6 +226,7 @@ runs:
         ASC_APP_ID: ${{ inputs.app-store-connect-app-id }}
         TESTFLIGHT_BETA_GROUP_IDS: ${{ inputs.testflight-beta-group-ids }}
         BETA_GROUP_POLICY: ${{ inputs.beta-group-policy }}
+        SUBMIT_FOR_BETA_REVIEW: ${{ inputs.submit-for-beta-review }}
         ARCHIVE_BUILD_SETTINGS: ${{ inputs.archive-build-settings }}
         GOOGLE_SERVICE_PLIST_PATH: ${{ inputs.google-service-info-plist-path }}
         VALIDATE_APP_SCRIPT: ${{ inputs.validate-app-script }}
