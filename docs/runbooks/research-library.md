@@ -55,7 +55,10 @@ deletes a remote object.
 
 ## Web surface
 
-Import catalog parsing and browser verification from `morpheus-kit/research-library`. The project
-supplies its repository root and bucket contract on the server, and a Firebase-authenticated
-`getBlob` callback in the browser. Render HTML through a blob URL in `<iframe sandbox="">`;
+Import shared types and parsing from `morpheus-kit/research-library`, filesystem catalog loading
+from `morpheus-kit/research-library/server`, and browser verification from
+`morpheus-kit/research-library/client`. The explicit split prevents a client component from
+pulling `node:fs` into its bundle. The project supplies its repository root and bucket contract on
+the server, and a Firebase-authenticated `getBlob` callback in the browser. Render HTML through a
+blob URL in `<iframe sandbox="">`;
 the generated document has no scripts, no referrer, and a restrictive content security policy.

@@ -31,7 +31,9 @@
     "./self": "./dist/self.js",
     "./design": "./dist/design/index.js",
     "./team": "./dist/team/index.js",
-    "./research-library": "./dist/research-library/index.js"
+    "./research-library": "./dist/research-library/index.js",
+    "./research-library/client": "./dist/research-library/client.js",
+    "./research-library/server": "./dist/research-library/server.js"
   },
   "files": [
     "dist"

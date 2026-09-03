@@ -2470,8 +2470,9 @@ The reusable runtime is split deliberately:
   and ignores `local/research-library/`. It never creates, deletes, moves, or replaces a local book.
 - `push`, `pull`, and `verify` use the shared publisher shipped with the CLI. Pull refuses a
   divergent directory unless the operator explicitly passes `--replace`.
-- `morpheus-kit/research-library` validates project-specific manifests and verifies browser bytes
-  before a project exposes a download or sandboxed reader.
+- `morpheus-kit/research-library` holds shared contracts, while explicit `/server` and `/client`
+  entries isolate filesystem catalog loading from browser byte verification. A client import must
+  never reach `node:fs`.
 - Each project still owns its routes, Firebase rules, catalog entries, and visual shell. The kit
   owns integrity and transport, not the meaning or presentation of a book.
 
