@@ -499,6 +499,9 @@ needed.
   specifics, with a marked region the CLI can update on `morpheus upgrade`.
 - **`apps/web/AGENTS.md`** — surface-specific.
 - **`.claude/skills/`** — named, repeatable procedures.
+  `launch-company` owns the cross-provider greenfield path from an optional
+  domain purchase through a verified public site and role-gated `/hq`; provider
+  commands remain the deterministic implementation beneath it.
 
 ### 7.2 Conventions and how they are enforced
 
