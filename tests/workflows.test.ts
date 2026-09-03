@@ -1398,8 +1398,19 @@ describe("ios-nightly-build.yml", () => {
     expect(call?.inputs?.["workflow-file"]?.required).toBe(true);
     expect(call?.inputs?.["watch-paths"]?.required).toBe(true);
     expect(call?.inputs?.["force-build"]?.default).toBe(false);
-    expect(call?.inputs?.["app-store-connect-app-id"]?.required).toBe(true);
-    expect(call?.inputs?.["testflight-beta-group-ids"]?.required).toBe(true);
+    // Release identity feeds only this workflow's own upload job. A
+    // cross-repository caller must own that job, so it configures the
+    // ios-testflight-upload action instead and states its identifiers once.
+    for (const owned of [
+      "upload-script",
+      "apple-team-id",
+      "ios-bundle-id",
+      "app-store-connect-app-id",
+      "testflight-beta-group-ids",
+    ]) {
+      expect(call?.inputs?.[owned]?.required, `${owned} is optional`).toBeUndefined();
+      expect(call?.inputs?.[owned]?.default, `${owned} defaults to empty`).toBe("");
+    }
     expect(call?.inputs?.environment?.default).toBe("testflight-internal");
     expect(call?.inputs?.runner?.default).toBe("macos-26-xlarge");
     expect(call?.inputs?.["parallel-testing"]?.default).toBe(true);

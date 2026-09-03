@@ -112,29 +112,36 @@ on:
         type: string
         default: "testflight-internal"
       upload-script:
-        description: Executable repository-relative script that archives, signs, and uploads.
+        description: >
+          Executable repository-relative script that archives, signs, and uploads. Required only
+          when run-upload is enabled; a caller that uploads from its own environment job uses the
+          ios-testflight-upload action instead and passes nothing here.
         type: string
-        required: true
+        default: ""
       source-packages-directory:
         description: Runner-temp subdirectory shared with the upload script for SwiftPM caching.
         type: string
         default: "TestFlightSourcePackages"
+      # Release identity is only ever read by this workflow's own upload job. A
+      # cross-repository caller has to own that job — GitHub passes it no
+      # environment secrets — so it configures the action directly and leaves
+      # every input below unset rather than stating its identifiers twice.
       apple-team-id:
         description: Fallback Apple team id when IOS_APPLE_TEAM_ID is not set in the environment.
         type: string
-        required: true
+        default: ""
       ios-bundle-id:
         description: Fallback bundle id when IOS_BUNDLE_ID is not set in the environment.
         type: string
-        required: true
+        default: ""
       app-store-connect-app-id:
         description: Numeric App Store Connect app id forwarded to the caller's upload script.
         type: string
-        required: true
+        default: ""
       testflight-beta-group-ids:
         description: Newline-separated TestFlight beta-group ids assigned after processing.
         type: string
-        required: true
+        default: ""
       sentry-org:
         description: Optional fallback Sentry organization for debug-symbol upload.
         type: string
