@@ -1561,6 +1561,283 @@ describe("ios-nightly-build.yml", () => {
 });
 
 /**
+ * `ios-testflight-upload` is a composite action rather than a reusable
+ * workflow, and the distinction is the whole design. GitHub gives a
+ * cross-repository reusable workflow none of the caller's environment secrets:
+ * a job there reads every one as an empty string, with no error. An action runs
+ * inside the caller's own job, where `secrets.*` resolve, so the credentials
+ * can be handed in as inputs.
+ *
+ * Everything asserted here has already cost a release. The archive must stay
+ * unsigned — `-allowProvisioningUpdates` minted a permanent Apple Development
+ * certificate on every run until the shared team hit its account limit and
+ * archiving stopped for two projects at once. The distribution checks must run
+ * on the exported IPA, because the archive deliberately has no signature to
+ * check. And the artifact that is verified must be the artifact that is
+ * uploaded.
+ */
+describe("ios-testflight-upload action", () => {
+  const ACTION_DIR = join(import.meta.dirname, "../.github/actions/ios-testflight-upload");
+
+  type CompositeAction = {
+    name?: string;
+    description?: string;
+    inputs?: Record<string, { description?: string; required?: boolean; default?: unknown }>;
+    runs?: {
+      using?: string;
+      steps?: Array<{
+        name?: string;
+        uses?: string;
+        shell?: string;
+        with?: Record<string, unknown>;
+        env?: Record<string, string>;
+        run?: string;
+      }>;
+    };
+  };
+
+  const action = async (): Promise<CompositeAction> =>
+    load(await readFile(join(ACTION_DIR, "action.yml"), "utf8")) as CompositeAction;
+  const script = async (): Promise<string> =>
+    readFile(join(ACTION_DIR, "upload-testflight.sh"), "utf8");
+
+  it("is a composite action taking every credential as an input", async () => {
+    const wf = await action();
+
+    expect(wf.runs?.using).toBe("composite");
+    for (const required of [
+      "project",
+      "scheme",
+      "apple-team-id",
+      "ios-bundle-id",
+      "app-store-connect-app-id",
+      "testflight-beta-group-ids",
+      "asc-api-key-id",
+      "asc-api-key-issuer-id",
+      "asc-api-key-p8-base64",
+      "ios-distribution-p12-base64",
+      "ios-distribution-p12-password",
+      "ios-distribution-profile-base64",
+    ]) {
+      expect(wf.inputs?.[required]?.required, `${required} is required`).toBe(true);
+    }
+    // Optional by default, so a project with no Firebase plist, no Sentry and
+    // no extra assertions passes none of them.
+    for (const optional of [
+      "archive-build-settings",
+      "google-service-info-plist-path",
+      "google-service-info-plist-base64",
+      "validate-app-script",
+      "sentry-auth-token",
+    ]) {
+      expect(wf.inputs?.[optional]?.default, `${optional} defaults to empty`).toBe("");
+    }
+    expect(wf.inputs?.["beta-group-policy"]?.default).toBe("any");
+    expect(wf.inputs?.["xcode-version"]?.default).toBe("26.6");
+    expect(wf.inputs?.["source-packages-directory"]?.default).toBe("TestFlightSourcePackages");
+  });
+
+  it("hands the caller's inputs to the script through the environment", async () => {
+    const steps = (await action()).runs?.steps ?? [];
+    const release = steps.find(
+      (step) => step.name === "Archive, sign, verify, and upload to TestFlight",
+    );
+
+    expect(release?.run).toBe('"$GITHUB_ACTION_PATH/upload-testflight.sh"');
+    expect(release?.env?.ASC_API_KEY_ID).toBe("${{ inputs.asc-api-key-id }}");
+    expect(release?.env?.IOS_DISTRIBUTION_P12_PASSWORD).toBe(
+      "${{ inputs.ios-distribution-p12-password }}",
+    );
+    expect(release?.env?.ARCHIVE_BUILD_SETTINGS).toBe("${{ inputs.archive-build-settings }}");
+    expect(release?.env?.VALIDATE_APP_SCRIPT).toBe("${{ inputs.validate-app-script }}");
+    // The credentials are the last thing to enter a process, after the
+    // toolchain and the project layout have been proven good.
+    expect(steps.indexOf(release!)).toBe(steps.length - 1);
+    expect(steps.findIndex((step) => step.name === "Install release tooling")).toBeLessThan(
+      steps.length - 1,
+    );
+
+    // No caller value is ever spliced into a shell; every step reads env.
+    for (const step of steps) {
+      expect(step.run ?? "").not.toContain("${{ inputs.");
+    }
+  });
+
+  it("selects an exact Xcode and caches SwiftPM, so the caller does neither", async () => {
+    const steps = (await action()).runs?.steps ?? [];
+    const validate = steps.find((step) => step.name === "Validate release inputs and select Xcode");
+    const cache = steps.find((step) => step.uses?.startsWith("actions/cache@"));
+    const tooling = steps.find((step) => step.name === "Install release tooling");
+
+    expect(validate?.run).toContain('xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
+    expect(validate?.run).toContain('echo "DEVELOPER_DIR=$xcode_app/Contents/Developer"');
+    expect(validate?.run).toContain("-downloadComponent MetalToolchain");
+    expect(cache?.with?.path).toBe("${{ runner.temp }}/${{ inputs.source-packages-directory }}");
+    expect(tooling?.run).toContain("brew install openssl@3 asccli");
+    expect(tooling?.run).toContain("brew install getsentry/tools/sentry-cli");
+  });
+
+  it("archives unsigned, and can never mint an Apple certificate", async () => {
+    const raw = await script();
+    // The comments name the flags they explain, so an assertion about what the
+    // script no longer *does* has to read past them.
+    const executable = raw.replace(/^[ \t]*#.*$/gm, "");
+    const archive = raw.slice(
+      raw.indexOf("xcodebuild archive \\"),
+      raw.indexOf("ARCHIVED_APPLICATIONS_PATH="),
+    );
+
+    expect(archive).toContain('CODE_SIGN_IDENTITY=""');
+    expect(archive).toContain("CODE_SIGNING_REQUIRED=NO");
+    expect(archive).toContain("CODE_SIGNING_ALLOWED=NO");
+    expect(archive).not.toContain("CODE_SIGN_STYLE=");
+    expect(archive).not.toContain("-authenticationKey");
+    expect(executable).not.toContain("-allowProvisioningUpdates");
+    expect(executable).not.toContain("PROVISIONING_PROFILE_SPECIFIER=");
+  });
+
+  it("verifies the exported IPA and uploads that same file", async () => {
+    const raw = await script();
+    const exportOptions = raw.slice(
+      raw.indexOf("plutil -create xml1"),
+      raw.indexOf("xcodebuild archive \\"),
+    );
+
+    expect(exportOptions).toContain("plutil -insert destination -string export");
+    expect(exportOptions).toContain("plutil -insert signingStyle -string manual");
+    expect(exportOptions).toContain("testFlightInternalTestingOnly -bool false");
+    expect(exportOptions).toContain("manageAppVersionAndBuildNumber -bool false");
+
+    // Verification happens on the exported app; the upload sends the exported
+    // IPA it came out of. A release that validated one artifact and shipped
+    // another is the failure this ordering exists to prevent.
+    expect(raw.indexOf("codesign --verify --strict")).toBeGreaterThan(
+      raw.indexOf('IPA_PATH="${exported_ipas[0]}"'),
+    );
+    expect(raw.indexOf("run_asccli builds upload")).toBeGreaterThan(
+      raw.indexOf("codesign --verify --strict"),
+    );
+    expect(raw).toContain('--file "$IPA_PATH"');
+    expect(raw).toContain("builds next-number");
+    expect(raw).toContain("builds add-beta-group");
+    expect(raw).toContain("processingState");
+  });
+
+  it("keeps get-task-allow strict and reads dotted entitlement keys as one key", async () => {
+    const raw = await script();
+
+    // plutil treats `.` as a key-path separator, so the unescaped form asks for
+    // four nested keys that do not exist and quietly returns nothing.
+    expect(raw).toContain("plutil -extract 'com\\.apple\\.developer\\.team-identifier' raw");
+    expect(raw).toContain('[[ "$exported_get_task_allow" == true ]]');
+    expect(raw).toContain("get-task-allow:         '$exported_get_task_allow'");
+  });
+
+  it("keeps the runner's keychain, secrets, and temporary files contained", async () => {
+    const raw = await script();
+
+    expect(raw).toContain("umask 077");
+    expect(raw).toContain("trap cleanup EXIT INT TERM");
+    expect(raw).toContain("security default-keychain -d user -s \"$ORIGINAL_DEFAULT_KEYCHAIN\"");
+    expect(raw).toContain('security list-keychains -d user -s "${original_keychains[@]}"');
+    expect(raw).toContain("security delete-keychain");
+    expect(raw).toContain("unset ASC_API_KEY_P8_BASE64 IOS_DISTRIBUTION_P12_BASE64");
+    expect(raw).toContain("unset IOS_DISTRIBUTION_P12_PASSWORD");
+    expect(raw).toContain("unset SIGNING_KEYCHAIN_PASSWORD");
+    expect(raw).toContain('chmod 600 "$AUTHENTICATION_KEY_PATH"');
+    expect(raw).toContain("Refusing to upload a TestFlight build outside main.");
+    expect(raw).toContain(
+      "Expected exactly one valid distribution signing identity in the release keychain.",
+    );
+    // The caller's own assertions see the app, and none of the credentials.
+    expect(raw).toContain('run_without_release_secrets "$VALIDATE_APP_SCRIPT_PATH"');
+  });
+
+  it("rejects the caller-configuration mistakes before it spends a runner", async () => {
+    const raw = await script();
+    const root = await mkdtemp(join(tmpdir(), "morpheus-testflight-action-"));
+
+    try {
+      const workspace = join(root, "workspace");
+      await mkdir(workspace, { recursive: true });
+      const runner = join(root, "runner-temp");
+      await mkdir(runner, { recursive: true });
+
+      const base = {
+        GITHUB_REF: "refs/heads/main",
+        GITHUB_WORKSPACE: workspace,
+        RUNNER_TEMP: runner,
+        PROJECT_PATH: join(workspace, "App.xcodeproj"),
+        SCHEME_NAME: "App",
+        APPLE_TEAM_ID: "D495224G8R",
+        IOS_BUNDLE_ID: "com.example.app",
+        ASC_APP_ID: "6804832724",
+        TESTFLIGHT_BETA_GROUP_IDS: "12de872e-297c-4a19-befc-03fa6d6eb87f",
+        ASC_API_KEY_ID: "key",
+        ASC_API_KEY_ISSUER_ID: "issuer",
+        ASC_API_KEY_P8_BASE64: "cGxhY2Vob2xkZXI=",
+        IOS_DISTRIBUTION_P12_BASE64: "cGxhY2Vob2xkZXI=",
+        IOS_DISTRIBUTION_P12_PASSWORD: "placeholder",
+        IOS_DISTRIBUTION_PROFILE_BASE64: "cGxhY2Vob2xkZXI=",
+        OPENSSL_BINARY: "/bin/echo",
+      };
+
+      const run = async (overrides: Record<string, string>) => {
+        try {
+          await execFileAsync("bash", ["-c", raw], {
+            cwd: workspace,
+            env: { PATH: process.env.PATH ?? "", ...base, ...overrides },
+          });
+          return "";
+        } catch (error) {
+          return String((error as { stderr?: string }).stderr ?? error);
+        }
+      };
+
+      expect(await run({ GITHUB_REF: "refs/heads/feature" })).toContain(
+        "Refusing to upload a TestFlight build outside main",
+      );
+      expect(await run({ IOS_BUNDLE_ID: "" })).toContain(
+        "Missing required release variable: IOS_BUNDLE_ID",
+      );
+      expect(await run({ TESTFLIGHT_BETA_GROUP_IDS: "not-a-uuid" })).toContain(
+        "Invalid TestFlight beta-group id",
+      );
+      expect(
+        await run({
+          BETA_GROUP_POLICY: "one-internal-one-external",
+          TESTFLIGHT_BETA_GROUP_IDS: "12de872e-297c-4a19-befc-03fa6d6eb87f",
+        }),
+      ).toContain("requires two distinct TestFlight beta-group ids");
+      expect(await run({ BETA_GROUP_POLICY: "whatever" })).toContain(
+        "beta-group-policy must be",
+      );
+      expect(await run({ ARCHIVE_BUILD_SETTINGS: "not a setting" })).toContain(
+        "archive-build-settings entries must be KEY=VALUE",
+      );
+      expect(await run({ VALIDATE_APP_SCRIPT: "../escape.sh" })).toContain(
+        "must be a repository-relative path without '..'",
+      );
+      expect(await run({ VALIDATE_APP_SCRIPT: "qa/missing.sh" })).toContain(
+        "validate-app-script is missing or not executable",
+      );
+      expect(await run({ GOOGLE_SERVICE_PLIST_PATH: "apps/ios/App/GoogleService-Info.plist" })).toContain(
+        "its base64 configuration is empty",
+      );
+
+      // An empty build-setting value is legitimate, and a fully valid
+      // configuration gets all the way to looking for the Xcode project.
+      expect(await run({ ARCHIVE_BUILD_SETTINGS: "APP_ENVIRONMENT=staging\nAPI_BASE_URL=" })).toContain(
+        "Xcode project not found",
+      );
+      expect(await run({})).toContain("Xcode project not found");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
  * `ios-ci.yml` is the native Apple equivalent of node-ci and python-ci. The
  * lock and simulator defaults are part of its public caller contract: if
  * package resolution mutates the lock, or the destination names a runtime the

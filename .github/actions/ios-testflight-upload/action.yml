@@ -1,0 +1,226 @@
+name: iOS TestFlight upload
+description: >
+  Archive an iOS app unsigned, export a distribution-signed IPA, verify the
+  artifact that ships, upload it to App Store Connect, and assign it to
+  TestFlight beta groups.
+
+# This is an action, not a reusable workflow, and that is the point. GitHub
+# hands a cross-repository reusable workflow none of the caller's environment
+# secrets — a job there reads every one of them as an empty string, silently.
+# An action runs inside the caller's own job, so `secrets.*` resolve normally
+# and can be handed in as inputs. Two projects each discovered this the
+# expensive way, four nights apart.
+#
+# Call it from a job that has already checked out the reviewed SHA and declares
+# the protected environment holding the release credentials.
+
+inputs:
+  # ---- Toolchain and project shape ----------------------------------------
+  xcode-version:
+    description: Exact Xcode version installed as /Applications/Xcode_<version>.app.
+    default: "26.6"
+  working-directory:
+    description: Repository-relative directory containing the Xcode project.
+    default: apps/ios
+  project:
+    description: Xcode project filename, relative to working-directory.
+    required: true
+  scheme:
+    description: Shared scheme archived for release.
+    required: true
+  source-packages-directory:
+    description: Runner-temp directory name holding the resolved SwiftPM checkout.
+    default: TestFlightSourcePackages
+  download-metal-toolchain:
+    description: Download Xcode's optional Metal toolchain before archiving.
+    default: "false"
+  install-sentry-cli:
+    description: Install sentry-cli so an Xcode build phase can upload debug symbols.
+    default: "false"
+
+  # ---- Release identity ----------------------------------------------------
+  apple-team-id:
+    description: Apple Developer team id that owns the distribution certificate.
+    required: true
+  ios-bundle-id:
+    description: Bundle identifier the archive and the distribution profile must both carry.
+    required: true
+  app-store-connect-app-id:
+    description: Numeric App Store Connect app id.
+    required: true
+  testflight-beta-group-ids:
+    description: Newline- or comma-separated TestFlight beta-group ids, one to four.
+    required: true
+  beta-group-policy:
+    description: >
+      "any" accepts one to four groups of any kind. "one-internal-one-external"
+      additionally requires exactly two distinct groups, one internal and one
+      external — the shape a project uses when every release must reach outside
+      testers as well as the team.
+    default: any
+
+  # ---- Project-specific build inputs ---------------------------------------
+  archive-build-settings:
+    description: >
+      Newline-separated KEY=VALUE build settings applied to `xcodebuild archive`.
+      An empty value is allowed and meaningful (KAIROS_API_BASE_URL= pins the
+      app to no backend). Each entry is passed as one argv element, never
+      spliced into a command string.
+    default: ""
+  google-service-info-plist-path:
+    description: >
+      Repository-relative destination for a Firebase client configuration that
+      is not checked in. When set, google-service-info-plist-base64 is decoded
+      into it for the archive only, and the previous file — if any — is
+      restored afterwards. Leave empty for a project that commits its own.
+    default: ""
+  validate-app-script:
+    description: >
+      Optional repository-relative executable run against the archived .app
+      bundle, which it receives as its first argument, with the release
+      credentials stripped from its environment. This is where a project
+      asserts things only it knows: which Firebase project is pinned, which
+      purpose strings must be present, which environment was built.
+    default: ""
+  sentry-org:
+    description: Sentry organization, for a build phase that uploads debug symbols.
+    default: ""
+  sentry-project:
+    description: Sentry project, for a build phase that uploads debug symbols.
+    default: ""
+
+  # ---- Credentials ---------------------------------------------------------
+  # Passed as inputs rather than read from `secrets` so that the calling job,
+  # which is the only place they resolve, stays the only place they are named.
+  asc-api-key-id:
+    description: App Store Connect API key id.
+    required: true
+  asc-api-key-issuer-id:
+    description: App Store Connect API issuer id.
+    required: true
+  asc-api-key-p8-base64:
+    description: Base64-encoded PKCS #8 App Store Connect private key.
+    required: true
+  ios-distribution-p12-base64:
+    description: Base64-encoded distribution identity in a PKCS #12 container.
+    required: true
+  ios-distribution-p12-password:
+    description: Password for the distribution PKCS #12 container.
+    required: true
+  ios-distribution-profile-base64:
+    description: Base64-encoded App Store distribution provisioning profile.
+    required: true
+  google-service-info-plist-base64:
+    description: Base64-encoded Firebase client configuration; required with google-service-info-plist-path.
+    default: ""
+  sentry-auth-token:
+    description: Sentry token used only by the archive's debug-symbol build phase.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Validate release inputs and select Xcode
+      shell: bash
+      env:
+        XCODE_VERSION: ${{ inputs.xcode-version }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        PROJECT: ${{ inputs.project }}
+        SCHEME: ${{ inputs.scheme }}
+        SOURCE_PACKAGES_DIRECTORY: ${{ inputs.source-packages-directory }}
+        DOWNLOAD_METAL_TOOLCHAIN: ${{ inputs.download-metal-toolchain }}
+      run: |
+        set -euo pipefail
+
+        if [[ ! "$XCODE_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
+          echo "xcode-version must be an exact numeric version such as 26.6" >&2
+          exit 1
+        fi
+        for relative_path in "$WORKING_DIRECTORY" "$PROJECT"; do
+          case "$relative_path" in
+            ""|/*|*"../"*|*"/.."|"..")
+              echo "working-directory and project must be relative paths without '..'" >&2
+              exit 1
+              ;;
+          esac
+        done
+        case "$SOURCE_PACKAGES_DIRECTORY" in
+          ""|/*|*"/"*|"."|"..")
+            echo "source-packages-directory must be one runner-temp directory name" >&2
+            exit 1
+            ;;
+        esac
+        if [ -z "$SCHEME" ]; then
+          echo "scheme is required" >&2
+          exit 1
+        fi
+
+        project_path="$GITHUB_WORKSPACE/$WORKING_DIRECTORY/$PROJECT"
+        if [ ! -f "$project_path/project.pbxproj" ]; then
+          echo "Xcode project not found at $project_path" >&2
+          exit 1
+        fi
+
+        {
+          echo "PROJECT_PATH=$project_path"
+          echo "SCHEME_NAME=$SCHEME"
+          echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY"
+          echo "DERIVED_DATA_PATH=$RUNNER_TEMP/$SCHEME-DerivedData-archive"
+          echo "ARCHIVE_PATH=$RUNNER_TEMP/$SCHEME.xcarchive"
+        } >> "$GITHUB_ENV"
+
+        xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
+        if [ ! -d "$xcode_app" ]; then
+          echo "Xcode $XCODE_VERSION is not installed on this runner" >&2
+          exit 1
+        fi
+        echo "DEVELOPER_DIR=$xcode_app/Contents/Developer" >> "$GITHUB_ENV"
+        "$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version
+        if [ "$DOWNLOAD_METAL_TOOLCHAIN" = "true" ]; then
+          "$xcode_app/Contents/Developer/usr/bin/xcodebuild" -downloadComponent MetalToolchain
+        fi
+
+    - name: Cache resolved Swift packages
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/${{ inputs.source-packages-directory }}
+        key: nightly-testflight-spm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-${{ hashFiles(format('{0}/**/Package.resolved', inputs.working-directory)) }}
+        restore-keys: |
+          nightly-testflight-spm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-
+
+    - name: Install release tooling
+      shell: bash
+      env:
+        INSTALL_SENTRY_CLI: ${{ inputs.install-sentry-cli }}
+      run: |
+        set -euo pipefail
+        brew install openssl@3 asccli
+        if [ "$INSTALL_SENTRY_CLI" = "true" ]; then
+          brew install getsentry/tools/sentry-cli
+        fi
+        echo "OPENSSL_BINARY=$(brew --prefix openssl@3)/bin/openssl" >> "$GITHUB_ENV"
+
+    # The protected environment's credentials first enter a process here, after
+    # the toolchain and the project layout have already been proven good.
+    - name: Archive, sign, verify, and upload to TestFlight
+      shell: bash
+      env:
+        APPLE_TEAM_ID: ${{ inputs.apple-team-id }}
+        IOS_BUNDLE_ID: ${{ inputs.ios-bundle-id }}
+        ASC_APP_ID: ${{ inputs.app-store-connect-app-id }}
+        TESTFLIGHT_BETA_GROUP_IDS: ${{ inputs.testflight-beta-group-ids }}
+        BETA_GROUP_POLICY: ${{ inputs.beta-group-policy }}
+        ARCHIVE_BUILD_SETTINGS: ${{ inputs.archive-build-settings }}
+        GOOGLE_SERVICE_PLIST_PATH: ${{ inputs.google-service-info-plist-path }}
+        VALIDATE_APP_SCRIPT: ${{ inputs.validate-app-script }}
+        SENTRY_ORG: ${{ inputs.sentry-org }}
+        SENTRY_PROJECT: ${{ inputs.sentry-project }}
+        ASC_API_KEY_ID: ${{ inputs.asc-api-key-id }}
+        ASC_API_KEY_ISSUER_ID: ${{ inputs.asc-api-key-issuer-id }}
+        ASC_API_KEY_P8_BASE64: ${{ inputs.asc-api-key-p8-base64 }}
+        IOS_DISTRIBUTION_P12_BASE64: ${{ inputs.ios-distribution-p12-base64 }}
+        IOS_DISTRIBUTION_P12_PASSWORD: ${{ inputs.ios-distribution-p12-password }}
+        IOS_DISTRIBUTION_PROFILE_BASE64: ${{ inputs.ios-distribution-profile-base64 }}
+        IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ inputs.google-service-info-plist-base64 }}
+        SENTRY_AUTH_TOKEN: ${{ inputs.sentry-auth-token }}
+      run: '"$GITHUB_ACTION_PATH/upload-testflight.sh"'

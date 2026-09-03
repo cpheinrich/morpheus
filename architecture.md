@@ -2898,7 +2898,8 @@ implicitly enables the other.
 
 Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `ios-nightly-build`, `firebase-tests`,
 `osv-scan`, `pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`, `agent-review`, and
-`dependabot-maintainer`. Planned: `agent-triage`, `agent-analytics-review`, and `release-kit`.
+`dependabot-maintainer`, plus one composite action, `ios-testflight-upload`. Planned:
+`agent-triage`, `agent-analytics-review`, and `release-kit`.
 
 Dependency maintenance splits policy, judgment, and authority. The project owns a versioned list
 of exact dependency/update-type auto-merge rules and explicit holds. `dependabot-maintainer`
@@ -2995,6 +2996,39 @@ diff reports the skip from a Linux job and provisions no macOS runner. A missing
 non-ancestor baseline builds conservatively. Manual callers may force a build. Keeping the caller
 workflow filename stable makes its successful runs the durable release cursor without a second
 state store.
+
+`ios-testflight-upload` is the one *action* Morpheus ships, and the reason it is an action is the
+same constraint that shapes `ios-nightly-build`: a cross-repository reusable workflow receives none
+of the caller's environment secrets, so the signing job has to stay in the caller. A composite
+action runs inside that caller-owned job, where `secrets.*` resolve normally and can be handed in
+as inputs — which is what makes the *implementation* shareable even though the job cannot be. It
+selects the exact Xcode, downloads the Metal toolchain on request, restores the SwiftPM cache,
+installs `openssl@3`, `asccli` and optionally `sentry-cli`, then archives, exports, verifies and
+uploads. A caller is reduced to a checkout of the verified SHA and one `uses:` block of
+identifiers.
+
+Its contract is deliberately narrow: typed inputs for the project shape, the Apple identifiers, the
+beta-group policy (`any`, or `one-internal-one-external` for a project whose every release must
+reach outside testers), newline-separated `archive-build-settings`, an optional Firebase client
+plist materialized from a secret for the archive only, and one optional caller hook —
+`validate-app-script`, a repository-relative executable that receives the archived `.app` bundle and
+runs with every release credential stripped from its environment. That hook is where a project
+asserts what only it knows: which Firebase project is pinned, which purpose strings must be
+present, which build environment was compiled in. Anything a second project would also want belongs
+in the action instead.
+
+Three properties are not negotiable, because each has already cost releases. The archive is
+**unsigned** — `CODE_SIGN_IDENTITY=""`, `CODE_SIGNING_REQUIRED=NO`, `CODE_SIGNING_ALLOWED=NO`, and
+`-allowProvisioningUpdates` appears nowhere. Automatic signing needs a development identity a clean
+runner never has, so Xcode minted a permanent one through the App Store Connect API on every run;
+eleven accumulated before the shared team hit its account-wide certificate limit and archiving
+stopped for two projects at once. Manual signing is not the alternative either: command-line build
+settings apply to every target, and Swift package targets reject a specified provisioning profile
+outright. Second, the distribution checks run on the **exported IPA**, never the archive — the
+archive has no signature to check, and `get-task-allow` must be strict on the artifact that ships.
+Third, the file that is verified is the file that is uploaded: the export writes an IPA locally, the
+signature and entitlements are asserted against it, and `asccli builds upload` sends that same path.
+Exporting with `destination: upload` hands the build to Apple with nothing having inspected it.
 
 `firebase-tests` is the one workflow a project opts into rather than getting by default: it runs
 the emulator-backed suites (unit, Firestore rules, Playwright E2E) against the Firebase Emulator
