@@ -46,7 +46,13 @@ contact information.
    claim is not `/hq` access.
 7. Link the Vercel project from the repository root. For a monorepo, explicitly
    set its Root Directory to `apps/web`. Connect GitHub, deploy only reviewed
-   source, and keep runtime secrets in Vercel's encrypted environment store.
+   source, and keep runtime secrets in Vercel's encrypted environment store. If
+   a private-repository deployment is blocked because the agent's commit author
+   is not a member of the user's Pro team, do not invite the agent team-wide or
+   rewrite commit authorship. Deploy through the user's authenticated Vercel CLI
+   from a clean source copy that excludes `.git`, `.env*`, private keys, local
+   build output, and dependency directories. Record that Git-triggered deploys
+   by that author remain blocked; the CLI path is the durable agent workflow.
 8. Add the domain in Vercel, apply the exact DNS records it requests through the
    authoritative DNS provider, and wait for both Vercel verification and public
    DNS resolution. Do not replace unrelated records.
