@@ -98,24 +98,45 @@ function listPullRequests(repo, requested) {
 }
 
 function pullRequestView(repo, number) {
-  const view = ghJson([
-    "pr",
-    "view",
-    String(number),
-    "--repo",
-    repo,
-    "--json",
-    "number,title,url,state,isDraft,author,headRefOid,baseRefName,mergeStateStatus,statusCheckRollup",
-  ]);
   const authoritative = ghJson(["api", `repos/${repo}/pulls/${number}`]);
   return {
-    ...view,
+    number: Number(authoritative.number),
     title: authoritative.title,
+    url: authoritative.html_url,
     state: String(authoritative.state).toUpperCase(),
+    isDraft: Boolean(authoritative.draft),
     author: { login: authoritative.user?.login ?? "" },
     headRefOid: authoritative.head?.sha ?? "",
     baseRefName: authoritative.base?.ref ?? "",
+    mergeStateStatus: String(authoritative.mergeable_state ?? "unknown").toUpperCase(),
+    statusCheckRollup: pullRequestChecks(repo, authoritative.head?.sha ?? ""),
   };
+}
+
+function latestByName(checks) {
+  const latest = new Map();
+  for (const check of checks) {
+    const name = checkName(check);
+    if (!latest.has(name)) latest.set(name, check);
+  }
+  return [...latest.values()];
+}
+
+function pullRequestChecks(repo, sha) {
+  if (!sha) return [];
+
+  const checkPages = ghJson([
+    "api",
+    "--paginate",
+    "--slurp",
+    `repos/${repo}/commits/${sha}/check-runs?per_page=100&filter=latest`,
+  ]);
+  const runs = (Array.isArray(checkPages) ? checkPages : []).flatMap(
+    (page) => page?.check_runs ?? [],
+  );
+  const combined = ghJson(["api", `repos/${repo}/commits/${sha}/status`]);
+  const statuses = Array.isArray(combined?.statuses) ? combined.statuses : [];
+  return latestByName([...runs, ...statuses]);
 }
 
 function pullRequestFiles(repo, number) {
