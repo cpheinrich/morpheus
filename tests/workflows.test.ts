@@ -1607,6 +1607,87 @@ describe("ios-ci.yml", () => {
     expect(inputs["maximum-parallel-testing-workers"]?.default).toBe(0);
     expect(inputs["firebase-emulators"]?.default).toBe(false);
     expect(inputs["pre-test-script"]?.default).toBe("");
+    expect(inputs["swift-format-lint"]?.default).toBe(false);
+    expect(inputs["swift-format-configuration"]?.default).toBe(".swift-format");
+  });
+
+  it("can enforce the selected Xcode toolchain's formatter on changed Swift sources", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const steps = wf.jobs?.test?.steps ?? [];
+    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const lint = steps.find((step) => step.name === "Lint changed Swift sources");
+    const script = String(lint?.run);
+
+    expect((checkout?.with as Record<string, unknown>)?.["fetch-depth"]).toBe(2);
+    expect(lint?.if).toBe("${{ inputs.swift-format-lint }}");
+    expect(lint?.env).toMatchObject({
+      SWIFT_FORMAT_CONFIGURATION: "${{ inputs.swift-format-configuration }}",
+      WORKING_DIRECTORY: "${{ inputs.working-directory }}",
+    });
+    expect(script).toContain("xcrun swift-format --version");
+    expect(script).toContain("swift-format dump-configuration");
+    expect(script).toContain("--effective");
+    expect(script).toContain("git diff-tree");
+    expect(script).toContain("--diff-filter=ACMR");
+    expect(script).toContain("swift-format lint");
+    expect(script).toContain("--parallel");
+    expect(script).toContain("--strict");
+    expect(script).not.toContain("brew install");
+  });
+
+  it("strictly lints added and modified Swift files without sweeping legacy source", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-swift-format-"));
+    const repo = join(root, "repo");
+    const bin = join(root, "bin");
+    const log = join(root, "xcrun.log");
+
+    try {
+      await mkdir(join(repo, "apps/ios"), { recursive: true });
+      await mkdir(bin, { recursive: true });
+      await execFileAsync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: repo });
+      await execFileAsync("git", ["config", "user.name", "Morpheus Test"], { cwd: repo });
+      await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
+      await writeFile(join(repo, "apps/ios/.swift-format"), '{"version":1}\n', "utf8");
+      await writeFile(join(repo, "apps/ios/Changed.swift"), "let changed = 1\n", "utf8");
+      await writeFile(join(repo, "apps/ios/Legacy.swift"), "let legacy = 1\n", "utf8");
+      await writeFile(join(repo, "apps/ios/Removed.swift"), "let removed = 1\n", "utf8");
+      await execFileAsync("git", ["add", "."], { cwd: repo });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "baseline"], { cwd: repo });
+
+      await writeFile(join(repo, "apps/ios/Changed.swift"), "let changed = 2\n", "utf8");
+      await writeFile(join(repo, "apps/ios/Added.swift"), "let added = 1\n", "utf8");
+      await rm(join(repo, "apps/ios/Removed.swift"));
+      await execFileAsync("git", ["add", "."], { cwd: repo });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "change Swift"], { cwd: repo });
+
+      const fakeXcrun = join(bin, "xcrun");
+      await writeFile(fakeXcrun, '#!/bin/bash\nprintf "%s\\n" "$*" >> "$XCRUN_LOG"\n', "utf8");
+      await chmod(fakeXcrun, 0o755);
+
+      const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+      const script = steps.find((step) => step.name === "Lint changed Swift sources")?.run;
+      expect(script).toBeTruthy();
+      await execFileAsync("bash", ["-c", String(script)], {
+        cwd: join(repo, "apps/ios"),
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          GITHUB_WORKSPACE: repo,
+          SWIFT_FORMAT_CONFIGURATION: ".swift-format",
+          WORKING_DIRECTORY: "apps/ios",
+          XCRUN_LOG: log,
+        },
+      });
+
+      const invocations = await readFile(log, "utf8");
+      const lint = invocations.split("\n").find((line) => line.startsWith("swift-format lint"));
+      expect(lint).toContain("apps/ios/Added.swift");
+      expect(lint).toContain("apps/ios/Changed.swift");
+      expect(lint).not.toContain("apps/ios/Legacy.swift");
+      expect(lint).not.toContain("apps/ios/Removed.swift");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("bounds and cancels superseded simulator runs", async () => {
