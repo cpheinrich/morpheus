@@ -1680,6 +1680,11 @@ describe("ios-testflight-upload action", () => {
     const cache = steps.find((step) => step.uses?.startsWith("actions/cache@"));
     const tooling = steps.find((step) => step.name === "Install release tooling");
 
+    // working-directory, project and scheme are written into GITHUB_ENV, one
+    // KEY=VALUE per line; a value carrying a newline would append an arbitrary
+    // variable to the calling job.
+    expect(validate?.run).toContain('for caller_value in "$WORKING_DIRECTORY" "$PROJECT" "$SCHEME"');
+    expect(validate?.run).toContain("*[[:space:]]*)");
     expect(validate?.run).toContain('xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
     expect(validate?.run).toContain('echo "DEVELOPER_DIR=$xcode_app/Contents/Developer"');
     expect(validate?.run).toContain("-downloadComponent MetalToolchain");

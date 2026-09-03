@@ -150,10 +150,17 @@ runs:
             exit 1
             ;;
         esac
-        if [ -z "$SCHEME" ]; then
-          echo "scheme is required" >&2
-          exit 1
-        fi
+        # These three are written into GITHUB_ENV, whose format is one
+        # KEY=VALUE per line. A value carrying a newline would append an
+        # arbitrary variable to the job; nothing legitimate needs one.
+        for caller_value in "$WORKING_DIRECTORY" "$PROJECT" "$SCHEME"; do
+          case "$caller_value" in
+            "" | *[[:space:]]*)
+              echo "working-directory, project and scheme must be non-empty and contain no whitespace" >&2
+              exit 1
+              ;;
+          esac
+        done
 
         project_path="$GITHUB_WORKSPACE/$WORKING_DIRECTORY/$PROJECT"
         if [ ! -f "$project_path/project.pbxproj" ]; then
