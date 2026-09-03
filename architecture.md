@@ -2905,6 +2905,9 @@ only auto-merge or human-review advice. A separate job with no model credential 
 pull request and checks the exact Dependabot App author, head SHA, file scope, and current check
 rollup before it changes a label, comment, pull-request state, or auto-merge setting. A model can
 never close a pull request; that requires an explicit project rule.
+When an approved head is behind a strict protected base, delivery enables auto-merge and requests
+GitHub's guarded branch update with the revalidated head SHA. The resulting CI completion invokes
+the fast path again, so several simultaneous updates converge one merge at a time as `main` moves.
 
 Projects trigger the workflow after CI for the fast path and on a nightly schedule for
 reconciliation. GitHub event delivery, a transient workflow failure, and a policy change can each

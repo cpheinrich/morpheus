@@ -7,6 +7,7 @@ import {
   decideByPolicy,
   isDependencyOnly,
   parseDependabotTitle,
+  shouldAdvanceAutoMerge,
 } from "../dist/dependabot/policy.js";
 
 const MARKER = "<!-- morpheus-dependabot-maintainer -->";
@@ -459,6 +460,16 @@ function deliver() {
 
     if (route === "auto_merge") {
       gh(["pr", "merge", String(candidate.number), "--repo", repo, "--auto", "--squash"]);
+      if (shouldAdvanceAutoMerge(route, current.mergeStateStatus)) {
+        gh([
+          "api",
+          `repos/${repo}/pulls/${candidate.number}/update-branch`,
+          "-X",
+          "PUT",
+          "-f",
+          `expected_head_sha=${current.headRefOid}`,
+        ]);
+      }
     } else if (route === "close") {
       gh(["api", `repos/${repo}/pulls/${candidate.number}`, "-X", "PATCH", "-f", "state=closed"]);
     }

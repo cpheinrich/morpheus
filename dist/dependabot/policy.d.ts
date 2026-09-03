@@ -40,6 +40,8 @@ export declare function updateType(fromVersion: string, toVersion: string): Upda
  */
 export declare function isDependencyFile(path: string): boolean;
 export declare function isDependencyOnly(paths: string[]): boolean;
+/** A strict protected branch cannot finish auto-merge while its head is behind the base. */
+export declare function shouldAdvanceAutoMerge(route: PolicyDecision["route"], mergeStateStatus: string): boolean;
 export declare function decideByPolicy(policy: DependabotPolicy, input: {
     author: string;
     title: string;
