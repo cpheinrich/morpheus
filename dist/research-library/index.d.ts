@@ -43,6 +43,4 @@ export type ResearchLibraryContract = {
     catalogDir?: string;
 };
 export declare function parseResearchLibraryBook(value: unknown, contract: ResearchLibraryContract): ResearchLibraryBook | null;
-export declare function loadResearchLibraryCatalog(repoRoot: string, contract: ResearchLibraryContract): Promise<ResearchLibraryCatalog>;
-export declare function verifiedResearchLibraryBlob(identity: Pick<ResearchLibraryBundle, "bytes" | "sha256">, load: () => Promise<Blob>): Promise<Blob>;
 export declare function formatResearchLibraryBytes(bytes: number): string;

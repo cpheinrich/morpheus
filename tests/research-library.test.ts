@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 
 import { initResearchLibrary, runResearchLibrary } from "../src/cli/research-library.js";
 import {
-  loadResearchLibraryCatalog,
   parseResearchLibraryBook,
-  verifiedResearchLibraryBlob,
 } from "../src/research-library/index.js";
+import { verifiedResearchLibraryBlob } from "../src/research-library/client.js";
+import { loadResearchLibraryCatalog } from "../src/research-library/server.js";
 
 const DIGEST = "a".repeat(64);
 const READER_DIGEST = "b".repeat(64);
@@ -104,5 +104,12 @@ describe("research library", () => {
     expect(await runResearchLibrary("bundle", [source, second], { root })).toBe(0);
     expect(await readFile(first)).toEqual(await readFile(second));
     expect((await stat(first)).size).toBeGreaterThan(0);
+  });
+
+  it("keeps the browser entry free of Node-only imports", async () => {
+    const source = await readFile(new URL("../src/research-library/client.ts", import.meta.url), "utf8");
+    expect(source).not.toContain("node:fs");
+    expect(source).not.toContain("node:path");
+    expect(source).not.toContain("./server");
   });
 });
