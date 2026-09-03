@@ -93,6 +93,10 @@ on:
         description: Comma-separated Firebase emulators needed by the iOS tests.
         type: string
         default: "auth,firestore"
+      test-iterations:
+        description: Forwarded to ios-ci.yml; see its input of the same name.
+        type: number
+        default: 0
       pre-test-script:
         description: Optional caller-repository script run immediately before tests.
         type: string
@@ -280,6 +284,7 @@ jobs:
       parallel-testing: ${{ inputs.parallel-testing }}
       maximum-parallel-testing-workers: ${{ inputs.parallel-testing && inputs.maximum-parallel-testing-workers || 0 }}
       optimize-test-build: ${{ inputs.optimize-test-build }}
+      test-iterations: ${{ inputs.test-iterations }}
       firebase-emulators: ${{ inputs.firebase-emulators }}
       firebase-cli-version: ${{ inputs.firebase-cli-version }}
       firebase-config: ${{ inputs.firebase-config }}
