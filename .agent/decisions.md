@@ -61,6 +61,13 @@ the exact-version operation is only validating `/Applications/Xcode_<version>.ap
 every native project's trusted build path. Revisit if hosted-runner Xcode discovery stops having a
 stable path contract or the workflow needs installation rather than selection.
 
+**Native Swift style uses the formatter bundled with Xcode** — 2026-09-02. Apple's `swift-format`
+already provides in-place formatting and strict lint diagnostics in the selected Swift toolchain.
+SwiftLint and third-party SwiftFormat were considered, but either would add an install and version
+surface before Evo has a rule need the built-in formatter cannot express. The shared CI capability
+is opt-in and checks only Swift files changed by the commit, so adoption does not rewrite unrelated
+source or break existing iOS consumers; each caller owns its checked-in configuration.
+
 **Nightly iOS releases use the prior successful caller run as their change cursor** — 2026-09-01.
 The maintained `dorny/paths-filter` and `tj-actions/changed-files` actions were considered, but both
 classify a supplied commit range and neither owns the release-specific question: which commit last

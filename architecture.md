@@ -1560,8 +1560,11 @@ via `fastlane` for real builds. So an agent can implement a change, run it in a 
 the flow, and attach a screenshot per step plus a video to the PR.
 
 The reusable `ios-ci.yml` owns the hosted runner, exact Xcode and simulator destination, locked
-SwiftPM resolution, build-for-testing/test-without-building split, result bundles, logs, and
-rendered XCTest attachments. Firebase-backed clients opt into a secret-free emulator boundary and
+SwiftPM resolution, opt-in `swift-format` linting for changed Swift sources,
+build-for-testing/test-without-building split, result bundles, logs, and rendered XCTest
+attachments. The formatter ships in the selected Xcode toolchain; callers provide the checked-in
+configuration and opt in, so no third-party install or implicit style policy reaches existing
+consumers. Firebase-backed clients opt into a secret-free emulator boundary and
 may name one repository script to seed local fixtures; that script runs after the emulators start
 and before XCTest, so it never has to race a separately managed service.
 
@@ -2924,6 +2927,13 @@ its replacement — job-level rather than workflow-level, because a called workf
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
 Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination.
+Callers may opt into a changed-source style gate with `swift-format-lint`; it validates the
+caller-owned `.swift-format` configuration and runs the selected Xcode toolchain's formatter in
+strict lint mode against added, copied, modified, and renamed Swift files in the checked-out
+commit. The checkout retains only the commit and its first parent, which is enough to cover a pull
+request's synthetic merge commit and a push to `main` without downloading full history. Existing
+Swift is adopted incrementally: enabling the gate does not create a repository-wide formatting
+rewrite, while any Swift file being changed must leave the commit fully formatted.
 The caller supplies a shared Xcode scheme; that scheme or its optional test plan remains the source
 of truth for which unit and UI targets run. The workflow refuses an absent or uncommitted
 `Package.resolved`, passes `-onlyUsePackageVersionsFromResolvedFile` to resolution and every build

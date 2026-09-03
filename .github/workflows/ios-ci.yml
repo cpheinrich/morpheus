@@ -106,6 +106,14 @@ on:
         description: Run every unit and UI test enabled by the shared scheme or selected test plan.
         type: boolean
         default: true
+      swift-format-lint:
+        description: Lint Swift files changed by this commit with the selected Xcode toolchain's swift-format.
+        type: boolean
+        default: false
+      swift-format-configuration:
+        description: swift-format configuration path, relative to working-directory.
+        type: string
+        default: ".swift-format"
       optimize-test-build:
         description: >
           Override the caller's Debug configuration with the optimization level
@@ -140,6 +148,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # The style gate compares the checked-out commit to its first parent.
+          # Depth two keeps that boundary available without fetching full history.
+          fetch-depth: 2
           persist-credentials: false
 
       # GitHub's macos-26 image carries Xcode 26.6, the iOS 26.5 SDK and the
@@ -177,6 +188,8 @@ jobs:
           FIREBASE_PROJECT: ${{ inputs.firebase-project }}
           FIREBASE_ONLY: ${{ inputs.firebase-only }}
           PRE_TEST_SCRIPT: ${{ inputs.pre-test-script }}
+          SWIFT_FORMAT_LINT: ${{ inputs.swift-format-lint }}
+          SWIFT_FORMAT_CONFIGURATION: ${{ inputs.swift-format-configuration }}
         run: |
           case "$PROJECT" in
             ""|/*|*".."*)
@@ -225,6 +238,19 @@ jobs:
             fi
           fi
 
+          if [ "$SWIFT_FORMAT_LINT" = "true" ]; then
+            case "$SWIFT_FORMAT_CONFIGURATION" in
+              ""|/*|*".."*)
+                echo "swift-format-configuration must be a non-empty path relative to working-directory without '..'" >&2
+                exit 1
+                ;;
+            esac
+            if [ ! -f "$SWIFT_FORMAT_CONFIGURATION" ]; then
+              echo "swift-format configuration was not found: $SWIFT_FORMAT_CONFIGURATION" >&2
+              exit 1
+            fi
+          fi
+
           if [ "$FIREBASE_EMULATORS" = "true" ]; then
             case "$FIREBASE_CONFIG" in
               ""|/*|*".."*)
@@ -266,6 +292,45 @@ jobs:
             echo "LOGS=$ios_ci_root/Logs"
             echo "SCREENSHOTS=$ios_ci_root/Screenshots"
           } >> "$GITHUB_ENV"
+
+      - name: Lint changed Swift sources
+        if: ${{ inputs.swift-format-lint }}
+        env:
+          SWIFT_FORMAT_CONFIGURATION: ${{ inputs.swift-format-configuration }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+
+          configuration="$GITHUB_WORKSPACE/$WORKING_DIRECTORY/$SWIFT_FORMAT_CONFIGURATION"
+          xcrun swift-format --version
+          xcrun swift-format dump-configuration \
+            --effective \
+            --configuration "$configuration" >/dev/null
+
+          swift_files=()
+          pathspec=":(glob)$WORKING_DIRECTORY/**/*.swift"
+          if git rev-parse --verify HEAD^1 >/dev/null 2>&1; then
+            while IFS= read -r -d '' file; do
+              swift_files+=("$file")
+            done < <(git diff-tree --no-commit-id --name-only --diff-filter=ACMR -r -z HEAD^1 HEAD -- "$pathspec")
+          else
+            while IFS= read -r -d '' file; do
+              swift_files+=("$file")
+            done < <(git ls-files -z -- "$pathspec")
+          fi
+
+          if [ "${#swift_files[@]}" -eq 0 ]; then
+            echo "No changed Swift sources to lint."
+            exit 0
+          fi
+
+          printf 'Linting %s changed Swift source(s).\n' "${#swift_files[@]}"
+          xcrun swift-format lint \
+            --configuration "$configuration" \
+            --parallel \
+            --strict \
+            "${swift_files[@]}"
 
       - name: Cache resolved Swift packages
         uses: actions/cache@v6
