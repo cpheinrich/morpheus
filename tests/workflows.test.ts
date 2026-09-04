@@ -1563,7 +1563,7 @@ describe("ios-nightly-build.yml", () => {
     );
     expect(
       steps.find((step) => step.name === "Install release tooling")?.run,
-    ).toContain("brew install openssl@3 asccli");
+    ).toContain("brew install --build-from-source asccli");
 
     for (const step of steps) {
       expect(step.run ?? "").not.toContain("${{ inputs.upload-script }}");
@@ -1689,7 +1689,9 @@ describe("ios-testflight-upload action", () => {
     expect(validate?.run).toContain('echo "DEVELOPER_DIR=$xcode_app/Contents/Developer"');
     expect(validate?.run).toContain("-downloadComponent MetalToolchain");
     expect(cache?.with?.path).toBe("${{ runner.temp }}/${{ inputs.source-packages-directory }}");
-    expect(tooling?.run).toContain("brew install openssl@3 asccli");
+    expect(tooling?.run).toContain("brew install openssl@3");
+    expect(tooling?.run).toContain("if ! brew install asccli; then");
+    expect(tooling?.run).toContain("brew install --build-from-source asccli");
     expect(tooling?.run).toContain("brew install getsentry/tools/sentry-cli");
   });
 

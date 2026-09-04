@@ -397,7 +397,11 @@ jobs:
           INSTALL_SENTRY_CLI: ${{ inputs.install-sentry-cli }}
         run: |
           set -euo pipefail
-          brew install openssl@3 asccli
+          brew install openssl@3
+          if ! brew install asccli; then
+            echo "::notice::No asccli bottle is available for this runner; building it from source."
+            brew install --build-from-source asccli
+          fi
           if [ "$INSTALL_SENTRY_CLI" = "true" ]; then
             brew install getsentry/tools/sentry-cli
           fi
