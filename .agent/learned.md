@@ -514,3 +514,15 @@ Keep reusable release gates secret-free. Return the build decision and verified 
 cross-repository caller use those outputs to gate a local job that names its own protected
 environment. Do not move signing credentials to repository scope just to make `secrets: inherit`
 possible; that weakens the boundary instead of fixing it.
+
+## A Homebrew formula can exist without a bottle for the runner architecture
+
+2026-09-04. `asccli` 0.18.2 was present in Homebrew core, but its bottle metadata contained only
+`arm64_tahoe`. The shared TestFlight action's ordinary `brew install asccli` therefore failed on
+GitHub's `macos-26-large` Intel runner before archive with `asccli: no bottle available` even though
+Xcode and the formula's Swift source both support that host.
+
+Release-tool installation keeps the bottled path first, then retries `brew install
+--build-from-source asccli` when Homebrew cannot pour one. Both installs remain before protected
+credentials enter the process. A package being present in the registry proves neither that a binary
+artifact exists for every supported runner nor that the default installer will build it.
