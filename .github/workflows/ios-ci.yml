@@ -18,7 +18,7 @@ on:
   workflow_call:
     inputs:
       runner:
-        description: GitHub-hosted macOS image with the requested Xcode and simulator runtime.
+        description: GitHub-hosted image or self-hosted runner label with the requested Xcode and simulator runtime.
         type: string
         default: "macos-26"
       timeout-minutes:
@@ -162,10 +162,9 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
-      # GitHub's macos-26 image carries Xcode 26.6, the iOS 26.5 SDK and the
-      # iPhone 17 Pro Max simulator. Selecting DEVELOPER_DIR directly is a
-      # small, auditable operation and avoids a third-party setup action in
-      # every consuming repository's trusted CI path.
+      # GitHub's macos-26 image uses a versioned application name; a dedicated
+      # Mac normally uses /Applications/Xcode.app. Accept either layout, then
+      # verify the actual toolchain rather than trusting the path's spelling.
       - name: Select Xcode
         env:
           XCODE_VERSION: ${{ inputs.xcode-version }}
@@ -175,13 +174,22 @@ jobs:
             exit 1
           fi
 
-          xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
-          if [ ! -d "$xcode_app" ]; then
+          versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ -d "$versioned_xcode_app" ]; then
+            xcode_app="$versioned_xcode_app"
+          elif [ -d /Applications/Xcode.app ]; then
+            xcode_app=/Applications/Xcode.app
+          else
             echo "Xcode $XCODE_VERSION is not installed on this runner. Installed versions:" >&2
-            find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' -print >&2
+            find /Applications -maxdepth 1 -type d -name 'Xcode*.app' -print >&2
             exit 1
           fi
 
+          installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version | sed -n '1s/Xcode //p')
+          if [ "$installed_version" != "$XCODE_VERSION" ]; then
+            echo "Expected Xcode $XCODE_VERSION, but $xcode_app contains $installed_version" >&2
+            exit 1
+          fi
           echo "DEVELOPER_DIR=$xcode_app/Contents/Developer" >> "$GITHUB_ENV"
           "$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version
 

@@ -61,6 +61,12 @@ the exact-version operation is only validating `/Applications/Xcode_<version>.ap
 every native project's trusted build path. Revisit if hosted-runner Xcode discovery stops having a
 stable path contract or the workflow needs installation rather than selection.
 
+**Private iOS projects may use isolated repo-scoped self-hosted runners** — 2026-09-04. Persistent
+runner processes execute repository code with their operating-system identity, so they never run
+under the operator's personal account and are never registered to a public repository. Callers own
+the runner choice and retain an explicit GitHub-hosted dispatch option for recovery. The reusable
+workflows support both Xcode application layouts and verify the reported version either way.
+
 **Native Swift style uses the formatter bundled with Xcode** — 2026-09-02. Apple's `swift-format`
 already provides in-place formatting and strict lint diagnostics in the selected Swift toolchain.
 SwiftLint and third-party SwiftFormat were considered, but either would add an install and version

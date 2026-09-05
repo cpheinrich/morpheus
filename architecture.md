@@ -1559,7 +1559,7 @@ QA script), `simctl io` to screenshot and record video, and Firebase App Distrib
 via `fastlane` for real builds. So an agent can implement a change, run it in a simulator, drive
 the flow, and attach a screenshot per step plus a video to the PR.
 
-The reusable `ios-ci.yml` owns the hosted runner, exact Xcode and simulator destination, locked
+The reusable `ios-ci.yml` owns the runner contract, exact Xcode and simulator destination, locked
 SwiftPM resolution, opt-in `swift-format` linting for changed Swift sources,
 build-for-testing/test-without-building split, result bundles, logs, and rendered XCTest
 attachments. The formatter ships in the selected Xcode toolchain; callers provide the checked-in
@@ -1567,6 +1567,12 @@ configuration and opt in, so no third-party install or implicit style policy rea
 consumers. Firebase-backed clients opt into a secret-free emulator boundary and
 may name one repository script to seed local fixtures; that script runs after the emulators start
 and before XCTest, so it never has to race a separately managed service.
+
+Callers may select either a GitHub-hosted image or a repo-scoped self-hosted runner label. The
+workflow accepts GitHub's versioned Xcode application layout and a dedicated Mac's canonical
+`/Applications/Xcode.app`, but verifies the toolchain's reported version in both cases. Persistent
+self-hosted runners are restricted to private repositories and isolated operating-system accounts;
+public-repository pull-request code never receives a route to an operator workstation.
 
 Physical devices additionally need a provisioning profile and a connected device, so simulator is
 the default for the review loop.

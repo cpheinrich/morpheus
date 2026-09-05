@@ -30,7 +30,7 @@ on:
         type: boolean
         default: false
       runner:
-        description: GitHub-hosted macOS image used for testing and release.
+        description: GitHub-hosted image or self-hosted runner label used for testing and release.
         type: string
         default: "macos-26-xlarge"
       test-timeout-minutes:
@@ -373,9 +373,18 @@ jobs:
 
           echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"
 
-          xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
-          if [ ! -d "$xcode_app" ]; then
+          versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ -d "$versioned_xcode_app" ]; then
+            xcode_app="$versioned_xcode_app"
+          elif [ -d /Applications/Xcode.app ]; then
+            xcode_app=/Applications/Xcode.app
+          else
             echo "Xcode $XCODE_VERSION is not installed on this runner" >&2
+            exit 1
+          fi
+          installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version | sed -n '1s/Xcode //p')
+          if [ "$installed_version" != "$XCODE_VERSION" ]; then
+            echo "Expected Xcode $XCODE_VERSION, but $xcode_app contains $installed_version" >&2
             exit 1
           fi
           echo "DEVELOPER_DIR=$xcode_app/Contents/Developer" >> "$GITHUB_ENV"
@@ -398,7 +407,9 @@ jobs:
           INSTALL_SENTRY_CLI: ${{ inputs.install-sentry-cli }}
         run: |
           set -euo pipefail
-          brew install openssl@3
+          if ! brew list --versions openssl@3 >/dev/null 2>&1; then
+            brew install openssl@3
+          fi
           case "$(uname -m)" in
             arm64)
               asccli_arch=arm64
@@ -422,7 +433,7 @@ jobs:
           chmod 755 "$asccli_path"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$asccli_path" --version
-          if [ "$INSTALL_SENTRY_CLI" = "true" ]; then
+          if [ "$INSTALL_SENTRY_CLI" = "true" ] && ! command -v sentry-cli >/dev/null 2>&1; then
             brew install getsentry/tools/sentry-cli
           fi
           echo "OPENSSL_BINARY=$(brew --prefix openssl@3)/bin/openssl" >> "$GITHUB_ENV"

@@ -1687,11 +1687,15 @@ describe("ios-testflight-upload action", () => {
     // variable to the calling job.
     expect(validate?.run).toContain('for caller_value in "$WORKING_DIRECTORY" "$PROJECT" "$SCHEME"');
     expect(validate?.run).toContain("*[[:space:]]*)");
-    expect(validate?.run).toContain('xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
+    expect(validate?.run).toContain('versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
+    expect(validate?.run).toContain("elif [ -d /Applications/Xcode.app ]");
+    expect(validate?.run).toContain('installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild"');
     expect(validate?.run).toContain('echo "DEVELOPER_DIR=$xcode_app/Contents/Developer"');
     expect(validate?.run).toContain("-downloadComponent MetalToolchain");
     expect(cache?.with?.path).toBe("${{ runner.temp }}/${{ inputs.source-packages-directory }}");
+    expect(tooling?.run).toContain("brew list --versions openssl@3");
     expect(tooling?.run).toContain("brew install openssl@3");
+    expect(tooling?.run).toContain("! command -v sentry-cli");
     expect(tooling?.env?.ASCCLI_VERSION).toBe("0.18.2");
     expect(tooling?.run).toContain("asc_v${ASCCLI_VERSION}_macOS_${asccli_arch}");
     expect(tooling?.run).toContain(
@@ -1929,6 +1933,17 @@ describe("ios-ci.yml", () => {
     expect(inputs["pre-test-script"]?.default).toBe("");
     expect(inputs["swift-format-lint"]?.default).toBe(false);
     expect(inputs["swift-format-configuration"]?.default).toBe(".swift-format");
+  });
+
+  it("supports hosted and canonical Xcode app layouts while verifying the exact version", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const select = wf.jobs?.test?.steps?.find((step) => step.name === "Select Xcode");
+    const script = String(select?.run);
+
+    expect(script).toContain('versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
+    expect(script).toContain("elif [ -d /Applications/Xcode.app ]");
+    expect(script).toContain('installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild"');
+    expect(script).toContain('if [ "$installed_version" != "$XCODE_VERSION" ]');
   });
 
   it("can enforce the selected Xcode toolchain's formatter on changed Swift sources", async () => {
