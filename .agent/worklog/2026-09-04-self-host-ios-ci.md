@@ -2,7 +2,7 @@
 agent: codex
 date: 2026-09-04
 roadmap: MO-26-09-04-20.12.30
-outcome: in-progress
+outcome: review
 ---
 
 # Move iOS CI to a self-hosted Mac runner
