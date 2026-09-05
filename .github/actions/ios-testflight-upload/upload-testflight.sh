@@ -674,17 +674,42 @@ if [[ "$exported_application_identifier" != "$APPLE_TEAM_ID.$IOS_BUNDLE_ID" ]] |
 fi
 
 echo "Uploading $SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER) to App Store Connect."
-run_asccli builds upload \
-  --app-id "$ASC_APP_ID" \
-  --file "$IPA_PATH" \
-  --version "$MARKETING_VERSION" \
-  --build-number "$BUILD_NUMBER" \
-  --platform ios \
-  --output json
+upload_json="$(
+  run_asccli builds upload \
+    --app-id "$ASC_APP_ID" \
+    --file "$IPA_PATH" \
+    --version "$MARKETING_VERSION" \
+    --build-number "$BUILD_NUMBER" \
+    --platform ios \
+    --output json
+)"
+printf '%s\n' "$upload_json"
+upload_id="$(json_value "$upload_json" "data.0.id" || json_value "$upload_json" "data.id" || true)"
+if [[ -z "$upload_id" ]]; then
+  echo "App Store Connect accepted the upload command without returning an upload id." >&2
+  exit 1
+fi
 
 processing_deadline=$(($(date '+%s') + PROCESSING_TIMEOUT_SECONDS))
 processed_build_id=""
 while [[ -z "$processed_build_id" ]]; do
+  upload_status_json=""
+  if upload_status_json="$(
+    run_asccli builds uploads get \
+      --upload-id "$upload_id" \
+      --output json
+  )"; then
+    upload_state="$(json_value "$upload_status_json" "data.0.state" || json_value "$upload_status_json" "data.state" || true)"
+    if [[ "$upload_state" == "FAILED" ]]; then
+      upload_error_code="$(json_value "$upload_status_json" "data.0.errors.0.code" || json_value "$upload_status_json" "data.errors.0.code" || true)"
+      upload_error_description="$(json_value "$upload_status_json" "data.0.errors.0.description" || json_value "$upload_status_json" "data.errors.0.description" || true)"
+      echo "App Store Connect failed processing $SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER): ${upload_error_code:-unknown error}: ${upload_error_description:-No description returned.}" >&2
+      exit 1
+    fi
+  else
+    echo "App Store Connect upload-status lookup failed; retrying until the processing deadline." >&2
+  fi
+
   builds_json=""
   if builds_json="$(
     run_asccli builds list \

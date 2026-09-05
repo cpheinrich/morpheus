@@ -1561,9 +1561,11 @@ describe("ios-nightly-build.yml", () => {
     expect(steps.indexOf(release!)).toBeGreaterThan(
       steps.findIndex((step) => step.name === "Install release tooling"),
     );
-    expect(
-      steps.find((step) => step.name === "Install release tooling")?.run,
-    ).toContain("brew install --build-from-source asccli");
+    const tooling = steps.find((step) => step.name === "Install release tooling");
+    expect(tooling?.env?.ASCCLI_VERSION).toBe("0.18.2");
+    expect(tooling?.run).toContain("asc_v${ASCCLI_VERSION}_macOS_${asccli_arch}");
+    expect(tooling?.run).toContain("shasum -a 256 --check");
+    expect(tooling?.run).not.toContain("--build-from-source");
 
     for (const step of steps) {
       expect(step.run ?? "").not.toContain("${{ inputs.upload-script }}");
@@ -1690,8 +1692,17 @@ describe("ios-testflight-upload action", () => {
     expect(validate?.run).toContain("-downloadComponent MetalToolchain");
     expect(cache?.with?.path).toBe("${{ runner.temp }}/${{ inputs.source-packages-directory }}");
     expect(tooling?.run).toContain("brew install openssl@3");
-    expect(tooling?.run).toContain("if ! brew install asccli; then");
-    expect(tooling?.run).toContain("brew install --build-from-source asccli");
+    expect(tooling?.env?.ASCCLI_VERSION).toBe("0.18.2");
+    expect(tooling?.run).toContain("asc_v${ASCCLI_VERSION}_macOS_${asccli_arch}");
+    expect(tooling?.run).toContain(
+      "7555b910823d8935d9dd5df5fe0382c0ab2741437ed26a3c5b683d13dd19530c",
+    );
+    expect(tooling?.run).toContain(
+      "c72907829723e4ff3a7b60d4c1d9be8755995d4aab9cf960aaf866b83169456c",
+    );
+    expect(tooling?.run).toContain("shasum -a 256 --check");
+    expect(tooling?.run).not.toContain("brew install asccli");
+    expect(tooling?.run).not.toContain("--build-from-source");
     expect(tooling?.run).toContain("brew install getsentry/tools/sentry-cli");
   });
 
@@ -1739,6 +1750,20 @@ describe("ios-testflight-upload action", () => {
     expect(raw).toContain("builds next-number");
     expect(raw).toContain("builds add-beta-group");
     expect(raw).toContain("processingState");
+  });
+
+  it("surfaces terminal upload-processing errors before the build-list deadline", async () => {
+    const raw = await script();
+
+    expect(raw).toContain('upload_json="$(');
+    expect(raw).toContain('upload_id="$(json_value "$upload_json" "data.0.id"');
+    expect(raw).toContain("run_asccli builds uploads get");
+    expect(raw).toContain('[[ "$upload_state" == "FAILED" ]]');
+    expect(raw).toContain("data.0.errors.0.code");
+    expect(raw).toContain("data.0.errors.0.description");
+    expect(raw.indexOf("run_asccli builds uploads get")).toBeLessThan(
+      raw.indexOf("run_asccli builds list"),
+    );
   });
 
   it("keeps get-task-allow strict and reads dotted entitlement keys as one key", async () => {

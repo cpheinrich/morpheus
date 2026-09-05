@@ -84,6 +84,14 @@ processing checks, and assignment to the repository-owned upload script. This ke
 automated uploads on one App Store Connect sequence without moving app-specific release policy into
 Morpheus.
 
+**Install `asccli` from its pinned, checksummed upstream binary** — 2026-09-04. Homebrew supplied
+an arm64 bottle but no Intel bottle for 0.18.2; compiling its formula on an Intel release runner
+worked but consumed 17m45s before Xcode started. The shared release paths download the publisher's
+architecture-specific 0.18.2 executable and verify its published SHA-256 checksum before exposing
+credentials. This keeps one audited version across both runner architectures without a third-party
+installer action or a source build inside the release timeout. Version changes are reviewed diffs
+that update both the pin and checksum.
+
 **Cross-repository iOS signing stays in the caller's environment job** — 2026-09-02. GitHub does
 not pass caller environment secrets through `workflow_call`; a job-level environment inside a
 reusable workflow resolves outside the caller's protected environment. The shared nightly workflow
@@ -833,3 +841,10 @@ objects with generation-match zero, verifies their metadata, and only then creat
 catalog manifest with exclusive-create semantics. It never edits the local directory. A failed
 publish may leave harmless content-addressed objects for an identical retry, but cannot leave a
 catalog entry pointing at a partial upload.
+
+**TestFlight processing observes the upload resource as well as the builds collection** —
+2026-09-04. A successful `builds upload` transport returns an upload id before Apple validates the
+bundle. Failed validation never produces a build, so polling only `builds list` turns an actionable
+server error into a 20-minute timeout. Preserve the id, fail immediately when its state becomes
+`FAILED`, and include Apple's first error code and description; continue using the exact processed
+build as the authority for group assignment.

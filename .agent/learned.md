@@ -522,7 +522,24 @@ possible; that weakens the boundary instead of fixing it.
 GitHub's `macos-26-large` Intel runner before archive with `asccli: no bottle available` even though
 Xcode and the formula's Swift source both support that host.
 
-Release-tool installation keeps the bottled path first, then retries `brew install
---build-from-source asccli` when Homebrew cannot pour one. Both installs remain before protected
-credentials enter the process. A package being present in the registry proves neither that a binary
-artifact exists for every supported runner nor that the default installer will build it.
+The first fallback built the formula from source. It worked, but consumed 17m45s of Evo's
+60-minute protected upload job before Xcode could start. The upstream v0.18.2 release already
+publishes checksummed macOS arm64 and x86_64 executables. Release-tool installation now downloads
+the pinned architecture-specific asset and verifies its published SHA-256 checksum before putting
+it on `PATH`; no protected credential has entered the process at that point.
+
+A package being present in a registry proves neither that a binary artifact exists for every
+supported runner nor that the default installer will build it. Before accepting a source build in
+a time-bounded release job, check the package's own release artifacts and verify one directly.
+
+## A successful TestFlight transport is not a successfully processed build
+
+2026-09-04. `asccli builds upload` returned an upload id for Evo 1.0.1 (5), but Apple's asynchronous
+validation later marked that upload `FAILED` with error 90683. The builds collection never contained
+build 5, so a loop that only queried builds discarded the error and waited its full 20-minute
+deadline.
+
+Keep the upload id returned by the transport. Poll `builds uploads get` for terminal validation
+failure while separately polling `builds list` for the exact valid build used for distribution.
+The two resources answer different questions: whether Apple accepted the binary, and whether the
+binary became a distributable TestFlight build.
