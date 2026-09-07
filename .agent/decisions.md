@@ -28,6 +28,15 @@ file anyway, so it was removed; low-churn goal and request indexes remain genera
 
 ## Tooling
 
+**Dependabot automation separates policy, model judgment, and write authority.** Projects own
+exact dependency/update-type allowlists and holds. The shared workflow sends only unmatched,
+dependency-only changes to a low-cost read-only model, then a separate credential-free delivery
+job revalidates live author, head, file scope, and checks. A model may approve auto-merge or ask for
+a human; only project policy may close. CI completion is the fast trigger and nightly reconciliation
+repairs missed events. An approved head behind a strict protected base is advanced with GitHub's
+head-SHA-guarded update endpoint after auto-merge is enabled; its new CI run feeds back through the
+same fast path until the queue converges.
+
 **Vercel over Firebase App Hosting** — decided on the review loop, not hosting quality. Vercel
 Comments anchor feedback to page elements and sync into the PR, which is the mechanism that
 makes human review work. Revisit if Firebase ships an equivalent.
@@ -52,6 +61,51 @@ the exact-version operation is only validating `/Applications/Xcode_<version>.ap
 every native project's trusted build path. Revisit if hosted-runner Xcode discovery stops having a
 stable path contract or the workflow needs installation rather than selection.
 
+**Private iOS projects may use isolated repo-scoped self-hosted runners** — 2026-09-04. Persistent
+runner processes execute repository code with their operating-system identity, so they never run
+under the operator's personal account and are never registered to a public repository. Callers own
+the runner choice and retain an explicit GitHub-hosted dispatch option for recovery. The reusable
+workflows support both Xcode application layouts and verify the reported version either way.
+
+**Native Swift style uses the formatter bundled with Xcode** — 2026-09-02. Apple's `swift-format`
+already provides in-place formatting and strict lint diagnostics in the selected Swift toolchain.
+SwiftLint and third-party SwiftFormat were considered, but either would add an install and version
+surface before Evo has a rule need the built-in formatter cannot express. The shared CI capability
+is opt-in and checks only Swift files changed by the commit, so adoption does not rewrite unrelated
+source or break existing iOS consumers; each caller owns its checked-in configuration.
+
+**Nightly iOS releases use the prior successful caller run as their change cursor** — 2026-09-01.
+The maintained `dorny/paths-filter` and `tj-actions/changed-files` actions were considered, but both
+classify a supplied commit range and neither owns the release-specific question: which commit last
+uploaded successfully from this caller workflow. The reusable workflow therefore reads that one
+SHA from GitHub's Actions API and uses native `git diff` over caller-declared paths. The bounded
+shell avoids another third-party action in the signed-release trust path; any missing, unreadable,
+or non-ancestor cursor builds conservatively rather than reporting a false skip.
+
+**The iOS caller owns TestFlight build numbers and beta groups** — 2026-09-01. GitHub run IDs are
+globally unique but are not an app's version-specific build sequence and can create enormous
+user-visible numbers. The reusable workflow therefore forwards caller-declared App Store Connect
+app and group identifiers, installs `asccli` before credentials are exposed, and leaves allocation,
+processing checks, and assignment to the repository-owned upload script. This keeps manual and
+automated uploads on one App Store Connect sequence without moving app-specific release policy into
+Morpheus.
+
+**Install `asccli` from its pinned, checksummed upstream binary** — 2026-09-04. Homebrew supplied
+an arm64 bottle but no Intel bottle for 0.18.2; compiling its formula on an Intel release runner
+worked but consumed 17m45s before Xcode started. The shared release paths download the publisher's
+architecture-specific 0.18.2 executable and verify its published SHA-256 checksum before exposing
+credentials. This keeps one audited version across both runner architectures without a third-party
+installer action or a source build inside the release timeout. Version changes are reviewed diffs
+that update both the pin and checksum.
+
+**Cross-repository iOS signing stays in the caller's environment job** — 2026-09-02. GitHub does
+not pass caller environment secrets through `workflow_call`; a job-level environment inside a
+reusable workflow resolves outside the caller's protected environment. The shared nightly workflow
+therefore exposes its build decision and exact verified SHA, and cross-repository callers disable
+its built-in upload job and gate a local upload job on those outputs. Repository-scoped secret
+inheritance was rejected because it would widen credentials that are intentionally available only
+after the protected environment gate.
+
 **Vercel deployment and agent review are separate reusable workflows** — 2026-08-23. Deployment
 is deterministic delivery with project credentials; review is optional model judgment with its own
 cost and failure modes. Projects call `vercel-deploy.yml` independently, so pausing review never
@@ -71,6 +125,13 @@ keeps monetization open. Contributions not accepted, so relicensing stays possib
 public repo.
 
 ## Distribution
+
+**Babel converts; Morpheus publishes research libraries** — 2026-09-02. Babel stays an independent
+source-neutral package whose stable output is canonical Docling JSON/Markdown. On the second
+consumer, Lakina's deterministic bundle, embedded HTML reader, immutable Storage identity, catalog
+validation, and browser byte verification moved into Morpheus. Projects own catalog content,
+Firebase rules/principals, routes, and visual treatment. This avoids both coupling acquisition to
+the operating system and copying integrity-sensitive transport code between projects.
 
 **Do not publish `morpheus-kit` to npm** — 2026-07-29. Publishing only helps strangers install
 it, which is the opposite of the goal. CI checks the repo out and builds the CLI; local use is
@@ -771,3 +832,30 @@ the guard against a carefully reviewed direction turning into a neutral first ho
 the upstream major visible. Morpheus-owned reusable workflows remain on the established `@main`
 contract so consuming repositories receive fixes without coordinated version bumps; external tags
 do not receive that trust.
+
+**Front-end visual evidence is a declared path contract, default-on per repository** — 2026-09-01.
+`review.visualEvidence` in `morpheus.json` owns the include/exclude globs. A matching change blocks
+without a recording or screenshot at either GitHub's attachment service or an exact public HTTPS
+prefix approved in `allowedUrlPrefixes`; recording is preferred but screenshot-only evidence
+remains valid. Prefixes are path-scoped rather than hostname-scoped so a repository can approve its
+own bucket without trusting every tenant on a shared provider. CI validates the URL without network
+fetching and makes no claim about whether it meaningfully demonstrates the UI. Heuristic-looking
+paths outside the contract warn only. Existing manifests roll out explicitly one repository at a
+time; `morpheus init` adds the default block without replacing authored review settings. A
+repository may disable the gate only with a substantive reason, so an opt-out is durable and
+reviewable rather than an environment toggle.
+
+**A first research-library publish commits its catalog pointer last** — 2026-09-02. Babel remains
+the independent acquisition and canonical-conversion package. Morpheus reads one completed local
+directory, deterministically derives the ZIP and embedded HTML identities, creates missing remote
+objects with generation-match zero, verifies their metadata, and only then creates the project
+catalog manifest with exclusive-create semantics. It never edits the local directory. A failed
+publish may leave harmless content-addressed objects for an identical retry, but cannot leave a
+catalog entry pointing at a partial upload.
+
+**TestFlight processing observes the upload resource as well as the builds collection** —
+2026-09-04. A successful `builds upload` transport returns an upload id before Apple validates the
+bundle. Failed validation never produces a build, so polling only `builds list` turns an actionable
+server error into a 20-minute timeout. Preserve the id, fail immediately when its state becomes
+`FAILED`, and include Apple's first error code and description; continue using the exact processed
+build as the authority for group assignment.

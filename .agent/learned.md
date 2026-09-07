@@ -489,3 +489,57 @@ the program.
 A disposable clone must install its reviewed lockfile before invoking the committed CLI. A test of
 the bootstrap now asserts that ordering; the acceptance test still has to use real Node and an
 isolated package prefix, because faking a process proves command routing, not module resolution.
+
+## Coupled reusable-workflow inputs need one boundary that owns their invariant
+
+2026-09-02. The nightly iOS workflow defaulted to parallel testing with six workers, while its
+delegated `ios-ci` workflow correctly rejected a nonzero worker limit when parallel testing was
+off. A downstream caller overrode only `parallel-testing: false`, inherited the independent
+six-worker default, and the scheduled build failed before tests or signing.
+
+When one input changes whether another input is valid, normalize the pair before forwarding it.
+The nightly workflow now preserves the requested worker ceiling when parallel testing is enabled
+and passes zero when it is disabled, so callers do not have to restate an implementation default
+just to disable the feature.
+
+## A called workflow cannot enter the caller repository's protected environment
+
+2026-09-02. Evo delegated its TestFlight upload job to a reusable workflow in Morpheus and passed
+the name `testflight-internal`. Change detection, exact-main verification, and all iOS tests passed;
+then every Apple credential was empty. The credentials still existed in Evo's environment. GitHub's
+boundary is the cause: caller environment secrets cannot pass through `workflow_call`, and an
+environment on the called workflow's job is not the caller repository's environment.
+
+Keep reusable release gates secret-free. Return the build decision and verified SHA, then let a
+cross-repository caller use those outputs to gate a local job that names its own protected
+environment. Do not move signing credentials to repository scope just to make `secrets: inherit`
+possible; that weakens the boundary instead of fixing it.
+
+## A Homebrew formula can exist without a bottle for the runner architecture
+
+2026-09-04. `asccli` 0.18.2 was present in Homebrew core, but its bottle metadata contained only
+`arm64_tahoe`. The shared TestFlight action's ordinary `brew install asccli` therefore failed on
+GitHub's `macos-26-large` Intel runner before archive with `asccli: no bottle available` even though
+Xcode and the formula's Swift source both support that host.
+
+The first fallback built the formula from source. It worked, but consumed 17m45s of Evo's
+60-minute protected upload job before Xcode could start. The upstream v0.18.2 release already
+publishes checksummed macOS arm64 and x86_64 executables. Release-tool installation now downloads
+the pinned architecture-specific asset and verifies its published SHA-256 checksum before putting
+it on `PATH`; no protected credential has entered the process at that point.
+
+A package being present in a registry proves neither that a binary artifact exists for every
+supported runner nor that the default installer will build it. Before accepting a source build in
+a time-bounded release job, check the package's own release artifacts and verify one directly.
+
+## A successful TestFlight transport is not a successfully processed build
+
+2026-09-04. `asccli builds upload` returned an upload id for Evo 1.0.1 (5), but Apple's asynchronous
+validation later marked that upload `FAILED` with error 90683. The builds collection never contained
+build 5, so a loop that only queried builds discarded the error and waited its full 20-minute
+deadline.
+
+Keep the upload id returned by the transport. Poll `builds uploads get` for terminal validation
+failure while separately polling `builds list` for the exact valid build used for distribution.
+The two resources answer different questions: whether Apple accepted the binary, and whether the
+binary became a distributable TestFlight build.

@@ -1,0 +1,454 @@
+name: iOS nightly TestFlight build
+
+# Reusable release workflow for native Apple apps. The calling repository owns
+# the schedule, watched paths, and app-specific upload policy. A scheduled run
+# spends a macOS runner only when those paths changed since this caller workflow
+# last uploaded successfully. Cross-repository callers keep environment-secret
+# signing in a caller-owned job by disabling this workflow's upload job and
+# consuming its verified outputs.
+
+on:
+  workflow_call:
+    outputs:
+      build:
+        description: Whether watched changes or a manual override require a release build.
+        value: ${{ jobs.changes.outputs.build }}
+      sha:
+        description: Exact reviewed main SHA that passed preflight and testing.
+        value: ${{ jobs.preflight.outputs.sha }}
+    inputs:
+      workflow-file:
+        description: Caller workflow filename whose latest successful run is the change baseline.
+        type: string
+        required: true
+      watch-paths:
+        description: Newline-separated repository paths whose changes require a build.
+        type: string
+        required: true
+      force-build:
+        description: Ignore the successful-run baseline and build this invocation.
+        type: boolean
+        default: false
+      runner:
+        description: GitHub-hosted image or self-hosted runner label used for testing and release.
+        type: string
+        default: "macos-26-xlarge"
+      test-timeout-minutes:
+        description: Maximum duration of the delegated iOS test job.
+        type: number
+        default: 45
+      upload-timeout-minutes:
+        description: Maximum duration of the signed archive and upload job.
+        type: number
+        default: 60
+      xcode-version:
+        description: Exact Xcode version installed as /Applications/Xcode_<version>.app.
+        type: string
+        default: "26.6"
+      working-directory:
+        description: Directory containing the Xcode project.
+        type: string
+        default: "apps/ios"
+      project:
+        description: Xcode project path, relative to working-directory.
+        type: string
+        default: "Evo.xcodeproj"
+      scheme:
+        description: Shared scheme tested and archived for release.
+        type: string
+        default: "Evo"
+      destination:
+        description: Simulator destination qualifiers appended after platform.
+        type: string
+        default: "OS=26.5,name=iPhone 17 Pro Max"
+      parallel-testing:
+        description: Allow Xcode to run test targets in parallel.
+        type: boolean
+        default: true
+      maximum-parallel-testing-workers:
+        description: Maximum simulator test workers when parallel testing is enabled; zero lets Xcode decide.
+        type: number
+        default: 6
+      optimize-test-build:
+        description: Forwarded to ios-ci.yml; see its input of the same name.
+        type: boolean
+        default: false
+      firebase-emulators:
+        description: Run the delegated test action inside Firebase Emulator Suite.
+        type: boolean
+        default: false
+      firebase-cli-version:
+        description: Exact firebase-tools version installed when Firebase emulators are enabled.
+        type: string
+        default: "15.28.1"
+      firebase-config:
+        description: Firebase config path relative to the caller repository root.
+        type: string
+        default: "firebase.json"
+      firebase-project:
+        description: Synthetic Firebase project id used by the emulator-backed test run.
+        type: string
+        default: "demo-ios-ci"
+      firebase-only:
+        description: Comma-separated Firebase emulators needed by the iOS tests.
+        type: string
+        default: "auth,firestore"
+      test-iterations:
+        description: Forwarded to ios-ci.yml; see its input of the same name.
+        type: number
+        default: 0
+      pre-test-script:
+        description: Optional caller-repository script run immediately before tests.
+        type: string
+        default: ""
+      run-upload:
+        description: >
+          Run the upload job in this workflow. Cross-repository callers whose credentials are
+          environment secrets must disable this and upload from a caller-owned environment job.
+        type: boolean
+        default: true
+      environment:
+        description: Protected environment used only when run-upload is enabled.
+        type: string
+        default: "testflight-internal"
+      upload-script:
+        description: >
+          Executable repository-relative script that archives, signs, and uploads. Required only
+          when run-upload is enabled; a caller that uploads from its own environment job uses the
+          ios-testflight-upload action instead and passes nothing here.
+        type: string
+        default: ""
+      source-packages-directory:
+        description: Runner-temp subdirectory shared with the upload script for SwiftPM caching.
+        type: string
+        default: "TestFlightSourcePackages"
+      # Release identity is only ever read by this workflow's own upload job. A
+      # cross-repository caller has to own that job — GitHub passes it no
+      # environment secrets — so it configures the action directly and leaves
+      # every input below unset rather than stating its identifiers twice.
+      apple-team-id:
+        description: Fallback Apple team id when IOS_APPLE_TEAM_ID is not set in the environment.
+        type: string
+        default: ""
+      ios-bundle-id:
+        description: Fallback bundle id when IOS_BUNDLE_ID is not set in the environment.
+        type: string
+        default: ""
+      app-store-connect-app-id:
+        description: Numeric App Store Connect app id forwarded to the caller's upload script.
+        type: string
+        default: ""
+      testflight-beta-group-ids:
+        description: Newline-separated TestFlight beta-group ids assigned after processing.
+        type: string
+        default: ""
+      sentry-org:
+        description: Optional fallback Sentry organization for debug-symbol upload.
+        type: string
+        default: ""
+      sentry-project:
+        description: Optional fallback Sentry project for debug-symbol upload.
+        type: string
+        default: ""
+      install-sentry-cli:
+        description: Install sentry-cli before the release credentials are exposed.
+        type: boolean
+        default: false
+      download-metal-toolchain:
+        description: Download Xcode's optional Metal toolchain before archiving.
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    name: Check iOS changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+      baseline: ${{ steps.decide.outputs.baseline }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compare with the last successful upload
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_SHA: ${{ github.sha }}
+          FORCE_BUILD: ${{ inputs.force-build }}
+          WATCH_PATHS: ${{ inputs.watch-paths }}
+          WORKFLOW_FILE: ${{ inputs.workflow-file }}
+        run: |
+          set -euo pipefail
+
+          build=true
+          baseline=""
+          reason=""
+
+          if [ "$FORCE_BUILD" = "true" ]; then
+            reason="forced by the caller"
+          else
+            if [[ ! "$WORKFLOW_FILE" =~ ^[A-Za-z0-9._-]+\.(yml|yaml)$ ]]; then
+              echo "workflow-file must be a filename ending in .yml or .yaml" >&2
+              exit 1
+            fi
+
+            paths=()
+            while IFS= read -r path; do
+              [ -z "$path" ] && continue
+              case "$path" in
+                /*|-*|*"../"*|*"/.."|"..")
+                  echo "watch-paths entries must be relative paths without '..': $path" >&2
+                  exit 1
+                  ;;
+              esac
+              paths+=("$path")
+            done <<< "$WATCH_PATHS"
+
+            if [ "${#paths[@]}" -eq 0 ]; then
+              echo "watch-paths must contain at least one path" >&2
+              exit 1
+            fi
+
+            if ! baseline="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE}/runs?branch=main&status=success&per_page=1" \
+              --jq '.workflow_runs[0].head_sha // empty')"; then
+              baseline=""
+              reason="the successful-run baseline could not be read; building conservatively"
+            elif [ -z "$baseline" ]; then
+              reason="no successful upload exists yet"
+            elif ! git cat-file -e "${baseline}^{commit}" 2>/dev/null; then
+              reason="the last successful upload commit is unavailable; building conservatively"
+            elif ! git merge-base --is-ancestor "$baseline" "$CURRENT_SHA"; then
+              reason="the last successful upload is not an ancestor of main; building conservatively"
+            else
+              set +e
+              git diff --quiet "$baseline" "$CURRENT_SHA" -- "${paths[@]}"
+              diff_status=$?
+              set -e
+
+              case "$diff_status" in
+                0)
+                  build=false
+                  reason="no watched iOS paths changed since the last successful upload"
+                  ;;
+                1)
+                  reason="watched iOS paths changed since the last successful upload"
+                  ;;
+                *)
+                  reason="the watched-path diff failed; building conservatively"
+                  ;;
+              esac
+            fi
+          fi
+
+          {
+            echo "build=$build"
+            echo "baseline=$baseline"
+            echo "reason=$reason"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Nightly iOS build decision"
+            echo
+            echo "- Build: \`$build\`"
+            echo "- Reason: $reason"
+            if [ -n "$baseline" ]; then
+              echo "- Previous successful upload: \`$baseline\`"
+            fi
+            echo "- Candidate: \`$CURRENT_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  preflight:
+    name: Verify release source
+    needs: changes
+    if: ${{ needs.changes.outputs.build == 'true' }}
+    uses: cpheinrich/morpheus/.github/workflows/release-preflight.yml@main
+
+  test:
+    name: Test before release
+    needs: changes
+    if: ${{ needs.changes.outputs.build == 'true' }}
+    uses: cpheinrich/morpheus/.github/workflows/ios-ci.yml@main
+    with:
+      runner: ${{ inputs.runner }}
+      timeout-minutes: ${{ inputs.test-timeout-minutes }}
+      xcode-version: ${{ inputs.xcode-version }}
+      working-directory: ${{ inputs.working-directory }}
+      project: ${{ inputs.project }}
+      scheme: ${{ inputs.scheme }}
+      destination: ${{ inputs.destination }}
+      parallel-testing: ${{ inputs.parallel-testing }}
+      maximum-parallel-testing-workers: ${{ inputs.parallel-testing && inputs.maximum-parallel-testing-workers || 0 }}
+      optimize-test-build: ${{ inputs.optimize-test-build }}
+      test-iterations: ${{ inputs.test-iterations }}
+      firebase-emulators: ${{ inputs.firebase-emulators }}
+      firebase-cli-version: ${{ inputs.firebase-cli-version }}
+      firebase-config: ${{ inputs.firebase-config }}
+      firebase-project: ${{ inputs.firebase-project }}
+      firebase-only: ${{ inputs.firebase-only }}
+      pre-test-script: ${{ inputs.pre-test-script }}
+      run-tests: true
+
+  upload:
+    name: Upload TestFlight build
+    needs: [changes, preflight, test]
+    if: ${{ inputs.run-upload && needs.changes.outputs.build == 'true' && needs.preflight.result == 'success' && needs.test.result == 'success' }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.upload-timeout-minutes }}
+    environment: ${{ inputs.environment }}
+    env:
+      APPLE_TEAM_ID: ${{ vars.IOS_APPLE_TEAM_ID || inputs.apple-team-id }}
+      IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || inputs.ios-bundle-id }}
+      ASC_APP_ID: ${{ inputs.app-store-connect-app-id }}
+      TESTFLIGHT_BETA_GROUP_IDS: ${{ inputs.testflight-beta-group-ids }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG || inputs.sentry-org }}
+      SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT || inputs.sentry-project }}
+      SENTRY_DSN: ${{ vars.SENTRY_DSN }}
+      PROJECT_PATH: ${{ github.workspace }}/${{ inputs.working-directory }}/${{ inputs.project }}
+      SCHEME_NAME: ${{ inputs.scheme }}
+      UPLOAD_SCRIPT: ${{ inputs.upload-script }}
+    steps:
+      - name: Check out verified main commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate release inputs and select Xcode
+        env:
+          EXPECTED_SHA: ${{ needs.preflight.outputs.sha }}
+          XCODE_VERSION: ${{ inputs.xcode-version }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          PROJECT: ${{ inputs.project }}
+          SOURCE_PACKAGES_DIRECTORY: ${{ inputs.source-packages-directory }}
+          DOWNLOAD_METAL_TOOLCHAIN: ${{ inputs.download-metal-toolchain }}
+        run: |
+          set -euo pipefail
+
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          if [[ ! "$XCODE_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
+            echo "xcode-version must be an exact numeric version such as 26.6" >&2
+            exit 1
+          fi
+          for relative_path in "$WORKING_DIRECTORY" "$PROJECT"; do
+            case "$relative_path" in
+              ""|/*|*"../"*|*"/.."|"..")
+                echo "working-directory and project must be relative paths without '..'" >&2
+                exit 1
+                ;;
+            esac
+          done
+          case "$UPLOAD_SCRIPT" in
+            ""|/*|*"../"*|*"/.."|"..")
+              echo "upload-script must be a repository-relative path without '..'" >&2
+              exit 1
+              ;;
+          esac
+          case "$SOURCE_PACKAGES_DIRECTORY" in
+            ""|/*|*"/"*|"."|"..")
+              echo "source-packages-directory must be one runner-temp directory name" >&2
+              exit 1
+              ;;
+          esac
+          if [ ! -x "$GITHUB_WORKSPACE/$UPLOAD_SCRIPT" ]; then
+            echo "upload-script is missing or not executable: $UPLOAD_SCRIPT" >&2
+            exit 1
+          fi
+          if [ ! -f "$PROJECT_PATH/project.pbxproj" ]; then
+            echo "Xcode project not found at $PROJECT_PATH" >&2
+            exit 1
+          fi
+
+          echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"
+
+          versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ -d "$versioned_xcode_app" ]; then
+            xcode_app="$versioned_xcode_app"
+          elif [ -d /Applications/Xcode.app ]; then
+            xcode_app=/Applications/Xcode.app
+          else
+            echo "Xcode $XCODE_VERSION is not installed on this runner" >&2
+            exit 1
+          fi
+          installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version | sed -n '1s/Xcode //p')
+          if [ "$installed_version" != "$XCODE_VERSION" ]; then
+            echo "Expected Xcode $XCODE_VERSION, but $xcode_app contains $installed_version" >&2
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$xcode_app/Contents/Developer" >> "$GITHUB_ENV"
+          "$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version
+          if [ "$DOWNLOAD_METAL_TOOLCHAIN" = "true" ]; then
+            "$xcode_app/Contents/Developer/usr/bin/xcodebuild" -downloadComponent MetalToolchain
+          fi
+
+      - name: Cache resolved Swift packages
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/${{ inputs.source-packages-directory }}
+          key: nightly-testflight-spm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-${{ hashFiles(format('{0}/**/Package.resolved', inputs.working-directory)) }}
+          restore-keys: |
+            nightly-testflight-spm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-
+
+      - name: Install release tooling
+        env:
+          ASCCLI_VERSION: "0.18.2"
+          INSTALL_SENTRY_CLI: ${{ inputs.install-sentry-cli }}
+        run: |
+          set -euo pipefail
+          if ! brew list --versions openssl@3 >/dev/null 2>&1; then
+            brew install openssl@3
+          fi
+          case "$(uname -m)" in
+            arm64)
+              asccli_arch=arm64
+              asccli_sha256=7555b910823d8935d9dd5df5fe0382c0ab2741437ed26a3c5b683d13dd19530c
+              ;;
+            x86_64)
+              asccli_arch=x86_64
+              asccli_sha256=c72907829723e4ff3a7b60d4c1d9be8755995d4aab9cf960aaf866b83169456c
+              ;;
+            *)
+              echo "Unsupported macOS runner architecture: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+          asccli_asset="asc_v${ASCCLI_VERSION}_macOS_${asccli_arch}"
+          asccli_path="$RUNNER_TEMP/asccli"
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://github.com/tddworks/asc-cli/releases/download/v${ASCCLI_VERSION}/${asccli_asset}" \
+            --output "$asccli_path"
+          printf '%s  %s\n' "$asccli_sha256" "$asccli_path" | shasum -a 256 --check
+          chmod 755 "$asccli_path"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$asccli_path" --version
+          if [ "$INSTALL_SENTRY_CLI" = "true" ] && ! command -v sentry-cli >/dev/null 2>&1; then
+            brew install getsentry/tools/sentry-cli
+          fi
+          echo "OPENSSL_BINARY=$(brew --prefix openssl@3)/bin/openssl" >> "$GITHUB_ENV"
+
+      # The protected environment's secrets first enter the process here,
+      # after the exact-main gate, independent tests, checkout validation, and
+      # release-tool installation have all completed.
+      - name: Archive, sign, and upload to TestFlight
+        env:
+          ASC_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          IOS_DISTRIBUTION_PROFILE_BASE64: ${{ secrets.IOS_DISTRIBUTION_PROFILE_BASE64 }}
+          IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: '"$GITHUB_WORKSPACE/$UPLOAD_SCRIPT"'

@@ -1,4 +1,5 @@
 import { roadmapIdFromBranch } from "../pm/id.js";
+import { type VisualEvidencePolicy } from "./visual-evidence.js";
 /**
  * PR conventions, enforced rather than requested.
  *
@@ -9,6 +10,8 @@ import { roadmapIdFromBranch } from "../pm/id.js";
 export interface PrContext {
     /** PR body markdown. */
     body: string;
+    /** Pull-request author login. Absent outside GitHub unless explicitly supplied. */
+    author?: string;
     /**
      * Files that changed **on the base branch** since this branch left it — not
      * files this PR changed. CI cannot see a context receipt (`local/` is
@@ -21,6 +24,8 @@ export interface PrContext {
     branch: string;
     /** Paths changed in the PR, repo-relative. */
     changedFiles: string[];
+    /** Repo-owned declaration of which changed paths require visual evidence. */
+    visualEvidence?: VisualEvidencePolicy;
     /** Product directory to resolve roadmap items from. */
     productDir: string;
 }

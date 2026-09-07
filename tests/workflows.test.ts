@@ -56,6 +56,76 @@ describe("every workflow", () => {
   });
 });
 
+describe("dependabot-maintainer.yml", () => {
+  type Step = {
+    name?: string;
+    id?: string;
+    uses?: string;
+    with?: Record<string, unknown>;
+    env?: Record<string, string>;
+    run?: string;
+  };
+  type Maintainer = {
+    on?: { workflow_call?: { inputs?: Record<string, { default?: unknown }>; secrets?: Record<string, unknown> } };
+    jobs?: Record<string, { permissions?: Record<string, string>; needs?: string | string[]; steps?: Step[] }>;
+  };
+
+  it("is reusable, cheap by default, and keeps the key optional", async () => {
+    const wf = (await read("dependabot-maintainer.yml")) as Maintainer;
+    expect(wf.on).toHaveProperty("workflow_call");
+    expect(wf.on?.workflow_call?.inputs?.model?.default).toBe("gpt-5.6-luna");
+    expect(wf.on?.workflow_call?.secrets?.openai_api_key).toBeDefined();
+  });
+
+  it("gives Codex no GitHub write permission and makes it the final step", async () => {
+    const wf = (await read("dependabot-maintainer.yml")) as Maintainer;
+    const agent = wf.jobs?.agent;
+    const steps = agent?.steps ?? [];
+    const codex = steps.at(-1);
+
+    expect(agent?.permissions).toEqual({ contents: "read" });
+    expect(codex?.uses).toMatch(/^openai\/codex-action@[0-9a-f]{40}$/);
+    expect(codex?.with?.["permission-profile"]).toBe(":read-only");
+    expect(codex?.with?.["safety-strategy"]).toBe("drop-sudo");
+  });
+
+  it("can read both check-run and commit-status protection results", async () => {
+    const wf = (await read("dependabot-maintainer.yml")) as Maintainer;
+
+    expect(wf.jobs?.inspect?.permissions).toMatchObject({
+      checks: "read",
+      statuses: "read",
+    });
+  });
+
+  it("delivers in a separate job that revalidates the inspection", async () => {
+    const wf = (await read("dependabot-maintainer.yml")) as Maintainer;
+    const delivery = wf.jobs?.delivery;
+    const deliver = delivery?.steps?.find((step) => step.name === "Revalidate and deliver decisions");
+
+    expect([delivery?.needs ?? []].flat()).toEqual(["inspect", "agent"]);
+    expect(delivery?.permissions).toEqual({
+      contents: "write",
+      "pull-requests": "write",
+      issues: "write",
+      checks: "read",
+      statuses: "read",
+    });
+    expect(deliver?.run).toContain("dependabot-maintainer.mjs deliver");
+    expect(deliver?.env?.AGENT_RESULT).toBe("${{ needs.agent.outputs.result }}");
+  });
+
+  it("uploads the dot-prefixed inspection receipt explicitly", async () => {
+    const wf = (await read("dependabot-maintainer.yml")) as Maintainer;
+    const upload = wf.jobs?.inspect?.steps?.find((step) =>
+      step.uses?.startsWith("actions/upload-artifact@"),
+    );
+
+    expect(upload?.with?.path).toBe(".dependabot-maintainer");
+    expect(upload?.with?.["include-hidden-files"]).toBe(true);
+  });
+});
+
 describe("release-preflight.yml", () => {
   type ReleasePreflight = {
     on?: {
@@ -1304,6 +1374,533 @@ describe("firebase-tests.yml", () => {
   });
 });
 
+describe("ios-nightly-build.yml", () => {
+  type NightlyIosBuild = {
+    on?: {
+      workflow_call?: {
+        inputs?: Record<string, { type?: string; default?: unknown; required?: boolean }>;
+        outputs?: Record<string, { description?: string; value?: string }>;
+        secrets?: Record<string, unknown>;
+      };
+    };
+    permissions?: Record<string, string>;
+    jobs?: Record<
+      string,
+      {
+        uses?: string;
+        needs?: string | string[];
+        if?: string;
+        environment?: string;
+        outputs?: Record<string, string>;
+        with?: Record<string, unknown>;
+        env?: Record<string, string>;
+        steps?: Array<{
+          name?: string;
+          id?: string;
+          uses?: string;
+          with?: Record<string, unknown>;
+          env?: Record<string, string>;
+          run?: string;
+        }>;
+      }
+    >;
+  };
+
+  it("keeps the release cursor read-only and caller-owned", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const call = wf.on?.workflow_call;
+
+    expect(call).toBeDefined();
+    expect(call?.secrets).toBeUndefined();
+    expect(call?.inputs?.["workflow-file"]?.required).toBe(true);
+    expect(call?.inputs?.["watch-paths"]?.required).toBe(true);
+    expect(call?.inputs?.["force-build"]?.default).toBe(false);
+    // Release identity feeds only this workflow's own upload job. A
+    // cross-repository caller must own that job, so it configures the
+    // ios-testflight-upload action instead and states its identifiers once.
+    for (const owned of [
+      "upload-script",
+      "apple-team-id",
+      "ios-bundle-id",
+      "app-store-connect-app-id",
+      "testflight-beta-group-ids",
+    ]) {
+      expect(call?.inputs?.[owned]?.required, `${owned} is optional`).toBeUndefined();
+      expect(call?.inputs?.[owned]?.default, `${owned} defaults to empty`).toBe("");
+    }
+    expect(call?.inputs?.environment?.default).toBe("testflight-internal");
+    expect(call?.inputs?.runner?.default).toBe("macos-26-xlarge");
+    expect(call?.inputs?.["parallel-testing"]?.default).toBe(true);
+    expect(call?.inputs?.["maximum-parallel-testing-workers"]?.default).toBe(6);
+    expect(call?.inputs?.["firebase-emulators"]?.default).toBe(false);
+    expect(call?.inputs?.["firebase-cli-version"]?.default).toBe("15.28.1");
+    expect(call?.inputs?.["firebase-config"]?.default).toBe("firebase.json");
+    expect(call?.inputs?.["firebase-project"]?.default).toBe("demo-ios-ci");
+    expect(call?.inputs?.["firebase-only"]?.default).toBe("auth,firestore");
+    expect(call?.inputs?.["pre-test-script"]?.default).toBe("");
+    expect(call?.inputs?.["run-upload"]?.default).toBe(true);
+    expect(call?.outputs?.build?.value).toBe("${{ jobs.changes.outputs.build }}");
+    expect(call?.outputs?.sha?.value).toBe("${{ jobs.preflight.outputs.sha }}");
+    expect(wf.permissions).toEqual({
+      actions: "read",
+      contents: "read",
+      "pull-requests": "read",
+    });
+  });
+
+  it("uses a full checkout and the last successful caller run for its diff", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const steps = wf.jobs?.changes?.steps ?? [];
+    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const decision = steps.find((step) => step.name === "Compare with the last successful upload");
+    const script = String(decision?.run);
+
+    expect(checkout?.with).toEqual({ "fetch-depth": 0, "persist-credentials": false });
+    expect(decision?.env?.GH_TOKEN).toBe("${{ github.token }}");
+    expect(script).toContain("/actions/workflows/${WORKFLOW_FILE}/runs?branch=main&status=success");
+    expect(script).toContain('git diff --quiet "$baseline" "$CURRENT_SHA" -- "${paths[@]}"');
+    expect(script).toContain("building conservatively");
+  });
+
+  it("skips an unchanged app and builds after a watched-path change", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-nightly-ios-"));
+    const repo = join(root, "repo");
+    const bin = join(root, "bin");
+    const output = join(root, "output");
+    const summary = join(root, "summary");
+
+    try {
+      await mkdir(join(repo, "apps/ios"), { recursive: true });
+      await mkdir(join(repo, "docs"), { recursive: true });
+      await mkdir(bin, { recursive: true });
+      await execFileAsync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: repo });
+      await execFileAsync("git", ["config", "user.name", "Morpheus Test"], { cwd: repo });
+      await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
+      await writeFile(join(repo, "apps/ios/app.txt"), "one\n", "utf8");
+      await writeFile(join(repo, "docs/readme.md"), "one\n", "utf8");
+      await execFileAsync("git", ["add", "."], { cwd: repo });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "baseline"], { cwd: repo });
+      const baseline = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim();
+
+      await writeFile(join(repo, "docs/readme.md"), "two\n", "utf8");
+      await execFileAsync("git", ["add", "."], { cwd: repo });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "docs"], { cwd: repo });
+
+      const fakeGh = join(bin, "gh");
+      await writeFile(fakeGh, "#!/usr/bin/env bash\nprintf '%s\\n' \"$BASELINE_SHA\"\n", "utf8");
+      await chmod(fakeGh, 0o755);
+
+      const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+      const script = wf.jobs?.changes?.steps?.find(
+        (step) => step.name === "Compare with the last successful upload",
+      )?.run;
+      expect(script).toBeTruthy();
+
+      const run = async () => {
+        const current = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim();
+        await writeFile(output, "", "utf8");
+        await writeFile(summary, "", "utf8");
+        await execFileAsync("bash", ["-c", script!], {
+          cwd: repo,
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            BASELINE_SHA: baseline,
+            CURRENT_SHA: current,
+            FORCE_BUILD: "false",
+            GH_TOKEN: "fixture",
+            GITHUB_OUTPUT: output,
+            GITHUB_REPOSITORY: "cpheinrich/example",
+            GITHUB_STEP_SUMMARY: summary,
+            WATCH_PATHS: "apps/ios\npackages/shared",
+            WORKFLOW_FILE: "testflight.yml",
+          },
+        });
+        return readFile(output, "utf8");
+      };
+
+      expect(await run()).toContain("build=false");
+
+      await writeFile(join(repo, "apps/ios/app.txt"), "two\n", "utf8");
+      await execFileAsync("git", ["add", "."], { cwd: repo });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "ios"], { cwd: repo });
+      expect(await run()).toContain("build=true");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("gates signed upload on exact-main preflight and independent tests", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const preflight = wf.jobs?.preflight;
+    const test = wf.jobs?.test;
+    const upload = wf.jobs?.upload;
+    const steps = upload?.steps ?? [];
+    const checkout = steps.find((step) => step.name === "Check out verified main commit");
+    const validate = steps.find(
+      (step) => step.name === "Validate release inputs and select Xcode",
+    );
+    const release = steps.find((step) => step.name === "Archive, sign, and upload to TestFlight");
+
+    expect(preflight?.uses).toBe(
+      "cpheinrich/morpheus/.github/workflows/release-preflight.yml@main",
+    );
+    expect(test?.uses).toBe("cpheinrich/morpheus/.github/workflows/ios-ci.yml@main");
+    expect(test?.with?.["run-tests"]).toBe(true);
+    expect(test?.with?.["parallel-testing"]).toBe("${{ inputs.parallel-testing }}");
+    expect(test?.with?.["maximum-parallel-testing-workers"]).toBe(
+      "${{ inputs.parallel-testing && inputs.maximum-parallel-testing-workers || 0 }}",
+    );
+    expect(test?.with?.["firebase-emulators"]).toBe("${{ inputs.firebase-emulators }}");
+    expect(test?.with?.["firebase-cli-version"]).toBe("${{ inputs.firebase-cli-version }}");
+    expect(test?.with?.["firebase-config"]).toBe("${{ inputs.firebase-config }}");
+    expect(test?.with?.["firebase-project"]).toBe("${{ inputs.firebase-project }}");
+    expect(test?.with?.["firebase-only"]).toBe("${{ inputs.firebase-only }}");
+    expect(test?.with?.["pre-test-script"]).toBe("${{ inputs.pre-test-script }}");
+    expect(upload?.needs).toEqual(["changes", "preflight", "test"]);
+    expect(upload?.if).toContain("inputs.run-upload");
+    expect(upload?.environment).toBe("${{ inputs.environment }}");
+    expect(checkout?.with?.ref).toBe("${{ needs.preflight.outputs.sha }}");
+    expect(upload?.env?.BUILD_NUMBER).toBeUndefined();
+    expect(upload?.env?.ASC_APP_ID).toBe("${{ inputs.app-store-connect-app-id }}");
+    expect(upload?.env?.TESTFLIGHT_BETA_GROUP_IDS).toBe(
+      "${{ inputs.testflight-beta-group-ids }}",
+    );
+    expect(upload?.env?.SOURCE_PACKAGES_PATH).toBeUndefined();
+    expect(validate?.run).toContain(
+      'echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"',
+    );
+    expect(release?.env?.ASC_API_KEY_ID).toBe("${{ secrets.APP_STORE_CONNECT_KEY_ID }}");
+    expect(release?.env?.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64).toBe(
+      "${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}",
+    );
+    expect(release?.run).toBe('"$GITHUB_WORKSPACE/$UPLOAD_SCRIPT"');
+    expect(steps.indexOf(release!)).toBeGreaterThan(
+      steps.findIndex((step) => step.name === "Install release tooling"),
+    );
+    const tooling = steps.find((step) => step.name === "Install release tooling");
+    expect(tooling?.env?.ASCCLI_VERSION).toBe("0.18.2");
+    expect(tooling?.run).toContain("asc_v${ASCCLI_VERSION}_macOS_${asccli_arch}");
+    expect(tooling?.run).toContain("shasum -a 256 --check");
+    expect(tooling?.run).not.toContain("--build-from-source");
+
+    for (const step of steps) {
+      expect(step.run ?? "").not.toContain("${{ inputs.upload-script }}");
+    }
+  });
+});
+
+/**
+ * `ios-testflight-upload` is a composite action rather than a reusable
+ * workflow, and the distinction is the whole design. GitHub gives a
+ * cross-repository reusable workflow none of the caller's environment secrets:
+ * a job there reads every one as an empty string, with no error. An action runs
+ * inside the caller's own job, where `secrets.*` resolve, so the credentials
+ * can be handed in as inputs.
+ *
+ * Everything asserted here has already cost a release. The archive must stay
+ * unsigned — `-allowProvisioningUpdates` minted a permanent Apple Development
+ * certificate on every run until the shared team hit its account limit and
+ * archiving stopped for two projects at once. The distribution checks must run
+ * on the exported IPA, because the archive deliberately has no signature to
+ * check. And the artifact that is verified must be the artifact that is
+ * uploaded.
+ */
+describe("ios-testflight-upload action", () => {
+  const ACTION_DIR = join(import.meta.dirname, "../.github/actions/ios-testflight-upload");
+
+  type CompositeAction = {
+    name?: string;
+    description?: string;
+    inputs?: Record<string, { description?: string; required?: boolean; default?: unknown }>;
+    runs?: {
+      using?: string;
+      steps?: Array<{
+        name?: string;
+        uses?: string;
+        shell?: string;
+        with?: Record<string, unknown>;
+        env?: Record<string, string>;
+        run?: string;
+      }>;
+    };
+  };
+
+  const action = async (): Promise<CompositeAction> =>
+    load(await readFile(join(ACTION_DIR, "action.yml"), "utf8")) as CompositeAction;
+  const script = async (): Promise<string> =>
+    readFile(join(ACTION_DIR, "upload-testflight.sh"), "utf8");
+
+  it("is a composite action taking every credential as an input", async () => {
+    const wf = await action();
+
+    expect(wf.runs?.using).toBe("composite");
+    for (const required of [
+      "project",
+      "scheme",
+      "apple-team-id",
+      "ios-bundle-id",
+      "app-store-connect-app-id",
+      "testflight-beta-group-ids",
+      "asc-api-key-id",
+      "asc-api-key-issuer-id",
+      "asc-api-key-p8-base64",
+      "ios-distribution-p12-base64",
+      "ios-distribution-p12-password",
+      "ios-distribution-profile-base64",
+    ]) {
+      expect(wf.inputs?.[required]?.required, `${required} is required`).toBe(true);
+    }
+    // Optional by default, so a project with no Firebase plist, no Sentry and
+    // no extra assertions passes none of them.
+    for (const optional of [
+      "archive-build-settings",
+      "google-service-info-plist-path",
+      "google-service-info-plist-base64",
+      "validate-app-script",
+      "sentry-auth-token",
+    ]) {
+      expect(wf.inputs?.[optional]?.default, `${optional} defaults to empty`).toBe("");
+    }
+    expect(wf.inputs?.["beta-group-policy"]?.default).toBe("any");
+    expect(wf.inputs?.["xcode-version"]?.default).toBe("26.6");
+    expect(wf.inputs?.["source-packages-directory"]?.default).toBe("TestFlightSourcePackages");
+  });
+
+  it("hands the caller's inputs to the script through the environment", async () => {
+    const steps = (await action()).runs?.steps ?? [];
+    const release = steps.find(
+      (step) => step.name === "Archive, sign, verify, and upload to TestFlight",
+    );
+
+    expect(release?.run).toBe('"$GITHUB_ACTION_PATH/upload-testflight.sh"');
+    expect(release?.env?.ASC_API_KEY_ID).toBe("${{ inputs.asc-api-key-id }}");
+    expect(release?.env?.IOS_DISTRIBUTION_P12_PASSWORD).toBe(
+      "${{ inputs.ios-distribution-p12-password }}",
+    );
+    expect(release?.env?.ARCHIVE_BUILD_SETTINGS).toBe("${{ inputs.archive-build-settings }}");
+    expect(release?.env?.VALIDATE_APP_SCRIPT).toBe("${{ inputs.validate-app-script }}");
+    // The credentials are the last thing to enter a process, after the
+    // toolchain and the project layout have been proven good.
+    expect(steps.indexOf(release!)).toBe(steps.length - 1);
+    expect(steps.findIndex((step) => step.name === "Install release tooling")).toBeLessThan(
+      steps.length - 1,
+    );
+
+    // No caller value is ever spliced into a shell; every step reads env.
+    for (const step of steps) {
+      expect(step.run ?? "").not.toContain("${{ inputs.");
+    }
+  });
+
+  it("selects an exact Xcode and caches SwiftPM, so the caller does neither", async () => {
+    const steps = (await action()).runs?.steps ?? [];
+    const validate = steps.find((step) => step.name === "Validate release inputs and select Xcode");
+    const cache = steps.find((step) => step.uses?.startsWith("actions/cache@"));
+    const tooling = steps.find((step) => step.name === "Install release tooling");
+
+    // working-directory, project and scheme are written into GITHUB_ENV, one
+    // KEY=VALUE per line; a value carrying a newline would append an arbitrary
+    // variable to the calling job.
+    expect(validate?.run).toContain('for caller_value in "$WORKING_DIRECTORY" "$PROJECT" "$SCHEME"');
+    expect(validate?.run).toContain("*[[:space:]]*)");
+    expect(validate?.run).toContain('versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
+    expect(validate?.run).toContain("elif [ -d /Applications/Xcode.app ]");
+    expect(validate?.run).toContain('installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild"');
+    expect(validate?.run).toContain('echo "DEVELOPER_DIR=$xcode_app/Contents/Developer"');
+    expect(validate?.run).toContain("-downloadComponent MetalToolchain");
+    expect(cache?.with?.path).toBe("${{ runner.temp }}/${{ inputs.source-packages-directory }}");
+    expect(tooling?.run).toContain("brew list --versions openssl@3");
+    expect(tooling?.run).toContain("brew install openssl@3");
+    expect(tooling?.run).toContain("! command -v sentry-cli");
+    expect(tooling?.env?.ASCCLI_VERSION).toBe("0.18.2");
+    expect(tooling?.run).toContain("asc_v${ASCCLI_VERSION}_macOS_${asccli_arch}");
+    expect(tooling?.run).toContain(
+      "7555b910823d8935d9dd5df5fe0382c0ab2741437ed26a3c5b683d13dd19530c",
+    );
+    expect(tooling?.run).toContain(
+      "c72907829723e4ff3a7b60d4c1d9be8755995d4aab9cf960aaf866b83169456c",
+    );
+    expect(tooling?.run).toContain("shasum -a 256 --check");
+    expect(tooling?.run).not.toContain("brew install asccli");
+    expect(tooling?.run).not.toContain("--build-from-source");
+    expect(tooling?.run).toContain("brew install getsentry/tools/sentry-cli");
+  });
+
+  it("archives unsigned, and can never mint an Apple certificate", async () => {
+    const raw = await script();
+    // The comments name the flags they explain, so an assertion about what the
+    // script no longer *does* has to read past them.
+    const executable = raw.replace(/^[ \t]*#.*$/gm, "");
+    const archive = raw.slice(
+      raw.indexOf("xcodebuild archive \\"),
+      raw.indexOf("ARCHIVED_APPLICATIONS_PATH="),
+    );
+
+    expect(archive).toContain('CODE_SIGN_IDENTITY=""');
+    expect(archive).toContain("CODE_SIGNING_REQUIRED=NO");
+    expect(archive).toContain("CODE_SIGNING_ALLOWED=NO");
+    expect(archive).not.toContain("CODE_SIGN_STYLE=");
+    expect(archive).not.toContain("-authenticationKey");
+    expect(executable).not.toContain("-allowProvisioningUpdates");
+    expect(executable).not.toContain("PROVISIONING_PROFILE_SPECIFIER=");
+  });
+
+  it("verifies the exported IPA and uploads that same file", async () => {
+    const raw = await script();
+    const exportOptions = raw.slice(
+      raw.indexOf("plutil -create xml1"),
+      raw.indexOf("xcodebuild archive \\"),
+    );
+
+    expect(exportOptions).toContain("plutil -insert destination -string export");
+    expect(exportOptions).toContain("plutil -insert signingStyle -string manual");
+    expect(exportOptions).toContain("testFlightInternalTestingOnly -bool false");
+    expect(exportOptions).toContain("manageAppVersionAndBuildNumber -bool false");
+
+    // Verification happens on the exported app; the upload sends the exported
+    // IPA it came out of. A release that validated one artifact and shipped
+    // another is the failure this ordering exists to prevent.
+    expect(raw.indexOf("codesign --verify --strict")).toBeGreaterThan(
+      raw.indexOf('IPA_PATH="${exported_ipas[0]}"'),
+    );
+    expect(raw.indexOf("run_asccli builds upload")).toBeGreaterThan(
+      raw.indexOf("codesign --verify --strict"),
+    );
+    expect(raw).toContain('--file "$IPA_PATH"');
+    expect(raw).toContain("builds next-number");
+    expect(raw).toContain("builds add-beta-group");
+    expect(raw).toContain("processingState");
+  });
+
+  it("surfaces terminal upload-processing errors before the build-list deadline", async () => {
+    const raw = await script();
+
+    expect(raw).toContain('upload_json="$(');
+    expect(raw).toContain('upload_id="$(json_value "$upload_json" "data.0.id"');
+    expect(raw).toContain("run_asccli builds uploads get");
+    expect(raw).toContain('[[ "$upload_state" == "FAILED" ]]');
+    expect(raw).toContain("data.0.errors.0.code");
+    expect(raw).toContain("data.0.errors.0.description");
+    expect(raw.indexOf("run_asccli builds uploads get")).toBeLessThan(
+      raw.indexOf("run_asccli builds list"),
+    );
+  });
+
+  it("keeps get-task-allow strict and reads dotted entitlement keys as one key", async () => {
+    const raw = await script();
+
+    // plutil treats `.` as a key-path separator, so the unescaped form asks for
+    // four nested keys that do not exist and quietly returns nothing.
+    expect(raw).toContain("plutil -extract 'com\\.apple\\.developer\\.team-identifier' raw");
+    expect(raw).toContain('[[ "$exported_get_task_allow" == true ]]');
+    expect(raw).toContain("get-task-allow:         '$exported_get_task_allow'");
+  });
+
+  it("keeps the runner's keychain, secrets, and temporary files contained", async () => {
+    const raw = await script();
+
+    expect(raw).toContain("umask 077");
+    expect(raw).toContain("trap cleanup EXIT INT TERM");
+    expect(raw).toContain("security default-keychain -d user -s \"$ORIGINAL_DEFAULT_KEYCHAIN\"");
+    expect(raw).toContain('security list-keychains -d user -s "${original_keychains[@]}"');
+    expect(raw).toContain("security delete-keychain");
+    expect(raw).toContain("unset ASC_API_KEY_P8_BASE64 IOS_DISTRIBUTION_P12_BASE64");
+    expect(raw).toContain("unset IOS_DISTRIBUTION_P12_PASSWORD");
+    expect(raw).toContain("unset SIGNING_KEYCHAIN_PASSWORD");
+    expect(raw).toContain('chmod 600 "$AUTHENTICATION_KEY_PATH"');
+    expect(raw).toContain("Refusing to upload a TestFlight build outside main.");
+    expect(raw).toContain(
+      "Expected exactly one valid distribution signing identity in the release keychain.",
+    );
+    // The caller's own assertions see the app, and none of the credentials.
+    expect(raw).toContain('run_without_release_secrets "$VALIDATE_APP_SCRIPT_PATH"');
+  });
+
+  it("rejects the caller-configuration mistakes before it spends a runner", async () => {
+    const raw = await script();
+    const root = await mkdtemp(join(tmpdir(), "morpheus-testflight-action-"));
+
+    try {
+      const workspace = join(root, "workspace");
+      await mkdir(workspace, { recursive: true });
+      const runner = join(root, "runner-temp");
+      await mkdir(runner, { recursive: true });
+
+      const base = {
+        GITHUB_REF: "refs/heads/main",
+        GITHUB_WORKSPACE: workspace,
+        RUNNER_TEMP: runner,
+        PROJECT_PATH: join(workspace, "App.xcodeproj"),
+        SCHEME_NAME: "App",
+        APPLE_TEAM_ID: "D495224G8R",
+        IOS_BUNDLE_ID: "com.example.app",
+        ASC_APP_ID: "6804832724",
+        TESTFLIGHT_BETA_GROUP_IDS: "12de872e-297c-4a19-befc-03fa6d6eb87f",
+        ASC_API_KEY_ID: "key",
+        ASC_API_KEY_ISSUER_ID: "issuer",
+        ASC_API_KEY_P8_BASE64: "cGxhY2Vob2xkZXI=",
+        IOS_DISTRIBUTION_P12_BASE64: "cGxhY2Vob2xkZXI=",
+        IOS_DISTRIBUTION_P12_PASSWORD: "placeholder",
+        IOS_DISTRIBUTION_PROFILE_BASE64: "cGxhY2Vob2xkZXI=",
+        OPENSSL_BINARY: "/bin/echo",
+      };
+
+      const run = async (overrides: Record<string, string>) => {
+        try {
+          await execFileAsync("bash", ["-c", raw], {
+            cwd: workspace,
+            env: { PATH: process.env.PATH ?? "", ...base, ...overrides },
+          });
+          return "";
+        } catch (error) {
+          return String((error as { stderr?: string }).stderr ?? error);
+        }
+      };
+
+      expect(await run({ GITHUB_REF: "refs/heads/feature" })).toContain(
+        "Refusing to upload a TestFlight build outside main",
+      );
+      expect(await run({ IOS_BUNDLE_ID: "" })).toContain(
+        "Missing required release variable: IOS_BUNDLE_ID",
+      );
+      expect(await run({ TESTFLIGHT_BETA_GROUP_IDS: "not-a-uuid" })).toContain(
+        "Invalid TestFlight beta-group id",
+      );
+      expect(
+        await run({
+          BETA_GROUP_POLICY: "one-internal-one-external",
+          TESTFLIGHT_BETA_GROUP_IDS: "12de872e-297c-4a19-befc-03fa6d6eb87f",
+        }),
+      ).toContain("requires two distinct TestFlight beta-group ids");
+      expect(await run({ BETA_GROUP_POLICY: "whatever" })).toContain(
+        "beta-group-policy must be",
+      );
+      expect(await run({ ARCHIVE_BUILD_SETTINGS: "not a setting" })).toContain(
+        "archive-build-settings entries must be KEY=VALUE",
+      );
+      expect(await run({ VALIDATE_APP_SCRIPT: "../escape.sh" })).toContain(
+        "must be a repository-relative path without '..'",
+      );
+      expect(await run({ VALIDATE_APP_SCRIPT: "qa/missing.sh" })).toContain(
+        "validate-app-script is missing or not executable",
+      );
+      expect(await run({ GOOGLE_SERVICE_PLIST_PATH: "apps/ios/App/GoogleService-Info.plist" })).toContain(
+        "its base64 configuration is empty",
+      );
+
+      // An empty build-setting value is legitimate, and a fully valid
+      // configuration gets all the way to looking for the Xcode project.
+      expect(await run({ ARCHIVE_BUILD_SETTINGS: "APP_ENVIRONMENT=staging\nAPI_BASE_URL=" })).toContain(
+        "Xcode project not found",
+      );
+      expect(await run({})).toContain("Xcode project not found");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 /**
  * `ios-ci.yml` is the native Apple equivalent of node-ci and python-ci. The
  * lock and simulator defaults are part of its public caller contract: if
@@ -1348,8 +1945,101 @@ describe("ios-ci.yml", () => {
     expect(inputs.project?.default).toBe("Evo.xcodeproj");
     expect(inputs.scheme?.default).toBe("Evo");
     expect(inputs["parallel-testing"]?.default).toBe(false);
+    expect(inputs["maximum-parallel-testing-workers"]?.default).toBe(0);
     expect(inputs["firebase-emulators"]?.default).toBe(false);
     expect(inputs["pre-test-script"]?.default).toBe("");
+    expect(inputs["swift-format-lint"]?.default).toBe(false);
+    expect(inputs["swift-format-configuration"]?.default).toBe(".swift-format");
+  });
+
+  it("supports hosted and canonical Xcode app layouts while verifying the exact version", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const select = wf.jobs?.test?.steps?.find((step) => step.name === "Select Xcode");
+    const script = String(select?.run);
+
+    expect(script).toContain('versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
+    expect(script).toContain("elif [ -d /Applications/Xcode.app ]");
+    expect(script).toContain('installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild"');
+    expect(script).toContain('if [ "$installed_version" != "$XCODE_VERSION" ]');
+  });
+
+  it("can enforce the selected Xcode toolchain's formatter on changed Swift sources", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const steps = wf.jobs?.test?.steps ?? [];
+    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const lint = steps.find((step) => step.name === "Lint changed Swift sources");
+    const script = String(lint?.run);
+
+    expect((checkout?.with as Record<string, unknown>)?.["fetch-depth"]).toBe(2);
+    expect(lint?.if).toBe("${{ inputs.swift-format-lint }}");
+    expect(lint?.env).toMatchObject({
+      SWIFT_FORMAT_CONFIGURATION: "${{ inputs.swift-format-configuration }}",
+      WORKING_DIRECTORY: "${{ inputs.working-directory }}",
+    });
+    expect(script).toContain("xcrun swift-format --version");
+    expect(script).toContain("swift-format dump-configuration");
+    expect(script).toContain("--effective");
+    expect(script).toContain("git diff-tree");
+    expect(script).toContain("--diff-filter=ACMR");
+    expect(script).toContain("swift-format lint");
+    expect(script).toContain("--parallel");
+    expect(script).toContain("--strict");
+    expect(script).not.toContain("brew install");
+  });
+
+  it("strictly lints added and modified Swift files without sweeping legacy source", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-swift-format-"));
+    const repo = join(root, "repo");
+    const bin = join(root, "bin");
+    const log = join(root, "xcrun.log");
+
+    try {
+      await mkdir(join(repo, "apps/ios"), { recursive: true });
+      await mkdir(bin, { recursive: true });
+      await execFileAsync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: repo });
+      await execFileAsync("git", ["config", "user.name", "Morpheus Test"], { cwd: repo });
+      await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
+      await writeFile(join(repo, "apps/ios/.swift-format"), '{"version":1}\n', "utf8");
+      await writeFile(join(repo, "apps/ios/Changed.swift"), "let changed = 1\n", "utf8");
+      await writeFile(join(repo, "apps/ios/Legacy.swift"), "let legacy = 1\n", "utf8");
+      await writeFile(join(repo, "apps/ios/Removed.swift"), "let removed = 1\n", "utf8");
+      await execFileAsync("git", ["add", "."], { cwd: repo });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "baseline"], { cwd: repo });
+
+      await writeFile(join(repo, "apps/ios/Changed.swift"), "let changed = 2\n", "utf8");
+      await writeFile(join(repo, "apps/ios/Added.swift"), "let added = 1\n", "utf8");
+      await rm(join(repo, "apps/ios/Removed.swift"));
+      await execFileAsync("git", ["add", "."], { cwd: repo });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "change Swift"], { cwd: repo });
+
+      const fakeXcrun = join(bin, "xcrun");
+      await writeFile(fakeXcrun, '#!/bin/bash\nprintf "%s\\n" "$*" >> "$XCRUN_LOG"\n', "utf8");
+      await chmod(fakeXcrun, 0o755);
+
+      const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+      const script = steps.find((step) => step.name === "Lint changed Swift sources")?.run;
+      expect(script).toBeTruthy();
+      await execFileAsync("bash", ["-c", String(script)], {
+        cwd: join(repo, "apps/ios"),
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          GITHUB_WORKSPACE: repo,
+          SWIFT_FORMAT_CONFIGURATION: ".swift-format",
+          WORKING_DIRECTORY: "apps/ios",
+          XCRUN_LOG: log,
+        },
+      });
+
+      const invocations = await readFile(log, "utf8");
+      const lint = invocations.split("\n").find((line) => line.startsWith("swift-format lint"));
+      expect(lint).toContain("apps/ios/Added.swift");
+      expect(lint).toContain("apps/ios/Changed.swift");
+      expect(lint).not.toContain("apps/ios/Legacy.swift");
+      expect(lint).not.toContain("apps/ios/Removed.swift");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("bounds and cancels superseded simulator runs", async () => {
@@ -1357,8 +2047,79 @@ describe("ios-ci.yml", () => {
     expect(job?.["timeout-minutes"]).toBe("${{ inputs.timeout-minutes }}");
     expect(job?.concurrency?.["cancel-in-progress"]).toBe(true);
     expect(job?.concurrency?.group).toContain("${{ github.repository }}");
+    // A release workflow calls this same job on refs/heads/main, where a
+    // push-to-main CI run is already using it. Without the caller in the
+    // group the two cancel each other.
+    expect(job?.concurrency?.group).toContain("${{ github.workflow }}");
     expect(job?.concurrency?.group).toContain("${{ github.ref }}");
     expect(job?.concurrency?.group).toContain("${{ inputs.scheme }}");
+  });
+
+  it("skips compiler work no runner ever reads and restores a partial package cache", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const buildForTesting = steps.find((step) => step.name === "Build for testing");
+    const build = steps.find((step) => step.name === "Build");
+    const test = steps.find((step) => step.name === "Run unit and UI tests");
+    const cache = steps.find((step) => step.name === "Cache resolved Swift packages");
+
+    // Index-while-building serves Xcode's editor; a runner has none and
+    // discards the store with the machine.
+    expect(String(buildForTesting?.run)).toContain("COMPILER_INDEX_STORE_ENABLE=NO");
+    expect(String(build?.run)).toContain("COMPILER_INDEX_STORE_ENABLE=NO");
+    // test-without-building compiles nothing, and its arguments are re-quoted
+    // into the emulator exec string, so a build-setting override is noise there.
+    expect(String(test?.run)).not.toContain("COMPILER_INDEX_STORE_ENABLE");
+
+    // Without a prefix restore, bumping one dependency re-clones every package.
+    expect(String((cache?.with as Record<string, unknown>)?.["restore-keys"])).toContain(
+      "swiftpm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-",
+    );
+  });
+
+  it("optimizes the test build only when the caller opts in, and never for local Xcode debugging", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const inputs = wf.on?.workflow_call?.inputs ?? {};
+    // Off by default: an existing caller's build is unchanged until it asks.
+    expect(inputs["optimize-test-build"]?.default).toBe(false);
+
+    const steps = wf.jobs?.test?.steps ?? [];
+    const buildForTesting = steps.find((step) => step.name === "Build for testing");
+    const build = steps.find((step) => step.name === "Build");
+    const test = steps.find((step) => step.name === "Run unit and UI tests");
+
+    // A command-line xcodebuild override reaches only this CI invocation — a
+    // developer's own Debug build in Xcode never passes these, so -Onone
+    // stays intact for local breakpoint debugging regardless of this input.
+    for (const step of [buildForTesting, build]) {
+      expect(String(step?.run)).toContain("SWIFT_OPTIMIZATION_LEVEL=-O");
+      expect(String(step?.run)).toContain("SWIFT_COMPILATION_MODE=wholemodule");
+      expect(String(step?.run)).toContain("GCC_OPTIMIZATION_LEVEL=s");
+      expect(String((step?.env as Record<string, unknown> | undefined)?.OPTIMIZE_TEST_BUILD)).toBe(
+        "${{ inputs.optimize-test-build }}",
+      );
+    }
+    // test-without-building compiles nothing, so an optimization override is noise there.
+    expect(String(test?.run)).not.toContain("SWIFT_OPTIMIZATION_LEVEL");
+  });
+
+  it("can exclude specific tests from a run without affecting the build", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const inputs = wf.on?.workflow_call?.inputs ?? {};
+    // Empty by default: an existing caller's test selection is unchanged.
+    expect(inputs["skip-testing"]?.default).toBe("");
+
+    const steps = wf.jobs?.test?.steps ?? [];
+    const buildForTesting = steps.find((step) => step.name === "Build for testing");
+    const test = steps.find((step) => step.name === "Run unit and UI tests");
+
+    // build-for-testing compiles the whole scheme regardless of which subset
+    // will execute — only the run step needs to know what to exclude.
+    expect(String(buildForTesting?.run)).not.toContain("SKIP_TESTING");
+    expect(String(test?.env && (test.env as Record<string, unknown>).SKIP_TESTING)).toBe(
+      "${{ inputs.skip-testing }}",
+    );
+    expect(String(test?.run)).toContain("-skip-testing:");
+    expect(String(test?.run)).toContain('while IFS= read -r identifier');
   });
 
   it("does not expose the checkout credential to caller-controlled test code", async () => {
@@ -1406,6 +2167,9 @@ describe("ios-ci.yml", () => {
     expect(String(build?.run)).toContain("-disableAutomaticPackageResolution");
     expect(String(test?.run)).toContain("-disableAutomaticPackageResolution");
     expect(String(test?.run)).toContain('-parallel-testing-enabled "$PARALLEL_TESTING"');
+    expect(String(test?.run)).toContain(
+      '-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS"',
+    );
     expect(build?.if).toBe("${{ inputs.run-tests }}");
     expect(test?.if).toBe("${{ inputs.run-tests }}");
   });
@@ -1546,5 +2310,87 @@ describe("python-ci", () => {
     // Every matrix leg measures the same lines, and identical artifact names
     // across a matrix collide rather than merge.
     expect(String(upload?.["if"])).toContain("fromJSON(inputs.python-versions)[0]");
+  });
+});
+
+/**
+ * A job with no `timeout-minutes` runs a hung step to GitHub's six-hour default
+ * on billed minutes. That has already happened here once, to a Playwright
+ * install that hung for forty. Every reusable job must bound itself, and every
+ * job that gates a pull request must cancel rather than run beside its
+ * replacement.
+ */
+describe("every reusable job", () => {
+  type Bounded = {
+    jobs?: Record<
+      string,
+      {
+        uses?: string;
+        "timeout-minutes"?: number | string;
+        concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+      }
+    >;
+  };
+
+  const GATES = ["web-ci.yml", "pm-check.yml", "pr-check.yml", "firebase-tests.yml", "ios-ci.yml"];
+
+  it("bounds its own runtime", async () => {
+    for (const file of GATES) {
+      const jobs = ((await read(file)) as Bounded).jobs ?? {};
+      for (const [name, job] of Object.entries(jobs)) {
+        // A job that only delegates inherits the callee's ceiling.
+        if (job.uses) continue;
+        expect(job["timeout-minutes"], `${file} job ${name} needs a ceiling`).toBeDefined();
+      }
+    }
+  });
+
+  it("cancels a superseded push on the checks that gate a pull request", async () => {
+    for (const file of GATES) {
+      const jobs = ((await read(file)) as Bounded).jobs ?? {};
+      for (const [name, job] of Object.entries(jobs)) {
+        if (job.uses) continue;
+        expect(job.concurrency?.["cancel-in-progress"], `${file} job ${name}`).toBe(true);
+        expect(job.concurrency?.group, `${file} job ${name}`).toContain("${{ github.ref }}");
+      }
+    }
+  });
+});
+
+describe("beta app review submission", () => {
+  const actionDir = join(import.meta.dirname, "../.github/actions/ios-testflight-upload");
+
+  it("is opt-in, so a caller that only tests internally is unaffected", async () => {
+    const action = load(await readFile(join(actionDir, "action.yml"), "utf8")) as {
+      inputs?: Record<string, { default?: unknown }>;
+    };
+    expect(action.inputs?.["submit-for-beta-review"]?.default).toBe("false");
+  });
+
+  /**
+   * Apple refuses a second submission while one is pending, and a nightly
+   * cadence hits that most nights. Failing the release there would make the
+   * whole pipeline red for a condition that is entirely normal — so the script
+   * asks Apple for the build's actual review state rather than reading meaning
+   * into an error code, and only fails when no submission exists at all.
+   */
+  it("treats a pending review as success and a genuine error as failure", async () => {
+    const script = await readFile(join(actionDir, "upload-testflight.sh"), "utf8");
+    expect(script).toMatch(/pending:sibling-build-in-review/);
+    expect(script).toMatch(/pending:this-build-/);
+    expect(script).toMatch(/betaAppReviewSubmission"/);
+    expect(script).toMatch(/sys\.exit\(1\)/);
+  });
+
+  /**
+   * bash misparses an apostrophe inside a heredoc nested in a command
+   * substitution, and the failure is an unhelpful "unexpected EOF" pointing at
+   * the wrong line. This cost a debugging round; the guard is one line.
+   */
+  it("keeps apostrophes out of the embedded python heredoc", async () => {
+    const script = await readFile(join(actionDir, "upload-testflight.sh"), "utf8");
+    const body = script.split("<<'PYTHON'\n")[1]?.split("\nPYTHON")[0] ?? "";
+    expect(body.length).toBeGreaterThan(0);
+    expect(body).not.toMatch(/'/);
   });
 });

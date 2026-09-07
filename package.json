@@ -30,13 +30,16 @@
     "./codebase-memory": "./dist/codebase-memory.js",
     "./self": "./dist/self.js",
     "./design": "./dist/design/index.js",
-    "./team": "./dist/team/index.js"
+    "./team": "./dist/team/index.js",
+    "./research-library": "./dist/research-library/index.js",
+    "./research-library/client": "./dist/research-library/client.js",
+    "./research-library/server": "./dist/research-library/server.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "compile": "tsc -p tsconfig.build.json && chmod +x dist/cli/index.js",
+    "compile": "tsc -p tsconfig.build.json && cp src/research-library/*.py dist/research-library/ && chmod +x dist/cli/index.js dist/research-library/library.py dist/research-library/docling_html.py",
     "dev": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -48,6 +51,7 @@
   "dependencies": {
     "gray-matter": "^4.0.3",
     "jose": "^6.2.5",
+    "minimatch": "10.2.6",
     "minisearch": "^7.2.0",
     "zod": "^4.1.12"
   },

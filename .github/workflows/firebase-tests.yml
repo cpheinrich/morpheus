@@ -96,6 +96,10 @@ permissions:
 jobs:
   emulators:
     runs-on: ubuntu-latest
+    # A hung step otherwise runs to GitHub's six-hour default on billed
+    # minutes. This ceiling sits far above the honest runtime, so it only ever
+    # fires on a hang — which it then reports quickly and legibly.
+    timeout-minutes: 15
     # A superseded run must cancel, not run to completion beside its
     # replacement. Discovered the expensive way on Evo: two pushes minutes
     # apart left two hung e2e jobs burning runner minutes in parallel on the

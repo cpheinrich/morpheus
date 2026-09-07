@@ -23,6 +23,7 @@ import { check as contextCheck, guard, brief as contextBrief, install as context
 import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
+import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
 const HELP = `morpheus — an operating system for building and running companies
 
@@ -80,6 +81,11 @@ Usage
   morpheus hq rules         --rules-path <path> [--check]
                             — role helpers in the deployed rules file, from the vocabulary
   morpheus hq rules --print print the generated block, to paste into existing rules
+  morpheus research-library init --project <firebase-project> --bucket <bucket>
+                            configure the immutable private library without touching local books
+  morpheus research-library publish <source-directory> --slug <slug> --title <title> --author <name>
+  morpheus research-library push|pull|verify|bundle|verify-bundle [arguments]
+                            publish, restore, and verify canonical Babel book directories
   morpheus registry list | add [--prefix XX] | remove <name>
   morpheus init             [--name <Acme>] [--prefix XX] [--kind company|personal|internal]
   morpheus init status      [--offline]
@@ -154,6 +160,8 @@ function parseArgs(argv) {
         waitlist: true,
         hq: true,
         positional: [],
+        authors: [],
+        isbns: [],
     };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
@@ -181,6 +189,21 @@ function parseArgs(argv) {
                 break;
             case "--project":
                 flags.project = argv[++i];
+                break;
+            case "--bucket":
+                flags.bucket = argv[++i];
+                break;
+            case "--object-prefix":
+                flags.objectPrefix = argv[++i];
+                break;
+            case "--catalog-dir":
+                flags.catalogDir = argv[++i];
+                break;
+            case "--local-root":
+                flags.localRoot = argv[++i];
+                break;
+            case "--gcloud":
+                flags.gcloud = argv[++i];
                 break;
             case "--domain":
                 flags.domain = argv[++i];
@@ -287,6 +310,31 @@ function parseArgs(argv) {
             case "--selection":
                 flags.selection = argv[++i];
                 break;
+            case "--title":
+                flags.title = argv[++i];
+                break;
+            case "--author": {
+                const author = argv[++i];
+                if (author)
+                    flags.authors.push(author);
+                break;
+            }
+            case "--edition":
+                flags.edition = argv[++i];
+                break;
+            case "--publisher":
+                flags.publisher = argv[++i];
+                break;
+            case "--year":
+                flags.year = argv[++i];
+                break;
+            case "--isbn":
+                if (argv[i + 1])
+                    flags.isbns.push(argv[++i]);
+                break;
+            case "--language":
+                flags.language = argv[++i];
+                break;
             case "--rules-path":
                 flags.rulesPath = argv[++i];
                 break;
@@ -379,6 +427,40 @@ async function main() {
             });
         }
         console.error(`Unknown tokens command "${command}".\n\n${HELP}`);
+        return 1;
+    }
+    if (group === "research-library") {
+        if (command === "init") {
+            return initResearchLibrary({
+                root: process.cwd(),
+                project: flags.project,
+                bucket: flags.bucket,
+                objectPrefix: flags.objectPrefix,
+                catalogDir: flags.catalogDir,
+                localRoot: flags.localRoot,
+            });
+        }
+        const commands = new Set([
+            "bundle", "upload", "fetch", "publish", "push", "pull", "verify", "verify-bundle",
+        ]);
+        if (command && commands.has(command)) {
+            const publishArgs = command === "publish" ? [
+                ...rest,
+                ...(flags.slug ? ["--slug", flags.slug] : []),
+                ...(flags.title ? ["--title", flags.title] : []),
+                ...flags.authors.flatMap((author) => ["--author", author]),
+                ...(flags.edition ? ["--edition", flags.edition] : []),
+                ...(flags.publisher ? ["--publisher", flags.publisher] : []),
+                ...(flags.year ? ["--year", flags.year] : []),
+                ...flags.isbns.flatMap((isbn) => ["--isbn", isbn]),
+                ...(flags.language ? ["--language", flags.language] : []),
+            ] : rest;
+            return runResearchLibrary(command, publishArgs, {
+                root: process.cwd(),
+                gcloud: flags.gcloud,
+            });
+        }
+        console.error(`Unknown research-library command "${command ?? ""}".\n\n${HELP}`);
         return 1;
     }
     if (group === "init") {

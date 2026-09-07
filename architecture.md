@@ -217,6 +217,13 @@ canonical and lives in this document. Only *deviations* are recorded.
     "allowlist": ["you@example.com"],
     "investorAllowlist": []
   },
+  "review": {
+    "visualEvidence": {
+      "enabled": true,
+      "include": ["apps/web/**/*.tsx", "apps/ios/**/*.swift"],
+      "exclude": ["apps/web/**/*.test.tsx", "apps/ios/**/*Tests/**"]
+    }
+  },
   "inherits": {                       // §17 — what comes from the parent company
     "legal": "darwin",
     "hr": "darwin"
@@ -233,6 +240,13 @@ often goes wrong when one person runs several companies.
 
 `surfaces` is an optional, advisory declaration for agents; it does not make a surface mandatory or
 cause `init` to scaffold an application directory. Projects record only the surfaces they need.
+
+`review.visualEvidence` is default-on in the scaffold. `include` and `exclude` are explicit,
+repo-relative glob contracts; exclusions win. This makes the blocking fact exact — a declared path
+changed — without pretending CI can determine whether rendered pixels changed. An established
+manifest with no block warns during the staged rollout, then `morpheus init` adds the default
+without replacing authored review settings. A repository with no meaningful rendered surface can
+set `enabled: false`, but must carry a substantive `reason` beside the opt-out.
 
 ## 5. Where each business function lives
 
@@ -500,8 +514,9 @@ self-review, and closes every GitHub issue the roadmap item declares it resolves
 
 `morpheus check pr` fails the build when: source files changed without corresponding test changes
 and no `skip-tests` justification is present; a public API changed without a `docs/` change; the PR
-body is missing required sections; or the roadmap item named by the branch was not moved to
-`review`. A roadmap item created with `pm new roadmap --issue 123`, or updated with
+body is missing required sections; a declared visual-evidence path changed without a GitHub screen
+capture attachment; or the roadmap item named by the branch was not moved to `review`. A roadmap
+item created with `pm new roadmap --issue 123`, or updated with
 `pm link-issue <ID> 123`, carries `issues: [123]` in its frontmatter and displays it in the generated
 roadmap; `check pr` requires `Closes #123` (or another GitHub closing keyword) in the PR body.
 The structured field distinguishes completion from a merely related issue mention, while GitHub's
@@ -1526,10 +1541,15 @@ waiver is a fact the next rung needs, not an exemption from being looked at.
 
 ### The human review artifact
 
-Every PR carries a Vercel preview link, screenshots of changed screens captured in CI, a
-"what to test" list generated from the acceptance criteria, and for iOS a simulator recording plus
-a build link. Web feedback returns as Vercel comments anchored to page elements and synced into the
-PR (§10.2).
+Every front-end PR carries a Vercel preview or build link when available, a screen recording when
+practical (screenshots otherwise), and a "what to test" list. The author attaches captures to the
+PR under `## Visual evidence`; `check pr` verifies either a stable GitHub attachment reference or an
+HTTPS URL under a repository-approved `allowedUrlPrefixes` location. External locations are exact
+path prefixes, so approving one bucket on a shared provider does not approve every bucket there.
+The check does not fetch the URL, classify its pixels, or claim it meaningfully demonstrates the
+UI. Recording is a warning-level preference so a screenshot-only change is never blocked merely
+because video was impractical. Web feedback returns as Vercel comments anchored to page elements
+and synced into the PR (§10.2).
 
 ### iOS: agents QA their own work
 
@@ -1539,11 +1559,20 @@ QA script), `simctl io` to screenshot and record video, and Firebase App Distrib
 via `fastlane` for real builds. So an agent can implement a change, run it in a simulator, drive
 the flow, and attach a screenshot per step plus a video to the PR.
 
-The reusable `ios-ci.yml` owns the hosted runner, exact Xcode and simulator destination, locked
-SwiftPM resolution, build-for-testing/test-without-building split, result bundles, logs, and
-rendered XCTest attachments. Firebase-backed clients opt into a secret-free emulator boundary and
+The reusable `ios-ci.yml` owns the runner contract, exact Xcode and simulator destination, locked
+SwiftPM resolution, opt-in `swift-format` linting for changed Swift sources,
+build-for-testing/test-without-building split, result bundles, logs, and rendered XCTest
+attachments. The formatter ships in the selected Xcode toolchain; callers provide the checked-in
+configuration and opt in, so no third-party install or implicit style policy reaches existing
+consumers. Firebase-backed clients opt into a secret-free emulator boundary and
 may name one repository script to seed local fixtures; that script runs after the emulators start
 and before XCTest, so it never has to race a separately managed service.
+
+Callers may select either a GitHub-hosted image or a repo-scoped self-hosted runner label. The
+workflow accepts GitHub's versioned Xcode application layout and a dedicated Mac's canonical
+`/Applications/Xcode.app`, but verifies the toolchain's reported version in both cases. Persistent
+self-hosted runners are restricted to private repositories and isolated operating-system accounts;
+public-repository pull-request code never receives a route to an operator workstation.
 
 Physical devices additionally need a provisioning profile and a connected device, so simulator is
 the default for the review loop.
@@ -2433,6 +2462,36 @@ rules, and Playwright E2E, all emulator-backed, all secret-free, wired into CI t
 reusable `firebase-tests.yml`. `--check` reports drift between a project's shared auth files and
 the current templates. The console half lives in `docs/runbooks/consumer-auth.md`.
 
+#### `morpheus research-library` publishes private books without owning acquisition
+
+Babel remains an independent package and owns acquisition plus conversion into canonical Docling
+JSON and Markdown. Morpheus begins at that stable directory boundary. Its research-library
+capability creates deterministic ZIPs, generates an inert self-contained HTML reader from
+`docling/source.json`, uploads both objects create-only, verifies their size and SHA-256, and only
+then advances the checked-in catalog pointer.
+
+The reusable runtime is split deliberately:
+
+- `morpheus research-library init` records the Firebase project/bucket, creates an empty catalog,
+  and ignores `local/research-library/`. It never creates, deletes, moves, or replaces a local book.
+- `push`, `pull`, and `verify` use the shared publisher shipped with the CLI. Pull refuses a
+  divergent directory unless the operator explicitly passes `--replace`.
+- `morpheus-kit/research-library` holds shared contracts, while explicit `/server` and `/client`
+  entries isolate filesystem catalog loading from browser byte verification. A client import must
+  never reach `node:fs`.
+- Each project still owns its routes, Firebase rules, catalog entries, and visual shell. The kit
+  owns integrity and transport, not the meaning or presentation of a book.
+
+Objects have no floating name: `research-library/books/<slug>/<sha256>.zip` and `.html`. The
+shape id is `research-library-book-2`, not a sequence disguised as a schema version. The browser
+may read only through its existing Firebase HQ role; browser writes remain denied. Provisioning and
+the exact rules merge are documented in `docs/runbooks/research-library.md`.
+
+The implementation uses Python's archive/hash standard library, the already-required Google Cloud
+CLI, and Docling through Babel's managed environment. No third-party archive or upload dependency
+was adopted: the maintained packages considered would add a second implementation of capabilities
+already present at these boundaries without reducing the security-critical code.
+
 ## 13. Secrets and credentials
 
 Values never enter git. What enters git is a manifest declaring which secrets exist and where they
@@ -2873,29 +2932,139 @@ its triggers, application directory and encrypted `VERCEL_TOKEN`, `VERCEL_ORG_ID
 build, while the other spends model budget to judge a change, so neither workflow controls or
 implicitly enables the other.
 
-Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `firebase-tests`, `osv-scan`, `pm-check`,
-`pr-check`, `vercel-deploy`, `heartbeat`, and `agent-review`. Planned: `agent-triage`,
-`agent-analytics-review`, and `release-kit`.
+Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `ios-nightly-build`, `firebase-tests`,
+`osv-scan`, `pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`, `agent-review`, and
+`dependabot-maintainer`, plus one composite action, `ios-testflight-upload`. Planned:
+`agent-triage`, `agent-analytics-review`, and `release-kit`.
+
+Dependency maintenance splits policy, judgment, and authority. The project owns a versioned list
+of exact dependency/update-type auto-merge rules and explicit holds. `dependabot-maintainer`
+applies those deterministic rules first and sends only unmatched dependency-only changes to a
+low-cost Codex model. The model runs read-only, receives no GitHub write permission, and may return
+only auto-merge or human-review advice. A separate job with no model credential re-reads the live
+pull request and checks the exact Dependabot App author, head SHA, file scope, and current check
+rollup before it changes a label, comment, pull-request state, or auto-merge setting. A model can
+never close a pull request; that requires an explicit project rule.
+When an approved head is behind a strict protected base, delivery enables auto-merge and requests
+GitHub's guarded branch update with the revalidated head SHA. The resulting CI completion invokes
+the fast path again, so several simultaneous updates converge one merge at a time as `main` moves.
+
+Projects trigger the workflow after CI for the fast path and on a nightly schedule for
+reconciliation. GitHub event delivery, a transient workflow failure, and a policy change can each
+leave work behind; the scheduled pass makes the open pull-request set the source of truth rather
+than treating one event as a durable queue.
+
+Every reusable job carries a `timeout-minutes` ceiling set well above its honest runtime, so it
+fires only on a hang. Without one a stuck step runs to GitHub's six-hour default on billed
+minutes, which is how a hung Playwright install once cost forty. The jobs that gate a pull request
+also carry a job-level concurrency group so a superseded push cancels rather than running beside
+its replacement — job-level rather than workflow-level, because a called workflow's top-level
+`concurrency` does not govern the caller's run.
 
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
 Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination.
+Callers may opt into a changed-source style gate with `swift-format-lint`; it validates the
+caller-owned `.swift-format` configuration and runs the selected Xcode toolchain's formatter in
+strict lint mode against added, copied, modified, and renamed Swift files in the checked-out
+commit. The checkout retains only the commit and its first parent, which is enough to cover a pull
+request's synthetic merge commit and a push to `main` without downloading full history. Existing
+Swift is adopted incrementally: enabling the gate does not create a repository-wide formatting
+rewrite, while any Swift file being changed must leave the commit fully formatted.
 The caller supplies a shared Xcode scheme; that scheme or its optional test plan remains the source
 of truth for which unit and UI targets run. The workflow refuses an absent or uncommitted
 `Package.resolved`, passes `-onlyUsePackageVersionsFromResolvedFile` to resolution and every build
 action, disables automatic package resolution after the explicit locked resolve, and separates
 SourcePackages, DerivedData, logs, screenshots, and `.xcresult` bundles under the runner's temporary
-directory. Rendered XCTest attachments are retained on every run; a failed run additionally keeps
+directory. Both build actions pass `COMPILER_INDEX_STORE_ENABLE=NO`: index-while-building serves
+Xcode's editor, and a runner has no editor and discards the store with the machine. The
+SourcePackages cache carries a prefix `restore-keys`, so bumping one dependency reuses the
+unchanged checkouts instead of re-cloning every package — the locked-resolution flags keep the
+restored result exact either way. `optimize-test-build` overrides both build actions'
+optimization settings with what Xcode actually resolves for a configuration literally named
+Release — `-O` for Swift, `-Os` for C/Objective-C, whole-module compilation — confirmed by
+grepping a real Release build's compiler invocations rather than assumed from the project file,
+since an unset build setting can still carry an Xcode-internal default tied to the configuration's
+name. Off by default: a command-line override on `xcodebuild` reaches only that invocation, so a
+caller opts in without touching its project file or its developers' own Debug builds in Xcode.
+Measured on Evo with it on, the build itself got faster, not slower — Debug's default `-Onone`
+was costing more in per-file compile overhead than whole-module optimization added back — and
+every UI test that exercises real rendering work ran faster too. `skip-testing` takes
+newline-separated `xcodebuild -skip-testing:` identifiers, applied only to the run step — the
+build-for-testing step compiles the whole scheme regardless of which subset will execute, so a
+build-time exclusion would be a no-op. The intended use is a per-PR caller keeping an expensive
+`XCTMeasureOptions` performance test out of every pull request while a separate nightly caller
+(which never sets this input) runs the full scheme; empty by default, so an existing caller's
+selection is unchanged.
+Rendered XCTest attachments are retained on every run; a failed run additionally keeps
 both result bundles and raw `xcodebuild` logs. Firebase-backed apps can opt into an exact
 `firebase-tools` version, a repository config, an explicit synthetic project id and emulator list,
 plus one repository-relative fixture script that runs inside the live emulator environment before
 XCTest; failures retain Firebase's debug log with the Xcode evidence. Every service input is
 validated, the boundary stays secret-free, and apps without Firebase pay none of its JDK or CLI
 setup cost. A superseding push cancels the older bounded simulator job; the default is 30 minutes
-and consumers with broader UI suites can explicitly request more headroom. Selecting the requested
+and consumers with broader UI suites can explicitly request more headroom. The concurrency group
+names the calling workflow as well as the repository, ref and scheme, because a release workflow
+calls this same job on `refs/heads/main` where a push-to-main CI run is already using it; without
+the caller in the group one would cancel the other. Selecting the requested
 `/Applications/Xcode_<version>.app` through `DEVELOPER_DIR` is deliberately inlined: the operation
 is small enough to audit here and does not put a third-party setup action in every consumer's CI
 trust path.
+
+`ios-nightly-build` composes `release-preflight` and `ios-ci`, then exposes the build decision and
+the exact verified main SHA. The caller owns the cron, watched app paths, environment policy, app
+identifiers, TestFlight beta-group targets, build-number allocation, and credentials. GitHub does
+not pass a caller repository's environment secrets into a cross-repository reusable workflow, so
+those callers disable the workflow's upload job and use its outputs to gate a caller-owned upload
+job inside their protected environment. Same-repository callers may retain the built-in upload job.
+The workflow forwards the complete secret-free test contract — including
+parallel-test policy and optional maximum simulator-worker count, Firebase Emulator Suite
+configuration, and the pre-test fixture script — to `ios-ci`. Release builds default to the
+five-core M2 Pro `macos-26-xlarge` runner with parallel testing enabled and at most six simulator
+workers; callers may dial those inputs down after observing resource pressure. An app that needs
+an ignored Google service plist for its signed archive may keep its
+base64 value in the protected environment as `IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64`; only the
+caller-owned upload script receives it. The built-in upload path installs `asccli` but does not
+derive a build number from GitHub metadata; the caller's upload script must allocate against App Store
+Connect so manual and automated uploads share one sequence. Scheduled runs compare
+those paths from the caller workflow's latest successful upload to the current `main` SHA; an empty
+diff reports the skip from a Linux job and provisions no macOS runner. A missing, unavailable, or
+non-ancestor baseline builds conservatively. Manual callers may force a build. Keeping the caller
+workflow filename stable makes its successful runs the durable release cursor without a second
+state store.
+
+`ios-testflight-upload` is the one *action* Morpheus ships, and the reason it is an action is the
+same constraint that shapes `ios-nightly-build`: a cross-repository reusable workflow receives none
+of the caller's environment secrets, so the signing job has to stay in the caller. A composite
+action runs inside that caller-owned job, where `secrets.*` resolve normally and can be handed in
+as inputs — which is what makes the *implementation* shareable even though the job cannot be. It
+selects the exact Xcode, downloads the Metal toolchain on request, restores the SwiftPM cache,
+installs `openssl@3`, `asccli` and optionally `sentry-cli`, then archives, exports, verifies and
+uploads. A caller is reduced to a checkout of the verified SHA and one `uses:` block of
+identifiers.
+
+Its contract is deliberately narrow: typed inputs for the project shape, the Apple identifiers, the
+beta-group policy (`any`, or `one-internal-one-external` for a project whose every release must
+reach outside testers), newline-separated `archive-build-settings`, an optional Firebase client
+plist materialized from a secret for the archive only, and one optional caller hook —
+`validate-app-script`, a repository-relative executable that receives the archived `.app` bundle and
+runs with every release credential stripped from its environment. That hook is where a project
+asserts what only it knows: which Firebase project is pinned, which purpose strings must be
+present, which build environment was compiled in. Anything a second project would also want belongs
+in the action instead.
+
+Three properties are not negotiable, because each has already cost releases. The archive is
+**unsigned** — `CODE_SIGN_IDENTITY=""`, `CODE_SIGNING_REQUIRED=NO`, `CODE_SIGNING_ALLOWED=NO`, and
+`-allowProvisioningUpdates` appears nowhere. Automatic signing needs a development identity a clean
+runner never has, so Xcode minted a permanent one through the App Store Connect API on every run;
+eleven accumulated before the shared team hit its account-wide certificate limit and archiving
+stopped for two projects at once. Manual signing is not the alternative either: command-line build
+settings apply to every target, and Swift package targets reject a specified provisioning profile
+outright. Second, the distribution checks run on the **exported IPA**, never the archive — the
+archive has no signature to check, and `get-task-allow` must be strict on the artifact that ships.
+Third, the file that is verified is the file that is uploaded: the export writes an IPA locally, the
+signature and entitlements are asserted against it, and `asccli builds upload` sends that same path.
+Exporting with `destination: upload` hands the build to Apple with nothing having inspected it.
 
 `firebase-tests` is the one workflow a project opts into rather than getting by default: it runs
 the emulator-backed suites (unit, Firestore rules, Playwright E2E) against the Firebase Emulator
