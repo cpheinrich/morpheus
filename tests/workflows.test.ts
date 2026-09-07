@@ -1451,7 +1451,7 @@ describe("ios-nightly-build.yml", () => {
   it("uses a full checkout and the last successful caller run for its diff", async () => {
     const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const steps = wf.jobs?.changes?.steps ?? [];
-    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
     const decision = steps.find((step) => step.name === "Compare with the last successful upload");
     const script = String(decision?.run);
 
@@ -1966,7 +1966,7 @@ describe("ios-ci.yml", () => {
   it("can enforce the selected Xcode toolchain's formatter on changed Swift sources", async () => {
     const wf = (await read("ios-ci.yml")) as IosCi;
     const steps = wf.jobs?.test?.steps ?? [];
-    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
     const lint = steps.find((step) => step.name === "Lint changed Swift sources");
     const script = String(lint?.run);
 
