@@ -1,6 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { checkPr, formatFindings } from "../check/pr.js";
+import {
+  unreadableVisualEvidencePolicy,
+  visualEvidencePolicy,
+  type VisualEvidencePolicy,
+} from "../check/visual-evidence.js";
 
 /**
  * Resolve PR context from the environment.
@@ -68,12 +73,39 @@ function prBody(): string {
   return process.env["MORPHEUS_PR_BODY"] ?? "";
 }
 
+function prAuthor(): string | undefined {
+  const eventPath = process.env["GITHUB_EVENT_PATH"];
+  if (eventPath) {
+    try {
+      const payload = JSON.parse(readFileSync(eventPath, "utf8")) as {
+        pull_request?: { user?: { login?: string } };
+      };
+      return payload.pull_request?.user?.login;
+    } catch {
+      /* fall through to the env override */
+    }
+  }
+  return process.env["MORPHEUS_PR_AUTHOR"];
+}
+
+function projectVisualEvidencePolicy(): VisualEvidencePolicy {
+  try {
+    return visualEvidencePolicy(JSON.parse(readFileSync("morpheus.json", "utf8")) as unknown);
+  } catch (error) {
+    return unreadableVisualEvidencePolicy(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
 export async function pr(productDir: string, base: string): Promise<number> {
   const findings = await checkPr({
     body: prBody(),
+    author: prAuthor(),
     branch: currentBranch(),
     changedFiles: changedFiles(base),
     trunkChanges: trunkChanges(base),
+    visualEvidence: projectVisualEvidencePolicy(),
     productDir,
   });
 

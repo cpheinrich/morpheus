@@ -8,3 +8,4 @@ export * from "./doctor/index.js";
 export * from "./codebase-memory.js";
 export * from "./self.js";
 export * from "./session/index.js";
+export * from "./research-library/index.js";

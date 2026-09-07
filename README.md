@@ -83,6 +83,8 @@ morpheus pm index                         # retire legacy roadmap tables; refres
 morpheus pm new roadmap "Ship analytics" --priority P1
 morpheus web status                       # what the web surface has, and what it is missing
 morpheus web init                         # provision the cloud resources, then scaffold the site
+morpheus research-library init --project <id> --bucket <bucket>
+morpheus research-library push [slug]     # immutable bundle + verified HTML reader
 morpheus firebase auth setup --project <firebase-project> --domain <public-origin>
 morpheus firebase auth check --project <firebase-project> --domain <public-origin>
 morpheus codebase-memory install             # trusted-device bootstrap, safe to re-run
@@ -91,6 +93,8 @@ morpheus codebase-memory install --check     # verify operational mode without c
 
 Web projects can import the build-time, browser, optional PDF, and React pieces of private HQ
 search from `morpheus-kit/hq-search` subpaths. The source catalogue and auth gate stay project-owned.
+Private-library catalog parsing and verified browser downloads are available from
+`morpheus-kit/research-library`; Babel remains the independent converter.
 
 `morpheus web init` is the website initializer. It provisions the GCP project, Firebase,
 Firestore, the registered web app and the Workload Identity that a Vercel deployment

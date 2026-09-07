@@ -17,6 +17,9 @@ importers:
       jose:
         specifier: ^6.2.5
         version: 6.2.5
+      minimatch:
+        specifier: 10.2.6
+        version: 10.2.6
       minisearch:
         specifier: ^7.2.0
         version: 7.2.0

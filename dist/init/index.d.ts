@@ -2,10 +2,11 @@ import type { Seed } from "./templates.js";
 /**
  * Scaffold a Morpheus project.
  *
- * **Never overwrites.** Anything already present is skipped and reported,
- * which is what makes this safe to run on an established repository — so
- * "initialise a new project" and "bring an old one up to the standard" are the
- * same command rather than two that drift.
+ * **Never replaces authored values.** Existing files are normally skipped;
+ * narrowly owned additive repairs may merge a missing manifest block or hook
+ * while preserving every value already present. That is what makes this safe
+ * on an established repository — so "initialise a new project" and "bring an
+ * old one up to the standard" are the same command rather than two that drift.
  *
  * Deliberately scoped to the repository. Provisioning GCP, DNS and Vercel is
  * not here: those live in someone else's console, they need credentials this

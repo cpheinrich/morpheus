@@ -18,7 +18,7 @@ on:
   workflow_call:
     inputs:
       runner:
-        description: GitHub-hosted macOS image with the requested Xcode and simulator runtime.
+        description: GitHub-hosted image or self-hosted runner label with the requested Xcode and simulator runtime.
         type: string
         default: "macos-26"
       timeout-minutes:
@@ -60,10 +60,33 @@ on:
         description: Optional shared Xcode test plan. Empty uses the scheme's default test action.
         type: string
         default: ""
+      test-iterations:
+        description: >
+          Re-run only the tests that failed, up to this many attempts in total.
+          Zero disables retries. A test that fails every attempt still fails, so
+          this hides a flake rather than a defect — a suite that needs it is
+          telling you something, and the retry count belongs in the caller where
+          that is visible.
+        type: number
+        default: 0
+      skip-testing:
+        description: >
+          Newline-separated xcodebuild -skip-testing identifiers
+          (TestTarget[/TestClass[/testMethod]]), for excluding specific tests
+          from this run — for example a caller keeping an expensive
+          XCTMeasureOptions performance test out of the per-PR job while a
+          separate nightly caller runs the full scheme. Empty runs everything
+          the scheme or test plan already selects.
+        type: string
+        default: ""
       parallel-testing:
         description: Allow Xcode to run test targets in parallel. Off by default for deterministic UI tests.
         type: boolean
         default: false
+      maximum-parallel-testing-workers:
+        description: Maximum simulator test workers when parallel testing is enabled; zero lets Xcode decide.
+        type: number
+        default: 0
       firebase-emulators:
         description: Run the test action inside Firebase Emulator Suite when the app depends on local services.
         type: boolean
@@ -92,6 +115,26 @@ on:
         description: Run every unit and UI test enabled by the shared scheme or selected test plan.
         type: boolean
         default: true
+      swift-format-lint:
+        description: Lint Swift files changed by this commit with the selected Xcode toolchain's swift-format.
+        type: boolean
+        default: false
+      swift-format-configuration:
+        description: swift-format configuration path, relative to working-directory.
+        type: string
+        default: ".swift-format"
+      optimize-test-build:
+        description: >
+          Override the caller's Debug configuration with the optimization level
+          Xcode actually resolves for a configuration named Release (-O for
+          Swift, -Os for C/Objective-C, whole-module compilation), CI-only.
+          Local Xcode debugging is unaffected — a developer's own Debug build
+          never passes this. Measured on Evo: the build itself got faster, not
+          slower, and every downstream UI test ran faster too, since Debug's
+          default -Onone was the thing making its own graphics-heavy screens
+          slow to render under test.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -100,8 +143,12 @@ jobs:
   test:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
+    # `github.workflow` names the *caller*, which is what separates a pull
+    # request's CI run from a release workflow that calls this same job on
+    # refs/heads/main. Without it both land in one group and the release's
+    # tests can be cancelled by an unrelated push — or cancel it.
     concurrency:
-      group: ios-ci-${{ github.repository }}-${{ github.ref }}-${{ inputs.scheme }}
+      group: ios-ci-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-${{ inputs.scheme }}
       cancel-in-progress: true
     defaults:
       run:
@@ -110,12 +157,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # The style gate compares the checked-out commit to its first parent.
+          # Depth two keeps that boundary available without fetching full history.
+          fetch-depth: 2
           persist-credentials: false
 
-      # GitHub's macos-26 image carries Xcode 26.6, the iOS 26.5 SDK and the
-      # iPhone 17 Pro Max simulator. Selecting DEVELOPER_DIR directly is a
-      # small, auditable operation and avoids a third-party setup action in
-      # every consuming repository's trusted CI path.
+      # GitHub's macos-26 image uses a versioned application name; a dedicated
+      # Mac normally uses /Applications/Xcode.app. Accept either layout, then
+      # verify the actual toolchain rather than trusting the path's spelling.
       - name: Select Xcode
         env:
           XCODE_VERSION: ${{ inputs.xcode-version }}
@@ -125,13 +174,22 @@ jobs:
             exit 1
           fi
 
-          xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
-          if [ ! -d "$xcode_app" ]; then
+          versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ -d "$versioned_xcode_app" ]; then
+            xcode_app="$versioned_xcode_app"
+          elif [ -d /Applications/Xcode.app ]; then
+            xcode_app=/Applications/Xcode.app
+          else
             echo "Xcode $XCODE_VERSION is not installed on this runner. Installed versions:" >&2
-            find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' -print >&2
+            find /Applications -maxdepth 1 -type d -name 'Xcode*.app' -print >&2
             exit 1
           fi
 
+          installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version | sed -n '1s/Xcode //p')
+          if [ "$installed_version" != "$XCODE_VERSION" ]; then
+            echo "Expected Xcode $XCODE_VERSION, but $xcode_app contains $installed_version" >&2
+            exit 1
+          fi
           echo "DEVELOPER_DIR=$xcode_app/Contents/Developer" >> "$GITHUB_ENV"
           "$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version
 
@@ -139,12 +197,16 @@ jobs:
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
+          PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
+          MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
           FIREBASE_EMULATORS: ${{ inputs.firebase-emulators }}
           FIREBASE_CLI_VERSION: ${{ inputs.firebase-cli-version }}
           FIREBASE_CONFIG: ${{ inputs.firebase-config }}
           FIREBASE_PROJECT: ${{ inputs.firebase-project }}
           FIREBASE_ONLY: ${{ inputs.firebase-only }}
           PRE_TEST_SCRIPT: ${{ inputs.pre-test-script }}
+          SWIFT_FORMAT_LINT: ${{ inputs.swift-format-lint }}
+          SWIFT_FORMAT_CONFIGURATION: ${{ inputs.swift-format-configuration }}
         run: |
           case "$PROJECT" in
             ""|/*|*".."*)
@@ -159,6 +221,14 @@ jobs:
           fi
           if [ -z "$SCHEME" ]; then
             echo "scheme must not be empty" >&2
+            exit 1
+          fi
+          if [[ ! "$MAXIMUM_PARALLEL_TESTING_WORKERS" =~ ^[0-9]+$ ]]; then
+            echo "maximum-parallel-testing-workers must be a non-negative integer" >&2
+            exit 1
+          fi
+          if [ "$PARALLEL_TESTING" != "YES" ] && [ "$MAXIMUM_PARALLEL_TESTING_WORKERS" != "0" ]; then
+            echo "maximum-parallel-testing-workers requires parallel-testing" >&2
             exit 1
           fi
 
@@ -181,6 +251,19 @@ jobs:
             esac
             if [ ! -f "$GITHUB_WORKSPACE/$PRE_TEST_SCRIPT" ]; then
               echo "pre-test-script was not found: $PRE_TEST_SCRIPT" >&2
+              exit 1
+            fi
+          fi
+
+          if [ "$SWIFT_FORMAT_LINT" = "true" ]; then
+            case "$SWIFT_FORMAT_CONFIGURATION" in
+              ""|/*|*".."*)
+                echo "swift-format-configuration must be a non-empty path relative to working-directory without '..'" >&2
+                exit 1
+                ;;
+            esac
+            if [ ! -f "$SWIFT_FORMAT_CONFIGURATION" ]; then
+              echo "swift-format configuration was not found: $SWIFT_FORMAT_CONFIGURATION" >&2
               exit 1
             fi
           fi
@@ -227,11 +310,56 @@ jobs:
             echo "SCREENSHOTS=$ios_ci_root/Screenshots"
           } >> "$GITHUB_ENV"
 
+      - name: Lint changed Swift sources
+        if: ${{ inputs.swift-format-lint }}
+        env:
+          SWIFT_FORMAT_CONFIGURATION: ${{ inputs.swift-format-configuration }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+
+          configuration="$GITHUB_WORKSPACE/$WORKING_DIRECTORY/$SWIFT_FORMAT_CONFIGURATION"
+          xcrun swift-format --version
+          xcrun swift-format dump-configuration \
+            --effective \
+            --configuration "$configuration" >/dev/null
+
+          swift_files=()
+          pathspec=":(glob)$WORKING_DIRECTORY/**/*.swift"
+          if git rev-parse --verify HEAD^1 >/dev/null 2>&1; then
+            while IFS= read -r -d '' file; do
+              swift_files+=("$file")
+            done < <(git diff-tree --no-commit-id --name-only --diff-filter=ACMR -r -z HEAD^1 HEAD -- "$pathspec")
+          else
+            while IFS= read -r -d '' file; do
+              swift_files+=("$file")
+            done < <(git ls-files -z -- "$pathspec")
+          fi
+
+          if [ "${#swift_files[@]}" -eq 0 ]; then
+            echo "No changed Swift sources to lint."
+            exit 0
+          fi
+
+          printf 'Linting %s changed Swift source(s).\n' "${#swift_files[@]}"
+          xcrun swift-format lint \
+            --configuration "$configuration" \
+            --parallel \
+            --strict \
+            "${swift_files[@]}"
+
       - name: Cache resolved Swift packages
         uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/ios-ci/SourcePackages
           key: swiftpm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-${{ hashFiles(format('{0}/**/Package.resolved', inputs.working-directory)) }}
+          # Without a prefix restore, bumping one dependency in Package.resolved
+          # misses the cache entirely and re-clones every package from scratch.
+          # A partial hit still leaves the unchanged checkouts in place, and
+          # -onlyUsePackageVersionsFromResolvedFile keeps the result exact.
+          restore-keys: |
+            swiftpm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-
 
       - name: Resolve locked Swift packages
         env:
@@ -271,6 +399,8 @@ jobs:
           DESTINATION: ${{ inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
+          MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
+          OPTIMIZE_TEST_BUILD: ${{ inputs.optimize-test-build }}
         run: |
           set -o pipefail
           args=(
@@ -285,9 +415,22 @@ jobs:
             -onlyUsePackageVersionsFromResolvedFile
             -disableAutomaticPackageResolution
             -parallel-testing-enabled "$PARALLEL_TESTING"
+            # Index-while-building exists to serve Xcode's editor. A CI runner
+            # has no editor and discards the store with the machine, so this is
+            # compiler work nothing ever reads.
+            COMPILER_INDEX_STORE_ENABLE=NO
           )
           if [ -n "$TEST_PLAN" ]; then
             args+=(-testPlan "$TEST_PLAN")
+          fi
+          if [ "$MAXIMUM_PARALLEL_TESTING_WORKERS" != "0" ]; then
+            args+=(-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS")
+          fi
+          if [ "$OPTIMIZE_TEST_BUILD" = "true" ]; then
+            # A command-line override beats whatever CONFIGURATION resolves to
+            # in the project file, and only reaches this invocation — a
+            # developer's own Debug build in Xcode never passes these.
+            args+=(SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule GCC_OPTIMIZATION_LEVEL=s)
           fi
           xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log"
 
@@ -300,20 +443,26 @@ jobs:
           SDK: ${{ inputs.sdk }}
           PLATFORM: ${{ inputs.platform }}
           DESTINATION: ${{ inputs.destination }}
+          OPTIMIZE_TEST_BUILD: ${{ inputs.optimize-test-build }}
         run: |
           set -o pipefail
-          xcodebuild build \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -configuration "$CONFIGURATION" \
-            -sdk "$SDK" \
-            -destination "platform=$PLATFORM,$DESTINATION" \
-            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
-            -derivedDataPath "$DERIVED_DATA" \
-            -resultBundlePath "$RESULTS/Build.xcresult" \
-            -onlyUsePackageVersionsFromResolvedFile \
-            -disableAutomaticPackageResolution \
-            2>&1 | tee "$LOGS/build.log"
+          args=(
+            -project "$PROJECT"
+            -scheme "$SCHEME"
+            -configuration "$CONFIGURATION"
+            -sdk "$SDK"
+            -destination "platform=$PLATFORM,$DESTINATION"
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
+            -derivedDataPath "$DERIVED_DATA"
+            -resultBundlePath "$RESULTS/Build.xcresult"
+            -onlyUsePackageVersionsFromResolvedFile
+            -disableAutomaticPackageResolution
+            COMPILER_INDEX_STORE_ENABLE=NO
+          )
+          if [ "$OPTIMIZE_TEST_BUILD" = "true" ]; then
+            args+=(SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule GCC_OPTIMIZATION_LEVEL=s)
+          fi
+          xcodebuild build "${args[@]}" 2>&1 | tee "$LOGS/build.log"
 
       - name: Run unit and UI tests
         if: ${{ inputs.run-tests }}
@@ -325,7 +474,10 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
           DESTINATION: ${{ inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
+          SKIP_TESTING: ${{ inputs.skip-testing }}
+          TEST_ITERATIONS: ${{ inputs.test-iterations }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
+          MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
           FIREBASE_EMULATORS: ${{ inputs.firebase-emulators }}
           FIREBASE_CONFIG: ${{ inputs.firebase-config }}
           FIREBASE_PROJECT: ${{ inputs.firebase-project }}
@@ -348,6 +500,21 @@ jobs:
           )
           if [ -n "$TEST_PLAN" ]; then
             args+=(-testPlan "$TEST_PLAN")
+          fi
+          if [ -n "$SKIP_TESTING" ]; then
+            while IFS= read -r identifier; do
+              [ -z "$identifier" ] && continue
+              args+=(-skip-testing:"$identifier")
+            done <<< "$SKIP_TESTING"
+          fi
+          if [ "$MAXIMUM_PARALLEL_TESTING_WORKERS" != "0" ]; then
+            args+=(-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS")
+          fi
+          # `-retry-tests-on-failure` re-runs only the tests that failed, so a
+          # flake costs seconds instead of the whole job. It does not weaken the
+          # gate: a test that fails every attempt still fails the run.
+          if [ "${TEST_ITERATIONS:-0}" != "0" ]; then
+            args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS")
           fi
           if [ "$FIREBASE_EMULATORS" = "true" ]; then
             printf -v test_command '%q ' xcodebuild test-without-building "${args[@]}"
