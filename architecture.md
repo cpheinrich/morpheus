@@ -1553,6 +1553,15 @@ and synced into the PR (§10.2).
 
 ### iOS: agents QA their own work
 
+**Local iOS testing: focused tests only.** Run tests covering the feature under development
+and directly affected features or shared dependencies. Do not run the full iOS test suite
+locally unless Chris explicitly requests it: CI runs the full suite and must pass before
+merge. Use the repository's build/test wrapper when available, with explicit test filters.
+In the PR test plan and worklog, record the actual focused commands and why that scope was
+selected. Continue adding or updating tests and performing relevant simulator/visual QA.
+
+The project scaffold includes this rule in `AGENTS.md` so future iOS projects inherit it.
+
 This works today with the standard Xcode toolchain and no special infrastructure — `xcodebuild` to
 build, `xcrun simctl` to boot/install/launch, **XCUITest** to drive the UI (the tests double as the
 QA script), `simctl io` to screenshot and record video, and Firebase App Distribution or TestFlight
