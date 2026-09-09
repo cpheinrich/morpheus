@@ -3036,6 +3036,14 @@ state store.
 
 `ios-nightly-build` requires caller-supplied project and scheme. Callers opting into
 `capture-every-night` run simulator tests even when the release change detector skips an upload.
+Callers should keep their 06:00 local trigger and add off-hour recovery triggers at 06:17,
+07:17, 08:17, and 09:17: GitHub cron can be delayed or dropped and is not an exact-time guarantee.
+Set `schedule-timezone` to the caller's IANA timezone. Morning retries reuse successful,
+unexpired screenshots only for the same source commit and local calendar day; changed iOS
+sources still build, failed runs retry, and manual forced builds always run. An explicit
+`ios-nightly-noop-<run>-<attempt>` artifact preserves the gallery on intentional skips rather
+than replacing it with missing images. This is bounded recovery, not an independent scheduler.
+
 Their separate `workflow_run` observer calls `ios-visual-qa` after the nightly finishes; the
 publisher is never a release dependency. It accepts only completed main schedule/manual runs from
 the same repository and exact workflow, reads `qa/ios-screens.json` at the tested SHA, and consumes
