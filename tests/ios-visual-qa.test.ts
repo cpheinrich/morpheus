@@ -1,9 +1,9 @@
 import {describe, it, expect, vi} from 'vitest';
 import {createRequire} from 'node:module';
-import {mkdtempSync, writeFileSync, symlinkSync, rmSync} from 'node:fs';
+import {readFileSync, mkdtempSync, writeFileSync, symlinkSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-const {validateRun, collectScreens, gallery, publish} = createRequire(import.meta.url)('../.github/scripts/ios-visual-qa.cjs');
+const {validateRun, collectScreens, gallery, prepare, publish} = createRequire(import.meta.url)('../.github/scripts/ios-visual-qa.cjs');
 const run = {id:42, run_attempt:1, run_number:9, head_sha:'a'.repeat(40), head_branch:'main', event:'schedule', path:'.github/workflows/ios-nightly-build.yml', status:'completed', conclusion:'success', updated_at:'2026-09-09T00:00:00Z', repository:{full_name:'owner/app'}, head_repository:{full_name:'owner/app'}};
 const inventory = {version:1, screens:[{id:'today', title:'Today <&>', attachment:'qa-today'}, {id:'profile',title:'Profile',attachment:'qa-profile'}]};
 function fixture() {
@@ -63,5 +63,24 @@ describe('nightly iOS visual QA',()=>{
       await publish({github,context:{repo:{owner:'owner',repo:'app'}},core,outputDirectory:root,attachmentDirectory:root});expect(core.notice).toHaveBeenCalled();
       github.paginate.mockResolvedValue([{body:'human work'}]);await expect(publish({github,context:{repo:{owner:'owner',repo:'app'}},core,outputDirectory:root,attachmentDirectory:root})).rejects.toThrow('unrelated');
     }finally{rmSync(root,{recursive:true});}
+  });
+});
+
+// A scheduled recovery no-op must not erase a complete gallery with 0/N images.
+describe('intentional nightly no-op', () => {
+  it('wires the skip signal into the publisher workflow', () => {
+    expect(readFileSync(new URL('../.github/workflows/ios-visual-qa.yml', import.meta.url), 'utf8')).toContain("if: steps.source.outputs.skip-publish != 'true'");
+  });
+  it.each([true, false])('skips only a successful no-op (success=%s)', async success => {
+    const root = fixture();
+    const getContent = vi.fn(async () => ({data: {content: Buffer.from(JSON.stringify(inventory)).toString('base64')}}));
+    const github = {rest: {actions: {getWorkflowRun: vi.fn(async () => ({data: {...run, conclusion: success ? 'success' : 'failure'}})), listWorkflowRunArtifacts: vi.fn()}, repos: {getContent}},
+      paginate: vi.fn(async () => [{name:'ios-nightly-noop-42-1', expired:false}])};
+    const core = {setOutput:vi.fn(), notice:vi.fn()};
+    try {
+      await prepare({github, context:{repo:{owner:'owner',repo:'app'}}, core, runId:'42', workflow:'ios-nightly-build.yml', manifestPath:'qa/ios-screens.json', outputDirectory:root});
+      if (success) {expect(core.setOutput).toHaveBeenCalledWith('skip-publish','true'); expect(getContent).not.toHaveBeenCalled();}
+      else {expect(core.setOutput).not.toHaveBeenCalledWith('skip-publish','true'); expect(getContent).toHaveBeenCalled();}
+    } finally {rmSync(root,{recursive:true});}
   });
 });

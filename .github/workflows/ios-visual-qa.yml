@@ -54,6 +54,7 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.run-id }}
       - name: Replace gallery and create or update draft PR
+        if: steps.source.outputs.skip-publish != 'true'
         uses: actions/github-script@v8
         with:
           script: |

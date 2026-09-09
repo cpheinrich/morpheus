@@ -105,6 +105,10 @@ on:
         description: Run simulator tests even without release changes so the visual QA observer gets fresh screenshots.
         type: boolean
         default: false
+      schedule-timezone:
+        description: IANA timezone used to deduplicate daily screenshots across scheduled retries.
+        type: string
+        default: UTC
       run-upload:
         description: >
           Run the upload job in this workflow. Cross-repository callers whose credentials are
@@ -175,6 +179,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       build: ${{ steps.decide.outputs.build }}
+      capture: ${{ steps.capture.outputs.capture }}
       baseline: ${{ steps.decide.outputs.baseline }}
       reason: ${{ steps.decide.outputs.reason }}
     steps:
@@ -273,6 +278,54 @@ jobs:
             echo "- Candidate: \`$CURRENT_SHA\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # GitHub cron is best-effort. Callers can add morning retry triggers; a
+      # completed capture of this exact source makes later retries inexpensive.
+      - name: Check for an existing capture today
+        id: capture
+        if: inputs.capture-every-night && steps.decide.outputs.build == 'false'
+        uses: actions/github-script@v8
+        env:
+          WORKFLOW_FILE: ${{ inputs.workflow-file }}
+          SCHEDULE_TIMEZONE: ${{ inputs.schedule-timezone }}
+        with:
+          script: |
+            const date = new Intl.DateTimeFormat('en-CA', {timeZone: process.env.SCHEDULE_TIMEZONE,
+              year: 'numeric', month: '2-digit', day: '2-digit'});
+            const today = date.format(new Date());
+            let capture = true;
+            try {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                ...context.repo, workflow_id: process.env.WORKFLOW_FILE, branch: 'main', status: 'success',
+                created: `>=${new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()}`, per_page: 100});
+              for (const run of runs) {
+                if (run.id === context.runId || run.head_sha !== context.sha ||
+                    !['schedule', 'workflow_dispatch'].includes(run.event) ||
+                    date.format(new Date(run.created_at)) !== today) continue;
+                const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
+                  {...context.repo, run_id: run.id, per_page: 100});
+                if (artifacts.some(a => a.name === `ios-screenshots-${run.id}-${run.run_attempt}` && !a.expired)) {
+                  capture = false;
+                  core.notice(`Today's screenshots for ${context.sha} already exist in run ${run.id}`);
+                  break;
+                }
+              }
+            } catch (error) {
+              core.warning(`Could not verify today's capture; capturing conservatively: ${error.message}`);
+            }
+            core.setOutput('capture', String(capture));
+
+      # The observer must distinguish an intentional no-op from a failed capture.
+      - name: Record intentional nightly no-op
+        if: steps.decide.outputs.build == 'false' && steps.capture.outputs.capture != 'true'
+        run: echo 'No release changes and no new capture required.' > "$RUNNER_TEMP/ios-nightly-noop.txt"
+      - uses: actions/upload-artifact@v7
+        if: steps.decide.outputs.build == 'false' && steps.capture.outputs.capture != 'true'
+        with:
+          name: ios-nightly-noop-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ios-nightly-noop.txt
+          retention-days: 7
+          if-no-files-found: error
+
   preflight:
     name: Verify release source
     needs: changes
@@ -282,7 +335,7 @@ jobs:
   test:
     name: Test before release
     needs: changes
-    if: ${{ needs.changes.outputs.build == 'true' || inputs.capture-every-night }}
+    if: ${{ needs.changes.outputs.build == 'true' || needs.changes.outputs.capture == 'true' }}
     uses: cpheinrich/morpheus/.github/workflows/ios-ci.yml@main
     with:
       runner: ${{ inputs.runner }}
