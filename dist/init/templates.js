@@ -847,6 +847,15 @@ the same check and will fail otherwise.
 **Append a worklog entry** to \`.agent/worklog/YYYY-MM-DD-slug.md\`. Record dead ends especially —
 git history cannot hold work that produced no code, and that is the expensive knowledge.
 
+## iOS testing
+
+**Local iOS testing: focused tests only.** Run tests covering the feature under development
+and directly affected features or shared dependencies. Do not run the full iOS test suite
+locally unless Chris explicitly requests it: CI runs the full suite and must pass before
+merge. Use the repository's build/test wrapper when available, with explicit test filters.
+In the PR test plan and worklog, record the actual focused commands and why that scope was
+selected. Continue adding or updating tests and performing relevant simulator/visual QA.
+
 ## Branch protection
 
 \`main\` is protected. **Never push to \`main\`** — work on a branch, open a PR, and merge it
