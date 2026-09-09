@@ -92,6 +92,11 @@ async function publish({github, context, core, outputDirectory, attachmentDirect
       (Number(previous[3]) === run.run_number && Number(previous[2]) > run.run_attempt))) {
     core.notice('A newer nightly capture is already published'); return;
   }
+  // Restore review-only state before changing the branch, avoiding an auto-merge race.
+  if (pr) {
+    if (!pr.draft) await github.graphql('mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){pullRequest{id}}}', {id:pr.node_id});
+    if (pr.auto_merge) await github.graphql('mutation($id:ID!){disablePullRequestAutoMerge(input:{pullRequestId:$id}){pullRequest{id}}}', {id:pr.node_id});
+  }
   const screens = collectScreens(inventory, attachmentDirectory);
   const {data: base} = await github.rest.git.getRef({...params, ref:'heads/main'});
   const {data: baseCommit} = await github.rest.git.getCommit({...params, commit_sha:base.object.sha});
@@ -117,8 +122,6 @@ async function publish({github, context, core, outputDirectory, attachmentDirect
   const body = gallery(screens, repository, commit.sha, run);
   let result;
   if (pr) {
-    if (!pr.draft) await github.graphql('mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){pullRequest{id}}}', {id:pr.node_id});
-    if (pr.auto_merge) await github.graphql('mutation($id:ID!){disablePullRequestAutoMerge(input:{pullRequestId:$id}){pullRequest{id}}}', {id:pr.node_id});
     result = await github.rest.pulls.update({...params, pull_number:pr.number, title:'WIP: Nightly iOS visual QA', body});
   } else result = await github.rest.pulls.create({...params, head:BRANCH, base:'main', draft:true, title:'WIP: Nightly iOS visual QA', body});
   core.setOutput('pull-request-url', result.data.html_url);
