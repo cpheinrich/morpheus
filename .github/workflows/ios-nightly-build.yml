@@ -52,11 +52,11 @@ on:
       project:
         description: Xcode project path, relative to working-directory.
         type: string
-        default: "Evo.xcodeproj"
+        required: true
       scheme:
         description: Shared scheme tested and archived for release.
         type: string
-        default: "Evo"
+        required: true
       destination:
         description: Simulator destination qualifiers appended after platform.
         type: string
@@ -101,6 +101,10 @@ on:
         description: Optional caller-repository script run immediately before tests.
         type: string
         default: ""
+      capture-every-night:
+        description: Run simulator tests even without release changes so the visual QA observer gets fresh screenshots.
+        type: boolean
+        default: false
       run-upload:
         description: >
           Run the upload job in this workflow. Cross-repository callers whose credentials are
@@ -278,7 +282,7 @@ jobs:
   test:
     name: Test before release
     needs: changes
-    if: ${{ needs.changes.outputs.build == 'true' }}
+    if: ${{ needs.changes.outputs.build == 'true' || inputs.capture-every-night }}
     uses: cpheinrich/morpheus/.github/workflows/ios-ci.yml@main
     with:
       runner: ${{ inputs.runner }}

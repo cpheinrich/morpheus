@@ -1398,6 +1398,10 @@ describe("ios-nightly-build.yml", () => {
     expect(call?.inputs?.["workflow-file"]?.required).toBe(true);
     expect(call?.inputs?.["watch-paths"]?.required).toBe(true);
     expect(call?.inputs?.["force-build"]?.default).toBe(false);
+    expect(call?.inputs?.project?.required).toBe(true);
+    expect(call?.inputs?.scheme?.required).toBe(true);
+    expect(call?.inputs?.["capture-every-night"]?.default).toBe(false);
+    expect(wf.jobs?.test?.if).toContain("inputs.capture-every-night");
     // Release identity feeds only this workflow's own upload job. A
     // cross-repository caller must own that job, so it configures the
     // ios-testflight-upload action instead and states its identifiers once.

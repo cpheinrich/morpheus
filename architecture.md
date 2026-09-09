@@ -3028,10 +3028,32 @@ caller-owned upload script receives it. The built-in upload path installs `asccl
 derive a build number from GitHub metadata; the caller's upload script must allocate against App Store
 Connect so manual and automated uploads share one sequence. Scheduled runs compare
 those paths from the caller workflow's latest successful upload to the current `main` SHA; an empty
-diff reports the skip from a Linux job and provisions no macOS runner. A missing, unavailable, or
+diff reports the release skip from a Linux job and provisions no release runner (the optional
+visual capture still runs simulator tests). A missing, unavailable, or
 non-ancestor baseline builds conservatively. Manual callers may force a build. Keeping the caller
 workflow filename stable makes its successful runs the durable release cursor without a second
 state store.
+
+`ios-nightly-build` requires caller-supplied project and scheme. Callers opting into
+`capture-every-night` run simulator tests even when the release change detector skips an upload.
+Their separate `workflow_run` observer calls `ios-visual-qa` after the nightly finishes; the
+publisher is never a release dependency. It accepts only completed main schedule/manual runs from
+the same repository and exact workflow, reads `qa/ios-screens.json` at the tested SHA, and consumes
+only explicitly named full-screen PNG attachments from that exact run and attempt. Caller code is
+never executed in the write-permission publisher.
+
+The publisher replaces one `nightly-ios-visual-qa` draft PR with a labeled two-column gallery,
+source SHA, run link, and captured/expected count. Missing screens are visible and never filled
+from an older run. Each refresh is one screenshot-only commit above current main; images use
+immutable commit URLs, while the current PR discussion survives. The branch is reserved for this
+publisher, auto-merge stays disabled, and the PR must not be merged. Repository settings must allow
+GitHub Actions to create PRs; caller observers grant contents/pull-requests write and actions read.
+Apps own the version-1 screen inventory (`id`, `title`, `attachment`) and synthetic XCTest fixtures;
+new full-screen destinations require both an inventory entry and a named capture. Modals and
+external websites are optional. Failed nightly runs still publish available evidence and an
+explicit incomplete status. A manual observer dispatch can retry a completed run without uploading
+another build. The fixed publisher concurrency group and run-number guard prevent older runs from
+replacing newer galleries.
 
 `ios-testflight-upload` is the one *action* Morpheus ships, and the reason it is an action is the
 same constraint that shapes `ios-nightly-build`: a cross-repository reusable workflow receives none

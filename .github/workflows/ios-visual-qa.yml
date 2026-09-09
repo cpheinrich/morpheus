@@ -1,0 +1,62 @@
+name: Publish nightly iOS visual QA
+
+# Called by a separate workflow_run observer: publishing never gates a release.
+on:
+  workflow_call:
+    inputs:
+      run-id:
+        type: string
+        required: true
+      workflow-file:
+        type: string
+        default: ios-nightly-build.yml
+      manifest-path:
+        type: string
+        default: qa/ios-screens.json
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: nightly-ios-visual-qa-publisher
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: cpheinrich/morpheus
+          ref: main
+          persist-credentials: false
+      - name: Validate source and select exact-run artifact
+        id: source
+        uses: actions/github-script@v8
+        env:
+          SOURCE_RUN: ${{ inputs.run-id }}
+          SOURCE_WORKFLOW: ${{ inputs.workflow-file }}
+          MANIFEST_PATH: ${{ inputs.manifest-path }}
+        with:
+          script: |
+            const {prepare} = require('./.github/scripts/ios-visual-qa.cjs');
+            await prepare({github, context, core, runId:process.env.SOURCE_RUN,
+              workflow:process.env.SOURCE_WORKFLOW, manifestPath:process.env.MANIFEST_PATH,
+              outputDirectory:`${process.env.RUNNER_TEMP}/visual-qa`});
+      - uses: actions/download-artifact@v8
+        if: steps.source.outputs.artifact-id != ''
+        with:
+          artifact-ids: ${{ steps.source.outputs.artifact-id }}
+          path: ${{ runner.temp }}/visual-qa/attachments
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run-id }}
+      - name: Replace gallery and create or update draft PR
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const {publish} = require('./.github/scripts/ios-visual-qa.cjs');
+            await publish({github, context, core, outputDirectory:`${process.env.RUNNER_TEMP}/visual-qa`,
+              attachmentDirectory:`${process.env.RUNNER_TEMP}/visual-qa/attachments`});
