@@ -394,6 +394,20 @@ if [[ "$PROFILE_EXPIRATION_EPOCH" -le "$(date '+%s')" ]]; then
   exit 1
 fi
 
+# Install the issuer before the leaf/private-key pair. Security.framework can
+# cache an imported identity as unusable when its chain is incomplete at the
+# instant the identity is created; adding the intermediate afterward makes an
+# explicit trust check pass but does not make `find-identity` or Xcode's
+# exporter rediscover it on a headless account.
+if [[ ! -f "$APPLE_WWDR_G3_CERTIFICATE_PATH" ]]; then
+  echo "The selected Xcode does not contain the Apple WWDR G3 intermediate certificate." >&2
+  exit 1
+fi
+security import "$APPLE_WWDR_G3_CERTIFICATE_PATH" \
+  -k "$SIGNING_KEYCHAIN_PATH" \
+  -T /usr/bin/codesign \
+  -T /usr/bin/security >/dev/null
+
 # OpenSSL 3's default PBES2 PKCS#12 envelope is what the GitHub secret holds.
 # Apple's Keychain importer requires the legacy-compatible envelope, so re-wrap
 # it only inside this ephemeral, mode-0600 directory. The temporary unencrypted
@@ -425,21 +439,6 @@ security set-key-partition-list \
   -k "$SIGNING_KEYCHAIN_PASSWORD" \
   "$SIGNING_KEYCHAIN_PATH" >/dev/null
 unset SIGNING_KEYCHAIN_PASSWORD
-
-# Xcode normally installs Apple's intermediate certificates into the logged-in
-# user's keychain. A headless runner has no login keychain, so the imported
-# distribution certificate exists as an identity but `find-identity -p
-# codesigning` rejects it because it cannot build the chain to Apple's root.
-# Import the G3 intermediate bundled with the exact selected Xcode into the
-# ephemeral release keychain instead of mutating persistent machine state.
-if [[ ! -f "$APPLE_WWDR_G3_CERTIFICATE_PATH" ]]; then
-  echo "The selected Xcode does not contain the Apple WWDR G3 intermediate certificate." >&2
-  exit 1
-fi
-security import "$APPLE_WWDR_G3_CERTIFICATE_PATH" \
-  -k "$SIGNING_KEYCHAIN_PATH" \
-  -T /usr/bin/codesign \
-  -T /usr/bin/security >/dev/null
 
 security list-keychains -d user -s "$SIGNING_KEYCHAIN_PATH" "${original_keychains[@]}"
 security default-keychain -d user -s "$SIGNING_KEYCHAIN_PATH"
