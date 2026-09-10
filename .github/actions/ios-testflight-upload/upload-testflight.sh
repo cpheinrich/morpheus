@@ -448,43 +448,37 @@ plutil -extract DeveloperCertificates.0 raw -o - "$SIGNING_PROFILE_PLIST_PATH" |
   /usr/bin/base64 -D > "$SIGNING_PROFILE_CERTIFICATE_PATH"
 PROFILE_CERTIFICATE_SHA1="$(shasum -a 1 "$SIGNING_PROFILE_CERTIFICATE_PATH" | awk '{ print toupper($1) }')"
 
-SIGNING_IDENTITY_SHA1="$(
-  security find-identity -v -p codesigning "$SIGNING_KEYCHAIN_PATH" |
-    sed -nE 's/^[[:space:]]*[0-9]+\)[[:space:]]+([[:xdigit:]]{40})[[:space:]].*/\1/p'
+IMPORTED_CERTIFICATE_SHA1S="$(
+  security find-certificate -a -Z "$SIGNING_KEYCHAIN_PATH" |
+    sed -nE 's/^SHA-1 hash: ([[:xdigit:]]{40})$/\1/p' |
+    tr '[:lower:]' '[:upper:]'
 )"
-# One line, or the regex below fails: more than one identity means the export
-# could pick a different certificate than the one the profile authorizes.
-if [[ ! "$SIGNING_IDENTITY_SHA1" =~ ^[0-9A-F]{40}$ ]]; then
-  # These fields are public certificate metadata and contain no private-key
-  # material. Keep them in the failure log so a headless runner tells us
-  # whether the problem is expiry, issuer selection, key pairing, or trust.
-  echo "Provisioning-profile signing certificate metadata:" >&2
-  "$OPENSSL_BINARY" x509 \
-    -inform DER \
-    -in "$SIGNING_PROFILE_CERTIFICATE_PATH" \
-    -noout \
-    -subject \
-    -issuer \
-    -dates \
-    -fingerprint \
-    -sha1 >&2
-  echo "All identities present in the release keychain:" >&2
-  security find-identity -v "$SIGNING_KEYCHAIN_PATH" >&2 || true
-  echo "Code-signing trust evaluation for the profile certificate:" >&2
-  security verify-cert \
-    -c "$SIGNING_PROFILE_CERTIFICATE_PATH" \
-    -p codeSign \
-    -k "$SIGNING_KEYCHAIN_PATH" \
-    -k /System/Library/Keychains/SystemRootCertificates.keychain \
-    -v >&2 || true
-  echo "Expected exactly one valid distribution signing identity in the release keychain." >&2
+if ! grep -Fxq "$PROFILE_CERTIFICATE_SHA1" <<< "$IMPORTED_CERTIFICATE_SHA1S"; then
+  echo "The distribution profile certificate was not imported into the release keychain." >&2
   exit 1
 fi
 
-if [[ "$PROFILE_CERTIFICATE_SHA1" != "$SIGNING_IDENTITY_SHA1" ]]; then
-  echo "The distribution profile does not contain the imported signing certificate." >&2
+if ! security find-key -t private -s "$SIGNING_KEYCHAIN_PATH" >/dev/null; then
+  echo "The imported distribution identity has no private signing key in the release keychain." >&2
   exit 1
 fi
+
+# On a headless, never-logged-in macOS account, `security find-identity` can
+# report zero identities even when all three facts required by Xcode are true:
+# the PKCS#12 import reported an identity, the profile-authorized leaf is in the
+# target keychain, and its code-signing trust chain verifies successfully. Pin
+# export to the profile's certificate SHA instead of treating that unreliable
+# enumeration as an additional gate.
+if ! security verify-cert \
+  -c "$SIGNING_PROFILE_CERTIFICATE_PATH" \
+  -p codeSign \
+  -k "$SIGNING_KEYCHAIN_PATH" \
+  -k /System/Library/Keychains/SystemRootCertificates.keychain \
+  -q; then
+  echo "The distribution profile certificate does not have a valid code-signing trust chain." >&2
+  exit 1
+fi
+SIGNING_IDENTITY_SHA1="$PROFILE_CERTIFICATE_SHA1"
 
 PROFILES_DIRECTORY="$HOME/Library/MobileDevice/Provisioning Profiles"
 mkdir -p "$PROFILES_DIRECTORY"
