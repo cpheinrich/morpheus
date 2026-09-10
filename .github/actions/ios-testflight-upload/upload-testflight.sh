@@ -351,7 +351,16 @@ json_value() {
   printf '%s' "$1" | plutil -extract "$2" raw -o - - 2>/dev/null
 }
 
-if ! security cms -D -i "$SIGNING_PROFILE_PATH" > "$SIGNING_PROFILE_PLIST_PATH"; then
+# The release keychain is created before the profile is read because
+# `security cms -D` imports the profile's signer certificates into a keychain
+# to verify the CMS signature, and without -k it uses the runner user's
+# default one. A headless self-hosted runner whose user has never logged in
+# has no login keychain, so that default is the read-only System keychain and
+# the decode fails with "cert import failed: Write permissions error" before
+# any of the release's own signing state exists. Passing this ephemeral,
+# unlocked keychain makes the decode independent of the runner's keychain
+# state, and cleanup deletes it either way.
+if ! security cms -D -k "$SIGNING_KEYCHAIN_PATH" -i "$SIGNING_PROFILE_PATH" > "$SIGNING_PROFILE_PLIST_PATH"; then
   echo "The decoded distribution profile is not a valid provisioning profile." >&2
   exit 1
 fi
@@ -378,11 +387,6 @@ if [[ "$PROFILE_EXPIRATION_EPOCH" -le "$(date '+%s')" ]]; then
   echo "The distribution profile has expired." >&2
   exit 1
 fi
-
-SIGNING_KEYCHAIN_PASSWORD="$($OPENSSL_BINARY rand -hex 32)"
-security create-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN_PATH"
-security set-keychain-settings -lut 21600 "$SIGNING_KEYCHAIN_PATH"
-security unlock-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN_PATH"
 
 # OpenSSL 3's default PBES2 PKCS#12 envelope is what the GitHub secret holds.
 # Apple's Keychain importer requires the legacy-compatible envelope, so re-wrap
