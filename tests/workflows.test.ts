@@ -1810,6 +1810,10 @@ describe("ios-testflight-upload action", () => {
     expect(raw).toContain(
       "Expected exactly one valid distribution signing identity in the release keychain.",
     );
+    expect(raw).toContain("Provisioning-profile signing certificate metadata:");
+    expect(raw).toContain("All identities present in the release keychain:");
+    expect(raw).toContain("Code-signing trust evaluation for the profile certificate:");
+    expect(raw).not.toContain('cat "$SIGNING_PROFILE_CERTIFICATE_PATH"');
     // The caller's own assertions see the app, and none of the credentials.
     expect(raw).toContain('run_without_release_secrets "$VALIDATE_APP_SCRIPT_PATH"');
   });

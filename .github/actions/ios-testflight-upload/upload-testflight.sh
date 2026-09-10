@@ -444,6 +444,10 @@ security import "$APPLE_WWDR_G3_CERTIFICATE_PATH" \
 security list-keychains -d user -s "$SIGNING_KEYCHAIN_PATH" "${original_keychains[@]}"
 security default-keychain -d user -s "$SIGNING_KEYCHAIN_PATH"
 
+plutil -extract DeveloperCertificates.0 raw -o - "$SIGNING_PROFILE_PLIST_PATH" |
+  /usr/bin/base64 -D > "$SIGNING_PROFILE_CERTIFICATE_PATH"
+PROFILE_CERTIFICATE_SHA1="$(shasum -a 1 "$SIGNING_PROFILE_CERTIFICATE_PATH" | awk '{ print toupper($1) }')"
+
 SIGNING_IDENTITY_SHA1="$(
   security find-identity -v -p codesigning "$SIGNING_KEYCHAIN_PATH" |
     sed -nE 's/^[[:space:]]*[0-9]+\)[[:space:]]+([[:xdigit:]]{40})[[:space:]].*/\1/p'
@@ -451,13 +455,32 @@ SIGNING_IDENTITY_SHA1="$(
 # One line, or the regex below fails: more than one identity means the export
 # could pick a different certificate than the one the profile authorizes.
 if [[ ! "$SIGNING_IDENTITY_SHA1" =~ ^[0-9A-F]{40}$ ]]; then
+  # These fields are public certificate metadata and contain no private-key
+  # material. Keep them in the failure log so a headless runner tells us
+  # whether the problem is expiry, issuer selection, key pairing, or trust.
+  echo "Provisioning-profile signing certificate metadata:" >&2
+  "$OPENSSL_BINARY" x509 \
+    -inform DER \
+    -in "$SIGNING_PROFILE_CERTIFICATE_PATH" \
+    -noout \
+    -subject \
+    -issuer \
+    -dates \
+    -fingerprint \
+    -sha1 >&2
+  echo "All identities present in the release keychain:" >&2
+  security find-identity -v "$SIGNING_KEYCHAIN_PATH" >&2 || true
+  echo "Code-signing trust evaluation for the profile certificate:" >&2
+  security verify-cert \
+    -c "$SIGNING_PROFILE_CERTIFICATE_PATH" \
+    -p codeSign \
+    -k "$SIGNING_KEYCHAIN_PATH" \
+    -k /System/Library/Keychains/SystemRootCertificates.keychain \
+    -v >&2 || true
   echo "Expected exactly one valid distribution signing identity in the release keychain." >&2
   exit 1
 fi
 
-plutil -extract DeveloperCertificates.0 raw -o - "$SIGNING_PROFILE_PLIST_PATH" |
-  /usr/bin/base64 -D > "$SIGNING_PROFILE_CERTIFICATE_PATH"
-PROFILE_CERTIFICATE_SHA1="$(shasum -a 1 "$SIGNING_PROFILE_CERTIFICATE_PATH" | awk '{ print toupper($1) }')"
 if [[ "$PROFILE_CERTIFICATE_SHA1" != "$SIGNING_IDENTITY_SHA1" ]]; then
   echo "The distribution profile does not contain the imported signing certificate." >&2
   exit 1
