@@ -1797,6 +1797,9 @@ describe("ios-testflight-upload action", () => {
     );
     expect(raw).toContain("AppleWWDRCA-2030.cer");
     expect(raw.indexOf('security import "$APPLE_WWDR_G3_CERTIFICATE_PATH"')).toBeLessThan(
+      raw.indexOf('security import "$SIGNING_COMPATIBLE_CERTIFICATE_PATH"'),
+    );
+    expect(raw.indexOf('security import "$APPLE_WWDR_G3_CERTIFICATE_PATH"')).toBeLessThan(
       raw.indexOf("security verify-cert"),
     );
     expect(raw).toContain(
