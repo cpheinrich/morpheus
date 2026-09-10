@@ -478,7 +478,7 @@ describe("agent-review.yml", () => {
     };
 
     expect(called.on?.workflow_call?.inputs?.enabled).toEqual(
-      expect.objectContaining({ type: "boolean", default: true }),
+      expect.objectContaining({ type: "boolean", default: false }),
     );
     expect(called.jobs?.review?.if).toContain("inputs.enabled");
     expect(called.jobs?.delivery?.if).toContain("inputs.enabled");
@@ -2389,5 +2389,22 @@ describe("beta app review submission", () => {
     const body = script.split("<<'PYTHON'\n")[1]?.split("\nPYTHON")[0] ?? "";
     expect(body.length).toBeGreaterThan(0);
     expect(body).not.toMatch(/'/);
+  });
+});
+
+describe("local review metadata", () => {
+  it("reruns only conventions without replacing build/test statuses", async () => {
+    const wf = await read("review-metadata.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses: string }> };
+    expect(wf.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
+    expect(Object.keys(wf.jobs)).toEqual(["pr"]);
+    expect(wf.jobs.pr?.uses).toContain("pr-check.yml");
+  });
+  it("checks live PR metadata and rejects a superseded head", async () => {
+    const wf = await read("pr-check.yml") as { jobs: { conventions: { steps: Array<{ name?: string; run?: string }> } } };
+    const run = wf.jobs.conventions.steps.find(s => s.name === "Check PR conventions")?.run ?? "";
+    expect(run).toContain('gh api "repos/$REPOSITORY/pulls/$PR_NUMBER"');
+    expect(run).toContain('.head.sha == $sha');
+    expect(run).toContain('GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json"');
+    expect(run).toContain('--base "origin/$BASE_REF"');
   });
 });
