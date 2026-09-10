@@ -236,6 +236,7 @@ SIGNING_PROFILE_PATH="$RELEASE_TEMP_DIRECTORY/distribution.mobileprovision"
 SIGNING_PROFILE_PLIST_PATH="$RELEASE_TEMP_DIRECTORY/distribution.plist"
 SIGNING_PROFILE_CERTIFICATE_PATH="$RELEASE_TEMP_DIRECTORY/distribution.cer"
 SIGNING_KEYCHAIN_PATH="$RELEASE_TEMP_DIRECTORY/release-signing.keychain-db"
+APPLE_WWDR_G3_CERTIFICATE_PATH="$DEVELOPER_DIR/../SharedFrameworks/DVTFoundation.framework/Versions/A/Resources/AppleWWDRCA-2030.cer"
 EXPORTED_ENTITLEMENTS_PATH="$RELEASE_TEMP_DIRECTORY/exported-entitlements.plist"
 EXPORT_DIRECTORY="$RELEASE_TEMP_DIRECTORY/export"
 IPA_CONTENTS_PATH="$RELEASE_TEMP_DIRECTORY/ipa-contents"
@@ -424,6 +425,21 @@ security set-key-partition-list \
   -k "$SIGNING_KEYCHAIN_PASSWORD" \
   "$SIGNING_KEYCHAIN_PATH" >/dev/null
 unset SIGNING_KEYCHAIN_PASSWORD
+
+# Xcode normally installs Apple's intermediate certificates into the logged-in
+# user's keychain. A headless runner has no login keychain, so the imported
+# distribution certificate exists as an identity but `find-identity -p
+# codesigning` rejects it because it cannot build the chain to Apple's root.
+# Import the G3 intermediate bundled with the exact selected Xcode into the
+# ephemeral release keychain instead of mutating persistent machine state.
+if [[ ! -f "$APPLE_WWDR_G3_CERTIFICATE_PATH" ]]; then
+  echo "The selected Xcode does not contain the Apple WWDR G3 intermediate certificate." >&2
+  exit 1
+fi
+security import "$APPLE_WWDR_G3_CERTIFICATE_PATH" \
+  -k "$SIGNING_KEYCHAIN_PATH" \
+  -T /usr/bin/codesign \
+  -T /usr/bin/security >/dev/null
 
 security list-keychains -d user -s "$SIGNING_KEYCHAIN_PATH" "${original_keychains[@]}"
 security default-keychain -d user -s "$SIGNING_KEYCHAIN_PATH"

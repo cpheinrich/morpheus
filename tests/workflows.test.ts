@@ -1795,6 +1795,13 @@ describe("ios-testflight-upload action", () => {
     expect(raw.indexOf("security create-keychain")).toBeLessThan(
       raw.indexOf('security cms -D -k "$SIGNING_KEYCHAIN_PATH"'),
     );
+    expect(raw).toContain("AppleWWDRCA-2030.cer");
+    expect(raw.indexOf('security import "$APPLE_WWDR_G3_CERTIFICATE_PATH"')).toBeLessThan(
+      raw.indexOf("security find-identity -v -p codesigning"),
+    );
+    expect(raw).toContain(
+      "The selected Xcode does not contain the Apple WWDR G3 intermediate certificate.",
+    );
     expect(raw).toContain("unset ASC_API_KEY_P8_BASE64 IOS_DISTRIBUTION_P12_BASE64");
     expect(raw).toContain("unset IOS_DISTRIBUTION_P12_PASSWORD");
     expect(raw).toContain("unset SIGNING_KEYCHAIN_PASSWORD");
