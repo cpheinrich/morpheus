@@ -235,7 +235,12 @@ SIGNING_COMPATIBLE_CERTIFICATE_PATH="$RELEASE_TEMP_DIRECTORY/distribution-compat
 SIGNING_PROFILE_PATH="$RELEASE_TEMP_DIRECTORY/distribution.mobileprovision"
 SIGNING_PROFILE_PLIST_PATH="$RELEASE_TEMP_DIRECTORY/distribution.plist"
 SIGNING_PROFILE_CERTIFICATE_PATH="$RELEASE_TEMP_DIRECTORY/distribution.cer"
-SIGNING_KEYCHAIN_PATH="$RELEASE_TEMP_DIRECTORY/release-signing.keychain-db"
+# macOS Tahoe 26 does not consistently surface identities from keychains below
+# an Actions runner's temporary directory to Xcode's exporter. Put the isolated
+# keychain in the runner user's real keychain domain, while retaining a unique
+# job name and deleting it on every exit path.
+SIGNING_KEYCHAIN_DIRECTORY="$HOME/Library/Keychains"
+SIGNING_KEYCHAIN_PATH="$SIGNING_KEYCHAIN_DIRECTORY/morpheus-release-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-0}.keychain-db"
 APPLE_WWDR_G3_CERTIFICATE_PATH="$DEVELOPER_DIR/../SharedFrameworks/DVTFoundation.framework/Versions/A/Resources/AppleWWDRCA-2030.cer"
 EXPORTED_ENTITLEMENTS_PATH="$RELEASE_TEMP_DIRECTORY/exported-entitlements.plist"
 EXPORT_DIRECTORY="$RELEASE_TEMP_DIRECTORY/export"
@@ -301,6 +306,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 SIGNING_KEYCHAIN_PASSWORD="$($OPENSSL_BINARY rand -hex 32)"
+mkdir -p "$SIGNING_KEYCHAIN_DIRECTORY"
 security create-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN_PATH"
 security set-keychain-settings -lut 21600 "$SIGNING_KEYCHAIN_PATH"
 security unlock-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN_PATH"
