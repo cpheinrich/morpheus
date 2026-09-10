@@ -299,6 +299,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+SIGNING_KEYCHAIN_PASSWORD="$($OPENSSL_BINARY rand -hex 32)"
+security create-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN_PATH"
+security set-keychain-settings -lut 21600 "$SIGNING_KEYCHAIN_PATH"
+security unlock-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN_PATH"
+
 # A project whose Firebase client configuration is not checked in receives it
 # here, from a secret, for the duration of the archive only. Whether it is the
 # *right* configuration is the caller's assertion to make, against the archived

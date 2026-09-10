@@ -1792,6 +1792,9 @@ describe("ios-testflight-upload action", () => {
     expect(raw).toContain("security default-keychain -d user -s \"$ORIGINAL_DEFAULT_KEYCHAIN\"");
     expect(raw).toContain('security list-keychains -d user -s "${original_keychains[@]}"');
     expect(raw).toContain("security delete-keychain");
+    expect(raw.indexOf("security create-keychain")).toBeLessThan(
+      raw.indexOf('security cms -D -k "$SIGNING_KEYCHAIN_PATH"'),
+    );
     expect(raw).toContain("unset ASC_API_KEY_P8_BASE64 IOS_DISTRIBUTION_P12_BASE64");
     expect(raw).toContain("unset IOS_DISTRIBUTION_P12_PASSWORD");
     expect(raw).toContain("unset SIGNING_KEYCHAIN_PASSWORD");
