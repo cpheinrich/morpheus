@@ -1,4 +1,5 @@
-import { access, readFile } from "node:fs/promises";
+import { accessible as exists, readJson } from "../file-io.js";
+import { readFile } from "node:fs/promises";
 import type { FirebaseFacts } from "./templates.js";
 import { join } from "node:path";
 
@@ -74,23 +75,6 @@ export interface WebSurvey {
    * Cheap to get right, and invisible if you do not look.
    */
   trailingSlash: boolean;
-}
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function readJson<T>(path: string): Promise<T | null> {
-  try {
-    return JSON.parse(await readFile(path, "utf8")) as T;
-  } catch {
-    return null;
-  }
 }
 
 /**

@@ -828,6 +828,11 @@ references that survived selection, `imagery.json` identifies approved art and s
 red when a package has a token set but no approved imagery or no image-to-surface mapping. This is
 the guard against a carefully reviewed direction turning into a neutral first home page.
 
+**Third-party GitHub Actions use immutable commit SHAs** — 2026-08-28. Human-readable comments keep
+the upstream major visible. Morpheus-owned reusable workflows remain on the established `@main`
+contract so consuming repositories receive fixes without coordinated version bumps; external tags
+do not receive that trust.
+
 **Front-end visual evidence is a declared path contract, default-on per repository** — 2026-09-01.
 `review.visualEvidence` in `morpheus.json` owns the include/exclude globs. A matching change blocks
 without a recording or screenshot at either GitHub's attachment service or an exact public HTTPS
@@ -861,3 +866,10 @@ follow-up for substantive findings. Worklog evidence and a PR label are enforced
 conventions. No model call per push. Unresolved substantive disagreements remain open for human
 judgment. Use existing Zod, JSON and native Git for this Morpheus-specific evidence protocol; no
 new orchestration or parsing dependency is needed. See the independent-review runbook.
+
+**Keep the current CLI grammar while splitting its implementation** — 2026-09-10.
+Commander 15.0.0 was considered (maintained, no runtime dependencies). Adopting it would
+change permissive unknown-option, missing-value and repeated-value behavior. This audit
+remediation therefore keeps the small domain-specific argument contract and uses native
+Node filesystem primitives for the existing shared helper contracts. A grammar change
+should be deliberate user-facing work, not a side effect of cleanup.
