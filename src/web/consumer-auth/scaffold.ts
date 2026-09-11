@@ -1,4 +1,5 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { accessible as exists } from "../../file-io.js";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 import type { WebSurvey } from "../survey.js";
 import { firestoreValue, waitlistThrottle } from "../templates.js";
@@ -103,15 +104,6 @@ const CHECK_EXEMPT = new Set(["lib/email/send.ts", "lib/email/templates.ts"]);
 function checkExempt(survey: WebSurvey, path: string): boolean {
   const prefix = survey.webRoot === "." ? "" : `${survey.webRoot}/`;
   return [...CHECK_EXEMPT].some((rel) => path === `${prefix}${rel}`);
-}
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**

@@ -1,3 +1,4 @@
+import { markdownTable } from "../markdown.js";
 import type { Beat } from "./assess.js";
 
 /**
@@ -82,14 +83,6 @@ export function formatBeat(beat: Beat): string {
   return lines.join("\n").trimEnd();
 }
 
-function table(headers: string[], rows: string[][]): string {
-  return [
-    `| ${headers.join(" | ")} |`,
-    `|${headers.map(() => "---").join("|")}|`,
-    ...rows.map((r) => `| ${r.join(" | ")} |`),
-  ].join("\n");
-}
-
 /** The GitHub Actions job summary — the durable record of a scheduled beat. */
 export function formatSummary(beat: Beat): string {
   const out: string[] = ["## Heartbeat", ""];
@@ -109,7 +102,7 @@ export function formatSummary(beat: Beat): string {
     out.push(
       "### Blocked — waiting on a person",
       "",
-      table(
+      markdownTable(
         ["ID", "Waiting", "Needs"],
         beat.blocked.map((b) => [b.id, `${b.age}d`, b.needs.replace(/\|/g, "\\|")]),
       ),
@@ -123,7 +116,7 @@ export function formatSummary(beat: Beat): string {
       "",
       "These branches do not occupy dispatch lanes, but still block a claim with the same id.",
       "",
-      table(
+      markdownTable(
         ["ID", "Branch"],
         beat.staleClaims.map((claim) => [claim.id, claim.branch]),
       ),
@@ -135,7 +128,7 @@ export function formatSummary(beat: Beat): string {
     out.push(
       "### Drift",
       "",
-      table(["ID", "Problem"], beat.drift.map((d) => [d.id, d.why])),
+      markdownTable(["ID", "Problem"], beat.drift.map((d) => [d.id, d.why])),
       "",
     );
   }
@@ -146,7 +139,7 @@ export function formatSummary(beat: Beat): string {
       "",
       "Capture with no decay path is the failure this folder is most likely to have.",
       "",
-      table(
+      markdownTable(
         ["ID", "Title", "Age"],
         beat.meetings.unpromoted
           .slice(0, 8)
@@ -160,7 +153,7 @@ export function formatSummary(beat: Beat): string {
     out.push(
       "### Ranked backlog",
       "",
-      table(
+      markdownTable(
         ["ID", "Pri", "Title", "Why there"],
         beat.ranked.slice(0, 8).map((c) => [
           c.id,
