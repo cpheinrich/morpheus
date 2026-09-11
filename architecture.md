@@ -3041,12 +3041,18 @@ Suite, needs no secrets — so it passes on fork pull requests — and is delibe
 `web-ci`, because most projects have no Firebase and would pay for a JRE, a 100 MB emulator jar and
 a boot to run nothing.
 
-`osv-scan` is a second opt-in reusable workflow: a project schedules it weekly and on `main`, where
+`osv-scan` is a second opt-in reusable workflow: a project schedules it weekly against `main`, where
 it performs a full dependency-vulnerability scan and uploads SARIF to GitHub code scanning. The
 schedule matters: a dependency can become vulnerable without any repository change. It deliberately
 uses a pinned full-tree scan rather than OSV's PR-diff workflow, whose current result-file handling
 can be bypassed by a pull-request-controlled symlink. It needs only `actions: read`, `contents:
 read`, and `security-events: write`; it never receives application credentials.
+Morpheus's caller has weekly and manual triggers only. A separately registered local Codex
+heartbeat consumes completed reports, implements one dependency change per PR, tests and reviews
+each exact head, and merges through normal protection. Coupled transitive packages belong to
+their parent update. It resumes open PRs after interruption and verifies a final manual scan on
+main; missing evidence never counts as clean. The host must be available for remediation, while
+GitHub scanning remains hosted. See [the execution contract](docs/runbooks/osv-maintenance.md).
 
 `release-preflight` is the secret-free gate before any job that publishes outside GitHub. It accepts
 no caller-selected source: the workflow requires `refs/heads/main`, checks out `github.sha`, refuses

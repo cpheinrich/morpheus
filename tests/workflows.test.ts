@@ -378,11 +378,11 @@ describe("osv-scan.yml", () => {
     );
   });
 
-  it("schedules scans and runs them after Morpheus reaches main", async () => {
+  it("scans weekly and manually, never on pushes or PRs", async () => {
     const wf = await read("security.yml");
 
-    expect(wf.on).toHaveProperty("schedule");
-    expect(wf.on).toHaveProperty("workflow_dispatch");
+    expect(wf.on?.schedule).toEqual([{ cron: "30 12 * * 1" }]);
+    expect(Object.keys(wf.on ?? {}).sort()).toEqual(["schedule", "workflow_dispatch"]);
     expect(wf.jobs?.osv?.uses).toBe("./.github/workflows/osv-scan.yml");
     expect((wf as { permissions?: Record<string, string> }).permissions).toEqual({
       actions: "read",

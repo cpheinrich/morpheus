@@ -2,9 +2,9 @@ name: Security
 
 # Morpheus exercises the reusable dependency scan itself. Weekly scans catch
 # newly disclosed vulnerabilities even when this repository has not changed.
+# Local Codex remediation follows docs/runbooks/osv-maintenance.md; scanning
+# stays read-only apart from publishing SARIF, with no agent write credentials.
 on:
-  push:
-    branches: [main]
   schedule:
     - cron: "30 12 * * 1"
   workflow_dispatch:
