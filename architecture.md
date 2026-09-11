@@ -2966,6 +2966,10 @@ identifiers, TestFlight beta-group targets, build-number allocation, and credent
 not pass a caller repository's environment secrets into a cross-repository reusable workflow, so
 those callers disable the workflow's upload job and use its outputs to gate a caller-owned upload
 job inside their protected environment. Same-repository callers may retain the built-in upload job.
+That job checks signing-credential presence before checkout or tool installation, reports only
+missing secret names, and points cross-repository callers to the protected caller-owned job.
+Only boolean presence flags enter this diagnostic; credential values remain confined to the
+final upload step. A blank P12 password and absent optional Firebase/Sentry credentials are valid.
 The workflow forwards the complete secret-free test contract — including
 parallel-test policy and optional maximum simulator-worker count, Firebase Emulator Suite
 configuration, and the pre-test fixture script — to `ios-ci`. Release builds default to the
