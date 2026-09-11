@@ -22,8 +22,9 @@ Firebase/Sentry credentials or a nonempty P12 password. Values first enter the f
 The new test failed against the original workflow because checkout was still the first step.
 It executes the actual guard shell for all credentials present, each required secret absent,
 and all required secrets absent. The test verifies that the guard receives only presence flags.
-Typecheck, all 1,145 tests, compilation, PM index, and inbox validation passed. Further
-integration validation is recorded below. No signed build, credential access,
+Typecheck, all 1,145 tests, compilation, PM index, and inbox validation passed. After the audited main integration, frozen install, lint, typecheck, all1,298 tests,
+compilation and PM index passed. After PR235 integration all130 workflow tests passed.
+Graph coverage calls returned Transport closed; current workflow and test sources were read directly. No signed build, credential access,
 TestFlight upload, or production activation is performed by this change.
 
 ## Independent review
