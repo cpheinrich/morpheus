@@ -1,22 +1,6 @@
-import { access, readFile } from "node:fs/promises";
+import { accessible as exists, readJson } from "../file-io.js";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-async function exists(path) {
-    try {
-        await access(path);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
-async function readJson(path) {
-    try {
-        return JSON.parse(await readFile(path, "utf8"));
-    }
-    catch {
-        return null;
-    }
-}
 /**
  * Where the Next.js app lives.
  *

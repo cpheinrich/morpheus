@@ -1,3 +1,4 @@
+import { readIfExists } from "../file-io.js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import matter from "gray-matter";
@@ -62,15 +63,6 @@ export interface BlockResult {
   inboxPath: string;
   /** True when this call repaired or replaced a block that already existed. */
   alreadyBlocked: boolean;
-}
-
-async function readIfExists(path: string): Promise<string | null> {
-  try {
-    return await readFile(path, "utf8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw err;
-  }
 }
 
 function worklogBody(opts: BlockOptions, title: string, date: string): string {

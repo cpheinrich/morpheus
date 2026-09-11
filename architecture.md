@@ -2843,6 +2843,14 @@ document. The starter catalogue is intentionally explicit rather than a reposito
 Projects extend it from the same allowlisted catalogue that renders their HQ pages, because search
 is another publication surface and must not discover content the dashboard itself withholds.
 
+The CLI separates process exit (`src/cli/index.ts`), invocation (`run.ts`), argument
+parsing (`args.ts`), help text (`help.ts`), and command-family handlers (`dispatch.ts`).
+Parsing preserves existing defaults, repeated-value behavior, unknown positionals and
+missing-value semantics. Invocation tests cover routing, errors, help precedence and
+provisioning guards before changing this contract. Shared internal `file-io.ts` helpers
+separate best-effort discovery from content reads that propagate non-absence errors;
+`markdown.ts` shares table rendering while callers choose empty-state text.
+
 ### 18.2 Reusable GitHub workflows
 
 Workflows with an `on: workflow_call` trigger live in Morpheus; each project keeps a thin delegator

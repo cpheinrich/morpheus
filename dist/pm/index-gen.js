@@ -1,4 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { markdownTable } from "../markdown.js";
+import { readIfExists } from "../file-io.js";
+import { writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 export const BEGIN = "<!-- morpheus:begin -->";
 export const END = "<!-- morpheus:end -->";
@@ -13,14 +15,6 @@ merge conflicts.
 `;
 function cell(value) {
     return value && value.length > 0 ? value.replace(/\|/g, "\\|") : "—";
-}
-function table(headers, rows) {
-    if (rows.length === 0)
-        return "_Nothing here yet._";
-    const head = `| ${headers.join(" | ")} |`;
-    const sep = `|${headers.map(() => "---").join("|")}|`;
-    const body = rows.map((r) => `| ${r.join(" | ")} |`).join("\n");
-    return [head, sep, body].join("\n");
 }
 /**
  * Link to the file, not to `<id>.md`.
@@ -38,7 +32,7 @@ function link(id, path) {
 }
 export function renderGoals(items) {
     const sorted = [...items].sort((a, b) => a.data.id.localeCompare(b.data.id));
-    return table(["ID", "Title", "Period", "Metric", "Target", "Current", "Status"], sorted.map((i) => [
+    return markdownTable(["ID", "Title", "Period", "Metric", "Target", "Current", "Status"], sorted.map((i) => [
         link(i.data.id, i.path),
         cell(i.data.title),
         cell(i.data.period),
@@ -46,17 +40,17 @@ export function renderGoals(items) {
         cell(i.data.target),
         cell(i.data.current),
         i.data.status,
-    ]));
+    ]), "_Nothing here yet._");
 }
 export function renderRequests(items) {
     const sorted = [...items].sort((a, b) => a.data.id.localeCompare(b.data.id));
-    return table(["ID", "Title", "Source", "Status", "Roadmap"], sorted.map((i) => [
+    return markdownTable(["ID", "Title", "Source", "Status", "Roadmap"], sorted.map((i) => [
         link(i.data.id, i.path),
         cell(i.data.title),
         i.data.source,
         i.data.status,
         cell(i.data.roadmap),
-    ]));
+    ]), "_Nothing here yet._");
 }
 /**
  * Splice a generated table into a README, preserving anything outside the
@@ -75,16 +69,6 @@ export function spliceIndex(existing, generated) {
         return `${existing.trimEnd()}\n\n${block}\n`;
     }
     return `${block}\n`;
-}
-async function readIfExists(path) {
-    try {
-        return await readFile(path, "utf8");
-    }
-    catch (err) {
-        if (err.code === "ENOENT")
-            return null;
-        throw err;
-    }
 }
 /**
  * Retire the old generated roadmap table once, without overwriting a README

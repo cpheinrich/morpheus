@@ -1,4 +1,5 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { accessible as exists } from "../../file-io.js";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 import { firestoreValue, waitlistThrottle } from "../templates.js";
 import { addJwksJoseOverride, CATCH_ALL, mergeDependencies } from "../scaffold.js";
@@ -36,15 +37,6 @@ const CHECK_EXEMPT = new Set(["lib/email/send.ts", "lib/email/templates.ts"]);
 function checkExempt(survey, path) {
     const prefix = survey.webRoot === "." ? "" : `${survey.webRoot}/`;
     return [...CHECK_EXEMPT].some((rel) => path === `${prefix}${rel}`);
-}
-async function exists(path) {
-    try {
-        await access(path);
-        return true;
-    }
-    catch {
-        return false;
-    }
 }
 /**
  * Where a unit-test file lands, which depends on the project's test runner.

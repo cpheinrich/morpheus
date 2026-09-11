@@ -1,5 +1,6 @@
-import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { accessible as exists, scaffoldWriter } from "../file-io.js";
+import { readFile, symlink, writeFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 import { initializeWorkflow } from "../brand/workflow.js";
 import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { EXPECTED } from "../doctor/index.js";
@@ -8,15 +9,6 @@ import { installContext } from "../session/install.js";
 import * as t from "./templates.js";
 import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
 import { ANALYTICS_SCHEMA_DIRECTORY, ANALYTICS_SCHEMA_PATH, findAnalyticsContracts, } from "../analytics/contract.js";
-async function exists(p) {
-    try {
-        await access(p);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
 async function readOptional(path) {
     try {
         return { kind: "content", content: await readFile(path, "utf8") };
@@ -87,16 +79,7 @@ export async function scaffold(root, seed) {
     const written = [];
     const skipped = [];
     const notes = [];
-    const put = async (rel, content) => {
-        const abs = join(root, rel);
-        if (await exists(abs)) {
-            skipped.push(rel);
-            return;
-        }
-        await mkdir(dirname(abs), { recursive: true });
-        await writeFile(abs, content, "utf8");
-        written.push(rel);
-    };
+    const put = scaffoldWriter(root, written, skipped);
     const prepareRules = async (path) => {
         const existing = await readFile(join(root, path), "utf8").catch(() => null);
         if (existing === null) {
