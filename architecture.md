@@ -2923,7 +2923,9 @@ of truth for which unit and UI targets run. The workflow refuses an absent or un
 `Package.resolved`, passes `-onlyUsePackageVersionsFromResolvedFile` to resolution and every build
 action, disables automatic package resolution after the explicit locked resolve, and separates
 SourcePackages, DerivedData, logs, screenshots, and `.xcresult` bundles under the runner's temporary
-directory. Both build actions pass `COMPILER_INDEX_STORE_ENABLE=NO`: index-while-building serves
+directory. Preparation clears only results, logs and screenshots before each run, including after
+cancellation on a persistent self-hosted runner; SourcePackages and DerivedData remain reusable.
+Both build actions pass `COMPILER_INDEX_STORE_ENABLE=NO`: index-while-building serves
 Xcode's editor, and a runner has no editor and discards the store with the machine. The
 SourcePackages cache carries a prefix `restore-keys`, so bumping one dependency reuses the
 unchanged checkouts instead of re-cloning every package — the locked-resolution flags keep the
@@ -2964,6 +2966,10 @@ identifiers, TestFlight beta-group targets, build-number allocation, and credent
 not pass a caller repository's environment secrets into a cross-repository reusable workflow, so
 those callers disable the workflow's upload job and use its outputs to gate a caller-owned upload
 job inside their protected environment. Same-repository callers may retain the built-in upload job.
+That job checks signing-credential presence before checkout or tool installation, reports only
+missing secret names, and points cross-repository callers to the protected caller-owned job.
+Only boolean presence flags enter this diagnostic; credential values remain confined to the
+final upload step. A blank P12 password and absent optional Firebase/Sentry credentials are valid.
 The workflow forwards the complete secret-free test contract — including
 parallel-test policy and optional maximum simulator-worker count, Firebase Emulator Suite
 configuration, and the pre-test fixture script — to `ios-ci`. Release builds default to the

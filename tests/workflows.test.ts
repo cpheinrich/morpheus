@@ -1536,6 +1536,37 @@ describe("ios-nightly-build.yml", () => {
     }
   });
 
+  it("diagnoses unavailable signing secrets before upload setup without exposing values", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const guard = wf.jobs?.upload?.steps?.[0];
+    expect(guard?.name).toBe("Check upload credential availability");
+    const required = [
+      "APP_STORE_CONNECT_KEY_ID", "APP_STORE_CONNECT_ISSUER_ID",
+      "APP_STORE_CONNECT_API_KEY_P8_BASE64", "IOS_DISTRIBUTION_P12_BASE64",
+      "IOS_DISTRIBUTION_PROFILE_BASE64",
+    ];
+    expect(guard?.env).toEqual(Object.fromEntries(required.map((key) => [
+      `HAS_${key}`, `\${{ secrets.${key} != '' }}`,
+    ])));
+    const present = Object.fromEntries(required.map((key) => [`HAS_${key}`, "true"]));
+    const run = (flags: Record<string, string>) => execFileAsync(
+      "bash", ["-euo", "pipefail", "-c", String(guard?.run)],
+      { env: { ...process.env, ...present, ...flags } },
+    );
+    // Optional Firebase/Sentry credentials and a blank P12 password are valid.
+    expect((await run({})).stdout).toBe("");
+    for (const missing of required) {
+      await expect(run({ [`HAS_${missing}`]: "false" })).rejects.toMatchObject({
+        stderr: expect.stringContaining(`Missing required upload secrets: ${missing}`),
+      });
+    }
+    await expect(run(Object.fromEntries(required.map((key) => [`HAS_${key}`, "false"])))).rejects.toMatchObject({
+      stderr: expect.stringContaining("run-upload: false"),
+    });
+    expect(guard?.run).toContain("caller-owned");
+    expect(guard?.run).toContain("environment");
+  });
+
   it("gates signed upload on exact-main preflight and independent tests", async () => {
     const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const preflight = wf.jobs?.preflight;
@@ -2180,6 +2211,55 @@ describe("ios-ci.yml", () => {
     expect(raw).toContain("hashFiles(format('{0}/**/Package.resolved'");
     expect(raw).toContain('"$RESULTS/Build.xcresult"');
     expect(raw).toContain('"$RESULTS/Tests.xcresult"');
+  });
+
+  it("clears cancelled-run outputs on a reused runner while preserving build caches", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus ios outputs "));
+    const iosRoot = join(root, "ios-ci");
+    const envFile = join(root, "github-env");
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const script = steps.find((step) => step.name === "Prepare isolated build directories")?.run;
+    expect(typeof script).toBe("string");
+
+    try {
+      const prepare = () => execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
+        env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile },
+      });
+      await prepare(); // A fresh hosted runner still creates every directory.
+      for (const cache of ["SourcePackages", "DerivedData"]) {
+        await writeFile(join(iosRoot, cache, "cached"), cache);
+      }
+      await writeFile(join(root, "other-job"), "untouched");
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        for (const bundle of ["Build.xcresult", "Tests.xcresult"]) {
+          await mkdir(join(iosRoot, "Results", bundle), { recursive: true });
+          await writeFile(join(iosRoot, "Results", bundle, "partial"), "cancelled");
+        }
+        await writeFile(join(iosRoot, "Logs", "previous.log"), "old log");
+        await writeFile(join(iosRoot, "Screenshots", "previous.png"), "old screenshot");
+        await writeFile(envFile, "");
+        await prepare();
+
+        for (const output of ["Results", "Logs", "Screenshots"]) {
+          expect(await readdir(join(iosRoot, output)), output).toEqual([]);
+        }
+        for (const cache of ["SourcePackages", "DerivedData"]) {
+          expect(await readFile(join(iosRoot, cache, "cached"), "utf8")).toBe(cache);
+        }
+        expect(await readFile(join(root, "other-job"), "utf8")).toBe("untouched");
+        expect(await readFile(envFile, "utf8")).toBe([
+          `SOURCE_PACKAGES=${iosRoot}/SourcePackages`,
+          `DERIVED_DATA=${iosRoot}/DerivedData`,
+          `RESULTS=${iosRoot}/Results`,
+          `LOGS=${iosRoot}/Logs`,
+          `SCREENSHOTS=${iosRoot}/Screenshots`,
+          "",
+        ].join("\n"));
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("builds once, then runs the scheme's unit and UI tests without rebuilding", async () => {
