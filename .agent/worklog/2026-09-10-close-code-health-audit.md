@@ -11,3 +11,9 @@ Retained #176's working ESLint configuration, CI opt-in, and unused identifier c
 Added tests invoking the real configured ESLint on valid and invalid TypeScript input,
 plus a check of its manifest/CI wiring. This verifies lint fails for a real regression.
 Historical audit reports remain evidence; their final resolution is appended explicitly.
+
+#177 merged as df5c26a25ccfc2655c06bce2aaec7019f097509b. Its remote head branch
+was deleted. Main-branch scheduler dispatch [34563842243](https://github.com/cpheinrich/morpheus/actions/runs/34563842243)
+completed successfully, including heartbeat/beat. The audit's lockfile conflict was
+resolved by retaining ESLint additions and current trunk dependency versions; frozen
+installation succeeded without dependency re-resolution.
