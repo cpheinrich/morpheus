@@ -1,4 +1,4 @@
-import { accessible as exists, scaffoldWriter } from "../file-io.js";
+import { scaffoldWriter } from "../file-io.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as t from "./templates.js";
