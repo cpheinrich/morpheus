@@ -1426,7 +1426,8 @@ Four of them, each catching what it can so the rung above only sees what genuine
 
 **Rung 2 is a bounded, author-managed independent session, required by default.**
 `review.required` defaults to true; false is a project opt-out reported by conventions. The author
-starts a fresh reviewer with `morpheus review prepare`, responds once, and resumes the same reviewer
+runs `morpheus review prepare` to print a packet, then explicitly spawns a fresh reviewer
+subagent/session without author chat, responds once, and resumes the same reviewer
 once if substantive findings were raised. Minor-only findings need no second pass. Unresolved
 substantive disagreements, incomplete review and exhausted budgets leave the PR open and flagged,
 with auto-merge disabled. No automatic third round. Incidental pre-existing bugs are recorded
@@ -1449,7 +1450,9 @@ self-referential commit hash problem. Author-only minor fixes are constrained to
 This is an auditable attestation, not proof against a dishonest author. Records/board-only PRs and
 exact dependency-only Dependabot changes retain their existing exceptions.
 
-**GitHub validates; it does not schedule the model.** Body and label events rerun deterministic
+**GitHub validates; it does not schedule the model.** The authoring agent owns dispatch,
+responses, evidence and merge; no standing agent monitors PRs to supply this review.
+`review prepare` only prints the packet and does not launch a reviewer. Body and label events rerun deterministic
 conventions, and reruns fetch live metadata. Existing callers need those event types added (or a
 manual CI rerun after metadata edits). The old GitHub action remains opt-in with `enabled: false`
 as its default; retain its caller when branch protection requires its skipped delivery status.

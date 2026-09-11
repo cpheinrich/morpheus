@@ -873,3 +873,9 @@ change permissive unknown-option, missing-value and repeated-value behavior. Thi
 remediation therefore keeps the small domain-specific argument contract and uses native
 Node filesystem primitives for the existing shared helper contracts. A grammar change
 should be deliberate user-facing work, not a side effect of cleanup.
+
+**Review ownership must be explicit at the point of work** — 2026-09-11. The authoring agent
+launches the isolated reviewer and owns responses, evidence, CI and merge. `review prepare`
+prints a packet; neither that command nor a PR-monitoring agent schedules review. Legacy GitHub
+review instructions must be marked opt-in wherever they remain. This clarifies the September 10
+policy after OpenClaw inferred that another agent would monitor and review its PRs.
