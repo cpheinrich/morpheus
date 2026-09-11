@@ -861,3 +861,10 @@ follow-up for substantive findings. Worklog evidence and a PR label are enforced
 conventions. No model call per push. Unresolved substantive disagreements remain open for human
 judgment. Use existing Zod, JSON and native Git for this Morpheus-specific evidence protocol; no
 new orchestration or parsing dependency is needed. See the independent-review runbook.
+
+**Keep the current CLI grammar while splitting its implementation** — 2026-09-10.
+Commander 15.0.0 was considered (maintained, no runtime dependencies). Adopting it would
+change permissive unknown-option, missing-value and repeated-value behavior. This audit
+remediation therefore keeps the small domain-specific argument contract and uses native
+Node filesystem primitives for the existing shared helper contracts. A grammar change
+should be deliberate user-facing work, not a side effect of cleanup.

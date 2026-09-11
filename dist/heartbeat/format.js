@@ -1,3 +1,4 @@
+import { markdownTable } from "../markdown.js";
 /**
  * Rendering a beat.
  *
@@ -40,13 +41,6 @@ export function formatBeat(beat) {
     }
     return lines.join("\n").trimEnd();
 }
-function table(headers, rows) {
-    return [
-        `| ${headers.join(" | ")} |`,
-        `|${headers.map(() => "---").join("|")}|`,
-        ...rows.map((r) => `| ${r.join(" | ")} |`),
-    ].join("\n");
-}
 /** The GitHub Actions job summary — the durable record of a scheduled beat. */
 export function formatSummary(beat) {
     const out = ["## Heartbeat", ""];
@@ -54,21 +48,21 @@ export function formatSummary(beat) {
         ? `**Pick: ${beat.pick.id}** — ${beat.pick.title}`
         : "**Pick: nothing.**", "", beat.reason, "", `In flight ${beat.inFlight.length}/${beat.ceiling} · blocked ${beat.blocked.length} · backlog ${beat.ranked.length}`, "");
     if (beat.blocked.length) {
-        out.push("### Blocked — waiting on a person", "", table(["ID", "Waiting", "Needs"], beat.blocked.map((b) => [b.id, `${b.age}d`, b.needs.replace(/\|/g, "\\|")])), "");
+        out.push("### Blocked — waiting on a person", "", markdownTable(["ID", "Waiting", "Needs"], beat.blocked.map((b) => [b.id, `${b.age}d`, b.needs.replace(/\|/g, "\\|")])), "");
     }
     if (beat.staleClaims.length) {
-        out.push("### Settled claims with a surviving branch", "", "These branches do not occupy dispatch lanes, but still block a claim with the same id.", "", table(["ID", "Branch"], beat.staleClaims.map((claim) => [claim.id, claim.branch])), "");
+        out.push("### Settled claims with a surviving branch", "", "These branches do not occupy dispatch lanes, but still block a claim with the same id.", "", markdownTable(["ID", "Branch"], beat.staleClaims.map((claim) => [claim.id, claim.branch])), "");
     }
     if (beat.drift.length) {
-        out.push("### Drift", "", table(["ID", "Problem"], beat.drift.map((d) => [d.id, d.why])), "");
+        out.push("### Drift", "", markdownTable(["ID", "Problem"], beat.drift.map((d) => [d.id, d.why])), "");
     }
     if (beat.meetings.unpromoted.length) {
-        out.push("### Meeting notes that produced nothing", "", "Capture with no decay path is the failure this folder is most likely to have.", "", table(["ID", "Title", "Age"], beat.meetings.unpromoted
+        out.push("### Meeting notes that produced nothing", "", "Capture with no decay path is the failure this folder is most likely to have.", "", markdownTable(["ID", "Title", "Age"], beat.meetings.unpromoted
             .slice(0, 8)
             .map((m) => [m.id, m.title.replace(/\|/g, "\\|"), `${m.age}d`])), "");
     }
     if (beat.ranked.length) {
-        out.push("### Ranked backlog", "", table(["ID", "Pri", "Title", "Why there"], beat.ranked.slice(0, 8).map((c) => [
+        out.push("### Ranked backlog", "", markdownTable(["ID", "Pri", "Title", "Why there"], beat.ranked.slice(0, 8).map((c) => [
             c.id,
             c.priority,
             c.title.replace(/\|/g, "\\|"),

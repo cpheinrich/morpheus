@@ -1,5 +1,6 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { accessible as exists, scaffoldWriter } from "../file-io.js";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import * as t from "./templates.js";
 import type { FirebaseFacts } from "./templates.js";
 import { importPath, waitlistSchemaLocation, type WebSurvey } from "./survey.js";
@@ -60,15 +61,6 @@ const WORKLOAD_IDENTITY_DEPENDENCIES = {
   "google-auth-library": "^10.9.1",
 };
 
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult> {
   const { root, survey, name } = opts;
   const written: string[] = [];
@@ -87,16 +79,7 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
   };
 
   /** Write a repository-relative path, or report that it was already there. */
-  const put = async (rel: string, content: string): Promise<void> => {
-    const abs = join(root, rel);
-    if (await exists(abs)) {
-      skipped.push(rel);
-      return;
-    }
-    await mkdir(dirname(abs), { recursive: true });
-    await writeFile(abs, content, "utf8");
-    written.push(rel);
-  };
+  const put = scaffoldWriter(root, written, skipped);
 
   /** Write a path inside the web app. */
   const app = (rel: string, content: string): Promise<void> =>

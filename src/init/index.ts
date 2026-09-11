@@ -1,5 +1,6 @@
-import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { accessible as exists, scaffoldWriter } from "../file-io.js";
+import { readFile, symlink, writeFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 import { initializeWorkflow } from "../brand/workflow.js";
 import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { EXPECTED } from "../doctor/index.js";
@@ -34,15 +35,6 @@ export interface InitResult {
   skipped: string[];
   /** Explanations and follow-up constraints that do not belong in written/skipped. */
   notes: string[];
-}
-
-async function exists(p: string): Promise<boolean> {
-  try {
-    await access(p);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 type ConfiguredFirestoreRules =
@@ -134,16 +126,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   const skipped: string[] = [];
   const notes: string[] = [];
 
-  const put = async (rel: string, content: string): Promise<void> => {
-    const abs = join(root, rel);
-    if (await exists(abs)) {
-      skipped.push(rel);
-      return;
-    }
-    await mkdir(dirname(abs), { recursive: true });
-    await writeFile(abs, content, "utf8");
-    written.push(rel);
-  };
+  const put = scaffoldWriter(root, written, skipped);
 
   const prepareRules = async (path: string): Promise<string | undefined> => {
     const existing = await readFile(join(root, path), "utf8").catch(() => null);
