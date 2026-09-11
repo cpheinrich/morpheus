@@ -47,7 +47,7 @@ Independent review found no substantive or minor issues at the exact current rem
   "summary": "Independent review found no substantive or minor issues at the exact current remote head. All five focused nightly workflow tests passed on macOS Bash3.2. A separate pre-existing blank-P12-password rejection in the caller-owned upload action was reproduced with synthetic inputs and deferred. No disagreement or follow-up review is required; stale graph coverage was supplemented with exact-source inspection.",
   "findings": [
     {
-      "id": "I1",
+      "id": "UPLOAD-I1",
       "severity": "incidental",
       "description": "The existing caller-owned ios-testflight-upload script requires a nonempty P12 password and rejects an unencrypted PKCS12 identity.",
       "paths": [
