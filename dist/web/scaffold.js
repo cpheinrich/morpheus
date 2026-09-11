@@ -1,5 +1,6 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { scaffoldWriter } from "../file-io.js";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import * as t from "./templates.js";
 import { importPath, waitlistSchemaLocation } from "./survey.js";
 /** Dependencies the generated code imports, by what it is generated for. */
@@ -14,15 +15,6 @@ const WORKLOAD_IDENTITY_DEPENDENCIES = {
     "@vercel/functions": "^3.7.6",
     "google-auth-library": "^10.9.1",
 };
-async function exists(path) {
-    try {
-        await access(path);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
 export async function scaffoldWeb(opts) {
     const { root, survey, name } = opts;
     const written = [];
@@ -39,16 +31,7 @@ export async function scaffoldWeb(opts) {
         ...(opts.firebase ? { firebase: opts.firebase } : {}),
     };
     /** Write a repository-relative path, or report that it was already there. */
-    const put = async (rel, content) => {
-        const abs = join(root, rel);
-        if (await exists(abs)) {
-            skipped.push(rel);
-            return;
-        }
-        await mkdir(dirname(abs), { recursive: true });
-        await writeFile(abs, content, "utf8");
-        written.push(rel);
-    };
+    const put = scaffoldWriter(root, written, skipped);
     /** Write a path inside the web app. */
     const app = (rel, content) => put(survey.webRoot === "." ? rel : `${survey.webRoot}/${rel}`, content);
     // --- a new app, only when there is not one already ------------------------

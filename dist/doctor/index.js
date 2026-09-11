@@ -1,4 +1,5 @@
-import { access, readFile } from "node:fs/promises";
+import { accessible as exists } from "../file-io.js";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { parseArtifact } from "../pm/parse.js";
@@ -242,15 +243,6 @@ async function gitLines(root, args) {
     }
     catch {
         return null;
-    }
-}
-async function exists(p) {
-    try {
-        await access(p);
-        return true;
-    }
-    catch {
-        return false;
     }
 }
 export async function doctor(opts) {
