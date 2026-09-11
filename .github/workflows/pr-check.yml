@@ -5,7 +5,17 @@ name: PR check
 #
 #   jobs:
 #     pr:
+#       permissions:
+#         contents: read
+#         pull-requests: read
 #       uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
+#
+# The caller must grant `pull-requests: read`. The check reads the live pull
+# request through the job token, and a repository whose default token is
+# contents/packages read only (GitHub's "read" setting) answers that read with
+# 403. A called workflow can only narrow what its caller grants, so declaring
+# the permission below documents the need and makes a caller that omits it
+# fail at validation instead of at runtime.
 
 on:
   workflow_call:
@@ -41,6 +51,9 @@ jobs:
     concurrency:
       group: pr-check-${{ github.ref }}
       cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: read
     # Only meaningful on a pull request — there is no PR body on a push.
     if: github.event_name == 'pull_request'
     steps:

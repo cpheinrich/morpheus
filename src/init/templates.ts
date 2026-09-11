@@ -1186,6 +1186,11 @@ jobs:${
     }
 
   pr:
+    # The check reads the live pull request through the job token, and a
+    # called workflow can only narrow what its caller grants.
+    permissions:
+      contents: read
+      pull-requests: read
     uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
 `;
 
@@ -1468,5 +1473,10 @@ on:
 
 jobs:
   pr:
+    # The check reads the live pull request through the job token, and a
+    # called workflow can only narrow what its caller grants.
+    permissions:
+      contents: read
+      pull-requests: read
     uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
 `;
