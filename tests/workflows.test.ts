@@ -1517,6 +1517,37 @@ describe("ios-nightly-build.yml", () => {
     }
   });
 
+  it("diagnoses unavailable signing secrets before upload setup without exposing values", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const guard = wf.jobs?.upload?.steps?.[0];
+    expect(guard?.name).toBe("Check upload credential availability");
+    const required = [
+      "APP_STORE_CONNECT_KEY_ID", "APP_STORE_CONNECT_ISSUER_ID",
+      "APP_STORE_CONNECT_API_KEY_P8_BASE64", "IOS_DISTRIBUTION_P12_BASE64",
+      "IOS_DISTRIBUTION_PROFILE_BASE64",
+    ];
+    expect(guard?.env).toEqual(Object.fromEntries(required.map((key) => [
+      `HAS_${key}`, `\${{ secrets.${key} != '' }}`,
+    ])));
+    const present = Object.fromEntries(required.map((key) => [`HAS_${key}`, "true"]));
+    const run = (flags: Record<string, string>) => execFileAsync(
+      "bash", ["-euo", "pipefail", "-c", String(guard?.run)],
+      { env: { ...process.env, ...present, ...flags } },
+    );
+    // Optional Firebase/Sentry credentials and a blank P12 password are valid.
+    expect((await run({})).stdout).toBe("");
+    for (const missing of required) {
+      await expect(run({ [`HAS_${missing}`]: "false" })).rejects.toMatchObject({
+        stderr: expect.stringContaining(`Missing required upload secrets: ${missing}`),
+      });
+    }
+    await expect(run(Object.fromEntries(required.map((key) => [`HAS_${key}`, "false"])))).rejects.toMatchObject({
+      stderr: expect.stringContaining("run-upload: false"),
+    });
+    expect(guard?.run).toContain("caller-owned");
+    expect(guard?.run).toContain("environment");
+  });
+
   it("gates signed upload on exact-main preflight and independent tests", async () => {
     const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const preflight = wf.jobs?.preflight;
