@@ -27,14 +27,14 @@ jobs:
       group: nightly-ios-visual-qa-publisher
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: cpheinrich/morpheus
           ref: main
           persist-credentials: false
       - name: Validate source and select exact-run artifact
         id: source
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           SOURCE_RUN: ${{ inputs.run-id }}
           SOURCE_WORKFLOW: ${{ inputs.workflow-file }}
@@ -45,7 +45,7 @@ jobs:
             await prepare({github, context, core, runId:process.env.SOURCE_RUN,
               workflow:process.env.SOURCE_WORKFLOW, manifestPath:process.env.MANIFEST_PATH,
               outputDirectory:`${process.env.RUNNER_TEMP}/visual-qa`});
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         if: steps.source.outputs.artifact-id != ''
         with:
           artifact-ids: ${{ steps.source.outputs.artifact-id }}
@@ -55,7 +55,7 @@ jobs:
           run-id: ${{ inputs.run-id }}
       - name: Replace gallery and create or update draft PR
         if: steps.source.outputs.skip-publish != 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const {publish} = require('./.github/scripts/ios-visual-qa.cjs');

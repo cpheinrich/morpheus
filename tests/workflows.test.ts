@@ -18,6 +18,11 @@ import { ci as ciTemplate } from "../src/init/templates.js";
  */
 
 const DIR = join(import.meta.dirname, "../.github/workflows");
+const CHECKOUT_V7 = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
+const CACHE_V6 = "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9";
+const SETUP_JAVA_V4 = "actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3";
+const SETUP_JAVA_V6 = "actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c";
+const UPLOAD_ARTIFACT_V7 = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a";
 const execFileAsync = promisify(execFile);
 
 interface Workflow {
@@ -35,6 +40,18 @@ describe("every workflow", () => {
     expect(files.length).toBeGreaterThan(0);
     for (const f of files) {
       await expect(read(f), `${f} should parse`).resolves.toBeTruthy();
+    }
+  });
+
+  it("pins third-party actions to immutable commits", async () => {
+    const files = (await readdir(DIR)).filter((file) => file.endsWith(".yml"));
+    for (const file of files) {
+      const raw = await readFile(join(DIR, file), "utf8");
+      for (const match of raw.matchAll(/^\s*-?\s*uses:\s+([^\s#]+)/gm)) {
+        const action = match[1]!;
+        if (action.startsWith("./") || action.startsWith("cpheinrich/morpheus/")) continue;
+        expect(action, `${file} contains a mutable third-party action ref`).toMatch(/@[0-9a-f]{40}$/);
+      }
     }
   });
 });
@@ -150,7 +167,7 @@ describe("release-preflight.yml", () => {
   it("checks out only the requested SHA without persisting credentials", async () => {
     const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify
       ?.steps ?? [];
-    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
 
     expect(checkout?.with).toEqual({
       ref: "${{ github.sha }}",
@@ -1021,6 +1038,7 @@ describe("caller permissions cover what they call", () => {
 
     for (const file of files) {
       const wf = (await read(file)) as {
+        permissions?: Record<string, string>;
         jobs?: Record<string, { uses?: string; permissions?: Record<string, string> }>;
       };
 
@@ -1029,20 +1047,21 @@ describe("caller permissions cover what they call", () => {
         if (!local) continue;
 
         const called = (await read(local)) as {
+          permissions?: Record<string, string>;
           jobs?: Record<string, { permissions?: Record<string, string> }>;
         };
 
-        const needed: Record<string, string> = {};
+        // An explicit job block replaces the workflow block, rather than
+        // inheriting its omitted scopes. Check each callee job independently
+        // so a later read cannot hide an earlier write requirement.
+        const granted = job.permissions ?? wf.permissions ?? {};
+        const rank: Record<string, number> = { none: 0, read: 1, write: 2 };
         for (const inner of Object.values(called.jobs ?? {})) {
-          Object.assign(needed, inner.permissions ?? {});
-        }
-
-        for (const [scope, level] of Object.entries(needed)) {
-          if (level !== "write") continue;
-          expect(
-            job.permissions?.[scope],
-            `${file}:${name} calls ${local}, which needs ${scope}: write`,
-          ).toBe("write");
+          for (const [scope, level] of Object.entries(inner.permissions ?? called.permissions ?? {})) {
+            expect(rank[granted[scope] ?? "none"] ?? 0,
+              `${file}:${name} calls ${local}, which needs ${scope}: ${level}`,
+            ).toBeGreaterThanOrEqual(rank[level] ?? 0);
+          }
         }
       }
     }
@@ -1264,7 +1283,7 @@ describe("firebase-tests.yml", () => {
     const wf = (await read("firebase-tests.yml")) as FirebaseTests;
     expect(wf.on?.workflow_call?.inputs?.["java-version"]?.default).toBe("21");
     const raw = await readFile(join(DIR, "firebase-tests.yml"), "utf8");
-    expect(raw).toContain("actions/setup-java@v4");
+    expect(raw).toContain(SETUP_JAVA_V4);
   });
 
   it("pins firebase-tools to a major", async () => {
@@ -1438,7 +1457,7 @@ describe("ios-nightly-build.yml", () => {
   it("uses a full checkout and the last successful caller run for its diff", async () => {
     const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const steps = wf.jobs?.changes?.steps ?? [];
-    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
     const decision = steps.find((step) => step.name === "Compare with the last successful upload");
     const script = String(decision?.run);
 
@@ -1971,7 +1990,7 @@ describe("ios-ci.yml", () => {
   it("can enforce the selected Xcode toolchain's formatter on changed Swift sources", async () => {
     const wf = (await read("ios-ci.yml")) as IosCi;
     const steps = wf.jobs?.test?.steps ?? [];
-    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
     const lint = steps.find((step) => step.name === "Lint changed Swift sources");
     const script = String(lint?.run);
 
@@ -2129,7 +2148,7 @@ describe("ios-ci.yml", () => {
 
   it("does not expose the checkout credential to caller-controlled test code", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
-    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
 
     expect((checkout?.with as Record<string, unknown>)?.["persist-credentials"]).toBe(false);
   });
@@ -2211,7 +2230,7 @@ describe("ios-ci.yml", () => {
     expect(String(exportStep?.if)).toContain("always()");
     expect(String(exportStep?.run)).toContain("xcresulttool export attachments");
     expect(String(upload?.if)).toContain("always()");
-    expect(String(upload?.uses)).toContain("actions/upload-artifact@v7");
+    expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     expect(String((upload?.with as Record<string, unknown>)?.path)).toContain(
       "${{ runner.temp }}/ios-ci/Screenshots",
     );
@@ -2221,7 +2240,7 @@ describe("ios-ci.yml", () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
     expect(upload?.if).toBe("failure()");
-    expect(String(upload?.uses)).toContain("actions/upload-artifact@v7");
+    expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     const withBlock = upload?.with as Record<string, unknown> | undefined;
     expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Results");
     expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Logs");
@@ -2247,10 +2266,10 @@ describe("ios-ci.yml", () => {
       typeof step.uses === "string" ? [step.uses] : [],
     );
 
-    expect(actionUses).toContain("actions/checkout@v7");
-    expect(actionUses).toContain("actions/cache@v6");
-    expect(actionUses).toContain("actions/setup-java@v6");
-    expect(actionUses).toContain("actions/upload-artifact@v7");
+    expect(actionUses).toContain(CHECKOUT_V7);
+    expect(actionUses).toContain(CACHE_V6);
+    expect(actionUses).toContain(SETUP_JAVA_V6);
+    expect(actionUses).toContain(UPLOAD_ARTIFACT_V7);
   });
 });
 
