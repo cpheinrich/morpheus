@@ -22,7 +22,7 @@ export const manifest = (s) => JSON.stringify({
     // agent resuming without re-reading it is the failure the protocol
     // exists for — and the policy cannot derive a handle on its own.
     context: { handle: s.owner },
-    review: { visualEvidence: DEFAULT_VISUAL_EVIDENCE },
+    review: { required: true, visualEvidence: DEFAULT_VISUAL_EVIDENCE },
 }, null, 2) + "\n";
 export const firebaseConfig = (rulesPath) => JSON.stringify({ firestore: { rules: rulesPath } }, null, 2) + "\n";
 /**
@@ -826,6 +826,16 @@ in to save 60 lines is worse than the 60 lines. Build when the need is small —
 lines — genuinely domain-specific, or every candidate is unmaintained. Record the outcome in \`.agent/decisions.md\`
 so the choice is not relitigated next session.
 
+**Independent review is required before merge.** Run \`morpheus review prepare --base origin/main\`
+after committing implementation/tests and start one fresh reviewer session without author chat.
+Respond once; substantive findings require one follow-up by the same reviewer. Minor-only findings
+allow author fixes without a second pass. Unresolved disagreements or incomplete review keep the PR
+open and auto-merge disabled. Record the review paragraph and structured evidence in the task
+worklog, link it with a visible \`review-record:\` PR-body line, then apply \`agent-reviewed\`.
+\`review.required\` defaults to true; project false opts out visibly. Only the named worklog may
+change after the covered commit. Follow the [review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md)
+for budgets, related-code scope, record fields and escalation.
+
 **Every PR must carry** tests for anything testable, a documentation update when behaviour
 changes, a test plan, any open questions stated plainly rather than guessed at, and the roadmap
 item moved to \`review\`. Tests must pin expected behaviour, exercise guards at their boundaries,
@@ -846,6 +856,15 @@ the same check and will fail otherwise.
 
 **Append a worklog entry** to \`.agent/worklog/YYYY-MM-DD-slug.md\`. Record dead ends especially —
 git history cannot hold work that produced no code, and that is the expensive knowledge.
+
+## iOS testing
+
+**Local iOS testing: focused tests only.** Run tests covering the feature under development
+and directly affected features or shared dependencies. Do not run the full iOS test suite
+locally unless Chris explicitly requests it: CI runs the full suite and must pass before
+merge. Use the repository's build/test wrapper when available, with explicit test filters.
+In the PR test plan and worklog, record the actual focused commands and why that scope was
+selected. Continue adding or updating tests and performing relevant simulator/visual QA.
 
 ## Branch protection
 
@@ -1094,6 +1113,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
 
 jobs:${opts.node
     ? `
@@ -1131,6 +1151,11 @@ recording; screenshots are accepted otherwise.
 ## Test plan
 
 <!-- What was verified, and how? -->
+
+## Independent review
+
+<!-- After review, add agent-reviewed and a visible review-record: .agent/worklog/<task>.md line.
+Include a short outcome and a link to the worklog. Run morpheus review prepare for the contract. -->
 
 ## Open questions
 
@@ -1361,5 +1386,16 @@ claim about everyone. Shared evidence stays the worklog, the commit and the PR.
 
 Why this exists, and the failure modes it is built against:
 [\`architecture.md\` §7.10](${MORPHEUS_REPO}/blob/main/architecture.md).
+`;
+export const reviewMetadata = () => `name: Review metadata
+
+# No build/test jobs here: skipped results must not replace required checks.
+on:
+  pull_request:
+    types: [edited, labeled, unlabeled]
+
+jobs:
+  pr:
+    uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
 `;
 //# sourceMappingURL=templates.js.map

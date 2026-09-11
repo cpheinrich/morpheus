@@ -859,3 +859,10 @@ bundle. Failed validation never produces a build, so polling only `builds list` 
 server error into a 20-minute timeout. Preserve the id, fail immediately when its state becomes
 `FAILED`, and include Apple's first error code and description; continue using the exact processed
 build as the authority for group assignment.
+
+**Independent review is author-managed and default-on** — 2026-09-10. This supersedes the legacy
+advisory GitHub review policy: one fresh session, one author response and at most one same-reviewer
+follow-up for substantive findings. Worklog evidence and a PR label are enforced by deterministic
+conventions. No model call per push. Unresolved substantive disagreements remain open for human
+judgment. Use existing Zod, JSON and native Git for this Morpheus-specific evidence protocol; no
+new orchestration or parsing dependency is needed. See the independent-review runbook.

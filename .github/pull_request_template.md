@@ -18,6 +18,10 @@ Paste GitHub attachments here. Prefer a screen recording; screenshots are accept
 
 <!-- What was verified, and how? -->
 
+## Independent review
+
+<!-- Add a visible review-record: .agent/worklog/<task>.md line, a linked summary, and agent-reviewed after completion. -->
+
 ## Open questions
 
 <!-- State unresolved questions, or write None explicitly. -->
