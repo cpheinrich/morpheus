@@ -868,8 +868,17 @@ in to save 60 lines is worse than the 60 lines. Build when the need is small —
 lines — genuinely domain-specific, or every candidate is unmaintained. Record the outcome in \`.agent/decisions.md\`
 so the choice is not relitigated next session.
 
-**Independent review is required before merge.** Run \`morpheus review prepare --base origin/main\`
-after committing implementation/tests and start one fresh reviewer session without author chat.
+**The authoring agent owns the entire review loop.** After committing implementation/tests,
+run \`morpheus review prepare --base origin/main\`; this prints a review packet and does not
+launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
+repository access and that packet, without inheriting the author's conversation history.
+The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
+the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
+GitHub Actions to start this review. CI checks the evidence; it does not perform the review.
+If the runner cannot start an independent session, report that concrete limitation and keep
+the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
+
+**Independent review is required before merge.**
 Respond once; substantive findings require one follow-up by the same reviewer. Minor-only findings
 allow author fixes without a second pass. Unresolved disagreements or incomplete review keep the PR
 open and auto-merge disabled. Record the review paragraph and structured evidence in the task
@@ -1217,7 +1226,9 @@ recording; screenshots are accepted otherwise.
 
 ## Independent review
 
-<!-- After review, add agent-reviewed and a visible review-record: .agent/worklog/<task>.md line.
+<!-- The authoring agent must launch a fresh reviewer session; review prepare only prints the packet.
+CI validates evidence and does not start a reviewer.
+After review, add agent-reviewed and a visible review-record: .agent/worklog/<task>.md line.
 Include a short outcome and a link to the worklog. Run morpheus review prepare for the contract. -->
 
 ## Open questions

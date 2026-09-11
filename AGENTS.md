@@ -299,8 +299,17 @@ mistake.
 genuinely domain-specific, or every candidate is unmaintained. Record the outcome in
 `.agent/decisions.md` so the choice is not relitigated next session.
 
-**Independent review is required before merge.** Run `morpheus review prepare --base origin/main`
-after committing implementation/tests and start one fresh reviewer session without author chat.
+**The authoring agent owns the entire review loop.** After committing implementation/tests,
+run `morpheus review prepare --base origin/main`; this prints a review packet and does not
+launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
+repository access and that packet, without inheriting the author's conversation history.
+The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
+the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
+GitHub Actions to start this review. CI checks the evidence; it does not perform the review.
+If the runner cannot start an independent session, report that concrete limitation and keep
+the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
+
+**Independent review is required before merge.**
 Respond once; substantive findings require one follow-up by the same reviewer. Minor-only findings
 allow author fixes without a second pass. Unresolved disagreements or incomplete review keep the PR
 open and auto-merge disabled. Record the review paragraph and structured evidence in the task
@@ -444,46 +453,20 @@ Prefer `--auto` — it hands the merge to GitHub so the session is not held open
 failing check simply leaves the PR unmerged rather than merging something broken. Use `--watch`
 only when the next step depends on the merge having landed.
 
-**The agent review reads your pull request once, when it opens** — pushing a fix does not buy
-another review. When you have acted on findings and want them checked, or a later push changed
-enough to be worth a second pass, ask for one:
+**Finish the author-managed independent review before enabling auto-merge.** Opening a PR,
+pushing commits, or changing labels never starts a reviewer session. Follow the
+[review contract](docs/runbooks/independent-review.md), return to the original reviewer for the
+one permitted follow-up when required, and publish complete evidence before merging.
 
-```sh
-gh pr comment <n> --body "@claude re-review — I have addressed the findings above."
-```
+**Legacy GitHub review is opt-in.** Only repositories explicitly enabling the old
+`agent-review.yml` run a model when a PR opens or a collaborator requests `@claude` re-review.
+Its `agent-review / delivery` check may remain skipped to satisfy existing branch protection;
+skipped delivery is not an independent review. A legacy `review-waived:` line applies only to
+that delivery job and cannot waive the independent-review requirement.
 
-Only a comment from someone with repo access triggers it, and only on an open pull request. It is
-the same rung with the same persona; the difference is that a human decided it was worth a dollar,
-rather than a trigger deciding on every push. **Do not push empty commits to provoke a review** —
-that was the behaviour the trigger change removed.
-
-**Act on the review before merging — the merge will refuse until you do.** Two required
-protections enforce this: `agent-review / delivery` fails while a requested review is undelivered
-(and stays pending while one is running, which is what makes `--auto` safe to set early), and
-conversation resolution blocks the merge while any inline finding's thread is open. The loop:
-
-1. Wait for the review to land. Delivery pending means it is still reading.
-2. Read every finding. Apply the ones you judge worthy.
-3. Where you decline one, **reply in its thread saying why** — a resolved thread with no answer
-   reads as agreement, and the reviewer's finding may be wrong in a way worth recording.
-4. Resolve every thread. Resolution is the read receipt, not a verdict. `gh` has no subcommand
-   for it — it is a GraphQL mutation, and burning turns rediscovering that is how an agent ends
-   up reaching for `--admin`:
-
-   ```sh
-   # List the PR's threads with their ids and state:
-   gh api graphql -f owner=OWNER -f repo=REPO -F pr=N -f query='
-     query($owner:String!,$repo:String!,$pr:Int!){ repository(owner:$owner,name:$repo){
-       pullRequest(number:$pr){ reviewThreads(first:50){ nodes{ id isResolved path line } } } } }'
-   # Resolve one:
-   gh api graphql -f id=THREAD_ID -f query='
-     mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }'
-   ```
-
-**Never merge with `--admin`** — it exists to bypass exactly these protections. If the reviewer
-itself is broken (it fails in seconds at $0), put `review-waived: <reason>` in the PR body and
-re-run the delivery job: the waiver passes the check and is reported on it, so merging unreviewed
-is always a statement, never a default.
+Read and respond to any GitHub review findings as well, explaining declined findings in their
+threads before resolving them. Unresolved substantive independent findings keep the PR open.
+**Never merge with `--admin`** or use a delivery waiver to bypass independent review.
 
 **`pm claim` reconciles the board first**, marking merged work shipped and recording its PR number,
 so those status changes ride along in the claim commit. Nothing else advances an item to `shipped`,
