@@ -17,3 +17,8 @@ was deleted. Main-branch scheduler dispatch [34563842243](https://github.com/cph
 completed successfully, including heartbeat/beat. The audit's lockfile conflict was
 resolved by retaining ESLint additions and current trunk dependency versions; frozen
 installation succeeded without dependency re-resolution.
+
+#234 merged as4611e91bb52d33349f645c7e6bdeb8734f82ab95, with its remote branch
+deleted. Reconciled both completed findings to shipped. Combined validation passed:
+ESLint, typecheck,1297 tests, compile and PM index. The real lint test accepts valid
+TypeScript and rejects an unused declaration under the repository configuration.
