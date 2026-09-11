@@ -27,3 +27,34 @@ were used as the evidence fallback. No source search absence was treated as comp
 The installed packageManager is pnpm 11.9.0; the supported compilation script is `pnpm compile`
 (the older AGENTS example says build). No API credential or GitHub agent token was added. The
 local heartbeat registration and final main OSV scan are verified after the implementation merge.
+
+After integration, frozen install, typecheck, all 1,164 tests (43 files), compile and index passed.
+The real post-fix scan 34563699785 was clean; all three GitHub alerts report fixed.
+The local heartbeat morpheus-osv-remediation is registered PAUSED pending this merge.
+
+Independent review found no issues. The author integrated workflow hardening from main and used the single same-reviewer follow-up, which cleared the integration without findings. No disagreement remains. Both passes used direct source where graph metadata was absent; heartbeat activation and the final manual scan are post-merge rollout checks.
+
+```morpheus-review
+{
+  "version": 1,
+  "base": "ed5ab1efc0697494750577287213d86cec7680d8",
+  "reviewed": "af27ffe22966cf8607231cab4c70003e8a60afb3",
+  "covered": "8a2e4937f140c68f8db7a4a8690bc12e99d4845e",
+  "authorSession": "01a08ec2-13bf-7f72-9c47-a3280a04008f",
+  "reviewerSession": "/root/osv_review",
+  "risk": "normal",
+  "elapsedMinutes": 4,
+  "outcome": "complete",
+  "summary": "Independent review found no issues. The author integrated workflow hardening from main and used the single same-reviewer follow-up, which cleared the integration without findings. No disagreement remains. Both passes used direct source where graph metadata was absent; heartbeat activation and the final manual scan are post-merge rollout checks.",
+  "findings": [],
+  "followUp": {
+    "reviewerSession": "/root/osv_review",
+    "commit": "8a2e4937f140c68f8db7a4a8690bc12e99d4845e",
+    "base": "df5c26a25ccfc2655c06bce2aaec7019f097509b",
+    "scopeReason": "Integrate trunk workflow hardening and verify overlapping workflow tests against the integrated commit.",
+    "outcome": "cleared",
+    "elapsedMinutes": 1,
+    "summary": "No findings. Integration preserves OSV triggers and leaves the inspector and runbook unchanged. All 147 focused tests pass."
+  }
+}
+```
