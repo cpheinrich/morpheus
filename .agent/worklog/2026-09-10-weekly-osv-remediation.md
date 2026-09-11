@@ -32,7 +32,7 @@ After integration, frozen install, typecheck, all 1,164 tests (43 files), compil
 The real post-fix scan 34563699785 was clean; all three GitHub alerts report fixed.
 The local heartbeat morpheus-osv-remediation is registered PAUSED pending this merge.
 
-Independent review found no issues. The author integrated workflow hardening from main and used the single same-reviewer follow-up, which cleared the integration without findings. No disagreement remains. Both passes used direct source where graph metadata was absent; heartbeat activation and the final manual scan are post-merge rollout checks.
+Initial review and first integration follow-up were clean, covering 8a2e493. Concurrent PR #234 then advanced main. The same reviewer declined an additional integration-only round under the explicit two-pass limit. Final integration 159dafa passes all 1314 tests, but remains outside reviewer coverage. PR stays open without agent-reviewed or auto-merge; a narrow human exception is required before another review.
 
 ```morpheus-review
 {
@@ -44,8 +44,8 @@ Independent review found no issues. The author integrated workflow hardening fro
   "reviewerSession": "/root/osv_review",
   "risk": "normal",
   "elapsedMinutes": 4,
-  "outcome": "complete",
-  "summary": "Independent review found no issues. The author integrated workflow hardening from main and used the single same-reviewer follow-up, which cleared the integration without findings. No disagreement remains. Both passes used direct source where graph metadata was absent; heartbeat activation and the final manual scan are post-merge rollout checks.",
+  "outcome": "incomplete",
+  "summary": "Initial review and first integration follow-up were clean, covering 8a2e493. Concurrent PR #234 then advanced main. The same reviewer declined an additional integration-only round under the explicit two-pass limit. Final integration 159dafa passes all 1314 tests, but remains outside reviewer coverage. PR stays open without agent-reviewed or auto-merge; a narrow human exception is required before another review.",
   "findings": [],
   "followUp": {
     "reviewerSession": "/root/osv_review",
@@ -58,3 +58,12 @@ Independent review found no issues. The author integrated workflow hardening fro
   }
 }
 ```
+
+## Final integration awaiting review authorization
+
+An explicit author proposal for a five-minute integration-only addendum was declined by the
+same reviewer because the contract says it does not permit a third round. No replacement reviewer
+was started and no clearance was fabricated. The last cleared commit remains 8a2e493; the final
+main integration 159dafa (base 4611e91) passes typecheck, all 1,314 tests in 46 files, compile and
+PM index. The two prior clean reviews are retained above. Activation of the paused heartbeat and
+merge of PR #236 require permission for one additional integration-only review, not a bypass merge.
