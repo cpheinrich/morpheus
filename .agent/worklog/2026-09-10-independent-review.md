@@ -22,3 +22,24 @@ shared-checkout edits were changed.
 Existing consuming projects receive the default gate through updated pr-check.yml. They need
 morpheus init (or the documented metadata-only caller) to refresh on label/body edits automatically;
 a manual rerun reads live metadata in the meantime. Existing AGENTS.md is never overwritten by init.
+
+## Initial independent review and author response
+
+The fresh reviewer session /root/independent_review reviewed 98d8a1fba562f78223c7d0999e4a2ced776d6fc5
+against c17f63fb5996628a1ed7e8b117326599adcf746d in approximately nine active minutes. A transport
+disconnection interrupted the session; it resumed the same initial review after Chris requested
+restart/completion. Disconnected idle time is excluded. No substantive findings were raised.
+IR-001 was minor: the required visible summary could be hidden in an HTML comment. Fixed by
+validating visible prose, with comment/code-fence regression tests. The initial CI run passed node
+and PM checks and correctly refused conventions because the review label was absent; live PR
+metadata fetching succeeded.
+
+Explicit scope decision: strict branch protection requires integrating trunk, which advanced during
+the interruption. Rather than discard or misstate the original review, the one same-session
+follow-up will cover the required integration and the new followUp.base/scopeReason contract.
+The initial finding remains minor; this is a scope adjustment, not an invented substantive finding.
+Merged current trunk 907f6761815cf142677302030fc62907a33cec85 without conflicts. Original review
+SHA remains unchanged, and the scoped follow-up must cover the integrated commit. No third round.
+
+After the fix and integration, typecheck/compile passed and all 1,144 tests passed. Review completion
+is pending the same reviewer's focused follow-up; the label and auto-merge remain off.

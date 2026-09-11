@@ -61,7 +61,12 @@ and budget decision, not an automatic restart.
 
 After `covered`, only this worklog may change, avoiding the hash loop from committing the review
 record itself. A code, generated-output, documentation or other file edit makes the record stale.
-Reconcile the base before review; incorporating a different merge base invalidates the record too.
+Reconcile the base before review. If trunk advances during the review, preserve the initial
+`base`/`reviewed` and make an explicit scope decision to use the one same-session follow-up for
+integration and affected paths. Set `followUp.base` to the new merge base and `followUp.scopeReason`
+to that decision. The original base must precede the new base, which must precede `covered`.
+This remains two passes total, even if the initial review was clean or minor-only; do not invent
+substantive initial findings. A base change without this evidence invalidates the record.
 
 Put a visible line in the PR body (not inside a comment or code fence):
 

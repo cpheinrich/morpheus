@@ -33,6 +33,10 @@ incomplete. A reasoned retraction may clear a disputed finding; author disagreem
 If substantive concerns remain, leave the PR open, disable auto-merge, and flag the concrete
 unresolved issue. No automatic third review or replacement reviewer to obtain approval.
 Unrelated changes invalidate coverage; restarting requires an explicit scope decision.
+If trunk integration is required during the author response, an explicit scope decision may use
+the one same-session follow-up to inspect that integration and affected paths. Preserve the initial
+base/reviewed SHA, record followUp.base and scopeReason, and cover the final integrated commit.
+This does not permit a third round or relabel a clean/minor first review as substantive.
 
 The author must retain a short human-readable summary and a morpheus-review JSON block in the
 task worklog, even for a clean review. Include original findings, responses, commit coverage,

@@ -28,6 +28,8 @@ export const ReviewRecord = z.object({
     followUp: z.object({
         reviewerSession: Session,
         commit: Sha,
+        base: Sha.optional(),
+        scopeReason: Text.optional(),
         outcome: z.enum(["cleared", "incomplete", "blocked"]),
         elapsedMinutes: z.number().nonnegative(),
         summary: Text,
@@ -46,7 +48,7 @@ export function parseReviewRecord(markdown) {
         throw new Error("worklog needs exactly one morpheus-review JSON block");
     const record = ReviewRecord.parse(JSON.parse(blocks[0][1]));
     // The human audit must remain visible without reading JSON.
-    if (!markdown.replace(blocks[0][0], "").includes(record.summary)) {
+    if (!visibleProse(markdown.replace(blocks[0][0], "")).includes(record.summary)) {
         throw new Error("repeat the review summary as a visible paragraph outside the JSON block");
     }
     return record;
@@ -95,7 +97,14 @@ export function checkLocalReview(opts) {
         for (const [older, newer] of [[record.base, record.reviewed], [record.reviewed, record.covered], [record.covered, opts.head]]) {
             git(opts.root, ["merge-base", "--is-ancestor", older, newer]);
         }
-        if (git(opts.root, ["merge-base", opts.base, opts.head]) !== record.base)
+        const coveredBase = record.followUp?.base ?? record.base;
+        if (coveredBase !== record.base) {
+            if (!record.followUp?.scopeReason)
+                throw new Error("base integration requires an explicit follow-up scope reason");
+            git(opts.root, ["merge-base", "--is-ancestor", record.base, coveredBase]);
+            git(opts.root, ["merge-base", "--is-ancestor", coveredBase, record.covered]);
+        }
+        if (git(opts.root, ["merge-base", opts.base, opts.head]) !== coveredBase)
             throw new Error("review base is stale; reconcile the base and review coverage explicitly");
         const after = git(opts.root, ["diff", "--name-only", "--no-renames", record.covered, opts.head, "--"]).split("\n").filter(Boolean);
         if (after.some(p => p !== path))

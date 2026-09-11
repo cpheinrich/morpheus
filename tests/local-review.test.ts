@@ -103,3 +103,29 @@ describe("independent review lifecycle", () => {
     expect((await checkPr({ ...ctx, changedFiles: [path] })).some(f => f.rule === "agent-review")).toBe(false);
   });
 });
+
+describe("visible evidence and trunk integration", () => {
+  it("refuses a review paragraph hidden in a comment or code fence", () => {
+    const r = record();
+    for (const summary of [`<!-- ${r.summary} -->`, `\`\`\`text\n${r.summary}\n\`\`\``]) {
+      writeFileSync(join(root, path), `${summary}\n\n\`\`\`morpheus-review\n${JSON.stringify(r)}\n\`\`\`\n`);
+      expect(check(commit())[0]?.message).toContain("visible paragraph");
+    }
+  });
+  it("preserves the initial review and requires scoped follow-up after trunk integration", () => {
+    git(root, ["checkout", "-qb", "new-trunk", base]);
+    writeFileSync(join(root, "trunk.ts"), "new trunk code"); const newBase = commit();
+    git(root, ["checkout", "--detach", reviewed]);
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]); const covered = git(root, ["rev-parse", "HEAD"]);
+    const r = { ...record(), covered };
+    const verify = () => checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(r), base: newBase });
+    expect(verify()[0]?.message).toContain("base is stale");
+    const followUp = { reviewerSession: r.reviewerSession, commit: covered, base: newBase, outcome: "cleared" as const, elapsedMinutes: 2, summary: "Reviewed the integration and affected paths" };
+    Object.assign(r, { followUp });
+    expect(verify()[0]?.message).toContain("scope reason");
+    Object.assign(followUp, { scopeReason: "Explicitly include required trunk integration in the one follow-up" });
+    expect(verify()).toEqual([]);
+    followUp.base = reviewed; // Not the PR merge base, even though it is an ancestor.
+    expect(verify()[0]?.message).toContain("base is stale");
+  });
+});

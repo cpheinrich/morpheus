@@ -40,6 +40,8 @@ export declare const ReviewRecord: z.ZodObject<{
     followUp: z.ZodOptional<z.ZodObject<{
         reviewerSession: z.ZodString;
         commit: z.ZodString;
+        base: z.ZodOptional<z.ZodString>;
+        scopeReason: z.ZodOptional<z.ZodString>;
         outcome: z.ZodEnum<{
             blocked: "blocked";
             incomplete: "incomplete";

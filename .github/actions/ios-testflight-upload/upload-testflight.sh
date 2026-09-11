@@ -235,7 +235,12 @@ SIGNING_COMPATIBLE_CERTIFICATE_PATH="$RELEASE_TEMP_DIRECTORY/distribution-compat
 SIGNING_PROFILE_PATH="$RELEASE_TEMP_DIRECTORY/distribution.mobileprovision"
 SIGNING_PROFILE_PLIST_PATH="$RELEASE_TEMP_DIRECTORY/distribution.plist"
 SIGNING_PROFILE_CERTIFICATE_PATH="$RELEASE_TEMP_DIRECTORY/distribution.cer"
-SIGNING_KEYCHAIN_PATH="$RELEASE_TEMP_DIRECTORY/release-signing.keychain-db"
+# macOS Tahoe 26 does not consistently surface identities from keychains below
+# an Actions runner's temporary directory to Xcode's exporter. Put the isolated
+# keychain in the runner user's real keychain domain, while retaining a unique
+# job name and deleting it on every exit path.
+SIGNING_KEYCHAIN_DIRECTORY="$HOME/Library/Keychains"
+SIGNING_KEYCHAIN_PATH="$SIGNING_KEYCHAIN_DIRECTORY/morpheus-release-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-0}.keychain-db"
 APPLE_WWDR_G3_CERTIFICATE_PATH="$DEVELOPER_DIR/../SharedFrameworks/DVTFoundation.framework/Versions/A/Resources/AppleWWDRCA-2030.cer"
 EXPORTED_ENTITLEMENTS_PATH="$RELEASE_TEMP_DIRECTORY/exported-entitlements.plist"
 EXPORT_DIRECTORY="$RELEASE_TEMP_DIRECTORY/export"
@@ -301,6 +306,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 SIGNING_KEYCHAIN_PASSWORD="$($OPENSSL_BINARY rand -hex 32)"
+mkdir -p "$SIGNING_KEYCHAIN_DIRECTORY"
 security create-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN_PATH"
 security set-keychain-settings -lut 21600 "$SIGNING_KEYCHAIN_PATH"
 security unlock-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN_PATH"
@@ -394,6 +400,20 @@ if [[ "$PROFILE_EXPIRATION_EPOCH" -le "$(date '+%s')" ]]; then
   exit 1
 fi
 
+# Install the issuer before the leaf/private-key pair. Security.framework can
+# cache an imported identity as unusable when its chain is incomplete at the
+# instant the identity is created; adding the intermediate afterward makes an
+# explicit trust check pass but does not make `find-identity` or Xcode's
+# exporter rediscover it on a headless account.
+if [[ ! -f "$APPLE_WWDR_G3_CERTIFICATE_PATH" ]]; then
+  echo "The selected Xcode does not contain the Apple WWDR G3 intermediate certificate." >&2
+  exit 1
+fi
+security import "$APPLE_WWDR_G3_CERTIFICATE_PATH" \
+  -k "$SIGNING_KEYCHAIN_PATH" \
+  -T /usr/bin/codesign \
+  -T /usr/bin/security >/dev/null
+
 # OpenSSL 3's default PBES2 PKCS#12 envelope is what the GitHub secret holds.
 # Apple's Keychain importer requires the legacy-compatible envelope, so re-wrap
 # it only inside this ephemeral, mode-0600 directory. The temporary unencrypted
@@ -426,42 +446,44 @@ security set-key-partition-list \
   "$SIGNING_KEYCHAIN_PATH" >/dev/null
 unset SIGNING_KEYCHAIN_PASSWORD
 
-# Xcode normally installs Apple's intermediate certificates into the logged-in
-# user's keychain. A headless runner has no login keychain, so the imported
-# distribution certificate exists as an identity but `find-identity -p
-# codesigning` rejects it because it cannot build the chain to Apple's root.
-# Import the G3 intermediate bundled with the exact selected Xcode into the
-# ephemeral release keychain instead of mutating persistent machine state.
-if [[ ! -f "$APPLE_WWDR_G3_CERTIFICATE_PATH" ]]; then
-  echo "The selected Xcode does not contain the Apple WWDR G3 intermediate certificate." >&2
-  exit 1
-fi
-security import "$APPLE_WWDR_G3_CERTIFICATE_PATH" \
-  -k "$SIGNING_KEYCHAIN_PATH" \
-  -T /usr/bin/codesign \
-  -T /usr/bin/security >/dev/null
-
 security list-keychains -d user -s "$SIGNING_KEYCHAIN_PATH" "${original_keychains[@]}"
 security default-keychain -d user -s "$SIGNING_KEYCHAIN_PATH"
-
-SIGNING_IDENTITY_SHA1="$(
-  security find-identity -v -p codesigning "$SIGNING_KEYCHAIN_PATH" |
-    sed -nE 's/^[[:space:]]*[0-9]+\)[[:space:]]+([[:xdigit:]]{40})[[:space:]].*/\1/p'
-)"
-# One line, or the regex below fails: more than one identity means the export
-# could pick a different certificate than the one the profile authorizes.
-if [[ ! "$SIGNING_IDENTITY_SHA1" =~ ^[0-9A-F]{40}$ ]]; then
-  echo "Expected exactly one valid distribution signing identity in the release keychain." >&2
-  exit 1
-fi
 
 plutil -extract DeveloperCertificates.0 raw -o - "$SIGNING_PROFILE_PLIST_PATH" |
   /usr/bin/base64 -D > "$SIGNING_PROFILE_CERTIFICATE_PATH"
 PROFILE_CERTIFICATE_SHA1="$(shasum -a 1 "$SIGNING_PROFILE_CERTIFICATE_PATH" | awk '{ print toupper($1) }')"
-if [[ "$PROFILE_CERTIFICATE_SHA1" != "$SIGNING_IDENTITY_SHA1" ]]; then
-  echo "The distribution profile does not contain the imported signing certificate." >&2
+
+IMPORTED_CERTIFICATE_SHA1S="$(
+  security find-certificate -a -Z "$SIGNING_KEYCHAIN_PATH" |
+    sed -nE 's/^SHA-1 hash: ([[:xdigit:]]{40})$/\1/p' |
+    tr '[:lower:]' '[:upper:]'
+)"
+if ! grep -Fxq "$PROFILE_CERTIFICATE_SHA1" <<< "$IMPORTED_CERTIFICATE_SHA1S"; then
+  echo "The distribution profile certificate was not imported into the release keychain." >&2
   exit 1
 fi
+
+if ! security find-key -t private -s "$SIGNING_KEYCHAIN_PATH" >/dev/null; then
+  echo "The imported distribution identity has no private signing key in the release keychain." >&2
+  exit 1
+fi
+
+# On a headless, never-logged-in macOS account, `security find-identity` can
+# report zero identities even when all three facts required by Xcode are true:
+# the PKCS#12 import reported an identity, the profile-authorized leaf is in the
+# target keychain, and its code-signing trust chain verifies successfully. Pin
+# export to the profile's certificate SHA instead of treating that unreliable
+# enumeration as an additional gate.
+if ! security verify-cert \
+  -c "$SIGNING_PROFILE_CERTIFICATE_PATH" \
+  -p codeSign \
+  -k "$SIGNING_KEYCHAIN_PATH" \
+  -k /System/Library/Keychains/SystemRootCertificates.keychain \
+  -q; then
+  echo "The distribution profile certificate does not have a valid code-signing trust chain." >&2
+  exit 1
+fi
+SIGNING_IDENTITY_SHA1="$PROFILE_CERTIFICATE_SHA1"
 
 PROFILES_DIRECTORY="$HOME/Library/MobileDevice/Provisioning Profiles"
 mkdir -p "$PROFILES_DIRECTORY"
