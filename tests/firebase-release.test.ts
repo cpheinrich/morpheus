@@ -86,6 +86,7 @@ describe("Firebase rules and client-readiness contract", () => {
     expect(() => expectedIndexKeys({ indexes: [index], fieldOverrides: [{}] })).toThrow("Field overrides");
     expect(() => expectedIndexKeys({ indexes: [{ ...index, multikey: true }] })).toThrow("Unsupported index");
     expect(() => indexKey({ ...index, fields: [{ fieldPath: "embedding", vectorConfig: { dimension: 8 } }] }, true)).toThrow("Unsupported index");
+    expect(() => expectedIndexKeys({ indexes: [], futureIndexes: [{}] })).toThrow("Unsupported index policy");
   });
 
   it("refuses stale, wrong-checkout, non-main and non-exact sources", () => {
@@ -104,6 +105,15 @@ describe("Firebase rules and client-readiness contract", () => {
     expect(JSON.stringify(result)).not.toMatch(/indexes|functions|hosting|auth|predeploy/);
     expect(() => selectTarget(policy, "production")).toThrow("Unknown");
     expect(() => selectTarget({ version: 1, environments: { staging: { ...target, indexes: "../secret" } } }, "staging")).toThrow("traversal");
+    expect(() => selectTarget({ version: 1, environments: { staging: { ...target, database: "other" } } }, "staging")).toThrow("Unsupported release target");
+  });
+
+  it("rejects READY indexes with a missing or cross-project identity", async () => {
+    for (const name of [undefined, liveName.replace("example-staging", "other-project")]) {
+      const { options, responses, indexesUrl } = fixture();
+      responses.set(indexesUrl, { indexes: [{ ...index, state: "READY", name }] });
+      await expect(verifyRelease(options)).rejects.toThrow("index identity");
+    }
   });
 });
 

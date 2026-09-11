@@ -28,7 +28,7 @@ async function jsonGet(url: string, token: string, project?: string): Promise<un
     ...(project ? { "x-goog-user-project": project } : { Accept: "application/vnd.github+json" }),
   }, redirect: "error", signal: AbortSignal.timeout(30_000) });
   if (!response.ok) throw new Error(`Release verification HTTP ${response.status}`);
-  return response.json();
+  try { return await response.json(); } catch { throw new Error("Release verification returned invalid JSON"); }
 }
 
 async function currentSource(sourceSha: string): Promise<void> {

@@ -7,9 +7,9 @@ outcome: review
 
 # Share Firebase deployment and client readiness
 
-Inspected Evo205 at6988523cd2ddd73ba41ca35ddc2f0b501178406d: release.mjs, its tests, the caller
+Inspected Evo PR205 at 6988523cd2ddd73ba41ca35ddc2f0b501178406d: release.mjs, its tests, the caller
 verification action, backend/TestFlight/Vercel workflows and activation runbook. The current user
-request authorizes merging the shared extraction for221; Evo205 itself remains held and no
+request authorizes merging the shared extraction for #221; Evo PR205 itself remains held and no
 production deployment, activation, credentials or spending are authorized by this maintenance run.
 
 The shared composite action retains caller-owned protected credentials and a documented single
@@ -21,7 +21,7 @@ Receipt paths now hash the exact credential-free bytes, strengthening Evo's plai
 Scoped Storage deploy config uses explicit bucket arrays, confirmed against official firebase-tools
 storage prepare code, so default bucket inference cannot target a different bucket.
 
-Borrowed official firebase-tools15.29.0 (registry publication2026-09-02,70 CLI dependencies) and
+Borrowed official firebase-tools 15.29.0 (registry publication 2026-09-02, 70 CLI dependencies) and
 google-github-actions/auth v3. No application dependency is added. Node built-ins implement only the
 domain-specific source/readiness/receipt policy; package-managed deployment/auth were not rebuilt.
 The exact CLI version matches the first consumer. Extended index options and field overrides fail
@@ -43,7 +43,10 @@ Graph tools returned Transport closed for status/coverage after earlier worktree
 attempts reported existing configuration ownership conflicts. New source and all relevant config
 were inspected directly; no current graph completeness is claimed.
 
-Final integration, required validation and bounded independent review are recorded below.
+After integration with merged PRs235/237: frozen install, lint, typecheck, all1,318 tests,
+compilation, PM index and inbox validation passed. The19 focused Firebase tests include
+executable CLI scenarios. actionlint1.7.12 validated both inert caller workflows.
+Independent review is recorded below.
 
 ## Independent review
 

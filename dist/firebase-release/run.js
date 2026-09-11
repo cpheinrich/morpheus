@@ -17,7 +17,12 @@ async function jsonGet(url, token, project) {
         }, redirect: "error", signal: AbortSignal.timeout(30_000) });
     if (!response.ok)
         throw new Error(`Release verification HTTP ${response.status}`);
-    return response.json();
+    try {
+        return await response.json();
+    }
+    catch {
+        throw new Error("Release verification returned invalid JSON");
+    }
 }
 async function currentSource(sourceSha) {
     const repo = required("GITHUB_REPOSITORY");

@@ -11,16 +11,19 @@ function sourcePath(value) {
 }
 export function selectTarget(policy, environment) {
     const root = object(policy);
+    assert(Object.keys(root).every((key) => ["version", "environments"].includes(key)), "Unsupported release policy option");
     assert.equal(root.version, 1, "Unsupported Firebase release policy version");
     assert(/^[a-z][a-z0-9-]*$/.test(environment), "Invalid environment name");
     const environments = object(root.environments);
     assert(Object.hasOwn(environments, environment), "Unknown Firebase environment");
     const target = object(environments[environment]);
+    assert(Object.keys(target).every((key) => ["project", "rules", "indexes"].includes(key)), "Unsupported release target option");
     assert(typeof target.project === "string" && /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(target.project), "An explicit Firebase project ID is required");
     assert(Array.isArray(target.rules) && target.rules.length > 0, "At least one rules release is required");
     const seen = new Set();
     const rules = target.rules.map((value) => {
         const rule = object(value);
+        assert(Object.keys(rule).every((key) => ["release", "path"].includes(key)), "Unsupported rules policy option");
         assert(typeof rule.release === "string"
             && /^(cloud\.firestore|firebase\.storage\/[a-z0-9][a-z0-9._-]+)$/.test(rule.release), "Only default Firestore and explicit Storage bucket releases are supported");
         assert(!seen.has(rule.release), "Duplicate rules release");
@@ -42,8 +45,10 @@ export function indexKey(value, expected = false) {
     if (expected) {
         assert(Object.keys(index).every((key) => ["collectionGroup", "queryScope", "fields"].includes(key)), "Unsupported index option requires a reviewed readiness implementation");
     }
-    const collectionGroup = index.collectionGroup ?? (typeof index.name === "string"
-        ? index.name.split("/collectionGroups/")[1]?.split("/")[0] : undefined);
+    const namedGroup = typeof index.name === "string" ? index.name.split("/collectionGroups/")[1]?.split("/")[0] : undefined;
+    if (namedGroup && index.collectionGroup !== undefined)
+        assert.equal(index.collectionGroup, namedGroup, "Index collection identity differs");
+    const collectionGroup = index.collectionGroup ?? namedGroup;
     assert(typeof collectionGroup === "string" && collectionGroup.length > 0, "Invalid index collection group");
     assert(["COLLECTION", "COLLECTION_GROUP"].includes(String(index.queryScope)), "Unsupported index query scope");
     assert(Array.isArray(index.fields) && index.fields.length > 0, "Index fields are required");
@@ -63,6 +68,7 @@ export function indexKey(value, expected = false) {
 }
 export function expectedIndexKeys(value) {
     const expected = object(value);
+    assert(Object.keys(expected).every((key) => ["indexes", "fieldOverrides"].includes(key)), "Unsupported index policy option");
     assert(Array.isArray(expected.indexes), "Expected an indexes array");
     assert(expected.fieldOverrides === undefined || (Array.isArray(expected.fieldOverrides) && expected.fieldOverrides.length === 0), "Field overrides require a separately reviewed rollout");
     return expected.indexes.map((index) => indexKey(index, true));
