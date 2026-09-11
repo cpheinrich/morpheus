@@ -2163,6 +2163,55 @@ describe("ios-ci.yml", () => {
     expect(raw).toContain('"$RESULTS/Tests.xcresult"');
   });
 
+  it("clears cancelled-run outputs on a reused runner while preserving build caches", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus ios outputs "));
+    const iosRoot = join(root, "ios-ci");
+    const envFile = join(root, "github-env");
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const script = steps.find((step) => step.name === "Prepare isolated build directories")?.run;
+    expect(typeof script).toBe("string");
+
+    try {
+      const prepare = () => execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
+        env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile },
+      });
+      await prepare(); // A fresh hosted runner still creates every directory.
+      for (const cache of ["SourcePackages", "DerivedData"]) {
+        await writeFile(join(iosRoot, cache, "cached"), cache);
+      }
+      await writeFile(join(root, "other-job"), "untouched");
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        for (const bundle of ["Build.xcresult", "Tests.xcresult"]) {
+          await mkdir(join(iosRoot, "Results", bundle), { recursive: true });
+          await writeFile(join(iosRoot, "Results", bundle, "partial"), "cancelled");
+        }
+        await writeFile(join(iosRoot, "Logs", "previous.log"), "old log");
+        await writeFile(join(iosRoot, "Screenshots", "previous.png"), "old screenshot");
+        await writeFile(envFile, "");
+        await prepare();
+
+        for (const output of ["Results", "Logs", "Screenshots"]) {
+          expect(await readdir(join(iosRoot, output)), output).toEqual([]);
+        }
+        for (const cache of ["SourcePackages", "DerivedData"]) {
+          expect(await readFile(join(iosRoot, cache, "cached"), "utf8")).toBe(cache);
+        }
+        expect(await readFile(join(root, "other-job"), "utf8")).toBe("untouched");
+        expect(await readFile(envFile, "utf8")).toBe([
+          `SOURCE_PACKAGES=${iosRoot}/SourcePackages`,
+          `DERIVED_DATA=${iosRoot}/DerivedData`,
+          `RESULTS=${iosRoot}/Results`,
+          `LOGS=${iosRoot}/Logs`,
+          `SCREENSHOTS=${iosRoot}/Screenshots`,
+          "",
+        ].join("\n"));
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("builds once, then runs the scheme's unit and UI tests without rebuilding", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const build = steps.find((step) => step.name === "Build for testing");

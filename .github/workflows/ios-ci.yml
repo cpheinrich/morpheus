@@ -296,6 +296,9 @@ jobs:
       - name: Prepare isolated build directories
         run: |
           ios_ci_root="$RUNNER_TEMP/ios-ci"
+          # A cancelled self-hosted run can leave bundles xcodebuild refuses to
+          # overwrite, plus logs/screenshots that must not become new evidence.
+          rm -rf "$ios_ci_root/Results" "$ios_ci_root/Logs" "$ios_ci_root/Screenshots"
           mkdir -p \
             "$ios_ci_root/SourcePackages" \
             "$ios_ci_root/DerivedData" \
