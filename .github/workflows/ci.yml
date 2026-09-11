@@ -17,6 +17,7 @@ jobs:
   node:
     uses: ./.github/workflows/node-ci.yml
     with:
+      run-lint: true
       build-script: compile
       verify-build-clean: true
       build-output-directory: dist
