@@ -50,4 +50,21 @@ Independent review is recorded below.
 
 ## Independent review
 
-Pending final integration and review.
+Initial review at536cc00d06dc531a872b8196db1960917158d209 completed in6 minutes at high risk,
+with three substantive findings. One author response addresses all three:
+
+- R1: backend deployment now depends on the existing release-preflight workflow and checks out
+  its SHA. Both manual tests and the eventual deploy execute SHA-equality bindings, so a passing
+  test run cannot be substituted for merged-PR provenance or for a different source.
+- R2: match both expected/live indexes only under supported Native Standard semantics. Read
+  database identity/mode/edition, normalize omitted or explicit ANY_API/SPARSE_ALL/false defaults,
+  and reject incompatible or unknown live options. Database metadata read permission is documented.
+- R3: replace always() with !cancelled() and require successful source preflight. The executable
+  caller-predicate test proves explicit cancellation and failed provenance cannot reach deployment.
+
+Eleven new regressions failed against the initially reviewed implementation. The fix suite now
+also includes unknown live options, source-bind shell execution, and explicit default normalization.
+Expected/live default behavior follows official firebase-tools15.29.0 api.ts; omitted database
+edition defaults to STANDARD there. There is no disagreement. All31 focused tests and the full1,330-test suite pass, as do lint, typecheck, compilation,
+PM index, inbox validation and actionlint for both examples. Main remains550311ed313df02f4231f20ed4eb8e5cb2091ebb.
+Same-reviewer follow-up is pending.

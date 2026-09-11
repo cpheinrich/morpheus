@@ -42,9 +42,14 @@ export function assertSource(sourceSha, mainSha, checkoutSha, ref) {
 }
 export function indexKey(value, expected = false) {
     const index = object(value);
-    if (expected) {
-        assert(Object.keys(index).every((key) => ["collectionGroup", "queryScope", "fields"].includes(key)), "Unsupported index option requires a reviewed readiness implementation");
-    }
+    assert(Object.keys(index).every((key) => ["collectionGroup", "queryScope", "fields", "apiScope", "density", "multikey", "unique"].includes(key)
+        || (!expected && ["name", "state"].includes(key))), "Unsupported index option requires a reviewed readiness implementation");
+    // These are the pinned CLI's defaults for Native Standard databases. Nondefault live
+    // indexes must not satisfy a simpler client declaration merely because fields match.
+    assert((index.apiScope === undefined || index.apiScope === "ANY_API")
+        && (index.density === undefined || index.density === "SPARSE_ALL")
+        && (index.multikey === undefined || index.multikey === false)
+        && (index.unique === undefined || index.unique === false), "Unsupported index semantics");
     const namedGroup = typeof index.name === "string" ? index.name.split("/collectionGroups/")[1]?.split("/")[0] : undefined;
     if (namedGroup && index.collectionGroup !== undefined)
         assert.equal(index.collectionGroup, namedGroup, "Index collection identity differs");
@@ -77,6 +82,10 @@ export async function verifyRelease(options) {
     const { target, environment, sourceSha, read, get } = options;
     assert(/^[a-f0-9]{40}$/.test(sourceSha), "An exact tested source SHA is required");
     const now = options.now ?? Date.now();
+    const databaseName = `projects/${target.project}/databases/(default)`;
+    const database = object(await get(`https://firestore.googleapis.com/v1/${databaseName}`));
+    assert(database.name === databaseName && database.type === "FIRESTORE_NATIVE"
+        && (database.databaseEdition === undefined || database.databaseEdition === "STANDARD"), "Unsupported database identity, mode or edition; require Firestore Native Standard");
     const rules = [];
     for (const rule of target.rules) {
         const release = object(await get(`https://firebaserules.googleapis.com/v1/projects/${target.project}/releases/${rule.release}`));

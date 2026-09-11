@@ -7,7 +7,10 @@ anything. Evo's proposal remains held until its separate activation requirements
 
 ## What it verifies
 
-The caller checks out a full **tested main SHA** and supplies it as `source-sha`. The action
+The caller depends on the shared `release-preflight` workflow, checks out its full **reviewed main
+SHA**, binds it to the successful test source, and supplies it as `source-sha`. This preserves the
+merged-PR provenance gate for backend and client releases. Explicit cancellation stops the backend
+deployment predicate even when the completed test event was successful. The action
 checks checkout identity and current GitHub main before reading policy, immediately before a
 rules deployment, and before and after live verification. Stale runs fail; retry the latest main.
 Policy, rules and index definitions come from that commit's immutable Git blobs, so a generated
@@ -18,9 +21,12 @@ main-push identity and exact tested SHA. It never accepts PR events for deployme
 
 Verification reads the actual Firebase Rules releases and ruleset source, requires exact SHA-256
 content equality, rejects releases younger than ten minutes, and traverses all Firestore index
-pages to require every declared index to be READY. It supports the default Firestore database
+pages to require every declared index to be READY. It checks database metadata and supports the
+default Firestore Native Standard database
 and explicitly named Storage buckets. Standard ascending/descending and array indexes include
-Firestore's implicit `__name__` ordering. Field overrides, vector indexes and other extended
+Firestore's implicit `__name__` ordering. Omitted and explicit supported defaults normalize to
+native API scope, sparse-all density, no multikey and no uniqueness; incompatible live variants
+cannot satisfy a declared index. Field overrides, vector indexes and other extended
 index options fail until a reviewed readiness implementation supports them. Unrelated indexes
 are not deleted or required to disappear.
 
@@ -90,7 +96,7 @@ copying them is a separate reviewed activation change.
 
 Use dedicated scoped CI principals, following architecture §13.1. The deployment principal needs
 only the permissions for the declared Firebase rules targets. The verifier needs Rules release/source
-read and Firestore index read permissions; broad OAuth scope does not grant IAM permissions.
+read plus Firestore database metadata and index read permissions; broad OAuth scope does not grant IAM permissions.
 Keep both JSON credentials in the caller's protected environment, separate from runtime Admin SDK
 credentials. The verifier requests a short-lived access token without creating a credential file
 or exporting environment variables. The deployer's credential file is confined to its job and is

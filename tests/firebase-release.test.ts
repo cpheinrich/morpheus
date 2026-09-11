@@ -30,10 +30,12 @@ function fixture() {
     responses.set(`https://firebaserules.googleapis.com/v1/${rulesetName}`, { source: { files: [{ content: files[rule.path] }] } });
   }
   const indexesUrl = `https://firestore.googleapis.com/v1/projects/${target.project}/databases/(default)/collectionGroups/-/indexes`;
+  const databaseUrl = `https://firestore.googleapis.com/v1/projects/${target.project}/databases/(default)`;
+  responses.set(databaseUrl, { name: `projects/${target.project}/databases/(default)`, type: "FIRESTORE_NATIVE", databaseEdition: "STANDARD" });
   responses.set(indexesUrl, { indexes: [{ ...index, name: liveName, state: "READY" }] });
   const options = { target, environment: "staging", sourceSha: sha, now,
     read: (path: string) => files[path]!, get: async (url: string) => { expect(responses.has(url)).toBe(true); return responses.get(url); } };
-  return { options, files, responses, indexesUrl };
+  return { options, files, responses, indexesUrl, databaseUrl };
 }
 
 describe("Firebase rules and client-readiness contract", () => {
@@ -72,6 +74,7 @@ describe("Firebase rules and client-readiness contract", () => {
     responses.set(indexesUrl, { nextPageToken: "page/2" });
     responses.set(`${indexesUrl}?pageToken=page%2F2`, { indexes: [{ name: "projects/example-staging/databases/(default)/collectionGroups/meals/indexes/1", queryScope: "COLLECTION", state: "READY", fields: [...index.fields, { fieldPath: "__name__", order: "DESCENDING" }] }] });
     await expect(verifyRelease(options)).resolves.toBeDefined();
+    expect(expectedIndexKeys({ indexes: [{ ...index, apiScope: "ANY_API", density: "SPARSE_ALL", multikey: false, unique: false }] })).toEqual([indexKey(index)]);
     responses.set(`${indexesUrl}?pageToken=page%2F2`, { nextPageToken: "page/2" });
     await expect(verifyRelease(options)).rejects.toThrow("pagination");
   });
@@ -114,6 +117,25 @@ describe("Firebase rules and client-readiness contract", () => {
       responses.set(indexesUrl, { indexes: [{ ...index, state: "READY", name }] });
       await expect(verifyRelease(options)).rejects.toThrow("index identity");
     }
+  });
+
+  it.each([{ apiScope: "DATASTORE_MODE_API" }, { apiScope: "MONGODB_COMPATIBLE_API" }, { density: "SPARSE_ANY" }, { density: "DENSE" }, { multikey: true }, { unique: true }, { futureIndexOption: "unsupported" }])("does not issue a receipt for unsupported live index semantics %j", async (variant) => {
+    const { options, responses, indexesUrl } = fixture();
+    responses.set(indexesUrl, { indexes: [{ ...index, name: liveName, state: "READY", ...variant }] });
+    await expect(verifyRelease(options)).rejects.toThrow("not READY");
+  });
+
+  it("normalizes supported omitted and explicit native Standard index defaults", async () => {
+    const { options, responses, indexesUrl, databaseUrl } = fixture();
+    responses.set(databaseUrl, { name: "projects/example-staging/databases/(default)", type: "FIRESTORE_NATIVE" });
+    responses.set(indexesUrl, { indexes: [{ ...index, name: liveName, state: "READY", apiScope: "ANY_API", density: "SPARSE_ALL", multikey: false, unique: false }] });
+    await expect(verifyRelease(options)).resolves.toBeDefined();
+  });
+
+  it.each([{ databaseEdition: "ENTERPRISE" }, { type: "DATASTORE_MODE" }, { name: "projects/other-project/databases/(default)" }])("rejects an unsupported database identity or edition %j", async (variant) => {
+    const { options, responses, databaseUrl } = fixture();
+    responses.set(databaseUrl, { name: "projects/example-staging/databases/(default)", type: "FIRESTORE_NATIVE", databaseEdition: "STANDARD", ...variant });
+    await expect(verifyRelease(options)).rejects.toThrow("database");
   });
 });
 
@@ -215,12 +237,17 @@ it("runs auth in the caller job after preflight/tooling and retains only verifie
 });
 
 it("keeps backend writes and complete client publication in one caller-owned lock", async () => {
-  const read = async (file: string) => load(await readFile(join(import.meta.dirname, "../docs/examples/firebase-release", file), "utf8")) as { concurrency: Record<string, unknown>; jobs: Record<string, { if?: string; environment?: string; needs?: string; steps?: { uses?: string; with?: Record<string, unknown>; run?: string }[] }> };
+  const read = async (file: string) => load(await readFile(join(import.meta.dirname, "../docs/examples/firebase-release", file), "utf8")) as { permissions: Record<string, string>; concurrency: Record<string, unknown>; jobs: Record<string, { uses?: string; if?: string; environment?: string; needs?: string | string[]; steps?: { name?: string; uses?: string; with?: Record<string, unknown>; run?: string }[] }> };
   const backend = await read("backend.yml");
   const client = await read("client.yml");
   expect(backend.concurrency).toEqual({ group: "firebase-client-release", "cancel-in-progress": false });
   expect(client.concurrency).toEqual(backend.concurrency);
-  expect(backend.jobs.deploy?.needs).toBe("tests");
+  expect(backend.permissions["pull-requests"]).toBe("read");
+  expect(backend.jobs.source?.uses).toBe("cpheinrich/morpheus/.github/workflows/release-preflight.yml@main");
+  expect(backend.jobs.deploy?.needs).toEqual(["source", "tests"]);
+  expect(backend.jobs.deploy?.steps?.[0]?.with?.ref).toBe("${{ needs.source.outputs.sha }}");
+  expect(backend.jobs.tests?.needs).toBe("source");
+  expect(backend.jobs.tests?.steps?.[0]?.with?.ref).toBe("${{ needs.source.outputs.sha }}");
   expect(backend.jobs.deploy?.if).toContain("needs.tests.result == 'success'");
   expect(backend.jobs.deploy?.if).toContain("head_repository.full_name == github.repository");
   expect(backend.jobs.deploy?.environment).toBe("firebase-${{ inputs.environment || 'staging' }}");
@@ -229,4 +256,27 @@ it("keeps backend writes and complete client publication in one caller-owned loc
   const verify = publish.findIndex((step) => step.uses?.includes("firebase-release@"));
   expect(verify).toBeGreaterThan(-1);
   expect(publish.findIndex((step) => step.run === "pnpm run release:client")).toBeGreaterThan(verify);
+});
+
+it("evaluates backend event gates so explicit cancellation and failed provenance cannot deploy", async () => {
+  const workflow = load(await readFile(join(import.meta.dirname, "../docs/examples/firebase-release/backend.yml"), "utf8")) as { jobs: { deploy: { if: string; steps: { name?: string; run?: string; uses?: string; env?: Record<string, string>; with?: Record<string, string> }[] }; tests: { steps: { name?: string; run?: string }[] } } };
+  const evaluate = new Function("github", "needs", "cancelled", "always", `return (${workflow.jobs.deploy.if});`);
+  const run = { conclusion: "success", event: "push", head_branch: "main", head_repository: { full_name: "sample/project" } };
+  const github = { ref: "refs/heads/main", repository: "sample/project", event_name: "workflow_run", event: { workflow_run: run } };
+  const needs = { source: { result: "success" }, tests: { result: "skipped" } };
+  expect(evaluate(github, needs, () => false, () => true)).toBe(true);
+  expect(evaluate(github, needs, () => true, () => true)).toBe(false);
+  expect(evaluate(github, { ...needs, source: { result: "failure" } }, () => false, () => true)).toBe(false);
+  expect(evaluate({ ...github, event_name: "workflow_dispatch" }, { ...needs, tests: { result: "success" } }, () => false, () => true)).toBe(true);
+  expect(evaluate({ ...github, event_name: "workflow_dispatch" }, needs, () => false, () => true)).toBe(false);
+  const bind = workflow.jobs.tests.steps.find((step) => step.name === "Bind manual test source to release preflight")?.run;
+  expect(bind).toBeDefined();
+  await expect(exec("bash", ["-euo", "pipefail", "-c", bind!], { env: { ...process.env, REQUESTED_SHA: sha, VERIFIED_SHA: sha } })).resolves.toBeDefined();
+  await expect(exec("bash", ["-euo", "pipefail", "-c", bind!], { env: { ...process.env, REQUESTED_SHA: sha, VERIFIED_SHA: "b".repeat(40) } })).rejects.toBeDefined();
+  const deploymentBind = workflow.jobs.deploy.steps.find((step) => step.name === "Bind successful test source to release preflight")!;
+  expect(deploymentBind.env?.REQUESTED_SHA).toBe("${{ github.event.workflow_run.head_sha || inputs.source-sha }}");
+  expect(deploymentBind.env?.VERIFIED_SHA).toBe("${{ needs.source.outputs.sha }}");
+  await expect(exec("bash", ["-euo", "pipefail", "-c", deploymentBind.run!], { env: { ...process.env, REQUESTED_SHA: sha, VERIFIED_SHA: sha } })).resolves.toBeDefined();
+  await expect(exec("bash", ["-euo", "pipefail", "-c", deploymentBind.run!], { env: { ...process.env, REQUESTED_SHA: "b".repeat(40), VERIFIED_SHA: sha } })).rejects.toBeDefined();
+  expect(workflow.jobs.deploy.steps.find((step) => step.uses?.includes("firebase-release@"))?.with?.["source-sha"]).toBe("${{ needs.source.outputs.sha }}");
 });

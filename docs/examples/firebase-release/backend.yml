@@ -15,19 +15,28 @@ on:
         default: staging
 permissions:
   contents: read
+  pull-requests: read
 concurrency:
   group: firebase-client-release
   cancel-in-progress: false
 jobs:
+  source:
+    uses: cpheinrich/morpheus/.github/workflows/release-preflight.yml@main
   tests:
+    needs: source
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.source-sha }}
+          ref: ${{ needs.source.outputs.sha }}
           persist-credentials: false
+      - name: Bind manual test source to release preflight
+        env:
+          REQUESTED_SHA: ${{ inputs.source-sha }}
+          VERIFIED_SHA: ${{ needs.source.outputs.sha }}
+        run: test "$REQUESTED_SHA" = "$VERIFIED_SHA"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
@@ -40,9 +49,9 @@ jobs:
       - run: npm install --global firebase-tools@15.29.0
       - run: pnpm run test:emulator
   deploy:
-    needs: tests
+    needs: [source, tests]
     if: >-
-      always() && github.ref == 'refs/heads/main' &&
+      !cancelled() && needs.source.result == 'success' && github.ref == 'refs/heads/main' &&
       ((github.event_name == 'workflow_dispatch' && needs.tests.result == 'success') ||
        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' &&
@@ -53,12 +62,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || inputs.source-sha }}
+          ref: ${{ needs.source.outputs.sha }}
           persist-credentials: false
+      - name: Bind successful test source to release preflight
+        env:
+          REQUESTED_SHA: ${{ github.event.workflow_run.head_sha || inputs.source-sha }}
+          VERIFIED_SHA: ${{ needs.source.outputs.sha }}
+        run: test "$REQUESTED_SHA" = "$VERIFIED_SHA"
       - uses: cpheinrich/morpheus/.github/actions/firebase-release@main
         with:
           operation: deploy
-          source-sha: ${{ github.event.workflow_run.head_sha || inputs.source-sha }}
+          source-sha: ${{ needs.source.outputs.sha }}
           tests-result: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion || needs.tests.result }}
           policy-file: infra/firebase/release-policy.json
           environment: ${{ inputs.environment || 'staging' }}
