@@ -1,0 +1,103 @@
+name: Firebase deployment and client readiness
+description: Verify immutable tested-main rules and READY indexes, optionally deploying only rules first.
+inputs:
+  operation:
+    description: verify or deploy; deploy also verifies after propagation.
+    default: verify
+  source-sha:
+    description: Full tested main SHA checked out by the caller.
+    required: true
+  tests-result:
+    description: Caller test-job result for source-sha; required to be success for deploy.
+    default: ""
+  policy-file:
+    description: Tracked repository-relative JSON policy with environment project IDs and source paths.
+    required: true
+  environment:
+    description: Environment key in the caller policy.
+    required: true
+  deploy-credentials-json:
+    description: Dedicated rules-deployer credentials from the caller protected environment; only needed for deploy.
+    default: ""
+  verifier-credentials-json:
+    description: Dedicated read-only Rules/Firestore index credentials from the caller protected environment.
+    required: true
+  firebase-cli-version:
+    description: Exact official CLI version, installed before deployment authentication.
+    default: "15.29.0"
+outputs:
+  receipt:
+    description: Local path of the content-addressed, credential-free JSON receipt.
+    value: ${{ steps.verify.outputs.receipt }}
+  receipt-sha256:
+    description: SHA-256 of the exact receipt bytes.
+    value: ${{ steps.verify.outputs.sha256 }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: "22"
+    - name: Validate tested main source and caller policy
+      id: prepare
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        FIREBASE_SOURCE_SHA: ${{ inputs.source-sha }}
+        FIREBASE_OPERATION: ${{ inputs.operation }}
+        FIREBASE_TESTS_RESULT: ${{ inputs.tests-result }}
+        FIREBASE_POLICY_FILE: ${{ inputs.policy-file }}
+        FIREBASE_ENVIRONMENT: ${{ inputs.environment }}
+        FIREBASE_CLI_VERSION: ${{ inputs.firebase-cli-version }}
+      run: node "$GITHUB_ACTION_PATH/../../../dist/firebase-release/run.js" prepare
+    - name: Install scoped deployment tool
+      if: inputs.operation == 'deploy'
+      shell: bash
+      env:
+        FIREBASE_CLI_VERSION: ${{ inputs.firebase-cli-version }}
+      run: npm install --global "firebase-tools@$FIREBASE_CLI_VERSION"
+    - name: Authenticate rules deployer
+      if: inputs.operation == 'deploy'
+      id: deploy-auth
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+      with:
+        credentials_json: ${{ inputs.deploy-credentials-json }}
+        project_id: ${{ steps.prepare.outputs.project }}
+        create_credentials_file: true
+        export_environment_variables: false
+    - name: Deploy only declared rules
+      if: inputs.operation == 'deploy'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        FIREBASE_PLAN: ${{ steps.prepare.outputs.plan }}
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.deploy-auth.outputs.credentials_file_path }}
+      run: node "$GITHUB_ACTION_PATH/../../../dist/firebase-release/run.js" deploy
+    - name: Allow rule propagation
+      if: inputs.operation == 'deploy'
+      shell: bash
+      run: sleep 600
+    - name: Authenticate read-only verifier
+      id: verify-auth
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+      with:
+        credentials_json: ${{ inputs.verifier-credentials-json }}
+        project_id: ${{ steps.prepare.outputs.project }}
+        token_format: access_token
+        access_token_scopes: https://www.googleapis.com/auth/cloud-platform
+        create_credentials_file: false
+        export_environment_variables: false
+    - name: Read live rules and READY indexes
+      id: verify
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        FIREBASE_PLAN: ${{ steps.prepare.outputs.plan }}
+        FIREBASE_ACCESS_TOKEN: ${{ steps.verify-auth.outputs.access_token }}
+      run: node "$GITHUB_ACTION_PATH/../../../dist/firebase-release/run.js" verify
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: firebase-release-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.environment }}-${{ steps.verify.outputs.sha256 }}
+        path: ${{ steps.verify.outputs.receipt }}
+        if-no-files-found: error
+        retention-days: 14

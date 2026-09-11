@@ -1,0 +1,33 @@
+name: Verified client publication
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: firebase-client-release
+  cancel-in-progress: false
+jobs:
+  source:
+    uses: cpheinrich/morpheus/.github/workflows/release-preflight.yml@main
+  publish:
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: client-staging
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.source.outputs.sha }}
+          persist-credentials: false
+      - uses: cpheinrich/morpheus/.github/actions/firebase-release@main
+        with:
+          source-sha: ${{ needs.source.outputs.sha }}
+          policy-file: infra/firebase/release-policy.json
+          environment: staging
+          verifier-credentials-json: ${{ secrets.FIREBASE_VERIFIER_CREDENTIALS_JSON }}
+      # Replace with the caller's full TestFlight/Vercel publication steps. Keep
+      # verification, archive/build and final publication under this same lock.
+      # A client serving two Firebase environments must verify both before publishing.
+      - run: corepack enable && pnpm install --frozen-lockfile
+      - run: pnpm run release:client

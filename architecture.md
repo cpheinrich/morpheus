@@ -2881,7 +2881,7 @@ implicitly enables the other.
 
 Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `ios-nightly-build`, `firebase-tests`,
 `osv-scan`, `pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`, `agent-review`, and
-`dependabot-maintainer`, plus one composite action, `ios-testflight-upload`. Planned:
+`dependabot-maintainer`, plus composite actions `ios-testflight-upload` and `firebase-release`. Planned:
 `agent-triage`, `agent-analytics-review`, and `release-kit`.
 
 Dependency maintenance splits policy, judgment, and authority. The project owns a versioned list
@@ -3016,8 +3016,8 @@ explicit incomplete status. A manual observer dispatch can retry a completed run
 another build. The fixed publisher concurrency group and run-number guard prevent older runs from
 replacing newer galleries.
 
-`ios-testflight-upload` is the one *action* Morpheus ships, and the reason it is an action is the
-same constraint that shapes `ios-nightly-build`: a cross-repository reusable workflow receives none
+`ios-testflight-upload` uses a composite action because of the same constraint that shapes
+`ios-nightly-build`: a cross-repository reusable workflow receives none
 of the caller's environment secrets, so the signing job has to stay in the caller. A composite
 action runs inside that caller-owned job, where `secrets.*` resolve normally and can be handed in
 as inputs — which is what makes the *implementation* shareable even though the job cannot be. It
@@ -3048,6 +3048,15 @@ archive has no signature to check, and `get-task-allow` must be strict on the ar
 Third, the file that is verified is the file that is uploaded: the export writes an IPA locally, the
 signature and entitlements are asserted against it, and `asccli builds upload` sends that same path.
 Exporting with `destination: upload` hands the build to Apple with nothing having inspected it.
+
+`firebase-release` runs inside caller-owned protected jobs. It checks exact tested main source,
+reads policy/rules/index definitions from immutable Git blobs, optionally deploys only declared
+rules through the official CLI, then verifies live rule content and READY indexes. Receipt names
+hash the exact credential-free bytes. Project IDs and compatibility policy remain in the consumer;
+production approval and one non-cancelling lock spanning backend writes and complete client
+publication remain explicit caller obligations. No consumer is activated by shipping this action.
+The [runbook](docs/runbooks/firebase-releases.md) defines the contract, supported index shapes,
+scope limits, and adoption examples extracted from Evo's held first-consumer proposal.
 
 `firebase-tests` is the one workflow a project opts into rather than getting by default: it runs
 the emulator-backed suites (unit, Firestore rules, Playwright E2E) against the Firebase Emulator
