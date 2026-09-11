@@ -100,7 +100,10 @@ read plus Firestore database metadata and index read permissions; broad OAuth sc
 Keep both JSON credentials in the caller's protected environment, separate from runtime Admin SDK
 credentials. The verifier requests a short-lived access token without creating a credential file
 or exporting environment variables. The deployer's credential file is confined to its job and is
-removed by the official auth action's post-step. No credential is moved to repository scope.
+removed by the official auth action's post-step. Each Firebase CLI invocation gets a fresh private
+configuration directory, preventing a reused runner's cached user login from overriding the
+explicit deployer credential file. Legacy FIREBASE_TOKEN is removed from the child environment.
+No credential is moved to repository scope.
 
 Before activating a consumer: configure main-only environments and production reviewer protection;
 provision/validate scoped principals; reconcile actual rules/indexes; prove readback and failure

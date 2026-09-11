@@ -86,6 +86,8 @@ async function main() {
         required("GOOGLE_APPLICATION_CREDENTIALS");
         const env = { ...process.env };
         delete env.FIREBASE_TOKEN;
+        // Firebase prefers cached user logins over ADC; each invocation needs an empty config store.
+        env.XDG_CONFIG_HOME = mkdtempSync(join(plan.directory, "firebase-config-"));
         execFileSync("firebase", ["deploy", "--project", plan.target.project, "--config", join(plan.directory, "firebase.json"),
             "--only", plan.only, "--non-interactive"], { cwd: plan.directory, env, stdio: "inherit" });
         return;

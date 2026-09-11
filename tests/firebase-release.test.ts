@@ -174,11 +174,27 @@ it("executes the real action preflight against immutable git blobs and a fake ma
     await mkdir(bin);
     const fakeCli = join(bin, "firebase");
     const capture = join(root, "deploy-call.json");
-    await writeFile(fakeCli, '#!/usr/bin/env node\nrequire("node:fs").writeFileSync(process.env.DEPLOY_CAPTURE, JSON.stringify({args:process.argv.slice(2),legacyTokenPresent:!!process.env.FIREBASE_TOKEN,credentialsFile:process.env.GOOGLE_APPLICATION_CREDENTIALS}));\n');
+    await writeFile(fakeCli, '#!/usr/bin/env node\nconst fs=require("node:fs");const configHome=process.env.XDG_CONFIG_HOME;const configPath=require("node:path").join(configHome,"configstore/firebase-tools.json");fs.writeFileSync(process.env.DEPLOY_CAPTURE,JSON.stringify({args:process.argv.slice(2),legacyTokenPresent:!!process.env.FIREBASE_TOKEN,credentialsFile:process.env.GOOGLE_APPLICATION_CREDENTIALS,configHome,cachedUser:fs.existsSync(configPath)?JSON.parse(fs.readFileSync(configPath,"utf8")).user:null}));\n');
     await chmod(fakeCli, 0o755);
-    const deployEnv = { FIREBASE_PLAN: planPath, GOOGLE_APPLICATION_CREDENTIALS: join(root, "synthetic-credentials.json"), FIREBASE_TOKEN: "must-not-be-used", PATH: `${bin}:${process.env.PATH}`, DEPLOY_CAPTURE: capture };
+    const inheritedConfig = join(root, "inherited-config");
+    await mkdir(join(inheritedConfig, "configstore"), { recursive: true });
+    const inheritedLogin = join(inheritedConfig, "configstore/firebase-tools.json");
+    const cachedLogin = JSON.stringify({ user: { email: "cached@example.invalid" }, tokens: { refresh_token: "synthetic-token" } });
+    await writeFile(inheritedLogin, cachedLogin);
+    const deployEnv = { FIREBASE_PLAN: planPath, GOOGLE_APPLICATION_CREDENTIALS: join(root, "synthetic-credentials.json"), FIREBASE_TOKEN: "must-not-be-used", XDG_CONFIG_HOME: inheritedConfig, PATH: `${bin}:${process.env.PATH}`, DEPLOY_CAPTURE: capture };
     await invoke("deploy", deployEnv);
-    expect(JSON.parse(await readFile(capture, "utf8"))).toEqual({ args: ["deploy", "--project", "example-staging", "--config", join(plan.directory, "firebase.json"), "--only", "firestore:rules,storage", "--non-interactive"], legacyTokenPresent: false, credentialsFile: deployEnv.GOOGLE_APPLICATION_CREDENTIALS });
+    const deployment = JSON.parse(await readFile(capture, "utf8"));
+    expect(deployment).toEqual({ args: ["deploy", "--project", "example-staging", "--config", join(plan.directory, "firebase.json"), "--only", "firestore:rules,storage", "--non-interactive"], legacyTokenPresent: false, credentialsFile: deployEnv.GOOGLE_APPLICATION_CREDENTIALS, configHome: expect.stringMatching(new RegExp(`^${plan.directory}/firebase-config-`)), cachedUser: null });
+    expect(await readdir(deployment.configHome)).toEqual([]);
+    // A retry also gets a fresh store even if the preceding CLI invocation saved a login.
+    await mkdir(join(deployment.configHome, "configstore"));
+    await writeFile(join(deployment.configHome, "configstore/firebase-tools.json"), cachedLogin);
+    await invoke("deploy", deployEnv);
+    const retry = JSON.parse(await readFile(capture, "utf8"));
+    expect(retry.cachedUser).toBeNull();
+    expect(retry.configHome).not.toBe(deployment.configHome);
+    expect(retry.credentialsFile).toBe(deployEnv.GOOGLE_APPLICATION_CREDENTIALS);
+    expect(await readFile(inheritedLogin, "utf8")).toBe(cachedLogin);
 
     // Intercept only Google endpoints in this child. GitHub source checks still use the real local server.
     const mockApi = join(root, "fake-google.mjs");

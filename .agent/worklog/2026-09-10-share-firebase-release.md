@@ -67,4 +67,95 @@ also includes unknown live options, source-bind shell execution, and explicit de
 Expected/live default behavior follows official firebase-tools15.29.0 api.ts; omitted database
 edition defaults to STANDARD there. There is no disagreement. All31 focused tests and the full1,330-test suite pass, as do lint, typecheck, compilation,
 PM index, inbox validation and actionlint for both examples. Main remains550311ed313df02f4231f20ed4eb8e5cb2091ebb.
-Same-reviewer follow-up is pending.
+Same-reviewer follow-up at deed6eaad2ec419efa98cf78adfc413cb9f659c7 cleared all three findings in approximately one minute; all 31 focused tests passed.
+
+
+## Additional author finding after review
+
+Firebase CLI 15.29.0 prefers a cached signed-in user with a refresh token over ADC:
+[official requireAuth.ts](https://github.com/firebase/firebase-tools/blob/v15.29.0/src/requireAuth.ts#L123).
+Its configstore 5 dependency uses the XDG configuration directory. After the follow-up had already
+cleared its stated head, the author identified this credential-identity gap. The message asking
+the reviewer to include it did not extend the completed review or cover the subsequent fix.
+
+Every deploy subprocess now uses a fresh private XDG configuration directory inside its unique
+plan directory. The regression failed before the change by observing the inherited cached user.
+It now verifies an empty store, preserved explicit credential path, unchanged inherited login,
+and a fresh empty store on retry even when a prior invocation has saved a login. The legacy
+FIREBASE_TOKEN remains stripped. This uses synthetic credentials only.
+
+All 31 focused and all 1,330 tests pass, along with lint, typecheck, compilation, PM index and
+inbox validation. The package build command is `pnpm compile`; the old AGENTS command
+`pnpm build` is absent and was corrected during validation. No live deployment was attempted.
+
+Independent review found three substantive issues; the author fixed provenance, live index semantics and cancellation, and the single same-reviewer follow-up cleared deed6ea. After that clearance the author discovered and regression-tested cached Firebase login isolation. That additional fix is outside completed review coverage. Review remains incomplete, agent-reviewed is withheld and auto-merge is disabled pending an explicit additional targeted-review exception. No findings were disputed; exact-source inspection supplemented unavailable graph evidence.
+
+```morpheus-review
+{
+  "version": 1,
+  "base": "550311ed313df02f4231f20ed4eb8e5cb2091ebb",
+  "reviewed": "536cc00d06dc531a872b8196db1960917158d209",
+  "covered": "deed6eaad2ec419efa98cf78adfc413cb9f659c7",
+  "authorSession": "01a08ebd-2cd3-7923-a70e-94bf73e90da3",
+  "reviewerSession": "/root/review_firebase_boundary",
+  "risk": "high",
+  "elapsedMinutes": 6,
+  "outcome": "incomplete",
+  "summary": "Independent review found three substantive issues; the author fixed provenance, live index semantics and cancellation, and the single same-reviewer follow-up cleared deed6ea. After that clearance the author discovered and regression-tested cached Firebase login isolation. That additional fix is outside completed review coverage. Review remains incomplete, agent-reviewed is withheld and auto-merge is disabled pending an explicit additional targeted-review exception. No findings were disputed; exact-source inspection supplemented unavailable graph evidence.",
+  "findings": [
+    {
+      "id": "FB-R1",
+      "severity": "substantive",
+      "description": "Backend example lacked mandatory merged-PR release preflight and exact preflight source binding.",
+      "paths": [
+        "docs/examples/firebase-release/backend.yml",
+        "tests/firebase-release.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Added source preflight dependency and executable equality bindings for manual tests and deployment. Same-reviewer follow-up cleared the change."
+    },
+    {
+      "id": "FB-R2",
+      "severity": "substantive",
+      "description": "Index matching ignored live API, density and multikey semantics and could certify an incompatible READY index.",
+      "paths": [
+        "src/firebase-release/verify.ts",
+        "tests/firebase-release.test.ts",
+        "docs/runbooks/firebase-releases.md"
+      ],
+      "disposition": "fixed",
+      "response": "Verify Native Standard database identity and supported index defaults; reject incompatible or unknown options. Regression tests failed before fix; same-reviewer follow-up cleared it."
+    },
+    {
+      "id": "FB-R3",
+      "severity": "substantive",
+      "description": "Backend always() condition allowed deployment after explicit workflow cancellation.",
+      "paths": [
+        "docs/examples/firebase-release/backend.yml",
+        "tests/firebase-release.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Use !cancelled() and successful provenance; executable predicate tests verify cancellation blocks writes. Same-reviewer follow-up cleared it."
+    },
+    {
+      "id": "FB-R4",
+      "severity": "substantive",
+      "description": "Author finding after completed follow-up: Firebase CLI can prefer a cached user login over explicit deployment ADC on reused runners.",
+      "paths": [
+        "src/firebase-release/run.ts",
+        "tests/firebase-release.test.ts",
+        "docs/runbooks/firebase-releases.md"
+      ],
+      "disposition": "open",
+      "response": "Implementation now isolates each child CLI configuration store. Red-before-green regression covers inherited login and retry persistence. Code is fixed, but independent verification is outstanding because the two permitted review passes are exhausted; do not claim coverage beyond deed6ea."
+    }
+  ],
+  "followUp": {
+    "reviewerSession": "/root/review_firebase_boundary",
+    "commit": "deed6eaad2ec419efa98cf78adfc413cb9f659c7",
+    "outcome": "cleared",
+    "elapsedMinutes": 1,
+    "summary": "The original reviewer cleared R1-R3 at this exact head after inspecting source and compiled output and passing all 31 focused tests. The later cached-login isolation fix was not in this head and is not covered."
+  }
+}
+```
