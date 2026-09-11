@@ -1,0 +1,17 @@
+name: Review metadata
+
+# No build/test jobs here: skipped results must not replace required checks.
+on:
+  pull_request:
+    types: [edited, labeled, unlabeled]
+
+jobs:
+  pr:
+    # The reusable check reads the live pull request through the job token;
+    # a called workflow can only narrow what its caller grants.
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/pr-check.yml
+    with:
+      morpheus-ref: ${{ github.sha }}

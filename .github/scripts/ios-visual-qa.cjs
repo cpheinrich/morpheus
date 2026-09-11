@@ -71,12 +71,17 @@ async function prepare({github, context, core, runId, workflow, manifestPath, ou
   const repository = `${params.owner}/${params.repo}`;
   const {data: run} = await github.rest.actions.getWorkflowRun({...params, run_id: Number(runId)});
   validateRun(run, repository, workflow);
+  const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {...params, run_id: run.id, per_page:100});
+  if (run.conclusion === 'success' && artifacts.some(a => a.name === `ios-nightly-noop-${run.id}-${run.run_attempt}` && !a.expired)) {
+    core.setOutput('skip-publish', 'true');
+    core.notice('Intentional nightly no-op; keeping the existing gallery');
+    return;
+  }
   if (!/^qa\/[a-zA-Z0-9/_.-]+\.json$/.test(manifestPath) || manifestPath.includes('..')) throw new Error('Invalid manifest path');
   const {data: content} = await github.rest.repos.getContent({...params, path: manifestPath, ref: run.head_sha});
   const inventory = validateInventory(JSON.parse(Buffer.from(content.content, 'base64').toString('utf8')));
   fs.mkdirSync(outputDirectory, {recursive:true});
   fs.writeFileSync(path.join(outputDirectory, 'source.json'), JSON.stringify({run, inventory}));
-  const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {...params, run_id: run.id, per_page:100});
   const artifact = artifacts.find(a => a.name === `ios-screenshots-${run.id}-${run.run_attempt}` && !a.expired);
   core.setOutput('artifact-id', artifact?.id ?? '');
 }

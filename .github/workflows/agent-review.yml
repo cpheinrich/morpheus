@@ -22,12 +22,13 @@ on:
     inputs:
       enabled:
         description: >
+          Legacy paid reviewer is opt-in; independent local review is the default.
           Keep the workflow wired into CI while turning the paid reviewer off.
           The switch is evaluated inside the called workflow so its jobs are
           still reported as skipped; a caller-level skip can leave a required
           nested check unreported and block every merge.
         type: boolean
-        default: true
+        default: false
       product-dir:
         type: string
         default: "hq/product"
