@@ -42,6 +42,7 @@ function goodPr(overrides: Partial<PrContext> = {}): PrContext {
     branch: "ev-014-something",
     changedFiles: ["src/pm/parse.ts", "tests/pm.test.ts"],
     productDir: product,
+    agentReview: [],
     ...overrides,
   };
 }

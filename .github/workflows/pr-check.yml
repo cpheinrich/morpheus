@@ -39,7 +39,7 @@ jobs:
     # and a called workflow's top-level concurrency does not govern
     # the caller's run.
     concurrency:
-      group: pr-check-${{ github.workflow }}-${{ github.ref }}
+      group: pr-check-${{ github.ref }}
       cancel-in-progress: true
     # Only meaningful on a pull request — there is no PR body on a push.
     if: github.event_name == 'pull_request'
@@ -82,7 +82,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check PR conventions
-        run: >
-          node .morpheus/dist/cli/index.js check pr
-          --dir ${{ inputs.product-dir }}
-          --base origin/${{ github.base_ref }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          PRODUCT_DIR: ${{ inputs.product-dir }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Reruns must read current labels/body, not the original event snapshot.
+          gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/live-pr.json"
+          jq -e --arg sha "$EXPECTED_HEAD" '.head.sha == $sha' "$RUNNER_TEMP/live-pr.json" > /dev/null
+          jq '{pull_request: .}' "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"
+          GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json" node .morpheus/dist/cli/index.js check pr \
+            --dir "$PRODUCT_DIR" --base "origin/$BASE_REF"

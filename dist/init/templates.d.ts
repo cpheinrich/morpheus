@@ -132,3 +132,4 @@ export declare const websiteInitSkill: () => string;
  * out it is about to be refused will not follow it.
  */
 export declare const contextFreshness: () => string;
+export declare const reviewMetadata: () => string;
