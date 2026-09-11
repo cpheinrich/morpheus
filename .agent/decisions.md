@@ -873,3 +873,11 @@ change permissive unknown-option, missing-value and repeated-value behavior. Thi
 remediation therefore keeps the small domain-specific argument contract and uses native
 Node filesystem primitives for the existing shared helper contracts. A grammar change
 should be deliberate user-facing work, not a side effect of cleanup.
+
+**Firebase release controls run in caller-owned composite actions** — 2026-09-10.
+Extract the concrete Evo205 source/readiness policy into a shared action; keep project IDs,
+compatibility choices, protected environments and the complete publication lock in the consumer.
+Use official firebase-tools15.29.0 for rules deploys (published2026-09-02,70 CLI dependencies)
+and google-github-actions/auth for scoped CI authentication. Node built-ins implement only the
+Morpheus-specific immutable-source, readback and receipt contract, adding no runtime package.
+The shared action can merge without activating Evo's held proposal or provisioning credentials.
