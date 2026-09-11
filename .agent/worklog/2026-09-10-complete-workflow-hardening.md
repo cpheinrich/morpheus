@@ -19,13 +19,24 @@ Independent high-risk review found no defects. The reviewer verified action prov
   "version": 1,
   "base": "649ac302b197aaa6ed43be139ac40ce3f8b39279",
   "reviewed": "ce0f829fdc2bb73681c098726c54cf90a8263539",
-  "covered": "ce0f829fdc2bb73681c098726c54cf90a8263539",
+  "covered": "036afe50750ac8179d92ecda0a326a688ea0317a",
   "authorSession": "01a08ebe-1af7-7493-9b34-1b53207ffd21",
   "reviewerSession": "/root/review_high",
   "risk": "high",
   "elapsedMinutes": 4,
   "outcome": "complete",
-  "summary": "Independent high-risk review found no defects. The reviewer verified action provenance, permission compatibility and regression behavior; 128 focused workflow tests passed. No author response or follow-up was needed. Hosted CI and scheduler dispatch are verified separately before merge.",
-  "findings": []
+  "summary": "Independent high-risk review and the single same-session trunk-integration follow-up both found no defects. Action pins and scheduler repair are preserved alongside PR233 caller permission grants. Local workflow tests and pre-integration hosted dispatch passed; final hosted checks gate merge.",
+  "findings": [],
+  "followUp": {
+    "reviewerSession": "/root/review_high",
+    "commit": "036afe50750ac8179d92ecda0a326a688ea0317a",
+    "base": "1e419856ce104d76e6f3c6791ac8be13d870d3ce",
+    "scopeReason": "Integrate merged PR233 read permissions in overlapping reusable workflow and caller controls.",
+    "outcome": "cleared",
+    "elapsedMinutes": 2,
+    "summary": "No defects in integrated caller/callee grants, template output or pinning contracts."
+  }
 }
 ```
+
+Independent high-risk review and the single same-session trunk-integration follow-up both found no defects. Action pins and scheduler repair are preserved alongside PR233 caller permission grants. Local workflow tests and pre-integration hosted dispatch passed; final hosted checks gate merge.
