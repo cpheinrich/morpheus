@@ -1051,15 +1051,17 @@ describe("caller permissions cover what they call", () => {
           jobs?: Record<string, { permissions?: Record<string, string> }>;
         };
 
-        const needed: Record<string, string> = { ...(called.permissions ?? {}) };
+        // An explicit job block replaces the workflow block, rather than
+        // inheriting its omitted scopes. Check each callee job independently
+        // so a later read cannot hide an earlier write requirement.
+        const granted = job.permissions ?? wf.permissions ?? {};
+        const rank: Record<string, number> = { none: 0, read: 1, write: 2 };
         for (const inner of Object.values(called.jobs ?? {})) {
-          Object.assign(needed, inner.permissions ?? {});
-        }
-
-        for (const [scope, level] of Object.entries(needed)) {
-          const granted = job.permissions?.[scope] ?? wf.permissions?.[scope];
-          const sufficient = level === "write" ? granted === "write" : granted === "read" || granted === "write";
-          expect(sufficient, `${file}:${name} calls ${local}, which needs ${scope}: ${level}`).toBe(true);
+          for (const [scope, level] of Object.entries(inner.permissions ?? called.permissions ?? {})) {
+            expect(rank[granted[scope] ?? "none"] ?? 0,
+              `${file}:${name} calls ${local}, which needs ${scope}: ${level}`,
+            ).toBeGreaterThanOrEqual(rank[level] ?? 0);
+          }
         }
       }
     }
