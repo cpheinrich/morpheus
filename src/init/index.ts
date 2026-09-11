@@ -450,6 +450,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     (await exists(join(root, "pnpm-lock.yaml"))) ||
     (await exists(join(root, "pnpm-workspace.yaml")));
   await put(".github/pull_request_template.md", t.pullRequestTemplate());
+  await put(".github/workflows/review-metadata.yml", t.reviewMetadata());
   const ciPath = ".github/workflows/ci.yml";
   const existingCi = await readOptional(join(root, ciPath));
   await put(ciPath, t.ci({ node: isNode, ...(rulesPath ? { rulesPath } : {}) }));

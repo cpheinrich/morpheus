@@ -42,6 +42,16 @@ describe("morpheus init", () => {
     }
   });
 
+  it("scaffolds default-on local review and a conventions-only metadata workflow", async () => {
+    await scaffold(dir, SEED);
+    expect(JSON.parse(await read("morpheus.json")).review.required).toBe(true);
+    const workflow = load(await read(".github/workflows/review-metadata.yml")) as { on: { pull_request: { types: string[] } }; jobs: Record<string, unknown> };
+    expect(workflow.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
+    expect(Object.keys(workflow.jobs)).toEqual(["pr"]);
+    expect(await read("AGENTS.md")).toContain("morpheus review prepare");
+    expect(await read(".github/pull_request_template.md")).toContain("review-record:");
+  });
+
   it("symlinks CLAUDE.md rather than copying AGENTS.md", async () => {
     await scaffold(dir, SEED);
     const stat = await lstat(join(dir, "CLAUDE.md"));

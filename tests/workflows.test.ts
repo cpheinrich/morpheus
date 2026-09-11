@@ -478,7 +478,7 @@ describe("agent-review.yml", () => {
     };
 
     expect(called.on?.workflow_call?.inputs?.enabled).toEqual(
-      expect.objectContaining({ type: "boolean", default: true }),
+      expect.objectContaining({ type: "boolean", default: false }),
     );
     expect(called.jobs?.review?.if).toContain("inputs.enabled");
     expect(called.jobs?.delivery?.if).toContain("inputs.enabled");
@@ -1792,14 +1792,32 @@ describe("ios-testflight-upload action", () => {
     expect(raw).toContain("security default-keychain -d user -s \"$ORIGINAL_DEFAULT_KEYCHAIN\"");
     expect(raw).toContain('security list-keychains -d user -s "${original_keychains[@]}"');
     expect(raw).toContain("security delete-keychain");
+    expect(raw).toContain('SIGNING_KEYCHAIN_DIRECTORY="$HOME/Library/Keychains"');
+    expect(raw).not.toContain(
+      'SIGNING_KEYCHAIN_PATH="$RELEASE_TEMP_DIRECTORY/release-signing.keychain-db"',
+    );
+    expect(raw.indexOf("security create-keychain")).toBeLessThan(
+      raw.indexOf('security cms -D -k "$SIGNING_KEYCHAIN_PATH"'),
+    );
+    expect(raw).toContain("AppleWWDRCA-2030.cer");
+    expect(raw.indexOf('security import "$APPLE_WWDR_G3_CERTIFICATE_PATH"')).toBeLessThan(
+      raw.indexOf('security import "$SIGNING_COMPATIBLE_CERTIFICATE_PATH"'),
+    );
+    expect(raw.indexOf('security import "$APPLE_WWDR_G3_CERTIFICATE_PATH"')).toBeLessThan(
+      raw.indexOf("security verify-cert"),
+    );
+    expect(raw).toContain(
+      "The selected Xcode does not contain the Apple WWDR G3 intermediate certificate.",
+    );
     expect(raw).toContain("unset ASC_API_KEY_P8_BASE64 IOS_DISTRIBUTION_P12_BASE64");
     expect(raw).toContain("unset IOS_DISTRIBUTION_P12_PASSWORD");
     expect(raw).toContain("unset SIGNING_KEYCHAIN_PASSWORD");
     expect(raw).toContain('chmod 600 "$AUTHENTICATION_KEY_PATH"');
     expect(raw).toContain("Refusing to upload a TestFlight build outside main.");
-    expect(raw).toContain(
-      "Expected exactly one valid distribution signing identity in the release keychain.",
-    );
+    expect(raw).toContain('security find-certificate -a -Z "$SIGNING_KEYCHAIN_PATH"');
+    expect(raw).toContain('security find-key -t private -s "$SIGNING_KEYCHAIN_PATH"');
+    expect(raw).toContain('SIGNING_IDENTITY_SHA1="$PROFILE_CERTIFICATE_SHA1"');
+    expect(raw).not.toContain("security find-identity -v -p codesigning");
     // The caller's own assertions see the app, and none of the credentials.
     expect(raw).toContain('run_without_release_secrets "$VALIDATE_APP_SCRIPT_PATH"');
   });
@@ -2379,5 +2397,22 @@ describe("beta app review submission", () => {
     const body = script.split("<<'PYTHON'\n")[1]?.split("\nPYTHON")[0] ?? "";
     expect(body.length).toBeGreaterThan(0);
     expect(body).not.toMatch(/'/);
+  });
+});
+
+describe("local review metadata", () => {
+  it("reruns only conventions without replacing build/test statuses", async () => {
+    const wf = await read("review-metadata.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses: string }> };
+    expect(wf.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
+    expect(Object.keys(wf.jobs)).toEqual(["pr"]);
+    expect(wf.jobs.pr?.uses).toContain("pr-check.yml");
+  });
+  it("checks live PR metadata and rejects a superseded head", async () => {
+    const wf = await read("pr-check.yml") as { jobs: { conventions: { steps: Array<{ name?: string; run?: string }> } } };
+    const run = wf.jobs.conventions.steps.find(s => s.name === "Check PR conventions")?.run ?? "";
+    expect(run).toContain('gh api "repos/$REPOSITORY/pulls/$PR_NUMBER"');
+    expect(run).toContain('.head.sha == $sha');
+    expect(run).toContain('GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json"');
+    expect(run).toContain('--base "origin/$BASE_REF"');
   });
 });

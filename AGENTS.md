@@ -299,6 +299,16 @@ mistake.
 genuinely domain-specific, or every candidate is unmaintained. Record the outcome in
 `.agent/decisions.md` so the choice is not relitigated next session.
 
+**Independent review is required before merge.** Run `morpheus review prepare --base origin/main`
+after committing implementation/tests and start one fresh reviewer session without author chat.
+Respond once; substantive findings require one follow-up by the same reviewer. Minor-only findings
+allow author fixes without a second pass. Unresolved disagreements or incomplete review keep the PR
+open and auto-merge disabled. Record the review paragraph and structured evidence in the task
+worklog, link it with a visible `review-record:` PR-body line, then apply `agent-reviewed`.
+`review.required` defaults to true; project false opts out visibly. Only the named worklog may
+change after the covered commit. Follow the [review contract](docs/runbooks/independent-review.md)
+for budgets, related-code scope, record fields and escalation.
+
 **Every PR must carry:**
 
 - Tests for anything testable — a source change with no test change needs an explicit reason,
@@ -406,6 +416,17 @@ the lowest density in the suite was the file with the worst mutation score.
 Worked example, with the harness, the findings and the two mistakes made while fixing them:
 [`qa/audits/2026-08-19-python-test-quality.md`](https://github.com/cpheinrich/lakinacapital/blob/main/qa/audits/2026-08-19-python-test-quality.md)
 and [`qa/mutation/`](https://github.com/cpheinrich/lakinacapital/tree/main/qa/mutation) in Lakina.
+
+## iOS projects
+
+**Local iOS testing: focused tests only.** Run tests covering the feature under development
+and directly affected features or shared dependencies. Do not run the full iOS test suite
+locally unless Chris explicitly requests it: CI runs the full suite and must pass before
+merge. Use the repository's build/test wrapper when available, with explicit test filters.
+In the PR test plan and worklog, record the actual focused commands and why that scope was
+selected. Continue adding or updating tests and performing relevant simulator/visual QA.
+
+New projects inherit this policy from `src/init/templates.ts`; keep that template aligned.
 
 ## Branch protection
 

@@ -16,7 +16,7 @@ import { init as initScaffold } from "./init.js";
 import { webAddConsumerAuth, webInit, webStatus } from "./web.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
-import { prompt as reviewPrompt, reviewDelivery, reviewNeeded } from "./review.js";
+import { prompt as reviewPrompt, reviewDelivery, reviewNeeded, prepareReview } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
 import { check as contextCheck, guard, brief as contextBrief, install as contextInstall, refresh as contextRefresh, status as contextStatus, } from "./context.js";
@@ -42,6 +42,7 @@ Usage
   morpheus pm ship [<MO-020> ...]  [--check]
   morpheus pm migrate-ids   [--check] — integer roadmap ids to the dated scheme (MO-057)
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
+  morpheus review prepare   independent local review handoff and worklog template [--base <ref>]
   morpheus review prompt    assemble the rung-2 reviewer prompt for this branch
   morpheus review needed    [--base <ref>] [--prior-review <file>]
                             is this change worth a review, or a re-review?
@@ -631,6 +632,8 @@ async function main() {
         return 1;
     }
     if (group === "review") {
+        if (command === "prepare")
+            return prepareReview(dir, process.cwd(), flags.base);
         if (command === "prompt")
             return reviewPrompt(dir, process.cwd());
         if (command === "needed")

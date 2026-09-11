@@ -5,6 +5,8 @@ import { isRealReason, visibleProse, waiverReason } from "../check/pr.js";
 import { addressesPriorFindings, pathsMentioned } from "../review/findings.js";
 import { assessReviewDelivery } from "../review/delivery.js";
 import { loadReviewContext, ReviewError } from "../review/context.js";
+import { LOCAL_REVIEW_PROMPT } from "../review/local-prompt.js";
+import { git } from "../review/local.js";
 import { buildReviewPrompt } from "../review/prompt.js";
 /**
  * `morpheus review prompt` — assemble the rung 2 reviewer prompt and print it.
@@ -170,5 +172,21 @@ export function reviewDelivery(beforeCommentId, commentId, bodyPath, prBodyPath)
     }
     console.log(result.why);
     return 1;
+}
+export async function prepareReview(productDir, root, base) {
+    try {
+        const ctx = await loadReviewContext({ root, productDir, branch: currentBranch(), persona: LOCAL_REVIEW_PROMPT });
+        const head = git(root, ["rev-parse", "HEAD"]);
+        const fork = git(root, ["merge-base", base, head]);
+        console.log(LOCAL_REVIEW_PROMPT);
+        console.log(`\nReview range: ${fork}..${head}\nTicket: ${ctx.id ?? "none"} — ${ctx.title ?? "no declared title"}\n${ctx.intent ?? ""}\nAcceptance: ${ctx.acceptance ?? ctx.missingAcceptance ?? "not declared"}`);
+        console.log("\nWorklog record template (replace placeholders; never mark an unfinished review complete):");
+        console.log("```morpheus-review\n" + JSON.stringify({ version: 1, base: fork, reviewed: head, covered: head, authorSession: "AUTHOR_SESSION", reviewerSession: "REVIEWER_SESSION", risk: "normal", elapsedMinutes: 0, outcome: "incomplete", summary: "Replace with the actual review summary and repeat it as a paragraph.", findings: [] }, null, 2) + "\n```");
+        return 0;
+    }
+    catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        return 1;
+    }
 }
 //# sourceMappingURL=review.js.map
