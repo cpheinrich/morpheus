@@ -39,3 +39,17 @@ The exact graph was indexed at 2026-09-07T16:23:50Z. Coverage recorded only part
 `src/web/consumer-auth/templates-tests.ts` and `tests/firebase-cli.test.ts`; every reported range
 was read directly. A clean result elsewhere means no recorded indexing gap, not proof of absence.
 Low-risk work remains in #176; disruptive workflow remediation remains in linked draft #177.
+
+## Resolution — 2026-09-10
+
+Chris requested completion rather than retaining this audit as an open inventory.
+The high scheduler/action-pin finding is implemented in #177; the medium CLI split
+and low duplicate-helper cleanup are implemented in #234. This audit PR retains the
+lint/CI repair and unused-identifier cleanup, with a real ESLint regression test.
+Final merge and main-branch scheduler evidence are recorded in the closeout worklog.
+
+The CLI cleanup preserves the existing invocation contract and replaces repetitive
+scalar/boolean parsing and monolithic dispatch with tested seams and command-family
+handlers. Shared accessibility, optional-read, JSON-discovery, scaffold-write and
+markdown-table contracts replace matching implementations. Lookalikes with different
+failure policies remain explicit instead of silently changing semantics.
