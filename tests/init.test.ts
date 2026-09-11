@@ -48,6 +48,14 @@ describe("morpheus init", () => {
     const workflow = load(await read(".github/workflows/review-metadata.yml")) as { on: { pull_request: { types: string[] } }; jobs: Record<string, unknown> };
     expect(workflow.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
     expect(Object.keys(workflow.jobs)).toEqual(["pr"]);
+    // The check reads the live pull request through the job token. A repository
+    // whose default token is contents/packages read only answers that with 403
+    // unless the caller grants pull-requests: read, and a called workflow can
+    // only narrow what its caller grants — so every scaffolded caller must.
+    const grant = { contents: "read", "pull-requests": "read" };
+    expect((workflow.jobs.pr as { permissions: unknown }).permissions).toEqual(grant);
+    const ci = load(await read(".github/workflows/ci.yml")) as { jobs: Record<string, { permissions?: unknown }> };
+    expect(ci.jobs.pr?.permissions).toEqual(grant);
     expect(await read("AGENTS.md")).toContain("morpheus review prepare");
     expect(await read(".github/pull_request_template.md")).toContain("review-record:");
   });
