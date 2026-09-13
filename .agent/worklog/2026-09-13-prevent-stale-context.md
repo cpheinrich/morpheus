@@ -32,5 +32,5 @@ The independent reviewer covered `4730896caa203825c04fab7fc108a84fd79631db` at n
   before any fetch or fast-forward, and lease reads refuse a store that cannot accept invalidation.
   A real permission-failure lifecycle test proves the checkout stays unchanged and a later guard
   refuses the surviving receipt.
-- **MO-REV-002 (minor): accepted.** The roadmap item will move to `review` and record the PR number
-  before the final covered SHA is sent for the required same-reviewer follow-up.
+- **MO-REV-002 (minor): accepted.** The roadmap item is in `review` and records PR #243 before the
+  final covered SHA is sent for the required same-reviewer follow-up.
