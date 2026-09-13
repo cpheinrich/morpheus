@@ -887,4 +887,6 @@ boundary that fetches the declared trunk and requires the checkout to contain it
 receipt. It may fast-forward a clean trunk, but does not certify that run because the agent has not
 read the newly arrived files. Stale feature branches and dirty or diverged trunks fail closed. The
 npm registry was checked; native Git already supplies the exact ancestry, status, fetch and
-fast-forward operations, so no dependency was added.
+fast-forward operations, so no dependency was added. Governed actions re-observe the remote even
+inside the five-minute informational term: a failed refresh cannot durably mark an immutable lease
+file, so mutation authority may not depend on that mark surviving across CLI processes.

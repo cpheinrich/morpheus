@@ -961,11 +961,15 @@ uncertified with explicit recovery guidance. The SessionStart hook remains local
 non-mutating; unattended checkout mutation would cross the hook trust boundary and collide with
 in-progress work.
 
-**The term is how often the network is consulted.** Inside five minutes the last observation
-stands and the check costs one file read. Past it, the stored *receipt* — not the stored verdict —
-is re-observed against `git ls-remote origin main` and the records as they are now. `ls-remote`
-rather than `rev-parse origin/main`, which reads a local ref only as current as the last fetch:
-the exact looks-checked-is-not failure the lease exists to catch.
+**The term bounds informational re-observation, not authority to mutate.** Inside five minutes an
+informational status read can trust the last observation and cost one file read. Past it, the
+stored *receipt* — not the stored verdict — is re-observed against `git ls-remote origin main` and
+the records as they are now. Governed actions and the explicit `context check` enforcement probe
+always re-observe, including inside the term. That exception is what makes failed receipt
+invalidation fail closed across CLI processes: a user-immutable lease file can survive a failed
+refresh, but it cannot authorize an action after the remote moved. `ls-remote` rather than
+`rev-parse origin/main`, which reads a local ref only as current as the last fetch, avoids the
+exact looks-checked-is-not failure the lease exists to catch.
 
 **The trunk is declared, not assumed.** `origin` is not always canonical — on a fork it *is* the
 fork, whose `main` sits still while the real trunk moves, and a lease measured against it certifies

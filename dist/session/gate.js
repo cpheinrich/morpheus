@@ -64,7 +64,11 @@ export function offlineDeclared(flag) {
  * agent will work around rather than satisfy.
  */
 export async function gate(root, action, reach, options = {}) {
-    const { lease, issue, trunkMissing } = await check(root, options.now ?? new Date());
+    // Governed actions re-observe even inside the lease term. An explicit
+    // refresh can discover trunk movement but fail to invalidate an immutable
+    // receipt; trusting the surviving in-term verdict would then fail open in a
+    // later CLI process, which cannot inherit the failed refresh's memory.
+    const { lease, issue, trunkMissing } = await check(root, options.now ?? new Date(), false, true);
     if (!lease) {
         const why = issue
             ? `Session state exists but could not be read — ${issue}`

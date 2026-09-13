@@ -255,6 +255,7 @@ export async function check(
   root: string,
   now = new Date(),
   offline = false,
+  forceObservation = false,
 ): Promise<ContextResult> {
   const { worktree, id } = await session(root);
   const { lease: stored, issue } = await readLease(worktree, id);
@@ -281,7 +282,7 @@ export async function check(
   // Both sides have to be a real answer. A failed lookup is not a branch, and
   // two of them are not the same branch.
   const sameBranch = onBranch !== null && onBranch !== "" && onBranch === stored.receipt.branch;
-  if (current.status === "fresh" && sameBranch) {
+  if (current.status === "fresh" && sameBranch && !forceObservation) {
     // Nothing was written, because nothing needed to be — the stored lease is
     // still the current answer.
     return { lease: current, observed: false, written: true };

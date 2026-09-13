@@ -110,4 +110,4 @@ export declare function noteWrite(root: string, writes: readonly RecordWrite[]):
  * make a lease that was fresh at 12:05 answer for 18:00, which is the failure
  * the whole item opens with.
  */
-export declare function check(root: string, now?: Date, offline?: boolean): Promise<ContextResult>;
+export declare function check(root: string, now?: Date, offline?: boolean, forceObservation?: boolean): Promise<ContextResult>;

@@ -152,7 +152,7 @@ export async function noteWrite(root, writes) {
  * make a lease that was fresh at 12:05 answer for 18:00, which is the failure
  * the whole item opens with.
  */
-export async function check(root, now = new Date(), offline = false) {
+export async function check(root, now = new Date(), offline = false, forceObservation = false) {
     const { worktree, id } = await session(root);
     const { lease: stored, issue } = await readLease(worktree, id);
     if (!stored) {
@@ -176,7 +176,7 @@ export async function check(root, now = new Date(), offline = false) {
     // Both sides have to be a real answer. A failed lookup is not a branch, and
     // two of them are not the same branch.
     const sameBranch = onBranch !== null && onBranch !== "" && onBranch === stored.receipt.branch;
-    if (current.status === "fresh" && sameBranch) {
+    if (current.status === "fresh" && sameBranch && !forceObservation) {
         // Nothing was written, because nothing needed to be — the stored lease is
         // still the current answer.
         return { lease: current, observed: false, written: true };

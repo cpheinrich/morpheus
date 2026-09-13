@@ -200,7 +200,9 @@ export async function refresh(root, offline = offlineDeclared()) {
 }
 /** Exit non-zero when context is not fresh. For hooks and scripts. */
 export async function check(root, offline = offlineDeclared()) {
-    const { lease, issue } = await checkContext(root, new Date(), offline);
+    // This command is an enforcement probe, not an informational status read.
+    // Re-observe so a surviving but superseded in-term receipt cannot pass.
+    const { lease, issue } = await checkContext(root, new Date(), offline, true);
     if (!lease) {
         console.error(issue ?? "No context receipt for this worktree. Run: morpheus context refresh");
         return 1;

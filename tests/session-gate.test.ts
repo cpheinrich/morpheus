@@ -632,12 +632,11 @@ describe("the offline exception", () => {
     expect((await gate(root, "pm claim", "external")).ok).toBe(false);
   });
 
-  it("does not report containment for a fresh lease, however sticky the declaration", async () => {
-    // `MORPHEUS_OFFLINE=1` is set by wrappers and hooks, so it outlives the
-    // condition it was set for. Read unconditionally, it made the one command
-    // whose purpose is visibility stop being visible in a session where
-    // nothing else was degraded — and printed "offline" while `pm claim` in
-    // the same session pushed fine.
+  it("contains a local action when enforced re-observation cannot reach the trunk", async () => {
+    // Governed actions no longer trust an in-term receipt without observing
+    // the remote. With offline explicitly declared, a local action may still
+    // proceed—but it must say that it is contained rather than inheriting the
+    // old receipt's unverified authority.
     process.env["MORPHEUS_OFFLINE"] = "1";
     const root = await mkdtemp(join(tmpdir(), "morpheus-sticky-"));
     await mkdir(join(root, ".agent"), { recursive: true });
@@ -675,7 +674,7 @@ describe("the offline exception", () => {
 
     const result = await gate(root, "pm block", "local", { now });
     expect(result.ok).toBe(true);
-    expect(result.contained).toBeUndefined();
+    expect(result.contained).toBe(true);
     delete process.env["MORPHEUS_OFFLINE"];
   });
 
@@ -778,6 +777,7 @@ describe("source freshness before certification", () => {
     run(root, "push", "-q", "-u", "origin", "main");
 
     const { check, refresh } = await import("../src/session/context.js");
+    const { gate } = await import("../src/session/gate.js");
     const now = new Date();
     expect((await refresh(root, now)).lease?.status).toBe("fresh");
 
@@ -805,6 +805,15 @@ describe("source freshness before certification", () => {
     } finally {
       await chmod(store, 0o755);
     }
+
+    // Even after the store becomes writable, a later CLI process has only the
+    // surviving old receipt. Governed actions force a remote observation, so
+    // that receipt cannot regain authority inside its original five minutes.
+    const later = await gate(root, "pm new", "local", {
+      now: new Date(now.getTime() + 3 * 60_000),
+    });
+    expect(later.ok).toBe(false);
+    expect(later.message).toContain("Remote state advanced");
   });
 });
 
