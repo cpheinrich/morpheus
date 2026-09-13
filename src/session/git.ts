@@ -25,6 +25,22 @@ export type TrunkObservation =
   | { sha: string; reason?: undefined }
   | { sha: null; reason: "unreachable" | "missing" };
 
+export type SourceAlignment =
+  | { status: "current"; head: string; trunkSha: string }
+  | { status: "advanced"; from: string; to: string }
+  | {
+      status: "blocked";
+      reason:
+        | "fetch_failed"
+        | "head_unreadable"
+        | "dirty_trunk"
+        | "stale_branch"
+        | "diverged_trunk";
+      branch: string | null;
+      head: string | null;
+      trunkSha: string;
+    };
+
 interface Run {
   ok: boolean;
   stdout: string;
@@ -97,6 +113,54 @@ export async function trunkSha(root: string, trunk: TrunkRef): Promise<TrunkObse
     return sha ? { sha } : { sha: null, reason: "missing" };
   }
   return { sha: null, reason: result.code === 2 ? "missing" : "unreachable" };
+}
+
+/**
+ * Make an explicit context refresh operate on source that contains the
+ * observed trunk. A clean checkout of the trunk may be fast-forwarded, but a
+ * feature branch is never merged or rebased and a dirty tree is never
+ * rewritten. `advanced` deliberately does not mean current context: the
+ * caller must make the agent re-read the files that the fast-forward changed.
+ */
+export async function alignSourceWithTrunk(
+  root: string,
+  trunk: TrunkRef,
+  trunkSha: string,
+): Promise<SourceAlignment> {
+  const fetched = await git(root, ["fetch", "--quiet", trunk.remote, trunk.branch]);
+  if (!fetched.ok) {
+    return {
+      status: "blocked",
+      reason: "fetch_failed",
+      branch: await currentBranch(root),
+      head: await out(root, ["rev-parse", "HEAD"]),
+      trunkSha,
+    };
+  }
+
+  const head = await out(root, ["rev-parse", "HEAD"]);
+  const branch = await currentBranch(root);
+  if (!head) {
+    return { status: "blocked", reason: "head_unreadable", branch, head, trunkSha };
+  }
+
+  const contains = await git(root, ["merge-base", "--is-ancestor", trunkSha, "HEAD"]);
+  if (contains.ok) return { status: "current", head, trunkSha };
+
+  if (branch !== trunk.branch) {
+    return { status: "blocked", reason: "stale_branch", branch, head, trunkSha };
+  }
+
+  const dirty = await git(root, ["status", "--porcelain", "--untracked-files=normal"]);
+  if (!dirty.ok || dirty.stdout) {
+    return { status: "blocked", reason: "dirty_trunk", branch, head, trunkSha };
+  }
+
+  const advanced = await git(root, ["merge", "--ff-only", "--no-edit", trunkSha]);
+  if (!advanced.ok) {
+    return { status: "blocked", reason: "diverged_trunk", branch, head, trunkSha };
+  }
+  return { status: "advanced", from: head, to: trunkSha };
 }
 
 /**

@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { trunkChanges } from "../src/cli/check.js";
-import { parseTrunk, resolveTrunk, trunkLog, trunkSha } from "../src/session/git.js";
+import {
+  alignSourceWithTrunk,
+  parseTrunk,
+  resolveTrunk,
+  trunkLog,
+  trunkSha,
+} from "../src/session/git.js";
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, {
@@ -207,5 +213,89 @@ describe("reading the trunk", () => {
     const log = await trunkLog(root, { remote: "origin", branch: "main" }, "HEAD", head);
     expect(log).not.toBeNull();
     expect(log?.join("\n")).toContain("landed while you were away");
+  });
+});
+
+describe("aligning source with the trunk", () => {
+  async function behind(): Promise<{ root: string; tip: string }> {
+    const upstream = await mkdtemp(join(tmpdir(), "morpheus-bare-"));
+    git(upstream, "init", "-q", "--bare", "-b", "main");
+
+    const root = await mkdtemp(join(tmpdir(), "morpheus-align-"));
+    git(root, "init", "-q", "-b", "main");
+    await commit(root, "a.md", "a", "root");
+    git(root, "remote", "add", "origin", upstream);
+    git(root, "push", "-q", "-u", "origin", "main");
+
+    const other = await mkdtemp(join(tmpdir(), "morpheus-other-"));
+    git(other, "clone", "-q", upstream, ".");
+    await commit(other, "b.md", "b", "trunk advances");
+    git(other, "push", "-q", "origin", "main");
+    return { root, tip: git(other, "rev-parse", "HEAD") };
+  }
+
+  it("fast-forwards a clean checkout of the trunk", async () => {
+    const { root, tip } = await behind();
+    const before = git(root, "rev-parse", "HEAD");
+
+    expect(await alignSourceWithTrunk(root, { remote: "origin", branch: "main" }, tip)).toEqual({
+      status: "advanced",
+      from: before,
+      to: tip,
+    });
+    expect(git(root, "rev-parse", "HEAD")).toBe(tip);
+  });
+
+  it("never rewrites a dirty checkout of the trunk", async () => {
+    const { root, tip } = await behind();
+    const before = git(root, "rev-parse", "HEAD");
+    await writeFile(join(root, "local.txt"), "keep me", "utf8");
+
+    const result = await alignSourceWithTrunk(root, { remote: "origin", branch: "main" }, tip);
+    expect(result).toMatchObject({ status: "blocked", reason: "dirty_trunk", head: before });
+    expect(git(root, "rev-parse", "HEAD")).toBe(before);
+  });
+
+  it("never merges or rebases a stale feature branch", async () => {
+    const { root, tip } = await behind();
+    git(root, "checkout", "-q", "-b", "feature");
+    const before = git(root, "rev-parse", "HEAD");
+
+    const result = await alignSourceWithTrunk(root, { remote: "origin", branch: "main" }, tip);
+    expect(result).toMatchObject({ status: "blocked", reason: "stale_branch", branch: "feature" });
+    expect(git(root, "rev-parse", "HEAD")).toBe(before);
+  });
+
+  it("accepts a feature branch that already contains the current trunk", async () => {
+    const { root, tip } = await behind();
+    expect(
+      await alignSourceWithTrunk(root, { remote: "origin", branch: "main" }, tip),
+    ).toMatchObject({ status: "advanced", to: tip });
+    git(root, "checkout", "-q", "-b", "feature");
+    await commit(root, "feature.md", "work", "feature work");
+
+    expect(
+      await alignSourceWithTrunk(root, { remote: "origin", branch: "main" }, tip),
+    ).toMatchObject({ status: "current", trunkSha: tip });
+  });
+
+  it("does not rewrite a clean but diverged local trunk", async () => {
+    const { root, tip } = await behind();
+    await commit(root, "local.md", "local", "local trunk work");
+    const before = git(root, "rev-parse", "HEAD");
+
+    const result = await alignSourceWithTrunk(root, { remote: "origin", branch: "main" }, tip);
+    expect(result).toMatchObject({ status: "blocked", reason: "diverged_trunk", head: before });
+    expect(git(root, "rev-parse", "HEAD")).toBe(before);
+  });
+
+  it("fails closed when the observed trunk cannot be fetched", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-align-"));
+    git(root, "init", "-q", "-b", "main");
+    await commit(root, "a.md", "a", "root");
+
+    expect(
+      await alignSourceWithTrunk(root, { remote: "missing", branch: "main" }, "0".repeat(40)),
+    ).toMatchObject({ status: "blocked", reason: "fetch_failed", branch: "main" });
   });
 });

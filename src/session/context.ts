@@ -8,7 +8,15 @@ import {
   type SessionLease,
 } from "./lease.js";
 import { fingerprint, readInputs } from "./inputs.js";
-import { currentBranch, resolveTrunk, trunkSha, worktreeRoot, type TrunkRef } from "./git.js";
+import {
+  alignSourceWithTrunk,
+  currentBranch,
+  resolveTrunk,
+  trunkSha,
+  worktreeRoot,
+  type SourceAlignment,
+  type TrunkRef,
+} from "./git.js";
 import { projectPolicy, sessionId } from "./policy.js";
 import { isAbsolute, relative } from "node:path";
 import { clearLease, readLease, writeLease } from "./store.js";
@@ -39,6 +47,8 @@ export interface ContextResult {
    * the refresh that just appeared to succeed.
    */
   written: boolean;
+  /** Why source could not yet be certified, or that a safe fast-forward occurred. */
+  sourceAlignment?: Exclude<SourceAlignment, { status: "current" }>;
 }
 
 async function session(root: string): Promise<{ worktree: string; id: string }> {
@@ -61,7 +71,6 @@ function required(policy: LeasePolicy): readonly string[] {
 export async function refresh(root: string, now = new Date()): Promise<ContextResult> {
   const { worktree, id } = await session(root);
   const policy = await projectPolicy(worktree);
-  const inputs = await readInputs(worktree, required(policy));
   const trunk = await resolveTrunk(worktree, policy.trunk);
 
   // **Never skipped, whatever is declared.** The read-only commands may take
@@ -76,6 +85,22 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
   // where that was last fixed.
   const observation = await trunkSha(worktree, trunk);
   const sha = observation.sha;
+
+  if (sha) {
+    const sourceAlignment = await alignSourceWithTrunk(worktree, trunk, sha);
+    if (sourceAlignment.status !== "current") {
+      // No receipt survives a source update or a refusal to update. In the
+      // fast-forward case the files have changed since the agent read them;
+      // in every blocked case they are known not to contain the asserted
+      // trunk. Either claim would be false.
+      await clearLease(worktree, id);
+      return { lease: null, observed: true, written: false, sourceAlignment };
+    }
+  }
+
+  // Read only after source alignment. A fast-forward between this read and
+  // the receipt would fingerprint files the agent read before they changed.
+  const inputs = await readInputs(worktree, required(policy));
 
   const receipt: ContextReceipt = {
     version: 1,

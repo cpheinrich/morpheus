@@ -708,6 +708,52 @@ describe("a receipt that does not reach disk", () => {
   });
 });
 
+describe("source freshness before certification", () => {
+  it("fast-forwards a clean trunk but requires a reread before minting a receipt", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@e",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@e",
+    };
+    const run = (cwd: string, ...args: string[]) =>
+      execFileSync("git", args, { cwd, env, encoding: "utf8" }).trim();
+
+    const remote = await mkdtemp(join(tmpdir(), "morpheus-bare-"));
+    run(remote, "init", "-q", "--bare", "-b", "main");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-refresh-source-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "x" }), "utf8");
+    for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `v1 ${id}`, "utf8");
+    run(root, "init", "-q", "-b", "main");
+    run(root, "add", "-A");
+    run(root, "commit", "-q", "-m", "root");
+    run(root, "remote", "add", "origin", remote);
+    run(root, "push", "-q", "-u", "origin", "main");
+
+    const other = await mkdtemp(join(tmpdir(), "morpheus-other-"));
+    run(other, "clone", "-q", remote, ".");
+    await writeFile(join(other, ".agent/decisions.md"), "v2 decision", "utf8");
+    run(other, "add", "-A");
+    run(other, "commit", "-q", "-m", "new decision");
+    run(other, "push", "-q", "origin", "main");
+    const tip = run(other, "rev-parse", "HEAD");
+
+    const { refresh } = await import("../src/session/context.js");
+    const first = await refresh(root);
+    expect(first.lease).toBeNull();
+    expect(first.sourceAlignment).toMatchObject({ status: "advanced", to: tip });
+    expect(run(root, "rev-parse", "HEAD")).toBe(tip);
+
+    // Only the second call can assert that the newly arrived records were read.
+    const second = await refresh(root);
+    expect(second.sourceAlignment).toBeUndefined();
+    expect(second.lease?.status).toBe("fresh");
+  });
+});
+
 describe("a command that writes a record it required", () => {
   it("keeps pm block's inbox receipt update explicit when the index is written after it", async () => {
     const root = await mkdtemp(join(tmpdir(), "morpheus-block-notewrite-"));

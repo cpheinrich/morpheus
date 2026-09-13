@@ -1,6 +1,6 @@
 import { ABSENT, CANONICAL_INPUTS, leaseAt, observeLease, } from "./lease.js";
 import { fingerprint, readInputs } from "./inputs.js";
-import { currentBranch, resolveTrunk, trunkSha, worktreeRoot } from "./git.js";
+import { alignSourceWithTrunk, currentBranch, resolveTrunk, trunkSha, worktreeRoot, } from "./git.js";
 import { projectPolicy, sessionId } from "./policy.js";
 import { isAbsolute, relative } from "node:path";
 import { clearLease, readLease, writeLease } from "./store.js";
@@ -22,7 +22,6 @@ function required(policy) {
 export async function refresh(root, now = new Date()) {
     const { worktree, id } = await session(root);
     const policy = await projectPolicy(worktree);
-    const inputs = await readInputs(worktree, required(policy));
     const trunk = await resolveTrunk(worktree, policy.trunk);
     // **Never skipped, whatever is declared.** The read-only commands may take
     // the declaration's word for it because they re-observe the *stored*
@@ -36,6 +35,20 @@ export async function refresh(root, now = new Date()) {
     // where that was last fixed.
     const observation = await trunkSha(worktree, trunk);
     const sha = observation.sha;
+    if (sha) {
+        const sourceAlignment = await alignSourceWithTrunk(worktree, trunk, sha);
+        if (sourceAlignment.status !== "current") {
+            // No receipt survives a source update or a refusal to update. In the
+            // fast-forward case the files have changed since the agent read them;
+            // in every blocked case they are known not to contain the asserted
+            // trunk. Either claim would be false.
+            await clearLease(worktree, id);
+            return { lease: null, observed: true, written: false, sourceAlignment };
+        }
+    }
+    // Read only after source alignment. A fast-forward between this read and
+    // the receipt would fingerprint files the agent read before they changed.
+    const inputs = await readInputs(worktree, required(policy));
     const receipt = {
         version: 1,
         id: `ctx-${now.toISOString()}`,

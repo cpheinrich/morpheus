@@ -70,6 +70,45 @@ export async function trunkSha(root, trunk) {
     return { sha: null, reason: result.code === 2 ? "missing" : "unreachable" };
 }
 /**
+ * Make an explicit context refresh operate on source that contains the
+ * observed trunk. A clean checkout of the trunk may be fast-forwarded, but a
+ * feature branch is never merged or rebased and a dirty tree is never
+ * rewritten. `advanced` deliberately does not mean current context: the
+ * caller must make the agent re-read the files that the fast-forward changed.
+ */
+export async function alignSourceWithTrunk(root, trunk, trunkSha) {
+    const fetched = await git(root, ["fetch", "--quiet", trunk.remote, trunk.branch]);
+    if (!fetched.ok) {
+        return {
+            status: "blocked",
+            reason: "fetch_failed",
+            branch: await currentBranch(root),
+            head: await out(root, ["rev-parse", "HEAD"]),
+            trunkSha,
+        };
+    }
+    const head = await out(root, ["rev-parse", "HEAD"]);
+    const branch = await currentBranch(root);
+    if (!head) {
+        return { status: "blocked", reason: "head_unreadable", branch, head, trunkSha };
+    }
+    const contains = await git(root, ["merge-base", "--is-ancestor", trunkSha, "HEAD"]);
+    if (contains.ok)
+        return { status: "current", head, trunkSha };
+    if (branch !== trunk.branch) {
+        return { status: "blocked", reason: "stale_branch", branch, head, trunkSha };
+    }
+    const dirty = await git(root, ["status", "--porcelain", "--untracked-files=normal"]);
+    if (!dirty.ok || dirty.stdout) {
+        return { status: "blocked", reason: "dirty_trunk", branch, head, trunkSha };
+    }
+    const advanced = await git(root, ["merge", "--ff-only", "--no-edit", trunkSha]);
+    if (!advanced.ok) {
+        return { status: "blocked", reason: "diverged_trunk", branch, head, trunkSha };
+    }
+    return { status: "advanced", from: head, to: trunkSha };
+}
+/**
  * What HEAD is on: a branch name, or the commit when detached.
  *
  * **`null` when the lookup failed**, which is not a name. `(detached)` was

@@ -127,6 +127,9 @@ morpheus context refresh
 This takes a *context receipt* — your assertion that you have loaded current project state,
 fingerprinted against the tip of `origin/main`. It is good for **five minutes**, after which the
 next governed command re-checks the trunk and those records rather than trusting the old verdict.
+Before certifying, it also proves the checkout contains that trunk tip. A clean checkout of the
+trunk is fast-forwarded safely, then the command stops so you can re-read the changed files and run
+it again. A dirty trunk, stale feature branch, or diverged trunk is never rewritten automatically.
 
 **Until you have one, these are refused:** `pm claim`, `pm new`, `pm link-issue`, `pm block`,
 `access sync`. Nothing

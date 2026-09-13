@@ -37,7 +37,47 @@ export async function refresh(root, offline = offlineDeclared()) {
     const policy = await projectPolicy(wt);
     const trunk = await resolveTrunk(wt, policy.trunk);
     const trunkRef = `${trunk.remote}/${trunk.branch}`;
-    const { lease, issue, written, trunkMissing } = await takeReceipt(root);
+    const { lease, issue, written, trunkMissing, sourceAlignment } = await takeReceipt(root);
+    if (sourceAlignment) {
+        if (sourceAlignment.status === "advanced") {
+            console.log(`${NO} Fast-forwarded ${trunkRef} ` +
+                `(${sourceAlignment.from.slice(0, 7)} → ${sourceAlignment.to.slice(0, 7)}).`);
+            const log = await trunkLog(wt, trunk, sourceAlignment.from, sourceAlignment.to);
+            if (log?.length) {
+                for (const line of log.slice(0, 20))
+                    console.log(`  ${line}`);
+                if (log.length > 20)
+                    console.log(`  … and ${log.length - 20} more`);
+            }
+            console.log(`  Re-read the changed source and canonical records, then run ` +
+                `\`morpheus context refresh\` again.`);
+            return 1;
+        }
+        const branch = sourceAlignment.branch ?? "(unreadable branch)";
+        if (sourceAlignment.reason === "stale_branch") {
+            console.error(`${NO} ${branch} does not contain current ${trunkRef} ` +
+                `(${sourceAlignment.trunkSha.slice(0, 7)}).`);
+            console.error(`  Merge or rebase the trunk into this branch, re-read the changed source and records, ` +
+                `then refresh again.`);
+        }
+        else if (sourceAlignment.reason === "dirty_trunk") {
+            console.error(`${NO} ${branch} is behind ${trunkRef}, but the working tree is dirty.`);
+            console.error(`  Preserve or commit the local changes before updating the trunk, then refresh again.`);
+        }
+        else if (sourceAlignment.reason === "diverged_trunk") {
+            console.error(`${NO} ${branch} has diverged from ${trunkRef}; it was not rewritten automatically.`);
+            console.error(`  Reconcile the branch deliberately, re-read the changed source and records, ` +
+                `then refresh again.`);
+        }
+        else if (sourceAlignment.reason === "fetch_failed") {
+            console.error(`${NO} ${trunkRef} was observed but could not be fetched, ` +
+                `so source freshness is unverified.`);
+        }
+        else {
+            console.error(`${NO} Could not read HEAD, so source freshness is unverified.`);
+        }
+        return 1;
+    }
     if (!lease) {
         console.error(issue ?? "Could not take a context receipt.");
         return 1;

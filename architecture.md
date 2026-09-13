@@ -951,6 +951,16 @@ records were read by the act of not reading them, so the Claude hook prints `con
 takes nothing. That command exits 0 by design rather than by `|| true`, so a missing binary does
 not get swallowed the way a stale lease would be.
 
+**A receipt may certify only source that contains the observed trunk.** The remote SHA in a
+receipt is also the code baseline the agent claims to understand. `context refresh` fetches the
+declared trunk and proves that SHA is an ancestor of `HEAD` before fingerprinting records. On a
+clean checkout of the trunk it may fast-forward, but it then stops without a receipt: the files
+changed after the agent read them, so they must be re-read before a second refresh certifies them.
+A dirty trunk, stale feature branch, or diverged trunk is never rewritten automatically and stays
+uncertified with explicit recovery guidance. The SessionStart hook remains local and
+non-mutating; unattended checkout mutation would cross the hook trust boundary and collide with
+in-progress work.
+
 **The term is how often the network is consulted.** Inside five minutes the last observation
 stands and the check costs one file read. Past it, the stored *receipt* — not the stored verdict —
 is re-observed against `git ls-remote origin main` and the records as they are now. `ls-remote`

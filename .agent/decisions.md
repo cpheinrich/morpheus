@@ -879,3 +879,12 @@ launches the isolated reviewer and owns responses, evidence, CI and merge. `revi
 prints a packet; neither that command nor a PR-monitoring agent schedules review. Legacy GitHub
 review instructions must be marked opt-in wherever they remain. This clarifies the September 10
 policy after OpenClaw inferred that another agent would monitor and review its PRs.
+
+**SessionStart invalidates context; explicit refresh aligns source** — 2026-09-13. The automatic
+hook remains local, informational and non-mutating: it cannot safely merge, rebase, or fast-forward
+a checkout that may hold dirty or in-progress work. `morpheus context refresh` is the explicit
+boundary that fetches the declared trunk and requires the checkout to contain it before issuing a
+receipt. It may fast-forward a clean trunk, but does not certify that run because the agent has not
+read the newly arrived files. Stale feature branches and dirty or diverged trunks fail closed. The
+npm registry was checked; native Git already supplies the exact ancestry, status, fetch and
+fast-forward operations, so no dependency was added.

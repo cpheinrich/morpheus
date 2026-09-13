@@ -1,5 +1,5 @@
 import { type SessionLease } from "./lease.js";
-import { type TrunkRef } from "./git.js";
+import { type SourceAlignment, type TrunkRef } from "./git.js";
 export interface ContextResult {
     /**
      * Null when there is no usable session state. `issue` is what tells absent
@@ -26,6 +26,10 @@ export interface ContextResult {
      * the refresh that just appeared to succeed.
      */
     written: boolean;
+    /** Why source could not yet be certified, or that a safe fast-forward occurred. */
+    sourceAlignment?: Exclude<SourceAlignment, {
+        status: "current";
+    }>;
 }
 /**
  * Take a new receipt: *the agent asserting it has loaded current state.*

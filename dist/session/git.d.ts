@@ -21,6 +21,21 @@ export type TrunkObservation = {
     sha: null;
     reason: "unreachable" | "missing";
 };
+export type SourceAlignment = {
+    status: "current";
+    head: string;
+    trunkSha: string;
+} | {
+    status: "advanced";
+    from: string;
+    to: string;
+} | {
+    status: "blocked";
+    reason: "fetch_failed" | "head_unreadable" | "dirty_trunk" | "stale_branch" | "diverged_trunk";
+    branch: string | null;
+    head: string | null;
+    trunkSha: string;
+};
 export declare function parseTrunk(ref: string): TrunkRef;
 /**
  * Which ref is this project's canonical trunk.
@@ -47,6 +62,14 @@ export declare function resolveTrunk(root: string, declared?: string): Promise<T
  * indistinguishable from a dead network.
  */
 export declare function trunkSha(root: string, trunk: TrunkRef): Promise<TrunkObservation>;
+/**
+ * Make an explicit context refresh operate on source that contains the
+ * observed trunk. A clean checkout of the trunk may be fast-forwarded, but a
+ * feature branch is never merged or rebased and a dirty tree is never
+ * rewritten. `advanced` deliberately does not mean current context: the
+ * caller must make the agent re-read the files that the fast-forward changed.
+ */
+export declare function alignSourceWithTrunk(root: string, trunk: TrunkRef, trunkSha: string): Promise<SourceAlignment>;
 /**
  * What HEAD is on: a branch name, or the commit when detached.
  *
