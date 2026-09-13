@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CANONICAL_INPUTS } from "../src/session/lease.js";
@@ -751,6 +751,60 @@ describe("source freshness before certification", () => {
     const second = await refresh(root);
     expect(second.sourceAlignment).toBeUndefined();
     expect(second.lease?.status).toBe("fresh");
+  });
+
+  it("fails closed when a superseded receipt cannot be invalidated", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@e",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@e",
+    };
+    const run = (cwd: string, ...args: string[]) =>
+      execFileSync("git", args, { cwd, env, encoding: "utf8" }).trim();
+
+    const remote = await mkdtemp(join(tmpdir(), "morpheus-bare-"));
+    run(remote, "init", "-q", "--bare", "-b", "main");
+    const root = await mkdtemp(join(tmpdir(), "morpheus-refresh-readonly-"));
+    await mkdir(join(root, ".agent"), { recursive: true });
+    await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "x" }), "utf8");
+    for (const id of CANONICAL_INPUTS) await writeFile(join(root, id), `v1 ${id}`, "utf8");
+    run(root, "init", "-q", "-b", "main");
+    run(root, "add", "-A");
+    run(root, "commit", "-q", "-m", "root");
+    run(root, "remote", "add", "origin", remote);
+    run(root, "push", "-q", "-u", "origin", "main");
+
+    const { check, refresh } = await import("../src/session/context.js");
+    const now = new Date();
+    expect((await refresh(root, now)).lease?.status).toBe("fresh");
+
+    const other = await mkdtemp(join(tmpdir(), "morpheus-other-"));
+    run(other, "clone", "-q", remote, ".");
+    await writeFile(join(other, "new.md"), "new", "utf8");
+    run(other, "add", "-A");
+    run(other, "commit", "-q", "-m", "trunk moves");
+    run(other, "push", "-q", "origin", "main");
+
+    const before = run(root, "rev-parse", "HEAD");
+    const store = join(root, "local", "sessions");
+    await chmod(store, 0o555);
+    try {
+      const failed = await refresh(root, new Date(now.getTime() + 60_000));
+      expect(failed.lease).toBeNull();
+      expect(failed.issue).toContain("invalidate");
+      expect(run(root, "rev-parse", "HEAD")).toBe(before);
+
+      // A later command in a new process would see only the old file. Reading
+      // it must still fail closed while the store cannot accept invalidation.
+      const guarded = await check(root, new Date(now.getTime() + 2 * 60_000));
+      expect(guarded.lease).toBeNull();
+      expect(guarded.issue).toContain("not writable");
+    } finally {
+      await chmod(store, 0o755);
+    }
   });
 });
 

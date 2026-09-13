@@ -1,4 +1,5 @@
-import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import type { SessionLease } from "./lease.js";
@@ -143,7 +144,18 @@ function detail(error: z.ZodError): string {
 
 /** Remove a session's stored lease. Absent is not an error. */
 export async function clearLease(root: string, sessionId: string): Promise<void> {
-  await rm(leasePath(root, sessionId), { force: true });
+  const path = leasePath(root, sessionId);
+  try {
+    await lstat(path);
+  } catch (error: unknown) {
+    const err = error as NodeJS.ErrnoException;
+    // `force` handles a missing leaf but not an intermediate component that
+    // is a file. Both mean there is no old receipt to invalidate; the later
+    // write still reports why a new receipt cannot persist.
+    if (err.code === "ENOENT" || err.code === "ENOTDIR") return;
+    throw error;
+  }
+  await rm(path);
 }
 
 /**
@@ -168,6 +180,21 @@ export async function readLease(root: string, sessionId: string): Promise<LeaseR
       return { lease: null, issue: `${path}: dangling symlink — the lease it pointed at is gone` };
     }
     return { lease: null };
+  }
+
+  // A fresh receipt that cannot be invalidated is not safe to trust. An
+  // explicit refresh may discover that the trunk moved, fail to remove this
+  // file, and leave the previous in-term verdict behind. Future CLI processes
+  // have no in-memory knowledge of that failure, so the store's ability to
+  // accept invalidation is part of reading a lease, not only writing one.
+  try {
+    await access(dirname(path), constants.W_OK);
+  } catch (error: unknown) {
+    const err = error as NodeJS.ErrnoException;
+    return {
+      lease: null,
+      issue: `${path}: lease store is not writable (${err.code ?? err.message})`,
+    };
   }
 
   let parsed: unknown;

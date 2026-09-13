@@ -21,3 +21,16 @@ registry search found no reason to replace the small native Git boundary with a 
 Validation: `pnpm vitest run tests/trunk-changes.test.ts tests/session-gate.test.ts` passed the
 focused context suite; the final `pnpm test` passed all 1,306 tests. Typecheck, lint, compile, PM
 validation/indexing, and `git diff --check` also passed and are recorded in the PR test plan.
+
+## Independent review
+
+The independent reviewer covered `4730896caa203825c04fab7fc108a84fd79631db` at normal risk in
+11 minutes. It found one substantive fail-closed defect and one minor lifecycle omission.
+
+- **MO-REV-001 (substantive): accepted.** If invalidating an existing receipt failed, refresh
+  could update the source while leaving the old in-term receipt usable. Refresh now invalidates
+  before any fetch or fast-forward, and lease reads refuse a store that cannot accept invalidation.
+  A real permission-failure lifecycle test proves the checkout stays unchanged and a later guard
+  refuses the surviving receipt.
+- **MO-REV-002 (minor): accepted.** The roadmap item will move to `review` and record the PR number
+  before the final covered SHA is sent for the required same-reviewer follow-up.

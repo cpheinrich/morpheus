@@ -70,6 +70,22 @@ function required(policy: LeasePolicy): readonly string[] {
  */
 export async function refresh(root: string, now = new Date()): Promise<ContextResult> {
   const { worktree, id } = await session(root);
+
+  // Invalidate first, before a fetch or fast-forward can change the source.
+  // If this fails, the explicit refresh must not update the checkout and then
+  // leave an in-term receipt behind that still authorizes governed commands.
+  try {
+    await clearLease(worktree, id);
+  } catch (error: unknown) {
+    const err = error as NodeJS.ErrnoException;
+    return {
+      lease: null,
+      issue: `Could not invalidate the previous context receipt: ${err.code ?? err.message}`,
+      observed: false,
+      written: false,
+    };
+  }
+
   const policy = await projectPolicy(worktree);
   const trunk = await resolveTrunk(worktree, policy.trunk);
 
@@ -93,7 +109,6 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
       // fast-forward case the files have changed since the agent read them;
       // in every blocked case they are known not to contain the asserted
       // trunk. Either claim would be false.
-      await clearLease(worktree, id);
       return { lease: null, observed: true, written: false, sourceAlignment };
     }
   }
