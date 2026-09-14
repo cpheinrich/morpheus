@@ -36,7 +36,7 @@ describe these runtime boundaries. No runner cancellation policy or cache behavi
   within one attempt, while asserting cache contents and unrelated files survive.
 - Artifact paths are checked against the published preparation outputs; all four
   evidence steps require successful preparation, preventing empty-path fallback.
-- Frozen install, all 131 workflow tests, full repository suite, typecheck, compile,
+- Frozen install, all 131 workflow tests, all 1,320 repository tests, typecheck, compile,
   lint, PM index and inbox validation pass. Native iOS tests were not run locally:
   this changes workflow filesystem orchestration and does not change app code.
 - A fresh exact-checkout graph was installed and verified at HEAD, but the current
@@ -47,4 +47,22 @@ describe these runtime boundaries. No runner cancellation policy or cache behavi
 
 ## Independent review
 
-Pending the fresh author-managed reviewer; no clearance is asserted yet.
+Independent high-risk review of 725cccbe01467d201dcb1fff387b087b6e52a0bc completed in 2.6 minutes with no findings. The reviewer confirmed the remote head, invocation isolation, stable caches, guarded artifact consumers and roadmap reconciliation; all 131 workflow tests and actionlint passed. No author fixes or follow-up were needed. Native Xcode cancellation was not reproduced; the executable filesystem regression covers late writes after preparation.
+
+```morpheus-review
+{
+  "version": 1,
+  "base": "5a096dcdd7559aa62c81c8da0241253da68040bd",
+  "reviewed": "725cccbe01467d201dcb1fff387b087b6e52a0bc",
+  "covered": "725cccbe01467d201dcb1fff387b087b6e52a0bc",
+  "authorSession": "01a0a0ae-fedf-7352-ae5f-244b1b9a8f38",
+  "reviewerSession": "/root/review_ios240",
+  "risk": "high",
+  "elapsedMinutes": 2.6,
+  "outcome": "complete",
+  "summary": "Independent high-risk review of 725cccbe01467d201dcb1fff387b087b6e52a0bc completed in 2.6 minutes with no findings. The reviewer confirmed the remote head, invocation isolation, stable caches, guarded artifact consumers and roadmap reconciliation; all 131 workflow tests and actionlint passed. No author fixes or follow-up were needed. Native Xcode cancellation was not reproduced; the executable filesystem regression covers late writes after preparation.",
+  "findings": []
+}
+```
+
+Actionlint 1.7.12 also passed against the changed reusable workflow.
