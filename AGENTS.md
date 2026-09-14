@@ -118,6 +118,11 @@ pinned until a reviewed Morpheus change advances it.
 
 ## Context freshness
 
+Run `morpheus context brief` at session start if the standard hook did not run. It fetches the
+canonical trunk and fast-forwards only a clean local trunk. It never rebases an active task or
+rewrites dirty work. Follow its absolute `WORK IN` path when a session has a saved task association.
+A behind checkout cannot issue a fresh receipt: integrate trunk explicitly, then re-read records.
+
 **Read `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md`, then:**
 
 ```sh
@@ -136,7 +141,7 @@ routing-around outlives the staleness.
 ```sh
 morpheus context status    # what the current lease says, and how old it is
 morpheus context check     # exit non-zero unless fresh — for hooks and scripts
-morpheus context brief     # session start: discards the last receipt, says what to read
+morpheus context brief     # session start: fetches trunk, updates clean trunk, identifies task
 morpheus context install   # wire the hooks that run `brief`, and declare the inbox
 ```
 
@@ -224,8 +229,20 @@ Never start an item without claiming it; another agent, possibly on someone else
 may be on it. Move the item to `review` when you open the PR. Merging deletes the branch and
 releases the claim.
 
-Run one **git worktree per parallel session** so two agents cannot collide in the same
-checkout.
+Use **one worktree per implementation task**, not per conversation. Read-only investigation
+needs no new worktree. `pm claim <ID>` from a shared or unrelated checkout prepares a detached
+worktree at freshly fetched trunk and prints its absolute path. It moves only that item's new,
+untracked intake file; existing items come from trunk. Read the destination's records, refresh
+context there, then repeat `pm claim` there to stake the branch. No receipt is copied automatically.
+An already isolated detached worktree can claim directly after reading and refreshing.
+
+Use `morpheus pm resume <ID>` to continue an explicitly named existing task. It reuses the
+worktree holding its claimed branch, or checks out that branch in a worktree when needed.
+Preserve its commits and edits; fetch and integrate trunk explicitly when behind. A resumed session
+must not silently attach an unrelated request to its old task. Provider session IDs associate
+sessions with tasks; `--session-id` on claim/resume supplies one explicitly (Codex defaults to
+`CODEX_THREAD_ID`). Without an ID, the currently checked-out claimed branch identifies the task.
+Do not run concurrent authors on the same task worktree.
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
 voice and browser chat enter the same lifecycle as every other request: create or link the roadmap
@@ -263,7 +280,8 @@ the heartbeat's ceiling. So resuming is a checkout, not a fresh claim; `pm claim
 print exactly this:
 
 ```sh
-git checkout mo-051-agent-code-review
+morpheus pm resume MO-051
+# In the reported worktree, after reading current records:
 morpheus pm unblock MO-051
 ```
 

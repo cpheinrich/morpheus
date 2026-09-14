@@ -36,6 +36,7 @@ export interface Flags {
     issue?: string;
     needs?: string;
     context?: string;
+    sessionId?: string;
     ceiling?: number;
     notes?: string;
     priorReview?: string;

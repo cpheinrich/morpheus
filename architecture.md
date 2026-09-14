@@ -925,17 +925,42 @@ issue to obsolete or unrelated work), `pm block` (escalating a question the inbo
 also fired on `pm index` or `check pr` would train people to route around it, and **the
 routing-around is permanent where the staleness was temporary.**
 
-**A hook may not certify, but it may discard.** The lease is keyed on the worktree, so a session
-starting where another refreshed minutes ago would inherit its ✓ — the failure this whole section
-is about, arriving through the surface added to prevent it. `context brief` discards the stored
-receipt before reporting: that asserts nothing, so it does not violate the rule below, and it is
-what makes the lease session-scoped rather than merely working-copy-scoped. Its **project-context
-report is entirely local**; one separate, bounded `ls-remote` compares the installed Morpheus
-receipt to canonical `main`, because this hook is the only device-wide chokepoint before local tools
-can disagree with CI. Offline skips that advisory check. It also lands correctly
-on a session *resumed* after a context compaction, which is exactly when an agent has lost what it
-read. Discarding rather than downgrading, because flipping the stored status does not survive the
-next check — which re-observes from the receipt, and the receipt is still valid.
+**Startup prepares source; explicit refresh certifies reading.** The existing standard shim
+continues to invoke `morpheus context brief`, now also available as `context start`. The shared CLI
+fetches the configured canonical trunk into an invocation-private ref so simultaneous fetches cannot
+exchange `FETCH_HEAD`. A clean local trunk behind that exact commit fast-forwards; dirty checkouts,
+feature branches and divergent trunks remain intact and report missing commits. Offline or fetch
+failure is explicitly unverified, never a successful current-source report. A receipt is refused
+when the checkout does not contain the observed trunk. Startup itself never issues a receipt.
+
+**One worktree per implementation task, not per conversation.** Startup without a task performs
+no worktree allocation. `pm claim` from a shared or unrelated checkout prepares a detached worktree
+at freshly fetched trunk, moving only a newly filed untracked roadmap item. The agent must read the
+worktree's records, refresh there, and repeat the claim to create and push its derived branch.
+An already isolated detached worktree can claim directly. Read-only investigation needs no worktree.
+Existing task worktrees are identified by their claimed roadmap branch. `pm resume <ID>` resolves
+exactly one remote claim and reuses its local worktree or creates a checkout of that branch,
+preserving local commits and edits. Multiple remote claims are ambiguous and refused.
+
+An optional provider session ID binds a conversation to its explicit task in the common Git
+metadata directory. Hook JSON carries `session_id`; Codex commands can also use `CODEX_THREAD_ID`;
+`pm claim` and `pm resume` accept `--session-id` for providers that do not export it. IDs are hashed,
+never interpreted as paths. Re-entry validates both checkout identity and the claimed branch; a
+stale association requires explicit resumption. Without an ID, the checked-out task branch remains
+the source of identity. A new request must claim its own task, even when its conversation previously
+worked on another one. Concurrent authors must not share one task worktree.
+
+A hook cannot change the parent agent's working directory. Startup and task commands print an
+absolute `WORK IN` directory and the required record paths; the agent must use that directory for
+subsequent operations. Updated standard hooks inherit the behavior from the copied global CLI,
+without changes to each project's hook JSON. Hook trust remains provider-controlled; projects
+without the standard hook need `context install` and provider trust. Updating the runtime git
+dependency alone does not update the global CLI. Task directories persist for explicit Git cleanup;
+startup does not delete them automatically.
+
+The reporting half discards the selected worktree's prior receipt before naming records to read.
+Resumption and compaction preserve task association but require re-reading. The separate CLI-version
+check remains advisory and device-consented; startup never installs a new CLI on its own.
 
 **The branch is part of what a receipt is about.** A `git checkout` inside the five minutes puts
 different canonical records on disk, so `check` compares `receipt.branch` before trusting the term.
@@ -948,8 +973,8 @@ checkout`. Fixing either call site would leave the other.
 **Taking a receipt is a command, never a side effect.** `morpheus context refresh` is the agent
 asserting it has loaded current state. A hook that took one at session start would certify the
 records were read by the act of not reading them, so the Claude hook prints `context brief` and
-takes nothing. That command exits 0 by design rather than by `|| true`, so a missing binary does
-not get swallowed the way a stale lease would be.
+takes nothing. The reporting helper takes no receipt; the startup command exits nonzero when source preparation
+fails and names the failure explicitly.
 
 **The term is how often the network is consulted.** Inside five minutes the last observation
 stands and the check costs one file read. Past it, the stored *receipt* — not the stored verdict —

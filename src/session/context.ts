@@ -1,3 +1,4 @@
+import { assertCurrentSource } from "./start.js";
 import {
   ABSENT,
   CANONICAL_INPUTS,
@@ -76,6 +77,18 @@ export async function refresh(root: string, now = new Date()): Promise<ContextRe
   // where that was last fixed.
   const observation = await trunkSha(worktree, trunk);
   const sha = observation.sha;
+
+  if (sha) {
+    try {
+      const verified = await assertCurrentSource(worktree);
+      if (verified !== sha) throw new Error("Trunk moved during refresh. Re-read current source and retry.");
+    } catch (error) {
+      // Invalidate the old certification as well as refusing this one.
+      await clearLease(worktree, id);
+      return { lease: null, observed: true, written: false,
+        issue: error instanceof Error ? error.message : String(error) };
+    }
+  }
 
   const receipt: ContextReceipt = {
     version: 1,
