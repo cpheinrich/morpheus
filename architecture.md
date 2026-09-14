@@ -2953,8 +2953,12 @@ of truth for which unit and UI targets run. The workflow refuses an absent or un
 `Package.resolved`, passes `-onlyUsePackageVersionsFromResolvedFile` to resolution and every build
 action, disables automatic package resolution after the explicit locked resolve, and separates
 SourcePackages, DerivedData, logs, screenshots, and `.xcresult` bundles under the runner's temporary
-directory. Preparation clears only results, logs and screenshots before each run, including after
-cancellation on a persistent self-hosted runner; SourcePackages and DerivedData remain reusable.
+directory. Each job invocation allocates a fresh results/logs/screenshots directory with a run/attempt label
+and a unique suffix. A canceled process can keep writing its old path without contaminating a
+replacement job, including retries or multiple calls in the same attempt. Artifact export/upload
+uses only that invocation's paths and is skipped if preparation failed; SourcePackages and
+DerivedData retain their stable cache paths. Output directories remain under the runner temporary
+directory and follow its normal lifecycle; preparation never deletes another invocation's files.
 Both build actions pass `COMPILER_INDEX_STORE_ENABLE=NO`: index-while-building serves
 Xcode's editor, and a runner has no editor and discards the store with the machine. The
 SourcePackages cache carries a prefix `restore-keys`, so bumping one dependency reuses the
