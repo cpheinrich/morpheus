@@ -63,9 +63,9 @@ Independent review found one substantive source-certification gap: switching to 
   "summary": "Independent review found one substantive source-certification gap: switching to an older branch with identical records could re-anchor a fresh receipt onto stale code. The author added local source containment before cached acceptance and re-anchoring, with tests for older branches, same-branch resets and failed refusal persistence. The same reviewer cleared the fix in the one permitted follow-up. No findings remain unresolved; review used exact source because graph metadata was stale.",
   "findings": [
     {
-      "id": "R1",
+      "id": "R01",
       "severity": "substantive",
-      "description": "check() could re-anchor a current receipt onto an older branch with identical canonical records but missing a code-only trunk commit.",
+      "description": "Reviewer R1: check() could re-anchor a current receipt onto an older branch with identical canonical records but missing a code-only trunk commit.",
       "paths": [
         "src/session/context.ts"
       ],
