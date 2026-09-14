@@ -1,3 +1,4 @@
+import { assertCurrentSource, containsSource } from "./start.js";
 import { ABSENT, CANONICAL_INPUTS, leaseAt, observeLease, } from "./lease.js";
 import { fingerprint, readInputs } from "./inputs.js";
 import { currentBranch, resolveTrunk, trunkSha, worktreeRoot } from "./git.js";
@@ -36,6 +37,19 @@ export async function refresh(root, now = new Date()) {
     // where that was last fixed.
     const observation = await trunkSha(worktree, trunk);
     const sha = observation.sha;
+    if (sha) {
+        try {
+            const verified = await assertCurrentSource(worktree);
+            if (verified !== sha)
+                throw new Error("Trunk moved during refresh. Re-read current source and retry.");
+        }
+        catch (error) {
+            // Invalidate the old certification as well as refusing this one.
+            await clearLease(worktree, id);
+            return { lease: null, observed: true, written: false,
+                issue: error instanceof Error ? error.message : String(error) };
+        }
+    }
     const receipt = {
         version: 1,
         id: `ctx-${now.toISOString()}`,
@@ -149,7 +163,7 @@ export async function check(root, now = new Date(), offline = false) {
     // Both sides have to be a real answer. A failed lookup is not a branch, and
     // two of them are not the same branch.
     const sameBranch = onBranch !== null && onBranch !== "" && onBranch === stored.receipt.branch;
-    if (current.status === "fresh" && sameBranch) {
+    if (current.status === "fresh" && sameBranch && await containsSource(worktree, stored.receipt.remoteSha)) {
         // Nothing was written, because nothing needed to be — the stored lease is
         // still the current answer.
         return { lease: current, observed: false, written: true };
@@ -163,6 +177,14 @@ export async function check(root, now = new Date(), offline = false) {
         ? { sha: null, reason: "unreachable" }
         : await trunkSha(worktree, trunk);
     const lease = observeLease(stored.receipt, { checkedAt: now.toISOString(), remoteSha: observation.sha, inputs }, policy);
+    // Identical context records do not prove identical source. In particular,
+    // switching to an older branch (or resetting the same branch) must not
+    // re-certify a code-only gap. Repeat this local proof on every read so a
+    // failed persistence cannot make the next process trust the old verdict.
+    if (lease.status === "fresh" && !await containsSource(worktree, observation.sha ?? "")) {
+        lease.status = "refresh_required";
+        lease.reason = "Checkout does not contain the observed trunk. Fetch and integrate current source, re-read records, then run morpheus context refresh.";
+    }
     // Re-anchored **here**, where the re-observation has just proven the receipt
     // still true against the records on this branch — which covers every route
     // to a switch, not the one command that happens to do it. `pm claim` checks

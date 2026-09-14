@@ -36,6 +36,7 @@ export interface Flags {
   issue?: string;
   needs?: string;
   context?: string;
+  sessionId?: string;
   ceiling?: number;
   notes?: string;
   priorReview?: string;
@@ -86,6 +87,7 @@ const stringOptions: Record<string, (flags: Flags, value: string | undefined) =>
   "--goal": (flags, value) => { flags.goal = value; },
   "--slug": (flags, value) => { flags.slug = value; },
   "--needs": (flags, value) => { flags.needs = value; },
+  "--session-id": (flags, value) => { flags.sessionId = value; },
   "--context": (flags, value) => { flags.context = value; },
   "--notes": (flags, value) => { flags.notes = value; },
   "--prior-review": (flags, value) => { flags.priorReview = value; },
