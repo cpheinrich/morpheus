@@ -58,6 +58,12 @@ export async function prepareRepository(cwd, offline = false) {
     const behind = Number(await sessionGit(root, ["rev-list", "--count", `HEAD..${fetched.sha}`]));
     return { root, sha: fetched.sha, trunk: fetched.trunk, branch, task: roadmapIdFromBranch(branch) ?? undefined, behind, advanced };
 }
+/** Local proof used even inside a receipt's term, including same-branch resets. */
+export async function containsSource(root, sha) {
+    if (!/^[a-f0-9]{40,64}$/.test(sha))
+        return false;
+    return sessionGit(root, ["merge-base", "--is-ancestor", sha, "HEAD"]).then(() => true, () => false);
+}
 /** Source freshness is independent of a receipt's local fingerprints. */
 export async function assertCurrentSource(root) {
     const fetched = await fetchTrunk(root);

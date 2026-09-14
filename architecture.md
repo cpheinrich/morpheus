@@ -931,7 +931,9 @@ fetches the configured canonical trunk into an invocation-private ref so simulta
 exchange `FETCH_HEAD`. A clean local trunk behind that exact commit fast-forwards; dirty checkouts,
 feature branches and divergent trunks remain intact and report missing commits. Offline or fetch
 failure is explicitly unverified, never a successful current-source report. A receipt is refused
-when the checkout does not contain the observed trunk. Startup itself never issues a receipt.
+when the checkout does not contain the observed trunk. Checks repeat local source containment
+inside the lease term and before re-anchoring after a branch switch; code-only drift and
+same-branch resets cannot reuse certification. Startup itself never issues a receipt.
 
 **One worktree per implementation task, not per conversation.** Startup without a task performs
 no worktree allocation. `pm claim` from a shared or unrelated checkout prepares a detached worktree

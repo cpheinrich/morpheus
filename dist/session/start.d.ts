@@ -25,6 +25,8 @@ export declare function fetchTrunk(root: string): Promise<{
  * untouched, with the missing commits reported instead of called current.
  */
 export declare function prepareRepository(cwd: string, offline?: boolean): Promise<SourceState>;
+/** Local proof used even inside a receipt's term, including same-branch resets. */
+export declare function containsSource(root: string, sha: string): Promise<boolean>;
 /** Source freshness is independent of a receipt's local fingerprints. */
 export declare function assertCurrentSource(root: string): Promise<string>;
 export interface SessionStartInput {

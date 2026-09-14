@@ -1,3 +1,4 @@
+import * as leaseStore from "../src/session/store.js";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -97,6 +98,41 @@ describe("startup source freshness", () => {
     await writeFile(join(local, "morpheus.json"), JSON.stringify({ context: { trunk: "origin/missing" } }));
     await expect(prepareRepository(local)).rejects.toThrow();
     expect(await git(local, "rev-parse", "HEAD")).toBe(before);
+  });
+  it("never re-anchors a fresh receipt onto an older branch with identical records", async () => {
+    const old = await git(local, "rev-parse", "HEAD");
+    await advance(); await prepareRepository(local);
+    expect((await refresh(local)).lease?.status).toBe("fresh");
+    await git(local, "checkout", "-b", "older-task", old);
+    const result = await check(local);
+    expect(result.lease?.status).toBe("refresh_required");
+    expect(result.lease?.reason).toContain("does not contain");
+    expect(result.lease?.receipt.branch).toBe("main");
+    expect(result.lease?.changedInputs).toEqual([]);
+    expect((await check(local)).lease?.status).toBe("refresh_required");
+  });
+  it("keeps rejecting source drift when the refusal cannot be persisted", async () => {
+    const old = await git(local, "rev-parse", "HEAD");
+    await advance(); await prepareRepository(local); await refresh(local);
+    await git(local, "reset", "--hard", old);
+    vi.spyOn(leaseStore, "writeLease").mockResolvedValue({ path: "unwritable", written: false, issue: "denied" });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await check(local);
+      expect(result.lease?.status).toBe("refresh_required");
+      expect(result.written).toBe(false);
+      expect(result.issue).toBe("denied");
+    }
+  });
+  it("rejects code-only source regression on the same branch inside the lease term", async () => {
+    const old = await git(local, "rev-parse", "HEAD");
+    await advance(); await prepareRepository(local);
+    const now = new Date();
+    expect((await refresh(local, now)).lease?.status).toBe("fresh");
+    await git(local, "reset", "--hard", old);
+    const result = await check(local, new Date(now.getTime() + 1_000));
+    expect(result.lease?.status).toBe("refresh_required");
+    expect(result.lease?.changedInputs).toEqual([]);
+    expect(result.lease?.receipt.branch).toBe("main");
   });
   it("refuses to certify stale source even after a previous receipt, then succeeds after startup updates it", async () => {
     expect((await refresh(local)).lease?.status).toBe("fresh");

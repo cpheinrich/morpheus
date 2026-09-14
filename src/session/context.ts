@@ -1,4 +1,4 @@
-import { assertCurrentSource } from "./start.js";
+import { assertCurrentSource, containsSource } from "./start.js";
 import {
   ABSENT,
   CANONICAL_INPUTS,
@@ -254,7 +254,7 @@ export async function check(
   // Both sides have to be a real answer. A failed lookup is not a branch, and
   // two of them are not the same branch.
   const sameBranch = onBranch !== null && onBranch !== "" && onBranch === stored.receipt.branch;
-  if (current.status === "fresh" && sameBranch) {
+  if (current.status === "fresh" && sameBranch && await containsSource(worktree, stored.receipt.remoteSha)) {
     // Nothing was written, because nothing needed to be — the stored lease is
     // still the current answer.
     return { lease: current, observed: false, written: true };
@@ -273,6 +273,15 @@ export async function check(
     { checkedAt: now.toISOString(), remoteSha: observation.sha, inputs },
     policy,
   );
+
+  // Identical context records do not prove identical source. In particular,
+  // switching to an older branch (or resetting the same branch) must not
+  // re-certify a code-only gap. Repeat this local proof on every read so a
+  // failed persistence cannot make the next process trust the old verdict.
+  if (lease.status === "fresh" && !await containsSource(worktree, observation.sha ?? "")) {
+    lease.status = "refresh_required";
+    lease.reason = "Checkout does not contain the observed trunk. Fetch and integrate current source, re-read records, then run morpheus context refresh.";
+  }
 
   // Re-anchored **here**, where the re-observation has just proven the receipt
   // still true against the records on this branch — which covers every route
