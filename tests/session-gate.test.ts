@@ -647,6 +647,11 @@ describe("the offline exception", () => {
     // A real repo on `main`: `currentBranch` returns null outside one, and null
     // is not a branch, so the receipt could never anchor.
     (await import("node:child_process")).execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+    // The cached source proof needs an actual observed commit, not a
+    // fabricated SHA on an unborn branch.
+    const { execFileSync } = await import("node:child_process");
+    execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-qm", "source"], { cwd: root });
+    const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 
     const { observeLease } = await import("../src/session/lease.js");
     const { readInputs } = await import("../src/session/inputs.js");
@@ -660,12 +665,12 @@ describe("the offline exception", () => {
         version: 1 as const,
         id: "ctx-1",
         createdAt: now.toISOString(),
-        remoteSha: "abc123",
+        remoteSha: sourceSha,
         branch: "main",
         worktree: root,
         inputs,
       },
-      { checkedAt: now.toISOString(), remoteSha: "abc123", inputs },
+      { checkedAt: now.toISOString(), remoteSha: sourceSha, inputs },
       { requiredInputs: [...CANONICAL_INPUTS] },
     );
     expect(fresh.status).toBe("fresh");

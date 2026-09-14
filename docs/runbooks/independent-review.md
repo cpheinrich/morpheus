@@ -1,8 +1,20 @@
 # Independent review before merge
 
-The author owns review scheduling and responses. CI verifies evidence without invoking a model.
-Run `morpheus review prepare --base origin/main` after committing implementation and tests. Give
-its output to one fresh session with repository access, without the author's conversation history.
+**The authoring agent owns the entire review loop.** After committing implementation/tests,
+run `morpheus review prepare --base origin/main`; this prints a review packet and does not
+launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
+repository access and that packet, without inheriting the author's conversation history.
+The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
+the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
+GitHub Actions to start this review. CI checks the evidence; it does not perform the review.
+If the runner cannot start an independent session, report that concrete limitation and keep
+the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
+
+The author is the agent/session implementing the PR, including OpenClaw, Codex, or Claude.
+Use its runner's fresh-session/subagent facility with history inheritance disabled. Supply the
+prepared packet and repository location, and retain the reviewer session ID for the one allowed
+follow-up. A reviewer is a bounded task started by the author, not a standing PR-monitoring agent.
+
 The canonical contract ships in `src/review/local-prompt.ts`; the old `review prompt` command and
 `.github/agent-review-prompt.md` remain for explicitly enabled legacy GitHub reviewers.
 
@@ -80,7 +92,7 @@ This is an auditable attestation, not a security boundary against an author fabr
 ## Existing projects
 
 The shared `pr-check.yml` enforces the gate automatically when using updated Morpheus. Each existing
-caller needs a separate metadata-only workflow for `edited`, `labeled`, and `unlabeled` events,
+caller must grant `contents: read` and `pull-requests: read` on its `pr` job and needs a separate metadata-only workflow for `edited`, `labeled`, and `unlabeled` events,
 calling `pr-check.yml` under the same `pr` job name. The scaffold writes
 `.github/workflows/review-metadata.yml`; re-running `morpheus init` adds it without overwriting
 existing files. Do not add skipped build/test jobs there: skipped statuses can satisfy required
@@ -89,3 +101,8 @@ Until a caller is updated, rerun its conventions workflow after changing the bod
 check fetches live PR metadata, so reruns do not keep validating the original event snapshot.
 Pushes still trigger verification normally. Keep legacy required delivery jobs wired in and skipped;
 the paid `agent-review.yml` now defaults off and remains explicitly opt-in.
+
+`morpheus init` preserves existing authored files. It can add a missing metadata workflow, but
+it does not update existing CI grants or rewrite existing `AGENTS.md` review instructions.
+Update those explicitly in each project's reviewed rollout; new projects receive the current
+instructions from the scaffold.

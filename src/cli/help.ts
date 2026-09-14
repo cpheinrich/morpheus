@@ -7,6 +7,7 @@ Usage
                             [--slug fix-photo-picker] [--issue 123]
                             — name the slug like a branch; derived otherwise
   morpheus pm claim <RM-014>
+  morpheus pm resume <ID>   reuse an existing task worktree or its remote branch
   morpheus pm claims
   morpheus pm link-issue <RM-014> <123>
   morpheus pm block <MO-051> --needs "<what would unblock this>" [--owner <handle>]
@@ -69,7 +70,7 @@ Usage
   morpheus context refresh  take a receipt — run it after reading the canonical records
   morpheus context check    exit non-zero unless context is fresh; for hooks and scripts
   morpheus context status   what the current lease says, and how old it is
-  morpheus context brief    session start: discards the last receipt, says what to read
+  morpheus context brief    session start: fetches trunk, updates clean trunk, identifies task
   morpheus context install  [--check] [--handle <github-handle>]
                             wire .claude/settings.json, .codex/hooks.json and context.handle
                             — the repair path for a project scaffolded before they existed

@@ -56,7 +56,13 @@ describe("morpheus init", () => {
     expect((workflow.jobs.pr as { permissions: unknown }).permissions).toEqual(grant);
     const ci = load(await read(".github/workflows/ci.yml")) as { jobs: Record<string, { permissions?: unknown }> };
     expect(ci.jobs.pr?.permissions).toEqual(grant);
-    expect(await read("AGENTS.md")).toContain("morpheus review prepare");
+    const instructions = await read("AGENTS.md");
+    expect(instructions).toContain("The authoring agent owns the entire review loop");
+    expect(instructions).toContain("must spawn one fresh reviewer subagent/session");
+    expect(instructions).toContain("does not\nlaunch a reviewer");
+    expect(instructions).toContain("without inheriting the author's conversation history");
+    expect(instructions).toContain("Do not wait for a PR monitor");
+    expect(await read(".github/pull_request_template.md")).toContain("review prepare only prints the packet");
     expect(await read(".github/pull_request_template.md")).toContain("review-record:");
   });
 

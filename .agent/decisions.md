@@ -881,3 +881,20 @@ Use official firebase-tools 15.29.0 for rules deploys (published 2026-09-02, 70 
 and google-github-actions/auth for scoped CI authentication. Node built-ins implement only the
 Morpheus-specific immutable-source, readback and receipt contract, adding no runtime package.
 The shared action can merge without activating Evo's held proposal or provisioning credentials.
+
+**Review ownership must be explicit at the point of work** — 2026-09-11. The authoring agent
+launches the isolated reviewer and owns responses, evidence, CI and merge. `review prepare`
+prints a packet; neither that command nor a PR-monitoring agent schedules review. Legacy GitHub
+review instructions must be marked opt-in wherever they remain. This clarifies the September 10
+policy after OpenClaw inferred that another agent would monitor and review its PRs.
+
+
+**One worktree per implementation task; startup fetches before context** — 2026-09-13.
+Chris clarified that conversations are not task boundaries. New sessions fetch canonical trunk and
+fast-forward clean local trunk; active branches and dirty work are preserved. Claiming new work
+prepares an isolated current-trunk checkout, while explicit resume reuses the task branch/worktree.
+A session ID may remember that association, but an unrelated request cannot inherit the old task.
+This supersedes the earlier one-worktree-per-parallel-session phrasing. Context receipts require
+source containing the observed trunk, and startup does not certify reading. Considered simple-git
+3.36.0 (published metadata modified 2026-04-12, five direct dependencies); native Git plus Node's
+filesystem/crypto primitives fit this repository-specific lifecycle without another Git wrapper.

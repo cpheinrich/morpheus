@@ -826,8 +826,17 @@ in to save 60 lines is worse than the 60 lines. Build when the need is small —
 lines — genuinely domain-specific, or every candidate is unmaintained. Record the outcome in \`.agent/decisions.md\`
 so the choice is not relitigated next session.
 
-**Independent review is required before merge.** Run \`morpheus review prepare --base origin/main\`
-after committing implementation/tests and start one fresh reviewer session without author chat.
+**The authoring agent owns the entire review loop.** After committing implementation/tests,
+run \`morpheus review prepare --base origin/main\`; this prints a review packet and does not
+launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
+repository access and that packet, without inheriting the author's conversation history.
+The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
+the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
+GitHub Actions to start this review. CI checks the evidence; it does not perform the review.
+If the runner cannot start an independent session, report that concrete limitation and keep
+the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
+
+**Independent review is required before merge.**
 Respond once; substantive findings require one follow-up by the same reviewer. Minor-only findings
 allow author fixes without a second pass. Unresolved disagreements or incomplete review keep the PR
 open and auto-merge disabled. Record the review paragraph and structured evidence in the task
@@ -1159,7 +1168,9 @@ recording; screenshots are accepted otherwise.
 
 ## Independent review
 
-<!-- After review, add agent-reviewed and a visible review-record: .agent/worklog/<task>.md line.
+<!-- The authoring agent must launch a fresh reviewer session; review prepare only prints the packet.
+CI validates evidence and does not start a reviewer.
+After review, add agent-reviewed and a visible review-record: .agent/worklog/<task>.md line.
 Include a short outcome and a link to the worklog. Run morpheus review prepare for the contract. -->
 
 ## Open questions
@@ -1326,9 +1337,8 @@ command leaves it alone and says so; add the \`/hq\` matcher to the existing one
 `;
 // The session hooks both providers read live in `src/session/install.ts`, with
 // the protocol they belong to rather than beside the scaffold's strings. They
-// are deliberately **informational rather than blocking**: `context brief`
-// always exits 0, and the refusal lives in the `morpheus` CLI, which every
-// provider goes through. A blocking `PreToolUse` hook would fire on every
+// prepare current source through `context brief`. Startup failures are visible;
+// receipts still require an explicit read and refresh in the selected checkout. A blocking `PreToolUse` hook would fire on every
 // edit, and a gate that fires constantly is a gate people disable —
 // permanently, where the staleness was temporary.
 /**
@@ -1340,6 +1350,20 @@ command leaves it alone and says so; add the \`/hq\` matcher to the existing one
  * out it is about to be refused will not follow it.
  */
 export const contextFreshness = () => `## Context freshness
+
+Run \`morpheus context brief\` at session start if the standard hook did not run. It fetches
+canonical trunk and fast-forwards only a clean local trunk, preserving active branches and dirty work.
+Follow its absolute \`WORK IN\` path. A stale checkout cannot certify fresh context; integrate
+trunk explicitly and re-read records before refreshing.
+
+Use **one worktree per implementation task**, not per conversation. Investigation needs none.
+\`pm claim <ID>\` prepares a fresh detached worktree from current trunk when needed. Move to the
+reported directory, read its records, refresh context, then repeat the claim there. Only new,
+untracked intake for that item moves; unrelated work stays behind. No receipt is copied.
+\`pm resume <ID>\` reuses that task's existing worktree or checks out its claimed branch in one.
+Session IDs retain task associations; pass \`--session-id\` to claim/resume when startup prints it
+(Codex defaults to \`CODEX_THREAD_ID\`). Never infer that an unrelated request belongs to the
+currently checked-out task. Do not run concurrent authors in the same task worktree.
 
 **Read \`.agent/decisions.md\`, \`.agent/learned.md\` and your inbox, then:**
 
@@ -1359,13 +1383,13 @@ Read-only and mechanical commands are not gated.
 \`\`\`sh
 morpheus context status    # what the current lease says, and how old it is
 morpheus context check     # exit non-zero unless fresh — for hooks and scripts
-morpheus context brief     # session start: discards the last receipt, says what to read
+morpheus context brief     # session start: fetches trunk, updates clean trunk, identifies task
 morpheus context install   # wire the hooks that run \`brief\` — safe to re-run
 \`\`\`
 
 \`.morpheus/session-start.sh\` is the only Morpheus bridge this project runs automatically, from a
 session-start hook in **both** \`.claude/settings.json\` (Claude Code) and \`.codex/hooks.json\`
-(Codex). It only inspects: a current CLI continues into \`context brief\`; a missing or pre-\`self\`
+(Codex). A current CLI continues into \`context brief\` to prepare source; a missing or pre-\`self\`
 CLI emits the exact consent instructions above. \`morpheus context install\` writes or repairs the
 shim, bootstrap, and both provider files, merging rather than overwriting.
 

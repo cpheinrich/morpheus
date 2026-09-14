@@ -1,5 +1,6 @@
+import { sessionHookInput, startSession } from "./session-start.js";
 import { resolve } from "node:path";
-import { block, claim, claims, create, index, linkIssue, migrateIds, ship, unblock, validate, } from "./pm.js";
+import { block, claim, resume, claims, create, index, linkIssue, migrateIds, ship, unblock, validate, } from "./pm.js";
 import { INBOX_DIR } from "../paths.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
@@ -18,7 +19,7 @@ import { heartbeat } from "./heartbeat.js";
 import { prompt as reviewPrompt, reviewDelivery, reviewNeeded, prepareReview } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
-import { check as contextCheck, guard, brief as contextBrief, install as contextInstall, refresh as contextRefresh, status as contextStatus, } from "./context.js";
+import { check as contextCheck, guard, install as contextInstall, refresh as contextRefresh, status as contextStatus, } from "./context.js";
 import { GATED, offlineDeclared } from "../session/gate.js";
 import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
@@ -316,15 +317,17 @@ async function dispatchTeam({ command }) {
 async function dispatchContext({ flags, command }) {
     // `--offline` reaches these the way it reaches `doctor`: each consults a
     // remote, and on an unreachable one the declaration already answers the
-    // question. `brief` also checks the installed CLI now, but remains
-    // informational and always exits zero.
+    // question. `brief` also checks the installed CLI and is
+    // a preparation step that fails visibly if current source cannot be obtained.
     const off = offlineDeclared(flags.offline);
     if (command === "refresh")
         return contextRefresh(process.cwd(), off);
     if (command === "check")
         return contextCheck(process.cwd(), off);
-    if (command === "brief")
-        return contextBrief(process.cwd(), { offline: off });
+    if (command === "brief" || command === "start") {
+        const input = await sessionHookInput();
+        return startSession(process.cwd(), { ...input, ...(flags.sessionId ? { sessionId: flags.sessionId } : {}) }, { offline: off });
+    }
     // Not gated, and deliberately: this is the command that makes a project
     // able to be fresh, so refusing it without a receipt would lock out the
     // repair for the state it is diagnosing.
@@ -349,15 +352,10 @@ async function dispatchPm({ flags, command, rest, dir }) {
         case "index":
             return index(dir, flags.check);
         case "claim": {
-            const { refused } = await guard(process.cwd(), "pm claim", GATED["pm claim"], flags.offline);
-            if (refused !== null)
-                return refused;
-            // No re-anchoring here: `check` does it wherever the re-observation
-            // proves the receipt still true, which covers `pm claim`'s checkout and
-            // the bare `git checkout` AGENTS.md prescribes for resuming blocked work
-            // alike. A fix at this call site would have left the other.
-            return claim(dir, rest[0] ?? "", process.cwd());
+            return claim(dir, rest[0] ?? "", process.cwd(), flags.sessionId, flags.offline);
         }
+        case "resume":
+            return resume(rest[0] ?? "", process.cwd(), flags.sessionId);
         case "claims":
             return claims(dir, process.cwd());
         case "link-issue": {
