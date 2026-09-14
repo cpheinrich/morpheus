@@ -47,4 +47,42 @@ is made for the new modules.
 
 ## Independent review
 
-Pending the required fresh reviewer session before merge.
+Independent review found one substantive source-certification gap: switching to an older branch with identical records could re-anchor a fresh receipt onto stale code. The author added local source containment before cached acceptance and re-anchoring, with tests for older branches, same-branch resets and failed refusal persistence. The same reviewer cleared the fix in the one permitted follow-up. No findings remain unresolved; review used exact source because graph metadata was stale.
+
+```morpheus-review
+{
+  "version": 1,
+  "base": "0619afad74cf6f8b985735495160f313b524f78e",
+  "reviewed": "88ca0ec718130a45faf3b9c0cf64252dc3355771",
+  "covered": "375342e9c9e114070459d6a1846d3aec5d3daaa5",
+  "authorSession": "01a09d3c-52ce-7852-8288-4659a18309ab",
+  "reviewerSession": "/root/independent_review",
+  "risk": "high",
+  "elapsedMinutes": 8,
+  "outcome": "complete",
+  "summary": "Independent review found one substantive source-certification gap: switching to an older branch with identical records could re-anchor a fresh receipt onto stale code. The author added local source containment before cached acceptance and re-anchoring, with tests for older branches, same-branch resets and failed refusal persistence. The same reviewer cleared the fix in the one permitted follow-up. No findings remain unresolved; review used exact source because graph metadata was stale.",
+  "findings": [
+    {
+      "id": "R1",
+      "severity": "substantive",
+      "description": "check() could re-anchor a current receipt onto an older branch with identical canonical records but missing a code-only trunk commit.",
+      "paths": [
+        "src/session/context.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Added local source containment before the in-term shortcut and fresh re-anchoring. Repeated reads reject regression even if writing the refusal fails. Tests cover an older branch, same-branch reset and failed persistence; the existing offline-cache fixture now uses a real commit."
+    }
+  ],
+  "followUp": {
+    "reviewerSession": "/root/independent_review",
+    "commit": "375342e9c9e114070459d6a1846d3aec5d3daaa5",
+    "outcome": "cleared",
+    "elapsedMinutes": 0.4,
+    "summary": "R1 resolved; cached certification and re-anchoring both require source containment. Inspected source, documentation and generated JavaScript; 78 focused tests passed. No additional findings."
+  }
+}
+```
+
+Final author validation: 1,319 tests passed across 47 files; typecheck, lint, compilation,
+PM index and diff checks passed. The standard shim also passed against a deliberately behind
+real Git clone: exact updated HEAD, one checkout, hook session ID parsed, and no receipt minted.
