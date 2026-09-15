@@ -243,6 +243,9 @@ SIGNING_KEYCHAIN_DIRECTORY="$HOME/Library/Keychains"
 SIGNING_KEYCHAIN_PATH="$SIGNING_KEYCHAIN_DIRECTORY/morpheus-release-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-0}.keychain-db"
 APPLE_WWDR_G3_CERTIFICATE_PATH="$DEVELOPER_DIR/../SharedFrameworks/DVTFoundation.framework/Versions/A/Resources/AppleWWDRCA-2030.cer"
 EXPORTED_ENTITLEMENTS_PATH="$RELEASE_TEMP_DIRECTORY/exported-entitlements.plist"
+EXPECTED_ENTITLEMENTS_PATH="$RELEASE_TEMP_DIRECTORY/expected-entitlements.plist"
+RELEASE_BUILD_SETTINGS_PATH="$RELEASE_TEMP_DIRECTORY/release-build-settings.json"
+ENTITLEMENTS_TOOL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/entitlements.py"
 EXPORT_DIRECTORY="$RELEASE_TEMP_DIRECTORY/export"
 IPA_CONTENTS_PATH="$RELEASE_TEMP_DIRECTORY/ipa-contents"
 EXPORT_OPTIONS_PATH="$RELEASE_TEMP_DIRECTORY/ExportOptions.plist"
@@ -588,28 +591,32 @@ plutil -insert uploadSymbols -bool true "$EXPORT_OPTIONS_PATH"
 # ("gRPC_opensslWrapper does not support provisioning profiles", and likewise
 # for Firebase, GoogleUtilities, AppAuth, abseil, leveldb and nanopb).
 #
-# Nothing here needs a signature: `-exportArchive` below signs the product with
-# the pinned distribution identity and profile. The archive is an intermediate;
-# the exported IPA is what ships and what the distribution checks run against.
-xcodebuild archive \
-  -project "$PROJECT_PATH" \
-  -scheme "$SCHEME_NAME" \
-  -configuration Release \
-  -destination "generic/platform=iOS" \
-  -archivePath "$ARCHIVE_PATH" \
-  -derivedDataPath "$DERIVED_DATA_PATH" \
-  -clonedSourcePackagesDirPath "$SOURCE_PACKAGES_PATH" \
-  -disableAutomaticPackageResolution \
-  -onlyUsePackageVersionsFromResolvedFile \
-  -hideShellScriptEnvironment \
-  DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-  PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID" \
-  MARKETING_VERSION="$MARKETING_VERSION" \
-  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-  CODE_SIGN_IDENTITY="" \
-  CODE_SIGNING_REQUIRED=NO \
-  CODE_SIGNING_ALLOWED=NO \
+# Compile unsigned, then seed the app's declared entitlements in an ad-hoc
+# signature before export. An unsigned binary carries no entitlement claims;
+# a provisioning profile alone only permits capabilities, it does not claim them.
+archive_arguments=(
+  -project "$PROJECT_PATH"
+  -scheme "$SCHEME_NAME"
+  -configuration Release
+  -destination "generic/platform=iOS"
+  -archivePath "$ARCHIVE_PATH"
+  -derivedDataPath "$DERIVED_DATA_PATH"
+  -clonedSourcePackagesDirPath "$SOURCE_PACKAGES_PATH"
+  -disableAutomaticPackageResolution
+  -onlyUsePackageVersionsFromResolvedFile
+  -hideShellScriptEnvironment
+  DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+  PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID"
+  MARKETING_VERSION="$MARKETING_VERSION"
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+  CODE_SIGN_IDENTITY=""
+  CODE_SIGNING_REQUIRED=NO
+  CODE_SIGNING_ALLOWED=NO
   ${archive_build_settings[@]+"${archive_build_settings[@]}"}
+)
+xcodebuild -showBuildSettings -json "${archive_arguments[@]}" > "$RELEASE_BUILD_SETTINGS_PATH"
+python3 "$ENTITLEMENTS_TOOL" prepare "$RELEASE_BUILD_SETTINGS_PATH" "$IOS_BUNDLE_ID" "$SIGNING_PROFILE_PLIST_PATH" "$EXPECTED_ENTITLEMENTS_PATH"
+xcodebuild archive "${archive_arguments[@]}"
 
 ARCHIVED_APPLICATIONS_PATH="$ARCHIVE_PATH/Products/Applications"
 archived_applications=()
@@ -654,6 +661,12 @@ if [[ -n "$VALIDATE_APP_SCRIPT_PATH" ]]; then
     run_without_release_secrets "$VALIDATE_APP_SCRIPT_PATH" "$ARCHIVED_APPLICATION_PATH" )
 fi
 
+# This temporary signature needs no Apple development certificate. Export
+# replaces it with the pinned distribution signature and validates provisioning.
+# Do not use --deep: embedded code must retain its own entitlement boundaries.
+codesign --force --sign - --timestamp=none --generate-entitlement-der \
+  --entitlements "$EXPECTED_ENTITLEMENTS_PATH" "$ARCHIVED_APPLICATION_PATH"
+
 # Xcode's exporter calls the system openrsync implementation with Apple-specific
 # flags. Keep Homebrew rsync out of this child PATH so the two protocols cannot
 # be mixed when a developer has installed a newer rsync globally.
@@ -679,7 +692,7 @@ fi
 IPA_PATH="${exported_ipas[0]}"
 
 # The distribution checks belong here, on the artifact that actually ships. The
-# archive is deliberately unsigned, so asserting App Store entitlements against
+# archive has only an ad-hoc signature, so asserting App Store entitlements against
 # it can never pass — an earlier version of this check ran against the archive
 # and failed every release for a reason that had nothing to do with the app.
 mkdir -p "$IPA_CONTENTS_PATH"
@@ -702,6 +715,8 @@ fi
 # Entitlement keys contain dots, which plutil reads as key-path separators;
 # they are escaped below so the lookup addresses one key rather than four.
 codesign -d --entitlements :- "$EXPORTED_APPLICATION_PATH" > "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null
+python3 "$ENTITLEMENTS_TOOL" verify "$EXPECTED_ENTITLEMENTS_PATH" "$EXPORTED_ENTITLEMENTS_PATH"
+echo "Exported app preserves every declared Release entitlement."
 exported_application_identifier="$(plutil -extract application-identifier raw -o - "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null || true)"
 exported_team_identifier="$(plutil -extract 'com\.apple\.developer\.team-identifier' raw -o - "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null || true)"
 exported_get_task_allow="$(plutil -extract get-task-allow raw -o - "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null || true)"
