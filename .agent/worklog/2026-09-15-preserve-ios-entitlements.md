@@ -38,7 +38,7 @@ Independent review found one substantive compatibility issue: distribution expor
   "summary": "Independent review found one substantive compatibility issue: distribution export changes APS environment values. The fix normalizes APS and iCloud environments only when permitted by the pinned distribution profile, retaining strict HealthKit checks. The same reviewer cleared the follow-up with no additional findings. Actual Xcode distribution export and phone sync remain maintainer acceptance checks.",
   "findings": [
     {
-      "id": "R1",
+      "id": "R01",
       "severity": "substantive",
       "description": "Strict equality rejected legitimate APS development-to-production normalization during App Store export.",
       "paths": [
