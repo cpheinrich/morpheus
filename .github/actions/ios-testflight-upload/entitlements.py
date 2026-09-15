@@ -8,7 +8,7 @@ import re
 import sys
 
 
-def prepare(settings_path, bundle_id, output_path):
+def prepare(settings_path, bundle_id, profile_path, output_path):
     settings = json.loads(Path(settings_path).read_text())
     matches = [entry["buildSettings"] for entry in settings
                if entry.get("buildSettings", {}).get("PRODUCT_BUNDLE_IDENTIFIER") == bundle_id
@@ -46,6 +46,20 @@ def prepare(settings_path, bundle_id, output_path):
         raise ValueError("App entitlements must be a dictionary")
     if declared.get("get-task-allow", False) is not False:
         raise ValueError("Release app entitlements must not enable get-task-allow")
+    # Xcode changes these environment claims when exporting for the App Store.
+    # Seed and require the distribution value, provided the pinned profile grants it.
+    with Path(profile_path).open("rb") as stream:
+        profile = plistlib.load(stream)["Entitlements"]
+    for key, production, allowed in (
+        ("aps-environment", "production", ("development", "production")),
+        ("com.apple.developer.icloud-container-environment", "Production", ("Development", "Production")),
+    ):
+        if key in declared:
+            grant = profile.get(key)
+            grants = grant if isinstance(grant, list) else [grant]
+            if declared[key] not in allowed or production not in grants:
+                raise ValueError(f"Distribution profile does not permit production entitlement: {key}")
+            declared[key] = production
     with Path(output_path).open("wb") as stream:
         plistlib.dump(declared, stream)
 

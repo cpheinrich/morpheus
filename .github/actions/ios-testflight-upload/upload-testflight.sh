@@ -615,7 +615,7 @@ archive_arguments=(
   ${archive_build_settings[@]+"${archive_build_settings[@]}"}
 )
 xcodebuild -showBuildSettings -json "${archive_arguments[@]}" > "$RELEASE_BUILD_SETTINGS_PATH"
-python3 "$ENTITLEMENTS_TOOL" prepare "$RELEASE_BUILD_SETTINGS_PATH" "$IOS_BUNDLE_ID" "$EXPECTED_ENTITLEMENTS_PATH"
+python3 "$ENTITLEMENTS_TOOL" prepare "$RELEASE_BUILD_SETTINGS_PATH" "$IOS_BUNDLE_ID" "$SIGNING_PROFILE_PLIST_PATH" "$EXPECTED_ENTITLEMENTS_PATH"
 xcodebuild archive "${archive_arguments[@]}"
 
 ARCHIVED_APPLICATIONS_PATH="$ARCHIVE_PATH/Products/Applications"

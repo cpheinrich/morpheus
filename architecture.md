@@ -3080,7 +3080,8 @@ signature and entitlements are asserted against it, and `asccli builds upload` s
 Before export, the action resolves the app target’s `CODE_SIGN_ENTITLEMENTS` from Release build
 settings and seeds those claims in an ad-hoc signature. The profile grants permission to claim
 capabilities; it does not add missing claims to an unsigned app. After export, every declared
-entitlement must retain its value or the upload stops. Unresolved entitlement build variables fail
+capability entitlement must retain its value or the upload stops. APS and iCloud environment
+claims are normalized to production only when the pinned profile permits that value. Unresolved entitlement build variables fail
 closed. This covers the single main app; extension entitlement preservation is not supported.
 Exporting with `destination: upload` hands the build to Apple with nothing having inspected it.
 

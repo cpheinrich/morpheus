@@ -22,6 +22,8 @@ class EntitlementTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.expected = self.root / "expected.plist"
         self.actual = self.root / "actual.plist"
+        self.profile = self.root / "profile.plist"
+        self.write(self.profile, {"Entitlements": {}})
         self.source = self.root / "App.entitlements"
         self.settings = self.root / "settings.json"
         self.values = {"PRODUCT_BUNDLE_IDENTIFIER": "med.example.app",
@@ -35,7 +37,7 @@ class EntitlementTests(unittest.TestCase):
 
     def prepare(self):
         self.settings.write_text(json.dumps([{"buildSettings": self.values}]))
-        entitlements.prepare(self.settings, "med.example.app", self.expected)
+        entitlements.prepare(self.settings, "med.example.app", self.profile, self.expected)
         return plistlib.loads(self.expected.read_bytes())
 
     def test_healthkit_and_nested_values_survive_preparation(self):
@@ -58,6 +60,26 @@ class EntitlementTests(unittest.TestCase):
         self.write(self.actual, {HEALTH: True, "application-identifier": "EXAMPLETEAM.med.example.app"})
         entitlements.verify(self.expected, self.actual)
 
+    def test_distribution_environments_are_normalized_and_verified(self):
+        cloud = "com.apple.developer.icloud-container-environment"
+        self.write(self.source, {HEALTH: True, "aps-environment": "development", cloud: "Development"})
+        self.write(self.profile, {"Entitlements": {"aps-environment": "production", cloud: ["Development", "Production"]}})
+        expected = {HEALTH: True, "aps-environment": "production", cloud: "Production"}
+        self.assertEqual(self.prepare(), expected)
+        self.write(self.actual, expected)
+        entitlements.verify(self.expected, self.actual)
+        self.write(self.actual, {**expected, "aps-environment": "development"})
+        with self.assertRaisesRegex(ValueError, "aps-environment"):
+            entitlements.verify(self.expected, self.actual)
+
+    def test_missing_or_development_only_profile_grant_fails(self):
+        self.write(self.source, {"aps-environment": "development"})
+        for grant in ({}, {"aps-environment": "development"}):
+            with self.subTest(grant=grant):
+                self.write(self.profile, {"Entitlements": grant})
+                with self.assertRaisesRegex(ValueError, "Distribution profile"):
+                    self.prepare()
+
     def test_missing_source_and_unresolved_variables_fail(self):
         self.source.unlink()
         with self.assertRaises(FileNotFoundError):
@@ -78,7 +100,7 @@ class EntitlementTests(unittest.TestCase):
     def test_ambiguous_target_fails(self):
         self.settings.write_text(json.dumps([{"buildSettings": self.values}] * 2))
         with self.assertRaisesRegex(ValueError, "exactly one"):
-            entitlements.prepare(self.settings, "med.example.app", self.expected)
+            entitlements.prepare(self.settings, "med.example.app", self.profile, self.expected)
 
     @unittest.skipUnless(sys.platform == "darwin", "Requires Apple's codesign")
     def test_real_adhoc_signature_carries_healthkit(self):
