@@ -117,8 +117,11 @@ escalate when the budget is exhausted; do not label a substantive change harmles
 
 Git must reconstruct exactly the integration commit's tree with `merge-tree --write-tree`.
 Conflicts and hand-edited merges fail; before, between and after these merges, only the named
-feature worklog may differ from cleared coverage. Current trunk must equal the final recorded
-integration base. Record the source PR links, verification and limitations in visible prose.
+feature worklog may differ from cleared coverage. The PR's merge base with trunk must equal the
+final recorded integration base; GitHub's up-to-date rule covers anything trunk adds after that.
+Reconstruction runs without rename detection, so a merge that resolved a trunk-side rename against
+a feature-side edit is refused rather than trusted. Record the source PR links, verification and
+limitations in visible prose.
 No model call is needed for this mechanical proof. CI must still pass before merge.
 
 Without this evidence the existing freshness rule still applies. Unresolved substantive findings,

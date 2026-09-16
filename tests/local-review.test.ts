@@ -174,7 +174,7 @@ describe("reviewed documentation integration without another review round", () =
   });
   it('requires explicit integration evidence even for documentation', () => {
     const { r, verify } = integrate(); delete r.documentationIntegrations; r.summary = 'The integration proof was deliberately omitted.';
-    expect(verify()).toHaveLength(1);
+    expect(verify()[0]?.message).toContain('after covered commit');
   });
   it.each(['another.ts', 'AGENTS.md', 'morpheus.json'])('rejects incoming executable/configuration/instruction path %s', file => {
     expect(integrate({ file }).verify()[0]?.message).toContain('non-documentation');
@@ -197,7 +197,7 @@ describe("reviewed documentation integration without another review round", () =
     expect(verify()[0]?.message).toContain('every incoming');
   });
   it('rejects conflict resolution even when only Markdown conflicts', () => {
-    expect(integrate({ conflict: true }).verify()).toHaveLength(1);
+    expect(integrate({ conflict: true }).verify()[0]?.message).toContain('conflict-free merge tree');
   });
   it('rejects extra edits hidden in the integration commit', () => {
     const { r, verify } = integrate();

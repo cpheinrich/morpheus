@@ -144,7 +144,14 @@ function checkDocumentationIntegrations(root, record, worklog, head, coveredBase
                 throw new Error("documentation source review must cover its trunk parent without nested integration evidence");
             }
         }
-        const expected = git(root, ["-c", "merge.renames=false", "merge-tree", "--write-tree", parents[0], integration.base]);
+        // merge-tree exits non-zero on a conflict; name that outcome rather than surfacing a raw command failure.
+        let expected = "";
+        try {
+            expected = git(root, ["-c", "merge.renames=false", "merge-tree", "--write-tree", parents[0], integration.base]);
+        }
+        catch {
+            expected = "";
+        }
         if (!/^[a-f0-9]{40}$/.test(expected) || git(root, ["rev-parse", `${integration.commit}^{tree}`]) !== expected) {
             throw new Error("documentation integration must exactly match Git's conflict-free merge tree");
         }
