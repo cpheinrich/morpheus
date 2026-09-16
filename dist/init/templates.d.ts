@@ -100,6 +100,33 @@ export declare const ci: (opts?: {
     node: boolean;
     rulesPath?: string;
 }) => string;
+/**
+ * The nightly iOS TestFlight caller.
+ *
+ * Every value below except the schedule is app-specific, so this is written
+ * with `TODO` markers rather than guesses. The parts that are *not*
+ * app-specific are the parts worth shipping: 06:00 America/Los_Angeles, and
+ * the caller-owned upload job.
+ *
+ * The upload job lives here rather than in the reusable workflow because
+ * GitHub does not pass a caller repository's environment secrets into a
+ * cross-repository reusable workflow. A job there reads every one of them as
+ * an empty string and fails on whichever the upload script checks first, which
+ * reads as a missing secret and sends people to add secrets that already
+ * exist. Evo and Kairos each lost a day to that separately; that is what this
+ * template exists to stop happening a third time.
+ *
+ * The schedule ships commented out. A project has no signing credentials on
+ * the day it is scaffolded, so a live cron would fail nightly until someone
+ * configured them — and a scaffold that is red before you have touched it
+ * teaches people to ignore red CI, which is the same rule `ci` follows for
+ * `node-ci`. Uncomment it once the environment holds its secrets; leaving it
+ * commented is a supported end state for a project that releases on demand.
+ */
+export declare const iosNightly: (opts: {
+    app: string;
+    workingDirectory?: string;
+}) => string;
 export declare const pullRequestTemplate: () => string;
 export declare const productReadme: (kind: "roadmap" | "goals" | "requests", _s: Seed) => string;
 export declare const hqReadme: (s: Seed) => string;
