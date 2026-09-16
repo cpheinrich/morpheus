@@ -2,7 +2,10 @@
 
 **The authoring agent owns the entire review loop.** After committing implementation/tests,
 run `morpheus review prepare --base origin/main`; this prints a review packet and does not
-launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
+launch a reviewer. The packet carries the contract, the repository path, the test commands derived
+from the project's manifests, the review range, and the ticket. An unclaimed change or one without
+declared acceptance is described as such and reviewed against the PR title and body; do not create
+an item to fill the line. The authoring agent must spawn one fresh reviewer subagent/session with
 repository access and that packet, without inheriting the author's conversation history.
 The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
 the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
@@ -23,7 +26,8 @@ The canonical contract ships in `src/review/local-prompt.ts`; the old `review pr
 `review.required` in `morpheus.json` defaults to true, including existing manifests. False is a
 visible project opt-out. Records/board-only changes and exact dependency-only Dependabot PRs keep
 their existing exemptions. This gate covers all other authors, not just particular model names.
-The legacy `review-waived:` line does not waive independent review.
+The legacy `review-waived:` line does not waive independent review; `check pr` reports it as
+waiving legacy delivery only and says so in the same line.
 
 Review scope follows consequences, not changed lines. Bugs caused, exposed or worsened by the PR,
 and problems preventing acceptance criteria, are in scope. Other pre-existing bugs are incidental

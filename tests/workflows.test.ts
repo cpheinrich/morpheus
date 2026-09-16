@@ -2216,9 +2216,9 @@ describe("ios-ci.yml", () => {
     expect(String(prepare?.run)).toContain('$RUNNER_TEMP/ios-ci');
     expect(String(prepare?.run)).toContain('SOURCE_PACKAGES=$ios_ci_root/SourcePackages');
     expect(String(prepare?.run)).toContain('DERIVED_DATA=$ios_ci_root/DerivedData');
-    expect(String(prepare?.run)).toContain('RESULTS=$ios_ci_root/Results');
-    expect(String(prepare?.run)).toContain('LOGS=$ios_ci_root/Logs');
-    expect(String(prepare?.run)).toContain('SCREENSHOTS=$ios_ci_root/Screenshots');
+    expect(String(prepare?.run)).toContain('RESULTS=$output_root/Results');
+    expect(String(prepare?.run)).toContain('LOGS=$output_root/Logs');
+    expect(String(prepare?.run)).toContain('SCREENSHOTS=$output_root/Screenshots');
 
     const raw = await readFile(join(DIR, "ios-ci.yml"), "utf8");
     expect(raw).toContain("${{ runner.temp }}/ios-ci/SourcePackages");
@@ -2227,52 +2227,72 @@ describe("ios-ci.yml", () => {
     expect(raw).toContain('"$RESULTS/Tests.xcresult"');
   });
 
-  it("clears cancelled-run outputs on a reused runner while preserving build caches", async () => {
+  it("isolates late cancelled-run writes, retries and same-attempt jobs while preserving caches", async () => {
     const root = await mkdtemp(join(tmpdir(), "morpheus ios outputs "));
     const iosRoot = join(root, "ios-ci");
     const envFile = join(root, "github-env");
+    const outputFile = join(root, "github-output");
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const script = steps.find((step) => step.name === "Prepare isolated build directories")?.run;
     expect(typeof script).toBe("string");
 
     try {
-      const prepare = () => execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
-        env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile },
-      });
-      await prepare(); // A fresh hosted runner still creates every directory.
       for (const cache of ["SourcePackages", "DerivedData"]) {
+        await mkdir(join(iosRoot, cache), { recursive: true });
         await writeFile(join(iosRoot, cache, "cached"), cache);
       }
       await writeFile(join(root, "other-job"), "untouched");
-
-      for (let attempt = 0; attempt < 2; attempt++) {
-        for (const bundle of ["Build.xcresult", "Tests.xcresult"]) {
-          await mkdir(join(iosRoot, "Results", bundle), { recursive: true });
-          await writeFile(join(iosRoot, "Results", bundle, "partial"), "cancelled");
-        }
-        await writeFile(join(iosRoot, "Logs", "previous.log"), "old log");
-        await writeFile(join(iosRoot, "Screenshots", "previous.png"), "old screenshot");
+      let previous: Record<string, string> = {
+        RESULTS: join(iosRoot, "Results"), LOGS: join(iosRoot, "Logs"),
+        SCREENSHOTS: join(iosRoot, "Screenshots"),
+      };
+      const seen = new Set<string>();
+      for (const [run, attempt] of [[100, 1], [101, 1], [101, 2], [101, 2]]) {
         await writeFile(envFile, "");
-        await prepare();
-
-        for (const output of ["Results", "Logs", "Screenshots"]) {
-          expect(await readdir(join(iosRoot, output)), output).toEqual([]);
+        await writeFile(outputFile, "");
+        await execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
+          env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile,
+            GITHUB_OUTPUT: outputFile, GITHUB_RUN_ID: String(run), GITHUB_RUN_ATTEMPT: String(attempt) },
+        });
+        const paths = Object.fromEntries((await readFile(envFile, "utf8")).trim().split("\n")
+          .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
+        // The superseded process writes AFTER the replacement's preparation.
+        for (const bundle of ["Build.xcresult", "Tests.xcresult"]) {
+          await mkdir(join(previous.RESULTS!, bundle), { recursive: true });
+          await writeFile(join(previous.RESULTS!, bundle, "partial"), "cancelled");
         }
-        for (const cache of ["SourcePackages", "DerivedData"]) {
-          expect(await readFile(join(iosRoot, cache, "cached"), "utf8")).toBe(cache);
+        for (const key of ["LOGS", "SCREENSHOTS"]) {
+          await mkdir(previous[key]!, { recursive: true });
+          await writeFile(join(previous[key]!, "previous"), "old evidence");
+        }
+        for (const key of ["RESULTS", "LOGS", "SCREENSHOTS"]) {
+          expect(await readdir(paths[key]!), key).toEqual([]);
+          expect(paths[key]).not.toBe(previous[key]);
+        }
+        expect(seen.has(paths.RESULTS!)).toBe(false);
+        seen.add(paths.RESULTS!);
+        for (const [key, cache] of [["SOURCE_PACKAGES", "SourcePackages"], ["DERIVED_DATA", "DerivedData"]]) {
+          expect(paths[key!]).toBe(join(iosRoot, cache!));
+          expect(await readFile(join(iosRoot, cache!, "cached"), "utf8")).toBe(cache);
         }
         expect(await readFile(join(root, "other-job"), "utf8")).toBe("untouched");
-        expect(await readFile(envFile, "utf8")).toBe([
-          `SOURCE_PACKAGES=${iosRoot}/SourcePackages`,
-          `DERIVED_DATA=${iosRoot}/DerivedData`,
-          `RESULTS=${iosRoot}/Results`,
-          `LOGS=${iosRoot}/Logs`,
-          `SCREENSHOTS=${iosRoot}/Screenshots`,
-          "",
+        expect(await readFile(outputFile, "utf8")).toBe([
+          `results=${paths.RESULTS}`, `logs=${paths.LOGS}`, `screenshots=${paths.SCREENSHOTS}`, "",
         ].join("\n"));
+        previous = paths;
       }
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("cannot export or upload previous evidence when preparation did not succeed", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    expect(steps.find((step) => step.name === "Prepare isolated build directories")?.id).toBe("ios_paths");
+    for (const name of ["Export rendered test attachments", "Upload rendered test attachments",
+      "Collect Firebase emulator diagnostics", "Upload Xcode failure evidence"]) {
+      expect(steps.find((step) => step.name === name)?.if, name)
+        .toContain("steps.ios_paths.outcome == 'success'");
     }
   });
 
@@ -2326,18 +2346,18 @@ describe("ios-ci.yml", () => {
     expect(String(upload?.if)).toContain("always()");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     expect(String((upload?.with as Record<string, unknown>)?.path)).toContain(
-      "${{ runner.temp }}/ios-ci/Screenshots",
+      "${{ steps.ios_paths.outputs.screenshots }}",
     );
   });
 
   it("uploads both xcresults and raw logs only when the run fails", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
-    expect(upload?.if).toBe("failure()");
+    expect(upload?.if).toBe("${{ failure() && steps.ios_paths.outcome == 'success' }}");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     const withBlock = upload?.with as Record<string, unknown> | undefined;
-    expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Results");
-    expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Logs");
+    expect(String(withBlock?.path)).toContain("${{ steps.ios_paths.outputs.results }}");
+    expect(String(withBlock?.path)).toContain("${{ steps.ios_paths.outputs.logs }}");
   });
 
   it("passes caller-controlled values through env rather than script substitution", async () => {

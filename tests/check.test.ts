@@ -502,6 +502,22 @@ describe("the review waiver is surfaced beside the other two", () => {
     );
   });
 
+  /**
+   * The waiver is honoured by the legacy delivery job and by nothing else. A
+   * `~ waived` line that reads as "agent review waived" was taken, in a real
+   * PR, for the mechanism that satisfies the independent-review rule — so the
+   * message has to say what it leaves standing.
+   */
+  it("says the waiver leaves the independent review required", async () => {
+    const findings = await checkPr(
+      goodPr({ body: withWaiver("review-waived: the reviewer is down, tracked upstream") }),
+    );
+    const waived = findings.find((f) => f.rule === "review-waived");
+    expect(waived?.message).toContain("legacy agent-review delivery waived");
+    expect(waived?.message).toContain("does not waive the independent review");
+    expect(waived?.message).toContain("agent-reviewed");
+  });
+
   it("refuses a review waiver that says nothing", async () => {
     const findings = await checkPr(goodPr({ body: withWaiver("review-waived: yes") }));
     expect(findings).toContainEqual(

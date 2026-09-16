@@ -833,6 +833,14 @@ the upstream major visible. Morpheus-owned reusable workflows remain on the esta
 contract so consuming repositories receive fixes without coordinated version bumps; external tags
 do not receive that trust.
 
+**Motion-design exploration is a repository skill before it is a plugin** — 2026-08-31. Chris's
+call. The repeatable value is the procedure itself: inspect the real shell and brand, research
+current references, compare six genuinely different motion systems under one visual theme, and
+stop before production implementation. Morpheus owns the canonical Codex skill under
+`.agents/skills/motion-design-exploration`, `morpheus init` copies it into every project kind, and
+Evo carries the same file directly. Plugin packaging is deliberately deferred until distribution
+beyond Morpheus repositories is worth another lifecycle and manifest.
+
 **Front-end visual evidence is a declared path contract, default-on per repository** — 2026-09-01.
 `review.visualEvidence` in `morpheus.json` owns the include/exclude globs. A matching change blocks
 without a recording or screenshot at either GitHub's attachment service or an exact public HTTPS
