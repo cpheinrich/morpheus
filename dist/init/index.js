@@ -395,7 +395,10 @@ export async function scaffold(root, seed) {
     // the same discovery, that a cross-repository reusable workflow never
     // receives the caller's environment secrets.
     const iosDirectory = join(root, "apps/ios");
-    const xcodeProject = (await readdir(iosDirectory).catch(() => [])).find((entry) => entry.endsWith(".xcodeproj"));
+    // Sorted so two projects in one directory pick the same one on every machine.
+    const xcodeProject = (await readdir(iosDirectory).catch(() => []))
+        .filter((entry) => entry.endsWith(".xcodeproj"))
+        .sort()[0];
     if (xcodeProject) {
         const app = xcodeProject.slice(0, -".xcodeproj".length);
         const workflow = ".github/workflows/ios-nightly-build.yml";
@@ -408,8 +411,11 @@ export async function scaffold(root, seed) {
                 workflow +
                 " for " +
                 app +
-                ". Replace every TODO value, add the seven release\n" +
-                "secrets to a protected testflight-internal environment, then uncomment the 06:00\n" +
+                ". Replace every TODO value, add the six release\n" +
+                "secrets (" +
+                t.IOS_NIGHTLY_SECRETS.join(", ") +
+                ")\n" +
+                "to a protected testflight-internal environment, then uncomment the 06:00 Pacific\n" +
                 "schedule. Until then it releases only on manual dispatch.");
         }
     }

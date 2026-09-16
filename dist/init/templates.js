@@ -1161,32 +1161,52 @@ jobs:${opts.node
  * exist. Evo and Kairos each lost a day to that separately; that is what this
  * template exists to stop happening a third time.
  *
+ * The job itself is a checkout of the verified SHA and one `uses:` block of
+ * the `ios-testflight-upload` composite action, which is what both live
+ * callers converged on: the action selects Xcode, installs the pinned
+ * `asccli`, archives unsigned, signs, verifies and uploads, and the caller
+ * states only what it alone knows. With `run-upload: false` the reusable
+ * workflow's own upload inputs stay unset, so each identifier is written once.
+ *
  * The schedule ships commented out. A project has no signing credentials on
  * the day it is scaffolded, so a live cron would fail nightly until someone
  * configured them — and a scaffold that is red before you have touched it
  * teaches people to ignore red CI, which is the same rule `ci` follows for
  * `node-ci`. Uncomment it once the environment holds its secrets; leaving it
  * commented is a supported end state for a project that releases on demand.
+ * GitHub evaluates cron in UTC, so the slot is written as its UTC equivalent
+ * with the Pacific time it means beside it.
  */
+export const IOS_NIGHTLY_SECRETS = [
+    "APP_STORE_CONNECT_KEY_ID",
+    "APP_STORE_CONNECT_ISSUER_ID",
+    "APP_STORE_CONNECT_API_KEY_P8_BASE64",
+    "IOS_DISTRIBUTION_P12_BASE64",
+    "IOS_DISTRIBUTION_P12_PASSWORD",
+    "IOS_DISTRIBUTION_PROFILE_BASE64",
+];
 export const iosNightly = (opts) => {
     const workingDirectory = opts.workingDirectory ?? "apps/ios";
     return `name: iOS nightly TestFlight build
 
-# Morpheus owns change detection, exact-main preflight, and native tests. This
-# repository owns the schedule, watched paths, and the signed upload.
+# Morpheus owns change detection, exact-main preflight, the native tests, and —
+# through the ios-testflight-upload action — the archive, signing, verification
+# and upload. This repository owns the schedule, watched paths, the protected
+# release environment, and its own identifiers.
 #
-# The upload runs here, not in the reusable workflow: GitHub does not pass a
-# caller repository's environment secrets into a cross-repository reusable
+# The upload job runs here, not in the reusable workflow: GitHub does not pass
+# a caller repository's environment secrets into a cross-repository reusable
 # workflow, so a job there sees every one of them as empty. \`run-upload: false\`
-# plus the \`build\` and \`sha\` outputs are the supported shape for that.
+# plus the \`build\` and \`sha\` outputs are the supported shape for that; the
+# action runs inside this job, where \`secrets.*\` resolve normally.
 on:
   # 06:00 America/Los_Angeles is the standard nightly slot across projects.
+  # GitHub runs cron in UTC, so this is 13:00 UTC (14:00 during standard time).
   # Uncomment once the protected environment holds the release secrets; change
   # the time here if this project needs a different one, or leave it commented
   # to release only on demand.
   # schedule:
-  #   - cron: "0 6 * * *"
-  #     timezone: America/Los_Angeles
+  #   - cron: "0 13 * * *"
   workflow_dispatch:
 
 permissions:
@@ -1206,35 +1226,26 @@ jobs:
       watch-paths: |
         ${workingDirectory}
       force-build: \${{ github.event_name == 'workflow_dispatch' }}
+      schedule-timezone: America/Los_Angeles
       xcode-version: "26.6"
       working-directory: ${workingDirectory}
       project: ${opts.app}.xcodeproj
       scheme: ${opts.app}
       destination: OS=26.5,name=iPhone 17 Pro Max
+      # The upload job below owns the identifiers and credentials; the reusable
+      # workflow's own upload inputs stay unset so nothing is stated twice.
       run-upload: false
-      environment: testflight-internal
-      upload-script: scripts/ios/upload-testflight.sh
-      source-packages-directory: ${opts.app}SourcePackages
-      apple-team-id: TODO-apple-team-id
-      ios-bundle-id: TODO.bundle.id
-      app-store-connect-app-id: "TODO-numeric-app-id"
-      testflight-beta-group-ids: TODO-internal-beta-group-uuid
 
   upload:
     name: Upload TestFlight build
     needs: release
     if: \${{ needs.release.outputs.build == 'true' }}
-    runs-on: macos-26
+    runs-on: macos-26-large
     timeout-minutes: 60
     environment: testflight-internal
-    env:
-      APPLE_TEAM_ID: TODO-apple-team-id
-      IOS_BUNDLE_ID: TODO.bundle.id
-      ASC_APP_ID: "TODO-numeric-app-id"
-      TESTFLIGHT_BETA_GROUP_IDS: TODO-internal-beta-group-uuid
-      PROJECT_PATH: \${{ github.workspace }}/${workingDirectory}/${opts.app}.xcodeproj
-      SCHEME_NAME: ${opts.app}
-      UPLOAD_SCRIPT: scripts/ios/upload-testflight.sh
+    concurrency:
+      group: testflight-upload
+      cancel-in-progress: false
     steps:
       - name: Check out verified main commit
         uses: actions/checkout@v7
@@ -1243,50 +1254,29 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Validate release inputs and select Xcode
-        env:
-          EXPECTED_SHA: \${{ needs.release.outputs.sha }}
-        run: |
-          set -euo pipefail
-
-          test "\$(git rev-parse HEAD)" = "\$EXPECTED_SHA"
-          test -x "\$GITHUB_WORKSPACE/\$UPLOAD_SCRIPT"
-          test -f "\$PROJECT_PATH/project.pbxproj"
-
-          echo "SOURCE_PACKAGES_PATH=\$RUNNER_TEMP/${opts.app}SourcePackages" >> "\$GITHUB_ENV"
-
-          xcode_app="/Applications/Xcode_26.6.app"
-          test -d "\$xcode_app"
-          echo "DEVELOPER_DIR=\$xcode_app/Contents/Developer" >> "\$GITHUB_ENV"
-          "\$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version
-
-      - name: Cache resolved Swift packages
-        uses: actions/cache@v6
-        with:
-          path: \${{ runner.temp }}/${opts.app}SourcePackages
-          key: nightly-testflight-spm-\${{ runner.os }}-xcode-26.6-\${{ hashFiles('${workingDirectory}/**/Package.resolved') }}
-          restore-keys: |
-            nightly-testflight-spm-\${{ runner.os }}-xcode-26.6-
-
-      - name: Install release tooling
-        run: |
-          set -euo pipefail
-          brew install openssl@3 asccli
-          echo "OPENSSL_BINARY=\$(brew --prefix openssl@3)/bin/openssl" >> "\$GITHUB_ENV"
-
       # The protected environment's secrets first enter the process here, after
-      # the exact-main gate, the independent tests, and this job's own checkout
-      # verification have all passed.
-      - name: Archive, sign, and upload to TestFlight
-        env:
-          ASC_API_KEY_ID: \${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          ASC_API_KEY_ISSUER_ID: \${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          ASC_API_KEY_P8_BASE64: \${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
-          IOS_DISTRIBUTION_P12_BASE64: \${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
-          IOS_DISTRIBUTION_P12_PASSWORD: \${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
-          IOS_DISTRIBUTION_PROFILE_BASE64: \${{ secrets.IOS_DISTRIBUTION_PROFILE_BASE64 }}
-          IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: \${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
-        run: '"\$GITHUB_WORKSPACE/\$UPLOAD_SCRIPT"'
+      # the exact-main gate and the independent tests have passed and this job
+      # has checked out that exact SHA. Replace every TODO before dispatching:
+      # a plausible-looking wrong value fails deep inside signing, a marker
+      # fails immediately and says what it wants.
+      - name: Archive, sign, verify, and upload to TestFlight
+        uses: cpheinrich/morpheus/.github/actions/ios-testflight-upload@main
+        with:
+          xcode-version: "26.6"
+          working-directory: ${workingDirectory}
+          project: ${opts.app}.xcodeproj
+          scheme: ${opts.app}
+          source-packages-directory: ${opts.app}SourcePackages
+          apple-team-id: TODO-apple-team-id
+          ios-bundle-id: TODO.bundle.id
+          app-store-connect-app-id: "TODO-numeric-app-id"
+          testflight-beta-group-ids: TODO-internal-beta-group-uuid
+          asc-api-key-id: \${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          asc-api-key-issuer-id: \${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          asc-api-key-p8-base64: \${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+          ios-distribution-p12-base64: \${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          ios-distribution-p12-password: \${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          ios-distribution-profile-base64: \${{ secrets.IOS_DISTRIBUTION_PROFILE_BASE64 }}
 `;
 };
 export const pullRequestTemplate = () => `## Summary

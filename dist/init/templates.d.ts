@@ -116,13 +116,23 @@ export declare const ci: (opts?: {
  * exist. Evo and Kairos each lost a day to that separately; that is what this
  * template exists to stop happening a third time.
  *
+ * The job itself is a checkout of the verified SHA and one `uses:` block of
+ * the `ios-testflight-upload` composite action, which is what both live
+ * callers converged on: the action selects Xcode, installs the pinned
+ * `asccli`, archives unsigned, signs, verifies and uploads, and the caller
+ * states only what it alone knows. With `run-upload: false` the reusable
+ * workflow's own upload inputs stay unset, so each identifier is written once.
+ *
  * The schedule ships commented out. A project has no signing credentials on
  * the day it is scaffolded, so a live cron would fail nightly until someone
  * configured them — and a scaffold that is red before you have touched it
  * teaches people to ignore red CI, which is the same rule `ci` follows for
  * `node-ci`. Uncomment it once the environment holds its secrets; leaving it
  * commented is a supported end state for a project that releases on demand.
+ * GitHub evaluates cron in UTC, so the slot is written as its UTC equivalent
+ * with the Pacific time it means beside it.
  */
+export declare const IOS_NIGHTLY_SECRETS: readonly ["APP_STORE_CONNECT_KEY_ID", "APP_STORE_CONNECT_ISSUER_ID", "APP_STORE_CONNECT_API_KEY_P8_BASE64", "IOS_DISTRIBUTION_P12_BASE64", "IOS_DISTRIBUTION_P12_PASSWORD", "IOS_DISTRIBUTION_PROFILE_BASE64"];
 export declare const iosNightly: (opts: {
     app: string;
     workingDirectory?: string;

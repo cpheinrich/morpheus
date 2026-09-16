@@ -5,6 +5,7 @@ import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
 import {
+  IOS_NIGHTLY_SECRETS,
   analyticsSchema,
   brandReviewSkill,
   motionDesignExplorationSkill,
@@ -44,6 +45,44 @@ describe("morpheus init", () => {
       const { issues } = await parseArtifact(join(dir, "hq/product"), kind);
       expect(issues).toEqual([]);
     }
+  });
+
+  describe("the iOS nightly caller", () => {
+    const workflow = ".github/workflows/ios-nightly-build.yml";
+
+    it("is not written for a repository with no Xcode project", async () => {
+      const { written, notes } = await scaffold(dir, SEED);
+      expect(written).not.toContain(workflow);
+      expect(notes.join("\n")).not.toContain("ios-nightly-build");
+    });
+
+    it("is written from the detected project, naming the secrets to add", async () => {
+      await mkdir(join(dir, "apps/ios/Acme.xcodeproj"), { recursive: true });
+      const { written, notes } = await scaffold(dir, SEED);
+      expect(written).toContain(workflow);
+      const wf = load(await read(workflow)) as { jobs: Record<string, { with?: Record<string, unknown> }> };
+      expect(wf.jobs.release?.with?.project).toBe("Acme.xcodeproj");
+      expect(wf.jobs.release?.with?.scheme).toBe("Acme");
+      const note = notes.find((n) => n.includes(workflow)) ?? "";
+      for (const secret of IOS_NIGHTLY_SECRETS) expect(note).toContain(secret);
+    });
+
+    it("picks the same project on every machine when there are two", async () => {
+      await mkdir(join(dir, "apps/ios/Zeta.xcodeproj"), { recursive: true });
+      await mkdir(join(dir, "apps/ios/Alpha.xcodeproj"), { recursive: true });
+      await scaffold(dir, SEED);
+      const wf = load(await read(workflow)) as { jobs: Record<string, { with?: Record<string, unknown> }> };
+      expect(wf.jobs.release?.with?.project).toBe("Alpha.xcodeproj");
+    });
+
+    it("never replaces an authored caller", async () => {
+      await mkdir(join(dir, "apps/ios/Acme.xcodeproj"), { recursive: true });
+      await mkdir(join(dir, ".github/workflows"), { recursive: true });
+      await writeFile(join(dir, workflow), "name: authored\n");
+      const { skipped } = await scaffold(dir, SEED);
+      expect(skipped).toContain(workflow);
+      expect(await read(workflow)).toBe("name: authored\n");
+    });
   });
 
   it("scaffolds default-on local review and a conventions-only metadata workflow", async () => {
