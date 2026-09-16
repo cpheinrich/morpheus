@@ -21,7 +21,10 @@ Domain purchase, paid-plan changes, and new recurring spend require explicit
 authorization immediately before the mutation. A prior request to complete the
 whole launch covers ordinary project creation, DNS, deploys, and access grants,
 but does not authorize inventing missing legal, tax, payment, or registrar
-contact information.
+contact information, and it does not authorize inventing the employee
+allowlist: `morpheus access sync` runs only against handles the user explicitly
+supplied, never against handles inferred from an organization, a billing
+account, or a commit history.
 
 ## Provision in dependency order
 
@@ -45,14 +48,20 @@ contact information.
    named account receives the expected custom claim; authentication without the
    claim is not `/hq` access.
 7. Link the Vercel project from the repository root. For a monorepo, explicitly
-   set its Root Directory to `apps/web`. Connect GitHub, deploy only reviewed
-   source, and keep runtime secrets in Vercel's encrypted environment store. If
-   a private-repository deployment is blocked because the agent's commit author
-   is not a member of the user's Pro team, do not invite the agent team-wide or
-   rewrite commit authorship. Deploy through the user's authenticated Vercel CLI
-   from a clean source copy that excludes `.git`, `.env*`, private keys, local
-   build output, and dependency directories. Record that Git-triggered deploys
-   by that author remain blocked; the CLI path is the durable agent workflow.
+   set its Root Directory to `apps/web`. Production deploys go through the
+   reusable `vercel-deploy.yml` workflow, which the scaffolded CI calls on
+   merge to `main` with `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`
+   held as GitHub Actions secrets, so what reaches production is always merged,
+   reviewed trunk with a recorded commit. Keep runtime secrets in Vercel's
+   encrypted environment store. If Vercel's Git integration refuses a
+   private-repository deploy because the agent's commit author is not a member
+   of the user's Pro team, do not invite the agent team-wide, rewrite commit
+   authorship, or deploy production from a local copy: the token-based workflow
+   is not subject to that author check, so wire it and record the block. A
+   local `vercel deploy` from a checkout at merged trunk is acceptable only as
+   a one-time preview or bootstrap, never with `--prod` and never from a copy
+   that has had `.git` stripped, because a deploy with no commit behind it
+   cannot be traced to reviewed source.
 8. Add the domain in Vercel, apply the exact DNS records it requests through the
    authoritative DNS provider, and wait for both Vercel verification and public
    DNS resolution. Do not replace unrelated records.
