@@ -39,3 +39,52 @@ implement any production animation. The repository's existing `lint` script coul
 clean frozen install because `eslint` is not declared as a dependency; the required typecheck,
 test, compile, and index gates all ran successfully. The clean-install lint gap is tracked upstream
 as [#178](https://github.com/cpheinrich/morpheus/issues/178).
+
+## Independent review (2026-09-16)
+
+The PR sat unreviewed and conflicting for two weeks after the author-managed review contract
+landed, so a fresh session resumed the task, merged current trunk, and ran the review.
+
+Independent normal-risk review of bd9ecbb189240c438d99b72dc8d56b4dd282349e completed in 3 minutes with one minor finding: AGENTS.md's layout table did not list the new .agents/skills/ layer, so the ticket's discoverability goal was met in architecture.md but not in the file agents read first. The author added the row in 41aabf1. Trunk advanced to 3bca65b (PR #246) during the review, so the single same-session follow-up was used for the fix and the integration merge 81794a111ad30d5f750675841e39047d22f8b3fa; the reviewer confirmed the merge carries only this PR's own files, the architecture.md delta is unchanged, init tests pass and committed dist matches src, and cleared it in 0.5 minutes. Not verified: the skill is Codex-only by design (.agents/skills/ is not read by Claude Code), noted as incidental for a future item.
+
+```morpheus-review
+{
+  "version": 1,
+  "base": "5a096dcdd7559aa62c81c8da0241253da68040bd",
+  "reviewed": "bd9ecbb189240c438d99b72dc8d56b4dd282349e",
+  "covered": "81794a111ad30d5f750675841e39047d22f8b3fa",
+  "authorSession": "7721007e-1b81-586e-8ac8-39c717a85b5f",
+  "reviewerSession": "claude-review-179-0402",
+  "risk": "normal",
+  "elapsedMinutes": 3,
+  "outcome": "complete",
+  "summary": "Independent normal-risk review of bd9ecbb189240c438d99b72dc8d56b4dd282349e completed in 3 minutes with one minor finding: AGENTS.md's layout table did not list the new .agents/skills/ layer, so the ticket's discoverability goal was met in architecture.md but not in the file agents read first. The author added the row in 41aabf1. Trunk advanced to 3bca65b (PR #246) during the review, so the single same-session follow-up was used for the fix and the integration merge 81794a111ad30d5f750675841e39047d22f8b3fa; the reviewer confirmed the merge carries only this PR's own files, the architecture.md delta is unchanged, init tests pass and committed dist matches src, and cleared it in 0.5 minutes. Not verified: the skill is Codex-only by design (.agents/skills/ is not read by Claude Code), noted as incidental for a future item.",
+  "findings": [
+    {
+      "id": "MDS-F1",
+      "severity": "minor",
+      "description": "AGENTS.md layout table has no .agents/skills/ row, so an agent reading the first-read file does not learn the motion skill exists.",
+      "paths": ["AGENTS.md"],
+      "disposition": "fixed",
+      "response": "Added the .agents/skills/ row under .claude/skills/ in commit 41aabf1, mirroring the architecture.md section 7.1 wording."
+    },
+    {
+      "id": "MDS-I1",
+      "severity": "incidental",
+      "description": "The skill lives under .agents/skills/, which Codex reads and Claude Code does not, so scaffolded projects expose the procedure to Codex sessions only.",
+      "paths": [".agents/skills/motion-design-exploration/SKILL.md"],
+      "disposition": "deferred",
+      "response": "Matches the ticket and the deferred-plugin decision; a Claude-facing copy is a future item, not part of this change."
+    }
+  ],
+  "followUp": {
+    "reviewerSession": "claude-review-179-0402",
+    "commit": "81794a111ad30d5f750675841e39047d22f8b3fa",
+    "base": "3bca65b0e284ac0ab3cbf6d61329abd7b64962a4",
+    "scopeReason": "Trunk advanced to 3bca65b (PR #246) after the initial review; strict branch protection requires integration, so the one same-session follow-up covered the F1 fix and the integration merge together.",
+    "outcome": "cleared",
+    "elapsedMinutes": 0.5,
+    "summary": "Follow-up cleared 81794a1: F1 fixed as described, the merge with 3bca65b carries only this PR's own files with an unchanged architecture.md delta, tests/init.test.ts passes and committed dist matches src."
+  }
+}
+```
