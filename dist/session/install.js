@@ -1,5 +1,6 @@
+import { accessible as exists } from "../file-io.js";
 import { execFile } from "node:child_process";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { BOOTSTRAP_MARKER, MORPHEUS_BOOTSTRAP, MORPHEUS_BOOTSTRAP_README, MORPHEUS_SESSION_START, SESSION_START_MARKER, bootstrapReadme, bootstrapScript, sessionStartScript, } from "./bootstrap.js";
@@ -36,15 +37,6 @@ export const codexHooksFile = () => JSON.stringify({ hooks: sessionStartBlock() 
 export const CLAUDE_SETTINGS = ".claude/settings.json";
 export const CODEX_HOOKS = ".codex/hooks.json";
 export const MANIFEST = "morpheus.json";
-async function exists(p) {
-    try {
-        await access(p);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
 /**
  * Read a JSON object, keeping *absent* and *unreadable* apart.
  *

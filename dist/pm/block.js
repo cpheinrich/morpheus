@@ -1,3 +1,4 @@
+import { readIfExists } from "../file-io.js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import matter from "gray-matter";
@@ -26,16 +27,6 @@ import { RoadmapItem } from "./schema.js";
  * makes this testable against a temp directory rather than a repo.
  */
 export class BlockError extends Error {
-}
-async function readIfExists(path) {
-    try {
-        return await readFile(path, "utf8");
-    }
-    catch (err) {
-        if (err.code === "ENOENT")
-            return null;
-        throw err;
-    }
 }
 function worklogBody(opts, title, date) {
     return [

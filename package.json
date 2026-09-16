@@ -30,13 +30,16 @@
     "./codebase-memory": "./dist/codebase-memory.js",
     "./self": "./dist/self.js",
     "./design": "./dist/design/index.js",
-    "./team": "./dist/team/index.js"
+    "./team": "./dist/team/index.js",
+    "./research-library": "./dist/research-library/index.js",
+    "./research-library/client": "./dist/research-library/client.js",
+    "./research-library/server": "./dist/research-library/server.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "compile": "tsc -p tsconfig.build.json && chmod +x dist/cli/index.js",
+    "compile": "tsc -p tsconfig.build.json && cp src/research-library/*.py dist/research-library/ && chmod +x dist/cli/index.js dist/research-library/library.py dist/research-library/docling_html.py",
     "dev": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -48,6 +51,7 @@
   "dependencies": {
     "gray-matter": "^4.0.3",
     "jose": "^6.2.5",
+    "minimatch": "10.2.6",
     "minisearch": "^7.2.0",
     "zod": "^4.1.12"
   },
@@ -57,9 +61,15 @@
     "react-dom": ">=19"
   },
   "peerDependenciesMeta": {
-    "pdf-parse": { "optional": true },
-    "react": { "optional": true },
-    "react-dom": { "optional": true }
+    "pdf-parse": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
@@ -69,6 +79,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "eslint": "^10.9.1",
     "firebase": "^12.17.0",
     "js-yaml": "^5.2.2",
     "jsdom": "^26.1.0",
@@ -77,8 +88,9 @@
     "react-dom": "^19.2.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.68.0",
     "vite": "^7.3.6",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "repository": {
     "type": "git",

@@ -1,6 +1,11 @@
 import { hasNoSubstantiveChange, isRecordsOnly } from "../paths.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { parseArtifact } from "../pm/parse.js";
+import {
+  checkVisualEvidence,
+  type VisualEvidencePolicy,
+} from "./visual-evidence.js";
+import { DEPENDABOT_LOGIN, isDependencyOnly } from "../dependabot/policy.js";
 
 /**
  * PR conventions, enforced rather than requested.
@@ -11,8 +16,12 @@ import { parseArtifact } from "../pm/parse.js";
  */
 
 export interface PrContext {
+  /** Result of committed independent-review evidence verification. */
+  agentReview?: Finding[];
   /** PR body markdown. */
   body: string;
+  /** Pull-request author login. Absent outside GitHub unless explicitly supplied. */
+  author?: string;
   /**
    * Files that changed **on the base branch** since this branch left it — not
    * files this PR changed. CI cannot see a context receipt (`local/` is
@@ -25,6 +34,8 @@ export interface PrContext {
   branch: string;
   /** Paths changed in the PR, repo-relative. */
   changedFiles: string[];
+  /** Repo-owned declaration of which changed paths require visual evidence. */
+  visualEvidence?: VisualEvidencePolicy;
   /** Product directory to resolve roadmap items from. */
   productDir: string;
 }
@@ -159,6 +170,35 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
   const findings: Finding[] = [];
   const { body, branch, changedFiles, productDir } = ctx;
 
+  // Dependabot cannot write a human PR body or claim a roadmap item. Waive
+  // those authoring conventions only when both independent facts agree: the
+  // exact GitHub App login opened it, and every changed file is a recognized
+  // dependency manifest or lockfile. A bot-named account or a source change
+  // gets the normal checks plus an explicit scope failure.
+  if (ctx.author === DEPENDABOT_LOGIN) {
+    if (isDependencyOnly(changedFiles)) {
+      return [
+        {
+          level: "waived",
+          rule: "dependabot-contract",
+          message:
+            "human PR-body, visual-evidence, branch, and roadmap conventions waived for an exact Dependabot dependency-only change",
+        },
+      ];
+    }
+
+    findings.push({
+      level: "error",
+      rule: "dependabot-scope",
+      message:
+        "Dependabot changed a path outside the dependency manifest allowlist; refusing the bot waiver.",
+    });
+  }
+
+  if (!hasNoSubstantiveChange(changedFiles)) {
+    findings.push(...(ctx.agentReview ?? [{ level: "error", rule: "agent-review", message: "Independent review evidence was not verified." }]));
+  }
+
   const source = changedFiles.filter((f) => SOURCE.test(f) && !TEST.test(f));
   const tests = changedFiles.filter((f) => TEST.test(f));
   const docs = changedFiles.filter((f) => DOCS.test(f) && !GENERATED.test(f));
@@ -206,6 +246,17 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
         'No "## Open questions" section. Write "None" explicitly rather than omitting it.',
     });
   }
+
+  findings.push(
+    ...checkVisualEvidence({
+      body,
+      changedFiles,
+      // Direct callers predating the policy are legacy manifests, not proof
+      // that evidence is disabled. The CLI supplies an explicit invalid state
+      // when morpheus.json itself cannot be read.
+      policy: ctx.visualEvidence ?? { state: "absent" },
+    }),
+  );
 
   // A branch naming a roadmap item must move that item to review.
   //

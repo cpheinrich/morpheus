@@ -1,6 +1,8 @@
-import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { accessible as exists, scaffoldWriter } from "../file-io.js";
+import { readFile, symlink, writeFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 import { initializeWorkflow } from "../brand/workflow.js";
+import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { EXPECTED } from "../doctor/index.js";
 import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
 import { installContext } from "../session/install.js";
@@ -16,10 +18,11 @@ import {
 /**
  * Scaffold a Morpheus project.
  *
- * **Never overwrites.** Anything already present is skipped and reported,
- * which is what makes this safe to run on an established repository — so
- * "initialise a new project" and "bring an old one up to the standard" are the
- * same command rather than two that drift.
+ * **Never replaces authored values.** Existing files are normally skipped;
+ * narrowly owned additive repairs may merge a missing manifest block or hook
+ * while preserving every value already present. That is what makes this safe
+ * on an established repository — so "initialise a new project" and "bring an
+ * old one up to the standard" are the same command rather than two that drift.
  *
  * Deliberately scoped to the repository. Provisioning GCP, DNS and Vercel is
  * not here: those live in someone else's console, they need credentials this
@@ -32,15 +35,6 @@ export interface InitResult {
   skipped: string[];
   /** Explanations and follow-up constraints that do not belong in written/skipped. */
   notes: string[];
-}
-
-async function exists(p: string): Promise<boolean> {
-  try {
-    await access(p);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 type ConfiguredFirestoreRules =
@@ -89,6 +83,42 @@ function configuredFirestoreRules(content: string): ConfiguredFirestoreRules {
   }
 }
 
+type VisualEvidenceUpdate =
+  | { kind: "present" }
+  | { kind: "updated" }
+  | { kind: "invalid"; message: string };
+
+/** Add the default to established manifests without changing an authored policy. */
+async function ensureVisualEvidencePolicy(path: string): Promise<VisualEvidenceUpdate> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+  } catch (error) {
+    return {
+      kind: "invalid",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { kind: "invalid", message: "morpheus.json is not an object" };
+  }
+
+  const manifest = parsed as Record<string, unknown>;
+  const currentReview = manifest["review"];
+  if (
+    currentReview !== undefined &&
+    (!currentReview || typeof currentReview !== "object" || Array.isArray(currentReview))
+  ) {
+    return { kind: "invalid", message: "review is not an object" };
+  }
+  const review = (currentReview ?? {}) as Record<string, unknown>;
+  if (review["visualEvidence"] !== undefined) return { kind: "present" };
+
+  manifest["review"] = { ...review, visualEvidence: DEFAULT_VISUAL_EVIDENCE };
+  await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  return { kind: "updated" };
+}
+
 export const KIND_DIRS = EXPECTED;
 
 export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
@@ -96,16 +126,7 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   const skipped: string[] = [];
   const notes: string[] = [];
 
-  const put = async (rel: string, content: string): Promise<void> => {
-    const abs = join(root, rel);
-    if (await exists(abs)) {
-      skipped.push(rel);
-      return;
-    }
-    await mkdir(dirname(abs), { recursive: true });
-    await writeFile(abs, content, "utf8");
-    written.push(rel);
-  };
+  const put = scaffoldWriter(root, written, skipped);
 
   const prepareRules = async (path: string): Promise<string | undefined> => {
     const existing = await readFile(join(root, path), "utf8").catch(() => null);
@@ -153,6 +174,17 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
 
   // --- the manifest and the instructions -----------------------------------
   await put("morpheus.json", t.manifest(seed));
+  const visualPolicy = await ensureVisualEvidencePolicy(join(root, "morpheus.json"));
+  if (visualPolicy.kind === "updated") {
+    const skippedManifest = skipped.lastIndexOf("morpheus.json");
+    if (skippedManifest >= 0) skipped.splice(skippedManifest, 1);
+    written.push("morpheus.json (visual evidence policy added)");
+  } else if (visualPolicy.kind === "invalid") {
+    notes.push(
+      `Could not add the default visual-evidence policy: ${visualPolicy.message}. ` +
+        "Kept morpheus.json unchanged; fix it before enabling the PR gate.",
+    );
+  }
   await put("AGENTS.md", t.agents(seed));
 
   // A README for humans, and for agents that read one before anything else.
@@ -407,6 +439,8 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   const isNode =
     (await exists(join(root, "pnpm-lock.yaml"))) ||
     (await exists(join(root, "pnpm-workspace.yaml")));
+  await put(".github/pull_request_template.md", t.pullRequestTemplate());
+  await put(".github/workflows/review-metadata.yml", t.reviewMetadata());
   const ciPath = ".github/workflows/ci.yml";
   const existingCi = await readOptional(join(root, ciPath));
   await put(ciPath, t.ci({ node: isNode, ...(rulesPath ? { rulesPath } : {}) }));

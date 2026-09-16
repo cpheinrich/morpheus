@@ -5,7 +5,17 @@ name: PR check
 #
 #   jobs:
 #     pr:
+#       permissions:
+#         contents: read
+#         pull-requests: read
 #       uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
+#
+# The caller must grant `pull-requests: read`. The check reads the live pull
+# request through the job token, and a repository whose default token is
+# contents/packages read only (GitHub's "read" setting) answers that read with
+# 403. A called workflow can only narrow what its caller grants, so declaring
+# the permission below documents the need and makes a caller that omits it
+# fail at validation instead of at runtime.
 
 on:
   workflow_call:
@@ -30,10 +40,24 @@ on:
 jobs:
   conventions:
     runs-on: ubuntu-latest
+    # A hung step otherwise runs to GitHub's six-hour default on billed
+    # minutes. This ceiling sits far above the honest runtime, so it only ever
+    # fires on a hang — which it then reports quickly and legibly.
+    timeout-minutes: 10
+    # A superseded push must cancel rather than run to completion
+    # beside its replacement. Job-level because this file is called,
+    # and a called workflow's top-level concurrency does not govern
+    # the caller's run.
+    concurrency:
+      group: pr-check-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: read
     # Only meaningful on a pull request — there is no PR body on a push.
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # checkPr diffs against the base ref, so it needs the history.
           fetch-depth: 0
@@ -43,7 +67,7 @@ jobs:
       # Node project, and PR conventions have nothing to do with what language a
       # project is written in — the earlier version silently excluded every
       # static site and Python repo we own.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: cpheinrich/morpheus
           ref: ${{ inputs.morpheus-ref }}
@@ -54,12 +78,12 @@ jobs:
       # and the consumer may have no package.json at all — two of ours do not.
       # This failed everywhere except Morpheus itself, which is the only place
       # the workflow was ever exercised before today.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: ${{ inputs.pnpm-version }}
           package_json_file: .morpheus/package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ inputs.node-version }}
 
@@ -71,7 +95,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check PR conventions
-        run: >
-          node .morpheus/dist/cli/index.js check pr
-          --dir ${{ inputs.product-dir }}
-          --base origin/${{ github.base_ref }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          PRODUCT_DIR: ${{ inputs.product-dir }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Reruns must read current labels/body, not the original event snapshot.
+          gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/live-pr.json"
+          jq -e --arg sha "$EXPECTED_HEAD" '.head.sha == $sha' "$RUNNER_TEMP/live-pr.json" > /dev/null
+          jq '{pull_request: .}' "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"
+          GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json" node .morpheus/dist/cli/index.js check pr \
+            --dir "$PRODUCT_DIR" --base "origin/$BASE_REF"

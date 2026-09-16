@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { checkLocalReview } from "../review/local.js";
 import { checkPr, formatFindings } from "../check/pr.js";
+import { unreadableVisualEvidencePolicy, visualEvidencePolicy, } from "../check/visual-evidence.js";
 /**
  * Resolve PR context from the environment.
  *
@@ -61,12 +63,43 @@ function prBody() {
     }
     return process.env["MORPHEUS_PR_BODY"] ?? "";
 }
+function prAuthor() {
+    const eventPath = process.env["GITHUB_EVENT_PATH"];
+    if (eventPath) {
+        try {
+            const payload = JSON.parse(readFileSync(eventPath, "utf8"));
+            return payload.pull_request?.user?.login;
+        }
+        catch {
+            /* fall through to the env override */
+        }
+    }
+    return process.env["MORPHEUS_PR_AUTHOR"];
+}
+function projectVisualEvidencePolicy() {
+    try {
+        return visualEvidencePolicy(JSON.parse(readFileSync("morpheus.json", "utf8")));
+    }
+    catch (error) {
+        return unreadableVisualEvidencePolicy(error instanceof Error ? error.message : String(error));
+    }
+}
 export async function pr(productDir, base) {
+    let reviewEvent = {};
+    try {
+        reviewEvent = JSON.parse(readFileSync(process.env["GITHUB_EVENT_PATH"] ?? "", "utf8"));
+    }
+    catch { /* local overrides below */ }
+    const head = reviewEvent.pull_request?.head?.sha ?? gitOutput(["rev-parse", "HEAD"]);
+    const labels = reviewEvent.pull_request?.labels?.map(l => l.name) ?? (process.env["MORPHEUS_PR_LABELS"] ?? "").split(",").map(s => s.trim());
     const findings = await checkPr({
+        agentReview: checkLocalReview({ root: process.cwd(), body: prBody(), labels, head, base }),
         body: prBody(),
+        author: prAuthor(),
         branch: currentBranch(),
         changedFiles: changedFiles(base),
         trunkChanges: trunkChanges(base),
+        visualEvidence: projectVisualEvidencePolicy(),
         productDir,
     });
     console.log(formatFindings(findings));

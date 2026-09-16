@@ -16,6 +16,9 @@ on:
 
 jobs:
   heartbeat:
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/heartbeat.yml
     with:
       product-dir: hq/product

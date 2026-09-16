@@ -100,6 +100,7 @@ export declare const ci: (opts?: {
     node: boolean;
     rulesPath?: string;
 }) => string;
+export declare const pullRequestTemplate: () => string;
 export declare const productReadme: (kind: "roadmap" | "goals" | "requests", _s: Seed) => string;
 export declare const hqReadme: (s: Seed) => string;
 export declare const BRAND_EXPLORATION_IGNORE_RULES: readonly ["hq/brand/moodboard/*", "!hq/brand/moodboard/README.md", "hq/brand/research/assets/*", "!hq/brand/research/assets/README.md"];
@@ -140,3 +141,4 @@ export declare const websiteInitSkill: () => string;
  * out it is about to be refused will not follow it.
  */
 export declare const contextFreshness: () => string;
+export declare const reviewMetadata: () => string;

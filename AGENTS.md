@@ -118,6 +118,11 @@ pinned until a reviewed Morpheus change advances it.
 
 ## Context freshness
 
+Run `morpheus context brief` at session start if the standard hook did not run. It fetches the
+canonical trunk and fast-forwards only a clean local trunk. It never rebases an active task or
+rewrites dirty work. Follow its absolute `WORK IN` path when a session has a saved task association.
+A behind checkout cannot issue a fresh receipt: integrate trunk explicitly, then re-read records.
+
 **Read `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md`, then:**
 
 ```sh
@@ -136,7 +141,7 @@ routing-around outlives the staleness.
 ```sh
 morpheus context status    # what the current lease says, and how old it is
 morpheus context check     # exit non-zero unless fresh — for hooks and scripts
-morpheus context brief     # session start: discards the last receipt, says what to read
+morpheus context brief     # session start: fetches trunk, updates clean trunk, identifies task
 morpheus context install   # wire the hooks that run `brief`, and declare the inbox
 ```
 
@@ -224,8 +229,20 @@ Never start an item without claiming it; another agent, possibly on someone else
 may be on it. Move the item to `review` when you open the PR. Merging deletes the branch and
 releases the claim.
 
-Run one **git worktree per parallel session** so two agents cannot collide in the same
-checkout.
+Use **one worktree per implementation task**, not per conversation. Read-only investigation
+needs no new worktree. `pm claim <ID>` from a shared or unrelated checkout prepares a detached
+worktree at freshly fetched trunk and prints its absolute path. It moves only that item's new,
+untracked intake file; existing items come from trunk. Read the destination's records, refresh
+context there, then repeat `pm claim` there to stake the branch. No receipt is copied automatically.
+An already isolated detached worktree can claim directly after reading and refreshing.
+
+Use `morpheus pm resume <ID>` to continue an explicitly named existing task. It reuses the
+worktree holding its claimed branch, or checks out that branch in a worktree when needed.
+Preserve its commits and edits; fetch and integrate trunk explicitly when behind. A resumed session
+must not silently attach an unrelated request to its old task. Provider session IDs associate
+sessions with tasks; `--session-id` on claim/resume supplies one explicitly (Codex defaults to
+`CODEX_THREAD_ID`). Without an ID, the currently checked-out claimed branch identifies the task.
+Do not run concurrent authors on the same task worktree.
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
 voice and browser chat enter the same lifecycle as every other request: create or link the roadmap
@@ -263,7 +280,8 @@ the heartbeat's ceiling. So resuming is a checkout, not a fresh claim; `pm claim
 print exactly this:
 
 ```sh
-git checkout mo-051-agent-code-review
+morpheus pm resume MO-051
+# In the reported worktree, after reading current records:
 morpheus pm unblock MO-051
 ```
 
@@ -299,6 +317,25 @@ mistake.
 genuinely domain-specific, or every candidate is unmaintained. Record the outcome in
 `.agent/decisions.md` so the choice is not relitigated next session.
 
+**The authoring agent owns the entire review loop.** After committing implementation/tests,
+run `morpheus review prepare --base origin/main`; this prints a review packet and does not
+launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
+repository access and that packet, without inheriting the author's conversation history.
+The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
+the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
+GitHub Actions to start this review. CI checks the evidence; it does not perform the review.
+If the runner cannot start an independent session, report that concrete limitation and keep
+the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
+
+**Independent review is required before merge.**
+Respond once; substantive findings require one follow-up by the same reviewer. Minor-only findings
+allow author fixes without a second pass. Unresolved disagreements or incomplete review keep the PR
+open and auto-merge disabled. Record the review paragraph and structured evidence in the task
+worklog, link it with a visible `review-record:` PR-body line, then apply `agent-reviewed`.
+`review.required` defaults to true; project false opts out visibly. Only the named worklog may
+change after the covered commit. Follow the [review contract](docs/runbooks/independent-review.md)
+for budgets, related-code scope, record fields and escalation.
+
 **Every PR must carry:**
 
 - Tests for anything testable — a source change with no test change needs an explicit reason,
@@ -308,6 +345,17 @@ genuinely domain-specific, or every candidate is unmaintained. Record the outcom
 - Any open questions you could not resolve, stated plainly rather than guessed at
 - The roadmap item moved to `review`
 - `Closes #<number>` for every GitHub issue declared in the roadmap item's `issues:` field
+- For changed paths declared by `review.visualEvidence` in `morpheus.json`, a screen recording
+  attached under `## Visual evidence` when practical, otherwise screenshots
+
+The visual-evidence gate is a deterministic repository-owned path contract, not an attempt to
+infer whether rendered pixels changed. CI validates the presence of either a GitHub attachment or
+an HTTPS URL under a repository-approved `allowedUrlPrefixes` location, without fetching it; a
+human or independent reviewer still decides whether the evidence actually demonstrates the change.
+Declare the narrowest stable prefix that owns the media, such as a specific bucket path rather than
+all of `storage.googleapis.com`. A repository may opt out only with `enabled: false` and a
+substantive `reason` in its manifest. A legacy manifest with no declaration warns rather than blocks
+until its explicit rollout commit lands.
 
 When an issue becomes roadmap work, create it with `morpheus pm new roadmap "<title>" --issue 123`.
 For an existing item, use `morpheus pm link-issue <ID> 123`. Both write structured closure intent
@@ -396,6 +444,17 @@ Worked example, with the harness, the findings and the two mistakes made while f
 [`qa/audits/2026-08-19-python-test-quality.md`](https://github.com/cpheinrich/lakinacapital/blob/main/qa/audits/2026-08-19-python-test-quality.md)
 and [`qa/mutation/`](https://github.com/cpheinrich/lakinacapital/tree/main/qa/mutation) in Lakina.
 
+## iOS projects
+
+**Local iOS testing: focused tests only.** Run tests covering the feature under development
+and directly affected features or shared dependencies. Do not run the full iOS test suite
+locally unless Chris explicitly requests it: CI runs the full suite and must pass before
+merge. Use the repository's build/test wrapper when available, with explicit test filters.
+In the PR test plan and worklog, record the actual focused commands and why that scope was
+selected. Continue adding or updating tests and performing relevant simulator/visual QA.
+
+New projects inherit this policy from `src/init/templates.ts`; keep that template aligned.
+
 ## Branch protection
 
 `main` is protected on Morpheus and every project repo. **Never push to `main`** — work on a
@@ -412,46 +471,20 @@ Prefer `--auto` — it hands the merge to GitHub so the session is not held open
 failing check simply leaves the PR unmerged rather than merging something broken. Use `--watch`
 only when the next step depends on the merge having landed.
 
-**The agent review reads your pull request once, when it opens** — pushing a fix does not buy
-another review. When you have acted on findings and want them checked, or a later push changed
-enough to be worth a second pass, ask for one:
+**Finish the author-managed independent review before enabling auto-merge.** Opening a PR,
+pushing commits, or changing labels never starts a reviewer session. Follow the
+[review contract](docs/runbooks/independent-review.md), return to the original reviewer for the
+one permitted follow-up when required, and publish complete evidence before merging.
 
-```sh
-gh pr comment <n> --body "@claude re-review — I have addressed the findings above."
-```
+**Legacy GitHub review is opt-in.** Only repositories explicitly enabling the old
+`agent-review.yml` run a model when a PR opens or a collaborator requests `@claude` re-review.
+Its `agent-review / delivery` check may remain skipped to satisfy existing branch protection;
+skipped delivery is not an independent review. A legacy `review-waived:` line applies only to
+that delivery job and cannot waive the independent-review requirement.
 
-Only a comment from someone with repo access triggers it, and only on an open pull request. It is
-the same rung with the same persona; the difference is that a human decided it was worth a dollar,
-rather than a trigger deciding on every push. **Do not push empty commits to provoke a review** —
-that was the behaviour the trigger change removed.
-
-**Act on the review before merging — the merge will refuse until you do.** Two required
-protections enforce this: `agent-review / delivery` fails while a requested review is undelivered
-(and stays pending while one is running, which is what makes `--auto` safe to set early), and
-conversation resolution blocks the merge while any inline finding's thread is open. The loop:
-
-1. Wait for the review to land. Delivery pending means it is still reading.
-2. Read every finding. Apply the ones you judge worthy.
-3. Where you decline one, **reply in its thread saying why** — a resolved thread with no answer
-   reads as agreement, and the reviewer's finding may be wrong in a way worth recording.
-4. Resolve every thread. Resolution is the read receipt, not a verdict. `gh` has no subcommand
-   for it — it is a GraphQL mutation, and burning turns rediscovering that is how an agent ends
-   up reaching for `--admin`:
-
-   ```sh
-   # List the PR's threads with their ids and state:
-   gh api graphql -f owner=OWNER -f repo=REPO -F pr=N -f query='
-     query($owner:String!,$repo:String!,$pr:Int!){ repository(owner:$owner,name:$repo){
-       pullRequest(number:$pr){ reviewThreads(first:50){ nodes{ id isResolved path line } } } } }'
-   # Resolve one:
-   gh api graphql -f id=THREAD_ID -f query='
-     mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }'
-   ```
-
-**Never merge with `--admin`** — it exists to bypass exactly these protections. If the reviewer
-itself is broken (it fails in seconds at $0), put `review-waived: <reason>` in the PR body and
-re-run the delivery job: the waiver passes the check and is reported on it, so merging unreviewed
-is always a statement, never a default.
+Read and respond to any GitHub review findings as well, explaining declined findings in their
+threads before resolving them. Unresolved substantive independent findings keep the PR open.
+**Never merge with `--admin`** or use a delivery waiver to bypass independent review.
 
 **`pm claim` reconciles the board first**, marking merged work shipped and recording its PR number,
 so those status changes ride along in the claim commit. Nothing else advances an item to `shipped`,

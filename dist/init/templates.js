@@ -11,6 +11,7 @@
  * follows.
  */
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
+import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
 export const manifest = (s) => JSON.stringify({
     name: s.name,
@@ -21,6 +22,7 @@ export const manifest = (s) => JSON.stringify({
     // agent resuming without re-reading it is the failure the protocol
     // exists for — and the policy cannot derive a handle on its own.
     context: { handle: s.owner },
+    review: { required: true, visualEvidence: DEFAULT_VISUAL_EVIDENCE },
 }, null, 2) + "\n";
 export const firebaseConfig = (rulesPath) => JSON.stringify({ firestore: { rules: rulesPath } }, null, 2) + "\n";
 /**
@@ -824,11 +826,38 @@ in to save 60 lines is worse than the 60 lines. Build when the need is small —
 lines — genuinely domain-specific, or every candidate is unmaintained. Record the outcome in \`.agent/decisions.md\`
 so the choice is not relitigated next session.
 
+**The authoring agent owns the entire review loop.** After committing implementation/tests,
+run \`morpheus review prepare --base origin/main\`; this prints a review packet and does not
+launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
+repository access and that packet, without inheriting the author's conversation history.
+The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
+the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
+GitHub Actions to start this review. CI checks the evidence; it does not perform the review.
+If the runner cannot start an independent session, report that concrete limitation and keep
+the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
+
+**Independent review is required before merge.**
+Respond once; substantive findings require one follow-up by the same reviewer. Minor-only findings
+allow author fixes without a second pass. Unresolved disagreements or incomplete review keep the PR
+open and auto-merge disabled. Record the review paragraph and structured evidence in the task
+worklog, link it with a visible \`review-record:\` PR-body line, then apply \`agent-reviewed\`.
+\`review.required\` defaults to true; project false opts out visibly. Only the named worklog may
+change after the covered commit. Follow the [review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md)
+for budgets, related-code scope, record fields and escalation.
+
 **Every PR must carry** tests for anything testable, a documentation update when behaviour
 changes, a test plan, any open questions stated plainly rather than guessed at, and the roadmap
 item moved to \`review\`. Tests must pin expected behaviour, exercise guards at their boundaries,
 and fail when a stated invariant is broken; coverage alone is not evidence of quality. See
 [Morpheus's test guidance](${MORPHEUS_REPO}/blob/main/AGENTS.md#what-makes-a-test-count).
+
+**Front-end changes must carry visual evidence.** When a changed path matches
+\`review.visualEvidence.include\` in \`morpheus.json\` (minus \`exclude\`), attach a screen recording
+to the PR when practical, otherwise screenshots, and list them under \`## Visual evidence\`.
+\`morpheus check pr\` accepts GitHub attachments and exact public HTTPS prefixes declared in
+\`allowedUrlPrefixes\`, without fetching them. The path and media-location contracts are
+deterministic; they do not claim to infer whether rendered pixels changed. A repository may disable
+the rule only with \`enabled: false\` and a substantive \`reason\` in the manifest.
 
 **Before opening a PR**, run \`morpheus pm index\` and commit any one-time roadmap README migration
 or generated goal/request index changes. The roadmap README is static after that migration. CI runs
@@ -836,6 +865,15 @@ the same check and will fail otherwise.
 
 **Append a worklog entry** to \`.agent/worklog/YYYY-MM-DD-slug.md\`. Record dead ends especially —
 git history cannot hold work that produced no code, and that is the expensive knowledge.
+
+## iOS testing
+
+**Local iOS testing: focused tests only.** Run tests covering the feature under development
+and directly affected features or shared dependencies. Do not run the full iOS test suite
+locally unless Chris explicitly requests it: CI runs the full suite and must pass before
+merge. Use the repository's build/test wrapper when available, with explicit test filters.
+In the PR test plan and worklog, record the actual focused commands and why that scope was
+selected. Continue adding or updating tests and performing relevant simulator/visual QA.
 
 ## Branch protection
 
@@ -1084,6 +1122,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
 
 jobs:${opts.node
     ? `
@@ -1099,7 +1138,44 @@ jobs:${opts.node
     : ""}
 
   pr:
+    # The check reads the live pull request through the job token, and a
+    # called workflow can only narrow what its caller grants.
+    permissions:
+      contents: read
+      pull-requests: read
     uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
+`;
+export const pullRequestTemplate = () => `## Summary
+
+<!-- What changed, and why? -->
+
+<!-- If the roadmap item declares GitHub issues, close each explicitly: Closes #123. -->
+
+## Visual evidence
+
+<!--
+Required when changed paths match review.visualEvidence in morpheus.json.
+Paste GitHub attachments or link media under an allowedUrlPrefixes location. Prefer a screen
+recording; screenshots are accepted otherwise.
+
+- Recording: <approved evidence URL>
+- Screenshot: <approved evidence URL or pasted image>
+-->
+
+## Test plan
+
+<!-- What was verified, and how? -->
+
+## Independent review
+
+<!-- The authoring agent must launch a fresh reviewer session; review prepare only prints the packet.
+CI validates evidence and does not start a reviewer.
+After review, add agent-reviewed and a visible review-record: .agent/worklog/<task>.md line.
+Include a short outcome and a link to the worklog. Run morpheus review prepare for the contract. -->
+
+## Open questions
+
+<!-- State unresolved questions, or write None explicitly. -->
 `;
 export const productReadme = (kind, _s) => {
     if (kind === "roadmap")
@@ -1362,9 +1438,8 @@ command leaves it alone and says so; add the \`/hq\` matcher to the existing one
 `;
 // The session hooks both providers read live in `src/session/install.ts`, with
 // the protocol they belong to rather than beside the scaffold's strings. They
-// are deliberately **informational rather than blocking**: `context brief`
-// always exits 0, and the refusal lives in the `morpheus` CLI, which every
-// provider goes through. A blocking `PreToolUse` hook would fire on every
+// prepare current source through `context brief`. Startup failures are visible;
+// receipts still require an explicit read and refresh in the selected checkout. A blocking `PreToolUse` hook would fire on every
 // edit, and a gate that fires constantly is a gate people disable —
 // permanently, where the staleness was temporary.
 /**
@@ -1376,6 +1451,20 @@ command leaves it alone and says so; add the \`/hq\` matcher to the existing one
  * out it is about to be refused will not follow it.
  */
 export const contextFreshness = () => `## Context freshness
+
+Run \`morpheus context brief\` at session start if the standard hook did not run. It fetches
+canonical trunk and fast-forwards only a clean local trunk, preserving active branches and dirty work.
+Follow its absolute \`WORK IN\` path. A stale checkout cannot certify fresh context; integrate
+trunk explicitly and re-read records before refreshing.
+
+Use **one worktree per implementation task**, not per conversation. Investigation needs none.
+\`pm claim <ID>\` prepares a fresh detached worktree from current trunk when needed. Move to the
+reported directory, read its records, refresh context, then repeat the claim there. Only new,
+untracked intake for that item moves; unrelated work stays behind. No receipt is copied.
+\`pm resume <ID>\` reuses that task's existing worktree or checks out its claimed branch in one.
+Session IDs retain task associations; pass \`--session-id\` to claim/resume when startup prints it
+(Codex defaults to \`CODEX_THREAD_ID\`). Never infer that an unrelated request belongs to the
+currently checked-out task. Do not run concurrent authors in the same task worktree.
 
 **Read \`.agent/decisions.md\`, \`.agent/learned.md\` and your inbox, then:**
 
@@ -1395,13 +1484,13 @@ Read-only and mechanical commands are not gated.
 \`\`\`sh
 morpheus context status    # what the current lease says, and how old it is
 morpheus context check     # exit non-zero unless fresh — for hooks and scripts
-morpheus context brief     # session start: discards the last receipt, says what to read
+morpheus context brief     # session start: fetches trunk, updates clean trunk, identifies task
 morpheus context install   # wire the hooks that run \`brief\` — safe to re-run
 \`\`\`
 
 \`.morpheus/session-start.sh\` is the only Morpheus bridge this project runs automatically, from a
 session-start hook in **both** \`.claude/settings.json\` (Claude Code) and \`.codex/hooks.json\`
-(Codex). It only inspects: a current CLI continues into \`context brief\`; a missing or pre-\`self\`
+(Codex). A current CLI continues into \`context brief\` to prepare source; a missing or pre-\`self\`
 CLI emits the exact consent instructions above. \`morpheus context install\` writes or repairs the
 shim, bootstrap, and both provider files, merging rather than overwriting.
 
@@ -1427,5 +1516,21 @@ claim about everyone. Shared evidence stays the worklog, the commit and the PR.
 
 Why this exists, and the failure modes it is built against:
 [\`architecture.md\` §7.10](${MORPHEUS_REPO}/blob/main/architecture.md).
+`;
+export const reviewMetadata = () => `name: Review metadata
+
+# No build/test jobs here: skipped results must not replace required checks.
+on:
+  pull_request:
+    types: [edited, labeled, unlabeled]
+
+jobs:
+  pr:
+    # The check reads the live pull request through the job token, and a
+    # called workflow can only narrow what its caller grants.
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
 `;
 //# sourceMappingURL=templates.js.map

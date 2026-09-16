@@ -46,6 +46,30 @@ describe("morpheus init", () => {
     }
   });
 
+  it("scaffolds default-on local review and a conventions-only metadata workflow", async () => {
+    await scaffold(dir, SEED);
+    expect(JSON.parse(await read("morpheus.json")).review.required).toBe(true);
+    const workflow = load(await read(".github/workflows/review-metadata.yml")) as { on: { pull_request: { types: string[] } }; jobs: Record<string, unknown> };
+    expect(workflow.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
+    expect(Object.keys(workflow.jobs)).toEqual(["pr"]);
+    // The check reads the live pull request through the job token. A repository
+    // whose default token is contents/packages read only answers that with 403
+    // unless the caller grants pull-requests: read, and a called workflow can
+    // only narrow what its caller grants — so every scaffolded caller must.
+    const grant = { contents: "read", "pull-requests": "read" };
+    expect((workflow.jobs.pr as { permissions: unknown }).permissions).toEqual(grant);
+    const ci = load(await read(".github/workflows/ci.yml")) as { jobs: Record<string, { permissions?: unknown }> };
+    expect(ci.jobs.pr?.permissions).toEqual(grant);
+    const instructions = await read("AGENTS.md");
+    expect(instructions).toContain("The authoring agent owns the entire review loop");
+    expect(instructions).toContain("must spawn one fresh reviewer subagent/session");
+    expect(instructions).toContain("does not\nlaunch a reviewer");
+    expect(instructions).toContain("without inheriting the author's conversation history");
+    expect(instructions).toContain("Do not wait for a PR monitor");
+    expect(await read(".github/pull_request_template.md")).toContain("review prepare only prints the packet");
+    expect(await read(".github/pull_request_template.md")).toContain("review-record:");
+  });
+
   it("symlinks CLAUDE.md rather than copying AGENTS.md", async () => {
     await scaffold(dir, SEED);
     const stat = await lstat(join(dir, "CLAUDE.md"));
@@ -75,6 +99,63 @@ describe("morpheus init", () => {
     // record a human replies in.
     const manifest = JSON.parse(await read("morpheus.json")) as { context: { handle: string } };
     expect(manifest.context.handle).toBe(SEED.owner);
+  });
+
+  it("scaffolds the default-on visual-evidence policy and PR guidance", async () => {
+    await scaffold(dir, SEED);
+
+    const manifest = JSON.parse(await read("morpheus.json")) as {
+      review: { visualEvidence: { enabled: boolean; include: string[] } };
+    };
+    expect(manifest.review.visualEvidence.enabled).toBe(true);
+    expect(manifest.review.visualEvidence.include).toContain("apps/ios/**/*.swift");
+
+    const template = await read(".github/pull_request_template.md");
+    expect(template).toContain("## Visual evidence");
+    expect(template).toContain("Recording:");
+    expect(await read("AGENTS.md")).toContain("Front-end changes must carry visual evidence");
+  });
+
+  it("adds the default policy to an established manifest without replacing authored review data", async () => {
+    await writeFile(
+      join(dir, "morpheus.json"),
+      `${JSON.stringify({
+        name: "Existing",
+        prefix: "EX",
+        kind: "company",
+        review: { approval: "two-person" },
+      }, null, 2)}\n`,
+    );
+
+    const result = await scaffold(dir, SEED);
+    const manifest = JSON.parse(await read("morpheus.json")) as {
+      review: { approval: string; visualEvidence: { enabled: boolean } };
+    };
+
+    expect(manifest.review.approval).toBe("two-person");
+    expect(manifest.review.visualEvidence.enabled).toBe(true);
+    expect(result.written).toContain("morpheus.json (visual evidence policy added)");
+  });
+
+  it("preserves a repository's explicit visual-evidence opt-out", async () => {
+    const reason = "This repository has no rendered user interface.";
+    await writeFile(
+      join(dir, "morpheus.json"),
+      `${JSON.stringify({
+        name: "Existing",
+        prefix: "EX",
+        kind: "internal",
+        review: { visualEvidence: { enabled: false, reason } },
+      }, null, 2)}\n`,
+    );
+
+    const result = await scaffold(dir, SEED);
+    const manifest = JSON.parse(await read("morpheus.json")) as {
+      review: { visualEvidence: { enabled: boolean; reason: string } };
+    };
+
+    expect(manifest.review.visualEvidence).toEqual({ enabled: false, reason });
+    expect(result.written).not.toContain("morpheus.json (visual evidence policy added)");
   });
 
   it("adds the hook to a settings file it did not write", async () => {

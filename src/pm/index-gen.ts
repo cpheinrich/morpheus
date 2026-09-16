@@ -1,4 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { markdownTable } from "../markdown.js";
+import { readIfExists } from "../file-io.js";
+import { writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Item } from "./parse.js";
 import type { Goal, Request } from "./schema.js";
@@ -20,14 +22,6 @@ function cell(value: string | undefined): string {
   return value && value.length > 0 ? value.replace(/\|/g, "\\|") : "—";
 }
 
-function table(headers: string[], rows: string[][]): string {
-  if (rows.length === 0) return "_Nothing here yet._";
-  const head = `| ${headers.join(" | ")} |`;
-  const sep = `|${headers.map(() => "---").join("|")}|`;
-  const body = rows.map((r) => `| ${r.join(" | ")} |`).join("\n");
-  return [head, sep, body].join("\n");
-}
-
 /**
  * Link to the file, not to `<id>.md`.
  *
@@ -45,7 +39,7 @@ function link(id: string, path: string): string {
 
 export function renderGoals(items: Item<Goal>[]): string {
   const sorted = [...items].sort((a, b) => a.data.id.localeCompare(b.data.id));
-  return table(
+  return markdownTable(
     ["ID", "Title", "Period", "Metric", "Target", "Current", "Status"],
     sorted.map((i) => [
       link(i.data.id, i.path),
@@ -56,12 +50,13 @@ export function renderGoals(items: Item<Goal>[]): string {
       cell(i.data.current),
       i.data.status,
     ]),
+    "_Nothing here yet._",
   );
 }
 
 export function renderRequests(items: Item<Request>[]): string {
   const sorted = [...items].sort((a, b) => a.data.id.localeCompare(b.data.id));
-  return table(
+  return markdownTable(
     ["ID", "Title", "Source", "Status", "Roadmap"],
     sorted.map((i) => [
       link(i.data.id, i.path),
@@ -70,6 +65,7 @@ export function renderRequests(items: Item<Request>[]): string {
       i.data.status,
       cell(i.data.roadmap),
     ]),
+    "_Nothing here yet._",
   );
 }
 
@@ -92,15 +88,6 @@ export function spliceIndex(existing: string | null, generated: string): string 
   }
 
   return `${block}\n`;
-}
-
-async function readIfExists(path: string): Promise<string | null> {
-  try {
-    return await readFile(path, "utf8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw err;
-  }
 }
 
 /**

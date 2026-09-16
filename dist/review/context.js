@@ -25,7 +25,7 @@ export class ReviewError extends Error {
  */
 export async function loadReviewContext(opts) {
     const { root, productDir, branch } = opts;
-    const persona = await readIfExists(join(root, PERSONA_PATH));
+    const persona = opts.persona ?? await readIfExists(join(root, PERSONA_PATH));
     if (persona === null) {
         throw new ReviewError(`No reviewer persona at ${PERSONA_PATH}. Rung 2 without one is rung 1 with a model ` +
             `attached — copy the file from Morpheus rather than running generic review.`);

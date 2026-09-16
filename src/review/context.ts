@@ -18,6 +18,7 @@ async function readIfExists(path: string): Promise<string | null> {
 export class ReviewError extends Error {}
 
 export interface LoadOptions {
+  persona?: string;
   root: string;
   productDir: string;
   branch: string;
@@ -34,7 +35,7 @@ export interface LoadOptions {
 export async function loadReviewContext(opts: LoadOptions): Promise<ReviewContext> {
   const { root, productDir, branch } = opts;
 
-  const persona = await readIfExists(join(root, PERSONA_PATH));
+  const persona = opts.persona ?? await readIfExists(join(root, PERSONA_PATH));
   if (persona === null) {
     throw new ReviewError(
       `No reviewer persona at ${PERSONA_PATH}. Rung 2 without one is rung 1 with a model ` +
