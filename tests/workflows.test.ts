@@ -1774,7 +1774,7 @@ describe("ios-testflight-upload action", () => {
     // script no longer *does* has to read past them.
     const executable = raw.replace(/^[ \t]*#.*$/gm, "");
     const archive = raw.slice(
-      raw.indexOf("xcodebuild archive \\"),
+      raw.indexOf("archive_arguments=("),
       raw.indexOf("ARCHIVED_APPLICATIONS_PATH="),
     );
 
@@ -1791,7 +1791,7 @@ describe("ios-testflight-upload action", () => {
     const raw = await script();
     const exportOptions = raw.slice(
       raw.indexOf("plutil -create xml1"),
-      raw.indexOf("xcodebuild archive \\"),
+      raw.indexOf("archive_arguments=("),
     );
 
     expect(exportOptions).toContain("plutil -insert destination -string export");
@@ -1812,6 +1812,20 @@ describe("ios-testflight-upload action", () => {
     expect(raw).toContain("builds next-number");
     expect(raw).toContain("builds add-beta-group");
     expect(raw).toContain("processingState");
+  });
+
+  it("seeds declared entitlements before export and rejects their loss before upload", async () => {
+    const raw = await script();
+    expect(raw).toContain('xcodebuild -showBuildSettings -json "${archive_arguments[@]}"');
+    expect(raw).toContain('xcodebuild archive "${archive_arguments[@]}"');
+    const seed = raw.indexOf('codesign --force --sign -');
+    const exportArchive = raw.indexOf('/usr/bin/xcodebuild -exportArchive');
+    const verify = raw.indexOf('python3 "$ENTITLEMENTS_TOOL" verify');
+    expect(seed).toBeGreaterThan(raw.indexOf('run_without_release_secrets "$VALIDATE_APP_SCRIPT_PATH"'));
+    expect(seed).toBeLessThan(exportArchive);
+    expect(raw).toContain('--entitlements "$EXPECTED_ENTITLEMENTS_PATH" "$ARCHIVED_APPLICATION_PATH"');
+    expect(verify).toBeGreaterThan(exportArchive);
+    expect(verify).toBeLessThan(raw.indexOf('run_asccli builds upload'));
   });
 
   it("surfaces terminal upload-processing errors before the build-list deadline", async () => {

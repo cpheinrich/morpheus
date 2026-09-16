@@ -3105,6 +3105,12 @@ outright. Second, the distribution checks run on the **exported IPA**, never the
 archive has no signature to check, and `get-task-allow` must be strict on the artifact that ships.
 Third, the file that is verified is the file that is uploaded: the export writes an IPA locally, the
 signature and entitlements are asserted against it, and `asccli builds upload` sends that same path.
+Before export, the action resolves the app target’s `CODE_SIGN_ENTITLEMENTS` from Release build
+settings and seeds those claims in an ad-hoc signature. The profile grants permission to claim
+capabilities; it does not add missing claims to an unsigned app. After export, every declared
+capability entitlement must retain its value or the upload stops. APS and iCloud environment
+claims are normalized to production only when the pinned profile permits that value. Unresolved entitlement build variables fail
+closed. This covers the single main app; extension entitlement preservation is not supported.
 Exporting with `destination: upload` hands the build to Apple with nothing having inspected it.
 
 `firebase-tests` is the one workflow a project opts into rather than getting by default: it runs
