@@ -19,10 +19,13 @@ workflow"; the reviewer caught it and it now routes production through `vercel-d
 found its scaffolded upload job called a script `init` never writes, so every scaffolded project
 would have failed on first dispatch — rewritten around the `ios-testflight-upload` action.
 [#253](https://github.com/cpheinrich/morpheus/pull/253) (preserve cleared reviews across reviewed
-doc merges; closes #252) was reviewed clean with two minor fixes and is merging.
-[#255](https://github.com/cpheinrich/morpheus/pull/255) fixes the two ergonomics halves of Alex's
-issues #248 and #241: `check pr` now says `review-waived` waives legacy delivery only, and the
-review packet carries the repository path and derived test commands. Roadmap items are filed for
+doc merges; closes #252) was reviewed with two minor fixes and merged.
+[#255](https://github.com/cpheinrich/morpheus/pull/255), merged, fixes the two ergonomics halves
+of Alex's issues #248 and #241: `check pr` now says `review-waived` waives legacy delivery only,
+and the review packet carries the repository path and derived test commands. You approved
+[#250](https://github.com/cpheinrich/morpheus/pull/250) mid-sweep; a fresh high-risk review from
+our side tested the nested-code signing case my earlier triage had flagged and found it works, so
+that concern is withdrawn; two minor fixes were applied and it merges after its follow-up. Roadmap items are filed for
 #249 (simulator shutdown under a concurrent lane) and #251 (keychain state across signing runners),
 both P1, unclaimed. Everything below needs you.
 
@@ -92,29 +95,16 @@ merge. Escalation has an outcome with nowhere to go.
 
 ~
 
-## ❗ 4. #250 from robbie-del: approve workflows and merge, or send back? · `claude`
+## ✅ 4. #250 from robbie-del: merged on your approval · `claude`
 
-[#250](https://github.com/cpheinrich/morpheus/pull/250) preserves HealthKit and other
-entitlements in TestFlight exports (a real Evo defect). Robbie is a first-time contributor with no
-collaborator access, so under the do-nothing-on-untrusted-input rule I neither approved its
-workflow runs nor ran its code; a read-only triage is posted on the PR. It found two changes likely
-to break releases for every caller of the shared action: ad-hoc `codesign` of the archived `.app`
-refuses unsigned nested frameworks and app extensions, and `$(AppIdentifierPrefix)`-style
-variables that Xcode injects at signing time fail closed as "unresolved". Plus two small ones (temp
-files not cleaned up, `-showBuildSettings` run with release secrets in the environment). No
-security concerns in the diff. The review record is well-formed.
-
-- **A — ask for the fixes, then dispatch Evo's TestFlight workflow against the PR head before
-  merging (recommended).** The triage comment already says this; you would approve the workflow
-  runs once the fixes land, and merge on a green real export.
-- **B — take it over.** Claim the item, cherry-pick Robbie's commits onto a trusted branch, fix
-  the four findings, review and merge from here. Faster if Robbie is not around; loses the
-  contributor's ownership.
-- **C — decline and file the defect.** Close the PR with thanks and carry the entitlements bug as
-  a roadmap item.
-- **Other —** also tell me who Robbie is; a collaborator grant would change the rule that applies.
-
-~
+You approved it on GitHub mid-sweep. Workflow runs were approved (build and tests green), a fresh
+high-risk review from our side found four minor findings and nothing substantive — and, by
+actually ad-hoc signing an app with unsigned nested frameworks, showed the nested-code refusal my
+read-only triage predicted does not happen (`codesign` refuses unsigned subcomponents on verify,
+not on sign). Temp-file cleanup and the credential-free build-settings query were fixed; resolving
+`$(AppIdentifierPrefix)`-style variables from the profile is a follow-on item. Acceptance is still
+a real nightly run plus a device install showing the HealthKit prompt; the item stays open until
+that evidence exists.
 
 ## ❗ 5. Two stale claims · `claude`
 
