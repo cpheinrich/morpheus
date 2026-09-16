@@ -2300,7 +2300,11 @@ billing account.
 
 `morpheus init` writes the manifest, `README.md`, `AGENTS.md` with `CLAUDE.md` symlinked to it,
 the `.agent/` records, the repository-level motion-design skill, the `hq/` tree for the project's
-kind, an inbox, a CI workflow delegating to the reusable ones, and `.gitignore` entries. A company
+kind, an inbox, a CI workflow delegating to the reusable ones, and `.gitignore` entries. When the
+repository has an Xcode project under `apps/ios`, it also writes the nightly TestFlight caller
+(§18.2's `ios-nightly-build` upload job as a checkout of the verified SHA plus one `ios-testflight-upload` step, the
+06:00 Pacific slot commented out until the release secrets exist, and `TODO` markers for the four
+identifiers it cannot know). A company
 scaffold also writes the deny-by-default Firestore gate at `infra/firebase/firestore.rules` and a
 minimal `firebase.json` that deploys that same file. Then it registers the prefix and prints
 `init status`.
