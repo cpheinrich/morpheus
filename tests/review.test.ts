@@ -16,6 +16,7 @@ import {
 import { pathsMentioned } from "../src/review/findings.js";
 import { loadReviewContext, PERSONA_PATH, ReviewError } from "../src/review/context.js";
 import { acceptancePath, buildReviewPrompt } from "../src/review/prompt.js";
+import { projectCommands, reviewPacket } from "../src/review/packet.js";
 
 let root: string;
 let product: string;
@@ -644,5 +645,91 @@ describe("review delivery waiver", () => {
     const code = await run(DELIVERED_BODY, "review-waived: should be ignored entirely");
     expect(code).toBe(0);
     expect(logged.join("\n")).not.toContain("waived");
+  });
+});
+
+/**
+ * The first packet handed to an isolated reviewer said neither where the
+ * repository was nor how to run its tests (#241). Both are now derived from
+ * the files that define them, and the ticket lines describe an unclaimed or
+ * acceptance-less change as a supported state rather than printing `none`.
+ */
+describe("the review packet", () => {
+  let root: string;
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "packet-"));
+  });
+
+  it("derives pnpm commands from package.json scripts, in the order a reviewer runs them", async () => {
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({ packageManager: "pnpm@11.9.0", scripts: { test: "vitest run", lint: "eslint .", typecheck: "tsc --noEmit", compile: "tsc" } }),
+    );
+    expect(await projectCommands(root)).toEqual(["pnpm typecheck", "pnpm test", "pnpm lint"]);
+  });
+
+  it("falls back to npm without a lockfile or packageManager", async () => {
+    await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "jest" } }));
+    expect(await projectCommands(root)).toEqual(["npm run test"]);
+  });
+
+  it("honours a declared yarn or bun manager, and a lockfile when nothing is declared", async () => {
+    await writeFile(join(root, "package.json"), JSON.stringify({ packageManager: "yarn@4.5.0", scripts: { test: "vitest" } }));
+    expect(await projectCommands(root)).toEqual(["yarn test"]);
+    await writeFile(join(root, "package.json"), JSON.stringify({ packageManager: "bun@1.2.0", scripts: { test: "vitest" } }));
+    expect(await projectCommands(root)).toEqual(["bun run test"]);
+    await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "vitest" } }));
+    await writeFile(join(root, "yarn.lock"), "");
+    expect(await projectCommands(root)).toEqual(["yarn test"]);
+  });
+
+  it("uses plain pytest when a Python project has no uv lockfile", async () => {
+    await writeFile(join(root, "pyproject.toml"), "[project]\nname = 'x'\n");
+    expect(await projectCommands(root)).toEqual(["pytest"]);
+  });
+
+  it("reads Python and Swift projects from their manifests", async () => {
+    await writeFile(join(root, "pyproject.toml"), "[project]\nname = 'x'\n");
+    await writeFile(join(root, "uv.lock"), "");
+    await writeFile(join(root, "Package.swift"), "// swift-tools-version:6.0\n");
+    expect(await projectCommands(root)).toEqual(["uv run pytest", "swift test"]);
+  });
+
+  it("detects nothing rather than guessing for an empty directory", async () => {
+    expect(await projectCommands(root)).toEqual([]);
+  });
+
+  it("states the repository, range and commands before the ticket", () => {
+    const packet = reviewPacket({
+      root: "/work/acme",
+      fork: "a".repeat(40),
+      head: "b".repeat(40),
+      ticket: { id: "AC-26-09-16-01.02.03", title: "Fix the thing", intent: "## Context\n\nWhy.", acceptance: "- it works" },
+      commands: ["pnpm typecheck", "pnpm test"],
+    });
+    const lines = packet.split("\n");
+    expect(lines[0]).toBe("Repository: /work/acme");
+    expect(lines[1]).toBe(`Review range: ${"a".repeat(40)}..${"b".repeat(40)}`);
+    expect(lines[2]).toBe("Test commands (run from the repository): pnpm typecheck; pnpm test");
+    expect(lines[3]).toBe("Ticket: AC-26-09-16-01.02.03 — Fix the thing");
+    expect(packet).toContain("## Context\n\nWhy.");
+    expect(packet).toContain("Acceptance: - it works");
+  });
+
+  it("describes an unclaimed, acceptance-less change as supported rather than printing none", () => {
+    const packet = reviewPacket({ root: "/work/acme", fork: "a".repeat(40), head: "b".repeat(40), ticket: {}, commands: [] });
+    expect(packet).toContain("Ticket: unclaimed change — review against the PR title and body; no roadmap item is required");
+    expect(packet).toContain("Acceptance: none declared — review against the ticket context and the PR description");
+    expect(packet).toContain("Test commands: none detected — ask the author");
+    expect(packet).not.toMatch(/: none$/m);
+  });
+
+  it("names a declared-but-missing acceptance file as a thing to flag", () => {
+    const packet = reviewPacket({
+      root: "/r", fork: "a".repeat(40), head: "b".repeat(40),
+      ticket: { id: "AC-1", title: "T", missingAcceptance: "qa/acceptance/AC-1.md" },
+      commands: [],
+    });
+    expect(packet).toContain("Acceptance: declared at qa/acceptance/AC-1.md, but that file is missing");
   });
 });
