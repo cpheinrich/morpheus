@@ -2566,6 +2566,7 @@ describe("the scaffolded iOS nightly caller", () => {
     const rendered = iosNightly({ app: "Example" });
     expect(rendered).toContain('#   - cron: "0 13 * * *"');
     expect(rendered).toContain("06:00 America/Los_Angeles");
+    expect(rendered).toContain('"0 13" is 06:00 PDT and\n  # 05:00 PST');
     expect(rendered).not.toMatch(/^\s*#?\s*timezone:/m);
     // Screenshot dedup in the reusable workflow needs the caller's zone.
     const wf = load(rendered) as Workflow;

@@ -1201,7 +1201,8 @@ export const iosNightly = (opts) => {
 # action runs inside this job, where \`secrets.*\` resolve normally.
 on:
   # 06:00 America/Los_Angeles is the standard nightly slot across projects.
-  # GitHub runs cron in UTC, so this is 13:00 UTC (14:00 during standard time).
+  # GitHub evaluates cron in UTC and never adjusts it: "0 13" is 06:00 PDT and
+  # 05:00 PST. Use "0 14" if 06:00 must hold in winter.
   # Uncomment once the protected environment holds the release secrets; change
   # the time here if this project needs a different one, or leave it commented
   # to release only on demand.
