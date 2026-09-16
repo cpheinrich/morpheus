@@ -8,6 +8,8 @@ import { type VisualEvidencePolicy } from "./visual-evidence.js";
  * is the enforcement half of that pair.
  */
 export interface PrContext {
+    /** Result of committed independent-review evidence verification. */
+    agentReview?: Finding[];
     /** PR body markdown. */
     body: string;
     /** Pull-request author login. Absent outside GitHub unless explicitly supplied. */

@@ -16,6 +16,8 @@ import { DEPENDABOT_LOGIN, isDependencyOnly } from "../dependabot/policy.js";
  */
 
 export interface PrContext {
+  /** Result of committed independent-review evidence verification. */
+  agentReview?: Finding[];
   /** PR body markdown. */
   body: string;
   /** Pull-request author login. Absent outside GitHub unless explicitly supplied. */
@@ -191,6 +193,10 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
       message:
         "Dependabot changed a path outside the dependency manifest allowlist; refusing the bot waiver.",
     });
+  }
+
+  if (!hasNoSubstantiveChange(changedFiles)) {
+    findings.push(...(ctx.agentReview ?? [{ level: "error", rule: "agent-review", message: "Independent review evidence was not verified." }]));
   }
 
   const source = changedFiles.filter((f) => SOURCE.test(f) && !TEST.test(f));

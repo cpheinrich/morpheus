@@ -18,6 +18,12 @@ Paste GitHub attachments here. Prefer a screen recording; screenshots are accept
 
 <!-- What was verified, and how? -->
 
+## Independent review
+
+<!-- The authoring agent must launch a fresh reviewer session; review prepare only prints the packet.
+CI validates evidence and does not start a reviewer.
+Add a visible review-record: .agent/worklog/<task>.md line, a linked summary, and agent-reviewed after completion. -->
+
 ## Open questions
 
 <!-- State unresolved questions, or write None explicitly. -->

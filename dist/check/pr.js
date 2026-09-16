@@ -126,6 +126,9 @@ export async function checkPr(ctx) {
             message: "Dependabot changed a path outside the dependency manifest allowlist; refusing the bot waiver.",
         });
     }
+    if (!hasNoSubstantiveChange(changedFiles)) {
+        findings.push(...(ctx.agentReview ?? [{ level: "error", rule: "agent-review", message: "Independent review evidence was not verified." }]));
+    }
     const source = changedFiles.filter((f) => SOURCE.test(f) && !TEST.test(f));
     const tests = changedFiles.filter((f) => TEST.test(f));
     const docs = changedFiles.filter((f) => DOCS.test(f) && !GENERATED.test(f));

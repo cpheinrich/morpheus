@@ -18,6 +18,11 @@ import { ci as ciTemplate } from "../src/init/templates.js";
  */
 
 const DIR = join(import.meta.dirname, "../.github/workflows");
+const CHECKOUT_V7 = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
+const CACHE_V6 = "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9";
+const SETUP_JAVA_V4 = "actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3";
+const SETUP_JAVA_V6 = "actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c";
+const UPLOAD_ARTIFACT_V7 = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a";
 const execFileAsync = promisify(execFile);
 
 interface Workflow {
@@ -35,6 +40,18 @@ describe("every workflow", () => {
     expect(files.length).toBeGreaterThan(0);
     for (const f of files) {
       await expect(read(f), `${f} should parse`).resolves.toBeTruthy();
+    }
+  });
+
+  it("pins third-party actions to immutable commits", async () => {
+    const files = (await readdir(DIR)).filter((file) => file.endsWith(".yml"));
+    for (const file of files) {
+      const raw = await readFile(join(DIR, file), "utf8");
+      for (const match of raw.matchAll(/^\s*-?\s*uses:\s+([^\s#]+)/gm)) {
+        const action = match[1]!;
+        if (action.startsWith("./") || action.startsWith("cpheinrich/morpheus/")) continue;
+        expect(action, `${file} contains a mutable third-party action ref`).toMatch(/@[0-9a-f]{40}$/);
+      }
     }
   });
 });
@@ -150,7 +167,7 @@ describe("release-preflight.yml", () => {
   it("checks out only the requested SHA without persisting credentials", async () => {
     const steps = ((await read("release-preflight.yml")) as ReleasePreflight).jobs?.verify
       ?.steps ?? [];
-    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
 
     expect(checkout?.with).toEqual({
       ref: "${{ github.sha }}",
@@ -478,7 +495,7 @@ describe("agent-review.yml", () => {
     };
 
     expect(called.on?.workflow_call?.inputs?.enabled).toEqual(
-      expect.objectContaining({ type: "boolean", default: true }),
+      expect.objectContaining({ type: "boolean", default: false }),
     );
     expect(called.jobs?.review?.if).toContain("inputs.enabled");
     expect(called.jobs?.delivery?.if).toContain("inputs.enabled");
@@ -1021,6 +1038,7 @@ describe("caller permissions cover what they call", () => {
 
     for (const file of files) {
       const wf = (await read(file)) as {
+        permissions?: Record<string, string>;
         jobs?: Record<string, { uses?: string; permissions?: Record<string, string> }>;
       };
 
@@ -1029,20 +1047,21 @@ describe("caller permissions cover what they call", () => {
         if (!local) continue;
 
         const called = (await read(local)) as {
+          permissions?: Record<string, string>;
           jobs?: Record<string, { permissions?: Record<string, string> }>;
         };
 
-        const needed: Record<string, string> = {};
+        // An explicit job block replaces the workflow block, rather than
+        // inheriting its omitted scopes. Check each callee job independently
+        // so a later read cannot hide an earlier write requirement.
+        const granted = job.permissions ?? wf.permissions ?? {};
+        const rank: Record<string, number> = { none: 0, read: 1, write: 2 };
         for (const inner of Object.values(called.jobs ?? {})) {
-          Object.assign(needed, inner.permissions ?? {});
-        }
-
-        for (const [scope, level] of Object.entries(needed)) {
-          if (level !== "write") continue;
-          expect(
-            job.permissions?.[scope],
-            `${file}:${name} calls ${local}, which needs ${scope}: write`,
-          ).toBe("write");
+          for (const [scope, level] of Object.entries(inner.permissions ?? called.permissions ?? {})) {
+            expect(rank[granted[scope] ?? "none"] ?? 0,
+              `${file}:${name} calls ${local}, which needs ${scope}: ${level}`,
+            ).toBeGreaterThanOrEqual(rank[level] ?? 0);
+          }
         }
       }
     }
@@ -1264,7 +1283,7 @@ describe("firebase-tests.yml", () => {
     const wf = (await read("firebase-tests.yml")) as FirebaseTests;
     expect(wf.on?.workflow_call?.inputs?.["java-version"]?.default).toBe("21");
     const raw = await readFile(join(DIR, "firebase-tests.yml"), "utf8");
-    expect(raw).toContain("actions/setup-java@v4");
+    expect(raw).toContain(SETUP_JAVA_V4);
   });
 
   it("pins firebase-tools to a major", async () => {
@@ -1398,6 +1417,10 @@ describe("ios-nightly-build.yml", () => {
     expect(call?.inputs?.["workflow-file"]?.required).toBe(true);
     expect(call?.inputs?.["watch-paths"]?.required).toBe(true);
     expect(call?.inputs?.["force-build"]?.default).toBe(false);
+    expect(call?.inputs?.project?.required).toBe(true);
+    expect(call?.inputs?.scheme?.required).toBe(true);
+    expect(call?.inputs?.["capture-every-night"]?.default).toBe(false);
+    expect(wf.jobs?.test?.if).toContain("needs.changes.outputs.capture");
     // Release identity feeds only this workflow's own upload job. A
     // cross-repository caller must own that job, so it configures the
     // ios-testflight-upload action instead and states its identifiers once.
@@ -1434,7 +1457,7 @@ describe("ios-nightly-build.yml", () => {
   it("uses a full checkout and the last successful caller run for its diff", async () => {
     const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const steps = wf.jobs?.changes?.steps ?? [];
-    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
     const decision = steps.find((step) => step.name === "Compare with the last successful upload");
     const script = String(decision?.run);
 
@@ -1513,6 +1536,37 @@ describe("ios-nightly-build.yml", () => {
     }
   });
 
+  it("diagnoses unavailable signing secrets before upload setup without exposing values", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const guard = wf.jobs?.upload?.steps?.[0];
+    expect(guard?.name).toBe("Check upload credential availability");
+    const required = [
+      "APP_STORE_CONNECT_KEY_ID", "APP_STORE_CONNECT_ISSUER_ID",
+      "APP_STORE_CONNECT_API_KEY_P8_BASE64", "IOS_DISTRIBUTION_P12_BASE64",
+      "IOS_DISTRIBUTION_PROFILE_BASE64",
+    ];
+    expect(guard?.env).toEqual(Object.fromEntries(required.map((key) => [
+      `HAS_${key}`, `\${{ secrets.${key} != '' }}`,
+    ])));
+    const present = Object.fromEntries(required.map((key) => [`HAS_${key}`, "true"]));
+    const run = (flags: Record<string, string>) => execFileAsync(
+      "bash", ["-euo", "pipefail", "-c", String(guard?.run)],
+      { env: { ...process.env, ...present, ...flags } },
+    );
+    // Optional Firebase/Sentry credentials and a blank P12 password are valid.
+    expect((await run({})).stdout).toBe("");
+    for (const missing of required) {
+      await expect(run({ [`HAS_${missing}`]: "false" })).rejects.toMatchObject({
+        stderr: expect.stringContaining(`Missing required upload secrets: ${missing}`),
+      });
+    }
+    await expect(run(Object.fromEntries(required.map((key) => [`HAS_${key}`, "false"])))).rejects.toMatchObject({
+      stderr: expect.stringContaining("run-upload: false"),
+    });
+    expect(guard?.run).toContain("caller-owned");
+    expect(guard?.run).toContain("environment");
+  });
+
   it("gates signed upload on exact-main preflight and independent tests", async () => {
     const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const preflight = wf.jobs?.preflight;
@@ -1561,9 +1615,11 @@ describe("ios-nightly-build.yml", () => {
     expect(steps.indexOf(release!)).toBeGreaterThan(
       steps.findIndex((step) => step.name === "Install release tooling"),
     );
-    expect(
-      steps.find((step) => step.name === "Install release tooling")?.run,
-    ).toContain("brew install openssl@3 asccli");
+    const tooling = steps.find((step) => step.name === "Install release tooling");
+    expect(tooling?.env?.ASCCLI_VERSION).toBe("0.18.2");
+    expect(tooling?.run).toContain("asc_v${ASCCLI_VERSION}_macOS_${asccli_arch}");
+    expect(tooling?.run).toContain("shasum -a 256 --check");
+    expect(tooling?.run).not.toContain("--build-from-source");
 
     for (const step of steps) {
       expect(step.run ?? "").not.toContain("${{ inputs.upload-script }}");
@@ -1685,11 +1741,26 @@ describe("ios-testflight-upload action", () => {
     // variable to the calling job.
     expect(validate?.run).toContain('for caller_value in "$WORKING_DIRECTORY" "$PROJECT" "$SCHEME"');
     expect(validate?.run).toContain("*[[:space:]]*)");
-    expect(validate?.run).toContain('xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
+    expect(validate?.run).toContain('versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
+    expect(validate?.run).toContain("elif [ -d /Applications/Xcode.app ]");
+    expect(validate?.run).toContain('installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild"');
     expect(validate?.run).toContain('echo "DEVELOPER_DIR=$xcode_app/Contents/Developer"');
     expect(validate?.run).toContain("-downloadComponent MetalToolchain");
     expect(cache?.with?.path).toBe("${{ runner.temp }}/${{ inputs.source-packages-directory }}");
-    expect(tooling?.run).toContain("brew install openssl@3 asccli");
+    expect(tooling?.run).toContain("brew list --versions openssl@3");
+    expect(tooling?.run).toContain("brew install openssl@3");
+    expect(tooling?.run).toContain("! command -v sentry-cli");
+    expect(tooling?.env?.ASCCLI_VERSION).toBe("0.18.2");
+    expect(tooling?.run).toContain("asc_v${ASCCLI_VERSION}_macOS_${asccli_arch}");
+    expect(tooling?.run).toContain(
+      "7555b910823d8935d9dd5df5fe0382c0ab2741437ed26a3c5b683d13dd19530c",
+    );
+    expect(tooling?.run).toContain(
+      "c72907829723e4ff3a7b60d4c1d9be8755995d4aab9cf960aaf866b83169456c",
+    );
+    expect(tooling?.run).toContain("shasum -a 256 --check");
+    expect(tooling?.run).not.toContain("brew install asccli");
+    expect(tooling?.run).not.toContain("--build-from-source");
     expect(tooling?.run).toContain("brew install getsentry/tools/sentry-cli");
   });
 
@@ -1739,6 +1810,20 @@ describe("ios-testflight-upload action", () => {
     expect(raw).toContain("processingState");
   });
 
+  it("surfaces terminal upload-processing errors before the build-list deadline", async () => {
+    const raw = await script();
+
+    expect(raw).toContain('upload_json="$(');
+    expect(raw).toContain('upload_id="$(json_value "$upload_json" "data.0.id"');
+    expect(raw).toContain("run_asccli builds uploads get");
+    expect(raw).toContain('[[ "$upload_state" == "FAILED" ]]');
+    expect(raw).toContain("data.0.errors.0.code");
+    expect(raw).toContain("data.0.errors.0.description");
+    expect(raw.indexOf("run_asccli builds uploads get")).toBeLessThan(
+      raw.indexOf("run_asccli builds list"),
+    );
+  });
+
   it("keeps get-task-allow strict and reads dotted entitlement keys as one key", async () => {
     const raw = await script();
 
@@ -1757,14 +1842,32 @@ describe("ios-testflight-upload action", () => {
     expect(raw).toContain("security default-keychain -d user -s \"$ORIGINAL_DEFAULT_KEYCHAIN\"");
     expect(raw).toContain('security list-keychains -d user -s "${original_keychains[@]}"');
     expect(raw).toContain("security delete-keychain");
+    expect(raw).toContain('SIGNING_KEYCHAIN_DIRECTORY="$HOME/Library/Keychains"');
+    expect(raw).not.toContain(
+      'SIGNING_KEYCHAIN_PATH="$RELEASE_TEMP_DIRECTORY/release-signing.keychain-db"',
+    );
+    expect(raw.indexOf("security create-keychain")).toBeLessThan(
+      raw.indexOf('security cms -D -k "$SIGNING_KEYCHAIN_PATH"'),
+    );
+    expect(raw).toContain("AppleWWDRCA-2030.cer");
+    expect(raw.indexOf('security import "$APPLE_WWDR_G3_CERTIFICATE_PATH"')).toBeLessThan(
+      raw.indexOf('security import "$SIGNING_COMPATIBLE_CERTIFICATE_PATH"'),
+    );
+    expect(raw.indexOf('security import "$APPLE_WWDR_G3_CERTIFICATE_PATH"')).toBeLessThan(
+      raw.indexOf("security verify-cert"),
+    );
+    expect(raw).toContain(
+      "The selected Xcode does not contain the Apple WWDR G3 intermediate certificate.",
+    );
     expect(raw).toContain("unset ASC_API_KEY_P8_BASE64 IOS_DISTRIBUTION_P12_BASE64");
     expect(raw).toContain("unset IOS_DISTRIBUTION_P12_PASSWORD");
     expect(raw).toContain("unset SIGNING_KEYCHAIN_PASSWORD");
     expect(raw).toContain('chmod 600 "$AUTHENTICATION_KEY_PATH"');
     expect(raw).toContain("Refusing to upload a TestFlight build outside main.");
-    expect(raw).toContain(
-      "Expected exactly one valid distribution signing identity in the release keychain.",
-    );
+    expect(raw).toContain('security find-certificate -a -Z "$SIGNING_KEYCHAIN_PATH"');
+    expect(raw).toContain('security find-key -t private -s "$SIGNING_KEYCHAIN_PATH"');
+    expect(raw).toContain('SIGNING_IDENTITY_SHA1="$PROFILE_CERTIFICATE_SHA1"');
+    expect(raw).not.toContain("security find-identity -v -p codesigning");
     // The caller's own assertions see the app, and none of the credentials.
     expect(raw).toContain('run_without_release_secrets "$VALIDATE_APP_SCRIPT_PATH"');
   });
@@ -1904,10 +2007,21 @@ describe("ios-ci.yml", () => {
     expect(inputs["swift-format-configuration"]?.default).toBe(".swift-format");
   });
 
+  it("supports hosted and canonical Xcode app layouts while verifying the exact version", async () => {
+    const wf = (await read("ios-ci.yml")) as IosCi;
+    const select = wf.jobs?.test?.steps?.find((step) => step.name === "Select Xcode");
+    const script = String(select?.run);
+
+    expect(script).toContain('versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
+    expect(script).toContain("elif [ -d /Applications/Xcode.app ]");
+    expect(script).toContain('installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild"');
+    expect(script).toContain('if [ "$installed_version" != "$XCODE_VERSION" ]');
+  });
+
   it("can enforce the selected Xcode toolchain's formatter on changed Swift sources", async () => {
     const wf = (await read("ios-ci.yml")) as IosCi;
     const steps = wf.jobs?.test?.steps ?? [];
-    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
     const lint = steps.find((step) => step.name === "Lint changed Swift sources");
     const script = String(lint?.run);
 
@@ -2065,7 +2179,7 @@ describe("ios-ci.yml", () => {
 
   it("does not expose the checkout credential to caller-controlled test code", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
-    const checkout = steps.find((step) => step.uses === "actions/checkout@v7");
+    const checkout = steps.find((step) => step.uses === CHECKOUT_V7);
 
     expect((checkout?.with as Record<string, unknown>)?.["persist-credentials"]).toBe(false);
   });
@@ -2097,6 +2211,55 @@ describe("ios-ci.yml", () => {
     expect(raw).toContain("hashFiles(format('{0}/**/Package.resolved'");
     expect(raw).toContain('"$RESULTS/Build.xcresult"');
     expect(raw).toContain('"$RESULTS/Tests.xcresult"');
+  });
+
+  it("clears cancelled-run outputs on a reused runner while preserving build caches", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus ios outputs "));
+    const iosRoot = join(root, "ios-ci");
+    const envFile = join(root, "github-env");
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const script = steps.find((step) => step.name === "Prepare isolated build directories")?.run;
+    expect(typeof script).toBe("string");
+
+    try {
+      const prepare = () => execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
+        env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile },
+      });
+      await prepare(); // A fresh hosted runner still creates every directory.
+      for (const cache of ["SourcePackages", "DerivedData"]) {
+        await writeFile(join(iosRoot, cache, "cached"), cache);
+      }
+      await writeFile(join(root, "other-job"), "untouched");
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        for (const bundle of ["Build.xcresult", "Tests.xcresult"]) {
+          await mkdir(join(iosRoot, "Results", bundle), { recursive: true });
+          await writeFile(join(iosRoot, "Results", bundle, "partial"), "cancelled");
+        }
+        await writeFile(join(iosRoot, "Logs", "previous.log"), "old log");
+        await writeFile(join(iosRoot, "Screenshots", "previous.png"), "old screenshot");
+        await writeFile(envFile, "");
+        await prepare();
+
+        for (const output of ["Results", "Logs", "Screenshots"]) {
+          expect(await readdir(join(iosRoot, output)), output).toEqual([]);
+        }
+        for (const cache of ["SourcePackages", "DerivedData"]) {
+          expect(await readFile(join(iosRoot, cache, "cached"), "utf8")).toBe(cache);
+        }
+        expect(await readFile(join(root, "other-job"), "utf8")).toBe("untouched");
+        expect(await readFile(envFile, "utf8")).toBe([
+          `SOURCE_PACKAGES=${iosRoot}/SourcePackages`,
+          `DERIVED_DATA=${iosRoot}/DerivedData`,
+          `RESULTS=${iosRoot}/Results`,
+          `LOGS=${iosRoot}/Logs`,
+          `SCREENSHOTS=${iosRoot}/Screenshots`,
+          "",
+        ].join("\n"));
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("builds once, then runs the scheme's unit and UI tests without rebuilding", async () => {
@@ -2147,7 +2310,7 @@ describe("ios-ci.yml", () => {
     expect(String(exportStep?.if)).toContain("always()");
     expect(String(exportStep?.run)).toContain("xcresulttool export attachments");
     expect(String(upload?.if)).toContain("always()");
-    expect(String(upload?.uses)).toContain("actions/upload-artifact@v7");
+    expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     expect(String((upload?.with as Record<string, unknown>)?.path)).toContain(
       "${{ runner.temp }}/ios-ci/Screenshots",
     );
@@ -2157,7 +2320,7 @@ describe("ios-ci.yml", () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
     expect(upload?.if).toBe("failure()");
-    expect(String(upload?.uses)).toContain("actions/upload-artifact@v7");
+    expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     const withBlock = upload?.with as Record<string, unknown> | undefined;
     expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Results");
     expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Logs");
@@ -2183,10 +2346,10 @@ describe("ios-ci.yml", () => {
       typeof step.uses === "string" ? [step.uses] : [],
     );
 
-    expect(actionUses).toContain("actions/checkout@v7");
-    expect(actionUses).toContain("actions/cache@v6");
-    expect(actionUses).toContain("actions/setup-java@v6");
-    expect(actionUses).toContain("actions/upload-artifact@v7");
+    expect(actionUses).toContain(CHECKOUT_V7);
+    expect(actionUses).toContain(CACHE_V6);
+    expect(actionUses).toContain(SETUP_JAVA_V6);
+    expect(actionUses).toContain(UPLOAD_ARTIFACT_V7);
   });
 });
 
@@ -2333,5 +2496,22 @@ describe("beta app review submission", () => {
     const body = script.split("<<'PYTHON'\n")[1]?.split("\nPYTHON")[0] ?? "";
     expect(body.length).toBeGreaterThan(0);
     expect(body).not.toMatch(/'/);
+  });
+});
+
+describe("local review metadata", () => {
+  it("reruns only conventions without replacing build/test statuses", async () => {
+    const wf = await read("review-metadata.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses: string }> };
+    expect(wf.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
+    expect(Object.keys(wf.jobs)).toEqual(["pr"]);
+    expect(wf.jobs.pr?.uses).toContain("pr-check.yml");
+  });
+  it("checks live PR metadata and rejects a superseded head", async () => {
+    const wf = await read("pr-check.yml") as { jobs: { conventions: { steps: Array<{ name?: string; run?: string }> } } };
+    const run = wf.jobs.conventions.steps.find(s => s.name === "Check PR conventions")?.run ?? "";
+    expect(run).toContain('gh api "repos/$REPOSITORY/pulls/$PR_NUMBER"');
+    expect(run).toContain('.head.sha == $sha');
+    expect(run).toContain('GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json"');
+    expect(run).toContain('--base "origin/$BASE_REF"');
   });
 });

@@ -1,4 +1,5 @@
-import { access, lstat, readFile, readdir } from "node:fs/promises";
+import { accessible as exists, readJson } from "../file-io.js";
+import { lstat, readFile, readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
@@ -55,23 +56,6 @@ export interface Task {
    * a missing tool or an unreachable API must never render as "not done".
    */
   detect?: (root: string) => Promise<Detection>;
-}
-
-async function exists(p: string): Promise<boolean> {
-  try {
-    await access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function readJson<T>(p: string): Promise<T | null> {
-  try {
-    return JSON.parse(await readFile(p, "utf8")) as T;
-  } catch {
-    return null;
-  }
 }
 
 /** Run a command, returning null when it fails or is missing. */

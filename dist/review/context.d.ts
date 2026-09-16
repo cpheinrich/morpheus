@@ -4,6 +4,7 @@ export declare const PERSONA_PATH = ".github/agent-review-prompt.md";
 export declare class ReviewError extends Error {
 }
 export interface LoadOptions {
+    persona?: string;
     root: string;
     productDir: string;
     branch: string;

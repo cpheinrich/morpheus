@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { checkLocalReview } from "../review/local.js";
 import { checkPr, formatFindings } from "../check/pr.js";
 import { unreadableVisualEvidencePolicy, visualEvidencePolicy, } from "../check/visual-evidence.js";
 /**
@@ -84,7 +85,15 @@ function projectVisualEvidencePolicy() {
     }
 }
 export async function pr(productDir, base) {
+    let reviewEvent = {};
+    try {
+        reviewEvent = JSON.parse(readFileSync(process.env["GITHUB_EVENT_PATH"] ?? "", "utf8"));
+    }
+    catch { /* local overrides below */ }
+    const head = reviewEvent.pull_request?.head?.sha ?? gitOutput(["rev-parse", "HEAD"]);
+    const labels = reviewEvent.pull_request?.labels?.map(l => l.name) ?? (process.env["MORPHEUS_PR_LABELS"] ?? "").split(",").map(s => s.trim());
     const findings = await checkPr({
+        agentReview: checkLocalReview({ root: process.cwd(), body: prBody(), labels, head, base }),
         body: prBody(),
         author: prAuthor(),
         branch: currentBranch(),

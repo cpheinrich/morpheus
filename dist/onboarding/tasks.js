@@ -1,4 +1,5 @@
-import { access, lstat, readFile, readdir } from "node:fs/promises";
+import { accessible as exists, readJson } from "../file-io.js";
+import { lstat, readFile, readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
@@ -7,23 +8,6 @@ import { packageStatus } from "../brand/package.js";
 import { parseArtifact } from "../pm/parse.js";
 import { readRegistry } from "../registry/index.js";
 const exec = promisify(execFile);
-async function exists(p) {
-    try {
-        await access(p);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
-async function readJson(p) {
-    try {
-        return JSON.parse(await readFile(p, "utf8"));
-    }
-    catch {
-        return null;
-    }
-}
 /** Run a command, returning null when it fails or is missing. */
 async function tryRun(cmd, args, cwd) {
     try {

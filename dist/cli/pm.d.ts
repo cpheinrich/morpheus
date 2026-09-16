@@ -12,7 +12,9 @@ export declare function create(productDir: string, kind: string, title: string, 
 /** Add issue-closure intent to an item that already exists. */
 export declare function linkIssue(productDir: string, id: string, rawIssue: string): Promise<number>;
 /** Claim a roadmap item by staking its branch on the remote. */
-export declare function claim(productDir: string, id: string, cwd: string): Promise<number>;
+export declare function claim(productDir: string, id: string, cwd: string, sessionId?: string | undefined, offline?: boolean): Promise<number>;
+/** Reuse an explicitly named task's existing branch and checkout. */
+export declare function resume(id: string, cwd: string, sessionId?: string | undefined): Promise<number>;
 /**
  * List live claims, oldest activity flagged as possibly stale.
  *

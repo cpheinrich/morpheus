@@ -61,6 +61,12 @@ the exact-version operation is only validating `/Applications/Xcode_<version>.ap
 every native project's trusted build path. Revisit if hosted-runner Xcode discovery stops having a
 stable path contract or the workflow needs installation rather than selection.
 
+**Private iOS projects may use isolated repo-scoped self-hosted runners** — 2026-09-04. Persistent
+runner processes execute repository code with their operating-system identity, so they never run
+under the operator's personal account and are never registered to a public repository. Callers own
+the runner choice and retain an explicit GitHub-hosted dispatch option for recovery. The reusable
+workflows support both Xcode application layouts and verify the reported version either way.
+
 **Native Swift style uses the formatter bundled with Xcode** — 2026-09-02. Apple's `swift-format`
 already provides in-place formatting and strict lint diagnostics in the selected Swift toolchain.
 SwiftLint and third-party SwiftFormat were considered, but either would add an install and version
@@ -83,6 +89,14 @@ app and group identifiers, installs `asccli` before credentials are exposed, and
 processing checks, and assignment to the repository-owned upload script. This keeps manual and
 automated uploads on one App Store Connect sequence without moving app-specific release policy into
 Morpheus.
+
+**Install `asccli` from its pinned, checksummed upstream binary** — 2026-09-04. Homebrew supplied
+an arm64 bottle but no Intel bottle for 0.18.2; compiling its formula on an Intel release runner
+worked but consumed 17m45s before Xcode started. The shared release paths download the publisher's
+architecture-specific 0.18.2 executable and verify its published SHA-256 checksum before exposing
+credentials. This keeps one audited version across both runner architectures without a third-party
+installer action or a source build inside the release timeout. Version changes are reviewed diffs
+that update both the pin and checksum.
 
 **Cross-repository iOS signing stays in the caller's environment job** — 2026-09-02. GitHub does
 not pass caller environment secrets through `workflow_call`; a job-level environment inside a
@@ -814,6 +828,11 @@ references that survived selection, `imagery.json` identifies approved art and s
 red when a package has a token set but no approved imagery or no image-to-surface mapping. This is
 the guard against a carefully reviewed direction turning into a neutral first home page.
 
+**Third-party GitHub Actions use immutable commit SHAs** — 2026-08-28. Human-readable comments keep
+the upstream major visible. Morpheus-owned reusable workflows remain on the established `@main`
+contract so consuming repositories receive fixes without coordinated version bumps; external tags
+do not receive that trust.
+
 **Front-end visual evidence is a declared path contract, default-on per repository** — 2026-09-01.
 `review.visualEvidence` in `morpheus.json` owns the include/exclude globs. A matching change blocks
 without a recording or screenshot at either GitHub's attachment service or an exact public HTTPS
@@ -833,3 +852,41 @@ objects with generation-match zero, verifies their metadata, and only then creat
 catalog manifest with exclusive-create semantics. It never edits the local directory. A failed
 publish may leave harmless content-addressed objects for an identical retry, but cannot leave a
 catalog entry pointing at a partial upload.
+
+**TestFlight processing observes the upload resource as well as the builds collection** —
+2026-09-04. A successful `builds upload` transport returns an upload id before Apple validates the
+bundle. Failed validation never produces a build, so polling only `builds list` turns an actionable
+server error into a 20-minute timeout. Preserve the id, fail immediately when its state becomes
+`FAILED`, and include Apple's first error code and description; continue using the exact processed
+build as the authority for group assignment.
+
+**Independent review is author-managed and default-on** — 2026-09-10. This supersedes the legacy
+advisory GitHub review policy: one fresh session, one author response and at most one same-reviewer
+follow-up for substantive findings. Worklog evidence and a PR label are enforced by deterministic
+conventions. No model call per push. Unresolved substantive disagreements remain open for human
+judgment. Use existing Zod, JSON and native Git for this Morpheus-specific evidence protocol; no
+new orchestration or parsing dependency is needed. See the independent-review runbook.
+
+**Keep the current CLI grammar while splitting its implementation** — 2026-09-10.
+Commander 15.0.0 was considered (maintained, no runtime dependencies). Adopting it would
+change permissive unknown-option, missing-value and repeated-value behavior. This audit
+remediation therefore keeps the small domain-specific argument contract and uses native
+Node filesystem primitives for the existing shared helper contracts. A grammar change
+should be deliberate user-facing work, not a side effect of cleanup.
+
+**Review ownership must be explicit at the point of work** — 2026-09-11. The authoring agent
+launches the isolated reviewer and owns responses, evidence, CI and merge. `review prepare`
+prints a packet; neither that command nor a PR-monitoring agent schedules review. Legacy GitHub
+review instructions must be marked opt-in wherever they remain. This clarifies the September 10
+policy after OpenClaw inferred that another agent would monitor and review its PRs.
+
+
+**One worktree per implementation task; startup fetches before context** — 2026-09-13.
+Chris clarified that conversations are not task boundaries. New sessions fetch canonical trunk and
+fast-forward clean local trunk; active branches and dirty work are preserved. Claiming new work
+prepares an isolated current-trunk checkout, while explicit resume reuses the task branch/worktree.
+A session ID may remember that association, but an unrelated request cannot inherit the old task.
+This supersedes the earlier one-worktree-per-parallel-session phrasing. Context receipts require
+source containing the observed trunk, and startup does not certify reading. Considered simple-git
+3.36.0 (published metadata modified 2026-04-12, five direct dependencies); native Git plus Node's
+filesystem/crypto primitives fit this repository-specific lifecycle without another Git wrapper.

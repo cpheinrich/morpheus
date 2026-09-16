@@ -75,10 +75,10 @@ jobs:
         python-version: ${{ fromJSON(inputs.python-versions) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
         with:
           enable-cache: true
           cache-dependency-glob: ${{ inputs.working-directory }}/uv.lock
@@ -124,7 +124,7 @@ jobs:
       # lines, and uploading each would race for the same artifact name.
       - name: Upload coverage report
         if: ${{ inputs.coverage && matrix.python-version == fromJSON(inputs.python-versions)[0] }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-${{ matrix.python-version }}
           path: ${{ inputs.working-directory }}/coverage.xml

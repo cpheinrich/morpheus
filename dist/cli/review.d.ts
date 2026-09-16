@@ -45,3 +45,4 @@ export declare function reviewNeeded(base: string, priorReviewPath?: string, jso
  * two apart, and must, because one is evidence and the other is a say-so.
  */
 export declare function reviewDelivery(beforeCommentId?: string, commentId?: string, bodyPath?: string, prBodyPath?: string): number;
+export declare function prepareReview(productDir: string, root: string, base: string): Promise<number>;

@@ -1,5 +1,6 @@
+import { accessible as exists } from "../file-io.js";
 import { execFile } from "node:child_process";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -73,15 +74,6 @@ export interface InstallOptions {
   write: boolean;
   /** The inbox handle to declare. Looked up from `gh` when omitted. */
   handle?: string;
-}
-
-async function exists(p: string): Promise<boolean> {
-  try {
-    await access(p);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 type Json = Record<string, unknown>;

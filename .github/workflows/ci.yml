@@ -17,6 +17,7 @@ jobs:
   node:
     uses: ./.github/workflows/node-ci.yml
     with:
+      run-lint: true
       build-script: compile
       verify-build-clean: true
       build-output-directory: dist
@@ -30,6 +31,11 @@ jobs:
       morpheus-ref: ${{ github.sha }}
 
   pr:
+    # The reusable check reads the live pull request through the job token;
+    # a called workflow can only narrow what its caller grants.
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/pr-check.yml
     with:
       product-dir: hq/product
