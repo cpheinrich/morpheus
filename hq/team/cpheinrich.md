@@ -25,7 +25,7 @@ of Alex's issues #248 and #241: `check pr` now says `review-waived` waives legac
 and the review packet carries the repository path and derived test commands. You approved
 [#250](https://github.com/cpheinrich/morpheus/pull/250) mid-sweep; a fresh high-risk review from
 our side tested the nested-code signing case my earlier triage had flagged and found it works, so
-that concern is withdrawn; two minor fixes were applied and it merges after its follow-up. Roadmap items are filed for
+that concern is withdrawn; two minor fixes were applied and it lands as [#257](https://github.com/cpheinrich/morpheus/pull/257) (a repository branch with Robbie's commits, because this environment may not push to the fork). Roadmap items are filed for
 #249 (simulator shutdown under a concurrent lane) and #251 (keychain state across signing runners),
 both P1, unclaimed. Everything below needs you.
 
@@ -95,7 +95,7 @@ merge. Escalation has an outcome with nowhere to go.
 
 ~
 
-## ✅ 4. #250 from robbie-del: merged on your approval · `claude`
+## ✅ 4. #250 from robbie-del: landing as #257 on your approval · `claude`
 
 You approved it on GitHub mid-sweep. Workflow runs were approved (build and tests green), a fresh
 high-risk review from our side found four minor findings and nothing substantive — and, by
