@@ -898,3 +898,14 @@ This supersedes the earlier one-worktree-per-parallel-session phrasing. Context 
 source containing the observed trunk, and startup does not certify reading. Considered simple-git
 3.36.0 (published metadata modified 2026-04-12, five direct dependencies); native Git plus Node's
 filesystem/crypto primitives fit this repository-specific lifecycle without another Git wrapper.
+
+
+**Cleared review survives verified integration of already reviewed documentation** — 2026-09-16.
+Chris approved this exception after Lakina's TestFlight migration exhausted both passes, cleared
+every finding, and then stalled on a separately reviewed README change required by strict branch
+protection. Keep the two-round cap and escalation for substantive unresolved concerns. Preserve
+original review hashes; record source completed reviews and explicit merges. Native Git must prove
+the merge was conflict-free and exact, and incoming paths must be regular documentation/records.
+No new review or permission is required for that proof. Changed requirements still need review.
+Reuse existing native Git, Zod and JSON for this Morpheus-specific evidence protocol; no generic
+merge or orchestration library is introduced.
