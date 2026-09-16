@@ -501,7 +501,9 @@ needed.
 - **`.agents/skills/`** — repository-owned Codex skills: named, repeatable procedures shared by
   everyone who clones the project.
 - **`.claude/skills/`** — repository-owned Claude skills where that provider needs the same kind
-  of discoverable procedure.
+  of discoverable procedure. `launch-company` owns the cross-provider greenfield path from an
+  optional domain purchase through a verified public site and role-gated `/hq`; provider
+  commands remain the deterministic implementation beneath it.
 
 ### 7.2 Conventions and how they are enforced
 
