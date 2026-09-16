@@ -24,6 +24,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `docs/runbooks/` | Operational steps a human performs — consoles, DNS, keys |
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
 | `.claude/skills/` | Named, repeatable procedures — `voice-handoff`, `voice-import` |
+| `.agents/skills/` | Repository-owned Codex skills, copied into every scaffold — `motion-design-exploration` |
 | `local/handoffs/` | Handoff docs, both directions. Gitignored — never committed |
 | `qa/acceptance/` | Acceptance criteria per item, named by `RoadmapItem.acceptance` |
 | `tests/` | Vitest, mirroring `src/` |
