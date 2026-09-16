@@ -20,6 +20,15 @@ export declare const ReviewRecord: z.ZodObject<{
         complete: "complete";
     }>;
     summary: z.ZodString;
+    documentationIntegrations: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        base: z.ZodString;
+        commit: z.ZodString;
+        reason: z.ZodString;
+        sources: z.ZodArray<z.ZodObject<{
+            commit: z.ZodString;
+            reviewRecord: z.ZodString;
+        }, z.core.$strict>>;
+    }, z.core.$strict>>>;
     findings: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         severity: z.ZodEnum<{

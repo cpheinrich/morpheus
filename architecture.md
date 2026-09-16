@@ -1478,7 +1478,12 @@ responses and any original-reviewer follow-up. The PR links it with `review-reco
 ancestry and coverage. An explicit scope decision may use the one follow-up for required trunk
 integration: retain the original base/reviewed SHA and record the follow-up base and scope reason.
 Only the named worklog may change after the covered commit, avoiding the
-self-referential commit hash problem. Author-only minor fixes are constrained to finding paths.
+self-referential commit hash problem, except verified integration of already reviewed documentation.
+The author records incoming completed review evidence and explicit merge commits; native Git must
+reconstruct their conflict-free trees exactly, with changes restricted to regular documentation
+and records. This preserves the original clearance without a third round or human intervention.
+Executable changes, conflict resolutions, altered requirements and unresolved findings do not qualify.
+The runbook defines the narrow path/mode allowlist and `documentationIntegrations` evidence. Author-only minor fixes are constrained to finding paths.
 This is an auditable attestation, not proof against a dishonest author. Records/board-only PRs and
 exact dependency-only Dependabot changes retain their existing exceptions.
 
