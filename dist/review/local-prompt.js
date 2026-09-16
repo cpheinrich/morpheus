@@ -39,6 +39,10 @@ If trunk integration is required during the author response, an explicit scope d
 the one same-session follow-up to inspect that integration and affected paths. Preserve the initial
 base/reviewed SHA, record followUp.base and scopeReason, and cover the final integrated commit.
 This does not permit a third round or relabel a clean/minor first review as substantive.
+After clearance, already reviewed documentation may be integrated using the runbook's deterministic
+documentationIntegrations proof, without another model review or human approval. The original
+clearance stays intact; code changes, conflicts, changed requirements and unresolved findings do not
+qualify. The author records source review evidence and runs conventions before merge.
 
 The author must retain a short human-readable summary and a morpheus-review JSON block in the
 task worklog, even for a clean review. Include original findings, responses, commit coverage,

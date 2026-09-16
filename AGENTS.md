@@ -333,7 +333,8 @@ allow author fixes without a second pass. Unresolved disagreements or incomplete
 open and auto-merge disabled. Record the review paragraph and structured evidence in the task
 worklog, link it with a visible `review-record:` PR-body line, then apply `agent-reviewed`.
 `review.required` defaults to true; project false opts out visibly. Only the named worklog may
-change after the covered commit. Follow the [review contract](docs/runbooks/independent-review.md)
+change after the covered commit, except verified integration of already reviewed documentation
+under the review contract. That exception preserves clearance without another review round. Follow the [review contract](docs/runbooks/independent-review.md)
 for budgets, related-code scope, record fields and escalation.
 
 **Every PR must carry:**

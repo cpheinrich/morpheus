@@ -71,14 +71,59 @@ This is path-level verification: the reviewer/author remain responsible for ensu
 are actually the stated fixes. Unrelated changes invalidate coverage and require an explicit scope
 and budget decision, not an automatic restart.
 
-After `covered`, only this worklog may change, avoiding the hash loop from committing the review
-record itself. A code, generated-output, documentation or other file edit makes the record stale.
+After `covered`, only this worklog may change, except for the verified documentation integration
+below. This avoids the hash loop from committing the review record itself. Other edits make the
+record stale.
 Reconcile the base before review. If trunk advances during the review, preserve the initial
 `base`/`reviewed` and make an explicit scope decision to use the one same-session follow-up for
 integration and affected paths. Set `followUp.base` to the new merge base and `followUp.scopeReason`
 to that decision. The original base must precede the new base, which must precede `covered`.
 This remains two passes total, even if the initial review was clean or minor-only; do not invent
 substantive initial findings. A base change without this evidence invalidates the record.
+
+### Already reviewed documentation may be integrated without another round
+
+A cleared review stays cleared when an author integrates already reviewed documentation from
+trunk and the deterministic proof below passes. This is author-owned verification, not a third
+review, a budget reset, or a request for human permission. Preserve the original `base`, `reviewed`,
+`covered`, findings and follow-up exactly. Append `documentationIntegrations` entries in merge order:
+
+```json
+{
+  "base": "<full new trunk SHA>",
+  "commit": "<full integration merge SHA>",
+  "reason": "Integrate the separately reviewed README update; executable files are unchanged.",
+  "sources": [{
+    "commit": "<full incoming trunk commit SHA>",
+    "reviewRecord": ".agent/worklog/YYYY-MM-DD-docs.md"
+  }]
+}
+```
+
+Each entry must name an actual two-parent merge with the new trunk as its second parent.
+Every incoming trunk commit must be linear (the normal squash-merge shape), carry its own
+complete independent review record based on its trunk parent, and change only regular,
+non-executable Markdown in the allowlist: root `README.md`, `docs/`, `.agent/worklog/`,
+`.agent/inbox-archive/`, `.agent/decisions.md`, `.agent/learned.md`, `hq/product/`, or `hq/team/`.
+`AGENTS.md`, `CLAUDE.md` and `SKILL.md` are excluded everywhere. Symlinks, executable bits,
+source, tests, templates, configuration, generated output and other paths are refused.
+
+`check pr` validates each source record's completion, reviewer identity, findings and budgets.
+Squashed source commits retain their original review SHAs: this checks the committed attestation,
+not a new GitHub review or a re-review of that PR. It does not authenticate a dishonest record.
+The author must confirm the incoming documentation was reviewed and does not change the reviewed
+feature's requirements or acceptance criteria. If it does, use the remaining review pass or
+escalate when the budget is exhausted; do not label a substantive change harmless.
+
+Git must reconstruct exactly the integration commit's tree with `merge-tree --write-tree`.
+Conflicts and hand-edited merges fail; before, between and after these merges, only the named
+feature worklog may differ from cleared coverage. Current trunk must equal the final recorded
+integration base. Record the source PR links, verification and limitations in visible prose.
+No model call is needed for this mechanical proof. CI must still pass before merge.
+
+Without this evidence the existing freshness rule still applies. Unresolved substantive findings,
+incomplete reviews and changed executable files remain blocked; two rounds never mean automatic
+merge regardless of findings.
 
 Put a visible line in the PR body (not inside a comment or code fence):
 

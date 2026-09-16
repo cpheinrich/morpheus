@@ -17,6 +17,15 @@ export const ReviewRecord = z.object({
     extensionReason: Text.optional(),
     outcome: z.enum(["complete", "incomplete", "blocked"]),
     summary: Text,
+    documentationIntegrations: z.array(z.object({
+        base: Sha,
+        commit: Sha,
+        reason: Text,
+        sources: z.array(z.object({
+            commit: Sha,
+            reviewRecord: z.string().regex(/^\.agent\/worklog\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/),
+        }).strict()).min(1).max(20),
+    }).strict()).min(1).max(20).optional(),
     findings: z.array(z.object({
         id: Session,
         severity: z.enum(["minor", "substantive", "incidental"]),
@@ -75,6 +84,76 @@ export function validateReviewRecord(record) {
     if (record.elapsedMinutes > budget * multiplier || (record.followUp?.elapsedMinutes ?? 0) > budget / 2)
         throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
 }
+function changedPaths(root, older, newer) {
+    return git(root, ["diff", "--name-only", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean);
+}
+function onlyWorklogChanges(root, older, newer, worklog) {
+    if (changedPaths(root, older, newer).some(p => p !== worklog)) {
+        throw new Error("changes after covered commit invalidate review (only its worklog may change)");
+    }
+}
+/** Narrow data-only allowlist: Markdown elsewhere may be executable input or agent instructions. */
+function documentationPath(path) {
+    if (/(?:^|\/)(?:AGENTS|CLAUDE|SKILL)\.md$/i.test(path))
+        return false;
+    return /^(?:README\.md|docs\/.+\.md|\.agent\/(?:worklog\/.+|inbox-archive\/.+|decisions|learned)\.md|hq\/(?:product|team)\/.+\.md)$/.test(path);
+}
+function regularDocumentation(root, older, newer) {
+    const paths = changedPaths(root, older, newer);
+    if (!paths.length || paths.some(p => !documentationPath(p)))
+        throw new Error("documentation integration contains non-documentation paths");
+    for (const ref of [older, newer]) {
+        for (const path of paths) {
+            const entry = git(root, ["ls-tree", ref, "--", path]);
+            if (entry && !entry.startsWith("100644 blob "))
+                throw new Error("documentation integration requires regular non-executable files");
+        }
+    }
+}
+/** Verify Git's merge result, not an author's assertion that the integration was harmless. */
+function checkDocumentationIntegrations(root, record, worklog, head, coveredBase) {
+    let anchor = record.covered;
+    let base = coveredBase;
+    for (const integration of record.documentationIntegrations ?? []) {
+        git(root, ["merge-base", "--is-ancestor", base, integration.base]);
+        git(root, ["merge-base", "--is-ancestor", integration.commit, head]);
+        const parents = git(root, ["show", "-s", "--format=%P", integration.commit]).split(" ");
+        if (parents.length !== 2 || parents[1] !== integration.base)
+            throw new Error("documentation integration must be an explicit two-parent trunk merge");
+        git(root, ["merge-base", "--is-ancestor", anchor, parents[0]]);
+        onlyWorklogChanges(root, anchor, parents[0], worklog);
+        const incoming = git(root, ["rev-list", `${base}..${integration.base}`]).split("\n").filter(Boolean);
+        const sources = new Map(integration.sources.map(source => [source.commit, source.reviewRecord]));
+        if (sources.size !== integration.sources.length || incoming.length !== sources.size || incoming.some(commit => !sources.has(commit))) {
+            throw new Error("documentation integration needs review evidence for every incoming trunk commit");
+        }
+        for (const commit of incoming) {
+            const sourceParents = git(root, ["show", "-s", "--format=%P", commit]).split(" ");
+            if (sourceParents.length !== 1)
+                throw new Error("documentation integration requires linear reviewed trunk commits");
+            const parent = sourceParents[0];
+            regularDocumentation(root, parent, commit);
+            const sourcePath = sources.get(commit);
+            if (!changedPaths(root, parent, commit).includes(sourcePath))
+                throw new Error("documentation source must carry its own review record");
+            const source = parseReviewRecord(git(root, ["show", `${commit}:${sourcePath}`]));
+            validateReviewRecord(source);
+            // Squash merges retain the original review SHAs in their worklog. The completed
+            // evidence must still describe this trunk parent, not an unrelated old review.
+            if ((source.followUp?.base ?? source.base) !== parent || source.documentationIntegrations) {
+                throw new Error("documentation source review must cover its trunk parent without nested integration evidence");
+            }
+        }
+        const expected = git(root, ["-c", "merge.renames=false", "merge-tree", "--write-tree", parents[0], integration.base]);
+        if (!/^[a-f0-9]{40}$/.test(expected) || git(root, ["rev-parse", `${integration.commit}^{tree}`]) !== expected) {
+            throw new Error("documentation integration must exactly match Git's conflict-free merge tree");
+        }
+        anchor = integration.commit;
+        base = integration.base;
+    }
+    onlyWorklogChanges(root, anchor, head, worklog);
+    return base;
+}
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts) {
     try {
@@ -104,11 +183,9 @@ export function checkLocalReview(opts) {
             git(opts.root, ["merge-base", "--is-ancestor", record.base, coveredBase]);
             git(opts.root, ["merge-base", "--is-ancestor", coveredBase, record.covered]);
         }
-        if (git(opts.root, ["merge-base", opts.base, opts.head]) !== coveredBase)
+        const integratedBase = checkDocumentationIntegrations(opts.root, record, path, opts.head, coveredBase);
+        if (git(opts.root, ["merge-base", opts.base, opts.head]) !== integratedBase)
             throw new Error("review base is stale; reconcile the base and review coverage explicitly");
-        const after = git(opts.root, ["diff", "--name-only", "--no-renames", record.covered, opts.head, "--"]).split("\n").filter(Boolean);
-        if (after.some(p => p !== path))
-            throw new Error("changes after covered commit invalidate review (only its worklog may change)");
         if (!record.followUp && record.reviewed !== record.covered) {
             const allowed = new Set(record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths));
             const fixes = git(opts.root, ["diff", "--name-only", "--no-renames", record.reviewed, record.covered, "--"]).split("\n").filter(Boolean);
