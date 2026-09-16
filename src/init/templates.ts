@@ -884,7 +884,8 @@ allow author fixes without a second pass. Unresolved disagreements or incomplete
 open and auto-merge disabled. Record the review paragraph and structured evidence in the task
 worklog, link it with a visible \`review-record:\` PR-body line, then apply \`agent-reviewed\`.
 \`review.required\` defaults to true; project false opts out visibly. Only the named worklog may
-change after the covered commit. Follow the [review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md)
+change after the covered commit, except verified integration of already reviewed documentation
+under the review contract. That exception preserves clearance without another review round. Follow the [review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md)
 for budgets, related-code scope, record fields and escalation.
 
 **Every PR must carry** tests for anything testable, a documentation update when behaviour
@@ -1202,6 +1203,143 @@ jobs:${
       pull-requests: read
     uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
 `;
+
+/**
+ * The nightly iOS TestFlight caller.
+ *
+ * Every value below except the schedule is app-specific, so this is written
+ * with `TODO` markers rather than guesses. The parts that are *not*
+ * app-specific are the parts worth shipping: 06:00 America/Los_Angeles, and
+ * the caller-owned upload job.
+ *
+ * The upload job lives here rather than in the reusable workflow because
+ * GitHub does not pass a caller repository's environment secrets into a
+ * cross-repository reusable workflow. A job there reads every one of them as
+ * an empty string and fails on whichever the upload script checks first, which
+ * reads as a missing secret and sends people to add secrets that already
+ * exist. Evo and Kairos each lost a day to that separately; that is what this
+ * template exists to stop happening a third time.
+ *
+ * The job itself is a checkout of the verified SHA and one `uses:` block of
+ * the `ios-testflight-upload` composite action, which is what both live
+ * callers converged on: the action selects Xcode, installs the pinned
+ * `asccli`, archives unsigned, signs, verifies and uploads, and the caller
+ * states only what it alone knows. With `run-upload: false` the reusable
+ * workflow's own upload inputs stay unset, so each identifier is written once.
+ *
+ * The schedule ships commented out. A project has no signing credentials on
+ * the day it is scaffolded, so a live cron would fail nightly until someone
+ * configured them — and a scaffold that is red before you have touched it
+ * teaches people to ignore red CI, which is the same rule `ci` follows for
+ * `node-ci`. Uncomment it once the environment holds its secrets; leaving it
+ * commented is a supported end state for a project that releases on demand.
+ * GitHub evaluates cron in UTC, so the slot is written as its UTC equivalent
+ * with the Pacific time it means beside it.
+ */
+export const IOS_NIGHTLY_SECRETS = [
+  "APP_STORE_CONNECT_KEY_ID",
+  "APP_STORE_CONNECT_ISSUER_ID",
+  "APP_STORE_CONNECT_API_KEY_P8_BASE64",
+  "IOS_DISTRIBUTION_P12_BASE64",
+  "IOS_DISTRIBUTION_P12_PASSWORD",
+  "IOS_DISTRIBUTION_PROFILE_BASE64",
+] as const;
+
+export const iosNightly = (opts: { app: string; workingDirectory?: string }): string => {
+  const workingDirectory = opts.workingDirectory ?? "apps/ios";
+  return `name: iOS nightly TestFlight build
+
+# Morpheus owns change detection, exact-main preflight, the native tests, and —
+# through the ios-testflight-upload action — the archive, signing, verification
+# and upload. This repository owns the schedule, watched paths, the protected
+# release environment, and its own identifiers.
+#
+# The upload job runs here, not in the reusable workflow: GitHub does not pass
+# a caller repository's environment secrets into a cross-repository reusable
+# workflow, so a job there sees every one of them as empty. \`run-upload: false\`
+# plus the \`build\` and \`sha\` outputs are the supported shape for that; the
+# action runs inside this job, where \`secrets.*\` resolve normally.
+on:
+  # 06:00 America/Los_Angeles is the standard nightly slot across projects.
+  # GitHub evaluates cron in UTC and never adjusts it: "0 13" is 06:00 PDT and
+  # 05:00 PST. Use "0 14" if 06:00 must hold in winter.
+  # Uncomment once the protected environment holds the release secrets; change
+  # the time here if this project needs a different one, or leave it commented
+  # to release only on demand.
+  # schedule:
+  #   - cron: "0 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: testflight-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: cpheinrich/morpheus/.github/workflows/ios-nightly-build.yml@main
+    with:
+      workflow-file: ios-nightly-build.yml
+      watch-paths: |
+        ${workingDirectory}
+      force-build: \${{ github.event_name == 'workflow_dispatch' }}
+      schedule-timezone: America/Los_Angeles
+      xcode-version: "26.6"
+      working-directory: ${workingDirectory}
+      project: ${opts.app}.xcodeproj
+      scheme: ${opts.app}
+      destination: OS=26.5,name=iPhone 17 Pro Max
+      # The upload job below owns the identifiers and credentials; the reusable
+      # workflow's own upload inputs stay unset so nothing is stated twice.
+      run-upload: false
+
+  upload:
+    name: Upload TestFlight build
+    needs: release
+    if: \${{ needs.release.outputs.build == 'true' }}
+    runs-on: macos-26-large
+    timeout-minutes: 60
+    environment: testflight-internal
+    concurrency:
+      group: testflight-upload
+      cancel-in-progress: false
+    steps:
+      - name: Check out verified main commit
+        uses: actions/checkout@v7
+        with:
+          ref: \${{ needs.release.outputs.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      # The protected environment's secrets first enter the process here, after
+      # the exact-main gate and the independent tests have passed and this job
+      # has checked out that exact SHA. Replace every TODO before dispatching:
+      # a plausible-looking wrong value fails deep inside signing, a marker
+      # fails immediately and says what it wants.
+      - name: Archive, sign, verify, and upload to TestFlight
+        uses: cpheinrich/morpheus/.github/actions/ios-testflight-upload@main
+        with:
+          xcode-version: "26.6"
+          working-directory: ${workingDirectory}
+          project: ${opts.app}.xcodeproj
+          scheme: ${opts.app}
+          source-packages-directory: ${opts.app}SourcePackages
+          apple-team-id: TODO-apple-team-id
+          ios-bundle-id: TODO.bundle.id
+          app-store-connect-app-id: "TODO-numeric-app-id"
+          testflight-beta-group-ids: TODO-internal-beta-group-uuid
+          asc-api-key-id: \${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          asc-api-key-issuer-id: \${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          asc-api-key-p8-base64: \${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+          ios-distribution-p12-base64: \${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          ios-distribution-p12-password: \${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          ios-distribution-profile-base64: \${{ secrets.IOS_DISTRIBUTION_PROFILE_BASE64 }}
+`;
+};
 
 export const pullRequestTemplate = (): string => `## Summary
 

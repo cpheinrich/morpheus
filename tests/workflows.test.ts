@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { ci as ciTemplate } from "../src/init/templates.js";
+import { ci as ciTemplate, iosNightly } from "../src/init/templates.js";
 
 /**
  * The workflows are shipped to every project, so a mistake here breaks repos
@@ -280,6 +280,10 @@ describe("callers match what they call", () => {
       wf: load(
         ciTemplate({ node: true, rulesPath: "infra/firebase/firestore.rules" }),
       ) as Workflow,
+    });
+    workflows.push({
+      file: "generated ios-nightly-build.yml",
+      wf: load(iosNightly({ app: "Example" })) as Workflow,
     });
 
     for (const { file, wf } of workflows) {
@@ -2547,5 +2551,132 @@ describe("local review metadata", () => {
     expect(run).toContain('.head.sha == $sha');
     expect(run).toContain('GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json"');
     expect(run).toContain('--base "origin/$BASE_REF"');
+  });
+});
+
+describe("the scaffolded iOS nightly caller", () => {
+  const actionInputs = async () => {
+    const action = load(
+      await readFile(join(import.meta.dirname, "../.github/actions/ios-testflight-upload/action.yml"), "utf8"),
+    ) as { inputs: Record<string, { required?: boolean }> };
+    return action.inputs;
+  };
+  const uploadStep = () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const upload = wf.jobs?.upload as {
+      environment?: string;
+      steps?: Array<{ uses?: string; with?: Record<string, unknown> }>;
+    };
+    return { wf, upload, step: upload?.steps?.at(-1) };
+  };
+
+  /**
+   * The schedule is the one value in this template that is not app-specific,
+   * so it is the one worth pinning. 06:00 America/Los_Angeles is the standard
+   * slot. GitHub evaluates cron in UTC and has no timezone key, so the file
+   * writes the UTC equivalent and says which Pacific time it means.
+   */
+  it("offers 06:00 Pacific as the nightly slot, written as UTC cron", () => {
+    const rendered = iosNightly({ app: "Example" });
+    expect(rendered).toContain('#   - cron: "0 13 * * *"');
+    expect(rendered).toContain("06:00 America/Los_Angeles");
+    expect(rendered).toContain('"0 13" is 06:00 PDT and\n  # 05:00 PST');
+    expect(rendered).not.toMatch(/^\s*#?\s*timezone:/m);
+    // Screenshot dedup in the reusable workflow needs the caller's zone.
+    const wf = load(rendered) as Workflow;
+    expect((wf.jobs?.release as { with?: Record<string, unknown> })?.with?.["schedule-timezone"]).toBe(
+      "America/Los_Angeles",
+    );
+  });
+
+  /**
+   * A scaffolded project has no signing credentials yet, so a live cron would
+   * fail every night until someone configured them. A scaffold that is red
+   * before anyone has touched it teaches people to ignore red CI — the same
+   * reason `ci` does not wire node-ci into a non-pnpm repository.
+   */
+  it("releases only on demand until the schedule is uncommented", () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const triggers = Object.keys(wf.on ?? {});
+    expect(triggers).toContain("workflow_dispatch");
+    expect(triggers).not.toContain("schedule");
+  });
+
+  /**
+   * The upload job must stay in the caller. GitHub does not pass a caller
+   * repository's environment secrets into a cross-repository reusable
+   * workflow, so an upload job inside ios-nightly-build.yml reads every secret
+   * as an empty string. Evo and Kairos each lost a day to that separately.
+   * Inside the caller's job the composite action does the work, and every
+   * credential it needs arrives from `secrets.*` as an input.
+   */
+  it("keeps the signed upload in the caller as one action step fed from secrets", async () => {
+    const { wf, upload, step } = uploadStep();
+    const release = wf.jobs?.release as { with?: Record<string, unknown> };
+    expect(release?.with?.["run-upload"]).toBe(false);
+    expect(upload?.environment).toBe("testflight-internal");
+    expect(step?.uses).toBe("cpheinrich/morpheus/.github/actions/ios-testflight-upload@main");
+
+    const inputs = await actionInputs();
+    const passed = step?.with ?? {};
+    for (const key of Object.keys(passed)) {
+      expect(Object.keys(inputs), `${key} is not an input of ios-testflight-upload`).toContain(key);
+    }
+    for (const [key, spec] of Object.entries(inputs)) {
+      if (spec.required) expect(passed, `required input ${key} is not passed`).toHaveProperty(key);
+    }
+    const credentials = Object.entries(passed).filter(([key]) => /asc-api|distribution/.test(key));
+    expect(credentials.length).toBe(6);
+    for (const [, value] of credentials) expect(value).toMatch(/^\$\{\{ secrets\.[A-Z0-9_]+ \}\}$/);
+  });
+
+  /**
+   * With `run-upload: false`, the reusable workflow's own upload inputs are
+   * never read, and stating identifiers there as well as in the upload job is
+   * exactly the drift the workflow's input descriptions warn about.
+   */
+  it("passes the reusable workflow no upload-only inputs", () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const release = wf.jobs?.release as { with?: Record<string, unknown> };
+    for (const key of [
+      "environment",
+      "upload-script",
+      "source-packages-directory",
+      "apple-team-id",
+      "ios-bundle-id",
+      "app-store-connect-app-id",
+      "testflight-beta-group-ids",
+    ]) {
+      expect(release?.with, `${key} belongs to the upload job`).not.toHaveProperty(key);
+    }
+  });
+
+  /**
+   * The app-specific values cannot be guessed from the filesystem, so they are
+   * markers rather than plausible-looking defaults, stated once, on the action.
+   * A wrong-but-plausible team id fails much later and much less clearly than
+   * TODO does.
+   */
+  it("marks every value it cannot know, once", () => {
+    const { step } = uploadStep();
+    const rendered = iosNightly({ app: "Example" });
+    for (const key of [
+      "apple-team-id",
+      "ios-bundle-id",
+      "app-store-connect-app-id",
+      "testflight-beta-group-ids",
+    ]) {
+      expect(String(step?.with?.[key])).toContain("TODO");
+      expect(rendered.match(new RegExp("^\\s*" + key + ":", "gm"))?.length).toBe(1);
+    }
+  });
+
+  it("names the project's own scheme and Xcode project in both jobs", () => {
+    const { wf, step } = uploadStep();
+    const release = wf.jobs?.release as { with?: Record<string, unknown> };
+    expect(release?.with?.project).toBe("Example.xcodeproj");
+    expect(release?.with?.scheme).toBe("Example");
+    expect(step?.with?.project).toBe("Example.xcodeproj");
+    expect(step?.with?.scheme).toBe("Example");
   });
 });
