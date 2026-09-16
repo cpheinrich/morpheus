@@ -82,4 +82,32 @@ branch was therefore rebased onto current trunk with the status set to `review` 
 architecture inventory line added, which requires a fresh review rather than editing the cleared
 record. The first review's findings and their fixes are unchanged in content; only the SHAs moved.
 
-Review of the rebased branch: pending.
+Fresh independent normal-risk review of the rebased branch at 85a093d960eabdbf78e150b94f6e77fde7615436 completed in 2 minutes with one minor finding and one incidental note: the commented cron's parenthetical read as though GitHub adjusted it for standard time, and the ticket's premise that both consumers run 17 3 is stale (Evo runs 17 10 UTC, Kairos 0 6 UTC, so neither sits on the 06:00 Pacific slot the template calls standard). The reviewer verified every release-job key against the reusable workflow's inputs, every action-step key and all twelve required inputs against action.yml, the six secret names against both live consumers, deterministic project detection, never-overwrite, the forwarded schedule-timezone, the architecture section 12.11 sentence and its section 18.2 pointer, and that the tests would fail on the earlier defects. The author fixed the comment in 268416e and integrated trunk at 76ff450 (PR #255) in 3221f2911443729ff70edffcd96fb8b33cf397be; the same reviewer's follow-up cleared the fix and the integration in under a minute. Not verified: no scaffolded project has been taken through a real TestFlight upload from this template.
+
+```morpheus-review
+{
+  "version": 1,
+  "base": "a85c59b59865e8c04f0df1925b353e7bc0c4ec9c",
+  "reviewed": "85a093d960eabdbf78e150b94f6e77fde7615436",
+  "covered": "3221f2911443729ff70edffcd96fb8b33cf397be",
+  "authorSession": "7721007e-1b81-586e-8ac8-39c717a85b5f",
+  "reviewerSession": "nightly-caller-rebase-review-2026-09-16",
+  "risk": "normal",
+  "elapsedMinutes": 2,
+  "outcome": "complete",
+  "summary": "Fresh independent normal-risk review of the rebased branch at 85a093d960eabdbf78e150b94f6e77fde7615436 completed in 2 minutes with one minor finding and one incidental note: the commented cron's parenthetical read as though GitHub adjusted it for standard time, and the ticket's premise that both consumers run 17 3 is stale (Evo runs 17 10 UTC, Kairos 0 6 UTC, so neither sits on the 06:00 Pacific slot the template calls standard). The reviewer verified every release-job key against the reusable workflow's inputs, every action-step key and all twelve required inputs against action.yml, the six secret names against both live consumers, deterministic project detection, never-overwrite, the forwarded schedule-timezone, the architecture section 12.11 sentence and its section 18.2 pointer, and that the tests would fail on the earlier defects. The author fixed the comment in 268416e and integrated trunk at 76ff450 (PR #255) in 3221f2911443729ff70edffcd96fb8b33cf397be; the same reviewer's follow-up cleared the fix and the integration in under a minute. Not verified: no scaffolded project has been taken through a real TestFlight upload from this template.",
+  "findings": [
+    { "id": "CRON-01", "severity": "minor", "description": "The cron comment '13:00 UTC (14:00 during standard time)' read as though the schedule adjusted for DST; a project uncommenting 0 13 in winter fires at 05:00 Pacific.", "paths": ["src/init/templates.ts", "tests/workflows.test.ts", "dist/init/templates.js", "dist/init/templates.js.map"], "disposition": "fixed", "response": "The comment now states the fixed behaviour — 0 13 is 06:00 PDT and 05:00 PST, use 0 14 if 06:00 must hold in winter — and the test pins that sentence (268416e)." },
+    { "id": "SLOT-02", "severity": "incidental", "description": "The ticket's premise that both consumers run 17 3 is stale: Evo runs 17 10 UTC and Kairos 0 6 UTC, so neither currently sits on the 06:00 Pacific slot the template calls standard.", "paths": ["hq/product/roadmap/MO-26-09-02-15.57.44-scaffold-ios-nightly-caller.md"], "disposition": "deferred", "response": "Not caused by this PR; noted in the PR body. If the standard slot is meant to be real, aligning the two callers is a follow-up item." }
+  ],
+  "followUp": {
+    "reviewerSession": "nightly-caller-rebase-review-2026-09-16",
+    "commit": "3221f2911443729ff70edffcd96fb8b33cf397be",
+    "base": "76ff450cf5c5e1ea88724814c374ac516540e987",
+    "scopeReason": "Trunk advanced to 76ff450 (PR #255) after the review; strict branch protection requires integration, so the one same-session follow-up covered the CRON-01 fix and the integration merge together.",
+    "outcome": "cleared",
+    "elapsedMinutes": 1,
+    "summary": "Follow-up cleared 3221f29: the fix touches only the cron comment, its test and the regenerated dist; the merge with 76ff450 carries only this PR's own twelve files; typecheck, the focused suite (210) and the dist check pass."
+  }
+}
+```
