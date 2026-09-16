@@ -300,6 +300,8 @@ cleanup() {
     "$SIGNING_PROFILE_PLIST_PATH" \
     "$SIGNING_PROFILE_CERTIFICATE_PATH" \
     "$EXPORTED_ENTITLEMENTS_PATH" \
+    "$EXPECTED_ENTITLEMENTS_PATH" \
+    "$RELEASE_BUILD_SETTINGS_PATH" \
     "$INSTALLED_PROFILE_BACKUP_PATH" \
     "$FIREBASE_PLIST_BACKUP_PATH" \
     "$EXPORT_OPTIONS_PATH"
@@ -614,7 +616,8 @@ archive_arguments=(
   CODE_SIGNING_ALLOWED=NO
   ${archive_build_settings[@]+"${archive_build_settings[@]}"}
 )
-xcodebuild -showBuildSettings -json "${archive_arguments[@]}" > "$RELEASE_BUILD_SETTINGS_PATH"
+# A metadata query, so it runs credential-free like the MARKETING_VERSION query above.
+run_without_release_secrets xcodebuild -showBuildSettings -json "${archive_arguments[@]}" > "$RELEASE_BUILD_SETTINGS_PATH"
 python3 "$ENTITLEMENTS_TOOL" prepare "$RELEASE_BUILD_SETTINGS_PATH" "$IOS_BUNDLE_ID" "$SIGNING_PROFILE_PLIST_PATH" "$EXPECTED_ENTITLEMENTS_PATH"
 xcodebuild archive "${archive_arguments[@]}"
 
