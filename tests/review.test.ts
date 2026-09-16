@@ -668,9 +668,24 @@ describe("the review packet", () => {
     expect(await projectCommands(root)).toEqual(["pnpm typecheck", "pnpm test", "pnpm lint"]);
   });
 
-  it("falls back to npm without a pnpm lockfile or packageManager", async () => {
+  it("falls back to npm without a lockfile or packageManager", async () => {
     await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "jest" } }));
     expect(await projectCommands(root)).toEqual(["npm run test"]);
+  });
+
+  it("honours a declared yarn or bun manager, and a lockfile when nothing is declared", async () => {
+    await writeFile(join(root, "package.json"), JSON.stringify({ packageManager: "yarn@4.5.0", scripts: { test: "vitest" } }));
+    expect(await projectCommands(root)).toEqual(["yarn test"]);
+    await writeFile(join(root, "package.json"), JSON.stringify({ packageManager: "bun@1.2.0", scripts: { test: "vitest" } }));
+    expect(await projectCommands(root)).toEqual(["bun run test"]);
+    await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "vitest" } }));
+    await writeFile(join(root, "yarn.lock"), "");
+    expect(await projectCommands(root)).toEqual(["yarn test"]);
+  });
+
+  it("uses plain pytest when a Python project has no uv lockfile", async () => {
+    await writeFile(join(root, "pyproject.toml"), "[project]\nname = 'x'\n");
+    expect(await projectCommands(root)).toEqual(["pytest"]);
   });
 
   it("reads Python and Swift projects from their manifests", async () => {

@@ -14,9 +14,7 @@ export async function projectCommands(root) {
     const commands = [];
     const pkg = await readJson(join(root, "package.json"));
     if (pkg?.scripts) {
-        const runner = pkg.packageManager?.startsWith("pnpm") || (await accessible(join(root, "pnpm-lock.yaml")))
-            ? "pnpm"
-            : "npm run";
+        const runner = await packageRunner(root, pkg.packageManager);
         for (const script of ["typecheck", "test", "lint"]) {
             if (pkg.scripts[script])
                 commands.push(`${runner} ${script}`);
@@ -28,6 +26,24 @@ export async function projectCommands(root) {
     if (await accessible(join(root, "Package.swift")))
         commands.push("swift test");
     return commands;
+}
+/**
+ * The manager the project declares, else the one its lockfile implies. Under
+ * Yarn PnP there is no `node_modules/.bin`, so handing a reviewer `npm run`
+ * for a Yarn project fails on the first command — the setup detour #241 exists
+ * to remove.
+ */
+async function packageRunner(root, packageManager) {
+    const declared = packageManager?.match(/^(pnpm|yarn|bun|npm)@/)?.[1];
+    const byLock = (await accessible(join(root, "pnpm-lock.yaml")))
+        ? "pnpm"
+        : (await accessible(join(root, "yarn.lock")))
+            ? "yarn"
+            : (await accessible(join(root, "bun.lockb"))) || (await accessible(join(root, "bun.lock")))
+                ? "bun"
+                : undefined;
+    const manager = declared ?? byLock ?? "npm";
+    return manager === "npm" ? "npm run" : manager === "bun" ? "bun run" : manager;
 }
 /**
  * The lines after the contract. Ticket and acceptance are described rather
