@@ -32,6 +32,15 @@ export const ReviewRecord = z.object({
     extensionReason: Text.optional(),
     outcome: z.enum(["complete", "incomplete", "blocked"]),
     summary: Text,
+    /**
+     * Hand-resolved trunk merges after coverage. A merge Git reproduces exactly needs no entry;
+     * one an author resolved by hand carries unreviewed edits, so it is accepted only when named.
+     */
+    trunkIntegrations: z.array(z.object({ commit: Sha, reason: Text }).strict()).min(1).max(20).optional(),
+    /**
+     * Evidence records wrote under the 2026-09-16 documentation-only rule. Still parsed so those
+     * records stay valid; no longer enforced, because every trunk merge is now verified the same way.
+     */
     documentationIntegrations: z.array(z.object({
         base: Sha,
         commit: Sha,
@@ -58,7 +67,7 @@ export const ReviewRecord = z.object({
 export function followUpTurns(record) {
     return record.followUps ?? (record.followUp ? [record.followUp] : []);
 }
-/** The trunk base the clearance finally covered: the latest recorded integration, else the original. */
+/** The trunk base the reviewer's clearance covered: the latest recorded integration, else the original. */
 export function coveredBase(record) {
     return followUpTurns(record).reduce((base, turn) => turn.base ?? base, record.base);
 }
@@ -68,6 +77,15 @@ export function reviewRequired(config) {
 }
 export function git(root, args) {
     return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024 }).trim();
+}
+function isAncestor(root, older, newer) {
+    try {
+        git(root, ["merge-base", "--is-ancestor", older, newer]);
+        return true;
+    }
+    catch {
+        return false;
+    }
 }
 export function parseReviewRecord(markdown) {
     const blocks = [...markdown.matchAll(/^```morpheus-review\r?\n([\s\S]*?)^```[ \t]*$/gm)];
@@ -117,108 +135,44 @@ export function validateReviewRecord(record) {
 function changedPaths(root, older, newer) {
     return git(root, ["diff", "--name-only", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean);
 }
-function onlyWorklogChanges(root, older, newer, worklog) {
-    if (changedPaths(root, older, newer).some(p => p !== worklog)) {
-        throw new Error("changes after covered commit invalidate review (only its worklog may change)");
+/** True when Git's own merge of the two parents reproduces this commit's tree exactly: nothing was hand-edited. */
+function exactMerge(root, commit, parents) {
+    let expected = "";
+    // merge-tree exits non-zero on a conflict; that is simply "not exact", not a failure to report.
+    try {
+        expected = git(root, ["merge-tree", "--write-tree", parents[0], parents[1]]);
     }
-}
-/** Narrow data-only allowlist: Markdown elsewhere may be executable input or agent instructions. */
-function documentationPath(path) {
-    if (/(?:^|\/)(?:AGENTS|CLAUDE|SKILL)\.md$/i.test(path))
+    catch {
         return false;
-    return /^(?:README\.md|docs\/.+\.md|\.agent\/(?:worklog\/.+|inbox-archive\/.+|decisions|learned)\.md|hq\/(?:product|team)\/.+\.md)$/.test(path);
-}
-function regularDocumentation(root, older, newer) {
-    const paths = changedPaths(root, older, newer);
-    if (!paths.length || paths.some(p => !documentationPath(p)))
-        throw new Error("documentation integration contains non-documentation paths");
-    for (const ref of [older, newer]) {
-        for (const path of paths) {
-            const entry = git(root, ["ls-tree", ref, "--", path]);
-            if (entry && !entry.startsWith("100644 blob "))
-                throw new Error("documentation integration requires regular non-executable files");
-        }
     }
-}
-/** Verify Git's merge result, not an author's assertion that the integration was harmless. */
-function checkDocumentationIntegrations(root, record, worklog, head, clearedBase) {
-    let anchor = record.covered;
-    let base = clearedBase;
-    for (const integration of record.documentationIntegrations ?? []) {
-        git(root, ["merge-base", "--is-ancestor", base, integration.base]);
-        git(root, ["merge-base", "--is-ancestor", integration.commit, head]);
-        const parents = git(root, ["show", "-s", "--format=%P", integration.commit]).split(" ");
-        if (parents.length !== 2 || parents[1] !== integration.base)
-            throw new Error("documentation integration must be an explicit two-parent trunk merge");
-        git(root, ["merge-base", "--is-ancestor", anchor, parents[0]]);
-        onlyWorklogChanges(root, anchor, parents[0], worklog);
-        const incoming = git(root, ["rev-list", `${base}..${integration.base}`]).split("\n").filter(Boolean);
-        const sources = new Map(integration.sources.map(source => [source.commit, source.reviewRecord]));
-        if (sources.size !== integration.sources.length || incoming.length !== sources.size || incoming.some(commit => !sources.has(commit))) {
-            throw new Error("documentation integration needs review evidence for every incoming trunk commit");
-        }
-        for (const commit of incoming) {
-            const sourceParents = git(root, ["show", "-s", "--format=%P", commit]).split(" ");
-            if (sourceParents.length !== 1)
-                throw new Error("documentation integration requires linear reviewed trunk commits");
-            const parent = sourceParents[0];
-            regularDocumentation(root, parent, commit);
-            const sourcePath = sources.get(commit);
-            if (!changedPaths(root, parent, commit).includes(sourcePath))
-                throw new Error("documentation source must carry its own review record");
-            const source = parseReviewRecord(git(root, ["show", `${commit}:${sourcePath}`]));
-            validateReviewRecord(source);
-            // Squash merges retain the original review SHAs in their worklog. The completed
-            // evidence must still describe this trunk parent, not an unrelated old review.
-            if (coveredBase(source) !== parent || source.documentationIntegrations) {
-                throw new Error("documentation source review must cover its trunk parent without nested integration evidence");
-            }
-        }
-        // merge-tree exits non-zero on a conflict; name that outcome rather than surfacing a raw command failure.
-        let expected = "";
-        try {
-            expected = git(root, ["-c", "merge.renames=false", "merge-tree", "--write-tree", parents[0], integration.base]);
-        }
-        catch {
-            expected = "";
-        }
-        if (!/^[a-f0-9]{40}$/.test(expected) || git(root, ["rev-parse", `${integration.commit}^{tree}`]) !== expected) {
-            throw new Error("documentation integration must exactly match Git's conflict-free merge tree");
-        }
-        anchor = integration.commit;
-        base = integration.base;
-    }
-    onlyWorklogChanges(root, anchor, head, worklog);
-    return base;
+    return /^[a-f0-9]{40}$/.test(expected) && git(root, ["rev-parse", `${commit}^{tree}`]) === expected;
 }
 /**
- * Each follow-up turn must sit on the commit chain after the one before it, and a turn that
- * moved the base must say why and keep the bases in trunk order as well.
+ * Walk the first-parent commits in a range that the reviewer did not clear. Merging trunk never
+ * invalidates coverage, as on a human team: a merge Git reproduces exactly passes on its own, and a
+ * hand-resolved one passes when the record names it, so the unreviewed resolution is visible rather
+ * than hidden. Any other commit may touch only the allowed paths. Returns the merges it accepted.
  */
-function checkFollowUpChain(root, record) {
-    const isAncestor = (older, newer) => {
-        try {
-            git(root, ["merge-base", "--is-ancestor", older, newer]);
-            return true;
+function verifyUncoveredCommits(root, record, from, to, trunk, allowed, refusal) {
+    const named = new Map((record.trunkIntegrations ?? []).map(entry => [entry.commit, entry]));
+    const accepted = new Set();
+    for (const commit of git(root, ["rev-list", "--first-parent", "--reverse", `${from}..${to}`]).split("\n").filter(Boolean)) {
+        const parents = git(root, ["show", "-s", "--format=%P", commit]).split(" ");
+        if (parents.length === 2) {
+            if (!isAncestor(root, parents[1], trunk))
+                throw new Error("a merge after review coverage may bring in trunk only");
+            if (!exactMerge(root, commit, parents) && !named.has(commit)) {
+                throw new Error("a hand-resolved trunk merge after review coverage must be named in trunkIntegrations with its reason");
+            }
+            accepted.add(commit);
+            continue;
         }
-        catch {
-            return false;
-        }
-    };
-    let previousCommit = record.reviewed;
-    let previousBase = record.base;
-    for (const turn of followUpTurns(record)) {
-        if (!isAncestor(previousCommit, turn.commit))
-            throw new Error("follow-up turns must be recorded in commit order, each covering a descendant of the last");
-        if (turn.base) {
-            if (!turn.scopeReason)
-                throw new Error("base integration requires an explicit follow-up scope reason");
-            if (!isAncestor(previousBase, turn.base) || !isAncestor(turn.base, turn.commit))
-                throw new Error("a follow-up base must move forward along trunk and precede that turn's commit");
-            previousBase = turn.base;
-        }
-        previousCommit = turn.commit;
+        if (parents.length !== 1)
+            throw new Error("only two-parent trunk merges are accepted after review coverage");
+        if (changedPaths(root, parents[0], commit).some(p => !allowed.has(p)))
+            throw new Error(refusal);
     }
+    return accepted;
 }
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts) {
@@ -243,19 +197,45 @@ export function checkLocalReview(opts) {
             git(opts.root, ["merge-base", "--is-ancestor", older, newer]);
         }
         checkFollowUpChain(opts.root, record);
-        const integratedBase = checkDocumentationIntegrations(opts.root, record, path, opts.head, coveredBase(record));
-        if (git(opts.root, ["merge-base", opts.base, opts.head]) !== integratedBase)
-            throw new Error("review base is stale; reconcile the base and review coverage explicitly");
-        if (!followUpTurns(record).length && record.reviewed !== record.covered) {
-            const allowed = new Set(record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths));
-            const fixes = git(opts.root, ["diff", "--name-only", "--no-renames", record.reviewed, record.covered, "--"]).split("\n").filter(Boolean);
-            if (fixes.some(p => p !== path && !allowed.has(p)))
-                throw new Error("author-only fixes exceed the minor finding paths; review coverage must be renewed explicitly");
+        // The reviewer's base must be real trunk history behind this PR; trunk may have moved on since.
+        if (!isAncestor(opts.root, coveredBase(record), git(opts.root, ["merge-base", opts.base, opts.head]))) {
+            throw new Error("the recorded review base must precede the PR's merge base with trunk; reconcile the base and coverage explicitly");
         }
+        const merges = new Set();
+        if (!followUpTurns(record).length && record.reviewed !== record.covered) {
+            const allowed = new Set([path, ...record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths)]);
+            for (const commit of verifyUncoveredCommits(opts.root, record, record.reviewed, record.covered, opts.base, allowed, "author-only fixes exceed the minor finding paths; review coverage must be renewed explicitly"))
+                merges.add(commit);
+        }
+        for (const commit of verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)"))
+            merges.add(commit);
+        const stray = (record.trunkIntegrations ?? []).find(entry => !merges.has(entry.commit));
+        if (stray)
+            throw new Error("trunkIntegrations names a commit that is not a trunk merge on this branch after review");
         return [];
     }
     catch (error) {
         return [{ level: "error", rule: "agent-review", message: error instanceof Error ? error.message : String(error) }];
+    }
+}
+/**
+ * Each follow-up turn must sit on the commit chain after the one before it, and a turn that
+ * moved the base must say why and keep the bases in trunk order as well.
+ */
+function checkFollowUpChain(root, record) {
+    let previousCommit = record.reviewed;
+    let previousBase = record.base;
+    for (const turn of followUpTurns(record)) {
+        if (!isAncestor(root, previousCommit, turn.commit))
+            throw new Error("follow-up turns must be recorded in commit order, each covering a descendant of the last");
+        if (turn.base) {
+            if (!turn.scopeReason)
+                throw new Error("base integration requires an explicit follow-up scope reason");
+            if (!isAncestor(root, previousBase, turn.base) || !isAncestor(root, turn.base, turn.commit))
+                throw new Error("a follow-up base must move forward along trunk and precede that turn's commit");
+            previousBase = turn.base;
+        }
+        previousCommit = turn.commit;
     }
 }
 //# sourceMappingURL=local.js.map

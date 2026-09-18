@@ -884,9 +884,10 @@ allow author fixes without a second pass. A review is capped at three turns, the
 two follow-ups, and the third happens only when the second returned blocked. Unresolved substantive
 disagreements after that, or an incomplete review, keep the PR open and auto-merge disabled. Record the review paragraph and structured evidence in the task
 worklog, link it with a visible \`review-record:\` PR-body line, then apply \`agent-reviewed\`.
-\`review.required\` defaults to true; project false opts out visibly. Only the named worklog may
-change after the covered commit, except verified integration of already reviewed documentation
-under the review contract. That exception preserves clearance without another review round. Follow the [review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md)
+\`review.required\` defaults to true; project false opts out visibly. After the covered commit only
+the named worklog may change, and merging trunk never invalidates the review: a merge Git
+reproduces exactly needs no entry, a hand-resolved one is named in the record, and CI must still
+pass. Merge rather than rebase after review. Follow the [review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md)
 for budgets, related-code scope, record fields and escalation.
 
 **Every PR must carry** tests for anything testable, a documentation update when behaviour

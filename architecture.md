@@ -1460,9 +1460,10 @@ Four of them, each catching what it can so the rung above only sees what genuine
 `review.required` defaults to true; false is a project opt-out reported by conventions. The author
 runs `morpheus review prepare` to print a packet, then explicitly spawns a fresh reviewer
 subagent/session without author chat, responds once, and resumes the same reviewer
-once if substantive findings were raised. Minor-only findings need no second pass. Unresolved
-substantive disagreements, incomplete review and exhausted budgets leave the PR open and flagged,
-with auto-merge disabled. No automatic third round. Incidental pre-existing bugs are recorded
+if substantive findings were raised. Minor-only findings need no second pass. A review is capped
+at three turns, and the third exists only after a blocked second. Unresolved substantive
+disagreements, incomplete review and exhausted budgets leave the PR open and flagged, with
+auto-merge disabled. No automatic fourth turn. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
 Initial risk-based ceilings are 5/15/30 minutes, with one justified initial extension of at most
@@ -1475,15 +1476,13 @@ reported evidence without making a model call. The canonical provider-neutral pr
 `morpheus-review` JSON block records sessions, base/reviewed/covered commits, findings, author
 responses and any original-reviewer follow-up. The PR links it with `review-record:` and carries
 `agent-reviewed` only on completion. `check pr` validates those facts, unresolved findings, budgets,
-ancestry and coverage. An explicit scope decision may use the one follow-up for required trunk
-integration: retain the original base/reviewed SHA and record the follow-up base and scope reason.
-Only the named worklog may change after the covered commit, avoiding the
-self-referential commit hash problem, except verified integration of already reviewed documentation.
-The author records incoming completed review evidence and explicit merge commits; native Git must
-reconstruct their conflict-free trees exactly, with changes restricted to regular documentation
-and records. This preserves the original clearance without a third round or human intervention.
-Executable changes, conflict resolutions, altered requirements and unresolved findings do not qualify.
-The runbook defines the narrow path/mode allowlist and `documentationIntegrations` evidence. Author-only minor fixes are constrained to finding paths.
+ancestry and coverage. A follow-up that inspected a trunk integration records its new base and
+scope reason with the original base/reviewed SHA retained. Only the named worklog may change after
+the covered commit, avoiding the self-referential commit hash problem, and merging trunk never
+invalidates the review: native Git must reproduce an integration merge's tree exactly, or the
+author names the hand-resolved merge and its reason in `trunkIntegrations` so the unreviewed
+resolution stays visible. CI must still pass. Any other commit after coverage, or a merge of
+anything but trunk, invalidates coverage. Author-only minor fixes are constrained to finding paths.
 This is an auditable attestation, not proof against a dishonest author. Records/board-only PRs and
 exact dependency-only Dependabot changes retain their existing exceptions.
 

@@ -40,6 +40,10 @@ export declare const ReviewRecord: z.ZodObject<{
         complete: "complete";
     }>;
     summary: z.ZodString;
+    trunkIntegrations: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        commit: z.ZodString;
+        reason: z.ZodString;
+    }, z.core.$strict>>>;
     documentationIntegrations: z.ZodOptional<z.ZodArray<z.ZodObject<{
         base: z.ZodString;
         commit: z.ZodString;
@@ -96,7 +100,7 @@ export declare const ReviewRecord: z.ZodObject<{
 export type LocalReviewRecord = z.infer<typeof ReviewRecord>;
 /** Follow-up turns in order, whichever field the record used. */
 export declare function followUpTurns(record: LocalReviewRecord): ReviewFollowUp[];
-/** The trunk base the clearance finally covered: the latest recorded integration, else the original. */
+/** The trunk base the reviewer's clearance covered: the latest recorded integration, else the original. */
 export declare function coveredBase(record: LocalReviewRecord): string;
 export declare function reviewRequired(config: unknown): boolean;
 export declare function git(root: string, args: string[]): string;

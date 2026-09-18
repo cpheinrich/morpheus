@@ -920,3 +920,16 @@ turn leave a PR open for human judgment. Records carry the turns as a `followUps
 single `followUp` shape remains valid as one turn so older records and documentation-integration
 sources are not invalidated. This does not decide the post-clearance trunk-advance question
 (inbox item of 2026-09-16, issues #245 and #247), which stays open.
+
+**Merging trunk never invalidates a cleared review** — 2026-09-18. Chris's call, resolving the
+2026-09-16 inbox question and #245 with an option none of A, B or C offered: the human-team
+convention, where integrating `main` does not reopen a review. The reasons: the gate is already a
+large step up from no review at all; CI must still pass on the integrated result; and a review that
+goes stale whenever trunk moves punishes exactly the PR that is waiting for a long CI run, or an
+agent that is not actively driving the merge, by burning turns on ceremony. If it leaks, tighten
+it then. The one refinement: a merge Git reproduces exactly needs nothing, but a hand-resolved
+merge is unreviewed authoring and must be named in the record with its reason, so the leak is
+visible rather than hidden inside a merge commit. Rebasing after review is unsupported because it
+rewrites the reviewed commits. This supersedes the 2026-09-16 documentation-only exception, whose
+record field is still parsed but no longer enforced. Late CI corrections after coverage (#247)
+remain a separate, open question: a plain code commit after `covered` still invalidates.
