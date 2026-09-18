@@ -46,7 +46,8 @@ This does not add a turn or relabel a clean/minor first review as substantive.
 Merging trunk into the branch never invalidates your clearance and spends no turn: a merge Git
 reproduces exactly needs no entry, and a hand-resolved merge is named in the record's
 trunkIntegrations with its reason so the unreviewed resolution stays visible. CI must still pass.
-Any other commit after coverage invalidates it. The author merges rather than rebases after review.
+Any other commit after coverage, beyond the task worklog itself, invalidates it. The author merges
+rather than rebases after review.
 
 The author must retain a short human-readable summary and a morpheus-review JSON block in the
 task worklog, even for a clean review. Include original findings, responses, commit coverage,

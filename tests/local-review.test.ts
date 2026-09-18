@@ -148,7 +148,6 @@ describe("merging trunk after coverage", () => {
     const original = [r.base, r.reviewed, r.covered, r.followUp!.commit];
     expect(verify()).toEqual([]);
     expect([r.base, r.reviewed, r.covered, r.followUp!.commit]).toEqual(original);
-    git(root, ["merge", "--no-ff", "-m", "integrate trunk again", newBase]);
     writeFileSync(join(root, "later.ts"), "export const later = true;"); git(root, ["checkout", "-qb", "later-trunk", newBase]);
     const laterBase = commit(); git(root, ["checkout", "-q", "-"]);
     git(root, ["merge", "--no-ff", "-m", "integrate later trunk", laterBase]);
@@ -183,6 +182,14 @@ describe("merging trunk after coverage", () => {
     expect(verify()[0]?.message).toContain("trunk only");
     r.trunkIntegrations = [{ commit: git(root, ["rev-parse", "HEAD"]), reason: "Naming it does not make a side branch into trunk." }];
     expect(verify()[0]?.message).toContain("trunk only");
+  });
+  it("refuses an octopus merge even when every parent is trunk", () => {
+    const { newBase, verify } = cleared();
+    git(root, ["checkout", "-qb", "other-trunk", base]);
+    writeFileSync(join(root, "other.ts"), "export const other = true;"); const otherBase = commit();
+    git(root, ["checkout", "-q", "-"]);
+    git(root, ["merge", "--no-ff", "-m", "octopus", newBase, otherBase]);
+    expect(verify()[0]?.message).toContain("only two-parent");
   });
   it("refuses an entry that names a commit which is not a merge after review", () => {
     const { r, verify } = cleared();
