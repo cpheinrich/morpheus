@@ -36,9 +36,9 @@ A high-risk independent review of 02098f9 found no substantive defects, three mi
 The reviewer verified the bounding argument independently in a scratch copy with eight adversarial
 merge shapes (swapped parents, an unreviewed commit as either parent, a nested merge, an octopus,
 a trunk-side rename) and ran seven guard-removal mutants against the suite; six were caught. The
-survivor was R01: the octopus refusal had no test of its own, so one was added. R2: the reviewer
-prompt omitted the worklog-only exception that every other document states; fixed. R3: a no-op
-second merge line in the exact-merge test; removed. R4, pre-existing: a local `check pr` whose
+survivor was R01: the octopus refusal had no test of its own, so one was added. R02: the reviewer
+prompt omitted the worklog-only exception that every other document states; fixed. R03: a no-op
+second merge line in the exact-merge test; removed. R04, pre-existing: a local `check pr` whose
 `origin/main` is behind the merged trunk commit reports "trunk only" until `git fetch`; noted so it
 is not chased as a code bug.
 
