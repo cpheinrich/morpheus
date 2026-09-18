@@ -909,3 +909,14 @@ the merge was conflict-free and exact, and incoming paths must be regular docume
 No new review or permission is required for that proof. Changed requirements still need review.
 Reuse existing native Git, Zod and JSON for this Morpheus-specific evidence protocol; no generic
 merge or orchestration library is introduced.
+
+**Independent review is capped at three turns, not two** — 2026-09-18. Chris's call. The initial
+review plus at most two same-reviewer follow-ups, each at the follow-up ceiling; the third turn
+exists only when the second returned `blocked` and the author addressed those concerns. A cleared
+turn ends the review and an incomplete one escalates, so the cap cannot be spent on ceremony. The
+purpose of the cap is unchanged: an author and a reviewer trading fixes and findings indefinitely
+is unproductive and burns credits, so only substantive concerns still unresolved after the last
+turn leave a PR open for human judgment. Records carry the turns as a `followUps` array; the
+single `followUp` shape remains valid as one turn so older records and documentation-integration
+sources are not invalidated. This does not decide the post-clearance trunk-advance question
+(inbox item of 2026-09-16, issues #245 and #247), which stays open.

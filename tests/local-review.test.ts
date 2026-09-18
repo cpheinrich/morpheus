@@ -216,3 +216,60 @@ describe("reviewed documentation integration without another review round", () =
     expect(verify()[0]?.message).toContain('unresolved');
   });
 });
+
+describe("three-turn cap", () => {
+  const substantive = { id: "F01", severity: "substantive" as const, description: "Missing authorization guard", paths: ["code.ts"], disposition: "fixed" as const, response: "Added the authorization guard" };
+  function turn(commit: string, outcome: "cleared" | "incomplete" | "blocked", elapsedMinutes = 2) {
+    return { reviewerSession: "reviewer-2", commit, outcome, elapsedMinutes, summary: `Follow-up returned ${outcome} after inspecting the fix.` };
+  }
+  it("treats followUps of one as the legacy followUp", () => {
+    const r = { ...record(), findings: [substantive], followUps: [turn(reviewed, "cleared")] };
+    expect(check(save(r))).toEqual([]);
+    expect(check(save({ ...r, followUp: turn(reviewed, "cleared") }))[0]?.message).toContain("not both");
+  });
+  it("allows a third turn only after a blocked second turn", () => {
+    writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
+    writeFileSync(join(root, "code.ts"), "second fix"); const covered = commit();
+    const r = { ...record(), covered, findings: [substantive], followUps: [turn(first, "blocked"), turn(covered, "cleared")] };
+    expect(check(save(r))).toEqual([]);
+    expect(check(save({ ...r, followUps: [turn(first, "cleared"), turn(covered, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save({ ...r, followUps: [turn(first, "incomplete"), turn(covered, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save({ ...r, followUps: [turn(first, "blocked"), turn(covered, "blocked")] }))[0]?.message).toContain("final follow-up must clear");
+  });
+  it("refuses a fourth turn outright", () => {
+    const r = { ...record(), findings: [substantive], followUps: [turn(reviewed, "blocked"), turn(reviewed, "blocked"), turn(reviewed, "cleared")] };
+    expect(check(save(r as unknown as LocalReviewRecord))).toHaveLength(1);
+  });
+  it("holds every follow-up to the follow-up ceiling at its boundary", () => {
+    writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
+    writeFileSync(join(root, "code.ts"), "second fix"); const covered = commit();
+    const r = { ...record(), covered, findings: [substantive], followUps: [turn(first, "blocked", 7.5), turn(covered, "cleared", 7.5)] };
+    expect(check(save(r))).toEqual([]);
+    expect(check(save({ ...r, followUps: [turn(first, "blocked", 7.5), turn(covered, "cleared", 7.6)] }))[0]?.message).toContain("follow-up exceeded its budget");
+    expect(check(save({ ...r, followUps: [turn(first, "blocked", 7.6), turn(covered, "cleared", 7.5)] }))[0]?.message).toContain("follow-up exceeded its budget");
+  });
+  it("keeps the turns in commit order", () => {
+    writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
+    writeFileSync(join(root, "code.ts"), "second fix"); const second = commit();
+    const r = { ...record(), covered: second, findings: [substantive], followUps: [turn(second, "blocked"), turn(second, "cleared")] };
+    expect(check(save(r))).toEqual([]);
+    git(root, ["checkout", "-qb", "side", first]);
+    writeFileSync(join(root, "code.ts"), "side fix"); const side = commit();
+    git(root, ["checkout", "-q", "-"]);
+    expect(check(save({ ...r, followUps: [turn(side, "blocked"), turn(second, "cleared")] }))[0]?.message).toContain("commit order");
+  });
+  it("carries a base moved by the second turn through the third", () => {
+    git(root, ["checkout", "-qb", "new-trunk", base]);
+    writeFileSync(join(root, "trunk.ts"), "new trunk code"); const newBase = commit();
+    git(root, ["checkout", "--detach", reviewed]);
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]); const integrated = git(root, ["rev-parse", "HEAD"]);
+    writeFileSync(join(root, "code.ts"), "second fix"); const covered = commit();
+    const second = { ...turn(integrated, "blocked"), base: newBase, scopeReason: "Explicitly include required trunk integration in this follow-up" };
+    const r = { ...record(), covered, findings: [substantive], followUps: [second, turn(covered, "cleared")] };
+    const verify = (rec: LocalReviewRecord) => checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(rec), base: newBase });
+    expect(verify(r)).toEqual([]);
+    expect(verify({ ...r, followUps: [{ ...second, scopeReason: undefined }, turn(covered, "cleared")] })[0]?.message).toContain("scope reason");
+    // A later turn may only move the base forward, never back to the original.
+    expect(verify({ ...r, followUps: [second, { ...turn(covered, "cleared"), base, scopeReason: "Attempt to rewind the base to the original trunk" }] })[0]?.message).toContain("move forward");
+  });
+});
