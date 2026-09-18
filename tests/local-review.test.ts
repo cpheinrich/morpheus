@@ -12,7 +12,7 @@ let reviewed: string;
 const path = ".agent/worklog/2026-09-10-task.md";
 function commit() {
   git(root, ["add", "."]);
-  git(root, ["commit", "-qm", "fixture"]);
+  git(root, ["commit", "-qm", "fixture", "--allow-empty"]);
   return git(root, ["rev-parse", "HEAD"]);
 }
 function record(): LocalReviewRecord {
@@ -112,108 +112,113 @@ describe("visible evidence and trunk integration", () => {
       expect(check(commit())[0]?.message).toContain("visible paragraph");
     }
   });
-  it("preserves the initial review and requires scoped follow-up after trunk integration", () => {
+  it("keeps a review valid across a trunk merge and still checks a moved base", () => {
     git(root, ["checkout", "-qb", "new-trunk", base]);
     writeFileSync(join(root, "trunk.ts"), "new trunk code"); const newBase = commit();
     git(root, ["checkout", "--detach", reviewed]);
     git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]); const covered = git(root, ["rev-parse", "HEAD"]);
     const r = { ...record(), covered };
     const verify = () => checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(r), base: newBase });
-    expect(verify()[0]?.message).toContain("base is stale");
+    expect(verify()).toEqual([]);
     const followUp = { reviewerSession: r.reviewerSession, commit: covered, base: newBase, outcome: "cleared" as const, elapsedMinutes: 2, summary: "Reviewed the integration and affected paths" };
     Object.assign(r, { followUp });
     expect(verify()[0]?.message).toContain("scope reason");
     Object.assign(followUp, { scopeReason: "Explicitly include required trunk integration in the one follow-up" });
     expect(verify()).toEqual([]);
-    followUp.base = reviewed; // Not the PR merge base, even though it is an ancestor.
-    expect(verify()[0]?.message).toContain("base is stale");
+    followUp.base = reviewed; // Not trunk history at all, even though it is an ancestor of covered.
+    expect(verify()[0]?.message).toContain("precede the PR's merge base");
   });
 });
 
-describe("reviewed documentation integration without another review round", () => {
-  const sourcePath = '.agent/worklog/2026-09-10-docs.md';
-  function integrate(opts: { file?: string; sourceOutcome?: 'complete' | 'incomplete'; sourceBase?: string; symlink?: boolean; executable?: boolean; conflict?: boolean } = {}) {
-    const r = record();
-    r.findings = [{ id: 'F01', severity: 'substantive', description: 'Missing authorization check', paths: ['code.ts'], disposition: 'fixed', response: 'Implemented and verified the check' }];
-    r.followUp = { reviewerSession: r.reviewerSession, commit: reviewed, outcome: 'cleared', elapsedMinutes: 2, summary: 'The original reviewer cleared the fix.' };
+describe("merging trunk after coverage", () => {
+  const substantive = { id: "F01", severity: "substantive" as const, description: "Missing authorization check", paths: ["code.ts"], disposition: "fixed" as const, response: "Implemented and verified the check" };
+  /** A cleared two-turn review, then trunk moves; returns the new trunk tip and a verifier against it. */
+  function cleared(trunkFile = "trunk.ts") {
+    const r = { ...record(), findings: [substantive], followUp: { reviewerSession: "reviewer-2", commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, summary: "The original reviewer cleared the fix." } };
     const feature = save(r);
-    git(root, ['checkout', '--detach', base]);
-    const file = opts.file ?? 'README.md';
-    if (opts.symlink) execFileSync('ln', ['-s', 'code.ts', join(root, file)]);
-    else writeFileSync(join(root, file), file === 'morpheus.json' ? '{"review":{"required":true}}' : 'Document the operations directory.');
-    if (opts.executable) execFileSync('chmod', ['+x', join(root, file)]);
-    const docReviewed = commit();
-    const docRecord: LocalReviewRecord = { ...record(), base: opts.sourceBase ?? base, reviewed: docReviewed, covered: docReviewed, outcome: opts.sourceOutcome ?? 'complete', summary: 'Independent documentation review completed.' };
-    mkdirSync(join(root, ".agent/worklog"), { recursive: true });
-    writeFileSync(join(root, sourcePath), `${docRecord.summary}\n\n\`\`\`morpheus-review\n${JSON.stringify(docRecord)}\n\`\`\`\n`);
-    const docHead = commit();
-    // Production repositories squash the documentation PR: original review hashes
-    // are retained as evidence rather than pretending they identify the squash.
-    git(root, ['checkout', '--detach', base]);
-    git(root, ['merge', '--squash', docHead]);
-    const newBase = commit();
-    git(root, ['checkout', '--detach', feature]);
-    if (opts.conflict) {
-      writeFileSync(join(root, 'README.md'), 'Different feature documentation.');
-      r.covered = r.reviewed = reviewed = commit();
-      r.followUp!.commit = reviewed;
-      save(r);
-      expect(() => git(root, ['merge', '--no-ff', '-m', 'conflicting integration', newBase])).toThrow();
-      writeFileSync(join(root, 'README.md'), 'Manually resolved documentation.');
-      commit();
-    } else git(root, ['merge', '--no-ff', '-m', 'integrate documentation', newBase]);
-    r.documentationIntegrations = [{ base: newBase, commit: git(root, ['rev-parse', 'HEAD']), reason: 'Integrate already reviewed documentation without changing executable files.', sources: [{ commit: newBase, reviewRecord: sourcePath }] }];
-    const verify = () => checkLocalReview({ root, body: `review-record: ${path}`, labels: ['agent-reviewed'], head: save(r), base: newBase });
+    git(root, ["checkout", "--detach", base]);
+    writeFileSync(join(root, trunkFile), "export const trunk = true;"); const newBase = commit();
+    git(root, ["checkout", "--detach", feature]);
+    const verify = () => checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(r), base: newBase });
     return { r, newBase, verify };
   }
-  it('preserves both cleared review rounds after a verified documentation squash merge', () => {
-    const { r, verify } = integrate();
+  it("accepts an exact merge of trunk code with no record entry and no new turn", () => {
+    const { r, newBase, verify } = cleared();
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]);
     const original = [r.base, r.reviewed, r.covered, r.followUp!.commit];
     expect(verify()).toEqual([]);
     expect([r.base, r.reviewed, r.covered, r.followUp!.commit]).toEqual(original);
+    writeFileSync(join(root, "later.ts"), "export const later = true;"); git(root, ["checkout", "-qb", "later-trunk", newBase]);
+    const laterBase = commit(); git(root, ["checkout", "-q", "-"]);
+    git(root, ["merge", "--no-ff", "-m", "integrate later trunk", laterBase]);
+    expect(checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(r), base: laterBase })).toEqual([]);
   });
-  it('requires explicit integration evidence even for documentation', () => {
-    const { r, verify } = integrate(); delete r.documentationIntegrations; r.summary = 'The integration proof was deliberately omitted.';
-    expect(verify()[0]?.message).toContain('after covered commit');
+  it("requires a named entry for a hand-resolved conflict and then accepts it", () => {
+    const { r, newBase, verify } = cleared("code.ts");
+    expect(() => git(root, ["merge", "--no-ff", "-m", "conflicting integration", newBase])).toThrow();
+    writeFileSync(join(root, "code.ts"), "export const answer = 2; export const trunk = true;");
+    git(root, ["add", "code.ts"]); git(root, ["commit", "-qm", "resolve"]);
+    const merge = git(root, ["rev-parse", "HEAD"]);
+    expect(verify()[0]?.message).toContain("hand-resolved trunk merge");
+    r.trunkIntegrations = [{ commit: merge, reason: "Resolved the answer constant against trunk's new export; both sides kept." }];
+    expect(verify()).toEqual([]);
   });
-  it.each(['another.ts', 'AGENTS.md', 'morpheus.json'])('rejects incoming executable/configuration/instruction path %s', file => {
-    expect(integrate({ file }).verify()[0]?.message).toContain('non-documentation');
+  it("treats an edit hidden inside a merge commit as hand-resolved", () => {
+    const { r, newBase, verify } = cleared();
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]);
+    writeFileSync(join(root, "code.ts"), "export const answer = 3;");
+    git(root, ["add", "code.ts"]); git(root, ["commit", "-q", "--amend", "--no-edit"]);
+    const merge = git(root, ["rev-parse", "HEAD"]);
+    expect(verify()[0]?.message).toContain("hand-resolved trunk merge");
+    r.trunkIntegrations = [{ commit: merge, reason: "Adjusted the constant while resolving the merge." }];
+    expect(verify()).toEqual([]);
   });
-  it('rejects a Markdown symlink', () => {
-    expect(integrate({ symlink: true }).verify()[0]?.message).toContain('regular non-executable');
+  it("refuses a merge that brings in anything but trunk", () => {
+    const { r, verify } = cleared();
+    git(root, ["checkout", "-qb", "side", base]);
+    writeFileSync(join(root, "side.ts"), "export const side = true;"); const side = commit();
+    git(root, ["checkout", "-q", "-"]);
+    git(root, ["merge", "--no-ff", "-m", "integrate a side branch", side]);
+    expect(verify()[0]?.message).toContain("trunk only");
+    r.trunkIntegrations = [{ commit: git(root, ["rev-parse", "HEAD"]), reason: "Naming it does not make a side branch into trunk." }];
+    expect(verify()[0]?.message).toContain("trunk only");
   });
-  it('rejects executable Markdown', () => {
-    expect(integrate({ executable: true }).verify()[0]?.message).toContain('regular non-executable');
+  it("refuses an octopus merge even when every parent is trunk", () => {
+    const { newBase, verify } = cleared();
+    git(root, ["checkout", "-qb", "other-trunk", base]);
+    writeFileSync(join(root, "other.ts"), "export const other = true;"); const otherBase = commit();
+    git(root, ["checkout", "-q", "-"]);
+    git(root, ["merge", "--no-ff", "-m", "octopus", newBase, otherBase]);
+    expect(verify()[0]?.message).toContain("only two-parent");
   });
-  it('rejects incomplete or unrelated source review evidence', () => {
-    expect(integrate({ sourceOutcome: 'incomplete' }).verify()[0]?.message).toContain('incomplete');
+  it("refuses an entry that names a commit which is not a merge after review", () => {
+    const { r, verify } = cleared();
+    r.trunkIntegrations = [{ commit: reviewed, reason: "The reviewed commit itself is not an integration." }];
+    expect(verify()[0]?.message).toContain("not a trunk merge");
   });
-  it('rejects a copied review based on the wrong trunk parent', () => {
-    expect(integrate({ sourceBase: 'a'.repeat(40) }).verify()[0]?.message).toContain('trunk parent');
+  it("still invalidates a plain code commit after the merge", () => {
+    const { newBase, verify } = cleared();
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]);
+    writeFileSync(join(root, "code.ts"), "unreviewed code"); commit();
+    expect(verify()[0]?.message).toContain("invalidate");
   });
-  it('requires evidence for every incoming commit', () => {
-    const { r, verify } = integrate();
-    r.documentationIntegrations![0]!.sources[0]!.commit = base;
-    expect(verify()[0]?.message).toContain('every incoming');
+  it("accepts a merge between reviewed and covered when only minor fixes surround it", () => {
+    git(root, ["checkout", "--detach", base]);
+    writeFileSync(join(root, "trunk.ts"), "export const trunk = true;"); const newBase = commit();
+    git(root, ["checkout", "--detach", reviewed]);
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]);
+    writeFileSync(join(root, "code.ts"), "minor fix"); const covered = commit();
+    const r = { ...record(), covered, findings: [{ id: "F01", severity: "minor" as const, description: "Missing helpful error context", paths: ["code.ts"], disposition: "fixed" as const, response: "Added the missing context" }] };
+    const verify = () => checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(r), base: newBase });
+    expect(verify()).toEqual([]);
+    writeFileSync(join(root, "other.ts"), "unrelated"); r.covered = commit();
+    expect(verify()[0]?.message).toContain("exceed");
   });
-  it('rejects conflict resolution even when only Markdown conflicts', () => {
-    expect(integrate({ conflict: true }).verify()[0]?.message).toContain('conflict-free merge tree');
-  });
-  it('rejects extra edits hidden in the integration commit', () => {
-    const { r, verify } = integrate();
-    writeFileSync(join(root, 'README.md'), 'An additional unreviewed edit.');
-    git(root, ['add', 'README.md']); git(root, ['commit', '--amend', '--no-edit']);
-    r.documentationIntegrations![0]!.commit = git(root, ['rev-parse', 'HEAD']);
-    expect(verify()[0]?.message).toContain('merge tree');
-  });
-  it('rejects source changes after integration', () => {
-    const { verify } = integrate();
-    writeFileSync(join(root, 'code.ts'), 'unreviewed code'); commit();
-    expect(verify()[0]?.message).toContain('invalidate');
-  });
-  it('does not clear unresolved findings in the original review', () => {
-    const { r, verify } = integrate(); r.findings[0]!.disposition = 'open';
-    expect(verify()[0]?.message).toContain('unresolved');
+  it("still parses a record carrying the retired documentationIntegrations field", () => {
+    const { r, newBase, verify } = cleared();
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]);
+    r.documentationIntegrations = [{ base: newBase, commit: git(root, ["rev-parse", "HEAD"]), reason: "Written under the documentation-only rule of 2026-09-16.", sources: [{ commit: newBase, reviewRecord: ".agent/worklog/2026-09-10-docs.md" }] }];
+    expect(verify()).toEqual([]);
   });
 });
 
