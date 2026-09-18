@@ -15,8 +15,8 @@ the PR open with auto-merge disabled; never substitute self-review or assume a m
 
 The author is the agent/session implementing the PR, including OpenClaw, Codex, or Claude.
 Use its runner's fresh-session/subagent facility with history inheritance disabled. Supply the
-prepared packet and repository location, and retain the reviewer session ID for the one allowed
-follow-up. A reviewer is a bounded task started by the author, not a standing PR-monitoring agent.
+prepared packet and repository location, and retain the reviewer session ID for the allowed
+follow-up turns. A reviewer is a bounded task started by the author, not a standing PR-monitoring agent.
 
 The canonical contract ships in `src/review/local-prompt.ts`; the old `review prompt` command and
 `.github/agent-review-prompt.md` remain for explicitly enabled legacy GitHub reviewers.
@@ -47,11 +47,18 @@ No reviewer subagents, full-suite reruns by default, or automatic repeated sessi
 budget exhaustion or missing evidence, record incomplete and keep the PR open.
 
 The author responds to every finding. For minor-only findings, one fix/response round is enough.
-For any substantive finding, resume the original reviewer exactly once to assess responses, fixes
-and their regressions. Preserve original severity. Reviewer retractions may clear a disputed
-finding, but author disagreement alone cannot. Unresolved substantive concerns mean blocked: remove
-`agent-reviewed`, disable auto-merge, and flag the remaining disagreement for the human. No third
-automatic round or replacement reviewer to obtain approval.
+For any substantive finding, resume the original reviewer to assess responses, fixes and their
+regressions. Preserve original severity. Reviewer retractions may clear a disputed finding, but
+author disagreement alone cannot.
+
+**A review is capped at three turns**: the initial review and at most two same-reviewer
+follow-ups, each at the follow-up ceiling. The third turn exists only to resolve what the second
+left `blocked`, after the author has addressed those concrete concerns; a `cleared` follow-up ends
+the review, and an `incomplete` one exhausted its budget and escalates. The cap is what stops an
+author and a reviewer trading fixes and findings indefinitely, at a session's cost per turn.
+Unresolved substantive concerns after the last turn mean blocked: remove `agent-reviewed`, disable
+auto-merge, and flag the remaining disagreement for the human. No automatic fourth turn or
+replacement reviewer to obtain approval.
 
 ## Record and publish
 
@@ -63,13 +70,16 @@ The JSON retains finding details so the short paragraph does not erase the audit
 
 Each finding has `id`, `severity` (`minor`, `substantive`, `incidental`), `description`, repository-relative
 `paths`, `disposition` (`fixed`, `disputed`, `deferred`, `open`) and a substantive `response`.
-For a second pass, add `followUp` with the same `reviewerSession`, `commit`, `outcome`
-(`cleared`, `incomplete`, `blocked`), `elapsedMinutes`, and `summary`.
-`elapsedMinutes` at the top level measures the initial review only.
+For follow-up turns, add `followUps`, an array of at most two entries in order, each with the
+same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
+and `summary`. Every entry but the last must be `blocked`; the last must be `cleared`. A single
+`followUp` object, the shape from the two-turn contract, still validates as one turn. Each turn's
+`commit` must descend from the previous one. `elapsedMinutes` at the top level measures the
+initial review only; each follow-up's is checked against the follow-up ceiling on its own.
 
 `base` is the merge base; `reviewed` is the initial code commit; `covered` is the final commit
 covered by reviewer clearance or the author's minor fixes. All are full 40-character SHAs and
-must form an ancestor chain. The follow-up must cover `covered`. Without a follow-up, changed
+must form an ancestor chain. The final follow-up must cover `covered`. Without a follow-up, changed
 paths between `reviewed` and `covered` must belong to fixed minor findings (plus this worklog).
 This is path-level verification: the reviewer/author remain responsible for ensuring those edits
 are actually the stated fixes. Unrelated changes invalidate coverage and require an explicit scope
@@ -79,17 +89,19 @@ After `covered`, only this worklog may change, except for the verified documenta
 below. This avoids the hash loop from committing the review record itself. Other edits make the
 record stale.
 Reconcile the base before review. If trunk advances during the review, preserve the initial
-`base`/`reviewed` and make an explicit scope decision to use the one same-session follow-up for
-integration and affected paths. Set `followUp.base` to the new merge base and `followUp.scopeReason`
-to that decision. The original base must precede the new base, which must precede `covered`.
-This remains two passes total, even if the initial review was clean or minor-only; do not invent
-substantive initial findings. A base change without this evidence invalidates the record.
+`base`/`reviewed` and make an explicit scope decision to use a same-session follow-up for
+integration and affected paths. Set that turn's `base` to the new merge base and its `scopeReason`
+to that decision. The original base must precede the new base, which must precede that turn's
+commit; a later turn may move the base again only forward. Integration does not add a turn: the
+cap stays at three, even if the initial review was clean or minor-only, and a cleared follow-up
+still ends the review. Do not invent substantive initial findings. A base change without this
+evidence invalidates the record.
 
 ### Already reviewed documentation may be integrated without another round
 
 A cleared review stays cleared when an author integrates already reviewed documentation from
-trunk and the deterministic proof below passes. This is author-owned verification, not a third
-review, a budget reset, or a request for human permission. Preserve the original `base`, `reviewed`,
+trunk and the deterministic proof below passes. This is author-owned verification, not another
+review turn, a budget reset, or a request for human permission. Preserve the original `base`, `reviewed`,
 `covered`, findings and follow-up exactly. Append `documentationIntegrations` entries in merge order:
 
 ```json
@@ -129,8 +141,8 @@ limitations in visible prose.
 No model call is needed for this mechanical proof. CI must still pass before merge.
 
 Without this evidence the existing freshness rule still applies. Unresolved substantive findings,
-incomplete reviews and changed executable files remain blocked; two rounds never mean automatic
-merge regardless of findings.
+incomplete reviews and changed executable files remain blocked; exhausting the three turns never
+means automatic merge regardless of findings.
 
 Put a visible line in the PR body (not inside a comment or code fence):
 

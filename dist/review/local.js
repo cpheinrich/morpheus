@@ -5,6 +5,21 @@ const Sha = z.string().regex(/^[a-f0-9]{40}$/);
 const Text = z.string().trim().min(8);
 const Session = z.string().trim().min(3);
 const Path = z.string().regex(/^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[^\s\\]+$/);
+const FollowUp = z.object({
+    reviewerSession: Session,
+    commit: Sha,
+    base: Sha.optional(),
+    scopeReason: Text.optional(),
+    outcome: z.enum(["cleared", "incomplete", "blocked"]),
+    elapsedMinutes: z.number().nonnegative(),
+    summary: Text,
+}).strict();
+/**
+ * Reviewer turns after the initial review. Three turns in total is the cap that stops an
+ * author and a reviewer trading fixes and findings indefinitely: a third turn exists only
+ * to resolve what the second left blocked, and nothing after it is automatic.
+ */
+export const MAX_FOLLOW_UPS = 2;
 export const ReviewRecord = z.object({
     version: z.literal(1),
     base: Sha,
@@ -34,16 +49,19 @@ export const ReviewRecord = z.object({
         disposition: z.enum(["fixed", "disputed", "deferred", "open"]),
         response: Text,
     }).strict()),
-    followUp: z.object({
-        reviewerSession: Session,
-        commit: Sha,
-        base: Sha.optional(),
-        scopeReason: Text.optional(),
-        outcome: z.enum(["cleared", "incomplete", "blocked"]),
-        elapsedMinutes: z.number().nonnegative(),
-        summary: Text,
-    }).strict().optional(),
-}).strict();
+    /** The single-follow-up shape records written under the two-turn contract still carry. */
+    followUp: FollowUp.optional(),
+    /** Follow-up turns in order; the last one must clear `covered`. */
+    followUps: z.array(FollowUp).min(1).max(MAX_FOLLOW_UPS).optional(),
+}).strict().refine(record => !(record.followUp && record.followUps), { message: "record follow-up turns as either followUp or followUps, not both" });
+/** Follow-up turns in order, whichever field the record used. */
+export function followUpTurns(record) {
+    return record.followUps ?? (record.followUp ? [record.followUp] : []);
+}
+/** The trunk base the clearance finally covered: the latest recorded integration, else the original. */
+export function coveredBase(record) {
+    return followUpTurns(record).reduce((base, turn) => turn.base ?? base, record.base);
+}
 export function reviewRequired(config) {
     const parsed = z.object({ review: z.object({ required: z.boolean().optional() }).passthrough().optional() }).passthrough().parse(config);
     return parsed.review?.required ?? true;
@@ -72,17 +90,29 @@ export function validateReviewRecord(record) {
     if (record.findings.some(f => f.severity !== "incidental" && f.disposition === "open"))
         throw new Error("unresolved finding");
     const substantive = record.findings.some(f => f.severity === "substantive");
-    if (substantive && !record.followUp)
-        throw new Error("substantive findings require one follow-up from the original reviewer");
+    const turns = followUpTurns(record);
+    if (substantive && !turns.length)
+        throw new Error("substantive findings require a follow-up from the original reviewer");
     if (record.findings.some(f => f.severity === "substantive" && f.disposition !== "fixed" && f.disposition !== "disputed"))
         throw new Error("substantive findings cannot be deferred");
-    if (record.followUp && (record.followUp.reviewerSession !== record.reviewerSession || record.followUp.outcome !== "cleared" || record.followUp.commit !== record.covered)) {
-        throw new Error("follow-up must clear the covered commit using the original reviewer session");
-    }
     const budget = { small: 5, normal: 15, high: 30 }[record.risk];
     const multiplier = record.extensionReason ? 1.5 : 1;
-    if (record.elapsedMinutes > budget * multiplier || (record.followUp?.elapsedMinutes ?? 0) > budget / 2)
+    if (record.elapsedMinutes > budget * multiplier)
         throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
+    turns.forEach((turn, index) => {
+        if (turn.reviewerSession !== record.reviewerSession)
+            throw new Error("every follow-up must use the original reviewer session");
+        if (turn.elapsedMinutes > budget / 2)
+            throw new Error("follow-up exceeded its budget; record incomplete and escalate instead of claiming completion");
+        if (index === turns.length - 1) {
+            if (turn.outcome !== "cleared" || turn.commit !== record.covered)
+                throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
+        }
+        else if (turn.outcome !== "blocked") {
+            // A cleared turn ends the review; an incomplete one exhausted its budget. Neither earns a third turn.
+            throw new Error("a third turn is allowed only after the second turn returned blocked");
+        }
+    });
 }
 function changedPaths(root, older, newer) {
     return git(root, ["diff", "--name-only", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean);
@@ -111,9 +141,9 @@ function regularDocumentation(root, older, newer) {
     }
 }
 /** Verify Git's merge result, not an author's assertion that the integration was harmless. */
-function checkDocumentationIntegrations(root, record, worklog, head, coveredBase) {
+function checkDocumentationIntegrations(root, record, worklog, head, clearedBase) {
     let anchor = record.covered;
-    let base = coveredBase;
+    let base = clearedBase;
     for (const integration of record.documentationIntegrations ?? []) {
         git(root, ["merge-base", "--is-ancestor", base, integration.base]);
         git(root, ["merge-base", "--is-ancestor", integration.commit, head]);
@@ -140,7 +170,7 @@ function checkDocumentationIntegrations(root, record, worklog, head, coveredBase
             validateReviewRecord(source);
             // Squash merges retain the original review SHAs in their worklog. The completed
             // evidence must still describe this trunk parent, not an unrelated old review.
-            if ((source.followUp?.base ?? source.base) !== parent || source.documentationIntegrations) {
+            if (coveredBase(source) !== parent || source.documentationIntegrations) {
                 throw new Error("documentation source review must cover its trunk parent without nested integration evidence");
             }
         }
@@ -160,6 +190,35 @@ function checkDocumentationIntegrations(root, record, worklog, head, coveredBase
     }
     onlyWorklogChanges(root, anchor, head, worklog);
     return base;
+}
+/**
+ * Each follow-up turn must sit on the commit chain after the one before it, and a turn that
+ * moved the base must say why and keep the bases in trunk order as well.
+ */
+function checkFollowUpChain(root, record) {
+    const isAncestor = (older, newer) => {
+        try {
+            git(root, ["merge-base", "--is-ancestor", older, newer]);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    };
+    let previousCommit = record.reviewed;
+    let previousBase = record.base;
+    for (const turn of followUpTurns(record)) {
+        if (!isAncestor(previousCommit, turn.commit))
+            throw new Error("follow-up turns must be recorded in commit order, each covering a descendant of the last");
+        if (turn.base) {
+            if (!turn.scopeReason)
+                throw new Error("base integration requires an explicit follow-up scope reason");
+            if (!isAncestor(previousBase, turn.base) || !isAncestor(turn.base, turn.commit))
+                throw new Error("a follow-up base must move forward along trunk and precede that turn's commit");
+            previousBase = turn.base;
+        }
+        previousCommit = turn.commit;
+    }
 }
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts) {
@@ -183,17 +242,11 @@ export function checkLocalReview(opts) {
         for (const [older, newer] of [[record.base, record.reviewed], [record.reviewed, record.covered], [record.covered, opts.head]]) {
             git(opts.root, ["merge-base", "--is-ancestor", older, newer]);
         }
-        const coveredBase = record.followUp?.base ?? record.base;
-        if (coveredBase !== record.base) {
-            if (!record.followUp?.scopeReason)
-                throw new Error("base integration requires an explicit follow-up scope reason");
-            git(opts.root, ["merge-base", "--is-ancestor", record.base, coveredBase]);
-            git(opts.root, ["merge-base", "--is-ancestor", coveredBase, record.covered]);
-        }
-        const integratedBase = checkDocumentationIntegrations(opts.root, record, path, opts.head, coveredBase);
+        checkFollowUpChain(opts.root, record);
+        const integratedBase = checkDocumentationIntegrations(opts.root, record, path, opts.head, coveredBase(record));
         if (git(opts.root, ["merge-base", opts.base, opts.head]) !== integratedBase)
             throw new Error("review base is stale; reconcile the base and review coverage explicitly");
-        if (!record.followUp && record.reviewed !== record.covered) {
+        if (!followUpTurns(record).length && record.reviewed !== record.covered) {
             const allowed = new Set(record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths));
             const fixes = git(opts.root, ["diff", "--name-only", "--no-renames", record.reviewed, record.covered, "--"]).split("\n").filter(Boolean);
             if (fixes.some(p => p !== path && !allowed.has(p)))

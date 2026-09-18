@@ -329,9 +329,10 @@ If the runner cannot start an independent session, report that concrete limitati
 the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
 
 **Independent review is required before merge.**
-Respond once; substantive findings require one follow-up by the same reviewer. Minor-only findings
-allow author fixes without a second pass. Unresolved disagreements or incomplete review keep the PR
-open and auto-merge disabled. Record the review paragraph and structured evidence in the task
+Respond once; substantive findings require a follow-up by the same reviewer. Minor-only findings
+allow author fixes without a second pass. A review is capped at three turns, the initial review and
+two follow-ups, and the third happens only when the second returned blocked. Unresolved substantive
+disagreements after that, or an incomplete review, keep the PR open and auto-merge disabled. Record the review paragraph and structured evidence in the task
 worklog, link it with a visible `review-record:` PR-body line, then apply `agent-reviewed`.
 `review.required` defaults to true; project false opts out visibly. Only the named worklog may
 change after the covered commit, except verified integration of already reviewed documentation
@@ -476,7 +477,7 @@ only when the next step depends on the merge having landed.
 **Finish the author-managed independent review before enabling auto-merge.** Opening a PR,
 pushing commits, or changing labels never starts a reviewer session. Follow the
 [review contract](docs/runbooks/independent-review.md), return to the original reviewer for the
-one permitted follow-up when required, and publish complete evidence before merging.
+permitted follow-up turns when required, and publish complete evidence before merging.
 
 **Legacy GitHub review is opt-in.** Only repositories explicitly enabling the old
 `agent-review.yml` run a model when a PR opens or a collaborator requests `@claude` re-review.

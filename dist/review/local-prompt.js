@@ -29,16 +29,20 @@ Do not modify code, post to GitHub, or merge. Return your review to the author.
 
 The author records a response for each finding and fixes or explains it. Preserve your original
 severity. Minor-only findings allow one author response without another review, limited to those
-fixes. Substantive findings require exactly one follow-up in THIS SAME reviewer session, focused
-on resolution and fix regressions, at half the initial budget. Return cleared, blocked or
+fixes. Substantive findings require a follow-up in THIS SAME reviewer session, focused on
+resolution and fix regressions, at half the initial budget. Return cleared, blocked or
 incomplete. A reasoned retraction may clear a disputed finding; author disagreement alone cannot.
-If substantive concerns remain, leave the PR open, disable auto-merge, and flag the concrete
-unresolved issue. No automatic third review or replacement reviewer to obtain approval.
+The review is capped at three turns: this initial review and at most two follow-ups. A third
+turn happens only when the second returned blocked and the author has addressed the concrete
+unresolved concerns; a cleared turn ends the review and an incomplete one exhausted its budget.
+If substantive concerns remain after the last turn, leave the PR open, disable auto-merge, and
+flag the concrete unresolved issue for the human. No automatic fourth turn or replacement
+reviewer to obtain approval.
 Unrelated changes invalidate coverage; restarting requires an explicit scope decision.
 If trunk integration is required during the author response, an explicit scope decision may use
-the one same-session follow-up to inspect that integration and affected paths. Preserve the initial
-base/reviewed SHA, record followUp.base and scopeReason, and cover the final integrated commit.
-This does not permit a third round or relabel a clean/minor first review as substantive.
+a same-session follow-up to inspect that integration and affected paths. Preserve the initial
+base/reviewed SHA, record that turn's base and scopeReason, and cover the final integrated commit.
+This does not add a turn or relabel a clean/minor first review as substantive.
 After clearance, already reviewed documentation may be integrated using the runbook's deterministic
 documentationIntegrations proof, without another model review or human approval. The original
 clearance stays intact; code changes, conflicts, changed requirements and unresolved findings do not
@@ -46,7 +50,7 @@ qualify. The author records source review evidence and runs conventions before m
 
 The author must retain a short human-readable summary and a morpheus-review JSON block in the
 task worklog, even for a clean review. Include original findings, responses, commit coverage,
-your session ID and any follow-up. Set outcome complete only after this contract is satisfied.
+your session ID and every follow-up turn. Set outcome complete only after this contract is satisfied.
 PR body: a visible review-record: .agent/worklog/<task>.md line, plus a linked summary.
 Apply agent-reviewed only when complete. Remove it for stale, blocked or incomplete review.
 The record is an auditable attestation, not cryptographic proof of independent judgment.
