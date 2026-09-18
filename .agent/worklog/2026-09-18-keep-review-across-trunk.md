@@ -36,7 +36,7 @@ A high-risk independent review of 02098f9 found no substantive defects, three mi
 The reviewer verified the bounding argument independently in a scratch copy with eight adversarial
 merge shapes (swapped parents, an unreviewed commit as either parent, a nested merge, an octopus,
 a trunk-side rename) and ran seven guard-removal mutants against the suite; six were caught. The
-survivor was R1: the octopus refusal had no test of its own, so one was added. R2: the reviewer
+survivor was R01: the octopus refusal had no test of its own, so one was added. R2: the reviewer
 prompt omitted the worklog-only exception that every other document states; fixed. R3: a no-op
 second merge line in the exact-merge test; removed. R4, pre-existing: a local `check pr` whose
 `origin/main` is behind the merged trunk commit reports "trunk only" until `git fetch`; noted so it
@@ -56,7 +56,7 @@ is not chased as a code bug.
   "summary": "A high-risk independent review of 02098f9 found no substantive defects, three minor findings and one incidental note; the author fixed all three minors in 901db9e without a second reviewer pass, and the review completed in seven minutes of a thirty-minute ceiling.",
   "findings": [
     {
-      "id": "R1",
+      "id": "R01",
       "severity": "minor",
       "description": "The octopus-merge refusal had no test that fails when the guard is removed; the mutant survived because the generic path check still rejects it.",
       "paths": ["tests/local-review.test.ts"],
@@ -64,7 +64,7 @@ is not chased as a code bug.
       "response": "Added a test merging two trunk commits at once after coverage and asserting the only-two-parent message."
     },
     {
-      "id": "R2",
+      "id": "R02",
       "severity": "minor",
       "description": "The reviewer prompt said any other commit after coverage invalidates the review, omitting the worklog-only exception every other document states.",
       "paths": ["src/review/local-prompt.ts", "dist/review/local-prompt.d.ts", "dist/review/local-prompt.js", "dist/review/local-prompt.js.map"],
@@ -72,7 +72,7 @@ is not chased as a code bug.
       "response": "The prompt now says any commit beyond the task worklog itself invalidates coverage; dist regenerated."
     },
     {
-      "id": "R3",
+      "id": "R03",
       "severity": "minor",
       "description": "A second merge of an already merged trunk commit in the exact-merge test was a no-op that asserted nothing.",
       "paths": ["tests/local-review.test.ts"],
@@ -80,7 +80,7 @@ is not chased as a code bug.
       "response": "Removed the line; the later-trunk merge that follows is the real second-merge check."
     },
     {
-      "id": "R4",
+      "id": "R04",
       "severity": "incidental",
       "description": "A local check pr whose origin/main is behind the merged trunk commit reports the trunk-only refusal until the ref is fetched; pre-existing, CI is unaffected.",
       "paths": ["src/review/local.ts"],
