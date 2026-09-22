@@ -12,7 +12,7 @@ let reviewed: string;
 const path = ".agent/worklog/2026-09-10-task.md";
 function commit() {
   git(root, ["add", "."]);
-  git(root, ["commit", "-qm", "fixture"]);
+  git(root, ["commit", "-qm", "fixture", "--allow-empty"]);
   return git(root, ["rev-parse", "HEAD"]);
 }
 function record(): LocalReviewRecord {
@@ -112,20 +112,169 @@ describe("visible evidence and trunk integration", () => {
       expect(check(commit())[0]?.message).toContain("visible paragraph");
     }
   });
-  it("preserves the initial review and requires scoped follow-up after trunk integration", () => {
+  it("keeps a review valid across a trunk merge and still checks a moved base", () => {
     git(root, ["checkout", "-qb", "new-trunk", base]);
     writeFileSync(join(root, "trunk.ts"), "new trunk code"); const newBase = commit();
     git(root, ["checkout", "--detach", reviewed]);
     git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]); const covered = git(root, ["rev-parse", "HEAD"]);
     const r = { ...record(), covered };
     const verify = () => checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(r), base: newBase });
-    expect(verify()[0]?.message).toContain("base is stale");
+    expect(verify()).toEqual([]);
     const followUp = { reviewerSession: r.reviewerSession, commit: covered, base: newBase, outcome: "cleared" as const, elapsedMinutes: 2, summary: "Reviewed the integration and affected paths" };
     Object.assign(r, { followUp });
     expect(verify()[0]?.message).toContain("scope reason");
     Object.assign(followUp, { scopeReason: "Explicitly include required trunk integration in the one follow-up" });
     expect(verify()).toEqual([]);
-    followUp.base = reviewed; // Not the PR merge base, even though it is an ancestor.
-    expect(verify()[0]?.message).toContain("base is stale");
+    followUp.base = reviewed; // Not trunk history at all, even though it is an ancestor of covered.
+    expect(verify()[0]?.message).toContain("precede the PR's merge base");
+  });
+});
+
+describe("merging trunk after coverage", () => {
+  const substantive = { id: "F01", severity: "substantive" as const, description: "Missing authorization check", paths: ["code.ts"], disposition: "fixed" as const, response: "Implemented and verified the check" };
+  /** A cleared two-turn review, then trunk moves; returns the new trunk tip and a verifier against it. */
+  function cleared(trunkFile = "trunk.ts") {
+    const r = { ...record(), findings: [substantive], followUp: { reviewerSession: "reviewer-2", commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, summary: "The original reviewer cleared the fix." } };
+    const feature = save(r);
+    git(root, ["checkout", "--detach", base]);
+    writeFileSync(join(root, trunkFile), "export const trunk = true;"); const newBase = commit();
+    git(root, ["checkout", "--detach", feature]);
+    const verify = () => checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(r), base: newBase });
+    return { r, newBase, verify };
+  }
+  it("accepts an exact merge of trunk code with no record entry and no new turn", () => {
+    const { r, newBase, verify } = cleared();
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]);
+    const original = [r.base, r.reviewed, r.covered, r.followUp!.commit];
+    expect(verify()).toEqual([]);
+    expect([r.base, r.reviewed, r.covered, r.followUp!.commit]).toEqual(original);
+    writeFileSync(join(root, "later.ts"), "export const later = true;"); git(root, ["checkout", "-qb", "later-trunk", newBase]);
+    const laterBase = commit(); git(root, ["checkout", "-q", "-"]);
+    git(root, ["merge", "--no-ff", "-m", "integrate later trunk", laterBase]);
+    expect(checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(r), base: laterBase })).toEqual([]);
+  });
+  it("requires a named entry for a hand-resolved conflict and then accepts it", () => {
+    const { r, newBase, verify } = cleared("code.ts");
+    expect(() => git(root, ["merge", "--no-ff", "-m", "conflicting integration", newBase])).toThrow();
+    writeFileSync(join(root, "code.ts"), "export const answer = 2; export const trunk = true;");
+    git(root, ["add", "code.ts"]); git(root, ["commit", "-qm", "resolve"]);
+    const merge = git(root, ["rev-parse", "HEAD"]);
+    expect(verify()[0]?.message).toContain("hand-resolved trunk merge");
+    r.trunkIntegrations = [{ commit: merge, reason: "Resolved the answer constant against trunk's new export; both sides kept." }];
+    expect(verify()).toEqual([]);
+  });
+  it("treats an edit hidden inside a merge commit as hand-resolved", () => {
+    const { r, newBase, verify } = cleared();
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]);
+    writeFileSync(join(root, "code.ts"), "export const answer = 3;");
+    git(root, ["add", "code.ts"]); git(root, ["commit", "-q", "--amend", "--no-edit"]);
+    const merge = git(root, ["rev-parse", "HEAD"]);
+    expect(verify()[0]?.message).toContain("hand-resolved trunk merge");
+    r.trunkIntegrations = [{ commit: merge, reason: "Adjusted the constant while resolving the merge." }];
+    expect(verify()).toEqual([]);
+  });
+  it("refuses a merge that brings in anything but trunk", () => {
+    const { r, verify } = cleared();
+    git(root, ["checkout", "-qb", "side", base]);
+    writeFileSync(join(root, "side.ts"), "export const side = true;"); const side = commit();
+    git(root, ["checkout", "-q", "-"]);
+    git(root, ["merge", "--no-ff", "-m", "integrate a side branch", side]);
+    expect(verify()[0]?.message).toContain("trunk only");
+    r.trunkIntegrations = [{ commit: git(root, ["rev-parse", "HEAD"]), reason: "Naming it does not make a side branch into trunk." }];
+    expect(verify()[0]?.message).toContain("trunk only");
+  });
+  it("refuses an octopus merge even when every parent is trunk", () => {
+    const { newBase, verify } = cleared();
+    git(root, ["checkout", "-qb", "other-trunk", base]);
+    writeFileSync(join(root, "other.ts"), "export const other = true;"); const otherBase = commit();
+    git(root, ["checkout", "-q", "-"]);
+    git(root, ["merge", "--no-ff", "-m", "octopus", newBase, otherBase]);
+    expect(verify()[0]?.message).toContain("only two-parent");
+  });
+  it("refuses an entry that names a commit which is not a merge after review", () => {
+    const { r, verify } = cleared();
+    r.trunkIntegrations = [{ commit: reviewed, reason: "The reviewed commit itself is not an integration." }];
+    expect(verify()[0]?.message).toContain("not a trunk merge");
+  });
+  it("still invalidates a plain code commit after the merge", () => {
+    const { newBase, verify } = cleared();
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]);
+    writeFileSync(join(root, "code.ts"), "unreviewed code"); commit();
+    expect(verify()[0]?.message).toContain("invalidate");
+  });
+  it("accepts a merge between reviewed and covered when only minor fixes surround it", () => {
+    git(root, ["checkout", "--detach", base]);
+    writeFileSync(join(root, "trunk.ts"), "export const trunk = true;"); const newBase = commit();
+    git(root, ["checkout", "--detach", reviewed]);
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]);
+    writeFileSync(join(root, "code.ts"), "minor fix"); const covered = commit();
+    const r = { ...record(), covered, findings: [{ id: "F01", severity: "minor" as const, description: "Missing helpful error context", paths: ["code.ts"], disposition: "fixed" as const, response: "Added the missing context" }] };
+    const verify = () => checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(r), base: newBase });
+    expect(verify()).toEqual([]);
+    writeFileSync(join(root, "other.ts"), "unrelated"); r.covered = commit();
+    expect(verify()[0]?.message).toContain("exceed");
+  });
+  it("still parses a record carrying the retired documentationIntegrations field", () => {
+    const { r, newBase, verify } = cleared();
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]);
+    r.documentationIntegrations = [{ base: newBase, commit: git(root, ["rev-parse", "HEAD"]), reason: "Written under the documentation-only rule of 2026-09-16.", sources: [{ commit: newBase, reviewRecord: ".agent/worklog/2026-09-10-docs.md" }] }];
+    expect(verify()).toEqual([]);
+  });
+});
+
+describe("three-turn cap", () => {
+  const substantive = { id: "F01", severity: "substantive" as const, description: "Missing authorization guard", paths: ["code.ts"], disposition: "fixed" as const, response: "Added the authorization guard" };
+  function turn(commit: string, outcome: "cleared" | "incomplete" | "blocked", elapsedMinutes = 2) {
+    return { reviewerSession: "reviewer-2", commit, outcome, elapsedMinutes, summary: `Follow-up returned ${outcome} after inspecting the fix.` };
+  }
+  it("treats followUps of one as the legacy followUp", () => {
+    const r = { ...record(), findings: [substantive], followUps: [turn(reviewed, "cleared")] };
+    expect(check(save(r))).toEqual([]);
+    expect(check(save({ ...r, followUp: turn(reviewed, "cleared") }))[0]?.message).toContain("not both");
+  });
+  it("allows a third turn only after a blocked second turn", () => {
+    writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
+    writeFileSync(join(root, "code.ts"), "second fix"); const covered = commit();
+    const r = { ...record(), covered, findings: [substantive], followUps: [turn(first, "blocked"), turn(covered, "cleared")] };
+    expect(check(save(r))).toEqual([]);
+    expect(check(save({ ...r, followUps: [turn(first, "cleared"), turn(covered, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save({ ...r, followUps: [turn(first, "incomplete"), turn(covered, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    expect(check(save({ ...r, followUps: [turn(first, "blocked"), turn(covered, "blocked")] }))[0]?.message).toContain("final follow-up must clear");
+  });
+  it("refuses a fourth turn outright", () => {
+    const r = { ...record(), findings: [substantive], followUps: [turn(reviewed, "blocked"), turn(reviewed, "blocked"), turn(reviewed, "cleared")] };
+    expect(check(save(r as unknown as LocalReviewRecord))).toHaveLength(1);
+  });
+  it("holds every follow-up to the follow-up ceiling at its boundary", () => {
+    writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
+    writeFileSync(join(root, "code.ts"), "second fix"); const covered = commit();
+    const r = { ...record(), covered, findings: [substantive], followUps: [turn(first, "blocked", 7.5), turn(covered, "cleared", 7.5)] };
+    expect(check(save(r))).toEqual([]);
+    expect(check(save({ ...r, followUps: [turn(first, "blocked", 7.5), turn(covered, "cleared", 7.6)] }))[0]?.message).toContain("follow-up exceeded its budget");
+    expect(check(save({ ...r, followUps: [turn(first, "blocked", 7.6), turn(covered, "cleared", 7.5)] }))[0]?.message).toContain("follow-up exceeded its budget");
+  });
+  it("keeps the turns in commit order", () => {
+    writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
+    writeFileSync(join(root, "code.ts"), "second fix"); const second = commit();
+    const r = { ...record(), covered: second, findings: [substantive], followUps: [turn(second, "blocked"), turn(second, "cleared")] };
+    expect(check(save(r))).toEqual([]);
+    git(root, ["checkout", "-qb", "side", first]);
+    writeFileSync(join(root, "code.ts"), "side fix"); const side = commit();
+    git(root, ["checkout", "-q", "-"]);
+    expect(check(save({ ...r, followUps: [turn(side, "blocked"), turn(second, "cleared")] }))[0]?.message).toContain("commit order");
+  });
+  it("carries a base moved by the second turn through the third", () => {
+    git(root, ["checkout", "-qb", "new-trunk", base]);
+    writeFileSync(join(root, "trunk.ts"), "new trunk code"); const newBase = commit();
+    git(root, ["checkout", "--detach", reviewed]);
+    git(root, ["merge", "--no-ff", "-m", "integrate trunk", newBase]); const integrated = git(root, ["rev-parse", "HEAD"]);
+    writeFileSync(join(root, "code.ts"), "second fix"); const covered = commit();
+    const second = { ...turn(integrated, "blocked"), base: newBase, scopeReason: "Explicitly include required trunk integration in this follow-up" };
+    const r = { ...record(), covered, findings: [substantive], followUps: [second, turn(covered, "cleared")] };
+    const verify = (rec: LocalReviewRecord) => checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(rec), base: newBase });
+    expect(verify(r)).toEqual([]);
+    expect(verify({ ...r, followUps: [{ ...second, scopeReason: undefined }, turn(covered, "cleared")] })[0]?.message).toContain("scope reason");
+    // A later turn may only move the base forward, never back to the original.
+    expect(verify({ ...r, followUps: [second, { ...turn(covered, "cleared"), base, scopeReason: "Attempt to rewind the base to the original trunk" }] })[0]?.message).toContain("move forward");
   });
 });

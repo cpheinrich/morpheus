@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { load } from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffold } from "../src/init/index.js";
-import { analyticsSchema, brandReviewSkill } from "../src/init/templates.js";
+import {
+  IOS_NIGHTLY_SECRETS,
+  analyticsSchema,
+  brandReviewSkill,
+  motionDesignExplorationSkill,
+} from "../src/init/templates.js";
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../src/analytics/contract.js";
 import ts from "typescript";
 import { rules } from "../src/cli/hq.js";
@@ -40,6 +45,44 @@ describe("morpheus init", () => {
       const { issues } = await parseArtifact(join(dir, "hq/product"), kind);
       expect(issues).toEqual([]);
     }
+  });
+
+  describe("the iOS nightly caller", () => {
+    const workflow = ".github/workflows/ios-nightly-build.yml";
+
+    it("is not written for a repository with no Xcode project", async () => {
+      const { written, notes } = await scaffold(dir, SEED);
+      expect(written).not.toContain(workflow);
+      expect(notes.join("\n")).not.toContain("ios-nightly-build");
+    });
+
+    it("is written from the detected project, naming the secrets to add", async () => {
+      await mkdir(join(dir, "apps/ios/Acme.xcodeproj"), { recursive: true });
+      const { written, notes } = await scaffold(dir, SEED);
+      expect(written).toContain(workflow);
+      const wf = load(await read(workflow)) as { jobs: Record<string, { with?: Record<string, unknown> }> };
+      expect(wf.jobs.release?.with?.project).toBe("Acme.xcodeproj");
+      expect(wf.jobs.release?.with?.scheme).toBe("Acme");
+      const note = notes.find((n) => n.includes(workflow)) ?? "";
+      for (const secret of IOS_NIGHTLY_SECRETS) expect(note).toContain(secret);
+    });
+
+    it("picks the same project on every machine when there are two", async () => {
+      await mkdir(join(dir, "apps/ios/Zeta.xcodeproj"), { recursive: true });
+      await mkdir(join(dir, "apps/ios/Alpha.xcodeproj"), { recursive: true });
+      await scaffold(dir, SEED);
+      const wf = load(await read(workflow)) as { jobs: Record<string, { with?: Record<string, unknown> }> };
+      expect(wf.jobs.release?.with?.project).toBe("Alpha.xcodeproj");
+    });
+
+    it("never replaces an authored caller", async () => {
+      await mkdir(join(dir, "apps/ios/Acme.xcodeproj"), { recursive: true });
+      await mkdir(join(dir, ".github/workflows"), { recursive: true });
+      await writeFile(join(dir, workflow), "name: authored\n");
+      const { skipped } = await scaffold(dir, SEED);
+      expect(skipped).toContain(workflow);
+      expect(await read(workflow)).toBe("name: authored\n");
+    });
   });
 
   it("scaffolds default-on local review and a conventions-only metadata workflow", async () => {
@@ -675,6 +718,23 @@ describe("morpheus init", () => {
     expect(await read(".claude/skills/brand-review/SKILL.md")).toBe(brandReviewSkill());
   });
 
+  it("scaffolds the repository's motion-design skill without content drift", async () => {
+    await scaffold(dir, SEED);
+    const repositorySkill = await readFile(
+      join(
+        import.meta.dirname,
+        "..",
+        ".agents/skills/motion-design-exploration/SKILL.md",
+      ),
+      "utf8",
+    );
+
+    expect(motionDesignExplorationSkill()).toBe(repositorySkill);
+    expect(await read(".agents/skills/motion-design-exploration/SKILL.md")).toBe(
+      repositorySkill,
+    );
+  });
+
   it("gives every directory a tracked file, since git drops empty ones", async () => {
     await scaffold(dir, SEED);
 
@@ -917,6 +977,9 @@ describe("morpheus init", () => {
       expect(hq).not.toContain("brand");
       expect(hq).not.toContain("finance");
       expect(hq).toContain("product");
+      expect(await read(".agents/skills/motion-design-exploration/SKILL.md")).toBe(
+        motionDesignExplorationSkill(),
+      );
     });
 
     it("gives a company the full set", async () => {

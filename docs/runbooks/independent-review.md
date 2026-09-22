@@ -2,7 +2,10 @@
 
 **The authoring agent owns the entire review loop.** After committing implementation/tests,
 run `morpheus review prepare --base origin/main`; this prints a review packet and does not
-launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
+launch a reviewer. The packet carries the contract, the repository path, the test commands derived
+from the project's manifests, the review range, and the ticket. An unclaimed change or one without
+declared acceptance is described as such and reviewed against the PR title and body; do not create
+an item to fill the line. The authoring agent must spawn one fresh reviewer subagent/session with
 repository access and that packet, without inheriting the author's conversation history.
 The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
 the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
@@ -12,8 +15,8 @@ the PR open with auto-merge disabled; never substitute self-review or assume a m
 
 The author is the agent/session implementing the PR, including OpenClaw, Codex, or Claude.
 Use its runner's fresh-session/subagent facility with history inheritance disabled. Supply the
-prepared packet and repository location, and retain the reviewer session ID for the one allowed
-follow-up. A reviewer is a bounded task started by the author, not a standing PR-monitoring agent.
+prepared packet and repository location, and retain the reviewer session ID for the allowed
+follow-up turns. A reviewer is a bounded task started by the author, not a standing PR-monitoring agent.
 
 The canonical contract ships in `src/review/local-prompt.ts`; the old `review prompt` command and
 `.github/agent-review-prompt.md` remain for explicitly enabled legacy GitHub reviewers.
@@ -23,7 +26,8 @@ The canonical contract ships in `src/review/local-prompt.ts`; the old `review pr
 `review.required` in `morpheus.json` defaults to true, including existing manifests. False is a
 visible project opt-out. Records/board-only changes and exact dependency-only Dependabot PRs keep
 their existing exemptions. This gate covers all other authors, not just particular model names.
-The legacy `review-waived:` line does not waive independent review.
+The legacy `review-waived:` line does not waive independent review; `check pr` reports it as
+waiving legacy delivery only and says so in the same line.
 
 Review scope follows consequences, not changed lines. Bugs caused, exposed or worsened by the PR,
 and problems preventing acceptance criteria, are in scope. Other pre-existing bugs are incidental
@@ -43,11 +47,18 @@ No reviewer subagents, full-suite reruns by default, or automatic repeated sessi
 budget exhaustion or missing evidence, record incomplete and keep the PR open.
 
 The author responds to every finding. For minor-only findings, one fix/response round is enough.
-For any substantive finding, resume the original reviewer exactly once to assess responses, fixes
-and their regressions. Preserve original severity. Reviewer retractions may clear a disputed
-finding, but author disagreement alone cannot. Unresolved substantive concerns mean blocked: remove
-`agent-reviewed`, disable auto-merge, and flag the remaining disagreement for the human. No third
-automatic round or replacement reviewer to obtain approval.
+For any substantive finding, resume the original reviewer to assess responses, fixes and their
+regressions. Preserve original severity. Reviewer retractions may clear a disputed finding, but
+author disagreement alone cannot.
+
+**A review is capped at three turns**: the initial review and at most two same-reviewer
+follow-ups, each at the follow-up ceiling. The third turn exists only to resolve what the second
+left `blocked`, after the author has addressed those concrete concerns; a `cleared` follow-up ends
+the review, and an `incomplete` one exhausted its budget and escalates. The cap is what stops an
+author and a reviewer trading fixes and findings indefinitely, at a session's cost per turn.
+Unresolved substantive concerns after the last turn mean blocked: remove `agent-reviewed`, disable
+auto-merge, and flag the remaining disagreement for the human. No automatic fourth turn or
+replacement reviewer to obtain approval.
 
 ## Record and publish
 
@@ -59,26 +70,60 @@ The JSON retains finding details so the short paragraph does not erase the audit
 
 Each finding has `id`, `severity` (`minor`, `substantive`, `incidental`), `description`, repository-relative
 `paths`, `disposition` (`fixed`, `disputed`, `deferred`, `open`) and a substantive `response`.
-For a second pass, add `followUp` with the same `reviewerSession`, `commit`, `outcome`
-(`cleared`, `incomplete`, `blocked`), `elapsedMinutes`, and `summary`.
-`elapsedMinutes` at the top level measures the initial review only.
+For follow-up turns, add `followUps`, an array of at most two entries in order, each with the
+same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
+and `summary`. Every entry but the last must be `blocked`; the last must be `cleared`. A single
+`followUp` object, the shape from the two-turn contract, still validates as one turn. Each turn's
+`commit` must descend from the previous one. `elapsedMinutes` at the top level measures the
+initial review only; each follow-up's is checked against the follow-up ceiling on its own.
 
 `base` is the merge base; `reviewed` is the initial code commit; `covered` is the final commit
 covered by reviewer clearance or the author's minor fixes. All are full 40-character SHAs and
-must form an ancestor chain. The follow-up must cover `covered`. Without a follow-up, changed
+must form an ancestor chain. The final follow-up must cover `covered`. Without a follow-up, changed
 paths between `reviewed` and `covered` must belong to fixed minor findings (plus this worklog).
 This is path-level verification: the reviewer/author remain responsible for ensuring those edits
 are actually the stated fixes. Unrelated changes invalidate coverage and require an explicit scope
 and budget decision, not an automatic restart.
 
-After `covered`, only this worklog may change, avoiding the hash loop from committing the review
-record itself. A code, generated-output, documentation or other file edit makes the record stale.
+After `covered`, only this worklog may change, except for trunk merges as described below. This
+avoids the hash loop from committing the review record itself. Other edits make the record stale.
 Reconcile the base before review. If trunk advances during the review, preserve the initial
-`base`/`reviewed` and make an explicit scope decision to use the one same-session follow-up for
-integration and affected paths. Set `followUp.base` to the new merge base and `followUp.scopeReason`
-to that decision. The original base must precede the new base, which must precede `covered`.
-This remains two passes total, even if the initial review was clean or minor-only; do not invent
-substantive initial findings. A base change without this evidence invalidates the record.
+`base`/`reviewed`; a follow-up that inspected the integration records that turn's `base` as the
+new merge base and its `scopeReason`. The original base must precede the new base, which must
+precede that turn's commit; a later turn may move the base again only forward. No turn is needed
+merely to merge trunk (below); spend one only when a reviewer should actually look at the
+combination. Do not invent substantive initial findings.
+
+### Merging trunk never invalidates a cleared review
+
+As on a human team, integrating `main` after review does not send the change back for another
+look, and it spends no turn. Chris's call (2026-09-18): the review gate is a large step up from no
+review at all, CI still has to pass on the integrated result, and a gate that goes stale every
+time trunk moves punishes exactly the PR that is waiting patiently for CI. If it leaks, tighten it
+then. `check pr` walks the first-parent commits after `covered` (and between `reviewed` and
+`covered` when no follow-up cleared that range) and accepts each of these:
+
+- **A merge Git reproduces exactly.** The commit has two parents, the second is on trunk, and
+  `git merge-tree --write-tree` of the parents yields the commit's tree. Nothing was edited by
+  hand, so nothing needs recording.
+- **A hand-resolved merge that the record names.** A conflict resolution, or any edit folded into
+  a merge commit, is authoring nobody reviewed. It is still accepted, but only when
+  `trunkIntegrations` carries `{ "commit": "<full merge SHA>", "reason": "..." }` for it, so the
+  unreviewed resolution is visible in the audit trail rather than hidden inside a merge.
+- **A commit touching only this worklog.**
+
+Everything else invalidates coverage: a plain commit that changes code, a merge whose second
+parent is not trunk history, an octopus merge, or a `trunkIntegrations` entry naming a commit that
+is not such a merge. The recorded base must be trunk history behind the PR's merge base; trunk
+moving on past it is expected, not stale. **Merge, do not rebase, after review**: a rebase rewrites
+the reviewed commits, and the record's SHAs then name commits that are no longer on the branch.
+
+Records written under the 2026-09-16 documentation-only rule may still carry
+`documentationIntegrations`; the field is parsed and no longer enforced, because the merge proof
+above covers those merges too.
+
+Unresolved substantive findings, incomplete reviews and code commits after coverage remain
+blocked; exhausting the three turns never means automatic merge regardless of findings.
 
 Put a visible line in the PR body (not inside a comment or code fence):
 

@@ -833,6 +833,14 @@ the upstream major visible. Morpheus-owned reusable workflows remain on the esta
 contract so consuming repositories receive fixes without coordinated version bumps; external tags
 do not receive that trust.
 
+**Motion-design exploration is a repository skill before it is a plugin** — 2026-08-31. Chris's
+call. The repeatable value is the procedure itself: inspect the real shell and brand, research
+current references, compare six genuinely different motion systems under one visual theme, and
+stop before production implementation. Morpheus owns the canonical Codex skill under
+`.agents/skills/motion-design-exploration`, `morpheus init` copies it into every project kind, and
+Evo carries the same file directly. Plugin packaging is deliberately deferred until distribution
+beyond Morpheus repositories is worth another lifecycle and manifest.
+
 **Front-end visual evidence is a declared path contract, default-on per repository** — 2026-09-01.
 `review.visualEvidence` in `morpheus.json` owns the include/exclude globs. A matching change blocks
 without a recording or screenshot at either GitHub's attachment service or an exact public HTTPS
@@ -898,3 +906,38 @@ This supersedes the earlier one-worktree-per-parallel-session phrasing. Context 
 source containing the observed trunk, and startup does not certify reading. Considered simple-git
 3.36.0 (published metadata modified 2026-04-12, five direct dependencies); native Git plus Node's
 filesystem/crypto primitives fit this repository-specific lifecycle without another Git wrapper.
+
+
+**Cleared review survives verified integration of already reviewed documentation** — 2026-09-16.
+Chris approved this exception after Lakina's TestFlight migration exhausted both passes, cleared
+every finding, and then stalled on a separately reviewed README change required by strict branch
+protection. Keep the two-round cap and escalation for substantive unresolved concerns. Preserve
+original review hashes; record source completed reviews and explicit merges. Native Git must prove
+the merge was conflict-free and exact, and incoming paths must be regular documentation/records.
+No new review or permission is required for that proof. Changed requirements still need review.
+Reuse existing native Git, Zod and JSON for this Morpheus-specific evidence protocol; no generic
+merge or orchestration library is introduced.
+
+**Independent review is capped at three turns, not two** — 2026-09-18. Chris's call. The initial
+review plus at most two same-reviewer follow-ups, each at the follow-up ceiling; the third turn
+exists only when the second returned `blocked` and the author addressed those concerns. A cleared
+turn ends the review and an incomplete one escalates, so the cap cannot be spent on ceremony. The
+purpose of the cap is unchanged: an author and a reviewer trading fixes and findings indefinitely
+is unproductive and burns credits, so only substantive concerns still unresolved after the last
+turn leave a PR open for human judgment. Records carry the turns as a `followUps` array; the
+single `followUp` shape remains valid as one turn so older records and documentation-integration
+sources are not invalidated. This does not decide the post-clearance trunk-advance question
+(inbox item of 2026-09-16, issues #245 and #247), which stays open.
+
+**Merging trunk never invalidates a cleared review** — 2026-09-18. Chris's call, resolving the
+2026-09-16 inbox question and #245 with an option none of A, B or C offered: the human-team
+convention, where integrating `main` does not reopen a review. The reasons: the gate is already a
+large step up from no review at all; CI must still pass on the integrated result; and a review that
+goes stale whenever trunk moves punishes exactly the PR that is waiting for a long CI run, or an
+agent that is not actively driving the merge, by burning turns on ceremony. If it leaks, tighten
+it then. The one refinement: a merge Git reproduces exactly needs nothing, but a hand-resolved
+merge is unreviewed authoring and must be named in the record with its reason, so the leak is
+visible rather than hidden inside a merge commit. Rebasing after review is unsupported because it
+rewrites the reviewed commits. This supersedes the 2026-09-16 documentation-only exception, whose
+record field is still parsed but no longer enforced. Late CI corrections after coverage (#247)
+remain a separate, open question: a plain code commit after `covered` still invalidates.

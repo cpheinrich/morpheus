@@ -278,12 +278,19 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
   // waiver the conventions reader never sees is a waiver swallowed. Validity
   // is checked here too, so a non-reason surfaces before the delivery job
   // refuses it. Read from visible prose — a documented example must not waive.
+  //
+  // It waives the *legacy delivery* check only. Read as "agent review waived",
+  // the line was taken for the mechanism CI recognises, and an agent told its
+  // human so while the independent-review rule below went on failing (#248).
+  // The message therefore names what it does not cover.
   const reviewReason = waiverReason(visibleProse(body), "review-waived");
   if (reviewReason !== null && isRealReason(reviewReason)) {
     findings.push({
       level: "waived",
       rule: "review-waived",
-      message: `agent review waived — "${reviewReason}"`,
+      message:
+        `legacy agent-review delivery waived — "${reviewReason}". ` +
+        `This does not waive the independent review: agent-reviewed and a review-record: line are still required.`,
     });
   } else if (reviewReason !== null) {
     findings.push({
