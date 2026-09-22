@@ -16,8 +16,9 @@ declare const FollowUp: z.ZodObject<{
 export type ReviewFollowUp = z.infer<typeof FollowUp>;
 /**
  * Reviewer turns after the initial review. Three turns in total is the cap that stops an
- * author and a reviewer trading fixes and findings indefinitely: a third turn exists only
- * to resolve what the second left blocked, and nothing after it is automatic.
+ * author and a reviewer trading fixes and findings indefinitely: a turn is spent to resolve
+ * what the previous one left blocked, or on a late correction after a clearance that names
+ * its scope decision, and nothing after the last one is automatic.
  */
 export declare const MAX_FOLLOW_UPS = 2;
 export declare const ReviewRecord: z.ZodObject<{

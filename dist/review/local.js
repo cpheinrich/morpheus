@@ -16,8 +16,9 @@ const FollowUp = z.object({
 }).strict();
 /**
  * Reviewer turns after the initial review. Three turns in total is the cap that stops an
- * author and a reviewer trading fixes and findings indefinitely: a third turn exists only
- * to resolve what the second left blocked, and nothing after it is automatic.
+ * author and a reviewer trading fixes and findings indefinitely: a turn is spent to resolve
+ * what the previous one left blocked, or on a late correction after a clearance that names
+ * its scope decision, and nothing after the last one is automatic.
  */
 export const MAX_FOLLOW_UPS = 2;
 export const ReviewRecord = z.object({
@@ -117,18 +118,25 @@ export function validateReviewRecord(record) {
     const multiplier = record.extensionReason ? 1.5 : 1;
     if (record.elapsedMinutes > budget * multiplier)
         throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
+    // A turn after a clearance is a late correction, such as a fix full CI asked for after the
+    // reviewer cleared the code. It spends one of the remaining turns and must name the scope
+    // decision in its scopeReason, so the record shows why a cleared review was reopened. A turn
+    // after blocked, or after substantive initial findings, is the ordinary fix follow-up and needs
+    // none. An incomplete turn exhausted its budget and escalates; nothing follows it.
+    if (!substantive && turns[0] && !turns[0].scopeReason)
+        throw new Error("a follow-up after a clean initial review is a late correction and needs an explicit scope reason");
     turns.forEach((turn, index) => {
         if (turn.reviewerSession !== record.reviewerSession)
             throw new Error("every follow-up must use the original reviewer session");
         if (turn.elapsedMinutes > budget / 2)
             throw new Error("follow-up exceeded its budget; record incomplete and escalate instead of claiming completion");
-        if (index === turns.length - 1) {
+        const next = turns[index + 1];
+        if (!next) {
             if (turn.outcome !== "cleared" || turn.commit !== record.covered)
                 throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
         }
-        else if (turn.outcome !== "blocked") {
-            // A cleared turn ends the review; an incomplete one exhausted its budget. Neither earns a third turn.
-            throw new Error("a third turn is allowed only after the second turn returned blocked");
+        else if (turn.outcome === "incomplete" || (turn.outcome === "cleared" && !next.scopeReason)) {
+            throw new Error("a third turn is allowed only after the second turn returned blocked, or after a cleared turn as a late correction with an explicit scope reason");
         }
     });
 }
@@ -174,6 +182,13 @@ function verifyUncoveredCommits(root, record, from, to, trunk, allowed, refusal)
     }
     return accepted;
 }
+/** First-parent two-parent merges in a range whose second parent is trunk history. */
+function trunkMerges(root, from, to, trunk) {
+    return git(root, ["rev-list", "--first-parent", "--merges", `${from}..${to}`]).split("\n").filter(Boolean).filter(commit => {
+        const parents = git(root, ["show", "-s", "--format=%P", commit]).split(" ");
+        return parents.length === 2 && isAncestor(root, parents[1], trunk);
+    });
+}
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts) {
     try {
@@ -209,6 +224,11 @@ export function checkLocalReview(opts) {
         }
         for (const commit of verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)"))
             merges.add(commit);
+        // A hand-resolved merge named before a late correction moved `covered` past it now sits in a
+        // range the correction turn cleared. The entry stays true and accepted; it is not stray.
+        if (followUpTurns(record).length)
+            for (const commit of trunkMerges(opts.root, record.reviewed, record.covered, opts.base))
+                merges.add(commit);
         const stray = (record.trunkIntegrations ?? []).find(entry => !merges.has(entry.commit));
         if (stray)
             throw new Error("trunkIntegrations names a commit that is not a trunk merge on this branch after review");

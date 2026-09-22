@@ -948,3 +948,19 @@ release host, so this fix does not change how Xcode discovers identities.
 Considered filelock 4.0.1 (published 2026-09-19, no required runtime dependencies). This small
 macOS-only exec boundary uses Python's existing fcntl/os primitives instead of adding a package
 installation to the credentialed release path. It adds no package dependency.
+
+**Late corrections after clearance spend a review turn** — 2026-09-22. Chris's call, closing
+#247 and the late-CI half of the 2026-09-16 inbox question. When full CI shows a fix is needed
+after the reviewer already cleared the code, the author commits the fix and spends one of the
+remaining follow-up turns on the same reviewer, naming the scope decision in that turn's
+`scopeReason`; the author makes that decision within the task's budget, and the record shows it.
+This is the explicit scope decision the runbook already required, given a shape a validator can
+check. The three-turn cap, the follow-up ceiling, the same-reviewer rule and the final
+cleared-on-covered rule are unchanged: a clean review has two such slots, one that used a fix
+follow-up has one, and a correction needed after the last turn leaves the PR open for the human,
+as today. A turn after a `blocked` turn still needs no reason; an `incomplete` turn is still never
+followed. The first follow-up after an initial review with no substantive findings is the same
+shape. Every Morpheus record with that shape already carries a reason (those turns were trunk
+integrations); six merged Evo and Lakina records do not, but merged records are never
+re-validated and no open `agent-reviewed` PR has the shape, so nothing in flight is refused.
+Merging trunk still spends no turn (2026-09-18).

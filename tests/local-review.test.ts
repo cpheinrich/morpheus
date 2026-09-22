@@ -278,3 +278,79 @@ describe("three-turn cap", () => {
     expect(verify({ ...r, followUps: [second, { ...turn(covered, "cleared"), base, scopeReason: "Attempt to rewind the base to the original trunk" }] })[0]?.message).toContain("move forward");
   });
 });
+
+describe("late corrections after clearance", () => {
+  const substantive = { id: "F01", severity: "substantive" as const, description: "Missing authorization guard", paths: ["code.ts"], disposition: "fixed" as const, response: "Added the authorization guard" };
+  const minor = { id: "F01", severity: "minor" as const, description: "Missing helpful error context", paths: ["code.ts"], disposition: "fixed" as const, response: "Added the missing context" };
+  const scopeReason = "Late CI correction: two legacy UI tests assumed the old layout";
+  function turn(commit: string, outcome: "cleared" | "incomplete" | "blocked", elapsedMinutes = 2) {
+    return { reviewerSession: "reviewer-2", commit, outcome, elapsedMinutes, summary: `Follow-up returned ${outcome} after inspecting the fix.` };
+  }
+  it("lets the first follow-up after a clean initial review clear a late correction, only with a scope reason", () => {
+    save(record());
+    writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
+    expect(check(corrected)[0]?.message).toContain("invalidate");
+    const r = { ...record(), covered: corrected, followUps: [{ ...turn(corrected, "cleared"), scopeReason }] };
+    expect(check(save(r))).toEqual([]);
+    expect(check(save({ ...r, followUps: [turn(corrected, "cleared")] }))[0]?.message).toContain("needs an explicit scope reason");
+    expect(check(save({ ...r, followUps: [{ ...turn(corrected, "cleared", 7.6), scopeReason }] }))[0]?.message).toContain("follow-up exceeded its budget");
+    expect(check(save({ ...r, followUps: [{ ...turn(corrected, "blocked"), scopeReason }] }))[0]?.message).toContain("final follow-up must clear");
+  });
+  it("serves a minor-only initial review the same way", () => {
+    writeFileSync(join(root, "code.ts"), "minor fix"); const minorFix = commit();
+    expect(check(save({ ...record(), covered: minorFix, findings: [minor] }))).toEqual([]);
+    writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
+    const r = { ...record(), covered: corrected, findings: [minor], followUps: [{ ...turn(corrected, "cleared"), scopeReason }] };
+    expect(check(save(r))).toEqual([]);
+    expect(check(save({ ...r, followUps: [turn(corrected, "cleared")] }))[0]?.message).toContain("needs an explicit scope reason");
+  });
+  it("spends the last turn on a correction after a cleared fix follow-up", () => {
+    writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
+    writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
+    const r = { ...record(), covered: corrected, findings: [substantive], followUps: [turn(first, "cleared"), { ...turn(corrected, "cleared"), scopeReason }] };
+    expect(check(save(r))).toEqual([]);
+    expect(check(save({ ...r, followUps: [turn(first, "cleared"), turn(corrected, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    // The scope reason belongs on the turn that spends the slot, not the one that cleared before it.
+    expect(check(save({ ...r, followUps: [{ ...turn(first, "cleared"), scopeReason }, turn(corrected, "cleared")] }))[0]?.message).toContain("only after the second turn returned blocked");
+    // Without the correction turn, the correction commit is exactly the uncovered code the rule refuses.
+    expect(check(save({ ...r, covered: first, followUps: [turn(first, "cleared")] }))[0]?.message).toContain("invalidate");
+  });
+  it("never follows an incomplete turn, even with a scope reason", () => {
+    writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
+    writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
+    const r = { ...record(), covered: corrected, findings: [substantive], followUps: [turn(first, "incomplete"), { ...turn(corrected, "cleared"), scopeReason }] };
+    expect(check(save(r))[0]?.message).toContain("only after the second turn returned blocked");
+  });
+  it("refuses a correction once both follow-up turns are spent", () => {
+    writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
+    writeFileSync(join(root, "code.ts"), "second fix"); const second = commit();
+    writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
+    const r = { ...record(), covered: corrected, findings: [substantive], followUps: [turn(first, "blocked"), turn(second, "cleared"), { ...turn(corrected, "cleared"), scopeReason }] };
+    const findings = check(save(r as unknown as LocalReviewRecord));
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("<=2");
+  });
+  it("keeps a named hand-resolved trunk merge valid once a correction turn moves covered past it", () => {
+    save(record());
+    git(root, ["checkout", "-qb", "new-trunk", base]);
+    writeFileSync(join(root, "code.ts"), "export const answer = 1; export const trunk = true;"); const newBase = commit();
+    git(root, ["checkout", "-q", "-"]);
+    expect(() => git(root, ["merge", "--no-ff", "-m", "conflicting integration", newBase])).toThrow();
+    writeFileSync(join(root, "code.ts"), "export const answer = 2; export const trunk = true;");
+    git(root, ["add", "code.ts"]); git(root, ["commit", "-qm", "resolve"]); const merge = git(root, ["rev-parse", "HEAD"]);
+    const r = { ...record(), trunkIntegrations: [{ commit: merge, reason: "Resolved the answer constant against trunk's new export; both sides kept." }] };
+    const verify = (rec: LocalReviewRecord) => checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(rec), base: newBase });
+    expect(verify(r)).toEqual([]);
+    writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
+    expect(verify({ ...r, covered: corrected, followUps: [{ ...turn(corrected, "cleared"), scopeReason }] })).toEqual([]);
+    // Naming a plain commit in that range is still stray: only trunk merges are integrations.
+    expect(verify({ ...r, covered: corrected, followUps: [{ ...turn(corrected, "cleared"), scopeReason }], trunkIntegrations: [{ commit: corrected, reason: "The correction commit is not a trunk merge." }] })[0]?.message).toContain("not a trunk merge");
+  });
+  it("still invalidates a code commit after a cleared correction", () => {
+    writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
+    const r = { ...record(), covered: corrected, followUps: [{ ...turn(corrected, "cleared"), scopeReason }] };
+    expect(check(save(r))).toEqual([]);
+    writeFileSync(join(root, "code.ts"), "another unreviewed change");
+    expect(check(commit())[0]?.message).toContain("invalidate");
+  });
+});
