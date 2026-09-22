@@ -230,7 +230,7 @@ export async function prepareReview(productDir: string, root: string, base: stri
         }),
     );
     console.log("\nWorklog record template (replace placeholders; never mark an unfinished review complete):");
-    console.log("```morpheus-review\n" + JSON.stringify({ version: 1, base: fork, reviewed: head, covered: head, authorSession: "AUTHOR_SESSION", reviewerSession: "REVIEWER_SESSION", risk: "normal", elapsedMinutes: 0, outcome: "incomplete", summary: "Replace with the actual review summary and repeat it as a paragraph.", findings: [] }, null, 2) + "\n```");
+    console.log("```morpheus-review\n" + JSON.stringify({ version: 1, base: fork, reviewed: head, covered: head, authorSession: "AUTHOR_SESSION", reviewerSession: "RUNNER_ISSUED_REVIEWER_SESSION_ID", risk: "normal", elapsedMinutes: 0, outcome: "incomplete", summary: "Replace with the actual review summary and repeat it as a paragraph.", findings: [] }, null, 2) + "\n```");
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

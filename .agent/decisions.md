@@ -964,3 +964,16 @@ shape. Every Morpheus record with that shape already carries a reason (those tur
 integrations); six merged Evo and Lakina records do not, but merged records are never
 re-validated and no open `agent-reviewed` PR has the shape, so nothing in flight is refused.
 Merging trunk still spends no turn (2026-09-18).
+
+**Review evidence has floors, real session ids, tracked deferrals and conditional clearance** —
+2026-09-22. Chris's call after the first two-week survey of Lakina and Evo records. The turn cap
+and the trunk-merge rule stay as they are; the leaks were on the evidence side. An initial review
+under one minute at normal or high risk is refused (small keeps no floor). `reviewerSession` must
+be the runner-issued id and may appear in one worklog only, because reviewers were being named by
+the author and reused. The small ceiling is 10 minutes, not 5: every small review that needed
+execution overran it, and two worklogs picked between elapsed figures by which side of 5 they
+landed on. A finding left deferred or open names a roadmap item that must exist, incidental ones
+included, because those are the ones that rotted. Conditional clearance is adopted from #241 with
+mechanical conditions only: the reviewer sets paths and evidence, the author records compliance,
+and `check pr` verifies the fix stayed inside the paths; a condition cannot be added or widened by
+the author.
