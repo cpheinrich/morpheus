@@ -1467,7 +1467,7 @@ incomplete review, exhausted budgets and a correction needed after the last turn
 open and flagged, with auto-merge disabled. No automatic fourth turn. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
-Initial risk-based ceilings are 5/15/30 minutes, with one justified initial extension of at most
+Initial risk-based ceilings are 10/15/30 minutes, with a one-minute floor at normal and high risk, with one justified initial extension of at most
 50%; the follow-up ceiling is half the initial budget. One reviewer, no reviewer subagents. The
 provider's authoring session owns enforcement and any available usage ceiling; CI validates the
 reported evidence without making a model call. The canonical provider-neutral prompt ships in

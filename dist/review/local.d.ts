@@ -70,6 +70,12 @@ export declare const ReviewRecord: z.ZodObject<{
             disputed: "disputed";
         }>;
         response: z.ZodString;
+        roadmap: z.ZodOptional<z.ZodString>;
+        condition: z.ZodOptional<z.ZodObject<{
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+        }, z.core.$strict>>;
+        conditionMet: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>;
     followUp: z.ZodOptional<z.ZodObject<{
         reviewerSession: z.ZodString;
@@ -103,6 +109,14 @@ export type LocalReviewRecord = z.infer<typeof ReviewRecord>;
 export declare function followUpTurns(record: LocalReviewRecord): ReviewFollowUp[];
 /** The trunk base the reviewer's clearance covered: the latest recorded integration, else the original. */
 export declare function coveredBase(record: LocalReviewRecord): string;
+/** Findings the reviewer pre-cleared and the author fixed under the stated condition. */
+export declare function conditionallyCleared(record: LocalReviewRecord): string[];
+/** Initial-review ceilings in minutes; a follow-up gets half. Small was 5 until the data showed only creative accounting. */
+export declare const REVIEW_BUDGET_MINUTES: {
+    readonly small: 10;
+    readonly normal: 15;
+    readonly high: 30;
+};
 export declare function reviewRequired(config: unknown): boolean;
 export declare function git(root: string, args: string[]): string;
 export declare function parseReviewRecord(markdown: string): LocalReviewRecord;

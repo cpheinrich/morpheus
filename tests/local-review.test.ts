@@ -16,7 +16,7 @@ function commit() {
   return git(root, ["rev-parse", "HEAD"]);
 }
 function record(): LocalReviewRecord {
-  return { version: 1, base, reviewed, covered: reviewed, authorSession: "author-1", reviewerSession: "reviewer-2", risk: "normal", elapsedMinutes: 3, outcome: "complete", summary: "Independent review found no actionable defects.", findings: [] };
+  return { version: 1, base, reviewed, covered: reviewed, authorSession: "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d", reviewerSession: "a1b2c3d4e5f6a7b8c", risk: "normal", elapsedMinutes: 3, outcome: "complete", summary: "Independent review found no actionable defects.", findings: [] };
 }
 function save(r: LocalReviewRecord) {
   writeFileSync(join(root, path), `${r.summary}\n\n\`\`\`morpheus-review\n${JSON.stringify(r)}\n\`\`\`\n`);
@@ -54,7 +54,7 @@ describe("independent review lifecycle", () => {
     expect(check(save({ ...record(), outcome }))[0]?.message).toContain(outcome);
   });
   it("refuses self-review and nonexistent commits", () => {
-    expect(check(save({ ...record(), reviewerSession: "author-1" }))[0]?.message).toContain("independent");
+    expect(check(save({ ...record(), reviewerSession: "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d" }))[0]?.message).toContain("independent");
     expect(check(save({ ...record(), reviewed: "a".repeat(40) }))).toHaveLength(1);
   });
   it("invalidates new code after completion", () => {
@@ -71,22 +71,25 @@ describe("independent review lifecycle", () => {
   it("requires the original reviewer to clear substantive fixes", () => {
     const r = record(); r.findings = [{ id: "F01", severity: "substantive", description: "Missing authorization guard", paths: ["code.ts"], disposition: "fixed", response: "Added the authorization guard" }];
     expect(check(save(r))[0]?.message).toContain("follow-up");
-    r.followUp = { reviewerSession: "other-reviewer", commit: reviewed, outcome: "cleared", elapsedMinutes: 2, summary: "Verified the authorization guard" };
+    r.followUp = { reviewerSession: "b2c3d4e5f6a7b8c9d", commit: reviewed, outcome: "cleared", elapsedMinutes: 2, summary: "Verified the authorization guard" };
     expect(check(save(r))[0]?.message).toContain("original reviewer");
     r.followUp.reviewerSession = r.reviewerSession;
     expect(check(save(r))).toEqual([]);
     r.followUp.outcome = "blocked";
     expect(check(save(r))).toHaveLength(1);
   });
-  it("keeps incidental pre-existing defects nonblocking", () => {
-    const r = record(); r.findings = [{ id: "F01", severity: "incidental", description: "Unrelated pre-existing defect", paths: ["other.ts"], disposition: "deferred", response: "Recorded for a separate follow-up ticket" }];
+  it("keeps incidental pre-existing defects nonblocking once tracked", () => {
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-other.md"), "---\nid: MO-26-09-22-08.00.00\n---\n"); reviewed = commit();
+    const r = record(); r.findings = [{ id: "F01", severity: "incidental", description: "Unrelated pre-existing defect", paths: ["other.ts"], disposition: "deferred", response: "Recorded for a separate follow-up ticket", roadmap: "MO-26-09-22-08.00.00" }];
     expect(check(save(r))).toEqual([]);
   });
   it("bounds budgets and permits only a recorded initial extension", () => {
-    const r = { ...record(), risk: "small" as const, elapsedMinutes: 6 };
+    const r = { ...record(), risk: "small" as const, elapsedMinutes: 11 };
     expect(check(save(r))[0]?.message).toContain("budget");
     expect(check(save({ ...r, extensionReason: "Unexpectedly risky caller discovered" }))).toEqual([]);
-    expect(check(save({ ...r, elapsedMinutes: 8, extensionReason: "Unexpectedly risky caller discovered" }))).toHaveLength(1);
+    expect(check(save({ ...r, elapsedMinutes: 15, extensionReason: "Unexpectedly risky caller discovered" }))).toEqual([]);
+    expect(check(save({ ...r, elapsedMinutes: 15.1, extensionReason: "Unexpectedly risky caller discovered" }))).toHaveLength(1);
   });
   it("refuses missing summary, duplicate records and malformed JSON", () => {
     for (const text of ['```morpheus-review\n{}\n```', '```morpheus-review\nnot json\n```', `${record().summary}\n`]) {
@@ -134,7 +137,7 @@ describe("merging trunk after coverage", () => {
   const substantive = { id: "F01", severity: "substantive" as const, description: "Missing authorization check", paths: ["code.ts"], disposition: "fixed" as const, response: "Implemented and verified the check" };
   /** A cleared two-turn review, then trunk moves; returns the new trunk tip and a verifier against it. */
   function cleared(trunkFile = "trunk.ts") {
-    const r = { ...record(), findings: [substantive], followUp: { reviewerSession: "reviewer-2", commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, summary: "The original reviewer cleared the fix." } };
+    const r = { ...record(), findings: [substantive], followUp: { reviewerSession: "a1b2c3d4e5f6a7b8c", commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, summary: "The original reviewer cleared the fix." } };
     const feature = save(r);
     git(root, ["checkout", "--detach", base]);
     writeFileSync(join(root, trunkFile), "export const trunk = true;"); const newBase = commit();
@@ -225,7 +228,7 @@ describe("merging trunk after coverage", () => {
 describe("three-turn cap", () => {
   const substantive = { id: "F01", severity: "substantive" as const, description: "Missing authorization guard", paths: ["code.ts"], disposition: "fixed" as const, response: "Added the authorization guard" };
   function turn(commit: string, outcome: "cleared" | "incomplete" | "blocked", elapsedMinutes = 2) {
-    return { reviewerSession: "reviewer-2", commit, outcome, elapsedMinutes, summary: `Follow-up returned ${outcome} after inspecting the fix.` };
+    return { reviewerSession: "a1b2c3d4e5f6a7b8c", commit, outcome, elapsedMinutes, summary: `Follow-up returned ${outcome} after inspecting the fix.` };
   }
   it("treats followUps of one as the legacy followUp", () => {
     const r = { ...record(), findings: [substantive], followUps: [turn(reviewed, "cleared")] };
@@ -284,7 +287,7 @@ describe("late corrections after clearance", () => {
   const minor = { id: "F01", severity: "minor" as const, description: "Missing helpful error context", paths: ["code.ts"], disposition: "fixed" as const, response: "Added the missing context" };
   const scopeReason = "Late CI correction: two legacy UI tests assumed the old layout";
   function turn(commit: string, outcome: "cleared" | "incomplete" | "blocked", elapsedMinutes = 2) {
-    return { reviewerSession: "reviewer-2", commit, outcome, elapsedMinutes, summary: `Follow-up returned ${outcome} after inspecting the fix.` };
+    return { reviewerSession: "a1b2c3d4e5f6a7b8c", commit, outcome, elapsedMinutes, summary: `Follow-up returned ${outcome} after inspecting the fix.` };
   }
   it("lets the first follow-up after a clean initial review clear a late correction, only with a scope reason", () => {
     save(record());
@@ -352,5 +355,85 @@ describe("late corrections after clearance", () => {
     expect(check(save(r))).toEqual([]);
     writeFileSync(join(root, "code.ts"), "another unreviewed change");
     expect(check(commit())[0]?.message).toContain("invalidate");
+  });
+});
+
+describe("review evidence floors and shapes", () => {
+  it("refuses an author-chosen reviewer label and accepts runner-issued ids", () => {
+    for (const label of ["reviewer-mo-26-09-18-b", "7f3a9c2e", "/root/task_review", "claude-fable-review-7k2q"]) {
+      expect(check(save({ ...record(), reviewerSession: label }))[0]?.message).toContain("runner-issued");
+    }
+    for (const id of ["a1b2c3d4e5f6a7b8c", "claude-code-subagent/a5f6df64ce8403def", "codex:0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4e", "0B1C2D3E-4F50-4A6B-8C7D-9E0F1A2B3C4E"]) {
+      expect(check(save({ ...record(), reviewerSession: id }))).toEqual([]);
+    }
+  });
+  it("refuses a reviewer session that already reviewed another task in this repository", () => {
+    writeFileSync(join(root, ".agent/worklog/2026-09-09-earlier.md"), `Earlier review.\n\n\`\`\`morpheus-review\n${JSON.stringify({ ...record(), summary: "Earlier review." })}\n\`\`\`\n`);
+    reviewed = commit();
+    expect(check(save(record()))[0]?.message).toContain("already appears in .agent/worklog/2026-09-09-earlier.md");
+    expect(check(save({ ...record(), reviewerSession: "c3d4e5f6a7b8c9d0e" }))).toEqual([]);
+  });
+  it("floors the initial review at one minute for normal and high risk only", () => {
+    expect(check(save({ ...record(), elapsedMinutes: 0.99 }))[0]?.message).toContain("under one minute");
+    expect(check(save({ ...record(), elapsedMinutes: 1 }))).toEqual([]);
+    expect(check(save({ ...record(), risk: "high", elapsedMinutes: 0.7 }))[0]?.message).toContain("under one minute");
+    expect(check(save({ ...record(), risk: "small", elapsedMinutes: 0.5 }))).toEqual([]);
+  });
+  it("gives small risk a ten-minute ceiling and a five-minute follow-up ceiling", () => {
+    expect(check(save({ ...record(), risk: "small", elapsedMinutes: 10 }))).toEqual([]);
+    expect(check(save({ ...record(), risk: "small", elapsedMinutes: 10.1 }))[0]?.message).toContain("budget");
+    const turn = (elapsedMinutes: number) => ({ reviewerSession: "a1b2c3d4e5f6a7b8c", commit: reviewed, outcome: "cleared" as const, elapsedMinutes, scopeReason: "Late CI correction: one legacy test assumed the old layout", summary: "Cleared the correction after inspecting the fix." });
+    expect(check(save({ ...record(), risk: "small", followUps: [turn(5)] }))).toEqual([]);
+    expect(check(save({ ...record(), risk: "small", followUps: [turn(5.1)] }))[0]?.message).toContain("follow-up exceeded");
+  });
+});
+
+describe("tracked deferrals", () => {
+  const incidental = { id: "F01", severity: "incidental" as const, description: "Cron job has no year and fires every anniversary", paths: ["ops/cron.yaml"], disposition: "deferred" as const, response: "Cannot bite before the next anniversary; tracked." };
+  it("requires a roadmap item for a deferred or open finding and checks it exists", () => {
+    expect(check(save({ ...record(), findings: [incidental] }))[0]?.message).toContain("without a roadmap item");
+    expect(check(save({ ...record(), findings: [{ ...incidental, disposition: "open" }] }))[0]?.message).toContain("without a roadmap item");
+    expect(check(save({ ...record(), findings: [{ ...incidental, roadmap: "MO-26-09-22-08.00.00" }] }))[0]?.message).toContain("no such roadmap item");
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md"), "---\nid: MO-26-09-22-08.00.00\n---\n");
+    reviewed = commit();
+    expect(check(save({ ...record(), findings: [{ ...incidental, roadmap: "MO-26-09-22-08.00.00" }] }))).toEqual([]);
+    expect(check(save({ ...record(), findings: [{ ...incidental, disposition: "open", roadmap: "MO-26-09-22-08.00.00" }] }))).toEqual([]);
+    expect(check(save({ ...record(), findings: [{ ...incidental, roadmap: "not-an-id" }] }))).toHaveLength(1);
+  });
+  it("does not ask a fixed finding for a roadmap item", () => {
+    expect(check(save({ ...record(), findings: [{ ...incidental, disposition: "fixed", response: "Added the year field to the schedule." }] }))).toEqual([]);
+  });
+});
+
+describe("conditional clearance", () => {
+  const condition = { paths: ["code.ts"], evidence: "pnpm vitest run tests/code.test.ts must pass with the guard in place" };
+  const substantive = { id: "TE-7", severity: "substantive" as const, description: "Two call sites on the operator path still bypass the guard", paths: ["code.ts"], disposition: "fixed" as const, response: "Routed both call sites through the guard." };
+  const met: LocalReviewRecord["findings"][number] = { ...substantive, condition, conditionMet: "Ran the named vitest file at the covered commit: 12 passed." };
+  it("lets a conditionally cleared substantive finding merge without a follow-up, within the condition's paths", () => {
+    writeFileSync(join(root, "code.ts"), "guarded operator path"); const covered = commit();
+    const r: LocalReviewRecord = { ...record(), covered, findings: [{ ...substantive, condition }] };
+    expect(check(save(r))[0]?.message).toContain("record conditionMet");
+    r.findings = [met];
+    expect(check(save(r))).toEqual([]);
+    writeFileSync(join(root, "other.ts"), "an edit the condition did not cover"); r.covered = commit();
+    expect(check(save(r))[0]?.message).toContain("exceed the minor finding paths and reviewer conditions");
+  });
+  it("still requires a follow-up when any substantive finding is unconditional or disputed", () => {
+    const findings: LocalReviewRecord["findings"] = [met, { ...substantive, id: "TE-8" }];
+    expect(check(save({ ...record(), findings }))[0]?.message).toContain("require a follow-up");
+    expect(check(save({ ...record(), findings: [{ ...substantive, condition, disposition: "disputed", response: "The operator path is unreachable in production." }] }))[0]?.message).toContain("require a follow-up");
+  });
+  it("refuses conditionMet that has no reviewer condition behind it", () => {
+    expect(check(save({ ...record(), findings: [{ ...substantive, conditionMet: "Ran the tests; all passed." }] }))[0]?.message).toContain("without a reviewer condition");
+  });
+  it("lets a conditional follow-up clearance cover a later fix, but only within its paths", () => {
+    const turn = { reviewerSession: "a1b2c3d4e5f6a7b8c", commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, summary: "Cleared on condition that TE-7 is fixed within code.ts." };
+    writeFileSync(join(root, "code.ts"), "guarded operator path"); const covered = commit();
+    const r = { ...record(), covered, findings: [met], followUps: [turn] };
+    expect(check(save(r))).toEqual([]);
+    expect(check(save({ ...r, findings: [{ ...substantive, id: "TE-9" }] }))[0]?.message).toContain("final follow-up must clear the covered commit");
+    writeFileSync(join(root, "other.ts"), "outside the condition"); r.covered = commit();
+    expect(check(save(r))[0]?.message).toContain("exceed the reviewer's recorded conditions");
   });
 });

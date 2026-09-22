@@ -1,12 +1,20 @@
 import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import { visibleProse } from "../check/pr.js";
+import { ROADMAP_ID } from "../pm/id.js";
 const Sha = z.string().regex(/^[a-f0-9]{40}$/);
 const Text = z.string().trim().min(8);
 const Session = z.string().trim().min(3);
+/**
+ * A reviewer session is the id the runner issued for that session (a UUID thread id, or the
+ * 16-plus hex subagent id a tool result reports), optionally behind a provider prefix such as
+ * `claude-code-subagent/`. Not a label the author composes: the corpus showed consecutive
+ * records whose reviewer ids were permutations of the same eight characters.
+ */
+const ReviewerSession = z.string().trim().regex(/^(?:[a-z][a-z0-9-]*[:/])?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{16,})$/i, "reviewerSession must be the runner-issued session id, not an author-chosen label");
 const Path = z.string().regex(/^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[^\s\\]+$/);
 const FollowUp = z.object({
-    reviewerSession: Session,
+    reviewerSession: ReviewerSession,
     commit: Sha,
     base: Sha.optional(),
     scopeReason: Text.optional(),
@@ -27,7 +35,7 @@ export const ReviewRecord = z.object({
     reviewed: Sha,
     covered: Sha,
     authorSession: Session,
-    reviewerSession: Session,
+    reviewerSession: ReviewerSession,
     risk: z.enum(["small", "normal", "high"]),
     elapsedMinutes: z.number().nonnegative(),
     extensionReason: Text.optional(),
@@ -58,6 +66,14 @@ export const ReviewRecord = z.object({
         paths: z.array(Path).min(1),
         disposition: z.enum(["fixed", "disputed", "deferred", "open"]),
         response: Text,
+        /** The roadmap item tracking a finding left deferred or open; a deferral without one rots. */
+        roadmap: z.string().regex(ROADMAP_ID).optional(),
+        /**
+         * Conditional clearance, set by the reviewer only: "fix it within these paths, run this
+         * evidence, and it is clear" without another turn. The author records `conditionMet`.
+         */
+        condition: z.object({ paths: z.array(Path).min(1), evidence: Text }).strict().optional(),
+        conditionMet: Text.optional(),
     }).strict()),
     /** The single-follow-up shape records written under the two-turn contract still carry. */
     followUp: FollowUp.optional(),
@@ -72,6 +88,12 @@ export function followUpTurns(record) {
 export function coveredBase(record) {
     return followUpTurns(record).reduce((base, turn) => turn.base ?? base, record.base);
 }
+/** Findings the reviewer pre-cleared and the author fixed under the stated condition. */
+export function conditionallyCleared(record) {
+    return record.findings.filter(f => f.condition && f.disposition === "fixed" && f.conditionMet).flatMap(f => f.condition.paths);
+}
+/** Initial-review ceilings in minutes; a follow-up gets half. Small was 5 until the data showed only creative accounting. */
+export const REVIEW_BUDGET_MINUTES = { small: 10, normal: 15, high: 30 };
 export function reviewRequired(config) {
     const parsed = z.object({ review: z.object({ required: z.boolean().optional() }).passthrough().optional() }).passthrough().parse(config);
     return parsed.review?.required ?? true;
@@ -108,16 +130,31 @@ export function validateReviewRecord(record) {
         throw new Error("finding IDs must be unique");
     if (record.findings.some(f => f.severity !== "incidental" && f.disposition === "open"))
         throw new Error("unresolved finding");
+    for (const f of record.findings) {
+        if ((f.disposition === "deferred" || f.disposition === "open") && !f.roadmap)
+            throw new Error(`finding ${f.id} is left ${f.disposition} without a roadmap item to track it`);
+        if (f.condition && f.disposition === "fixed" && !f.conditionMet)
+            throw new Error(`finding ${f.id} was cleared conditionally; record conditionMet with the evidence that was run`);
+        if (f.conditionMet && !f.condition)
+            throw new Error(`finding ${f.id} records conditionMet without a reviewer condition`);
+    }
     const substantive = record.findings.some(f => f.severity === "substantive");
+    // A substantive finding the reviewer pre-cleared under a condition, and the author fixed
+    // under it, needs no turn; any other substantive finding still does.
+    const unconditional = record.findings.some(f => f.severity === "substantive" && !(f.condition && f.disposition === "fixed" && f.conditionMet));
     const turns = followUpTurns(record);
-    if (substantive && !turns.length)
-        throw new Error("substantive findings require a follow-up from the original reviewer");
+    if (unconditional && !turns.length)
+        throw new Error("substantive findings require a follow-up from the original reviewer unless cleared under a recorded condition");
     if (record.findings.some(f => f.severity === "substantive" && f.disposition !== "fixed" && f.disposition !== "disputed"))
         throw new Error("substantive findings cannot be deferred");
-    const budget = { small: 5, normal: 15, high: 30 }[record.risk];
+    const budget = REVIEW_BUDGET_MINUTES[record.risk];
     const multiplier = record.extensionReason ? 1.5 : 1;
     if (record.elapsedMinutes > budget * multiplier)
         throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
+    // A 42-second "review" at normal risk cleared the PR that adopted this policy. Small risk keeps
+    // no floor: a one-line change can genuinely be read in under a minute.
+    if (record.risk !== "small" && record.elapsedMinutes < 1)
+        throw new Error("an initial review under one minute at normal or high risk is not a review; record what was actually done");
     // A turn after a clearance is a late correction, such as a fix full CI asked for after the
     // reviewer cleared the code. It spends one of the remaining turns and must name the scope
     // decision in its scopeReason, so the record shows why a cleared review was reopened. A turn
@@ -132,7 +169,10 @@ export function validateReviewRecord(record) {
             throw new Error("follow-up exceeded its budget; record incomplete and escalate instead of claiming completion");
         const next = turns[index + 1];
         if (!next) {
-            if (turn.outcome !== "cleared" || turn.commit !== record.covered)
+            // With a conditional clearance the author's fix may land after the final turn; the commit
+            // check then happens in checkLocalReview, which can see the paths.
+            const coversLast = turn.commit === record.covered || conditionallyCleared(record).length > 0;
+            if (turn.outcome !== "cleared" || !coversLast)
                 throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
         }
         else if (turn.outcome === "incomplete" || (turn.outcome === "cleared" && !next.scopeReason)) {
@@ -208,6 +248,8 @@ export function checkLocalReview(opts) {
             throw new Error("review worklog must be a regular committed file");
         const record = parseReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
         validateReviewRecord(record);
+        checkFreshReviewer(opts.root, record, path, opts.head);
+        checkTrackedDeferrals(opts.root, record, opts.head);
         for (const [older, newer] of [[record.base, record.reviewed], [record.reviewed, record.covered], [record.covered, opts.head]]) {
             git(opts.root, ["merge-base", "--is-ancestor", older, newer]);
         }
@@ -217,9 +259,19 @@ export function checkLocalReview(opts) {
             throw new Error("the recorded review base must precede the PR's merge base with trunk; reconcile the base and coverage explicitly");
         }
         const merges = new Set();
-        if (!followUpTurns(record).length && record.reviewed !== record.covered) {
-            const allowed = new Set([path, ...record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths)]);
-            for (const commit of verifyUncoveredCommits(opts.root, record, record.reviewed, record.covered, opts.base, allowed, "author-only fixes exceed the minor finding paths; review coverage must be renewed explicitly"))
+        const turns = followUpTurns(record);
+        const conditional = conditionallyCleared(record);
+        if (!turns.length && record.reviewed !== record.covered) {
+            const allowed = new Set([path, ...conditional, ...record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths)]);
+            for (const commit of verifyUncoveredCommits(opts.root, record, record.reviewed, record.covered, opts.base, allowed, "author-only fixes exceed the minor finding paths and reviewer conditions; review coverage must be renewed explicitly"))
+                merges.add(commit);
+        }
+        const last = turns[turns.length - 1];
+        if (last && last.commit !== record.covered) {
+            // Only a conditional clearance lets `covered` run past the final turn, and only within its paths.
+            if (!isAncestor(opts.root, last.commit, record.covered))
+                throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
+            for (const commit of verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional]), "author fixes after the final follow-up exceed the reviewer's recorded conditions"))
                 merges.add(commit);
         }
         for (const commit of verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)"))
@@ -236,6 +288,33 @@ export function checkLocalReview(opts) {
     }
     catch (error) {
         return [{ level: "error", rule: "agent-review", message: error instanceof Error ? error.message : String(error) }];
+    }
+}
+/**
+ * A reviewer session reviews one task. The same id in another worklog means the reviewer was
+ * reused or the id was composed, and either way it is not the fresh session the contract requires.
+ */
+function checkFreshReviewer(root, record, worklog, head) {
+    let hits = [];
+    try {
+        hits = git(root, ["grep", "-l", "-F", record.reviewerSession, head, "--", ".agent/worklog"]).split("\n").filter(Boolean);
+    }
+    catch {
+        hits = [];
+    }
+    const other = hits.map(hit => hit.replace(/^[^:]*:/, "")).find(p => p !== worklog);
+    if (other)
+        throw new Error(`reviewer session ${record.reviewerSession} already appears in ${other}; every review needs a fresh reviewer session`);
+}
+/** A deferral is a ticket, not a sentence: the named roadmap item must exist on this branch. */
+function checkTrackedDeferrals(root, record, head) {
+    const ids = [...new Set(record.findings.map(f => f.roadmap).filter((id) => Boolean(id)))];
+    if (!ids.length)
+        return;
+    const items = git(root, ["ls-tree", "--name-only", head, "--", "hq/product/roadmap/"]).split("\n").map(p => p.replace(/^hq\/product\/roadmap\//, ""));
+    for (const id of ids) {
+        if (!items.some(name => name === `${id}.md` || name.startsWith(`${id}-`)))
+            throw new Error(`finding tracked by ${id}, but no such roadmap item exists on this branch; file it with pm new`);
     }
 }
 /**

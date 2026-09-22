@@ -36,20 +36,43 @@ the PR. Blocking findings need a concrete failure scenario and a causal connecti
 
 | Risk | Initial ceiling | Follow-up ceiling |
 |---|---:|---:|
-| Small, low consequence | 5 minutes | 2.5 minutes |
+| Small, low consequence | 10 minutes | 5 minutes |
 | Normal behavior change | 15 minutes | 7.5 minutes |
 | High: authorization, billing, destructive operations, shared controls | 30 minutes | 15 minutes |
 
 These are ceilings, not targets. One initial extension of at most 50% is allowed with a recorded
-reason. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
+reason. Small was 5 minutes until the first two weeks showed that every small review needing
+execution rather than reading overran it, and two worklogs chose between two elapsed figures by
+which side of the ceiling each landed on; a ceiling that only produces accounting is not a ceiling.
+There is also a floor: an initial review under one minute at normal or high risk is refused. The
+PR that adopted this policy on one project was "reviewed" in 42 seconds. Small risk has no floor. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
 validates reported durations; it cannot interrupt a provider's session or measure its billing.
 No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
 budget exhaustion or missing evidence, record incomplete and keep the PR open.
 
 The author responds to every finding. For minor-only findings, one fix/response round is enough.
 For any substantive finding, resume the original reviewer to assess responses, fixes and their
-regressions. Preserve original severity. Reviewer retractions may clear a disputed finding, but
-author disagreement alone cannot.
+regressions, unless the reviewer cleared it conditionally (below). Preserve original severity.
+Reviewer retractions may clear a disputed finding, but author disagreement alone cannot.
+
+**A deferral is a ticket, not a sentence.** A finding left `deferred` or `open` names the roadmap
+item that tracks it in `roadmap`, and `check pr` requires that item to exist on the branch. File
+it with `pm new` before recording the deferral. In the first two weeks a cron with no year field
+was deferred on one day and still firing a week later, an "operator's Owner login stays active"
+finding was deferred to an inbox note, and one gap was deferred three separate times; none had
+anywhere to be picked up from. This applies to incidental findings too, because those are the
+ones that rot.
+
+**Conditional clearance.** A reviewer may pre-clear a finding instead of blocking on it: "fix
+TE-7 within these paths, run this evidence, and it is clear." The reviewer, never the author,
+sets the finding's `condition` with exact `paths` and the `evidence` to run. The author fixes it
+within those paths, records `conditionMet` with what was run and its result, and marks it
+`fixed`. A substantive finding cleared this way needs no follow-up turn, and a final follow-up
+may clear on condition with `covered` moving to the fix commit. `check pr` verifies that every
+commit between the reviewer's commit and `covered` touches only condition paths, minor-fix paths
+and the worklog. A condition cannot be added, widened or disputed into clearance by the author;
+an unconditional substantive finding still needs its turn. This is Alex's proposal from #241: a
+two-line fix should not need a human or a fresh session re-deriving the whole context.
 
 **A review is capped at three turns**: the initial review and at most two same-reviewer
 follow-ups, each at the follow-up ceiling. A follow-up is spent one of two ways. It resolves what
@@ -75,8 +98,15 @@ Repeat its `summary` as a normal paragraph. Record even a clean review. The para
 what was found, what the author did, any disagreement, the second-pass outcome, and limitations.
 The JSON retains finding details so the short paragraph does not erase the audit history.
 
-Each finding has `id`, `severity` (`minor`, `substantive`, `incidental`), `description`, repository-relative
-`paths`, `disposition` (`fixed`, `disputed`, `deferred`, `open`) and a substantive `response`.
+Each finding has `id` (at least three characters), `severity` (`minor`, `substantive`, `incidental`),
+`description`, repository-relative `paths`, `disposition` (`fixed`, `disputed`, `deferred`, `open`)
+and a substantive `response`. A `deferred` or `open` finding also carries `roadmap`, the id of the
+item tracking it. A reviewer-set `condition` (`paths`, `evidence`) with the author's `conditionMet`
+records a conditional clearance. `reviewerSession` is the id the runner issued for the reviewer
+session: the subagent id a tool result reports, or a thread id, optionally behind a provider
+prefix such as `claude-code-subagent/`. It is never a label the author composes, and `check pr`
+refuses an id that already appears in another worklog on the branch, because a reviewer session
+reviews one task.
 For follow-up turns, add `followUps`, an array of at most two entries in order, each with the
 same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
 and `summary`. Every entry but the last must be `blocked`, or `cleared` when the entry after it
