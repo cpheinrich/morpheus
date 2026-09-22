@@ -147,7 +147,7 @@ Independent review found three substantive issues; the author fixed provenance, 
         "docs/runbooks/firebase-releases.md"
       ],
       "disposition": "open",
-      "response": "Implementation now isolates each child CLI configuration store. Red-before-green regression covers inherited login and retry persistence. Code is fixed, but independent verification is outstanding because the two permitted review passes are exhausted; do not claim coverage beyond deed6ea."
+      "response": "Implementation now isolates each child CLI configuration store. Red-before-green regression covers inherited login and retry persistence. Code is fixed, but independent verification is outstanding: the previous cleared follow-up ended that review, and the current three-turn policy does not authorize restarting it. Do not claim coverage beyond deed6ea."
     }
   ],
   "followUp": {
@@ -156,6 +156,16 @@ Independent review found three substantive issues; the author fixed provenance, 
     "outcome": "cleared",
     "elapsedMinutes": 1,
     "summary": "The original reviewer cleared R1-R3 at this exact head after inspecting source and compiled output and passing all 31 focused tests. The later cached-login isolation fix was not in this head and is not covered."
-  }
+  },
+  "trunkIntegrations": [
+    {
+      "commit": "bf4eaa8f7e441ea7b90380912ad4a7f09daf902a",
+      "reason": "Prior run resolved the decisions append conflict by retaining both decision records. This is an explicit unreviewed trunk integration; it does not clear the separate credential-isolation code commit."
+    }
+  ]
 }
 ```
+
+## September 22 integration and validation
+
+Merged current main a124cdce1a1ae5b8bade40ceea0f762c0969e953 into the preserved branch, producing 0c092bdc01a5e93f9ada5fa22eb00a9364bd6241 without conflict resolution. The earlier hand-resolved merge bf4eaa8 is recorded above; the original review SHA chain is unchanged. Frozen install, typecheck, all 1,393 tests, compile, PM index, lint and inbox validation passed. The current three-turn contract still ends a review when its follow-up clears; it does not automatically authorize another turn for later code. Request one bounded targeted review of cached-login isolation, its regressions and relevant integrations. Keep agent-reviewed withheld and auto-merge disabled; no consumer deployment or activation.
