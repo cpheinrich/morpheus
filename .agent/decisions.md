@@ -960,5 +960,7 @@ cleared-on-covered rule are unchanged: a clean review has two such slots, one th
 follow-up has one, and a correction needed after the last turn leaves the PR open for the human,
 as today. A turn after a `blocked` turn still needs no reason; an `incomplete` turn is still never
 followed. The first follow-up after an initial review with no substantive findings is the same
-shape, which every committed record already satisfies because those turns were trunk
-integrations carrying a reason. Merging trunk still spends no turn (2026-09-18).
+shape. Every Morpheus record with that shape already carries a reason (those turns were trunk
+integrations); six merged Evo and Lakina records do not, but merged records are never
+re-validated and no open `agent-reviewed` PR has the shape, so nothing in flight is refused.
+Merging trunk still spends no turn (2026-09-18).

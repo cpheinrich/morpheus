@@ -330,6 +330,22 @@ describe("late corrections after clearance", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]?.message).toContain("<=2");
   });
+  it("keeps a named hand-resolved trunk merge valid once a correction turn moves covered past it", () => {
+    save(record());
+    git(root, ["checkout", "-qb", "new-trunk", base]);
+    writeFileSync(join(root, "code.ts"), "export const answer = 1; export const trunk = true;"); const newBase = commit();
+    git(root, ["checkout", "-q", "-"]);
+    expect(() => git(root, ["merge", "--no-ff", "-m", "conflicting integration", newBase])).toThrow();
+    writeFileSync(join(root, "code.ts"), "export const answer = 2; export const trunk = true;");
+    git(root, ["add", "code.ts"]); git(root, ["commit", "-qm", "resolve"]); const merge = git(root, ["rev-parse", "HEAD"]);
+    const r = { ...record(), trunkIntegrations: [{ commit: merge, reason: "Resolved the answer constant against trunk's new export; both sides kept." }] };
+    const verify = (rec: LocalReviewRecord) => checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head: save(rec), base: newBase });
+    expect(verify(r)).toEqual([]);
+    writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
+    expect(verify({ ...r, covered: corrected, followUps: [{ ...turn(corrected, "cleared"), scopeReason }] })).toEqual([]);
+    // Naming a plain commit in that range is still stray: only trunk merges are integrations.
+    expect(verify({ ...r, covered: corrected, followUps: [{ ...turn(corrected, "cleared"), scopeReason }], trunkIntegrations: [{ commit: corrected, reason: "The correction commit is not a trunk merge." }] })[0]?.message).toContain("not a trunk merge");
+  });
   it("still invalidates a code commit after a cleared correction", () => {
     writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
     const r = { ...record(), covered: corrected, followUps: [{ ...turn(corrected, "cleared"), scopeReason }] };

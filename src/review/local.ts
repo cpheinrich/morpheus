@@ -172,6 +172,14 @@ function verifyUncoveredCommits(root: string, record: LocalReviewRecord, from: s
   return accepted;
 }
 
+/** First-parent two-parent merges in a range whose second parent is trunk history. */
+function trunkMerges(root: string, from: string, to: string, trunk: string): string[] {
+  return git(root, ["rev-list", "--first-parent", "--merges", `${from}..${to}`]).split("\n").filter(Boolean).filter(commit => {
+    const parents = git(root, ["show", "-s", "--format=%P", commit]).split(" ");
+    return parents.length === 2 && isAncestor(root, parents[1]!, trunk);
+  });
+}
+
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts: { root: string; body: string; labels: string[]; head: string; base: string }): Finding[] {
   try {
@@ -200,6 +208,9 @@ export function checkLocalReview(opts: { root: string; body: string; labels: str
       for (const commit of verifyUncoveredCommits(opts.root, record, record.reviewed, record.covered, opts.base, allowed, "author-only fixes exceed the minor finding paths; review coverage must be renewed explicitly")) merges.add(commit);
     }
     for (const commit of verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)")) merges.add(commit);
+    // A hand-resolved merge named before a late correction moved `covered` past it now sits in a
+    // range the correction turn cleared. The entry stays true and accepted; it is not stray.
+    if (followUpTurns(record).length) for (const commit of trunkMerges(opts.root, record.reviewed, record.covered, opts.base)) merges.add(commit);
     const stray = (record.trunkIntegrations ?? []).find(entry => !merges.has(entry.commit));
     if (stray) throw new Error("trunkIntegrations names a commit that is not a trunk merge on this branch after review");
     return [];

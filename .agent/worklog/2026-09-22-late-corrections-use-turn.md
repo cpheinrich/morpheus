@@ -17,9 +17,14 @@ The shape reuses `scopeReason`, the field a trunk-integration turn already carri
 decision. A non-final `cleared` turn is accepted when the next turn names its reason; a non-final
 `blocked` turn needs none on its successor; an `incomplete` turn still has no successor. The
 first follow-up after an initial review with no substantive findings is treated the same way,
-because the initial verdict was itself a clearance. A survey of every committed worklog with a
+because the initial verdict was itself a clearance. A survey of every Morpheus worklog with a
 follow-up showed that each one after a non-substantive review already carried a `scopeReason`
-(they were all trunk integrations), so the stricter rule invalidates nothing on trunk. Nothing in
+(they were all trunk integrations). The reviewer extended the survey to Evo and Lakina and found
+six merged records with that shape and no reason, among them Evo's `2026-09-16-track-welcome`,
+the late correction this ticket cites, whose scope decision sits in `summary`. Merged records are
+never re-validated and no open `agent-reviewed` PR carries the shape, so the stricter rule refuses
+nothing in flight; the earlier claim that every committed record already satisfied it was
+Morpheus-only and is corrected here. Nothing in
 `checkLocalReview` changed: with a follow-up present, the `reviewed`..`covered` range was already
 covered by the follow-up chain rather than path-checked, so the correction commits are covered by
 the reviewer's clearance of the correction turn, and a plain code commit after the new `covered`

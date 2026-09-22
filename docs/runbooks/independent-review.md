@@ -99,7 +99,8 @@ After `covered`, only this worklog may change, except for trunk merges as descri
 late correction that spends a remaining turn: commit the fix, have the same reviewer clear it as
 the next `followUps` entry with its `scopeReason`, and move `covered` to that commit. The commits
 between the previous clearance and that turn are covered by the reviewer's clearance of it, the
-same way the `reviewed`..`covered` range is covered by any follow-up. This avoids the hash loop
+same way the `reviewed`..`covered` range is covered by any follow-up; a hand-resolved trunk merge
+already named in `trunkIntegrations` there stays named and valid. This avoids the hash loop
 from committing the review record itself. Other edits make the record stale.
 Reconcile the base before review. If trunk advances during the review, preserve the initial
 `base`/`reviewed`; a follow-up that inspected the integration records that turn's `base` as the
