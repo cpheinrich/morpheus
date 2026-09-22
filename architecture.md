@@ -3017,6 +3017,17 @@ the caller in the group one would cancel the other. Selecting the requested
 is small enough to audit here and does not put a third-party setup action in every consumer's CI
 trust path.
 
+Every iOS simulator test job creates its own fresh device from the requested device type and
+runtime, including serial release gates. Both build-for-testing and test-without-building use
+that device's UUID; Xcode's parallel clones therefore belong to a job-specific base. The allocator
+never clones, boots or shuts down a shared device. An `id` destination supplies only its type and
+runtime, not its saved data; name destinations accept `OS` (including `latest`) and optional `arch`.
+Unsupported or unavailable destinations fail before testing. Other platforms and build-only jobs
+retain their destination contract. After evidence collection, an always-run cleanup shuts down and
+deletes only the allocated UUID, even after test failure or cancellation. A forcibly killed runner
+can leave an orphan device; operators must remove confirmed inactive devices individually, never
+use `shutdown all` while another lane is running.
+
 `ios-nightly-build` composes `release-preflight` and `ios-ci`, then exposes the build decision and
 the exact verified main SHA. The caller owns the cron, watched app paths, environment policy, app
 identifiers, TestFlight beta-group targets, build-number allocation, and credentials. GitHub does

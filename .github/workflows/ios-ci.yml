@@ -53,7 +53,7 @@ on:
         type: string
         default: "iOS Simulator"
       destination:
-        description: Destination qualifiers appended after platform.
+        description: Destination qualifiers appended after platform. iOS tests use a fresh device of the requested name/type and OS (or id's type/OS); existing simulator data is not copied.
         type: string
         default: "OS=26.5,name=iPhone 17 Pro Max"
       test-plan:
@@ -395,6 +395,64 @@ jobs:
           FIREBASE_CLI_VERSION: ${{ inputs.firebase-cli-version }}
         run: npm install --global "firebase-tools@$FIREBASE_CLI_VERSION"
 
+      # Xcode may shut down a destination while preparing parallel clones.
+      # A serial release lane must never test on another lane's base device.
+      - name: Prepare owned simulator
+        id: ios_simulator
+        if: ${{ inputs.run-tests && inputs.platform == 'iOS Simulator' }}
+        env:
+          DESTINATION: ${{ inputs.destination }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess, uuid
+
+          qualifiers = {}
+          for part in os.environ['DESTINATION'].split(','):
+              key, separator, value = part.strip().partition('=')
+              if not separator or not value or key in qualifiers or key not in {'name', 'id', 'OS', 'arch'}:
+                  raise SystemExit('iOS destination requires name or id, with optional OS and arch')
+              qualifiers[key] = value
+          if ('name' in qualifiers) == ('id' in qualifiers):
+              raise SystemExit('iOS destination requires exactly one of name or id')
+          if 'arch' in qualifiers and qualifiers['arch'] not in {'arm64', 'x86_64'}:
+              raise SystemExit('Unsupported iOS simulator architecture')
+
+          inventory = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', '--json']))
+          runtimes = [r for r in inventory['runtimes']
+                      if r.get('isAvailable') and r.get('platform') == 'iOS']
+          requested_os = qualifiers.get('OS', 'latest')
+          if requested_os != 'latest':
+              runtimes = [r for r in runtimes if r['version'] == requested_os]
+          if 'id' in qualifiers:
+              matches = [(r, d['deviceTypeIdentifier']) for r in runtimes
+                         for d in inventory['devices'].get(r['identifier'], [])
+                         if d.get('isAvailable') and d['udid'].lower() == qualifiers['id'].lower()]
+          else:
+              types = [d['identifier'] for d in inventory['devicetypes'] if d['name'] == qualifiers['name']]
+              matches = [(r, device_type) for r in runtimes for device_type in types
+                         if not r.get('supportedDeviceTypes') or any(
+                             d['identifier'] == device_type for d in r['supportedDeviceTypes'])]
+          if not matches:
+              raise SystemExit('No available iOS simulator matches the requested destination')
+          matches.sort(key=lambda match: tuple(int(n) for n in match[0]['version'].split('.')), reverse=True)
+          runtime, device_type = matches[0]
+          if len([m for m in matches if m[0]['identifier'] == runtime['identifier']]) != 1:
+              raise SystemExit('Ambiguous iOS simulator destination')
+          name = f"morpheus-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{uuid.uuid4()}"
+          # Create from metadata, not clone: cloning a booted shared source can
+          # itself disturb that source. No shared device is booted or shut down.
+          device = subprocess.check_output(['xcrun', 'simctl', 'create', name, device_type,
+                                            runtime['identifier']], text=True).strip()
+          if not re.fullmatch(r'[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}', device):
+              raise SystemExit('simctl create did not return a device UUID')
+          destination = f'id={device}'
+          if 'arch' in qualifiers:
+              destination += f",arch={qualifiers['arch']}"
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'udid={device}\ndestination={destination}\n')
+          print(f'Owned simulator: {device} ({device_type}, iOS {runtime["version"]})')
+          PY
+
       - name: Build for testing
         if: ${{ inputs.run-tests }}
         env:
@@ -403,7 +461,7 @@ jobs:
           CONFIGURATION: ${{ inputs.configuration }}
           SDK: ${{ inputs.sdk }}
           PLATFORM: ${{ inputs.platform }}
-          DESTINATION: ${{ inputs.destination }}
+          DESTINATION: ${{ steps.ios_simulator.outputs.destination || inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
           MAXIMUM_PARALLEL_TESTING_WORKERS: ${{ inputs.maximum-parallel-testing-workers }}
@@ -479,7 +537,7 @@ jobs:
           CONFIGURATION: ${{ inputs.configuration }}
           SDK: ${{ inputs.sdk }}
           PLATFORM: ${{ inputs.platform }}
-          DESTINATION: ${{ inputs.destination }}
+          DESTINATION: ${{ steps.ios_simulator.outputs.destination || inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
           SKIP_TESTING: ${{ inputs.skip-testing }}
           TEST_ITERATIONS: ${{ inputs.test-iterations }}
@@ -595,3 +653,19 @@ jobs:
             ${{ steps.ios_paths.outputs.logs }}
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Delete owned simulator
+        if: ${{ always() && steps.ios_simulator.outputs.udid != '' }}
+        timeout-minutes: 2
+        env:
+          OWNED_SIMULATOR: ${{ steps.ios_simulator.outputs.udid }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$OWNED_SIMULATOR" =~ ^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$ ]]; then
+            echo 'Refusing cleanup without an owned simulator UUID' >&2
+            exit 1
+          fi
+          # Shutdown also returns nonzero when already stopped. Delete is the
+          # authoritative cleanup result; never use shutdown/delete all.
+          xcrun simctl shutdown "$OWNED_SIMULATOR" || true
+          xcrun simctl delete "$OWNED_SIMULATOR"
