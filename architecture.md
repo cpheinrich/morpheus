@@ -1461,9 +1461,10 @@ Four of them, each catching what it can so the rung above only sees what genuine
 runs `morpheus review prepare` to print a packet, then explicitly spawns a fresh reviewer
 subagent/session without author chat, responds once, and resumes the same reviewer
 if substantive findings were raised. Minor-only findings need no second pass. A review is capped
-at three turns, and the third exists only after a blocked second. Unresolved substantive
-disagreements, incomplete review and exhausted budgets leave the PR open and flagged, with
-auto-merge disabled. No automatic fourth turn. Incidental pre-existing bugs are recorded
+at three turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
+correction after clearance, named by its scope reason. Unresolved substantive disagreements,
+incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
+open and flagged, with auto-merge disabled. No automatic fourth turn. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
 Initial risk-based ceilings are 5/15/30 minutes, with one justified initial extension of at most

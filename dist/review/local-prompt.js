@@ -32,12 +32,15 @@ severity. Minor-only findings allow one author response without another review, 
 fixes. Substantive findings require a follow-up in THIS SAME reviewer session, focused on
 resolution and fix regressions, at half the initial budget. Return cleared, blocked or
 incomplete. A reasoned retraction may clear a disputed finding; author disagreement alone cannot.
-The review is capped at three turns: this initial review and at most two follow-ups. A third
-turn happens only when the second returned blocked and the author has addressed the concrete
-unresolved concerns; a cleared turn ends the review and an incomplete one exhausted its budget.
-If substantive concerns remain after the last turn, leave the PR open, disable auto-merge, and
-flag the concrete unresolved issue for the human. No automatic fourth turn or replacement
-reviewer to obtain approval.
+The review is capped at three turns: this initial review and at most two follow-ups. A follow-up
+either resolves what the previous turn left blocked, after the author has addressed the concrete
+unresolved concerns, or is a late correction after a clearance: when full CI shows a fix is
+needed after you cleared the code, the author may spend a remaining turn in THIS SAME session,
+recording the scope decision as that turn's scopeReason; you clear or block the correction commit.
+Otherwise a cleared turn ends the review, and an incomplete one exhausted its budget and escalates.
+If substantive concerns remain after the last turn, or a correction is needed once the turns are
+spent, leave the PR open, disable auto-merge, and flag the concrete unresolved issue for the
+human. No automatic fourth turn or replacement reviewer to obtain approval.
 Unrelated changes invalidate coverage; restarting requires an explicit scope decision.
 If trunk integration is required during the author response, an explicit scope decision may use
 a same-session follow-up to inspect that integration and affected paths. Preserve the initial
@@ -46,8 +49,8 @@ This does not add a turn or relabel a clean/minor first review as substantive.
 Merging trunk into the branch never invalidates your clearance and spends no turn: a merge Git
 reproduces exactly needs no entry, and a hand-resolved merge is named in the record's
 trunkIntegrations with its reason so the unreviewed resolution stays visible. CI must still pass.
-Any other commit after coverage, beyond the task worklog itself, invalidates it. The author merges
-rather than rebases after review.
+Any other commit after coverage, beyond the task worklog itself, invalidates it unless a remaining
+turn clears it as a late correction. The author merges rather than rebases after review.
 
 The author must retain a short human-readable summary and a morpheus-review JSON block in the
 task worklog, even for a clean review. Include original findings, responses, commit coverage,

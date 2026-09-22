@@ -52,13 +52,20 @@ regressions. Preserve original severity. Reviewer retractions may clear a disput
 author disagreement alone cannot.
 
 **A review is capped at three turns**: the initial review and at most two same-reviewer
-follow-ups, each at the follow-up ceiling. The third turn exists only to resolve what the second
-left `blocked`, after the author has addressed those concrete concerns; a `cleared` follow-up ends
-the review, and an `incomplete` one exhausted its budget and escalates. The cap is what stops an
-author and a reviewer trading fixes and findings indefinitely, at a session's cost per turn.
-Unresolved substantive concerns after the last turn mean blocked: remove `agent-reviewed`, disable
-auto-merge, and flag the remaining disagreement for the human. No automatic fourth turn or
-replacement reviewer to obtain approval.
+follow-ups, each at the follow-up ceiling. A follow-up is spent one of two ways. It resolves what
+the previous turn left `blocked` (or the substantive findings of the initial review), after the
+author has addressed those concrete concerns. Or it is a **late correction after a clearance**:
+when full CI, or a test the reviewer did not run, shows a fix is needed after the initial review
+or a follow-up already cleared the code, the author commits the fix and spends a remaining turn
+on the same reviewer, naming the scope decision in that turn's `scopeReason` ("late CI
+correction: two legacy UI tests assumed the old layout"). A clean initial review therefore has two
+such slots and a review that already used a fix follow-up has one; the author makes that scope
+decision within the task's budget, and the record shows it. Otherwise a `cleared` turn ends the
+review, and an `incomplete` one exhausted its budget and escalates; nothing follows it. The cap is
+what stops an author and a reviewer trading fixes and findings indefinitely, at a session's cost
+per turn. Unresolved substantive concerns after the last turn, or a correction needed once the
+turns are spent, mean blocked: remove `agent-reviewed`, disable auto-merge, and flag the remaining
+work for the human. No automatic fourth turn or replacement reviewer to obtain approval.
 
 ## Record and publish
 
@@ -72,7 +79,10 @@ Each finding has `id`, `severity` (`minor`, `substantive`, `incidental`), `descr
 `paths`, `disposition` (`fixed`, `disputed`, `deferred`, `open`) and a substantive `response`.
 For follow-up turns, add `followUps`, an array of at most two entries in order, each with the
 same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
-and `summary`. Every entry but the last must be `blocked`; the last must be `cleared`. A single
+and `summary`. Every entry but the last must be `blocked`, or `cleared` when the entry after it
+carries a `scopeReason` for the late correction it covers; the last must be `cleared`. A
+follow-up that comes directly after an initial review with no substantive findings is that same
+shape and needs a `scopeReason` too. An `incomplete` entry cannot be followed. A single
 `followUp` object, the shape from the two-turn contract, still validates as one turn. Each turn's
 `commit` must descend from the previous one. `elapsedMinutes` at the top level measures the
 initial review only; each follow-up's is checked against the follow-up ceiling on its own.
@@ -85,8 +95,12 @@ This is path-level verification: the reviewer/author remain responsible for ensu
 are actually the stated fixes. Unrelated changes invalidate coverage and require an explicit scope
 and budget decision, not an automatic restart.
 
-After `covered`, only this worklog may change, except for trunk merges as described below. This
-avoids the hash loop from committing the review record itself. Other edits make the record stale.
+After `covered`, only this worklog may change, except for trunk merges as described below and a
+late correction that spends a remaining turn: commit the fix, have the same reviewer clear it as
+the next `followUps` entry with its `scopeReason`, and move `covered` to that commit. The commits
+between the previous clearance and that turn are covered by the reviewer's clearance of it, the
+same way the `reviewed`..`covered` range is covered by any follow-up. This avoids the hash loop
+from committing the review record itself. Other edits make the record stale.
 Reconcile the base before review. If trunk advances during the review, preserve the initial
 `base`/`reviewed`; a follow-up that inspected the integration records that turn's `base` as the
 new merge base and its `scopeReason`. The original base must precede the new base, which must

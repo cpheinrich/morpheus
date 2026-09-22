@@ -881,8 +881,10 @@ the PR open with auto-merge disabled; never substitute self-review or assume a m
 **Independent review is required before merge.**
 Respond once; substantive findings require a follow-up by the same reviewer. Minor-only findings
 allow author fixes without a second pass. A review is capped at three turns, the initial review and
-two follow-ups, and the third happens only when the second returned blocked. Unresolved substantive
-disagreements after that, or an incomplete review, keep the PR open and auto-merge disabled. Record the review paragraph and structured evidence in the task
+two follow-ups; a follow-up resolves what the previous turn left blocked, or spends a remaining turn
+on a late correction after clearance (a fix full CI asked for), recorded with its \`scopeReason\`.
+Unresolved substantive disagreements after that, an incomplete review, or a correction once the
+turns are spent, keep the PR open and auto-merge disabled. Record the review paragraph and structured evidence in the task
 worklog, link it with a visible \`review-record:\` PR-body line, then apply \`agent-reviewed\`.
 \`review.required\` defaults to true; project false opts out visibly. After the covered commit only
 the named worklog may change, and merging trunk never invalidates the review: a merge Git
