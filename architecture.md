@@ -3093,6 +3093,16 @@ asserts what only it knows: which Firebase project is pinned, which purpose stri
 present, which build environment was compiled in. Anything a second project would also want belongs
 in the action instead.
 
+Releases under the same macOS user serialize through an account-wide kernel file lock before
+starting the upload script, including its keychain/profile snapshot and EXIT cleanup. The lock
+file is in the account's canonical home, not a repository or runner temporary directory. Its
+descriptor survives exec and shell children, so killing a parent cannot release a child's active
+lease. No lock-file deletion or PID-based stale recovery is needed. Waiting defaults to 600
+seconds (the caller may choose 1–3600) and counts toward the job timeout; expiry fails before any
+signing state is touched. This preserves Xcode's existing keychain search-list/export behavior.
+Older pinned actions and other signing tools still require the host-wide job lease until migrated;
+a hard kill can leave keychain/profile artifacts requiring inspection even after the lease releases.
+
 Three properties are not negotiable, because each has already cost releases. The archive is
 **unsigned** — `CODE_SIGN_IDENTITY=""`, `CODE_SIGNING_REQUIRED=NO`, `CODE_SIGNING_ALLOWED=NO`, and
 `-allowProvisioningUpdates` appears nowhere. Automatic signing needs a development identity a clean

@@ -933,3 +933,18 @@ visible rather than hidden inside a merge commit. Rebasing after review is unsup
 rewrites the reviewed commits. This supersedes the 2026-09-16 documentation-only exception, whose
 record field is still parsed but no longer enforced. Late CI corrections after coverage (#247)
 remain a separate, open question: a plain code commit after `covered` still invalidates.
+
+
+**Serialize same-account TestFlight signing with the operating system lock** — 2026-09-22.
+The shared action mutates the user's keychain search list/default and provisioning profile directory.
+A per-repository concurrency group cannot protect two repositories under one GUI account. Keep
+Xcode's established export behavior and hold an inherited kernel flock from upload-script entry
+through shell cleanup and remaining children. The account's canonical home fixes the lock domain
+across runner-specific HOME/TMPDIR values. Never unlink the lock file; kernel descriptor ownership
+replaces stale-PID heuristics. The existing host-wide job lease remains compatible and must stay
+while any signing lane uses older code. Isolation outside the search list remains unproven on the
+release host, so this fix does not change how Xcode discovers identities.
+
+Considered filelock 4.0.1 (published 2026-09-19, no required runtime dependencies). This small
+macOS-only exec boundary uses Python's existing fcntl/os primitives instead of adding a package
+installation to the credentialed release path. It adds no package dependency.
