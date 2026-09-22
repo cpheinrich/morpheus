@@ -69,8 +69,10 @@ sets the finding's `condition` with exact `paths` and the `evidence` to run. The
 within those paths, records `conditionMet` with what was run and its result, and marks it
 `fixed`. A substantive finding cleared this way needs no follow-up turn, and a final follow-up
 may clear on condition with `covered` moving to the fix commit. `check pr` verifies that every
-commit between the reviewer's commit and `covered` touches only condition paths, minor-fix paths
-and the worklog. A condition cannot be added, widened or disputed into clearance by the author;
+commit between the reviewer's commit and `covered` touches only condition paths and the worklog;
+minor fixes belong before the reviewer's final turn, and join the allowed set only when there is
+no follow-up at all. A condition on a source file in a repository that commits generated output
+must name the generated counterparts too, or the regenerated files fall outside it. A condition cannot be added, widened or disputed into clearance by the author;
 an unconditional substantive finding still needs its turn. This is Alex's proposal from #241: a
 two-line fix should not need a human or a fresh session re-deriving the whole context.
 

@@ -371,6 +371,9 @@ describe("review evidence floors and shapes", () => {
     writeFileSync(join(root, ".agent/worklog/2026-09-09-earlier.md"), `Earlier review.\n\n\`\`\`morpheus-review\n${JSON.stringify({ ...record(), summary: "Earlier review." })}\n\`\`\`\n`);
     reviewed = commit();
     expect(check(save(record()))[0]?.message).toContain("already appears in .agent/worklog/2026-09-09-earlier.md");
+    // A provider prefix or a change of case does not make a reused session fresh.
+    expect(check(save({ ...record(), reviewerSession: "claude-code-subagent/a1b2c3d4e5f6a7b8c" }))[0]?.message).toContain("already appears");
+    expect(check(save({ ...record(), reviewerSession: "A1B2C3D4E5F6A7B8C" }))[0]?.message).toContain("already appears");
     expect(check(save({ ...record(), reviewerSession: "c3d4e5f6a7b8c9d0e" }))).toEqual([]);
   });
   it("floors the initial review at one minute for normal and high risk only", () => {

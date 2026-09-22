@@ -295,9 +295,11 @@ export function checkLocalReview(opts) {
  * reused or the id was composed, and either way it is not the fresh session the contract requires.
  */
 function checkFreshReviewer(root, record, worklog, head) {
+    // Compare the bare id: a provider prefix or a change of case is the same session, not a new one.
+    const bare = record.reviewerSession.replace(/^[a-z][a-z0-9-]*[:/]/i, "").toLowerCase();
     let hits = [];
     try {
-        hits = git(root, ["grep", "-l", "-F", record.reviewerSession, head, "--", ".agent/worklog"]).split("\n").filter(Boolean);
+        hits = git(root, ["grep", "-l", "-i", "-F", bare, head, "--", ".agent/worklog"]).split("\n").filter(Boolean);
     }
     catch {
         hits = [];

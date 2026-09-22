@@ -272,8 +272,10 @@ export function checkLocalReview(opts: { root: string; body: string; labels: str
  * reused or the id was composed, and either way it is not the fresh session the contract requires.
  */
 function checkFreshReviewer(root: string, record: LocalReviewRecord, worklog: string, head: string): void {
+  // Compare the bare id: a provider prefix or a change of case is the same session, not a new one.
+  const bare = record.reviewerSession.replace(/^[a-z][a-z0-9-]*[:/]/i, "").toLowerCase();
   let hits: string[] = [];
-  try { hits = git(root, ["grep", "-l", "-F", record.reviewerSession, head, "--", ".agent/worklog"]).split("\n").filter(Boolean); } catch { hits = []; }
+  try { hits = git(root, ["grep", "-l", "-i", "-F", bare, head, "--", ".agent/worklog"]).split("\n").filter(Boolean); } catch { hits = []; }
   const other = hits.map(hit => hit.replace(/^[^:]*:/, "")).find(p => p !== worklog);
   if (other) throw new Error(`reviewer session ${record.reviewerSession} already appears in ${other}; every review needs a fresh reviewer session`);
 }
