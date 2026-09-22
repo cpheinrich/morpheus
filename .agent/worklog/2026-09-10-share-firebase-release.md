@@ -169,3 +169,5 @@ Independent review found three substantive issues; the author fixed provenance, 
 ## September 22 integration and validation
 
 Merged current main a124cdce1a1ae5b8bade40ceea0f762c0969e953 into the preserved branch, producing 0c092bdc01a5e93f9ada5fa22eb00a9364bd6241 without conflict resolution. The earlier hand-resolved merge bf4eaa8 is recorded above; the original review SHA chain is unchanged. Frozen install, typecheck, all 1,393 tests, compile, PM index, lint and inbox validation passed. The current three-turn contract still ends a review when its follow-up clears; it does not automatically authorize another turn for later code. Request one bounded targeted review of cached-login isolation, its regressions and relevant integrations. Keep agent-reviewed withheld and auto-merge disabled; no consumer deployment or activation.
+
+After PR261 merged, integrated fb459bcd2d8301eb18ae7f79215d0b984f175b49 without conflicts as 4902a68112010f436ba772c7cb9f518abd0d2bb4. Full validation passed again: all 1,394 tests, typecheck, compile, PM index, lint and inbox validation. Only this worklog changed afterward.
