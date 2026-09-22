@@ -37,6 +37,9 @@ inputs:
   install-sentry-cli:
     description: Install sentry-cli so an Xcode build phase can upload debug symbols.
     default: "false"
+  signing-lock-timeout-seconds:
+    description: Maximum wait for another TestFlight release under this macOS account, from 1 to 3600 seconds. The wait counts against the caller job timeout.
+    default: "600"
 
   # ---- Release identity ----------------------------------------------------
   apple-team-id:
@@ -256,6 +259,7 @@ runs:
     - name: Archive, sign, verify, and upload to TestFlight
       shell: bash
       env:
+        SIGNING_LOCK_TIMEOUT_SECONDS: ${{ inputs.signing-lock-timeout-seconds }}
         APPLE_TEAM_ID: ${{ inputs.apple-team-id }}
         IOS_BUNDLE_ID: ${{ inputs.ios-bundle-id }}
         ASC_APP_ID: ${{ inputs.app-store-connect-app-id }}
@@ -275,4 +279,4 @@ runs:
         IOS_DISTRIBUTION_PROFILE_BASE64: ${{ inputs.ios-distribution-profile-base64 }}
         IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ inputs.google-service-info-plist-base64 }}
         SENTRY_AUTH_TOKEN: ${{ inputs.sentry-auth-token }}
-      run: '"$GITHUB_ACTION_PATH/upload-testflight.sh"'
+      run: 'python3 "$GITHUB_ACTION_PATH/signing-lock.py" "$GITHUB_ACTION_PATH/upload-testflight.sh"'

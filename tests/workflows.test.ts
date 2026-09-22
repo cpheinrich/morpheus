@@ -1714,7 +1714,9 @@ describe("ios-testflight-upload action", () => {
       (step) => step.name === "Archive, sign, verify, and upload to TestFlight",
     );
 
-    expect(release?.run).toBe('"$GITHUB_ACTION_PATH/upload-testflight.sh"');
+    expect(release?.run).toBe('python3 "$GITHUB_ACTION_PATH/signing-lock.py" "$GITHUB_ACTION_PATH/upload-testflight.sh"');
+    expect(release?.env?.SIGNING_LOCK_TIMEOUT_SECONDS).toBe("${{ inputs.signing-lock-timeout-seconds }}");
+    expect((await action()).inputs?.["signing-lock-timeout-seconds"]?.default).toBe("600");
     expect(release?.env?.ASC_API_KEY_ID).toBe("${{ inputs.asc-api-key-id }}");
     expect(release?.env?.IOS_DISTRIBUTION_P12_PASSWORD).toBe(
       "${{ inputs.ios-distribution-p12-password }}",
