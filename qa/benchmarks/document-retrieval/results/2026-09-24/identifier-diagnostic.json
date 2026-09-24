@@ -1,0 +1,293 @@
+{
+  "postHoc": true,
+  "rows": [
+    {
+      "id": "L01",
+      "project": "lakina",
+      "variant": "quoted",
+      "ms": 2.052915999999996,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L01",
+      "project": "lakina",
+      "variant": "unquoted",
+      "ms": 1.35858300000001,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L01",
+      "project": "lakina",
+      "variant": "spaced-phrase",
+      "ms": 4.253124999999997,
+      "recall5": 1,
+      "recall10": 1
+    },
+    {
+      "id": "L02",
+      "project": "lakina",
+      "variant": "quoted",
+      "ms": 0.12270800000000293,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L02",
+      "project": "lakina",
+      "variant": "unquoted",
+      "ms": 0.0918750000000017,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L02",
+      "project": "lakina",
+      "variant": "spaced-phrase",
+      "ms": 3.660499999999999,
+      "recall5": 1,
+      "recall10": 1
+    },
+    {
+      "id": "L03",
+      "project": "lakina",
+      "variant": "quoted",
+      "ms": 0.07491699999999923,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L03",
+      "project": "lakina",
+      "variant": "unquoted",
+      "ms": 0.05595799999998974,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L03",
+      "project": "lakina",
+      "variant": "spaced-phrase",
+      "ms": 3.038250000000005,
+      "recall5": 1,
+      "recall10": 1
+    },
+    {
+      "id": "L04",
+      "project": "lakina",
+      "variant": "quoted",
+      "ms": 0.06370800000000543,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L04",
+      "project": "lakina",
+      "variant": "unquoted",
+      "ms": 0.053542000000007306,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L04",
+      "project": "lakina",
+      "variant": "spaced-phrase",
+      "ms": 0.772166999999996,
+      "recall5": 1,
+      "recall10": 1
+    },
+    {
+      "id": "L05",
+      "project": "lakina",
+      "variant": "quoted",
+      "ms": 0.0890409999999946,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L05",
+      "project": "lakina",
+      "variant": "unquoted",
+      "ms": 0.060625000000001705,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L05",
+      "project": "lakina",
+      "variant": "spaced-phrase",
+      "ms": 1.0115830000000017,
+      "recall5": 1,
+      "recall10": 1
+    },
+    {
+      "id": "L06",
+      "project": "lakina",
+      "variant": "quoted",
+      "ms": 0.05674999999999386,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L06",
+      "project": "lakina",
+      "variant": "unquoted",
+      "ms": 0.04866699999999469,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "L06",
+      "project": "lakina",
+      "variant": "spaced-phrase",
+      "ms": 2.187916999999999,
+      "recall5": 1,
+      "recall10": 1
+    },
+    {
+      "id": "E01",
+      "project": "evo",
+      "variant": "quoted",
+      "ms": 1.3147499999999894,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E01",
+      "project": "evo",
+      "variant": "unquoted",
+      "ms": 0.216542000000004,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E01",
+      "project": "evo",
+      "variant": "spaced-phrase",
+      "ms": 2.926792000000006,
+      "recall5": 1,
+      "recall10": 1
+    },
+    {
+      "id": "E02",
+      "project": "evo",
+      "variant": "quoted",
+      "ms": 0.058707999999995764,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E02",
+      "project": "evo",
+      "variant": "unquoted",
+      "ms": 0.05545800000000156,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E02",
+      "project": "evo",
+      "variant": "spaced-phrase",
+      "ms": 1.8792079999999913,
+      "recall5": 1,
+      "recall10": 1
+    },
+    {
+      "id": "E03",
+      "project": "evo",
+      "variant": "quoted",
+      "ms": 0.0625,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E03",
+      "project": "evo",
+      "variant": "unquoted",
+      "ms": 0.05825000000000102,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E03",
+      "project": "evo",
+      "variant": "spaced-phrase",
+      "ms": 1.0812500000000114,
+      "recall5": 1,
+      "recall10": 1
+    },
+    {
+      "id": "E04",
+      "project": "evo",
+      "variant": "quoted",
+      "ms": 0.08791700000000446,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E04",
+      "project": "evo",
+      "variant": "unquoted",
+      "ms": 0.062374999999988745,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E04",
+      "project": "evo",
+      "variant": "spaced-phrase",
+      "ms": 0.5620830000000012,
+      "recall5": 1,
+      "recall10": 1
+    },
+    {
+      "id": "E05",
+      "project": "evo",
+      "variant": "quoted",
+      "ms": 0.05141700000000071,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E05",
+      "project": "evo",
+      "variant": "unquoted",
+      "ms": 0.05029100000000142,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E05",
+      "project": "evo",
+      "variant": "spaced-phrase",
+      "ms": 0.6894160000000085,
+      "recall5": 1,
+      "recall10": 1
+    },
+    {
+      "id": "E06",
+      "project": "evo",
+      "variant": "quoted",
+      "ms": 0.06183300000000713,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E06",
+      "project": "evo",
+      "variant": "unquoted",
+      "ms": 0.05445799999999679,
+      "recall5": 0,
+      "recall10": 0
+    },
+    {
+      "id": "E06",
+      "project": "evo",
+      "variant": "spaced-phrase",
+      "ms": 0.7659589999999952,
+      "recall5": 1,
+      "recall10": 1
+    }
+  ]
+}
