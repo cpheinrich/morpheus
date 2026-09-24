@@ -93,13 +93,7 @@ Nothing from that private archive is committed.
 
 ## Independent Review
 
-Independent review completed with no findings. The fresh reviewer recomputed all
-120 strict citation scores, verified all source quotations and 420 public rows
-against private raw evidence, checked fixture/protocol and corpus fingerprints,
-confirmed both alternative-source adjudications, and found no private content in
-the changed public files. Sixteen focused tests passed. No author fixes or follow-up
-were needed. The reviewer did not rerun the full suite or costly experiment and
-used exact diff/source fallback because graph access was unavailable.
+Independent review completed with no findings. The fresh reviewer recomputed all 120 strict citation scores, verified all source quotations and 420 public rows against private raw evidence, checked fixture/protocol and corpus fingerprints, confirmed both alternative-source adjudications, and found no private content in the changed public files. Sixteen focused tests passed. No author fixes or follow-up were needed. The reviewer did not rerun the full suite or costly experiment and used exact diff/source fallback because graph access was unavailable.
 
 ```morpheus-review
 {
