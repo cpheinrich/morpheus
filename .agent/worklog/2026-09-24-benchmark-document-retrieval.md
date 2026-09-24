@@ -108,17 +108,19 @@ used exact diff/source fallback because graph access was unavailable.
   "reviewed": "9eb732db55e01d1fc0f2c4847291a7df0bc90039",
   "covered": "9eb732db55e01d1fc0f2c4847291a7df0bc90039",
   "authorSession": "01a0cfbb-30cd-7873-8cae-1f3977f28221",
-  "reviewerSession": "/root/independent_review",
+  "reviewerSession": "01a0d35e-bddc-7ce2-b09e-76d686eea367",
   "risk": "normal",
-  "elapsedMinutes": 4.7,
+  "elapsedMinutes": 4.72,
   "outcome": "complete",
   "summary": "Independent review completed with no findings. The fresh reviewer recomputed all 120 strict citation scores, verified all source quotations and 420 public rows against private raw evidence, checked fixture/protocol and corpus fingerprints, confirmed both alternative-source adjudications, and found no private content in the changed public files. Sixteen focused tests passed. No author fixes or follow-up were needed. The reviewer did not rerun the full suite or costly experiment and used exact diff/source fallback because graph access was unavailable.",
   "findings": []
 }
 ```
 
-The runner exposed `/root/independent_review` as the reviewer's canonical identity;
-no separate opaque session identifier was supplied. History inheritance was
-disabled. [PR #265](https://github.com/cpheinrich/morpheus/pull/265) remains open
+The spawn response exposed only the canonical agent path. Its persisted runner
+session metadata maps `/root/independent_review` to the UUID above, confirms this
+task as its parent, and records a 283,126 ms review duration. The local gate rejected
+the path label; the record now uses that verified runner UUID. History inheritance
+was disabled. [PR #265](https://github.com/cpheinrich/morpheus/pull/265) remains open
 with auto-merge disabled, as requested. Code and project-record CI passed on the
 reviewed commit; the final worklog publication also triggers the review gate.
