@@ -58,6 +58,18 @@ done
 
 [[ -n "$WORKING_DIRECTORY" ]] || usage
 
+# Every path below is repository-relative, and a pathspec is resolved against
+# the process cwd — so called from a subdirectory (which is where an iOS agent
+# works) the pathspec would match nothing and this would exit 0 with an empty
+# list. A gate that reports clean because it was standing in the wrong place is
+# the failure this script exists to remove.
+top_level="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$top_level" ]]; then
+    echo "swift-changed-files.sh: not inside a git repository" >&2
+    exit 1
+fi
+cd "$top_level"
+
 # Trailing slashes would produce `apps/ios//**/*.swift`, which matches nothing.
 WORKING_DIRECTORY="${WORKING_DIRECTORY%/}"
 
@@ -66,25 +78,32 @@ WORKING_DIRECTORY="${WORKING_DIRECTORY%/}"
 # `apps/ios/Top.swift` does not match and is silently skipped.
 PATHSPEC=":(glob)${WORKING_DIRECTORY}/**/*.swift"
 
-if [[ -n "$BASE" ]]; then
-    merge_base="$(git merge-base HEAD "$BASE" 2>/dev/null || true)"
-    if [[ -z "$merge_base" ]]; then
-        echo "swift-changed-files.sh: cannot resolve a merge base with $BASE" >&2
-        exit 1
+emit() {
+    if [[ -n "$BASE" ]]; then
+        merge_base="$(git merge-base HEAD "$BASE" 2>/dev/null || true)"
+        if [[ -z "$merge_base" ]]; then
+            echo "swift-changed-files.sh: cannot resolve a merge base with $BASE" >&2
+            exit 1
+        fi
+        # Explicitly against HEAD, not the working tree. `git diff <base>` folds
+        # uncommitted edits in silently, leaving `--worktree` with nothing to
+        # mean but "also untracked" — and a flag that does not control what it
+        # says it controls is how a caller lints a set it did not expect.
+        git diff --name-only -z --diff-filter=ACMR "$merge_base" HEAD -- "$PATHSPEC"
+    elif git rev-parse --verify HEAD^1 >/dev/null 2>&1; then
+        git diff-tree --no-commit-id --name-only --diff-filter=ACMR -r -z HEAD^1 HEAD -- "$PATHSPEC"
+    else
+        git ls-files -z -- "$PATHSPEC"
     fi
-    # Explicitly against HEAD, not against the working tree. `git diff <base>`
-    # would fold uncommitted edits in silently, leaving `--worktree` with
-    # nothing to mean but "also untracked" — and a flag that does not control
-    # what it says it controls is how a caller ends up linting a set it did not
-    # expect.
-    git diff --name-only -z --diff-filter=ACMR "$merge_base" HEAD -- "$PATHSPEC"
-elif git rev-parse --verify HEAD^1 >/dev/null 2>&1; then
-    git diff-tree --no-commit-id --name-only --diff-filter=ACMR -r -z HEAD^1 HEAD -- "$PATHSPEC"
-else
-    git ls-files -z -- "$PATHSPEC"
-fi
 
-if [[ "$INCLUDE_WORKTREE" == "true" ]]; then
-    git diff --name-only -z --diff-filter=ACMR HEAD -- "$PATHSPEC"
-    git ls-files -z --others --exclude-standard -- "$PATHSPEC"
-fi
+    if [[ "$INCLUDE_WORKTREE" == "true" ]]; then
+        git diff --name-only -z --diff-filter=ACMR HEAD -- "$PATHSPEC"
+        git ls-files -z --others --exclude-standard -- "$PATHSPEC"
+    fi
+}
+
+# Deduplicated, because a file changed on the branch and still being edited
+# appears in two of the sources above — the normal state of the developer loop
+# this serves — and swift-format would report its every diagnostic twice.
+emit | sort -zu
+

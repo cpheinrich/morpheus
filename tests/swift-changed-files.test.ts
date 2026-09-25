@@ -43,7 +43,7 @@ async function repositoryWithChangedSwift(): Promise<{ root: string; repo: strin
   const root = await mkdtemp(join(tmpdir(), "morpheus-swift-selection-"));
   const repo = join(root, "repo");
   await mkdir(join(repo, "apps/ios/Nested"), { recursive: true });
-  await git(repo === "" ? root : root, "init", "--quiet", "--initial-branch=main", repo);
+  await git(root, "init", "--quiet", "--initial-branch=main", repo);
   await git(repo, "config", "user.name", "Morpheus Test");
   await git(repo, "config", "user.email", "test@example.com");
 
@@ -176,6 +176,59 @@ describe("swift-changed-files", () => {
       await expect(
         execFileAsync("bash", [SCRIPT, ...changedSwiftArguments({ workingDirectory: "apps/ios", base: "no-such-ref" })], { cwd: repo }),
       ).rejects.toThrow(/cannot resolve a merge base/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("answers the same from anywhere inside the repository", async () => {
+    const { root, repo } = await repositoryWithChangedSwift();
+    try {
+      // An iOS agent works from the app directory — Evo's own instructions say
+      // to cd there first. A pathspec is resolved against the process cwd, so
+      // without moving to the top level this returns nothing and exits 0:
+      // clean, confidently, about the wrong place.
+      const fromRoot = await select(repo, changedSwiftArguments({ workingDirectory: "apps/ios" }));
+      const { stdout } = await execFileAsync(
+        "bash",
+        [SCRIPT, ...changedSwiftArguments({ workingDirectory: "apps/ios" })],
+        { cwd: join(repo, "apps/ios") },
+      );
+      expect(stdout.split("\0").filter((path) => path.length > 0).sort()).toEqual(fromRoot);
+      expect(fromRoot).toEqual(CHANGED);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to answer outside a repository", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-swift-no-repo-"));
+    try {
+      await expect(
+        execFileAsync("bash", [SCRIPT, ...changedSwiftArguments({ workingDirectory: "apps/ios" })], { cwd: root }),
+      ).rejects.toThrow(/not inside a git repository/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("names a file once when the branch changed it and it is still being edited", async () => {
+    const { root, repo } = await repositoryWithChangedSwift();
+    try {
+      await git(repo, "branch", "trunk", "HEAD~1");
+      await writeFile(join(repo, "apps/ios/Top.swift"), "let top = 2\n", "utf8");
+
+      // The normal state of the loop --worktree exists for. Duplicated, every
+      // diagnostic in the file is reported twice and the action's count
+      // over-reports.
+      const { stdout } = await execFileAsync(
+        "bash",
+        [SCRIPT, ...changedSwiftArguments({ workingDirectory: "apps/ios", base: "trunk", worktree: true })],
+        { cwd: repo },
+      );
+      const paths = stdout.split("\0").filter((path) => path.length > 0);
+      expect(paths.filter((path) => path === "apps/ios/Top.swift")).toHaveLength(1);
+      expect(new Set(paths).size).toBe(paths.length);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

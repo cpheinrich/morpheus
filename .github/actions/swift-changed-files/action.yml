@@ -51,7 +51,11 @@ runs:
 
         destination="$OUTPUT_FILE"
         if [ -z "$destination" ]; then
-          destination="${RUNNER_TEMP:-/tmp}/swift-changed-files-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
+          # Job-unique, not run-unique: RUNNER_TEMP is job-private on a
+          # properly configured runner, but the /tmp fallback is not, and this
+          # workflow's concurrency is keyed on the scheme — so two schemes can
+          # legitimately run at once on one shared Mac.
+          destination="${RUNNER_TEMP:-/tmp}/swift-changed-files-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}-${GITHUB_JOB:-job}-$$"
         fi
 
         arguments=(--working-directory "$WORKING_DIRECTORY")

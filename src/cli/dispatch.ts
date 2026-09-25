@@ -81,9 +81,13 @@ return doctorRun(process.cwd(), flags.all, flags.offline);
 
 async function dispatchIos({ flags, command, rest }: Invocation): Promise<number> {
     if (command === "changed-swift") {
-      const workingDirectory = flags.dir !== "." ? flags.dir : rest[0];
+      // Positional, not `--dir`: that flag means the product directory
+      // everywhere else and defaults to `hq/product`, so reading it here would
+      // answer confidently about the roadmap folder — an empty list and a
+      // clean exit for a directory nobody named.
+      const workingDirectory = rest[0];
       if (!workingDirectory) {
-        console.error("morpheus ios changed-swift needs --dir <path>, the directory holding the Swift sources.");
+        console.error("Usage: morpheus ios changed-swift <directory> [--base <ref>] [--worktree] [--nul]");
         return 1;
       }
       return changedSwiftRun({
