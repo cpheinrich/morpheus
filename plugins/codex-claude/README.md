@@ -115,7 +115,8 @@ permissions, sending, publishing, spending, and destructive operations still nee
 A tool permission is not interchangeable with a clarification. The `source: user` field
 is the coordinating agent's attestation to an actual user answer, not an independent
 approval UI. Structured/prose `needs_input` results resume the same conversation with
-`replySource` and `replyReason`. Supervision is capped at eight replies by default.
+`replySource` and `replyReason`. Autonomous supervision is capped at eight replies by default. A genuine user answer
+remains allowed at the limit and resets that autonomous budget; its audit record is retained.
 
 Full-access/never-approval Codex turns launch Claude with `bypassPermissions`.
 Full-access/on-request turns use Claude's default prompts. Restricted or unknown

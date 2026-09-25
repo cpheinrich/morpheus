@@ -118,3 +118,121 @@ test("persisted state recovers exited runs without replaying work", async (t) =>
   });
   assert.equal(m.runs.size, 0);
 });
+
+test("real user answer resets autonomous budget even when configured limit is zero", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "user-answer-"));
+  process.env.CODEX_CLAUDE_HOME = root;
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await initStore();
+  await configWrite({
+    ...defaults(),
+    mode: "manual",
+    maxSupervisionReplies: 0,
+  });
+  const m = new Manager();
+  m.send = () => {};
+  const id = randomUUID();
+  await import("node:fs/promises").then((f) => f.mkdir(runDir(id)));
+  const task = await taskRead("user-task");
+  task.supervisionReplies = 8;
+  task.answerSequence = 8;
+  await taskWrite(task);
+  const run = {
+    id,
+    threadId: task.id,
+    state: "needs_input",
+    question: {
+      id: "q",
+      request: { tool_name: "Bash", input: { command: "echo approved" } },
+    },
+  };
+  m.runs.set(id, run);
+  await m.answer({
+    runId: id,
+    questionId: "q",
+    source: "user",
+    reason: "User explicitly approved this test command",
+  });
+  assert.equal((await taskRead(task.id)).supervisionReplies, 0);
+  assert.equal((await taskRead(task.id)).answerSequence, 9);
+  assert.equal(run.state, "running");
+  const audit = JSON.parse(
+    await readFile(join(runDir(id), "answer-9.json"), "utf8"),
+  );
+  assert.equal(audit.source, "user");
+  run.question = {
+    id: "next",
+    request: { tool_name: "AskUserQuestion", input: {} },
+  };
+  await assert.rejects(
+    m.answer({
+      runId: id,
+      questionId: "next",
+      source: "codex",
+      reason: "routine",
+    }),
+    /limit/,
+  );
+});
+
+test("unverified orphan remains nonterminal and blocks replacement", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "orphan-state-"));
+  process.env.CODEX_CLAUDE_HOME = root;
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await initStore();
+  const id = randomUUID();
+  await import("node:fs/promises").then((f) => f.mkdir(runDir(id)));
+  await atomic(join(runDir(id), "run.json"), {
+    id,
+    state: "running",
+    terminal: false,
+  });
+  await atomic(join(runDir(id), "process.json"), {
+    state: "running",
+    guardianPid: 99999999,
+    guardianIdentity: "gone",
+    claudePid: process.pid,
+    claudeIdentity: "different process",
+  });
+  const status = await new Manager().status(id);
+  assert.equal(status.terminal, false);
+  assert.equal(status.state, "cleanup_pending");
+  assert.equal(
+    JSON.parse(await readFile(join(runDir(id), "process.json"), "utf8")).state,
+    "running",
+  );
+});
+
+test("guardian crash cleanup records process exit before releasing run lock", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "orphan-tick-"));
+  process.env.CODEX_CLAUDE_HOME = root;
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await initStore();
+  const id = randomUUID();
+  await import("node:fs/promises").then((f) => f.mkdir(runDir(id)));
+  await atomic(join(runDir(id), "process.json"), {
+    state: "running",
+    claudePid: 99999999,
+    claudeIdentity: "former worker",
+  });
+  const m = new Manager();
+  const run = {
+    id,
+    threadId: "t",
+    terminal: false,
+    state: "running",
+    guardianExited: true,
+    guardian: { stdin: { destroy() {}, destroyed: false } },
+    offset: 0,
+    lastLease: 0,
+    grace: 0,
+  };
+  m.runs.set(id, run);
+  await m.tick(run);
+  assert.equal(m.runs.size, 0);
+  assert.equal(run.terminal, true);
+  assert.equal(
+    JSON.parse(await readFile(join(runDir(id), "process.json"), "utf8")).state,
+    "exited",
+  );
+});

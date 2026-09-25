@@ -120,7 +120,9 @@ export class Manager {
       if (active.some((r) => r.cwd === task.cwd))
         throw new Error("Another Claude run owns this working directory.");
       // Never launch over an orphan after a service restart. Guardian will expire its lease.
-      for (const id of (await readdir(join(home(), "runs"))).filter(id=>/^[0-9a-f-]{36}$/.test(id))) {
+      for (const id of (await readdir(join(home(), "runs"))).filter((id) =>
+        /^[0-9a-f-]{36}$/.test(id),
+      )) {
         const p = await readJSON(join(runDir(id), "process.json"), null);
         if (p?.state !== "running" && p?.state !== "starting") continue;
         const record = await readJSON(join(runDir(id), "run.json"), null);
@@ -143,8 +145,14 @@ export class Manager {
       });
       const permissions = permissionMode(snapshot);
       const { env } = await checkClaude(task.cwd);
-      const latestConfig=await configRead();const latestTask=await taskRead(task.id);
-      if(latestConfig.mode==='off'||latestConfig.projects[task.project]==='off'||latestTask.disabled)throw new Error('Delegation was disabled during preflight');
+      const latestConfig = await configRead();
+      const latestTask = await taskRead(task.id);
+      if (
+        latestConfig.mode === "off" ||
+        latestConfig.projects[task.project] === "off" ||
+        latestTask.disabled
+      )
+        throw new Error("Delegation was disabled during preflight");
       const id = randomUUID();
       const dir = runDir(id);
       await mkdir(dir, { mode: 0o700 });
@@ -275,7 +283,18 @@ export class Manager {
         null,
       );
       if (run.guardianExited && processState?.state === "running") {
-        await stopOrphan(processState);
+        if (!(await stopOrphan(processState))) {
+          run.state = "cleanup_pending";
+          run.error = "Could not verify orphan cleanup; replacement is blocked";
+          clearInterval(run.timer);
+          await atomic(join(runDir(run.id), "run.json"), this.public(run));
+          return;
+        }
+        await atomic(join(runDir(run.id), "process.json"), {
+          ...processState,
+          state: "exited",
+          reason: "Guardian lost; owned group cleaned",
+        });
       }
       if (processState?.state === "exited" || run.guardianExited) {
         // Wait for the last file bytes to be consumed before assigning the final outcome.
@@ -372,6 +391,8 @@ export class Manager {
       error,
       progress,
       sequence,
+      replySource,
+      replyReason,
     } = run;
     return {
       id,
@@ -390,11 +411,14 @@ export class Manager {
       error,
       progress,
       sequence,
+      replySource,
+      replyReason,
     };
   }
   async status(id) {
     const run = this.runs.get(id);
-    if (run) return this.public(run);
+    if (run && run.state !== "cleanup_pending") return this.public(run);
+    if (run) this.runs.delete(id);
     const record = await readJSON(join(runDir(id), "run.json"), null);
     if (!record) throw new Error("Unknown run");
     const p = await readJSON(join(runDir(id), "process.json"), null);
@@ -405,7 +429,13 @@ export class Manager {
       p.guardianIdentity &&
       (await identity(p.guardianPid)) !== p.guardianIdentity
     ) {
-      await stopOrphan(p);
+      if (!(await stopOrphan(p)))
+        return {
+          ...record,
+          state: "cleanup_pending",
+          terminal: false,
+          error: "Could not verify orphan cleanup; replacement is blocked",
+        };
       await atomic(join(runDir(id), "process.json"), {
         ...p,
         state: "exited",
@@ -441,7 +471,10 @@ export class Manager {
       );
     const task = await taskRead(run.threadId);
     const config = await configRead();
-    if (task.supervisionReplies >= config.maxSupervisionReplies)
+    if (
+      args.source === "codex" &&
+      task.supervisionReplies >= config.maxSupervisionReplies
+    )
       throw new Error("Supervision limit reached. Escalate to the user.");
     if (run.question.id !== args.questionId)
       throw new Error("Stale question id");
@@ -474,10 +507,12 @@ export class Manager {
         response: { subtype: "success", request_id: args.questionId, response },
       },
     });
-    task.supervisionReplies++;
+    task.supervisionReplies =
+      args.source === "user" ? 0 : task.supervisionReplies + 1;
+    task.answerSequence = (task.answerSequence || 0) + 1;
     await taskWrite(task);
     await writeFile(
-      join(runDir(run.id), `answer-${task.supervisionReplies}.json`),
+      join(runDir(run.id), `answer-${task.answerSequence}.json`),
       JSON.stringify({
         source: args.source,
         reason: args.reason,

@@ -49,7 +49,8 @@ never submit a local task to a different machine by guessing its project path.
    to resume its saved Claude conversation. Never reissue an unfinished operation blindly.
 8. A prose/structured `needs_input` result is also a question. Resume the same task with `replySource` and `replyReason` and
    a justified routine answer, or escalate when needed. Bound all supervision to eight
-   replies per handoff by default, including resumed prose questions. Record the reason
+   autonomous replies per handoff by default, including resumed prose questions. An actual
+   user response remains allowed at the ceiling and resets the autonomous budget. Record the reason
    in the handoff, and stop when looping or facts are missing.
 9. Confirm Claude's result against the requested acceptance checks before reporting done.
    A model saying completed is not independent evidence. Stop, failure and rate limits

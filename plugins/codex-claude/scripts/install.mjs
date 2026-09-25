@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { probe } from './probe.mjs';
 // Explicit, user-run installation only. Never called by Morpheus init or npm hooks.
 import {
   cp,
@@ -13,7 +12,7 @@ import {
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, basename, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 const source = fileURLToPath(new URL("..", import.meta.url));
 const codexHome = process.env.CODEX_HOME || join(homedir(), ".codex");
@@ -59,11 +58,23 @@ try {
     filter: (path) =>
       !["node_modules", ".git", "__pycache__"].includes(basename(path)),
   });
-  run("pnpm", ["install", "--ignore-workspace", "--frozen-lockfile", "--config.node-linker=hoisted"], {
-    cwd: staged,
-  });
+  run(
+    "pnpm",
+    [
+      "install",
+      "--ignore-workspace",
+      "--frozen-lockfile",
+      "--config.node-linker=hoisted",
+    ],
+    {
+      cwd: staged,
+    },
+  );
   run(process.execPath, ["scripts/check.mjs"], { cwd: staged });
   run("pnpm", ["test"], { cwd: staged });
+  const { probe } = await import(
+    pathToFileURL(join(staged, "scripts", "probe.mjs")).href
+  );
   // Use the official helper to update only the requested personal marketplace entry.
   // It also creates a throwaway scaffold; the reviewed package supplies the installed files.
   run("python3", [
@@ -90,11 +101,20 @@ try {
   }
   try {
     await rename(next, destination);
-    run("codex", [
-      "plugin",
-      "add",
-      `codex-claude@${catalog?.name || "personal"}`,
-    ]);
+    const installed = JSON.parse(
+      execFileSync(
+        "codex",
+        [
+          "plugin",
+          "add",
+          `codex-claude@${catalog?.name || "personal"}`,
+          "--json",
+        ],
+        { encoding: "utf8" },
+      ),
+    );
+    await probe(installed.installedPath);
+    console.log(`Verified installed MCP tools at ${installed.installedPath}`);
   } catch (e) {
     await rm(destination, { recursive: true, force: true });
     try {
