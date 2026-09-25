@@ -20,4 +20,8 @@
 
 ## Independent review
 
-Pending.
+Cleared at `f1e46d98164c3f5a52f7367e06ea0d4be11ded1e` with no substantive findings
+(review session `01a0d9a2-94ab-7ca1-b7dd-3e707b9d2325`). The reviewer verified the four live check
+contexts, private incident repository, retained bot-policy enforcement, removal of every local
+scheduler and credential reference, and 241 focused tests. A final exact-head pass follows the
+current-main integration commit.
