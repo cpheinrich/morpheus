@@ -12,6 +12,10 @@ The [September 25 tuning study](../../audits/2026-09-25-qmd-performance-tuning.m
 extends this work with query, reranking, transport and one-call source retrieval
 experiments. It preserves the original measurements rather than replacing them.
 
+The [historical-chat follow-up](../../audits/2026-09-25-qmd-historical-queries.md)
+uses history-derived Evo questions and tests early passage retrieval against both
+ordinary navigation and a non-QMD indexed-search control.
+
 ## Reproduction
 
 Requires Node, Git, ripgrep, authenticated Codex CLI, and an external pinned install
@@ -163,3 +167,55 @@ The September 25 experiment retains an operationally interrupted first validatio
 attempt in `validation-interrupted/`. Publication includes its completed rows as a
 separate, explicitly incomplete stage. It does not pool them with the restarted
 validation or use its errors to rank search configurations.
+
+## Historical-Chat Reproduction
+
+Results: [historical-query report](../../audits/2026-09-25-qmd-historical-queries.md)
+and [redacted measurements](results/2026-09-25-history/measurements.json).
+
+This is an experimental harness, not a session hook or a deployed RAG frontend.
+Use another private directory and the unchanged frozen Evo corpus/index. Never
+point it at a live database: it clears QMD's query/reranker cache before each query.
+
+1. On an authorized workstation, derive thirty retrospective documentation
+   questions from project-specific user messages. Preserve provenance privately.
+   Freeze questions before source labeling, with ten development and twenty
+   validation questions and no source thread shared between splits. Store the
+   usual evidence-group schema in `development.json` and `validation.json`.
+   Use opaque `D01`-style development IDs and `V01`-style validation IDs.
+   Record expected answer facts before validation, not just source filenames.
+2. With the external pinned QMD module/cache environment, run
+   `node history-screen.mjs PRIVATE_ROOT`. It refuses to overwrite an existing
+   `history-engine.json`; preserve failed attempts and use a new directory for a
+   new experiment. MiniSearch uses the repository's existing package.
+3. Run `timed-agents.mjs PRIVATE_ROOT CONFIG_JSON` with the prior config shape plus
+   `historyPrefetch:true`, `projectDocMaxBytes:0`, and
+   `prefetchOptions:{"limit":4,"maxChars":3000}`. Supported additional arms are
+   `cli-one`, `prefetch-vector`, `prefetch-auto`, and `prefetch-mini`.
+   The runner keeps one writable SDK connection open to preserve SQLite WAL
+   availability for read-only CLI clients, warms the embedding model once, and
+   records all prefetched passages and their delivery timestamps privately.
+4. Select recipes using only development observations. Freeze a validation config
+   before running it, with baseline and the prior CLI comparator, two repeats,
+   plus selected prefetched arms. The recorded experiment used five development
+   questions across six arms and twenty validation questions across four arms.
+5. Inspect every final answer, citation and tool transcript. Create private
+   `answer-audit.json` rows with `stage`, `id`, `arm`, `repeat`, `answerPass`,
+   substantive `reason`, and `additions:[{group,path,quote}]` for justified
+   source-label alternatives. Empty additions preserve strict labels; an actual
+   source citation is necessary but not sufficient for approving an answer.
+   Failures remain failed and cannot receive an evidence rescue.
+6. Set private `publication-stages.json` to the complete stage directory names,
+   then run `node publish-history.mjs PRIVATE_ROOT PUBLIC_OUTPUT_DIRECTORY`.
+   The publisher verifies snapshot/fixture hashes, complete experimental cells,
+   counterbalance order, source-valid prefetch and alternative citations. It
+   publishes metrics and opaque question IDs, never questions, messages, source
+   paths, answer text or private adjudication reasons.
+
+Prefetch time is included in answer completion. A supplied source's near-zero
+availability timestamp is not an agent-understanding latency or an infinite
+speedup. The third study consequently uses completion time as its primary latency
+outcome, unlike the preceding study's recorded-evidence proxy. The same 2x and
+five-second practical hurdle is retained, with that distinction made explicit.
+Model warmup/index build are separate costs; retain the runner's setup receipt.
+Do not change the frozen recipe while its validation is running.
