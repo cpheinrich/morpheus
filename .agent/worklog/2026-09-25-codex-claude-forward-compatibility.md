@@ -22,11 +22,15 @@ The current runtime retained every field and database column the adapters use.
 - Follow-up review found and resolved the inverse start/shutdown race by rejecting shutdown
   while delegation preflight is busy. It also hardened concurrent replacement: a departed
   service is accepted and an already-started current service is used immediately.
+- The formal high-risk review found that pre-handshake services could not receive the new
+  shutdown RPC and that a failed `ps` probe was indistinguishable from a confirmed-dead
+  process. Legacy services now idle out behind a persisted socket-identity marker that avoids
+  resetting their timer, while inconclusive process identity checks refuse replacement.
 
 ## Verification
 
 - `pnpm check`
-- `pnpm test` — 30 tests passed
+- `pnpm test` — 32 tests passed
 - Installed the branch package and ran `doctor` against the active Codex Desktop task;
   transcript settings and Claude Max authentication were detected.
 - Ran `inspect` against the active task; unrestricted settings and explicit Claude routing

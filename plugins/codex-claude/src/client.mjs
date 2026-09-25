@@ -2,13 +2,49 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir, rm, stat, open } from "node:fs/promises";
+import { mkdir, rm, stat, open, readFile, writeFile } from "node:fs/promises";
 import { home } from "./config.mjs";
 import { initStore } from "./store.mjs";
 import { installationId } from "./installation.mjs";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const unavailable = (error) =>
   ["ENOENT", "ECONNREFUSED", "ECONNRESET", "EPIPE"].includes(error.code);
+const legacyWaitFile = () => join(home(), "legacy-upgrade-wait.json");
+async function enforceLegacyWait() {
+  let marker;
+  try {
+    marker = JSON.parse(await readFile(legacyWaitFile(), "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") await rm(legacyWaitFile(), { force: true });
+    return;
+  }
+  const socket = await stat(join(home(), "bridge.sock")).catch(() => null);
+  if (
+    !socket ||
+    socket.ino !== marker.ino ||
+    socket.mtimeMs !== marker.mtimeMs ||
+    Date.now() >= marker.until
+  ) {
+    await rm(legacyWaitFile(), { force: true });
+    return;
+  }
+  const seconds = Math.ceil((marker.until - Date.now()) / 1000);
+  throw new Error(
+    `A legacy bridge is idling out safely; retry in about ${seconds} seconds without contacting it.`,
+  );
+}
+async function beginLegacyWait() {
+  const socket = await stat(join(home(), "bridge.sock"));
+  await writeFile(
+    legacyWaitFile(),
+    JSON.stringify({
+      until: Date.now() + 360000,
+      ino: socket.ino,
+      mtimeMs: socket.mtimeMs,
+    }),
+    { mode: 0o600 },
+  );
+}
 function request(method, args) {
   return new Promise((resolve, reject) => {
     const req = http.request(
@@ -42,6 +78,7 @@ function request(method, args) {
   });
 }
 export async function useRunning(method, args) {
+  await enforceLegacyWait();
   let info;
   try {
     info = await request("ping", {});
@@ -54,6 +91,12 @@ export async function useRunning(method, args) {
       await request("shutdown", {});
     } catch (e) {
       if (unavailable(e)) return { found: false };
+      if (e.message === "Unknown bridge operation") {
+        await beginLegacyWait();
+        throw new Error(
+          "The legacy bridge does not support safe live replacement. Active work was left untouched; wait about six minutes without retrying, then try again.",
+        );
+      }
       throw new Error(
         `An older bridge service is still running and cannot be replaced safely: ${e.message}`,
       );

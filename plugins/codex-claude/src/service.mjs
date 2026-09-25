@@ -33,7 +33,7 @@ import {
 } from "./store.mjs";
 import { Codex } from "./codex.mjs";
 import { checkClaude, handoff, claudeArgs } from "./claude.mjs";
-import { identity, stopOrphan } from "./processes.mjs";
+import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
@@ -43,6 +43,7 @@ export class Manager {
   codex = null;
   busy = false;
   draining = false;
+  processOwnership = ownedProcessState;
   viewer = new Viewer(this);
   async client() {
     if (!this.codex) {
@@ -565,15 +566,13 @@ export class Manager {
           const path = join(runDir(id), "process.json");
           const owned = await readJSON(path, null);
           if (!["starting", "running"].includes(owned?.state)) continue;
-          const guardian = await identity(owned.guardianPid);
-          const claude = await identity(owned.claudePid);
-          if (
-            (guardian &&
-              (!owned.guardianIdentity || guardian === owned.guardianIdentity)) ||
-            (claude &&
-              (!owned.claudeIdentity || claude === owned.claudeIdentity))
-          )
+          const ownership = await this.processOwnership(owned);
+          if (ownership === "live")
             throw new Error("An owned Claude process prevents a bridge upgrade.");
+          if (ownership === "unknown")
+            throw new Error(
+              "Claude process ownership could not be verified; bridge upgrade refused.",
+            );
           await atomic(path, {
             ...owned,
             state: "exited",

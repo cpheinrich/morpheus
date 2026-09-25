@@ -108,3 +108,21 @@ test("client uses a concurrent replacement instead of timing out", async (t) => 
   });
   assert.deepEqual(replacement.methods, ["ping", "shutdown", "ping", "config"]);
 });
+
+test("legacy service waits without repeated pings resetting its idle timer", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "client-legacy-"));
+  const previous = process.env.CODEX_CLAUDE_HOME;
+  process.env.CODEX_CLAUDE_HOME = root;
+  const legacy = await staleService(root, {
+    shutdownError: "Unknown bridge operation",
+  });
+  t.after(async () => {
+    await new Promise((resolve) => legacy.server.close(resolve));
+    if (previous === undefined) delete process.env.CODEX_CLAUDE_HOME;
+    else process.env.CODEX_CLAUDE_HOME = previous;
+    await rm(root, { recursive: true, force: true });
+  });
+  await assert.rejects(useRunning("config", {}), /wait about six minutes/);
+  await assert.rejects(useRunning("config", {}), /idling out safely/);
+  assert.deepEqual(legacy.methods, ["ping", "shutdown"]);
+});

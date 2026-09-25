@@ -152,6 +152,13 @@ test("bridge upgrade shutdown is allowed only when no owned work is active", asy
     /owned Claude process/,
   );
   assert.equal(manager.draining, false);
+  manager.processOwnership = async () => "unknown";
+  await assert.rejects(
+    manager.dispatch("shutdown"),
+    /could not be verified/,
+  );
+  assert.equal(manager.draining, false);
+  manager.processOwnership = async () => "stale";
   await atomic(join(runDir(id), "process.json"), { state: "exited" });
   manager.runs.set(id, { terminal: false });
   await assert.rejects(manager.dispatch("shutdown"), /Active Claude runs/);
