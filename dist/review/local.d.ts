@@ -5,6 +5,11 @@ declare const FollowUp: z.ZodObject<{
     commit: z.ZodString;
     base: z.ZodOptional<z.ZodString>;
     scopeReason: z.ZodOptional<z.ZodString>;
+    humanAuthorization: z.ZodOptional<z.ZodObject<{
+        approvedBy: z.ZodString;
+        approvedAt: z.ZodISODateTime;
+        reason: z.ZodString;
+    }, z.core.$strict>>;
     outcome: z.ZodEnum<{
         blocked: "blocked";
         incomplete: "incomplete";
@@ -82,6 +87,11 @@ export declare const ReviewRecord: z.ZodObject<{
         commit: z.ZodString;
         base: z.ZodOptional<z.ZodString>;
         scopeReason: z.ZodOptional<z.ZodString>;
+        humanAuthorization: z.ZodOptional<z.ZodObject<{
+            approvedBy: z.ZodString;
+            approvedAt: z.ZodISODateTime;
+            reason: z.ZodString;
+        }, z.core.$strict>>;
         outcome: z.ZodEnum<{
             blocked: "blocked";
             incomplete: "incomplete";
@@ -95,6 +105,11 @@ export declare const ReviewRecord: z.ZodObject<{
         commit: z.ZodString;
         base: z.ZodOptional<z.ZodString>;
         scopeReason: z.ZodOptional<z.ZodString>;
+        humanAuthorization: z.ZodOptional<z.ZodObject<{
+            approvedBy: z.ZodString;
+            approvedAt: z.ZodISODateTime;
+            reason: z.ZodString;
+        }, z.core.$strict>>;
         outcome: z.ZodEnum<{
             blocked: "blocked";
             incomplete: "incomplete";

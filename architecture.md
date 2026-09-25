@@ -1464,7 +1464,9 @@ if substantive findings were raised. Minor-only findings need no second pass. A 
 at three turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
 correction after clearance, named by its scope reason. Unresolved substantive disagreements,
 incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
-open and flagged, with auto-merge disabled. No automatic fourth turn. Incidental pre-existing bugs are recorded
+open and flagged, with auto-merge disabled. No automatic fourth turn. An explicit human exception is recorded per extra same-reviewer turn
+as `humanAuthorization` (approver, ISO timestamp and reason), preserving the full history and
+all other checks; one authorization never permits subsequent turns. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
 Initial risk-based ceilings are 10/15/30 minutes, with a one-minute floor at normal and high risk, with one justified initial extension of at most
@@ -2835,6 +2837,24 @@ an explicit IAM grant, which makes the rollup opt-in per dataset rather than imp
 
 The test for the first two: *if I improve this, do I want every existing project to get the
 improvement?* Yes → kit. No → template.
+
+### 18.0 Optional personal agent plugins
+
+`plugins/codex-claude/` is a deliberate exception to the kit's single-package distribution:
+it is a personal Codex integration, not a dependency of company repositories. It owns its
+manifest, skill, hooks, runtime, lockfile, tests and installation documentation. Neither
+`morpheus init` nor the CLI installer activates it. Explicit per-device installation copies
+the package into a personal marketplace; execution remains off until enabled. Personal
+settings and session records stay outside the repository.
+
+The bridge routes at safe checkpoints using Codex allowance, keeps explicit task/operation
+overrides, and starts subscription-authenticated Claude on the same host and worktree.
+Codex remains the coordinator and consumes its own allowance. Native Claude session ids
+provide persistence; a leased process guardian bounds live workers. Permission metadata
+must be verified before delegation, and unknown/restricted confinement fails closed in the
+initial version. Cross-agent memory consists of explicitly selected read-only excerpts,
+with native memory controls respected and separate write ownership. See the package README
+for exact compatibility, subscription-overage and remote-host boundaries.
 
 ### 18.1 Morpheus's own structure
 
