@@ -65,5 +65,44 @@ missing trials, counterbalancing, fixture/corpus drift and invalid adjudications
 
 ## Verification
 
-Typecheck passed before final trunk integration. Full integrated checks and the
-fresh independent review are recorded below before publication.
+- On integrated commit `52965156f18fedd18f1259b494f7b00bb6b0e67d`:
+  `pnpm typecheck`, `pnpm test` (56 files, 1,430 tests), `pnpm compile`, and
+  `pnpm morpheus pm index` passed. Compilation and indexing made no changes.
+- Sixteen new focused tests passed; the reviewer separately passed all 32
+  benchmark tests, including the original study.
+- Export regeneration verified fixture/snapshot hashes, complete counterbalanced
+  validation cells and adjudication source validity.
+- Private audit: all 96 healthy sessions had valid quotations, no forbidden
+  QMD policy use, no other MCP calls and no database errors.
+- Staged-content privacy scan: no exact private questions, gold passages or
+  detailed source paths in the 18 follow-up files. Reviewer scanned all 34 PR files.
+- `git diff --cached --check` passed before the implementation commit.
+
+The final clean trunk integration was `52965156`, before review. Its managed
+post-merge CLI update failed because the separate source checkout has local changes;
+those changes were left untouched. The task checkout's local CLI passed the checks.
+
+## Independent Review
+
+Independent review completed with no findings. The fresh reviewer passed all 32 focused tests, regenerated both tuning exports byte for byte, independently recomputed recall and timing metrics, audited all 96 healthy sessions and five validation adjudications, checked pinned QMD source claims, and found no private source content in the 34 changed files. The interrupted attempt and unobservable evidence timestamps remain explicit. No author fixes or follow-up were needed. Graph tools were unavailable, so review used exact source and retained private evidence; the full suite and costly agent experiment were not rerun by the reviewer. Clearance is for publication in the open PR, not production integration or merging.
+
+```morpheus-review
+{
+  "version": 1,
+  "base": "7083453defc27ce06125e2b6995f8119ec347fbb",
+  "reviewed": "52965156f18fedd18f1259b494f7b00bb6b0e67d",
+  "covered": "52965156f18fedd18f1259b494f7b00bb6b0e67d",
+  "authorSession": "01a0cfbb-30cd-7873-8cae-1f3977f28221",
+  "reviewerSession": "01a0d9ff-757d-7533-878e-17852be3acbb",
+  "risk": "normal",
+  "elapsedMinutes": 3.5,
+  "outcome": "complete",
+  "summary": "Independent review completed with no findings. The fresh reviewer passed all 32 focused tests, regenerated both tuning exports byte for byte, independently recomputed recall and timing metrics, audited all 96 healthy sessions and five validation adjudications, checked pinned QMD source claims, and found no private source content in the 34 changed files. The interrupted attempt and unobservable evidence timestamps remain explicit. No author fixes or follow-up were needed. Graph tools were unavailable, so review used exact source and retained private evidence; the full suite and costly agent experiment were not rerun by the reviewer. Clearance is for publication in the open PR, not production integration or merging.",
+  "findings": []
+}
+```
+
+The reviewer was started without inherited conversation history and confirmed its
+runner-issued session UUID, distinct from the author's. Reported elapsed time is
+approximately 3.5 minutes against the normal 15-minute ceiling. The PR remains
+open with auto-merge disabled, as requested.
