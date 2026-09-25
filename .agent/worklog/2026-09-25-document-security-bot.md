@@ -9,11 +9,12 @@ updated: 2026-09-25
 ## Outcome
 
 - Added the approved 512 px Morpheus Security badge as the canonical GitHub App identity asset.
-- Made the existing security-remediation execution contract discoverable from `docs/README.md`.
+- Made the standalone `cpheinrich/morpheus-security` execution contract discoverable from
+  `architecture.md` and `docs/README.md`.
 - Added a one-page policy summary, exact least-privilege App permissions, adoption steps, and the
   post-merge clean-run acceptance rule.
-- Recorded GitHub's account boundary for private App registrations after a prepared install for
-  the `darwin-health` organization returned 404 despite the operator being an organization admin.
+- Recorded the public-source/private-key trust boundary and the public-but-unlisted registration
+  required for explicit installations across personal and organization accounts.
 
 ## Verification
 
@@ -27,8 +28,9 @@ updated: 2026-09-25
 
 Brave's ChatGPT extension refused programmatic file selection until local-file access is enabled.
 The GitHub form and approved asset remain ready; this does not affect the versioned documentation
-asset. A private App owned by `cpheinrich` also cannot be installed directly on Evo's
-`darwin-health` organization, so that rollout requires an explicit ownership choice.
+asset. A private App owned by `cpheinrich` also could not be installed directly on Evo's
+`darwin-health` organization; the user selected a public-but-unlisted registration with explicit
+repository selection instead of maintaining one App per account.
 
 ## Independent review
 

@@ -2908,8 +2908,11 @@ separate best-effort discovery from content reads that propagate non-absence err
 
 ### 18.2 Reusable GitHub workflows
 
-Workflows with an `on: workflow_call` trigger live in Morpheus; each project keeps a thin delegator
-supplying project-specific inputs.
+General project-management workflows with an `on: workflow_call` trigger live in Morpheus; each
+project keeps a thin delegator supplying project-specific inputs. Security remediation is the
+exception: its public source, policy, and reusable workflow live in the narrow
+[`cpheinrich/morpheus-security`](https://github.com/cpheinrich/morpheus-security) repository so an
+operator can review and adopt it without importing Morpheus itself.
 
 ```yaml
 # acme/.github/workflows/ci.yml — the whole file
@@ -2935,7 +2938,7 @@ build, while the other spends model budget to judge a change, so neither workflo
 implicitly enables the other.
 
 Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `ios-nightly-build`, `firebase-tests`,
-`osv-scan`, `security-remediation`, `pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`,
+`pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`,
 `agent-review`, and `dependabot-maintainer`, plus one composite action, `ios-testflight-upload`. Planned:
 `agent-triage`, `agent-analytics-review`, and `release-kit`.
 
@@ -2951,13 +2954,16 @@ When an approved head is behind a strict protected base, delivery enables auto-m
 GitHub's guarded branch update with the revalidated head SHA. The resulting CI completion invokes
 the fast path again, so several simultaneous updates converge one merge at a time as `main` moves.
 
-Security remediation is a separate deterministic lane. A private GitHub App combines active OSV
-findings with open GitHub reviewed alerts, deduplicates aliases, and opens one dependency-only PR
-per lockfile at a time. Native package-manager adapters select the smallest reachable fixed line;
-registry provenance, lockfile integrity, diff scope, and a candidate OSV rescan fail closed before
-delivery. The App enables auto-merge, but required repository checks retain final authority. No AI
-model or OpenAI credential participates. `MAL-*` findings additionally create or update a private
-incident issue that remains open for human exposure review.
+Security remediation is a separate deterministic lane distributed from the standalone public
+repository. A public-but-unlisted GitHub App combines active OSV findings with open GitHub reviewed
+alerts, deduplicates aliases, and opens one dependency-only PR per lockfile at a time. npm, pnpm and
+uv adapters select the smallest reachable fixed line; resolver credentials are scrubbed, builds and
+scripts are disabled, and registry provenance, lockfile integrity, diff scope, and a candidate OSV
+rescan fail closed before delivery. The creation run writes an App-owned Check Run attestation for
+the exact candidate. A later run merges only that head after every repository-configured check
+passes. A stale strict-protection candidate is closed and recreated from a freshly verified default
+branch, repeating all evidence. No AI model or OpenAI credential participates. `MAL-*` findings
+additionally create or update a private incident issue that remains open for human exposure review.
 
 Projects trigger the workflow after CI for the fast path and on a nightly schedule for
 reconciliation. GitHub event delivery, a transient workflow failure, and a policy change can each
@@ -3138,17 +3144,12 @@ Suite, needs no secrets — so it passes on fork pull requests — and is delibe
 `web-ci`, because most projects have no Firebase and would pay for a JRE, a 100 MB emulator jar and
 a boot to run nothing.
 
-`osv-scan` is a second opt-in reusable workflow: a project schedules it against `main`, where
-it performs a full dependency-vulnerability scan and uploads SARIF to GitHub code scanning. The
-schedule matters: a dependency can become vulnerable without any repository change. It deliberately
-uses a pinned full-tree scan rather than OSV's PR-diff workflow, whose current result-file handling
-can be bypassed by a pull-request-controlled symlink. It needs only `actions: read`, `contents:
-read`, and `security-events: write`; it never receives application credentials.
-`security-remediation` adds hosted delivery. A project owns the nightly/manual trigger and encrypted
-GitHub App credentials; the reusable workflow owns OSV plus GitHub-alert ingestion, one-dependency
-PR creation, deterministic artifact and scope gates, reconciliation, and guarded auto-merge.
-Missing evidence never counts as clean. No local host or model runtime participates. See
-[the execution contract](docs/runbooks/osv-maintenance.md).
+`morpheus-security` is an opt-in reusable workflow in its own repository. A project owns the
+nightly/manual trigger, explicit check allowlist and encrypted GitHub App credentials; the pinned
+workflow owns full-tree OSV plus GitHub-alert ingestion, one-dependency PR creation, deterministic
+artifact and scope gates, reconciliation, and guarded merge. The schedule matters: a dependency
+can become vulnerable without any repository change. Missing evidence never counts as clean. No
+local host or model runtime participates. See [the execution contract](docs/runbooks/osv-maintenance.md).
 
 `release-preflight` is the secret-free gate before any job that publishes outside GitHub. It accepts
 no caller-selected source: the workflow requires `refs/heads/main`, checks out `github.sha`, refuses
