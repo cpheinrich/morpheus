@@ -8,9 +8,6 @@ on:
       config-file:
         type: string
         default: .github/morpheus-security.json
-      morpheus-ref:
-        type: string
-        default: main
     secrets:
       app_id:
         required: true
@@ -55,7 +52,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: cpheinrich/morpheus
-          ref: ${{ inputs.morpheus-ref }}
+          # github.workflow_sha is the immutable commit that supplied this
+          # reusable workflow, even when the caller selected a branch ref.
+          ref: ${{ github.workflow_sha }}
           path: .morpheus-tooling
           fetch-depth: 1
           persist-credentials: false
@@ -84,6 +83,7 @@ jobs:
       - name: Reconcile existing bot pull requests
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SECURITY_CONFIG: ${{ inputs.config-file }}
         run: node "$RUNNER_TEMP/morpheus-security-tooling/scripts/security-remediation.mjs" reconcile
 
       - name: Scan trusted main with OSV

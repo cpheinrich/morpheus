@@ -113,13 +113,17 @@ function ensureLabel(repo, name, color, description) {
   }
 }
 
-function incidentRepository(repo, config) {
+export function incidentRepository(repo, config) {
   const visibility = run("gh", ["api", `repos/${repo}`, "--jq", ".visibility"]);
   if (visibility === "public") {
     if (!config.incidentRepository) throw new Error("Public repositories require a private incidentRepository");
-    return config.incidentRepository;
   }
-  return config.incidentRepository ?? repo;
+  const target = config.incidentRepository ?? repo;
+  const targetVisibility = run("gh", ["api", `repos/${target}`, "--jq", ".visibility"]);
+  if (targetVisibility !== "private") {
+    throw new Error(`Malware incident repository must be private: ${target}`);
+  }
+  return target;
 }
 
 function upsertMalwareIncident(repo, finding, config) {
@@ -196,8 +200,9 @@ function updateNpm(finding) {
 function updateUv(finding) {
   if (!finding.fixedVersion) throw new Error(`${finding.advisory} has no fixed version`);
   const root = packageRoot(finding.sourcePath);
+  const beforeLock = readFileSync(finding.sourcePath, "utf8");
   run("uv", ["lock", "--upgrade-package", `${finding.dependency}>=${finding.fixedVersion}`], { cwd: root });
-  return { strategy: "uv-lock", manifestPath: null };
+  return { strategy: "uv-lock", manifestPath: null, beforeLock };
 }
 
 function applyUpdate(finding) {
@@ -207,18 +212,49 @@ function applyUpdate(finding) {
   throw new Error(`No remediation adapter for ${base}; OSV detection still covers it`);
 }
 
-function assertOfficialNpmArtifacts(lockfile, beforeText) {
+export function assertOfficialNpmArtifacts(lockfile, beforeText) {
   const lock = JSON.parse(readFileSync(lockfile, "utf8"));
   const before = JSON.parse(beforeText);
   for (const [path, entry] of Object.entries(lock.packages ?? {})) {
-    if (!path.includes("node_modules/") || !entry.resolved) continue;
+    if (!path.includes("node_modules/")) continue;
     const previous = before.packages?.[path];
-    if (previous?.resolved === entry.resolved && previous?.integrity === entry.integrity) continue;
+    if (previous && previous.resolved === entry.resolved && previous.integrity === entry.integrity &&
+        previous?.link === entry.link) continue;
+    if (!entry.resolved) {
+      throw new Error(`Refusing changed npm artifact without a registry URL: ${path}`);
+    }
     if (!String(entry.resolved).startsWith("https://registry.npmjs.org/")) {
       throw new Error(`Refusing non-registry npm artifact at ${path}: ${entry.resolved}`);
     }
     if (!entry.integrity || !/^sha(?:256|384|512)-/.test(entry.integrity)) {
       throw new Error(`Refusing npm artifact without a recognized integrity hash: ${path}`);
+    }
+  }
+}
+
+function uvPackages(lockText) {
+  return lockText.split(/^\[\[package\]\]\s*$/m).slice(1).map((block) => {
+    const name = /^name = "([^"]+)"$/m.exec(block)?.[1];
+    const version = /^version = "([^"]+)"$/m.exec(block)?.[1] ?? "";
+    const source = /^source = (.+)$/m.exec(block)?.[1] ?? "workspace";
+    if (!name) throw new Error("uv.lock package is missing a name");
+    return { name, version, source, block };
+  });
+}
+
+export function assertOfficialUvArtifacts(lockfile, beforeText) {
+  const before = uvPackages(beforeText);
+  const after = uvPackages(readFileSync(lockfile, "utf8"));
+  for (const entry of after) {
+    const previous = before.find((candidate) => candidate.name === entry.name &&
+      candidate.version === entry.version && candidate.source === entry.source);
+    if (previous?.block === entry.block) continue;
+    if (entry.source !== '{ registry = "https://pypi.org/simple" }') {
+      if (previous) continue; // Existing workspace/path identity; only dependency edges changed.
+      throw new Error(`Refusing changed uv artifact from a non-PyPI source: ${entry.name}`);
+    }
+    if (!/hash = "sha256:[a-f0-9]+"/.test(entry.block)) {
+      throw new Error(`Refusing changed PyPI artifact without a sha256 hash: ${entry.name}`);
     }
   }
 }
@@ -260,6 +296,10 @@ function prepare() {
   if (!isSecurityDependencyOnly(changedFiles)) throw new Error(`Updater changed a disallowed path: ${changedFiles.join(", ")}`);
   if (!changedFiles.includes(finding.sourcePath)) throw new Error(`Updater did not change ${finding.sourcePath}`);
   if (beforeLock) assertOfficialNpmArtifacts(finding.sourcePath, beforeLock);
+  if (update.beforeLock) {
+    assertOfficialUvArtifacts(finding.sourcePath, update.beforeLock);
+    delete update.beforeLock;
+  }
   const plan = { status: "prepared", finding, update, changedFiles, beforeSha: run("git", ["rev-parse", "HEAD"]) };
   mkdirSync(dirname(planFile), { recursive: true });
   writeFileSync(planFile, `${JSON.stringify(plan, null, 2)}\n`);
@@ -306,6 +346,7 @@ function deliver() {
   const incident = finding.incidentUrl ? `\nRelated incident: ${finding.incidentUrl}` : "";
   const body = `${SECURITY_MARKER}\n\n## Summary\n\n` +
     `Dependency: \`${finding.dependency}\`\n\nLockfile: \`${finding.sourcePath}\`\n\n` +
+    `Advisories: ${finding.aliases.map((alias) => `\`${alias}\``).join(", ")}\n\n` +
     `- Remediate ${finding.advisory} (${finding.aliases.join(", ")}).\n` +
     `- Update \`${finding.version}\` to the smallest available fixed line, \`${finding.fixedVersion ?? "removed"}\`, using \`${plan.update.strategy}\`.\n` +
     `- OSV rescanned the candidate and no longer reports this package/advisory pair.\n` +
@@ -322,8 +363,22 @@ function deliver() {
 
 function reconcile() {
   const repo = required("GITHUB_REPOSITORY");
+  const config = loadConfig();
   const open = openSecurityPulls(repo);
   for (const pr of open) {
+    const dependency = /Dependency: `([^`]+)`/.exec(pr.body ?? "")?.[1];
+    const aliases = /Advisories: ([^\n]+)/.exec(pr.body ?? "")?.[1]
+      ?.split(",").map((value) => /`([^`]+)`/.exec(value)?.[1]).filter(Boolean) ?? [];
+    if (!dependency || aliases.length === 0) {
+      run("gh", ["pr", "merge", String(pr.number), "--repo", repo, "--disable-auto"]);
+      summary(`- ${pr.html_url}: auto-merge disabled because its policy metadata is incomplete.`);
+      continue;
+    }
+    if (held({ dependency, aliases }, config)) {
+      run("gh", ["pr", "merge", String(pr.number), "--repo", repo, "--disable-auto"]);
+      summary(`- ${pr.html_url}: auto-merge disabled by the current project hold.`);
+      continue;
+    }
     try {
       run("gh", ["pr", "merge", String(pr.number), "--repo", repo, "--auto", "--squash", "--delete-branch"]);
     } catch (error) {

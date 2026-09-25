@@ -142,6 +142,8 @@ describe("security-remediation.yml", () => {
     });
     expect(wf.permissions).toEqual({ contents: "read" });
     expect(JSON.stringify(wf)).not.toContain("openai");
+    expect(JSON.stringify(wf)).toContain("${{ github.workflow_sha }}");
+    expect(JSON.stringify(wf)).not.toContain("morpheus-ref");
   });
 
   it("mints a least-privilege installation token and serializes a repository", async () => {
@@ -169,6 +171,8 @@ describe("security-remediation.yml", () => {
     const receipt = steps.find((step) => step.name === "Upload the run receipt");
     expect(receipt?.with?.["retention-days"]).toBe(30);
     expect(receipt?.with?.["include-hidden-files"]).toBe(true);
+    const reconcile = steps.find((step) => step.name === "Reconcile existing bot pull requests");
+    expect(reconcile?.env?.SECURITY_CONFIG).toBe("${{ inputs.config-file }}");
   });
 });
 
