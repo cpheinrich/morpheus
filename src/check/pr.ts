@@ -6,6 +6,11 @@ import {
   type VisualEvidencePolicy,
 } from "./visual-evidence.js";
 import { DEPENDABOT_LOGIN, isDependencyOnly } from "../dependabot/policy.js";
+import {
+  hasSecurityMarker,
+  isSecurityDependencyOnly,
+  MORPHEUS_SECURITY_LOGIN,
+} from "../security/policy.js";
 
 /**
  * PR conventions, enforced rather than requested.
@@ -192,6 +197,24 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
       rule: "dependabot-scope",
       message:
         "Dependabot changed a path outside the dependency manifest allowlist; refusing the bot waiver.",
+    });
+  }
+
+  // The private Morpheus Security App gets the same narrow authoring waiver,
+  // but only for a marked dependency-only PR. The marker prevents an App PR
+  // created for another purpose from inheriting this exception.
+  if (ctx.author === MORPHEUS_SECURITY_LOGIN) {
+    if (hasSecurityMarker(body) && isSecurityDependencyOnly(changedFiles)) {
+      return [{
+        level: "waived",
+        rule: "morpheus-security-contract",
+        message: "human authoring and independent review waived for a marked Morpheus Security dependency-only change; branch protection remains mandatory",
+      }];
+    }
+    findings.push({
+      level: "error",
+      rule: "morpheus-security-scope",
+      message: "Morpheus Security PR is unmarked or changes a path outside the dependency manifest allowlist.",
     });
   }
 

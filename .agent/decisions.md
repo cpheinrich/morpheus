@@ -37,6 +37,16 @@ repairs missed events. An approved head behind a strict protected base is advanc
 head-SHA-guarded update endpoint after auto-merge is enabled; its new CI run feeds back through the
 same fast path until the queue converges.
 
+**Security dependency remediation supersedes Dependabot PRs with a deterministic GitHub App** —
+2026-09-25. `morpheus-security` accepts every active OSV finding plus open GitHub reviewed alerts,
+deduplicated by package and advisory aliases. It opens one dependency per PR, serializes each
+lockfile, checks official-registry provenance and integrity, rescans the candidate, and enables
+auto-merge only behind all repository-required checks. It uses no model or OpenAI credential.
+The exact marked dependency-only App PR has a narrow authoring/review waiver. Dependabot alerts
+remain an input, but its automatic security-fix PRs are disabled in adopted repositories. Routine
+non-security version maintenance remains a separate policy lane. `MAL-*` findings also upsert a
+private incident issue held open for human exposure and credential-rotation acknowledgment.
+
 **Vercel over Firebase App Hosting** — decided on the review loop, not hosting quality. Vercel
 Comments anchor feedback to page elements and sync into the PR, which is the mechanism that
 makes human review work. Revisit if Firebase ships an equivalent.
@@ -977,3 +987,10 @@ included, because those are the ones that rotted. Conditional clearance is adopt
 mechanical conditions only: the reviewer sets paths and evidence, the author records compliance,
 and `check pr` verifies the fix stayed inside the paths; a condition cannot be added or widened by
 the author.
+
+
+**Each iOS CI test job owns disposable simulator devices** — 2026-09-25. The reusable
+workflow resolves the caller’s destination to type/runtime and creates a fresh uniquely
+named device. A JavaScript action’s unconditional post hook removes it and its exact
+XCTest worker clones. Native simctl and Node built-ins cover this Apple-specific lifecycle
+without an SDK/dependency or global shutdown that could interrupt another job.

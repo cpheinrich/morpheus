@@ -126,6 +126,57 @@ describe("dependabot-maintainer.yml", () => {
   });
 });
 
+describe("security-remediation.yml", () => {
+  type Step = { name?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string>; run?: string };
+  type SecurityWorkflow = {
+    on?: { workflow_call?: { secrets?: Record<string, unknown> } };
+    permissions?: Record<string, string>;
+    jobs?: Record<string, { concurrency?: Record<string, unknown>; steps?: Step[] }>;
+  };
+
+  it("is reusable, deterministic, and receives only GitHub App credentials", async () => {
+    const wf = (await read("security-remediation.yml")) as SecurityWorkflow;
+    expect(wf.on?.workflow_call?.secrets).toEqual({
+      app_id: { required: true },
+      app_private_key: { required: true },
+    });
+    expect(wf.permissions).toEqual({ contents: "read" });
+    expect(JSON.stringify(wf)).not.toContain("openai");
+    expect(JSON.stringify(wf)).toContain("${{ inputs.morpheus-sha }}");
+    expect(JSON.stringify(wf)).toContain("^[0-9a-f]{40}$");
+    expect(JSON.stringify(wf)).not.toContain("github.workflow_sha");
+  });
+
+  it("mints a least-privilege installation token and serializes a repository", async () => {
+    const wf = (await read("security-remediation.yml")) as SecurityWorkflow;
+    const job = wf.jobs?.remediate;
+    const token = job?.steps?.find((step) => step.name === "Mint the installation token");
+    expect(job?.concurrency?.["cancel-in-progress"]).toBe(false);
+    expect(token?.with).toMatchObject({
+      "permission-actions": "read",
+      "permission-checks": "read",
+      "permission-contents": "write",
+      "permission-issues": "write",
+      "permission-pull-requests": "write",
+      "permission-statuses": "read",
+      "permission-vulnerability-alerts": "read",
+    });
+  });
+
+  it("scans both main and the candidate and retains a receipt", async () => {
+    const wf = (await read("security-remediation.yml")) as SecurityWorkflow;
+    const steps = wf.jobs?.remediate?.steps ?? [];
+    const scans = steps.filter((step) => step.uses?.startsWith("google/osv-scanner-action/"));
+    expect(scans).toHaveLength(2);
+    expect(scans.every((step) => String(step.uses).endsWith("@a345acffa64b0eaede81a3d9aae6141214d9c8fc"))).toBe(true);
+    const receipt = steps.find((step) => step.name === "Upload the run receipt");
+    expect(receipt?.with?.["retention-days"]).toBe(30);
+    expect(receipt?.with?.["include-hidden-files"]).toBe(true);
+    const reconcile = steps.find((step) => step.name === "Reconcile existing bot pull requests");
+    expect(reconcile?.env?.SECURITY_CONFIG).toBe("${{ inputs.config-file }}");
+  });
+});
+
 describe("release-preflight.yml", () => {
   type ReleasePreflight = {
     on?: {
@@ -399,11 +450,11 @@ describe("osv-scan.yml", () => {
     );
   });
 
-  it("schedules scans and runs them after Morpheus reaches main", async () => {
+  it("scans nightly and manually, never on pushes or PRs", async () => {
     const wf = await read("security.yml");
 
-    expect(wf.on).toHaveProperty("schedule");
-    expect(wf.on).toHaveProperty("workflow_dispatch");
+    expect(wf.on?.schedule).toEqual([{ cron: "43 10 * * *" }]);
+    expect(Object.keys(wf.on ?? {}).sort()).toEqual(["schedule", "workflow_dispatch"]);
     expect(wf.jobs?.osv?.uses).toBe("./.github/workflows/osv-scan.yml");
     expect((wf as { permissions?: Record<string, string> }).permissions).toEqual({
       actions: "read",
