@@ -5,9 +5,10 @@
 </p>
 
 Morpheus Security is a deterministic GitHub-native pipeline. It needs no Codex heartbeat, local
-host, OpenAI key, or other model. Its public source, policy, and reusable workflow live in
-[`cpheinrich/morpheus-security`](https://github.com/cpheinrich/morpheus-security). A managed
-repository calls an exact reviewed commit nightly and may dispatch it manually.
+host, OpenAI key, paid service, or other model. Its public source, policy, and central nightly
+workflow live in [`cpheinrich/morpheus-security`](https://github.com/cpheinrich/morpheus-security).
+Installed repositories opt in through a committed policy file; they do not hold the App key or a
+repository-owned schedule.
 
 ## Policy summary
 
@@ -41,14 +42,15 @@ change fails closed.
 The public-but-unlisted `morpheus-security` GitHub App uses one-hour installation tokens. It has
 metadata read, statuses read, checks/contents/pull requests/issues write, and Dependabot alerts
 read. It has no administration, Actions, secrets, workflow, organization, account, OAuth, or
-webhook permission. The caller stores the App id and private key as encrypted repository secrets.
-The maintainers install their App only on repositories they control. Outside operators use the
-public source with an App and private key they register and retain themselves.
+webhook permission. The App id and private key live only in the standalone repository's protected
+`security-bot` environment, with an offline recovery copy in the operator's credential vault.
+Target repositories never receive the private key. Each run mints short-lived tokens scoped to one
+target and its optional same-owner incident repository.
 
 The App's canonical identity is [`morpheus-security-badge.png`](../assets/morpheus-security-badge.png).
 The registered homepage points to the standalone repository. Public registration permits explicit
-installation across the maintainers' personal and organization accounts; it is not a hosted
-service and is not listed in GitHub Marketplace.
+installation across personal and organization accounts. It is centrally operated by GitHub
+Actions and is not listed in GitHub Marketplace.
 
 GitHub scopes a private App registration to its owning account. Repository administration in a
 different organization is not enough to install it there: a multi-account rollout needs either one
@@ -120,7 +122,10 @@ private project uses its own issue tracker. A public project must configure a pr
 
 ## Operations
 
-Each run retains its before scan, candidate scan, and plan receipt for 30 days. A clean run means
+The central workflow first intersects three independent gates: an App installation, the reviewed
+`config/approved-repositories.json` allowlist, and a valid `.github/morpheus-security.json` on the
+target's default branch. This keeps an unknown public installation inert. Each run retains its
+before scan, candidate scan, and plan receipt for 30 days. A clean run means
 both OSV and the GitHub alert input contained no actionable finding. A successful PR is not final
 evidence: after merge, the next nightly/manual main scan must be clean for that package/advisory,
 and the GitHub alert must close from the merged graph rather than by manual dismissal.
@@ -130,41 +135,20 @@ and the GitHub alert must close from the merged graph rather than by manual dism
 1. Enable GitHub Dependabot alerts, but leave automatic security-fix PRs on until the replacement
    has completed its first clean run.
 2. Install the `morpheus-security` App on only the adopting repository and same-owner private
-   incident repository, when configured. Outside operators register their own App.
-3. Add `MORPHEUS_SECURITY_APP_ID` and `MORPHEUS_SECURITY_PRIVATE_KEY` as encrypted repository
-   secrets. The private key is never committed and is removed from the provisioning machine after
-   the secret is verified.
+   incident repository, when configured. Installation grants access but never reveals the App key.
+3. Have a trusted maintainer add the exact `owner/name` to the standalone repository's reviewed
+   `config/approved-repositories.json` allowlist.
 4. Add `.github/morpheus-security.json` with `version: 1`, explicit holds, exact `requiredChecks`,
    and a private `incidentRepository` when a public repository cannot safely hold malware detail.
-5. Add a repository-owned nightly/manual caller. Pin both the reusable workflow reference and its
-   `security-sha` input to the same reviewed standalone commit:
-
-   ```yaml
-   name: Security remediation
-
-   on:
-     schedule:
-       - cron: "43 10 * * *"
-     workflow_dispatch:
-
-   permissions:
-     contents: read
-
-   jobs:
-     remediate:
-       uses: cpheinrich/morpheus-security/.github/workflows/security-remediation.yml@<reviewed-sha>
-       with:
-         security-sha: <reviewed-sha>
-         config-file: .github/morpheus-security.json
-       secrets:
-         app_id: ${{ secrets.MORPHEUS_SECURITY_APP_ID }}
-         app_private_key: ${{ secrets.MORPHEUS_SECURITY_PRIVATE_KEY }}
-   ```
-
-6. Dispatch once manually. After each dependency PR's required checks pass, dispatch again to merge
-   it. Continue until the main-branch receipt is clean and the corresponding GitHub alert closes.
-7. Only then disable Dependabot automatic security-fix PRs. Keep Dependabot alerts enabled because
+5. Let the central nightly schedule run, or have a maintainer dispatch it. A later run merges a
+   validated PR after its configured checks pass; continue until the main-branch receipt is clean
+   and the corresponding GitHub alert closes.
+6. Only then disable Dependabot automatic security-fix PRs. Keep Dependabot alerts enabled because
    they are one of this pipeline's advisory inputs.
+
+An operator who does not want the central maintainers to hold installation authority can fork the
+standalone repository, register a separate App, and store that App's id and private key once in the
+fork's protected `security-bot` environment.
 
 If a previous bot PR is still open for a lockfile, reconciliation waits on it unless its base is
 stale or conflicted; then it is closed and recreated from verified current state. A project-policy

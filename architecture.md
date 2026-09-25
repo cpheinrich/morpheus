@@ -2910,7 +2910,7 @@ separate best-effort discovery from content reads that propagate non-absence err
 
 General project-management workflows with an `on: workflow_call` trigger live in Morpheus; each
 project keeps a thin delegator supplying project-specific inputs. Security remediation is the
-exception: its public source, policy, and reusable workflow live in the narrow
+exception: its public source, policy, and central scheduled workflow live in the narrow
 [`cpheinrich/morpheus-security`](https://github.com/cpheinrich/morpheus-security) repository so an
 operator can review and adopt it without importing Morpheus itself.
 
@@ -2965,10 +2965,9 @@ passes. A stale strict-protection candidate is closed and recreated from a fresh
 branch, repeating all evidence. No AI model or OpenAI credential participates. `MAL-*` findings
 additionally create or update a private incident issue that remains open for human exposure review.
 
-Projects trigger the workflow after CI for the fast path and on a nightly schedule for
-reconciliation. GitHub event delivery, a transient workflow failure, and a policy change can each
-leave work behind; the scheduled pass makes the open pull-request set the source of truth rather
-than treating one event as a durable queue.
+The standalone repository reconciles all approved installations nightly; a maintainer may also
+dispatch it manually. A transient workflow failure or policy change can leave work behind, so the
+scheduled pass treats the open pull-request set as the durable source of truth.
 
 Every reusable job carries a `timeout-minutes` ceiling set well above its honest runtime, so it
 fires only on a hang. Without one a stuck step runs to GitHub's six-hour default on billed
@@ -3144,12 +3143,13 @@ Suite, needs no secrets — so it passes on fork pull requests — and is delibe
 `web-ci`, because most projects have no Firebase and would pay for a JRE, a 100 MB emulator jar and
 a boot to run nothing.
 
-`morpheus-security` is an opt-in reusable workflow in its own repository. A project owns the
-nightly/manual trigger, explicit check allowlist and encrypted GitHub App credentials; the pinned
-workflow owns full-tree OSV plus GitHub-alert ingestion, one-dependency PR creation, deterministic
-artifact and scope gates, reconciliation, and guarded merge. The schedule matters: a dependency
-can become vulnerable without any repository change. Missing evidence never counts as clean. No
-local host or model runtime participates. See [the execution contract](docs/runbooks/osv-maintenance.md).
+`morpheus-security` is a central scheduled workflow in its own repository. The App id and private
+key live once in its protected environment. A target opts in only when its installation, the
+reviewed central repository allowlist, and its committed policy agree. The workflow owns full-tree
+OSV plus GitHub-alert ingestion, one-dependency PR creation, deterministic artifact and scope
+gates, reconciliation, and guarded merge. The schedule matters: a dependency can become vulnerable
+without any repository change. Missing evidence never counts as clean. No local host or model
+runtime participates. See [the execution contract](docs/runbooks/osv-maintenance.md).
 
 `release-preflight` is the secret-free gate before any job that publishes outside GitHub. It accepts
 no caller-selected source: the workflow requires `refs/heads/main`, checks out `github.sha`, refuses
