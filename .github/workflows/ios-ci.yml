@@ -193,6 +193,14 @@ jobs:
           echo "DEVELOPER_DIR=$xcode_app/Contents/Developer" >> "$GITHUB_ENV"
           "$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version
 
+      # The post action runs on success, test failure and cancellation. Each job
+      # owns its base device and uniquely named XCTest clones, even on a shared Mac.
+      - name: Create disposable test simulator
+        if: ${{ inputs.run-tests && inputs.platform == 'iOS Simulator' }}
+        uses: cpheinrich/morpheus/.github/actions/ios-simulator@main
+        with:
+          destination: ${{ inputs.destination }}
+
       - name: Validate locked project inputs
         env:
           PROJECT: ${{ inputs.project }}
@@ -415,7 +423,7 @@ jobs:
             -scheme "$SCHEME"
             -configuration "$CONFIGURATION"
             -sdk "$SDK"
-            -destination "platform=$PLATFORM,$DESTINATION"
+            -destination "platform=$PLATFORM,${MORPHEUS_IOS_DESTINATION:-$DESTINATION}"
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
             -derivedDataPath "$DERIVED_DATA"
             -resultBundlePath "$RESULTS/Build.xcresult"
@@ -458,7 +466,7 @@ jobs:
             -scheme "$SCHEME"
             -configuration "$CONFIGURATION"
             -sdk "$SDK"
-            -destination "platform=$PLATFORM,$DESTINATION"
+            -destination "platform=$PLATFORM,${MORPHEUS_IOS_DESTINATION:-$DESTINATION}"
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
             -derivedDataPath "$DERIVED_DATA"
             -resultBundlePath "$RESULTS/Build.xcresult"
@@ -497,7 +505,7 @@ jobs:
             -scheme "$SCHEME"
             -configuration "$CONFIGURATION"
             -sdk "$SDK"
-            -destination "platform=$PLATFORM,$DESTINATION"
+            -destination "platform=$PLATFORM,${MORPHEUS_IOS_DESTINATION:-$DESTINATION}"
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
             -derivedDataPath "$DERIVED_DATA"
             -resultBundlePath "$RESULTS/Tests.xcresult"

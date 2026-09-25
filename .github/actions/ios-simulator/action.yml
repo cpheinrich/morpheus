@@ -1,0 +1,11 @@
+name: Owned iOS simulator
+description: Create a disposable test destination and reclaim it and its XCTest clones in the job post phase.
+inputs:
+  destination:
+    description: Existing iOS simulator destination, using name and OS or id.
+    required: true
+runs:
+  using: node24
+  main: main.mjs
+  post: post.mjs
+  post-if: always()

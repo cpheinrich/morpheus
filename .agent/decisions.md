@@ -977,3 +977,10 @@ included, because those are the ones that rotted. Conditional clearance is adopt
 mechanical conditions only: the reviewer sets paths and evidence, the author records compliance,
 and `check pr` verifies the fix stayed inside the paths; a condition cannot be added or widened by
 the author.
+
+
+**Each iOS CI test job owns disposable simulator devices** — 2026-09-25. The reusable
+workflow resolves the caller’s destination to type/runtime and creates a fresh uniquely
+named device. A JavaScript action’s unconditional post hook removes it and its exact
+XCTest worker clones. Native simctl and Node built-ins cover this Apple-specific lifecycle
+without an SDK/dependency or global shutdown that could interrupt another job.
