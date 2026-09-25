@@ -33,11 +33,10 @@ passed.
 
 ## Independent review
 
-A high-risk independent review of `c654f76` found five substantive fail-closed gaps. The author
-fixed npm provenance, private incident targeting, current project holds, immutable tooling selection,
-and uv artifact-level provenance across `68e4582` and `332461a`. The same reviewer used both allowed
-follow-up turns and cleared the final commit. Focused suites passed on every turn; the final full
-validation passed 1,394 tests in 52 files, typecheck, lint, compile, PM index, and diff checks.
+A high-risk independent review found five substantive fail-closed gaps. The author fixed npm provenance, private incident targeting, current project holds, immutable tooling selection, and uv artifact-level provenance across 68e4582 and 332461a. The same reviewer used both allowed follow-up turns and cleared the final commit.
+
+Focused suites passed on every turn; the final full validation passed 1,394 tests in 52 files,
+typecheck, lint, compile, PM index, and diff checks.
 
 ```morpheus-review
 {
