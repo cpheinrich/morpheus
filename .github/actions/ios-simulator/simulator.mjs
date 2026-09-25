@@ -22,14 +22,20 @@ export function ownedDevices(inventory, name) {
 }
 
 export function cleanup(name, command = sim) {
-  const devices = ownedDevices(JSON.parse(command('list', 'devices', '-j')), name);
   const errors = [];
-  for (const device of devices) {
-    try {
-      if (device.state !== 'Shutdown') command('shutdown', device.udid);
-      command('delete', device.udid);
-      console.log(`Removed owned simulator ${device.name} (${device.udid}).`);
-    } catch (error) { errors.push(error); }
+  // Xcode keeps parallel workers in XCTestDevices, not the default device set.
+  // Carry the selector through every command so a worker UDID is resolved there.
+  for (const selector of [[], ['--set', 'testing']]) {
+    let devices;
+    try { devices = ownedDevices(JSON.parse(command(...selector, 'list', 'devices', '-j')), name); }
+    catch (error) { errors.push(error); continue; }
+    for (const device of devices) {
+      try {
+        if (device.state !== 'Shutdown') command(...selector, 'shutdown', device.udid);
+        command(...selector, 'delete', device.udid);
+        console.log(`Removed owned simulator ${device.name} (${device.udid}).`);
+      } catch (error) { errors.push(error); }
+    }
   }
-  if (errors.length) throw new AggregateError(errors, `Failed to clean up ${errors.length} owned simulator(s): ${errors.map(e => e.message).join('; ')}`);
+  if (errors.length) throw new AggregateError(errors, `Failed to clean up ${errors.length} simulator device(s)/set(s): ${errors.map(e => e.message).join('; ')}`);
 }
