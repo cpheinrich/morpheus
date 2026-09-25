@@ -23,3 +23,5 @@ Validate with `node --test .github/actions/ios-simulator/simulator.test.mjs`; `p
 includes that behavioral suite. The action uses Node built-ins and Apple's `simctl`, with
 no dependency installation and no App Store credentials. Archives and visual gallery
 publication do not use simulator devices.
+
+Shutdown may race with XCTest completing teardown. Cleanup still attempts deletion of the exact owned device after a shutdown error; a failed deletion remains a job failure.
