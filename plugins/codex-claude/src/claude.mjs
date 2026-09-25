@@ -22,7 +22,7 @@ export function subscriptionFromAuthStatus(text) {
     );
   return auth.subscriptionType;
 }
-export async function checkClaude(cwd = process.cwd()) {
+export async function checkClaude(cwd = process.cwd(), run = exec) {
   // CLI settings can inject credentials after environment sanitization. Refuse
   // provider overrides rather than editing the user's settings or credentials.
   const settings = [
@@ -63,7 +63,7 @@ export async function checkClaude(cwd = process.cwd()) {
   const env = subscriptionEnv(process.env);
   let stdout;
   try {
-    ({ stdout } = await exec("claude", ["auth", "status"], {
+    ({ stdout } = await run("claude", ["auth", "status"], {
       env,
       cwd,
       timeout: 10000,

@@ -41,7 +41,7 @@ function request(method, args) {
     req.end(JSON.stringify({ method, args }));
   });
 }
-async function useRunning(method, args) {
+export async function useRunning(method, args) {
   let info;
   try {
     info = await request("ping", {});

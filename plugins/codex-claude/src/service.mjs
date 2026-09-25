@@ -42,6 +42,7 @@ export class Manager {
   runs = new Map();
   codex = null;
   busy = false;
+  draining = false;
   viewer = new Viewer(this);
   async client() {
     if (!this.codex) {
@@ -76,6 +77,8 @@ export class Manager {
     };
   }
   async start(args) {
+    if (this.draining)
+      throw new Error("Bridge upgrade is in progress; retry afterward.");
     if (this.busy)
       throw new Error("Another delegation is starting; retry shortly.");
     this.busy = true;
@@ -154,6 +157,8 @@ export class Manager {
         latestTask.disabled
       )
         throw new Error("Delegation was disabled during preflight");
+      if (this.draining)
+        throw new Error("Bridge upgrade is in progress; retry afterward.");
       const id = randomUUID();
       const dir = runDir(id);
       await mkdir(dir, { mode: 0o700 });
@@ -548,16 +553,36 @@ export class Manager {
     if (method === "view") return this.viewer.open(args.runId);
     if (method === "ping") return { ready: true, installationId };
     if (method === "shutdown") {
-      if ([...this.runs.values()].some((run) => !run.terminal))
-        throw new Error("Active Claude runs prevent a bridge upgrade.");
-      for (const id of (await readdir(join(home(), "runs"))).filter((id) =>
-        /^[0-9a-f-]{36}$/.test(id),
-      )) {
-        const process = await readJSON(join(runDir(id), "process.json"), null);
-        if (["starting", "running"].includes(process?.state))
-          throw new Error("An owned Claude process prevents a bridge upgrade.");
+      this.draining = true;
+      try {
+        if ([...this.runs.values()].some((run) => !run.terminal))
+          throw new Error("Active Claude runs prevent a bridge upgrade.");
+        for (const id of (await readdir(join(home(), "runs"))).filter((id) =>
+          /^[0-9a-f-]{36}$/.test(id),
+        )) {
+          const path = join(runDir(id), "process.json");
+          const owned = await readJSON(path, null);
+          if (!["starting", "running"].includes(owned?.state)) continue;
+          const guardian = await identity(owned.guardianPid);
+          const claude = await identity(owned.claudePid);
+          if (
+            (guardian &&
+              (!owned.guardianIdentity || guardian === owned.guardianIdentity)) ||
+            (claude &&
+              (!owned.claudeIdentity || claude === owned.claudeIdentity))
+          )
+            throw new Error("An owned Claude process prevents a bridge upgrade.");
+          await atomic(path, {
+            ...owned,
+            state: "exited",
+            reason: "Recorded process identities are no longer live",
+          });
+        }
+        return { stopping: true };
+      } catch (error) {
+        this.draining = false;
+        throw error;
       }
-      return { stopping: true };
     }
     if (method === "inspect")
       return this.inspect(args.threadId, args.operation);
