@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import { mkdir, rm, stat, open } from "node:fs/promises";
 import { home } from "./config.mjs";
 import { initStore } from "./store.mjs";
+import { installationId } from "./installation.mjs";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const unavailable = (error) =>
+  ["ENOENT", "ECONNREFUSED"].includes(error.code);
 function request(method, args) {
   return new Promise((resolve, reject) => {
     const req = http.request(
@@ -38,12 +41,38 @@ function request(method, args) {
     req.end(JSON.stringify({ method, args }));
   });
 }
-export async function call(method, args = {}) {
+async function useRunning(method, args) {
+  let info;
   try {
-    return await request(method, args);
+    info = await request("ping", {});
   } catch (e) {
-    if (!["ENOENT", "ECONNREFUSED"].includes(e.code)) throw e;
+    if (unavailable(e)) return { found: false };
+    throw e;
   }
+  if (info.installationId !== installationId) {
+    try {
+      await request("shutdown", {});
+    } catch (e) {
+      throw new Error(
+        `An older bridge service is still running and cannot be replaced safely: ${e.message}`,
+      );
+    }
+    for (let i = 0; i < 100; i++) {
+      await sleep(100);
+      try {
+        await request("ping", {});
+      } catch (e) {
+        if (unavailable(e)) return { found: false };
+        throw e;
+      }
+    }
+    throw new Error("The previous bridge service did not stop after upgrade.");
+  }
+  return { found: true, result: await request(method, args) };
+}
+export async function call(method, args = {}) {
+  const current = await useRunning(method, args);
+  if (current.found) return current.result;
   await initStore();
   const lock = join(home(), "startup.lock");
   let owned = false;
@@ -56,9 +85,10 @@ export async function call(method, args = {}) {
       if (e.code !== "EEXIST") throw e;
     }
     try {
-      return await request(method, args);
+      const current = await useRunning(method, args);
+      if (current.found) return current.result;
     } catch (e) {
-      if (!["ENOENT", "ECONNREFUSED"].includes(e.code)) throw e;
+      if (!unavailable(e)) throw e;
     }
     const info = await stat(lock).catch(() => null);
     if (info && Date.now() - info.mtimeMs > 30000)
@@ -68,9 +98,10 @@ export async function call(method, args = {}) {
   if (!owned) throw new Error("Bridge startup busy; retry.");
   try {
     try {
-      return await request(method, args);
+      const current = await useRunning(method, args);
+      if (current.found) return current.result;
     } catch (e) {
-      if (!["ENOENT", "ECONNREFUSED"].includes(e.code)) throw e;
+      if (!unavailable(e)) throw e;
     }
     await rm(join(home(), "bridge.sock"), { force: true });
     const log = await open(join(home(), "service.log"), "a", 0o600);
@@ -85,9 +116,10 @@ export async function call(method, args = {}) {
     for (let i = 0; i < 100; i++) {
       await sleep(100);
       try {
-        return await request(method, args);
+        const current = await useRunning(method, args);
+        if (current.found) return current.result;
       } catch (e) {
-        if (!["ENOENT", "ECONNREFUSED"].includes(e.code)) throw e;
+        if (!unavailable(e)) throw e;
       }
     }
     throw new Error("Bridge did not start; inspect service.log.");

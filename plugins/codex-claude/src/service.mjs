@@ -36,6 +36,7 @@ import { checkClaude, handoff, claudeArgs } from "./claude.mjs";
 import { identity, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
+import { installationId } from "./installation.mjs";
 
 export class Manager {
   runs = new Map();
@@ -545,7 +546,19 @@ export class Manager {
       return value;
     }
     if (method === "view") return this.viewer.open(args.runId);
-    if (method === "ping") return { ready: true };
+    if (method === "ping") return { ready: true, installationId };
+    if (method === "shutdown") {
+      if ([...this.runs.values()].some((run) => !run.terminal))
+        throw new Error("Active Claude runs prevent a bridge upgrade.");
+      for (const id of (await readdir(join(home(), "runs"))).filter((id) =>
+        /^[0-9a-f-]{36}$/.test(id),
+      )) {
+        const process = await readJSON(join(runDir(id), "process.json"), null);
+        if (["starting", "running"].includes(process?.state))
+          throw new Error("An owned Claude process prevents a bridge upgrade.");
+      }
+      return { stopping: true };
+    }
     if (method === "inspect")
       return this.inspect(args.threadId, args.operation);
     if (method === "start") return this.start(args);
@@ -613,6 +626,7 @@ export async function serve() {
       const result = await manager.dispatch(method, args);
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ result }));
+      if (method === "shutdown") setImmediate(stop);
     } catch (e) {
       res.statusCode = 400;
       res.end(JSON.stringify({ error: e.message }));

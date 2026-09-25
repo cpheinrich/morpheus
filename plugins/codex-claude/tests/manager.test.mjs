@@ -119,6 +119,26 @@ test("persisted state recovers exited runs without replaying work", async (t) =>
   assert.equal(m.runs.size, 0);
 });
 
+test("bridge upgrade shutdown is allowed only when no owned work is active", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "upgrade-shutdown-"));
+  process.env.CODEX_CLAUDE_HOME = root;
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await initStore();
+  const manager = new Manager();
+  assert.deepEqual(await manager.dispatch("shutdown"), { stopping: true });
+
+  const id = randomUUID();
+  await import("node:fs/promises").then((f) => f.mkdir(runDir(id)));
+  await atomic(join(runDir(id), "process.json"), { state: "running" });
+  await assert.rejects(
+    manager.dispatch("shutdown"),
+    /owned Claude process/,
+  );
+  await atomic(join(runDir(id), "process.json"), { state: "exited" });
+  manager.runs.set(id, { terminal: false });
+  await assert.rejects(manager.dispatch("shutdown"), /Active Claude runs/);
+});
+
 test("real user answer resets autonomous budget even when configured limit is zero", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "user-answer-"));
   process.env.CODEX_CLAUDE_HOME = root;

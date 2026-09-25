@@ -15,10 +15,8 @@ export async function codexMemoryEnabled(client, task) {
       config.memories?.use_memories === false
     )
       return false;
-    // Version-pinned read-only adapter: the public read API omits per-chat memory mode.
-    const { thread } = await client.call("thread/read", { threadId: task.id });
-    if (!["0.154.0", "0.154.0-alpha.6.1"].includes(thread.cliVersion))
-      return false;
+    // Schema-gated read-only adapter: the public read API omits per-chat memory mode.
+    // Unknown schemas fail closed instead of tying compatibility to a CLI version.
     const db = join(
       process.env.CODEX_HOME || join(homedir(), ".codex"),
       "state_5.sqlite",
@@ -27,7 +25,7 @@ export async function codexMemoryEnabled(client, task) {
       "python3",
       [
         "-c",
-        "import sqlite3,sys,pathlib; c=sqlite3.connect(pathlib.Path(sys.argv[1]).as_uri()+'?mode=ro',uri=True); r=c.execute('select memory_mode from threads where id=?',(sys.argv[2],)).fetchone(); print(r[0] if r else 'unknown'); c.close()",
+        "import sqlite3,sys,pathlib; c=sqlite3.connect(pathlib.Path(sys.argv[1]).as_uri()+'?mode=ro',uri=True); cols={r[1] for r in c.execute('pragma table_info(threads)')}; r=c.execute('select memory_mode from threads where id=?',(sys.argv[2],)).fetchone() if 'memory_mode' in cols else None; print(r[0] if r else 'unknown'); c.close()",
         db,
         task.id,
       ],
