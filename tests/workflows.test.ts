@@ -398,7 +398,7 @@ describe("central security remediation opt-in", () => {
       "pr / conventions",
       "agent-review / delivery",
     ]);
-    expect(config.incidentRepository).toBe("cpheinrich/morpheus-security-incidents");
+    expect(config).not.toHaveProperty("incidentRepository");
   });
 });
 

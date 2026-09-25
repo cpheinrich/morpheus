@@ -6,6 +6,5 @@
     "pm / pm",
     "pr / conventions",
     "agent-review / delivery"
-  ],
-  "incidentRepository": "cpheinrich/morpheus-security-incidents"
+  ]
 }
