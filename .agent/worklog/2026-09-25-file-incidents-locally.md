@@ -16,9 +16,7 @@
 
 ## Independent review
 
-The config matches the merged engine and deployed caller. The conditionally cleared documentation
-mismatch was fixed within the allowed paths and verified, and the same reviewer cleared the later
-PR-metadata-only integration at 26b146f.
+The config matches the merged engine and deployed caller. The conditionally cleared documentation mismatch was fixed within the allowed paths and verified, and the same reviewer cleared the later PR-metadata-only integration at 26b146f.
 
 ```morpheus-review
 {
