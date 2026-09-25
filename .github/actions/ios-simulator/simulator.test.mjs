@@ -19,22 +19,23 @@ test('cleanup owns only exact unique base and its XCTest worker clones', () => {
 test('post shuts down booted devices, deletes shutdown devices, and preserves unrelated ones', () => {
   const devices = [{ name, udid: 'base', state: 'Booted' }, { name: `Clone 1 of ${name}`, udid: 'clone', state: 'Shutdown' }, { name: 'user device', udid: 'user', state: 'Booted' }];
   const calls = [];
-  cleanup(name, (...args) => { calls.push(args); return JSON.stringify({ devices: { ios: devices } }); });
-  assert.deepEqual(calls, [['list', 'devices', '-j'], ['shutdown', 'base'], ['delete', 'base'], ['delete', 'clone']]);
+  cleanup(name, (...args) => { calls.push(args); return JSON.stringify({ devices: { ios: args[0] === '--set' ? [] : devices } }); });
+  assert.deepEqual(calls, [['list', 'devices', '-j'], ['shutdown', 'base'], ['delete', 'base'], ['delete', 'clone'], ['--set', 'testing', 'list', 'devices', '-j']]);
 });
 test('partial cleanup attempts remaining devices and reports failure', () => {
   const calls = [];
   assert.throws(() => cleanup(name, (...args) => {
     calls.push(args);
+    if (args[0] === '--set') return JSON.stringify({ devices: {} });
     if (args[0] === 'shutdown') throw Error('shutdown failed');
     return JSON.stringify({ devices: { ios: [{ name, udid: 'bad', state: 'Booted' }, { name: `Clone 1 of ${name}`, udid: 'good', state: 'Shutdown' }] } });
   }), /Failed to clean up 1/);
-  assert.deepEqual(calls.at(-1), ['delete', 'good']);
+  assert.ok(calls.some(a => a[0] === 'delete' && a[1] === 'good'));
 });
 test('post is idempotent after devices have already been removed', () => {
   const calls = [];
   cleanup(name, (...args) => { calls.push(args); return JSON.stringify({ devices: {} }); });
-  assert.deepEqual(calls, [['list', 'devices', '-j']]);
+  assert.deepEqual(calls, [['list', 'devices', '-j'], ['--set', 'testing', 'list', 'devices', '-j']]);
 });
 test('workflow routes builds/tests through owned destination and registers unconditional post', () => {
   const workflow = readFileSync(new URL('../../workflows/ios-ci.yml', import.meta.url), 'utf8');
@@ -44,4 +45,31 @@ test('workflow routes builds/tests through owned destination and registers uncon
   assert.match(action, /post: post.mjs\n  post-if: always\(\)/);
   const main = readFileSync(new URL('./main.mjs', import.meta.url), 'utf8');
   assert.ok(main.indexOf('appendFileSync(process.env.GITHUB_STATE') < main.indexOf("sim('create'"));
+});
+
+test('parallel XCTest workers are discovered and removed in the testing device set', () => {
+  const calls = [];
+  cleanup(name, (...args) => {
+    calls.push(args);
+    const testing = args[0] === '--set';
+    if (args.includes('list')) return JSON.stringify({ devices: { ios: testing ? [
+      { name: `Clone 1 of ${name}`, udid: 'worker', state: 'Booted' },
+      { name: 'Clone 1 of another job', udid: 'other-worker', state: 'Booted' },
+    ] : [{ name, udid: 'base', state: 'Shutdown' }] } });
+  });
+  assert.deepEqual(calls, [
+    ['list', 'devices', '-j'], ['delete', 'base'],
+    ['--set', 'testing', 'list', 'devices', '-j'],
+    ['--set', 'testing', 'shutdown', 'worker'],
+    ['--set', 'testing', 'delete', 'worker'],
+  ]);
+});
+test('an unreadable default set does not skip cleanup of testing workers', () => {
+  const calls = [];
+  assert.throws(() => cleanup(name, (...args) => {
+    calls.push(args);
+    if (args[0] === 'list') throw Error('default inventory failed');
+    if (args.includes('list')) return JSON.stringify({ devices: { ios: [{ name: `Clone 2 of ${name}`, udid: 'worker', state: 'Shutdown' }] } });
+  }), /default inventory failed/);
+  assert.deepEqual(calls.at(-1), ['--set', 'testing', 'delete', 'worker']);
 });

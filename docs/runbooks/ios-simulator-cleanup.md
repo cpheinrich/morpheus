@@ -7,7 +7,9 @@ The nightly test gate calls the same workflow, so it inherits this lifecycle aut
 
 The `ios-simulator` JavaScript action saves a unique ownership name before creation. Its
 `post-if: always()` hook shuts down and deletes that exact device and XCTest's
-`Clone N of <owned name>` workers after success, failure or normal job cancellation.
+`Clone N of <owned name>` workers after success, failure or normal job cancellation. Parallel XCTest workers live
+in the separate `simctl --set testing` device set (`~/Library/Developer/XCTestDevices`);
+cleanup inventories both sets and carries the selector through shutdown/delete.
 Cleanup attempts every owned device, surfaces failures, and is safe to repeat. It never
 runs `shutdown all`, `delete all`, or deletes a user's original destination.
 
