@@ -994,3 +994,26 @@ workflow resolves the caller’s destination to type/runtime and creates a fresh
 named device. A JavaScript action’s unconditional post hook removes it and its exact
 XCTest worker clones. Native simctl and Node built-ins cover this Apple-specific lifecycle
 without an SDK/dependency or global shutdown that could interrupt another job.
+
+
+## 2026-09-25 — Personal Codex/Claude bridge is an opt-in package
+
+`plugins/codex-claude/` stays outside morpheus-kit and project scaffolding. Chris wants to use
+it across unrelated projects and machines without changing other contributors' defaults.
+Install a self-contained personal copy explicitly; routing defaults off. Codex remains the
+persistent chat and coordinator, Claude CLI owns its native saved sessions, and the worker
+runs on the same execution host/worktree. Native authentication is never copied between hosts.
+Full-access permissions may map to Claude; unsupported confinement fails closed. A guardian
+lease bounds orphan lifetime, output and run time; saved sessions do not require idle workers.
+
+Adopted @modelcontextprotocol/sdk 1.30.1 (maintained September 2026, 17 direct dependencies)
+for protocol compatibility, ws 8.21.3 (maintained August 2026, zero direct dependencies) for
+the local app-server socket, and the repository's Zod version. Considered proper-lockfile
+4.1.2 (last modified 2022, three dependencies); a small atomic startup-directory lock and
+single host service suffice here. Considered smol-toml 1.9.0 for memory settings; used the
+existing app-server config/read API instead, so no TOML parser dependency was added.
+A version-pinned read-only adapter covers desktop turn metadata and per-chat memory mode
+that the managed daemon's public read response does not expose. Unknown versions fail
+closed. This compatibility surface must be reverified after Codex updates. Claude's CLI
+cannot atomically disable paid overage per invocation; account-level extra usage must be
+disabled for a hard subscription-only spend boundary. No API-key fallback is implemented.

@@ -1,0 +1,19 @@
+{
+  "name": "codex-claude",
+  "version": "0.1.0",
+  "description": "Opt-in subscription delegation from Codex to Claude Code with persistent sessions and bounded supervision.",
+  "author": {
+    "name": "Morpheus contributors"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Claude",
+    "shortDescription": "Coordinate Claude work inside Codex.",
+    "longDescription": "Opt-in subscription delegation from Codex to Claude Code with persistent sessions and bounded supervision.",
+    "developerName": "Morpheus",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Inspect Claude delegation settings and explain whether this task will run in Codex or Claude."
+  },
+  "mcpServers": "./.mcp.json"
+}
