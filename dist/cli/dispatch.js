@@ -11,6 +11,7 @@ import { checkGoogleAuthConfiguration, configureGoogleAuth } from "./firebase.js
 import { printRules, rules as hqRules } from "./hq.js";
 import * as registry from "./registry.js";
 import { run as doctorRun } from "./doctor.js";
+import { run as changedSwiftRun } from "../ios/changed-swift.js";
 import { mark as initMark, status as initStatus } from "./onboarding.js";
 import { init as initScaffold } from "./init.js";
 import { webAddConsumerAuth, webInit, webStatus } from "./web.js";
@@ -42,6 +43,23 @@ async function dispatchSelf({ flags, command, rest }) {
 }
 async function dispatchDoctor({ flags }) {
     return doctorRun(process.cwd(), flags.all, flags.offline);
+}
+async function dispatchIos({ flags, command, rest }) {
+    if (command === "changed-swift") {
+        const workingDirectory = flags.dir !== "." ? flags.dir : rest[0];
+        if (!workingDirectory) {
+            console.error("morpheus ios changed-swift needs --dir <path>, the directory holding the Swift sources.");
+            return 1;
+        }
+        return changedSwiftRun({
+            workingDirectory,
+            base: flags.base,
+            worktree: flags.worktree,
+            nul: flags.nul,
+        });
+    }
+    console.error(`Unknown ios command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
 }
 async function dispatchCodebaseMemory({ flags, command }) {
     if (command === "install" || command === undefined) {
@@ -411,6 +429,7 @@ async function dispatchPm({ flags, command, rest, dir }) {
 const groups = {
     "self": dispatchSelf,
     "doctor": dispatchDoctor,
+    "ios": dispatchIos,
     "codebase-memory": dispatchCodebaseMemory,
     "heartbeat": dispatchHeartbeat,
     "voice": dispatchVoice,

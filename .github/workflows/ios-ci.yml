@@ -325,11 +325,24 @@ jobs:
             echo "screenshots=$output_root/Screenshots"
           } >> "$GITHUB_OUTPUT"
 
+      # The selection lives in scripts/swift-changed-files.sh, reached through
+      # this action, so a consumer wanting the same check locally calls the same
+      # file rather than imitating the step below. The first one that imitated
+      # it drifted inside a commit (darwin-health/evo#281), and
+      # tests/swift-changed-files.test.ts now pins every caller to one list.
+      - name: Select changed Swift sources
+        id: swift-changed-files
+        if: ${{ inputs.swift-format-lint }}
+        uses: cpheinrich/morpheus/.github/actions/swift-changed-files@main
+        with:
+          working-directory: ${{ inputs.working-directory }}
+
       - name: Lint changed Swift sources
         if: ${{ inputs.swift-format-lint }}
         env:
           SWIFT_FORMAT_CONFIGURATION: ${{ inputs.swift-format-configuration }}
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          SWIFT_CHANGED_FILES: ${{ steps.swift-changed-files.outputs.file }}
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
@@ -341,16 +354,9 @@ jobs:
             --configuration "$configuration" >/dev/null
 
           swift_files=()
-          pathspec=":(glob)$WORKING_DIRECTORY/**/*.swift"
-          if git rev-parse --verify HEAD^1 >/dev/null 2>&1; then
-            while IFS= read -r -d '' file; do
-              swift_files+=("$file")
-            done < <(git diff-tree --no-commit-id --name-only --diff-filter=ACMR -r -z HEAD^1 HEAD -- "$pathspec")
-          else
-            while IFS= read -r -d '' file; do
-              swift_files+=("$file")
-            done < <(git ls-files -z -- "$pathspec")
-          fi
+          while IFS= read -r -d '' file; do
+            swift_files+=("$file")
+          done < "$SWIFT_CHANGED_FILES"
 
           if [ "${#swift_files[@]}" -eq 0 ]; then
             echo "No changed Swift sources to lint."

@@ -24,6 +24,10 @@ export interface Flags {
     dryRun: boolean;
     all: boolean;
     offline: boolean;
+    /** `ios changed-swift`: include uncommitted and untracked Swift files. */
+    worktree: boolean;
+    /** `ios changed-swift`: NUL-delimited output, for `xargs -0`. */
+    nul: boolean;
     kind?: string;
     owner?: string;
     handle?: string;
