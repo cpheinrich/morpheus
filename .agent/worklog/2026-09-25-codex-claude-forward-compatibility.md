@@ -57,7 +57,7 @@ Claude's independent high-risk review cleared commit fbef754bc70530ffd3aeaba7b06
   "summary": "Claude's independent high-risk review cleared commit fbef754bc70530ffd3aeaba7b06cc13d00cb3bbf after two substantive findings were fixed and a same-session metadata correction confirmed exact coverage.",
   "findings": [
     {
-      "id": "F1",
+      "id": "F-1",
       "severity": "substantive",
       "description": "A bridge predating the shutdown RPC could enter a retry loop that continually reset its idle timer and prevented first-upgrade replacement.",
       "paths": [
@@ -68,7 +68,7 @@ Claude's independent high-risk review cleared commit fbef754bc70530ffd3aeaba7b06
       "response": "Persist the legacy socket identity and cooldown so repeated calls do not contact the old service; tested that the second call issues no ping."
     },
     {
-      "id": "F2",
+      "id": "F-2",
       "severity": "substantive",
       "description": "A transient process identity probe failure was indistinguishable from a confirmed-absent process and could allow replacement while owned work remained live.",
       "paths": [
