@@ -28,7 +28,13 @@ export function cleanup(name, command = sim) {
   for (const selector of [[], ['--set', 'testing']]) {
     let devices;
     try { devices = ownedDevices(JSON.parse(command(...selector, 'list', 'devices', '-j')), name); }
-    catch (error) { errors.push(error); continue; }
+    catch (error) {
+      // Serial tests on a fresh runner never create XCTestDevices. Absence is empty;
+      // other inventory failures must remain visible rather than hiding leaked workers.
+      if (selector.length && /^Provided set path does not exist: /m.test(String(error.stderr ?? ''))) continue;
+      errors.push(error);
+      continue;
+    }
     for (const device of devices) {
       // XCTest can finish shutdown between inventory and this command.
       // Deletion is the cleanup invariant, so attempt it even if shutdown fails.
