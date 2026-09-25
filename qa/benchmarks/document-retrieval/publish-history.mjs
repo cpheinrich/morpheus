@@ -51,7 +51,9 @@ for(const stage of configFiles) {
   const adjusted=scoreHistoryEvidence(groups,answer.citations,events,source);
   const tools=events.filter(e=>e.event.type==='item.completed'&&['command_execution','mcp_tool_call'].includes(e.event.item?.type)).map(e=>e.event.item);
   const supplied=events.filter(e=>e.event.type==='benchmark.prefetch');
-  if(row.arm.startsWith('prefetch-')&&supplied.length!==1)throw Error('Missing prefetch event');
+  const failedPrefetch=row.status==='error'&&row.failureStage==='prefetch';
+  if(row.arm.startsWith('prefetch-')&&supplied.length!==1&&!failedPrefetch)throw Error('Missing prefetch event');
+  if(failedPrefetch&&(!row.arm.startsWith('prefetch-')||supplied.length))throw Error('Invalid failed prefetch');
   if(!row.arm.startsWith('prefetch-')&&supplied.length)throw Error('Unexpected prefetch');
   for(const event of supplied) {
    if(!Number.isFinite(event.atMs)||event.atMs<0||event.atMs>row.ms||!Number.isFinite(row.prefetchMs)||row.prefetchMs<0||row.prefetchMs>event.atMs)throw Error('Invalid prefetch timing');
@@ -65,7 +67,8 @@ for(const stage of configFiles) {
    emptySuccessfulToolOutputs:tools.filter(t=>t.type==='command_execution'&&t.exit_code===0&&t.aggregated_output==='').length,
    toolOutputChars:tools.reduce((n,t)=>n+outputText(t).length,0),
    qmdCliCalls:tools.filter(t=>t.type==='command_execution'&&/\bqmd\s+(search|query|vsearch|get|multi-get)\b/.test(t.command??'')).length,
-   qmdDatabaseErrors:tools.filter(t=>/SQLITE_CANTOPEN|SQLITE_READONLY|SQLITE_BUSY/.test(t.aggregated_output??'')).length,
+   qmdDatabaseErrors:tools.filter(t=>/SQLITE_CANTOPEN|SQLITE_READONLY|SQLITE_BUSY/.test(t.aggregated_output??'')).length
+     +(failedPrefetch&&/SQLITE_CANTOPEN|SQLITE_READONLY|SQLITE_BUSY/.test(row.error??'')?1:0),
    inputTokens:row.usage?.input_tokens??null,cachedInputTokens:row.usage?.cached_input_tokens??null,outputTokens:row.usage?.output_tokens??null});
  }
  receipts.push({stage,fixtureSha256:digest(bytes),configSha256:digest(readFileSync(join(directory,'config.json'))),

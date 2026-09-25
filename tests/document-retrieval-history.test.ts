@@ -121,6 +121,23 @@ describe('historical result publication',()=>{
     });
     expect(result.status).not.toBe(0);expect(result.error).toContain('Invalid prefetch timing');
   });
+  it('retains prefetch failures with zero quality when no passage was delivered',()=>{
+    const result=fixture(root=>{
+      const path=join(root,'trial/D01-prefetch-vector-0.result.json'),row=JSON.parse(readFileSync(path,'utf8'));
+      Object.assign(row,{status:'error',failureStage:'prefetch',error:'SQLITE_BUSY'});
+      writeFileSync(path,JSON.stringify(row));
+      writeFileSync(join(root,'trial/D01-prefetch-vector-0.events.json'),'[]');
+      const auditPath=join(root,'answer-audit.json'),audit=JSON.parse(readFileSync(auditPath,'utf8'));
+      audit[1].answerPass=false;writeFileSync(auditPath,JSON.stringify(audit));
+    });
+    expect(result.status).toBe(0);
+    const row=JSON.parse(result.publicText).agents.find((r:{arm:string})=>r.arm==='prefetch-vector');
+    expect(row).toMatchObject({status:'error',recall:0,auditedRecall:0,answerPass:false,prefetchChars:0,qmdDatabaseErrors:1});
+  });
+  it('still refuses completed cells without prefetched evidence',()=>{
+    const result=fixture(root=>writeFileSync(join(root,'trial/D01-prefetch-vector-0.events.json'),'[]'));
+    expect(result.status).not.toBe(0);expect(result.error).toContain('Missing prefetch event');
+  });
   it('refuses unavailable audit alternatives',()=>{
     const result=fixture(root=>{
       const path=join(root,'answer-audit.json'),audit=JSON.parse(readFileSync(path,'utf8'));
@@ -128,5 +145,37 @@ describe('historical result publication',()=>{
       writeFileSync(path,JSON.stringify(audit));
     });
     expect(result.status).not.toBe(0);expect(result.error).toContain('Invalid alternative evidence');
+  });
+});
+
+describe('historical prefetch failure retention',()=>{
+  it('records a retrieval rejection and never replaces that cell on restart',()=>{
+    const root=mkdtempSync(join(tmpdir(),'history-runner-'));
+    try {
+      mkdirSync(join(root,'evo/docs'),{recursive:true});
+      const text='The source preserves the original event identity.';
+      writeFileSync(join(root,'evo/docs/a.md'),text);
+      writeFileSync(join(root,'evo/snapshot.json'),JSON.stringify({files:[{path:'docs/a.md'}]}));
+      const questions=JSON.stringify([{id:'D01',question:'Which event identity?',groups:[[{path:'docs/a.md',text}]]}]);
+      writeFileSync(join(root,'questions.json'),questions);
+      const config=join(root,'config.json');
+      writeFileSync(config,JSON.stringify({name:'run',fixture:'questions.json',
+        fixtureSha256:createHash('sha256').update(questions).digest('hex'),historyPrefetch:true,
+        arms:['prefetch-vector'],repeats:1,model:'unused',effort:'high'}));
+      const mock=join(root,'qmd.mjs'),attempts=join(root,'attempts.txt');
+      writeFileSync(mock,`import {appendFileSync} from 'node:fs';
+        export async function createStore(){return {internal:{db:{exec(){}}},close(){},
+          async searchVector(question){if(question==='documentation history decisions')return [];
+            appendFileSync(${JSON.stringify(attempts)},'attempt\\n');throw Error('injected retrieval rejection');}};}`);
+      const run=()=>spawnSync(process.execPath,['qa/benchmarks/document-retrieval/timed-agents.mjs',root,config],
+        {encoding:'utf8',env:{...process.env,QMD_MODULE:mock},timeout:10000});
+      expect(run().status).not.toBe(0);
+      const path=join(root,'run/D01-prefetch-vector-0.result.json'),original=readFileSync(path,'utf8');
+      expect(JSON.parse(original)).toMatchObject({status:'error',failureStage:'prefetch',recall:0,toolCalls:0,threadId:null});
+      expect(JSON.parse(readFileSync(join(root,'run/D01-prefetch-vector-0.events.json'),'utf8'))).toEqual([]);
+      expect(run().status).toBe(0);
+      expect(readFileSync(path,'utf8')).toBe(original);
+      expect(readFileSync(attempts,'utf8')).toBe('attempt\n');
+    } finally {rmSync(root,{recursive:true,force:true});}
   });
 });
