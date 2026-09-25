@@ -94,7 +94,7 @@ export const bootstrapScript = () => lines([
     'printf "%s\\n" "Installed current Morpheus and enabled automatic updates on this device."',
 ]);
 /**
- * Session hooks may execute this without consent because it only inspects the
+ * Session hooks may execute this without consent to prepare repository source. It does not install the
  * CLI. Installation remains a separate command the agent runs after a yes.
  */
 export const sessionStartScript = () => lines([
@@ -122,8 +122,9 @@ export const bootstrapReadme = () => `# Morpheus device bootstrap
 
 These generated scripts bridge this repository's session hooks to the copied global Morpheus CLI.
 
-- \`session-start.sh\` only inspects the installed CLI and emits the consent question when it is
-  too old to update itself.
+- \`session-start.sh\` dispatches to the installed CLI: startup fetches canonical trunk, updates
+  clean local trunk, and identifies existing tasks. New worktrees are created when work is claimed.
+  It emits the consent question when the CLI is too old to update itself.
 - \`bootstrap.sh enable\` runs only after an explicit yes. It clones reviewed Morpheus \`main\`
   into a disposable directory, installs its reviewed lockfile, invokes that clone's committed CLI
   directly, installs the current standalone package, registers this project, and enables the

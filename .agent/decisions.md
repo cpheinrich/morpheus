@@ -833,6 +833,14 @@ the upstream major visible. Morpheus-owned reusable workflows remain on the esta
 contract so consuming repositories receive fixes without coordinated version bumps; external tags
 do not receive that trust.
 
+**Motion-design exploration is a repository skill before it is a plugin** — 2026-08-31. Chris's
+call. The repeatable value is the procedure itself: inspect the real shell and brand, research
+current references, compare six genuinely different motion systems under one visual theme, and
+stop before production implementation. Morpheus owns the canonical Codex skill under
+`.agents/skills/motion-design-exploration`, `morpheus init` copies it into every project kind, and
+Evo carries the same file directly. Plugin packaging is deliberately deferred until distribution
+beyond Morpheus repositories is worth another lifecycle and manifest.
+
 **Front-end visual evidence is a declared path contract, default-on per repository** — 2026-09-01.
 `review.visualEvidence` in `morpheus.json` owns the include/exclude globs. A matching change blocks
 without a recording or screenshot at either GitHub's attachment service or an exact public HTTPS
@@ -873,3 +881,106 @@ change permissive unknown-option, missing-value and repeated-value behavior. Thi
 remediation therefore keeps the small domain-specific argument contract and uses native
 Node filesystem primitives for the existing shared helper contracts. A grammar change
 should be deliberate user-facing work, not a side effect of cleanup.
+
+**Review ownership must be explicit at the point of work** — 2026-09-11. The authoring agent
+launches the isolated reviewer and owns responses, evidence, CI and merge. `review prepare`
+prints a packet; neither that command nor a PR-monitoring agent schedules review. Legacy GitHub
+review instructions must be marked opt-in wherever they remain. This clarifies the September 10
+policy after OpenClaw inferred that another agent would monitor and review its PRs.
+
+
+**One worktree per implementation task; startup fetches before context** — 2026-09-13.
+Chris clarified that conversations are not task boundaries. New sessions fetch canonical trunk and
+fast-forward clean local trunk; active branches and dirty work are preserved. Claiming new work
+prepares an isolated current-trunk checkout, while explicit resume reuses the task branch/worktree.
+A session ID may remember that association, but an unrelated request cannot inherit the old task.
+This supersedes the earlier one-worktree-per-parallel-session phrasing. Context receipts require
+source containing the observed trunk, and startup does not certify reading. Considered simple-git
+3.36.0 (published metadata modified 2026-04-12, five direct dependencies); native Git plus Node's
+filesystem/crypto primitives fit this repository-specific lifecycle without another Git wrapper.
+
+
+**Cleared review survives verified integration of already reviewed documentation** — 2026-09-16.
+Chris approved this exception after Lakina's TestFlight migration exhausted both passes, cleared
+every finding, and then stalled on a separately reviewed README change required by strict branch
+protection. Keep the two-round cap and escalation for substantive unresolved concerns. Preserve
+original review hashes; record source completed reviews and explicit merges. Native Git must prove
+the merge was conflict-free and exact, and incoming paths must be regular documentation/records.
+No new review or permission is required for that proof. Changed requirements still need review.
+Reuse existing native Git, Zod and JSON for this Morpheus-specific evidence protocol; no generic
+merge or orchestration library is introduced.
+
+**Independent review is capped at three turns, not two** — 2026-09-18. Chris's call. The initial
+review plus at most two same-reviewer follow-ups, each at the follow-up ceiling; the third turn
+exists only when the second returned `blocked` and the author addressed those concerns. A cleared
+turn ends the review and an incomplete one escalates, so the cap cannot be spent on ceremony. The
+purpose of the cap is unchanged: an author and a reviewer trading fixes and findings indefinitely
+is unproductive and burns credits, so only substantive concerns still unresolved after the last
+turn leave a PR open for human judgment. Records carry the turns as a `followUps` array; the
+single `followUp` shape remains valid as one turn so older records and documentation-integration
+sources are not invalidated. This does not decide the post-clearance trunk-advance question
+(inbox item of 2026-09-16, issues #245 and #247), which stays open.
+
+**Merging trunk never invalidates a cleared review** — 2026-09-18. Chris's call, resolving the
+2026-09-16 inbox question and #245 with an option none of A, B or C offered: the human-team
+convention, where integrating `main` does not reopen a review. The reasons: the gate is already a
+large step up from no review at all; CI must still pass on the integrated result; and a review that
+goes stale whenever trunk moves punishes exactly the PR that is waiting for a long CI run, or an
+agent that is not actively driving the merge, by burning turns on ceremony. If it leaks, tighten
+it then. The one refinement: a merge Git reproduces exactly needs nothing, but a hand-resolved
+merge is unreviewed authoring and must be named in the record with its reason, so the leak is
+visible rather than hidden inside a merge commit. Rebasing after review is unsupported because it
+rewrites the reviewed commits. This supersedes the 2026-09-16 documentation-only exception, whose
+record field is still parsed but no longer enforced. Late CI corrections after coverage (#247)
+remain a separate, open question: a plain code commit after `covered` still invalidates.
+
+
+**Serialize same-account TestFlight signing with the operating system lock** — 2026-09-22.
+The shared action mutates the user's keychain search list/default and provisioning profile directory.
+A per-repository concurrency group cannot protect two repositories under one GUI account. Keep
+Xcode's established export behavior and hold an inherited kernel flock from upload-script entry
+through shell cleanup and remaining children. The account's canonical home fixes the lock domain
+across runner-specific HOME/TMPDIR values. Never unlink the lock file; kernel descriptor ownership
+replaces stale-PID heuristics. The existing host-wide job lease remains compatible and must stay
+while any signing lane uses older code. Isolation outside the search list remains unproven on the
+release host, so this fix does not change how Xcode discovers identities.
+
+Considered filelock 4.0.1 (published 2026-09-19, no required runtime dependencies). This small
+macOS-only exec boundary uses Python's existing fcntl/os primitives instead of adding a package
+installation to the credentialed release path. It adds no package dependency.
+
+**Late corrections after clearance spend a review turn** — 2026-09-22. Chris's call, closing
+#247 and the late-CI half of the 2026-09-16 inbox question. When full CI shows a fix is needed
+after the reviewer already cleared the code, the author commits the fix and spends one of the
+remaining follow-up turns on the same reviewer, naming the scope decision in that turn's
+`scopeReason`; the author makes that decision within the task's budget, and the record shows it.
+This is the explicit scope decision the runbook already required, given a shape a validator can
+check. The three-turn cap, the follow-up ceiling, the same-reviewer rule and the final
+cleared-on-covered rule are unchanged: a clean review has two such slots, one that used a fix
+follow-up has one, and a correction needed after the last turn leaves the PR open for the human,
+as today. A turn after a `blocked` turn still needs no reason; an `incomplete` turn is still never
+followed. The first follow-up after an initial review with no substantive findings is the same
+shape. Every Morpheus record with that shape already carries a reason (those turns were trunk
+integrations); six merged Evo and Lakina records do not, but merged records are never
+re-validated and no open `agent-reviewed` PR has the shape, so nothing in flight is refused.
+Merging trunk still spends no turn (2026-09-18).
+
+**Review evidence has floors, real session ids, tracked deferrals and conditional clearance** —
+2026-09-22. Chris's call after the first two-week survey of Lakina and Evo records. The turn cap
+and the trunk-merge rule stay as they are; the leaks were on the evidence side. An initial review
+under one minute at normal or high risk is refused (small keeps no floor). `reviewerSession` must
+be the runner-issued id and may appear in one worklog only, because reviewers were being named by
+the author and reused. The small ceiling is 10 minutes, not 5: every small review that needed
+execution overran it, and two worklogs picked between elapsed figures by which side of 5 they
+landed on. A finding left deferred or open names a roadmap item that must exist, incidental ones
+included, because those are the ones that rotted. Conditional clearance is adopted from #241 with
+mechanical conditions only: the reviewer sets paths and evidence, the author records compliance,
+and `check pr` verifies the fix stayed inside the paths; a condition cannot be added or widened by
+the author.
+
+
+**Each iOS CI test job owns disposable simulator devices** — 2026-09-25. The reusable
+workflow resolves the caller’s destination to type/runtime and creates a fresh uniquely
+named device. A JavaScript action’s unconditional post hook removes it and its exact
+XCTest worker clones. Native simctl and Node built-ins cover this Apple-specific lifecycle
+without an SDK/dependency or global shutdown that could interrupt another job.

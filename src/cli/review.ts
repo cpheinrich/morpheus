@@ -8,6 +8,7 @@ import { loadReviewContext, ReviewError } from "../review/context.js";
 import { LOCAL_REVIEW_PROMPT } from "../review/local-prompt.js";
 import { git } from "../review/local.js";
 import { buildReviewPrompt } from "../review/prompt.js";
+import { projectCommands, reviewPacket } from "../review/packet.js";
 
 /**
  * `morpheus review prompt` — assemble the rung 2 reviewer prompt and print it.
@@ -218,9 +219,18 @@ export async function prepareReview(productDir: string, root: string, base: stri
     const head = git(root, ["rev-parse", "HEAD"]);
     const fork = git(root, ["merge-base", base, head]);
     console.log(LOCAL_REVIEW_PROMPT);
-    console.log(`\nReview range: ${fork}..${head}\nTicket: ${ctx.id ?? "none"} — ${ctx.title ?? "no declared title"}\n${ctx.intent ?? ""}\nAcceptance: ${ctx.acceptance ?? ctx.missingAcceptance ?? "not declared"}`);
+    console.log(
+      "\n" +
+        reviewPacket({
+          root,
+          fork,
+          head,
+          ticket: { id: ctx.id, title: ctx.title, intent: ctx.intent, acceptance: ctx.acceptance, missingAcceptance: ctx.missingAcceptance },
+          commands: await projectCommands(root),
+        }),
+    );
     console.log("\nWorklog record template (replace placeholders; never mark an unfinished review complete):");
-    console.log("```morpheus-review\n" + JSON.stringify({ version: 1, base: fork, reviewed: head, covered: head, authorSession: "AUTHOR_SESSION", reviewerSession: "REVIEWER_SESSION", risk: "normal", elapsedMinutes: 0, outcome: "incomplete", summary: "Replace with the actual review summary and repeat it as a paragraph.", findings: [] }, null, 2) + "\n```");
+    console.log("```morpheus-review\n" + JSON.stringify({ version: 1, base: fork, reviewed: head, covered: head, authorSession: "AUTHOR_SESSION", reviewerSession: "RUNNER_ISSUED_REVIEWER_SESSION_ID", risk: "normal", elapsedMinutes: 0, outcome: "incomplete", summary: "Replace with the actual review summary and repeat it as a paragraph.", findings: [] }, null, 2) + "\n```");
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

@@ -376,6 +376,28 @@ jobs:
       SCHEME_NAME: ${{ inputs.scheme }}
       UPLOAD_SCRIPT: ${{ inputs.upload-script }}
     steps:
+      - name: Check upload credential availability
+        # Only presence flags enter this process; values stay in the final upload step.
+        env:
+          HAS_APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID != '' }}
+          HAS_APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID != '' }}
+          HAS_APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 != '' }}
+          HAS_IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 != '' }}
+          HAS_IOS_DISTRIBUTION_PROFILE_BASE64: ${{ secrets.IOS_DISTRIBUTION_PROFILE_BASE64 != '' }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for key in HAS_APP_STORE_CONNECT_KEY_ID HAS_APP_STORE_CONNECT_ISSUER_ID HAS_APP_STORE_CONNECT_API_KEY_P8_BASE64 HAS_IOS_DISTRIBUTION_P12_BASE64 HAS_IOS_DISTRIBUTION_PROFILE_BASE64; do
+            if [ "${!key}" != true ]; then
+              missing+=("${key#HAS_}")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required upload secrets: ${missing[*]}" >&2
+            echo "If these are caller environment secrets, a cross-repository workflow cannot read them. Set run-upload: false and use a caller-owned job in the protected environment, gated by the build/sha outputs, with ios-testflight-upload. Keep credentials in the protected environment." >&2
+            exit 1
+          fi
+
       - name: Check out verified main commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

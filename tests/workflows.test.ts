@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { ci as ciTemplate } from "../src/init/templates.js";
+import { ci as ciTemplate, iosNightly } from "../src/init/templates.js";
 
 /**
  * The workflows are shipped to every project, so a mistake here breaks repos
@@ -280,6 +280,10 @@ describe("callers match what they call", () => {
       wf: load(
         ciTemplate({ node: true, rulesPath: "infra/firebase/firestore.rules" }),
       ) as Workflow,
+    });
+    workflows.push({
+      file: "generated ios-nightly-build.yml",
+      wf: load(iosNightly({ app: "Example" })) as Workflow,
     });
 
     for (const { file, wf } of workflows) {
@@ -1536,6 +1540,37 @@ describe("ios-nightly-build.yml", () => {
     }
   });
 
+  it("diagnoses unavailable signing secrets before upload setup without exposing values", async () => {
+    const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
+    const guard = wf.jobs?.upload?.steps?.[0];
+    expect(guard?.name).toBe("Check upload credential availability");
+    const required = [
+      "APP_STORE_CONNECT_KEY_ID", "APP_STORE_CONNECT_ISSUER_ID",
+      "APP_STORE_CONNECT_API_KEY_P8_BASE64", "IOS_DISTRIBUTION_P12_BASE64",
+      "IOS_DISTRIBUTION_PROFILE_BASE64",
+    ];
+    expect(guard?.env).toEqual(Object.fromEntries(required.map((key) => [
+      `HAS_${key}`, `\${{ secrets.${key} != '' }}`,
+    ])));
+    const present = Object.fromEntries(required.map((key) => [`HAS_${key}`, "true"]));
+    const run = (flags: Record<string, string>) => execFileAsync(
+      "bash", ["-euo", "pipefail", "-c", String(guard?.run)],
+      { env: { ...process.env, ...present, ...flags } },
+    );
+    // Optional Firebase/Sentry credentials and a blank P12 password are valid.
+    expect((await run({})).stdout).toBe("");
+    for (const missing of required) {
+      await expect(run({ [`HAS_${missing}`]: "false" })).rejects.toMatchObject({
+        stderr: expect.stringContaining(`Missing required upload secrets: ${missing}`),
+      });
+    }
+    await expect(run(Object.fromEntries(required.map((key) => [`HAS_${key}`, "false"])))).rejects.toMatchObject({
+      stderr: expect.stringContaining("run-upload: false"),
+    });
+    expect(guard?.run).toContain("caller-owned");
+    expect(guard?.run).toContain("environment");
+  });
+
   it("gates signed upload on exact-main preflight and independent tests", async () => {
     const wf = (await read("ios-nightly-build.yml")) as NightlyIosBuild;
     const preflight = wf.jobs?.preflight;
@@ -1679,7 +1714,9 @@ describe("ios-testflight-upload action", () => {
       (step) => step.name === "Archive, sign, verify, and upload to TestFlight",
     );
 
-    expect(release?.run).toBe('"$GITHUB_ACTION_PATH/upload-testflight.sh"');
+    expect(release?.run).toBe('python3 "$GITHUB_ACTION_PATH/signing-lock.py" "$GITHUB_ACTION_PATH/upload-testflight.sh"');
+    expect(release?.env?.SIGNING_LOCK_TIMEOUT_SECONDS).toBe("${{ inputs.signing-lock-timeout-seconds }}");
+    expect((await action()).inputs?.["signing-lock-timeout-seconds"]?.default).toBe("600");
     expect(release?.env?.ASC_API_KEY_ID).toBe("${{ inputs.asc-api-key-id }}");
     expect(release?.env?.IOS_DISTRIBUTION_P12_PASSWORD).toBe(
       "${{ inputs.ios-distribution-p12-password }}",
@@ -1739,7 +1776,7 @@ describe("ios-testflight-upload action", () => {
     // script no longer *does* has to read past them.
     const executable = raw.replace(/^[ \t]*#.*$/gm, "");
     const archive = raw.slice(
-      raw.indexOf("xcodebuild archive \\"),
+      raw.indexOf("archive_arguments=("),
       raw.indexOf("ARCHIVED_APPLICATIONS_PATH="),
     );
 
@@ -1756,7 +1793,7 @@ describe("ios-testflight-upload action", () => {
     const raw = await script();
     const exportOptions = raw.slice(
       raw.indexOf("plutil -create xml1"),
-      raw.indexOf("xcodebuild archive \\"),
+      raw.indexOf("archive_arguments=("),
     );
 
     expect(exportOptions).toContain("plutil -insert destination -string export");
@@ -1777,6 +1814,20 @@ describe("ios-testflight-upload action", () => {
     expect(raw).toContain("builds next-number");
     expect(raw).toContain("builds add-beta-group");
     expect(raw).toContain("processingState");
+  });
+
+  it("seeds declared entitlements before export and rejects their loss before upload", async () => {
+    const raw = await script();
+    expect(raw).toContain('xcodebuild -showBuildSettings -json "${archive_arguments[@]}"');
+    expect(raw).toContain('xcodebuild archive "${archive_arguments[@]}"');
+    const seed = raw.indexOf('codesign --force --sign -');
+    const exportArchive = raw.indexOf('/usr/bin/xcodebuild -exportArchive');
+    const verify = raw.indexOf('python3 "$ENTITLEMENTS_TOOL" verify');
+    expect(seed).toBeGreaterThan(raw.indexOf('run_without_release_secrets "$VALIDATE_APP_SCRIPT_PATH"'));
+    expect(seed).toBeLessThan(exportArchive);
+    expect(raw).toContain('--entitlements "$EXPECTED_ENTITLEMENTS_PATH" "$ARCHIVED_APPLICATION_PATH"');
+    expect(verify).toBeGreaterThan(exportArchive);
+    expect(verify).toBeLessThan(raw.indexOf('run_asccli builds upload'));
   });
 
   it("surfaces terminal upload-processing errors before the build-list deadline", async () => {
@@ -2171,15 +2222,84 @@ describe("ios-ci.yml", () => {
     expect(String(prepare?.run)).toContain('$RUNNER_TEMP/ios-ci');
     expect(String(prepare?.run)).toContain('SOURCE_PACKAGES=$ios_ci_root/SourcePackages');
     expect(String(prepare?.run)).toContain('DERIVED_DATA=$ios_ci_root/DerivedData');
-    expect(String(prepare?.run)).toContain('RESULTS=$ios_ci_root/Results');
-    expect(String(prepare?.run)).toContain('LOGS=$ios_ci_root/Logs');
-    expect(String(prepare?.run)).toContain('SCREENSHOTS=$ios_ci_root/Screenshots');
+    expect(String(prepare?.run)).toContain('RESULTS=$output_root/Results');
+    expect(String(prepare?.run)).toContain('LOGS=$output_root/Logs');
+    expect(String(prepare?.run)).toContain('SCREENSHOTS=$output_root/Screenshots');
 
     const raw = await readFile(join(DIR, "ios-ci.yml"), "utf8");
     expect(raw).toContain("${{ runner.temp }}/ios-ci/SourcePackages");
     expect(raw).toContain("hashFiles(format('{0}/**/Package.resolved'");
     expect(raw).toContain('"$RESULTS/Build.xcresult"');
     expect(raw).toContain('"$RESULTS/Tests.xcresult"');
+  });
+
+  it("isolates late cancelled-run writes, retries and same-attempt jobs while preserving caches", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus ios outputs "));
+    const iosRoot = join(root, "ios-ci");
+    const envFile = join(root, "github-env");
+    const outputFile = join(root, "github-output");
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const script = steps.find((step) => step.name === "Prepare isolated build directories")?.run;
+    expect(typeof script).toBe("string");
+
+    try {
+      for (const cache of ["SourcePackages", "DerivedData"]) {
+        await mkdir(join(iosRoot, cache), { recursive: true });
+        await writeFile(join(iosRoot, cache, "cached"), cache);
+      }
+      await writeFile(join(root, "other-job"), "untouched");
+      let previous: Record<string, string> = {
+        RESULTS: join(iosRoot, "Results"), LOGS: join(iosRoot, "Logs"),
+        SCREENSHOTS: join(iosRoot, "Screenshots"),
+      };
+      const seen = new Set<string>();
+      for (const [run, attempt] of [[100, 1], [101, 1], [101, 2], [101, 2]]) {
+        await writeFile(envFile, "");
+        await writeFile(outputFile, "");
+        await execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
+          env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile,
+            GITHUB_OUTPUT: outputFile, GITHUB_RUN_ID: String(run), GITHUB_RUN_ATTEMPT: String(attempt) },
+        });
+        const paths = Object.fromEntries((await readFile(envFile, "utf8")).trim().split("\n")
+          .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
+        // The superseded process writes AFTER the replacement's preparation.
+        for (const bundle of ["Build.xcresult", "Tests.xcresult"]) {
+          await mkdir(join(previous.RESULTS!, bundle), { recursive: true });
+          await writeFile(join(previous.RESULTS!, bundle, "partial"), "cancelled");
+        }
+        for (const key of ["LOGS", "SCREENSHOTS"]) {
+          await mkdir(previous[key]!, { recursive: true });
+          await writeFile(join(previous[key]!, "previous"), "old evidence");
+        }
+        for (const key of ["RESULTS", "LOGS", "SCREENSHOTS"]) {
+          expect(await readdir(paths[key]!), key).toEqual([]);
+          expect(paths[key]).not.toBe(previous[key]);
+        }
+        expect(seen.has(paths.RESULTS!)).toBe(false);
+        seen.add(paths.RESULTS!);
+        for (const [key, cache] of [["SOURCE_PACKAGES", "SourcePackages"], ["DERIVED_DATA", "DerivedData"]]) {
+          expect(paths[key!]).toBe(join(iosRoot, cache!));
+          expect(await readFile(join(iosRoot, cache!, "cached"), "utf8")).toBe(cache);
+        }
+        expect(await readFile(join(root, "other-job"), "utf8")).toBe("untouched");
+        expect(await readFile(outputFile, "utf8")).toBe([
+          `results=${paths.RESULTS}`, `logs=${paths.LOGS}`, `screenshots=${paths.SCREENSHOTS}`, "",
+        ].join("\n"));
+        previous = paths;
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("cannot export or upload previous evidence when preparation did not succeed", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    expect(steps.find((step) => step.name === "Prepare isolated build directories")?.id).toBe("ios_paths");
+    for (const name of ["Export rendered test attachments", "Upload rendered test attachments",
+      "Collect Firebase emulator diagnostics", "Upload Xcode failure evidence"]) {
+      expect(steps.find((step) => step.name === name)?.if, name)
+        .toContain("steps.ios_paths.outcome == 'success'");
+    }
   });
 
   it("builds once, then runs the scheme's unit and UI tests without rebuilding", async () => {
@@ -2232,18 +2352,18 @@ describe("ios-ci.yml", () => {
     expect(String(upload?.if)).toContain("always()");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     expect(String((upload?.with as Record<string, unknown>)?.path)).toContain(
-      "${{ runner.temp }}/ios-ci/Screenshots",
+      "${{ steps.ios_paths.outputs.screenshots }}",
     );
   });
 
   it("uploads both xcresults and raw logs only when the run fails", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
-    expect(upload?.if).toBe("failure()");
+    expect(upload?.if).toBe("${{ failure() && steps.ios_paths.outcome == 'success' }}");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     const withBlock = upload?.with as Record<string, unknown> | undefined;
-    expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Results");
-    expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Logs");
+    expect(String(withBlock?.path)).toContain("${{ steps.ios_paths.outputs.results }}");
+    expect(String(withBlock?.path)).toContain("${{ steps.ios_paths.outputs.logs }}");
   });
 
   it("passes caller-controlled values through env rather than script substitution", async () => {
@@ -2433,5 +2553,132 @@ describe("local review metadata", () => {
     expect(run).toContain('.head.sha == $sha');
     expect(run).toContain('GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json"');
     expect(run).toContain('--base "origin/$BASE_REF"');
+  });
+});
+
+describe("the scaffolded iOS nightly caller", () => {
+  const actionInputs = async () => {
+    const action = load(
+      await readFile(join(import.meta.dirname, "../.github/actions/ios-testflight-upload/action.yml"), "utf8"),
+    ) as { inputs: Record<string, { required?: boolean }> };
+    return action.inputs;
+  };
+  const uploadStep = () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const upload = wf.jobs?.upload as {
+      environment?: string;
+      steps?: Array<{ uses?: string; with?: Record<string, unknown> }>;
+    };
+    return { wf, upload, step: upload?.steps?.at(-1) };
+  };
+
+  /**
+   * The schedule is the one value in this template that is not app-specific,
+   * so it is the one worth pinning. 06:00 America/Los_Angeles is the standard
+   * slot. GitHub evaluates cron in UTC and has no timezone key, so the file
+   * writes the UTC equivalent and says which Pacific time it means.
+   */
+  it("offers 06:00 Pacific as the nightly slot, written as UTC cron", () => {
+    const rendered = iosNightly({ app: "Example" });
+    expect(rendered).toContain('#   - cron: "0 13 * * *"');
+    expect(rendered).toContain("06:00 America/Los_Angeles");
+    expect(rendered).toContain('"0 13" is 06:00 PDT and\n  # 05:00 PST');
+    expect(rendered).not.toMatch(/^\s*#?\s*timezone:/m);
+    // Screenshot dedup in the reusable workflow needs the caller's zone.
+    const wf = load(rendered) as Workflow;
+    expect((wf.jobs?.release as { with?: Record<string, unknown> })?.with?.["schedule-timezone"]).toBe(
+      "America/Los_Angeles",
+    );
+  });
+
+  /**
+   * A scaffolded project has no signing credentials yet, so a live cron would
+   * fail every night until someone configured them. A scaffold that is red
+   * before anyone has touched it teaches people to ignore red CI — the same
+   * reason `ci` does not wire node-ci into a non-pnpm repository.
+   */
+  it("releases only on demand until the schedule is uncommented", () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const triggers = Object.keys(wf.on ?? {});
+    expect(triggers).toContain("workflow_dispatch");
+    expect(triggers).not.toContain("schedule");
+  });
+
+  /**
+   * The upload job must stay in the caller. GitHub does not pass a caller
+   * repository's environment secrets into a cross-repository reusable
+   * workflow, so an upload job inside ios-nightly-build.yml reads every secret
+   * as an empty string. Evo and Kairos each lost a day to that separately.
+   * Inside the caller's job the composite action does the work, and every
+   * credential it needs arrives from `secrets.*` as an input.
+   */
+  it("keeps the signed upload in the caller as one action step fed from secrets", async () => {
+    const { wf, upload, step } = uploadStep();
+    const release = wf.jobs?.release as { with?: Record<string, unknown> };
+    expect(release?.with?.["run-upload"]).toBe(false);
+    expect(upload?.environment).toBe("testflight-internal");
+    expect(step?.uses).toBe("cpheinrich/morpheus/.github/actions/ios-testflight-upload@main");
+
+    const inputs = await actionInputs();
+    const passed = step?.with ?? {};
+    for (const key of Object.keys(passed)) {
+      expect(Object.keys(inputs), `${key} is not an input of ios-testflight-upload`).toContain(key);
+    }
+    for (const [key, spec] of Object.entries(inputs)) {
+      if (spec.required) expect(passed, `required input ${key} is not passed`).toHaveProperty(key);
+    }
+    const credentials = Object.entries(passed).filter(([key]) => /asc-api|distribution/.test(key));
+    expect(credentials.length).toBe(6);
+    for (const [, value] of credentials) expect(value).toMatch(/^\$\{\{ secrets\.[A-Z0-9_]+ \}\}$/);
+  });
+
+  /**
+   * With `run-upload: false`, the reusable workflow's own upload inputs are
+   * never read, and stating identifiers there as well as in the upload job is
+   * exactly the drift the workflow's input descriptions warn about.
+   */
+  it("passes the reusable workflow no upload-only inputs", () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const release = wf.jobs?.release as { with?: Record<string, unknown> };
+    for (const key of [
+      "environment",
+      "upload-script",
+      "source-packages-directory",
+      "apple-team-id",
+      "ios-bundle-id",
+      "app-store-connect-app-id",
+      "testflight-beta-group-ids",
+    ]) {
+      expect(release?.with, `${key} belongs to the upload job`).not.toHaveProperty(key);
+    }
+  });
+
+  /**
+   * The app-specific values cannot be guessed from the filesystem, so they are
+   * markers rather than plausible-looking defaults, stated once, on the action.
+   * A wrong-but-plausible team id fails much later and much less clearly than
+   * TODO does.
+   */
+  it("marks every value it cannot know, once", () => {
+    const { step } = uploadStep();
+    const rendered = iosNightly({ app: "Example" });
+    for (const key of [
+      "apple-team-id",
+      "ios-bundle-id",
+      "app-store-connect-app-id",
+      "testflight-beta-group-ids",
+    ]) {
+      expect(String(step?.with?.[key])).toContain("TODO");
+      expect(rendered.match(new RegExp("^\\s*" + key + ":", "gm"))?.length).toBe(1);
+    }
+  });
+
+  it("names the project's own scheme and Xcode project in both jobs", () => {
+    const { wf, step } = uploadStep();
+    const release = wf.jobs?.release as { with?: Record<string, unknown> };
+    expect(release?.with?.project).toBe("Example.xcodeproj");
+    expect(release?.with?.scheme).toBe("Example");
+    expect(step?.with?.project).toBe("Example.xcodeproj");
+    expect(step?.with?.scheme).toBe("Example");
   });
 });

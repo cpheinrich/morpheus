@@ -193,6 +193,14 @@ jobs:
           echo "DEVELOPER_DIR=$xcode_app/Contents/Developer" >> "$GITHUB_ENV"
           "$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version
 
+      # The post action runs on success, test failure and cancellation. Each job
+      # owns its base device and uniquely named XCTest clones, even on a shared Mac.
+      - name: Create disposable test simulator
+        if: ${{ inputs.run-tests && inputs.platform == 'iOS Simulator' }}
+        uses: cpheinrich/morpheus/.github/actions/ios-simulator@main
+        with:
+          destination: ${{ inputs.destination }}
+
       - name: Validate locked project inputs
         env:
           PROJECT: ${{ inputs.project }}
@@ -294,21 +302,28 @@ jobs:
           fi
 
       - name: Prepare isolated build directories
+        id: ios_paths
         run: |
+          set -euo pipefail
           ios_ci_root="$RUNNER_TEMP/ios-ci"
-          mkdir -p \
-            "$ios_ci_root/SourcePackages" \
-            "$ios_ci_root/DerivedData" \
-            "$ios_ci_root/Results" \
-            "$ios_ci_root/Logs" \
-            "$ios_ci_root/Screenshots"
+          mkdir -p "$ios_ci_root/SourcePackages" "$ios_ci_root/DerivedData"
+          # Cancellation can leave a child writing after the next job starts.
+          # Never reuse or clear its evidence path. The random suffix also
+          # separates multiple calls/jobs within the same run and attempt.
+          output_root=$(mktemp -d "$ios_ci_root/run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.XXXXXX")
+          mkdir -p "$output_root/Results" "$output_root/Logs" "$output_root/Screenshots"
           {
             echo "SOURCE_PACKAGES=$ios_ci_root/SourcePackages"
             echo "DERIVED_DATA=$ios_ci_root/DerivedData"
-            echo "RESULTS=$ios_ci_root/Results"
-            echo "LOGS=$ios_ci_root/Logs"
-            echo "SCREENSHOTS=$ios_ci_root/Screenshots"
+            echo "RESULTS=$output_root/Results"
+            echo "LOGS=$output_root/Logs"
+            echo "SCREENSHOTS=$output_root/Screenshots"
           } >> "$GITHUB_ENV"
+          {
+            echo "results=$output_root/Results"
+            echo "logs=$output_root/Logs"
+            echo "screenshots=$output_root/Screenshots"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Lint changed Swift sources
         if: ${{ inputs.swift-format-lint }}
@@ -408,7 +423,7 @@ jobs:
             -scheme "$SCHEME"
             -configuration "$CONFIGURATION"
             -sdk "$SDK"
-            -destination "platform=$PLATFORM,$DESTINATION"
+            -destination "platform=$PLATFORM,${MORPHEUS_IOS_DESTINATION:-$DESTINATION}"
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
             -derivedDataPath "$DERIVED_DATA"
             -resultBundlePath "$RESULTS/Build.xcresult"
@@ -451,7 +466,7 @@ jobs:
             -scheme "$SCHEME"
             -configuration "$CONFIGURATION"
             -sdk "$SDK"
-            -destination "platform=$PLATFORM,$DESTINATION"
+            -destination "platform=$PLATFORM,${MORPHEUS_IOS_DESTINATION:-$DESTINATION}"
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
             -derivedDataPath "$DERIVED_DATA"
             -resultBundlePath "$RESULTS/Build.xcresult"
@@ -490,7 +505,7 @@ jobs:
             -scheme "$SCHEME"
             -configuration "$CONFIGURATION"
             -sdk "$SDK"
-            -destination "platform=$PLATFORM,$DESTINATION"
+            -destination "platform=$PLATFORM,${MORPHEUS_IOS_DESTINATION:-$DESTINATION}"
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
             -derivedDataPath "$DERIVED_DATA"
             -resultBundlePath "$RESULTS/Tests.xcresult"
@@ -538,7 +553,7 @@ jobs:
           fi
 
       - name: Export rendered test attachments
-        if: ${{ always() && inputs.run-tests }}
+        if: ${{ always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         run: |
           set -o pipefail
           result_bundle="$RESULTS/Tests.xcresult"
@@ -555,16 +570,16 @@ jobs:
           fi
 
       - name: Upload rendered test attachments
-        if: ${{ always() && inputs.run-tests }}
+        if: ${{ always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ios-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ios-ci/Screenshots
+          path: ${{ steps.ios_paths.outputs.screenshots }}
           if-no-files-found: ignore
           retention-days: 14
 
       - name: Collect Firebase emulator diagnostics
-        if: ${{ always() && inputs.run-tests && inputs.firebase-emulators }}
+        if: ${{ always() && inputs.run-tests && inputs.firebase-emulators && steps.ios_paths.outcome == 'success' }}
         run: |
           candidate_logs=(
             "$GITHUB_WORKSPACE/firebase-debug.log"
@@ -579,12 +594,12 @@ jobs:
           echo "Firebase did not produce a debug log."
 
       - name: Upload Xcode failure evidence
-        if: failure()
+        if: ${{ failure() && steps.ios_paths.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ios-ci-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/ios-ci/Results
-            ${{ runner.temp }}/ios-ci/Logs
+            ${{ steps.ios_paths.outputs.results }}
+            ${{ steps.ios_paths.outputs.logs }}
           if-no-files-found: warn
           retention-days: 14
