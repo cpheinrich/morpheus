@@ -58,3 +58,51 @@ changes; `pnpm morpheus pm index` left indexes unchanged. Merged the documentati
 trunk update before review, with no conflicts. Its auto-update hook refused the dirty
 checkout without installing anything. The study discloses concurrent light authoring
 and shared-host activity rather than claiming an isolated timing environment.
+
+## Independent Review
+
+Independent review found one minor failure-retention issue: a prefetch rejection could disappear when the runner restarted. The author fixed only the named runner, publisher and test paths, added restart/publication regressions, and verified both historical exports remained byte-identical. The reviewer permitted this bounded minor fix without a follow-up; no substantive findings or disagreements remain. Review recomputed aggregates and checked 40 sampled answers, freeze/split evidence and privacy, but did not independently label every answer or rerun paid trials; graph tools were unavailable.
+
+Post-fix verification: `pnpm typecheck` passed; `pnpm test` passed 1,448 tests in
+57 files. All 26 focused history/timing tests passed. Both regenerated historical
+exports matched committed bytes. The PR remains open, with auto-merge disabled.
+
+```morpheus-review
+{
+  "version": 1,
+  "base": "59eedf1af445db6f587aa0822aedff52e88dae2a",
+  "reviewed": "272f3917efe6c565c3475c7d9e17683470c233fe",
+  "covered": "4c336c3e4384dccf82062a9be826c3c767af7a10",
+  "authorSession": "01a0cfbb-30cd-7873-8cae-1f3977f28221",
+  "reviewerSession": "01a0da74-12bb-7222-a08b-b561a04dbe2b",
+  "risk": "normal",
+  "elapsedMinutes": 4,
+  "outcome": "complete",
+  "summary": "Independent review found one minor failure-retention issue: a prefetch rejection could disappear when the runner restarted. The author fixed only the named runner, publisher and test paths, added restart/publication regressions, and verified both historical exports remained byte-identical. The reviewer permitted this bounded minor fix without a follow-up; no substantive findings or disagreements remain. Review recomputed aggregates and checked 40 sampled answers, freeze/split evidence and privacy, but did not independently label every answer or rerun paid trials; graph tools were unavailable.",
+  "findings": [
+    {
+      "id": "H1-prefetch",
+      "severity": "minor",
+      "description": "Reviewer H1: retrieval rejection occurred before a trial result was persisted, allowing an unrecorded retry on restart.",
+      "paths": [
+        "qa/benchmarks/document-retrieval/timed-agents.mjs",
+        "qa/benchmarks/document-retrieval/publish-history.mjs",
+        "tests/document-retrieval-history.test.ts",
+        "tests/document-retrieval-timing.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "The runner now persists an error cell and empty events before rethrowing. Restart skips the retained cell. Publication accepts absent passages only for explicitly failed prefetch, assigns zero evidence quality and counts prefetch database errors. No measured result was affected.",
+      "condition": {
+        "paths": [
+          "qa/benchmarks/document-retrieval/timed-agents.mjs",
+          "qa/benchmarks/document-retrieval/publish-history.mjs",
+          "tests/document-retrieval-history.test.ts",
+          "tests/document-retrieval-timing.test.ts"
+        ],
+        "evidence": "A regression must prove rejection is retained and not replaced on restart; publication must accept that failed cell with zero quality while rejecting a completed cell without prefetch; historical exports must remain byte-identical."
+      },
+      "conditionMet": "At 4c336c3, all 26 focused history/timing tests passed, including all required rejection, restart and publication assertions. Regenerated measurements.json and summary.json are byte-identical. Typecheck passed and the full suite passed 1,448 tests in 57 files."
+    }
+  ]
+}
+```
