@@ -2836,6 +2836,24 @@ an explicit IAM grant, which makes the rollup opt-in per dataset rather than imp
 The test for the first two: *if I improve this, do I want every existing project to get the
 improvement?* Yes → kit. No → template.
 
+### 18.0 Optional personal agent plugins
+
+`plugins/codex-claude/` is a deliberate exception to the kit's single-package distribution:
+it is a personal Codex integration, not a dependency of company repositories. It owns its
+manifest, skill, hooks, runtime, lockfile, tests and installation documentation. Neither
+`morpheus init` nor the CLI installer activates it. Explicit per-device installation copies
+the package into a personal marketplace; execution remains off until enabled. Personal
+settings and session records stay outside the repository.
+
+The bridge routes at safe checkpoints using Codex allowance, keeps explicit task/operation
+overrides, and starts subscription-authenticated Claude on the same host and worktree.
+Codex remains the coordinator and consumes its own allowance. Native Claude session ids
+provide persistence; a leased process guardian bounds live workers. Permission metadata
+must be verified before delegation, and unknown/restricted confinement fails closed in the
+initial version. Cross-agent memory consists of explicitly selected read-only excerpts,
+with native memory controls respected and separate write ownership. See the package README
+for exact compatibility, subscription-overage and remote-host boundaries.
+
 ### 18.1 Morpheus's own structure
 
 **One package, not many.** `morpheus-kit` ships everything with subpath exports, so a project
