@@ -46,7 +46,7 @@ validation passed 1,394 tests in 52 files, typecheck, lint, compile, PM index, a
   "reviewed": "c654f7607cdded35a79afdff618cb342c7e6dc87",
   "covered": "332461a31cee833db6ce437c2d9a25587a51b9e4",
   "authorSession": "/root",
-  "reviewerSession": "/root/morpheus_security_review",
+  "reviewerSession": "01a0d943-aadf-7c21-9cba-afbd0840541b",
   "risk": "high",
   "elapsedMinutes": 11,
   "outcome": "complete",
@@ -95,14 +95,14 @@ validation passed 1,394 tests in 52 files, typecheck, lint, compile, PM index, a
   ],
   "followUps": [
     {
-      "reviewerSession": "/root/morpheus_security_review",
+      "reviewerSession": "01a0d943-aadf-7c21-9cba-afbd0840541b",
       "commit": "68e45827c2ac80fb58ede5043a035fefe0d4acf9",
       "outcome": "blocked",
       "elapsedMinutes": 7,
       "summary": "SEC-003, SEC-004, and SEC-005 cleared. SEC-001 remained open because github.workflow_sha is caller-associated; SEC-002 remained open because a mixed uv artifact block could pass with one unrelated hash."
     },
     {
-      "reviewerSession": "/root/morpheus_security_review",
+      "reviewerSession": "01a0d943-aadf-7c21-9cba-afbd0840541b",
       "commit": "332461a31cee833db6ce437c2d9a25587a51b9e4",
       "outcome": "cleared",
       "elapsedMinutes": 4,
