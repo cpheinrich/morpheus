@@ -27,7 +27,7 @@ test('partial cleanup attempts remaining devices and reports failure', () => {
   assert.throws(() => cleanup(name, (...args) => {
     calls.push(args);
     if (args[0] === '--set') return JSON.stringify({ devices: {} });
-    if (args[0] === 'shutdown') throw Error('shutdown failed');
+    if (args[0] === 'delete' && args[1] === 'bad') throw Error('delete failed');
     return JSON.stringify({ devices: { ios: [{ name, udid: 'bad', state: 'Booted' }, { name: `Clone 1 of ${name}`, udid: 'good', state: 'Shutdown' }] } });
   }), /Failed to clean up 1/);
   assert.ok(calls.some(a => a[0] === 'delete' && a[1] === 'good'));
@@ -72,4 +72,23 @@ test('an unreadable default set does not skip cleanup of testing workers', () =>
     if (args.includes('list')) return JSON.stringify({ devices: { ios: [{ name: `Clone 2 of ${name}`, udid: 'worker', state: 'Shutdown' }] } });
   }), /default inventory failed/);
   assert.deepEqual(calls.at(-1), ['--set', 'testing', 'delete', 'worker']);
+});
+
+test('shutdown state races cannot skip owned deletion in either device set', () => {
+  const calls = [];
+  cleanup(name, (...args) => {
+    calls.push(args);
+    const testing = args[0] === '--set';
+    const command = args[testing ? 2 : 0];
+    if (command === 'list') return JSON.stringify({ devices: { ios: [
+      { name: testing ? `Clone 1 of ${name}` : name, udid: testing ? 'worker' : 'base', state: 'Booted' },
+      { name: 'user device', udid: 'user', state: 'Booted' },
+    ] } });
+    if (command === 'shutdown') throw Error('current state: Shutdown');
+  });
+  assert.deepEqual(calls, [
+    ['list', 'devices', '-j'], ['shutdown', 'base'], ['delete', 'base'],
+    ['--set', 'testing', 'list', 'devices', '-j'],
+    ['--set', 'testing', 'shutdown', 'worker'], ['--set', 'testing', 'delete', 'worker'],
+  ]);
 });

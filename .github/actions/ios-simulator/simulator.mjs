@@ -30,8 +30,11 @@ export function cleanup(name, command = sim) {
     try { devices = ownedDevices(JSON.parse(command(...selector, 'list', 'devices', '-j')), name); }
     catch (error) { errors.push(error); continue; }
     for (const device of devices) {
+      // XCTest can finish shutdown between inventory and this command.
+      // Deletion is the cleanup invariant, so attempt it even if shutdown fails.
+      try { if (device.state !== 'Shutdown') command(...selector, 'shutdown', device.udid); }
+      catch (error) { console.warn(`Simulator shutdown: ${error.message}`); }
       try {
-        if (device.state !== 'Shutdown') command(...selector, 'shutdown', device.udid);
         command(...selector, 'delete', device.udid);
         console.log(`Removed owned simulator ${device.name} (${device.udid}).`);
       } catch (error) { errors.push(error); }
