@@ -180,10 +180,13 @@ the Mac mini. The remote chat displays tool progress normally; the optional loop
 requires a forwarded port to open locally. No inbound network port or SSH connection is
 opened by the plugin; its control socket is local and private.
 
-Verified desktop metadata adapters: Codex `0.154.0` and `0.154.0-alpha.6.1`. Loaded tasks can
-use the public app-server settings response. Other detached desktop versions fail closed
-until an adapter is verified. Per-task memory control uses a version-gated, read-only
-`state_5.sqlite` query because the public read response omits it. Run doctor after updates.
+Loaded tasks use the public app-server settings response. Detached desktop tasks use only
+the active turn fields required by the bridge and validate that contract before delegating;
+new Codex versions remain compatible while the contract is intact and fail closed when it
+changes. Per-task memory control similarly checks the database schema before making a
+read-only `state_5.sqlite` query because the public read response omits it. Run doctor after
+updates. A reinstalled client replaces an idle earlier bridge service automatically and
+refuses the upgrade while that service still owns Claude work.
 Claude stream/question/resume protocol was tested with the installed Claude Code CLI.
 Windows is unsupported. Linux exercises portable tests in CI but is not a desktop support
 claim. A host missing authentication is reported; the plugin never copies another host's login.

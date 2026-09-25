@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { identity, stopOrphan } from "../src/processes.mjs";
+import {
+  identity,
+  identityStatus,
+  ownedProcessState,
+  stopOrphan,
+} from "../src/processes.mjs";
 test("stale or missing process identity cannot signal an unrelated process", async () => {
   const own = await identity(process.pid);
   assert.equal(typeof own, "string");
@@ -14,6 +19,24 @@ test("stale or missing process identity cannot signal an unrelated process", asy
   assert.equal(await stopOrphan({ claudePid: process.pid }), false);
   assert.equal(await identity(-1), null);
   assert.equal(await identity(1), null);
+});
+
+test("process ownership fails closed when liveness is inconclusive", async () => {
+  assert.equal((await identityStatus(99999999)).state, "absent");
+  assert.equal(
+    await ownedProcessState(
+      { guardianPid: 10, guardianIdentity: "known" },
+      async () => ({ state: "unknown" }),
+    ),
+    "unknown",
+  );
+  assert.equal(
+    await ownedProcessState(
+      { guardianPid: 10, guardianIdentity: "known" },
+      async () => ({ state: "alive", identity: "known" }),
+    ),
+    "live",
+  );
 });
 
 test("orphan cleanup removes TERM-ignoring descendants after leader exits", async (t) => {

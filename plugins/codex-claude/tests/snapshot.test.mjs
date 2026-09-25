@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { recordedSnapshot } from "../src/codex.mjs";
-test("desktop adapter accepts active supported full access metadata only", async (t) => {
+test("desktop adapter accepts active full access metadata by contract", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "snapshot-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "rollout");
@@ -28,17 +28,19 @@ test("desktop adapter accepts active supported full access metadata only", async
   };
   const write = async (rows) =>
     writeFile(path, rows.map((r) => JSON.stringify(r)).join("\n"));
-  const thread = { id: "task", path, cliVersion: "0.154.0-alpha.6.1" };
+  const thread = { id: "task", path, cliVersion: "9.0.0" };
   await write([start, context]);
   const s = await recordedSnapshot(thread);
   assert.equal(s.model, "gpt-6-astra");
   assert.equal(s.reasoningEffort, "medium");
   assert.equal(s.approvalPolicy, "never");
   assert.equal(JSON.stringify(s).includes("PRIVATE"), false);
-  await assert.rejects(
-    recordedSnapshot({ ...thread, cliVersion: "9.0.0" }),
-    /Unsupported/,
-  );
+  assert.equal(s.settingsSource, "recorded-turn-9.0.0");
+  await write([
+    start,
+    { ...context, payload: { ...context.payload, model: undefined } },
+  ]);
+  await assert.rejects(recordedSnapshot(thread), /metadata contract/);
   await write([
     start,
     context,

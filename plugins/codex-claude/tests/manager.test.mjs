@@ -13,6 +13,7 @@ import {
   atomic,
 } from "../src/store.mjs";
 import { defaults } from "../src/config.mjs";
+import { identity } from "../src/processes.mjs";
 import { randomUUID } from "node:crypto";
 test("supervision permits justified clarification but never implicit tool approval", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "manager-"));
@@ -117,6 +118,54 @@ test("persisted state recovers exited runs without replaying work", async (t) =>
     state: "interrupted",
   });
   assert.equal(m.runs.size, 0);
+});
+
+test("bridge upgrade shutdown is allowed only when no owned work is active", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "upgrade-shutdown-"));
+  process.env.CODEX_CLAUDE_HOME = root;
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await initStore();
+  const manager = new Manager();
+  assert.deepEqual(await manager.dispatch("shutdown"), { stopping: true });
+
+  const id = randomUUID();
+  await import("node:fs/promises").then((f) => f.mkdir(runDir(id)));
+  await atomic(join(runDir(id), "process.json"), { state: "running" });
+  assert.deepEqual(await manager.dispatch("shutdown"), { stopping: true });
+  assert.equal(
+    JSON.parse(await readFile(join(runDir(id), "process.json"), "utf8"))
+      .state,
+    "exited",
+  );
+  manager.draining = false;
+  manager.busy = true;
+  await assert.rejects(manager.dispatch("shutdown"), /delegation is starting/);
+  assert.equal(manager.draining, false);
+  manager.busy = false;
+  await atomic(join(runDir(id), "process.json"), {
+    state: "running",
+    guardianPid: process.pid,
+    guardianIdentity: await identity(process.pid),
+  });
+  await assert.rejects(
+    manager.dispatch("shutdown"),
+    /owned Claude process/,
+  );
+  assert.equal(manager.draining, false);
+  manager.processOwnership = async () => "unknown";
+  await assert.rejects(
+    manager.dispatch("shutdown"),
+    /could not be verified/,
+  );
+  assert.equal(manager.draining, false);
+  manager.processOwnership = async () => "stale";
+  await atomic(join(runDir(id), "process.json"), { state: "exited" });
+  manager.runs.set(id, { terminal: false });
+  await assert.rejects(manager.dispatch("shutdown"), /Active Claude runs/);
+  assert.equal(manager.draining, false);
+  manager.runs.clear();
+  manager.draining = true;
+  await assert.rejects(manager.start({}), /upgrade is in progress/);
 });
 
 test("real user answer resets autonomous budget even when configured limit is zero", async (t) => {
