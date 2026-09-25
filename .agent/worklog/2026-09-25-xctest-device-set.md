@@ -26,3 +26,23 @@ that failure to list the default set still allows private worker cleanup.
 - `pnpm typecheck && pnpm test && pnpm compile` is run before PR delivery.
 - Source fallback: graph MCP is not exposed. Bounded scope is the existing action, its
   direct reusable-workflow caller and device-set behavior observed on the Mac mini.
+
+## Independent review
+
+Independent review cleared the both-device-set correction with no findings. Eight focused tests passed and native testing-set JSON parsing was checked. Author native smoke timed out during worker data migration, then successfully removed the owned base and private worker; repeated cleanup confirmed both absent while unrelated nightly/PR workers remained booted. This proves cleanup after setup failure, not successful worker readiness. Full typecheck, 1,381 tests and compile passed.
+
+```morpheus-review
+{
+  "version": 1,
+  "base": "cc2c1e518f87c8fadd30b1058f660187302d8039",
+  "reviewed": "46323d47b47f4eaeb2a8db55ebc6a3a3ea22650c",
+  "covered": "46323d47b47f4eaeb2a8db55ebc6a3a3ea22650c",
+  "authorSession": "01a0d8cb-5b59-7261-978f-19fd9976dc80",
+  "reviewerSession": "01a0d8e7-e32e-75d3-ad94-f0d8772b3b2e",
+  "risk": "high",
+  "elapsedMinutes": 3,
+  "outcome": "complete",
+  "summary": "Independent review cleared the both-device-set correction with no findings. Eight focused tests passed and native testing-set JSON parsing was checked. Author native smoke timed out during worker data migration, then successfully removed the owned base and private worker; repeated cleanup confirmed both absent while unrelated nightly/PR workers remained booted. This proves cleanup after setup failure, not successful worker readiness. Full typecheck, 1,381 tests and compile passed.",
+  "findings": []
+}
+```
