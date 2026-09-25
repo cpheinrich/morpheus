@@ -845,7 +845,10 @@ the runner-issued one, never a composed label, and is not reused across tasks. A
 two follow-ups; a follow-up resolves what the previous turn left blocked, or spends a remaining turn
 on a late correction after clearance (a fix full CI asked for), recorded with its \`scopeReason\`.
 Unresolved substantive disagreements after that, an incomplete review, or a correction once the
-turns are spent, keep the PR open and auto-merge disabled. Record the review paragraph and structured evidence in the task
+turns are spent, keep the PR open and auto-merge disabled. An explicit human exception may authorize
+one additional same-reviewer turn; record \`humanAuthorization\` with \`approvedBy\`, \`approvedAt\`
+(ISO timestamp), and \`reason\` on that extra follow-up. Each extra turn needs its own authorization;
+never infer it or reset the history. All review and CI requirements still apply. Record the review paragraph and structured evidence in the task
 worklog, link it with a visible \`review-record:\` PR-body line, then apply \`agent-reviewed\`.
 \`review.required\` defaults to true; project false opts out visibly. After the covered commit only
 the named worklog may change, and merging trunk never invalidates the review: a merge Git
