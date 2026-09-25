@@ -14,7 +14,8 @@ describe("CLI argument compatibility", () => {
   it("preserves defaults and special-value consumption", () => {
     expect(parseArgs([])).toEqual({ dir: "hq/product", base: "origin/main", check: false, dryRun: false,
       all: false, offline: false, full: false, json: false, dispatch: false, print: false,
-      openBrowser: true, provision: true, waitlist: true, hq: true, positional: [], authors: [], isbns: [] });
+      openBrowser: true, provision: true, waitlist: true, hq: true, worktree: false, nul: false,
+      positional: [], authors: [], isbns: [] });
     expect(parseArgs(["--dir"])).toMatchObject({ dir: "hq/product" });
     expect(parseArgs(["--base", "topic", "--base"])).toMatchObject({ base: "topic" });
     expect(parseArgs(["--issue"])).toMatchObject({ issue: "" });

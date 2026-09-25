@@ -31,6 +31,7 @@ import { checkGoogleAuthConfiguration, configureGoogleAuth } from "./firebase.js
 import { printRules, rules as hqRules } from "./hq.js";
 import * as registry from "./registry.js";
 import { run as doctorRun } from "./doctor.js";
+import { run as changedSwiftRun } from "../ios/changed-swift.js";
 import { mark as initMark, status as initStatus } from "./onboarding.js";
 import { init as initScaffold } from "./init.js";
 import { webAddConsumerAuth, webInit, webStatus } from "./web.js";
@@ -76,6 +77,29 @@ async function dispatchSelf({ flags, command, rest }: Invocation): Promise<numbe
 
 async function dispatchDoctor({ flags }: Invocation): Promise<number> {
 return doctorRun(process.cwd(), flags.all, flags.offline);
+}
+
+async function dispatchIos({ flags, command, rest }: Invocation): Promise<number> {
+    if (command === "changed-swift") {
+      // Positional, not `--dir`: that flag means the product directory
+      // everywhere else and defaults to `hq/product`, so reading it here would
+      // answer confidently about the roadmap folder — an empty list and a
+      // clean exit for a directory nobody named.
+      const workingDirectory = rest[0];
+      if (!workingDirectory) {
+        console.error("Usage: morpheus ios changed-swift <directory> [--base <ref>] [--worktree] [--nul]");
+        return 1;
+      }
+      return changedSwiftRun({
+        workingDirectory,
+        base: flags.base,
+        worktree: flags.worktree,
+        nul: flags.nul,
+      });
+    }
+    console.error(`Unknown ios command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+  
 }
 
 async function dispatchCodebaseMemory({ flags, command }: Invocation): Promise<number> {
@@ -482,6 +506,7 @@ async function dispatchPm({ flags, command, rest, dir }: Invocation): Promise<nu
 const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "self": dispatchSelf,
   "doctor": dispatchDoctor,
+  "ios": dispatchIos,
   "codebase-memory": dispatchCodebaseMemory,
   "heartbeat": dispatchHeartbeat,
   "voice": dispatchVoice,

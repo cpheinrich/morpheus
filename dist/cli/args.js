@@ -52,6 +52,8 @@ const booleanOptions = {
     "--no-waitlist": (flags) => { flags.waitlist = false; },
     "--no-hq": (flags) => { flags.hq = false; },
     "--json": (flags) => { flags.json = true; },
+    "--worktree": (flags) => { flags.worktree = true; },
+    "--nul": (flags) => { flags.nul = true; },
     "--full": (flags) => { flags.full = true; },
     "--dispatch": (flags) => { flags.dispatch = true; },
 };
@@ -59,6 +61,8 @@ export function parseArgs(argv) {
     const flags = {
         dir: "hq/product",
         base: "origin/main",
+        worktree: false,
+        nul: false,
         check: false,
         dryRun: false,
         all: false,

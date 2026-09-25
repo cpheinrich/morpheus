@@ -24,6 +24,10 @@ export interface Flags {
   dryRun: boolean;
   all: boolean;
   offline: boolean;
+  /** `ios changed-swift`: include uncommitted and untracked Swift files. */
+  worktree: boolean;
+  /** `ios changed-swift`: NUL-delimited output, for `xargs -0`. */
+  nul: boolean;
   kind?: string;
   owner?: string;
   handle?: string;
@@ -116,6 +120,8 @@ const booleanOptions: Record<string, (flags: Flags) => void> = {
   "--no-waitlist": (flags) => { flags.waitlist = false; },
   "--no-hq": (flags) => { flags.hq = false; },
   "--json": (flags) => { flags.json = true; },
+  "--worktree": (flags) => { flags.worktree = true; },
+  "--nul": (flags) => { flags.nul = true; },
   "--full": (flags) => { flags.full = true; },
   "--dispatch": (flags) => { flags.dispatch = true; },
 };
@@ -124,6 +130,8 @@ export function parseArgs(argv: string[]): Flags {
   const flags: Flags = {
     dir: "hq/product",
     base: "origin/main",
+    worktree: false,
+    nul: false,
     check: false,
     dryRun: false,
     all: false,

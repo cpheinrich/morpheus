@@ -2043,12 +2043,23 @@ describe("ios-ci.yml", () => {
     expect(script).toContain("xcrun swift-format --version");
     expect(script).toContain("swift-format dump-configuration");
     expect(script).toContain("--effective");
-    expect(script).toContain("git diff-tree");
-    expect(script).toContain("--diff-filter=ACMR");
     expect(script).toContain("swift-format lint");
     expect(script).toContain("--parallel");
     expect(script).toContain("--strict");
     expect(script).not.toContain("brew install");
+
+    // The selection is shared rather than inlined: consumers call the same
+    // script, and a step that quietly went back to its own pathspec would make
+    // that false again.
+    const select = steps.find((step) => step.name === "Select changed Swift sources") as
+      | { uses?: string; if?: string; with?: Record<string, string> }
+      | undefined;
+    expect(select?.uses).toBe("cpheinrich/morpheus/.github/actions/swift-changed-files@main");
+    expect(select?.if).toBe("${{ inputs.swift-format-lint }}");
+    expect(select?.with?.["working-directory"]).toBe("${{ inputs.working-directory }}");
+    expect((lint?.env as Record<string, string> | undefined)?.SWIFT_CHANGED_FILES)
+      .toBe("${{ steps.swift-changed-files.outputs.file }}");
+    expect(script).not.toContain(":(glob)");
   });
 
   it("strictly lints added and modified Swift files without sweeping legacy source", async () => {
@@ -2083,6 +2094,19 @@ describe("ios-ci.yml", () => {
       const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
       const script = steps.find((step) => step.name === "Lint changed Swift sources")?.run;
       expect(script).toBeTruthy();
+
+      // The step no longer selects the files itself; the shared script does,
+      // through the composite action. Standing in for the action here keeps
+      // this test about the lint while tests/swift-changed-files.test.ts covers
+      // the selection — and keeps the two from being proved by the same code.
+      const selection = join(root, "selection");
+      const selected = await execFileAsync("bash", [
+        join(process.cwd(), "scripts/swift-changed-files.sh"),
+        "--working-directory",
+        "apps/ios",
+      ], { cwd: repo, encoding: "buffer" });
+      await writeFile(selection, selected.stdout);
+
       await execFileAsync("bash", ["-c", String(script)], {
         cwd: join(repo, "apps/ios"),
         env: {
@@ -2091,6 +2115,7 @@ describe("ios-ci.yml", () => {
           GITHUB_WORKSPACE: repo,
           SWIFT_FORMAT_CONFIGURATION: ".swift-format",
           WORKING_DIRECTORY: "apps/ios",
+          SWIFT_CHANGED_FILES: selection,
           XCRUN_LOG: log,
         },
       });
