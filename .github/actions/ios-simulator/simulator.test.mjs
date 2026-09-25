@@ -92,3 +92,25 @@ test('shutdown state races cannot skip owned deletion in either device set', () 
     ['--set', 'testing', 'shutdown', 'worker'], ['--set', 'testing', 'delete', 'worker'],
   ]);
 });
+
+test('an absent optional testing set is empty on a fresh serial runner', () => {
+  const calls = [];
+  cleanup(name, (...args) => {
+    calls.push(args);
+    if (args[0] === '--set') throw Object.assign(Error('simctl failed'), {
+      stderr: Buffer.from("Using Parallel Testing Device Clones Device Set: '/Users/runner/Library/Developer/XCTestDevices'\nProvided set path does not exist: /Users/runner/Library/Developer/XCTestDevices\n"),
+    });
+    if (args[0] === 'list') return JSON.stringify({ devices: { ios: [{ name, udid: 'base', state: 'Shutdown' }] } });
+  });
+  assert.deepEqual(calls, [['list', 'devices', '-j'], ['delete', 'base'], ['--set', 'testing', 'list', 'devices', '-j']]);
+});
+test('testing-set permission errors and absent default inventory still fail cleanup', () => {
+  for (const missingDefault of [false, true]) {
+    assert.throws(() => cleanup(name, (...args) => {
+      if (args[0] === '--set' || missingDefault) throw Object.assign(Error('inventory failed'), {
+        stderr: missingDefault ? 'Provided set path does not exist: default' : 'Permission denied',
+      });
+      return JSON.stringify({ devices: {} });
+    }), /inventory failed/);
+  }
+});
