@@ -5,8 +5,9 @@
 </p>
 
 Morpheus Security is a deterministic GitHub-native pipeline. It needs no Codex heartbeat, local
-host, OpenAI key, paid service, or other model. Its public source, policy, and central nightly
-workflow live in [`cpheinrich/morpheus-security`](https://github.com/cpheinrich/morpheus-security).
+host, OpenAI key, paid service, or other model. Its public source and policy live in
+[`cpheinrich/morpheus-security`](https://github.com/cpheinrich/morpheus-security); a separate
+private operations repository holds the nightly caller, credential, logs, and raw receipts.
 Installed repositories opt in through a committed policy file; they do not hold the App key or a
 repository-owned schedule.
 
@@ -42,10 +43,10 @@ change fails closed.
 The public-but-unlisted `morpheus-security` GitHub App uses one-hour installation tokens. It has
 metadata read, statuses read, checks/contents/pull requests/issues write, and Dependabot alerts
 read. It has no administration, Actions, secrets, workflow, organization, account, OAuth, or
-webhook permission. The App id and private key live only in the standalone repository's protected
-`security-bot` environment, with an offline recovery copy in the operator's credential vault.
-Target repositories never receive the private key. Each run mints short-lived tokens scoped to one
-target and its optional same-owner incident repository.
+webhook permission. The App id and private key live only as encrypted Actions secrets in the
+private operations repository, with an offline recovery copy in the operator's credential vault.
+Target repositories never receive the private key. Each run mints a short-lived token scoped to one
+target and, when needed, a separate issues-only token for its same-owner incident repository.
 
 The App's canonical identity is [`morpheus-security-badge.png`](../assets/morpheus-security-badge.png).
 The registered homepage points to the standalone repository. Public registration permits explicit
@@ -82,7 +83,7 @@ merges. A later run validates that attestation and every configured check before
 only that head. If strict protection makes a candidate stale, the bot closes it, refreshes and
 verifies the live default branch, and recreates the update with all evidence rerun.
 
-The exact App login, marker, branch namespace, and dependency-only diff receive a narrow
+The exact App login, marker, and dependency-only diff receive a narrow
 independent-review and roadmap-authoring waiver. It does not waive branch protection. A failed
 configured check or project hold leaves the PR open. Human-authored PRs never receive the waiver.
 
@@ -122,10 +123,10 @@ private project uses its own issue tracker. A public project must configure a pr
 
 ## Operations
 
-The central workflow first intersects three independent gates: an App installation, the reviewed
-`config/approved-repositories.json` allowlist, and a valid `.github/morpheus-security.json` on the
-target's default branch. This keeps an unknown public installation inert. Each run retains its
-before scan, candidate scan, and plan receipt for 30 days. A clean run means
+The private caller starts from the reviewed `config/approved-repositories.json` allowlist, confirms
+each exact repository's App installation, and requires a valid `.github/morpheus-security.json` on
+the target's live default branch. This keeps an unknown public installation inert. Each run retains
+its before scan, candidate scan, and plan receipt privately for 30 days. A clean run means
 both OSV and the GitHub alert input contained no actionable finding. A successful PR is not final
 evidence: after merge, the next nightly/manual main scan must be clean for that package/advisory,
 and the GitHub alert must close from the merged graph rather than by manual dismissal.
@@ -147,8 +148,8 @@ and the GitHub alert must close from the merged graph rather than by manual dism
    they are one of this pipeline's advisory inputs.
 
 An operator who does not want the central maintainers to hold installation authority can fork the
-standalone repository, register a separate App, and store that App's id and private key once in the
-fork's protected `security-bot` environment.
+standalone repository, register a separate App, and store that App's id and private key once in a
+private operations repository of their own.
 
 If a previous bot PR is still open for a lockfile, reconciliation waits on it unless its base is
 stale or conflicted; then it is closed and recreated from verified current state. A project-policy

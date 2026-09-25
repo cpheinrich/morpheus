@@ -13,8 +13,8 @@ updated: 2026-09-25
   `architecture.md` and `docs/README.md`.
 - Added a one-page policy summary, exact least-privilege App permissions, adoption steps, and the
   post-merge clean-run acceptance rule.
-- Recorded central private-key custody, three-gate repository opt-in, and the public-but-unlisted
-  registration used across personal and organization accounts.
+- Recorded private operations-repository custody, three-gate repository opt-in, and the
+  public-but-unlisted registration used across personal and organization accounts.
 
 ## Verification
 
@@ -32,7 +32,9 @@ asset. A private App owned by `cpheinrich` also could not be installed directly 
 `darwin-health` organization; the user selected a public-but-unlisted registration with explicit
 repository selection instead of maintaining one App per account. The initial per-repository-secret
 design was replaced before rollout by one protected central credential and scoped installation
-tokens.
+tokens. Independent review then identified that public workflow logs and artifacts could disclose
+private repository findings, so the schedule, credential, logs, and receipts moved to a separate
+private operations repository while the reviewed engine remains public.
 
 ## Independent review
 

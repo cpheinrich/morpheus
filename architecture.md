@@ -2910,9 +2910,10 @@ separate best-effort discovery from content reads that propagate non-absence err
 
 General project-management workflows with an `on: workflow_call` trigger live in Morpheus; each
 project keeps a thin delegator supplying project-specific inputs. Security remediation is the
-exception: its public source, policy, and central scheduled workflow live in the narrow
+exception: its reviewed source and policy live in the narrow public
 [`cpheinrich/morpheus-security`](https://github.com/cpheinrich/morpheus-security) repository so an
-operator can review and adopt it without importing Morpheus itself.
+operator can review and adopt it without importing Morpheus itself. A separate private operations
+repository holds the schedule, sole App key, logs, and raw scan receipts.
 
 ```yaml
 # acme/.github/workflows/ci.yml — the whole file
@@ -2965,9 +2966,10 @@ passes. A stale strict-protection candidate is closed and recreated from a fresh
 branch, repeating all evidence. No AI model or OpenAI credential participates. `MAL-*` findings
 additionally create or update a private incident issue that remains open for human exposure review.
 
-The standalone repository reconciles all approved installations nightly; a maintainer may also
-dispatch it manually. A transient workflow failure or policy change can leave work behind, so the
-scheduled pass treats the open pull-request set as the durable source of truth.
+The private operations repository invokes an exact reviewed standalone revision for approved
+installations nightly; a maintainer may also use a default-branch repository dispatch. A transient
+workflow failure or policy change can leave work behind, so the scheduled pass treats the open
+pull-request set as the durable source of truth.
 
 Every reusable job carries a `timeout-minutes` ceiling set well above its honest runtime, so it
 fires only on a hang. Without one a stuck step runs to GitHub's six-hour default on billed
@@ -3143,9 +3145,10 @@ Suite, needs no secrets — so it passes on fork pull requests — and is delibe
 `web-ci`, because most projects have no Firebase and would pay for a JRE, a 100 MB emulator jar and
 a boot to run nothing.
 
-`morpheus-security` is a central scheduled workflow in its own repository. The App id and private
-key live once in its protected environment. A target opts in only when its installation, the
-reviewed central repository allowlist, and its committed policy agree. The workflow owns full-tree
+`morpheus-security` is a public reviewed engine invoked by a separate private operations repository.
+The App id and private key, schedule, logs, and raw receipts live only in that private caller. A
+target opts in only when its installation, the reviewed central repository allowlist, and its
+committed policy agree. The workflow owns full-tree
 OSV plus GitHub-alert ingestion, one-dependency PR creation, deterministic artifact and scope
 gates, reconciliation, and guarded merge. The schedule matters: a dependency can become vulnerable
 without any repository change. Missing evidence never counts as clean. No local host or model
