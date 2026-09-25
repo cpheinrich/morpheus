@@ -16,11 +16,9 @@
 
 ## Independent review
 
-The reviewer verified the config against the merged engine and live private caller, then found one
-substantive documentation inconsistency: the runbook, architecture, and decision record still
-required the external incident repository the engine now rejects. Under the reviewer's explicit
-condition, those three live documents were corrected and the required grep and focused workflow
-suite passed.
+The config matches the merged engine and deployed caller. The conditionally cleared documentation
+mismatch was fixed within the allowed paths and verified, and the same reviewer cleared the later
+PR-metadata-only integration at 26b146f.
 
 ```morpheus-review
 {
