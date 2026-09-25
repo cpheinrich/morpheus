@@ -1,8 +1,31 @@
 # Morpheus Security dependency remediation
 
+<p align="center">
+  <img src="../assets/morpheus-security-badge.png" width="180" alt="Morpheus Security badge">
+</p>
+
 Morpheus Security is a deterministic GitHub-native pipeline. It needs no Codex heartbeat, local
-host, OpenAI key, or other model. A managed repository calls
-`.github/workflows/security-remediation.yml` nightly and may dispatch it manually.
+host, OpenAI key, paid service, or other model. Its public source and policy live in
+[`cpheinrich/morpheus-security`](https://github.com/cpheinrich/morpheus-security); a separate
+private operations repository holds the nightly caller, credential, logs, and raw receipts.
+Installed repositories opt in through a committed policy file; they do not hold the App key or a
+repository-owned schedule.
+
+## Policy summary
+
+- **Advisories:** act on every active, non-withdrawn OSV finding and every open GitHub Dependabot
+  alert; deduplicate aliases rather than treating the feeds as competing authorities.
+- **Change shape:** one dependency per pull request and at most one open bot PR per lockfile.
+- **Proof:** require official-registry provenance, retained integrity metadata, a dependency-only
+  diff, and a clean candidate OSV rescan for the exact package/advisory pair.
+- **Merge:** attest the exact validated head, then merge on a later run only after every explicitly
+  configured check passes. A failing check or explicit project hold leaves the PR open.
+- **Schedule:** reconcile nightly and allow manual dispatch. A later clean main-branch run, not the
+  creation or merge of a PR, is the completion receipt.
+- **Separation:** Dependabot alerts remain an advisory input, but Dependabot security-fix PRs are
+  disabled after adoption. Routine non-security upgrades remain a separate maintenance lane.
+- **Malware:** patch `MAL-*` findings immediately and leave a private incident issue open until a
+  human records exposure, credential rotation, and containment.
 
 ## Trust boundary
 
@@ -17,24 +40,52 @@ retain lockfile integrity hashes, change only recognized dependency manifests/lo
 the exact package/advisory pair on a second OSV scan. A registry-to-git, URL, or local-path source
 change fails closed.
 
-The private `morpheus-security` GitHub App uses one-hour installation tokens. It has metadata read,
-Actions/checks/statuses read, Dependabot alerts read, and contents/pull requests/issues write. It
-has no administration, secrets, workflow, organization, account, OAuth, or webhook permission.
-The caller stores the App id and private key as encrypted repository secrets.
+The public-but-unlisted `morpheus-security` GitHub App uses one-hour installation tokens. It has
+metadata read, statuses read, checks/contents/pull requests/issues write, and Dependabot alerts
+read. It has no administration, Actions, secrets, workflow, organization, account, OAuth, or
+webhook permission. The App id and private key live only as encrypted Actions secrets in the
+private operations repository, with an offline recovery copy in the operator's credential vault.
+Target repositories never receive the private key. Each run mints a short-lived token scoped to one
+target and, when needed, a separate issues-only token for its same-owner incident repository.
+
+The App's canonical identity is [`morpheus-security-badge.png`](../assets/morpheus-security-badge.png).
+The registered homepage points to the standalone repository. Public registration permits explicit
+installation across personal and organization accounts. It is centrally operated by GitHub
+Actions and is not listed in GitHub Marketplace.
+
+GitHub scopes a private App registration to its owning account. Repository administration in a
+different organization is not enough to install it there: a multi-account rollout needs either one
+private registration per account or a single public-but-unlisted registration that each account
+installs on explicitly selected repositories. Treat that as an ownership decision, not a setup
+shortcut.
+
+### Exact repository permissions
+
+| Permission | Access |
+|---|---|
+| Metadata | Read |
+| Checks | Read and write |
+| Commit statuses | Read |
+| Dependabot alerts | Read |
+| Contents | Read and write |
+| Issues | Read and write |
+| Pull requests | Read and write |
+
+No organization or account permissions are granted. OAuth user authorization, Device Flow, and
+webhooks remain disabled.
 
 ## Pull-request and merge policy
 
 One dependency is one pull request. At most one bot PR is open for a lockfile at a time, so two
-updates cannot race the same lock graph; independent lockfiles may progress concurrently. A later
-nightly run reconciles an existing bot PR before opening new work. Every PR carries the exact
-advisories, old/fixed versions, resolver strategy, lockfile, and the marker
-`<!-- morpheus-security-update -->`.
+updates cannot race the same lock graph; independent lockfiles may progress concurrently. The
+creation run writes an App-owned Check Run attestation for the exact validated head and never
+merges. A later run validates that attestation and every configured check before atomically merging
+only that head. If strict protection makes a candidate stale, the bot closes it, refreshes and
+verifies the live default branch, and recreates the update with all evidence rerun.
 
-The exact App login plus marker plus dependency-only diff receives a narrow independent-review and
-roadmap-authoring waiver. It does not waive branch protection. GitHub auto-merge remains blocked
-until every repository-required test, policy, and deployment check succeeds. A failed check or
-project hold leaves the PR open; the next run does not create a duplicate. Human-authored PRs are
-never auto-merged under the bot waiver.
+The exact App login, marker, and dependency-only diff receive a narrow
+independent-review and roadmap-authoring waiver. It does not waive branch protection. A failed
+configured check or project hold leaves the PR open. Human-authored PRs never receive the waiver.
 
 Projects may put explicit holds in `.github/morpheus-security.json`:
 
@@ -44,6 +95,7 @@ Projects may put explicit holds in `.github/morpheus-security.json`:
   "holds": [
     { "dependency": "example", "advisory": "GHSA-example", "reason": "incompatible runtime" }
   ],
+  "requiredChecks": ["test"],
   "incidentRepository": null
 }
 ```
@@ -55,12 +107,10 @@ does not dismiss or ignore the advisory.
 ## Package-manager adapters
 
 Detection is cross-ecosystem because OSV scans repository lockfiles. Delivery uses small native
-adapters. The first production adapters are npm `package-lock.json` and Python `uv.lock`; additional
-lockfile adapters can be added without changing advisory trust, PR, or merge policy. npm first asks
-the existing dependency graph for a compatible transitive update; only when the parent range cannot
-reach the fixed release does it add an exact root override, which CI must prove compatible. It never
-substitutes an unrelated parent major update merely because that happens to remove the vulnerable
-package.
+adapters for npm `package-lock.json`, pnpm `pnpm-lock.yaml`, and Python `uv.lock`. npm and pnpm
+scripts are disabled, their subprocess environment contains no App token or registry credentials,
+and changed pnpm integrity must match live npmjs release metadata. uv builds are disabled and
+changed artifacts must be hashed PyPI releases. Unsupported lockfiles fail closed.
 
 ## Malicious-package incidents
 
@@ -73,7 +123,34 @@ private project uses its own issue tracker. A public project must configure a pr
 
 ## Operations
 
-Each run retains its before scan, candidate scan, and plan receipt for 30 days. A clean run means
+The private caller starts from the reviewed `config/approved-repositories.json` allowlist, confirms
+each exact repository's App installation, and requires a valid `.github/morpheus-security.json` on
+the target's live default branch. This keeps an unknown public installation inert. Each run retains
+its before scan, candidate scan, and plan receipt privately for 30 days. A clean run means
 both OSV and the GitHub alert input contained no actionable finding. A successful PR is not final
 evidence: after merge, the next nightly/manual main scan must be clean for that package/advisory,
 and the GitHub alert must close from the merged graph rather than by manual dismissal.
+
+## Adopt in a repository
+
+1. Enable GitHub Dependabot alerts, but leave automatic security-fix PRs on until the replacement
+   has completed its first clean run.
+2. Install the `morpheus-security` App on only the adopting repository and same-owner private
+   incident repository, when configured. Installation grants access but never reveals the App key.
+3. Have a trusted maintainer add the exact `owner/name` to the standalone repository's reviewed
+   `config/approved-repositories.json` allowlist.
+4. Add `.github/morpheus-security.json` with `version: 1`, explicit holds, exact `requiredChecks`,
+   and a private `incidentRepository` when a public repository cannot safely hold malware detail.
+5. Let the central nightly schedule run, or have a maintainer dispatch it. A later run merges a
+   validated PR after its configured checks pass; continue until the main-branch receipt is clean
+   and the corresponding GitHub alert closes.
+6. Only then disable Dependabot automatic security-fix PRs. Keep Dependabot alerts enabled because
+   they are one of this pipeline's advisory inputs.
+
+An operator who does not want the central maintainers to hold installation authority can fork the
+standalone repository, register a separate App, and store that App's id and private key once in a
+private operations repository of their own.
+
+If a previous bot PR is still open for a lockfile, reconciliation waits on it unless its base is
+stale or conflicted; then it is closed and recreated from verified current state. A project-policy
+hold is durable: the run reports it and leaves the existing PR untouched until policy changes.
