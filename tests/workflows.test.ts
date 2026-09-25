@@ -142,8 +142,9 @@ describe("security-remediation.yml", () => {
     });
     expect(wf.permissions).toEqual({ contents: "read" });
     expect(JSON.stringify(wf)).not.toContain("openai");
-    expect(JSON.stringify(wf)).toContain("${{ github.workflow_sha }}");
-    expect(JSON.stringify(wf)).not.toContain("morpheus-ref");
+    expect(JSON.stringify(wf)).toContain("${{ inputs.morpheus-sha }}");
+    expect(JSON.stringify(wf)).toContain("^[0-9a-f]{40}$");
+    expect(JSON.stringify(wf)).not.toContain("github.workflow_sha");
   });
 
   it("mints a least-privilege installation token and serializes a repository", async () => {

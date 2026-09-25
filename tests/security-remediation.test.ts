@@ -44,9 +44,16 @@ describe("security remediation inputs", () => {
     expect(() => assertOfficialUvArtifacts(lockfile, before)).toThrow("non-PyPI source");
 
     writeFileSync(lockfile, `${before}\n[[package]]\nname = "safe"\nversion = "1.0.0"\nsource = { registry = "https://pypi.org/simple" }\n`);
+    expect(() => assertOfficialUvArtifacts(lockfile, before)).toThrow("complete artifact metadata");
+
+    writeFileSync(lockfile, `${readFileSync(lockfile, "utf8")}sdist = { url = "https://files.pythonhosted.org/safe.tar.gz" }\n`);
     expect(() => assertOfficialUvArtifacts(lockfile, before)).toThrow("without a sha256 hash");
 
-    writeFileSync(lockfile, `${readFileSync(lockfile, "utf8")}sdist = { url = "https://files.pythonhosted.org/safe.tar.gz", hash = "sha256:abc123" }\n`);
+    const hash = "a".repeat(64);
+    writeFileSync(lockfile, `${before}\n[[package]]\nname = "safe"\nversion = "1.0.0"\nsource = { registry = "https://pypi.org/simple" }\nsdist = { url = "https://files.pythonhosted.org/safe.tar.gz", hash = "sha256:${hash}" }\n`);
     expect(() => assertOfficialUvArtifacts(lockfile, before)).not.toThrow();
+
+    writeFileSync(lockfile, `${readFileSync(lockfile, "utf8")}wheels = [\n  { url = "https://evil.example/safe.whl" },\n]\n`);
+    expect(() => assertOfficialUvArtifacts(lockfile, before)).toThrow("non-PyPI host");
   });
 });

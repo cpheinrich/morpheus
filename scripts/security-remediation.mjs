@@ -253,8 +253,19 @@ export function assertOfficialUvArtifacts(lockfile, beforeText) {
       if (previous) continue; // Existing workspace/path identity; only dependency edges changed.
       throw new Error(`Refusing changed uv artifact from a non-PyPI source: ${entry.name}`);
     }
-    if (!/hash = "sha256:[a-f0-9]+"/.test(entry.block)) {
-      throw new Error(`Refusing changed PyPI artifact without a sha256 hash: ${entry.name}`);
+    const artifacts = [...entry.block.matchAll(/\{\s*url = "([^"]+)"([^}]*)\}/g)];
+    const urlFields = [...entry.block.matchAll(/url = "[^"]+"/g)];
+    if (artifacts.length === 0 || artifacts.length !== urlFields.length) {
+      throw new Error(`Refusing changed PyPI package without complete artifact metadata: ${entry.name}`);
+    }
+    for (const artifact of artifacts) {
+      const url = new URL(artifact[1]);
+      if (url.protocol !== "https:" || !["files.pythonhosted.org", "pypi.org"].includes(url.hostname)) {
+        throw new Error(`Refusing changed uv artifact from a non-PyPI host: ${entry.name}`);
+      }
+      if (!/hash = "sha256:[a-f0-9]{64}"/.test(artifact[2])) {
+        throw new Error(`Refusing changed PyPI artifact without a sha256 hash: ${entry.name}`);
+      }
     }
   }
 }

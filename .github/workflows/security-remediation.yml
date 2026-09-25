@@ -8,6 +8,10 @@ on:
       config-file:
         type: string
         default: .github/morpheus-security.json
+      morpheus-sha:
+        description: Exact 40-character Morpheus commit used for reviewed tooling
+        type: string
+        required: true
     secrets:
       app_id:
         required: true
@@ -52,12 +56,20 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: cpheinrich/morpheus
-          # github.workflow_sha is the immutable commit that supplied this
-          # reusable workflow, even when the caller selected a branch ref.
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ inputs.morpheus-sha }}
           path: .morpheus-tooling
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Require an immutable tooling revision
+        env:
+          MORPHEUS_SHA: ${{ inputs.morpheus-sha }}
+        run: |
+          if ! printf '%s' "$MORPHEUS_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "morpheus-sha must be an exact 40-character commit" >&2
+            exit 1
+          fi
+          test "$(git -C .morpheus-tooling rev-parse HEAD)" = "$MORPHEUS_SHA"
 
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
