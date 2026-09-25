@@ -23,6 +23,8 @@ updated: 2026-09-25
 - `pnpm compile`
 - `pnpm morpheus pm index` — all indexes unchanged
 - `file docs/assets/morpheus-security-badge.png` — 512 x 512 RGBA PNG
+- Live App readback: description is general-purpose and Website is
+  `https://github.com/cpheinrich/morpheus-security`.
 
 ## Dead ends
 
@@ -38,4 +40,9 @@ private operations repository while the reviewed engine remains public.
 
 ## Independent review
 
-Pending.
+The first pass found that the private operations split was not yet documented and that the waiver
+description named a branch constraint the implementation does not enforce; both were corrected.
+The follow-up cleared the repository content but held delivery until the live GitHub App Website
+matched the standalone-repository claim. Chris saved that correction, and authenticated App API
+readback now returns the standalone URL and general-purpose description. Reviewer:
+`/root/morpheus_docs_reviewer`.
