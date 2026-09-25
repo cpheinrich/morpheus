@@ -213,6 +213,32 @@ describe("checkPr", () => {
     );
   });
 
+  it("waives only marked dependency-only Morpheus Security PRs", async () => {
+    const accepted = await checkPr(goodPr({
+      author: "morpheus-security[bot]",
+      body: "<!-- morpheus-security-update -->",
+      branch: "morpheus-security/npm-js-yaml-ghsa-example",
+      changedFiles: ["apps/web/package-lock.json"],
+    }));
+    expect(accepted).toEqual([
+      expect.objectContaining({ rule: "morpheus-security-contract", level: "waived" }),
+    ]);
+
+    for (const change of [
+      { body: "", changedFiles: ["apps/web/package-lock.json"] },
+      { body: "<!-- morpheus-security-update -->", changedFiles: ["apps/web/app/page.tsx"] },
+    ]) {
+      const findings = await checkPr(goodPr({
+        author: "morpheus-security[bot]",
+        branch: "morpheus-security/npm-js-yaml-ghsa-example",
+        ...change,
+      }));
+      expect(findings).toContainEqual(expect.objectContaining({
+        rule: "morpheus-security-scope", level: "error",
+      }));
+    }
+  });
+
   it("blocks when the roadmap item was not moved to review", async () => {
     await seedRoadmap("EV-014", "in-progress");
     const findings = await checkPr(goodPr());

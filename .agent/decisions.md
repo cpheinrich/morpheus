@@ -37,6 +37,16 @@ repairs missed events. An approved head behind a strict protected base is advanc
 head-SHA-guarded update endpoint after auto-merge is enabled; its new CI run feeds back through the
 same fast path until the queue converges.
 
+**Security dependency remediation supersedes Dependabot PRs with a deterministic GitHub App** —
+2026-09-25. `morpheus-security` accepts every active OSV finding plus open GitHub reviewed alerts,
+deduplicated by package and advisory aliases. It opens one dependency per PR, serializes each
+lockfile, checks official-registry provenance and integrity, rescans the candidate, and enables
+auto-merge only behind all repository-required checks. It uses no model or OpenAI credential.
+The exact marked dependency-only App PR has a narrow authoring/review waiver. Dependabot alerts
+remain an input, but its automatic security-fix PRs are disabled in adopted repositories. Routine
+non-security version maintenance remains a separate policy lane. `MAL-*` findings also upsert a
+private incident issue held open for human exposure and credential-rotation acknowledgment.
+
 **Vercel over Firebase App Hosting** — decided on the review loop, not hosting quality. Vercel
 Comments anchor feedback to page elements and sync into the PR, which is the mechanism that
 makes human review work. Revisit if Firebase ships an equivalent.
