@@ -34,7 +34,7 @@ new findings; the full 1,386-test suite also passed.
   "reviewed": "c591b14d6d951b3ebe3240a69447da33c530cf74",
   "covered": "db880725c233000972728efb9711991ab19bcf6e",
   "authorSession": "01a0ceaa-308b-7b11-b868-6cd419ffd711",
-  "reviewerSession": "/root/morpheus_extraction_final_review",
+  "reviewerSession": "01a0da61-779e-7bd1-9ba9-e785295cc108",
   "risk": "high",
   "elapsedMinutes": 6,
   "outcome": "complete",
@@ -58,7 +58,7 @@ new findings; the full 1,386-test suite also passed.
     }
   ],
   "followUp": {
-    "reviewerSession": "/root/morpheus_extraction_final_review",
+    "reviewerSession": "01a0da61-779e-7bd1-9ba9-e785295cc108",
     "base": "59eedf1af445db6f587aa0822aedff52e88dae2a",
     "commit": "db880725c233000972728efb9711991ab19bcf6e",
     "scopeReason": "Verify SEC-006 and SEC-007 fixes and their generated output without expanding the extraction scope.",
