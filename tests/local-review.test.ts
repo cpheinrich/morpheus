@@ -331,7 +331,7 @@ describe("late corrections after clearance", () => {
     const r = { ...record(), covered: corrected, findings: [substantive], followUps: [turn(first, "blocked"), turn(second, "cleared"), { ...turn(corrected, "cleared"), scopeReason }] };
     const findings = check(save(r as unknown as LocalReviewRecord));
     expect(findings).toHaveLength(1);
-    expect(findings[0]?.message).toContain("<=2");
+    expect(findings[0]?.message).toContain("humanAuthorization");
   });
   it("keeps a named hand-resolved trunk merge valid once a correction turn moves covered past it", () => {
     save(record());
@@ -438,5 +438,44 @@ describe("conditional clearance", () => {
     expect(check(save({ ...r, findings: [{ ...substantive, id: "TE-9" }] }))[0]?.message).toContain("final follow-up must clear the covered commit");
     writeFileSync(join(root, "other.ts"), "outside the condition"); r.covered = commit();
     expect(check(save(r))[0]?.message).toContain("exceed the reviewer's recorded conditions");
+  });
+});
+
+
+describe("human-authorized extra review turns", () => {
+  const authorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-25T18:00:00Z", reason: "Explicitly approved one additional review for the late CI correction." };
+  function extraTurns() {
+    const r = record();
+    r.followUps = Array.from({ length: 3 }, () => ({ reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Late CI correction requires another bounded review.", summary: "Verified the correction and its focused regression test." }));
+    return r;
+  }
+  it("keeps the default cap and accepts an explicitly authorized extra turn", () => {
+    const r = extraTurns();
+    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
+    r.followUps![2]!.humanAuthorization = authorization;
+    expect(check(save(r))).toEqual([]);
+  });
+  it("does not extend one authorization to the next turn", () => {
+    const r = extraTurns(); r.followUps![2]!.humanAuthorization = authorization;
+    r.followUps!.push({ ...r.followUps![0]! });
+    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
+  });
+  it("retains same-reviewer, final-clearance, and coverage requirements", () => {
+    const r = extraTurns(); r.followUps![2]!.humanAuthorization = authorization;
+    r.followUps![2]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
+    expect(check(save(r))[0]?.message).toContain("original reviewer");
+    r.followUps![2]!.reviewerSession = r.reviewerSession;
+    r.followUps![2]!.outcome = "blocked";
+    expect(check(save(r))).toHaveLength(1);
+    r.followUps![2]!.outcome = "cleared";
+    save(r); writeFileSync(join(root, "code.ts"), "unreviewed correction");
+    expect(check(commit())[0]?.message).toContain("invalidate");
+  });
+  it("rejects empty or malformed authorization evidence", () => {
+    const r = extraTurns();
+    for (const bad of [{ ...authorization, approvedBy: " " }, { ...authorization, approvedAt: "yesterday" }, { ...authorization, reason: "" }]) {
+      r.followUps![2]!.humanAuthorization = bad;
+      expect(check(save(r))).toHaveLength(1);
+    }
   });
 });

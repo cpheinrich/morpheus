@@ -94,6 +94,15 @@ per turn. Unresolved substantive concerns after the last turn, or a correction n
 turns are spent, mean blocked: remove `agent-reviewed`, disable auto-merge, and flag the remaining
 work for the human. No automatic fourth turn or replacement reviewer to obtain approval.
 
+An explicit human decision may authorize one additional same-reviewer turn. Add
+`humanAuthorization: { approvedBy, approvedAt, reason }` to that extra `followUps` entry,
+using an ISO timestamp and a reason identifying the human's decision and scope. Every
+turn beyond the default cap needs its own authorization; preserve all earlier turns.
+This attestation is human-auditable, not cryptographic proof. Never infer approval from
+a merge request or manufacture it. Clearance, coverage, budget and CI checks still apply.
+The parser accepts at most 20 recorded follow-ups as an input-size bound, not authorization.
+
+
 ## Record and publish
 
 Keep one `morpheus-review` JSON fence

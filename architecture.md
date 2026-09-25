@@ -1464,7 +1464,9 @@ if substantive findings were raised. Minor-only findings need no second pass. A 
 at three turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
 correction after clearance, named by its scope reason. Unresolved substantive disagreements,
 incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
-open and flagged, with auto-merge disabled. No automatic fourth turn. Incidental pre-existing bugs are recorded
+open and flagged, with auto-merge disabled. No automatic fourth turn. An explicit human exception is recorded per extra same-reviewer turn
+as `humanAuthorization` (approver, ISO timestamp and reason), preserving the full history and
+all other checks; one authorization never permits subsequent turns. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
 Initial risk-based ceilings are 10/15/30 minutes, with a one-minute floor at normal and high risk, with one justified initial extension of at most
