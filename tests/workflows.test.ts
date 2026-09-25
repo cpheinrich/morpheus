@@ -395,10 +395,10 @@ describe("security.yml", () => {
     expect(wf.on?.schedule).toEqual([{ cron: "43 10 * * *" }]);
     expect(Object.keys(wf.on ?? {}).sort()).toEqual(["schedule", "workflow_dispatch"]);
     expect(wf.jobs?.remediate?.uses).toBe(
-      "cpheinrich/morpheus-security/.github/workflows/security-remediation.yml@f6031dfaa67b22cb041cab9148dc3fc729ccd2c1",
+      "cpheinrich/morpheus-security/.github/workflows/security-remediation.yml@2a6bb31e7693ffe79eaceda148974a7277f66ffc",
     );
     expect(wf.jobs?.remediate?.with?.["security-sha"]).toBe(
-      "f6031dfaa67b22cb041cab9148dc3fc729ccd2c1",
+      "2a6bb31e7693ffe79eaceda148974a7277f66ffc",
     );
     expect((wf as { permissions?: Record<string, string> }).permissions).toEqual({
       contents: "read",
