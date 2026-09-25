@@ -2984,7 +2984,9 @@ rescan fail closed before delivery. The creation run writes an App-owned Check R
 the exact candidate. A later run merges only that head after every repository-configured check
 passes. A stale strict-protection candidate is closed and recreated from a freshly verified default
 branch, repeating all evidence. No AI model or OpenAI credential participates. `MAL-*` findings
-additionally create or update a private incident issue that remains open for human exposure review.
+additionally create or update an issue in the affected repository. Public issues contain only
+non-secret advisory, dependency, manifest/version, and completion-checklist data; sensitive
+investigation records remain private.
 
 The private operations repository invokes an exact reviewed standalone revision for approved
 installations nightly; a maintainer may also use a default-branch repository dispatch. A transient

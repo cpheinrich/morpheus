@@ -24,8 +24,9 @@ repository-owned schedule.
   creation or merge of a PR, is the completion receipt.
 - **Separation:** Dependabot alerts remain an advisory input, but Dependabot security-fix PRs are
   disabled after adoption. Routine non-security upgrades remain a separate maintenance lane.
-- **Malware:** patch `MAL-*` findings immediately and leave a private incident issue open until a
-  human records exposure, credential rotation, and containment.
+- **Malware:** patch `MAL-*` findings immediately and leave an issue in the affected repository
+  open until a human records safe completion status for exposure assessment, credential rotation,
+  containment, and clean remediation.
 
 ## Trust boundary
 
@@ -45,8 +46,8 @@ metadata read, statuses read, checks/contents/pull requests/issues write, and De
 read. It has no administration, Actions, secrets, workflow, organization, account, OAuth, or
 webhook permission. The App id and private key live only as encrypted Actions secrets in the
 private operations repository, with an offline recovery copy in the operator's credential vault.
-Target repositories never receive the private key. Each run mints a short-lived token scoped to one
-target and, when needed, a separate issues-only token for its same-owner incident repository.
+Target repositories never receive the private key. Each run mints one short-lived token scoped to
+the affected repository, including its Issues permission for malware incident records.
 
 The App's canonical identity is [`morpheus-security-badge.png`](../assets/morpheus-security-badge.png).
 The registered homepage points to the standalone repository. Public registration permits explicit
@@ -95,8 +96,7 @@ Projects may put explicit holds in `.github/morpheus-security.json`:
   "holds": [
     { "dependency": "example", "advisory": "GHSA-example", "reason": "incompatible runtime" }
   ],
-  "requiredChecks": ["test"],
-  "incidentRepository": null
+  "requiredChecks": ["test"]
 }
 ```
 
@@ -117,9 +117,11 @@ changed artifacts must be hashed PyPI releases. Unsupported lockfiles fail close
 Any `MAL-*` finding is prioritized for remediation and upserts one issue per repository, package,
 and MAL advisory. The issue has `security-incident`, `dependency-malware`, `automated`, and
 `needs-exposure-review`; the remediation PR says **Related**, never **Closes**. The issue stays open
-until a human records installation/execution exposure, credential rotation, and containment. A
-private project uses its own issue tracker. A public project must configure a private central
-`incidentRepository` or the run fails before publishing sensitive incident detail.
+until a human records safe completion status for installation/execution exposure assessment,
+credential rotation, containment, and clean remediation. The issue always lives in the affected
+repository. In a public repository it lists only the advisory, dependency, affected
+manifests/versions, and a completion checklist; credentials and sensitive investigation details
+remain in a private system.
 
 ## Operations
 
@@ -135,12 +137,13 @@ and the GitHub alert must close from the merged graph rather than by manual dism
 
 1. Enable GitHub Dependabot alerts, but leave automatic security-fix PRs on until the replacement
    has completed its first clean run.
-2. Install the `morpheus-security` App on only the adopting repository and same-owner private
-   incident repository, when configured. Installation grants access but never reveals the App key.
+2. Install the `morpheus-security` App on only the adopting repository. Installation grants access
+   but never reveals the App key.
 3. Have a trusted maintainer add the exact `owner/name` to the standalone repository's reviewed
    `config/approved-repositories.json` allowlist.
-4. Add `.github/morpheus-security.json` with `version: 1`, explicit holds, exact `requiredChecks`,
-   and a private `incidentRepository` when a public repository cannot safely hold malware detail.
+4. Add `.github/morpheus-security.json` with `version: 1`, explicit holds, and exact
+   `requiredChecks`. Malware incident issues are filed in this repository; never place credentials
+   or sensitive investigation details in a public issue.
 5. Let the central nightly schedule run, or have a maintainer dispatch it. A later run merges a
    validated PR after its configured checks pass; continue until the main-branch receipt is clean
    and the corresponding GitHub alert closes.

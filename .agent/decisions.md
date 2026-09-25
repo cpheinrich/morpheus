@@ -44,8 +44,9 @@ lockfile, checks official-registry provenance and integrity, rescans the candida
 auto-merge only behind all repository-required checks. It uses no model or OpenAI credential.
 The exact marked dependency-only App PR has a narrow authoring/review waiver. Dependabot alerts
 remain an input, but its automatic security-fix PRs are disabled in adopted repositories. Routine
-non-security version maintenance remains a separate policy lane. `MAL-*` findings also upsert a
-private incident issue held open for human exposure and credential-rotation acknowledgment.
+non-security version maintenance remains a separate policy lane. `MAL-*` findings also upsert an
+issue in the affected repository, held open for safe exposure-assessment, containment, rotation,
+and clean-remediation status; sensitive details stay out of public issues.
 
 **Vercel over Firebase App Hosting** — decided on the review loop, not hosting quality. Vercel
 Comments anchor feedback to page elements and sync into the PR, which is the mechanism that
