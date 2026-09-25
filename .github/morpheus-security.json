@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "holds": [],
+  "requiredChecks": [
+    "node / check",
+    "pm / pm",
+    "pr / conventions",
+    "agent-review / delivery"
+  ],
+  "incidentRepository": "cpheinrich/morpheus-security-incidents"
+}
