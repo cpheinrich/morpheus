@@ -138,6 +138,10 @@ test("bridge upgrade shutdown is allowed only when no owned work is active", asy
     "exited",
   );
   manager.draining = false;
+  manager.busy = true;
+  await assert.rejects(manager.dispatch("shutdown"), /delegation is starting/);
+  assert.equal(manager.draining, false);
+  manager.busy = false;
   await atomic(join(runDir(id), "process.json"), {
     state: "running",
     guardianPid: process.pid,

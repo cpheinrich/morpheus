@@ -19,11 +19,14 @@ The current runtime retained every field and database column the adapters use.
 - Resolved independent Claude review findings by revalidating persisted process identities,
   rejecting starts while the bridge drains for replacement, and exercising both successful
   and refused client-side replacement flows.
+- Follow-up review found and resolved the inverse start/shutdown race by rejecting shutdown
+  while delegation preflight is busy. It also hardened concurrent replacement: a departed
+  service is accepted and an already-started current service is used immediately.
 
 ## Verification
 
 - `pnpm check`
-- `pnpm test` — 28 tests passed
+- `pnpm test` — 30 tests passed
 - Installed the branch package and ran `doctor` against the active Codex Desktop task;
   transcript settings and Claude Max authentication were detected.
 - Ran `inspect` against the active task; unrestricted settings and explicit Claude routing

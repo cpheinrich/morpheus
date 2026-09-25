@@ -555,6 +555,8 @@ export class Manager {
     if (method === "shutdown") {
       this.draining = true;
       try {
+        if (this.busy)
+          throw new Error("A Claude delegation is starting; retry the upgrade.");
         if ([...this.runs.values()].some((run) => !run.terminal))
           throw new Error("Active Claude runs prevent a bridge upgrade.");
         for (const id of (await readdir(join(home(), "runs"))).filter((id) =>

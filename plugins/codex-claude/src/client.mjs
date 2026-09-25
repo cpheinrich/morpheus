@@ -8,7 +8,7 @@ import { initStore } from "./store.mjs";
 import { installationId } from "./installation.mjs";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const unavailable = (error) =>
-  ["ENOENT", "ECONNREFUSED"].includes(error.code);
+  ["ENOENT", "ECONNREFUSED", "ECONNRESET", "EPIPE"].includes(error.code);
 function request(method, args) {
   return new Promise((resolve, reject) => {
     const req = http.request(
@@ -53,6 +53,7 @@ export async function useRunning(method, args) {
     try {
       await request("shutdown", {});
     } catch (e) {
+      if (unavailable(e)) return { found: false };
       throw new Error(
         `An older bridge service is still running and cannot be replaced safely: ${e.message}`,
       );
@@ -60,7 +61,9 @@ export async function useRunning(method, args) {
     for (let i = 0; i < 100; i++) {
       await sleep(100);
       try {
-        await request("ping", {});
+        const replacement = await request("ping", {});
+        if (replacement.installationId === installationId)
+          return { found: true, result: await request(method, args) };
       } catch (e) {
         if (unavailable(e)) return { found: false };
         throw e;
