@@ -47,12 +47,7 @@ matched the standalone-repository claim. Chris saved that correction, and authen
 readback now returns the standalone URL and general-purpose description. Reviewer:
 `/root/morpheus_docs_reviewer`.
 
-Fresh independent review approved the exact head with no actionable findings. Public engine/private
-operations topology, pinned nightly caller, live App description/homepage/permissions, adoption
-policy, merge checks, bot waiver, incident handling, and completion criteria were consistent. The
-badge was visually inspected, local documentation links resolved, and pm validate and git diff
---check passed. Excluded documentation was inspected directly. The reviewer did not rerun the full
-suite, execute remediation, or verify the uploaded App avatar or private-key custody.
+Fresh independent review approved the exact head with no actionable findings. Public engine/private operations topology, pinned nightly caller, live App description/homepage/permissions, adoption policy, merge checks, bot waiver, incident handling, and completion criteria were consistent. The badge was visually inspected, local documentation links resolved, and pm validate and git diff --check passed. Excluded documentation was inspected directly. The reviewer did not rerun the full suite, execute remediation, or verify the uploaded App avatar or private-key custody.
 
 ```morpheus-review
 {
