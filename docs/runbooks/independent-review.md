@@ -24,8 +24,10 @@ The canonical contract ships in `src/review/local-prompt.ts`; the old `review pr
 ## Policy
 
 `review.required` in `morpheus.json` defaults to true, including existing manifests. False is a
-visible project opt-out. Records/board-only changes and exact dependency-only Dependabot PRs keep
-their existing exemptions. This gate covers all other authors, not just particular model names.
+visible project opt-out. Records/board-only changes, exact dependency-only Dependabot PRs, and
+marked dependency-only PRs from the exact `morpheus-security[bot]` App keep narrow exemptions.
+The security-App exemption waives human authoring and independent review only; branch-protection
+checks remain mandatory. This gate covers all other authors, not just particular model names.
 The legacy `review-waived:` line does not waive independent review; `check pr` reports it as
 waiving legacy delivery only and says so in the same line.
 

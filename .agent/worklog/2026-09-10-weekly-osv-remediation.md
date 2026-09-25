@@ -1,69 +1,32 @@
 ---
 roadmap: MO-26-09-10-21.45.21
 ---
-# Weekly OSV remediation
+# Hosted security remediation
 
-Chris requested removing push scans and keeping weekly scans with one dependency change per
-PR, full validation and merge. Security now has only Monday 12:30 UTC and manual triggers.
-A read-only Node handoff validates the exact workflow/repository/main run, consumes pinned OSV
-SARIF, and groups dependency findings. It refuses missing/unknown/failed-empty evidence. The
-versioned runbook drives a separate local Codex heartbeat, with persisted checkpoints, ownership,
-normal review and merge protection, and a post-merge main scan. Host availability is documented.
+The first implementation on this branch paired weekly OSV SARIF with a local Codex heartbeat. It
+was fully tested but never merged because its review was exhausted after later trunk integrations.
+Chris subsequently replaced that design: no heartbeat, paid service, or model; nightly GitHub-hosted
+scanning and deterministic remediation through a private GitHub App.
 
-Current findings were reproduced from run 34554174220. The issue-triage task independently
-completed js-yaml PR #219 (merge 3d310a4). This task reused Vitest PR #216, validated its exact
-current-main head 27a44ad84ff755e8115aa3dfa2ac236c2a8f2129 with a frozen install, typecheck,
-all 1,144 tests across 42 files, and compile; required CI passed. Its diff updated only Vitest
-and the dependency closure, including affected @vitest/mocker 4.1.10 to 4.1.11. The exact
-Dependabot dependency-only exception applies. PR #216 merged at ed5ab1e; remote branch deleted.
+The revised implementation combines active OSV results with open GitHub reviewed alerts, deduplicates
+aliases, and creates one dependency-only PR per lockfile at a time. It supports npm and uv delivery,
+selects the smallest fixed version, uses an exact npm override only when a transitive parent range
+cannot reach the fix, refuses non-registry npm artifacts or missing integrity hashes, and rescans the
+candidate before push. Marked App PRs receive a narrow authoring/review waiver but still require every
+protected check. `MAL-*` findings upsert a private incident issue that remains open for exposure review.
 
-Handoff tests cover malformed/absent reports, scoped names, aggregation, wrong repository/ref/
-workflow, cancelled/running scans, download failure, failed-empty vs successful-empty reports,
-explicit historical bootstrap and invalid ids. Before integration, typecheck, 1,163 tests,
-compile and index validation passed. The handoff also read the real baseline artifact successfully.
-The knowledge graph lacked these new workflow/script paths, so current source and direct tests
-were used as the evidence fallback. No source search absence was treated as completeness.
+The reusable workflow mints a one-hour installation token from encrypted caller secrets. The App has
+only metadata read, Actions/checks/statuses read, Dependabot alerts read, and contents/PR/issues write;
+it has no webhook, OAuth, administration, secrets, or workflow permission. Run receipts retain both
+scans and the plan for 30 days.
 
-The installed packageManager is pnpm 11.9.0; the supported compilation script is `pnpm compile`
-(the older AGENTS example says build). No API credential or GitHub agent token was added. The
-local heartbeat registration and final main OSV scan are verified after the implementation merge.
+Validation and independent-review evidence will be recorded here before merge.
 
-After integration, frozen install, typecheck, all 1,164 tests (43 files), compile and index passed.
-The real post-fix scan 34563699785 was clean; all three GitHub alerts report fixed.
-The local heartbeat morpheus-osv-remediation is registered PAUSED pending this merge.
-
-Initial review and first integration follow-up were clean, covering 8a2e493. Concurrent PR #234 then advanced main. The same reviewer declined an additional integration-only round under the explicit two-pass limit. Final integration 159dafa passes all 1314 tests, but remains outside reviewer coverage. PR stays open without agent-reviewed or auto-merge; a narrow human exception is required before another review.
-
-```morpheus-review
-{
-  "version": 1,
-  "base": "ed5ab1efc0697494750577287213d86cec7680d8",
-  "reviewed": "af27ffe22966cf8607231cab4c70003e8a60afb3",
-  "covered": "8a2e4937f140c68f8db7a4a8690bc12e99d4845e",
-  "authorSession": "01a08ec2-13bf-7f72-9c47-a3280a04008f",
-  "reviewerSession": "/root/osv_review",
-  "risk": "normal",
-  "elapsedMinutes": 4,
-  "outcome": "incomplete",
-  "summary": "Initial review and first integration follow-up were clean, covering 8a2e493. Concurrent PR #234 then advanced main. The same reviewer declined an additional integration-only round under the explicit two-pass limit. Final integration 159dafa passes all 1314 tests, but remains outside reviewer coverage. PR stays open without agent-reviewed or auto-merge; a narrow human exception is required before another review.",
-  "findings": [],
-  "followUp": {
-    "reviewerSession": "/root/osv_review",
-    "commit": "8a2e4937f140c68f8db7a4a8690bc12e99d4845e",
-    "base": "df5c26a25ccfc2655c06bce2aaec7019f097509b",
-    "scopeReason": "Integrate trunk workflow hardening and verify overlapping workflow tests against the integrated commit.",
-    "outcome": "cleared",
-    "elapsedMinutes": 1,
-    "summary": "No findings. Integration preserves OSV triggers and leaves the inspector and runbook unchanged. All 147 focused tests pass."
-  }
-}
-```
-
-## Final integration awaiting review authorization
-
-An explicit author proposal for a five-minute integration-only addendum was declined by the
-same reviewer because the contract says it does not permit a third round. No replacement reviewer
-was started and no clearance was fabricated. The last cleared commit remains 8a2e493; the final
-main integration 159dafa (base 4611e91) passes typecheck, all 1,314 tests in 46 files, compile and
-PM index. The two prior clean reviews are retained above. Activation of the paused heartbeat and
-merge of PR #236 require permission for one additional integration-only review, not a bypass merge.
+Pre-review validation passed: TypeScript typecheck, all 1,392 tests in 52 files, ESLint, compile,
+and `git diff --check`. A production-shaped dry run against a detached Lakina `origin/main`
+checkout consumed real OSV v2.6.0 JSON plus live GitHub alerts. The js-yaml candidate changed only
+its three lockfile fields and rescanned clean for GHSA-2883-xcg3-v3hh. A second run holding js-yaml
+exercised uuid: the compatible transitive update could not reach 11.1.1, so the resolver added an
+exact override instead of Dependabot's incompatible firebase-admin 14 major update. The candidate
+rescanned clean, and Lakina's npm frozen install, typecheck, all 231 web tests, and production build
+passed.
