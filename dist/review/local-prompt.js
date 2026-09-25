@@ -45,6 +45,9 @@ Otherwise a cleared turn ends the review, and an incomplete one exhausted its bu
 If substantive concerns remain after the last turn, or a correction is needed once the turns are
 spent, leave the PR open, disable auto-merge, and flag the concrete unresolved issue for the
 human. No automatic fourth turn or replacement reviewer to obtain approval.
+Only an explicit human exception permits another same-reviewer turn. Record humanAuthorization
+(approvedBy, approvedAt ISO timestamp, reason) on each extra follow-up; keep the full history
+and all other review/CI requirements. Authorization for one turn never grants another.
 Unrelated changes invalidate coverage; restarting requires an explicit scope decision.
 If trunk integration is required during the author response, an explicit scope decision may use
 a same-session follow-up to inspect that integration and affected paths. Preserve the initial

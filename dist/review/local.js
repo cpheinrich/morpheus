@@ -18,6 +18,12 @@ const FollowUp = z.object({
     commit: Sha,
     base: Sha.optional(),
     scopeReason: Text.optional(),
+    // A separate, explicit human decision is required for each turn beyond the default cap.
+    humanAuthorization: z.object({
+        approvedBy: z.string().trim().min(1),
+        approvedAt: z.iso.datetime({ offset: true }),
+        reason: Text,
+    }).strict().optional(),
     outcome: z.enum(["cleared", "incomplete", "blocked"]),
     elapsedMinutes: z.number().nonnegative(),
     summary: Text,
@@ -78,8 +84,11 @@ export const ReviewRecord = z.object({
     /** The single-follow-up shape records written under the two-turn contract still carry. */
     followUp: FollowUp.optional(),
     /** Follow-up turns in order; the last one must clear `covered`. */
-    followUps: z.array(FollowUp).min(1).max(MAX_FOLLOW_UPS).optional(),
-}).strict().refine(record => !(record.followUp && record.followUps), { message: "record follow-up turns as either followUp or followUps, not both" });
+    followUps: z.array(FollowUp).min(1).max(20).optional(),
+}).strict().refine(record => !(record.followUp && record.followUps), { message: "record follow-up turns as either followUp or followUps, not both" })
+    .refine(record => (record.followUps ?? []).slice(MAX_FOLLOW_UPS).every(turn => turn.humanAuthorization), {
+    message: "each follow-up beyond the default three-turn cap requires explicit humanAuthorization",
+});
 /** Follow-up turns in order, whichever field the record used. */
 export function followUpTurns(record) {
     return record.followUps ?? (record.followUp ? [record.followUp] : []);
