@@ -13,11 +13,14 @@ The current runtime retained every field and database column the adapters use.
 - Replaced memory version gating with a read-only schema check for `threads.memory_mode`.
 - Added future-version and missing-contract regression coverage.
 - Updated the documented compatibility boundary.
+- Preserved structured `claude auth status` output on a nonzero exit so an expired login is
+  reported as an actionable `claude auth login` requirement rather than a generic command
+  failure.
 
 ## Verification
 
 - `pnpm check`
-- `pnpm test` — 24 tests passed
+- `pnpm test` — 25 tests passed
 - Installed the branch package and ran `doctor` against the active Codex Desktop task;
   transcript settings and Claude Max authentication were detected.
 - Ran `inspect` against the active task; unrestricted settings and explicit Claude routing

@@ -5,6 +5,23 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { subscriptionEnv } from "./config.mjs";
 const exec = promisify(execFile);
+export function subscriptionFromAuthStatus(text) {
+  let auth;
+  try {
+    auth = JSON.parse(text);
+  } catch {
+    throw new Error("Claude authentication status was not valid JSON.");
+  }
+  if (
+    !auth.loggedIn ||
+    auth.authMethod !== "claude.ai" ||
+    auth.apiProvider !== "firstParty"
+  )
+    throw new Error(
+      "Claude must be signed in directly with its subscription on this host; run `claude auth login`.",
+    );
+  return auth.subscriptionType;
+}
 export async function checkClaude(cwd = process.cwd()) {
   // CLI settings can inject credentials after environment sanitization. Refuse
   // provider overrides rather than editing the user's settings or credentials.
@@ -44,22 +61,20 @@ export async function checkClaude(cwd = process.cwd()) {
       );
   }
   const env = subscriptionEnv(process.env);
-  const { stdout } = await exec("claude", ["auth", "status"], {
-    env,
-    cwd,
-    timeout: 10000,
-    maxBuffer: 65536,
-  });
-  const auth = JSON.parse(stdout);
-  if (
-    !auth.loggedIn ||
-    auth.authMethod !== "claude.ai" ||
-    auth.apiProvider !== "firstParty"
-  )
-    throw new Error(
-      "Claude must be signed in directly with its subscription on this host.",
-    );
-  return { env, subscription: auth.subscriptionType };
+  let stdout;
+  try {
+    ({ stdout } = await exec("claude", ["auth", "status"], {
+      env,
+      cwd,
+      timeout: 10000,
+      maxBuffer: 65536,
+    }));
+  } catch (error) {
+    if (!error.stdout)
+      throw new Error(`Claude authentication check failed: ${error.message}`);
+    stdout = error.stdout;
+  }
+  return { env, subscription: subscriptionFromAuthStatus(stdout) };
 }
 export async function handoff(prompt, memories) {
   const instructions = await readFile(
