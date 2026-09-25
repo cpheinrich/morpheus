@@ -2,8 +2,9 @@
 
 ## Outcome
 
-- Replaced Morpheus's internal OSV/remediation workflows with a nightly/manual caller pinned to
-  `cpheinrich/morpheus-security@2a6bb31e7693ffe79eaceda148974a7277f66ffc`.
+- Replaced Morpheus's internal OSV/remediation workflows with a committed opt-in policy discovered
+  by the centrally operated `cpheinrich/morpheus-security` workflow. Morpheus stores no App
+  private key or repository schedule.
 - Removed the duplicated resolver implementation and its workflow-specific tests.
 - Declared the four live protected checks as merge gates and routed public-repository malware
   records to the private `cpheinrich/morpheus-security-incidents` repository.

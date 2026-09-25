@@ -388,21 +388,17 @@ describe("schedule.yml", () => {
   });
 });
 
-describe("security.yml", () => {
-  it("calls the reviewed standalone remediation workflow nightly and manually", async () => {
-    const wf = await read("security.yml");
-
-    expect(wf.on?.schedule).toEqual([{ cron: "43 10 * * *" }]);
-    expect(Object.keys(wf.on ?? {}).sort()).toEqual(["schedule", "workflow_dispatch"]);
-    expect(wf.jobs?.remediate?.uses).toBe(
-      "cpheinrich/morpheus-security/.github/workflows/security-remediation.yml@2a6bb31e7693ffe79eaceda148974a7277f66ffc",
-    );
-    expect(wf.jobs?.remediate?.with?.["security-sha"]).toBe(
-      "2a6bb31e7693ffe79eaceda148974a7277f66ffc",
-    );
-    expect((wf as { permissions?: Record<string, string> }).permissions).toEqual({
-      contents: "read",
-    });
+describe("central security remediation opt-in", () => {
+  it("keeps policy locally without a credential-bearing repository workflow", async () => {
+    await expect(readFile(join(DIR, "security.yml"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    const config = JSON.parse(await readFile(join(import.meta.dirname, "../.github/morpheus-security.json"), "utf8"));
+    expect(config.requiredChecks).toEqual([
+      "node / check",
+      "pm / pm",
+      "pr / conventions",
+      "agent-review / delivery",
+    ]);
+    expect(config.incidentRepository).toBe("cpheinrich/morpheus-security-incidents");
   });
 });
 
