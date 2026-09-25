@@ -2,6 +2,10 @@
 
 Date: 2026-09-24. Scope: Lakina and Evo, 30 questions each.
 
+The [September 25 follow-up](2026-09-25-qmd-performance-tuning.md) actively tunes
+QMD settings and tests a new worklog-detail workload. This original experiment's
+observations are retained unchanged; they are not an exhaustive settings search.
+
 ## Summary
 
 **This experiment does not justify making QMD the default for either project.**
