@@ -27,6 +27,8 @@ and that scanner-only helpers remained after their caller moved upstream. Both w
 same reviewer cleared `db880725c233000972728efb9711991ab19bcf6e` after 237 focused tests with no
 new findings; the full 1,386-test suite also passed.
 
+Final review found and resolved a missing pnpm-workspace.yaml bot-waiver path and obsolete local scanner code. Same-reviewer follow-up cleared db880725c233000972728efb9711991ab19bcf6e with 237 focused tests and no new findings.
+
 ```morpheus-review
 {
   "version": 1,
