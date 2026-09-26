@@ -55,11 +55,7 @@ next owner.
 
 ## Independent review
 
-The high-risk independent review found two substantive races in the first directory-lock design.
-Both were accepted and fixed by replacing the lease with macOS's process-owned kernel lock. The
-same reviewer cleared the correction after the 18-test focused suite, including native concurrent
-ownership and crash release, passed. The reviewer also cleared the final roadmap-only delivery
-update that moved the item to review and linked PR #284. No findings remain open.
+High-risk review found two substantive races in the first directory-lock design. Both were accepted and fixed with macOS process-owned kernel locking; the same reviewer cleared fa2be28 after the 18-test focused suite passed, including native concurrency and crash release, then cleared the roadmap-only delivery update at 898c30e. No findings remain open.
 
 ```morpheus-review
 {
