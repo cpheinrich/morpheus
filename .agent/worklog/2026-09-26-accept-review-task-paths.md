@@ -26,7 +26,7 @@ Independent high-risk review found one substantive historical whitespace normali
   "reviewed": "20bf80e566185eac8bacf32176b249e2a10968ec",
   "covered": "efd61e4a8269bea334b9f637cc349ae8ecc99582",
   "authorSession": "01a0de93-b404-7523-8314-506309e600d9",
-  "reviewerSession": "/root/morpheus_reviewer_identity_fix/review_identity",
+  "reviewerSession": "01a0de9e-a287-7e43-b070-f0770a677a45",
   "risk": "high",
   "elapsedMinutes": 4,
   "outcome": "complete",
@@ -55,3 +55,9 @@ Independent high-risk review found one substantive historical whitespace normali
   ]
 }
 ```
+
+Reviewer identity provenance: the same reviewer directly read its runner-provided
+`CODEX_THREAD_ID=01a0de9e-a287-7e43-b070-f0770a677a45` in an administrative identity-only
+follow-up. Its collaboration path is `/root/morpheus_reviewer_identity_fix/review_identity`.
+This bootstrap PR records that issued UUID so current-main conventions can validate it;
+no replacement reviewer or additional review turn was used.
