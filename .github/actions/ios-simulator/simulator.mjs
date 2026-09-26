@@ -107,7 +107,8 @@ export function cloneFromWarmedTemplate(selected, jobName, command = sim, option
   const inventory = JSON.parse(command('list', 'devices', '-j'));
   const templates = ownedTemplateDevices(inventory);
   const matching = templates.filter(({ runtime, device }) => runtime === selected.runtime
-    && device.deviceTypeIdentifier === selected.device.deviceTypeIdentifier && device.isAvailable && device.dataPath);
+    && device.deviceTypeIdentifier === selected.device.deviceTypeIdentifier && device.isAvailable && device.dataPath
+    && ['Shutdown', 'Booted'].includes(device.state));
   let template = matching[0];
 
   // The template is never a test destination. Keep exactly one compatible source

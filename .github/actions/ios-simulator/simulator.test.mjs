@@ -36,9 +36,11 @@ test('persistent destinations warm once, delete superseded templates and clone p
   const templateUdid = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
   const cloneUdid = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
   const oldUdid = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  const interruptedUdid = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
   const devices = [
     device,
     { name: 'Morpheus CI Template iPhone-16-Pro iOS-18-0', udid: oldUdid, state: 'Booted', isAvailable: true, deviceTypeIdentifier: 'old', dataPath: join(root, 'old') },
+    { name: templateName, udid: interruptedUdid, state: 'Creating', isAvailable: true, deviceTypeIdentifier: device.deviceTypeIdentifier, dataPath: join(root, 'interrupted') },
     { name: 'User QA', udid: 'user', state: 'Booted', isAvailable: true, deviceTypeIdentifier: 'user' },
   ];
   const calls = [];
@@ -60,6 +62,7 @@ test('persistent destinations warm once, delete superseded templates and clone p
   assert.equal(createOwnedSimulator(selected, name, true, command, options), cloneUdid);
   assert.ok(calls.some(call => call[0] === 'shutdown' && call[1] === oldUdid));
   assert.ok(calls.some(call => call[0] === 'delete' && call[1] === oldUdid));
+  assert.ok(calls.some(call => call[0] === 'delete' && call[1] === interruptedUdid));
   assert.ok(calls.some(call => call[0] === 'bootstatus' && call[1] === templateUdid));
   assert.ok(calls.some(call => call[0] === 'clone' && call[1] === templateUdid && call[2] === name));
   assert.ok(existsSync(join(root, '.morpheus-ci-template.json')));
