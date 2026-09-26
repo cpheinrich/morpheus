@@ -2,7 +2,7 @@
 agent: codex
 date: 2026-09-26
 roadmap: MO-26-09-26-08.10.36
-outcome: in-progress
+outcome: review
 ---
 
 # Warmed iOS CI simulator template
@@ -46,10 +46,58 @@ next owner.
 - GitHub's official context and action-command references confirm `runner.environment` distinguishes
   `self-hosted` from `github-hosted`, action inputs become `INPUT_*`, and main-action state becomes
   `STATE_*` only for that action's post phase.
-- Native self-hosted clone/boot timing: pending the currently active iOS CI job on the MacBook Pro.
+- Native MacBook Pro smoke against the real iOS 26.5 runtime: initial template warm plus clone took
+  28.27s and the clone booted in 3.50s; the next clone took 3.80s and booted in 4.14s. Both job
+  clones were deleted, the original destination remained, and exactly one template remained shut
+  down. A shut-down template has disk state but no running simulator process holding RAM.
 - Codebase-memory operational check produced no graph tools in this Codex session; exact source
   and workflow files were read directly. Scope is the shared iOS simulator action and workflow.
 
 ## Independent review
 
-Pending.
+The high-risk independent review found two substantive races in the first directory-lock design.
+Both were accepted and fixed by replacing the lease with macOS's process-owned kernel lock. The
+same reviewer cleared the correction after the 18-test focused suite, including native concurrent
+ownership and crash release, passed. No findings remain open.
+
+```morpheus-review
+{
+  "version": 1,
+  "base": "780bc29254efd6e64cfc82a9f2727460c2d87dcf",
+  "reviewed": "79d9a8c1fc0c8660a618a55afd5dc6d91d88dea0",
+  "covered": "fa2be28b9491ea3a57e733fcbbd78e2b33d367fd",
+  "authorSession": "01a0de01-e47d-74d1-83ef-f6a9e6543155",
+  "reviewerSession": "01a0de50-a21f-7f60-9037-ab9c42e983fc",
+  "risk": "high",
+  "elapsedMinutes": 12,
+  "outcome": "complete",
+  "summary": "High-risk review found two substantive races in the first directory-lock design. Both were accepted and fixed with macOS process-owned kernel locking; the same reviewer cleared fa2be28 after the 18-test focused suite passed, including native concurrency and crash release. No findings remain open.",
+  "findings": [
+    {
+      "id": "IOS-LOCK-1",
+      "severity": "substantive",
+      "description": "The timestamp lease could evict a live owner after five minutes even though template work can legitimately span several individually bounded simctl calls.",
+      "paths": [".github/actions/ios-simulator/simulator.mjs", ".github/actions/ios-simulator/simulator.test.mjs"],
+      "disposition": "fixed",
+      "response": "Removed timestamp and PID eviction. lockf never breaks a live BSD lock; a waiter times out without running the helper."
+    },
+    {
+      "id": "IOS-LOCK-2",
+      "severity": "substantive",
+      "description": "Two stale-lock reclaimers could both remove and replace the same directory, allowing one to delete the other's live lock and enter concurrently.",
+      "paths": [".github/actions/ios-simulator/simulator.mjs", ".github/actions/ios-simulator/simulator.test.mjs", ".github/actions/ios-simulator/post.mjs", ".github/actions/ios-simulator/locked.mjs"],
+      "disposition": "fixed",
+      "response": "Removed directory reclamation. lockf -k keeps one stable file while the kernel arbitrates ownership; a native two-owner and crash-release test covers the failure mode."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "01a0de50-a21f-7f60-9037-ab9c42e983fc",
+      "commit": "fa2be28b9491ea3a57e733fcbbd78e2b33d367fd",
+      "outcome": "cleared",
+      "elapsedMinutes": 5,
+      "summary": "Cleared IOS-LOCK-1 and IOS-LOCK-2 at fa2be28 after confirming kernel ownership replaces deletion-based reclamation, both main and post use the same lock, and the native concurrency/crash test passes; no new findings."
+    }
+  ]
+}
+```
