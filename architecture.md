@@ -600,6 +600,12 @@ wanted for **judgment** — spending, publishing, sending, granting access, anyt
 approval queue — the gate stands, and the browser being where it happens changes nothing. The rule
 applies only where browser use is the *single, entire* obstacle.
 
+
+Reviewer identity accepts runner-issued UUID/hex IDs and canonical Codex task paths. Task
+paths are scoped by the globally identified parent runner session in `authorSession`, so
+independent roots may reuse a task name without falsely appearing to reuse a reviewer.
+The same parent/path pair cannot review two tasks; provenance remains an attestation.
+
 ### 7.4 The review queue is GitHub
 
 Any design requiring a sync job between GitHub and a database has two copies of the same state and

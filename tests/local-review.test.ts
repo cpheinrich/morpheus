@@ -360,10 +360,10 @@ describe("late corrections after clearance", () => {
 
 describe("review evidence floors and shapes", () => {
   it("refuses an author-chosen reviewer label and accepts runner-issued ids", () => {
-    for (const label of ["reviewer-mo-26-09-18-b", "7f3a9c2e", "/root/task_review", "claude-fable-review-7k2q"]) {
+    for (const label of ["reviewer-mo-26-09-18-b", "7f3a9c2e", "claude-fable-review-7k2q"]) {
       expect(check(save({ ...record(), reviewerSession: label }))[0]?.message).toContain("runner-issued");
     }
-    for (const id of ["a1b2c3d4e5f6a7b8c", "claude-code-subagent/a5f6df64ce8403def", "codex:0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4e", "0B1C2D3E-4F50-4A6B-8C7D-9E0F1A2B3C4E"]) {
+    for (const id of ["/root/task_review", "/root/author/review", "a1b2c3d4e5f6a7b8c", "claude-code-subagent/a5f6df64ce8403def", "codex:0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4e", "0B1C2D3E-4F50-4A6B-8C7D-9E0F1A2B3C4E"]) {
       expect(check(save({ ...record(), reviewerSession: id }))).toEqual([]);
     }
   });
@@ -375,6 +375,37 @@ describe("review evidence floors and shapes", () => {
     expect(check(save({ ...record(), reviewerSession: "claude-code-subagent/a1b2c3d4e5f6a7b8c" }))[0]?.message).toContain("already appears");
     expect(check(save({ ...record(), reviewerSession: "A1B2C3D4E5F6A7B8C" }))[0]?.message).toContain("already appears");
     expect(check(save({ ...record(), reviewerSession: "c3d4e5f6a7b8c9d0e" }))).toEqual([]);
+  });
+  it("requires a globally scoped parent session for task paths and rejects malformed paths", () => {
+    expect(check(save({ ...record(), reviewerSession: "/root/review", authorSession: "author-label" }))[0]?.message).toContain("parent session");
+    for (const id of ["/root", "/root/../review", "/root/review/", "/root//review", "/root/review-name", "codex:/root/review"]) {
+      expect(check(save({ ...record(), reviewerSession: id }))[0]?.message).toContain("runner-issued");
+    }
+  });
+  it("scopes task-path reuse to the parent session with exact structured path matching", () => {
+    const previous = { ...record(), reviewerSession: "/root/review" };
+    writeFileSync(join(root, ".agent/worklog/earlier.md"), `Example /root/other.\n\n\`\`\`morpheus-review\n${JSON.stringify(previous)}\n\`\`\`\n`);
+    reviewed = commit();
+    expect(check(save({ ...record(), reviewerSession: "/root/review" }))[0]?.message).toContain("already appears");
+    expect(check(save({ ...record(), reviewerSession: "/root/review", authorSession: `codex:${previous.authorSession.toUpperCase()}` }))[0]?.message).toContain("already appears");
+    expect(check(save({ ...record(), reviewerSession: "/root/review", authorSession: "1b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d" }))).toEqual([]);
+    expect(check(save({ ...record(), reviewerSession: "/root/other" }))).toEqual([]);
+    expect(check(save({ ...record(), reviewerSession: "/root/review_extra" }))).toEqual([]);
+  });
+  it.each(["authorSession", "reviewerSession"] as const)("normalizes whitespace in historical %s before checking task reuse", field => {
+    const previous = { ...record(), reviewerSession: "/root/review" };
+    previous[field] = `  ${previous[field]}  `;
+    writeFileSync(join(root, ".agent/worklog/earlier.md"), `Earlier review.\n\n\`\`\`morpheus-review\n${JSON.stringify(previous)}\n\`\`\`\n`);
+    reviewed = commit();
+    expect(check(save({ ...record(), reviewerSession: "/root/review" }))[0]?.message).toContain("already appears");
+  });
+  it("rejects prefixed self review and preserves task-path follow-up identity", () => {
+    expect(check(save({ ...record(), reviewerSession: `codex:${record().authorSession.toUpperCase()}` }))[0]?.message).toContain("independent");
+    const r: LocalReviewRecord = { ...record(), reviewerSession: "/root/review" };
+    r.followUp = { reviewerSession: "/root/review", commit: reviewed, scopeReason: "Late correction verified by original reviewer", outcome: "cleared", elapsedMinutes: 2, summary: "Verified the correction and focused tests." };
+    expect(check(save(r))).toEqual([]);
+    r.followUp.reviewerSession = "/root/other";
+    expect(check(save(r))[0]?.message).toContain("original reviewer");
   });
   it("floors the initial review at one minute for normal and high risk only", () => {
     expect(check(save({ ...record(), elapsedMinutes: 0.99 }))[0]?.message).toContain("under one minute");

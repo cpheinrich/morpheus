@@ -120,6 +120,14 @@ session: the subagent id a tool result reports, or a thread id, optionally behin
 prefix such as `claude-code-subagent/`. It is never a label the author composes, and `check pr`
 refuses an id that already appears in another worklog on the branch, because a reviewer session
 reviews one task.
+Codex collaboration runners may instead issue a canonical task path such as
+`/root/health_sync_review` or `/root/author/reviewer`. Record that exact returned path,
+and put the globally scoped runner-issued parent thread/session ID in `authorSession`.
+The pair identifies the reviewer: another root session may issue the same task path,
+but the same path within the same parent session cannot review another task. Follow-ups
+retain the exact path and inherit the record's parent provenance. A task name supplied
+to a spawn request is not evidence; use the canonical path the runner actually returns.
+These fields attest provenance; their syntax cannot prove a session was launched.
 For follow-up turns, add `followUps`, an array of at most two entries in order, each with the
 same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
 and `summary`. Every entry but the last must be `blocked`, or `cleared` when the entry after it

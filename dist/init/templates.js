@@ -846,7 +846,9 @@ Respond once; substantive findings require a follow-up by the same reviewer unle
 cleared them conditionally, with exact paths and evidence, in which case the author fixes within
 that condition and records it. Minor-only findings allow author fixes without a second pass. A
 finding left deferred or open names the roadmap item that tracks it. The reviewer session id is
-the runner-issued one, never a composed label, and is not reused across tasks. A review is capped at three turns, the initial review and
+the runner-issued one, never a composed label, and is not reused across tasks. Canonical
+Codex task paths such as /root/reviewer use the globally scoped parent runner session ID
+in authorSession as their namespace; record the exact path returned by the runner. A review is capped at three turns, the initial review and
 two follow-ups; a follow-up resolves what the previous turn left blocked, or spends a remaining turn
 on a late correction after clearance (a fix full CI asked for), recorded with its \`scopeReason\`.
 Unresolved substantive disagreements after that, an incomplete review, or a correction once the

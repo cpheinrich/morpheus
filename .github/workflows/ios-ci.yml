@@ -194,12 +194,15 @@ jobs:
           "$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version
 
       # The post action runs on success, test failure and cancellation. Each job
-      # owns its base device and uniquely named XCTest clones, even on a shared Mac.
-      - name: Create disposable test simulator
+      # owns its test device and uniquely named XCTest clones, even on a shared Mac.
+      # Persistent runners keep one shut-down, dedicated warmed template; tests
+      # run only on job-owned clones. Ephemeral hosted runners create a clean device.
+      - name: Create isolated test simulator
         if: ${{ inputs.run-tests && inputs.platform == 'iOS Simulator' }}
         uses: cpheinrich/morpheus/.github/actions/ios-simulator@main
         with:
           destination: ${{ inputs.destination }}
+          persistent: ${{ runner.environment == 'self-hosted' }}
 
       - name: Validate locked project inputs
         env:
