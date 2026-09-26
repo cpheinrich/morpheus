@@ -5,13 +5,13 @@ import { ROADMAP_ID } from "../pm/id.js";
 const Sha = z.string().regex(/^[a-f0-9]{40}$/);
 const Text = z.string().trim().min(8);
 const Session = z.string().trim().min(3);
-/**
- * A reviewer session is the id the runner issued for that session (a UUID thread id, or the
- * 16-plus hex subagent id a tool result reports), optionally behind a provider prefix such as
- * `claude-code-subagent/`. Not a label the author composes: the corpus showed consecutive
- * records whose reviewer ids were permutations of the same eight characters.
- */
-const ReviewerSession = z.string().trim().regex(/^(?:[a-z][a-z0-9-]*[:/])?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{16,})$/i, "reviewerSession must be the runner-issued session id, not an author-chosen label");
+/** IDs are attested from the runner, never invented to satisfy a format check. */
+const GlobalSession = /^(?:[a-z][a-z0-9-]*[:/])?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{16,})$/i;
+const TaskSession = /^\/root(?:\/[a-z0-9_]+)+$/;
+const ReviewerSession = z.string().trim().refine(value => GlobalSession.test(value) || TaskSession.test(value), "reviewerSession must be the runner-issued session id, not an author-chosen label");
+function bareSession(value) {
+    return value.replace(/^[a-z][a-z0-9-]*[:/]/i, "").toLowerCase();
+}
 const Path = z.string().regex(/^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[^\s\\]+$/);
 const FollowUp = z.object({
     reviewerSession: ReviewerSession,
@@ -85,7 +85,9 @@ export const ReviewRecord = z.object({
     followUp: FollowUp.optional(),
     /** Follow-up turns in order; the last one must clear `covered`. */
     followUps: z.array(FollowUp).min(1).max(20).optional(),
-}).strict().refine(record => !(record.followUp && record.followUps), { message: "record follow-up turns as either followUp or followUps, not both" })
+}).strict().refine(record => !TaskSession.test(record.reviewerSession) || GlobalSession.test(record.authorSession), {
+    message: "task-path reviewerSession requires the runner-issued parent session id in authorSession",
+}).refine(record => !(record.followUp && record.followUps), { message: "record follow-up turns as either followUp or followUps, not both" })
     .refine(record => (record.followUps ?? []).slice(MAX_FOLLOW_UPS).every(turn => turn.humanAuthorization), {
     message: "each follow-up beyond the default three-turn cap requires explicit humanAuthorization",
 });
@@ -131,7 +133,7 @@ export function parseReviewRecord(markdown) {
     return record;
 }
 export function validateReviewRecord(record) {
-    if (record.authorSession === record.reviewerSession)
+    if (bareSession(record.authorSession) === bareSession(record.reviewerSession))
         throw new Error("reviewer must be a fresh independent session");
     if (record.outcome !== "complete")
         throw new Error(`review is ${record.outcome}; leave the PR open and disable auto-merge`);
@@ -305,7 +307,7 @@ export function checkLocalReview(opts) {
  */
 function checkFreshReviewer(root, record, worklog, head) {
     // Compare the bare id: a provider prefix or a change of case is the same session, not a new one.
-    const bare = record.reviewerSession.replace(/^[a-z][a-z0-9-]*[:/]/i, "").toLowerCase();
+    const bare = bareSession(record.reviewerSession);
     let hits = [];
     try {
         hits = git(root, ["grep", "-l", "-i", "-F", bare, head, "--", ".agent/worklog"]).split("\n").filter(Boolean);
@@ -313,7 +315,27 @@ function checkFreshReviewer(root, record, worklog, head) {
     catch {
         hits = [];
     }
-    const other = hits.map(hit => hit.replace(/^[^:]*:/, "")).find(p => p !== worklog);
+    const other = hits.map(hit => hit.replace(/^[^:]*:/, "")).find(p => {
+        if (p === worklog)
+            return false;
+        if (!TaskSession.test(record.reviewerSession))
+            return true;
+        // Task paths are local to a root runner session. Inspect structured identities rather
+        // than prose mentions (or prefixes such as /root/review versus /root/review_extra).
+        const markdown = git(root, ["show", `${head}:${p}`]);
+        return [...markdown.matchAll(/^```morpheus-review\r?\n([\s\S]*?)^```[ \t]*$/gm)].some(block => {
+            let previous;
+            try {
+                previous = JSON.parse(block[1]);
+            }
+            catch {
+                return false;
+            }
+            const identity = z.object({ authorSession: z.string().trim(), reviewerSession: z.string().trim() }).safeParse(previous);
+            return identity.success && identity.data.reviewerSession === record.reviewerSession
+                && bareSession(identity.data.authorSession) === bareSession(record.authorSession);
+        });
+    });
     if (other)
         throw new Error(`reviewer session ${record.reviewerSession} already appears in ${other}; every review needs a fresh reviewer session`);
 }
