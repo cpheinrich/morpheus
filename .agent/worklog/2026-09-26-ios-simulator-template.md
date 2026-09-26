@@ -58,20 +58,21 @@ next owner.
 The high-risk independent review found two substantive races in the first directory-lock design.
 Both were accepted and fixed by replacing the lease with macOS's process-owned kernel lock. The
 same reviewer cleared the correction after the 18-test focused suite, including native concurrent
-ownership and crash release, passed. No findings remain open.
+ownership and crash release, passed. The reviewer also cleared the final roadmap-only delivery
+update that moved the item to review and linked PR #284. No findings remain open.
 
 ```morpheus-review
 {
   "version": 1,
   "base": "780bc29254efd6e64cfc82a9f2727460c2d87dcf",
   "reviewed": "79d9a8c1fc0c8660a618a55afd5dc6d91d88dea0",
-  "covered": "fa2be28b9491ea3a57e733fcbbd78e2b33d367fd",
+  "covered": "898c30e6dfac2ac7aaeee4bbf87ba62e610cf76d",
   "authorSession": "01a0de01-e47d-74d1-83ef-f6a9e6543155",
   "reviewerSession": "01a0de50-a21f-7f60-9037-ab9c42e983fc",
   "risk": "high",
   "elapsedMinutes": 12,
   "outcome": "complete",
-  "summary": "High-risk review found two substantive races in the first directory-lock design. Both were accepted and fixed with macOS process-owned kernel locking; the same reviewer cleared fa2be28 after the 18-test focused suite passed, including native concurrency and crash release. No findings remain open.",
+  "summary": "High-risk review found two substantive races in the first directory-lock design. Both were accepted and fixed with macOS process-owned kernel locking; the same reviewer cleared fa2be28 after the 18-test focused suite passed, including native concurrency and crash release, then cleared the roadmap-only delivery update at 898c30e. No findings remain open.",
   "findings": [
     {
       "id": "IOS-LOCK-1",
@@ -97,6 +98,14 @@ ownership and crash release, passed. No findings remain open.
       "outcome": "cleared",
       "elapsedMinutes": 5,
       "summary": "Cleared IOS-LOCK-1 and IOS-LOCK-2 at fa2be28 after confirming kernel ownership replaces deletion-based reclamation, both main and post use the same lock, and the native concurrency/crash test passes; no new findings."
+    },
+    {
+      "reviewerSession": "01a0de50-a21f-7f60-9037-ab9c42e983fc",
+      "commit": "898c30e6dfac2ac7aaeee4bbf87ba62e610cf76d",
+      "outcome": "cleared",
+      "elapsedMinutes": 1,
+      "scopeReason": "Required delivery metadata: link PR #284 and move MO-26-09-26-08.10.36 to review after the PR opened.",
+      "summary": "Cleared the final roadmap-only delivery update at 898c30e; it changes only status to review and links PR #284, with no product or code changes."
     }
   ]
 }
