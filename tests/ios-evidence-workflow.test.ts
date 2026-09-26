@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 const exec = promisify(execFile);
-type Step = { name?: string; run?: string; if?: string; with?: Record<string, unknown> };
+type Step = { name?: string; uses?: string; run?: string; if?: string; with?: Record<string, unknown> };
 const workflow = async () => load(await readFile(new URL('../.github/workflows/ios-ci.yml', import.meta.url), 'utf8')) as { jobs: { test: { steps: Step[] } } };
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), 'ios-evidence-'));
@@ -21,6 +21,18 @@ async function fixture() {
   return {dir, env, run, steps};
 }
 describe('native selection and result evidence', () => {
+  it('provides Node in the same macOS job before a caller validator can run', async () => {
+    const steps = (await workflow()).jobs.test.steps;
+    const runtime = steps.findIndex(s => s.name === 'Set up test evidence runtime');
+    expect(runtime).toBeGreaterThanOrEqual(0);
+    expect(runtime).toBeLessThan(steps.findIndex(s => s.name === 'Run unit and UI tests'));
+    expect(runtime).toBeLessThan(steps.findIndex(s => s.name === 'Export complete test evidence'));
+    expect(steps[runtime]).toMatchObject({
+      if: "${{ inputs.test-evidence-script != '' }}",
+      uses: 'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38',
+      with: { 'node-version': '24', 'package-manager-cache': false },
+    });
+  });
   it('passes selected identifiers literally as separate arguments and preserves full defaults', async () => {
     const f = await fixture();
     try {

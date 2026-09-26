@@ -173,6 +173,15 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
+      # A caller's Linux selection job cannot provide a runtime to this job.
+      # Persistent macOS service accounts may not have Node on their PATH.
+      - name: Set up test evidence runtime
+        if: ${{ inputs.test-evidence-script != '' }}
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
       # GitHub's macos-26 image uses a versioned application name; a dedicated
       # Mac normally uses /Applications/Xcode.app. Accept either layout, then
       # verify the actual toolchain rather than trusting the path's spelling.
