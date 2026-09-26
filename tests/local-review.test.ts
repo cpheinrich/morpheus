@@ -392,6 +392,13 @@ describe("review evidence floors and shapes", () => {
     expect(check(save({ ...record(), reviewerSession: "/root/other" }))).toEqual([]);
     expect(check(save({ ...record(), reviewerSession: "/root/review_extra" }))).toEqual([]);
   });
+  it.each(["authorSession", "reviewerSession"] as const)("normalizes whitespace in historical %s before checking task reuse", field => {
+    const previous = { ...record(), reviewerSession: "/root/review" };
+    previous[field] = `  ${previous[field]}  `;
+    writeFileSync(join(root, ".agent/worklog/earlier.md"), `Earlier review.\n\n\`\`\`morpheus-review\n${JSON.stringify(previous)}\n\`\`\`\n`);
+    reviewed = commit();
+    expect(check(save({ ...record(), reviewerSession: "/root/review" }))[0]?.message).toContain("already appears");
+  });
   it("rejects prefixed self review and preserves task-path follow-up identity", () => {
     expect(check(save({ ...record(), reviewerSession: `codex:${record().authorSession.toUpperCase()}` }))[0]?.message).toContain("independent");
     const r: LocalReviewRecord = { ...record(), reviewerSession: "/root/review" };

@@ -296,7 +296,7 @@ function checkFreshReviewer(root: string, record: LocalReviewRecord, worklog: st
     return [...markdown.matchAll(/^```morpheus-review\r?\n([\s\S]*?)^```[ \t]*$/gm)].some(block => {
       let previous: unknown;
       try { previous = JSON.parse(block[1]!); } catch { return false; }
-      const identity = z.object({ authorSession: z.string(), reviewerSession: z.string() }).safeParse(previous);
+      const identity = z.object({ authorSession: z.string().trim(), reviewerSession: z.string().trim() }).safeParse(previous);
       return identity.success && identity.data.reviewerSession === record.reviewerSession
         && bareSession(identity.data.authorSession) === bareSession(record.authorSession);
     });
