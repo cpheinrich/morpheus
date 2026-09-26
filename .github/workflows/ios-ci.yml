@@ -64,11 +64,22 @@ on:
         description: >
           Re-run only the tests that failed, up to this many attempts in total.
           Zero disables retries. A test that fails every attempt still fails, so
-          this hides a flake rather than a defect — a suite that needs it is
-          telling you something, and the retry count belongs in the caller where
-          that is visible.
+          eventual success does not establish first-attempt reliability.
+          Intermittent product defects can pass on retry; preserve the evidence.
         type: number
         default: 0
+      only-testing:
+        description: Newline-separated xcodebuild test identifiers to include; empty preserves the complete scheme.
+        type: string
+        default: ""
+      test-selection:
+        description: Optional caller-generated JSON selection manifest, retained verbatim with result evidence.
+        type: string
+        default: ""
+      test-evidence-script:
+        description: Optional repository-relative Bash script validating exported results. Runs after tests even on failure; nonzero fails the job.
+        type: string
+        default: ""
       skip-testing:
         description: >
           Newline-separated xcodebuild -skip-testing identifiers
@@ -216,6 +227,7 @@ jobs:
           FIREBASE_PROJECT: ${{ inputs.firebase-project }}
           FIREBASE_ONLY: ${{ inputs.firebase-only }}
           PRE_TEST_SCRIPT: ${{ inputs.pre-test-script }}
+          TEST_EVIDENCE_SCRIPT: ${{ inputs.test-evidence-script }}
           SWIFT_FORMAT_LINT: ${{ inputs.swift-format-lint }}
           SWIFT_FORMAT_CONFIGURATION: ${{ inputs.swift-format-configuration }}
         run: |
@@ -264,6 +276,13 @@ jobs:
               echo "pre-test-script was not found: $PRE_TEST_SCRIPT" >&2
               exit 1
             fi
+          fi
+
+          if [ -n "$TEST_EVIDENCE_SCRIPT" ]; then
+            case "$TEST_EVIDENCE_SCRIPT" in
+              /*|*".."*) echo "test-evidence-script must be repository-relative without '..'" >&2; exit 1 ;;
+            esac
+            test -f "$GITHUB_WORKSPACE/$TEST_EVIDENCE_SCRIPT" || exit 1
           fi
 
           if [ "$SWIFT_FORMAT_LINT" = "true" ]; then
@@ -326,6 +345,7 @@ jobs:
             echo "results=$output_root/Results"
             echo "logs=$output_root/Logs"
             echo "screenshots=$output_root/Screenshots"
+            echo "evidence-name=ios-test-evidence-${output_root##*/}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Lint changed Swift sources
@@ -492,6 +512,7 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
           DESTINATION: ${{ inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
+          ONLY_TESTING: ${{ inputs.only-testing }}
           SKIP_TESTING: ${{ inputs.skip-testing }}
           TEST_ITERATIONS: ${{ inputs.test-iterations }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
@@ -518,6 +539,12 @@ jobs:
           )
           if [ -n "$TEST_PLAN" ]; then
             args+=(-testPlan "$TEST_PLAN")
+          fi
+          if [ -n "$ONLY_TESTING" ]; then
+            while IFS= read -r identifier; do
+              [ -z "$identifier" ] && continue
+              args+=(-only-testing:"$identifier")
+            done <<< "$ONLY_TESTING"
           fi
           if [ -n "$SKIP_TESTING" ]; then
             while IFS= read -r identifier; do
@@ -553,6 +580,26 @@ jobs:
               bash "$GITHUB_WORKSPACE/$PRE_TEST_SCRIPT"
             fi
             xcodebuild test-without-building "${args[@]}" 2>&1 | tee "$LOGS/tests.log"
+          fi
+
+      - name: Export complete test evidence
+        if: ${{ always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
+        env:
+          TEST_SELECTION: ${{ inputs.test-selection }}
+          ONLY_TESTING: ${{ inputs.only-testing }}
+          TEST_EVIDENCE_SCRIPT: ${{ inputs.test-evidence-script }}
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > "$RESULTS/tested-sha.txt"
+          printf '%s\n' "$TEST_SELECTION" > "$RESULTS/selection.json"
+          printf '%s\n' "$ONLY_TESTING" > "$RESULTS/only-testing.txt"
+          result_bundle="$RESULTS/Tests.xcresult"
+          if [ -d "$result_bundle" ]; then
+            xcrun xcresulttool get test-results tests --path "$result_bundle" > "$RESULTS/tests.json"
+            xcrun xcresulttool get test-results summary --path "$result_bundle" > "$RESULTS/summary.json"
+          fi
+          if [ -n "$TEST_EVIDENCE_SCRIPT" ]; then
+            bash "$GITHUB_WORKSPACE/$TEST_EVIDENCE_SCRIPT"
           fi
 
       - name: Export rendered test attachments
@@ -595,6 +642,18 @@ jobs:
             fi
           done
           echo "Firebase did not produce a debug log."
+
+      - name: Upload complete test evidence
+        if: ${{ always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ steps.ios_paths.outputs.evidence-name }}
+          path: |
+            ${{ steps.ios_paths.outputs.results }}/*.json
+            ${{ steps.ios_paths.outputs.results }}/*.txt
+            ${{ steps.ios_paths.outputs.logs }}
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload Xcode failure evidence
         if: ${{ failure() && steps.ios_paths.outcome == 'success' }}

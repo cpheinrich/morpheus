@@ -1029,3 +1029,10 @@ that the managed daemon's public read response does not expose. Unknown versions
 closed. This compatibility surface must be reverified after Codex updates. Claude's CLI
 cannot atomically disable paid overage per invocation; account-level extra usage must be
 disabled for a hard subscription-only spend boundary. No API-key fallback is implemented.
+
+**Selected native tests retain complete execution evidence** — 2026-09-26. The reusable iOS
+workflow accepts optional explicit test identifiers and a caller-owned selection manifest and
+result validator. Defaults still run the whole scheme. Structured xcresult summaries and logs
+are uploaded even after success so retries are observable; validator failure blocks the job.
+Nightly forwards the validator but never narrows the test selection. This extends existing
+workflow hooks using Bash/Xcode's native JSON export, without a new parsing dependency.
