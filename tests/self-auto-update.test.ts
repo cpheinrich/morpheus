@@ -119,6 +119,17 @@ describe("Morpheus auto-update", () => {
     });
   });
 
+  it("makes the installed Node runtime available in a non-login Git hook", async () => {
+    await writeFile(binaryPath, `#!/usr/bin/env node
+require("node:fs").writeFileSync(${JSON.stringify(callsPath)}, process.argv.slice(2).join(" "));
+`);
+    await installProjectAutoUpdate(root, binaryPath);
+    await run(join(root, ".git", "hooks", "post-merge"), [], {
+      cwd: root, env: { ...process.env, PATH: "/usr/bin:/bin" },
+    });
+    expect(await readFile(callsPath, "utf8")).toBe("self ensure");
+  });
+
   it("leaves an incompatible existing hook untouched and reports the gap", async () => {
     const hook = join(root, ".git", "hooks", "post-merge");
     const existing = "this is not a shell hook\n";

@@ -1287,7 +1287,9 @@ remain intact. A new registry entry inherits an existing yes. Disable removes on
 Morpheus block. Status reports every project and malformed or incompatible hooks without editing
 them.
 
-The managed block invokes the absolute path of the copied CLI and calls `self ensure`. Ensure is
+The managed block invokes the absolute path of the copied CLI and calls `self ensure`. It adds
+the CLI and installing Node runtime directories to its subprocess PATH, preserving the surrounding
+hook environment. Ensure is
 silent when current, serialises updates with a device lock, defers when canonical `main` cannot be
 verified, and uses the same disposable-clone installation as `self update` when stale. Hook failures
 are reported but swallowed so an already-completed pull or rebase is not presented as failed.
@@ -1295,10 +1297,13 @@ are reported but swallowed so an already-completed pull or rebase is not present
 Git intentionally cannot activate a hook delivered by that same pull; otherwise cloning or pulling
 an arbitrary repository could execute code on the device. The first-use bridge is therefore a
 checked-in `.morpheus/session-start.sh` plus `AGENTS.md`. The shim only inspects: a current CLI
-continues into `context brief`, while a missing CLI or one that predates the entire `self` command
-emits the exact consent instruction.
+continues into `context brief`, even when the auto-update status reports an unhealthy Git hook.
+Session and bootstrap scripts append common user-local and Homebrew tool directories to PATH
+without sourcing shell startup files. When the CLI cannot start, the shim reads the saved device
+preference: existing yes permits repair, no remains no, and invalid/unreadable state is diagnosed
+without overwriting it. Only an absent preference emits the exact consent instruction.
 
-After yes, `.morpheus/bootstrap.sh enable` clones reviewed current `main` into a disposable
+After yes, including an already saved opt-in, `.morpheus/bootstrap.sh enable` clones reviewed current `main` into a disposable
 directory, installs its reviewed lockfile, and invokes that clone's committed CLI directly — never
 the stale installed binary. It installs the standalone package, registers the current project,
 enables the managed hooks across the registry, and removes the clone. After no, `bootstrap.sh
