@@ -331,7 +331,7 @@ function checkFreshReviewer(root, record, worklog, head) {
             catch {
                 return false;
             }
-            const identity = z.object({ authorSession: z.string(), reviewerSession: z.string() }).safeParse(previous);
+            const identity = z.object({ authorSession: z.string().trim(), reviewerSession: z.string().trim() }).safeParse(previous);
             return identity.success && identity.data.reviewerSession === record.reviewerSession
                 && bareSession(identity.data.authorSession) === bareSession(record.authorSession);
         });
