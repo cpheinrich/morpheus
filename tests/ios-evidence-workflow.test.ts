@@ -72,7 +72,7 @@ describe('native selection and result evidence', () => {
       expect(names).toHaveLength(2);
       expect(new Set(names).size).toBe(2);
       expect(names.every(n => n.startsWith('evidence-name=ios-test-evidence-run-42-1.'))).toBe(true);
-      expect(f.steps[index('Upload complete test evidence')].with?.name).toBe('${{ steps.ios_paths.outputs.evidence-name }}');
+      expect(f.steps[index('Upload complete test evidence')]!.with?.name).toBe('${{ steps.ios_paths.outputs.evidence-name }}');
     } finally { await rm(f.dir, { recursive: true, force: true }); }
   });
   it('fails closed when structured result export fails', async () => {

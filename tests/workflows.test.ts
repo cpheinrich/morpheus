@@ -2272,7 +2272,8 @@ describe("ios-ci.yml", () => {
         }
         expect(await readFile(join(root, "other-job"), "utf8")).toBe("untouched");
         expect(await readFile(outputFile, "utf8")).toBe([
-          `results=${paths.RESULTS}`, `logs=${paths.LOGS}`, `screenshots=${paths.SCREENSHOTS}`, "",
+          `results=${paths.RESULTS}`, `logs=${paths.LOGS}`, `screenshots=${paths.SCREENSHOTS}`,
+          `evidence-name=ios-test-evidence-${paths.RESULTS!.split("/").at(-2)}`, "",
         ].join("\n"));
         previous = paths;
       }
