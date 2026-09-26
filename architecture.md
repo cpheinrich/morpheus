@@ -1561,6 +1561,11 @@ consumers. Firebase-backed clients opt into a secret-free emulator boundary and
 may name one repository script to seed local fixtures; that script runs after the emulators start
 and before XCTest, so it never has to race a separately managed service.
 
+Native CI may select explicit test identifiers and retain a caller-generated selection manifest.
+It exports structured results and logs on both success and failure; an optional caller result
+validator can fail the job when selected coverage is missing. The full nightly caller forwards
+validation without narrowing coverage.
+
 Callers may select either a GitHub-hosted image or a repo-scoped self-hosted runner label. The
 workflow accepts GitHub's versioned Xcode application layout and a dedicated Mac's canonical
 `/Applications/Xcode.app`, but verifies the toolchain's reported version in both cases. Persistent
