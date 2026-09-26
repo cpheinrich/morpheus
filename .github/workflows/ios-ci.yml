@@ -345,6 +345,7 @@ jobs:
             echo "results=$output_root/Results"
             echo "logs=$output_root/Logs"
             echo "screenshots=$output_root/Screenshots"
+            echo "evidence-name=ios-test-evidence-${output_root##*/}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Lint changed Swift sources
@@ -601,18 +602,6 @@ jobs:
             bash "$GITHUB_WORKSPACE/$TEST_EVIDENCE_SCRIPT"
           fi
 
-      - name: Upload complete test evidence
-        if: ${{ always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ios-test-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ steps.ios_paths.outputs.results }}/*.json
-            ${{ steps.ios_paths.outputs.results }}/*.txt
-            ${{ steps.ios_paths.outputs.logs }}
-          if-no-files-found: error
-          retention-days: 30
-
       - name: Export rendered test attachments
         if: ${{ always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         run: |
@@ -653,6 +642,18 @@ jobs:
             fi
           done
           echo "Firebase did not produce a debug log."
+
+      - name: Upload complete test evidence
+        if: ${{ always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ steps.ios_paths.outputs.evidence-name }}
+          path: |
+            ${{ steps.ios_paths.outputs.results }}/*.json
+            ${{ steps.ios_paths.outputs.results }}/*.txt
+            ${{ steps.ios_paths.outputs.logs }}
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload Xcode failure evidence
         if: ${{ failure() && steps.ios_paths.outcome == 'success' }}

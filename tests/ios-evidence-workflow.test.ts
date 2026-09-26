@@ -59,6 +59,22 @@ describe('native selection and result evidence', () => {
       await expect(f.run('Export complete test evidence')).rejects.toMatchObject({code:19});
     } finally { await rm(f.dir,{recursive:true,force:true}); }
   });
+  it('collects all logs before upload and isolates names for repeated workflow calls', async () => {
+    const f = await fixture();
+    try {
+      const index = (name: string) => f.steps.findIndex(s => s.name === name);
+      expect(index('Upload complete test evidence')).toBeGreaterThan(index('Export rendered test attachments'));
+      expect(index('Upload complete test evidence')).toBeGreaterThan(index('Collect Firebase emulator diagnostics'));
+      Object.assign(f.env, { RUNNER_TEMP: f.dir, GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '1', GITHUB_ENV: join(f.dir, 'env'), GITHUB_OUTPUT: join(f.dir, 'output') });
+      await f.run('Prepare isolated build directories');
+      await f.run('Prepare isolated build directories');
+      const names = (await readFile(join(f.dir, 'output'), 'utf8')).split('\n').filter(s => s.startsWith('evidence-name='));
+      expect(names).toHaveLength(2);
+      expect(new Set(names).size).toBe(2);
+      expect(names.every(n => n.startsWith('evidence-name=ios-test-evidence-run-42-1.'))).toBe(true);
+      expect(f.steps[index('Upload complete test evidence')].with?.name).toBe('${{ steps.ios_paths.outputs.evidence-name }}');
+    } finally { await rm(f.dir, { recursive: true, force: true }); }
+  });
   it('fails closed when structured result export fails', async () => {
     const f = await fixture();
     try {
