@@ -1,10 +1,10 @@
-import { cleanup, shutdownTemplate, withTemplateLock } from './simulator.mjs';
+import { cleanup, runLockedSimulatorCommand } from './simulator.mjs';
 const errors = [];
 try { if (process.env.STATE_simulator_name) cleanup(process.env.STATE_simulator_name); }
 catch (error) { errors.push(error); }
 try {
   if (process.env.STATE_simulator_template) {
-    withTemplateLock(() => shutdownTemplate(process.env.STATE_simulator_template));
+    runLockedSimulatorCommand(['shutdown', process.env.STATE_simulator_template]);
   }
 } catch (error) { errors.push(error); }
 if (errors.length) {

@@ -17,8 +17,8 @@ The shared action now uses GitHub's documented `runner.environment` boundary. Ep
 runners still create a pristine job device. Persistent self-hosted runners keep one deterministic,
 dedicated template per active device/runtime, finish its first boot once, leave it shut down and
 clone the existing uniquely named job destination from it. A marker invalidates incomplete warm-up
-and Xcode-toolchain changes. A per-user atomic directory lock serializes two runner slots and
-reclaims an owner whose process died. Superseded owned templates are removed under that lock, so
+and Xcode-toolchain changes. A per-user BSD kernel lock serializes two runner slots and releases
+automatically when its process exits. Superseded owned templates are removed under that lock, so
 runtime upgrades do not accumulate another permanent device.
 
 Tests never run on the template. The existing unconditional post action continues to delete the
@@ -27,12 +27,21 @@ template after an interrupted setup. User simulators and unrelated job devices r
 template and cleanup name contracts.
 
 Considered `proper-lockfile` 4.1.2 (three dependencies) and `lockfile` 1.0.4 (one dependency).
-Both were last published in June 2022. The action uses a small atomic-directory lock with Node
-built-ins instead of adding either unmaintained package to every iOS CI action checkout.
+Both were last published in June 2022. The action uses macOS's built-in `lockf` instead of adding
+either unmaintained package to every iOS CI action checkout.
+
+The initial independent review found two substantive races in that directory-lock implementation:
+it could evict a live owner after five minutes, and two stale-lock reclaimers could delete each
+other's newly acquired lock. Both findings were accepted. The correction delegates exclusion to
+macOS `lockf -k`, which never breaks another process's live BSD lock, keeps one stable lock file for
+ordered waiters, and releases the kernel lock when the owner exits or is killed. A native
+two-process test proves critical sections do not interleave and that a crash does not block the
+next owner.
 
 ## Validation
 
-- `node --test .github/actions/ios-simulator/simulator.test.mjs`: 17 focused behavior tests pass.
+- `node --test .github/actions/ios-simulator/simulator.test.mjs`: 18 focused behavior tests pass,
+  including native concurrent lock ownership and crash release on macOS.
 - `pnpm typecheck`, `pnpm test` (51 files / 1,386 tests), and `pnpm compile`: pass.
 - GitHub's official context and action-command references confirm `runner.environment` distinguishes
   `self-hosted` from `github-hosted`, action inputs become `INPUT_*`, and main-action state becomes

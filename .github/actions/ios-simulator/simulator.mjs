@@ -1,62 +1,20 @@
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 export const sim = (...args) => execFileSync('xcrun', ['simctl', ...args], { encoding: 'utf8', timeout: 120000 }).trim();
 
 const ownedJobPattern = /^Morpheus CI [a-f0-9-]{36}$/;
 const ownedTemplatePattern = /^Morpheus CI Template [A-Za-z0-9.-]+ [A-Za-z0-9.-]+$/;
 const deviceIdentifierPattern = /^[A-Fa-f0-9-]{36}$/;
-const wait = milliseconds => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+const lockedHelper = fileURLToPath(new URL('./locked.mjs', import.meta.url));
 
-function processIsAlive(pid) {
-  try { process.kill(pid, 0); return true; }
-  catch (error) { return error.code === 'EPERM'; }
-}
-
-function lockOwner(path) {
-  try {
-    const owner = JSON.parse(readFileSync(join(path, 'owner.json'), 'utf8'));
-    return Number.isInteger(owner.pid) && Number.isFinite(owner.createdAt) ? owner : undefined;
-  } catch { return undefined; }
-}
-
-export function withTemplateLock(work, options = {}) {
+export function runLockedSimulatorCommand(args, options = {}) {
   const path = options.path ?? join(homedir(), 'Library', 'Caches', 'Morpheus', 'ios-simulator-template.lock');
-  const acquireTimeoutMs = options.acquireTimeoutMs ?? 300000;
-  const staleAfterMs = options.staleAfterMs ?? 300000;
-  const ownerlessGraceMs = options.ownerlessGraceMs ?? 2000;
-  const now = options.now ?? Date.now;
-  const sleep = options.sleep ?? wait;
-  const alive = options.alive ?? processIsAlive;
-  const startedAt = now();
+  const execute = options.execute ?? execFileSync;
   mkdirSync(dirname(path), { recursive: true });
-
-  while (true) {
-    try {
-      mkdirSync(path);
-      try { writeFileSync(join(path, 'owner.json'), JSON.stringify({ pid: process.pid, createdAt: now() }), { flag: 'wx' }); }
-      catch (error) { rmSync(path, { recursive: true, force: true }); throw error; }
-      break;
-    } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      const owner = lockOwner(path);
-      let orphaned = owner ? !alive(owner.pid) || now() - owner.createdAt > staleAfterMs : false;
-      if (!owner) {
-        try { orphaned = now() - statSync(path).mtimeMs > ownerlessGraceMs; }
-        catch (statError) { if (statError.code !== 'ENOENT') throw statError; }
-      }
-      if (orphaned) {
-        rmSync(path, { recursive: true, force: true });
-        continue;
-      }
-      if (now() - startedAt >= acquireTimeoutMs) throw Error(`Timed out waiting for iOS simulator template lock: ${path}`);
-      sleep(250);
-    }
-  }
-
-  try { return work(); }
-  finally { rmSync(path, { recursive: true, force: true }); }
+  return execute('/usr/bin/lockf', ['-k', '-t', '300', path, process.execPath, lockedHelper, ...args], { encoding: 'utf8' }).trim();
 }
 
 export function selectDestination(inventory, destination) {
@@ -148,7 +106,7 @@ export function cloneFromWarmedTemplate(selected, jobName, command = sim, option
 
 export function createOwnedSimulator(selected, jobName, persistent, command = sim, options = {}) {
   if (!persistent) return command('create', jobName, selected.device.deviceTypeIdentifier, selected.runtime);
-  return withTemplateLock(() => cloneFromWarmedTemplate(selected, jobName, command, options), options.lock);
+  return runLockedSimulatorCommand(['clone', JSON.stringify(selected), jobName], options.lock);
 }
 
 export function shutdownTemplate(name, command = sim) {

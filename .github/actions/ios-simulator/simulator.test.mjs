@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  cleanup, createOwnedSimulator, ownedDevices, ownedTemplateDevices, selectDestination,
-  shutdownTemplate, simulatorTemplateName, withTemplateLock,
+  cleanup, cloneFromWarmedTemplate, createOwnedSimulator, ownedDevices, ownedTemplateDevices,
+  selectDestination, shutdownTemplate, simulatorTemplateName,
 } from './simulator.mjs';
 const name = 'Morpheus CI 12345678-abcd-abcd-abcd-123456789abc';
 const device = { name: 'iPhone 17 Pro', isAvailable: true, deviceTypeIdentifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro', udid: 'base' };
@@ -58,8 +59,8 @@ test('persistent destinations warm once, delete superseded templates and clone p
     if (args[0] === 'clone') return cloneUdid;
     return '';
   };
-  const options = { developerDir: '/Applications/Xcode_26.6.app/Contents/Developer', lock: { path: join(root, 'template.lock') } };
-  assert.equal(createOwnedSimulator(selected, name, true, command, options), cloneUdid);
+  const options = { developerDir: '/Applications/Xcode_26.6.app/Contents/Developer' };
+  assert.equal(cloneFromWarmedTemplate(selected, name, command, options), cloneUdid);
   assert.ok(calls.some(call => call[0] === 'shutdown' && call[1] === oldUdid));
   assert.ok(calls.some(call => call[0] === 'delete' && call[1] === oldUdid));
   assert.ok(calls.some(call => call[0] === 'delete' && call[1] === interruptedUdid));
@@ -69,7 +70,7 @@ test('persistent destinations warm once, delete superseded templates and clone p
   assert.ok(devices.some(candidate => candidate.name === 'User QA'));
 
   calls.length = 0;
-  assert.equal(createOwnedSimulator(selected, name, true, command, options), cloneUdid);
+  assert.equal(cloneFromWarmedTemplate(selected, name, command, options), cloneUdid);
   assert.equal(calls.filter(call => ['create', 'boot', 'bootstatus'].includes(call[0])).length, 0);
   assert.equal(calls.filter(call => call[0] === 'clone').length, 1);
 });
@@ -79,42 +80,60 @@ test('ephemeral destinations still create a pristine device without a template',
   assert.equal(createOwnedSimulator(selected, name, false, (...args) => { calls.push(args); return udid; }), udid);
   assert.deepEqual(calls, [['create', name, device.deviceTypeIdentifier, selected.runtime]]);
 });
+test('persistent destinations execute the clone helper under the macOS kernel lock', () => {
+  const calls = [];
+  const udid = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+  const options = { lock: { path: '/tmp/morpheus-test.lock', execute: (file, args, spawnOptions) => {
+    calls.push({ file, args, spawnOptions });
+    return `${udid}\n`;
+  } } };
+  assert.equal(createOwnedSimulator(selected, name, true, undefined, options), udid);
+  assert.equal(calls[0].file, '/usr/bin/lockf');
+  assert.deepEqual(calls[0].args.slice(0, 5), ['-k', '-t', '300', '/tmp/morpheus-test.lock', process.execPath]);
+  assert.match(calls[0].args[5], /\/locked\.mjs$/);
+  assert.equal(calls[0].args[6], 'clone');
+  assert.deepEqual(JSON.parse(calls[0].args[7]), selected);
+  assert.equal(calls[0].args[8], name);
+  assert.deepEqual(calls[0].spawnOptions, { encoding: 'utf8' });
+});
 test('a failed warm shuts the template down and never clones it', t => {
   const root = mkdtempSync(join(tmpdir(), 'morpheus-simulator-failure-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const template = { name: templateName, udid: 'dddddddd-dddd-dddd-dddd-dddddddddddd', state: 'Shutdown', isAvailable: true, deviceTypeIdentifier: device.deviceTypeIdentifier, dataPath: root };
   const calls = [];
-  assert.throws(() => createOwnedSimulator(selected, name, true, (...args) => {
+  assert.throws(() => cloneFromWarmedTemplate(selected, name, (...args) => {
     calls.push(args);
     if (args[0] === 'list') return JSON.stringify({ devices: { [selected.runtime]: [device, template] } });
     if (args[0] === 'boot') template.state = 'Booted';
     if (args[0] === 'bootstatus') throw Error('boot failed');
     if (args[0] === 'shutdown') template.state = 'Shutdown';
     return '';
-  }, { lock: { path: join(root, 'template.lock') } }), /Failed to warm/);
+  }), /Failed to warm/);
   assert.equal(template.state, 'Shutdown');
   assert.equal(calls.some(call => call[0] === 'clone'), false);
   assert.equal(existsSync(join(root, '.morpheus-ci-template.json')), false);
 });
-test('template lock reclaims a dead owner and refuses to steal a live lock', t => {
+test('macOS kernel lock serializes concurrent owners and releases after a crash', { skip: process.platform !== 'darwin' }, async t => {
   const root = mkdtempSync(join(tmpdir(), 'morpheus-simulator-lock-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const lock = join(root, 'template.lock');
-  mkdirSync(lock);
-  writeFileSync(join(lock, 'owner.json'), JSON.stringify({ pid: 999999, createdAt: 1 }));
-  assert.equal(withTemplateLock(() => 'held', { path: lock, alive: () => false }), 'held');
-  assert.equal(existsSync(lock), false);
+  const log = join(root, 'order.log');
+  const script = "const fs=require('node:fs');const label=process.argv[1],log=process.argv[2];fs.appendFileSync(log,label+'-start\\n');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,150);fs.appendFileSync(log,label+'-end\\n');";
+  const run = (label, childScript = script) => new Promise(resolve => {
+    const child = spawn('/usr/bin/lockf', ['-k', '-t', '5', lock, process.execPath, '-e', childScript, label, log]);
+    let stderr = '';
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.on('close', (code, signal) => resolve({ code, signal, stderr }));
+  });
+  const results = await Promise.all([run('a'), run('b')]);
+  assert.deepEqual(results.map(result => result.code), [0, 0]);
+  const order = readFileSync(log, 'utf8').trim().split('\n');
+  assert.ok(['a-start,a-end,b-start,b-end', 'b-start,b-end,a-start,a-end'].includes(order.join(',')));
 
-  mkdirSync(lock);
-  writeFileSync(join(lock, 'owner.json'), JSON.stringify({ pid: process.pid, createdAt: 1 }));
-  let time = 0;
-  assert.throws(() => withTemplateLock(() => undefined, {
-    path: lock, alive: () => true, acquireTimeoutMs: 10, now: () => { time += 20; return time; }, sleep: () => {},
-  }), /Timed out/);
-
-  assert.equal(withTemplateLock(() => 'reclaimed after reboot', {
-    path: lock, alive: () => true, staleAfterMs: 10, now: () => 100,
-  }), 'reclaimed after reboot');
+  const crashed = await run('crash', "process.kill(process.pid,'SIGKILL')");
+  assert.notEqual(crashed.code, 0);
+  const afterCrash = await run('after-crash');
+  assert.equal(afterCrash.code, 0, afterCrash.stderr);
 });
 test('post recovery shuts down only the exact persistent template', () => {
   const calls = [];

@@ -9,9 +9,10 @@ On a persistent self-hosted runner, the action creates one deterministic
 `Morpheus CI Template <device type> <runtime>` device, completes its first boot, shuts it down and
 clones it for each job. Tests and app installs never use the template itself. A marker inside the
 template records the selected Xcode toolchain, so an interrupted warm-up or toolchain change is
-completed before the next clone. Template preparation and cloning hold a per-user directory lock;
-a later action reclaims a lock whose process has died. Runtime or device changes replace the old
-owned template, keeping one template rather than accumulating one per upgrade.
+completed before the next clone. Template preparation and cloning hold a per-user file lock;
+macOS `lockf` keeps the file lock in the kernel and releases it automatically when the owner exits
+or is killed. Runtime or device changes replace the old owned template, keeping one template
+rather than accumulating one per upgrade.
 
 GitHub-hosted runners remain on the pristine-device path because their virtual machines are
 discarded after the job and cannot reuse a warmed template. A caller's named simulator is used
@@ -27,9 +28,9 @@ runs `shutdown all`, `delete all`, or deletes a user's original destination. The
 locks and shuts down the exact persistent template if setup was interrupted; it does not delete it.
 
 A hard runner kill, power loss or a cancellation that prevents post actions from executing
-cannot guarantee job-device cleanup. The next persistent job safely reclaims an abandoned
-template lock and finishes or shuts down the one deterministic template. When recovering an
-owned job device manually, first confirm no job still owns
+cannot guarantee job-device cleanup. The kernel releases the template lock when its process dies,
+so the next persistent job can finish or shut down the one deterministic template. When recovering
+an owned job device manually, first confirm no job still owns
 the exact `Morpheus CI <UUID>` device/worker names; invoke `cleanup(name)` from
 `.github/actions/ios-simulator/simulator.mjs` in the runner's own macOS account. Do not infer
 ownership from all booted devices or from another account's simulator list.
