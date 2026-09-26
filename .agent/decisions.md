@@ -996,6 +996,17 @@ named device. A JavaScript action’s unconditional post hook removes it and its
 XCTest worker clones. Native simctl and Node built-ins cover this Apple-specific lifecycle
 without an SDK/dependency or global shutdown that could interrupt another job.
 
+**Persistent iOS runners clone one warmed, dedicated template** — 2026-09-26. Creating a pristine
+device per job nearly doubled unchanged Evo UI case time after the ownership fix. A self-hosted
+runner now keeps exactly one deterministic Morpheus template, completes its first boot under a
+per-user BSD kernel lock, leaves it shut down, and runs every test on a uniquely owned
+clone. The existing post hook still deletes the job clone and XCTest workers. GitHub-hosted
+runners keep pristine creation because their virtual machines cannot reuse the template. The
+template never receives app data, so cloning it does not copy a user's simulator state.
+Considered `proper-lockfile` 4.1.2 and `lockfile` 1.0.4; both were last published in 2022 and add
+dependencies. The action uses macOS's built-in `lockf -k`, whose process-owned lock releases on
+exit without deleting a successor's lock file or inferring liveness from a timestamp.
+
 
 ## 2026-09-25 — Personal Codex/Claude bridge is an opt-in package
 
