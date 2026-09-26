@@ -153,6 +153,26 @@ exit 19
     expect(stderr).toContain("registry unreadable");
   });
 
+  it.skipIf(process.getuid?.() === 0)("diagnoses an inaccessible preference directory without asking again", async () => {
+    await executable("morpheus", "#!/bin/sh\nexit 1\n");
+    const parent = join(dir, "private-preference");
+    const config = join(parent, "auto-update.json");
+    const saved = JSON.stringify({ schema: 1, enabled: false, changedAt: "2026-09-26" });
+    await mkdir(parent);
+    await writeFile(config, saved);
+    await chmod(parent, 0o000);
+    try {
+      await expect(runFile("sh", [MORPHEUS_SESSION_START], {
+        cwd: dir, env: env({ MORPHEUS_AUTO_UPDATE_CONFIG: config }),
+      })).rejects.toMatchObject({
+        code: 1, stdout: "", stderr: expect.stringContaining("could not read a valid saved"),
+      });
+    } finally {
+      await chmod(parent, 0o700);
+    }
+    expect(await readFile(config, "utf8")).toBe(saved);
+  });
+
   it("records no without installing or calling the stale CLI", async () => {
     const staleLog = join(dir, "stale.log");
     const config = join(dir, "device", "auto-update.json");
