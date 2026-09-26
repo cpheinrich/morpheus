@@ -90,6 +90,11 @@ updates after pulls on this device?"** Do not infer consent.
 - Otherwise yes means `morpheus self auto-update enable`; no means
   `morpheus self auto-update disable`.
 
+A stale startup notice is not evidence that consent is missing. Check the saved device
+preference first. Honor an existing enabled choice with the supported refresh/repair command;
+never ask again because PATH, the runtime, or a managed hook failed. A disabled choice stays
+disabled, and invalid preferences must be diagnosed rather than overwritten.
+
 The legacy bootstrap never calls the installed `morpheus` binary. A yes clones reviewed current
 `main`, installs that clone's reviewed lockfile, invokes its committed CLI directly, installs the
 standalone package, registers the current project and installs the managed hooks. A no only records

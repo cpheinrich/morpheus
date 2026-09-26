@@ -5,6 +5,13 @@ export const MORPHEUS_BOOTSTRAP_README = ".morpheus/README.md";
 export const BOOTSTRAP_MARKER = "# morpheus:bootstrap:v1";
 export const SESSION_START_MARKER = "# morpheus:session-start:v1";
 
+// GUI-launched hooks do not inherit login-shell PATH setup. Preserve explicit
+// tool choices, then add common standalone install locations without sourcing RC files.
+const toolPathSetup = [
+  'PATH="${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin"',
+  "export PATH",
+];
+
 const lines = (values: string[]): string => `${values.join("\n")}\n`;
 
 /**
@@ -20,6 +27,7 @@ export const bootstrapScript = (): string =>
     "#!/bin/sh",
     BOOTSTRAP_MARKER,
     "set -eu",
+    ...toolPathSetup,
     "",
     'action="${1:-}"',
     'if [ "$action" != "enable" ] && [ "$action" != "disable" ]; then',
@@ -98,25 +106,57 @@ export const bootstrapScript = (): string =>
     'printf "%s\\n" "Installed current Morpheus and enabled automatic updates on this device."',
   ]);
 
-/**
- * Session hooks may execute this without consent to prepare repository source. It does not install the
- * CLI. Installation remains a separate command the agent runs after a yes.
- */
+/** Session startup diagnoses installation failures but never installs software itself. */
 export const sessionStartScript = (): string =>
   lines([
     "#!/bin/sh",
     SESSION_START_MARKER,
     "set -u",
+    ...toolPathSetup,
     "",
+    "# A hook-health failure does not mean this CLI predates auto-update.",
     "if command -v morpheus >/dev/null 2>&1; then",
-    "  if morpheus self auto-update status >/dev/null 2>&1; then",
-    "    exec morpheus context brief",
+    "  status_output=$(morpheus self auto-update status 2>&1)",
+    "  status_code=$?",
+    "  case \"$status_output\" in",
+    "    *\"Morpheus auto-update:\"*|*\"Could not inspect Morpheus auto-update:\"*)",
+    "      if [ \"$status_code\" -ne 0 ]; then printf '%s\\n' \"$status_output\" >&2; fi",
+    "      exec morpheus context brief",
+    "      ;;",
+    "  esac",
+    "  if [ \"$status_code\" -eq 0 ]; then exec morpheus context brief; fi",
+    "fi",
+    "",
+    "config_path=\"${MORPHEUS_AUTO_UPDATE_CONFIG:-${HOME:?HOME is required}/.morpheus/auto-update.json}\"",
+    "if [ -e \"$config_path\" ]; then",
+    "  if ! command -v node >/dev/null 2>&1; then",
+    "    printf '%s\\n' \"Morpheus could not start, and Node is unavailable to read the saved preference at $config_path. Repair the tool PATH; do not ask to enable updates again.\" >&2",
+    "    exit 1",
     "  fi",
+    "  preference=$(node -e '",
+    "    try {",
+    "      const value = JSON.parse(require(\"node:fs\").readFileSync(process.argv[1], \"utf8\"));",
+    "      if (value.schema !== 1 || typeof value.enabled !== \"boolean\" || typeof value.changedAt !== \"string\") process.exit(1);",
+    "      process.stdout.write(value.enabled ? \"enabled\" : \"disabled\");",
+    "    } catch { process.exit(1); }",
+    "  ' \"$config_path\") || {",
+    "    printf '%s\\n' \"Morpheus could not read a valid saved auto-update preference at $config_path. Inspect the file and runtime error; do not overwrite it or ask to enable updates again.\" >&2",
+    "    exit 1",
+    "  }",
+    "  case \"$preference\" in",
+    "    enabled)",
+    "      printf '%s\\n' \"Morpheus automatic updates are already enabled on this device, but the installed CLI could not start or lacks self-update support.\" \"Honor the saved opt-in. Repair the tool PATH first; if the installation needs repair, run: sh .morpheus/bootstrap.sh enable\" \"Do not ask to enable updates again.\"",
+    "      ;;",
+    "    disabled)",
+    "      printf '%s\\n' \"Morpheus automatic updates are disabled on this device. The installed CLI could not start or lacks self-update support. Leave the saved choice unchanged; repair the tool PATH or request a manual update only when needed.\"",
+    "      ;;",
+    "  esac",
+    "  exit 0",
     "fi",
     "",
     "cat <<'MORPHEUS_BOOTSTRAP_REQUIRED'",
     "Morpheus bootstrap required.",
-    "The installed Morpheus CLI is absent or predates version-independent self-update.",
+    "The installed Morpheus CLI is unavailable or predates version-independent self-update, and no saved auto-update preference was found.",
     "Ask the user exactly: \"Morpheus is stale. Enable automatic updates after pulls on this device?\"",
     "Do not infer consent.",
     "If yes, run: sh .morpheus/bootstrap.sh enable",
@@ -131,8 +171,10 @@ These generated scripts bridge this repository's session hooks to the copied glo
 
 - \`session-start.sh\` dispatches to the installed CLI: startup fetches canonical trunk, updates
   clean local trunk, and identifies existing tasks. New worktrees are created when work is claimed.
-  It emits the consent question when the CLI is too old to update itself.
-- \`bootstrap.sh enable\` runs only after an explicit yes. It clones reviewed Morpheus \`main\`
+  It recovers common tool paths in non-login shells and distinguishes hook-health failures from
+  an old CLI. The consent question is emitted only when no saved preference exists; saved yes/no
+  and invalid preferences are reported without asking again.
+- \`bootstrap.sh enable\` runs after an explicit yes or an already saved opt-in. It clones reviewed Morpheus \`main\`
   into a disposable directory, installs its reviewed lockfile, invokes that clone's committed CLI
   directly, installs the current standalone package, registers this project, and enables the
   managed Git hooks.

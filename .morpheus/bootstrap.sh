@@ -1,6 +1,8 @@
 #!/bin/sh
 # morpheus:bootstrap:v1
 set -eu
+PATH="${PATH:-/usr/bin:/bin}:${HOME:-/nonexistent}/.local/bin:/opt/homebrew/bin:/usr/local/bin"
+export PATH
 
 action="${1:-}"
 if [ "$action" != "enable" ] && [ "$action" != "disable" ]; then

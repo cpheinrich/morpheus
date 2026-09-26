@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -73,6 +73,70 @@ describe("version-independent Morpheus bootstrap", () => {
 
     expect(stdout).toBe("brief-ok\n");
     expect(stdout).not.toContain("bootstrap required");
+  });
+
+  it("finds a Node-based CLI outside the non-login PATH without touching consent", async () => {
+    const home = join(dir, "home");
+    const tools = join(home, ".local", "bin");
+    const config = join(home, ".morpheus", "auto-update.json");
+    await mkdir(tools, { recursive: true });
+    await mkdir(join(home, ".morpheus"), { recursive: true });
+    const saved = JSON.stringify({ schema: 1, enabled: true, changedAt: "2026-09-26" });
+    await writeFile(config, saved);
+    await symlink(process.execPath, join(tools, "node"));
+    await writeFile(join(tools, "morpheus"), `#!/usr/bin/env node
+const args = process.argv.slice(2).join(" ");
+if (args === "self auto-update status") console.log("Morpheus auto-update: enabled");
+else if (args === "context brief") console.log("brief-from-recovered-path");
+else process.exit(17);
+`);
+    await chmod(join(tools, "morpheus"), 0o700);
+    const { stdout, stderr } = await runFile("/bin/sh", [MORPHEUS_SESSION_START], {
+      cwd: dir, env: env({ PATH: "/usr/bin:/bin" }),
+    });
+    expect(stdout).toBe("brief-from-recovered-path\n");
+    expect(stderr).toBe("");
+    expect(await readFile(config, "utf8")).toBe(saved);
+  });
+
+  it.each([true, false])("honors saved enabled=%s when the CLI is too old", async (enabled) => {
+    await executable("morpheus", "#!/bin/sh\nexit 1\n");
+    const config = join(dir, "saved.json");
+    const saved = JSON.stringify({ schema: 1, enabled, changedAt: "2026-09-26" });
+    await writeFile(config, saved);
+    const { stdout } = await runFile("sh", [MORPHEUS_SESSION_START], {
+      cwd: dir, env: env({ MORPHEUS_AUTO_UPDATE_CONFIG: config }),
+    });
+    expect(stdout).toContain(enabled ? "already enabled" : "are disabled");
+    expect(stdout).not.toContain("Ask the user");
+    expect(stdout).not.toContain("Morpheus bootstrap required.");
+    expect(await readFile(config, "utf8")).toBe(saved);
+  });
+
+  it.each(["broken JSON", '{"schema":1,"enabled":"yes"}', "null"])(
+    "reports invalid saved consent without prompting or replacing it: %s", async (saved) => {
+      await executable("morpheus", "#!/bin/sh\nexit 1\n");
+      const config = join(dir, "invalid.json");
+      await writeFile(config, saved);
+      await expect(runFile("sh", [MORPHEUS_SESSION_START], {
+        cwd: dir, env: env({ MORPHEUS_AUTO_UPDATE_CONFIG: config }),
+      })).rejects.toMatchObject({ code: 1, stdout: "", stderr: expect.stringContaining("could not read a valid saved") });
+      expect(await readFile(config, "utf8")).toBe(saved);
+    },
+  );
+
+  it("reports hook health failures and continues brief without requesting consent", async () => {
+    await executable("morpheus", `#!/bin/sh
+if [ "$*" = "self auto-update status" ]; then
+  printf 'Morpheus auto-update: enabled\nBlocked hook\n'
+  exit 1
+fi
+if [ "$*" = "context brief" ]; then printf 'brief-ok\n'; exit 0; fi
+exit 19
+`);
+    const { stdout, stderr } = await runFile("sh", [MORPHEUS_SESSION_START], { cwd: dir, env: env() });
+    expect(stdout).toBe("brief-ok\n");
+    expect(stderr).toBe("Morpheus auto-update: enabled\nBlocked hook\n");
   });
 
   it("records no without installing or calling the stale CLI", async () => {
