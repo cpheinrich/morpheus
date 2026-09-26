@@ -80,9 +80,9 @@ pnpm morpheus codebase-memory install --check # verify operational mode without 
 
 ## Device bootstrap
 
-The checked-in `.morpheus/session-start.sh` shim detects a CLI that is missing or predates the
-entire `self` command. When it or `morpheus context brief` reports that Morpheus is stale and
-automatic updates are unconfigured, ask the user exactly: **"Morpheus is stale. Enable automatic
+The checked-in `.morpheus/session-start.sh` shim recovers common non-login tool paths and
+diagnoses missing, old, or broken installations. Only when the device preference is absent
+and startup reports automatic updates are unconfigured, ask the user exactly: **"Morpheus is stale. Enable automatic
 updates after pulls on this device?"** Do not infer consent.
 
 - If the shim reports **Morpheus bootstrap required**, yes means

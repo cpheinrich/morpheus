@@ -112,7 +112,7 @@ export const sessionStartScript = () => lines([
     "  status_output=$(morpheus self auto-update status 2>&1)",
     "  status_code=$?",
     "  case \"$status_output\" in",
-    "    *\"Morpheus auto-update:\"*|*\"Could not inspect Morpheus auto-update:\"*)",
+    "    *\"Morpheus auto-update:\"*|*\"Could not status Morpheus auto-update:\"*)",
     "      if [ \"$status_code\" -ne 0 ]; then printf '%s\\n' \"$status_output\" >&2; fi",
     "      exec morpheus context brief",
     "      ;;",

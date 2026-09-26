@@ -139,6 +139,20 @@ exit 19
     expect(stderr).toBe("Morpheus auto-update: enabled\nBlocked hook\n");
   });
 
+  it("does not turn a status inspection error into a bootstrap request", async () => {
+    await executable("morpheus", `#!/bin/sh
+if [ "$*" = "self auto-update status" ]; then
+  printf 'Could not status Morpheus auto-update: registry unreadable\\n' >&2
+  exit 1
+fi
+if [ "$*" = "context brief" ]; then printf 'brief-ok\\n'; exit 0; fi
+exit 19
+`);
+    const { stdout, stderr } = await runFile("sh", [MORPHEUS_SESSION_START], { cwd: dir, env: env() });
+    expect(stdout).toBe("brief-ok\n");
+    expect(stderr).toContain("registry unreadable");
+  });
+
   it("records no without installing or calling the stale CLI", async () => {
     const staleLog = join(dir, "stale.log");
     const config = join(dir, "device", "auto-update.json");
