@@ -8,4 +8,22 @@ Verification: 153 focused Vitest tests passed (workflow contract, evidence, real
 
 Graph tooling was unavailable in this session; workflow/config discovery and verification used exact source and tests. No graph freshness or coverage claim is made.
 
-Independent review pending.
+Independent review by /root/ios_bypass_review cleared the shared-control change with no findings. The reviewer ran all 153 focused tests and additional shallow-checkout probes, including an advanced base. Review took 1.2 minutes at high risk; native application execution is left to the adopting Evo PR.
+
+Independent review cleared the shared-control change with no findings; 153 focused tests and shallow-checkout probes passed. No live native application run was performed in this upstream repository.
+
+```morpheus-review
+{
+  "version": 1,
+  "base": "ac5256083da45da10b4f3014445fcc02c11c63b9",
+  "reviewed": "a7c2a4bd912500f8f0e3d2893e0a421e48398c6b",
+  "covered": "a7c2a4bd912500f8f0e3d2893e0a421e48398c6b",
+  "authorSession": "01a0ded2-7ceb-7743-9092-7056a08f0eab",
+  "reviewerSession": "/root/ios_bypass_review",
+  "risk": "high",
+  "elapsedMinutes": 1.2,
+  "outcome": "complete",
+  "summary": "Independent review cleared the shared-control change with no findings; 153 focused tests and shallow-checkout probes passed. No live native application run was performed in this upstream repository.",
+  "findings": []
+}
+```
