@@ -11,6 +11,7 @@
  * follows.
  */
 
+import { credentialsInstructions } from "../credentials/templates.js";
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
 import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
@@ -832,6 +833,8 @@ ${morpheusCalloutForAgents()}
 | \`.agent/worklog/\` | What was attempted per task, including dead ends |
 
 ${contextFreshness()}
+
+${credentialsInstructions()}
 ${codebaseMemoryBootstrap()}
 ## Working conventions
 

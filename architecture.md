@@ -2506,8 +2506,9 @@ already present at these boundaries without reducing the security-critical code.
 
 ## 13. Secrets and credentials
 
-Values never enter git. What enters git is a manifest declaring which secrets exist and where they
-live, so an agent knows what it needs without being able to read it.
+Production and sensitive values never enter application Git repositories. Their manifest declares
+which secrets exist and where they live. Low-risk local companions are an explicit exception to
+the blanket no-Git storage rule, described in §13.0 below.
 
 ```jsonc
 // secrets.manifest.json
@@ -2520,6 +2521,26 @@ live, so an agent knows what it needs without being able to read it.
   }
 }
 ```
+
+### 13.0 Private local credentials companions
+
+Low-risk, rotatable local credentials may live in a separate private `.credentials-<name>`
+repository. They remain plaintext in that repository and its history; sensitive secrets stay in
+GSM. The consuming project tracks `.morpheus/credentials.json` with `repository`, a relative
+`path` (default `local/.credentials-<project>`) and `command` (default `bin/credentials`).
+Project access never implies companion access. Multiple projects may reference the same remote;
+each defaults to its own clone, with optional per-device shared path overrides or symlinks.
+Linked worktrees resolve paths against the primary checkout and share its local clone.
+
+`morpheus init` scaffolds metadata and instructions offline. `credentials setup` explicitly
+verifies privacy and clones a missing store; `setup --create` provisions a new private remote and
+an empty portable companion. `status` is local metadata only; `sync` updates a clean default
+branch with fast-forward only. `list`, `doctor`, and `run --` invoke the declared checkout's own
+wrapper directly, without changing global launchers or displaying secret values. Child programs
+are trusted and can disclose values; this is discovery and injection, not a security boundary.
+Declared legacy URLs can migrate only after GitHub repository-ID equality is verified. Existing
+clones and edits are preserved. Collaborator setup and migration are documented in
+[the runbook](docs/runbooks/local-credentials.md).
 
 ### 13.1 Three stores, split by who reads the secret
 
