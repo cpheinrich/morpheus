@@ -28,7 +28,7 @@ describe('native selection and result evidence', () => {
     expect(runtime).toBeLessThan(steps.findIndex(s => s.name === 'Run unit and UI tests'));
     expect(runtime).toBeLessThan(steps.findIndex(s => s.name === 'Export complete test evidence'));
     expect(steps[runtime]).toMatchObject({
-      if: "${{ inputs.test-evidence-script != '' }}",
+      if: "${{ steps.scope.outputs.run == 'true' && inputs.test-evidence-script != '' }}",
       uses: 'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38',
       with: { 'node-version': '24', 'package-manager-cache': false },
     });

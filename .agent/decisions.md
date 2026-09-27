@@ -1050,3 +1050,12 @@ Considered dotenv (18.0.4, published metadata checked 2026-09-26, no runtime dep
 loading. Kept existing companion wrappers and native process/Git orchestration: dotenv does not
 solve discovery or checkout migration and would change existing Bash file-reference semantics.
 New stores use a small Node/Bash wrapper, with no extra dependency or generic parsing layer.
+
+## Single-job iOS relevance bypass — 2026-09-26
+
+Callers can provide Git pathspecs to the shared native job. A verified PR merge with no matched
+changes skips native work while preserving one required check; manual/nightly and default callers
+are unchanged. Uncertain comparison fails closed. Considered picomatch 4.0.7 (registry modified
+2026-08-24, no runtime dependencies); Git already provides the exact diff/pathspec semantics needed,
+so use it without a new dependency or custom glob matcher. The scope step still needs a runner;
+it does not promise to bypass the host's job-start lock or its queue.

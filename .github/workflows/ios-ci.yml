@@ -17,6 +17,10 @@ name: iOS CI
 on:
   workflow_call:
     inputs:
+      watch-paths:
+        description: Optional newline-separated Git pathspecs. Unrelated pull requests report success without native work; other events always run.
+        type: string
+        default: ""
       runner:
         description: GitHub-hosted image or self-hosted runner label with the requested Xcode and simulator runtime.
         type: string
@@ -173,10 +177,45 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
+      - name: Check native change scope
+        id: scope
+        working-directory: .
+        env:
+          WATCH_PATHS: ${{ inputs.watch-paths }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != pull_request ] || [ -z "$WATCH_PATHS" ]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Depth two contains both parents of the exact PR merge checkout.
+          # Never interpret an incomplete/wrong comparison as an unrelated PR.
+          [[ "$PR_BASE_SHA" =~ ^[a-f0-9]{40}$ && "$PR_HEAD_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD^1)" = "$PR_BASE_SHA"
+          test "$(git rev-parse HEAD^2)" = "$PR_HEAD_SHA"
+          test -n "${WATCH_PATHS//[[:space:]]/}"
+          pathspecs=()
+          while IFS= read -r pathspec; do
+            [ -z "$pathspec" ] || pathspecs+=("$pathspec")
+          done <<< "$WATCH_PATHS"
+          test "${#pathspecs[@]}" -gt 0
+          # Git owns matching, exclusions, deletes and names containing spaces.
+          if git diff --quiet --no-renames HEAD^1 HEAD -- "${pathspecs[@]}"; then
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+            echo 'No native app, dependency or test/build inputs changed; native work skipped.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            status=$?
+            test "$status" -eq 1
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          fi
+
       # A caller's Linux selection job cannot provide a runtime to this job.
       # Persistent macOS service accounts may not have Node on their PATH.
       - name: Set up test evidence runtime
-        if: ${{ inputs.test-evidence-script != '' }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.test-evidence-script != '' }}
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
@@ -186,6 +225,7 @@ jobs:
       # Mac normally uses /Applications/Xcode.app. Accept either layout, then
       # verify the actual toolchain rather than trusting the path's spelling.
       - name: Select Xcode
+        if: ${{ steps.scope.outputs.run == 'true' }}
         env:
           XCODE_VERSION: ${{ inputs.xcode-version }}
         run: |
@@ -218,13 +258,14 @@ jobs:
       # Persistent runners keep one shut-down, dedicated warmed template; tests
       # run only on job-owned clones. Ephemeral hosted runners create a clean device.
       - name: Create isolated test simulator
-        if: ${{ inputs.run-tests && inputs.platform == 'iOS Simulator' }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests && inputs.platform == 'iOS Simulator' }}
         uses: cpheinrich/morpheus/.github/actions/ios-simulator@main
         with:
           destination: ${{ inputs.destination }}
           persistent: ${{ runner.environment == 'self-hosted' }}
 
       - name: Validate locked project inputs
+        if: ${{ steps.scope.outputs.run == 'true' }}
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
@@ -333,6 +374,7 @@ jobs:
           fi
 
       - name: Prepare isolated build directories
+        if: ${{ steps.scope.outputs.run == 'true' }}
         id: ios_paths
         run: |
           set -euo pipefail
@@ -358,7 +400,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Lint changed Swift sources
-        if: ${{ inputs.swift-format-lint }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}
         env:
           SWIFT_FORMAT_CONFIGURATION: ${{ inputs.swift-format-configuration }}
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
@@ -397,6 +439,7 @@ jobs:
             "${swift_files[@]}"
 
       - name: Cache resolved Swift packages
+        if: ${{ steps.scope.outputs.run == 'true' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ runner.temp }}/ios-ci/SourcePackages
@@ -409,6 +452,7 @@ jobs:
             swiftpm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-
 
       - name: Resolve locked Swift packages
+        if: ${{ steps.scope.outputs.run == 'true' }}
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
@@ -423,20 +467,20 @@ jobs:
             2>&1 | tee "$LOGS/package-resolution.log"
 
       - name: Use Java 21 for Firebase emulators
-        if: ${{ inputs.run-tests && inputs.firebase-emulators }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests && inputs.firebase-emulators }}
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Install the locked Firebase emulator CLI
-        if: ${{ inputs.run-tests && inputs.firebase-emulators }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests && inputs.firebase-emulators }}
         env:
           FIREBASE_CLI_VERSION: ${{ inputs.firebase-cli-version }}
         run: npm install --global "firebase-tools@$FIREBASE_CLI_VERSION"
 
       - name: Build for testing
-        if: ${{ inputs.run-tests }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
@@ -482,7 +526,7 @@ jobs:
           xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log"
 
       - name: Build
-        if: ${{ !inputs.run-tests }}
+        if: ${{ steps.scope.outputs.run == 'true' && !inputs.run-tests }}
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
@@ -512,7 +556,7 @@ jobs:
           xcodebuild build "${args[@]}" 2>&1 | tee "$LOGS/build.log"
 
       - name: Run unit and UI tests
-        if: ${{ inputs.run-tests }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
@@ -592,7 +636,7 @@ jobs:
           fi
 
       - name: Export complete test evidence
-        if: ${{ always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         env:
           TEST_SELECTION: ${{ inputs.test-selection }}
           ONLY_TESTING: ${{ inputs.only-testing }}
@@ -612,7 +656,7 @@ jobs:
           fi
 
       - name: Export rendered test attachments
-        if: ${{ always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         run: |
           set -o pipefail
           result_bundle="$RESULTS/Tests.xcresult"
@@ -629,7 +673,7 @@ jobs:
           fi
 
       - name: Upload rendered test attachments
-        if: ${{ always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ios-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
@@ -638,7 +682,7 @@ jobs:
           retention-days: 14
 
       - name: Collect Firebase emulator diagnostics
-        if: ${{ always() && inputs.run-tests && inputs.firebase-emulators && steps.ios_paths.outcome == 'success' }}
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && inputs.firebase-emulators && steps.ios_paths.outcome == 'success' }}
         run: |
           candidate_logs=(
             "$GITHUB_WORKSPACE/firebase-debug.log"
@@ -653,7 +697,7 @@ jobs:
           echo "Firebase did not produce a debug log."
 
       - name: Upload complete test evidence
-        if: ${{ always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ steps.ios_paths.outputs.evidence-name }}
@@ -665,7 +709,7 @@ jobs:
           retention-days: 30
 
       - name: Upload Xcode failure evidence
-        if: ${{ failure() && steps.ios_paths.outcome == 'success' }}
+        if: ${{ steps.scope.outputs.run == 'true' && failure() && steps.ios_paths.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ios-ci-${{ github.run_id }}-${{ github.run_attempt }}
