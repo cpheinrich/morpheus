@@ -1475,7 +1475,11 @@ if substantive findings were raised. Minor-only findings need no second pass. A 
 at three turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
 correction after clearance, named by its scope reason. Unresolved substantive disagreements,
 incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
-open and flagged, with auto-merge disabled. No automatic fourth turn. An explicit human exception is recorded per extra same-reviewer turn
+open and flagged, with auto-merge disabled. No automatic fourth substantive turn; one automatic
+finalization-only turn per PR is allowed, at five minutes, recorded as `finalization` with the
+reviewer's attested paths, evidence and scope. It must be last and cleared, cannot resolve a
+substantive finding, and is checked against the commits it covers: the worklog, already-conditioned
+paths, and explanatory Markdown only — never normative policy files. An explicit human exception is recorded per extra same-reviewer turn
 as `humanAuthorization` (approver, ISO timestamp and reason), preserving the full history and
 all other checks; one authorization never permits subsequent turns. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.

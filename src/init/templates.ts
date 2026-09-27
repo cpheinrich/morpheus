@@ -900,7 +900,16 @@ Unresolved substantive disagreements after that, an incomplete review, or a corr
 turns are spent, keep the PR open and auto-merge disabled. An explicit human exception may authorize
 one additional same-reviewer turn; record \`humanAuthorization\` with \`approvedBy\`, \`approvedAt\`
 (ISO timestamp), and \`reason\` on that extra follow-up. Each extra turn needs its own authorization;
-never infer it or reset the history. All review and CI requirements still apply. Record the review paragraph and structured evidence in the task
+never infer it or reset the history. Beyond that, one **automatic finalization-only** turn per PR
+is allowed: the same reviewer, at most five minutes, closing out work it already cleared — the
+explanatory prose for it, the review record, or the completion of a condition it set. The reviewer
+records \`finalization\` (\`paths\`, \`evidence\`, \`attestation\`) and a \`scopeReason\`; an author cannot
+certify their own. It must be last, must follow a cleared turn, must itself be \`cleared\`, cannot resolve a substantive finding, and the
+check compares the commits it covers against the worklog, the conditioned paths and the attested
+explanatory Markdown. \`AGENTS.md\`, \`CLAUDE.md\`, \`morpheus.json\` and \`.github/\`, \`.ci/\`,
+\`.morpheus/\` are normative policy and stay substantive. A reviewer setting a condition should name
+the related documentation and generated files in it, so the backstop is rarely needed.
+All review and CI requirements still apply. Record the review paragraph and structured evidence in the task
 worklog, link it with a visible \`review-record:\` PR-body line, then apply \`agent-reviewed\`.
 \`review.required\` defaults to true; project false opts out visibly. After the covered commit only
 the named worklog may change, and merging trunk never invalidates the review: a merge Git

@@ -10,6 +10,11 @@ declare const FollowUp: z.ZodObject<{
         approvedAt: z.ZodISODateTime;
         reason: z.ZodString;
     }, z.core.$strict>>;
+    finalization: z.ZodOptional<z.ZodObject<{
+        paths: z.ZodArray<z.ZodString>;
+        evidence: z.ZodString;
+        attestation: z.ZodString;
+    }, z.core.$strict>>;
     outcome: z.ZodEnum<{
         blocked: "blocked";
         incomplete: "incomplete";
@@ -26,6 +31,11 @@ export type ReviewFollowUp = z.infer<typeof FollowUp>;
  * its scope decision, and nothing after the last one is automatic.
  */
 export declare const MAX_FOLLOW_UPS = 2;
+/**
+ * A finalization turn is short by construction: it re-reads a documentation paragraph or the
+ * record, not a change. Anything that needs longer than this is a review, and spends a turn.
+ */
+export declare const FINALIZATION_CEILING_MINUTES = 5;
 export declare const ReviewRecord: z.ZodObject<{
     version: z.ZodLiteral<1>;
     base: z.ZodString;
@@ -92,6 +102,11 @@ export declare const ReviewRecord: z.ZodObject<{
             approvedAt: z.ZodISODateTime;
             reason: z.ZodString;
         }, z.core.$strict>>;
+        finalization: z.ZodOptional<z.ZodObject<{
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+            attestation: z.ZodString;
+        }, z.core.$strict>>;
         outcome: z.ZodEnum<{
             blocked: "blocked";
             incomplete: "incomplete";
@@ -110,6 +125,11 @@ export declare const ReviewRecord: z.ZodObject<{
             approvedAt: z.ZodISODateTime;
             reason: z.ZodString;
         }, z.core.$strict>>;
+        finalization: z.ZodOptional<z.ZodObject<{
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+            attestation: z.ZodString;
+        }, z.core.$strict>>;
         outcome: z.ZodEnum<{
             blocked: "blocked";
             incomplete: "incomplete";
@@ -126,6 +146,12 @@ export declare function followUpTurns(record: LocalReviewRecord): ReviewFollowUp
 export declare function coveredBase(record: LocalReviewRecord): string;
 /** Findings the reviewer pre-cleared and the author fixed under the stated condition. */
 export declare function conditionallyCleared(record: LocalReviewRecord): string[];
+/**
+ * The paths a finalization turn may cover: the review record, paths the reviewer already
+ * conditioned, and explanatory Markdown it attests to. Returns the reasons it may not, so the
+ * refusal names the offending path rather than the rule.
+ */
+export declare function finalizationProblems(record: LocalReviewRecord, turn: ReviewFollowUp, worklog: string): string[];
 /** Initial-review ceilings in minutes; a follow-up gets half. Small was 5 until the data showed only creative accounting. */
 export declare const REVIEW_BUDGET_MINUTES: {
     readonly small: 10;

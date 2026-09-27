@@ -26,6 +26,17 @@ const FollowUp = z.object({
     approvedAt: z.iso.datetime({ offset: true }),
     reason: Text,
   }).strict().optional(),
+  /**
+   * The one automatic finalization-only turn a pull request gets beyond the cap, attested by the
+   * reviewer: the exact paths it covered, the evidence it checked, and its scope statement. It
+   * exists so finishing an already-approved change does not cost a human decision, and it is
+   * deliberately too narrow to approve new implementation.
+   */
+  finalization: z.object({
+    paths: z.array(Path).min(1),
+    evidence: Text,
+    attestation: Text,
+  }).strict().optional(),
   outcome: z.enum(["cleared", "incomplete", "blocked"]),
   elapsedMinutes: z.number().nonnegative(),
   summary: Text,
@@ -39,6 +50,19 @@ export type ReviewFollowUp = z.infer<typeof FollowUp>;
  * its scope decision, and nothing after the last one is automatic.
  */
 export const MAX_FOLLOW_UPS = 2;
+
+/**
+ * A finalization turn is short by construction: it re-reads a documentation paragraph or the
+ * record, not a change. Anything that needs longer than this is a review, and spends a turn.
+ */
+export const FINALIZATION_CEILING_MINUTES = 5;
+
+/**
+ * Policy a project is operated by, whatever file carries it. A change here is normative and needs
+ * a real turn however it is described: this is the reason there is no blanket documentation
+ * exemption. Explanatory prose that restates behaviour already reviewed is a different thing.
+ */
+const NORMATIVE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$|(?:^|\/)morpheus\.json$|(?:^|\/)\.(?:github|ci|morpheus)\//i;
 
 export const ReviewRecord = z.object({
   version: z.literal(1),
@@ -93,8 +117,8 @@ export const ReviewRecord = z.object({
 }).strict().refine(record => !TaskSession.test(record.reviewerSession) || GlobalSession.test(record.authorSession), {
   message: "task-path reviewerSession requires the runner-issued parent session id in authorSession",
 }).refine(record => !(record.followUp && record.followUps), { message: "record follow-up turns as either followUp or followUps, not both" })
-  .refine(record => (record.followUps ?? []).slice(MAX_FOLLOW_UPS).every(turn => turn.humanAuthorization), {
-    message: "each follow-up beyond the default three-turn cap requires explicit humanAuthorization",
+  .refine(record => (record.followUps ?? []).slice(MAX_FOLLOW_UPS).every(turn => turn.humanAuthorization || turn.finalization), {
+    message: "each follow-up beyond the default three-turn cap requires explicit humanAuthorization, unless it is the one automatic finalization turn",
   });
 export type LocalReviewRecord = z.infer<typeof ReviewRecord>;
 
@@ -111,6 +135,25 @@ export function coveredBase(record: LocalReviewRecord): string {
 /** Findings the reviewer pre-cleared and the author fixed under the stated condition. */
 export function conditionallyCleared(record: LocalReviewRecord): string[] {
   return record.findings.filter(f => f.condition && f.disposition === "fixed" && f.conditionMet).flatMap(f => f.condition!.paths);
+}
+
+/**
+ * The paths a finalization turn may cover: the review record, paths the reviewer already
+ * conditioned, and explanatory Markdown it attests to. Returns the reasons it may not, so the
+ * refusal names the offending path rather than the rule.
+ */
+export function finalizationProblems(record: LocalReviewRecord, turn: ReviewFollowUp, worklog: string): string[] {
+  // Only conditions the author actually satisfied. A condition left disputed or unmet was never
+  // discharged, so its paths are ordinary unreviewed source here, exactly as elsewhere.
+  const conditioned = new Set(conditionallyCleared(record));
+  return (turn.finalization?.paths ?? []).flatMap(path => {
+    if (NORMATIVE.test(path)) return [`${path} is normative policy; a change there needs a substantive review turn`];
+    if (conditioned.has(path) || path === worklog) return [];
+    // Not a blanket documentation exemption: Markdown is admitted only because the reviewer
+    // attested that this file restates behaviour it already reviewed.
+    if (path.endsWith(".md")) return [];
+    return [`${path} is neither a conditioned path nor explanatory documentation; a finalization turn cannot cover it`];
+  });
 }
 
 /** Initial-review ceilings in minutes; a follow-up gets half. Small was 5 until the data showed only creative accounting. */
@@ -169,6 +212,23 @@ export function validateReviewRecord(record: LocalReviewRecord): void {
   // after blocked, or after substantive initial findings, is the ordinary fix follow-up and needs
   // none. An incomplete turn exhausted its budget and escalates; nothing follows it.
   if (!substantive && turns[0] && !turns[0].scopeReason) throw new Error("a follow-up after a clean initial review is a late correction and needs an explicit scope reason");
+  // One automatic finalization-only turn per pull request, and only as the last word. It finishes
+  // an approved change: it cannot resolve a substantive finding, run long, or be repeated, and a
+  // reviewer that still has a concern records blocked or incomplete instead, which stays blocked.
+  const finalizations = turns.filter(turn => turn.finalization);
+  if (finalizations.length > 1) throw new Error("a pull request gets one automatic finalization-only turn; a second needs explicit humanAuthorization as a substantive turn");
+  const finalization = finalizations[0];
+  if (finalization) {
+    if (finalization !== turns[turns.length - 1]) throw new Error("the finalization turn is the last word on a pull request; nothing follows it automatically");
+    if (finalization.outcome !== "cleared") throw new Error(`a finalization turn that is ${finalization.outcome} leaves the pull request blocked; it cannot be recorded as finalization`);
+    if (finalization.elapsedMinutes > FINALIZATION_CEILING_MINUTES) throw new Error(`a finalization turn is capped at ${FINALIZATION_CEILING_MINUTES} minutes; anything longer is a review and spends a turn`);
+    if (!finalization.scopeReason) throw new Error("a finalization turn must name what it finalized in its scopeReason, so it cannot quietly become a new topic");
+    // It finalizes a clearance, so there has to be one. Without this, the five-minute automatic turn
+    // is what turns a review the reviewer blocked on a substantive finding into a merge.
+    const previous = turns[turns.length - 2];
+    if (previous && previous.outcome !== "cleared") throw new Error(`a finalization turn only follows a cleared turn; the ${previous.outcome} turn before it leaves the pull request blocked`);
+    if (unconditional && previous?.outcome !== "cleared") throw new Error("an automatic finalization turn cannot resolve substantive findings; an ordinary turn must clear them first");
+  }
   turns.forEach((turn, index) => {
     if (turn.reviewerSession !== record.reviewerSession) throw new Error("every follow-up must use the original reviewer session");
     if (turn.elapsedMinutes > budget / 2) throw new Error("follow-up exceeded its budget; record incomplete and escalate instead of claiming completion");
@@ -265,6 +325,15 @@ export function checkLocalReview(opts: { root: string; body: string; labels: str
       // Only a conditional clearance lets `covered` run past the final turn, and only within its paths.
       if (!isAncestor(opts.root, last.commit, record.covered)) throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
       for (const commit of verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional]), "author fixes after the final follow-up exceed the reviewer's recorded conditions")) merges.add(commit);
+    }
+    // The attestation is checked against the diff it claims to cover, so an automatic turn cannot
+    // clear implementation by naming a documentation path.
+    if (last?.finalization) {
+      const problems = finalizationProblems(record, last, path);
+      if (problems.length) throw new Error(`finalization turn is out of scope: ${problems.join("; ")}`);
+      const from = turns[turns.length - 2]?.commit ?? record.reviewed;
+      const allowed = new Set([path, ...conditional, ...last.finalization.paths]);
+      for (const commit of verifyUncoveredCommits(opts.root, record, from, last.commit, opts.base, allowed, "a finalization turn may cover only the review record, previously conditioned paths and the explanatory documentation it attested")) merges.add(commit);
     }
     for (const commit of verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)")) merges.add(commit);
     // A hand-resolved merge named before a late correction moved `covered` past it now sits in a
