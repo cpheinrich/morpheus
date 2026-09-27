@@ -55,6 +55,8 @@ describe("credentials companions", () => {
     expect(credentials(["setup", "--create"], root)).toBe(0);
     expect(command(bare, "show", "main:secrets/credentials.env")).toBe("# Low-risk local credentials only. Bash KEY='value' assignments; no placeholders.");
     expect(command(path, "status", "--porcelain")).toBe("");
+    expect(credentials(["sync"], root)).toBe(0);
+    expect(command(path, "symbolic-ref", "refs/remotes/origin/HEAD")).toBe("refs/remotes/origin/main");
     expect(credentials(["setup", "--create"], root)).toBe(1);
   });
   it("normalizes GitHub SSH/HTTPS identities and rejects credential-bearing URLs", () => {

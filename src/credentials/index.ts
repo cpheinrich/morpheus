@@ -175,6 +175,7 @@ export function credentials(argv: string[], cwd = process.cwd()): number {
         capture("git", ["add", "--", "README.md", "AGENTS.md", "bin/credentials", "secrets/credentials.env"], path);
         capture("git", ["commit", "-m", "Initialize private credentials companion"], path);
         capture("git", ["push", "-u", "origin", "HEAD"], path);
+        capture("git", ["remote", "set-head", "origin", "--auto"], path);
       }
       secureDirectory(join(path, "secrets"));
       if (existsSync(join(path, ".githooks"))) capture("git", ["config", "core.hooksPath", ".githooks"], path);
