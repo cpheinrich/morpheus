@@ -48,6 +48,16 @@ human. No automatic fourth turn or replacement reviewer to obtain approval.
 Only an explicit human exception permits another same-reviewer turn. Record humanAuthorization
 (approvedBy, approvedAt ISO timestamp, reason) on each extra follow-up; keep the full history
 and all other review/CI requirements. Authorization for one turn never grants another.
+Beyond that you may spend ONE automatic finalization-only turn per PR, capped at five minutes,
+whose only job is closing out work you already cleared: the explanatory prose for it, the review
+record, or the completion of a condition you set. Record finalization ({paths, evidence,
+attestation}) plus a scopeReason naming what you finalized. You write it, never the author. It
+must be the last turn, must be cleared, and cannot resolve a substantive finding or review new
+implementation: the checker compares the commits it covers against the worklog, your conditioned
+paths and the explanatory Markdown you attested. AGENTS.md, CLAUDE.md, morpheus.json and anything
+under .github/, .ci/ or .morpheus/ are normative policy and are refused there. If you still have a
+concern, record blocked or incomplete instead. Better still, avoid needing it: when you set a
+condition, name the documentation and generated files that go with the fix in its paths.
 Unrelated changes invalidate coverage; restarting requires an explicit scope decision.
 If trunk integration is required during the author response, an explicit scope decision may use
 a same-session follow-up to inspect that integration and affected paths. Preserve the initial

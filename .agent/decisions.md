@@ -1065,3 +1065,19 @@ it does not promise to bypass the host's job-start lock or its queue.
 bridge's default from 20% to 30% to leave coordination headroom while other Codex chats
 consume the shared allowance. Automatic routing still delegates strictly below the
 threshold and remains opt-in. Existing saved thresholds are preserved.
+
+**One automatic finalization-only review turn per pull request** — 2026-09-27. Chris's call after
+Evo #291 stalled on a paragraph: its reviewer's condition named the source paths, the author's fix
+commit also carried the runbook prose explaining that fix, and no honest route existed — the author
+cannot widen a condition, the commit was pushed so splitting it needed a force-push, and after
+`covered` only the worklog may change. The cap stays at three substantive turns; beyond it, and
+after any authorized extra turn, the same reviewer may spend one five-minute turn that only closes
+out work it already cleared, recorded as `finalization` with attested paths, evidence and scope. It
+must be last and cleared, cannot resolve a substantive finding, and its attested paths are verified
+against the commits it covers, so it cannot approve implementation. Raising the cap to four was
+rejected: that buys a fourth substantive round for every PR, which is the loop the cap exists to
+stop. There is deliberately no blanket documentation exemption — AGENTS/CLAUDE/morpheus.json and
+`.github`, `.ci`, `.morpheus` are refused outright, and other Markdown needs the reviewer's
+attestation, because a runbook can state a new rule and no pattern distinguishes that from prose.
+Reviewers should name related docs and generated counterparts in `condition.paths` so the backstop
+stays rare. No new dependency: this is schema and Git checks in the existing checker.

@@ -190,6 +190,12 @@ export async function prepareReview(productDir, root, base) {
             }));
         console.log("\nWorklog record template (replace placeholders; never mark an unfinished review complete):");
         console.log("```morpheus-review\n" + JSON.stringify({ version: 1, base: fork, reviewed: head, covered: head, authorSession: "AUTHOR_SESSION", reviewerSession: "RUNNER_ISSUED_REVIEWER_SESSION_ID", risk: "normal", elapsedMinutes: 0, outcome: "incomplete", summary: "Replace with the actual review summary and repeat it as a paragraph.", findings: [] }, null, 2) + "\n```");
+        // Records are rejected by the same schema and checker whether that happens here or in CI, and
+        // a round trip through CI to learn a field name is the expensive way to find out.
+        console.log("\nValidate the record before pushing — this runs the schema and checker CI runs:");
+        console.log("  MORPHEUS_PR_BODY=\"$(gh pr view <number> --json body --jq .body)\" morpheus check pr");
+        console.log("  MORPHEUS_PR_BODY='review-record: <worklog path>' morpheus check pr   # before the PR exists");
+        console.log("Invent no fields: every key above is in the schema, and an unknown one is refused.");
         return 0;
     }
     catch (error) {

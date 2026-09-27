@@ -510,3 +510,151 @@ describe("human-authorized extra review turns", () => {
     }
   });
 });
+
+describe("one automatic finalization-only turn", () => {
+  const session = "a1b2c3d4e5f6a7b8c";
+  const attestation = { evidence: "Re-read the paragraph against the cleared diff; it restates the reviewed behaviour and adds no requirement.", attestation: "Finalization only: explanatory prose for the change I already cleared. No new implementation was reviewed." };
+  function finalize(paths: string[], over: Record<string, unknown> = {}) {
+    return { reviewerSession: session, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 1, scopeReason: "Finalize the explanatory documentation for the already-cleared fix.", summary: "Cleared the explanatory paragraph; nothing else changed.", finalization: { paths, ...attestation }, ...over };
+  }
+  function docCommit(text: string) {
+    mkdirSync(join(root, "docs/runbooks"), { recursive: true });
+    writeFileSync(join(root, "docs/runbooks/guide.md"), text);
+    return commit();
+  }
+  it("clears an explanatory documentation commit beyond the cap, without a human decision", () => {
+    const r = record();
+    r.followUps = Array.from({ length: 3 }, () => ({ reviewerSession: session, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Late CI correction requires another bounded review.", summary: "Verified the correction and its focused regression test." }));
+    r.followUps[2]!.humanAuthorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-27T12:00:00Z", reason: "Explicitly approved one additional substantive review turn." };
+    // A fourth follow-up would normally need its own authorization; a finalization turn does not.
+    expect(check(save({ ...r, followUps: [...r.followUps, { ...finalize(["docs/runbooks/guide.md"]), finalization: undefined }] }))[0]?.message).toContain("humanAuthorization");
+    const covered = docCommit("Explains the behaviour that was already reviewed.");
+    r.covered = covered;
+    r.followUps.push(finalize(["docs/runbooks/guide.md"], { commit: covered }));
+    expect(check(save(r))).toEqual([]);
+  });
+  function cleared(overrides: Partial<LocalReviewRecord> = {}) {
+    const covered = docCommit("Explains the behaviour that was already reviewed.");
+    const r: LocalReviewRecord = { ...record(), covered, followUps: [{ reviewerSession: session, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Initial clearance of the implementation.", summary: "Cleared the implementation and its tests." }, finalize(["docs/runbooks/guide.md"], { commit: covered })], ...overrides };
+    return r;
+  }
+  it("allows only one finalization turn per pull request", () => {
+    const r = cleared();
+    r.followUps!.splice(1, 0, finalize(["docs/runbooks/guide.md"]));
+    expect(check(save(r))[0]?.message).toContain("one automatic finalization-only turn");
+  });
+  it("caps the turn at five minutes", () => {
+    const r = cleared();
+    r.followUps![1]!.elapsedMinutes = 5.5;
+    expect(check(save(r))[0]?.message).toContain("capped at 5 minutes");
+    r.followUps![1]!.elapsedMinutes = 5;
+    expect(check(save(r))).toEqual([]);
+  });
+  it("requires the original reviewer and refuses a replacement", () => {
+    const r = cleared();
+    r.followUps![1]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
+    expect(check(save(r))[0]?.message).toContain("original reviewer session");
+  });
+  it.each(["blocked", "incomplete"] as const)("leaves a %s finalization turn blocked rather than clearing", outcome => {
+    const r = cleared();
+    r.followUps![1]!.outcome = outcome;
+    expect(check(save(r))[0]?.message).toContain("blocked");
+  });
+  it("must be the last word, and must name its scope", () => {
+    const r = cleared();
+    r.followUps!.push({ reviewerSession: session, commit: r.covered, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Another look after finalization.", summary: "A turn that should not be able to follow finalization.", humanAuthorization: { approvedBy: "Chris Heinrich", approvedAt: "2026-09-27T12:30:00Z", reason: "Authorized another substantive turn after the finalization turn." } });
+    expect(check(save(r))[0]?.message).toContain("last word");
+    const bare = cleared();
+    delete bare.followUps![1]!.scopeReason;
+    expect(check(save(bare))[0]?.message).toContain("scopeReason");
+  });
+  it("cannot resolve substantive findings by itself", () => {
+    const substantive = { id: "TE-11", severity: "substantive" as const, description: "The operator path still bypasses the guard", paths: ["code.ts"], disposition: "fixed" as const, response: "Routed it through the guard." };
+    const covered = docCommit("Explains the behaviour.");
+    const r: LocalReviewRecord = { ...record(), covered, findings: [substantive], followUps: [finalize(["docs/runbooks/guide.md"], { commit: covered })] };
+    expect(check(save(r))[0]?.message).toContain("cannot resolve substantive findings");
+  });
+  it("refuses normative policy paths however they are attested", () => {
+    for (const path of ["AGENTS.md", "docs/nested/CLAUDE.md", "morpheus.json", ".github/workflows/ci.yml", ".ci/known-skips.json", ".morpheus/credentials.json"]) {
+      const r = cleared();
+      r.followUps![1]!.finalization!.paths = [path];
+      const message = check(save(r))[0]?.message ?? "";
+      expect(message).toContain("out of scope");
+      expect(message).toContain("normative policy");
+    }
+  });
+  it("refuses source files it merely attested, and admits a conditioned one", () => {
+    const r = cleared();
+    writeFileSync(join(root, "code.ts"), "an implementation change nobody reviewed");
+    const covered = commit();
+    r.covered = covered;
+    r.followUps![1]!.commit = covered;
+    r.followUps![1]!.finalization!.paths = ["code.ts", "docs/runbooks/guide.md"];
+    expect(check(save(r))[0]?.message).toContain("neither a conditioned path nor explanatory documentation");
+    r.findings = [{ id: "TE-12", severity: "substantive", description: "The operator path still bypasses the guard", paths: ["code.ts"], disposition: "fixed", response: "Routed it through the guard.", condition: { paths: ["code.ts"], evidence: "Run the focused guard test at the fix commit." }, conditionMet: "Ran it at the covered commit: 12 passed." }];
+    expect(check(save(r))).toEqual([]);
+  });
+  it("checks the attestation against the diff it claims to cover", () => {
+    const r = cleared();
+    // Attesting documentation does not silently clear an implementation change in the same commit.
+    writeFileSync(join(root, "code.ts"), "an implementation change riding along");
+    const covered = docCommit("Explains the behaviour, alongside unreviewed code.");
+    r.covered = covered;
+    r.followUps![1]!.commit = covered;
+    expect(check(save(r))[0]?.message).toContain("may cover only the review record");
+  });
+  it("leaves the ordinary three-turn contract and human authorizations unchanged", () => {
+    const plain = record();
+    plain.followUps = Array.from({ length: 3 }, () => ({ reviewerSession: session, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Late CI correction requires another bounded review.", summary: "Verified the correction and its focused regression test." }));
+    expect(check(save(plain))[0]?.message).toContain("humanAuthorization");
+    expect(check(save({ ...record(), followUps: [{ reviewerSession: session, commit: reviewed, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Late CI correction.", summary: "Verified the correction and its regression test." }] }))).toEqual([]);
+  });
+});
+
+describe("the shape Evo #291 needs", () => {
+  // Four substantive turns, the last explicitly authorized, a conditional clearance the author
+  // fixed, and one commit that also carried the runbook paragraph explaining that fix. Before the
+  // finalization turn this was blocked with no honest way forward: the author could not widen the
+  // reviewer's condition, the fix commit was pushed so it could not be split, and after `covered`
+  // only the worklog may change.
+  const session = "/root/ios_recovery_review";
+  const author = "01a0ded27ceb77439092";
+  it("clears the conditioned fix and its explanatory runbook paragraph, and still refuses new source", () => {
+    writeFileSync(join(root, "controller.ts"), "ordering by start time");
+    mkdirSync(join(root, "docs/runbooks"), { recursive: true });
+    writeFileSync(join(root, "docs/runbooks/recovery.md"), "Explains that duplicates are judged by start time.");
+    const covered = commit();
+    const turn = (commit: string, over: Record<string, unknown> = {}) => ({ reviewerSession: session, commit, outcome: "cleared" as const, elapsedMinutes: 1, summary: "Reviewed the change and its regression tests.", ...over });
+    const r: LocalReviewRecord = {
+      ...record(), authorSession: author, reviewerSession: session, risk: "high", elapsedMinutes: 2.2, covered,
+      findings: [{
+        id: "REC-006", severity: "substantive", description: "Duplicate check contexts were ordered by completion time, so an unfinished rerun lost to an older success",
+        paths: ["controller.ts"], disposition: "fixed", response: "Ordered by start time, with ambiguous duplicates pending.",
+        condition: { paths: ["controller.ts"], evidence: "Run the focused recovery tests; sentinel, overlapping and ambiguous duplicates must be covered." },
+        conditionMet: "Ran them at the fix commit: 50 passed, no skips, and web / web is green on Linux.",
+      }],
+      followUps: [
+        turn(reviewed, { outcome: "blocked", summary: "Two findings need correction before this can clear." }),
+        turn(reviewed, { scopeReason: "Resolve what the previous turn blocked." }),
+        turn(reviewed, { scopeReason: "Trunk integration added source changes after the previous clearance.", humanAuthorization: { approvedBy: "Chris Heinrich", approvedAt: "2026-09-27T07:20:00Z", reason: "Explicitly authorized one additional review after trunk integration added source changes." } }),
+        turn(covered, {
+          scopeReason: "Finalize the runbook paragraph documenting the conditioned fix.",
+          elapsedMinutes: 1.2,
+          finalization: {
+            paths: ["controller.ts", "docs/runbooks/recovery.md"],
+            evidence: "Compared the paragraph with the diff I cleared; it restates the ordering rule and adds no requirement.",
+            attestation: "Finalization only: the conditioned fix plus the explanatory runbook paragraph for it. No new implementation was reviewed.",
+          },
+        }),
+      ],
+    };
+    expect(check(save(r))).toEqual([]);
+    // The same turn cannot carry a source file it never conditioned.
+    writeFileSync(join(root, "other.ts"), "new implementation");
+    const wider = commit();
+    r.covered = wider;
+    r.followUps![3]!.commit = wider;
+    r.followUps![3]!.finalization!.paths = [...r.followUps![3]!.finalization!.paths, "other.ts"];
+    expect(check(save(r))[0]?.message).toContain("neither a conditioned path nor explanatory documentation");
+  });
+});

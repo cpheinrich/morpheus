@@ -74,7 +74,8 @@ may clear on condition with `covered` moving to the fix commit. `check pr` verif
 commit between the reviewer's commit and `covered` touches only condition paths and the worklog;
 minor fixes belong before the reviewer's final turn, and join the allowed set only when there is
 no follow-up at all. A condition on a source file in a repository that commits generated output
-must name the generated counterparts too, or the regenerated files fall outside it. A condition cannot be added, widened or disputed into clearance by the author;
+must name the generated counterparts too, or the regenerated files fall outside it. Name the
+documentation that explains the fix in the same way, for the same reason. A condition cannot be added, widened or disputed into clearance by the author;
 an unconditional substantive finding still needs its turn. This is Alex's proposal from #241: a
 two-line fix should not need a human or a fresh session re-deriving the whole context.
 
@@ -93,6 +94,43 @@ what stops an author and a reviewer trading fixes and findings indefinitely, at 
 per turn. Unresolved substantive concerns after the last turn, or a correction needed once the
 turns are spent, mean blocked: remove `agent-reviewed`, disable auto-merge, and flag the remaining
 work for the human. No automatic fourth turn or replacement reviewer to obtain approval.
+
+**One automatic finalization-only turn per pull request.** Finishing an approved change should
+not cost a human decision. Beyond the cap — and after an authorized extra turn, if there was one —
+the same reviewer may spend one short turn whose only job is to close out work it already cleared:
+the explanatory prose describing that work, the review record itself, or the completion of a
+condition it already set. Add `finalization: { paths, evidence, attestation }` to that
+`followUps` entry, alongside a `scopeReason` naming what it finalized. The reviewer writes it;
+an author cannot certify their own work by filling it in, and `authorSession` may not be the
+reviewer.
+
+It is bounded on every side, because an automatic turn that could approve implementation would
+simply be a fourth review with no decision behind it:
+
+- **One per pull request.** A second needs `humanAuthorization` as an ordinary substantive turn.
+- **Five minutes.** Anything that takes longer is a review and spends a turn.
+- **Last word.** Nothing follows it automatically.
+- **`cleared` only.** A reviewer with a remaining concern records `blocked` or `incomplete`, and
+  the pull request stays blocked. It cannot resolve a substantive finding: at least one ordinary
+  turn must have done that first.
+- **Scope, checked against the diff.** `check pr` verifies the commits the turn covers touch only
+  the review worklog, paths the reviewer already conditioned, and the explanatory Markdown its
+  `paths` attest. Attesting a documentation file does not clear an implementation change that rode
+  along in the same commit.
+- **No blanket documentation exemption.** `AGENTS.md`, `CLAUDE.md`, `morpheus.json` and anything
+  under `.github/`, `.ci/` or `.morpheus/` are policy a project is operated by; a change there is
+  substantive however it is described, and is refused outright in a finalization scope. Other
+  Markdown — a runbook paragraph, an architecture note — is admitted only on the reviewer's
+  attestation that it restates behaviour already reviewed. A runbook that states a *new* rule is
+  normative too, and the reviewer is the one who has to say which it is.
+
+This is the narrow gap Evo #291 fell into: a conditioned fix was correct and cleared, and the one
+commit carrying it also carried the paragraph explaining it. The author could not widen the
+reviewer's condition, the commit was pushed so it could not be split, and after `covered` only the
+worklog may change — so a correct change sat blocked on a paragraph. **Prevention is cheaper than
+the exception: a reviewer setting a condition should name the related documentation and generated
+counterparts in `condition.paths` from the start.** The finalization turn is the backstop, not the
+plan.
 
 An explicit human decision may authorize one additional same-reviewer turn. Add
 `humanAuthorization: { approvedBy, approvedAt, reason }` to that extra `followUps` entry,
