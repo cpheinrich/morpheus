@@ -3040,6 +3040,12 @@ its replacement — job-level rather than workflow-level, because a called workf
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
 Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination.
+An optional `watch-paths` list uses Git pathspecs to compare the verified pull-request merge
+checkout to its first parent. When nothing matches, the same job reports success after checkout
+without Xcode, simulator, package, build or test work; there is no separate selector or aggregate
+check. Manual/nightly calls and an empty list retain normal execution. Invalid comparison evidence
+fails instead of bypassing. The job still briefly acquires its runner, so this avoids native work,
+not runner queue time. Callers own the path policy and still require independent review for changes.
 Callers may opt into a changed-source style gate with `swift-format-lint`; it validates the
 caller-owned `.swift-format` configuration and runs the selected Xcode toolchain's formatter in
 strict lint mode against added, copied, modified, and renamed Swift files in the checked-out

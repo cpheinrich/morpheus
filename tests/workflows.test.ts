@@ -2035,7 +2035,7 @@ describe("ios-ci.yml", () => {
     const script = String(lint?.run);
 
     expect((checkout?.with as Record<string, unknown>)?.["fetch-depth"]).toBe(2);
-    expect(lint?.if).toBe("${{ inputs.swift-format-lint }}");
+    expect(lint?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}");
     expect(lint?.env).toMatchObject({
       SWIFT_FORMAT_CONFIGURATION: "${{ inputs.swift-format-configuration }}",
       WORKING_DIRECTORY: "${{ inputs.working-directory }}",
@@ -2304,8 +2304,8 @@ describe("ios-ci.yml", () => {
     expect(String(test?.run)).toContain(
       '-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS"',
     );
-    expect(build?.if).toBe("${{ inputs.run-tests }}");
-    expect(test?.if).toBe("${{ inputs.run-tests }}");
+    expect(build?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}");
+    expect(test?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}");
   });
 
   it("can run app tests inside locked Firebase emulators with an in-context fixture", async () => {
@@ -2349,7 +2349,7 @@ describe("ios-ci.yml", () => {
   it("uploads both xcresults and raw logs only when the run fails", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
-    expect(upload?.if).toBe("${{ failure() && steps.ios_paths.outcome == 'success' }}");
+    expect(upload?.if).toBe("${{ steps.scope.outputs.run == 'true' && failure() && steps.ios_paths.outcome == 'success' }}");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     const withBlock = upload?.with as Record<string, unknown> | undefined;
     expect(String(withBlock?.path)).toContain("${{ steps.ios_paths.outputs.results }}");
