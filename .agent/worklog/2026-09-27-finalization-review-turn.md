@@ -68,7 +68,7 @@ Independent high-risk review of the finalization-only review turn, 21 of 30 minu
   "version": 1,
   "base": "dc9423789351f3a101cf26176c90b3e261cb3359",
   "reviewed": "e5e34149582e1f6c406aaf65b3d1571742d5befe",
-  "covered": "COVERED_SHA",
+  "covered": "a3b66ae76511c5b00ac3a2d9114f30aca8636027",
   "authorSession": "66f5f539-6988-4738-a283-af9fa021ca5c",
   "reviewerSession": "a13b02a9fdea6d4a7",
   "risk": "high",
