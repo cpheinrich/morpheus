@@ -10,7 +10,7 @@ export const configSchema = z
   .object({
     version: z.literal(1).default(1),
     mode: modeSchema.default("off"),
-    threshold: z.number().min(1).max(90).default(20),
+    threshold: z.number().min(1).max(90).default(30),
     maxConcurrent: z.number().int().min(1).max(8).default(2),
     disconnectGraceSeconds: z.number().int().min(5).max(300).default(60),
     maxRunSeconds: z.number().int().min(10).max(28800).default(7200),

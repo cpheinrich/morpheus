@@ -1059,3 +1059,9 @@ are unchanged. Uncertain comparison fails closed. Considered picomatch 4.0.7 (re
 2026-08-24, no runtime dependencies); Git already provides the exact diff/pathspec semantics needed,
 so use it without a new dependency or custom glob matcher. The scope step still needs a runner;
 it does not promise to bypass the host's job-start lock or its queue.
+
+
+**Claude routing reserves 30% by default** — 2026-09-26. Chris raised the optional
+bridge's default from 20% to 30% to leave coordination headroom while other Codex chats
+consume the shared allowance. Automatic routing still delegates strictly below the
+threshold and remains opt-in. Existing saved thresholds are preserved.

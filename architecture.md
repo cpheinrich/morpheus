@@ -2886,6 +2886,8 @@ settings and session records stay outside the repository.
 
 The bridge routes at safe checkpoints using Codex allowance, keeps explicit task/operation
 overrides, and starts subscription-authenticated Claude on the same host and worktree.
+Automatic mode defaults to delegating below 30% remaining in the least remaining reported
+allowance window, reserving coordination headroom; explicit saved thresholds are preserved.
 Codex remains the coordinator and consumes its own allowance. Native Claude session ids
 provide persistence; a leased process guardian bounds live workers. Permission metadata
 must be verified before delegation, and unknown/restricted confinement fails closed in the
