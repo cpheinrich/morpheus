@@ -184,3 +184,22 @@ they are fixed inside its stated paths with the evidence it named, and no furthe
 ## Open questions
 
 None.
+
+## One improvement dropped rather than merged unreviewed — 2026-09-27
+
+The printed validation command this PR adds stops at the `agent-reviewed` label check unless
+`MORPHEUS_PR_LABELS=agent-reviewed` is also set, because that check short-circuits before the record
+is parsed. I hit it validating this very record, wrote the one-line fix to `src/cli/review.ts`, and
+committed it as a late correction outside the reviewer's condition paths — which is exactly what a
+follow-up turn is for, and two of them were unspent.
+
+The reviewer session stalled twice on that turn without returning a verdict: it restated the ask and
+its stream watchdog fired. A stall is not a clearance, so the correction is not in this PR. Its
+commit was never pushed, so dropping it rewrote nothing anyone had seen, and `covered`
+(`a3b66ae76511c5b00ac3a2d9114f30aca8636027`) is the reviewer's own conditionally cleared commit with
+only this worklog after it.
+
+So the guidance ships slightly incomplete: run it with `MORPHEUS_PR_LABELS=agent-reviewed` prepended
+until a follow-up fixes the printed text. That is a two-line change to printed strings and wants its
+own roadmap item — it cannot be filed from this branch, because after `covered` only this worklog may
+change, which is the rule working as intended rather than getting in the way.
