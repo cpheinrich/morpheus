@@ -1036,3 +1036,17 @@ result validator. Defaults still run the whole scheme. Structured xcresult summa
 are uploaded even after success so retries are observable; validator failure blocks the job.
 Nightly forwards the validator but never narrows the test selection. This extends existing
 workflow hooks using Bash/Xcode's native JSON export, without a new parsing dependency.
+
+## Portable credentials companions — 2026-09-26
+
+Lakina's pilot becomes a Morpheus command because Evo and Darwin now need the same discovery
+contract. Track remote URL and relative path, default to one ignored clone per consuming project,
+and allow multiple projects to reference the same private remote. A shared physical checkout is
+optional through a device override/symlink. Invoke its wrapper directly; do not install global
+launchers during setup. GSM remains the sensitive-secret store; access to a project and its
+companion is deliberately separate. Scaffolding remains offline, remote creation explicit.
+
+Considered dotenv (18.0.4, published metadata checked 2026-09-26, no runtime dependencies) for
+loading. Kept existing companion wrappers and native process/Git orchestration: dotenv does not
+solve discovery or checkout migration and would change existing Bash file-reference semantics.
+New stores use a small Node/Bash wrapper, with no extra dependency or generic parsing layer.
