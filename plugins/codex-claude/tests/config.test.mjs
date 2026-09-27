@@ -1,5 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { configRead, configWrite } from "../src/store.mjs";
 import {
   defaults,
   route,
@@ -14,8 +18,8 @@ test("off overrides automatic, project and manual choices", () => {
   c.projects[task.project] = "automatic";
   assert.equal(route(c, task, 1, "claude").executor, "codex");
   c.mode = "automatic";
-  assert.equal(route(c, task, 20).executor, "codex");
-  assert.equal(route(c, task, 19.99).executor, "claude");
+  assert.equal(route(c, task, 30).executor, "codex");
+  assert.equal(route(c, task, 29.99).executor, "claude");
   assert.equal(route(c, task, null).executor, "unknown");
   assert.equal(route(c, task, 0, "codex").executor, "codex");
   assert.equal(route(c, task, 90, "claude").executor, "claude");
@@ -26,6 +30,29 @@ test("off overrides automatic, project and manual choices", () => {
   c.projects[task.project] = "manual";
   assert.equal(route(c, task, 0).executor, "codex");
   assert.equal(route(c, task, 90, "claude").executor, "claude");
+});
+test("fresh settings default to 30 percent and preserve saved thresholds", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "claude-threshold-"));
+  const previous = process.env.CODEX_CLAUDE_HOME;
+  process.env.CODEX_CLAUDE_HOME = directory;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.CODEX_CLAUDE_HOME;
+    else process.env.CODEX_CLAUDE_HOME = previous;
+    await rm(directory, { recursive: true, force: true });
+  });
+  const fresh = await configRead();
+  assert.equal(fresh.threshold, 30);
+  assert.equal(fresh.mode, "off");
+  fresh.mode = "automatic";
+  assert.equal(route(fresh, task, 30.01).executor, "codex");
+  assert.equal(route(fresh, task, 30).executor, "codex");
+  assert.equal(route(fresh, task, 29.99).executor, "claude");
+  await configWrite({ ...fresh, threshold: 20 });
+  const saved = await configRead();
+  assert.equal(saved.threshold, 20);
+  assert.equal(route(saved, task, 29.99).executor, "codex");
+  assert.equal(route(saved, task, 20).executor, "codex");
+  assert.equal(route(saved, task, 19.99).executor, "claude");
 });
 test("allowance uses most depleted fresh known window and fails closed", () => {
   const window = (usedPercent) => ({

@@ -70,10 +70,12 @@ Ask Codex naturally:
 - “Show Claude's live output.”
 
 Automatic mode checks the least remaining fresh reported Codex allowance window. At
-**less than 20% remaining** by default, Codex delegates at the next safe checkpoint.
-At exactly 20%, Codex continues. This is subscription allowance, not a token count for a
+**less than 30% remaining** by default, Codex delegates at the next safe checkpoint.
+At exactly 30%, Codex continues. This is subscription allowance, not a token count for a
 single chat. Codex still consumes allowance while supervising; this cannot keep Codex
 coordinating once its account is exhausted. Missing/stale usage is reported as unknown.
+The 30% default leaves headroom for supervision and other active Codex chats. Existing
+saved thresholds are preserved when updating the plugin.
 Routing hooks advise the coordinating agent; they do not replace the desktop's model
 engine or forcibly preempt a running generation.
 
