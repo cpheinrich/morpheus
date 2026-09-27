@@ -110,19 +110,25 @@ simply be a fourth review with no decision behind it:
 - **One per pull request.** A second needs `humanAuthorization` as an ordinary substantive turn.
 - **Five minutes.** Anything that takes longer is a review and spends a turn.
 - **Last word.** Nothing follows it automatically.
-- **`cleared` only.** A reviewer with a remaining concern records `blocked` or `incomplete`, and
-  the pull request stays blocked. It cannot resolve a substantive finding: at least one ordinary
-  turn must have done that first.
+- **`cleared` only, and it follows a clearance.** A reviewer with a remaining concern records
+  `blocked` or `incomplete`, and the pull request stays blocked — including when the turn before
+  the finalization turn is the one that blocked. It cannot resolve a substantive finding: the
+  preceding ordinary turn must have cleared it.
 - **Scope, checked against the diff.** `check pr` verifies the commits the turn covers touch only
-  the review worklog, paths the reviewer already conditioned, and the explanatory Markdown its
-  `paths` attest. Attesting a documentation file does not clear an implementation change that rode
-  along in the same commit.
+  the review worklog, paths whose condition the author actually **satisfied**, and the explanatory
+  Markdown its `paths` attest. A condition left disputed or unmet was never discharged, so its
+  paths are ordinary unreviewed source here. Attesting a documentation file does not clear an
+  implementation change that rode along in the same commit.
 - **No blanket documentation exemption.** `AGENTS.md`, `CLAUDE.md`, `morpheus.json` and anything
   under `.github/`, `.ci/` or `.morpheus/` are policy a project is operated by; a change there is
   substantive however it is described, and is refused outright in a finalization scope. Other
   Markdown — a runbook paragraph, an architecture note — is admitted only on the reviewer's
   attestation that it restates behaviour already reviewed. A runbook that states a *new* rule is
-  normative too, and the reviewer is the one who has to say which it is.
+  normative too, and the reviewer is the one who has to say which it is. Matching is
+  case-insensitive and applies at any depth, so `agents.md` and `apps/web/.github/...` are refused
+  as well. One thing no pattern can catch: if a repository's `AGENTS.md` is a symlink to an
+  ordinary `.md`, the real policy text sits at a non-normative path, and the reviewer's
+  attestation is the only guard.
 
 This is the narrow gap Evo #291 fell into: a conditioned fix was correct and cleared, and the one
 commit carrying it also carried the paragraph explaining it. The author could not widen the

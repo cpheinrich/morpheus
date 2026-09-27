@@ -862,7 +862,7 @@ never infer it or reset the history. Beyond that, one **automatic finalization-o
 is allowed: the same reviewer, at most five minutes, closing out work it already cleared — the
 explanatory prose for it, the review record, or the completion of a condition it set. The reviewer
 records \`finalization\` (\`paths\`, \`evidence\`, \`attestation\`) and a \`scopeReason\`; an author cannot
-certify their own. It must be last and \`cleared\`, cannot resolve a substantive finding, and the
+certify their own. It must be last, must follow a cleared turn, must itself be \`cleared\`, cannot resolve a substantive finding, and the
 check compares the commits it covers against the worklog, the conditioned paths and the attested
 explanatory Markdown. \`AGENTS.md\`, \`CLAUDE.md\`, \`morpheus.json\` and \`.github/\`, \`.ci/\`,
 \`.morpheus/\` are normative policy and stay substantive. A reviewer setting a condition should name

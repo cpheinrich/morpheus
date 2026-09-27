@@ -62,7 +62,7 @@ export const FINALIZATION_CEILING_MINUTES = 5;
  * a real turn however it is described: this is the reason there is no blanket documentation
  * exemption. Explanatory prose that restates behaviour already reviewed is a different thing.
  */
-const NORMATIVE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$|^morpheus\.json$|^\.(?:github|ci|morpheus)\//;
+const NORMATIVE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$|(?:^|\/)morpheus\.json$|(?:^|\/)\.(?:github|ci|morpheus)\//i;
 
 export const ReviewRecord = z.object({
   version: z.literal(1),
@@ -143,7 +143,9 @@ export function conditionallyCleared(record: LocalReviewRecord): string[] {
  * refusal names the offending path rather than the rule.
  */
 export function finalizationProblems(record: LocalReviewRecord, turn: ReviewFollowUp, worklog: string): string[] {
-  const conditioned = new Set(record.findings.flatMap(f => f.condition?.paths ?? []));
+  // Only conditions the author actually satisfied. A condition left disputed or unmet was never
+  // discharged, so its paths are ordinary unreviewed source here, exactly as elsewhere.
+  const conditioned = new Set(conditionallyCleared(record));
   return (turn.finalization?.paths ?? []).flatMap(path => {
     if (NORMATIVE.test(path)) return [`${path} is normative policy; a change there needs a substantive review turn`];
     if (conditioned.has(path) || path === worklog) return [];
@@ -221,7 +223,11 @@ export function validateReviewRecord(record: LocalReviewRecord): void {
     if (finalization.outcome !== "cleared") throw new Error(`a finalization turn that is ${finalization.outcome} leaves the pull request blocked; it cannot be recorded as finalization`);
     if (finalization.elapsedMinutes > FINALIZATION_CEILING_MINUTES) throw new Error(`a finalization turn is capped at ${FINALIZATION_CEILING_MINUTES} minutes; anything longer is a review and spends a turn`);
     if (!finalization.scopeReason) throw new Error("a finalization turn must name what it finalized in its scopeReason, so it cannot quietly become a new topic");
-    if (unconditional && !turns.some(turn => !turn.finalization)) throw new Error("an automatic finalization turn cannot resolve substantive findings; spend a review turn on them first");
+    // It finalizes a clearance, so there has to be one. Without this, the five-minute automatic turn
+    // is what turns a review the reviewer blocked on a substantive finding into a merge.
+    const previous = turns[turns.length - 2];
+    if (previous && previous.outcome !== "cleared") throw new Error(`a finalization turn only follows a cleared turn; the ${previous.outcome} turn before it leaves the pull request blocked`);
+    if (unconditional && previous?.outcome !== "cleared") throw new Error("an automatic finalization turn cannot resolve substantive findings; an ordinary turn must clear them first");
   }
   turns.forEach((turn, index) => {
     if (turn.reviewerSession !== record.reviewerSession) throw new Error("every follow-up must use the original reviewer session");

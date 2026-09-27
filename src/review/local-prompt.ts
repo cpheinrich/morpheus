@@ -52,10 +52,12 @@ Beyond that you may spend ONE automatic finalization-only turn per PR, capped at
 whose only job is closing out work you already cleared: the explanatory prose for it, the review
 record, or the completion of a condition you set. Record finalization ({paths, evidence,
 attestation}) plus a scopeReason naming what you finalized. You write it, never the author. It
-must be the last turn, must be cleared, and cannot resolve a substantive finding or review new
-implementation: the checker compares the commits it covers against the worklog, your conditioned
-paths and the explanatory Markdown you attested. AGENTS.md, CLAUDE.md, morpheus.json and anything
-under .github/, .ci/ or .morpheus/ are normative policy and are refused there. If you still have a
+must be the last turn, must follow a turn you cleared, must itself be cleared, and cannot resolve a
+substantive finding or review new implementation: the checker compares the commits it covers against
+the worklog, the conditions the author actually satisfied, and the explanatory Markdown you
+attested. A condition left disputed or unmet does not widen it. AGENTS.md, CLAUDE.md, morpheus.json and anything
+under .github/, .ci/ or .morpheus/ are normative policy and are refused there, case-insensitively
+and at any depth; a symlinked policy file is yours to catch, because no pattern can. If you still have a
 concern, record blocked or incomplete instead. Better still, avoid needing it: when you set a
 condition, name the documentation and generated files that go with the fix in its paths.
 Unrelated changes invalidate coverage; restarting requires an explicit scope decision.

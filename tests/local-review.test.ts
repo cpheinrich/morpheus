@@ -611,6 +611,69 @@ describe("one automatic finalization-only turn", () => {
   });
 });
 
+describe("what a finalization turn must not be able to clear", () => {
+  const session = "a1b2c3d4e5f6a7b8c";
+  const attestation = { evidence: "Re-read the paragraph against the cleared diff; it adds no requirement.", attestation: "Finalization only: explanatory prose for work already cleared." };
+  const substantive = { id: "TE-20", severity: "substantive" as const, description: "The operator path still bypasses the guard", paths: ["code.ts"], disposition: "fixed" as const, response: "Routed it through the guard." };
+  function docCommit(text: string) {
+    mkdirSync(join(root, "docs/runbooks"), { recursive: true });
+    writeFileSync(join(root, "docs/runbooks/guide.md"), text);
+    return commit();
+  }
+  // FIN-1: the guard required only that a non-finalization turn existed, not that one cleared, so
+  // the five-minute automatic turn could flip a review blocked on a substantive finding into a merge.
+  it("does not let it follow a blocked or incomplete turn", () => {
+    const covered = docCommit("Explains the behaviour.");
+    const fin = { reviewerSession: session, commit: covered, outcome: "cleared" as const, elapsedMinutes: 1, scopeReason: "Finalize the explanatory paragraph.", summary: "Cleared the paragraph.", finalization: { paths: ["docs/runbooks/guide.md"], ...attestation } };
+    for (const outcome of ["blocked", "incomplete"] as const) {
+      const r: LocalReviewRecord = { ...record(), covered, findings: [substantive], followUps: [{ reviewerSession: session, commit: reviewed, outcome, elapsedMinutes: 2, summary: `The operator path finding is ${outcome}.` }, fin] };
+      expect(check(save(r))[0]?.message).toContain("only follows a cleared turn");
+    }
+    // A finalization turn alone still cannot stand in for the turn a substantive finding needs.
+    expect(check(save({ ...record(), covered, findings: [substantive], followUps: [fin] }))[0]?.message).toContain("ordinary turn must clear them first");
+  });
+  // FIN-2: the scope used every condition, while the rest of the checker uses only satisfied ones,
+  // so a condition the author never discharged still widened it to an implementation file.
+  it("does not treat an unsatisfied condition's paths as cleared", () => {
+    writeFileSync(join(root, "code.ts"), "an implementation change the condition never discharged");
+    const covered = commit();
+    const condition = { paths: ["code.ts"], evidence: "Run the focused guard test at the fix commit." };
+    const disputed = { ...substantive, id: "TE-21", disposition: "disputed" as const, response: "The operator path is unreachable in production.", condition };
+    const minorUnmet = { id: "TE-22", severity: "minor" as const, description: "Missing helpful error context on the guard", paths: ["code.ts"], disposition: "disputed" as const, response: "The context is already in the wrapping error.", condition };
+    for (const finding of [disputed, minorUnmet]) {
+      const r: LocalReviewRecord = {
+        ...record(), covered, findings: [finding],
+        followUps: [
+          { reviewerSession: session, commit: reviewed, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Late correction after the initial review.", summary: "Cleared the implementation after the fix follow-up." },
+          { reviewerSession: session, commit: covered, outcome: "cleared", elapsedMinutes: 1, scopeReason: "Finalize the conditioned fix.", summary: "Cleared it.", finalization: { paths: ["code.ts"], ...attestation } },
+        ],
+      };
+      expect(check(save(r))[0]?.message).toContain("neither a conditioned path nor explanatory documentation");
+    }
+    // The same path is admitted once the condition is actually satisfied.
+    const met = { ...substantive, id: "TE-23", condition, conditionMet: "Ran the named guard test at the covered commit: 12 passed." };
+    const ok: LocalReviewRecord = {
+      ...record(), covered, findings: [met],
+      followUps: [
+        { reviewerSession: session, commit: reviewed, outcome: "cleared", elapsedMinutes: 2, summary: "Cleared the implementation after the fix follow-up." },
+        { reviewerSession: session, commit: covered, outcome: "cleared", elapsedMinutes: 1, scopeReason: "Finalize the conditioned fix.", summary: "Cleared it.", finalization: { paths: ["code.ts"], ...attestation } },
+      ],
+    };
+    expect(check(save(ok))).toEqual([]);
+  });
+  // FIN-3: the normative set was case-sensitive and anchored its directories at the repo root.
+  it("refuses normative policy under any spelling or depth", () => {
+    const covered = docCommit("Explains the behaviour.");
+    for (const path of ["agents.md", "docs/Claude.md", "docs/claude.md", "apps/web/.github/workflows/ci.md", "packages/shared/.ci/skips.json", "apps/web/morpheus.json"]) {
+      const r: LocalReviewRecord = { ...record(), covered, followUps: [
+        { reviewerSession: session, commit: reviewed, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Late correction after the clean initial review.", summary: "Cleared the implementation and its tests." },
+        { reviewerSession: session, commit: covered, outcome: "cleared", elapsedMinutes: 1, scopeReason: "Finalize the paragraph.", summary: "Cleared it.", finalization: { paths: [path], ...attestation } },
+      ] };
+      expect(check(save(r))[0]?.message).toContain("normative policy");
+    }
+  });
+});
+
 describe("the shape Evo #291 needs", () => {
   // Four substantive turns, the last explicitly authorized, a conditional clearance the author
   // fixed, and one commit that also carried the runbook paragraph explaining that fix. Before the
