@@ -1,3 +1,4 @@
+import { scaffoldConfig } from "../credentials/index.js";
 import { accessible as exists, scaffoldWriter } from "../file-io.js";
 import { readdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
@@ -186,6 +187,9 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
     );
   }
   await put("AGENTS.md", t.agents(seed));
+  // Offline scaffold only: provisioning is an explicit credentials setup --create action.
+  await put(".morpheus/credentials.json", JSON.stringify(scaffoldConfig(root, seed.owner), null, 2) + "\n");
+  notes.push("Review .morpheus/credentials.json (especially the GitHub owner). Use morpheus credentials setup for an existing private store, or setup --create for a new one. Project access does not grant credentials access.");
 
   // A README for humans, and for agents that read one before anything else.
   // Absent until MO-054, which is why cpheinrich.com had none at all — the

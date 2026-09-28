@@ -10,6 +10,7 @@
  * not, which is worse than an absent file — the same rule the brand package
  * follows.
  */
+import { credentialsInstructions } from "../credentials/templates.js";
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
 import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
@@ -105,15 +106,20 @@ means anything recorded at the moment you hit the problem.
 ${MORPHEUS_REPO}/issues`;
 export const codebaseMemoryBootstrap = () => `## Device bootstrap
 
-The checked-in \`.morpheus/session-start.sh\` shim first asks whether the installed CLI supports
-current self-update. When it or \`morpheus context brief\` reports that Morpheus is stale and
-automatic updates are unconfigured, ask the user exactly: **"Morpheus is stale. Enable automatic
+The checked-in \`.morpheus/session-start.sh\` shim recovers common non-login tool paths and
+diagnoses missing, old, or broken installations. Only when the device preference is absent
+and startup reports automatic updates are unconfigured, ask the user exactly: **"Morpheus is stale. Enable automatic
 updates after pulls on this device?"** Do not infer consent.
 
 - If the shim reports **Morpheus bootstrap required**, a yes runs
   \`sh .morpheus/bootstrap.sh enable\`; a no runs \`sh .morpheus/bootstrap.sh disable\`.
 - Otherwise a yes runs \`morpheus self auto-update enable\`; a no runs
   \`morpheus self auto-update disable\`.
+
+A stale startup notice is not evidence that consent is missing. Check the saved device
+preference first. Honor an existing enabled choice with the supported refresh/repair command;
+never ask again because PATH, the runtime, or a managed hook failed. A disabled choice stays
+disabled, and invalid preferences must be diagnosed rather than overwritten.
 
 The legacy bootstrap never invokes the installed \`morpheus\` binary. After yes it clones reviewed
 Morpheus \`main\` into a disposable directory, installs that clone's reviewed lockfile, and invokes
@@ -785,6 +791,8 @@ ${morpheusCalloutForAgents()}
 | \`.agent/worklog/\` | What was attempted per task, including dead ends |
 
 ${contextFreshness()}
+
+${credentialsInstructions()}
 ${codebaseMemoryBootstrap()}
 ## Working conventions
 
@@ -833,6 +841,9 @@ repository access and that packet, without inheriting the author's conversation 
 The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
 the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
 GitHub Actions to start this review. CI checks the evidence; it does not perform the review.
+The author measures each turn from runner duration metadata or actual clock readings, never a
+reviewer's workload estimate. New version 2 records require timing source, milliseconds and
+evidence for every turn; compute elapsedMinutes as durationMs / 60000 without rounding.
 If the runner cannot start an independent session, report that concrete limitation and keep
 the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
 
@@ -841,14 +852,25 @@ Respond once; substantive findings require a follow-up by the same reviewer unle
 cleared them conditionally, with exact paths and evidence, in which case the author fixes within
 that condition and records it. Minor-only findings allow author fixes without a second pass. A
 finding left deferred or open names the roadmap item that tracks it. The reviewer session id is
-the runner-issued one, never a composed label, and is not reused across tasks. A review is capped at three turns, the initial review and
+the runner-issued one, never a composed label, and is not reused across tasks. Canonical
+Codex task paths such as /root/reviewer use the globally scoped parent runner session ID
+in authorSession as their namespace; record the exact path returned by the runner. A review is capped at three turns, the initial review and
 two follow-ups; a follow-up resolves what the previous turn left blocked, or spends a remaining turn
 on a late correction after clearance (a fix full CI asked for), recorded with its \`scopeReason\`.
 Unresolved substantive disagreements after that, an incomplete review, or a correction once the
 turns are spent, keep the PR open and auto-merge disabled. An explicit human exception may authorize
 one additional same-reviewer turn; record \`humanAuthorization\` with \`approvedBy\`, \`approvedAt\`
 (ISO timestamp), and \`reason\` on that extra follow-up. Each extra turn needs its own authorization;
-never infer it or reset the history. All review and CI requirements still apply. Record the review paragraph and structured evidence in the task
+never infer it or reset the history. Beyond that, one **automatic finalization-only** turn per PR
+is allowed: the same reviewer, at most five minutes, closing out work it already cleared — the
+explanatory prose for it, the review record, or the completion of a condition it set. The reviewer
+records \`finalization\` (\`paths\`, \`evidence\`, \`attestation\`) and a \`scopeReason\`; an author cannot
+certify their own. It must be last, must follow a cleared turn, must itself be \`cleared\`, cannot resolve a substantive finding, and the
+check compares the commits it covers against the worklog, the conditioned paths and the attested
+explanatory Markdown. \`AGENTS.md\`, \`CLAUDE.md\`, \`morpheus.json\` and \`.github/\`, \`.ci/\`,
+\`.morpheus/\` are normative policy and stay substantive. A reviewer setting a condition should name
+the related documentation and generated files in it, so the backstop is rarely needed.
+All review and CI requirements still apply. Record the review paragraph and structured evidence in the task
 worklog, link it with a visible \`review-record:\` PR-body line, then apply \`agent-reviewed\`.
 \`review.required\` defaults to true; project false opts out visibly. After the covered commit only
 the named worklog may change, and merging trunk never invalidates the review: a merge Git

@@ -7,14 +7,20 @@ import { ROADMAP_ID } from "../pm/id.js";
 const Sha = z.string().regex(/^[a-f0-9]{40}$/);
 const Text = z.string().trim().min(8);
 const Session = z.string().trim().min(3);
-/**
- * A reviewer session is the id the runner issued for that session (a UUID thread id, or the
- * 16-plus hex subagent id a tool result reports), optionally behind a provider prefix such as
- * `claude-code-subagent/`. Not a label the author composes: the corpus showed consecutive
- * records whose reviewer ids were permutations of the same eight characters.
- */
-const ReviewerSession = z.string().trim().regex(/^(?:[a-z][a-z0-9-]*[:/])?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{16,})$/i, "reviewerSession must be the runner-issued session id, not an author-chosen label");
+/** IDs are attested from the runner, never invented to satisfy a format check. */
+const GlobalSession = /^(?:[a-z][a-z0-9-]*[:/])?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{16,})$/i;
+const TaskSession = /^\/root(?:\/[a-z0-9_]+)+$/;
+const ReviewerSession = z.string().trim().refine(value => GlobalSession.test(value) || TaskSession.test(value), "reviewerSession must be the runner-issued session id, not an author-chosen label");
+function bareSession(value: string): string {
+  return value.replace(/^[a-z][a-z0-9-]*[:/]/i, "").toLowerCase();
+}
 const Path = z.string().regex(/^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[^\s\\]+$/);
+/** Author-captured elapsed time, with an auditable source rather than a workload estimate. */
+const Timing = z.object({
+  source: z.enum(["runner", "clock"]),
+  durationMs: z.number().int().nonnegative(),
+  evidence: Text,
+}).strict();
 const FollowUp = z.object({
   reviewerSession: ReviewerSession,
   commit: Sha,
@@ -26,8 +32,20 @@ const FollowUp = z.object({
     approvedAt: z.iso.datetime({ offset: true }),
     reason: Text,
   }).strict().optional(),
+  /**
+   * The one automatic finalization-only turn a pull request gets beyond the cap, attested by the
+   * reviewer: the exact paths it covered, the evidence it checked, and its scope statement. It
+   * exists so finishing an already-approved change does not cost a human decision, and it is
+   * deliberately too narrow to approve new implementation.
+   */
+  finalization: z.object({
+    paths: z.array(Path).min(1),
+    evidence: Text,
+    attestation: Text,
+  }).strict().optional(),
   outcome: z.enum(["cleared", "incomplete", "blocked"]),
   elapsedMinutes: z.number().nonnegative(),
+  timing: Timing.optional(),
   summary: Text,
 }).strict();
 export type ReviewFollowUp = z.infer<typeof FollowUp>;
@@ -40,8 +58,21 @@ export type ReviewFollowUp = z.infer<typeof FollowUp>;
  */
 export const MAX_FOLLOW_UPS = 2;
 
+/**
+ * A finalization turn is short by construction: it re-reads a documentation paragraph or the
+ * record, not a change. Anything that needs longer than this is a review, and spends a turn.
+ */
+export const FINALIZATION_CEILING_MINUTES = 5;
+
+/**
+ * Policy a project is operated by, whatever file carries it. A change here is normative and needs
+ * a real turn however it is described: this is the reason there is no blanket documentation
+ * exemption. Explanatory prose that restates behaviour already reviewed is a different thing.
+ */
+const NORMATIVE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$|(?:^|\/)morpheus\.json$|(?:^|\/)\.(?:github|ci|morpheus)\//i;
+
 export const ReviewRecord = z.object({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   base: Sha,
   reviewed: Sha,
   covered: Sha,
@@ -49,6 +80,7 @@ export const ReviewRecord = z.object({
   reviewerSession: ReviewerSession,
   risk: z.enum(["small", "normal", "high"]),
   elapsedMinutes: z.number().nonnegative(),
+  timing: Timing.optional(),
   extensionReason: Text.optional(),
   outcome: z.enum(["complete", "incomplete", "blocked"]),
   summary: Text,
@@ -90,9 +122,11 @@ export const ReviewRecord = z.object({
   followUp: FollowUp.optional(),
   /** Follow-up turns in order; the last one must clear `covered`. */
   followUps: z.array(FollowUp).min(1).max(20).optional(),
-}).strict().refine(record => !(record.followUp && record.followUps), { message: "record follow-up turns as either followUp or followUps, not both" })
-  .refine(record => (record.followUps ?? []).slice(MAX_FOLLOW_UPS).every(turn => turn.humanAuthorization), {
-    message: "each follow-up beyond the default three-turn cap requires explicit humanAuthorization",
+}).strict().refine(record => !TaskSession.test(record.reviewerSession) || GlobalSession.test(record.authorSession), {
+  message: "task-path reviewerSession requires the runner-issued parent session id in authorSession",
+}).refine(record => !(record.followUp && record.followUps), { message: "record follow-up turns as either followUp or followUps, not both" })
+  .refine(record => (record.followUps ?? []).slice(MAX_FOLLOW_UPS).every(turn => turn.humanAuthorization || turn.finalization), {
+    message: "each follow-up beyond the default three-turn cap requires explicit humanAuthorization, unless it is the one automatic finalization turn",
   });
 export type LocalReviewRecord = z.infer<typeof ReviewRecord>;
 
@@ -109,6 +143,25 @@ export function coveredBase(record: LocalReviewRecord): string {
 /** Findings the reviewer pre-cleared and the author fixed under the stated condition. */
 export function conditionallyCleared(record: LocalReviewRecord): string[] {
   return record.findings.filter(f => f.condition && f.disposition === "fixed" && f.conditionMet).flatMap(f => f.condition!.paths);
+}
+
+/**
+ * The paths a finalization turn may cover: the review record, paths the reviewer already
+ * conditioned, and explanatory Markdown it attests to. Returns the reasons it may not, so the
+ * refusal names the offending path rather than the rule.
+ */
+export function finalizationProblems(record: LocalReviewRecord, turn: ReviewFollowUp, worklog: string): string[] {
+  // Only conditions the author actually satisfied. A condition left disputed or unmet was never
+  // discharged, so its paths are ordinary unreviewed source here, exactly as elsewhere.
+  const conditioned = new Set(conditionallyCleared(record));
+  return (turn.finalization?.paths ?? []).flatMap(path => {
+    if (NORMATIVE.test(path)) return [`${path} is normative policy; a change there needs a substantive review turn`];
+    if (conditioned.has(path) || path === worklog) return [];
+    // Not a blanket documentation exemption: Markdown is admitted only because the reviewer
+    // attested that this file restates behaviour it already reviewed.
+    if (path.endsWith(".md")) return [];
+    return [`${path} is neither a conditioned path nor explanatory documentation; a finalization turn cannot cover it`];
+  });
 }
 
 /** Initial-review ceilings in minutes; a follow-up gets half. Small was 5 until the data showed only creative accounting. */
@@ -139,7 +192,7 @@ export function parseReviewRecord(markdown: string): LocalReviewRecord {
 }
 
 export function validateReviewRecord(record: LocalReviewRecord): void {
-  if (record.authorSession === record.reviewerSession) throw new Error("reviewer must be a fresh independent session");
+  if (bareSession(record.authorSession) === bareSession(record.reviewerSession)) throw new Error("reviewer must be a fresh independent session");
   if (record.outcome !== "complete") throw new Error(`review is ${record.outcome}; leave the PR open and disable auto-merge`);
   if (new Set(record.findings.map(f => f.id)).size !== record.findings.length) throw new Error("finding IDs must be unique");
   if (record.findings.some(f => f.severity !== "incidental" && f.disposition === "open")) throw new Error("unresolved finding");
@@ -153,6 +206,12 @@ export function validateReviewRecord(record: LocalReviewRecord): void {
   // under it, needs no turn; any other substantive finding still does.
   const unconditional = record.findings.some(f => f.severity === "substantive" && !(f.condition && f.disposition === "fixed" && f.conditionMet));
   const turns = followUpTurns(record);
+  for (const turn of [record, ...turns]) {
+    if (!turn.timing && record.version === 2) throw new Error("version 2 requires measured timing for the initial review and every follow-up");
+    if (turn.timing && Math.abs(turn.elapsedMinutes - turn.timing.durationMs / 60000) > 1e-9) {
+      throw new Error("elapsedMinutes must equal timing.durationMs / 60000 without rounding; use the measured duration, never a reviewer estimate");
+    }
+  }
   if (unconditional && !turns.length) throw new Error("substantive findings require a follow-up from the original reviewer unless cleared under a recorded condition");
   if (record.findings.some(f => f.severity === "substantive" && f.disposition !== "fixed" && f.disposition !== "disputed")) throw new Error("substantive findings cannot be deferred");
   const budget = REVIEW_BUDGET_MINUTES[record.risk];
@@ -167,6 +226,23 @@ export function validateReviewRecord(record: LocalReviewRecord): void {
   // after blocked, or after substantive initial findings, is the ordinary fix follow-up and needs
   // none. An incomplete turn exhausted its budget and escalates; nothing follows it.
   if (!substantive && turns[0] && !turns[0].scopeReason) throw new Error("a follow-up after a clean initial review is a late correction and needs an explicit scope reason");
+  // One automatic finalization-only turn per pull request, and only as the last word. It finishes
+  // an approved change: it cannot resolve a substantive finding, run long, or be repeated, and a
+  // reviewer that still has a concern records blocked or incomplete instead, which stays blocked.
+  const finalizations = turns.filter(turn => turn.finalization);
+  if (finalizations.length > 1) throw new Error("a pull request gets one automatic finalization-only turn; a second needs explicit humanAuthorization as a substantive turn");
+  const finalization = finalizations[0];
+  if (finalization) {
+    if (finalization !== turns[turns.length - 1]) throw new Error("the finalization turn is the last word on a pull request; nothing follows it automatically");
+    if (finalization.outcome !== "cleared") throw new Error(`a finalization turn that is ${finalization.outcome} leaves the pull request blocked; it cannot be recorded as finalization`);
+    if (finalization.elapsedMinutes > FINALIZATION_CEILING_MINUTES) throw new Error(`a finalization turn is capped at ${FINALIZATION_CEILING_MINUTES} minutes; anything longer is a review and spends a turn`);
+    if (!finalization.scopeReason) throw new Error("a finalization turn must name what it finalized in its scopeReason, so it cannot quietly become a new topic");
+    // It finalizes a clearance, so there has to be one. Without this, the five-minute automatic turn
+    // is what turns a review the reviewer blocked on a substantive finding into a merge.
+    const previous = turns[turns.length - 2];
+    if (previous && previous.outcome !== "cleared") throw new Error(`a finalization turn only follows a cleared turn; the ${previous.outcome} turn before it leaves the pull request blocked`);
+    if (unconditional && previous?.outcome !== "cleared") throw new Error("an automatic finalization turn cannot resolve substantive findings; an ordinary turn must clear them first");
+  }
   turns.forEach((turn, index) => {
     if (turn.reviewerSession !== record.reviewerSession) throw new Error("every follow-up must use the original reviewer session");
     if (turn.elapsedMinutes > budget / 2) throw new Error("follow-up exceeded its budget; record incomplete and escalate instead of claiming completion");
@@ -232,7 +308,7 @@ export function checkLocalReview(opts: { root: string; body: string; labels: str
   try {
     const config = JSON.parse(git(opts.root, ["show", `${opts.head}:morpheus.json`]));
     if (!reviewRequired(config)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
-    if (!opts.labels.includes("agent-reviewed")) throw new Error("add agent-reviewed only after completing the independent review");
+    if (!opts.labels.includes("agent-reviewed")) throw new Error("agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending.");
     const lines = [...visibleProse(opts.body).matchAll(/^review-record:[ \t]*(\S+)[ \t]*$/gm)];
     if (lines.length !== 1) throw new Error("PR body needs one visible review-record: .agent/worklog/<task>.md line");
     const path = lines[0]![1]!;
@@ -264,6 +340,15 @@ export function checkLocalReview(opts: { root: string; body: string; labels: str
       if (!isAncestor(opts.root, last.commit, record.covered)) throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
       for (const commit of verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional]), "author fixes after the final follow-up exceed the reviewer's recorded conditions")) merges.add(commit);
     }
+    // The attestation is checked against the diff it claims to cover, so an automatic turn cannot
+    // clear implementation by naming a documentation path.
+    if (last?.finalization) {
+      const problems = finalizationProblems(record, last, path);
+      if (problems.length) throw new Error(`finalization turn is out of scope: ${problems.join("; ")}`);
+      const from = turns[turns.length - 2]?.commit ?? record.reviewed;
+      const allowed = new Set([path, ...conditional, ...last.finalization.paths]);
+      for (const commit of verifyUncoveredCommits(opts.root, record, from, last.commit, opts.base, allowed, "a finalization turn may cover only the review record, previously conditioned paths and the explanatory documentation it attested")) merges.add(commit);
+    }
     for (const commit of verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)")) merges.add(commit);
     // A hand-resolved merge named before a late correction moved `covered` past it now sits in a
     // range the correction turn cleared. The entry stays true and accepted; it is not stray.
@@ -282,10 +367,23 @@ export function checkLocalReview(opts: { root: string; body: string; labels: str
  */
 function checkFreshReviewer(root: string, record: LocalReviewRecord, worklog: string, head: string): void {
   // Compare the bare id: a provider prefix or a change of case is the same session, not a new one.
-  const bare = record.reviewerSession.replace(/^[a-z][a-z0-9-]*[:/]/i, "").toLowerCase();
+  const bare = bareSession(record.reviewerSession);
   let hits: string[] = [];
   try { hits = git(root, ["grep", "-l", "-i", "-F", bare, head, "--", ".agent/worklog"]).split("\n").filter(Boolean); } catch { hits = []; }
-  const other = hits.map(hit => hit.replace(/^[^:]*:/, "")).find(p => p !== worklog);
+  const other = hits.map(hit => hit.replace(/^[^:]*:/, "")).find(p => {
+    if (p === worklog) return false;
+    if (!TaskSession.test(record.reviewerSession)) return true;
+    // Task paths are local to a root runner session. Inspect structured identities rather
+    // than prose mentions (or prefixes such as /root/review versus /root/review_extra).
+    const markdown = git(root, ["show", `${head}:${p}`]);
+    return [...markdown.matchAll(/^```morpheus-review\r?\n([\s\S]*?)^```[ \t]*$/gm)].some(block => {
+      let previous: unknown;
+      try { previous = JSON.parse(block[1]!); } catch { return false; }
+      const identity = z.object({ authorSession: z.string().trim(), reviewerSession: z.string().trim() }).safeParse(previous);
+      return identity.success && identity.data.reviewerSession === record.reviewerSession
+        && bareSession(identity.data.authorSession) === bareSession(record.authorSession);
+    });
+  });
   if (other) throw new Error(`reviewer session ${record.reviewerSession} already appears in ${other}; every review needs a fresh reviewer session`);
 }
 

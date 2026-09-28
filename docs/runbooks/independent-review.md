@@ -52,6 +52,37 @@ validates reported durations; it cannot interrupt a provider's session or measur
 No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
 budget exhaustion or missing evidence, record incomplete and keep the PR open.
 
+### Measure each turn; do not ask the reviewer to estimate it
+
+The author owns elapsed-time measurement. Prefer the runner's duration for that invocation
+(`total_duration_ms`, `durationMs`, or equivalent). If unavailable, capture actual clock readings
+at invocation start and completion. Include tool execution and waits within the turn; exclude the
+author's work between turns. A transcript can supply explicit turn boundaries, but a long gap
+between messages is not evidence that the reviewer stopped working. Never segment by an idle-gap
+heuristic, estimate from work volume, or delay to meet a floor.
+
+`review prepare` emits version 2 records. Each initial and follow-up turn carries:
+
+```json
+{
+  "elapsedMinutes": 5.21025,
+  "timing": {
+    "source": "runner",
+    "durationMs": 312615,
+    "evidence": "Runner result for reviewer session and turn ID: total_duration_ms=312615."
+  }
+}
+```
+
+Populate the real session/turn reference in `evidence`; use `source: "clock"` with the observed
+start/end readings for clock measurement. Compute `elapsedMinutes = durationMs / 60000` without
+rounding. The checker requires timing for every version 2 turn and rejects a mismatched conversion.
+The source reference is an auditable attestation; CI does not fetch private provider transcripts.
+Historical version 1 records remain valid; any timing attached to them is checked too. Do not
+rewrite old outcomes from an estimated duration or manufacture a measurement to clear a gate.
+Without a reliable measurement, record incomplete and obtain the evidence. Existing ceilings,
+the initial floor, review outcomes and escalation rules are unchanged.
+
 The author responds to every finding. For minor-only findings, one fix/response round is enough.
 For any substantive finding, resume the original reviewer to assess responses, fixes and their
 regressions, unless the reviewer cleared it conditionally (below). Preserve original severity.
@@ -74,7 +105,8 @@ may clear on condition with `covered` moving to the fix commit. `check pr` verif
 commit between the reviewer's commit and `covered` touches only condition paths and the worklog;
 minor fixes belong before the reviewer's final turn, and join the allowed set only when there is
 no follow-up at all. A condition on a source file in a repository that commits generated output
-must name the generated counterparts too, or the regenerated files fall outside it. A condition cannot be added, widened or disputed into clearance by the author;
+must name the generated counterparts too, or the regenerated files fall outside it. Name the
+documentation that explains the fix in the same way, for the same reason. A condition cannot be added, widened or disputed into clearance by the author;
 an unconditional substantive finding still needs its turn. This is Alex's proposal from #241: a
 two-line fix should not need a human or a fresh session re-deriving the whole context.
 
@@ -93,6 +125,49 @@ what stops an author and a reviewer trading fixes and findings indefinitely, at 
 per turn. Unresolved substantive concerns after the last turn, or a correction needed once the
 turns are spent, mean blocked: remove `agent-reviewed`, disable auto-merge, and flag the remaining
 work for the human. No automatic fourth turn or replacement reviewer to obtain approval.
+
+**One automatic finalization-only turn per pull request.** Finishing an approved change should
+not cost a human decision. Beyond the cap — and after an authorized extra turn, if there was one —
+the same reviewer may spend one short turn whose only job is to close out work it already cleared:
+the explanatory prose describing that work, the review record itself, or the completion of a
+condition it already set. Add `finalization: { paths, evidence, attestation }` to that
+`followUps` entry, alongside a `scopeReason` naming what it finalized. The reviewer writes it;
+an author cannot certify their own work by filling it in, and `authorSession` may not be the
+reviewer.
+
+It is bounded on every side, because an automatic turn that could approve implementation would
+simply be a fourth review with no decision behind it:
+
+- **One per pull request.** A second needs `humanAuthorization` as an ordinary substantive turn.
+- **Five minutes.** Anything that takes longer is a review and spends a turn.
+- **Last word.** Nothing follows it automatically.
+- **`cleared` only, and it follows a clearance.** A reviewer with a remaining concern records
+  `blocked` or `incomplete`, and the pull request stays blocked — including when the turn before
+  the finalization turn is the one that blocked. It cannot resolve a substantive finding: the
+  preceding ordinary turn must have cleared it.
+- **Scope, checked against the diff.** `check pr` verifies the commits the turn covers touch only
+  the review worklog, paths whose condition the author actually **satisfied**, and the explanatory
+  Markdown its `paths` attest. A condition left disputed or unmet was never discharged, so its
+  paths are ordinary unreviewed source here. Attesting a documentation file does not clear an
+  implementation change that rode along in the same commit.
+- **No blanket documentation exemption.** `AGENTS.md`, `CLAUDE.md`, `morpheus.json` and anything
+  under `.github/`, `.ci/` or `.morpheus/` are policy a project is operated by; a change there is
+  substantive however it is described, and is refused outright in a finalization scope. Other
+  Markdown — a runbook paragraph, an architecture note — is admitted only on the reviewer's
+  attestation that it restates behaviour already reviewed. A runbook that states a *new* rule is
+  normative too, and the reviewer is the one who has to say which it is. Matching is
+  case-insensitive and applies at any depth, so `agents.md` and `apps/web/.github/...` are refused
+  as well. One thing no pattern can catch: if a repository's `AGENTS.md` is a symlink to an
+  ordinary `.md`, the real policy text sits at a non-normative path, and the reviewer's
+  attestation is the only guard.
+
+This is the narrow gap Evo #291 fell into: a conditioned fix was correct and cleared, and the one
+commit carrying it also carried the paragraph explaining it. The author could not widen the
+reviewer's condition, the commit was pushed so it could not be split, and after `covered` only the
+worklog may change — so a correct change sat blocked on a paragraph. **Prevention is cheaper than
+the exception: a reviewer setting a condition should name the related documentation and generated
+counterparts in `condition.paths` from the start.** The finalization turn is the backstop, not the
+plan.
 
 An explicit human decision may authorize one additional same-reviewer turn. Add
 `humanAuthorization: { approvedBy, approvedAt, reason }` to that extra `followUps` entry,
@@ -120,6 +195,14 @@ session: the subagent id a tool result reports, or a thread id, optionally behin
 prefix such as `claude-code-subagent/`. It is never a label the author composes, and `check pr`
 refuses an id that already appears in another worklog on the branch, because a reviewer session
 reviews one task.
+Codex collaboration runners may instead issue a canonical task path such as
+`/root/health_sync_review` or `/root/author/reviewer`. Record that exact returned path,
+and put the globally scoped runner-issued parent thread/session ID in `authorSession`.
+The pair identifies the reviewer: another root session may issue the same task path,
+but the same path within the same parent session cannot review another task. Follow-ups
+retain the exact path and inherit the record's parent provenance. A task name supplied
+to a spawn request is not evidence; use the canonical path the runner actually returns.
+These fields attest provenance; their syntax cannot prove a session was launched.
 For follow-up turns, add `followUps`, an array of at most two entries in order, each with the
 same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
 and `summary`. Every entry but the last must be `blocked`, or `cleared` when the entry after it
@@ -190,6 +273,9 @@ Put a visible line in the PR body (not inside a comment or code fence):
 Also link the worklog and summarize the outcome. Once complete, apply `agent-reviewed` (create the
 repository label if absent), commit the worklog and push. Run local conventions with the actual PR
 body and `MORPHEUS_PR_LABELS=agent-reviewed`. Never enable auto-merge until review and CI are complete.
+When the label is absent, conventions reports that the PR is not marked merge-ready and that
+record validation was not run. This also covers an author deliberately removing the label while
+a correction or follow-up is pending; the missing label alone does not establish an incomplete record.
 This is an auditable attestation, not a security boundary against an author fabricating evidence.
 
 ## Existing projects
