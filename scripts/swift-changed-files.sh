@@ -106,15 +106,26 @@ emit() {
 # appears in two of the sources above — the normal state of the developer loop
 # this serves — and swift-format would report its every diagnostic twice.
 #
-# Then filtered to what is actually on disk. The committed half answers about
-# `merge_base..HEAD`, so a file the branch added and the developer has since
-# deleted or renamed uncommitted survives it — and handing swift-format a path
-# that does not exist fails the local check for a state CI calls clean, which is
-# the inverse of the bug this script was written to remove. In commit mode the
-# filter is a no-op: every path there is in the tree being linted.
-emit | sort -zu | while IFS= read -r -d "" path; do
-    if [[ -e "$path" ]]; then
-        printf '%s\0' "$path"
-    fi
-done
+# Then, for the modes that ask about a developer's tree, filtered to what is
+# actually on disk. Both of those compare against a commit, so a file the branch
+# added and the developer has since deleted or renamed uncommitted survives the
+# comparison — and handing swift-format a path that does not exist fails the
+# local check for a state CI calls clean, the inverse of the bug this script was
+# written to remove.
+#
+# Deliberately not applied to commit mode. There the paths come from the commit
+# being linted and are present in any ordinary checkout, so the filter would
+# almost always be a no-op — and in the one case it would not be, a sparse
+# checkout whose cone omits a changed Swift file, silently dropping it turns a
+# missing-file error into a clean run. A gate reporting nothing to do because it
+# could not see the work is the failure this repository keeps writing down.
+if [[ -n "$BASE" || "$INCLUDE_WORKTREE" == "true" ]]; then
+    emit | sort -zu | while IFS= read -r -d "" path; do
+        if [[ -e "$path" ]]; then
+            printf '%s\0' "$path"
+        fi
+    done
+else
+    emit | sort -zu
+fi
 
