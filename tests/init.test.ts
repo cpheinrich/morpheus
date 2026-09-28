@@ -105,6 +105,8 @@ describe("morpheus init", () => {
     expect(instructions).toContain("does not\nlaunch a reviewer");
     expect(instructions).toContain("without inheriting the author's conversation history");
     expect(instructions).toContain("Do not wait for a PR monitor");
+    expect(instructions).toContain("The author measures each turn from runner duration metadata or actual clock readings");
+    expect(instructions).toContain("New version 2 records require timing source, milliseconds and");
     expect(await read(".github/pull_request_template.md")).toContain("review prepare only prints the packet");
     expect(await read(".github/pull_request_template.md")).toContain("review-record:");
   });

@@ -15,6 +15,12 @@ function bareSession(value: string): string {
   return value.replace(/^[a-z][a-z0-9-]*[:/]/i, "").toLowerCase();
 }
 const Path = z.string().regex(/^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[^\s\\]+$/);
+/** Author-captured elapsed time, with an auditable source rather than a workload estimate. */
+const Timing = z.object({
+  source: z.enum(["runner", "clock"]),
+  durationMs: z.number().int().nonnegative(),
+  evidence: Text,
+}).strict();
 const FollowUp = z.object({
   reviewerSession: ReviewerSession,
   commit: Sha,
@@ -39,6 +45,7 @@ const FollowUp = z.object({
   }).strict().optional(),
   outcome: z.enum(["cleared", "incomplete", "blocked"]),
   elapsedMinutes: z.number().nonnegative(),
+  timing: Timing.optional(),
   summary: Text,
 }).strict();
 export type ReviewFollowUp = z.infer<typeof FollowUp>;
@@ -65,7 +72,7 @@ export const FINALIZATION_CEILING_MINUTES = 5;
 const NORMATIVE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$|(?:^|\/)morpheus\.json$|(?:^|\/)\.(?:github|ci|morpheus)\//i;
 
 export const ReviewRecord = z.object({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   base: Sha,
   reviewed: Sha,
   covered: Sha,
@@ -73,6 +80,7 @@ export const ReviewRecord = z.object({
   reviewerSession: ReviewerSession,
   risk: z.enum(["small", "normal", "high"]),
   elapsedMinutes: z.number().nonnegative(),
+  timing: Timing.optional(),
   extensionReason: Text.optional(),
   outcome: z.enum(["complete", "incomplete", "blocked"]),
   summary: Text,
@@ -198,6 +206,12 @@ export function validateReviewRecord(record: LocalReviewRecord): void {
   // under it, needs no turn; any other substantive finding still does.
   const unconditional = record.findings.some(f => f.severity === "substantive" && !(f.condition && f.disposition === "fixed" && f.conditionMet));
   const turns = followUpTurns(record);
+  for (const turn of [record, ...turns]) {
+    if (!turn.timing && record.version === 2) throw new Error("version 2 requires measured timing for the initial review and every follow-up");
+    if (turn.timing && Math.abs(turn.elapsedMinutes - turn.timing.durationMs / 60000) > 1e-9) {
+      throw new Error("elapsedMinutes must equal timing.durationMs / 60000 without rounding; use the measured duration, never a reviewer estimate");
+    }
+  }
   if (unconditional && !turns.length) throw new Error("substantive findings require a follow-up from the original reviewer unless cleared under a recorded condition");
   if (record.findings.some(f => f.severity === "substantive" && f.disposition !== "fixed" && f.disposition !== "disputed")) throw new Error("substantive findings cannot be deferred");
   const budget = REVIEW_BUDGET_MINUTES[record.risk];

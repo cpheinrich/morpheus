@@ -21,6 +21,14 @@ declare const FollowUp: z.ZodObject<{
         cleared: "cleared";
     }>;
     elapsedMinutes: z.ZodNumber;
+    timing: z.ZodOptional<z.ZodObject<{
+        source: z.ZodEnum<{
+            runner: "runner";
+            clock: "clock";
+        }>;
+        durationMs: z.ZodNumber;
+        evidence: z.ZodString;
+    }, z.core.$strict>>;
     summary: z.ZodString;
 }, z.core.$strict>;
 export type ReviewFollowUp = z.infer<typeof FollowUp>;
@@ -37,7 +45,7 @@ export declare const MAX_FOLLOW_UPS = 2;
  */
 export declare const FINALIZATION_CEILING_MINUTES = 5;
 export declare const ReviewRecord: z.ZodObject<{
-    version: z.ZodLiteral<1>;
+    version: z.ZodUnion<readonly [z.ZodLiteral<1>, z.ZodLiteral<2>]>;
     base: z.ZodString;
     reviewed: z.ZodString;
     covered: z.ZodString;
@@ -49,6 +57,14 @@ export declare const ReviewRecord: z.ZodObject<{
         high: "high";
     }>;
     elapsedMinutes: z.ZodNumber;
+    timing: z.ZodOptional<z.ZodObject<{
+        source: z.ZodEnum<{
+            runner: "runner";
+            clock: "clock";
+        }>;
+        durationMs: z.ZodNumber;
+        evidence: z.ZodString;
+    }, z.core.$strict>>;
     extensionReason: z.ZodOptional<z.ZodString>;
     outcome: z.ZodEnum<{
         blocked: "blocked";
@@ -113,6 +129,14 @@ export declare const ReviewRecord: z.ZodObject<{
             cleared: "cleared";
         }>;
         elapsedMinutes: z.ZodNumber;
+        timing: z.ZodOptional<z.ZodObject<{
+            source: z.ZodEnum<{
+                runner: "runner";
+                clock: "clock";
+            }>;
+            durationMs: z.ZodNumber;
+            evidence: z.ZodString;
+        }, z.core.$strict>>;
         summary: z.ZodString;
     }, z.core.$strict>>;
     followUps: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -136,6 +160,14 @@ export declare const ReviewRecord: z.ZodObject<{
             cleared: "cleared";
         }>;
         elapsedMinutes: z.ZodNumber;
+        timing: z.ZodOptional<z.ZodObject<{
+            source: z.ZodEnum<{
+                runner: "runner";
+                clock: "clock";
+            }>;
+            durationMs: z.ZodNumber;
+            evidence: z.ZodString;
+        }, z.core.$strict>>;
         summary: z.ZodString;
     }, z.core.$strict>>>;
 }, z.core.$strict>;
