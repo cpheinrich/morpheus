@@ -189,7 +189,8 @@ export async function prepareReview(productDir, root, base) {
                 commands: await projectCommands(root),
             }));
         console.log("\nWorklog record template (replace placeholders; never mark an unfinished review complete):");
-        console.log("```morpheus-review\n" + JSON.stringify({ version: 1, base: fork, reviewed: head, covered: head, authorSession: "AUTHOR_SESSION", reviewerSession: "RUNNER_ISSUED_REVIEWER_SESSION_ID", risk: "normal", elapsedMinutes: 0, outcome: "incomplete", summary: "Replace with the actual review summary and repeat it as a paragraph.", findings: [] }, null, 2) + "\n```");
+        console.log("```morpheus-review\n" + JSON.stringify({ version: 2, base: fork, reviewed: head, covered: head, authorSession: "AUTHOR_SESSION", reviewerSession: "RUNNER_ISSUED_REVIEWER_SESSION_ID", risk: "normal", elapsedMinutes: 0, timing: { source: "runner", durationMs: 0, evidence: "Replace with this turn's runner result reference and measured duration." }, outcome: "incomplete", summary: "Replace with the actual review summary and repeat it as a paragraph.", findings: [] }, null, 2) + "\n```");
+        console.log("The author replaces timing.durationMs from measured runner metadata or actual clock readings, records its source/evidence, and computes elapsedMinutes = timing.durationMs / 60000 without rounding. Zero is a placeholder, not a measurement. Version 2 requires timing on every turn; never use the reviewer's workload estimate.");
         // Records are rejected by the same schema and checker whether that happens here or in CI, and
         // a round trip through CI to learn a field name is the expensive way to find out.
         console.log("\nValidate the record before pushing — this runs the schema and checker CI runs:");

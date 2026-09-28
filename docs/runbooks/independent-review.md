@@ -52,6 +52,37 @@ validates reported durations; it cannot interrupt a provider's session or measur
 No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
 budget exhaustion or missing evidence, record incomplete and keep the PR open.
 
+### Measure each turn; do not ask the reviewer to estimate it
+
+The author owns elapsed-time measurement. Prefer the runner's duration for that invocation
+(`total_duration_ms`, `durationMs`, or equivalent). If unavailable, capture actual clock readings
+at invocation start and completion. Include tool execution and waits within the turn; exclude the
+author's work between turns. A transcript can supply explicit turn boundaries, but a long gap
+between messages is not evidence that the reviewer stopped working. Never segment by an idle-gap
+heuristic, estimate from work volume, or delay to meet a floor.
+
+`review prepare` emits version 2 records. Each initial and follow-up turn carries:
+
+```json
+{
+  "elapsedMinutes": 5.21025,
+  "timing": {
+    "source": "runner",
+    "durationMs": 312615,
+    "evidence": "Runner result for reviewer session and turn ID: total_duration_ms=312615."
+  }
+}
+```
+
+Populate the real session/turn reference in `evidence`; use `source: "clock"` with the observed
+start/end readings for clock measurement. Compute `elapsedMinutes = durationMs / 60000` without
+rounding. The checker requires timing for every version 2 turn and rejects a mismatched conversion.
+The source reference is an auditable attestation; CI does not fetch private provider transcripts.
+Historical version 1 records remain valid; any timing attached to them is checked too. Do not
+rewrite old outcomes from an estimated duration or manufacture a measurement to clear a gate.
+Without a reliable measurement, record incomplete and obtain the evidence. Existing ceilings,
+the initial floor, review outcomes and escalation rules are unchanged.
+
 The author responds to every finding. For minor-only findings, one fix/response round is enough.
 For any substantive finding, resume the original reviewer to assess responses, fixes and their
 regressions, unless the reviewer cleared it conditionally (below). Preserve original severity.
@@ -242,6 +273,9 @@ Put a visible line in the PR body (not inside a comment or code fence):
 Also link the worklog and summarize the outcome. Once complete, apply `agent-reviewed` (create the
 repository label if absent), commit the worklog and push. Run local conventions with the actual PR
 body and `MORPHEUS_PR_LABELS=agent-reviewed`. Never enable auto-merge until review and CI are complete.
+When the label is absent, conventions reports that the PR is not marked merge-ready and that
+record validation was not run. This also covers an author deliberately removing the label while
+a correction or follow-up is pending; the missing label alone does not establish an incomplete record.
 This is an auditable attestation, not a security boundary against an author fabricating evidence.
 
 ## Existing projects

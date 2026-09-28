@@ -893,6 +893,14 @@ remediation therefore keeps the small domain-specific argument contract and uses
 Node filesystem primitives for the existing shared helper contracts. A grammar change
 should be deliberate user-facing work, not a side effect of cleanup.
 
+**Firebase release controls run in caller-owned composite actions** — 2026-09-10.
+Extract the concrete Evo PR205 source/readiness policy into a shared action; keep project IDs,
+compatibility choices, protected environments and the complete publication lock in the consumer.
+Use official firebase-tools 15.29.0 for rules deploys (published 2026-09-02, 70 CLI dependencies)
+and google-github-actions/auth for scoped CI authentication. Node built-ins implement only the
+Morpheus-specific immutable-source, readback and receipt contract, adding no runtime package.
+The shared action can merge without activating Evo's held proposal or provisioning credentials.
+
 **Review ownership must be explicit at the point of work** — 2026-09-11. The authoring agent
 launches the isolated reviewer and owns responses, evidence, CI and merge. `review prepare`
 prints a packet; neither that command nor a PR-monitoring agent schedules review. Legacy GitHub
@@ -1081,3 +1089,12 @@ stop. There is deliberately no blanket documentation exemption — AGENTS/CLAUDE
 attestation, because a runbook can state a new rule and no pattern distinguishes that from prose.
 Reviewers should name related docs and generated counterparts in `condition.paths` so the backstop
 stays rare. No new dependency: this is schema and Git checks in the existing checker.
+
+**Independent-review elapsed time comes from measurement, not workload estimates** — 2026-09-28.
+Issue #281 showed estimates triggering budget failures despite short runner durations. The author
+captures per-turn runner metadata or real clock readings; the reviewer reports findings, not a
+guessed duration. New version 2 records carry source, integer milliseconds and evidence on every
+turn, with a checked conversion to elapsed minutes. Version 1 remains compatible for existing
+records. Floors, ceilings, review outcomes and escalation policy are unchanged. Runner evidence
+is auditable provenance, not a claim that CI can authenticate a private transcript. Existing Zod
+and arithmetic suffice for this Morpheus-specific record contract; no dependency is introduced.
