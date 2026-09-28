@@ -5,6 +5,16 @@ declare const FollowUp: z.ZodObject<{
     commit: z.ZodString;
     base: z.ZodOptional<z.ZodString>;
     scopeReason: z.ZodOptional<z.ZodString>;
+    humanAuthorization: z.ZodOptional<z.ZodObject<{
+        approvedBy: z.ZodString;
+        approvedAt: z.ZodISODateTime;
+        reason: z.ZodString;
+    }, z.core.$strict>>;
+    finalization: z.ZodOptional<z.ZodObject<{
+        paths: z.ZodArray<z.ZodString>;
+        evidence: z.ZodString;
+        attestation: z.ZodString;
+    }, z.core.$strict>>;
     outcome: z.ZodEnum<{
         blocked: "blocked";
         incomplete: "incomplete";
@@ -16,10 +26,16 @@ declare const FollowUp: z.ZodObject<{
 export type ReviewFollowUp = z.infer<typeof FollowUp>;
 /**
  * Reviewer turns after the initial review. Three turns in total is the cap that stops an
- * author and a reviewer trading fixes and findings indefinitely: a third turn exists only
- * to resolve what the second left blocked, and nothing after it is automatic.
+ * author and a reviewer trading fixes and findings indefinitely: a turn is spent to resolve
+ * what the previous one left blocked, or on a late correction after a clearance that names
+ * its scope decision, and nothing after the last one is automatic.
  */
 export declare const MAX_FOLLOW_UPS = 2;
+/**
+ * A finalization turn is short by construction: it re-reads a documentation paragraph or the
+ * record, not a change. Anything that needs longer than this is a review, and spends a turn.
+ */
+export declare const FINALIZATION_CEILING_MINUTES = 5;
 export declare const ReviewRecord: z.ZodObject<{
     version: z.ZodLiteral<1>;
     base: z.ZodString;
@@ -69,12 +85,28 @@ export declare const ReviewRecord: z.ZodObject<{
             disputed: "disputed";
         }>;
         response: z.ZodString;
+        roadmap: z.ZodOptional<z.ZodString>;
+        condition: z.ZodOptional<z.ZodObject<{
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+        }, z.core.$strict>>;
+        conditionMet: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>;
     followUp: z.ZodOptional<z.ZodObject<{
         reviewerSession: z.ZodString;
         commit: z.ZodString;
         base: z.ZodOptional<z.ZodString>;
         scopeReason: z.ZodOptional<z.ZodString>;
+        humanAuthorization: z.ZodOptional<z.ZodObject<{
+            approvedBy: z.ZodString;
+            approvedAt: z.ZodISODateTime;
+            reason: z.ZodString;
+        }, z.core.$strict>>;
+        finalization: z.ZodOptional<z.ZodObject<{
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+            attestation: z.ZodString;
+        }, z.core.$strict>>;
         outcome: z.ZodEnum<{
             blocked: "blocked";
             incomplete: "incomplete";
@@ -88,6 +120,16 @@ export declare const ReviewRecord: z.ZodObject<{
         commit: z.ZodString;
         base: z.ZodOptional<z.ZodString>;
         scopeReason: z.ZodOptional<z.ZodString>;
+        humanAuthorization: z.ZodOptional<z.ZodObject<{
+            approvedBy: z.ZodString;
+            approvedAt: z.ZodISODateTime;
+            reason: z.ZodString;
+        }, z.core.$strict>>;
+        finalization: z.ZodOptional<z.ZodObject<{
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+            attestation: z.ZodString;
+        }, z.core.$strict>>;
         outcome: z.ZodEnum<{
             blocked: "blocked";
             incomplete: "incomplete";
@@ -102,6 +144,20 @@ export type LocalReviewRecord = z.infer<typeof ReviewRecord>;
 export declare function followUpTurns(record: LocalReviewRecord): ReviewFollowUp[];
 /** The trunk base the reviewer's clearance covered: the latest recorded integration, else the original. */
 export declare function coveredBase(record: LocalReviewRecord): string;
+/** Findings the reviewer pre-cleared and the author fixed under the stated condition. */
+export declare function conditionallyCleared(record: LocalReviewRecord): string[];
+/**
+ * The paths a finalization turn may cover: the review record, paths the reviewer already
+ * conditioned, and explanatory Markdown it attests to. Returns the reasons it may not, so the
+ * refusal names the offending path rather than the rule.
+ */
+export declare function finalizationProblems(record: LocalReviewRecord, turn: ReviewFollowUp, worklog: string): string[];
+/** Initial-review ceilings in minutes; a follow-up gets half. Small was 5 until the data showed only creative accounting. */
+export declare const REVIEW_BUDGET_MINUTES: {
+    readonly small: 10;
+    readonly normal: 15;
+    readonly high: 30;
+};
 export declare function reviewRequired(config: unknown): boolean;
 export declare function git(root: string, args: string[]): string;
 export declare function parseReviewRecord(markdown: string): LocalReviewRecord;

@@ -37,6 +37,17 @@ repairs missed events. An approved head behind a strict protected base is advanc
 head-SHA-guarded update endpoint after auto-merge is enabled; its new CI run feeds back through the
 same fast path until the queue converges.
 
+**Security dependency remediation supersedes Dependabot PRs with a deterministic GitHub App** —
+2026-09-25. `morpheus-security` accepts every active OSV finding plus open GitHub reviewed alerts,
+deduplicated by package and advisory aliases. It opens one dependency per PR, serializes each
+lockfile, checks official-registry provenance and integrity, rescans the candidate, and enables
+auto-merge only behind all repository-required checks. It uses no model or OpenAI credential.
+The exact marked dependency-only App PR has a narrow authoring/review waiver. Dependabot alerts
+remain an input, but its automatic security-fix PRs are disabled in adopted repositories. Routine
+non-security version maintenance remains a separate policy lane. `MAL-*` findings also upsert an
+issue in the affected repository, held open for safe exposure-assessment, containment, rotation,
+and clean-remediation status; sensitive details stay out of public issues.
+
 **Vercel over Firebase App Hosting** — decided on the review loop, not hosting quality. Vercel
 Comments anchor feedback to page elements and sync into the PR, which is the mechanism that
 makes human review work. Revisit if Firebase ships an equivalent.
@@ -956,3 +967,125 @@ release host, so this fix does not change how Xcode discovers identities.
 Considered filelock 4.0.1 (published 2026-09-19, no required runtime dependencies). This small
 macOS-only exec boundary uses Python's existing fcntl/os primitives instead of adding a package
 installation to the credentialed release path. It adds no package dependency.
+
+**Late corrections after clearance spend a review turn** — 2026-09-22. Chris's call, closing
+#247 and the late-CI half of the 2026-09-16 inbox question. When full CI shows a fix is needed
+after the reviewer already cleared the code, the author commits the fix and spends one of the
+remaining follow-up turns on the same reviewer, naming the scope decision in that turn's
+`scopeReason`; the author makes that decision within the task's budget, and the record shows it.
+This is the explicit scope decision the runbook already required, given a shape a validator can
+check. The three-turn cap, the follow-up ceiling, the same-reviewer rule and the final
+cleared-on-covered rule are unchanged: a clean review has two such slots, one that used a fix
+follow-up has one, and a correction needed after the last turn leaves the PR open for the human,
+as today. A turn after a `blocked` turn still needs no reason; an `incomplete` turn is still never
+followed. The first follow-up after an initial review with no substantive findings is the same
+shape. Every Morpheus record with that shape already carries a reason (those turns were trunk
+integrations); six merged Evo and Lakina records do not, but merged records are never
+re-validated and no open `agent-reviewed` PR has the shape, so nothing in flight is refused.
+Merging trunk still spends no turn (2026-09-18).
+
+**Review evidence has floors, real session ids, tracked deferrals and conditional clearance** —
+2026-09-22. Chris's call after the first two-week survey of Lakina and Evo records. The turn cap
+and the trunk-merge rule stay as they are; the leaks were on the evidence side. An initial review
+under one minute at normal or high risk is refused (small keeps no floor). `reviewerSession` must
+be the runner-issued id and may appear in one worklog only, because reviewers were being named by
+the author and reused. The small ceiling is 10 minutes, not 5: every small review that needed
+execution overran it, and two worklogs picked between elapsed figures by which side of 5 they
+landed on. A finding left deferred or open names a roadmap item that must exist, incidental ones
+included, because those are the ones that rotted. Conditional clearance is adopted from #241 with
+mechanical conditions only: the reviewer sets paths and evidence, the author records compliance,
+and `check pr` verifies the fix stayed inside the paths; a condition cannot be added or widened by
+the author.
+
+
+**Each iOS CI test job owns disposable simulator devices** — 2026-09-25. The reusable
+workflow resolves the caller’s destination to type/runtime and creates a fresh uniquely
+named device. A JavaScript action’s unconditional post hook removes it and its exact
+XCTest worker clones. Native simctl and Node built-ins cover this Apple-specific lifecycle
+without an SDK/dependency or global shutdown that could interrupt another job.
+
+**Persistent iOS runners clone one warmed, dedicated template** — 2026-09-26. Creating a pristine
+device per job nearly doubled unchanged Evo UI case time after the ownership fix. A self-hosted
+runner now keeps exactly one deterministic Morpheus template, completes its first boot under a
+per-user BSD kernel lock, leaves it shut down, and runs every test on a uniquely owned
+clone. The existing post hook still deletes the job clone and XCTest workers. GitHub-hosted
+runners keep pristine creation because their virtual machines cannot reuse the template. The
+template never receives app data, so cloning it does not copy a user's simulator state.
+Considered `proper-lockfile` 4.1.2 and `lockfile` 1.0.4; both were last published in 2022 and add
+dependencies. The action uses macOS's built-in `lockf -k`, whose process-owned lock releases on
+exit without deleting a successor's lock file or inferring liveness from a timestamp.
+
+
+## 2026-09-25 — Personal Codex/Claude bridge is an opt-in package
+
+`plugins/codex-claude/` stays outside morpheus-kit and project scaffolding. Chris wants to use
+it across unrelated projects and machines without changing other contributors' defaults.
+Install a self-contained personal copy explicitly; routing defaults off. Codex remains the
+persistent chat and coordinator, Claude CLI owns its native saved sessions, and the worker
+runs on the same execution host/worktree. Native authentication is never copied between hosts.
+Full-access permissions may map to Claude; unsupported confinement fails closed. A guardian
+lease bounds orphan lifetime, output and run time; saved sessions do not require idle workers.
+
+Adopted @modelcontextprotocol/sdk 1.30.1 (maintained September 2026, 17 direct dependencies)
+for protocol compatibility, ws 8.21.3 (maintained August 2026, zero direct dependencies) for
+the local app-server socket, and the repository's Zod version. Considered proper-lockfile
+4.1.2 (last modified 2022, three dependencies); a small atomic startup-directory lock and
+single host service suffice here. Considered smol-toml 1.9.0 for memory settings; used the
+existing app-server config/read API instead, so no TOML parser dependency was added.
+A version-pinned read-only adapter covers desktop turn metadata and per-chat memory mode
+that the managed daemon's public read response does not expose. Unknown versions fail
+closed. This compatibility surface must be reverified after Codex updates. Claude's CLI
+cannot atomically disable paid overage per invocation; account-level extra usage must be
+disabled for a hard subscription-only spend boundary. No API-key fallback is implemented.
+
+**Selected native tests retain complete execution evidence** — 2026-09-26. The reusable iOS
+workflow accepts optional explicit test identifiers and a caller-owned selection manifest and
+result validator. Defaults still run the whole scheme. Structured xcresult summaries and logs
+are uploaded even after success so retries are observable; validator failure blocks the job.
+Nightly forwards the validator but never narrows the test selection. This extends existing
+workflow hooks using Bash/Xcode's native JSON export, without a new parsing dependency.
+
+## Portable credentials companions — 2026-09-26
+
+Lakina's pilot becomes a Morpheus command because Evo and Darwin now need the same discovery
+contract. Track remote URL and relative path, default to one ignored clone per consuming project,
+and allow multiple projects to reference the same private remote. A shared physical checkout is
+optional through a device override/symlink. Invoke its wrapper directly; do not install global
+launchers during setup. GSM remains the sensitive-secret store; access to a project and its
+companion is deliberately separate. Scaffolding remains offline, remote creation explicit.
+
+Considered dotenv (18.0.4, published metadata checked 2026-09-26, no runtime dependencies) for
+loading. Kept existing companion wrappers and native process/Git orchestration: dotenv does not
+solve discovery or checkout migration and would change existing Bash file-reference semantics.
+New stores use a small Node/Bash wrapper, with no extra dependency or generic parsing layer.
+
+## Single-job iOS relevance bypass — 2026-09-26
+
+Callers can provide Git pathspecs to the shared native job. A verified PR merge with no matched
+changes skips native work while preserving one required check; manual/nightly and default callers
+are unchanged. Uncertain comparison fails closed. Considered picomatch 4.0.7 (registry modified
+2026-08-24, no runtime dependencies); Git already provides the exact diff/pathspec semantics needed,
+so use it without a new dependency or custom glob matcher. The scope step still needs a runner;
+it does not promise to bypass the host's job-start lock or its queue.
+
+
+**Claude routing reserves 30% by default** — 2026-09-26. Chris raised the optional
+bridge's default from 20% to 30% to leave coordination headroom while other Codex chats
+consume the shared allowance. Automatic routing still delegates strictly below the
+threshold and remains opt-in. Existing saved thresholds are preserved.
+
+**One automatic finalization-only review turn per pull request** — 2026-09-27. Chris's call after
+Evo #291 stalled on a paragraph: its reviewer's condition named the source paths, the author's fix
+commit also carried the runbook prose explaining that fix, and no honest route existed — the author
+cannot widen a condition, the commit was pushed so splitting it needed a force-push, and after
+`covered` only the worklog may change. The cap stays at three substantive turns; beyond it, and
+after any authorized extra turn, the same reviewer may spend one five-minute turn that only closes
+out work it already cleared, recorded as `finalization` with attested paths, evidence and scope. It
+must be last and cleared, cannot resolve a substantive finding, and its attested paths are verified
+against the commits it covers, so it cannot approve implementation. Raising the cap to four was
+rejected: that buys a fourth substantive round for every PR, which is the loop the cap exists to
+stop. There is deliberately no blanket documentation exemption — AGENTS/CLAUDE/morpheus.json and
+`.github`, `.ci`, `.morpheus` are refused outright, and other Markdown needs the reviewer's
+attestation, because a runbook can state a new rule and no pattern distinguishes that from prose.
+Reviewers should name related docs and generated counterparts in `condition.paths` so the backstop
+stays rare. No new dependency: this is schema and Git checks in the existing checker.

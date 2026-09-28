@@ -24,8 +24,10 @@ The canonical contract ships in `src/review/local-prompt.ts`; the old `review pr
 ## Policy
 
 `review.required` in `morpheus.json` defaults to true, including existing manifests. False is a
-visible project opt-out. Records/board-only changes and exact dependency-only Dependabot PRs keep
-their existing exemptions. This gate covers all other authors, not just particular model names.
+visible project opt-out. Records/board-only changes, exact dependency-only Dependabot PRs, and
+marked dependency-only PRs from the exact `morpheus-security[bot]` App keep narrow exemptions.
+The security-App exemption waives human authoring and independent review only; branch-protection
+checks remain mandatory. This gate covers all other authors, not just particular model names.
 The legacy `review-waived:` line does not waive independent review; `check pr` reports it as
 waiving legacy delivery only and says so in the same line.
 
@@ -36,29 +38,114 @@ the PR. Blocking findings need a concrete failure scenario and a causal connecti
 
 | Risk | Initial ceiling | Follow-up ceiling |
 |---|---:|---:|
-| Small, low consequence | 5 minutes | 2.5 minutes |
+| Small, low consequence | 10 minutes | 5 minutes |
 | Normal behavior change | 15 minutes | 7.5 minutes |
 | High: authorization, billing, destructive operations, shared controls | 30 minutes | 15 minutes |
 
 These are ceilings, not targets. One initial extension of at most 50% is allowed with a recorded
-reason. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
+reason. Small was 5 minutes until the first two weeks showed that every small review needing
+execution rather than reading overran it, and two worklogs chose between two elapsed figures by
+which side of the ceiling each landed on; a ceiling that only produces accounting is not a ceiling.
+There is also a floor: an initial review under one minute at normal or high risk is refused. The
+PR that adopted this policy on one project was "reviewed" in 42 seconds. Small risk has no floor. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
 validates reported durations; it cannot interrupt a provider's session or measure its billing.
 No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
 budget exhaustion or missing evidence, record incomplete and keep the PR open.
 
 The author responds to every finding. For minor-only findings, one fix/response round is enough.
 For any substantive finding, resume the original reviewer to assess responses, fixes and their
-regressions. Preserve original severity. Reviewer retractions may clear a disputed finding, but
-author disagreement alone cannot.
+regressions, unless the reviewer cleared it conditionally (below). Preserve original severity.
+Reviewer retractions may clear a disputed finding, but author disagreement alone cannot.
+
+**A deferral is a ticket, not a sentence.** A finding left `deferred` or `open` names the roadmap
+item that tracks it in `roadmap`, and `check pr` requires that item to exist on the branch. File
+it with `pm new` before recording the deferral. In the first two weeks a cron with no year field
+was deferred on one day and still firing a week later, an "operator's Owner login stays active"
+finding was deferred to an inbox note, and one gap was deferred three separate times; none had
+anywhere to be picked up from. This applies to incidental findings too, because those are the
+ones that rot.
+
+**Conditional clearance.** A reviewer may pre-clear a finding instead of blocking on it: "fix
+TE-7 within these paths, run this evidence, and it is clear." The reviewer, never the author,
+sets the finding's `condition` with exact `paths` and the `evidence` to run. The author fixes it
+within those paths, records `conditionMet` with what was run and its result, and marks it
+`fixed`. A substantive finding cleared this way needs no follow-up turn, and a final follow-up
+may clear on condition with `covered` moving to the fix commit. `check pr` verifies that every
+commit between the reviewer's commit and `covered` touches only condition paths and the worklog;
+minor fixes belong before the reviewer's final turn, and join the allowed set only when there is
+no follow-up at all. A condition on a source file in a repository that commits generated output
+must name the generated counterparts too, or the regenerated files fall outside it. Name the
+documentation that explains the fix in the same way, for the same reason. A condition cannot be added, widened or disputed into clearance by the author;
+an unconditional substantive finding still needs its turn. This is Alex's proposal from #241: a
+two-line fix should not need a human or a fresh session re-deriving the whole context.
 
 **A review is capped at three turns**: the initial review and at most two same-reviewer
-follow-ups, each at the follow-up ceiling. The third turn exists only to resolve what the second
-left `blocked`, after the author has addressed those concrete concerns; a `cleared` follow-up ends
-the review, and an `incomplete` one exhausted its budget and escalates. The cap is what stops an
-author and a reviewer trading fixes and findings indefinitely, at a session's cost per turn.
-Unresolved substantive concerns after the last turn mean blocked: remove `agent-reviewed`, disable
-auto-merge, and flag the remaining disagreement for the human. No automatic fourth turn or
-replacement reviewer to obtain approval.
+follow-ups, each at the follow-up ceiling. A follow-up is spent one of two ways. It resolves what
+the previous turn left `blocked` (or the substantive findings of the initial review), after the
+author has addressed those concrete concerns. Or it is a **late correction after a clearance**:
+when full CI, or a test the reviewer did not run, shows a fix is needed after the initial review
+or a follow-up already cleared the code, the author commits the fix and spends a remaining turn
+on the same reviewer, naming the scope decision in that turn's `scopeReason` ("late CI
+correction: two legacy UI tests assumed the old layout"). A clean initial review therefore has two
+such slots and a review that already used a fix follow-up has one; the author makes that scope
+decision within the task's budget, and the record shows it. Otherwise a `cleared` turn ends the
+review, and an `incomplete` one exhausted its budget and escalates; nothing follows it. The cap is
+what stops an author and a reviewer trading fixes and findings indefinitely, at a session's cost
+per turn. Unresolved substantive concerns after the last turn, or a correction needed once the
+turns are spent, mean blocked: remove `agent-reviewed`, disable auto-merge, and flag the remaining
+work for the human. No automatic fourth turn or replacement reviewer to obtain approval.
+
+**One automatic finalization-only turn per pull request.** Finishing an approved change should
+not cost a human decision. Beyond the cap — and after an authorized extra turn, if there was one —
+the same reviewer may spend one short turn whose only job is to close out work it already cleared:
+the explanatory prose describing that work, the review record itself, or the completion of a
+condition it already set. Add `finalization: { paths, evidence, attestation }` to that
+`followUps` entry, alongside a `scopeReason` naming what it finalized. The reviewer writes it;
+an author cannot certify their own work by filling it in, and `authorSession` may not be the
+reviewer.
+
+It is bounded on every side, because an automatic turn that could approve implementation would
+simply be a fourth review with no decision behind it:
+
+- **One per pull request.** A second needs `humanAuthorization` as an ordinary substantive turn.
+- **Five minutes.** Anything that takes longer is a review and spends a turn.
+- **Last word.** Nothing follows it automatically.
+- **`cleared` only, and it follows a clearance.** A reviewer with a remaining concern records
+  `blocked` or `incomplete`, and the pull request stays blocked — including when the turn before
+  the finalization turn is the one that blocked. It cannot resolve a substantive finding: the
+  preceding ordinary turn must have cleared it.
+- **Scope, checked against the diff.** `check pr` verifies the commits the turn covers touch only
+  the review worklog, paths whose condition the author actually **satisfied**, and the explanatory
+  Markdown its `paths` attest. A condition left disputed or unmet was never discharged, so its
+  paths are ordinary unreviewed source here. Attesting a documentation file does not clear an
+  implementation change that rode along in the same commit.
+- **No blanket documentation exemption.** `AGENTS.md`, `CLAUDE.md`, `morpheus.json` and anything
+  under `.github/`, `.ci/` or `.morpheus/` are policy a project is operated by; a change there is
+  substantive however it is described, and is refused outright in a finalization scope. Other
+  Markdown — a runbook paragraph, an architecture note — is admitted only on the reviewer's
+  attestation that it restates behaviour already reviewed. A runbook that states a *new* rule is
+  normative too, and the reviewer is the one who has to say which it is. Matching is
+  case-insensitive and applies at any depth, so `agents.md` and `apps/web/.github/...` are refused
+  as well. One thing no pattern can catch: if a repository's `AGENTS.md` is a symlink to an
+  ordinary `.md`, the real policy text sits at a non-normative path, and the reviewer's
+  attestation is the only guard.
+
+This is the narrow gap Evo #291 fell into: a conditioned fix was correct and cleared, and the one
+commit carrying it also carried the paragraph explaining it. The author could not widen the
+reviewer's condition, the commit was pushed so it could not be split, and after `covered` only the
+worklog may change — so a correct change sat blocked on a paragraph. **Prevention is cheaper than
+the exception: a reviewer setting a condition should name the related documentation and generated
+counterparts in `condition.paths` from the start.** The finalization turn is the backstop, not the
+plan.
+
+An explicit human decision may authorize one additional same-reviewer turn. Add
+`humanAuthorization: { approvedBy, approvedAt, reason }` to that extra `followUps` entry,
+using an ISO timestamp and a reason identifying the human's decision and scope. Every
+turn beyond the default cap needs its own authorization; preserve all earlier turns.
+This attestation is human-auditable, not cryptographic proof. Never infer approval from
+a merge request or manufacture it. Clearance, coverage, budget and CI checks still apply.
+The parser accepts at most 20 recorded follow-ups as an input-size bound, not authorization.
+
 
 ## Record and publish
 
@@ -68,11 +155,29 @@ Repeat its `summary` as a normal paragraph. Record even a clean review. The para
 what was found, what the author did, any disagreement, the second-pass outcome, and limitations.
 The JSON retains finding details so the short paragraph does not erase the audit history.
 
-Each finding has `id`, `severity` (`minor`, `substantive`, `incidental`), `description`, repository-relative
-`paths`, `disposition` (`fixed`, `disputed`, `deferred`, `open`) and a substantive `response`.
+Each finding has `id` (at least three characters), `severity` (`minor`, `substantive`, `incidental`),
+`description`, repository-relative `paths`, `disposition` (`fixed`, `disputed`, `deferred`, `open`)
+and a substantive `response`. A `deferred` or `open` finding also carries `roadmap`, the id of the
+item tracking it. A reviewer-set `condition` (`paths`, `evidence`) with the author's `conditionMet`
+records a conditional clearance. `reviewerSession` is the id the runner issued for the reviewer
+session: the subagent id a tool result reports, or a thread id, optionally behind a provider
+prefix such as `claude-code-subagent/`. It is never a label the author composes, and `check pr`
+refuses an id that already appears in another worklog on the branch, because a reviewer session
+reviews one task.
+Codex collaboration runners may instead issue a canonical task path such as
+`/root/health_sync_review` or `/root/author/reviewer`. Record that exact returned path,
+and put the globally scoped runner-issued parent thread/session ID in `authorSession`.
+The pair identifies the reviewer: another root session may issue the same task path,
+but the same path within the same parent session cannot review another task. Follow-ups
+retain the exact path and inherit the record's parent provenance. A task name supplied
+to a spawn request is not evidence; use the canonical path the runner actually returns.
+These fields attest provenance; their syntax cannot prove a session was launched.
 For follow-up turns, add `followUps`, an array of at most two entries in order, each with the
 same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
-and `summary`. Every entry but the last must be `blocked`; the last must be `cleared`. A single
+and `summary`. Every entry but the last must be `blocked`, or `cleared` when the entry after it
+carries a `scopeReason` for the late correction it covers; the last must be `cleared`. A
+follow-up that comes directly after an initial review with no substantive findings is that same
+shape and needs a `scopeReason` too. An `incomplete` entry cannot be followed. A single
 `followUp` object, the shape from the two-turn contract, still validates as one turn. Each turn's
 `commit` must descend from the previous one. `elapsedMinutes` at the top level measures the
 initial review only; each follow-up's is checked against the follow-up ceiling on its own.
@@ -85,8 +190,13 @@ This is path-level verification: the reviewer/author remain responsible for ensu
 are actually the stated fixes. Unrelated changes invalidate coverage and require an explicit scope
 and budget decision, not an automatic restart.
 
-After `covered`, only this worklog may change, except for trunk merges as described below. This
-avoids the hash loop from committing the review record itself. Other edits make the record stale.
+After `covered`, only this worklog may change, except for trunk merges as described below and a
+late correction that spends a remaining turn: commit the fix, have the same reviewer clear it as
+the next `followUps` entry with its `scopeReason`, and move `covered` to that commit. The commits
+between the previous clearance and that turn are covered by the reviewer's clearance of it, the
+same way the `reviewed`..`covered` range is covered by any follow-up; a hand-resolved trunk merge
+already named in `trunkIntegrations` there stays named and valid. This avoids the hash loop
+from committing the review record itself. Other edits make the record stale.
 Reconcile the base before review. If trunk advances during the review, preserve the initial
 `base`/`reviewed`; a follow-up that inspected the integration records that turn's `base` as the
 new merge base and its `scopeReason`. The original base must precede the new base, which must
