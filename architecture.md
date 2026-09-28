@@ -3069,10 +3069,10 @@ repository state, so a pathspec or delimiter that drifts in either is caught the
 a consumer's pull request. The base a consumer compares against stays the consumer's: CI asks
 about a commit and its first parent, a developer asks what a branch changed since the trunk, and
 only the second has a merge base to speak of. The checkout retains only the commit and its first
-parent, which is enough to cover a pull
-request's synthetic merge commit and a push to `main` without downloading full history. Existing
-Swift is adopted incrementally: enabling the gate does not create a repository-wide formatting
-rewrite, while any Swift file being changed must leave the commit fully formatted.
+parent, which is enough to cover a pull request's synthetic merge commit and a push to `main`
+without downloading full history. Existing Swift is adopted incrementally: enabling the gate does
+not create a repository-wide formatting rewrite, while any Swift file being changed must leave the
+commit fully formatted.
 The caller supplies a shared Xcode scheme; that scheme or its optional test plan remains the source
 of truth for which unit and UI targets run. The workflow refuses an absent or uncommitted
 `Package.resolved`, passes `-onlyUsePackageVersionsFromResolvedFile` to resolution and every build

@@ -78,6 +78,33 @@ WORKING_DIRECTORY="${WORKING_DIRECTORY%/}"
 # `apps/ios/Top.swift` does not match and is silently skipped.
 PATHSPEC=":(glob)${WORKING_DIRECTORY}/**/*.swift"
 
+# Only one of the sources below can name a path that is not on disk, so only it
+# is filtered.
+#
+# Asking what a branch changed compares two commits, so a file the branch added
+# and the developer has since deleted or renamed uncommitted survives that
+# comparison — and handing swift-format a path that does not exist fails the
+# local check for a state CI would call clean, the inverse of the bug this
+# script was written to remove.
+#
+# The commit-oriented answer is never filtered, whatever else was asked. Its
+# paths come from the commit being linted, so the filter would almost always do
+# nothing — and in the one case it would not, a sparse checkout whose cone omits
+# a changed Swift file, dropping it silently turns a missing-file error into a
+# clean run. A gate reporting nothing to do because it could not see the work is
+# the failure this repository keeps writing down.
+#
+# The worktree sources need no filter at all: `diff HEAD` names tracked files as
+# they currently are, and `ls-files --others` names files that exist by
+# definition.
+existing_only() {
+    while IFS= read -r -d "" path; do
+        if [[ -e "$path" ]]; then
+            printf '%s\0' "$path"
+        fi
+    done
+}
+
 emit() {
     if [[ -n "$BASE" ]]; then
         merge_base="$(git merge-base HEAD "$BASE" 2>/dev/null || true)"
@@ -89,7 +116,7 @@ emit() {
         # uncommitted edits in silently, leaving `--worktree` with nothing to
         # mean but "also untracked" — and a flag that does not control what it
         # says it controls is how a caller lints a set it did not expect.
-        git diff --name-only -z --diff-filter=ACMR "$merge_base" HEAD -- "$PATHSPEC"
+        git diff --name-only -z --diff-filter=ACMR "$merge_base" HEAD -- "$PATHSPEC" | existing_only
     elif git rev-parse --verify HEAD^1 >/dev/null 2>&1; then
         git diff-tree --no-commit-id --name-only --diff-filter=ACMR -r -z HEAD^1 HEAD -- "$PATHSPEC"
     else
@@ -105,27 +132,4 @@ emit() {
 # Deduplicated, because a file changed on the branch and still being edited
 # appears in two of the sources above — the normal state of the developer loop
 # this serves — and swift-format would report its every diagnostic twice.
-#
-# Then, for the modes that ask about a developer's tree, filtered to what is
-# actually on disk. Both of those compare against a commit, so a file the branch
-# added and the developer has since deleted or renamed uncommitted survives the
-# comparison — and handing swift-format a path that does not exist fails the
-# local check for a state CI calls clean, the inverse of the bug this script was
-# written to remove.
-#
-# Deliberately not applied to commit mode. There the paths come from the commit
-# being linted and are present in any ordinary checkout, so the filter would
-# almost always be a no-op — and in the one case it would not be, a sparse
-# checkout whose cone omits a changed Swift file, silently dropping it turns a
-# missing-file error into a clean run. A gate reporting nothing to do because it
-# could not see the work is the failure this repository keeps writing down.
-if [[ -n "$BASE" || "$INCLUDE_WORKTREE" == "true" ]]; then
-    emit | sort -zu | while IFS= read -r -d "" path; do
-        if [[ -e "$path" ]]; then
-            printf '%s\0' "$path"
-        fi
-    done
-else
-    emit | sort -zu
-fi
-
+emit | sort -zu
