@@ -15,9 +15,17 @@ describe("CLI argument compatibility", () => {
     expect(parseArgs([])).toEqual({ dir: "hq/product", base: "origin/main", check: false, dryRun: false,
       all: false, offline: false, full: false, json: false, dispatch: false, print: false,
       openBrowser: true, provision: true, waitlist: true, hq: true, worktree: false, nul: false,
+      baseGiven: false,
       positional: [], authors: [], isbns: [] });
     expect(parseArgs(["--dir"])).toMatchObject({ dir: "hq/product" });
     expect(parseArgs(["--base", "topic", "--base"])).toMatchObject({ base: "topic" });
+    // `--base` carries a default for the roadmap commands, so "typed" has to be
+    // distinguishable from "defaulted": `ios changed-swift` asks CI's question
+    // when it was not typed, and would otherwise impose origin/main on a
+    // repository whose trunk is named something else.
+    expect(parseArgs([])).toMatchObject({ base: "origin/main", baseGiven: false });
+    expect(parseArgs(["--base", "topic"])).toMatchObject({ base: "topic", baseGiven: true });
+    expect(parseArgs(["--base"])).toMatchObject({ base: "origin/main", baseGiven: false });
     expect(parseArgs(["--issue"])).toMatchObject({ issue: "" });
     expect(parseArgs(["--author", "A", "--author", "B", "--isbn", "1", "--isbn", "2"])).toMatchObject({ authors: ["A", "B"], isbns: ["1", "2"] });
     expect(parseArgs(["--isbn", "", "tail"])).toMatchObject({ isbns: [], positional: ["", "tail"] });

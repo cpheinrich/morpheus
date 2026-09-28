@@ -57,7 +57,11 @@ async function dispatchIos({ flags, command, rest }) {
         }
         return changedSwiftRun({
             workingDirectory,
-            base: flags.base,
+            // Only when typed. `--base` carries `origin/main` by default for the
+            // roadmap commands, and passing that on would make the commit-oriented
+            // mode — the one CI uses — unreachable, and would fail outright in a
+            // repository whose trunk is not called that or which has no remote.
+            base: flags.baseGiven ? flags.base : undefined,
             worktree: flags.worktree,
             nul: flags.nul,
         });

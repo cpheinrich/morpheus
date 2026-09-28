@@ -3064,7 +3064,9 @@ the `swift-changed-files` composite action, shipped in the package, and exposed 
 `morpheus ios changed-swift` — one definition, because the first consumer that reimplemented it for
 a local pre-check drifted inside a single commit, omitting Swift files directly under the working
 directory and dropping filenames outside ASCII, and a local pass that CI contradicts is worse than
-no local check at all. `tests/swift-changed-files.test.ts` pins the script's two modes to one list, so neither the commit-oriented answer nor the branch-oriented one can drift from the other. The
+no local check at all. `tests/swift-changed-files.test.ts` pins the two modes against one repository state, so a
+pathspec or delimiter that drifts in either is caught there rather than in a consumer's
+pull request. The
 base a consumer compares against stays the consumer's: CI asks about a commit and its first parent,
 a developer asks what a branch changed since the trunk, and only the second has a merge base to
 speak of. The checkout retains only the commit and its first parent, which is enough to cover a pull

@@ -49,21 +49,40 @@ export function changedSwiftArguments(options: ChangedSwiftOptions): string[] {
 }
 
 export function run(options: ChangedSwiftOptions, cwd: string = process.cwd()): number {
-  const result = spawnSync("bash", [scriptPath(), ...changedSwiftArguments(options)], {
-    cwd,
-    encoding: "utf8",
-  });
+  // No `encoding`, so the bytes stay bytes. The script speaks NUL precisely
+  // because a path is a byte string and not every one of them is valid UTF-8;
+  // decoding here would replace such a path with U+FFFD and hand back a name
+  // that does not exist — the same class of loss `-z` exists to prevent.
+  const result = spawnSync("bash", [scriptPath(), ...changedSwiftArguments(options)], { cwd });
   if (result.error) {
     console.error(result.error.message);
     return 1;
   }
-  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.stderr?.length) process.stderr.write(result.stderr);
   if (result.status !== 0) return result.status ?? 1;
 
-  // The script speaks NUL because that is what survives every filename. A
-  // person reading the output wants lines, so that is the default here and the
-  // machine-readable form is opt-in.
-  const paths = result.stdout.split("\0").filter((path) => path.length > 0);
-  process.stdout.write(options.nul ? paths.map((path) => `${path}\0`).join("") : paths.map((path) => `${path}\n`).join(""));
+  // Paths are repository-relative, whatever directory this was run from, so
+  // the output is stable for a caller that may itself be anywhere in the tree.
+  // A person reading it wants lines; the machine-readable NUL form is opt-in.
+  const separator = Buffer.from([0]);
+  const paths = splitBuffer(result.stdout, 0);
+  process.stdout.write(
+    paths.length === 0
+      ? Buffer.alloc(0)
+      : Buffer.concat(paths.flatMap((path) => [path, options.nul ? separator : Buffer.from("\n")])),
+  );
   return 0;
+}
+
+/** Split on a byte without decoding, dropping the trailing empty segment. */
+function splitBuffer(buffer: Buffer, byte: number): Buffer[] {
+  const parts: Buffer[] = [];
+  let start = 0;
+  for (let index = 0; index < buffer.length; index += 1) {
+    if (buffer[index] !== byte) continue;
+    if (index > start) parts.push(buffer.subarray(start, index));
+    start = index + 1;
+  }
+  if (buffer.length > start) parts.push(buffer.subarray(start));
+  return parts;
 }

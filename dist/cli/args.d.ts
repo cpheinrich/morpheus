@@ -24,6 +24,15 @@ export interface Flags {
     dryRun: boolean;
     all: boolean;
     offline: boolean;
+    /**
+     * Whether `--base` was typed, as distinct from carrying its default. Commands
+     * whose natural answer is not "compare against the trunk" — `ios
+     * changed-swift`, whose CI-shaped mode compares a commit with its first
+     * parent — cannot otherwise tell the two apart, and would silently impose
+     * `origin/main` on a repository whose trunk has another name or no remote
+     * at all.
+     */
+    baseGiven: boolean;
     /** `ios changed-swift`: include uncommitted and untracked Swift files. */
     worktree: boolean;
     /** `ios changed-swift`: NUL-delimited output, for `xargs -0`. */

@@ -105,5 +105,16 @@ emit() {
 # Deduplicated, because a file changed on the branch and still being edited
 # appears in two of the sources above — the normal state of the developer loop
 # this serves — and swift-format would report its every diagnostic twice.
-emit | sort -zu
+#
+# Then filtered to what is actually on disk. The committed half answers about
+# `merge_base..HEAD`, so a file the branch added and the developer has since
+# deleted or renamed uncommitted survives it — and handing swift-format a path
+# that does not exist fails the local check for a state CI calls clean, which is
+# the inverse of the bug this script was written to remove. In commit mode the
+# filter is a no-op: every path there is in the tree being linted.
+emit | sort -zu | while IFS= read -r -d "" path; do
+    if [[ -e "$path" ]]; then
+        printf '%s\0' "$path"
+    fi
+done
 

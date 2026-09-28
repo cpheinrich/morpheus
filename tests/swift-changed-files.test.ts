@@ -234,6 +234,27 @@ describe("swift-changed-files", () => {
     }
   });
 
+  it("drops a path the developer has since deleted", async () => {
+    const { root, repo } = await repositoryWithChangedSwift();
+    try {
+      await git(repo, "branch", "trunk", "HEAD~1");
+      await rm(join(repo, "apps/ios/Top.swift"));
+
+      // The committed half answers about merge_base..HEAD, so a file the branch
+      // added and the developer then deleted survives it. Handed to
+      // swift-format that is a missing-file error — the local check failing for
+      // a state CI calls clean, which is this script's own failure inverted.
+      const paths = await select(
+        repo,
+        changedSwiftArguments({ workingDirectory: "apps/ios", base: "trunk", worktree: true }),
+      );
+      expect(paths).not.toContain("apps/ios/Top.swift");
+      expect(paths).toContain("apps/ios/Nested/Deep.swift");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("tolerates a trailing slash on the working directory", async () => {
     const { root, repo } = await repositoryWithChangedSwift();
     try {

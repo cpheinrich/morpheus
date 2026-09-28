@@ -61,6 +61,7 @@ export function parseArgs(argv) {
     const flags = {
         dir: "hq/product",
         base: "origin/main",
+        baseGiven: false,
         worktree: false,
         nul: false,
         check: false,
@@ -95,9 +96,14 @@ export function parseArgs(argv) {
             case "--dir":
                 flags.dir = argv[++i] ?? flags.dir;
                 break;
-            case "--base":
-                flags.base = argv[++i] ?? flags.base;
+            case "--base": {
+                const value = argv[++i];
+                if (value !== undefined) {
+                    flags.base = value;
+                    flags.baseGiven = true;
+                }
                 break;
+            }
             case "--issue":
                 flags.issue = argv[++i] ?? "";
                 break;
