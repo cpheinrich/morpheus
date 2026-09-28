@@ -255,6 +255,24 @@ describe("swift-changed-files", () => {
     }
   });
 
+  it("keeps naming a committed path that is missing from disk, in commit mode", async () => {
+    const { root, repo } = await repositoryWithChangedSwift();
+    try {
+      await rm(join(repo, "apps/ios/Top.swift"));
+
+      // The counterpart to the test above, and the invariant most likely to be
+      // undone by someone tidying the branch away: commit mode must *not*
+      // filter. Its paths come from the commit being linted, so on a sparse
+      // checkout whose cone omits one, dropping it would turn a missing-file
+      // error into a clean run — a gate reporting nothing to do because it
+      // could not see the work.
+      expect(await select(repo, changedSwiftArguments({ workingDirectory: "apps/ios" })))
+        .toContain("apps/ios/Top.swift");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("tolerates a trailing slash on the working directory", async () => {
     const { root, repo } = await repositoryWithChangedSwift();
     try {
