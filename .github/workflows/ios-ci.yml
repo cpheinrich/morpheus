@@ -406,7 +406,7 @@ jobs:
       # tests/swift-changed-files.test.ts now pins every caller to one list.
       - name: Select changed Swift sources
         id: swift-changed-files
-        if: ${{ inputs.swift-format-lint }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}
         uses: cpheinrich/morpheus/.github/actions/swift-changed-files@main
         with:
           working-directory: ${{ inputs.working-directory }}

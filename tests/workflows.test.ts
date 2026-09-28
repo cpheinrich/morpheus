@@ -2055,7 +2055,9 @@ describe("ios-ci.yml", () => {
       | { uses?: string; if?: string; with?: Record<string, string> }
       | undefined;
     expect(select?.uses).toBe("cpheinrich/morpheus/.github/actions/swift-changed-files@main");
-    expect(select?.if).toBe("${{ inputs.swift-format-lint }}");
+    // Gated on the change scope like every other native step, so an unrelated
+    // change skips the selection rather than paying for a checkout of it.
+    expect(select?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}");
     expect(select?.with?.["working-directory"]).toBe("${{ inputs.working-directory }}");
     expect((lint?.env as Record<string, string> | undefined)?.SWIFT_CHANGED_FILES)
       .toBe("${{ steps.swift-changed-files.outputs.file }}");
