@@ -35,4 +35,7 @@ The hosting conventions workflow uses reviewed main, so this PR's own attestatio
 compatible version1 shape with actual measured timing documented in prose. After merge,
 review prepare emits version2 for subsequent PRs. No bypass or temporary workflow pin is used.
 
+Integrated reviewed PR296 (76b17df); regenerated the conflicted source map from TypeScript.
+All 1,457 tests and typecheck/compile/index/lint/inbox validation pass on the integrated head.
+
 Independent review pending.
