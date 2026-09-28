@@ -78,14 +78,18 @@ WORKING_DIRECTORY="${WORKING_DIRECTORY%/}"
 # `apps/ios/Top.swift` does not match and is silently skipped.
 PATHSPEC=":(glob)${WORKING_DIRECTORY}/**/*.swift"
 
-# Only one of the sources below can name a path that is not on disk, so only it
-# is filtered.
+# The sources that can disagree with the disk are filtered; the one that defines
+# what is being linted is not.
 #
 # Asking what a branch changed compares two commits, so a file the branch added
 # and the developer has since deleted or renamed uncommitted survives that
-# comparison — and handing swift-format a path that does not exist fails the
-# local check for a state CI would call clean, the inverse of the bug this
-# script was written to remove.
+# comparison. `diff HEAD` can do it too, though only through `skip-worktree` —
+# the mechanism sparse checkout is built on — where git stops consulting the
+# worktree and answers from the index. Either way, handing swift-format a path
+# that does not exist fails the local check for a state CI would call clean,
+# which is the inverse of the bug this script was written to remove. Neither
+# filter can drop work a developer is actually doing: a file being edited exists
+# by construction.
 #
 # The commit-oriented answer is never filtered, whatever else was asked. Its
 # paths come from the commit being linted, so the filter would almost always do
@@ -94,9 +98,9 @@ PATHSPEC=":(glob)${WORKING_DIRECTORY}/**/*.swift"
 # clean run. A gate reporting nothing to do because it could not see the work is
 # the failure this repository keeps writing down.
 #
-# The worktree sources need no filter at all: `diff HEAD` names tracked files as
-# they currently are, and `ls-files --others` names files that exist by
-# definition.
+# `ls-files --others` is left alone: it lists directory entries that exist. A
+# broken symlink among them survives here and fails at swift-format, loudly,
+# which is the right direction for something nobody meant to lint.
 existing_only() {
     while IFS= read -r -d "" path; do
         if [[ -e "$path" ]]; then
@@ -124,7 +128,7 @@ emit() {
     fi
 
     if [[ "$INCLUDE_WORKTREE" == "true" ]]; then
-        git diff --name-only -z --diff-filter=ACMR HEAD -- "$PATHSPEC"
+        git diff --name-only -z --diff-filter=ACMR HEAD -- "$PATHSPEC" | existing_only
         git ls-files -z --others --exclude-standard -- "$PATHSPEC"
     fi
 }

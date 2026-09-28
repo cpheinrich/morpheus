@@ -277,6 +277,30 @@ describe("swift-changed-files", () => {
     }
   });
 
+  it("drops a path only the index believes in", async () => {
+    const { root, repo } = await repositoryWithChangedSwift();
+    try {
+      // `skip-worktree` is the mechanism sparse checkout is built on: git stops
+      // consulting the worktree and answers from the index, so `diff HEAD`
+      // names a file that is not there. Rare, but reachable by narrowing a cone
+      // after something was staged.
+      await writeFile(join(repo, "apps/ios/Sparse.swift"), "let sparse = 1\n", "utf8");
+      await git(repo, "add", "apps/ios/Sparse.swift");
+      await git(repo, "update-index", "--skip-worktree", "apps/ios/Sparse.swift");
+      await rm(join(repo, "apps/ios/Sparse.swift"));
+
+      const paths = await select(
+        repo,
+        changedSwiftArguments({ workingDirectory: "apps/ios", worktree: true }),
+      );
+      expect(paths).not.toContain("apps/ios/Sparse.swift");
+      // And the work the developer is actually doing is untouched.
+      expect(paths).toContain("apps/ios/Top.swift");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("tolerates a trailing slash on the working directory", async () => {
     const { root, repo } = await repositoryWithChangedSwift();
     try {
