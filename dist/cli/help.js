@@ -1,4 +1,10 @@
-export const HELP = `morpheus — an operating system for building and running companies
+export const HELP = `Credentials companions:
+  morpheus credentials init <repository-url> [--path <relative-path>] [--command bin/<wrapper>]
+  morpheus credentials setup [--create]
+  morpheus credentials status | sync | list | doctor
+  morpheus credentials run -- <trusted-command> [args...]
+
+morpheus — an operating system for building and running companies
 
 Usage
   morpheus pm validate [--dir <hq/product>]

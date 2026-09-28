@@ -388,28 +388,17 @@ describe("schedule.yml", () => {
   });
 });
 
-describe("osv-scan.yml", () => {
-  it("is reusable and pins the full OSV scan workflow", async () => {
-    const wf = await read("osv-scan.yml");
-    const scan = wf.jobs?.scan;
-
-    expect(wf.on).toHaveProperty("workflow_call");
-    expect(scan?.uses).toBe(
-      "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@0c58c542420dfd23fcac08dd9c8ca3cca9c36f1a",
-    );
-  });
-
-  it("schedules scans and runs them after Morpheus reaches main", async () => {
-    const wf = await read("security.yml");
-
-    expect(wf.on).toHaveProperty("schedule");
-    expect(wf.on).toHaveProperty("workflow_dispatch");
-    expect(wf.jobs?.osv?.uses).toBe("./.github/workflows/osv-scan.yml");
-    expect((wf as { permissions?: Record<string, string> }).permissions).toEqual({
-      actions: "read",
-      contents: "read",
-      "security-events": "write",
-    });
+describe("central security remediation opt-in", () => {
+  it("keeps policy locally without a credential-bearing repository workflow", async () => {
+    await expect(readFile(join(DIR, "security.yml"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    const config = JSON.parse(await readFile(join(import.meta.dirname, "../.github/morpheus-security.json"), "utf8"));
+    expect(config.requiredChecks).toEqual([
+      "node / check",
+      "pm / pm",
+      "pr / conventions",
+      "agent-review / delivery",
+    ]);
+    expect(config).not.toHaveProperty("incidentRepository");
   });
 });
 
@@ -2046,7 +2035,7 @@ describe("ios-ci.yml", () => {
     const script = String(lint?.run);
 
     expect((checkout?.with as Record<string, unknown>)?.["fetch-depth"]).toBe(2);
-    expect(lint?.if).toBe("${{ inputs.swift-format-lint }}");
+    expect(lint?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}");
     expect(lint?.env).toMatchObject({
       SWIFT_FORMAT_CONFIGURATION: "${{ inputs.swift-format-configuration }}",
       WORKING_DIRECTORY: "${{ inputs.working-directory }}",
@@ -2283,7 +2272,8 @@ describe("ios-ci.yml", () => {
         }
         expect(await readFile(join(root, "other-job"), "utf8")).toBe("untouched");
         expect(await readFile(outputFile, "utf8")).toBe([
-          `results=${paths.RESULTS}`, `logs=${paths.LOGS}`, `screenshots=${paths.SCREENSHOTS}`, "",
+          `results=${paths.RESULTS}`, `logs=${paths.LOGS}`, `screenshots=${paths.SCREENSHOTS}`,
+          `evidence-name=ios-test-evidence-${paths.RESULTS!.split("/").at(-2)}`, "",
         ].join("\n"));
         previous = paths;
       }
@@ -2314,8 +2304,8 @@ describe("ios-ci.yml", () => {
     expect(String(test?.run)).toContain(
       '-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS"',
     );
-    expect(build?.if).toBe("${{ inputs.run-tests }}");
-    expect(test?.if).toBe("${{ inputs.run-tests }}");
+    expect(build?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}");
+    expect(test?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}");
   });
 
   it("can run app tests inside locked Firebase emulators with an in-context fixture", async () => {
@@ -2359,7 +2349,7 @@ describe("ios-ci.yml", () => {
   it("uploads both xcresults and raw logs only when the run fails", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
-    expect(upload?.if).toBe("${{ failure() && steps.ios_paths.outcome == 'success' }}");
+    expect(upload?.if).toBe("${{ steps.scope.outputs.run == 'true' && failure() && steps.ios_paths.outcome == 'success' }}");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     const withBlock = upload?.with as Record<string, unknown> | undefined;
     expect(String(withBlock?.path)).toContain("${{ steps.ios_paths.outputs.results }}");
