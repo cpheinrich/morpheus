@@ -273,6 +273,9 @@ Put a visible line in the PR body (not inside a comment or code fence):
 Also link the worklog and summarize the outcome. Once complete, apply `agent-reviewed` (create the
 repository label if absent), commit the worklog and push. Run local conventions with the actual PR
 body and `MORPHEUS_PR_LABELS=agent-reviewed`. Never enable auto-merge until review and CI are complete.
+When the label is absent, conventions reports that the PR is not marked merge-ready and that
+record validation was not run. This also covers an author deliberately removing the label while
+a correction or follow-up is pending; the missing label alone does not establish an incomplete record.
 This is an auditable attestation, not a security boundary against an author fabricating evidence.
 
 ## Existing projects

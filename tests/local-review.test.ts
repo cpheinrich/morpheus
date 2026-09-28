@@ -51,6 +51,14 @@ describe("independent review lifecycle", () => {
     expect(check(head, `review-record: ${path}`, [])).toHaveLength(1);
     expect(check(head, `review-record: ../../secret.md`)).toHaveLength(1);
   });
+  it.each(["complete", "incomplete"] as const)("reports the missing label without inferring that a %s record is unfinished", outcome => {
+    const head = save({ ...record(), outcome });
+    expect(check(head, `review-record: ${path}`, [])).toEqual([{
+      level: "error",
+      rule: "agent-review",
+      message: "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending.",
+    }]);
+  });
   it.each(["incomplete", "blocked"] as const)("refuses %s review", outcome => {
     expect(check(save({ ...record(), outcome }))[0]?.message).toContain(outcome);
   });

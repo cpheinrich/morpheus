@@ -308,7 +308,7 @@ export function checkLocalReview(opts: { root: string; body: string; labels: str
   try {
     const config = JSON.parse(git(opts.root, ["show", `${opts.head}:morpheus.json`]));
     if (!reviewRequired(config)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
-    if (!opts.labels.includes("agent-reviewed")) throw new Error("add agent-reviewed only after completing the independent review");
+    if (!opts.labels.includes("agent-reviewed")) throw new Error("agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending.");
     const lines = [...visibleProse(opts.body).matchAll(/^review-record:[ \t]*(\S+)[ \t]*$/gm)];
     if (lines.length !== 1) throw new Error("PR body needs one visible review-record: .agent/worklog/<task>.md line");
     const path = lines[0]![1]!;
