@@ -1489,6 +1489,10 @@ Initial risk-based ceilings are 10/15/30 minutes, with a one-minute floor at nor
 provider's authoring session owns enforcement and any available usage ceiling; CI validates the
 reported evidence without making a model call. The canonical provider-neutral prompt ships in
 `src/review/local-prompt.ts`. Project instructions and learned failures supply local context.
+The author records actual per-turn runner duration or clock readings, never a reviewer workload
+estimate. New version 2 records require a timing source, duration in milliseconds and evidence for
+each turn; conventions checks the conversion to elapsed minutes without rounding. Historical
+version 1 records stay compatible. Provider evidence remains a human-auditable attestation.
 
 **The worklog is the durable review record.** A short visible paragraph plus a structured
 `morpheus-review` JSON block records sessions, base/reviewed/covered commits, findings, author

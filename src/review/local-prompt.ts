@@ -15,6 +15,15 @@ the deadline and a token/cost ceiling where the runner supports it. One initial-
 extension of at most 50% is allowed for unexpectedly risky code, with a recorded reason.
 Budget exhaustion, timeout or missing evidence means incomplete, never approval.
 
+The author measures each turn from runner duration metadata (such as total_duration_ms), or
+actual clock readings around that invocation, and records timing with its source and evidence.
+The author computes elapsedMinutes = timing.durationMs / 60000 without rounding. Do not estimate
+elapsed time from workload, tool count or perceived effort. If you have real timing evidence,
+return it; otherwise leave measurement to the author. Never delay to meet a floor, invent a
+duration, or change risk to fit a budget. If elapsed time cannot be measured, report incomplete.
+Include the invocation's tool execution and waits; exclude time between separate reviewer turns.
+Transcript evidence must use explicit turn boundaries, never inferred idle-gap cutoffs.
+
 Find concrete defects, not redesign opportunities or linter preferences. Check requirements,
 error paths, absent inputs, security boundaries and integration assumptions. You may inspect
 unchanged related code. A blocking finding must explain how this PR causes, exposes or worsens
@@ -22,7 +31,7 @@ the defect, or how it prevents acceptance criteria from being met. Independent p
 are incidental follow-ups, not merge blockers; flag independently discovered critical risks for
 human judgment immediately. Do not expand the PR to fix them automatically.
 
-Return: reviewed full commit SHA; risk class; elapsed minutes; complete/incomplete outcome;
+Return: reviewed full commit SHA; risk class; complete/incomplete outcome;
 and findings with unique IDs, severity (minor/substantive/incidental), exact paths/lines,
 a concrete failure scenario, and expected behavior. Say explicitly when there are no findings.
 Do not modify code, post to GitHub, or merge. Return your review to the author.

@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkLocalReview, git, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
 import { checkPr } from "../src/check/pr.js";
+import { prepareReview } from "../src/cli/review.js";
 
 let root: string;
 let base: string;
@@ -104,6 +105,62 @@ describe("independent review lifecycle", () => {
     const ctx = { body: "## Test plan\nRan tests", branch: "inbox-2026-09-10", changedFiles: ["code.ts"], productDir: join(root, "hq/product") };
     expect((await checkPr(ctx)).some(f => f.rule === "agent-review" && f.level === "error")).toBe(true);
     expect((await checkPr({ ...ctx, changedFiles: [path] })).some(f => f.rule === "agent-review")).toBe(false);
+  });
+});
+
+describe("measured review timing", () => {
+  const timing = (durationMs: number) => ({ source: "runner" as const, durationMs, evidence: "Runner invocation result total_duration_ms for this reviewer turn." });
+  const measured = (durationMs = 312615): LocalReviewRecord => ({ ...record(), version: 2, elapsedMinutes: durationMs / 60000, timing: timing(durationMs) });
+
+  it("emits a version2 template and assigns measurement to the author in the actual review packet", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect(await prepareReview(join(root, "hq/product"), root, base)).toBe(0);
+      const output = log.mock.calls.map(args => args.join(" ")).join("\n");
+      const template = JSON.parse(output.match(/```morpheus-review\n([\s\S]*?)\n```/)![1]!);
+      expect(template.version).toBe(2);
+      expect(template.timing).toEqual({ source: "runner", durationMs: 0, evidence: "Replace with this turn's runner result reference and measured duration." });
+      expect(template.outcome).toBe("incomplete");
+      expect(output).toContain("The author measures each turn from runner duration metadata");
+      expect(output).toContain("Do not estimate\nelapsed time from workload");
+      expect(output).toContain("Zero is a placeholder, not a measurement");
+      expect(output).not.toContain("risk class; elapsed minutes;");
+    } finally { log.mockRestore(); }
+  });
+
+  it("accepts the measured duration from issue281 instead of the reviewer's 40-minute estimate", () => {
+    expect(check(save(measured()))).toEqual([]);
+    expect(check(save({ ...measured(), elapsedMinutes: 40 }))[0]?.message).toContain("elapsedMinutes must equal timing.durationMs / 60000");
+  });
+  it("requires timing evidence on every version2 turn, including the legacy followUp field", () => {
+    expect(check(save({ ...record(), version: 2 }))[0]?.message).toContain("version 2 requires measured timing");
+    const r = measured();
+    const turn = { reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: 140701 / 60000, scopeReason: "Late correction from focused regression test", summary: "Verified the correction and its regression evidence." };
+    expect(check(save({ ...r, followUp: turn }))[0]?.message).toContain("version 2 requires measured timing");
+    expect(check(save({ ...r, followUps: [{ ...turn, timing: timing(140701) }] }))).toEqual([]);
+    expect(check(save({ ...r, followUp: { ...turn, timing: timing(140701), elapsedMinutes: 16 } }))[0]?.message).toContain("elapsedMinutes must equal");
+  });
+  it("keeps historical version1 records valid and validates any timing they carry", () => {
+    expect(check(save(record()))).toEqual([]);
+    expect(check(save({ ...measured(), version: 1 }))).toEqual([]);
+    expect(check(save({ ...measured(), version: 1, elapsedMinutes: 3 }))[0]?.message).toContain("elapsedMinutes must equal");
+  });
+  it("preserves measured budget and floor boundaries without rounding", () => {
+    expect(check(save(measured(60000)))).toEqual([]);
+    expect(check(save(measured(59999)))[0]?.message).toContain("under one minute");
+    expect(check(save(measured(900000)))).toEqual([]);
+    expect(check(save(measured(900001)))[0]?.message).toContain("exceeded its budget");
+    const r = measured();
+    const turn = (durationMs: number) => ({ reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared" as const, elapsedMinutes: durationMs / 60000, timing: timing(durationMs), scopeReason: "Late correction from focused regression test", summary: "Verified the correction and its regression evidence." });
+    expect(check(save({ ...r, followUps: [turn(450000)] }))).toEqual([]);
+    expect(check(save({ ...r, followUps: [turn(450001)] }))[0]?.message).toContain("follow-up exceeded its budget");
+  });
+  it("accepts actual clock evidence but rejects unsupported sources and invalid measurements", () => {
+    const r = measured();
+    expect(check(save({ ...r, timing: { ...r.timing!, source: "clock", evidence: "Clock start 09:00:00.000Z; end 09:05:12.615Z, same invocation." } }))).toEqual([]);
+    for (const t of [{ ...timing(312615), source: "estimate" }, timing(-1), timing(1.5), { ...timing(312615), evidence: "" }]) {
+      expect(check(save({ ...r, timing: t } as LocalReviewRecord))[0]?.level).toBe("error");
+    }
   });
 });
 

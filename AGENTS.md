@@ -330,6 +330,9 @@ repository access and that packet, without inheriting the author's conversation 
 The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
 the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
 GitHub Actions to start this review. CI checks the evidence; it does not perform the review.
+The author measures each turn from runner duration metadata or actual clock readings, never a
+reviewer's workload estimate. New version 2 records require timing source, milliseconds and
+evidence for every turn; compute elapsedMinutes as durationMs / 60000 without rounding.
 If the runner cannot start an independent session, report that concrete limitation and keep
 the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
 

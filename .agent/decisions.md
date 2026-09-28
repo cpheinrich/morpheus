@@ -1081,3 +1081,12 @@ stop. There is deliberately no blanket documentation exemption — AGENTS/CLAUDE
 attestation, because a runbook can state a new rule and no pattern distinguishes that from prose.
 Reviewers should name related docs and generated counterparts in `condition.paths` so the backstop
 stays rare. No new dependency: this is schema and Git checks in the existing checker.
+
+**Independent-review elapsed time comes from measurement, not workload estimates** — 2026-09-28.
+Issue #281 showed estimates triggering budget failures despite short runner durations. The author
+captures per-turn runner metadata or real clock readings; the reviewer reports findings, not a
+guessed duration. New version 2 records carry source, integer milliseconds and evidence on every
+turn, with a checked conversion to elapsed minutes. Version 1 remains compatible for existing
+records. Floors, ceilings, review outcomes and escalation policy are unchanged. Runner evidence
+is auditable provenance, not a claim that CI can authenticate a private transcript. Existing Zod
+and arithmetic suffice for this Morpheus-specific record contract; no dependency is introduced.
