@@ -95,6 +95,11 @@ Usage
                             manage consented post-pull updates across the local registry
   morpheus doctor           [--all] [--offline]
                             --offline skips project-trunk and Morpheus-main network checks
+  morpheus ios changed-swift <dir> [--base <ref>] [--worktree] [--nul]
+                            the Swift files a change touched, repository-relative
+                            — the same answer iOS CI's swift-format lint asks for.
+                            Without --base, HEAD against its first parent, as CI
+                            asks; with it, what the branch changed since that ref
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge
