@@ -1482,7 +1482,9 @@ reviewer's attested paths, evidence and scope. It must be the last automatic tur
 substantive finding, and is checked against the commits it covers: the worklog, already-conditioned
 paths, and explanatory Markdown only — never normative policy files. An explicit human exception is recorded per extra same-reviewer turn
 as `humanAuthorization` (approver, ISO timestamp and reason), preserving the full history and
-all other checks; one authorization never permits subsequent turns. Incidental pre-existing bugs are recorded
+all other checks; one authorization never permits subsequent turns. An evidence-pending incomplete
+turn may resume only with explicit authorization on the next same-reviewer turn; the original
+verdict stays unchanged and every historical and new turn must satisfy its budget. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
 Initial risk-based ceilings are 10/15/30 minutes, with a one-minute floor at normal and high risk, with one justified initial extension of at most

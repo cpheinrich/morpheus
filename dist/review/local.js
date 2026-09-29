@@ -228,7 +228,8 @@ export function validateReviewRecord(record) {
     // reviewer cleared the code. It spends one of the remaining turns and must name the scope
     // decision in its scopeReason, so the record shows why a cleared review was reopened. A turn
     // after blocked, or after substantive initial findings, is the ordinary fix follow-up and needs
-    // none. An incomplete turn exhausted its budget and escalates; nothing follows it.
+    // none. An incomplete turn may be missing evidence; only explicit human authorization can
+    // resume it. Per-turn budget checks still reject exhausted reviews, including historical turns.
     if (!substantive && turns[0] && !turns[0].scopeReason)
         throw new Error("a follow-up after a clean initial review is a late correction and needs an explicit scope reason");
     // One automatic finalization-only turn per pull request; later turns need human authorization. It finishes
@@ -269,8 +270,8 @@ export function validateReviewRecord(record) {
             if (turn.outcome !== "cleared" || !coversLast)
                 throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
         }
-        else if (turn.outcome === "incomplete" || (turn.outcome === "cleared" && !next.scopeReason)) {
-            throw new Error("a third turn is allowed only after the second turn returned blocked, or after a cleared turn as a late correction with an explicit scope reason");
+        else if ((turn.outcome === "incomplete" && !next.humanAuthorization) || (turn.outcome === "cleared" && !next.scopeReason)) {
+            throw new Error("a third turn is allowed only after the second turn returned blocked, after a cleared turn as a late correction with an explicit scope reason, or after an incomplete turn with explicit humanAuthorization");
         }
     });
 }
