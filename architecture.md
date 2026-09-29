@@ -3156,27 +3156,19 @@ Callers should keep their 06:00 local trigger and add off-hour recovery triggers
 Set `schedule-timezone` to the caller's IANA timezone. Morning retries reuse successful,
 unexpired screenshots only for the same source commit and local calendar day; changed iOS
 sources still build, failed runs retry, and manual forced builds always run. An explicit
-`ios-nightly-noop-<run>-<attempt>` artifact preserves the gallery on intentional skips rather
-than replacing it with missing images. This is bounded recovery, not an independent scheduler.
+`ios-nightly-noop-<run>-<attempt>` artifact records an intentional skip, so a run with no
+screenshots is distinguishable from one that failed to capture them. This is bounded recovery,
+not an independent scheduler.
 
-Their separate `workflow_run` observer calls `ios-visual-qa` after the nightly finishes; the
-publisher is never a release dependency. It accepts only completed main schedule/manual runs from
-the same repository and exact workflow, reads `qa/ios-screens.json` at the tested SHA, and consumes
-only explicitly named full-screen PNG attachments from that exact run and attempt. Caller code is
-never executed in the write-permission publisher.
-
-The publisher replaces one `nightly-ios-visual-qa` draft PR with a labeled two-column gallery,
-source SHA, run link, and captured/expected count. Missing screens are visible and never filled
-from an older run. Each refresh is one screenshot-only commit above current main; images use
-immutable commit URLs, while the current PR discussion survives. The branch is reserved for this
-publisher, auto-merge stays disabled, and the PR must not be merged. Repository settings must allow
-GitHub Actions to create PRs; caller observers grant contents/pull-requests write and actions read.
-Apps own the version-1 screen inventory (`id`, `title`, `attachment`) and synthetic XCTest fixtures;
-new full-screen destinations require both an inventory entry and a named capture. Modals and
-external websites are optional. Failed nightly runs still publish available evidence and an
-explicit incomplete status. A manual observer dispatch can retry a completed run without uploading
-another build. The fixed publisher concurrency group and run-number guard prevent older runs from
-replacing newer galleries.
+Screenshots are reviewed from the nightly run itself: every named XCTest attachment is exported
+from the run's `.xcresult` into its `ios-screenshots-<run>-<attempt>` artifact, kept for 14 days.
+The full `.xcresult` is uploaded only when tests fail. Apps own a screen inventory
+(`qa/ios-screens.json`: `id`, `title`, `attachment`) and synthetic XCTest fixtures; new
+full-screen destinations require both an inventory entry and a named capture. Modals and external
+websites are optional. Morpheus no longer publishes these screenshots into a standing
+`nightly-ios-visual-qa` draft PR: that gallery never merged, lived permanently in each app's
+open-PR list, and was retired on 2026-09-28 (MO-26-09-28-18.35.26). Apps keep a contract test so
+a caller of the removed publisher does not return.
 
 `ios-testflight-upload` uses a composite action because of the same constraint that shapes
 `ios-nightly-build`: a cross-repository reusable workflow receives none
