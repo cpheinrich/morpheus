@@ -106,7 +106,7 @@ on:
         type: string
         default: ""
       capture-every-night:
-        description: Run simulator tests even without release changes so the visual QA observer gets fresh screenshots.
+        description: Run simulator tests even without release changes, so each day's screenshots and results are current.
         type: boolean
         default: false
       schedule-timezone:

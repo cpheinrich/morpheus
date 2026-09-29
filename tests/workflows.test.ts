@@ -2699,3 +2699,17 @@ describe("the scaffolded iOS nightly caller", () => {
     expect(step?.with?.scheme).toBe("Example");
   });
 });
+
+describe("retired nightly screenshot gallery PR", () => {
+  // Every app carried a standing draft `nightly-ios-visual-qa` PR that never
+  // merged. It was retired on 2026-09-28; screenshots are reviewed from the
+  // nightly run's .xcresult artifacts instead.
+  it("ships no reusable workflow that publishes screenshots into a PR", async () => {
+    const files = await readdir(join(import.meta.dirname, "..", ".github", "workflows"));
+    expect(files).not.toContain("ios-visual-qa.yml");
+    for (const file of files.filter((f) => f.endsWith(".yml"))) {
+      const text = await readFile(join(import.meta.dirname, "..", ".github", "workflows", file), "utf8");
+      expect(text, file).not.toMatch(/nightly-ios-visual-qa/);
+    }
+  });
+});
