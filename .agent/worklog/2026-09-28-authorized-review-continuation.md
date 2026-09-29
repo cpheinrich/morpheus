@@ -33,7 +33,7 @@ Independent review cleared the change with one minor mirrored-guidance correctio
   "summary": "Independent review cleared the change with one minor mirrored-guidance correction. The reviewer verified authorization, original predecessor and historical finalization scope; 84 focused tests passed. The canonical review prompt was corrected and its compiled output verified.",
   "findings": [
     {
-      "id": "R1",
+      "id": "R01",
       "severity": "minor",
       "description": "Canonical reviewer prompt still required finalization to be the last turn.",
       "paths": [
