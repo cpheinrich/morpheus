@@ -97,12 +97,16 @@ on:
         description: Forwarded to ios-ci.yml; see its input of the same name.
         type: number
         default: 0
+      test-evidence-script:
+        description: Optional caller-repository result validator; full nightly selection is unchanged.
+        type: string
+        default: ""
       pre-test-script:
         description: Optional caller-repository script run immediately before tests.
         type: string
         default: ""
       capture-every-night:
-        description: Run simulator tests even without release changes so the visual QA observer gets fresh screenshots.
+        description: Run simulator tests even without release changes, so each day's screenshots and results are current.
         type: boolean
         default: false
       schedule-timezone:
@@ -314,7 +318,7 @@ jobs:
             }
             core.setOutput('capture', String(capture));
 
-      # The observer must distinguish an intentional no-op from a failed capture.
+      # Record an intentional skip, so a run with no screenshots is distinguishable from a failed capture.
       - name: Record intentional nightly no-op
         if: steps.decide.outputs.build == 'false' && steps.capture.outputs.capture != 'true'
         run: echo 'No release changes and no new capture required.' > "$RUNNER_TEMP/ios-nightly-noop.txt"
@@ -355,6 +359,7 @@ jobs:
       firebase-project: ${{ inputs.firebase-project }}
       firebase-only: ${{ inputs.firebase-only }}
       pre-test-script: ${{ inputs.pre-test-script }}
+      test-evidence-script: ${{ inputs.test-evidence-script }}
       run-tests: true
 
   upload:

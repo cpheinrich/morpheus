@@ -126,57 +126,6 @@ describe("dependabot-maintainer.yml", () => {
   });
 });
 
-describe("security-remediation.yml", () => {
-  type Step = { name?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string>; run?: string };
-  type SecurityWorkflow = {
-    on?: { workflow_call?: { secrets?: Record<string, unknown> } };
-    permissions?: Record<string, string>;
-    jobs?: Record<string, { concurrency?: Record<string, unknown>; steps?: Step[] }>;
-  };
-
-  it("is reusable, deterministic, and receives only GitHub App credentials", async () => {
-    const wf = (await read("security-remediation.yml")) as SecurityWorkflow;
-    expect(wf.on?.workflow_call?.secrets).toEqual({
-      app_id: { required: true },
-      app_private_key: { required: true },
-    });
-    expect(wf.permissions).toEqual({ contents: "read" });
-    expect(JSON.stringify(wf)).not.toContain("openai");
-    expect(JSON.stringify(wf)).toContain("${{ inputs.morpheus-sha }}");
-    expect(JSON.stringify(wf)).toContain("^[0-9a-f]{40}$");
-    expect(JSON.stringify(wf)).not.toContain("github.workflow_sha");
-  });
-
-  it("mints a least-privilege installation token and serializes a repository", async () => {
-    const wf = (await read("security-remediation.yml")) as SecurityWorkflow;
-    const job = wf.jobs?.remediate;
-    const token = job?.steps?.find((step) => step.name === "Mint the installation token");
-    expect(job?.concurrency?.["cancel-in-progress"]).toBe(false);
-    expect(token?.with).toMatchObject({
-      "permission-actions": "read",
-      "permission-checks": "read",
-      "permission-contents": "write",
-      "permission-issues": "write",
-      "permission-pull-requests": "write",
-      "permission-statuses": "read",
-      "permission-vulnerability-alerts": "read",
-    });
-  });
-
-  it("scans both main and the candidate and retains a receipt", async () => {
-    const wf = (await read("security-remediation.yml")) as SecurityWorkflow;
-    const steps = wf.jobs?.remediate?.steps ?? [];
-    const scans = steps.filter((step) => step.uses?.startsWith("google/osv-scanner-action/"));
-    expect(scans).toHaveLength(2);
-    expect(scans.every((step) => String(step.uses).endsWith("@a345acffa64b0eaede81a3d9aae6141214d9c8fc"))).toBe(true);
-    const receipt = steps.find((step) => step.name === "Upload the run receipt");
-    expect(receipt?.with?.["retention-days"]).toBe(30);
-    expect(receipt?.with?.["include-hidden-files"]).toBe(true);
-    const reconcile = steps.find((step) => step.name === "Reconcile existing bot pull requests");
-    expect(reconcile?.env?.SECURITY_CONFIG).toBe("${{ inputs.config-file }}");
-  });
-});
-
 describe("release-preflight.yml", () => {
   type ReleasePreflight = {
     on?: {
@@ -439,28 +388,17 @@ describe("schedule.yml", () => {
   });
 });
 
-describe("osv-scan.yml", () => {
-  it("is reusable and pins the full OSV scan workflow", async () => {
-    const wf = await read("osv-scan.yml");
-    const scan = wf.jobs?.scan;
-
-    expect(wf.on).toHaveProperty("workflow_call");
-    expect(scan?.uses).toBe(
-      "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@0c58c542420dfd23fcac08dd9c8ca3cca9c36f1a",
-    );
-  });
-
-  it("scans nightly and manually, never on pushes or PRs", async () => {
-    const wf = await read("security.yml");
-
-    expect(wf.on?.schedule).toEqual([{ cron: "43 10 * * *" }]);
-    expect(Object.keys(wf.on ?? {}).sort()).toEqual(["schedule", "workflow_dispatch"]);
-    expect(wf.jobs?.osv?.uses).toBe("./.github/workflows/osv-scan.yml");
-    expect((wf as { permissions?: Record<string, string> }).permissions).toEqual({
-      actions: "read",
-      contents: "read",
-      "security-events": "write",
-    });
+describe("central security remediation opt-in", () => {
+  it("keeps policy locally without a credential-bearing repository workflow", async () => {
+    await expect(readFile(join(DIR, "security.yml"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    const config = JSON.parse(await readFile(join(import.meta.dirname, "../.github/morpheus-security.json"), "utf8"));
+    expect(config.requiredChecks).toEqual([
+      "node / check",
+      "pm / pm",
+      "pr / conventions",
+      "agent-review / delivery",
+    ]);
+    expect(config).not.toHaveProperty("incidentRepository");
   });
 });
 
@@ -2097,7 +2035,7 @@ describe("ios-ci.yml", () => {
     const script = String(lint?.run);
 
     expect((checkout?.with as Record<string, unknown>)?.["fetch-depth"]).toBe(2);
-    expect(lint?.if).toBe("${{ inputs.swift-format-lint }}");
+    expect(lint?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}");
     expect(lint?.env).toMatchObject({
       SWIFT_FORMAT_CONFIGURATION: "${{ inputs.swift-format-configuration }}",
       WORKING_DIRECTORY: "${{ inputs.working-directory }}",
@@ -2105,12 +2043,25 @@ describe("ios-ci.yml", () => {
     expect(script).toContain("xcrun swift-format --version");
     expect(script).toContain("swift-format dump-configuration");
     expect(script).toContain("--effective");
-    expect(script).toContain("git diff-tree");
-    expect(script).toContain("--diff-filter=ACMR");
     expect(script).toContain("swift-format lint");
     expect(script).toContain("--parallel");
     expect(script).toContain("--strict");
     expect(script).not.toContain("brew install");
+
+    // The selection is shared rather than inlined: consumers call the same
+    // script, and a step that quietly went back to its own pathspec would make
+    // that false again.
+    const select = steps.find((step) => step.name === "Select changed Swift sources") as
+      | { uses?: string; if?: string; with?: Record<string, string> }
+      | undefined;
+    expect(select?.uses).toBe("cpheinrich/morpheus/.github/actions/swift-changed-files@main");
+    // Gated on the change scope like every other native step, so an unrelated
+    // change skips the selection rather than paying for a checkout of it.
+    expect(select?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}");
+    expect(select?.with?.["working-directory"]).toBe("${{ inputs.working-directory }}");
+    expect((lint?.env as Record<string, string> | undefined)?.SWIFT_CHANGED_FILES)
+      .toBe("${{ steps.swift-changed-files.outputs.file }}");
+    expect(script).not.toContain(":(glob)");
   });
 
   it("strictly lints added and modified Swift files without sweeping legacy source", async () => {
@@ -2145,6 +2096,19 @@ describe("ios-ci.yml", () => {
       const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
       const script = steps.find((step) => step.name === "Lint changed Swift sources")?.run;
       expect(script).toBeTruthy();
+
+      // The step no longer selects the files itself; the shared script does,
+      // through the composite action. Standing in for the action here keeps
+      // this test about the lint while tests/swift-changed-files.test.ts covers
+      // the selection — and keeps the two from being proved by the same code.
+      const selection = join(root, "selection");
+      const selected = await execFileAsync("bash", [
+        join(process.cwd(), "scripts/swift-changed-files.sh"),
+        "--working-directory",
+        "apps/ios",
+      ], { cwd: repo, encoding: "buffer" });
+      await writeFile(selection, selected.stdout);
+
       await execFileAsync("bash", ["-c", String(script)], {
         cwd: join(repo, "apps/ios"),
         env: {
@@ -2153,6 +2117,7 @@ describe("ios-ci.yml", () => {
           GITHUB_WORKSPACE: repo,
           SWIFT_FORMAT_CONFIGURATION: ".swift-format",
           WORKING_DIRECTORY: "apps/ios",
+          SWIFT_CHANGED_FILES: selection,
           XCRUN_LOG: log,
         },
       });
@@ -2334,7 +2299,8 @@ describe("ios-ci.yml", () => {
         }
         expect(await readFile(join(root, "other-job"), "utf8")).toBe("untouched");
         expect(await readFile(outputFile, "utf8")).toBe([
-          `results=${paths.RESULTS}`, `logs=${paths.LOGS}`, `screenshots=${paths.SCREENSHOTS}`, "",
+          `results=${paths.RESULTS}`, `logs=${paths.LOGS}`, `screenshots=${paths.SCREENSHOTS}`,
+          `evidence-name=ios-test-evidence-${paths.RESULTS!.split("/").at(-2)}`, "",
         ].join("\n"));
         previous = paths;
       }
@@ -2365,8 +2331,8 @@ describe("ios-ci.yml", () => {
     expect(String(test?.run)).toContain(
       '-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS"',
     );
-    expect(build?.if).toBe("${{ inputs.run-tests }}");
-    expect(test?.if).toBe("${{ inputs.run-tests }}");
+    expect(build?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}");
+    expect(test?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}");
   });
 
   it("can run app tests inside locked Firebase emulators with an in-context fixture", async () => {
@@ -2410,7 +2376,7 @@ describe("ios-ci.yml", () => {
   it("uploads both xcresults and raw logs only when the run fails", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
-    expect(upload?.if).toBe("${{ failure() && steps.ios_paths.outcome == 'success' }}");
+    expect(upload?.if).toBe("${{ steps.scope.outputs.run == 'true' && failure() && steps.ios_paths.outcome == 'success' }}");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     const withBlock = upload?.with as Record<string, unknown> | undefined;
     expect(String(withBlock?.path)).toContain("${{ steps.ios_paths.outputs.results }}");
@@ -2731,5 +2697,19 @@ describe("the scaffolded iOS nightly caller", () => {
     expect(release?.with?.scheme).toBe("Example");
     expect(step?.with?.project).toBe("Example.xcodeproj");
     expect(step?.with?.scheme).toBe("Example");
+  });
+});
+
+describe("retired nightly screenshot gallery PR", () => {
+  // Every app carried a standing draft `nightly-ios-visual-qa` PR that never
+  // merged. It was retired on 2026-09-28; screenshots are reviewed from the
+  // nightly run's .xcresult artifacts instead.
+  it("ships no reusable workflow that publishes screenshots into a PR", async () => {
+    const files = await readdir(join(import.meta.dirname, "..", ".github", "workflows"));
+    expect(files).not.toContain("ios-visual-qa.yml");
+    for (const file of files.filter((f) => f.endsWith(".yml"))) {
+      const text = await readFile(join(import.meta.dirname, "..", ".github", "workflows", file), "utf8");
+      expect(text, file).not.toMatch(/nightly-ios-visual-qa/);
+    }
   });
 });

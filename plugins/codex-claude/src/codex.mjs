@@ -97,13 +97,10 @@ export class Codex extends EventEmitter {
   }
 }
 
-// Version-gated fallback for Desktop runtimes not attached to the managed daemon.
+// Contract-gated fallback for Desktop runtimes not attached to the managed daemon.
 // Read only turn metadata; never forward the chat transcript or hidden instructions.
 export async function recordedSnapshot(thread) {
-  if (
-    !["0.154.0", "0.154.0-alpha.6.1"].includes(thread.cliVersion) ||
-    !thread.path
-  )
+  if (typeof thread.path !== "string" || thread.path.length === 0)
     throw new Error(
       "Unsupported Desktop metadata adapter; run doctor after updating Codex.",
     );
@@ -134,14 +131,24 @@ export async function recordedSnapshot(thread) {
     stream.destroy();
   }
   const p = context?.payload;
+  const timestamp = Date.parse(context?.timestamp);
   if (
     !p ||
     !active ||
     p.turn_id !== active ||
-    Date.now() - Date.parse(context.timestamp) > 24 * 3600000
+    !Number.isFinite(timestamp) ||
+    Date.now() - timestamp > 24 * 3600000
   )
     throw new Error(
       "No active, verified turn settings; open the task and send a message.",
+    );
+  if (
+    ![p.turn_id, p.cwd, p.model, p.effort, p.approval_policy].every(
+      (value) => typeof value === "string" && value.length > 0,
+    )
+  )
+    throw new Error(
+      "Unsupported Desktop metadata contract; run doctor after updating Codex.",
     );
   if (
     p.permission_profile?.type !== "disabled" ||
@@ -158,6 +165,6 @@ export async function recordedSnapshot(thread) {
     approvalPolicy: p.approval_policy,
     sandbox: { type: "dangerFullAccess" },
     turnId: p.turn_id,
-    settingsSource: "recorded-turn-0.154.0",
+    settingsSource: `recorded-turn-${thread.cliVersion || "unknown"}`,
   };
 }

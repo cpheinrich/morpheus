@@ -4,8 +4,10 @@ These generated scripts bridge this repository's session hooks to the copied glo
 
 - `session-start.sh` dispatches to the installed CLI: startup fetches canonical trunk, updates
   clean local trunk, and identifies existing tasks. New worktrees are created when work is claimed.
-  It emits the consent question when the CLI is too old to update itself.
-- `bootstrap.sh enable` runs only after an explicit yes. It clones reviewed Morpheus `main`
+  It recovers common tool paths in non-login shells and distinguishes hook-health failures from
+  an old CLI. The consent question is emitted only when no saved preference exists; saved yes/no
+  and invalid preferences are reported without asking again.
+- `bootstrap.sh enable` runs after an explicit yes or an already saved opt-in. It clones reviewed Morpheus `main`
   into a disposable directory, installs its reviewed lockfile, invokes that clone's committed CLI
   directly, installs the current standalone package, registers this project, and enables the
   managed Git hooks.

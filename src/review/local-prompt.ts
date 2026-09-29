@@ -15,6 +15,15 @@ the deadline and a token/cost ceiling where the runner supports it. One initial-
 extension of at most 50% is allowed for unexpectedly risky code, with a recorded reason.
 Budget exhaustion, timeout or missing evidence means incomplete, never approval.
 
+The author measures each turn from runner duration metadata (such as total_duration_ms), or
+actual clock readings around that invocation, and records timing with its source and evidence.
+The author computes elapsedMinutes = timing.durationMs / 60000 without rounding. Do not estimate
+elapsed time from workload, tool count or perceived effort. If you have real timing evidence,
+return it; otherwise leave measurement to the author. Never delay to meet a floor, invent a
+duration, or change risk to fit a budget. If elapsed time cannot be measured, report incomplete.
+Include the invocation's tool execution and waits; exclude time between separate reviewer turns.
+Transcript evidence must use explicit turn boundaries, never inferred idle-gap cutoffs.
+
 Find concrete defects, not redesign opportunities or linter preferences. Check requirements,
 error paths, absent inputs, security boundaries and integration assumptions. You may inspect
 unchanged related code. A blocking finding must explain how this PR causes, exposes or worsens
@@ -22,7 +31,7 @@ the defect, or how it prevents acceptance criteria from being met. Independent p
 are incidental follow-ups, not merge blockers; flag independently discovered critical risks for
 human judgment immediately. Do not expand the PR to fix them automatically.
 
-Return: reviewed full commit SHA; risk class; elapsed minutes; complete/incomplete outcome;
+Return: reviewed full commit SHA; risk class; complete/incomplete outcome;
 and findings with unique IDs, severity (minor/substantive/incidental), exact paths/lines,
 a concrete failure scenario, and expected behavior. Say explicitly when there are no findings.
 Do not modify code, post to GitHub, or merge. Return your review to the author.
@@ -41,13 +50,28 @@ either resolves what the previous turn left blocked, after the author has addres
 unresolved concerns, or is a late correction after a clearance: when full CI shows a fix is
 needed after you cleared the code, the author may spend a remaining turn in THIS SAME session,
 recording the scope decision as that turn's scopeReason; you clear or block the correction commit.
-Otherwise a cleared turn ends the review, and an incomplete one exhausted its budget and escalates.
+Otherwise a cleared turn ends the review, and an incomplete one escalates. If missing evidence
+left a turn incomplete within its budget, explicit humanAuthorization on the next same-reviewer
+turn may resume it. Preserve the incomplete verdict; authorization never waives any turn's budget.
 If substantive concerns remain after the last turn, or a correction is needed once the turns are
 spent, leave the PR open, disable auto-merge, and flag the concrete unresolved issue for the
 human. No automatic fourth turn or replacement reviewer to obtain approval.
 Only an explicit human exception permits another same-reviewer turn. Record humanAuthorization
 (approvedBy, approvedAt ISO timestamp, reason) on each extra follow-up; keep the full history
 and all other review/CI requirements. Authorization for one turn never grants another.
+Beyond that you may spend ONE automatic finalization-only turn per PR, capped at five minutes,
+whose only job is closing out work you already cleared: the explanatory prose for it, the review
+record, or the completion of a condition you set. Record finalization ({paths, evidence,
+attestation}) plus a scopeReason naming what you finalized. You write it, never the author. It
+must be the last automatic turn; every later same-reviewer turn requires explicit humanAuthorization.
+Its original scope and predecessor remain checked. It must follow a turn you cleared, must itself be cleared, and cannot resolve a
+substantive finding or review new implementation: the checker compares the commits it covers against
+the worklog, the conditions the author actually satisfied, and the explanatory Markdown you
+attested. A condition left disputed or unmet does not widen it. AGENTS.md, CLAUDE.md, morpheus.json and anything
+under .github/, .ci/ or .morpheus/ are normative policy and are refused there, case-insensitively
+and at any depth; a symlinked policy file is yours to catch, because no pattern can. If you still have a
+concern, record blocked or incomplete instead. Better still, avoid needing it: when you set a
+condition, name the documentation and generated files that go with the fix in its paths.
 Unrelated changes invalidate coverage; restarting requires an explicit scope decision.
 If trunk integration is required during the author response, an explicit scope decision may use
 a same-session follow-up to inspect that integration and affected paths. Preserve the initial
@@ -61,7 +85,10 @@ turn clears it as a late correction. The author merges rather than rebases after
 
 The author must retain a short human-readable summary and a morpheus-review JSON block in the
 task worklog, even for a clean review. Include original findings, responses, commit coverage,
-the runner-issued id of this session (never a composed label) and every follow-up turn. Set outcome complete only after this contract is satisfied.
+the runner-issued id of this session (never a composed label) and every follow-up turn.
+For a canonical Codex task path such as /root/author/reviewer, record the exact returned
+path and the globally scoped parent runner thread/session ID in authorSession; that pair
+identifies the reviewer across worklogs. Follow-ups keep the exact same task path. Set outcome complete only after this contract is satisfied.
 PR body: a visible review-record: .agent/worklog/<task>.md line, plus a linked summary.
 Apply agent-reviewed only when complete. Remove it for stale, blocked or incomplete review.
 The record is an auditable attestation, not cryptographic proof of independent judgment.

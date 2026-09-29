@@ -224,6 +224,16 @@ describe("checkPr", () => {
       expect.objectContaining({ rule: "morpheus-security-contract", level: "waived" }),
     ]);
 
+    const pnpmOverride = await checkPr(goodPr({
+      author: "morpheus-security[bot]",
+      body: "<!-- morpheus-security-update -->",
+      branch: "morpheus-security/pnpm-minimist-ghsa-example",
+      changedFiles: ["pnpm-workspace.yaml", "pnpm-lock.yaml"],
+    }));
+    expect(pnpmOverride).toEqual([
+      expect.objectContaining({ rule: "morpheus-security-contract", level: "waived" }),
+    ]);
+
     for (const change of [
       { body: "", changedFiles: ["apps/web/package-lock.json"] },
       { body: "<!-- morpheus-security-update -->", changedFiles: ["apps/web/app/page.tsx"] },

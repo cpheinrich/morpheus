@@ -87,8 +87,13 @@ try {
   ]);
   const manifestPath = join(staged, ".codex-plugin", "plugin.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  manifest.version = manifest.version.split("+")[0] + "+codex." + Date.now();
+  const installationId = `codex.${Date.now()}`;
+  manifest.version = manifest.version.split("+")[0] + "+" + installationId;
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  await writeFile(
+    join(staged, "src", "installation.mjs"),
+    `export const installationId = ${JSON.stringify(installationId)};\n`,
+  );
   await mkdir(dirname(destination), { recursive: true });
   const next = destination + ".next-" + process.pid;
   await cp(staged, next, { recursive: true, dereference: true });

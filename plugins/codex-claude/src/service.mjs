@@ -33,14 +33,17 @@ import {
 } from "./store.mjs";
 import { Codex } from "./codex.mjs";
 import { checkClaude, handoff, claudeArgs } from "./claude.mjs";
-import { identity, stopOrphan } from "./processes.mjs";
+import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
+import { installationId } from "./installation.mjs";
 
 export class Manager {
   runs = new Map();
   codex = null;
   busy = false;
+  draining = false;
+  processOwnership = ownedProcessState;
   viewer = new Viewer(this);
   async client() {
     if (!this.codex) {
@@ -75,6 +78,8 @@ export class Manager {
     };
   }
   async start(args) {
+    if (this.draining)
+      throw new Error("Bridge upgrade is in progress; retry afterward.");
     if (this.busy)
       throw new Error("Another delegation is starting; retry shortly.");
     this.busy = true;
@@ -153,6 +158,8 @@ export class Manager {
         latestTask.disabled
       )
         throw new Error("Delegation was disabled during preflight");
+      if (this.draining)
+        throw new Error("Bridge upgrade is in progress; retry afterward.");
       const id = randomUUID();
       const dir = runDir(id);
       await mkdir(dir, { mode: 0o700 });
@@ -545,7 +552,39 @@ export class Manager {
       return value;
     }
     if (method === "view") return this.viewer.open(args.runId);
-    if (method === "ping") return { ready: true };
+    if (method === "ping") return { ready: true, installationId };
+    if (method === "shutdown") {
+      this.draining = true;
+      try {
+        if (this.busy)
+          throw new Error("A Claude delegation is starting; retry the upgrade.");
+        if ([...this.runs.values()].some((run) => !run.terminal))
+          throw new Error("Active Claude runs prevent a bridge upgrade.");
+        for (const id of (await readdir(join(home(), "runs"))).filter((id) =>
+          /^[0-9a-f-]{36}$/.test(id),
+        )) {
+          const path = join(runDir(id), "process.json");
+          const owned = await readJSON(path, null);
+          if (!["starting", "running"].includes(owned?.state)) continue;
+          const ownership = await this.processOwnership(owned);
+          if (ownership === "live")
+            throw new Error("An owned Claude process prevents a bridge upgrade.");
+          if (ownership === "unknown")
+            throw new Error(
+              "Claude process ownership could not be verified; bridge upgrade refused.",
+            );
+          await atomic(path, {
+            ...owned,
+            state: "exited",
+            reason: "Recorded process identities are no longer live",
+          });
+        }
+        return { stopping: true };
+      } catch (error) {
+        this.draining = false;
+        throw error;
+      }
+    }
     if (method === "inspect")
       return this.inspect(args.threadId, args.operation);
     if (method === "start") return this.start(args);
@@ -613,6 +652,7 @@ export async function serve() {
       const result = await manager.dispatch(method, args);
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ result }));
+      if (method === "shutdown") setImmediate(stop);
     } catch (e) {
       res.statusCode = 400;
       res.end(JSON.stringify({ error: e.message }));

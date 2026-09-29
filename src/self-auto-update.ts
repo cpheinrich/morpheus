@@ -122,7 +122,11 @@ export function autoUpdateHookBlock(binaryPath: string): string {
   return `${AUTO_UPDATE_START}
 MORPHEUS_AUTO_UPDATE_BIN=${shellQuote(binaryPath)}
 if [ -x "$MORPHEUS_AUTO_UPDATE_BIN" ]; then
-  "$MORPHEUS_AUTO_UPDATE_BIN" self ensure || :
+  (
+    PATH="\${PATH:-/usr/bin:/bin}":${shellQuote(dirname(binaryPath))}:${shellQuote(dirname(process.execPath))}
+    export PATH
+    "$MORPHEUS_AUTO_UPDATE_BIN" self ensure
+  ) || :
 else
   printf '%s\\n' "Morpheus auto-update is enabled, but $MORPHEUS_AUTO_UPDATE_BIN is missing." >&2
 fi
