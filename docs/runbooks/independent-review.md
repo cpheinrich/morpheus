@@ -140,7 +140,9 @@ simply be a fourth review with no decision behind it:
 
 - **One per pull request.** A second needs `humanAuthorization` as an ordinary substantive turn.
 - **Five minutes.** Anything that takes longer is a review and spends a turn.
-- **Last word.** Nothing follows it automatically.
+- **Last automatic word.** Nothing follows it automatically. Explicitly authorized same-reviewer
+  turns may follow; every later turn must carry its own `humanAuthorization`, even inside the
+  ordinary turn cap. Preserve the finalization record and validate its original scope and predecessor.
 - **`cleared` only, and it follows a clearance.** A reviewer with a remaining concern records
   `blocked` or `incomplete`, and the pull request stays blocked — including when the turn before
   the finalization turn is the one that blocked. It cannot resolve a substantive finding: the

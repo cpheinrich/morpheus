@@ -1477,7 +1477,8 @@ correction after clearance, named by its scope reason. Unresolved substantive di
 incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
 open and flagged, with auto-merge disabled. No automatic fourth substantive turn; one automatic
 finalization-only turn per PR is allowed, at five minutes, recorded as `finalization` with the
-reviewer's attested paths, evidence and scope. It must be last and cleared, cannot resolve a
+reviewer's attested paths, evidence and scope. It must be the last automatic turn and cleared; every later same-reviewer turn requires explicit
+`humanAuthorization`. Its original scope and predecessor stay checked. It cannot resolve a
 substantive finding, and is checked against the commits it covers: the worklog, already-conditioned
 paths, and explanatory Markdown only — never normative policy files. An explicit human exception is recorded per extra same-reviewer turn
 as `humanAuthorization` (approver, ISO timestamp and reason), preserving the full history and
