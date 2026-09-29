@@ -625,13 +625,45 @@ describe("one automatic finalization-only turn", () => {
     r.followUps![1]!.outcome = outcome;
     expect(check(save(r))[0]?.message).toContain("blocked");
   });
-  it("must be the last word, and must name its scope", () => {
+  it("allows explicitly authorized continuation and still requires finalization scope", () => {
     const r = cleared();
-    r.followUps!.push({ reviewerSession: session, commit: r.covered, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Another look after finalization.", summary: "A turn that should not be able to follow finalization.", humanAuthorization: { approvedBy: "Chris Heinrich", approvedAt: "2026-09-27T12:30:00Z", reason: "Authorized another substantive turn after the finalization turn." } });
-    expect(check(save(r))[0]?.message).toContain("last word");
+    r.followUps!.push({ reviewerSession: session, commit: r.covered, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Another look after finalization.", summary: "Verified the explicitly authorized correction after finalization.", humanAuthorization: { approvedBy: "Chris Heinrich", approvedAt: "2026-09-27T12:30:00Z", reason: "Authorized another substantive turn after the finalization turn." } });
+    expect(check(save(r))).toEqual([]);
+    delete r.followUps![2]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
     const bare = cleared();
     delete bare.followUps![1]!.scopeReason;
     expect(check(save(bare))[0]?.message).toContain("scopeReason");
+  });
+  it("requires authorization after an early finalization even within the ordinary cap", () => {
+    const r = cleared();
+    r.followUps!.shift();
+    r.followUps!.push({ reviewerSession: session, commit: r.covered, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Late correction after finalization.", summary: "Verified the correction." });
+    expect(check(save(r))[0]?.message).toContain("every turn after finalization");
+  });
+  it("checks the actual predecessor and historical finalization scope after authorized continuation", () => {
+    const r = cleared();
+    const authorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-28T23:09:04Z", reason: "Explicitly authorized additional review rounds to complete the PR." };
+    r.followUps!.push({ reviewerSession: session, commit: r.covered, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Late correction after finalization.", summary: "Verified the correction.", humanAuthorization: authorization });
+    r.followUps![0]!.outcome = "blocked";
+    expect(check(save(r))[0]?.message).toContain("only follows a cleared turn");
+    r.followUps![0]!.outcome = "cleared";
+    r.followUps![1]!.finalization!.paths = ["AGENTS.md"];
+    expect(check(save(r))[0]?.message).toContain("normative policy");
+    r.followUps![1]!.finalization!.paths = ["docs/runbooks/guide.md"];
+    writeFileSync(join(root, "code.ts"), "unreviewed code riding in finalization");
+    r.covered = commit();
+    r.followUps![1]!.commit = r.covered;
+    r.followUps![2]!.commit = r.covered;
+    expect(check(save(r))[0]?.message).toContain("may cover only the review record");
+  });
+  it("requires a separate authorization for every subsequent turn", () => {
+    const r = cleared();
+    const turn = { reviewerSession: session, commit: r.covered, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Authorized late correction.", summary: "Verified the correction.", humanAuthorization: { approvedBy: "Chris Heinrich", approvedAt: "2026-09-28T23:09:04Z", reason: "Explicitly authorized additional review rounds to complete the PR." } };
+    r.followUps!.push(turn, { ...turn, humanAuthorization: undefined });
+    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
+    r.followUps![3]!.humanAuthorization = turn.humanAuthorization;
+    expect(check(save(r))).toEqual([]);
   });
   it("cannot resolve substantive findings by itself", () => {
     const substantive = { id: "TE-11", severity: "substantive" as const, description: "The operator path still bypasses the guard", paths: ["code.ts"], disposition: "fixed" as const, response: "Routed it through the guard." };

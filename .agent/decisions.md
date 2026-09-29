@@ -1098,3 +1098,11 @@ turn, with a checked conversion to elapsed minutes. Version 1 remains compatible
 records. Floors, ceilings, review outcomes and escalation policy are unchanged. Runner evidence
 is auditable provenance, not a claim that CI can authenticate a private transcript. Existing Zod
 and arithmetic suffice for this Morpheus-specific record contract; no dependency is introduced.
+
+
+**Explicit authorization may reopen a finalized review** — 2026-09-28. Evo #308 received explicit
+human authorization for additional same-reviewer rounds after an automatic finalization. Require
+that authorization on every later turn, preserve history, and validate finalization against its
+actual predecessor and original commit range. No timing, scope, clearance or CI guard is waived.
+This extends the existing Morpheus-specific record validator using existing Zod and Git; no generic
+module or dependency is introduced.
