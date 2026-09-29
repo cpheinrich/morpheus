@@ -3160,8 +3160,9 @@ sources still build, failed runs retry, and manual forced builds always run. An 
 screenshots is distinguishable from one that failed to capture them. This is bounded recovery,
 not an independent scheduler.
 
-Screenshots are reviewed from the nightly run itself: every named XCTest attachment is kept in
-that run's `.xcresult`, uploaded with its artifacts. Apps own a screen inventory
+Screenshots are reviewed from the nightly run itself: every named XCTest attachment is exported
+from the run's `.xcresult` into its `ios-screenshots-<run>-<attempt>` artifact, kept for 14 days.
+The full `.xcresult` is uploaded only when tests fail. Apps own a screen inventory
 (`qa/ios-screens.json`: `id`, `title`, `attachment`) and synthetic XCTest fixtures; new
 full-screen destinations require both an inventory entry and a named capture. Modals and external
 websites are optional. Morpheus no longer publishes these screenshots into a standing

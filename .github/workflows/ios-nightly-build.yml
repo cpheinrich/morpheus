@@ -318,7 +318,7 @@ jobs:
             }
             core.setOutput('capture', String(capture));
 
-      # The observer must distinguish an intentional no-op from a failed capture.
+      # Record an intentional skip, so a run with no screenshots is distinguishable from a failed capture.
       - name: Record intentional nightly no-op
         if: steps.decide.outputs.build == 'false' && steps.capture.outputs.capture != 'true'
         run: echo 'No release changes and no new capture required.' > "$RUNNER_TEMP/ios-nightly-noop.txt"
