@@ -350,7 +350,9 @@ Unresolved substantive disagreements after that, an incomplete review, or a corr
 turns are spent, keep the PR open and auto-merge disabled. An explicit human exception may authorize
 one additional same-reviewer turn; record `humanAuthorization` with `approvedBy`, `approvedAt`
 (ISO timestamp), and `reason` on that extra follow-up. Each extra turn needs its own authorization;
-never infer it or reset the history. Beyond that, one **automatic finalization-only** turn per PR is
+never infer it or reset the history. An incomplete turn awaiting evidence may resume only with
+explicit human authorization on its next same-reviewer turn. Preserve the incomplete verdict;
+every historical and new turn must satisfy its budget. Beyond that, one **automatic finalization-only** turn per PR is
 allowed: the same reviewer, at most five minutes, closing out work it already cleared — the
 explanatory prose for it, the review record, or the completion of a condition it set. The reviewer
 records `finalization` (`paths`, `evidence`, `attestation`) and a `scopeReason`; an author cannot

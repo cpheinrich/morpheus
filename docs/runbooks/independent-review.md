@@ -120,7 +120,10 @@ on the same reviewer, naming the scope decision in that turn's `scopeReason` ("l
 correction: two legacy UI tests assumed the old layout"). A clean initial review therefore has two
 such slots and a review that already used a fix follow-up has one; the author makes that scope
 decision within the task's budget, and the record shows it. Otherwise a `cleared` turn ends the
-review, and an `incomplete` one exhausted its budget and escalates; nothing follows it. The cap is
+review, and an `incomplete` one escalates. Missing evidence can leave a turn incomplete within
+its budget; explicit `humanAuthorization` on the next same-reviewer turn permits resuming it.
+Keep the original incomplete verdict. Every historical and new turn must still meet its budget;
+authorization never waives an overrun. Nothing follows an incomplete turn automatically. The cap is
 what stops an author and a reviewer trading fixes and findings indefinitely, at a session's cost
 per turn. Unresolved substantive concerns after the last turn, or a correction needed once the
 turns are spent, mean blocked: remove `agent-reviewed`, disable auto-merge, and flag the remaining
@@ -210,7 +213,7 @@ same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`)
 and `summary`. Every entry but the last must be `blocked`, or `cleared` when the entry after it
 carries a `scopeReason` for the late correction it covers; the last must be `cleared`. A
 follow-up that comes directly after an initial review with no substantive findings is that same
-shape and needs a `scopeReason` too. An `incomplete` entry cannot be followed. A single
+shape and needs a `scopeReason` too. An `incomplete` entry can be followed only with explicit `humanAuthorization` on the next turn and with all per-turn budgets satisfied. A single
 `followUp` object, the shape from the two-turn contract, still validates as one turn. Each turn's
 `commit` must descend from the previous one. `elapsedMinutes` at the top level measures the
 initial review only; each follow-up's is checked against the follow-up ceiling on its own.

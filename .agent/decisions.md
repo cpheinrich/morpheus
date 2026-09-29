@@ -1106,3 +1106,11 @@ that authorization on every later turn, preserve history, and validate finalizat
 actual predecessor and original commit range. No timing, scope, clearance or CI guard is waived.
 This extends the existing Morpheus-specific record validator using existing Zod and Git; no generic
 module or dependency is introduced.
+
+
+**An evidence-pending incomplete review can resume with explicit authorization** — 2026-09-28.
+Evo #308 preserved a truthful incomplete verdict for missing evidence, followed by authorized
+same-reviewer clearances. Require humanAuthorization on the next turn, retain the history, and
+keep every per-turn budget, finalization and clearance guard. Existing recorded duration checks
+distinguish budget overruns without a new reason field. This is a Morpheus-specific validator
+change using existing Zod and Git; no generic module or new dependency is needed.

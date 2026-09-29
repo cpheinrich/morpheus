@@ -383,7 +383,7 @@ describe("late corrections after clearance", () => {
     // Without the correction turn, the correction commit is exactly the uncovered code the rule refuses.
     expect(check(save({ ...r, covered: first, followUps: [turn(first, "cleared")] }))[0]?.message).toContain("invalidate");
   });
-  it("never follows an incomplete turn, even with a scope reason", () => {
+  it("never automatically follows an incomplete turn, even with a scope reason", () => {
     writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
     writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
     const r = { ...record(), covered: corrected, findings: [substantive], followUps: [turn(first, "incomplete"), { ...turn(corrected, "cleared"), scopeReason }] };
@@ -816,5 +816,45 @@ describe("the shape Evo #291 needs", () => {
     r.followUps![3]!.commit = wider;
     r.followUps![3]!.finalization!.paths = [...r.followUps![3]!.finalization!.paths, "other.ts"];
     expect(check(save(r))[0]?.message).toContain("neither a conditioned path nor explanatory documentation");
+  });
+});
+
+
+describe("authorized continuation after missing review evidence", () => {
+  const authorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-28T23:09:04Z", reason: "Explicitly authorized another same-reviewer turn after obtaining the missing evidence." };
+  function pendingEvidence(): LocalReviewRecord {
+    const r = record();
+    r.version = 2;
+    r.timing = { source: "runner", durationMs: 180000, evidence: "Initial runner duration: 180000 ms." };
+    r.followUps = [
+      { reviewerSession: r.reviewerSession, commit: reviewed, outcome: "incomplete", elapsedMinutes: 151444 / 60000, timing: { source: "runner", durationMs: 151444, evidence: "Missing-evidence review runner duration: 151444 ms." }, scopeReason: "Late correction requires diagnostic evidence.", summary: "Incomplete: diagnostic evidence is missing; no clearance was given." },
+      { reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: 2, timing: { source: "runner", durationMs: 120000, evidence: "Authorized follow-up runner duration: 120000 ms." }, humanAuthorization: authorization, scopeReason: "Review the missing evidence and resulting correction.", summary: "The original reviewer inspected the evidence and cleared the correction." },
+    ];
+    return r;
+  }
+  it("preserves an incomplete verdict when a human authorizes the next same-reviewer clearance", () => {
+    const r = pendingEvidence();
+    expect(check(save(r))).toEqual([]);
+    expect(r.followUps![0]!.outcome).toBe("incomplete");
+  });
+  it("requires authorization on the next turn, even within the default turn cap", () => {
+    const r = pendingEvidence();
+    r.followUps![0]!.humanAuthorization = authorization;
+    delete r.followUps![1]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
+  });
+  it.each([0, 1])("still enforces the budget of follow-up %i", index => {
+    const r = pendingEvidence();
+    r.followUps![index]!.elapsedMinutes = 450001 / 60000;
+    r.followUps![index]!.timing!.durationMs = 450001;
+    expect(check(save(r))[0]?.message).toContain("follow-up exceeded its budget");
+  });
+  it("retains the original reviewer and requires final clearance", () => {
+    const r = pendingEvidence();
+    r.followUps![1]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
+    expect(check(save(r))[0]?.message).toContain("original reviewer");
+    r.followUps![1]!.reviewerSession = r.reviewerSession;
+    r.followUps![1]!.outcome = "incomplete";
+    expect(check(save(r))[0]?.message).toContain("final follow-up must clear");
   });
 });
