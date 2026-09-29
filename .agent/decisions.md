@@ -117,6 +117,17 @@ its built-in upload job and gate a local upload job on those outputs. Repository
 inheritance was rejected because it would widen credentials that are intentionally available only
 after the protected environment gate.
 
+**The nightly admission core is shared; the iOS test-result verifier stays in the app** —
+2026-09-28. `src/ios/nightly-core.ts` holds what every Mac-mini-dispatched app decides the same
+way — one automated release per local day, reserved before dispatch, uploads judged by the upload
+step, uncertain uploads blocking admission — and apps vendor it with `morpheus ios nightly-core`.
+Evo's `verify-results.mjs`, which checks an xcresult against the tests Evo enumerated and fails a
+run on any skip its known-skips inventory does not document, was not lifted with it: it encodes
+Evo's test targets, its unit/full scope split, its nightly-only suite and a digest of its UI test
+inventory, and no other app enumerates its tests or keeps a known-skips file, so a shared version
+would be a configurable framework with one user. Lift it when a second app needs its results
+verified against an enumeration of its tests.
+
 **Vercel deployment and agent review are separate reusable workflows** — 2026-08-23. Deployment
 is deterministic delivery with project credentials; review is optional model judgment with its own
 cost and failure modes. Projects call `vercel-deploy.yml` independently, so pausing review never
