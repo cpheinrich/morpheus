@@ -16,6 +16,11 @@ The [historical-chat follow-up](../../audits/2026-09-25-qmd-historical-queries.m
 uses history-derived Evo questions and tests early passage retrieval against both
 ordinary navigation and a non-QMD indexed-search control.
 
+The [metadata-aware MiniSearch follow-up](../../audits/2026-09-29-metadata-minisearch.md)
+adds record identifiers, types, dates, headings and roadmap/worklog bundling to the lexical
+prefetch control, tunes it only on already-exposed questions, then runs Claude Code trials
+on fresh Lakina and Evo questions. See [its protocol](meta-protocol.md).
+
 ## Reproduction
 
 Requires Node, Git, ripgrep, authenticated Codex CLI, and an external pinned install
@@ -47,6 +52,21 @@ private. Do not publish that working directory or run these commands in CI.
    Then run
    `node publish.mjs PRIVATE_ROOT PUBLIC_OUTPUT_DIRECTORY` to export an allowlisted
    set of metrics, not prompts, paths, quotes, provider errors or transcripts.
+
+### Metadata-aware MiniSearch
+
+1. Materialize the development and held-out snapshots with `snapshot.mjs` under
+   `PRIVATE_ROOT/<project>-v1` and `PRIVATE_ROOT/<project>-v2`.
+2. Screen development questions with `node meta-screen.mjs PRIVATE_ROOT FIXTURES CONFIG OUTPUT`;
+   `CONFIG` names arms as `{"mode": "plain" | "meta", "options": {...}}`. Record the retriever's
+   SHA-256 in `retrieval-freeze.json` before writing held-out questions.
+3. Freeze `heldout.json` and `heldout-freeze.json`, then run
+   `node claude-agents.mjs PRIVATE_ROOT CONFIG_JSON`. It needs Claude Code logged in with a
+   `claude.ai` subscription. It strips provider and parent-session variables, runs
+   `claude -p --safe-mode` in a read-only corpus copy under `workRoot`, and stops on an overage
+   signal or `usageCeiling` utilization. It resumes by skipping result files; failures stay.
+4. Write the private `heldout-answer-audit.json` (the same row shape as `answer-audit.json`
+   without `stage`), then `node publish-meta.mjs PRIVATE_ROOT PUBLIC_OUTPUT_DIRECTORY`.
 
 `identifier-diagnostic.mjs PRIVATE_ROOT OUTPUT_JSON` is a separate post-hoc check
 of quoted, unquoted and space-separated identifier queries. Its output contains
