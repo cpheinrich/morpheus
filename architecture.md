@@ -3160,6 +3160,20 @@ sources still build, failed runs retry, and manual forced builds always run. An 
 screenshots is distinguishable from one that failed to capture them. This is bounded recovery,
 not an independent scheduler.
 
+Apps whose nightly release is dispatched from the Mac mini share one admission core,
+`src/ios/nightly-core.ts`, extracted from Evo's controller (darwin-health/evo #307, #309). It
+admits at most one automated release per local calendar day in a configured window, whatever
+became of it, and writes the reservation before dispatching so a lost response never buys a second
+attempt. It reconciles each reservation to its run by the run title the release workflow gives an
+`automated-day` dispatch, and judges the last upload from the upload step inside every attempt: a
+failed rerun cannot hide a build an earlier attempt uploaded, and a step that started without
+finishing blocks admission until a later upload is confirmed. Competing schedulers cannot share that
+daily limit, so a caller using the core drops any independent release cron. The core has no imports
+because it runs from a pinned runtime copy on the host, where no `node_modules` is reachable:
+`morpheus ios nightly-core write <file>` vendors it with a digest of the exact module, and `check`
+tells a hand edit from an upgrade. Each app's adapter owns its upload job and step names, window,
+run-title format, incident hook, notifications and installer.
+
 Screenshots are reviewed from the nightly run itself: every named XCTest attachment is exported
 from the run's `.xcresult` into its `ios-screenshots-<run>-<attempt>` artifact, kept for 14 days.
 The full `.xcresult` is uploaded only when tests fail. Apps own a screen inventory

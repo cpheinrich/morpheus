@@ -32,6 +32,7 @@ import { printRules, rules as hqRules } from "./hq.js";
 import * as registry from "./registry.js";
 import { run as doctorRun } from "./doctor.js";
 import { run as changedSwiftRun } from "../ios/changed-swift.js";
+import { run as nightlyCoreRun } from "../ios/nightly-vendor.js";
 import { mark as initMark, status as initStatus } from "./onboarding.js";
 import { init as initScaffold } from "./init.js";
 import { webAddConsumerAuth, webInit, webStatus } from "./web.js";
@@ -101,6 +102,7 @@ async function dispatchIos({ flags, command, rest }: Invocation): Promise<number
         nul: flags.nul,
       });
     }
+    if (command === "nightly-core") return nightlyCoreRun(rest[0], rest[1]);
     console.error(`Unknown ios command "${command ?? ""}".\n\n${HELP}`);
     return 1;
   
