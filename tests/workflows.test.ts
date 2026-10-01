@@ -1598,8 +1598,15 @@ describe("ios-nightly-build.yml", () => {
     );
     expect(upload?.env?.SOURCE_PACKAGES_PATH).toBeUndefined();
     expect(validate?.run).toContain(
-      'echo "SOURCE_PACKAGES_PATH=${MORPHEUS_IOS_CI_CACHE:-$RUNNER_TEMP}/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"',
+      'echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"',
     );
+    // A runner-provided build cache is used only when it exists, and then the
+    // SwiftPM cache action has nothing to keep.
+    expect(validate?.id).toBe("release_paths");
+    expect(validate?.run).toContain('if [ -n "${MORPHEUS_IOS_CI_CACHE:-}" ] && [ -d "$MORPHEUS_IOS_CI_CACHE" ]; then');
+    expect(validate?.run).toContain('echo "SOURCE_PACKAGES_PATH=$MORPHEUS_IOS_CI_CACHE/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"');
+    const spmCache = upload?.steps?.find((step) => step.name === "Cache resolved Swift packages");
+    expect(String(spmCache?.if)).toContain("steps.release_paths.outputs.cached != 'true'");
     expect(release?.env?.ASC_API_KEY_ID).toBe("${{ secrets.APP_STORE_CONNECT_KEY_ID }}");
     expect(release?.env?.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64).toBe(
       "${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}",
@@ -2273,7 +2280,7 @@ describe("ios-ci.yml", () => {
         await writeFile(envFile, "");
         await writeFile(outputFile, "");
         await execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
-          env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile,
+          env: { ...process.env, MORPHEUS_IOS_CI_CACHE: "", RUNNER_TEMP: root, GITHUB_ENV: envFile,
             GITHUB_OUTPUT: outputFile, GITHUB_RUN_ID: String(run), GITHUB_RUN_ATTEMPT: String(attempt) },
         });
         const paths = Object.fromEntries((await readFile(envFile, "utf8")).trim().split("\n")

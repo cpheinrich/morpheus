@@ -411,6 +411,7 @@ jobs:
           persist-credentials: false
 
       - name: Validate release inputs and select Xcode
+        id: release_paths
         env:
           EXPECTED_SHA: ${{ needs.preflight.outputs.sha }}
           XCODE_VERSION: ${{ inputs.xcode-version }}
@@ -455,8 +456,15 @@ jobs:
             exit 1
           fi
 
-          # Reuse a runner-provided build cache (see ios-ci.yml) for the release checkouts too.
-          echo "SOURCE_PACKAGES_PATH=${MORPHEUS_IOS_CI_CACHE:-$RUNNER_TEMP}/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"
+          # Reuse a runner-provided build cache (see ios-ci.yml) for the release
+          # checkouts too; a named directory that does not exist is ignored.
+          if [ -n "${MORPHEUS_IOS_CI_CACHE:-}" ] && [ -d "$MORPHEUS_IOS_CI_CACHE" ]; then
+            echo "SOURCE_PACKAGES_PATH=$MORPHEUS_IOS_CI_CACHE/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"
+            echo "cached=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"
+            echo "cached=false" >> "$GITHUB_OUTPUT"
+          fi
 
           versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
           if [ -d "$versioned_xcode_app" ]; then
@@ -479,6 +487,8 @@ jobs:
           fi
 
       - name: Cache resolved Swift packages
+        # A runner-provided cache directory already keeps the checkouts.
+        if: ${{ steps.release_paths.outputs.cached != 'true' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ runner.temp }}/${{ inputs.source-packages-directory }}
