@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  admit, initialState, lastUpload, localTime, reconcile, schedule, uncertainUpload,
+  admit, initialState, lastUpload, localTime, periodOf, reconcile, schedule, uncertainUpload,
   type AdmissionConfig, type AdmissionDeps, type Job, type Run, type State,
 } from "../src/ios/nightly-core.js";
 import { check, run as vendorRun, vendored } from "../src/ios/nightly-vendor.js";
@@ -125,6 +125,68 @@ describe("daily admission", () => {
   it("a release stuck for more than four hours stops admission", async () => {
     const h = harness(); h.runs = [run({ status: "queued", created_at: "2026-09-28T08:00:00Z" })];
     await expect(admit(h)).rejects.toThrow(/more than four hours/);
+  });
+});
+
+describe("slot admission", () => {
+  // Four six-hour slots a day; admission opens five minutes into each and
+  // closes five hours in, so a two-hour release never overlaps the next slot.
+  const SLOTS: AdmissionConfig = { ...CONFIG, slotMinutes: 360, window: { start: 5, end: 300 } };
+
+  it("keys periods by local slot start and leaves day-long periods unchanged", () => {
+    expect(periodOf("2026-09-28T13:05:00Z", SLOTS)).toEqual({ key: "2026-09-28T0600", minute: 5 });
+    expect(periodOf("2026-09-28T19:30:00Z", SLOTS)).toEqual({ key: "2026-09-28T1200", minute: 30 });
+    expect(periodOf("2026-09-29T06:59:00Z", SLOTS)).toEqual({ key: "2026-09-28T1800", minute: 359 });
+    expect(periodOf("2026-09-28T13:05:00Z", CONFIG)).toEqual({ key: "2026-09-28", minute: 365 });
+    // Config the core cannot honour fails closed rather than quietly becoming a day.
+    expect(() => periodOf("2026-09-28T13:05:00Z", { ...SLOTS, slotMinutes: 500 })).toThrow(/divisor of 1440/);
+    expect(() => periodOf("2026-09-28T13:05:00Z", { ...SLOTS, slotMinutes: 350 })).toThrow(/divisor of 1440/);
+    expect(() => periodOf("2026-09-28T13:05:00Z", { ...SLOTS, window: { start: 5, end: 360 } })).not.toThrow();
+    expect(() => periodOf("2026-09-28T13:05:00Z", { ...SLOTS, window: { start: 5, end: 361 } })).toThrow(/must not exceed slotMinutes/);
+  });
+
+  it("admits one automated release per slot and records each slot's outcome", async () => {
+    const h = harness(); h.config = SLOTS;
+    await schedule(h); await schedule(h);
+    expect(h.calls).toEqual(["dispatch"]);
+    expect(h.state.days["2026-09-28T0600"]?.status).toBe("dispatched");
+    expect(h.state.days["2026-09-28T0600"]?.nonce).toBe("2026-09-28T0600");
+    // The dispatched run is still in flight at the next slot: no second release.
+    h.runs = [run({ created_at: "2026-09-28T13:06:00Z", status: "in_progress", conclusion: null, display_title: "iOS TestFlight release · 2026-09-28T0600" })];
+    h.now = "2026-09-28T19:05:00Z"; await schedule(h);
+    expect(h.calls).toEqual(["dispatch"]); expect(h.state.days["2026-09-28T1200"]).toBeUndefined();
+    // Once it completes, the 12:00 slot admits its own release.
+    h.runs[0] = run({ ...h.runs[0], status: "completed", conclusion: "success" });
+    h.now = "2026-09-28T19:10:00Z"; await schedule(h);
+    expect(h.calls).toEqual(["dispatch", "dispatch"]);
+    expect(h.state.days["2026-09-28T1200"]?.status).toBe("dispatched");
+    // A manual release inside a slot satisfies that slot; unchanged main spends one.
+    h.runs.push(run({ id: 9, created_at: "2026-09-29T01:30:00Z", display_title: "manual" }));
+    h.now = "2026-09-29T01:35:00Z"; await schedule(h);
+    expect(h.state.days["2026-09-28T1800"]).toEqual({ status: "observed", run: 9 });
+    h.deps.changes = async () => ({ changed: false });
+    h.now = "2026-09-29T07:05:00Z"; await schedule(h);
+    expect(h.state.days["2026-09-29T0000"]?.status).toBe("no-changes");
+    expect(h.calls).toEqual(["dispatch", "dispatch"]);
+  });
+
+  it("an open incident spends no slot, so the next slot retries after it resolves", async () => {
+    const h = harness(); h.config = SLOTS; h.deps.hasIncident = async () => true;
+    await schedule(h);
+    expect(h.calls).toEqual([]); expect(h.state.days["2026-09-28T0600"]).toBeUndefined();
+    h.deps.hasIncident = async () => false; h.now = "2026-09-28T19:05:00Z"; await schedule(h);
+    expect(h.calls).toEqual(["dispatch"]); expect(h.state.days["2026-09-28T1200"]?.status).toBe("dispatched");
+    // Outside a slot's window nothing is admitted either.
+    h.now = "2026-09-29T00:30:00Z"; await schedule(h);
+    expect(h.calls).toEqual(["dispatch"]); expect(h.state.days["2026-09-28T1800"]).toBeUndefined();
+  });
+
+  it("reconciles a slot reservation by its own run title", () => {
+    const state = initialState("2026-09-28T12:00:00Z");
+    state.days["2026-09-28T1200"] = { status: "dispatched", sha: "new", nonce: "2026-09-28T1200", at: "2026-09-28T19:05:00Z" };
+    const moved = run({ id: 77, head_sha: "different", display_title: "iOS TestFlight release · 2026-09-28T1200" });
+    reconcile(state, [moved], "2026-09-28T19:20:00Z", SLOTS);
+    expect(state.days["2026-09-28T1200"]?.run).toBe(77);
   });
 });
 

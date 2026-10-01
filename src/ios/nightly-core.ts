@@ -4,9 +4,9 @@
  *
  * Two questions, answered from GitHub's own records rather than from memory:
  *
- *   1. May an automated release start now? At most one per local calendar day,
- *      whatever happened to it, and never while a previous upload's fate is
- *      unknown. The reservation is written *before* dispatch, so a timeout, a
+ *   1. May an automated release start now? At most one per local calendar day
+ *      (or per configured slot of the day), whatever happened to it, and never
+ *      while a previous upload's fate is unknown. The reservation is written *before* dispatch, so a timeout, a
  *      crash or a lost response never buys a second attempt.
  *   2. What did the last release actually upload? Judged from the upload step
  *      inside each attempt, not from a run's overall conclusion: a failed rerun
@@ -67,8 +67,21 @@ export interface Upload<R extends Run = Run> {
 export interface AdmissionConfig {
   /** IANA zone whose calendar day bounds one automated release. */
   zone: string;
-  /** Local minutes after midnight: admission opens at `start`, closes before `end`. */
+  /**
+   * Local minutes into the admission period: admission opens at `start`, closes
+   * before `end`. The period is the calendar day unless `slotMinutes` divides it.
+   */
   window: { start: number; end: number };
+  /**
+   * Divide each local day into slots of this many minutes (a divisor of 1440,
+   * e.g. 360 for four slots) and admit one automated release per slot instead of
+   * one per day; `window` is then relative to the slot's start and must close
+   * before the slot ends, with room for the release to be created inside it. An
+   * open incident or an active run defers within the slot's window; an unchanged
+   * `main` spends the slot. Absent, the period is the whole day. Any other value
+   * is refused rather than silently reinterpreted as a day.
+   */
+  slotMinutes?: number;
   /** The run title the release workflow gives an automated dispatch for `nonce`. */
   title: (nonce: string) => string;
 }
@@ -113,6 +126,28 @@ export function localTime(value: string | number | Date, zone: string): { day: s
     }).formatToParts(new Date(value)).map((p) => [p.type, p.value]),
   );
   return { day: `${parts.year}-${parts.month}-${parts.day}`, minute: Number(parts.hour) * 60 + Number(parts.minute) };
+}
+
+/**
+ * The admission period `value` falls in, keyed for `state.days`, and the minute
+ * within it. Day-long periods keep the plain `YYYY-MM-DD` key, so existing
+ * state and run titles are unchanged; slots append their local start time,
+ * e.g. `2026-10-01T0600`.
+ */
+export function periodOf(value: string | number | Date, config: Pick<AdmissionConfig, "zone" | "slotMinutes" | "window">): { key: string; minute: number } {
+  const { day, minute } = localTime(value, config.zone);
+  if (config.slotMinutes === undefined) return { key: day, minute };
+  const size = config.slotMinutes;
+  if (!(Number.isInteger(size) && size > 0 && size < 1440 && 1440 % size === 0)) {
+    throw Error(`slotMinutes must be a positive divisor of 1440 below 1440, not ${String(size)}`);
+  }
+  if (config.window && config.window.end > size) {
+    throw Error(`window.end (${config.window.end}) must not exceed slotMinutes (${size}); a dispatch at the slot's end would be observed into the next slot`);
+  }
+  const start = Math.floor(minute / size) * size;
+  const hh = String(Math.floor(start / 60)).padStart(2, "0");
+  const mm = String(start % 60).padStart(2, "0");
+  return { key: `${day}T${hh}${mm}`, minute: minute - start };
 }
 
 export function initialState(now: string): State {
@@ -194,15 +229,15 @@ export function reconcile<R extends Run>(state: State, runs: R[], now: string, c
   }
 }
 
-/** One automated reservation per local day, even on failure. */
+/** One automated reservation per local day (or slot), even on failure. */
 export async function schedule<R extends Run>({ state, now, runs, config, deps, save }: {
   state: State; now: string; runs: R[]; config: AdmissionConfig; deps: AdmissionDeps<R>; save: () => void;
 }): Promise<void> {
-  const { day, minute } = localTime(now, config.zone);
+  const { key: day, minute } = periodOf(now, config);
   if (minute < config.window.start || minute >= config.window.end || state.days[day]) return;
-  // Count every release attempt, across SHAs and outcomes. A manual release
-  // also satisfies today's automation; people can still ask for more.
-  const today = runs.find((r) => localTime(r.created_at, config.zone).day === day);
+  // Count every release attempt in this period, across SHAs and outcomes. A
+  // manual release also satisfies its automation; people can still ask for more.
+  const today = runs.find((r) => periodOf(r.created_at, config).key === day);
   if (today) { state.days[day] = { status: "observed", run: today.id }; save(); return; }
   if (runs.some((r) => r.status !== "completed")) return;
   if (deps.hasIncident && await deps.hasIncident()) return;
