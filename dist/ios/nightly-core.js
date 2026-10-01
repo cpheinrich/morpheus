@@ -4,9 +4,9 @@
  *
  * Two questions, answered from GitHub's own records rather than from memory:
  *
- *   1. May an automated release start now? At most one per local calendar day,
- *      whatever happened to it, and never while a previous upload's fate is
- *      unknown. The reservation is written *before* dispatch, so a timeout, a
+ *   1. May an automated release start now? At most one per local calendar day
+ *      (or per configured slot of the day), whatever happened to it, and never
+ *      while a previous upload's fate is unknown. The reservation is written *before* dispatch, so a timeout, a
  *      crash or a lost response never buys a second attempt.
  *   2. What did the last release actually upload? Judged from the upload step
  *      inside each attempt, not from a run's overall conclusion: a failed rerun
@@ -29,6 +29,22 @@ export function localTime(value, zone) {
         hour: "2-digit", minute: "2-digit", hourCycle: "h23",
     }).formatToParts(new Date(value)).map((p) => [p.type, p.value]));
     return { day: `${parts.year}-${parts.month}-${parts.day}`, minute: Number(parts.hour) * 60 + Number(parts.minute) };
+}
+/**
+ * The admission period `value` falls in, keyed for `state.days`, and the minute
+ * within it. Day-long periods keep the plain `YYYY-MM-DD` key, so existing
+ * state and run titles are unchanged; slots append their local start time,
+ * e.g. `2026-10-01T0600`.
+ */
+export function periodOf(value, config) {
+    const { day, minute } = localTime(value, config.zone);
+    const size = config.slotMinutes ?? 1440;
+    if (!(size > 0 && size < 1440 && 1440 % size === 0))
+        return { key: day, minute };
+    const start = Math.floor(minute / size) * size;
+    const hh = String(Math.floor(start / 60)).padStart(2, "0");
+    const mm = String(start % 60).padStart(2, "0");
+    return { key: `${day}T${hh}${mm}`, minute: minute - start };
 }
 export function initialState(now) {
     return { version: 1, activatedAt: now, days: {}, notifications: {}, health: "ok" };
@@ -105,14 +121,14 @@ export function reconcile(state, runs, now, config) {
         }
     }
 }
-/** One automated reservation per local day, even on failure. */
+/** One automated reservation per local day (or slot), even on failure. */
 export async function schedule({ state, now, runs, config, deps, save }) {
-    const { day, minute } = localTime(now, config.zone);
+    const { key: day, minute } = periodOf(now, config);
     if (minute < config.window.start || minute >= config.window.end || state.days[day])
         return;
-    // Count every release attempt, across SHAs and outcomes. A manual release
-    // also satisfies today's automation; people can still ask for more.
-    const today = runs.find((r) => localTime(r.created_at, config.zone).day === day);
+    // Count every release attempt in this period, across SHAs and outcomes. A
+    // manual release also satisfies its automation; people can still ask for more.
+    const today = runs.find((r) => periodOf(r.created_at, config).key === day);
     if (today) {
         state.days[day] = { status: "observed", run: today.id };
         save();
