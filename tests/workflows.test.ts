@@ -1605,7 +1605,8 @@ describe("ios-nightly-build.yml", () => {
     expect(validate?.id).toBe("release_paths");
     expect(validate?.run).toContain('if [ -n "${MORPHEUS_IOS_CI_CACHE:-}" ] && [ -d "$MORPHEUS_IOS_CI_CACHE" ]; then');
     expect(validate?.run).toContain('echo "SOURCE_PACKAGES_PATH=$MORPHEUS_IOS_CI_CACHE/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"');
-    const spmCache = upload?.steps?.find((step) => step.name === "Cache resolved Swift packages");
+    const spmCache = upload?.steps?.find((step) => step.name === "Cache resolved Swift packages") as
+      { if?: string } | undefined;
     expect(String(spmCache?.if)).toContain("steps.release_paths.outputs.cached != 'true'");
     expect(release?.env?.ASC_API_KEY_ID).toBe("${{ secrets.APP_STORE_CONNECT_KEY_ID }}");
     expect(release?.env?.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64).toBe(
