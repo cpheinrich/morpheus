@@ -38,9 +38,15 @@ export function localTime(value, zone) {
  */
 export function periodOf(value, config) {
     const { day, minute } = localTime(value, config.zone);
-    const size = config.slotMinutes ?? 1440;
-    if (!(size > 0 && size < 1440 && 1440 % size === 0))
+    if (config.slotMinutes === undefined)
         return { key: day, minute };
+    const size = config.slotMinutes;
+    if (!(Number.isInteger(size) && size > 0 && size < 1440 && 1440 % size === 0)) {
+        throw Error(`slotMinutes must be a positive divisor of 1440 below 1440, not ${String(size)}`);
+    }
+    if (config.window && config.window.end > size) {
+        throw Error(`window.end (${config.window.end}) must not exceed slotMinutes (${size}); a dispatch at the slot's end would be observed into the next slot`);
+    }
     const start = Math.floor(minute / size) * size;
     const hh = String(Math.floor(start / 60)).padStart(2, "0");
     const mm = String(start % 60).padStart(2, "0");

@@ -71,9 +71,11 @@ export interface AdmissionConfig {
     /**
      * Divide each local day into slots of this many minutes (a divisor of 1440,
      * e.g. 360 for four slots) and admit one automated release per slot instead of
-     * one per day; `window` is then relative to the slot's start. A slot that
-     * cannot admit (an open incident, an active run, no changes) is simply spent,
-     * and the next slot tries again. Absent, the period is the whole day.
+     * one per day; `window` is then relative to the slot's start and must close
+     * before the slot ends, with room for the release to be created inside it. An
+     * open incident or an active run defers within the slot's window; an unchanged
+     * `main` spends the slot. Absent, the period is the whole day. Any other value
+     * is refused rather than silently reinterpreted as a day.
      */
     slotMinutes?: number;
     /** The run title the release workflow gives an automated dispatch for `nonce`. */
@@ -119,7 +121,7 @@ export declare function localTime(value: string | number | Date, zone: string): 
  * state and run titles are unchanged; slots append their local start time,
  * e.g. `2026-10-01T0600`.
  */
-export declare function periodOf(value: string | number | Date, config: Pick<AdmissionConfig, "zone" | "slotMinutes">): {
+export declare function periodOf(value: string | number | Date, config: Pick<AdmissionConfig, "zone" | "slotMinutes" | "window">): {
     key: string;
     minute: number;
 };

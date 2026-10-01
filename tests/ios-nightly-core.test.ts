@@ -138,8 +138,11 @@ describe("slot admission", () => {
     expect(periodOf("2026-09-28T19:30:00Z", SLOTS)).toEqual({ key: "2026-09-28T1200", minute: 30 });
     expect(periodOf("2026-09-29T06:59:00Z", SLOTS)).toEqual({ key: "2026-09-28T1800", minute: 359 });
     expect(periodOf("2026-09-28T13:05:00Z", CONFIG)).toEqual({ key: "2026-09-28", minute: 365 });
-    // A size that does not divide the day falls back to the whole day.
-    expect(periodOf("2026-09-28T13:05:00Z", { ...SLOTS, slotMinutes: 500 }).key).toBe("2026-09-28");
+    // Config the core cannot honour fails closed rather than quietly becoming a day.
+    expect(() => periodOf("2026-09-28T13:05:00Z", { ...SLOTS, slotMinutes: 500 })).toThrow(/divisor of 1440/);
+    expect(() => periodOf("2026-09-28T13:05:00Z", { ...SLOTS, slotMinutes: 350 })).toThrow(/divisor of 1440/);
+    expect(() => periodOf("2026-09-28T13:05:00Z", { ...SLOTS, window: { start: 5, end: 360 } })).not.toThrow();
+    expect(() => periodOf("2026-09-28T13:05:00Z", { ...SLOTS, window: { start: 5, end: 361 } })).toThrow(/must not exceed slotMinutes/);
   });
 
   it("admits one automated release per slot and records each slot's outcome", async () => {
