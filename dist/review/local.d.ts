@@ -44,6 +44,12 @@ export declare const MAX_FOLLOW_UPS = 2;
  * record, not a change. Anything that needs longer than this is a review, and spends a turn.
  */
 export declare const FINALIZATION_CEILING_MINUTES = 5;
+/**
+ * Policy a project is operated by, whatever file carries it. A change here is normative and needs
+ * a real turn however it is described: this is the reason there is no blanket documentation
+ * exemption. Explanatory prose that restates behaviour already reviewed is a different thing.
+ */
+export declare const NORMATIVE: RegExp;
 export declare const ReviewRecord: z.ZodObject<{
     version: z.ZodUnion<readonly [z.ZodLiteral<1>, z.ZodLiteral<2>]>;
     base: z.ZodString;
@@ -192,8 +198,21 @@ export declare const REVIEW_BUDGET_MINUTES: {
 };
 export declare function reviewRequired(config: unknown): boolean;
 export declare function git(root: string, args: string[]): string;
+export declare function isAncestor(root: string, older: string, newer: string): boolean;
 export declare function parseReviewRecord(markdown: string): LocalReviewRecord;
 export declare function validateReviewRecord(record: LocalReviewRecord): void;
+export declare function changedPaths(root: string, older: string, newer: string): string[];
+/**
+ * Walk the first-parent commits in a range that the reviewer did not clear. Merging trunk never
+ * invalidates coverage, as on a human team: a merge Git reproduces exactly passes on its own, and a
+ * hand-resolved one passes when the record names it, so the unreviewed resolution is visible rather
+ * than hidden. Any other commit may touch only the allowed paths. Returns the merges it accepted.
+ */
+export declare function verifyUncoveredCommits(root: string, record: {
+    trunkIntegrations?: {
+        commit: string;
+    }[] | undefined;
+}, from: string, to: string, trunk: string, allowed: Set<string>, refusal: string): Set<string>;
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export declare function checkLocalReview(opts: {
     root: string;

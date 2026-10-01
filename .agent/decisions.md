@@ -1125,3 +1125,29 @@ same-reviewer clearances. Require humanAuthorization on the next turn, retain th
 keep every per-turn budget, finalization and clearance guard. Existing recorded duration checks
 distinguish budget overruns without a new reason field. This is a Morpheus-specific validator
 change using existing Zod and Git; no generic module or new dependency is needed.
+
+
+**A scheduled GitHub Manager lands stalled pull requests, reviewing and fixing in one session** —
+2026-10-01. Chris's call. Twenty pull requests were open across Evo, Lakina and Morpheus and
+thirteen failed conventions, mostly on a review nobody finished: the authoring session had ended
+and nothing was listening. The manager is a fresh session, so it may review; because the author is
+gone it also fixes its own findings and merges, instead of handing them back. That makes its fixes
+unreviewed by anyone else, which is accepted and bounded rather than hidden: fix commits must stay
+inside the paths of findings the record names, normative policy and project-protected paths cannot
+be cleared this way, the `manager-reviewed` label counts only when the App applied it and only for
+the head the App's own comment names, and every use prints as a waiver. This is a separate record, not a fourth turn: the three-turn cap,
+`humanAuthorization` and finalization rules are unchanged for authors.
+
+It runs from a private operations repository on a GitHub schedule, on the Claude subscription
+token, through a `morpheus-gh-manager` App that follows the `morpheus-security` pattern — so no
+machine's lifecycle is involved, and a target holds only a policy file. Cooldowns are 8 hours for
+a ready pull request and 48 for a draft; an abandoned draft that has not done its roadmap item's
+work is marked incomplete rather than finished for its author. Rolled out to Evo first and acting
+at once, with no dry-run period, watched for about twelve hours before Lakina and Morpheus.
+
+Considered: Claude Code routines (acts as Chris's own GitHub user, prompt lives outside the
+repository, research preview) and GitHub Agentic Workflows (its safe-outputs split is the pattern
+adopted here; the dependency is a compiler and a second workflow dialect). `claude-code-action`
+was considered for the session step and the pinned Claude Code CLI used instead, because the
+action couples to the calling repository's event context and this run is called from a different
+repository than the one it works on. No new package dependency: Zod, native Git and `gh`.
