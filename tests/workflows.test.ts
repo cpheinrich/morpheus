@@ -1598,7 +1598,7 @@ describe("ios-nightly-build.yml", () => {
     );
     expect(upload?.env?.SOURCE_PACKAGES_PATH).toBeUndefined();
     expect(validate?.run).toContain(
-      'echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"',
+      'echo "SOURCE_PACKAGES_PATH=${MORPHEUS_IOS_CI_CACHE:-$RUNNER_TEMP}/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"',
     );
     expect(release?.env?.ASC_API_KEY_ID).toBe("${{ secrets.APP_STORE_CONNECT_KEY_ID }}");
     expect(release?.env?.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64).toBe(
@@ -2236,8 +2236,8 @@ describe("ios-ci.yml", () => {
     const job = ((await read("ios-ci.yml")) as IosCi).jobs?.test;
     const prepare = job?.steps?.find((step) => step.name === "Prepare isolated build directories");
     expect(String(prepare?.run)).toContain('$RUNNER_TEMP/ios-ci');
-    expect(String(prepare?.run)).toContain('SOURCE_PACKAGES=$ios_ci_root/SourcePackages');
-    expect(String(prepare?.run)).toContain('DERIVED_DATA=$ios_ci_root/DerivedData');
+    expect(String(prepare?.run)).toContain('SOURCE_PACKAGES=$cache_root/SourcePackages');
+    expect(String(prepare?.run)).toContain('DERIVED_DATA=$cache_root/DerivedData');
     expect(String(prepare?.run)).toContain('RESULTS=$output_root/Results');
     expect(String(prepare?.run)).toContain('LOGS=$output_root/Logs');
     expect(String(prepare?.run)).toContain('SCREENSHOTS=$output_root/Screenshots');
@@ -2299,11 +2299,51 @@ describe("ios-ci.yml", () => {
         }
         expect(await readFile(join(root, "other-job"), "utf8")).toBe("untouched");
         expect(await readFile(outputFile, "utf8")).toBe([
+          "cached=false",
           `results=${paths.RESULTS}`, `logs=${paths.LOGS}`, `screenshots=${paths.SCREENSHOTS}`,
           `evidence-name=ios-test-evidence-${paths.RESULTS!.split("/").at(-2)}`, "",
         ].join("\n"));
         previous = paths;
       }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("roots the build caches in a runner-provided directory and keeps evidence per job", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus ios cache "));
+    const cache = join(root, "CICache", "ios-ci");
+    const envFile = join(root, "github-env");
+    const outputFile = join(root, "github-output");
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const script = steps.find((step) => step.name === "Prepare isolated build directories")?.run;
+    const prepare = async (cacheDirectory: string) => {
+      await writeFile(envFile, "");
+      await writeFile(outputFile, "");
+      await execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
+        env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile, GITHUB_OUTPUT: outputFile,
+          GITHUB_RUN_ID: "7", GITHUB_RUN_ATTEMPT: "1", MORPHEUS_IOS_CI_CACHE: cacheDirectory },
+      });
+      const paths = Object.fromEntries((await readFile(envFile, "utf8")).trim().split("\n")
+        .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
+      return { paths, output: await readFile(outputFile, "utf8") };
+    };
+    try {
+      await mkdir(cache, { recursive: true });
+      const cached = await prepare(cache);
+      expect(cached.paths.SOURCE_PACKAGES).toBe(join(cache, "SourcePackages"));
+      expect(cached.paths.DERIVED_DATA).toBe(join(cache, "DerivedData"));
+      // Results are job-owned and never shared through the cache.
+      expect(cached.paths.RESULTS!.startsWith(join(root, "ios-ci") + "/")).toBe(true);
+      expect(cached.output.startsWith("cached=true\n")).toBe(true);
+      // A cache directory that does not exist is ignored rather than created
+      // somewhere the runner did not provide.
+      const missing = await prepare(join(root, "absent"));
+      expect(missing.paths.SOURCE_PACKAGES).toBe(join(root, "ios-ci", "SourcePackages"));
+      expect(missing.output.startsWith("cached=false\n")).toBe(true);
+      // The SwiftPM cache action is skipped when the runner keeps the checkouts.
+      const action = steps.find((step) => step.name === "Cache resolved Swift packages");
+      expect(String(action?.if)).toContain("steps.ios_paths.outputs.cached != 'true'");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

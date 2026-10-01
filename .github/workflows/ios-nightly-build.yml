@@ -455,7 +455,8 @@ jobs:
             exit 1
           fi
 
-          echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"
+          # Reuse a runner-provided build cache (see ios-ci.yml) for the release checkouts too.
+          echo "SOURCE_PACKAGES_PATH=${MORPHEUS_IOS_CI_CACHE:-$RUNNER_TEMP}/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"
 
           versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"
           if [ -d "$versioned_xcode_app" ]; then
