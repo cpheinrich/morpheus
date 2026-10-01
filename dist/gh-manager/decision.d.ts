@@ -72,6 +72,17 @@ export interface LiveState {
     supersededMerged?: boolean | undefined;
     /** Runs to rerun because their check was cancelled. */
     cancelledRunIds: number[];
+    /**
+     * What the session pushed, verified with real Git by the apply step: nothing, only merges of
+     * trunk that Git reproduces exactly, or anything else. `unverified` when it could not be
+     * determined, which is treated as `other`.
+     */
+    sessionPushed: "nothing" | "trunk-merges" | "other" | "unverified";
+    /**
+     * Why the manager's review record at this head would be refused by `check pr`, when the
+     * decision rests on one. Undefined means it validates, or that no record was claimed.
+     */
+    recordProblem?: string | undefined;
 }
 export interface Plan {
     verdict: ManagerMarker["verdict"];
@@ -87,6 +98,12 @@ interface Context {
     /** Link to the run, for the audit comment. */
     runUrl: string;
 }
+/**
+ * Model-written text, made unable to open or close an HTML comment. The marker is an HTML
+ * comment; `parseMarker` already reads only the last one, and this keeps a forged one from
+ * existing at all, so the two guards do not depend on each other.
+ */
+export declare function inert(text: string): string;
 /** Turn a session's decision into operations, or into an escalation when it does not hold up. */
 export declare function planDecision(decision: Decision, live: LiveState, ctx: Context): Plan;
 /** Operations for a route the sweep decided without a session. */

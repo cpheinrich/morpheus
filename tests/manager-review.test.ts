@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { git } from "../src/review/local.js";
 import { checkManagerReview, type ManagerReviewRecord, usesManagerReview } from "../src/review/manager.js";
+import { managerRecordProblem, sessionPushed } from "../src/gh-manager/verify.js";
 
 const APP = "morpheus-gh-manager[bot]";
 const path = ".agent/worklog/2026-10-01-gh-manager-pr-7.md";
@@ -34,7 +35,8 @@ function save(r: ManagerReviewRecord, prose = r.summary) {
   return commit("manager review record");
 }
 function check(head: string, over: Partial<Parameters<typeof checkManagerReview>[0]> = {}) {
-  return checkManagerReview({ root, body, labels: ["manager-reviewed"], labelActor: APP, head, base: "main", ...over });
+  // By default the App cleared exactly this head, which is what it does in the apply step.
+  return checkManagerReview({ root, body, labels: ["manager-reviewed"], labelActor: APP, clearedHead: head, head, base: "main", ...over });
 }
 const message = (head: string, over: Partial<Parameters<typeof checkManagerReview>[0]> = {}) => check(head, over)[0]?.message ?? "";
 
@@ -115,15 +117,46 @@ describe("the GitHub Manager's review record", () => {
     expect(message(commit("unreviewed"))).toContain("invalidate the manager review");
   });
 
-  it("survives an exact trunk merge after coverage", () => {
+  it("needs a clearance only the App can write, for a head on this branch", () => {
     const head = save(record());
+    expect(message(head, { clearedHead: undefined })).toContain("no clearance from morpheus-gh-manager[bot]");
+    expect(message(head, { clearedHead: "not-a-sha" })).toContain("no clearance from morpheus-gh-manager[bot]");
+    expect(message(head, { clearedHead: "c".repeat(40) })).toContain("not an ancestor");
+  });
+
+  it("refuses an author who pushes after the App's clearance and rewrites the record to cover it", () => {
+    const cleared = save(record());
+    // The author returns, adds code, and extends the record: `covered` moved, a "fixed" finding
+    // naming the new path. Every check on the record itself would pass.
+    put("code.ts", "export const answer = 666;");
+    const sneaked = commit("author code after clearance");
+    const head = save(record({ covered: sneaked, findings: [{ id: "M01", severity: "minor", description: "Constant needed adjusting", paths: ["code.ts"], disposition: "fixed", response: "Adjusted the constant" }] }));
+    // Bound to the head the App cleared, it is refused...
+    expect(message(head, { clearedHead: cleared })).toContain("commits were pushed after the GitHub Manager cleared this pull request");
+    // ...and this is the only thing refusing it: with a clearance for the new head it validates.
+    expect(check(head, { clearedHead: head })[0]?.level).toBe("waived");
+  });
+
+  it("survives an exact trunk merge after clearance, and refuses a hand-resolved one", () => {
+    const cleared = save(record());
     git(root, ["checkout", "-q", "main"]);
     put("unrelated.ts", "export const trunk = true;");
     commit("trunk moves");
     git(root, ["checkout", "-q", "feature"]);
     git(root, ["merge", "-q", "--no-edit", "main"]);
-    expect(head).not.toBe(git(root, ["rev-parse", "HEAD"]));
-    expect(check(git(root, ["rev-parse", "HEAD"]))[0]?.level).toBe("waived");
+    const merged = git(root, ["rev-parse", "HEAD"]);
+    expect(merged).not.toBe(cleared);
+    expect(check(merged, { clearedHead: cleared })[0]?.level).toBe("waived");
+
+    // A merge that carries an edit Git would not have made is authoring the App never saw.
+    git(root, ["checkout", "-q", "main"]);
+    put("unrelated.ts", "export const trunk = false;");
+    commit("trunk moves again");
+    git(root, ["checkout", "-q", "feature"]);
+    git(root, ["merge", "-q", "--no-commit", "--no-ff", "main"]);
+    put("code.ts", "export const answer = 7;");
+    const evil = commit("merge with an extra edit");
+    expect(message(evil, { clearedHead: cleared })).toContain("hand-resolved trunk merge");
   });
 
   it("refuses to clear normative policy, wherever the manager's commits were", () => {
@@ -148,7 +181,7 @@ describe("the GitHub Manager's review record", () => {
     commit("broken policy on trunk");
     git(root, ["checkout", "-q", "feature"]);
     git(root, ["merge", "-q", "--no-edit", "main"]);
-    expect(message(git(root, ["rev-parse", "HEAD"]))).toContain("protected paths cannot be determined");
+    expect(message(git(root, ["rev-parse", "HEAD"]), { clearedHead: git(root, ["rev-parse", "HEAD"]) })).toContain("protected paths cannot be determined");
   });
 
   it("refuses a reviewed commit that is trunk history, or out of order", () => {
@@ -161,5 +194,54 @@ describe("the GitHub Manager's review record", () => {
   it("is waived outright when the project opted out of review", () => {
     put("morpheus.json", JSON.stringify({ review: { required: false } }));
     expect(check(commit("opt out"), { labelActor: "anyone" })).toEqual([{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }]);
+  });
+});
+
+describe("what the apply step verifies with Git", () => {
+  function trunkMoves(file = "unrelated.ts", text = "export const trunk = true;") {
+    git(root, ["checkout", "-q", "main"]);
+    put(file, text);
+    commit("trunk moves");
+    git(root, ["checkout", "-q", "feature"]);
+  }
+
+  it("tells nothing, exact trunk merges, and authored commits apart", () => {
+    expect(sessionPushed(root, reviewed, reviewed, "main")).toBe("nothing");
+
+    trunkMoves();
+    git(root, ["merge", "-q", "--no-edit", "main"]);
+    const merged = git(root, ["rev-parse", "HEAD"]);
+    expect(sessionPushed(root, reviewed, merged, "main")).toBe("trunk-merges");
+
+    put("code.ts", "export const answer = 3;");
+    const authored = commit("a fix");
+    expect(sessionPushed(root, reviewed, authored, "main")).toBe("other");
+    expect(sessionPushed(root, merged, authored, "main")).toBe("other");
+  });
+
+  it("calls a merge carrying an extra edit authored, not a trunk merge", () => {
+    trunkMoves();
+    git(root, ["merge", "-q", "--no-commit", "--no-ff", "main"]);
+    put("code.ts", "export const answer = 7;");
+    expect(sessionPushed(root, reviewed, commit("merge with an extra edit"), "main")).toBe("other");
+  });
+
+  it("calls rewritten history authored, and an unreadable commit unverified rather than nothing", () => {
+    put("code.ts", "export const answer = 5;");
+    const later = commit("later");
+    // `later` is not behind `reviewed`: going from one to the other is a rewrite.
+    expect(sessionPushed(root, later, reviewed, "main")).toBe("other");
+    expect(sessionPushed(root, reviewed, "d".repeat(40), "main")).toBe("unverified");
+    expect(sessionPushed(root, "d".repeat(40), "d".repeat(40), "main")).toBe("unverified");
+    expect(sessionPushed(root, reviewed, reviewed, "no-such-ref")).toBe("unverified");
+  });
+
+  it("reports why a record would be refused, and nothing when it would be accepted", () => {
+    const good = save(record());
+    expect(managerRecordProblem(root, body, good, "main")).toBeUndefined();
+    const bad = save(record({ outcome: "escalated" }));
+    expect(managerRecordProblem(root, body, bad, "main")).toContain("escalated");
+    expect(managerRecordProblem(root, "no record line", good, "main")).toContain("manager-review-record:");
+    expect(managerRecordProblem(root, body, "d".repeat(40), "main")).toContain("could not be read");
   });
 });

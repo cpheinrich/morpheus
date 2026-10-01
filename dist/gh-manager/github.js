@@ -78,8 +78,14 @@ export function fetchChecks(repo, sha) {
         const runId = /\/actions\/runs\/(\d+)/.exec(run.html_url ?? "")?.[1];
         return { name: run.name, state: checkState(run), ...(runId ? { runId: Number(runId) } : {}) };
     });
-    const combined = api(`repos/${repo}/commits/${sha}/status`);
-    for (const s of combined.statuses) {
+    // Paged like the check runs: a failing status past the first page must not read as green.
+    const statuses = pages(`repos/${repo}/commits/${sha}/status?per_page=100`).flatMap(page => page.statuses);
+    const seen = new Set();
+    for (const s of statuses) {
+        // One entry per context, whatever the paging returns.
+        if (seen.has(s.context))
+            continue;
+        seen.add(s.context);
         checks.push({ name: s.context, state: s.state === "success" ? "success" : s.state === "pending" ? "pending" : "failure" });
     }
     return checks;
@@ -93,8 +99,18 @@ export function fetchMarker(repo, number) {
 function mergeableState(pull) {
     return pull.mergeable === true ? "MERGEABLE" : pull.mergeable === false ? "CONFLICTING" : "UNKNOWN";
 }
+function pause(ms) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
 export function fetchPullRequest(repo, number) {
-    const pull = api(`repos/${repo}/pulls/${number}`);
+    let pull = api(`repos/${repo}/pulls/${number}`);
+    // GitHub computes mergeability lazily: the first read of a pull request nobody has looked at
+    // answers null and starts the computation. Ask again briefly, or a conflicted pull request
+    // with auto-merge on reads as "waiting" for ever. Still null after that stays UNKNOWN.
+    for (let attempt = 0; attempt < 3 && pull.state === "open" && (pull.mergeable === null || pull.mergeable === undefined); attempt++) {
+        pause(2000);
+        pull = api(`repos/${repo}/pulls/${number}`);
+    }
     const commit = api(`repos/${repo}/commits/${pull.head.sha}`);
     return {
         pull,
@@ -108,6 +124,7 @@ export function fetchPullRequest(repo, number) {
             headRefName: pull.head.ref,
             headSha: pull.head.sha,
             headCommittedAt: commit.commit.committer.date,
+            createdAt: pull.created_at,
             labels: pull.labels.map(l => l.name),
             autoMerge: pull.auto_merge !== null && pull.auto_merge !== undefined,
             mergeable: mergeableState(pull),
@@ -119,7 +136,11 @@ export function fetchPullRequest(repo, number) {
 export function fetchOpenPullRequests(repo) {
     return pages(`repos/${repo}/pulls?state=open&per_page=100`).map(pull => fetchPullRequest(repo, pull.number).facts);
 }
-/** Live state for the apply step, read after the session has ended. */
+/**
+ * Live state for the apply step, read after the session has ended. What the session pushed and
+ * whether its record validates need a real checkout, so the caller fills those in; here they
+ * start at the refusing values.
+ */
 export function fetchLiveState(repo, number, supersededBy) {
     const { pull, facts } = fetchPullRequest(repo, number);
     let supersededMerged;
@@ -135,6 +156,8 @@ export function fetchLiveState(repo, number, supersededBy) {
     return {
         open: pull.state === "open",
         branch: pull.head.ref,
+        base: pull.base.ref,
+        sessionPushed: "unverified",
         headSha: facts.headSha,
         isDraft: facts.isDraft,
         labels: facts.labels,

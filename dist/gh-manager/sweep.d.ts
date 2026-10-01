@@ -16,6 +16,12 @@ export interface ManagerMarker {
     attempts: number;
     /** ISO timestamp of that run. */
     at: string;
+    /**
+     * The head the App cleared on its own review. Written only when a merge rests on a manager
+     * review, and it is what binds that clearance to a commit: `check pr` accepts nothing after
+     * this head but exact trunk merges, so a later push cannot ride on the label.
+     */
+    cleared?: string | undefined;
 }
 export interface PullRequestFacts {
     number: number;
@@ -29,6 +35,8 @@ export interface PullRequestFacts {
     headSha: string;
     /** ISO commit date of the head commit. */
     headCommittedAt: string;
+    /** ISO time the pull request was opened. A commit made hours before it was pushed is not quiet. */
+    createdAt: string;
     labels: string[];
     autoMerge: boolean;
     mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
@@ -61,8 +69,17 @@ export interface Routed {
     /** Sessions already spent on this pull request, carried into the next marker. */
     attempts: number;
 }
+/** A branch name the brief can carry verbatim. Git allows `;`, `$`, backticks and more in a ref. */
+export declare const SAFE_REF: RegExp;
 export declare function renderMarker(marker: ManagerMarker): string;
-/** The marker in a comment body, or undefined. A malformed one is absent, not an error: it is our own bookkeeping. */
+/**
+ * The marker in a comment body, or undefined.
+ *
+ * Only the **last** marker in the body is read. The comment also carries text a model wrote, and
+ * the deterministic step appends the real marker after all of it; reading the first match let a
+ * marker-shaped string in a summary forge the attempt count or the stale warning's date. A
+ * malformed last marker is absent, not an error, and never falls back to an earlier one.
+ */
 export declare function parseMarker(body: string): ManagerMarker | undefined;
 /** Route one pull request. Pure: `now` is passed in. */
 export declare function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, now: Date): Routed;

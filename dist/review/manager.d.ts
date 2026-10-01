@@ -49,6 +49,11 @@ export interface ManagerReviewInput {
     labels: string[];
     /** Login that most recently applied the manager label, or undefined when it could not be read. */
     labelActor?: string | undefined;
+    /**
+     * The head the App cleared, from the newest marker in its own comments that carries one.
+     * Undefined when there is none or it could not be read, which is refused.
+     */
+    clearedHead?: string | undefined;
     head: string;
     base: string;
 }

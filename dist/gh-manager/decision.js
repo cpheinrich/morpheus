@@ -5,12 +5,19 @@ import { renderMarker } from "./sweep.js";
 /**
  * What a session asks for, and what is actually done about it.
  *
- * The session holds a token that can push to the pull request's branch and
- * nothing else: it cannot label, comment, merge or close. It writes a decision
+ * The session holds a token with contents write and nothing else to write
+ * with: it cannot label, comment or close. It writes a decision
  * file instead, and this module turns that file into operations only after
  * checking it against live state and the repository's policy. A decision is a
  * request from a model that has been reading a pull request's text; the plan
  * is what a deterministic step is willing to do about it.
+ *
+ * Two orderings below are load-bearing. The audit comment is always the first
+ * operation, because it carries the marker: an attempt that failed half-way
+ * must still be counted, and `check pr` reads the cleared head from that
+ * comment when the label event re-triggers it. And the manager's label is
+ * removed and re-applied on every clearance, so the event that selects the
+ * manager path is always the App's and always follows the comment.
  */
 const Sha = z.string().regex(/^[a-f0-9]{40}$/);
 const Text = z.string().trim().min(8);
@@ -54,6 +61,14 @@ const HEADLINE = {
 function comment(verdict, sections, marker) {
     return { kind: "comment", body: [`### GitHub Manager — ${HEADLINE[verdict]}`, ...sections.filter(Boolean), renderMarker(marker)].join("\n\n") };
 }
+/**
+ * Model-written text, made unable to open or close an HTML comment. The marker is an HTML
+ * comment; `parseMarker` already reads only the last one, and this keeps a forged one from
+ * existing at all, so the two guards do not depend on each other.
+ */
+export function inert(text) {
+    return text.replace(/<!--/g, "&lt;!--").replace(/-->/g, "--&gt;");
+}
 function removeLabels(live, ...labels) {
     return labels.filter(label => live.labels.includes(label)).map(label => ({ kind: "remove-label", label }));
 }
@@ -65,25 +80,25 @@ function escalate(live, why, sections, marker, overridden) {
         verdict: "escalate",
         ...(overridden ? { overridden } : {}),
         operations: [
+            comment("escalate", [`**Needs you:** ${why}`, ...sections], { ...marker, verdict: "escalate" }),
             ...(live.autoMerge ? [{ kind: "disable-auto-merge" }] : []),
             // An escalated pull request is not cleared; leaving the label would let it merge on a
             // record the manager itself no longer stands behind.
             ...removeLabels(live, MANAGER_REVIEWED_LABEL),
             ...(live.labels.includes(NEEDS_HUMAN_LABEL) ? [] : [{ kind: "add-label", label: NEEDS_HUMAN_LABEL }]),
-            comment("escalate", [`**Needs you:** ${why}`, ...sections], { ...marker, verdict: "escalate" }),
         ],
     };
 }
 function findingsTable(decision) {
     if (!decision.findings.length)
         return "";
-    const cell = (text) => text.replace(/\|/g, "\\|").replace(/\s+/g, " ");
+    const cell = (text) => inert(text).replace(/\|/g, "\\|").replace(/\s+/g, " ");
     return ["| Finding | Severity | Result |", "|---|---|---|", ...decision.findings.map(f => `| ${cell(f.id)}: ${cell(f.description)} | ${f.severity} | ${f.disposition} |`)].join("\n");
 }
 /** Turn a session's decision into operations, or into an escalation when it does not hold up. */
 export function planDecision(decision, live, ctx) {
     const marker = { head: live.headSha, verdict: decision.action, attempts: ctx.attempts + 1, at: ctx.now.toISOString() };
-    const sections = [decision.summary, `**Why:** ${decision.reasoning}`, findingsTable(decision), `Run: ${ctx.runUrl}`];
+    const sections = [inert(decision.summary), `**Why:** ${inert(decision.reasoning)}`, findingsTable(decision), `Run: ${ctx.runUrl}`];
     const refuse = (why) => escalate(live, why, sections, marker, why);
     // The session reported the head it finished on. If the branch has moved since, somebody else
     // is working on it and everything the session concluded is about a different commit.
@@ -94,7 +109,7 @@ export function planDecision(decision, live, ctx) {
         return { verdict: "wait", operations: [comment("wait", sections, { ...marker, verdict: "wait" })] };
     }
     if (decision.action === "escalate") {
-        return escalate(live, decision.needsHuman ?? decision.reasoning, sections, marker);
+        return escalate(live, inert(decision.needsHuman ?? decision.reasoning), sections, marker);
     }
     // An abandoned draft that has not done what its roadmap item defines. Not a failure and not
     // obsolete: it is unfinished work, and saying so is what stops it reading as nearly merged.
@@ -102,8 +117,8 @@ export function planDecision(decision, live, ctx) {
         return {
             verdict: "incomplete",
             operations: [
+                comment("incomplete", [`**Still missing:** ${inert(decision.missing ?? decision.reasoning)}`, "The manager will leave this alone until it gets a new push.", ...sections], { ...marker, verdict: "incomplete" }),
                 ...(live.labels.includes(INCOMPLETE_LABEL) ? [] : [{ kind: "add-label", label: INCOMPLETE_LABEL }]),
-                comment("incomplete", [`**Still missing:** ${decision.missing ?? decision.reasoning}`, "The manager will leave this alone until it gets a new push.", ...sections], { ...marker, verdict: "incomplete" }),
             ],
         };
     }
@@ -114,13 +129,13 @@ export function planDecision(decision, live, ctx) {
         // fact the plan can check: the superseding pull request really merged. Anything less is a
         // warning with a grace period.
         if (decision.supersededBy !== undefined && live.supersededMerged === true) {
-            return { verdict: "close", operations: [...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL), comment("close", [`Superseded by #${decision.supersededBy}, which merged. Reopen this if that is wrong; the branch is untouched.`, ...sections], marker), { kind: "close" }] };
+            return { verdict: "close", operations: [comment("close", [`Superseded by #${decision.supersededBy}, which merged. Reopen this if that is wrong; the branch is untouched.`, ...sections], marker), ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL), { kind: "close" }] };
         }
         return {
             verdict: "warn-stale",
             operations: [
+                comment("warn-stale", [`This will be closed in ${ctx.policy.closeGraceDays} days unless it gets a new push or someone removes the \`${STALE_LABEL}\` label. The branch will be left in place.`, ...sections], { ...marker, verdict: "warn-stale" }),
                 ...(live.labels.includes(STALE_LABEL) ? [] : [{ kind: "add-label", label: STALE_LABEL }]),
-                comment("warn-stale", [`This will be closed in ${ctx.policy.closeGraceDays} days unless it gets a push or a reply. The branch will be left in place.`, ...sections], { ...marker, verdict: "warn-stale" }),
             ],
         };
     }
@@ -139,20 +154,37 @@ export function planDecision(decision, live, ctx) {
             return refuse(`this changes ${gated.slice(0, 3).join(", ")}${gated.length > 3 ? ` and ${gated.length - 3} more` : ""}, which the manager may not clear on its own review`);
         if (!hasVisibleLine(body, "manager-review-record"))
             return refuse("the session claimed a manager review but the pull request body carries no manager-review-record: line");
+        // Checked here with the same code `check pr` runs, so a record the gate would refuse is an
+        // escalation now rather than a red check and another session later.
+        if (live.recordProblem)
+            return refuse(`the manager review record does not validate: ${live.recordProblem}`);
     }
-    else if (!live.labels.includes("agent-reviewed")) {
-        return refuse("the session proposed merging without a manager review, and no completed independent review is on record");
+    else {
+        if (!live.labels.includes("agent-reviewed"))
+            return refuse("the session proposed merging without a manager review, and no completed independent review is on record");
+        // Merging on the author's review means the session may have added nothing of its own. A
+        // session holds push access, so "I only merged trunk" is verified, not taken on its word:
+        // anything else is unreviewed authoring that the author's record would otherwise carry.
+        if (live.sessionPushed !== "nothing" && live.sessionPushed !== "trunk-merges") {
+            return refuse(live.sessionPushed === "other"
+                ? "the session changed the branch beyond a clean merge of trunk, so the author's review no longer covers it; that needed a manager review of its own"
+                : "what the session pushed could not be verified, so the author's review cannot be relied on for it");
+        }
     }
     return {
         verdict: "merge",
         operations: [
+            // First, and before the label: the label event re-runs `check pr`, which reads the cleared
+            // head from this comment.
+            comment("merge", ["Auto-merge is being enabled; GitHub merges this once the required checks pass.", ...sections], decision.usedManagerReview ? { ...marker, cleared: live.headSha } : marker),
             ...(decision.body !== undefined && decision.body !== live.body ? [{ kind: "set-body", body: decision.body }] : []),
             ...(live.isDraft ? [{ kind: "ready" }] : []),
             ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL, INCOMPLETE_LABEL),
-            ...(decision.usedManagerReview && !live.labels.includes(MANAGER_REVIEWED_LABEL) ? [{ kind: "add-label", label: MANAGER_REVIEWED_LABEL }] : []),
+            // Removed and re-applied on every clearance, never left in place: whoever applied it
+            // before, the newest `labeled` event must be the App's and must follow the comment above.
+            ...(decision.usedManagerReview ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label", label: MANAGER_REVIEWED_LABEL }] : []),
             ...(live.cancelledRunIds.length ? [{ kind: "rerun", runIds: live.cancelledRunIds }] : []),
             ...(live.autoMerge ? [] : [{ kind: "auto-merge" }]),
-            comment("merge", ["Auto-merge is on; GitHub merges this once the required checks pass.", ...sections], marker),
         ],
     };
 }
@@ -168,10 +200,10 @@ export function planRoute(routed, live, ctx) {
         // Already queued: a rerun needs no new comment every run.
         if (live.autoMerge)
             return { verdict: "merge", operations: rerun };
-        return { verdict: "merge", operations: [...rerun, { kind: "auto-merge" }, comment("merge", [`${routed.detail}. No session was needed: the review on record is complete and the checks pass.`, run], { ...marker, verdict: "merge" })] };
+        return { verdict: "merge", operations: [comment("merge", [`${routed.detail}. No session was needed: the review on record is complete and the checks pass.`, run], { ...marker, verdict: "merge" }), ...rerun, { kind: "auto-merge" }] };
     }
     if (routed.route === "close") {
-        return { verdict: "close", operations: [...removeLabels(live, STALE_LABEL), comment("close", [`${routed.detail}. Reopen this if it is still wanted; the branch is untouched.`, run], { ...marker, verdict: "close" }), { kind: "close" }] };
+        return { verdict: "close", operations: [comment("close", [`${routed.detail}. Reopen this if it is still wanted; the branch is untouched.`, run], { ...marker, verdict: "close" }), ...removeLabels(live, STALE_LABEL), { kind: "close" }] };
     }
     if (routed.route === "escalate") {
         return escalate(live, `${routed.detail}. The manager has stopped working on this pull request until it gets a new push.`, [run], marker);

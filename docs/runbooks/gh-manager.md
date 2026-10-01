@@ -29,14 +29,14 @@ A session ends in one of five decisions:
   features.
 - **close** — other merged work made it obsolete. Closed at once when the session names the merged
   pull request that replaced it and that is verified; otherwise labelled `manager:stale` and closed
-  after `closeGraceDays`.
+  after `closeGraceDays` unless it gets a push or someone removes the label.
 - **escalate** — a human has to decide something. Labelled `manager:needs-human`.
 - **wait** — nothing to do yet.
 
 ### Cooldowns
 
 The manager does not touch a branch its author may still be driving. A ready pull request is left
-alone until its head commit is `quietHours` old (default 8). A draft gets `draftQuietHours`
+alone until `quietHours` (default 8) after the later of its head commit and the time it was opened. A draft gets `draftQuietHours`
 (default 48): only after that long untouched is it presumed abandoned and checked for completeness.
 
 ## The manager review
@@ -54,9 +54,13 @@ bound it:
 - It cannot clear a change to policy the project is operated by — `AGENTS.md`, `CLAUDE.md`,
   `morpheus.json`, `.github/`, `.ci/`, `.morpheus/` — or to a path in the project's
   `protectedPaths`. Those need the ordinary review or a human.
-- The `manager-reviewed` label that selects this path must have been applied by
-  `morpheus-gh-manager[bot]`. `pr-check.yml` reads the label's actor from the issue events, so an
-  author cannot certify their own work by writing a manager record.
+- The record is a file on the branch, so anyone who can push can write one. Two things only the
+  App can produce make it count, and `pr-check.yml` reads both:
+  - the `manager-reviewed` label must have been applied by `morpheus-gh-manager[bot]` (from the
+    issue events), and the App removes and re-applies it at every clearance;
+  - the App's own comment names the **head it cleared**. Nothing may follow that head except
+    merges of trunk that Git reproduces exactly. Without this an author could wait for the label,
+    push more code, and extend the record to cover it.
 - CI and branch protection are untouched. The manager enables auto-merge; it never merges past a
   required check and never uses `--admin`.
 - The check reports the exception every time it is used: `~ [agent-review] cleared by the GitHub
@@ -91,16 +95,39 @@ Three jobs, three tokens (`.github/workflows/gh-manager.yml`):
 | Job | Token | Model |
 |---|---|---|
 | `sweep` | Read only | None |
-| `session` | Can push to the branch and read everything else. Cannot label, comment, merge on review, or close. | Claude, on the subscription token |
+| `session` | Contents write, everything else read. Cannot label, comment, close, or change a workflow file. | Claude, on the subscription token |
 | `apply` | Write | None. Runs on a fresh runner the session never touched. |
 
 A session can only *ask*, by writing a decision file. `apply` checks each decision against live
-state and the repository's policy before acting: the head must not have moved, a merge needs a
-review behind it, an immediate close needs a verified superseding merge. A session that writes no
-decision is reported and counted as an attempt, never passed in silence.
+state, the repository's policy, and a full checkout of the target before acting:
 
-Pull request text never enters the session's brief; the session is given a number and fetches the
-content itself. Only pull requests from `OWNER`, `MEMBER` or `COLLABORATOR` on a branch in the
+- the head must not have moved since the session finished;
+- a merge on the **author's** review requires that the session pushed nothing but exact trunk
+  merges, verified with Git, not taken from the decision file;
+- a merge on the **manager's** review requires that its record validates with the same code
+  `check pr` runs, and that the pull request touches no human-gated path;
+- an immediate close needs the superseding pull request to be verifiably merged.
+
+The audit comment is posted first in every plan. It carries the marker, so an attempt that fails
+half-way is still counted, and a failure is followed by a second comment saying what was not done.
+A session that writes no decision is reported and counted, never passed in silence. Everything a
+model wrote is made inert before it is posted, and only the last marker in a comment is read, so
+text in a summary cannot forge the manager's own bookkeeping.
+
+**What the session token can still do.** GitHub scopes a token to a repository, not a branch, so
+contents write would let a session push another unprotected branch, delete one, or create a tag.
+The brief forbids it and nothing in the session's instructions points there, but it is not
+technically prevented. What bounds the damage: `main` is protected; the token has no `workflows`
+permission, so GitHub refuses any push that creates or changes a workflow file, which is what
+stops a session editing the checks that judge it; and only collaborator-authored pull requests
+are ever given to a session. A repository with tag-triggered releases should protect its tags
+before adopting the manager. The cost of withholding `workflows` is that a branch whose merge from
+trunk carries a workflow change may be refused on push; the session escalates that.
+
+Pull request text does not enter the session's brief, with one exception: the branch and base
+names, which must be plain (`[A-Za-z0-9._/-]`) or the pull request is skipped, and are quoted
+where a command uses them. Otherwise the session is given a number and fetches the content
+itself. Only pull requests from `OWNER`, `MEMBER` or `COLLABORATOR` on a branch in the
 repository itself are acted on (decisions.md, 2026-08-03). `morpheus-security[bot]` and Dependabot
 pull requests have their own maintainers and are only reported.
 
@@ -129,6 +156,7 @@ that repository; invalid is an error, not "off".
   "draftQuietHours": 48,
   "maxSessionsPerRun": 4,
   "maxAttemptsPerPullRequest": 2,
+  "sessionBeforeMerge": false,
   "closeGraceDays": 7,
   "protectedPaths": [],
   "model": "claude-opus-5-5",
@@ -136,7 +164,11 @@ that repository; invalid is an error, not "off".
 }
 ```
 
-Everything but `version` is optional and shown at its default. A project may also keep
+Everything but `version` is optional and shown at its default. `sessionBeforeMerge` is for a
+project whose authors deliberately leave finished work open for a human to merge or redirect: a
+reviewed, green pull request then goes through a session, which reads it, instead of having
+auto-merge enabled from the sweep. `protectedPaths` are plain repository-relative prefixes; globs
+are refused. A project may also keep
 `.github/gh-manager-prompt.md`: additions to the session's brief, such as what a reviewer in that
 codebase should lead on. They refine the procedure and cannot relax its rules.
 
@@ -165,9 +197,9 @@ registration has to be installable on a personal account and an organization.
 | Actions | Read and write | Read failing logs; rerun cancelled checks |
 | Checks | Read | Sweep |
 | Commit statuses | Read | Sweep |
-| Workflows | Read and write | GitHub refuses a push whose trunk merge carries a workflow change without it |
 
-No organization or account permissions. No webhook, OAuth authorization or device flow.
+Deliberately **no Workflows permission**: see the security model. No organization or account
+permissions. No webhook, OAuth authorization or device flow.
 
 ### Adopt in a repository
 

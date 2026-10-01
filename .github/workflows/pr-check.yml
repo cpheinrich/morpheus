@@ -113,8 +113,18 @@ jobs:
           # leaves the actor empty, which the check also refuses.
           MANAGER_LABEL_ACTOR="$(gh api --paginate "repos/$REPOSITORY/issues/$PR_NUMBER/events?per_page=100" \
             --jq '.[] | select(.event == "labeled" and .label.name == "manager-reviewed") | .actor.login' | tail -n 1 || true)"
-          jq --arg actor "$MANAGER_LABEL_ACTOR" \
-            '{pull_request: (. + {manager_label_actor: (if $actor == "" then null else $actor end)})}' \
+          # The label says who; the App's own comment says which commit. Its
+          # newest comment carrying a cleared head is the only clearance the
+          # check accepts, so a push after it cannot ride on the label.
+          gh api --paginate --slurp "repos/$REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+            > "$RUNNER_TEMP/comments.json" 2> /dev/null || echo '[]' > "$RUNNER_TEMP/comments.json"
+          jq -r '[.[][] | select(.user.login == "morpheus-gh-manager[bot]") | .body // ""
+                  | select(test("<!-- morpheus-gh-manager \\{[^\n]*\"cleared\""))] | last // ""' \
+            "$RUNNER_TEMP/comments.json" > "$RUNNER_TEMP/manager-clearance.md"
+          jq --arg actor "$MANAGER_LABEL_ACTOR" --rawfile clearance "$RUNNER_TEMP/manager-clearance.md" \
+            '{pull_request: (. + {
+               manager_label_actor: (if $actor == "" then null else $actor end),
+               manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)})}' \
             "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"
           GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json" node .morpheus/dist/cli/index.js check pr \
             --dir "$PRODUCT_DIR" --base "origin/$BASE_REF"

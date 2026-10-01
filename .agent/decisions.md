@@ -1134,8 +1134,8 @@ and nothing was listening. The manager is a fresh session, so it may review; bec
 gone it also fixes its own findings and merges, instead of handing them back. That makes its fixes
 unreviewed by anyone else, which is accepted and bounded rather than hidden: fix commits must stay
 inside the paths of findings the record names, normative policy and project-protected paths cannot
-be cleared this way, the `manager-reviewed` label counts only when the App applied it, and every
-use prints as a waiver. This is a separate record, not a fourth turn: the three-turn cap,
+be cleared this way, the `manager-reviewed` label counts only when the App applied it and only for
+the head the App's own comment names, and every use prints as a waiver. This is a separate record, not a fourth turn: the three-turn cap,
 `humanAuthorization` and finalization rules are unchanged for authors.
 
 It runs from a private operations repository on a GitHub schedule, on the Claude subscription

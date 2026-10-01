@@ -503,8 +503,9 @@ must not leave a pull request for the manager to finish. The manager waits 8 hou
 pull request's last commit and 48 after a draft's before touching it, and what it lands carries a
 visible `~ [agent-review] cleared by the GitHub Manager` waiver.
 
-**Leave its labels and records alone.** `manager-reviewed` counts only when the App applied it, and
-a `morpheus-manager-review` block is written by the manager, never by an author. If the manager
+**Leave its labels and records alone.** `manager-reviewed` counts only when the App applied it and
+only for the head the App's comment names; a push after that needs the manager, or the ordinary
+review, again. A `morpheus-manager-review` block is written by the manager, never by an author. If the manager
 has pushed to your branch, pull before continuing. Removing `manager:needs-human` or pushing a new
 commit tells it to look again.
 

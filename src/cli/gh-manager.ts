@@ -5,7 +5,8 @@ import { type Outcome, renderDigest } from "../gh-manager/digest.js";
 import { assertRepository, execute, fetchLiveState, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
 import { GH_MANAGER_POLICY_PATH, GhManagerPolicy } from "../gh-manager/policy.js";
 import { OVERLAY_PATH, sessionPrompt } from "../gh-manager/prompt.js";
-import { type Routed, sweep } from "../gh-manager/sweep.js";
+import { type Routed, SAFE_REF, sweep } from "../gh-manager/sweep.js";
+import { managerRecordProblem, sessionPushed } from "../gh-manager/verify.js";
 import { execFileSync } from "node:child_process";
 
 /**
@@ -56,21 +57,38 @@ function describe(plan: Plan): string[] {
   return plan.operations.map(op => op.kind === "add-label" || op.kind === "remove-label" ? `${op.kind} ${op.label}` : op.kind === "rerun" ? `rerun ${op.runIds.length} cancelled run(s)` : op.kind);
 }
 
-/** Carry a plan out, stopping at the first failure so a half-applied plan is reported as one. */
+function firstLine(error: unknown): string {
+  const stderr = (error as { stderr?: string | Buffer }).stderr;
+  return (stderr ? stderr.toString() : error instanceof Error ? error.message : String(error)).trim().split("\n")[0] ?? "unknown error";
+}
+
+/**
+ * Carry a plan out, stopping at the first failure so a half-applied plan is reported as one.
+ *
+ * The plan's comment comes first and carries the marker, so a failure further on has already
+ * been counted as an attempt. That comment says what was *about* to happen, so a failure is
+ * followed by a second comment saying what did not: the audit trail must not claim an
+ * auto-merge that was refused.
+ */
 function carryOut(repo: string, number: number, plan: Plan, dryRun: boolean): Outcome {
   const did: string[] = [];
   const steps = describe(plan);
-  try {
-    plan.operations.forEach((op, index) => {
+  for (const [index, op] of plan.operations.entries()) {
+    try {
       if (!dryRun) execute(repo, number, op);
       did.push(steps[index]!);
-    });
-    return { number, verdict: dryRun ? `${plan.verdict} (dry run)` : plan.verdict, overridden: plan.overridden, did };
-  } catch (error) {
-    const stderr = (error as { stderr?: string | Buffer }).stderr;
-    const message = (stderr ? stderr.toString() : error instanceof Error ? error.message : String(error)).trim().split("\n")[0] ?? "unknown error";
-    return { number, verdict: plan.verdict, overridden: plan.overridden, did, error: `${steps[did.length] ?? "plan"}: ${message}` };
+    } catch (error) {
+      // A rerun is a courtesy. GitHub refuses one for a run past its retention, which is exactly
+      // the stale population this tool exists for, and that must not block the merge behind it.
+      if (op.kind === "rerun") { did.push(`${steps[index]!} (refused, skipped)`); continue; }
+      const failure = `${steps[index] ?? "plan"}: ${firstLine(error)}`;
+      if (did.includes("comment")) {
+        try { execute(repo, number, { kind: "comment", body: `### GitHub Manager — could not finish\n\nThe step \`${steps[index]}\` failed, so the action announced above was **not** completed. Done before it: ${did.join(", ")}. The next run will look again.` }); } catch { /* reported in the digest regardless */ }
+      }
+      return { number, verdict: plan.verdict, overridden: plan.overridden, did, error: failure };
+    }
   }
+  return { number, verdict: dryRun ? `${plan.verdict} (dry run)` : plan.verdict, overridden: plan.overridden, did };
 }
 
 export function ghManagerSweep(repoArg: string | undefined, out: string | undefined): number {
@@ -128,14 +146,19 @@ export function ghManagerPrompt(repoArg: string | undefined, prArg: string | und
   const routed = file.routed.find(r => r.number === number && r.route === "session");
   if (!routed) throw new Error(`#${prArg} was not routed to a session by this sweep`);
   const live = fetchLiveState(repo, number);
+  // The sweep head is the "before" the apply step measures the session's commits against. A
+  // branch that moved since the sweep has someone else on it, and their commits must not be
+  // counted as the session's.
+  if (live.headSha !== routed.headSha) throw new Error(`#${number} moved after the sweep (${routed.headSha.slice(0, 12)} to ${live.headSha.slice(0, 12)}); no session is started`);
+  // Both names go into a command the session is told to run.
+  if (!SAFE_REF.test(live.branch) || !SAFE_REF.test(live.base)) throw new Error(`#${number} has a branch or base name the manager will not put in a brief`);
   const decisionPath = process.env["GH_MANAGER_DECISION"];
   if (!decisionPath) throw new Error("GH_MANAGER_DECISION must name where the session writes its decision");
-  const base = JSON.parse(execFileSync("gh", ["api", `repos/${repo}/pulls/${number}`], { encoding: "utf8" })) as { base: { ref: string } };
   write(out, sessionPrompt({
     repo,
     number,
     branch: live.branch,
-    base: base.base.ref,
+    base: live.base,
     sweepDetail: routed.detail,
     attempts: routed.attempts,
     runRef: `${runUrl()} (pull request ${number})`,
@@ -170,13 +193,33 @@ export function ghManagerApply(repoArg: string | undefined, prArg: string | unde
   }
 
   const live = fetchLiveState(repo, number, decision?.supersededBy);
+  // A checkout of the target lets the session's own commits and record be read with Git rather
+  // than taken on its word. Without one both stay at their refusing values.
+  const checkout = process.env["GH_MANAGER_CHECKOUT"];
+  if (checkout && decision) {
+    const trunk = `origin/${live.base}`;
+    live.sessionPushed = sessionPushed(checkout, routed.headSha, live.headSha, trunk);
+    if (decision.usedManagerReview) live.recordProblem = managerRecordProblem(checkout, decision.body ?? live.body, live.headSha, trunk);
+  } else if (decision?.usedManagerReview) {
+    live.recordProblem = "no checkout was available to validate it";
+  }
   const plan: Plan = !live.open
     ? { verdict: "wait", overridden: "the pull request closed or merged during the session", operations: [] }
-    : decision ? planDecision(decision, live, ctx) : planNoDecision(problem, live, ctx);
+    // The session step leaves a result file the moment it starts, even if it then times out.
+    // No decision and no result file means no session ran at all (the brief was refused, most
+    // often because the branch moved after the sweep), and nothing is counted against the
+    // pull request. A session that started and reported nothing is counted.
+    : !decision && !sessionStarted(decisionPath, number)
+      ? { verdict: "wait", overridden: "no session ran for this pull request", operations: [] }
+      : decision ? planDecision(decision, live, ctx) : planNoDecision(problem, live, ctx);
   const outcome = carryOut(repo, number, plan, dryRun);
   console.error(`#${number} ${outcome.verdict}: ${outcome.did.join(", ") || "nothing to do"}${outcome.overridden ? ` (overridden: ${outcome.overridden})` : ""}${outcome.error ? ` — FAILED ${outcome.error}` : ""}`);
   write(out, JSON.stringify(outcome, null, 2));
   return outcome.error ? 1 : 0;
+}
+
+function sessionStarted(decisionPath: string | undefined, number: number): boolean {
+  return Boolean(decisionPath && existsSync(join(dirname(decisionPath), `session-result-${number}.json`)));
 }
 
 export function ghManagerDigest(repoArg: string | undefined, sweepPath: string | undefined, outcomesDir: string | undefined, dryRun: boolean): number {

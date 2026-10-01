@@ -59,10 +59,19 @@ export const GhManagerPolicy = z.object({
     maxSessionsPerRun: z.number().int().min(0).max(20).default(4),
     /** Sessions the manager may spend on one pull request before it stops and asks a human. */
     maxAttemptsPerPullRequest: z.number().int().min(1).max(5).default(2),
+    /**
+     * Send a reviewed, green pull request through a session before merging it, instead of
+     * enabling auto-merge from the sweep. For a project whose authors deliberately leave finished
+     * work open for a human to merge or redirect: only something that reads the pull request can
+     * tell that from one whose author simply left.
+     */
+    sessionBeforeMerge: z.boolean().default(false),
     /** Days after a stale warning before an unanswered pull request is closed. */
     closeGraceDays: z.number().int().min(1).max(90).default(7),
     /** Extra path prefixes, beyond the normative set, that the manager must leave to a human. */
-    protectedPaths: z.array(z.string().trim().min(1)).max(50).default([]),
+    // Plain repository-relative prefixes. A leading slash, `./` or a glob would pass a looser
+    // schema and then match nothing, protecting nothing in silence.
+    protectedPaths: z.array(z.string().regex(/^(?!\.{0,2}\/)(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9._/-]+$/, "must be a repository-relative path prefix without globs")).max(50).default([]),
     model: z.string().trim().regex(/^claude-[a-z0-9.-]+$/).default("claude-opus-5-5"),
     actions: Actions.default(() => Actions.parse({})),
 }).strict();

@@ -27,6 +27,12 @@ export interface ManagerMarker {
   attempts: number;
   /** ISO timestamp of that run. */
   at: string;
+  /**
+   * The head the App cleared on its own review. Written only when a merge rests on a manager
+   * review, and it is what binds that clearance to a commit: `check pr` accepts nothing after
+   * this head but exact trunk merges, so a later push cannot ride on the label.
+   */
+  cleared?: string | undefined;
 }
 
 export interface PullRequestFacts {
@@ -41,6 +47,8 @@ export interface PullRequestFacts {
   headSha: string;
   /** ISO commit date of the head commit. */
   headCommittedAt: string;
+  /** ISO time the pull request was opened. A commit made hours before it was pushed is not quiet. */
+  createdAt: string;
   labels: string[];
   autoMerge: boolean;
   mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
@@ -76,21 +84,32 @@ export interface Routed {
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
-const MARKER = /<!-- morpheus-gh-manager (\{[^\n]*\}) -->/;
+const MARKER = /<!-- morpheus-gh-manager (\{[^\n]*\}) -->/g;
+
+/** A branch name the brief can carry verbatim. Git allows `;`, `$`, backticks and more in a ref. */
+export const SAFE_REF = /^[A-Za-z0-9._/-]+$/;
 
 export function renderMarker(marker: ManagerMarker): string {
   return `<!-- morpheus-gh-manager ${JSON.stringify(marker)} -->`;
 }
 
-/** The marker in a comment body, or undefined. A malformed one is absent, not an error: it is our own bookkeeping. */
+/**
+ * The marker in a comment body, or undefined.
+ *
+ * Only the **last** marker in the body is read. The comment also carries text a model wrote, and
+ * the deterministic step appends the real marker after all of it; reading the first match let a
+ * marker-shaped string in a summary forge the attempt count or the stale warning's date. A
+ * malformed last marker is absent, not an error, and never falls back to an earlier one.
+ */
 export function parseMarker(body: string): ManagerMarker | undefined {
-  const match = MARKER.exec(body);
+  const match = [...body.matchAll(MARKER)].at(-1);
   if (!match) return undefined;
   try {
     const raw = JSON.parse(match[1]!) as Partial<ManagerMarker>;
     if (typeof raw.head !== "string" || typeof raw.verdict !== "string" || typeof raw.attempts !== "number" || typeof raw.at !== "string") return undefined;
     if (!["merge", "escalate", "close", "warn-stale", "incomplete", "wait"].includes(raw.verdict)) return undefined;
-    return { head: raw.head, verdict: raw.verdict, attempts: raw.attempts, at: raw.at };
+    if (raw.cleared !== undefined && typeof raw.cleared !== "string") return undefined;
+    return { head: raw.head, verdict: raw.verdict, attempts: raw.attempts, at: raw.at, ...(raw.cleared ? { cleared: raw.cleared } : {}) };
   } catch {
     return undefined;
   }
@@ -119,6 +138,8 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   if (!TRUSTED_ASSOCIATIONS.has(pr.authorAssociation) || pr.isCrossRepository) {
     return routed("skip", "untrusted-author", `author ${pr.author} is ${pr.authorAssociation}${pr.isCrossRepository ? " on a fork" : ""}; reported, not acted on`);
   }
+  // The branch name is the one piece of author-controlled text the brief has to carry.
+  if (!SAFE_REF.test(pr.headRefName)) return routed("skip", "unsafe-branch-name", "the branch name has characters the manager will not put in a brief");
   if (pr.labels.includes(NEEDS_HUMAN_LABEL) && marker?.head === pr.headSha) {
     return routed("skip", "escalated", "waiting on a human since the last run; a new push reopens it");
   }
@@ -127,7 +148,9 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
     return routed("skip", "incomplete", "marked incomplete against its roadmap item; a new push reopens it");
   }
 
-  const age = now.getTime() - Date.parse(pr.headCommittedAt);
+  // The later of the commit date and the day the pull request opened: a commit can be made long
+  // before it is pushed, and its date alone would call a branch quiet minutes after it appeared.
+  const age = now.getTime() - Math.max(Date.parse(pr.headCommittedAt), Date.parse(pr.createdAt));
   const quiet = pr.isDraft ? policy.draftQuietHours : policy.quietHours;
   // An unparseable date is not "old". Treat it as active rather than acting on a branch whose
   // age is unknown.
@@ -157,6 +180,11 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
 
   if (reviewed && !pr.isDraft && !failing.length && pr.mergeable !== "CONFLICTING") {
     if (pending.length) return routed("skip", "checks-running", `reviewed; ${pending.length} check(s) still running`);
+    if (policy.sessionBeforeMerge && policy.actions.merge && !(marker?.verdict === "merge" && marker.head === pr.headSha)) {
+      // Not when a session already decided to merge this exact head: that was the look.
+      if (attempts >= policy.maxAttemptsPerPullRequest) return routed("escalate", "attempts-spent", `${attempts} session(s) already spent without landing it`);
+      return routed("session", "confirm-before-merge", "reviewed and green; checking it was not left open on purpose before merging");
+    }
     // UNKNOWN is GitHub not having computed it yet. Auto-merge is safe to enable either way: it
     // merges only once every requirement holds.
     return policy.actions.merge

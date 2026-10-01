@@ -16,6 +16,7 @@ interface RestPull {
     title: string;
     body: string | null;
     draft: boolean;
+    created_at: string;
     user: {
         login: string;
     };
@@ -50,10 +51,15 @@ export declare function fetchPullRequest(repo: string, number: number): {
     facts: PullRequestFacts;
 };
 export declare function fetchOpenPullRequests(repo: string): PullRequestFacts[];
-/** Live state for the apply step, read after the session has ended. */
+/**
+ * Live state for the apply step, read after the session has ended. What the session pushed and
+ * whether its record validates need a real checkout, so the caller fills those in; here they
+ * start at the refusing values.
+ */
 export declare function fetchLiveState(repo: string, number: number, supersededBy?: number): LiveState & {
     open: boolean;
     branch: string;
+    base: string;
 };
 /** Carry out one operation. Text reaches `gh` as a file or an argument, never as shell. */
 export declare function execute(repo: string, number: number, op: Operation): void;

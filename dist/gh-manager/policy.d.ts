@@ -34,6 +34,7 @@ export declare const GhManagerPolicy: z.ZodObject<{
     draftQuietHours: z.ZodDefault<z.ZodNumber>;
     maxSessionsPerRun: z.ZodDefault<z.ZodNumber>;
     maxAttemptsPerPullRequest: z.ZodDefault<z.ZodNumber>;
+    sessionBeforeMerge: z.ZodDefault<z.ZodBoolean>;
     closeGraceDays: z.ZodDefault<z.ZodNumber>;
     protectedPaths: z.ZodDefault<z.ZodArray<z.ZodString>>;
     model: z.ZodDefault<z.ZodString>;

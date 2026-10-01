@@ -13,11 +13,16 @@ name: GitHub Manager
 # Three jobs, three tokens, and the split is the security model:
 #
 #   sweep    read-only token. Routes pull requests from facts; no model.
-#   session  a token that can push to the pull request's branch and read the
-#            rest. It cannot label, comment, merge or close, so a session that
-#            was talked into something can only ask for it, in a decision file.
-#   apply    write token, no model. Checks each decision against live state and
-#            policy before acting, on a fresh runner the session never touched.
+#   session  a token with contents write and everything else read. It cannot
+#            label, comment or close, and cannot change a workflow file, so a
+#            session that was talked into something can only ask for it, in a
+#            decision file. Contents write is repository-wide in GitHub's
+#            model: the token could push another unprotected branch or a tag.
+#            The brief forbids it and apply verifies the commits on this
+#            branch, but nothing here makes it impossible. The runbook says so.
+#   apply    write token, no model. Checks each decision against live state,
+#            policy, and the commits the session really pushed, on a fresh
+#            runner the session never touched.
 #
 # docs/runbooks/gh-manager.md has the whole design.
 
@@ -152,12 +157,13 @@ jobs:
           private-key: ${{ secrets.app_private_key }}
           owner: ${{ inputs.target-owner }}
           repositories: ${{ inputs.target-name }}
-          # Push to the branch, read everything else. Workflows is here only
-          # because GitHub refuses a push whose merge from trunk carries a
-          # workflow change without it; a pull request that itself changes a
-          # workflow can never be cleared by the manager (check pr refuses it).
+          # Push, and read everything else. Deliberately no `workflows`
+          # permission: without it GitHub refuses any push that creates or
+          # changes a workflow file, which is what stops a session editing the
+          # checks that judge it. The cost is that a branch whose merge from
+          # trunk carries a workflow change may be refused too; the session
+          # escalates that rather than working around it.
           permission-contents: write
-          permission-workflows: write
           permission-pull-requests: read
           permission-issues: read
           permission-checks: read
@@ -248,18 +254,19 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.claude_code_oauth_token }}
           GH_TOKEN: ${{ steps.token.outputs.token }}
           MODEL: ${{ needs.sweep.outputs.model }}
+          PR: ${{ matrix.pr }}
           DISABLE_AUTOUPDATER: "1"
         run: |
           set -euo pipefail
           claude --print --model "$MODEL" --output-format json --dangerously-skip-permissions \
-            < "$RUNNER_TEMP/manager/brief.md" > "$RUNNER_TEMP/manager/session-result.json"
+            < "$RUNNER_TEMP/manager/brief.md" > "$RUNNER_TEMP/manager/session-result-$PR.json"
 
       - name: Report what the session cost
         if: always()
         env:
           PR: ${{ matrix.pr }}
         run: |
-          RESULT="$RUNNER_TEMP/manager/session-result.json"
+          RESULT="$RUNNER_TEMP/manager/session-result-$PR.json"
           {
             echo "### Session for #$PR"
             if [ -s "$RESULT" ] && jq -e . "$RESULT" > /dev/null 2>&1; then
@@ -277,7 +284,7 @@ jobs:
           name: decision-${{ inputs.target-name }}-${{ matrix.pr }}
           path: |
             ${{ runner.temp }}/manager/decision-${{ matrix.pr }}.json
-            ${{ runner.temp }}/manager/session-result.json
+            ${{ runner.temp }}/manager/session-result-${{ matrix.pr }}.json
           # Absent is an outcome apply reports, not an upload failure.
           if-no-files-found: ignore
           retention-days: 30
@@ -345,6 +352,17 @@ jobs:
           path: manager/decisions
           merge-multiple: true
 
+      # Apply reads the commits a session pushed, and its review record, with
+      # real Git rather than taking the decision file's word for either.
+      - name: Check out the target with full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.target-repository }}
+          path: target
+          fetch-depth: 0
+          token: ${{ steps.token.outputs.token }}
+          persist-credentials: false
+
       - name: Carry out the routes that needed no session
         id: routes
         continue-on-error: true
@@ -365,6 +383,7 @@ jobs:
           TARGET: ${{ inputs.target-repository }}
           SESSIONS: ${{ needs.sweep.outputs.sessions }}
           DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
+          GH_MANAGER_CHECKOUT: ${{ github.workspace }}/target
         run: |
           set -uo pipefail
           status=0

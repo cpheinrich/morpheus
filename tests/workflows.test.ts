@@ -2789,11 +2789,13 @@ describe("gh-manager.yml", () => {
     expect(Object.values(grants(tokenStep(wf, "sweep")))).toEqual(["read", "read", "read", "read", "read"]);
   });
 
-  it("gives the session a token that can push and cannot label, comment, merge through review, or close", async () => {
+  it("gives the session contents write and nothing else to write with, and no workflows permission", async () => {
+    // Contents write is repository-wide: this token could push another unprotected branch or a
+    // tag. What it cannot do is label, comment, close, or change a workflow file — the last
+    // because the permission is deliberately absent, so GitHub refuses such a push.
     const wf = (await read("gh-manager.yml")) as Manager;
     expect(grants(tokenStep(wf, "session"))).toEqual({
       "permission-contents": "write",
-      "permission-workflows": "write",
       "permission-pull-requests": "read",
       "permission-issues": "read",
       "permission-checks": "read",
@@ -2813,6 +2815,16 @@ describe("gh-manager.yml", () => {
     const withToken = (wf.jobs?.session?.steps ?? []).filter(step => JSON.stringify(step).includes("claude_code_oauth_token"));
     expect(withToken.map(step => step.id)).toEqual(["session"]);
     expect(grants(tokenStep(wf, "apply"))).toMatchObject({ "permission-pull-requests": "write", "permission-issues": "write" });
+  });
+
+  it("gives apply a full checkout of the target, so it reads the session's commits itself", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    const steps = wf.jobs?.apply?.steps ?? [];
+    const checkout = steps.find(step => step.with?.path === "target");
+    expect(checkout?.with).toMatchObject({ repository: "${{ inputs.target-repository }}", "fetch-depth": 0, "persist-credentials": false });
+    const apply = steps.find(step => step.id === "decisions");
+    expect(apply?.env?.GH_MANAGER_CHECKOUT).toBe("${{ github.workspace }}/target");
+    expect(steps.indexOf(checkout!)).toBeLessThan(steps.indexOf(apply!));
   });
 
   it("applies on a separate runner, after the sessions, even when one failed", async () => {
@@ -2839,5 +2851,13 @@ describe("pr-check.yml and the GitHub Manager label", () => {
     expect(raw).toContain('select(.event == "labeled" and .label.name == "manager-reviewed") | .actor.login');
     expect(raw).toContain("manager_label_actor: (if $actor == \"\" then null else $actor end)");
     expect(raw).toMatch(/\| tail -n 1 \|\| true\)"/);
+  });
+
+  it("takes the cleared head only from a comment the App wrote", async () => {
+    const raw = await readFile(join(DIR, "pr-check.yml"), "utf8");
+    expect(raw).toContain('select(.user.login == "morpheus-gh-manager[bot]") | .body // ""');
+    expect(raw).toContain("manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)");
+    // A failed read of the comments leaves no clearance, which the check refuses.
+    expect(raw).toContain("|| echo '[]' > \"$RUNNER_TEMP/comments.json\"");
   });
 });

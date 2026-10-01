@@ -14,10 +14,15 @@ import { changedPaths, git, isAncestor, reviewRequired, verifyUncoveredCommits }
  *
  * That makes its fixes unreviewed by anyone else. The record below is what
  * keeps that honest and bounded rather than hidden: every fix commit must stay
- * inside the paths of a finding the record names, policy the project is
- * operated by is refused outright, and the label that selects this path must
- * have been applied by the App itself, so an author cannot certify their own
- * work by writing one of these.
+ * inside the paths of a finding the record names, and policy the project is
+ * operated by is refused outright.
+ *
+ * The record itself is a file on the branch, so anyone who can push can write
+ * one. Two things only the App can produce make it count. The label that
+ * selects this path must have been applied by the App. And the App's own
+ * comment names the head it cleared: nothing may follow that head but merges
+ * of trunk that Git reproduces exactly. Without the second, an author could
+ * wait for the App's label, push more code, and extend the record to cover it.
  */
 const Sha = z.string().regex(/^[a-f0-9]{40}$/);
 const Text = z.string().trim().min(8);
@@ -88,6 +93,15 @@ export function checkManagerReview(opts) {
         if (opts.labelActor !== GH_MANAGER_LOGIN) {
             throw new Error(`${MANAGER_REVIEWED_LABEL} must be applied by ${GH_MANAGER_LOGIN}; it was applied by ${opts.labelActor ?? "an actor that could not be determined"}. Remove it and use the ordinary independent review.`);
         }
+        if (!opts.clearedHead || !/^[a-f0-9]{40}$/.test(opts.clearedHead)) {
+            throw new Error(`no clearance from ${GH_MANAGER_LOGIN} could be read for this pull request; the label alone does not clear it`);
+        }
+        // The clearance is for one commit. Trunk may be merged in afterwards, exactly as after an
+        // ordinary review, but only by a merge Git reproduces: a hand-resolved merge or any other
+        // commit after the cleared head is work the App never saw, whatever the record now says.
+        if (!isAncestor(opts.root, opts.clearedHead, opts.head))
+            throw new Error("the head the GitHub Manager cleared is not an ancestor of this pull request's head; the branch was rewritten after clearance");
+        verifyUncoveredCommits(opts.root, {}, opts.clearedHead, opts.head, opts.base, new Set(), "commits were pushed after the GitHub Manager cleared this pull request; its clearance covers the head it reviewed and exact trunk merges only");
         const lines = [...visibleProse(opts.body).matchAll(/^manager-review-record:[ \t]*(\S+)[ \t]*$/gm)];
         if (lines.length !== 1)
             throw new Error("PR body needs one visible manager-review-record: .agent/worklog/<task>.md line");
@@ -100,7 +114,7 @@ export function checkManagerReview(opts) {
         const record = parseManagerReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
         validateManagerReviewRecord(record);
         const fork = git(opts.root, ["merge-base", opts.base, opts.head]);
-        for (const [older, newer] of [[record.reviewed, record.covered], [record.covered, opts.head]]) {
+        for (const [older, newer] of [[record.reviewed, record.covered], [record.covered, opts.clearedHead], [opts.clearedHead, opts.head]]) {
             if (!isAncestor(opts.root, older, newer))
                 throw new Error("reviewed, covered and the pull request head must form an ancestor chain");
         }

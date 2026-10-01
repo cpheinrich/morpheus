@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { checkLocalReview } from "../review/local.js";
 import { checkManagerReview, usesManagerReview } from "../review/manager.js";
+import { parseMarker } from "../gh-manager/sweep.js";
 import { checkPr, formatFindings } from "../check/pr.js";
 import {
   unreadableVisualEvidencePolicy,
@@ -101,16 +102,20 @@ function projectVisualEvidencePolicy(): VisualEvidencePolicy {
 }
 
 export async function pr(productDir: string, base: string): Promise<number> {
-  let reviewEvent: { pull_request?: { head?: { sha?: string }; labels?: { name: string }[]; manager_label_actor?: string | null } } = {};
+  let reviewEvent: { pull_request?: { head?: { sha?: string }; labels?: { name: string }[]; manager_label_actor?: string | null; manager_clearance?: string | null } } = {};
   try { reviewEvent = JSON.parse(readFileSync(process.env["GITHUB_EVENT_PATH"] ?? "", "utf8")); } catch { /* local overrides below */ }
   const head = reviewEvent.pull_request?.head?.sha ?? gitOutput(["rev-parse", "HEAD"]);
   const labels = reviewEvent.pull_request?.labels?.map(l => l.name) ?? (process.env["MORPHEUS_PR_LABELS"] ?? "").split(",").map(s => s.trim());
   // The GitHub Manager's label selects its own, narrower record. Who applied the label is not
   // in the pull request payload; the workflow reads it from the issue events and passes it here.
   const labelActor = reviewEvent.pull_request?.manager_label_actor ?? process.env["MORPHEUS_MANAGER_LABEL_ACTOR"] ?? undefined;
+  // The App's newest comment that clears a head. The workflow selects it by author; the marker
+  // inside it names the commit, and that is what binds the label to something the App reviewed.
+  const clearance = reviewEvent.pull_request?.manager_clearance ?? process.env["MORPHEUS_MANAGER_CLEARANCE"] ?? "";
+  const clearedHead = parseMarker(clearance)?.cleared;
   const review = { root: process.cwd(), body: prBody(), labels, head, base };
   const findings = await checkPr({
-    agentReview: usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor }) : checkLocalReview(review),
+    agentReview: usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor, clearedHead }) : checkLocalReview(review),
     body: prBody(),
     author: prAuthor(),
     branch: currentBranch(),

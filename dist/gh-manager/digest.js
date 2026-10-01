@@ -10,7 +10,10 @@ export function renderDigest(opts) {
             // A session that was routed and has no outcome did not report. Say so; an empty cell
             // would read as "nothing to do".
             : r.route === "skip" ? "—" : "**no result reported**";
-        return `| #${r.number} | ${cell(r.title).slice(0, 60)} | ${r.route}: ${r.reason} | ${cell(r.detail)} | ${cell(result)} |`;
+        // The title is whatever the author typed, and untrusted authors are listed too. As code it
+        // cannot mention anyone or carry a link under the App's name.
+        const title = `\`${cell(r.title).replace(/`/g, "'").slice(0, 60)}\``;
+        return `| #${r.number} | ${title} | ${r.route}: ${r.reason} | ${cell(r.detail)} | ${cell(result)} |`;
     });
     const acted = opts.outcomes.filter(o => o.did.length).length;
     return [

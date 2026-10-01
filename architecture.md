@@ -1321,7 +1321,8 @@ that sweeps each opted-in repository's open pull requests. A deterministic sweep
 facts with no model; one fresh Claude session per pull request that needs judgment reads the
 reviews on record, conducts one more if needed, and fixes its own findings; a separate
 deterministic step checks each session's decision against live state and policy before anything is
-labelled, merged or closed. The session's token can push to the branch and nothing else.
+labelled, merged or closed. The session's token can write contents and nothing else: it cannot
+label, comment, close, or change a workflow file.
 
 It follows the Morpheus Security shape (§18): a public reviewed engine in this repository, a
 private operations repository holding the App key, the subscription token and the schedule, and a
