@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { checkLocalReview } from "../review/local.js";
+import { checkManagerReview, usesManagerReview } from "../review/manager.js";
 import { checkPr, formatFindings } from "../check/pr.js";
 import {
   unreadableVisualEvidencePolicy,
@@ -100,12 +101,16 @@ function projectVisualEvidencePolicy(): VisualEvidencePolicy {
 }
 
 export async function pr(productDir: string, base: string): Promise<number> {
-  let reviewEvent: { pull_request?: { head?: { sha?: string }; labels?: { name: string }[] } } = {};
+  let reviewEvent: { pull_request?: { head?: { sha?: string }; labels?: { name: string }[]; manager_label_actor?: string | null } } = {};
   try { reviewEvent = JSON.parse(readFileSync(process.env["GITHUB_EVENT_PATH"] ?? "", "utf8")); } catch { /* local overrides below */ }
   const head = reviewEvent.pull_request?.head?.sha ?? gitOutput(["rev-parse", "HEAD"]);
   const labels = reviewEvent.pull_request?.labels?.map(l => l.name) ?? (process.env["MORPHEUS_PR_LABELS"] ?? "").split(",").map(s => s.trim());
+  // The GitHub Manager's label selects its own, narrower record. Who applied the label is not
+  // in the pull request payload; the workflow reads it from the issue events and passes it here.
+  const labelActor = reviewEvent.pull_request?.manager_label_actor ?? process.env["MORPHEUS_MANAGER_LABEL_ACTOR"] ?? undefined;
+  const review = { root: process.cwd(), body: prBody(), labels, head, base };
   const findings = await checkPr({
-    agentReview: checkLocalReview({ root: process.cwd(), body: prBody(), labels, head, base }),
+    agentReview: usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor }) : checkLocalReview(review),
     body: prBody(),
     author: prAuthor(),
     branch: currentBranch(),

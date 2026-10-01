@@ -183,6 +183,20 @@ a merge request or manufacture it. Clearance, coverage, budget and CI checks sti
 The parser accepts at most 20 recorded follow-ups as an input-size bound, not authorization.
 
 
+## When the author is gone: the GitHub Manager
+
+Everything above assumes an author who is still there to answer the review. When the authoring
+session has ended and the pull request sits, the scheduled GitHub Manager takes it over
+([gh-manager.md](gh-manager.md)). It is a fresh session that did not write the change, so it may
+review; and it fixes its own findings in the same session, because handing them back to an absent
+author is the stall again. That is a separate, narrower record (`morpheus-manager-review`, selected
+by a `manager-reviewed` label that only `morpheus-gh-manager[bot]` may apply), not a turn in this
+contract: the three-turn cap, `humanAuthorization` and finalization rules here are unchanged, and
+an existing `morpheus-review` record is left as the history the manager read.
+
+An author must still never wait for it. It acts only after a cooldown, it cannot clear a change to
+normative policy, and its use is reported as a waiver on every check.
+
 ## Record and publish
 
 Keep one `morpheus-review` JSON fence

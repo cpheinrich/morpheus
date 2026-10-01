@@ -63,7 +63,7 @@ export const FINALIZATION_CEILING_MINUTES = 5;
  * a real turn however it is described: this is the reason there is no blanket documentation
  * exemption. Explanatory prose that restates behaviour already reviewed is a different thing.
  */
-const NORMATIVE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$|(?:^|\/)morpheus\.json$|(?:^|\/)\.(?:github|ci|morpheus)\//i;
+export const NORMATIVE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$|(?:^|\/)morpheus\.json$|(?:^|\/)\.(?:github|ci|morpheus)\//i;
 export const ReviewRecord = z.object({
     version: z.union([z.literal(1), z.literal(2)]),
     base: Sha,
@@ -163,7 +163,7 @@ export function reviewRequired(config) {
 export function git(root, args) {
     return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024 }).trim();
 }
-function isAncestor(root, older, newer) {
+export function isAncestor(root, older, newer) {
     try {
         git(root, ["merge-base", "--is-ancestor", older, newer]);
         return true;
@@ -275,7 +275,7 @@ export function validateReviewRecord(record) {
         }
     });
 }
-function changedPaths(root, older, newer) {
+export function changedPaths(root, older, newer) {
     return git(root, ["diff", "--name-only", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean);
 }
 /** True when Git's own merge of the two parents reproduces this commit's tree exactly: nothing was hand-edited. */
@@ -296,7 +296,7 @@ function exactMerge(root, commit, parents) {
  * hand-resolved one passes when the record names it, so the unreviewed resolution is visible rather
  * than hidden. Any other commit may touch only the allowed paths. Returns the merges it accepted.
  */
-function verifyUncoveredCommits(root, record, from, to, trunk, allowed, refusal) {
+export function verifyUncoveredCommits(root, record, from, to, trunk, allowed, refusal) {
     const named = new Map((record.trunkIntegrations ?? []).map(entry => [entry.commit, entry]));
     const accepted = new Set();
     for (const commit of git(root, ["rev-list", "--first-parent", "--reverse", `${from}..${to}`]).split("\n").filter(Boolean)) {

@@ -2761,3 +2761,83 @@ describe("retired nightly screenshot gallery PR", () => {
     }
   });
 });
+
+describe("gh-manager.yml", () => {
+  type Step = { name?: string; id?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string>; run?: string };
+  type Manager = {
+    on?: { workflow_call?: { inputs?: Record<string, { required?: boolean; default?: unknown }>; secrets?: Record<string, { required?: boolean }> } };
+    permissions?: Record<string, string>;
+    jobs?: Record<string, { needs?: string | string[]; if?: string; steps?: Step[]; strategy?: { "max-parallel"?: number; "fail-fast"?: boolean } }>;
+  };
+  const tokenStep = (wf: Manager, job: string) => wf.jobs?.[job]?.steps?.find(step => step.uses?.startsWith("actions/create-github-app-token@"));
+  const grants = (step: Step | undefined) => Object.fromEntries(Object.entries(step?.with ?? {}).filter(([key]) => key.startsWith("permission-")));
+
+  it("is reusable, pins its tooling to an exact commit, and takes every credential as a secret", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(wf.on?.workflow_call?.inputs?.["morpheus-sha"]?.required).toBe(true);
+    expect(Object.keys(wf.on?.workflow_call?.secrets ?? {}).sort()).toEqual(["app_id", "app_private_key", "claude_code_oauth_token"]);
+    expect(wf.permissions).toEqual({ contents: "read" });
+    for (const job of ["sweep", "session", "apply"]) {
+      const checkout = wf.jobs?.[job]?.steps?.find(step => step.with?.repository === "cpheinrich/morpheus");
+      expect(checkout?.with?.ref, `${job} tooling ref`).toBe("${{ inputs.morpheus-sha }}");
+      expect(checkout?.with?.["persist-credentials"], `${job} tooling credentials`).toBe(false);
+    }
+  });
+
+  it("sweeps with a token that can write nothing", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(Object.values(grants(tokenStep(wf, "sweep")))).toEqual(["read", "read", "read", "read", "read"]);
+  });
+
+  it("gives the session a token that can push and cannot label, comment, merge through review, or close", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(grants(tokenStep(wf, "session"))).toEqual({
+      "permission-contents": "write",
+      "permission-workflows": "write",
+      "permission-pull-requests": "read",
+      "permission-issues": "read",
+      "permission-checks": "read",
+      "permission-statuses": "read",
+      "permission-actions": "read",
+    });
+  });
+
+  it("keeps the model credential in the session job and the write token out of it", async () => {
+    const raw = await readFile(join(DIR, "gh-manager.yml"), "utf8");
+    const wf = load(raw) as Manager;
+    const uses = (job: string) => JSON.stringify(wf.jobs?.[job]);
+    expect(uses("session")).toContain("secrets.claude_code_oauth_token");
+    expect(uses("sweep")).not.toContain("claude_code_oauth_token");
+    expect(uses("apply")).not.toContain("claude_code_oauth_token");
+    // Only the session's own step sees the subscription token; no other step in that job does.
+    const withToken = (wf.jobs?.session?.steps ?? []).filter(step => JSON.stringify(step).includes("claude_code_oauth_token"));
+    expect(withToken.map(step => step.id)).toEqual(["session"]);
+    expect(grants(tokenStep(wf, "apply"))).toMatchObject({ "permission-pull-requests": "write", "permission-issues": "write" });
+  });
+
+  it("applies on a separate runner, after the sessions, even when one failed", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(wf.jobs?.apply?.needs).toEqual(["sweep", "session"]);
+    expect(wf.jobs?.apply?.if).toContain("always()");
+    expect(wf.jobs?.session?.strategy).toMatchObject({ "fail-fast": false, "max-parallel": 2 });
+    const session = wf.jobs?.session?.steps?.find(step => step.id === "session");
+    expect(session?.run).toContain("--print");
+    expect(session?.run).not.toContain("gh-manager apply");
+  });
+
+  it("never interpolates an expression into a shell script", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+      for (const step of job.steps ?? []) expect(step.run ?? "", `${name}: ${step.name}`).not.toContain("${{");
+    }
+  });
+});
+
+describe("pr-check.yml and the GitHub Manager label", () => {
+  it("reads who applied manager-reviewed from the issue events, and tolerates a failed read", async () => {
+    const raw = await readFile(join(DIR, "pr-check.yml"), "utf8");
+    expect(raw).toContain('select(.event == "labeled" and .label.name == "manager-reviewed") | .actor.login');
+    expect(raw).toContain("manager_label_actor: (if $actor == \"\" then null else $actor end)");
+    expect(raw).toMatch(/\| tail -n 1 \|\| true\)"/);
+  });
+});

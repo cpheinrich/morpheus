@@ -1,0 +1,403 @@
+name: GitHub Manager
+
+# Reusable workflow. One run of the GitHub Manager against one repository:
+# sweep its open pull requests, give each one that needs judgment a fresh
+# Claude session, then check and apply what the sessions decided.
+#
+# Called only from the private operations repository, which alone holds the App
+# key and the Claude subscription token and owns the schedule — the same split
+# as Morpheus Security. A target repository opts in with a reviewed
+# `.github/morpheus-gh-manager.json` on its default branch; without one this
+# run inspects nothing.
+#
+# Three jobs, three tokens, and the split is the security model:
+#
+#   sweep    read-only token. Routes pull requests from facts; no model.
+#   session  a token that can push to the pull request's branch and read the
+#            rest. It cannot label, comment, merge or close, so a session that
+#            was talked into something can only ask for it, in a decision file.
+#   apply    write token, no model. Checks each decision against live state and
+#            policy before acting, on a fresh runner the session never touched.
+#
+# docs/runbooks/gh-manager.md has the whole design.
+
+on:
+  workflow_call:
+    inputs:
+      target-repository:
+        description: owner/name of the repository to manage.
+        type: string
+        required: true
+      target-owner:
+        type: string
+        required: true
+      target-name:
+        type: string
+        required: true
+      morpheus-sha:
+        description: Exact 40-character Morpheus commit used for reviewed tooling.
+        type: string
+        required: true
+      claude-code-version:
+        description: Pinned Claude Code release the sessions run on.
+        type: string
+        default: "2.1.287"
+      dry-run:
+        description: Sweep and run sessions, but report what apply would do without doing it.
+        type: boolean
+        default: false
+    secrets:
+      app_id:
+        required: true
+      app_private_key:
+        required: true
+      claude_code_oauth_token:
+        description: A Claude subscription token from `claude setup-token`.
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      enabled: ${{ steps.sweep.outputs.enabled }}
+      sessions: ${{ steps.sweep.outputs.sessions }}
+      model: ${{ steps.sweep.outputs.model }}
+    steps:
+      - name: Mint a read-only token for the target
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.app_id }}
+          private-key: ${{ secrets.app_private_key }}
+          owner: ${{ inputs.target-owner }}
+          repositories: ${{ inputs.target-name }}
+          permission-contents: read
+          permission-pull-requests: read
+          permission-issues: read
+          permission-checks: read
+          permission-statuses: read
+
+      - name: Check out Morpheus tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.morpheus-sha }}
+          path: tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Require an immutable tooling revision
+        env:
+          MORPHEUS_SHA: ${{ inputs.morpheus-sha }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$MORPHEUS_SHA" | grep -Eq '^[0-9a-f]{40}$'
+          test "$(git -C tooling rev-parse HEAD)" = "$MORPHEUS_SHA"
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          package_json_file: tooling/package.json
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install the Morpheus CLI runtime
+        working-directory: tooling
+        run: pnpm install --frozen-lockfile
+
+      - name: Sweep open pull requests
+        id: sweep
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          TARGET: ${{ inputs.target-repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p manager
+          node tooling/dist/cli/index.js gh-manager sweep "$TARGET" --out manager/sweep.json
+
+      - name: Keep the sweep for the later jobs
+        if: steps.sweep.outputs.enabled == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sweep-${{ inputs.target-name }}
+          path: manager/sweep.json
+          if-no-files-found: error
+          retention-days: 30
+
+  session:
+    needs: sweep
+    if: needs.sweep.outputs.enabled == 'true' && needs.sweep.outputs.sessions != '[]'
+    runs-on: ubuntu-latest
+    # Above the session's own ceiling, so a hung session is cut off by the step
+    # and still uploads what it has.
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      # Two at a time: each one spends the same subscription the operator's own
+      # sessions run on.
+      max-parallel: 2
+      matrix:
+        pr: ${{ fromJSON(needs.sweep.outputs.sessions) }}
+    steps:
+      - name: Mint a push-only token for the target
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.app_id }}
+          private-key: ${{ secrets.app_private_key }}
+          owner: ${{ inputs.target-owner }}
+          repositories: ${{ inputs.target-name }}
+          # Push to the branch, read everything else. Workflows is here only
+          # because GitHub refuses a push whose merge from trunk carries a
+          # workflow change without it; a pull request that itself changes a
+          # workflow can never be cleared by the manager (check pr refuses it).
+          permission-contents: write
+          permission-workflows: write
+          permission-pull-requests: read
+          permission-issues: read
+          permission-checks: read
+          permission-statuses: read
+          permission-actions: read
+
+      - name: Check out Morpheus tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.morpheus-sha }}
+          path: tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Require an immutable tooling revision
+        env:
+          MORPHEUS_SHA: ${{ inputs.morpheus-sha }}
+        run: test "$(git -C tooling rev-parse HEAD)" = "$MORPHEUS_SHA"
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          package_json_file: tooling/package.json
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install tooling and move it out of the workspace
+        env:
+          CLAUDE_CODE_VERSION: ${{ inputs.claude-code-version }}
+        run: |
+          set -euo pipefail
+          (cd tooling && pnpm install --frozen-lockfile)
+          mv tooling "$RUNNER_TEMP/tooling"
+          npm install --global "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+          mkdir -p "$RUNNER_TEMP/manager"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sweep-${{ inputs.target-name }}
+          path: ${{ runner.temp }}/manager
+
+      - name: Write the session brief
+        id: brief
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          TARGET: ${{ inputs.target-repository }}
+          PR: ${{ matrix.pr }}
+        run: |
+          set -euo pipefail
+          GH_MANAGER_DECISION="$RUNNER_TEMP/manager/decision-$PR.json" \
+          MORPHEUS_CLI="node $RUNNER_TEMP/tooling/dist/cli/index.js" \
+            node "$RUNNER_TEMP/tooling/dist/cli/index.js" gh-manager prompt "$TARGET" "$PR" \
+              "$RUNNER_TEMP/manager/sweep.json" --out "$RUNNER_TEMP/manager/brief.md"
+
+      - name: Check out the pull request branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.target-repository }}
+          ref: ${{ steps.brief.outputs.branch }}
+          fetch-depth: 0
+          token: ${{ steps.token.outputs.token }}
+          # The session pushes its fixes with this credential.
+          persist-credentials: true
+
+      - name: Commit as the App
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          SLUG: ${{ steps.token.outputs.app-slug }}
+          EXPECTED_HEAD: ${{ steps.brief.outputs.head }}
+        run: |
+          set -euo pipefail
+          # The brief was written against this head; a branch that moved in
+          # between is somebody else working on it.
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          BOT_ID="$(gh api "users/$SLUG%5Bbot%5D" --jq .id)"
+          git config user.name "$SLUG[bot]"
+          git config user.email "$BOT_ID+$SLUG[bot]@users.noreply.github.com"
+
+      - name: Run the session
+        id: session
+        # A session that runs out of time has written no decision; apply
+        # reports that and counts the attempt rather than passing in silence.
+        timeout-minutes: 35
+        continue-on-error: true
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.claude_code_oauth_token }}
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          MODEL: ${{ needs.sweep.outputs.model }}
+          DISABLE_AUTOUPDATER: "1"
+        run: |
+          set -euo pipefail
+          claude --print --model "$MODEL" --output-format json --dangerously-skip-permissions \
+            < "$RUNNER_TEMP/manager/brief.md" > "$RUNNER_TEMP/manager/session-result.json"
+
+      - name: Report what the session cost
+        if: always()
+        env:
+          PR: ${{ matrix.pr }}
+        run: |
+          RESULT="$RUNNER_TEMP/manager/session-result.json"
+          {
+            echo "### Session for #$PR"
+            if [ -s "$RESULT" ] && jq -e . "$RESULT" > /dev/null 2>&1; then
+              jq -r '"- error: \(.is_error)\n- turns: \(.num_turns)\n- duration: \((.duration_ms // 0) / 60000 | floor) min"' "$RESULT"
+            else
+              echo "- no result was produced (timeout or crash)"
+            fi
+            if [ -s "$RUNNER_TEMP/manager/decision-$PR.json" ]; then echo "- decision file: written"; else echo "- decision file: **missing**"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Hand the decision to the apply job
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: decision-${{ inputs.target-name }}-${{ matrix.pr }}
+          path: |
+            ${{ runner.temp }}/manager/decision-${{ matrix.pr }}.json
+            ${{ runner.temp }}/manager/session-result.json
+          # Absent is an outcome apply reports, not an upload failure.
+          if-no-files-found: ignore
+          retention-days: 30
+
+  apply:
+    needs: [sweep, session]
+    # Runs when sessions failed or were skipped too: the routes that needed no
+    # session, and the digest, are owed either way.
+    if: always() && needs.sweep.result == 'success' && needs.sweep.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: gh-manager-apply-${{ inputs.target-repository }}
+      cancel-in-progress: false
+    steps:
+      - name: Mint the write token for the target
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.app_id }}
+          private-key: ${{ secrets.app_private_key }}
+          owner: ${{ inputs.target-owner }}
+          repositories: ${{ inputs.target-name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-actions: write
+          permission-checks: read
+          permission-statuses: read
+
+      - name: Check out Morpheus tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.morpheus-sha }}
+          path: tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Require an immutable tooling revision
+        env:
+          MORPHEUS_SHA: ${{ inputs.morpheus-sha }}
+        run: test "$(git -C tooling rev-parse HEAD)" = "$MORPHEUS_SHA"
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          package_json_file: tooling/package.json
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install the Morpheus CLI runtime
+        working-directory: tooling
+        run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sweep-${{ inputs.target-name }}
+          path: manager
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: decision-${{ inputs.target-name }}-*
+          path: manager/decisions
+          merge-multiple: true
+
+      - name: Carry out the routes that needed no session
+        id: routes
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          TARGET: ${{ inputs.target-repository }}
+          DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086
+          node tooling/dist/cli/index.js gh-manager routes "$TARGET" manager/sweep.json --out manager/outcomes $DRY_RUN
+
+      - name: Check and apply each session's decision
+        id: decisions
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          TARGET: ${{ inputs.target-repository }}
+          SESSIONS: ${{ needs.sweep.outputs.sessions }}
+          DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
+        run: |
+          set -uo pipefail
+          status=0
+          for pr in $(jq -r '.[]' <<< "$SESSIONS"); do
+            # shellcheck disable=SC2086
+            node tooling/dist/cli/index.js gh-manager apply "$TARGET" "$pr" manager/sweep.json \
+              "manager/decisions/decision-$pr.json" --out "manager/outcomes/outcome-$pr.json" $DRY_RUN || status=1
+          done
+          exit "$status"
+
+      - name: Post the run digest
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          TARGET: ${{ inputs.target-repository }}
+          DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086
+          node tooling/dist/cli/index.js gh-manager digest "$TARGET" manager/sweep.json manager/outcomes $DRY_RUN
+
+      - name: Keep the outcomes
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: outcomes-${{ inputs.target-name }}
+          path: manager/outcomes
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # The digest is posted before this so a partial failure is still on
+      # record; the job then fails so the operations run shows red.
+      - name: Fail if anything could not be applied
+        if: steps.routes.outcome == 'failure' || steps.decisions.outcome == 'failure'
+        run: |
+          echo "At least one operation failed; the digest names it." >&2
+          exit 1

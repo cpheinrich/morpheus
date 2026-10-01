@@ -104,6 +104,11 @@ Usage
                             vendor the shared nightly TestFlight admission core into an app
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
+  morpheus gh-manager sweep <owner/repo> [--out file]
+                            route every open pull request from facts; no model
+  morpheus gh-manager routes|prompt|apply|digest ...
+                            the steps the GitHub Manager operations workflow runs;
+                            see docs/runbooks/gh-manager.md
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge
   morpheus voice brief ["<topic>"] [--slug x] [--notes "..."] [--full]
                             today's state, to paste into a voice session

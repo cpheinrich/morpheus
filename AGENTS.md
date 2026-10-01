@@ -19,6 +19,7 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `architecture.md` | The specification. Update it when a decision changes. |
 | `src/pm/` | Project management: schemas, parser, index generator |
 | `src/cli/` | The `morpheus` command |
+| `src/gh-manager/` | The GitHub Manager: sweep, session brief, decision checks — see its runbook |
 | `hq/product/` | Morpheus's own roadmap and goals — it eats its own dog food |
 | `.github/workflows/` | Reusable workflows called by every project |
 | `docs/runbooks/` | Operational steps a human performs — consoles, DNS, keys |
@@ -52,6 +53,7 @@ pnpm morpheus pm migrate-ids --check   # integer roadmap ids → the dated schem
 pnpm morpheus pm block MO-051 --needs "what would unblock this"
 pnpm morpheus pm unblock MO-051
 pnpm morpheus heartbeat            # what should happen next, and whether anything should
+pnpm morpheus gh-manager sweep <owner/repo>  # how the GitHub Manager would route each open PR
 pnpm morpheus review prompt        # the rung-2 reviewer prompt for this branch
 pnpm morpheus voice knowledge      # standing explainer, uploaded once as project knowledge
 pnpm morpheus voice brief "topic"  # today's state, to paste into a voice session
@@ -486,6 +488,25 @@ In the PR test plan and worklog, record the actual focused commands and why that
 selected. Continue adding or updating tests and performing relevant simulator/visual QA.
 
 New projects inherit this policy from `src/init/templates.ts`; keep that template aligned.
+
+## The GitHub Manager
+
+A scheduled agent, `morpheus-gh-manager[bot]`, sweeps open pull requests in repositories that opt
+in with `.github/morpheus-gh-manager.json`. It enables auto-merge on reviewed, green pull requests;
+for ones that stalled it reads the reviews on record, conducts one more if needed, fixes its own
+findings in the same session and lands the result; it marks abandoned drafts incomplete, closes
+obsolete work, and escalates what needs a human with `manager:needs-human`.
+[`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is the whole design.
+
+**It is a backstop, not a plan.** The authoring agent still owns its review loop, CI and merge, and
+must not leave a pull request for the manager to finish. The manager waits 8 hours after a ready
+pull request's last commit and 48 after a draft's before touching it, and what it lands carries a
+visible `~ [agent-review] cleared by the GitHub Manager` waiver.
+
+**Leave its labels and records alone.** `manager-reviewed` counts only when the App applied it, and
+a `morpheus-manager-review` block is written by the manager, never by an author. If the manager
+has pushed to your branch, pull before continuing. Removing `manager:needs-human` or pushing a new
+commit tells it to look again.
 
 ## Branch protection
 

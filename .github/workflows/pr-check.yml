@@ -107,6 +107,14 @@ jobs:
           # Reruns must read current labels/body, not the original event snapshot.
           gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/live-pr.json"
           jq -e --arg sha "$EXPECTED_HEAD" '.head.sha == $sha' "$RUNNER_TEMP/live-pr.json" > /dev/null
-          jq '{pull_request: .}' "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"
+          # Who applied the GitHub Manager's label is not in the pull request
+          # payload. The newest `labeled` event for it is; an author applying the
+          # label to their own record is refused on that evidence. A failed read
+          # leaves the actor empty, which the check also refuses.
+          MANAGER_LABEL_ACTOR="$(gh api --paginate "repos/$REPOSITORY/issues/$PR_NUMBER/events?per_page=100" \
+            --jq '.[] | select(.event == "labeled" and .label.name == "manager-reviewed") | .actor.login' | tail -n 1 || true)"
+          jq --arg actor "$MANAGER_LABEL_ACTOR" \
+            '{pull_request: (. + {manager_label_actor: (if $actor == "" then null else $actor end)})}' \
+            "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"
           GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json" node .morpheus/dist/cli/index.js check pr \
             --dir "$PRODUCT_DIR" --base "origin/$BASE_REF"

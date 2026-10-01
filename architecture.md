@@ -1313,6 +1313,22 @@ disabled choice without installing code. The provider SessionStart files call th
 replacing the legacy direct `context brief` hook. No package lifecycle or session hook infers
 consent.
 
+### 7.13 The GitHub Manager is the backstop for a loop whose author has left
+
+Author-managed review (§9) has one failure it cannot recover from by itself: the authoring session
+ends before the loop does, and nothing else is listening. The GitHub Manager is a scheduled agent
+that sweeps each opted-in repository's open pull requests. A deterministic sweep routes them from
+facts with no model; one fresh Claude session per pull request that needs judgment reads the
+reviews on record, conducts one more if needed, and fixes its own findings; a separate
+deterministic step checks each session's decision against live state and policy before anything is
+labelled, merged or closed. The session's token can push to the branch and nothing else.
+
+It follows the Morpheus Security shape (§18): a public reviewed engine in this repository, a
+private operations repository holding the App key, the subscription token and the schedule, and a
+target that opts in with a committed policy file. Its review is a narrower record than the
+author's, bounded by path checks and refused outright for normative policy.
+[`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is authoritative.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.

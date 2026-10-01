@@ -69,7 +69,7 @@ export const FINALIZATION_CEILING_MINUTES = 5;
  * a real turn however it is described: this is the reason there is no blanket documentation
  * exemption. Explanatory prose that restates behaviour already reviewed is a different thing.
  */
-const NORMATIVE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$|(?:^|\/)morpheus\.json$|(?:^|\/)\.(?:github|ci|morpheus)\//i;
+export const NORMATIVE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$|(?:^|\/)morpheus\.json$|(?:^|\/)\.(?:github|ci|morpheus)\//i;
 
 export const ReviewRecord = z.object({
   version: z.union([z.literal(1), z.literal(2)]),
@@ -176,7 +176,7 @@ export function git(root: string, args: string[]): string {
   return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024 }).trim();
 }
 
-function isAncestor(root: string, older: string, newer: string): boolean {
+export function isAncestor(root: string, older: string, newer: string): boolean {
   try { git(root, ["merge-base", "--is-ancestor", older, newer]); return true; } catch { return false; }
 }
 
@@ -260,7 +260,7 @@ export function validateReviewRecord(record: LocalReviewRecord): void {
   });
 }
 
-function changedPaths(root: string, older: string, newer: string): string[] {
+export function changedPaths(root: string, older: string, newer: string): string[] {
   return git(root, ["diff", "--name-only", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean);
 }
 
@@ -278,7 +278,7 @@ function exactMerge(root: string, commit: string, parents: string[]): boolean {
  * hand-resolved one passes when the record names it, so the unreviewed resolution is visible rather
  * than hidden. Any other commit may touch only the allowed paths. Returns the merges it accepted.
  */
-function verifyUncoveredCommits(root: string, record: LocalReviewRecord, from: string, to: string, trunk: string, allowed: Set<string>, refusal: string): Set<string> {
+export function verifyUncoveredCommits(root: string, record: { trunkIntegrations?: { commit: string }[] | undefined }, from: string, to: string, trunk: string, allowed: Set<string>, refusal: string): Set<string> {
   const named = new Map((record.trunkIntegrations ?? []).map(entry => [entry.commit, entry]));
   const accepted = new Set<string>();
   for (const commit of git(root, ["rev-list", "--first-parent", "--reverse", `${from}..${to}`]).split("\n").filter(Boolean)) {
