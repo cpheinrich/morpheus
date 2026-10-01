@@ -22,8 +22,14 @@ PLIST_BUDDY=/usr/libexec/PlistBuddy
 REPOSITORY_ROOT="${GITHUB_WORKSPACE:-$PWD}"
 PROJECT_PATH="${PROJECT_PATH:-}"
 SCHEME_NAME="${SCHEME_NAME:-}"
-SOURCE_PACKAGES_PATH="${SOURCE_PACKAGES_PATH:-${RUNNER_TEMP:-/private/tmp}/TestFlightSourcePackages}"
-DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${RUNNER_TEMP:-/private/tmp}/TestFlightDerivedData-archive}"
+# A runner that keeps a build cache between jobs names it in MORPHEUS_IOS_CI_CACHE
+# (see ios-ci.yml); the archive's DerivedData and checkouts then persist there.
+BUILD_CACHE_ROOT="${RUNNER_TEMP:-/private/tmp}"
+if [[ -n "${MORPHEUS_IOS_CI_CACHE:-}" && -d "$MORPHEUS_IOS_CI_CACHE" ]]; then
+  BUILD_CACHE_ROOT="$MORPHEUS_IOS_CI_CACHE"
+fi
+SOURCE_PACKAGES_PATH="${SOURCE_PACKAGES_PATH:-$BUILD_CACHE_ROOT/TestFlightSourcePackages}"
+DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$BUILD_CACHE_ROOT/TestFlightDerivedData-archive}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-${RUNNER_TEMP:-/private/tmp}/TestFlight.xcarchive}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
 MARKETING_VERSION="${MARKETING_VERSION:-}"

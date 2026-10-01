@@ -378,16 +378,28 @@ jobs:
         id: ios_paths
         run: |
           set -euo pipefail
+          # A runner that keeps a build cache between jobs (the Mac mini's
+          # ephemeral VMs mount one per repo and slot) names it in
+          # MORPHEUS_IOS_CI_CACHE; DerivedData and the package checkouts live
+          # there at a path that never changes, so incremental builds survive
+          # the VM. Everything else stays under the job's own temp directory.
           ios_ci_root="$RUNNER_TEMP/ios-ci"
-          mkdir -p "$ios_ci_root/SourcePackages" "$ios_ci_root/DerivedData"
+          if [ -n "${MORPHEUS_IOS_CI_CACHE:-}" ] && [ -d "$MORPHEUS_IOS_CI_CACHE" ]; then
+            cache_root="$MORPHEUS_IOS_CI_CACHE"
+            echo "cached=true" >> "$GITHUB_OUTPUT"
+          else
+            cache_root="$ios_ci_root"
+            echo "cached=false" >> "$GITHUB_OUTPUT"
+          fi
+          mkdir -p "$cache_root/SourcePackages" "$cache_root/DerivedData" "$ios_ci_root"
           # Cancellation can leave a child writing after the next job starts.
           # Never reuse or clear its evidence path. The random suffix also
           # separates multiple calls/jobs within the same run and attempt.
           output_root=$(mktemp -d "$ios_ci_root/run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.XXXXXX")
           mkdir -p "$output_root/Results" "$output_root/Logs" "$output_root/Screenshots"
           {
-            echo "SOURCE_PACKAGES=$ios_ci_root/SourcePackages"
-            echo "DERIVED_DATA=$ios_ci_root/DerivedData"
+            echo "SOURCE_PACKAGES=$cache_root/SourcePackages"
+            echo "DERIVED_DATA=$cache_root/DerivedData"
             echo "RESULTS=$output_root/Results"
             echo "LOGS=$output_root/Logs"
             echo "SCREENSHOTS=$output_root/Screenshots"
@@ -445,7 +457,8 @@ jobs:
             "${swift_files[@]}"
 
       - name: Cache resolved Swift packages
-        if: ${{ steps.scope.outputs.run == 'true' }}
+        # A runner-provided cache directory already keeps the checkouts.
+        if: ${{ steps.scope.outputs.run == 'true' && steps.ios_paths.outputs.cached != 'true' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ runner.temp }}/ios-ci/SourcePackages
