@@ -85,8 +85,9 @@ Pins stay for the session until deleted or cleared after a successful **Send**.
 
 Header hint: *Right click to add comment. Press Esc twice to Delete*.
 
-The stream defaults to **1.75× contain-fit** in the left pane (phone fills the
-panel; letterboxing matches the chrome background `#12151a`, not stark black).
+The device frame **contain-fits** the left pane (aspect ratio preserved,
+centered, 16px padding). It resizes with the window — no fixed zoom — and any
+margin matches the chrome background `#12151a`, not stark black.
 
 
 
