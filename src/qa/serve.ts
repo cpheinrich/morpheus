@@ -229,6 +229,7 @@ function pageHtml(opts: {
         <button class="btn" id="add" type="button" disabled>Add comment</button>
         <button class="btn primary" id="send" type="button" disabled>Send batch</button>
       </div>
+      <div class="shortcut-hint">⌘Enter / Ctrl+Enter sends the batch</div>
     </div>
   </aside>
 </main>
@@ -410,7 +411,7 @@ function pageHtml(opts: {
     }
   }
 
-  sendBtn.onclick = async () => {
+  async function sendBatch() {
     if (drafts.length === 0) return;
     sendBtn.disabled = true;
     setStatus('Sending…');
@@ -440,7 +441,17 @@ function pageHtml(opts: {
       setStatus(String(err.message || err), 'err');
       sendBtn.disabled = false;
     }
-  };
+  }
+
+  sendBtn.onclick = () => { void sendBatch(); };
+
+  window.addEventListener('keydown', (ev) => {
+    if (!(ev.metaKey || ev.ctrlKey)) return;
+    if (ev.key !== 'Enter') return;
+    if (drafts.length === 0 || sendBtn.disabled) return;
+    ev.preventDefault();
+    void sendBatch();
+  });
 
   window.addEventListener('resize', () => requestAnimationFrame(renderPins));
   setMode(false);

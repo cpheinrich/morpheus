@@ -74,6 +74,7 @@ Payload shape:
 | **Shift+C** | Toggle Comment ↔ Interact mode (ignored while typing in the comment box) |
 | **Enter** in the comment box | Add comment (same as Add) |
 | **Shift+Enter** | Newline in the comment box |
+| **⌘Enter** / Ctrl+Enter | Send the current batch |
 
 ## Batch schema
 
