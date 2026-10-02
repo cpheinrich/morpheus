@@ -133,6 +133,8 @@ describe("qa comments serve", () => {
     const html = await home.text();
     expect(html).toContain("Right click to add comment");
     expect(html).toContain(previewUrl);
+    expect(html).toContain("pointer-events: none");
+    expect(html).toContain("function contentBox");
 
     const res = await fetch(`${server.url}api/batches`, {
       method: "POST",

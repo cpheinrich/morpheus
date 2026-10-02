@@ -26,12 +26,12 @@ export function pageHtml(opts: {
   .btn.primary { background: #8ab4f8; color: #0b0d10; border-color: #8ab4f8; font-weight: 600; }
   .btn.primary:disabled { opacity: 0.4; cursor: not-allowed; }
   main { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
-  .stage-wrap { position: relative; background: #12151a; min-height: 0; height: 100%; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 16px; container-type: size; }
-  /* Fit the device frame to the left pane (contain). Aspect comes from the stream; no fixed zoom. */
-  .stage { position: relative; touch-action: none; flex: 0 0 auto; min-width: 0; min-height: 0; --frame-w: 390; --frame-h: 844; aspect-ratio: var(--frame-w) / var(--frame-h); width: min(100cqw, calc(100cqh * var(--frame-w) / var(--frame-h))); max-width: 100%; max-height: 100%; height: auto; }
-  .stage img { display: block; width: 100%; height: 100%; object-fit: contain; background: #12151a; user-select: none; }
-  .pins { position: absolute; inset: 0; }
-  .pin { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: #fdd663; color: #0b0d10; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #0b0d10; cursor: pointer; z-index: 2; }
+  .stage-wrap { position: relative; background: #12151a; min-height: 0; height: 100%; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 16px; }
+  /* Pixel size is set in JS so the hit box matches the contained picture. */
+  .stage { position: relative; touch-action: none; flex: 0 0 auto; width: 390px; height: 844px; }
+  .stage img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; background: #12151a; user-select: none; }
+  .pins { position: absolute; inset: 0; pointer-events: none; }
+  .pin { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: #fdd663; color: #0b0d10; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #0b0d10; cursor: pointer; z-index: 2; pointer-events: auto; }
   .pin.focused { outline: 2px solid #8ab4f8; outline-offset: 2px; }
   aside { border-left: 1px solid #22262c; background: #12151a; display: flex; flex-direction: column; min-height: 0; }
   aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #9aa0a6; margin: 12px 14px 6px; }
@@ -101,12 +101,24 @@ export function pageHtml(opts: {
     missing.hidden = false;
   }
 
-  // Size the frame with CSS contain-fit (aspect-ratio + container). Pins track that box.
+  const stageWrap = document.querySelector('.stage-wrap');
+
+  // Contain-fit in pixels. The stage box is the picture, so taps are not
+  // swallowed by a CSS-sized wrapper or by letterboxing inside it.
   function layoutStream() {
-    if (stream.naturalWidth && stream.naturalHeight) {
-      stage.style.setProperty('--frame-w', String(stream.naturalWidth));
-      stage.style.setProperty('--frame-h', String(stream.naturalHeight));
-    }
+    if (!stageWrap) return;
+    const wrap = stageWrap.getBoundingClientRect();
+    const style = getComputedStyle(stageWrap);
+    const padX = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+    const padY = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+    const availW = wrap.width - padX;
+    const availH = wrap.height - padY;
+    const nw = stream.naturalWidth || 390;
+    const nh = stream.naturalHeight || 844;
+    if (availW <= 0 || availH <= 0) return;
+    const scale = Math.min(availW / nw, availH / nh);
+    stage.style.width = Math.max(1, Math.floor(nw * scale)) + 'px';
+    stage.style.height = Math.max(1, Math.floor(nh * scale)) + 'px';
     requestAnimationFrame(renderPins);
   }
 
@@ -117,6 +129,7 @@ export function pageHtml(opts: {
   let nextN = 1;
   let dragging = false;
   let pointerSent = false;
+  let lastCoords = null;
 
   function setStatus(msg, kind) {
     status.textContent = msg;
@@ -148,13 +161,21 @@ export function pageHtml(opts: {
 
   function renderPins() {
     pinsEl.innerHTML = '';
-    const rect = pinsEl.getBoundingClientRect();
+    const box = contentBox();
+    const stageRect = stage.getBoundingClientRect();
+    const originX = box ? box.left - stageRect.left : 0;
+    const originY = box ? box.top - stageRect.top : 0;
+    const boxW = box ? box.width : 0;
+    const boxH = box ? box.height : 0;
     pins.forEach((p) => {
       const el = document.createElement('div');
       el.className = 'pin' + (p.id === focusedId ? ' focused' : '');
       el.textContent = String(p.n);
-      el.style.left = (p.normX * rect.width) + 'px';
-      el.style.top = (p.normY * rect.height) + 'px';
+      el.style.left = (originX + p.normX * boxW) + 'px';
+      el.style.top = (originY + p.normY * boxH) + 'px';
+      el.addEventListener('pointerdown', (ev) => {
+        ev.stopPropagation();
+      });
       el.addEventListener('click', (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
@@ -221,14 +242,35 @@ export function pageHtml(opts: {
     renderPins();
   }
 
-  function coordsFromEvent(ev) {
-    const rect = pinsEl.getBoundingClientRect();
+  // Picture rect inside the stage after object-fit: contain (no letterbox when aspects match).
+  function contentBox() {
+    const rect = stage.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
-    const x = ev.clientX - rect.left;
-    const y = ev.clientY - rect.top;
+    const nw = stream.naturalWidth;
+    const nh = stream.naturalHeight;
+    if (!nw || !nh) {
+      return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    }
+    const scale = Math.min(rect.width / nw, rect.height / nh);
+    const width = nw * scale;
+    const height = nh * scale;
     return {
-      normX: Math.min(1, Math.max(0, x / rect.width)),
-      normY: Math.min(1, Math.max(0, y / rect.height)),
+      left: rect.left + (rect.width - width) / 2,
+      top: rect.top + (rect.height - height) / 2,
+      width,
+      height,
+    };
+  }
+
+  function coordsFromEvent(ev) {
+    const box = contentBox();
+    if (!box || box.width <= 0 || box.height <= 0) return null;
+    const x = ev.clientX - box.left;
+    const y = ev.clientY - box.top;
+    if (x < -0.5 || y < -0.5 || x > box.width + 0.5 || y > box.height + 0.5) return null;
+    return {
+      normX: Math.min(1, Math.max(0, x / box.width)),
+      normY: Math.min(1, Math.max(0, y / box.height)),
     };
   }
 
@@ -253,7 +295,9 @@ export function pageHtml(opts: {
     placePin(c.normX, c.normY);
   });
 
-  // Left pointer → drive the simulator via HID
+  // Left pointer on the picture → drive the simulator via HID.
+  // Pin layer is pointer-events: none, so empty-frame clicks hit the image and bubble here.
+  // Send the touch before setPointerCapture: a capture failure must not drop the tap.
   stage.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0) return;
     if (ev.target && ev.target.classList && ev.target.classList.contains('pin')) return;
@@ -261,24 +305,30 @@ export function pageHtml(opts: {
     if (!c) return;
     dragging = true;
     pointerSent = true;
-    stage.setPointerCapture(ev.pointerId);
+    lastCoords = c;
     void sendTouch('begin', c.normX, c.normY);
+    try { stage.setPointerCapture(ev.pointerId); } catch (_) {}
   });
   stage.addEventListener('pointermove', (ev) => {
     if (!dragging) return;
     const c = coordsFromEvent(ev);
     if (!c) return;
+    lastCoords = c;
     void sendTouch('move', c.normX, c.normY);
   });
   function endPointer(ev) {
     if (!dragging) return;
     dragging = false;
-    const c = coordsFromEvent(ev) || { normX: 0.5, normY: 0.5 };
-    void sendTouch('end', c.normX, c.normY);
-    try { stage.releasePointerCapture(ev.pointerId); } catch (_) {}
+    const c = (ev && coordsFromEvent(ev)) || lastCoords;
+    if (c) void sendTouch('end', c.normX, c.normY);
+    if (ev) {
+      try { stage.releasePointerCapture(ev.pointerId); } catch (_) {}
+    }
   }
   stage.addEventListener('pointerup', endPointer);
   stage.addEventListener('pointercancel', endPointer);
+  window.addEventListener('pointerup', endPointer);
+  window.addEventListener('pointercancel', endPointer);
 
   textEl.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter') return;
@@ -379,7 +429,17 @@ export function pageHtml(opts: {
   sendBtn.onclick = () => { void sendBatch(); };
   window.addEventListener('resize', () => requestAnimationFrame(layoutStream));
   stream.addEventListener('load', () => requestAnimationFrame(layoutStream));
-  if (stream.complete && stream.naturalWidth) requestAnimationFrame(layoutStream);
+  if (stageWrap && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => layoutStream()).observe(stageWrap);
+  }
+  layoutStream();
+  // MJPEG often gains naturalWidth without another load event.
+  let sizeWatch = 0;
+  const sizeTimer = setInterval(() => {
+    sizeWatch += 1;
+    layoutStream();
+    if ((stream.naturalWidth && stream.naturalHeight) || sizeWatch > 40) clearInterval(sizeTimer);
+  }, 150);
 })();
 </script>
 </body>
