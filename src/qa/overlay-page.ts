@@ -55,7 +55,6 @@ export function pageHtml(opts: {
 <header>
   <h1>QA comments · <span id="projectLabel"></span></h1>
   <div class="hint-top">Right click to add comment. Press Esc twice to Delete</div>
-  <button class="btn" id="openPreview" type="button">Open raw preview</button>
 </header>
 <main>
   <div class="stage-wrap">
@@ -84,7 +83,6 @@ export function pageHtml(opts: {
   const streamPath = ${streamPath};
   const project = ${project};
   document.getElementById('projectLabel').textContent = project;
-  document.getElementById('openPreview').onclick = () => window.open(previewUrl, '_blank');
 
   const stream = document.getElementById('stream');
   const pinsEl = document.getElementById('pins');
