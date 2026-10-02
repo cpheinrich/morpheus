@@ -119,6 +119,8 @@ Usage
                             print one batch.json
   morpheus qa comments resolve <batchId> [ids...]
                             mark batch(es) resolved (moves pending → resolved)
+  morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
+                            local overlay: tap → multi-comment → Send into local/qa-comments/
 Options
   --dir <path>   Product directory (default: hq/product)
   --base <ref>   Base ref for the PR diff (default: origin/main)

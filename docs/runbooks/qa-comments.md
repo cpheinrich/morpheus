@@ -46,30 +46,45 @@ See `src/qa/comments.ts` (`QaCommentBatch`). Summary:
 morpheus qa comments pending          # list pending batches (paths + comment counts)
 morpheus qa comments show <batchId>   # print one batch.json
 morpheus qa comments resolve <batchId> [...ids]
+morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
 ```
+
+`serve` binds **only** to `127.0.0.1`. `--root` is the project checkout that
+receives `local/qa-comments/` (defaults to cwd) — for Evo QA, pass Evo's path
+even when the Morpheus CLI is running from a Morpheus worktree.
 
 Exit non-zero when a named batch is missing. `pending` with an empty inbox
 prints nothing and exits 0 — agents can poll safely.
 
-## Operator loop (target UX)
+## Operator loop
 
-1. Start the project preview (Evo: ios-qa → `preview.sh start`).
-2. Open the Morpheus QA overlay pointed at the printed preview URL
-   (`morpheus qa comments serve --preview <url>` — not in this slice).
-3. Tap → type → add more comments → **Send**. Overlay writes
-   `local/qa-comments/pending/<id>/`.
-4. Tell the agent (or it polls) `morpheus qa comments pending`. Agent reads
-   `show`, acts, then `resolve`.
+1. Start the project preview (Evo: `apps/ios/scripts/preview.sh start`).
+2. From a checkout that has this CLI (Morpheus worktree until merged):
+
+   ```sh
+   pnpm morpheus qa comments serve \
+     --preview http://127.0.0.1:3200/ \
+     --root /Users/chrisheinrich/code/evo \
+     --port 3456
+   ```
+
+3. Open the printed overlay URL. **Interact mode** drives the sim through the
+   embedded serve-sim UI. Switch to **Comment mode**, tap → type → Add (repeat)
+   → **Send**. Batches land in `<root>/local/qa-comments/pending/`.
+4. Agent (cwd = project root): `morpheus qa comments pending`, then `show` /
+   `resolve`. Until this lands on Morpheus main, use
+   `pnpm morpheus` from the claim worktree with `--root` pointing at the project.
 
 ## Hooking ios-qa / preview.sh later
 
 Evo's ios-qa skill today: doctor → start → open Codex panel → use Codex
 annotations. After this lands:
 
-- `preview.sh start` keeps owning sim + serve-sim lifecycle.
-- ios-qa step 3 gains an optional branch: when no Codex panel is available,
-  print `morpheus qa comments serve --preview <url>` (or auto-open it) instead
-  of only "open the URL in Safari and paste screenshots".
+- `preview.sh start` keeps owning sim + serve-sim lifecycle and prints the
+  preview URL; run `morpheus qa comments serve --preview <that-url> --root <evo>`
+  beside it (no Evo claim required for the first usable loop).
+- ios-qa step 3 can later print/auto-open the serve command when no Codex
+  panel is available.
 - The skill's "first annotation must confirm pixels arrived" check becomes:
   confirm `frame.png` (or the overlay's live canvas) shows real app pixels
   before treating comments as authoritative.

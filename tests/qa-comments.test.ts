@@ -1,10 +1,12 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:http";
+import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseBatch, type QaCommentBatch } from "../src/qa/comments.js";
 import { listPending, resolveBatch, showBatch, writePendingBatch } from "../src/qa/store.js";
 import { dispatchQaComments } from "../src/cli/qa.js";
+import { startQaCommentServer } from "../src/qa/serve.js";
 
 function sample(id = "20261002T192800Z-ab12"): QaCommentBatch {
   return {
@@ -73,5 +75,97 @@ describe("qa comment batches", () => {
     root = await mkdtemp(join(tmpdir(), "morpheus-qa-"));
     const code = await dispatchQaComments(root, "pending", []);
     expect(code).toBe(0);
+  });
+});
+
+describe("qa comments serve", () => {
+  const closers: Array<() => Promise<void>> = [];
+
+  afterEach(async () => {
+    while (closers.length) {
+      const close = closers.pop();
+      if (close) await close();
+    }
+  });
+
+  it("serves the overlay and writes a batch via POST /api/batches", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-qa-serve-"));
+    closers.push(async () => rm(root, { recursive: true, force: true }));
+    await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "evo", prefix: "EV" }), "utf8");
+
+    // Tiny upstream "preview" so health/proxy paths have something reachable.
+    const upstream = createServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("preview-ok");
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    closers.push(
+      () =>
+        new Promise<void>((resolve, reject) =>
+          upstream.close((err) => (err ? reject(err) : resolve())),
+        ),
+    );
+    const upAddr = upstream.address();
+    if (!upAddr || typeof upAddr === "string") throw new Error("no upstream port");
+    const previewUrl = `http://127.0.0.1:${upAddr.port}/`;
+
+    const server = await startQaCommentServer({
+      root,
+      previewUrl,
+      port: 0,
+      project: "evo",
+    });
+    closers.push(server.close);
+
+    const health = await fetch(`${server.url}health`);
+    expect(health.ok).toBe(true);
+    const healthJson = (await health.json()) as { project: string; previewUrl: string };
+    expect(healthJson.project).toBe("evo");
+    expect(healthJson.previewUrl).toBe(previewUrl);
+
+    const home = await fetch(server.url);
+    expect(home.ok).toBe(true);
+    const html = await home.text();
+    expect(html).toContain("Comment mode");
+    expect(html).toContain(previewUrl);
+
+    const res = await fetch(`${server.url}api/batches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        preview: { url: previewUrl, kind: "serve-sim" },
+        comments: [
+          {
+            id: "c1",
+            text: "Ship it",
+            createdAt: "2026-10-02T12:30:00-07:00",
+            anchor: { normX: 0.4, normY: 0.6 },
+          },
+        ],
+        frame: { width: 100, height: 200 },
+      }),
+    });
+    expect(res.status).toBe(201);
+    const created = (await res.json()) as { id: string; path: string };
+    expect(created.id).toMatch(/Z-/);
+
+    const pending = await listPending(root);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.id).toBe(created.id);
+    const disk = JSON.parse(await readFile(join(created.path, "batch.json"), "utf8"));
+    expect(disk.comments[0].text).toBe("Ship it");
+    expect(disk.project).toBe("evo");
+  });
+
+  it("refuses non-loopback preview hosts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-qa-serve-"));
+    closers.push(async () => rm(root, { recursive: true, force: true }));
+    await expect(
+      startQaCommentServer({
+        root,
+        previewUrl: "http://192.168.1.10:3200/",
+        port: 0,
+      }),
+    ).rejects.toThrow(/127\.0\.0\.1/);
   });
 });

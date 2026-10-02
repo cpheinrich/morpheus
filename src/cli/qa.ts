@@ -1,4 +1,5 @@
 import { listPending, resolveBatch, showBatch } from "../qa/store.js";
+import { startQaCommentServer } from "../qa/serve.js";
 
 /**
  * `morpheus qa comments …` — agent-facing side of the QA comment loop.
@@ -11,7 +12,43 @@ const USAGE = `Usage
   morpheus qa comments pending
   morpheus qa comments show <batchId>
   morpheus qa comments resolve <batchId> [batchId...]
+  morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
 `;
+
+function parseServeArgs(argv: string[]): {
+  preview?: string;
+  port: number;
+  root?: string;
+  streamUrl?: string;
+  project?: string;
+} {
+  let preview: string | undefined;
+  let port = 3456;
+  let root: string | undefined;
+  let streamUrl: string | undefined;
+  let project: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--preview") preview = argv[++i];
+    else if (a === "--port") {
+      const n = Number(argv[++i]);
+      if (!Number.isInteger(n) || n < 0 || n > 65535) {
+        throw new Error(`Invalid --port (got ${argv[i]})`);
+      }
+      port = n;
+    } else if (a === "--root") root = argv[++i];
+    else if (a === "--stream-url") streamUrl = argv[++i];
+    else if (a === "--project") project = argv[++i];
+    else if (a.startsWith("-")) {
+      throw new Error(`Unknown serve option "${a}"\n\n${USAGE}`);
+    } else if (!preview) {
+      preview = a;
+    } else {
+      throw new Error(`Unexpected argument "${a}"\n\n${USAGE}`);
+    }
+  }
+  return { preview, port, root, streamUrl, project };
+}
 
 export async function dispatchQaComments(
   root: string,
@@ -59,6 +96,53 @@ export async function dispatchQaComments(
       console.log(`Resolved ${resolved.id}`);
     }
     return failed === 0 ? 0 : 1;
+  }
+
+  if (command === "serve") {
+    let opts;
+    try {
+      opts = parseServeArgs(rest);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      return 1;
+    }
+    if (!opts.preview) {
+      console.error(`--preview <url> is required.\n\n${USAGE}`);
+      return 1;
+    }
+    const projectRoot = opts.root ?? root;
+    try {
+      const server = await startQaCommentServer({
+        root: projectRoot,
+        previewUrl: opts.preview,
+        port: opts.port,
+        ...(opts.streamUrl ? { streamUrl: opts.streamUrl } : {}),
+        ...(opts.project ? { project: opts.project } : {}),
+        onListen: (info) => {
+          console.log(`QA comments overlay: ${info.url}`);
+          console.log(`Preview upstream:    ${opts.preview}`);
+          console.log(`Batches write to:    ${projectRoot}/local/qa-comments/pending/`);
+          if (info.streamUrl) console.log(`Stream proxied from: ${info.streamUrl}`);
+          else {
+            console.log(
+              "No MJPEG stream discovered — Comment mode overlays the iframe (frame.png may be omitted).",
+            );
+          }
+          console.log("Open the overlay URL in a browser. Ctrl+C stops the server.");
+        },
+      });
+      await new Promise<void>((resolve) => {
+        const stop = () => {
+          void server.close().finally(resolve);
+        };
+        process.on("SIGINT", stop);
+        process.on("SIGTERM", stop);
+      });
+      return 0;
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      return 1;
+    }
   }
 
   console.error(`Unknown qa comments command "${command}".\n\n${USAGE}`);
