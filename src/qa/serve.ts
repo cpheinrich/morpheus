@@ -205,7 +205,7 @@ function pageHtml(opts: {
   <span class="meta" id="modeLabel">Interact mode — drive the sim freely</span>
   <div class="mode-controls">
     <button class="btn" id="toggleMode" type="button">Comment mode</button>
-    <span class="shortcut">⌘T</span>
+    <span class="shortcut">Shift+C</span>
   </div>
   <button class="btn" id="openPreview" type="button">Open raw preview</button>
 </header>
@@ -381,9 +381,11 @@ function pageHtml(opts: {
   });
 
   window.addEventListener('keydown', (ev) => {
-    if (!(ev.metaKey || ev.ctrlKey)) return;
-    if (ev.key !== 't' && ev.key !== 'T') return;
-    // Overlay owns ⌘T / Ctrl+T so Comment mode is one keystroke (overrides browser new-tab).
+    // Shift+C toggles mode when not typing in a text field (in textarea it inserts "C").
+    if (!ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (ev.key !== 'c' && ev.key !== 'C') return;
+    const tag = (ev.target && ev.target.tagName) ? String(ev.target.tagName).toLowerCase() : '';
+    if (tag === 'textarea' || tag === 'input' || (ev.target && ev.target.isContentEditable)) return;
     ev.preventDefault();
     setMode(!commentMode);
   });

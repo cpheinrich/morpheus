@@ -71,7 +71,7 @@ Payload shape:
 
 | Shortcut | Action |
 |---|---|
-| **⌘T** (Ctrl+T on non-Mac) | Toggle Comment ↔ Interact mode |
+| **Shift+C** | Toggle Comment ↔ Interact mode (ignored while typing in the comment box) |
 | **Enter** in the comment box | Add comment (same as Add) |
 | **Shift+Enter** | Newline in the comment box |
 
@@ -121,7 +121,7 @@ prints nothing and exits 0 — agents can poll safely.
    ```
 
 3. Open the printed overlay URL. **Interact mode** drives the sim through the
-   embedded serve-sim UI. **⌘T** toggles **Comment mode**; tap → type → **Enter**
+   embedded serve-sim UI. **Shift+C** toggles **Comment mode**; tap → type → **Enter**
    to Add (Shift+Enter for newline) → **Send**. Batches land in
    `<root>/local/qa-comments/pending/`. Configure the wake webhook once (above).
 4. Agent (cwd = project root): `morpheus qa comments pending`, then `show` /
