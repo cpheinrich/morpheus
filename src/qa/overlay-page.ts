@@ -26,9 +26,9 @@ export function pageHtml(opts: {
   .btn.primary { background: #8ab4f8; color: #0b0d10; border-color: #8ab4f8; font-weight: 600; }
   .btn.primary:disabled { opacity: 0.4; cursor: not-allowed; }
   main { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
-  .stage-wrap { position: relative; background: #000; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .stage { position: relative; max-width: 100%; max-height: 100%; touch-action: none; }
-  .stage img { display: block; max-width: 100%; max-height: calc(100vh - 52px); background: #111; user-select: none; }
+  .stage-wrap { position: relative; background: #12151a; min-height: 0; height: 100%; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .stage { position: relative; touch-action: none; flex-shrink: 0; }
+  .stage img { display: block; width: 100%; height: 100%; background: #12151a; user-select: none; }
   .pins { position: absolute; inset: 0; }
   .pin { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: #fdd663; color: #0b0d10; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #0b0d10; cursor: pointer; z-index: 2; }
   .pin.focused { outline: 2px solid #8ab4f8; outline-offset: 2px; }
@@ -100,6 +100,20 @@ export function pageHtml(opts: {
   } else {
     stream.hidden = true;
     missing.hidden = false;
+  }
+
+  // Default ~175% of contain-fit so the phone fills the left pane (Chris's target look).
+  const DISPLAY_ZOOM = 1.75;
+  const stageWrap = document.querySelector('.stage-wrap');
+  function layoutStream() {
+    if (!stream.naturalWidth || !stream.naturalHeight || !stageWrap) return;
+    const wrap = stageWrap.getBoundingClientRect();
+    if (wrap.width <= 0 || wrap.height <= 0) return;
+    const fit = Math.min(wrap.width / stream.naturalWidth, wrap.height / stream.naturalHeight);
+    const scale = fit * DISPLAY_ZOOM;
+    stage.style.width = Math.round(stream.naturalWidth * scale) + 'px';
+    stage.style.height = Math.round(stream.naturalHeight * scale) + 'px';
+    renderPins();
   }
 
   /** @type {{id:string, n:number, normX:number, normY:number, text:string, createdAt:string}[]} */
@@ -369,8 +383,9 @@ export function pageHtml(opts: {
   }
 
   sendBtn.onclick = () => { void sendBatch(); };
-  window.addEventListener('resize', () => requestAnimationFrame(renderPins));
-  stream.addEventListener('load', () => requestAnimationFrame(renderPins));
+  window.addEventListener('resize', () => requestAnimationFrame(layoutStream));
+  stream.addEventListener('load', () => requestAnimationFrame(layoutStream));
+  if (stream.complete && stream.naturalWidth) requestAnimationFrame(layoutStream);
 })();
 </script>
 </body>
