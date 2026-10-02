@@ -9,11 +9,27 @@ import { startQaCommentServer } from "../qa/serve.js";
  */
 
 const USAGE = `Usage
-  morpheus qa comments pending
-  morpheus qa comments show <batchId>
-  morpheus qa comments resolve <batchId> [batchId...]
+  morpheus qa comments pending [--root <project>]
+  morpheus qa comments show <batchId> [--root <project>]
+  morpheus qa comments resolve <batchId> [batchId...] [--root <project>]
   morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
 `;
+
+
+function takeRootFlag(argv: string[], fallback: string): { root: string; rest: string[] } {
+  const rest: string[] = [];
+  let root = fallback;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--root") {
+      const value = argv[++i];
+      if (!value) throw new Error("--root requires a path");
+      root = value;
+    } else {
+      rest.push(argv[i]!);
+    }
+  }
+  return { root, rest };
+}
 
 function parseServeArgs(argv: string[]): {
   preview?: string;
@@ -56,7 +72,15 @@ export async function dispatchQaComments(
   rest: string[],
 ): Promise<number> {
   if (command === "pending" || command === undefined) {
-    const listings = await listPending(root);
+    let projectRoot = root;
+    try {
+      const taken = takeRootFlag(rest, root);
+      projectRoot = taken.root;
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      return 1;
+    }
+    const listings = await listPending(projectRoot);
     for (const item of listings) {
       console.log(
         `${item.id}\t${item.commentCount}\t${item.project}\t${item.createdAt}\t${item.path}`,
@@ -66,12 +90,22 @@ export async function dispatchQaComments(
   }
 
   if (command === "show") {
-    const id = rest[0];
+    let projectRoot = root;
+    let args = rest;
+    try {
+      const taken = takeRootFlag(rest, root);
+      projectRoot = taken.root;
+      args = taken.rest;
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      return 1;
+    }
+    const id = args[0];
     if (!id) {
       console.error(`Which batch?\n\n${USAGE}`);
       return 1;
     }
-    const found = await showBatch(root, id);
+    const found = await showBatch(projectRoot, id);
     if (!found) {
       console.error(`No QA comment batch "${id}" under local/qa-comments/.`);
       return 1;
@@ -81,13 +115,23 @@ export async function dispatchQaComments(
   }
 
   if (command === "resolve") {
-    if (rest.length === 0) {
+    let projectRoot = root;
+    let args = rest;
+    try {
+      const taken = takeRootFlag(rest, root);
+      projectRoot = taken.root;
+      args = taken.rest;
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      return 1;
+    }
+    if (args.length === 0) {
       console.error(`Which batch?\n\n${USAGE}`);
       return 1;
     }
     let failed = 0;
-    for (const id of rest) {
-      const resolved = await resolveBatch(root, id);
+    for (const id of args) {
+      const resolved = await resolveBatch(projectRoot, id);
       if (!resolved) {
         console.error(`No QA comment batch "${id}" under local/qa-comments/.`);
         failed += 1;
