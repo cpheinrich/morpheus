@@ -67,14 +67,24 @@ Payload shape:
 }
 ```
 
-## Overlay shortcuts
+## Overlay UX
 
-| Shortcut | Action |
+No Comment/Interact mode. The live MJPEG stream is always interactive
+(left-drag drives the simulator via serve-sim HID). Pins sit on top.
+
+| Input | Action |
 |---|---|
-| **Shift+C** | Toggle Comment ↔ Interact mode (ignored while typing in the comment box) |
-| **Enter** in the comment box | Add comment (same as Add) |
+| **Right-click** the frame | Place a numbered pin and open its comment box |
+| **Click** an existing pin (or its row) | Reopen/edit that pin's text |
+| **Enter** | Save text for the open pin |
 | **Shift+Enter** | Newline in the comment box |
-| **⌘Enter** / Ctrl+Enter | Send the current batch |
+| **⌘Enter** / Ctrl+Enter | Send batch (all pins with text) |
+| **Esc Esc** (within ~1s) | Delete the focused pin (first Esc saves/blurs) |
+
+Pins stay for the session until deleted or cleared after a successful **Send**.
+
+Header hint: *Right click to add comment. Press Esc twice to Delete*.
+
 
 ## Batch schema
 
@@ -121,9 +131,9 @@ prints nothing and exits 0 — agents can poll safely.
      --port 3456
    ```
 
-3. Open the printed overlay URL. **Interact mode** drives the sim through the
-   embedded serve-sim UI. **Shift+C** toggles **Comment mode**; tap → type → **Enter**
-   to Add (Shift+Enter for newline) → **Send**. Batches land in
+3. Open the printed overlay URL. Left-drag the stream to drive the sim;
+   **right-click** to pin a comment; **Enter** saves the pin; **⌘Enter** sends
+   the batch (pins clear after Send). Batches land in
    `<root>/local/qa-comments/pending/`. Configure the wake webhook once (above).
 4. Agent (cwd = project root): `morpheus qa comments pending`, then `show` /
    `resolve`. Until this lands on Morpheus main, use

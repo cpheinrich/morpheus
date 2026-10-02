@@ -8,6 +8,7 @@ import { writePendingBatch } from "./store.js";
 import type { QaCommentBatch } from "./comments.js";
 import { QA_COMMENTS_PENDING, parseBatch } from "./comments.js";
 import { notifyBatchPending, QA_COMMENTS_WEBHOOK_FILE, resolveWebhookConfig } from "./webhook.js";
+import { pageHtml } from "./overlay-page.js";
 
 export interface ServeOptions {
   /** Project checkout that receives local/qa-comments/ (e.g. Evo). */
@@ -146,320 +147,84 @@ function proxyRequest(target: string, req: IncomingMessage, res: ServerResponse)
   else req.pipe(upstream);
 }
 
-function pageHtml(opts: {
-  previewUrl: string;
-  streamPath: string | null;
-  project: string;
-}): string {
-  const preview = JSON.stringify(opts.previewUrl);
-  const streamPath = JSON.stringify(opts.streamPath);
-  const project = JSON.stringify(opts.project);
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Morpheus QA comments — ${opts.project}</title>
-<style>
-  :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: #0b0d10; color: #e8eaed; height: 100vh; display: flex; flex-direction: column; }
-  header { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid #22262c; background: #12151a; }
-  header h1 { font-size: 14px; font-weight: 600; margin: 0; flex: 1; }
-  header .meta { font-size: 12px; color: #9aa0a6; }
-  .mode-controls { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-  .mode-controls .shortcut { font-size: 11px; color: #9aa0a6; letter-spacing: 0.02em; }
-  .composer .shortcut-hint { font-size: 11px; color: #9aa0a6; }
-  .btn { appearance: none; border: 1px solid #3c4043; background: #1e2228; color: #e8eaed; border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
-  .btn:hover { background: #2a2f36; }
-  .btn.primary { background: #8ab4f8; color: #0b0d10; border-color: #8ab4f8; font-weight: 600; }
-  .btn.primary:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn.active { outline: 2px solid #8ab4f8; }
-  main { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
-  .stage-wrap { position: relative; background: #000; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .stage { position: relative; max-width: 100%; max-height: 100%; }
-  .stage img, .stage iframe { display: block; max-width: 100%; max-height: calc(100vh - 52px); background: #111; }
-  .stage iframe { width: min(430px, 100%); height: calc(100vh - 52px); border: 0; }
-  .overlay { position: absolute; inset: 0; cursor: crosshair; display: none; }
-  .overlay.on { display: block; }
-  .pin { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: #fdd663; color: #0b0d10; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #0b0d10; pointer-events: none; }
-  aside { border-left: 1px solid #22262c; background: #12151a; display: flex; flex-direction: column; min-height: 0; }
-  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #9aa0a6; margin: 12px 14px 6px; }
-  #drafts { list-style: none; margin: 0; padding: 0 10px; overflow: auto; flex: 1; }
-  #drafts li { background: #1e2228; border-radius: 8px; padding: 10px; margin-bottom: 8px; font-size: 13px; }
-  #drafts li .idx { color: #fdd663; font-weight: 700; margin-right: 6px; }
-  #drafts li button { float: right; border: 0; background: transparent; color: #9aa0a6; cursor: pointer; }
-  .composer { padding: 12px; border-top: 1px solid #22262c; display: flex; flex-direction: column; gap: 8px; }
-  textarea { width: 100%; min-height: 72px; resize: vertical; border-radius: 8px; border: 1px solid #3c4043; background: #0b0d10; color: #e8eaed; padding: 8px; font: inherit; }
-  .row { display: flex; gap: 8px; }
-  .row .btn { flex: 1; }
-  #status { font-size: 12px; color: #9aa0a6; min-height: 1.2em; }
-  #status.ok { color: #81c995; }
-  #status.err { color: #f28b82; }
-  .hint { font-size: 12px; color: #9aa0a6; padding: 0 14px 10px; }
-</style>
-</head>
-<body>
-<header>
-  <h1>QA comments · <span id="projectLabel"></span></h1>
-  <span class="meta" id="modeLabel">Interact mode — drive the sim freely</span>
-  <div class="mode-controls">
-    <button class="btn" id="toggleMode" type="button">Comment mode</button>
-    <span class="shortcut">Shift+C</span>
-  </div>
-  <button class="btn" id="openPreview" type="button">Open raw preview</button>
-</header>
-<main>
-  <div class="stage-wrap">
-    <div class="stage" id="stage">
-      <iframe id="frame" title="preview" allow="autoplay"></iframe>
-      <img id="stream" alt="simulator stream" hidden/>
-      <div class="overlay" id="overlay" title="Tap to place a comment"></div>
-    </div>
-  </div>
-  <aside>
-    <h2>Comments in this batch</h2>
-    <p class="hint">Switch to Comment mode, tap the frame, type, Add. Repeat, then Send.</p>
-    <ul id="drafts"></ul>
-    <div class="composer">
-      <div id="status">Waiting for a tap…</div>
-      <textarea id="text" placeholder="What should change here? (Enter to add, Shift+Enter for newline)" disabled></textarea>
-      <div class="shortcut-hint">Enter adds · Shift+Enter newline</div>
-      <div class="row">
-        <button class="btn" id="add" type="button" disabled>Add comment</button>
-        <button class="btn primary" id="send" type="button" disabled>Send batch</button>
-      </div>
-      <div class="shortcut-hint">⌘Enter / Ctrl+Enter sends the batch</div>
-    </div>
-  </aside>
-</main>
-<script>
-(() => {
-  const previewUrl = ${preview};
-  const streamPath = ${streamPath};
-  const project = ${project};
-  document.getElementById('projectLabel').textContent = project;
-  document.getElementById('openPreview').onclick = () => window.open(previewUrl, '_blank');
 
-  const frame = document.getElementById('frame');
-  const stream = document.getElementById('stream');
-  const overlay = document.getElementById('overlay');
-  const draftsEl = document.getElementById('drafts');
-  const textEl = document.getElementById('text');
-  const addBtn = document.getElementById('add');
-  const sendBtn = document.getElementById('send');
-  const status = document.getElementById('status');
-  const toggle = document.getElementById('toggleMode');
-  const modeLabel = document.getElementById('modeLabel');
-
-  frame.src = previewUrl;
-  if (streamPath) {
-    stream.src = streamPath;
+function udidFromStreamUrl(streamUrl: string | null): string | null {
+  if (!streamUrl) return null;
+  try {
+    const path = new URL(streamUrl).pathname;
+    const m = /\/helper\/([^/]+)\/stream\.mjpeg$/.exec(path);
+    return m ? decodeURIComponent(m[1]!) : null;
+  } catch {
+    return null;
   }
+}
 
-  let commentMode = false;
-  /** @type {{id:string,text:string,createdAt:string,anchor:{normX:number,normY:number,x:number,y:number}}[]} */
-  let drafts = [];
-  let pendingAnchor = null;
+interface HidBridge {
+  sendTouch: (type: "begin" | "move" | "end", normX: number, normY: number) => void;
+  close: () => void;
+}
 
-  function setStatus(msg, kind) {
-    status.textContent = msg;
-    status.className = kind || '';
-  }
-
-  function renderDrafts() {
-    draftsEl.innerHTML = '';
-    drafts.forEach((d, i) => {
-      const li = document.createElement('li');
-      li.innerHTML = '<span class="idx">' + (i + 1) + '</span>' +
-        escapeHtml(d.text) +
-        '<button type="button" data-i="' + i + '" title="Remove">✕</button>';
-      draftsEl.appendChild(li);
+async function openHidBridge(previewOrigin: string, udid: string): Promise<HidBridge | null> {
+  let width = 390;
+  let height = 844;
+  try {
+    const res = await fetch(`${previewOrigin}/helper/${encodeURIComponent(udid)}/config`, {
+      signal: AbortSignal.timeout(2000),
     });
-    draftsEl.querySelectorAll('button').forEach((b) => {
-      b.onclick = () => {
-        drafts.splice(Number(b.getAttribute('data-i')), 1);
-        renderDrafts();
-        renderPins();
-        sendBtn.disabled = drafts.length === 0;
-      };
-    });
-    sendBtn.disabled = drafts.length === 0;
-  }
-
-  function escapeHtml(s) {
-    return s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  }
-
-  function renderPins() {
-    overlay.querySelectorAll('.pin').forEach((n) => n.remove());
-    const rect = overlay.getBoundingClientRect();
-    drafts.forEach((d, i) => {
-      const pin = document.createElement('div');
-      pin.className = 'pin';
-      pin.textContent = String(i + 1);
-      pin.style.left = (d.anchor.normX * rect.width) + 'px';
-      pin.style.top = (d.anchor.normY * rect.height) + 'px';
-      overlay.appendChild(pin);
-    });
-  }
-
-  function setMode(on) {
-    commentMode = on;
-    toggle.textContent = on ? 'Interact mode' : 'Comment mode';
-    toggle.classList.toggle('active', on);
-    modeLabel.textContent = on
-      ? 'Comment mode — tap the frame to pin feedback'
-      : 'Interact mode — drive the sim freely';
-    overlay.classList.toggle('on', on);
-    if (on && streamPath) {
-      frame.hidden = true;
-      stream.hidden = false;
-      overlay.style.pointerEvents = 'auto';
-    } else if (on) {
-      // No stream proxy: keep iframe visible under a capturing overlay.
-      frame.hidden = false;
-      stream.hidden = true;
-      frame.style.pointerEvents = 'none';
-      overlay.style.pointerEvents = 'auto';
-    } else {
-      frame.hidden = false;
-      stream.hidden = true;
-      frame.style.pointerEvents = 'auto';
-      overlay.style.pointerEvents = 'none';
-      pendingAnchor = null;
-      textEl.disabled = true;
-      addBtn.disabled = true;
-      setStatus('Interact mode — switch to Comment mode to pin feedback');
+    if (res.ok) {
+      const cfg = (await res.json()) as { width?: number; height?: number };
+      if (cfg.width && cfg.height) {
+        width = cfg.width;
+        height = cfg.height;
+      }
     }
-    requestAnimationFrame(renderPins);
+  } catch {
+    /* defaults */
   }
 
-  toggle.onclick = () => setMode(!commentMode);
-
-  overlay.addEventListener('click', (ev) => {
-    if (!commentMode) return;
-    const rect = overlay.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-    const x = ev.clientX - rect.left;
-    const y = ev.clientY - rect.top;
-    pendingAnchor = {
-      normX: Math.min(1, Math.max(0, x / rect.width)),
-      normY: Math.min(1, Math.max(0, y / rect.height)),
-      x: Math.round(x),
-      y: Math.round(y),
-    };
-    textEl.disabled = false;
-    addBtn.disabled = false;
-    textEl.focus();
-    setStatus('Pinned at ' + pendingAnchor.normX.toFixed(2) + ', ' + pendingAnchor.normY.toFixed(2) + ' — type and Add');
-  });
-
-  function addComment() {
-    const text = textEl.value.trim();
-    if (!text || !pendingAnchor) return;
-    drafts.push({
-      id: 'c' + (drafts.length + 1) + '-' + Math.random().toString(36).slice(2, 6),
-      text,
-      createdAt: new Date().toISOString(),
-      anchor: { ...pendingAnchor },
-    });
-    textEl.value = '';
-    pendingAnchor = null;
-    textEl.disabled = true;
-    addBtn.disabled = true;
-    renderDrafts();
-    renderPins();
-    setStatus(drafts.length + ' comment(s) ready — Send when done', 'ok');
-  }
-  addBtn.onclick = () => addComment();
-
-  textEl.addEventListener('keydown', (ev) => {
-    if (ev.key !== 'Enter') return;
-    if (ev.metaKey || ev.ctrlKey) return; // Cmd/Ctrl+Enter sends the batch (window handler)
-    if (ev.shiftKey) return; // newline
-    ev.preventDefault();
-    addComment();
-  });
-
-  window.addEventListener('keydown', (ev) => {
-    // Shift+C toggles mode when not typing in a text field (in textarea it inserts "C").
-    if (!ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.altKey) return;
-    if (ev.key !== 'c' && ev.key !== 'C') return;
-    const tag = (ev.target && ev.target.tagName) ? String(ev.target.tagName).toLowerCase() : '';
-    if (tag === 'textarea' || tag === 'input' || (ev.target && ev.target.isContentEditable)) return;
-    ev.preventDefault();
-    setMode(!commentMode);
-  });
-
-  async function captureFrame() {
-    if (stream.hidden || !stream.naturalWidth) return null;
+  const wsUrl = `${previewOrigin.replace(/^http/, "ws")}/helper/${encodeURIComponent(udid)}/ws`;
+  let ws: WebSocket | null = null;
+  let closed = false;
+  const connect = () => {
+    if (closed) return;
     try {
-      const canvas = document.createElement('canvas');
-      canvas.width = stream.naturalWidth;
-      canvas.height = stream.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(stream, 0, 0);
-      const dataUrl = canvas.toDataURL('image/png');
-      return {
-        dataUrl,
-        width: canvas.width,
-        height: canvas.height,
-      };
-    } catch (err) {
-      console.warn('frame capture failed', err);
-      return null;
-    }
-  }
-
-  async function sendBatch() {
-    if (drafts.length === 0) return;
-    sendBtn.disabled = true;
-    setStatus('Sending…');
-    const frameInfo = await captureFrame();
-    const body = {
-      preview: { url: previewUrl, kind: 'serve-sim' },
-      comments: drafts,
-      frame: frameInfo
-        ? { path: 'frame.png', width: frameInfo.width, height: frameInfo.height, dataUrl: frameInfo.dataUrl }
-        : stream.naturalWidth
-          ? { width: stream.naturalWidth, height: stream.naturalHeight }
-          : { width: Math.round(overlay.getBoundingClientRect().width) || 390, height: Math.round(overlay.getBoundingClientRect().height) || 844 },
-    };
-    try {
-      const res = await fetch('/api/batches', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
+      ws.addEventListener("close", () => {
+        ws = null;
+        if (!closed) setTimeout(connect, 1000);
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || res.statusText);
-      drafts = [];
-      renderDrafts();
-      renderPins();
-      setStatus('Sent ' + json.id + ' → local/qa-comments/pending/', 'ok');
-    } catch (err) {
-      setStatus(String(err.message || err), 'err');
-      sendBtn.disabled = false;
+      ws.addEventListener("error", () => {
+        /* close handler reconnects */
+      });
+    } catch {
+      ws = null;
     }
-  }
+  };
+  connect();
 
-  sendBtn.onclick = () => { void sendBatch(); };
-
-  window.addEventListener('keydown', (ev) => {
-    if (!(ev.metaKey || ev.ctrlKey)) return;
-    if (ev.key !== 'Enter') return;
-    if (drafts.length === 0 || sendBtn.disabled) return;
-    ev.preventDefault();
-    void sendBatch();
-  });
-
-  window.addEventListener('resize', () => requestAnimationFrame(renderPins));
-  setMode(false);
-})();
-</script>
-</body>
-</html>`;
+  return {
+    sendTouch(type, normX, normY) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const payload = Buffer.from(
+        JSON.stringify({
+          type,
+          x: Math.round(normX * width),
+          y: Math.round(normY * height),
+        }),
+      );
+      ws.send(Buffer.concat([Buffer.from([3]), payload]));
+    },
+    close() {
+      closed = true;
+      try {
+        ws?.close();
+      } catch {
+        /* ignore */
+      }
+      ws = null;
+    },
+  };
 }
 
 export async function startQaCommentServer(options: ServeOptions): Promise<{
@@ -476,6 +241,8 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
   const discovered =
     options.streamUrl ?? (await discoverStreamUrl(previewOrigin));
   const streamPath = discovered ? "/proxy/stream.mjpeg" : null;
+  const udid = udidFromStreamUrl(discovered);
+  const hid = udid ? await openHidBridge(previewOrigin, udid) : null;
 
   const server = createServer(async (req, res) => {
     try {
@@ -503,6 +270,33 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
         proxyRequest(discovered, req, res);
         return;
       }
+
+      if (req.method === "POST" && url.pathname === "/api/touch") {
+        if (!hid) {
+          sendJson(res, 503, { error: "No HID bridge (stream/udid undiscovered)" });
+          return;
+        }
+        const raw = JSON.parse((await readBody(req)).toString("utf8")) as {
+          type?: string;
+          normX?: number;
+          normY?: number;
+        };
+        if (raw.type !== "begin" && raw.type !== "move" && raw.type !== "end") {
+          sendJson(res, 400, { error: "type must be begin|move|end" });
+          return;
+        }
+        const normX = Number(raw.normX);
+        const normY = Number(raw.normY);
+        if (!Number.isFinite(normX) || !Number.isFinite(normY)) {
+          sendJson(res, 400, { error: "normX/normY required" });
+          return;
+        }
+        hid.sendTouch(raw.type, Math.min(1, Math.max(0, normX)), Math.min(1, Math.max(0, normY)));
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+
       if (req.method === "POST" && url.pathname === "/api/batches") {
         const raw = JSON.parse((await readBody(req)).toString("utf8")) as {
           preview?: { url: string; kind?: "serve-sim" | "web" | "other"; label?: string };
@@ -605,6 +399,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
     ...info,
     close: () =>
       new Promise<void>((resolve, reject) => {
+        hid?.close();
         server.close((err) => (err ? reject(err) : resolve()));
       }),
   };

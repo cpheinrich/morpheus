@@ -131,7 +131,7 @@ describe("qa comments serve", () => {
     const home = await fetch(server.url);
     expect(home.ok).toBe(true);
     const html = await home.text();
-    expect(html).toContain("Comment mode");
+    expect(html).toContain("Right click to add comment");
     expect(html).toContain(previewUrl);
 
     const res = await fetch(`${server.url}api/batches`, {
