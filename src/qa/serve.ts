@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { writePendingBatch } from "./store.js";
 import type { QaCommentBatch } from "./comments.js";
 import { QA_COMMENTS_PENDING, parseBatch } from "./comments.js";
-import { notifyBatchPending, QA_COMMENTS_WEBHOOK_FILE, resolveWebhookUrl } from "./webhook.js";
+import { notifyBatchPending, QA_COMMENTS_WEBHOOK_FILE, resolveWebhookConfig } from "./webhook.js";
 
 export interface ServeOptions {
   /** Project checkout that receives local/qa-comments/ (e.g. Evo). */
@@ -540,18 +540,22 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           status: "pending",
         });
         const path = await writePendingBatch(options.root, batch, frameBytes);
-        const webhookUrl = await resolveWebhookUrl(options.root);
-        if (webhookUrl) {
-          notifyBatchPending(webhookUrl, {
-            event: "qa.comments.batch_pending",
-            id,
-            project,
-            root: options.root,
-            pendingDir: join(options.root, QA_COMMENTS_PENDING),
-            path,
-            commentCount: batch.comments.length,
-            createdAt: batch.createdAt,
-          });
+        const webhook = await resolveWebhookConfig(options.root);
+        if (webhook) {
+          notifyBatchPending(
+            webhook.url,
+            {
+              event: "qa.comments.batch_pending",
+              id,
+              project,
+              root: options.root,
+              pendingDir: join(options.root, QA_COMMENTS_PENDING),
+              path,
+              commentCount: batch.comments.length,
+              createdAt: batch.createdAt,
+            },
+            webhook.authorization ? { authorization: webhook.authorization } : undefined,
+          );
         } else {
           console.log(
             `qa comments webhook: unset — batch ${id} written; set MORPHEUS_QA_COMMENTS_WEBHOOK_URL or ${QA_COMMENTS_WEBHOOK_FILE} to wake an agent`,

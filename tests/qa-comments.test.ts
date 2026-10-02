@@ -7,7 +7,11 @@ import { parseBatch, type QaCommentBatch } from "../src/qa/comments.js";
 import { listPending, resolveBatch, showBatch, writePendingBatch } from "../src/qa/store.js";
 import { dispatchQaComments } from "../src/cli/qa.js";
 import { startQaCommentServer } from "../src/qa/serve.js";
-import { QA_COMMENTS_WEBHOOK_FILE, resolveWebhookUrl } from "../src/qa/webhook.js";
+import {
+  authorizationHeaderValue,
+  QA_COMMENTS_WEBHOOK_FILE,
+  resolveWebhookConfig,
+} from "../src/qa/webhook.js";
 
 function sample(id = "20261002T192800Z-ab12"): QaCommentBatch {
   return {
@@ -174,31 +178,50 @@ describe("qa comments serve", () => {
 describe("qa comments webhook", () => {
   const closers: Array<() => Promise<void>> = [];
   const prevEnv = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL;
+  const prevAuth = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION;
 
   afterEach(async () => {
     if (prevEnv === undefined) delete process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL;
     else process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL = prevEnv;
+    if (prevAuth === undefined) delete process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION;
+    else process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION = prevAuth;
     while (closers.length) {
       const close = closers.pop();
       if (close) await close();
     }
   });
 
-  it("resolves env over webhook.json, and file when env unset", async () => {
+  it("resolves file config and env overrides for url and authorization", async () => {
     const root = await mkdtemp(join(tmpdir(), "morpheus-qa-hook-"));
     closers.push(async () => rm(root, { recursive: true, force: true }));
     await mkdir(join(root, "local/qa-comments"), { recursive: true });
     await writeFile(
       join(root, QA_COMMENTS_WEBHOOK_FILE),
-      JSON.stringify({ url: "http://127.0.0.1:9/from-file" }),
+      JSON.stringify({
+        url: "http://127.0.0.1:9/from-file",
+        authorization: "Bearer file-token",
+      }),
       "utf8",
     );
 
     delete process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL;
-    expect(await resolveWebhookUrl(root)).toBe("http://127.0.0.1:9/from-file");
+    delete process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION;
+    expect(await resolveWebhookConfig(root)).toEqual({
+      url: "http://127.0.0.1:9/from-file",
+      authorization: "Bearer file-token",
+    });
 
     process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL = "http://127.0.0.1:9/from-env";
-    expect(await resolveWebhookUrl(root)).toBe("http://127.0.0.1:9/from-env");
+    process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION = "env-token";
+    expect(await resolveWebhookConfig(root)).toEqual({
+      url: "http://127.0.0.1:9/from-env",
+      authorization: "env-token",
+    });
+  });
+
+  it("normalizes Authorization to Bearer when missing the prefix", () => {
+    expect(authorizationHeaderValue("Bearer already")).toBe("Bearer already");
+    expect(authorizationHeaderValue("bare-token")).toBe("Bearer bare-token");
   });
 
   it("POSTs the wake webhook after a successful batch write without failing Send", async () => {
@@ -207,9 +230,11 @@ describe("qa comments webhook", () => {
     await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "evo" }), "utf8");
 
     let received: unknown = null;
+    let receivedAuth: string | undefined;
     const hook = createServer(async (req, res) => {
       const chunks: Buffer[] = [];
       for await (const c of req) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+      receivedAuth = req.headers.authorization;
       received = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       res.writeHead(200).end("ok");
     });
@@ -223,6 +248,7 @@ describe("qa comments webhook", () => {
     const hookAddr = hook.address();
     if (!hookAddr || typeof hookAddr === "string") throw new Error("no hook port");
     process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL = `http://127.0.0.1:${hookAddr.port}/wake`;
+    process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION = "Bearer test-wake-key";
 
     const upstream = createServer((_req, res) => {
       res.writeHead(200).end("ok");
@@ -275,5 +301,6 @@ describe("qa comments webhook", () => {
       commentCount: 1,
     });
     expect((received as { pendingDir: string }).pendingDir).toContain("local/qa-comments/pending");
+    expect(receivedAuth).toBe("Bearer test-wake-key");
   });
 });

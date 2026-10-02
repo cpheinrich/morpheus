@@ -34,13 +34,19 @@ Lakina, …), create the gitignored file:
 
 ```json
 // local/qa-comments/webhook.json
-{ "url": "https://…paste-from-Grok-routine-panel…" }
+{
+  "url": "https://…paste-from-Grok-routine-panel…",
+  "authorization": "Bearer …paste-key…"
+}
 ```
 
-`local/` is already gitignored — never commit the URL.
+`authorization` is optional. Use a full `Bearer …` value or a bare token (the
+server prefixes `Bearer` when missing). `local/` is already gitignored — never
+commit the URL or key.
 
-**Session override:** set `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` in the environment
-of the `morpheus qa comments serve` process. When set, it wins over the file.
+**Session overrides** (on the `morpheus qa comments serve` process):
+- `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces `url` when set
+- `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces `authorization` when set
 
 Send **always succeeds** without a webhook. If neither env nor file is set, the
 server logs one hint line and continues. The POST is fire-and-forget (≈2.5s

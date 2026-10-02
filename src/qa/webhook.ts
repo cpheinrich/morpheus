@@ -16,25 +16,59 @@ export interface QaCommentsWebhookPayload {
   createdAt: string;
 }
 
+export interface QaCommentsWebhookConfig {
+  url: string;
+  /** Raw token or full `Bearer …` value; normalized when sent. */
+  authorization?: string;
+}
+
 /**
- * Resolve the wake webhook URL.
+ * Resolve wake webhook config.
  *
- * Precedence: `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` (session override), then
- * `local/qa-comments/webhook.json` `{ "url": "..." }` under the project root.
- * The file is the durable, one-true config; the env var is for one-off sessions.
+ * Durable file (preferred): `local/qa-comments/webhook.json`
+ * `{ "url": "…", "authorization"?: "Bearer …" | "<token>" }`.
+ *
+ * Session overrides:
+ * - `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces url when set
+ * - `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces authorization when set
  */
-export async function resolveWebhookUrl(root: string): Promise<string | null> {
-  const fromEnv = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL?.trim();
-  if (fromEnv) return fromEnv;
+export async function resolveWebhookConfig(
+  root: string,
+): Promise<QaCommentsWebhookConfig | null> {
+  let url: string | undefined;
+  let authorization: string | undefined;
+
   try {
     const raw = JSON.parse(
       await readFile(join(root, QA_COMMENTS_WEBHOOK_FILE), "utf8"),
-    ) as { url?: unknown };
-    if (typeof raw.url === "string" && raw.url.trim()) return raw.url.trim();
+    ) as { url?: unknown; authorization?: unknown };
+    if (typeof raw.url === "string" && raw.url.trim()) url = raw.url.trim();
+    if (typeof raw.authorization === "string" && raw.authorization.trim()) {
+      authorization = raw.authorization.trim();
+    }
   } catch {
     /* absent or unreadable — fine */
   }
-  return null;
+
+  const envUrl = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL?.trim();
+  if (envUrl) url = envUrl;
+  const envAuth = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION?.trim();
+  if (envAuth) authorization = envAuth;
+
+  if (!url) return null;
+  return authorization ? { url, authorization } : { url };
+}
+
+/** @deprecated Prefer resolveWebhookConfig — kept for call-site clarity in logs. */
+export async function resolveWebhookUrl(root: string): Promise<string | null> {
+  return (await resolveWebhookConfig(root))?.url ?? null;
+}
+
+/** Normalize to a full Authorization header value. */
+export function authorizationHeaderValue(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^bearer\s+/i.test(trimmed)) return trimmed;
+  return `Bearer ${trimmed}`;
 }
 
 const WEBHOOK_TIMEOUT_MS = 2500;
@@ -46,11 +80,19 @@ const WEBHOOK_TIMEOUT_MS = 2500;
 export function notifyBatchPending(
   webhookUrl: string,
   payload: QaCommentsWebhookPayload,
+  options?: { authorization?: string },
 ): void {
   const body = JSON.stringify(payload);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  if (options?.authorization) {
+    headers.Authorization = authorizationHeaderValue(options.authorization);
+  }
   void fetch(webhookUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    headers,
     body,
     signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
   })
