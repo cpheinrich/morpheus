@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { writePendingBatch } from "./store.js";
 import type { QaCommentBatch } from "./comments.js";
-import { parseBatch } from "./comments.js";
+import { QA_COMMENTS_PENDING, parseBatch } from "./comments.js";
+import { notifyBatchPending, QA_COMMENTS_WEBHOOK_FILE, resolveWebhookUrl } from "./webhook.js";
 
 export interface ServeOptions {
   /** Project checkout that receives local/qa-comments/ (e.g. Evo). */
@@ -166,6 +167,9 @@ function pageHtml(opts: {
   header { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid #22262c; background: #12151a; }
   header h1 { font-size: 14px; font-weight: 600; margin: 0; flex: 1; }
   header .meta { font-size: 12px; color: #9aa0a6; }
+  .mode-controls { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .mode-controls .shortcut { font-size: 11px; color: #9aa0a6; letter-spacing: 0.02em; }
+  .composer .shortcut-hint { font-size: 11px; color: #9aa0a6; }
   .btn { appearance: none; border: 1px solid #3c4043; background: #1e2228; color: #e8eaed; border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
   .btn:hover { background: #2a2f36; }
   .btn.primary { background: #8ab4f8; color: #0b0d10; border-color: #8ab4f8; font-weight: 600; }
@@ -199,7 +203,10 @@ function pageHtml(opts: {
 <header>
   <h1>QA comments · <span id="projectLabel"></span></h1>
   <span class="meta" id="modeLabel">Interact mode — drive the sim freely</span>
-  <button class="btn" id="toggleMode" type="button">Comment mode</button>
+  <div class="mode-controls">
+    <button class="btn" id="toggleMode" type="button">Comment mode</button>
+    <span class="shortcut">⌘T</span>
+  </div>
   <button class="btn" id="openPreview" type="button">Open raw preview</button>
 </header>
 <main>
@@ -216,7 +223,8 @@ function pageHtml(opts: {
     <ul id="drafts"></ul>
     <div class="composer">
       <div id="status">Waiting for a tap…</div>
-      <textarea id="text" placeholder="What should change here?" disabled></textarea>
+      <textarea id="text" placeholder="What should change here? (Enter to add, Shift+Enter for newline)" disabled></textarea>
+      <div class="shortcut-hint">Enter adds · Shift+Enter newline</div>
       <div class="row">
         <button class="btn" id="add" type="button" disabled>Add comment</button>
         <button class="btn primary" id="send" type="button" disabled>Send batch</button>
@@ -346,7 +354,7 @@ function pageHtml(opts: {
     setStatus('Pinned at ' + pendingAnchor.normX.toFixed(2) + ', ' + pendingAnchor.normY.toFixed(2) + ' — type and Add');
   });
 
-  addBtn.onclick = () => {
+  function addComment() {
     const text = textEl.value.trim();
     if (!text || !pendingAnchor) return;
     drafts.push({
@@ -362,7 +370,23 @@ function pageHtml(opts: {
     renderDrafts();
     renderPins();
     setStatus(drafts.length + ' comment(s) ready — Send when done', 'ok');
-  };
+  }
+  addBtn.onclick = () => addComment();
+
+  textEl.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter') return;
+    if (ev.shiftKey) return; // newline
+    ev.preventDefault();
+    addComment();
+  });
+
+  window.addEventListener('keydown', (ev) => {
+    if (!(ev.metaKey || ev.ctrlKey)) return;
+    if (ev.key !== 't' && ev.key !== 'T') return;
+    // Overlay owns ⌘T / Ctrl+T so Comment mode is one keystroke (overrides browser new-tab).
+    ev.preventDefault();
+    setMode(!commentMode);
+  });
 
   async function captureFrame() {
     if (stream.hidden || !stream.naturalWidth) return null;
@@ -516,6 +540,23 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           status: "pending",
         });
         const path = await writePendingBatch(options.root, batch, frameBytes);
+        const webhookUrl = await resolveWebhookUrl(options.root);
+        if (webhookUrl) {
+          notifyBatchPending(webhookUrl, {
+            event: "qa.comments.batch_pending",
+            id,
+            project,
+            root: options.root,
+            pendingDir: join(options.root, QA_COMMENTS_PENDING),
+            path,
+            commentCount: batch.comments.length,
+            createdAt: batch.createdAt,
+          });
+        } else {
+          console.log(
+            `qa comments webhook: unset — batch ${id} written; set MORPHEUS_QA_COMMENTS_WEBHOOK_URL or ${QA_COMMENTS_WEBHOOK_FILE} to wake an agent`,
+          );
+        }
         sendJson(res, 201, { id, path });
         return;
       }

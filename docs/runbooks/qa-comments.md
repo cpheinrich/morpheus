@@ -23,6 +23,52 @@ local/qa-comments/
 `batchId` is `YYYYMMDDTHHMMSSZ-<short>` (UTC clock + 4–6 char suffix) so ids
 sort chronologically without consulting a remote.
 
+
+## Agent wake webhook (one true config)
+
+After **Send** writes a pending batch, the serve process POSTs a small JSON
+payload so an agent (e.g. Grok Bot) can wake and call `qa comments pending`.
+
+**Durable config (preferred):** under the project that receives batches (Evo,
+Lakina, …), create the gitignored file:
+
+```json
+// local/qa-comments/webhook.json
+{ "url": "https://…paste-from-Grok-routine-panel…" }
+```
+
+`local/` is already gitignored — never commit the URL.
+
+**Session override:** set `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` in the environment
+of the `morpheus qa comments serve` process. When set, it wins over the file.
+
+Send **always succeeds** without a webhook. If neither env nor file is set, the
+server logs one hint line and continues. The POST is fire-and-forget (≈2.5s
+timeout); webhook failures never fail Send.
+
+Payload shape:
+
+```json
+{
+  "event": "qa.comments.batch_pending",
+  "id": "20261002T195345Z-0e94sn",
+  "project": "evo",
+  "root": "/Users/…/code/evo",
+  "pendingDir": "/Users/…/code/evo/local/qa-comments/pending",
+  "path": "/Users/…/code/evo/local/qa-comments/pending/20261002T195345Z-0e94sn",
+  "commentCount": 2,
+  "createdAt": "2026-10-02T19:53:45.000Z"
+}
+```
+
+## Overlay shortcuts
+
+| Shortcut | Action |
+|---|---|
+| **⌘T** (Ctrl+T on non-Mac) | Toggle Comment ↔ Interact mode |
+| **Enter** in the comment box | Add comment (same as Add) |
+| **Shift+Enter** | Newline in the comment box |
+
 ## Batch schema
 
 See `src/qa/comments.ts` (`QaCommentBatch`). Summary:
@@ -69,8 +115,9 @@ prints nothing and exits 0 — agents can poll safely.
    ```
 
 3. Open the printed overlay URL. **Interact mode** drives the sim through the
-   embedded serve-sim UI. Switch to **Comment mode**, tap → type → Add (repeat)
-   → **Send**. Batches land in `<root>/local/qa-comments/pending/`.
+   embedded serve-sim UI. **⌘T** toggles **Comment mode**; tap → type → **Enter**
+   to Add (Shift+Enter for newline) → **Send**. Batches land in
+   `<root>/local/qa-comments/pending/`. Configure the wake webhook once (above).
 4. Agent (cwd = project root): `morpheus qa comments pending`, then `show` /
    `resolve`. Until this lands on Morpheus main, use
    `pnpm morpheus` from the claim worktree with `--root` pointing at the project.

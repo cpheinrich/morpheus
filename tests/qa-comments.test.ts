@@ -7,6 +7,7 @@ import { parseBatch, type QaCommentBatch } from "../src/qa/comments.js";
 import { listPending, resolveBatch, showBatch, writePendingBatch } from "../src/qa/store.js";
 import { dispatchQaComments } from "../src/cli/qa.js";
 import { startQaCommentServer } from "../src/qa/serve.js";
+import { QA_COMMENTS_WEBHOOK_FILE, resolveWebhookUrl } from "../src/qa/webhook.js";
 
 function sample(id = "20261002T192800Z-ab12"): QaCommentBatch {
   return {
@@ -167,5 +168,112 @@ describe("qa comments serve", () => {
         port: 0,
       }),
     ).rejects.toThrow(/127\.0\.0\.1/);
+  });
+});
+
+describe("qa comments webhook", () => {
+  const closers: Array<() => Promise<void>> = [];
+  const prevEnv = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL;
+
+  afterEach(async () => {
+    if (prevEnv === undefined) delete process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL;
+    else process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL = prevEnv;
+    while (closers.length) {
+      const close = closers.pop();
+      if (close) await close();
+    }
+  });
+
+  it("resolves env over webhook.json, and file when env unset", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-qa-hook-"));
+    closers.push(async () => rm(root, { recursive: true, force: true }));
+    await mkdir(join(root, "local/qa-comments"), { recursive: true });
+    await writeFile(
+      join(root, QA_COMMENTS_WEBHOOK_FILE),
+      JSON.stringify({ url: "http://127.0.0.1:9/from-file" }),
+      "utf8",
+    );
+
+    delete process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL;
+    expect(await resolveWebhookUrl(root)).toBe("http://127.0.0.1:9/from-file");
+
+    process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL = "http://127.0.0.1:9/from-env";
+    expect(await resolveWebhookUrl(root)).toBe("http://127.0.0.1:9/from-env");
+  });
+
+  it("POSTs the wake webhook after a successful batch write without failing Send", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-qa-hook-serve-"));
+    closers.push(async () => rm(root, { recursive: true, force: true }));
+    await writeFile(join(root, "morpheus.json"), JSON.stringify({ name: "evo" }), "utf8");
+
+    let received: unknown = null;
+    const hook = createServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const c of req) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+      received = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      res.writeHead(200).end("ok");
+    });
+    await new Promise<void>((resolve) => hook.listen(0, "127.0.0.1", resolve));
+    closers.push(
+      () =>
+        new Promise<void>((resolve, reject) =>
+          hook.close((err) => (err ? reject(err) : resolve())),
+        ),
+    );
+    const hookAddr = hook.address();
+    if (!hookAddr || typeof hookAddr === "string") throw new Error("no hook port");
+    process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL = `http://127.0.0.1:${hookAddr.port}/wake`;
+
+    const upstream = createServer((_req, res) => {
+      res.writeHead(200).end("ok");
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    closers.push(
+      () =>
+        new Promise<void>((resolve, reject) =>
+          upstream.close((err) => (err ? reject(err) : resolve())),
+        ),
+    );
+    const upAddr = upstream.address();
+    if (!upAddr || typeof upAddr === "string") throw new Error("no up port");
+
+    const server = await startQaCommentServer({
+      root,
+      previewUrl: `http://127.0.0.1:${upAddr.port}/`,
+      port: 0,
+      project: "evo",
+    });
+    closers.push(server.close);
+
+    const res = await fetch(`${server.url}api/batches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        comments: [
+          {
+            id: "c1",
+            text: "wake me",
+            createdAt: "2026-10-02T12:50:00-07:00",
+            anchor: { normX: 0.2, normY: 0.3 },
+          },
+        ],
+        frame: { width: 10, height: 20 },
+      }),
+    });
+    expect(res.status).toBe(201);
+    const created = (await res.json()) as { id: string };
+
+    // Fire-and-forget — give the webhook a moment.
+    for (let i = 0; i < 20 && !received; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(received).toMatchObject({
+      event: "qa.comments.batch_pending",
+      id: created.id,
+      project: "evo",
+      root,
+      commentCount: 1,
+    });
+    expect((received as { pendingDir: string }).pendingDir).toContain("local/qa-comments/pending");
   });
 });
