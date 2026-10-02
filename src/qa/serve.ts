@@ -376,6 +376,7 @@ function pageHtml(opts: {
 
   textEl.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter') return;
+    if (ev.metaKey || ev.ctrlKey) return; // Cmd/Ctrl+Enter sends the batch (window handler)
     if (ev.shiftKey) return; // newline
     ev.preventDefault();
     addComment();
