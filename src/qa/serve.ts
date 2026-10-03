@@ -119,8 +119,9 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 function proxyRequest(target: string, req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(target);
   const lib = url.protocol === "https:" ? httpsRequest : httpRequest;
-  const headers = { ...req.headers, host: url.host };
-  delete headers["host"];
+  // Forward only what the MJPEG helper needs. Spreading IncomingHttpHeaders and
+  // deleting `host` does not typecheck: assigning host makes it required, and
+  // the request below sets host itself.
   const upstream = lib(
     {
       protocol: url.protocol,
