@@ -164,24 +164,24 @@ interface HidBridge {
   close: () => void;
 }
 
-async function openHidBridge(previewOrigin: string, udid: string): Promise<HidBridge | null> {
-  let width = 390;
-  let height = 844;
-  try {
-    const res = await fetch(`${previewOrigin}/helper/${encodeURIComponent(udid)}/config`, {
-      signal: AbortSignal.timeout(2000),
-    });
-    if (res.ok) {
-      const cfg = (await res.json()) as { width?: number; height?: number };
-      if (cfg.width && cfg.height) {
-        width = cfg.width;
-        height = cfg.height;
-      }
-    }
-  } catch {
-    /* defaults */
-  }
+/**
+ * serve-sim's Indigo HID path takes x/y in 0..1 of the screen (see its preview
+ * client and HIDInjector "normalized 0..1"). Framebuffer pixels (1206×2622)
+ * land off the point-space screen and the simulator ignores the tap.
+ */
+export function hidTouchBody(
+  type: "begin" | "move" | "end",
+  normX: number,
+  normY: number,
+): { type: "begin" | "move" | "end"; x: number; y: number } {
+  return {
+    type,
+    x: Math.min(1, Math.max(0, normX)),
+    y: Math.min(1, Math.max(0, normY)),
+  };
+}
 
+async function openHidBridge(previewOrigin: string, udid: string): Promise<HidBridge | null> {
   const wsUrl = `${previewOrigin.replace(/^http/, "ws")}/helper/${encodeURIComponent(udid)}/ws`;
   let ws: WebSocket | null = null;
   let closed = false;
@@ -206,13 +206,7 @@ async function openHidBridge(previewOrigin: string, udid: string): Promise<HidBr
   return {
     sendTouch(type, normX, normY) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      const payload = Buffer.from(
-        JSON.stringify({
-          type,
-          x: Math.round(normX * width),
-          y: Math.round(normY * height),
-        }),
-      );
+      const payload = Buffer.from(JSON.stringify(hidTouchBody(type, normX, normY)));
       ws.send(Buffer.concat([Buffer.from([3]), payload]));
     },
     close() {

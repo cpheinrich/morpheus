@@ -298,22 +298,32 @@ export function pageHtml(opts: {
   // Left pointer on the picture → drive the simulator via HID.
   // Pin layer is pointer-events: none, so empty-frame clicks hit the image and bubble here.
   // Send the touch before setPointerCapture: a capture failure must not drop the tap.
+  // Below this, pointer jitter must not become a drag (iOS won't fire the control).
+  const TAP_SLOP = 0.012;
+  let downCoords = null;
+  let dragged = false;
   stage.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0) return;
     if (ev.target && ev.target.classList && ev.target.classList.contains('pin')) return;
     const c = coordsFromEvent(ev);
     if (!c) return;
     dragging = true;
+    dragged = false;
     pointerSent = true;
     lastCoords = c;
+    downCoords = c;
     void sendTouch('begin', c.normX, c.normY);
     try { stage.setPointerCapture(ev.pointerId); } catch (_) {}
   });
   stage.addEventListener('pointermove', (ev) => {
-    if (!dragging) return;
+    if (!dragging || !downCoords) return;
     const c = coordsFromEvent(ev);
     if (!c) return;
     lastCoords = c;
+    const dx = c.normX - downCoords.normX;
+    const dy = c.normY - downCoords.normY;
+    if (!dragged && Math.hypot(dx, dy) < TAP_SLOP) return;
+    dragged = true;
     void sendTouch('move', c.normX, c.normY);
   });
   function endPointer(ev) {

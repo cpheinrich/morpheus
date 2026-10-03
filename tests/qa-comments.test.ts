@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parseBatch, type QaCommentBatch } from "../src/qa/comments.js";
 import { listPending, resolveBatch, showBatch, writePendingBatch } from "../src/qa/store.js";
 import { dispatchQaComments } from "../src/cli/qa.js";
-import { startQaCommentServer } from "../src/qa/serve.js";
+import { hidTouchBody, startQaCommentServer } from "../src/qa/serve.js";
 import {
   authorizationHeaderValue,
   QA_COMMENTS_WEBHOOK_FILE,
@@ -80,6 +80,13 @@ describe("qa comment batches", () => {
     root = await mkdtemp(join(tmpdir(), "morpheus-qa-"));
     const code = await dispatchQaComments(root, "pending", []);
     expect(code).toBe(0);
+  });
+});
+
+describe("serve-sim touch payload", () => {
+  it("sends normalized 0..1 coordinates, not framebuffer pixels", () => {
+    expect(hidTouchBody("begin", 0.5, 0.25)).toEqual({ type: "begin", x: 0.5, y: 0.25 });
+    expect(hidTouchBody("end", 1.4, -0.2)).toEqual({ type: "end", x: 1, y: 0 });
   });
 });
 
