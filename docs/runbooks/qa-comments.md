@@ -114,12 +114,17 @@ See `src/qa/comments.ts` (`QaCommentBatch`). Summary:
 morpheus qa comments pending          # list pending batches (paths + comment counts)
 morpheus qa comments show <batchId>   # print one batch.json
 morpheus qa comments resolve <batchId> [...ids]
-morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
+morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
 ```
 
 `serve` binds **only** to `127.0.0.1`. `--root` is the project checkout that
 receives `local/qa-comments/` (defaults to cwd) — for Evo QA, pass Evo's path
-even when the Morpheus CLI is running from a Morpheus worktree.
+even when the Morpheus CLI is running from a Morpheus worktree. `--stream-url`
+skips MJPEG discovery. `--project <name>` is the global flag (the parser
+consumes it before `qa`) and is what `batch.project` records. POSTs must be
+`Content-Type: application/json` from this server's own origin; a cross-site
+page cannot inject a batch or drive the simulator. `frame.path` is recorded
+only when a PNG was actually written.
 
 Exit non-zero when a named batch is missing. `pending` with an empty inbox
 prints nothing and exits 0 — agents can poll safely.

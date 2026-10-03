@@ -220,6 +220,22 @@ async function openHidBridge(previewOrigin, udid) {
         },
     };
 }
+function headerValue(value) {
+    return Array.isArray(value) ? value[0] : value;
+}
+/** Browser pages on other origins can POST to loopback without a preflight. */
+function refuseCrossOriginPost(req, res, ownOrigin) {
+    if (req.method !== "POST")
+        return false;
+    const site = headerValue(req.headers["sec-fetch-site"]);
+    const origin = headerValue(req.headers.origin);
+    const type = (headerValue(req.headers["content-type"]) ?? "").toLowerCase();
+    if (site === "cross-site" || (origin !== undefined && origin !== ownOrigin) || !type.startsWith("application/json")) {
+        sendJson(res, 403, { error: "cross-origin POST refused" });
+        return true;
+    }
+    return false;
+}
 export async function startQaCommentServer(options) {
     const previewOrigin = normalizeOrigin(options.previewUrl);
     const previewUrl = options.previewUrl.endsWith("/")
@@ -233,6 +249,10 @@ export async function startQaCommentServer(options) {
     const server = createServer(async (req, res) => {
         try {
             const url = new URL(req.url ?? "/", "http://127.0.0.1");
+            const bound = server.address();
+            const boundPort = bound && typeof bound !== "string" ? bound.port : options.port;
+            if (refuseCrossOriginPost(req, res, `http://127.0.0.1:${boundPort}`))
+                return;
             if (req.method === "GET" && url.pathname === "/") {
                 res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
                 res.end(pageHtml({ previewUrl, streamPath, project }));
@@ -307,7 +327,6 @@ export async function startQaCommentServer(options) {
                 let frameBytes;
                 let frameMeta = raw.frame
                     ? {
-                        path: "frame.png",
                         width: raw.frame.width,
                         height: raw.frame.height,
                         ...(raw.frame.capturedAt ? { capturedAt: raw.frame.capturedAt } : { capturedAt: new Date().toISOString() }),

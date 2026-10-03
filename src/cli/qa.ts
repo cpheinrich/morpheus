@@ -12,7 +12,8 @@ const USAGE = `Usage
   morpheus qa comments pending [--root <project>]
   morpheus qa comments show <batchId> [--root <project>]
   morpheus qa comments resolve <batchId> [batchId...] [--root <project>]
-  morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
+  morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
+  --project <name> is the global flag (the parser consumes it before this command) and labels batches.
 `;
 
 
@@ -70,6 +71,7 @@ export async function dispatchQaComments(
   root: string,
   command: string | undefined,
   rest: string[],
+  projectFlag?: string,
 ): Promise<number> {
   if (command === "pending" || command === undefined) {
     let projectRoot = root;
@@ -161,7 +163,7 @@ export async function dispatchQaComments(
         previewUrl: opts.preview,
         port: opts.port,
         ...(opts.streamUrl ? { streamUrl: opts.streamUrl } : {}),
-        ...(opts.project ? { project: opts.project } : {}),
+        ...(opts.project ?? projectFlag ? { project: opts.project ?? projectFlag } : {}),
         onListen: (info) => {
           console.log(`QA comments overlay: ${info.url}`);
           console.log(`Preview upstream:    ${opts.preview}`);

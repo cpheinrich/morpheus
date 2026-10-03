@@ -253,6 +253,24 @@ async function openHidBridge(previewOrigin: string, udid: string): Promise<HidBr
   };
 }
 
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+/** Browser pages on other origins can POST to loopback without a preflight. */
+function refuseCrossOriginPost(req: IncomingMessage, res: ServerResponse, ownOrigin: string): boolean {
+  if (req.method !== "POST") return false;
+  const site = headerValue(req.headers["sec-fetch-site"]);
+  const origin = headerValue(req.headers.origin);
+  const type = (headerValue(req.headers["content-type"]) ?? "").toLowerCase();
+  if (site === "cross-site" || (origin !== undefined && origin !== ownOrigin) || !type.startsWith("application/json")) {
+    sendJson(res, 403, { error: "cross-origin POST refused" });
+    return true;
+  }
+  return false;
+}
+
 export async function startQaCommentServer(options: ServeOptions): Promise<{
   url: string;
   port: number;
@@ -273,6 +291,9 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      const bound = server.address();
+      const boundPort = bound && typeof bound !== "string" ? bound.port : options.port;
+      if (refuseCrossOriginPost(req, res, `http://127.0.0.1:${boundPort}`)) return;
       if (req.method === "GET" && url.pathname === "/") {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
         res.end(pageHtml({ previewUrl, streamPath, project }));
@@ -370,9 +391,8 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
         }
         const id = newBatchId();
         let frameBytes: Buffer | undefined;
-        let frameMeta = raw.frame
+        let frameMeta: { path?: "frame.png"; width: number; height: number; capturedAt: string } | undefined = raw.frame
           ? {
-              path: "frame.png" as const,
               width: raw.frame.width,
               height: raw.frame.height,
               ...(raw.frame.capturedAt ? { capturedAt: raw.frame.capturedAt } : { capturedAt: new Date().toISOString() }),

@@ -443,9 +443,9 @@ async function dispatchContext({ flags, command }: Invocation): Promise<number> 
 }
 
 
-async function dispatchQa({ command, rest }: Invocation): Promise<number> {
+async function dispatchQa({ flags, command, rest }: Invocation): Promise<number> {
     if (command === "comments") {
-      return dispatchQaComments(process.cwd(), rest[0], rest.slice(1));
+      return dispatchQaComments(process.cwd(), rest[0], rest.slice(1), flags.project);
     }
     console.error(`Unknown qa command "${command ?? ""}".\n\n${HELP}`);
     return 1;

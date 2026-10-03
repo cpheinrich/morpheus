@@ -177,6 +177,24 @@ describe("qa comments serve", () => {
     const disk = JSON.parse(await readFile(join(created.path, "batch.json"), "utf8"));
     expect(disk.comments[0].text).toBe("Ship it");
     expect(disk.project).toBe("evo");
+    expect(disk.frame?.path).toBeUndefined();
+
+    const evil = await fetch(`${server.url}api/batches`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain", Origin: "http://evil.example" },
+      body: JSON.stringify({
+        comments: [
+          {
+            id: "c-evil",
+            text: "injected",
+            createdAt: "2026-10-02T12:31:00-07:00",
+            anchor: { normX: 0.1, normY: 0.1 },
+          },
+        ],
+      }),
+    });
+    expect(evil.status).toBe(403);
+    expect(await listPending(root)).toHaveLength(1);
   });
 
   it("refuses non-loopback preview hosts", async () => {

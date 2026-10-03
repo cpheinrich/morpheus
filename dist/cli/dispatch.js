@@ -390,9 +390,9 @@ async function dispatchContext({ flags, command }) {
     console.error(`Unknown context command "${command}".\n\n${HELP}`);
     return 1;
 }
-async function dispatchQa({ command, rest }) {
+async function dispatchQa({ flags, command, rest }) {
     if (command === "comments") {
-        return dispatchQaComments(process.cwd(), rest[0], rest.slice(1));
+        return dispatchQaComments(process.cwd(), rest[0], rest.slice(1), flags.project);
     }
     console.error(`Unknown qa command "${command ?? ""}".\n\n${HELP}`);
     return 1;
