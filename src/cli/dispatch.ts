@@ -61,6 +61,7 @@ import {
   update as selfUpdate,
 } from "./self.js";
 
+import { dispatchQaComments } from "./qa.js";
 import { HELP } from "./help.js";
 import type { Flags } from "./args.js";
 
@@ -441,6 +442,16 @@ async function dispatchContext({ flags, command }: Invocation): Promise<number> 
   
 }
 
+
+async function dispatchQa({ flags, command, rest }: Invocation): Promise<number> {
+    if (command === "comments") {
+      return dispatchQaComments(process.cwd(), rest[0], rest.slice(1), flags.project);
+    }
+    console.error(`Unknown qa command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+  
+}
+
 async function dispatchCheck({ flags, command, dir }: Invocation): Promise<number> {
     if (command === "pr") return pr(dir, flags.base);
     console.error(`Unknown check command "${command ?? ""}".\n\n${HELP}`);
@@ -547,6 +558,7 @@ const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "team": dispatchTeam,
   "context": dispatchContext,
   "check": dispatchCheck,
+  "qa": dispatchQa,
   pm: dispatchPm,
 };
 
