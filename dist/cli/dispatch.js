@@ -28,6 +28,7 @@ import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
 import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
+import { dispatchQaComments } from "./qa.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
     if (command === "check" || command === undefined)
@@ -389,6 +390,13 @@ async function dispatchContext({ flags, command }) {
     console.error(`Unknown context command "${command}".\n\n${HELP}`);
     return 1;
 }
+async function dispatchQa({ command, rest }) {
+    if (command === "comments") {
+        return dispatchQaComments(process.cwd(), rest[0], rest.slice(1));
+    }
+    console.error(`Unknown qa command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+}
 async function dispatchCheck({ flags, command, dir }) {
     if (command === "pr")
         return pr(dir, flags.base);
@@ -480,6 +488,7 @@ const groups = {
     "team": dispatchTeam,
     "context": dispatchContext,
     "check": dispatchCheck,
+    "qa": dispatchQa,
     pm: dispatchPm,
 };
 export async function dispatch(flags) {
