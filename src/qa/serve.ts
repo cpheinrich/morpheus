@@ -161,6 +161,7 @@ function udidFromStreamUrl(streamUrl: string | null): string | null {
 
 interface HidBridge {
   sendTouch: (type: "begin" | "move" | "end", normX: number, normY: number) => void;
+  sendKey: (type: "down" | "up", usage: number) => void;
   close: () => void;
 }
 
@@ -179,6 +180,30 @@ export function hidTouchBody(
     x: Math.min(1, Math.max(0, normX)),
     y: Math.min(1, Math.max(0, normY)),
   };
+}
+
+/** USB HID usage page 0x07, same table as the serve-sim preview client (KeyboardEvent.code). */
+export const HID_KEY_USAGE: Readonly<Record<string, number>> = {
+  KeyA: 4, KeyB: 5, KeyC: 6, KeyD: 7, KeyE: 8, KeyF: 9, KeyG: 10, KeyH: 11, KeyI: 12,
+  KeyJ: 13, KeyK: 14, KeyL: 15, KeyM: 16, KeyN: 17, KeyO: 18, KeyP: 19, KeyQ: 20,
+  KeyR: 21, KeyS: 22, KeyT: 23, KeyU: 24, KeyV: 25, KeyW: 26, KeyX: 27, KeyY: 28, KeyZ: 29,
+  Digit1: 30, Digit2: 31, Digit3: 32, Digit4: 33, Digit5: 34, Digit6: 35, Digit7: 36,
+  Digit8: 37, Digit9: 38, Digit0: 39,
+  Enter: 40, Escape: 41, Backspace: 42, Tab: 43, Space: 44,
+  Minus: 45, Equal: 46, BracketLeft: 47, BracketRight: 48, Backslash: 49,
+  Semicolon: 51, Quote: 52, Backquote: 53, Comma: 54, Period: 55, Slash: 56,
+  ArrowRight: 79, ArrowLeft: 80, ArrowDown: 81, ArrowUp: 82,
+  ShiftLeft: 225, ShiftRight: 229,
+};
+
+/** Opcode 6 payload: { type: "down"|"up", usage }. */
+export function hidKeyBody(
+  type: "down" | "up",
+  code: string,
+): { type: "down" | "up"; usage: number } | null {
+  const usage = HID_KEY_USAGE[code];
+  if (usage === undefined) return null;
+  return { type, usage };
 }
 
 async function openHidBridge(previewOrigin: string, udid: string): Promise<HidBridge | null> {
@@ -208,6 +233,12 @@ async function openHidBridge(previewOrigin: string, udid: string): Promise<HidBr
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       const payload = Buffer.from(JSON.stringify(hidTouchBody(type, normX, normY)));
       ws.send(Buffer.concat([Buffer.from([3]), payload]));
+    },
+    sendKey(type, usage) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const payload = Buffer.from(JSON.stringify({ type, usage }));
+      // Opcode 6, same as the serve-sim preview keyboard channel.
+      ws.send(Buffer.concat([Buffer.from([6]), payload]));
     },
     close() {
       closed = true;
@@ -286,6 +317,30 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           return;
         }
         hid.sendTouch(raw.type, Math.min(1, Math.max(0, normX)), Math.min(1, Math.max(0, normY)));
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/key") {
+        if (!hid) {
+          sendJson(res, 503, { error: "No HID bridge (stream/udid undiscovered)" });
+          return;
+        }
+        const raw = JSON.parse((await readBody(req)).toString("utf8")) as {
+          type?: string;
+          code?: string;
+        };
+        if (raw.type !== "down" && raw.type !== "up") {
+          sendJson(res, 400, { error: "type must be down|up" });
+          return;
+        }
+        const body = hidKeyBody(raw.type, String(raw.code ?? ""));
+        if (!body) {
+          sendJson(res, 400, { error: "unsupported key code" });
+          return;
+        }
+        hid.sendKey(body.type, body.usage);
         res.writeHead(204);
         res.end();
         return;

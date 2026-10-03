@@ -28,7 +28,7 @@ export function pageHtml(opts: {
   main { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
   .stage-wrap { position: relative; background: #12151a; min-height: 0; height: 100%; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 16px; }
   /* Pixel size is set in JS so the hit box matches the contained picture. */
-  .stage { position: relative; touch-action: none; flex: 0 0 auto; width: 390px; height: 844px; }
+  .stage { position: relative; touch-action: none; flex: 0 0 auto; width: 390px; height: 844px; outline: none; }
   .stage img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; background: #12151a; user-select: none; }
   .pins { position: absolute; inset: 0; pointer-events: none; }
   .pin { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: #fdd663; color: #0b0d10; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #0b0d10; cursor: pointer; z-index: 2; pointer-events: auto; }
@@ -59,7 +59,7 @@ export function pageHtml(opts: {
 </header>
 <main>
   <div class="stage-wrap">
-    <div class="stage" id="stage">
+    <div class="stage" id="stage" tabindex="0">
       <img id="stream" alt="simulator stream" draggable="false"/>
       <div class="pins" id="pins"></div>
       <div class="missing" id="missing" hidden>No MJPEG stream — pass --stream-url or start serve-sim first.</div>
@@ -274,6 +274,38 @@ export function pageHtml(opts: {
     };
   }
 
+  let simFocused = false;
+  const heldKeys = new Set();
+
+  function commentEditorFocused() {
+    return document.activeElement === textEl;
+  }
+
+  textEl.addEventListener('focus', () => { simFocused = false; });
+  document.querySelector('aside')?.addEventListener('pointerdown', () => { simFocused = false; });
+
+  async function sendKey(type, code) {
+    try {
+      await fetch('/api/key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, code }),
+      });
+    } catch (err) {
+      console.warn('key failed', err);
+    }
+  }
+
+  function forwardKey(ev, type) {
+    if (!simFocused || commentEditorFocused()) return;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (!ev.code) return;
+    ev.preventDefault();
+    if (type === 'down') heldKeys.add(ev.code);
+    else heldKeys.delete(ev.code);
+    void sendKey(type, ev.code);
+  }
+
   async function sendTouch(type, normX, normY) {
     try {
       await fetch('/api/touch', {
@@ -312,6 +344,9 @@ export function pageHtml(opts: {
     pointerSent = true;
     lastCoords = c;
     downCoords = c;
+    simFocused = true;
+    escArmedAt = 0;
+    try { stage.focus({ preventScroll: true }); } catch (_) {}
     void sendTouch('begin', c.normX, c.normY);
     try { stage.setPointerCapture(ev.pointerId); } catch (_) {}
   });
@@ -355,7 +390,7 @@ export function pageHtml(opts: {
       void sendBatch();
       return;
     }
-    if (ev.key === 'Escape') {
+    if (ev.key === 'Escape' && (commentEditorFocused() || (escArmedAt && focused() && !simFocused))) {
       const now = Date.now();
       if (escArmedAt && now - escArmedAt < 1000 && focused()) {
         ev.preventDefault();
@@ -372,6 +407,13 @@ export function pageHtml(opts: {
       }
       return;
     }
+    forwardKey(ev, 'down');
+  });
+  window.addEventListener('keyup', (ev) => {
+    if (!heldKeys.has(ev.code)) return;
+    heldKeys.delete(ev.code);
+    ev.preventDefault();
+    void sendKey('up', ev.code);
   });
 
   async function captureFrame() {
