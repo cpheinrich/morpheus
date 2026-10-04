@@ -306,16 +306,20 @@ export function pageHtml(opts: {
     void sendKey(type, ev.code);
   }
 
-  async function sendTouch(type, normX, normY) {
-    try {
-      await fetch('/api/touch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, normX, normY }),
-      });
-    } catch (err) {
-      console.warn('touch failed', err);
-    }
+  // One ordered chain: a begin must reach the server before its end, and
+  // parallel fetches do not promise that.
+  let touchChain = Promise.resolve();
+  function sendTouch(type, normX, normY) {
+    touchChain = touchChain
+      .then(() =>
+        fetch('/api/touch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, normX, normY }),
+        }),
+      )
+      .then(() => undefined, (err) => { console.warn('touch failed', err); });
+    return touchChain;
   }
 
   // Right-click → pin (do not forward as a touch)

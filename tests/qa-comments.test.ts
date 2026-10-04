@@ -7,6 +7,7 @@ import { parseBatch, type QaCommentBatch } from "../src/qa/comments.js";
 import { listPending, resolveBatch, showBatch, writePendingBatch } from "../src/qa/store.js";
 import { dispatchQaComments } from "../src/cli/qa.js";
 import { hidKeyBody, hidTouchBody, startQaCommentServer } from "../src/qa/serve.js";
+import { TouchPacer, type TouchEvent } from "../src/qa/touch-pacer.js";
 import {
   authorizationHeaderValue,
   QA_COMMENTS_WEBHOOK_FILE,
@@ -95,6 +96,125 @@ describe("serve-sim touch payload", () => {
     expect(hidKeyBody("down", "Backspace")).toEqual({ type: "down", usage: 42 });
     expect(hidKeyBody("down", "ArrowLeft")).toEqual({ type: "down", usage: 80 });
     expect(hidKeyBody("down", "Unmapped")).toBeNull();
+  });
+});
+
+describe("touch pacer", () => {
+  function harness(opts: { minHoldMs?: number; orphanGraceMs?: number } = {}) {
+    let clock = 1000;
+    const timers: Array<{ at: number; fn: () => void; id: number }> = [];
+    let nextId = 1;
+    const sent: TouchEvent[] = [];
+    const pacer = new TouchPacer((e) => sent.push(e), {
+      minHoldMs: 40,
+      orphanGraceMs: 120,
+      ...opts,
+      now: () => clock,
+      schedule: (fn, ms) => {
+        const id = nextId++;
+        timers.push({ at: clock + ms, fn, id });
+        return id;
+      },
+      cancel: (handle) => {
+        const i = timers.findIndex((t) => t.id === handle);
+        if (i >= 0) timers.splice(i, 1);
+      },
+    });
+    const advance = (ms: number) => {
+      const target = clock + ms;
+      for (;;) {
+        timers.sort((a, b) => a.at - b.at);
+        const next = timers[0];
+        if (!next || next.at > target) break;
+        timers.shift();
+        clock = next.at;
+        next.fn();
+      }
+      clock = target;
+    };
+    return { pacer, sent, advance, types: () => sent.map((e) => e.type) };
+  }
+
+  it("holds an instant tap for the minimum duration", () => {
+    const h = harness();
+    h.pacer.push({ type: "begin", x: 0.5, y: 0.5 });
+    h.pacer.push({ type: "end", x: 0.5, y: 0.5 });
+    expect(h.types()).toEqual(["begin"]);
+    h.advance(39);
+    expect(h.types()).toEqual(["begin"]);
+    h.advance(1);
+    expect(h.types()).toEqual(["begin", "end"]);
+  });
+
+  it("passes a human-length tap through unchanged", () => {
+    const h = harness();
+    h.pacer.push({ type: "begin", x: 0.1, y: 0.2 });
+    h.advance(100);
+    h.pacer.push({ type: "move", x: 0.11, y: 0.2 });
+    h.pacer.push({ type: "end", x: 0.11, y: 0.2 });
+    expect(h.sent).toEqual([
+      { type: "begin", x: 0.1, y: 0.2 },
+      { type: "move", x: 0.11, y: 0.2 },
+      { type: "end", x: 0.11, y: 0.2 },
+    ]);
+  });
+
+  it("pairs an end that arrived before its begin, in the right order", () => {
+    const h = harness();
+    h.pacer.push({ type: "end", x: 0.5, y: 0.5 });
+    expect(h.types()).toEqual([]);
+    h.advance(10);
+    h.pacer.push({ type: "begin", x: 0.5, y: 0.5 });
+    expect(h.types()).toEqual(["begin"]);
+    h.advance(40);
+    expect(h.types()).toEqual(["begin", "end"]);
+    expect(h.pacer.droppedEnds).toBe(0);
+  });
+
+  it("drops an end that never gets a begin, and never leaves a finger down", () => {
+    const h = harness();
+    h.pacer.push({ type: "end", x: 0.5, y: 0.5 });
+    h.advance(120);
+    expect(h.types()).toEqual([]);
+    expect(h.pacer.droppedEnds).toBe(1);
+    h.pacer.push({ type: "begin", x: 0.5, y: 0.5 });
+    h.advance(100);
+    h.pacer.push({ type: "end", x: 0.5, y: 0.5 });
+    expect(h.types()).toEqual(["begin", "end"]);
+  });
+
+  it("ends a finger that is still down when a new tap begins", () => {
+    const h = harness();
+    h.pacer.push({ type: "begin", x: 0.2, y: 0.2 });
+    h.advance(500);
+    h.pacer.push({ type: "begin", x: 0.8, y: 0.8 });
+    h.advance(100);
+    h.pacer.push({ type: "end", x: 0.8, y: 0.8 });
+    expect(h.sent).toEqual([
+      { type: "begin", x: 0.2, y: 0.2 },
+      { type: "end", x: 0.8, y: 0.8 },
+      { type: "begin", x: 0.8, y: 0.8 },
+      { type: "end", x: 0.8, y: 0.8 },
+    ]);
+  });
+
+  it("queues a second tap behind a held end instead of interleaving", () => {
+    const h = harness();
+    h.pacer.push({ type: "begin", x: 0.5, y: 0.5 });
+    h.pacer.push({ type: "end", x: 0.5, y: 0.5 });
+    h.pacer.push({ type: "begin", x: 0.6, y: 0.6 });
+    h.pacer.push({ type: "end", x: 0.6, y: 0.6 });
+    expect(h.types()).toEqual(["begin"]);
+    h.advance(40);
+    expect(h.types()).toEqual(["begin", "end", "begin"]);
+    h.advance(40);
+    expect(h.types()).toEqual(["begin", "end", "begin", "end"]);
+  });
+
+  it("ignores a move with no finger down", () => {
+    const h = harness();
+    h.pacer.push({ type: "move", x: 0.5, y: 0.5 });
+    expect(h.types()).toEqual([]);
   });
 });
 

@@ -9,6 +9,7 @@ import type { QaCommentBatch } from "./comments.js";
 import { QA_COMMENTS_PENDING, parseBatch } from "./comments.js";
 import { notifyBatchPending, QA_COMMENTS_WEBHOOK_FILE, resolveWebhookConfig } from "./webhook.js";
 import { pageHtml } from "./overlay-page.js";
+import { TouchPacer } from "./touch-pacer.js";
 
 export interface ServeOptions {
   /** Project checkout that receives local/qa-comments/ (e.g. Evo). */
@@ -229,11 +230,17 @@ async function openHidBridge(previewOrigin: string, udid: string): Promise<HidBr
   };
   connect();
 
+  // The page sends each pointer event as its own request, so begin/end can
+  // arrive together or reversed; the pacer restores order and a minimum hold.
+  const pacer = new TouchPacer((event) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const payload = Buffer.from(JSON.stringify(hidTouchBody(event.type, event.x, event.y)));
+    ws.send(Buffer.concat([Buffer.from([3]), payload]));
+  });
+
   return {
     sendTouch(type, normX, normY) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      const payload = Buffer.from(JSON.stringify(hidTouchBody(type, normX, normY)));
-      ws.send(Buffer.concat([Buffer.from([3]), payload]));
+      pacer.push({ type, x: normX, y: normY });
     },
     sendKey(type, usage) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
