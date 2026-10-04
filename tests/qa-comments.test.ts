@@ -198,6 +198,25 @@ describe("touch pacer", () => {
     ]);
   });
 
+  it("holds the synthesized end when a new tap begins right after the old one", () => {
+    const h = harness();
+    h.pacer.push({ type: "begin", x: 0.2, y: 0.2 });
+    h.advance(10);
+    h.pacer.push({ type: "begin", x: 0.8, y: 0.8 });
+    expect(h.types()).toEqual(["begin"]);
+    h.advance(29);
+    expect(h.types()).toEqual(["begin"]);
+    h.advance(1);
+    expect(h.sent.slice(1)).toEqual([
+      { type: "end", x: 0.8, y: 0.8 },
+      { type: "begin", x: 0.8, y: 0.8 },
+    ]);
+    h.pacer.push({ type: "end", x: 0.8, y: 0.8 });
+    expect(h.types()).toEqual(["begin", "end", "begin"]);
+    h.advance(40);
+    expect(h.types()).toEqual(["begin", "end", "begin", "end"]);
+  });
+
   it("queues a second tap behind a held end instead of interleaving", () => {
     const h = harness();
     h.pacer.push({ type: "begin", x: 0.5, y: 0.5 });

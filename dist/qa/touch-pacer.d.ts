@@ -11,7 +11,8 @@
  * - an `end` goes out no sooner than `minHoldMs` after its `begin`;
  * - an `end` with no finger down waits up to `orphanGraceMs` for a late
  *   `begin`, then pairs with it (begin, hold, end) or is dropped;
- * - a `begin` while a finger is already down first ends that finger;
+ * - a `begin` while a finger is already down first ends that finger, with the
+ *   same minimum hold;
  * - a `move` with no finger down is ignored.
  */
 export type TouchType = "begin" | "move" | "end";

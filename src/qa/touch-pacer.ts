@@ -11,7 +11,8 @@
  * - an `end` goes out no sooner than `minHoldMs` after its `begin`;
  * - an `end` with no finger down waits up to `orphanGraceMs` for a late
  *   `begin`, then pairs with it (begin, hold, end) or is dropped;
- * - a `begin` while a finger is already down first ends that finger;
+ * - a `begin` while a finger is already down first ends that finger, with the
+ *   same minimum hold;
  * - a `move` with no finger down is ignored.
  */
 
@@ -95,7 +96,12 @@ export class TouchPacer {
       const event = this.queue.shift();
       if (!event) return;
       if (event.type === "begin") {
-        if (this.down) this.send({ type: "end", x: event.x, y: event.y });
+        if (this.down) {
+          // Lift the finger that is still down through the normal hold path,
+          // then start the new tap behind it.
+          this.queue.unshift({ type: "end", x: event.x, y: event.y }, event);
+          continue;
+        }
         this.send(event);
         this.down = true;
         this.downAt = this.now();
