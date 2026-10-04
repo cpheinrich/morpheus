@@ -630,8 +630,16 @@ jobs:
           # `-retry-tests-on-failure` re-runs only the tests that failed, so a
           # flake costs seconds instead of the whole job. It does not weaken the
           # gate: a test that fails every attempt still fails the run.
+          #
+          # Each retry relaunches the test host. Without that, every attempt
+          # shares one process, and a daemon the process talks to (the
+          # simulator's StoreKit ledger, for one) that has stopped answering
+          # fails all of them within milliseconds of each other: three
+          # executions, one data point. A relaunch gives the retry the fresh
+          # process a flake needs and costs a few seconds of app launch.
           if [ "${TEST_ITERATIONS:-0}" != "0" ]; then
-            args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS")
+            args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS"
+              -test-repetition-relaunch-enabled YES)
           fi
           if [ "$FIREBASE_EMULATORS" = "true" ]; then
             printf -v test_command '%q ' xcodebuild test-without-building "${args[@]}"
