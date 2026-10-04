@@ -72,6 +72,12 @@ Payload shape:
 No Comment/Interact mode. The live MJPEG stream is always interactive
 (left-drag drives the simulator via serve-sim HID). Pins sit on top.
 
+Touches are ordered and paced before they reach serve-sim (`src/qa/touch-pacer.ts`):
+a tap's end is sent no sooner than 40 ms after its begin, an end that arrives before
+its begin waits up to 120 ms and is paired with it, and a new begin ends any finger
+still down. Without this, instant clicks and trackpad taps were dropped or left the
+finger down until the next tap, which made switches flip late or flip two controls.
+
 | Input | Action |
 |---|---|
 | **Right-click** the frame | Place a numbered pin and open its comment box |
