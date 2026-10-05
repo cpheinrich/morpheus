@@ -122,9 +122,49 @@ describe("daily admission", () => {
     await admit(h); expect(h.calls).toEqual(["dispatch"]);
   });
 
-  it("a release stuck for more than four hours stops admission", async () => {
+  it("an unaccompanied queued release still has the default four-hour ceiling", async () => {
     const h = harness(); h.runs = [run({ status: "queued", created_at: "2026-09-28T08:00:00Z" })];
-    await expect(admit(h)).rejects.toThrow(/more than four hours/);
+    await expect(admit(h)).rejects.toThrow(/240 minutes/);
+  });
+
+  it("uses the configured runtime ceiling at its exact boundary", async () => {
+    const h = harness(); h.config = { ...CONFIG, runTimeoutMinutes: 360 };
+    h.runs = [run({ status: "in_progress", created_at: "2026-09-28T06:00:00Z", run_started_at: "2026-09-28T07:05:00Z" })];
+    await admit(h);
+    expect(h.calls).toEqual([]);
+    expect(h.state.days).toEqual({}); // Created on the prior Pacific day; still blocks this slot.
+    h.now = "2026-09-28T13:05:00.001Z";
+    await expect(admit(h)).rejects.toThrow(/Run 123.*360 minutes/);
+  });
+
+  it("ages a running retry from its current start rather than original creation", async () => {
+    const h = harness();
+    h.runs = [run({ status: "in_progress", run_attempt: 2, created_at: "2026-09-26T08:00:00Z", run_started_at: "2026-09-28T12:00:00Z" })];
+    await admit(h);
+    expect(h.calls).toEqual([]); expect(h.state.days).toEqual({});
+  });
+
+  it.each(["queued", "pending", "requested"])("treats %s behind a running release as waiting, without masking a stuck runner", async (status) => {
+    const h = harness();
+    h.runs = [run({ id: 124, status, created_at: "2026-09-27T08:00:00Z" }), run({ status: "in_progress", created_at: "2026-09-28T12:00:00Z" })];
+    await admit(h);
+    expect(h.calls).toEqual([]);
+    h.runs[1]!.created_at = "2026-09-28T08:00:00Z";
+    await expect(admit(h)).rejects.toThrow(/Run 123.*240 minutes/);
+    h.runs.pop();
+    await expect(admit(h)).rejects.toThrow(/Run 124.*240 minutes/);
+  });
+
+  it.each([0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER])("refuses an invalid runtime ceiling %s before dispatch", async (runTimeoutMinutes) => {
+    const h = harness(); h.config = { ...CONFIG, runTimeoutMinutes };
+    await expect(admit(h)).rejects.toThrow(/runTimeoutMinutes must be a positive safe integer/);
+    expect(h.calls).toEqual([]); expect(h.snapshots).toEqual([]);
+  });
+
+  it("refuses unavailable active-run timing instead of silently calling it healthy", async () => {
+    const h = harness(); h.runs = [run({ status: "in_progress", run_started_at: "invalid" })];
+    await expect(admit(h)).rejects.toThrow(/Cannot determine the age of release run 123/);
+    expect(h.calls).toEqual([]); expect(h.snapshots).toEqual([]);
   });
 });
 
