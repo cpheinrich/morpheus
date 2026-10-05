@@ -149,9 +149,17 @@ export function pageHtml(opts: {
     let saved = null;
     try { saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch (_) {}
     if (!saved || !Array.isArray(saved.pins) || saved.pins.length === 0) return false;
-    pins = saved.pins.filter((p) => p && typeof p.id === 'string' && typeof p.normX === 'number' && typeof p.normY === 'number')
-      .map((p) => ({ ...p, text: typeof p.text === 'string' ? p.text : '' }));
-    nextN = Number.isInteger(saved.nextN) && saved.nextN > pins.length ? saved.nextN : pins.length + 1;
+    const usable = saved.pins
+      .filter((p) => p && typeof p.id === 'string' && Number.isInteger(p.n) && p.n > 0
+        && typeof p.normX === 'number' && typeof p.normY === 'number')
+      .map((p) => ({ ...p, text: typeof p.text === 'string' ? p.text : '', createdAt: typeof p.createdAt === 'string' ? p.createdAt : new Date().toISOString() }));
+    if (usable.length === 0) {
+      forget();
+      return false;
+    }
+    pins = usable;
+    const highest = Math.max(...pins.map((p) => p.n));
+    nextN = Number.isInteger(saved.nextN) && saved.nextN > highest ? saved.nextN : highest + 1;
     if (typeof saved.focusedId === 'string' && pins.some((p) => p.id === saved.focusedId)) {
       focusedId = saved.focusedId;
       textEl.disabled = false;
@@ -232,6 +240,7 @@ export function pageHtml(opts: {
     setStatus('Editing pin ' + p.n + ' — Enter saves, Esc Esc deletes');
     renderList();
     renderPins();
+    persist();
   }
 
   function saveOpenPin() {
