@@ -50,7 +50,9 @@ either resolves what the previous turn left blocked, after the author has addres
 unresolved concerns, or is a late correction after a clearance: when full CI shows a fix is
 needed after you cleared the code, the author may spend a remaining turn in THIS SAME session,
 recording the scope decision as that turn's scopeReason; you clear or block the correction commit.
-Otherwise a cleared turn ends the review, and an incomplete one exhausted its budget and escalates.
+Otherwise a cleared turn ends the review, and an incomplete one escalates. If missing evidence
+left a turn incomplete within its budget, explicit humanAuthorization on the next same-reviewer
+turn may resume it. Preserve the incomplete verdict; authorization never waives any turn's budget.
 If substantive concerns remain after the last turn, or a correction is needed once the turns are
 spent, leave the PR open, disable auto-merge, and flag the concrete unresolved issue for the
 human. No automatic fourth turn or replacement reviewer to obtain approval.
@@ -61,7 +63,8 @@ Beyond that you may spend ONE automatic finalization-only turn per PR, capped at
 whose only job is closing out work you already cleared: the explanatory prose for it, the review
 record, or the completion of a condition you set. Record finalization ({paths, evidence,
 attestation}) plus a scopeReason naming what you finalized. You write it, never the author. It
-must be the last turn, must follow a turn you cleared, must itself be cleared, and cannot resolve a
+must be the last automatic turn; every later same-reviewer turn requires explicit humanAuthorization.
+Its original scope and predecessor remain checked. It must follow a turn you cleared, must itself be cleared, and cannot resolve a
 substantive finding or review new implementation: the checker compares the commits it covers against
 the worklog, the conditions the author actually satisfied, and the explanatory Markdown you
 attested. A condition left disputed or unmet does not widen it. AGENTS.md, CLAUDE.md, morpheus.json and anything

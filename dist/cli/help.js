@@ -95,12 +95,32 @@ Usage
                             manage consented post-pull updates across the local registry
   morpheus doctor           [--all] [--offline]
                             --offline skips project-trunk and Morpheus-main network checks
+  morpheus ios changed-swift <dir> [--base <ref>] [--worktree] [--nul]
+                            the Swift files a change touched, repository-relative
+                            — the same answer iOS CI's swift-format lint asks for.
+                            Without --base, HEAD against its first parent, as CI
+                            asks; with it, what the branch changed since that ref
+  morpheus ios nightly-core write|check <file>
+                            vendor the shared nightly TestFlight admission core into an app
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
+  morpheus gh-manager sweep <owner/repo> [--out file]
+                            route every open pull request from facts; no model
+  morpheus gh-manager routes|prompt|apply|digest ...
+                            the steps the GitHub Manager operations workflow runs;
+                            see docs/runbooks/gh-manager.md
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge
   morpheus voice brief ["<topic>"] [--slug x] [--notes "..."] [--full]
                             today's state, to paste into a voice session
 
+  morpheus qa comments pending
+                            list pending visual-QA comment batches under local/qa-comments/
+  morpheus qa comments show <batchId>
+                            print one batch.json
+  morpheus qa comments resolve <batchId> [ids...]
+                            mark batch(es) resolved (moves pending → resolved)
+  morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
+                            local overlay: tap → multi-comment → Send into local/qa-comments/
 Options
   --dir <path>   Product directory (default: hq/product)
   --base <ref>   Base ref for the PR diff (default: origin/main)

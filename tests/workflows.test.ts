@@ -1600,6 +1600,14 @@ describe("ios-nightly-build.yml", () => {
     expect(validate?.run).toContain(
       'echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"',
     );
+    // A runner-provided build cache is used only when it exists, and then the
+    // SwiftPM cache action has nothing to keep.
+    expect(validate?.id).toBe("release_paths");
+    expect(validate?.run).toContain('if [ -n "${MORPHEUS_IOS_CI_CACHE:-}" ] && [ -d "$MORPHEUS_IOS_CI_CACHE" ]; then');
+    expect(validate?.run).toContain('echo "SOURCE_PACKAGES_PATH=$MORPHEUS_IOS_CI_CACHE/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"');
+    const spmCache = upload?.steps?.find((step) => step.name === "Cache resolved Swift packages") as
+      { if?: string } | undefined;
+    expect(String(spmCache?.if)).toContain("steps.release_paths.outputs.cached != 'true'");
     expect(release?.env?.ASC_API_KEY_ID).toBe("${{ secrets.APP_STORE_CONNECT_KEY_ID }}");
     expect(release?.env?.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64).toBe(
       "${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}",
@@ -2043,12 +2051,25 @@ describe("ios-ci.yml", () => {
     expect(script).toContain("xcrun swift-format --version");
     expect(script).toContain("swift-format dump-configuration");
     expect(script).toContain("--effective");
-    expect(script).toContain("git diff-tree");
-    expect(script).toContain("--diff-filter=ACMR");
     expect(script).toContain("swift-format lint");
     expect(script).toContain("--parallel");
     expect(script).toContain("--strict");
     expect(script).not.toContain("brew install");
+
+    // The selection is shared rather than inlined: consumers call the same
+    // script, and a step that quietly went back to its own pathspec would make
+    // that false again.
+    const select = steps.find((step) => step.name === "Select changed Swift sources") as
+      | { uses?: string; if?: string; with?: Record<string, string> }
+      | undefined;
+    expect(select?.uses).toBe("cpheinrich/morpheus/.github/actions/swift-changed-files@main");
+    // Gated on the change scope like every other native step, so an unrelated
+    // change skips the selection rather than paying for a checkout of it.
+    expect(select?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}");
+    expect(select?.with?.["working-directory"]).toBe("${{ inputs.working-directory }}");
+    expect((lint?.env as Record<string, string> | undefined)?.SWIFT_CHANGED_FILES)
+      .toBe("${{ steps.swift-changed-files.outputs.file }}");
+    expect(script).not.toContain(":(glob)");
   });
 
   it("strictly lints added and modified Swift files without sweeping legacy source", async () => {
@@ -2083,6 +2104,19 @@ describe("ios-ci.yml", () => {
       const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
       const script = steps.find((step) => step.name === "Lint changed Swift sources")?.run;
       expect(script).toBeTruthy();
+
+      // The step no longer selects the files itself; the shared script does,
+      // through the composite action. Standing in for the action here keeps
+      // this test about the lint while tests/swift-changed-files.test.ts covers
+      // the selection — and keeps the two from being proved by the same code.
+      const selection = join(root, "selection");
+      const selected = await execFileAsync("bash", [
+        join(process.cwd(), "scripts/swift-changed-files.sh"),
+        "--working-directory",
+        "apps/ios",
+      ], { cwd: repo, encoding: "buffer" });
+      await writeFile(selection, selected.stdout);
+
       await execFileAsync("bash", ["-c", String(script)], {
         cwd: join(repo, "apps/ios"),
         env: {
@@ -2091,6 +2125,7 @@ describe("ios-ci.yml", () => {
           GITHUB_WORKSPACE: repo,
           SWIFT_FORMAT_CONFIGURATION: ".swift-format",
           WORKING_DIRECTORY: "apps/ios",
+          SWIFT_CHANGED_FILES: selection,
           XCRUN_LOG: log,
         },
       });
@@ -2209,8 +2244,8 @@ describe("ios-ci.yml", () => {
     const job = ((await read("ios-ci.yml")) as IosCi).jobs?.test;
     const prepare = job?.steps?.find((step) => step.name === "Prepare isolated build directories");
     expect(String(prepare?.run)).toContain('$RUNNER_TEMP/ios-ci');
-    expect(String(prepare?.run)).toContain('SOURCE_PACKAGES=$ios_ci_root/SourcePackages');
-    expect(String(prepare?.run)).toContain('DERIVED_DATA=$ios_ci_root/DerivedData');
+    expect(String(prepare?.run)).toContain('SOURCE_PACKAGES=$cache_root/SourcePackages');
+    expect(String(prepare?.run)).toContain('DERIVED_DATA=$cache_root/DerivedData');
     expect(String(prepare?.run)).toContain('RESULTS=$output_root/Results');
     expect(String(prepare?.run)).toContain('LOGS=$output_root/Logs');
     expect(String(prepare?.run)).toContain('SCREENSHOTS=$output_root/Screenshots');
@@ -2246,7 +2281,7 @@ describe("ios-ci.yml", () => {
         await writeFile(envFile, "");
         await writeFile(outputFile, "");
         await execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
-          env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile,
+          env: { ...process.env, MORPHEUS_IOS_CI_CACHE: "", RUNNER_TEMP: root, GITHUB_ENV: envFile,
             GITHUB_OUTPUT: outputFile, GITHUB_RUN_ID: String(run), GITHUB_RUN_ATTEMPT: String(attempt) },
         });
         const paths = Object.fromEntries((await readFile(envFile, "utf8")).trim().split("\n")
@@ -2272,11 +2307,51 @@ describe("ios-ci.yml", () => {
         }
         expect(await readFile(join(root, "other-job"), "utf8")).toBe("untouched");
         expect(await readFile(outputFile, "utf8")).toBe([
+          "cached=false",
           `results=${paths.RESULTS}`, `logs=${paths.LOGS}`, `screenshots=${paths.SCREENSHOTS}`,
           `evidence-name=ios-test-evidence-${paths.RESULTS!.split("/").at(-2)}`, "",
         ].join("\n"));
         previous = paths;
       }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("roots the build caches in a runner-provided directory and keeps evidence per job", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus ios cache "));
+    const cache = join(root, "CICache", "ios-ci");
+    const envFile = join(root, "github-env");
+    const outputFile = join(root, "github-output");
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const script = steps.find((step) => step.name === "Prepare isolated build directories")?.run;
+    const prepare = async (cacheDirectory: string) => {
+      await writeFile(envFile, "");
+      await writeFile(outputFile, "");
+      await execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
+        env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile, GITHUB_OUTPUT: outputFile,
+          GITHUB_RUN_ID: "7", GITHUB_RUN_ATTEMPT: "1", MORPHEUS_IOS_CI_CACHE: cacheDirectory },
+      });
+      const paths = Object.fromEntries((await readFile(envFile, "utf8")).trim().split("\n")
+        .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
+      return { paths, output: await readFile(outputFile, "utf8") };
+    };
+    try {
+      await mkdir(cache, { recursive: true });
+      const cached = await prepare(cache);
+      expect(cached.paths.SOURCE_PACKAGES).toBe(join(cache, "SourcePackages"));
+      expect(cached.paths.DERIVED_DATA).toBe(join(cache, "DerivedData"));
+      // Results are job-owned and never shared through the cache.
+      expect(cached.paths.RESULTS!.startsWith(join(root, "ios-ci") + "/")).toBe(true);
+      expect(cached.output.startsWith("cached=true\n")).toBe(true);
+      // A cache directory that does not exist is ignored rather than created
+      // somewhere the runner did not provide.
+      const missing = await prepare(join(root, "absent"));
+      expect(missing.paths.SOURCE_PACKAGES).toBe(join(root, "ios-ci", "SourcePackages"));
+      expect(missing.output.startsWith("cached=false\n")).toBe(true);
+      // The SwiftPM cache action is skipped when the runner keeps the checkouts.
+      const action = steps.find((step) => step.name === "Cache resolved Swift packages");
+      expect(String(action?.if)).toContain("steps.ios_paths.outputs.cached != 'true'");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -2670,5 +2745,119 @@ describe("the scaffolded iOS nightly caller", () => {
     expect(release?.with?.scheme).toBe("Example");
     expect(step?.with?.project).toBe("Example.xcodeproj");
     expect(step?.with?.scheme).toBe("Example");
+  });
+});
+
+describe("retired nightly screenshot gallery PR", () => {
+  // Every app carried a standing draft `nightly-ios-visual-qa` PR that never
+  // merged. It was retired on 2026-09-28; screenshots are reviewed from the
+  // nightly run's .xcresult artifacts instead.
+  it("ships no reusable workflow that publishes screenshots into a PR", async () => {
+    const files = await readdir(join(import.meta.dirname, "..", ".github", "workflows"));
+    expect(files).not.toContain("ios-visual-qa.yml");
+    for (const file of files.filter((f) => f.endsWith(".yml"))) {
+      const text = await readFile(join(import.meta.dirname, "..", ".github", "workflows", file), "utf8");
+      expect(text, file).not.toMatch(/nightly-ios-visual-qa/);
+    }
+  });
+});
+
+describe("gh-manager.yml", () => {
+  type Step = { name?: string; id?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string>; run?: string };
+  type Manager = {
+    on?: { workflow_call?: { inputs?: Record<string, { required?: boolean; default?: unknown }>; secrets?: Record<string, { required?: boolean }> } };
+    permissions?: Record<string, string>;
+    jobs?: Record<string, { needs?: string | string[]; if?: string; steps?: Step[]; strategy?: { "max-parallel"?: number; "fail-fast"?: boolean } }>;
+  };
+  const tokenStep = (wf: Manager, job: string) => wf.jobs?.[job]?.steps?.find(step => step.uses?.startsWith("actions/create-github-app-token@"));
+  const grants = (step: Step | undefined) => Object.fromEntries(Object.entries(step?.with ?? {}).filter(([key]) => key.startsWith("permission-")));
+
+  it("is reusable, pins its tooling to an exact commit, and takes every credential as a secret", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(wf.on?.workflow_call?.inputs?.["morpheus-sha"]?.required).toBe(true);
+    expect(Object.keys(wf.on?.workflow_call?.secrets ?? {}).sort()).toEqual(["app_id", "app_private_key", "claude_code_oauth_token"]);
+    expect(wf.permissions).toEqual({ contents: "read" });
+    for (const job of ["sweep", "session", "apply"]) {
+      const checkout = wf.jobs?.[job]?.steps?.find(step => step.with?.repository === "cpheinrich/morpheus");
+      expect(checkout?.with?.ref, `${job} tooling ref`).toBe("${{ inputs.morpheus-sha }}");
+      expect(checkout?.with?.["persist-credentials"], `${job} tooling credentials`).toBe(false);
+    }
+  });
+
+  it("sweeps with a token that can write nothing", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(Object.values(grants(tokenStep(wf, "sweep")))).toEqual(["read", "read", "read", "read", "read"]);
+  });
+
+  it("gives the session contents write and nothing else to write with, and no workflows permission", async () => {
+    // Contents write is repository-wide: this token could push another unprotected branch or a
+    // tag. What it cannot do is label, comment, close, or change a workflow file — the last
+    // because the permission is deliberately absent, so GitHub refuses such a push.
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(grants(tokenStep(wf, "session"))).toEqual({
+      "permission-contents": "write",
+      "permission-pull-requests": "read",
+      "permission-issues": "read",
+      "permission-checks": "read",
+      "permission-statuses": "read",
+      "permission-actions": "read",
+    });
+  });
+
+  it("keeps the model credential in the session job and the write token out of it", async () => {
+    const raw = await readFile(join(DIR, "gh-manager.yml"), "utf8");
+    const wf = load(raw) as Manager;
+    const uses = (job: string) => JSON.stringify(wf.jobs?.[job]);
+    expect(uses("session")).toContain("secrets.claude_code_oauth_token");
+    expect(uses("sweep")).not.toContain("claude_code_oauth_token");
+    expect(uses("apply")).not.toContain("claude_code_oauth_token");
+    // Only the session's own step sees the subscription token; no other step in that job does.
+    const withToken = (wf.jobs?.session?.steps ?? []).filter(step => JSON.stringify(step).includes("claude_code_oauth_token"));
+    expect(withToken.map(step => step.id)).toEqual(["session"]);
+    expect(grants(tokenStep(wf, "apply"))).toMatchObject({ "permission-pull-requests": "write", "permission-issues": "write" });
+  });
+
+  it("gives apply a full checkout of the target, so it reads the session's commits itself", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    const steps = wf.jobs?.apply?.steps ?? [];
+    const checkout = steps.find(step => step.with?.path === "target");
+    expect(checkout?.with).toMatchObject({ repository: "${{ inputs.target-repository }}", "fetch-depth": 0, "persist-credentials": false });
+    const apply = steps.find(step => step.id === "decisions");
+    expect(apply?.env?.GH_MANAGER_CHECKOUT).toBe("${{ github.workspace }}/target");
+    expect(steps.indexOf(checkout!)).toBeLessThan(steps.indexOf(apply!));
+  });
+
+  it("applies on a separate runner, after the sessions, even when one failed", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(wf.jobs?.apply?.needs).toEqual(["sweep", "session"]);
+    expect(wf.jobs?.apply?.if).toContain("always()");
+    expect(wf.jobs?.session?.strategy).toMatchObject({ "fail-fast": false, "max-parallel": 2 });
+    const session = wf.jobs?.session?.steps?.find(step => step.id === "session");
+    expect(session?.run).toContain("--print");
+    expect(session?.run).not.toContain("gh-manager apply");
+  });
+
+  it("never interpolates an expression into a shell script", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+      for (const step of job.steps ?? []) expect(step.run ?? "", `${name}: ${step.name}`).not.toContain("${{");
+    }
+  });
+});
+
+describe("pr-check.yml and the GitHub Manager label", () => {
+  it("reads who applied manager-reviewed from the issue events, and tolerates a failed read", async () => {
+    const raw = await readFile(join(DIR, "pr-check.yml"), "utf8");
+    expect(raw).toContain('select(.event == "labeled" and .label.name == "manager-reviewed") | .actor.login');
+    expect(raw).toContain("manager_label_actor: (if $actor == \"\" then null else $actor end)");
+    expect(raw).toMatch(/\| tail -n 1 \|\| true\)"/);
+  });
+
+  it("takes the cleared head only from a comment the App wrote", async () => {
+    const raw = await readFile(join(DIR, "pr-check.yml"), "utf8");
+    expect(raw).toContain('select(.user.login == "morpheus-gh-manager[bot]") | .body // ""');
+    expect(raw).toContain("manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)");
+    // A failed read of the comments leaves no clearance, which the check refuses.
+    expect(raw).toContain("|| echo '[]' > \"$RUNNER_TEMP/comments.json\"");
   });
 });

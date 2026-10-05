@@ -383,7 +383,7 @@ describe("late corrections after clearance", () => {
     // Without the correction turn, the correction commit is exactly the uncovered code the rule refuses.
     expect(check(save({ ...r, covered: first, followUps: [turn(first, "cleared")] }))[0]?.message).toContain("invalidate");
   });
-  it("never follows an incomplete turn, even with a scope reason", () => {
+  it("never automatically follows an incomplete turn, even with a scope reason", () => {
     writeFileSync(join(root, "code.ts"), "first fix"); const first = commit();
     writeFileSync(join(root, "code.ts"), "late CI correction"); const corrected = commit();
     const r = { ...record(), covered: corrected, findings: [substantive], followUps: [turn(first, "incomplete"), { ...turn(corrected, "cleared"), scopeReason }] };
@@ -625,13 +625,45 @@ describe("one automatic finalization-only turn", () => {
     r.followUps![1]!.outcome = outcome;
     expect(check(save(r))[0]?.message).toContain("blocked");
   });
-  it("must be the last word, and must name its scope", () => {
+  it("allows explicitly authorized continuation and still requires finalization scope", () => {
     const r = cleared();
-    r.followUps!.push({ reviewerSession: session, commit: r.covered, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Another look after finalization.", summary: "A turn that should not be able to follow finalization.", humanAuthorization: { approvedBy: "Chris Heinrich", approvedAt: "2026-09-27T12:30:00Z", reason: "Authorized another substantive turn after the finalization turn." } });
-    expect(check(save(r))[0]?.message).toContain("last word");
+    r.followUps!.push({ reviewerSession: session, commit: r.covered, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Another look after finalization.", summary: "Verified the explicitly authorized correction after finalization.", humanAuthorization: { approvedBy: "Chris Heinrich", approvedAt: "2026-09-27T12:30:00Z", reason: "Authorized another substantive turn after the finalization turn." } });
+    expect(check(save(r))).toEqual([]);
+    delete r.followUps![2]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
     const bare = cleared();
     delete bare.followUps![1]!.scopeReason;
     expect(check(save(bare))[0]?.message).toContain("scopeReason");
+  });
+  it("requires authorization after an early finalization even within the ordinary cap", () => {
+    const r = cleared();
+    r.followUps!.shift();
+    r.followUps!.push({ reviewerSession: session, commit: r.covered, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Late correction after finalization.", summary: "Verified the correction." });
+    expect(check(save(r))[0]?.message).toContain("every turn after finalization");
+  });
+  it("checks the actual predecessor and historical finalization scope after authorized continuation", () => {
+    const r = cleared();
+    const authorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-28T23:09:04Z", reason: "Explicitly authorized additional review rounds to complete the PR." };
+    r.followUps!.push({ reviewerSession: session, commit: r.covered, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Late correction after finalization.", summary: "Verified the correction.", humanAuthorization: authorization });
+    r.followUps![0]!.outcome = "blocked";
+    expect(check(save(r))[0]?.message).toContain("only follows a cleared turn");
+    r.followUps![0]!.outcome = "cleared";
+    r.followUps![1]!.finalization!.paths = ["AGENTS.md"];
+    expect(check(save(r))[0]?.message).toContain("normative policy");
+    r.followUps![1]!.finalization!.paths = ["docs/runbooks/guide.md"];
+    writeFileSync(join(root, "code.ts"), "unreviewed code riding in finalization");
+    r.covered = commit();
+    r.followUps![1]!.commit = r.covered;
+    r.followUps![2]!.commit = r.covered;
+    expect(check(save(r))[0]?.message).toContain("may cover only the review record");
+  });
+  it("requires a separate authorization for every subsequent turn", () => {
+    const r = cleared();
+    const turn = { reviewerSession: session, commit: r.covered, outcome: "cleared" as const, elapsedMinutes: 2, scopeReason: "Authorized late correction.", summary: "Verified the correction.", humanAuthorization: { approvedBy: "Chris Heinrich", approvedAt: "2026-09-28T23:09:04Z", reason: "Explicitly authorized additional review rounds to complete the PR." } };
+    r.followUps!.push(turn, { ...turn, humanAuthorization: undefined });
+    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
+    r.followUps![3]!.humanAuthorization = turn.humanAuthorization;
+    expect(check(save(r))).toEqual([]);
   });
   it("cannot resolve substantive findings by itself", () => {
     const substantive = { id: "TE-11", severity: "substantive" as const, description: "The operator path still bypasses the guard", paths: ["code.ts"], disposition: "fixed" as const, response: "Routed it through the guard." };
@@ -784,5 +816,45 @@ describe("the shape Evo #291 needs", () => {
     r.followUps![3]!.commit = wider;
     r.followUps![3]!.finalization!.paths = [...r.followUps![3]!.finalization!.paths, "other.ts"];
     expect(check(save(r))[0]?.message).toContain("neither a conditioned path nor explanatory documentation");
+  });
+});
+
+
+describe("authorized continuation after missing review evidence", () => {
+  const authorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-09-28T23:09:04Z", reason: "Explicitly authorized another same-reviewer turn after obtaining the missing evidence." };
+  function pendingEvidence(): LocalReviewRecord {
+    const r = record();
+    r.version = 2;
+    r.timing = { source: "runner", durationMs: 180000, evidence: "Initial runner duration: 180000 ms." };
+    r.followUps = [
+      { reviewerSession: r.reviewerSession, commit: reviewed, outcome: "incomplete", elapsedMinutes: 151444 / 60000, timing: { source: "runner", durationMs: 151444, evidence: "Missing-evidence review runner duration: 151444 ms." }, scopeReason: "Late correction requires diagnostic evidence.", summary: "Incomplete: diagnostic evidence is missing; no clearance was given." },
+      { reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: 2, timing: { source: "runner", durationMs: 120000, evidence: "Authorized follow-up runner duration: 120000 ms." }, humanAuthorization: authorization, scopeReason: "Review the missing evidence and resulting correction.", summary: "The original reviewer inspected the evidence and cleared the correction." },
+    ];
+    return r;
+  }
+  it("preserves an incomplete verdict when a human authorizes the next same-reviewer clearance", () => {
+    const r = pendingEvidence();
+    expect(check(save(r))).toEqual([]);
+    expect(r.followUps![0]!.outcome).toBe("incomplete");
+  });
+  it("requires authorization on the next turn, even within the default turn cap", () => {
+    const r = pendingEvidence();
+    r.followUps![0]!.humanAuthorization = authorization;
+    delete r.followUps![1]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
+  });
+  it.each([0, 1])("still enforces the budget of follow-up %i", index => {
+    const r = pendingEvidence();
+    r.followUps![index]!.elapsedMinutes = 450001 / 60000;
+    r.followUps![index]!.timing!.durationMs = 450001;
+    expect(check(save(r))[0]?.message).toContain("follow-up exceeded its budget");
+  });
+  it("retains the original reviewer and requires final clearance", () => {
+    const r = pendingEvidence();
+    r.followUps![1]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
+    expect(check(save(r))[0]?.message).toContain("original reviewer");
+    r.followUps![1]!.reviewerSession = r.reviewerSession;
+    r.followUps![1]!.outcome = "incomplete";
+    expect(check(save(r))[0]?.message).toContain("final follow-up must clear");
   });
 });

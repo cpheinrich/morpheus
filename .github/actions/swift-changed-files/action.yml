@@ -1,0 +1,75 @@
+name: Swift changed files
+description: >-
+  The Swift files a change touched, as one shared definition rather than a
+  snippet each workflow and each consumer reimplements.
+
+inputs:
+  working-directory:
+    description: Repository-relative directory holding the Swift sources.
+    required: true
+  base:
+    description: >-
+      Compare against the merge base with this ref instead of HEAD's first
+      parent. Leave empty for the commit-oriented answer CI wants.
+    required: false
+    default: ""
+  worktree:
+    description: Also include uncommitted and untracked Swift files.
+    required: false
+    default: "false"
+  output-file:
+    description: >-
+      Where to write the NUL-delimited list. Defaults to a file under
+      RUNNER_TEMP, whose path is returned as the `file` output.
+    required: false
+    default: ""
+
+outputs:
+  file:
+    description: File holding the NUL-delimited list of repository-relative paths.
+    value: ${{ steps.select.outputs.file }}
+  count:
+    description: How many Swift files were selected.
+    value: ${{ steps.select.outputs.count }}
+
+runs:
+  using: composite
+  steps:
+    # `$GITHUB_ACTION_PATH` is this repository's checkout at the pinned ref, so
+    # the script below is the same file the CLI ships and a consumer can call
+    # from node_modules. That is the point of the action: the definition lives
+    # once, and everything else reaches it.
+    - id: select
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        BASE: ${{ inputs.base }}
+        WORKTREE: ${{ inputs.worktree }}
+        OUTPUT_FILE: ${{ inputs.output-file }}
+      run: |
+        set -Eeuo pipefail
+
+        destination="$OUTPUT_FILE"
+        if [ -z "$destination" ]; then
+          # Job-unique, not run-unique: RUNNER_TEMP is job-private on a
+          # properly configured runner, but the /tmp fallback is not, and this
+          # workflow's concurrency is keyed on the scheme — so two schemes can
+          # legitimately run at once on one shared Mac.
+          destination="${RUNNER_TEMP:-/tmp}/swift-changed-files-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}-${GITHUB_JOB:-job}-$$"
+        fi
+
+        arguments=(--working-directory "$WORKING_DIRECTORY")
+        [ -n "$BASE" ] && arguments+=(--base "$BASE")
+        [ "$WORKTREE" = "true" ] && arguments+=(--worktree)
+
+        bash "$GITHUB_ACTION_PATH/../../../scripts/swift-changed-files.sh" \
+          "${arguments[@]}" > "$destination"
+
+        count=0
+        while IFS= read -r -d '' _; do
+          count=$((count + 1))
+        done < "$destination"
+
+        printf 'file=%s\n' "$destination" >> "$GITHUB_OUTPUT"
+        printf 'count=%s\n' "$count" >> "$GITHUB_OUTPUT"
+        printf 'Selected %s Swift source(s).\n' "$count"

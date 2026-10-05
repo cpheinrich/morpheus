@@ -1313,6 +1313,23 @@ disabled choice without installing code. The provider SessionStart files call th
 replacing the legacy direct `context brief` hook. No package lifecycle or session hook infers
 consent.
 
+### 7.13 The GitHub Manager is the backstop for a loop whose author has left
+
+Author-managed review (§9) has one failure it cannot recover from by itself: the authoring session
+ends before the loop does, and nothing else is listening. The GitHub Manager is a scheduled agent
+that sweeps each opted-in repository's open pull requests. A deterministic sweep routes them from
+facts with no model; one fresh Claude session per pull request that needs judgment reads the
+reviews on record, conducts one more if needed, and fixes its own findings; a separate
+deterministic step checks each session's decision against live state and policy before anything is
+labelled, merged or closed. The session's token can write contents and nothing else: it cannot
+label, comment, close, or change a workflow file.
+
+It follows the Morpheus Security shape (§18): a public reviewed engine in this repository, a
+private operations repository holding the App key, the subscription token and the schedule, and a
+target that opts in with a committed policy file. Its review is a narrower record than the
+author's, bounded by path checks and refused outright for normative policy.
+[`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is authoritative.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.
@@ -1477,11 +1494,14 @@ correction after clearance, named by its scope reason. Unresolved substantive di
 incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
 open and flagged, with auto-merge disabled. No automatic fourth substantive turn; one automatic
 finalization-only turn per PR is allowed, at five minutes, recorded as `finalization` with the
-reviewer's attested paths, evidence and scope. It must be last and cleared, cannot resolve a
+reviewer's attested paths, evidence and scope. It must be the last automatic turn and cleared; every later same-reviewer turn requires explicit
+`humanAuthorization`. Its original scope and predecessor stay checked. It cannot resolve a
 substantive finding, and is checked against the commits it covers: the worklog, already-conditioned
 paths, and explanatory Markdown only — never normative policy files. An explicit human exception is recorded per extra same-reviewer turn
 as `humanAuthorization` (approver, ISO timestamp and reason), preserving the full history and
-all other checks; one authorization never permits subsequent turns. Incidental pre-existing bugs are recorded
+all other checks; one authorization never permits subsequent turns. An evidence-pending incomplete
+turn may resume only with explicit authorization on the next same-reviewer turn; the original
+verdict stays unchanged and every historical and new turn must satisfy its budget. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
 Initial risk-based ceilings are 10/15/30 minutes, with a one-minute floor at normal and high risk, with one justified initial extension of at most
@@ -3059,10 +3079,20 @@ not runner queue time. Callers own the path policy and still require independent
 Callers may opt into a changed-source style gate with `swift-format-lint`; it validates the
 caller-owned `.swift-format` configuration and runs the selected Xcode toolchain's formatter in
 strict lint mode against added, copied, modified, and renamed Swift files in the checked-out
-commit. The checkout retains only the commit and its first parent, which is enough to cover a pull
-request's synthetic merge commit and a push to `main` without downloading full history. Existing
-Swift is adopted incrementally: enabling the gate does not create a repository-wide formatting
-rewrite, while any Swift file being changed must leave the commit fully formatted.
+commit. Which files those are is `scripts/swift-changed-files.sh`, reached by the workflow through
+the `swift-changed-files` composite action, shipped in the package, and exposed as
+`morpheus ios changed-swift` — one definition, because the first consumer that reimplemented it
+for a local pre-check drifted inside a single commit, omitting Swift files directly under the
+working directory and dropping filenames outside ASCII, and a local pass that CI contradicts is
+worse than no local check at all. `tests/swift-changed-files.test.ts` pins the two modes against one
+repository state, so a pathspec or delimiter that drifts in either is caught there rather than in
+a consumer's pull request. The base a consumer compares against stays the consumer's: CI asks
+about a commit and its first parent, a developer asks what a branch changed since the trunk, and
+only the second has a merge base to speak of. The checkout retains only the commit and its first
+parent, which is enough to cover a pull request's synthetic merge commit and a push to `main`
+without downloading full history. Existing Swift is adopted incrementally: enabling the gate does
+not create a repository-wide formatting rewrite, while any Swift file being changed must leave the
+commit fully formatted.
 The caller supplies a shared Xcode scheme; that scheme or its optional test plan remains the source
 of truth for which unit and UI targets run. The workflow refuses an absent or uncommitted
 `Package.resolved`, passes `-onlyUsePackageVersionsFromResolvedFile` to resolution and every build
@@ -3143,27 +3173,33 @@ Callers should keep their 06:00 local trigger and add off-hour recovery triggers
 Set `schedule-timezone` to the caller's IANA timezone. Morning retries reuse successful,
 unexpired screenshots only for the same source commit and local calendar day; changed iOS
 sources still build, failed runs retry, and manual forced builds always run. An explicit
-`ios-nightly-noop-<run>-<attempt>` artifact preserves the gallery on intentional skips rather
-than replacing it with missing images. This is bounded recovery, not an independent scheduler.
+`ios-nightly-noop-<run>-<attempt>` artifact records an intentional skip, so a run with no
+screenshots is distinguishable from one that failed to capture them. This is bounded recovery,
+not an independent scheduler.
 
-Their separate `workflow_run` observer calls `ios-visual-qa` after the nightly finishes; the
-publisher is never a release dependency. It accepts only completed main schedule/manual runs from
-the same repository and exact workflow, reads `qa/ios-screens.json` at the tested SHA, and consumes
-only explicitly named full-screen PNG attachments from that exact run and attempt. Caller code is
-never executed in the write-permission publisher.
+Apps whose nightly release is dispatched from the Mac mini share one admission core,
+`src/ios/nightly-core.ts`, extracted from Evo's controller (darwin-health/evo #307, #309). It
+admits at most one automated release per local calendar day in a configured window, whatever
+became of it, and writes the reservation before dispatching so a lost response never buys a second
+attempt. It reconciles each reservation to its run by the run title the release workflow gives an
+`automated-day` dispatch, and judges the last upload from the upload step inside every attempt: a
+failed rerun cannot hide a build an earlier attempt uploaded, and a step that started without
+finishing blocks admission until a later upload is confirmed. Competing schedulers cannot share that
+daily limit, so a caller using the core drops any independent release cron. The core has no imports
+because it runs from a pinned runtime copy on the host, where no `node_modules` is reachable:
+`morpheus ios nightly-core write <file>` vendors it with a digest of the exact module, and `check`
+tells a hand edit from an upgrade. Each app's adapter owns its upload job and step names, window,
+run-title format, incident hook, notifications and installer.
 
-The publisher replaces one `nightly-ios-visual-qa` draft PR with a labeled two-column gallery,
-source SHA, run link, and captured/expected count. Missing screens are visible and never filled
-from an older run. Each refresh is one screenshot-only commit above current main; images use
-immutable commit URLs, while the current PR discussion survives. The branch is reserved for this
-publisher, auto-merge stays disabled, and the PR must not be merged. Repository settings must allow
-GitHub Actions to create PRs; caller observers grant contents/pull-requests write and actions read.
-Apps own the version-1 screen inventory (`id`, `title`, `attachment`) and synthetic XCTest fixtures;
-new full-screen destinations require both an inventory entry and a named capture. Modals and
-external websites are optional. Failed nightly runs still publish available evidence and an
-explicit incomplete status. A manual observer dispatch can retry a completed run without uploading
-another build. The fixed publisher concurrency group and run-number guard prevent older runs from
-replacing newer galleries.
+Screenshots are reviewed from the nightly run itself: every named XCTest attachment is exported
+from the run's `.xcresult` into its `ios-screenshots-<run>-<attempt>` artifact, kept for 14 days.
+The full `.xcresult` is uploaded only when tests fail. Apps own a screen inventory
+(`qa/ios-screens.json`: `id`, `title`, `attachment`) and synthetic XCTest fixtures; new
+full-screen destinations require both an inventory entry and a named capture. Modals and external
+websites are optional. Morpheus no longer publishes these screenshots into a standing
+`nightly-ios-visual-qa` draft PR: that gallery never merged, lived permanently in each app's
+open-PR list, and was retired on 2026-09-28 (MO-26-09-28-18.35.26). Apps keep a contract test so
+a caller of the removed publisher does not return.
 
 `ios-testflight-upload` uses a composite action because of the same constraint that shapes
 `ios-nightly-build`: a cross-repository reusable workflow receives none

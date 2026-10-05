@@ -378,16 +378,28 @@ jobs:
         id: ios_paths
         run: |
           set -euo pipefail
+          # A runner that keeps a build cache between jobs (the Mac mini's
+          # ephemeral VMs mount one per repo and slot) names it in
+          # MORPHEUS_IOS_CI_CACHE; DerivedData and the package checkouts live
+          # there at a path that never changes, so incremental builds survive
+          # the VM. Everything else stays under the job's own temp directory.
           ios_ci_root="$RUNNER_TEMP/ios-ci"
-          mkdir -p "$ios_ci_root/SourcePackages" "$ios_ci_root/DerivedData"
+          if [ -n "${MORPHEUS_IOS_CI_CACHE:-}" ] && [ -d "$MORPHEUS_IOS_CI_CACHE" ]; then
+            cache_root="$MORPHEUS_IOS_CI_CACHE"
+            echo "cached=true" >> "$GITHUB_OUTPUT"
+          else
+            cache_root="$ios_ci_root"
+            echo "cached=false" >> "$GITHUB_OUTPUT"
+          fi
+          mkdir -p "$cache_root/SourcePackages" "$cache_root/DerivedData" "$ios_ci_root"
           # Cancellation can leave a child writing after the next job starts.
           # Never reuse or clear its evidence path. The random suffix also
           # separates multiple calls/jobs within the same run and attempt.
           output_root=$(mktemp -d "$ios_ci_root/run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.XXXXXX")
           mkdir -p "$output_root/Results" "$output_root/Logs" "$output_root/Screenshots"
           {
-            echo "SOURCE_PACKAGES=$ios_ci_root/SourcePackages"
-            echo "DERIVED_DATA=$ios_ci_root/DerivedData"
+            echo "SOURCE_PACKAGES=$cache_root/SourcePackages"
+            echo "DERIVED_DATA=$cache_root/DerivedData"
             echo "RESULTS=$output_root/Results"
             echo "LOGS=$output_root/Logs"
             echo "SCREENSHOTS=$output_root/Screenshots"
@@ -399,11 +411,24 @@ jobs:
             echo "evidence-name=ios-test-evidence-${output_root##*/}"
           } >> "$GITHUB_OUTPUT"
 
+      # The selection lives in scripts/swift-changed-files.sh, reached through
+      # this action, so a consumer wanting the same check locally calls the same
+      # file rather than imitating the step below. The first one that imitated
+      # it drifted inside a commit (darwin-health/evo#281), and
+      # tests/swift-changed-files.test.ts now pins every caller to one list.
+      - name: Select changed Swift sources
+        id: swift-changed-files
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}
+        uses: cpheinrich/morpheus/.github/actions/swift-changed-files@main
+        with:
+          working-directory: ${{ inputs.working-directory }}
+
       - name: Lint changed Swift sources
         if: ${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}
         env:
           SWIFT_FORMAT_CONFIGURATION: ${{ inputs.swift-format-configuration }}
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          SWIFT_CHANGED_FILES: ${{ steps.swift-changed-files.outputs.file }}
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
@@ -415,16 +440,9 @@ jobs:
             --configuration "$configuration" >/dev/null
 
           swift_files=()
-          pathspec=":(glob)$WORKING_DIRECTORY/**/*.swift"
-          if git rev-parse --verify HEAD^1 >/dev/null 2>&1; then
-            while IFS= read -r -d '' file; do
-              swift_files+=("$file")
-            done < <(git diff-tree --no-commit-id --name-only --diff-filter=ACMR -r -z HEAD^1 HEAD -- "$pathspec")
-          else
-            while IFS= read -r -d '' file; do
-              swift_files+=("$file")
-            done < <(git ls-files -z -- "$pathspec")
-          fi
+          while IFS= read -r -d '' file; do
+            swift_files+=("$file")
+          done < "$SWIFT_CHANGED_FILES"
 
           if [ "${#swift_files[@]}" -eq 0 ]; then
             echo "No changed Swift sources to lint."
@@ -439,7 +457,8 @@ jobs:
             "${swift_files[@]}"
 
       - name: Cache resolved Swift packages
-        if: ${{ steps.scope.outputs.run == 'true' }}
+        # A runner-provided cache directory already keeps the checkouts.
+        if: ${{ steps.scope.outputs.run == 'true' && steps.ios_paths.outputs.cached != 'true' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ runner.temp }}/ios-ci/SourcePackages
@@ -611,8 +630,16 @@ jobs:
           # `-retry-tests-on-failure` re-runs only the tests that failed, so a
           # flake costs seconds instead of the whole job. It does not weaken the
           # gate: a test that fails every attempt still fails the run.
+          #
+          # Each retry relaunches the test host. Without that, every attempt
+          # shares one process, and a daemon the process talks to (the
+          # simulator's StoreKit ledger, for one) that has stopped answering
+          # fails all of them within milliseconds of each other: three
+          # executions, one data point. A relaunch gives the retry the fresh
+          # process a flake needs and costs a few seconds of app launch.
           if [ "${TEST_ITERATIONS:-0}" != "0" ]; then
-            args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS")
+            args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS"
+              -test-repetition-relaunch-enabled YES)
           fi
           if [ "$FIREBASE_EMULATORS" = "true" ]; then
             printf -v test_command '%q ' xcodebuild test-without-building "${args[@]}"

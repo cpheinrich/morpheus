@@ -11,11 +11,14 @@ import { checkGoogleAuthConfiguration, configureGoogleAuth } from "./firebase.js
 import { printRules, rules as hqRules } from "./hq.js";
 import * as registry from "./registry.js";
 import { run as doctorRun } from "./doctor.js";
+import { run as changedSwiftRun } from "../ios/changed-swift.js";
+import { run as nightlyCoreRun } from "../ios/nightly-vendor.js";
 import { mark as initMark, status as initStatus } from "./onboarding.js";
 import { init as initScaffold } from "./init.js";
 import { webAddConsumerAuth, webInit, webStatus } from "./web.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
+import { ghManagerApply, ghManagerDigest, ghManagerPrompt, ghManagerRoutes, ghManagerSweep } from "./gh-manager.js";
 import { prompt as reviewPrompt, reviewDelivery, reviewNeeded, prepareReview } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
@@ -25,6 +28,7 @@ import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
 import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
+import { dispatchQaComments } from "./qa.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
     if (command === "check" || command === undefined)
@@ -43,6 +47,33 @@ async function dispatchSelf({ flags, command, rest }) {
 async function dispatchDoctor({ flags }) {
     return doctorRun(process.cwd(), flags.all, flags.offline);
 }
+async function dispatchIos({ flags, command, rest }) {
+    if (command === "changed-swift") {
+        // Positional, not `--dir`: that flag means the product directory
+        // everywhere else and defaults to `hq/product`, so reading it here would
+        // answer confidently about the roadmap folder — an empty list and a
+        // clean exit for a directory nobody named.
+        const workingDirectory = rest[0];
+        if (!workingDirectory) {
+            console.error("Usage: morpheus ios changed-swift <directory> [--base <ref>] [--worktree] [--nul]");
+            return 1;
+        }
+        return changedSwiftRun({
+            workingDirectory,
+            // Only when typed. `--base` carries `origin/main` by default for the
+            // roadmap commands, and passing that on would make the commit-oriented
+            // mode — the one CI uses — unreachable, and would fail outright in a
+            // repository whose trunk is not called that or which has no remote.
+            base: flags.baseGiven ? flags.base : undefined,
+            worktree: flags.worktree,
+            nul: flags.nul,
+        });
+    }
+    if (command === "nightly-core")
+        return nightlyCoreRun(rest[0], rest[1]);
+    console.error(`Unknown ios command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+}
 async function dispatchCodebaseMemory({ flags, command }) {
     if (command === "install" || command === undefined) {
         return codebaseMemoryInstall(process.cwd(), flags.check);
@@ -60,6 +91,26 @@ async function dispatchHeartbeat({ flags, dir }) {
         // `dispatch: true` in morpheus.json is not silently turned off.
         ...(flags.dispatch ? { dispatch: true } : {}),
     });
+}
+async function dispatchGhManager({ flags, command, rest }) {
+    try {
+        if (command === "sweep")
+            return ghManagerSweep(rest[0], flags.out);
+        if (command === "routes")
+            return ghManagerRoutes(rest[0], rest[1], flags.out, flags.dryRun);
+        if (command === "prompt")
+            return ghManagerPrompt(rest[0], rest[1], rest[2], flags.out);
+        if (command === "apply")
+            return ghManagerApply(rest[0], rest[1], rest[2], rest[3], flags.out, flags.dryRun);
+        if (command === "digest")
+            return ghManagerDigest(rest[0], rest[1], rest[2], flags.dryRun);
+    }
+    catch (error) {
+        console.error(`✗ ${error instanceof Error ? error.message : String(error)}`);
+        return 1;
+    }
+    console.error(`Unknown gh-manager command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
 }
 async function dispatchVoice({ flags, command, rest, dir }) {
     if (command === "knowledge")
@@ -339,6 +390,13 @@ async function dispatchContext({ flags, command }) {
     console.error(`Unknown context command "${command}".\n\n${HELP}`);
     return 1;
 }
+async function dispatchQa({ flags, command, rest }) {
+    if (command === "comments") {
+        return dispatchQaComments(process.cwd(), rest[0], rest.slice(1), flags.project);
+    }
+    console.error(`Unknown qa command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+}
 async function dispatchCheck({ flags, command, dir }) {
     if (command === "pr")
         return pr(dir, flags.base);
@@ -411,8 +469,10 @@ async function dispatchPm({ flags, command, rest, dir }) {
 const groups = {
     "self": dispatchSelf,
     "doctor": dispatchDoctor,
+    "ios": dispatchIos,
     "codebase-memory": dispatchCodebaseMemory,
     "heartbeat": dispatchHeartbeat,
+    "gh-manager": dispatchGhManager,
     "voice": dispatchVoice,
     "tokens": dispatchTokens,
     "research-library": dispatchResearchLibrary,
@@ -428,6 +488,7 @@ const groups = {
     "team": dispatchTeam,
     "context": dispatchContext,
     "check": dispatchCheck,
+    "qa": dispatchQa,
     pm: dispatchPm,
 };
 export async function dispatch(flags) {

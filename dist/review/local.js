@@ -63,7 +63,7 @@ export const FINALIZATION_CEILING_MINUTES = 5;
  * a real turn however it is described: this is the reason there is no blanket documentation
  * exemption. Explanatory prose that restates behaviour already reviewed is a different thing.
  */
-const NORMATIVE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$|(?:^|\/)morpheus\.json$|(?:^|\/)\.(?:github|ci|morpheus)\//i;
+export const NORMATIVE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$|(?:^|\/)morpheus\.json$|(?:^|\/)\.(?:github|ci|morpheus)\//i;
 export const ReviewRecord = z.object({
     version: z.union([z.literal(1), z.literal(2)]),
     base: Sha,
@@ -163,7 +163,7 @@ export function reviewRequired(config) {
 export function git(root, args) {
     return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 8 * 1024 * 1024 }).trim();
 }
-function isAncestor(root, older, newer) {
+export function isAncestor(root, older, newer) {
     try {
         git(root, ["merge-base", "--is-ancestor", older, newer]);
         return true;
@@ -228,10 +228,11 @@ export function validateReviewRecord(record) {
     // reviewer cleared the code. It spends one of the remaining turns and must name the scope
     // decision in its scopeReason, so the record shows why a cleared review was reopened. A turn
     // after blocked, or after substantive initial findings, is the ordinary fix follow-up and needs
-    // none. An incomplete turn exhausted its budget and escalates; nothing follows it.
+    // none. An incomplete turn may be missing evidence; only explicit human authorization can
+    // resume it. Per-turn budget checks still reject exhausted reviews, including historical turns.
     if (!substantive && turns[0] && !turns[0].scopeReason)
         throw new Error("a follow-up after a clean initial review is a late correction and needs an explicit scope reason");
-    // One automatic finalization-only turn per pull request, and only as the last word. It finishes
+    // One automatic finalization-only turn per pull request; later turns need human authorization. It finishes
     // an approved change: it cannot resolve a substantive finding, run long, or be repeated, and a
     // reviewer that still has a concern records blocked or incomplete instead, which stays blocked.
     const finalizations = turns.filter(turn => turn.finalization);
@@ -239,8 +240,9 @@ export function validateReviewRecord(record) {
         throw new Error("a pull request gets one automatic finalization-only turn; a second needs explicit humanAuthorization as a substantive turn");
     const finalization = finalizations[0];
     if (finalization) {
-        if (finalization !== turns[turns.length - 1])
-            throw new Error("the finalization turn is the last word on a pull request; nothing follows it automatically");
+        const finalizationIndex = turns.indexOf(finalization);
+        if (turns.slice(finalizationIndex + 1).some(turn => !turn.humanAuthorization))
+            throw new Error("every turn after finalization requires explicit humanAuthorization; nothing follows it automatically");
         if (finalization.outcome !== "cleared")
             throw new Error(`a finalization turn that is ${finalization.outcome} leaves the pull request blocked; it cannot be recorded as finalization`);
         if (finalization.elapsedMinutes > FINALIZATION_CEILING_MINUTES)
@@ -249,7 +251,7 @@ export function validateReviewRecord(record) {
             throw new Error("a finalization turn must name what it finalized in its scopeReason, so it cannot quietly become a new topic");
         // It finalizes a clearance, so there has to be one. Without this, the five-minute automatic turn
         // is what turns a review the reviewer blocked on a substantive finding into a merge.
-        const previous = turns[turns.length - 2];
+        const previous = turns[finalizationIndex - 1];
         if (previous && previous.outcome !== "cleared")
             throw new Error(`a finalization turn only follows a cleared turn; the ${previous.outcome} turn before it leaves the pull request blocked`);
         if (unconditional && previous?.outcome !== "cleared")
@@ -268,12 +270,12 @@ export function validateReviewRecord(record) {
             if (turn.outcome !== "cleared" || !coversLast)
                 throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
         }
-        else if (turn.outcome === "incomplete" || (turn.outcome === "cleared" && !next.scopeReason)) {
-            throw new Error("a third turn is allowed only after the second turn returned blocked, or after a cleared turn as a late correction with an explicit scope reason");
+        else if ((turn.outcome === "incomplete" && !next.humanAuthorization) || (turn.outcome === "cleared" && !next.scopeReason)) {
+            throw new Error("a third turn is allowed only after the second turn returned blocked, after a cleared turn as a late correction with an explicit scope reason, or after an incomplete turn with explicit humanAuthorization");
         }
     });
 }
-function changedPaths(root, older, newer) {
+export function changedPaths(root, older, newer) {
     return git(root, ["diff", "--name-only", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean);
 }
 /** True when Git's own merge of the two parents reproduces this commit's tree exactly: nothing was hand-edited. */
@@ -294,7 +296,7 @@ function exactMerge(root, commit, parents) {
  * hand-resolved one passes when the record names it, so the unreviewed resolution is visible rather
  * than hidden. Any other commit may touch only the allowed paths. Returns the merges it accepted.
  */
-function verifyUncoveredCommits(root, record, from, to, trunk, allowed, refusal) {
+export function verifyUncoveredCommits(root, record, from, to, trunk, allowed, refusal) {
     const named = new Map((record.trunkIntegrations ?? []).map(entry => [entry.commit, entry]));
     const accepted = new Set();
     for (const commit of git(root, ["rev-list", "--first-parent", "--reverse", `${from}..${to}`]).split("\n").filter(Boolean)) {
@@ -369,13 +371,15 @@ export function checkLocalReview(opts) {
         }
         // The attestation is checked against the diff it claims to cover, so an automatic turn cannot
         // clear implementation by naming a documentation path.
-        if (last?.finalization) {
-            const problems = finalizationProblems(record, last, path);
+        for (const [index, turn] of turns.entries()) {
+            if (!turn.finalization)
+                continue;
+            const problems = finalizationProblems(record, turn, path);
             if (problems.length)
                 throw new Error(`finalization turn is out of scope: ${problems.join("; ")}`);
-            const from = turns[turns.length - 2]?.commit ?? record.reviewed;
-            const allowed = new Set([path, ...conditional, ...last.finalization.paths]);
-            for (const commit of verifyUncoveredCommits(opts.root, record, from, last.commit, opts.base, allowed, "a finalization turn may cover only the review record, previously conditioned paths and the explanatory documentation it attested"))
+            const from = turns[index - 1]?.commit ?? record.reviewed;
+            const allowed = new Set([path, ...conditional, ...turn.finalization.paths]);
+            for (const commit of verifyUncoveredCommits(opts.root, record, from, turn.commit, opts.base, allowed, "a finalization turn may cover only the review record, previously conditioned paths and the explanatory documentation it attested"))
                 merges.add(commit);
         }
         for (const commit of verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)"))
