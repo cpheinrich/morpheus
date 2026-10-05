@@ -122,6 +122,38 @@ export function pageHtml(opts) {
   let focusedId = null;
   let escArmedAt = 0;
   let nextN = 1;
+
+  // Unsent pins and the draft being typed outlive a page reload, a server
+  // restart or a simulator relaunch: they live in sessionStorage until Send
+  // succeeds or the tab is closed.
+  const storageKey = 'morpheus-qa-comments:' + project + ':' + previewUrl;
+  function persist() {
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({
+        pins,
+        nextN,
+        focusedId,
+        draft: textEl.disabled ? null : textEl.value,
+      }));
+    } catch (_) {}
+  }
+  function forget() {
+    try { sessionStorage.removeItem(storageKey); } catch (_) {}
+  }
+  function restore() {
+    let saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch (_) {}
+    if (!saved || !Array.isArray(saved.pins) || saved.pins.length === 0) return false;
+    pins = saved.pins.filter((p) => p && typeof p.id === 'string' && typeof p.normX === 'number' && typeof p.normY === 'number')
+      .map((p) => ({ ...p, text: typeof p.text === 'string' ? p.text : '' }));
+    nextN = Number.isInteger(saved.nextN) && saved.nextN > pins.length ? saved.nextN : pins.length + 1;
+    if (typeof saved.focusedId === 'string' && pins.some((p) => p.id === saved.focusedId)) {
+      focusedId = saved.focusedId;
+      textEl.disabled = false;
+      textEl.value = typeof saved.draft === 'string' ? saved.draft : (pins.find((p) => p.id === focusedId)?.text ?? '');
+    }
+    return true;
+  }
   let dragging = false;
   let pointerSent = false;
   let lastCoords = null;
@@ -202,6 +234,7 @@ export function pageHtml(opts) {
     if (!p) return;
     p.text = textEl.value;
     renderList();
+    persist();
     setStatus('Saved pin ' + p.n + (p.text.trim() ? '' : ' (empty)'), 'ok');
   }
 
@@ -215,6 +248,7 @@ export function pageHtml(opts) {
     setStatus('Deleted pin ' + p.n);
     renderList();
     renderPins();
+    persist();
   }
 
   function placePin(normX, normY) {
@@ -235,6 +269,7 @@ export function pageHtml(opts) {
     setStatus('Pin ' + pin.n + ' placed — type a comment, Enter to save');
     renderList();
     renderPins();
+    persist();
   }
 
   // Picture rect inside the stage after object-fit: contain (no letterbox when aspects match).
@@ -277,6 +312,7 @@ export function pageHtml(opts) {
   }
 
   textEl.addEventListener('focus', () => { simFocused = false; });
+  textEl.addEventListener('input', persist);
   document.querySelector('aside')?.addEventListener('pointerdown', () => { simFocused = false; });
 
   async function sendKey(type, code) {
@@ -468,6 +504,7 @@ export function pageHtml(opts) {
       focusedId = null;
       textEl.value = '';
       textEl.disabled = true;
+      forget();
       renderList();
       renderPins();
       setStatus('Sent ' + json.id + ' → local/qa-comments/pending/ (pins cleared)', 'ok');
@@ -478,6 +515,11 @@ export function pageHtml(opts) {
   }
 
   sendBtn.onclick = () => { void sendBatch(); };
+  if (restore()) {
+    renderList();
+    renderPins();
+    setStatus('Restored ' + pins.length + ' unsent pin' + (pins.length === 1 ? '' : 's') + ' from before the reload');
+  }
   window.addEventListener('resize', () => requestAnimationFrame(layoutStream));
   stream.addEventListener('load', () => requestAnimationFrame(layoutStream));
   if (stageWrap && typeof ResizeObserver !== 'undefined') {

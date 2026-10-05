@@ -87,7 +87,9 @@ finger down until the next tap, which made switches flip late or flip two contro
 | **⌘Enter** / Ctrl+Enter | Send batch (all pins with text) |
 | **Esc Esc** (within ~1s) | Delete the focused pin (first Esc saves/blurs) |
 
-Pins stay for the session until deleted or cleared after a successful **Send**.
+Pins stay for the session until deleted or cleared after a successful **Send**. They and the
+draft being typed are mirrored into the tab's `sessionStorage`, so a page reload, an overlay
+server restart or a simulator relaunch brings them back; closing the tab forgets them.
 
 Header hint: *Right click to add comment. Press Esc twice to Delete*.
 
