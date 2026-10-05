@@ -285,6 +285,8 @@ describe("qa comments serve", () => {
     const home = await fetch(server.url);
     expect(home.ok).toBe(true);
     const html = await home.text();
+    expect(html).toContain("sessionStorage.setItem(storageKey");
+    expect(html).toContain("'morpheus-qa-comments:' + project + ':' + previewUrl");
     expect(html).toContain("Right click to add comment");
     expect(html).toContain(previewUrl);
     expect(html).toContain("pointer-events: none");

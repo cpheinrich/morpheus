@@ -127,6 +127,46 @@ export function pageHtml(opts: {
   let focusedId = null;
   let escArmedAt = 0;
   let nextN = 1;
+
+  // Unsent pins and the draft being typed outlive a page reload, a server
+  // restart or a simulator relaunch: they live in sessionStorage until Send
+  // succeeds or the tab is closed.
+  const storageKey = 'morpheus-qa-comments:' + project + ':' + previewUrl;
+  function persist() {
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({
+        pins,
+        nextN,
+        focusedId,
+        draft: textEl.disabled ? null : textEl.value,
+      }));
+    } catch (_) {}
+  }
+  function forget() {
+    try { sessionStorage.removeItem(storageKey); } catch (_) {}
+  }
+  function restore() {
+    let saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch (_) {}
+    if (!saved || !Array.isArray(saved.pins) || saved.pins.length === 0) return false;
+    const usable = saved.pins
+      .filter((p) => p && typeof p.id === 'string' && Number.isInteger(p.n) && p.n > 0
+        && typeof p.normX === 'number' && typeof p.normY === 'number')
+      .map((p) => ({ ...p, text: typeof p.text === 'string' ? p.text : '', createdAt: typeof p.createdAt === 'string' ? p.createdAt : new Date().toISOString() }));
+    if (usable.length === 0) {
+      forget();
+      return false;
+    }
+    pins = usable;
+    const highest = Math.max(...pins.map((p) => p.n));
+    nextN = Number.isInteger(saved.nextN) && saved.nextN > highest ? saved.nextN : highest + 1;
+    if (typeof saved.focusedId === 'string' && pins.some((p) => p.id === saved.focusedId)) {
+      focusedId = saved.focusedId;
+      textEl.disabled = false;
+      textEl.value = typeof saved.draft === 'string' ? saved.draft : (pins.find((p) => p.id === focusedId)?.text ?? '');
+    }
+    return true;
+  }
   let dragging = false;
   let pointerSent = false;
   let lastCoords = null;
@@ -200,6 +240,7 @@ export function pageHtml(opts: {
     setStatus('Editing pin ' + p.n + ' — Enter saves, Esc Esc deletes');
     renderList();
     renderPins();
+    persist();
   }
 
   function saveOpenPin() {
@@ -207,6 +248,7 @@ export function pageHtml(opts: {
     if (!p) return;
     p.text = textEl.value;
     renderList();
+    persist();
     setStatus('Saved pin ' + p.n + (p.text.trim() ? '' : ' (empty)'), 'ok');
   }
 
@@ -220,6 +262,7 @@ export function pageHtml(opts: {
     setStatus('Deleted pin ' + p.n);
     renderList();
     renderPins();
+    persist();
   }
 
   function placePin(normX, normY) {
@@ -240,6 +283,7 @@ export function pageHtml(opts: {
     setStatus('Pin ' + pin.n + ' placed — type a comment, Enter to save');
     renderList();
     renderPins();
+    persist();
   }
 
   // Picture rect inside the stage after object-fit: contain (no letterbox when aspects match).
@@ -282,6 +326,7 @@ export function pageHtml(opts: {
   }
 
   textEl.addEventListener('focus', () => { simFocused = false; });
+  textEl.addEventListener('input', persist);
   document.querySelector('aside')?.addEventListener('pointerdown', () => { simFocused = false; });
 
   async function sendKey(type, code) {
@@ -473,6 +518,7 @@ export function pageHtml(opts: {
       focusedId = null;
       textEl.value = '';
       textEl.disabled = true;
+      forget();
       renderList();
       renderPins();
       setStatus('Sent ' + json.id + ' → local/qa-comments/pending/ (pins cleared)', 'ok');
@@ -483,6 +529,11 @@ export function pageHtml(opts: {
   }
 
   sendBtn.onclick = () => { void sendBatch(); };
+  if (restore()) {
+    renderList();
+    renderPins();
+    setStatus('Restored ' + pins.length + ' unsent pin' + (pins.length === 1 ? '' : 's') + ' from before the reload');
+  }
   window.addEventListener('resize', () => requestAnimationFrame(layoutStream));
   stream.addEventListener('load', () => requestAnimationFrame(layoutStream));
   if (stageWrap && typeof ResizeObserver !== 'undefined') {
