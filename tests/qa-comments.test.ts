@@ -75,6 +75,10 @@ describe("qa comment batches", () => {
 
     const again = await showBatch(root, sample().id);
     expect(again?.batch.status).toBe("resolved");
+    const resolvedFile = join(again!.path, "batch.json");
+    const original = await readFile(resolvedFile, "utf8");
+    expect(await resolveBatch(root, sample().id, "second-agent")).toEqual(resolved);
+    expect(await readFile(resolvedFile, "utf8")).toBe(original);
   });
 
   it("CLI pending prints nothing for an empty inbox", async () => {
@@ -294,7 +298,7 @@ describe("qa comments serve", () => {
 
     const res = await fetch(`${server.url}api/batches`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: new URL(server.url).origin, "Sec-Fetch-Site": "same-origin" },
       body: JSON.stringify({
         preview: { url: previewUrl, kind: "serve-sim" },
         comments: [
@@ -336,6 +340,29 @@ describe("qa comments serve", () => {
     });
     expect(evil.status).toBe(403);
     expect(await listPending(root)).toHaveLength(1);
+
+    const local = await fetch(`${server.url}api/batches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: `http://localhost:${server.port}`, "Sec-Fetch-Site": "same-origin" },
+      body: JSON.stringify({ comments: sample().comments }),
+    });
+    expect(local.status).toBe(201);
+    for (const [origin, site] of [
+      [`http://localhost:${server.port + 1}`, "same-origin"],
+      [`https://localhost:${server.port}`, "same-origin"],
+      [`http://localhost.evil.example:${server.port}`, "same-origin"],
+      ["null", "same-origin"],
+      [`http://localhost:${server.port}`, "cross-site"],
+      [`http://127.0.0.1:${server.port}`, "cross-site"],
+    ]) {
+      const refused = await fetch(`${server.url}api/batches`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: origin!, "Sec-Fetch-Site": site! },
+        body: JSON.stringify({ comments: sample().comments }),
+      });
+      expect(refused.status, `${origin} / ${site}`).toBe(403);
+    }
+    expect(await listPending(root)).toHaveLength(2);
   });
 
   it("refuses non-loopback preview hosts", async () => {
@@ -393,6 +420,14 @@ describe("qa comments webhook", () => {
       url: "http://127.0.0.1:9/from-env",
       authorization: "env-token",
     });
+
+    for (const empty of ["", "   "]) {
+      process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL = empty;
+      expect(await resolveWebhookConfig(root)).toBeNull();
+    }
+    delete process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL;
+    process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION = "";
+    expect(await resolveWebhookConfig(root)).toEqual({ url: "http://127.0.0.1:9/from-file" });
   });
 
   it("normalizes Authorization to Bearer when missing the prefix", () => {

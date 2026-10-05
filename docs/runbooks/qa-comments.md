@@ -41,12 +41,16 @@ Lakina, …), create the gitignored file:
 ```
 
 `authorization` is optional. Use a full `Bearer …` value or a bare token (the
-server prefixes `Bearer` when missing). `local/` is already gitignored — never
+server prefixes `Bearer` when missing). The file applies to **every operator** writing
+batches to that root; it is not scoped to an agent or browser session. `local/` is already gitignored — never
 commit the URL or key.
 
 **Session overrides** (on the `morpheus qa comments serve` process):
-- `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces `url` when set
-- `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces `authorization` when set
+- `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces `url` when set; an empty value disables waking, including file config
+- `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces `authorization` when set; an empty value clears it
+
+For QA that should not wake the configured routine, start that serve process with
+`MORPHEUS_QA_COMMENTS_WEBHOOK_URL= morpheus qa comments serve ...`.
 
 Send **always succeeds** without a webhook. If neither env nor file is set, the
 server logs one hint line and continues. The POST is fire-and-forget (≈2.5s
@@ -130,12 +134,15 @@ receives `local/qa-comments/` (defaults to cwd) — for Evo QA, pass Evo's path
 even when the Morpheus CLI is running from a Morpheus worktree. `--stream-url`
 skips MJPEG discovery. `--project <name>` is the global flag (the parser
 consumes it before `qa`) and is what `batch.project` records. POSTs must be
-`Content-Type: application/json` from this server's own origin; a cross-site
+`Content-Type: application/json` from `http://127.0.0.1:<port>` or
+`http://localhost:<port>` at the bound overlay port; a cross-site
 page cannot inject a batch or drive the simulator. `frame.path` is recorded
 only when a PNG was actually written.
 
 Exit non-zero when a named batch is missing. `pending` with an empty inbox
-prints nothing and exits 0 — agents can poll safely.
+prints nothing and exits 0 — agents can poll safely. Resolving an already-resolved
+batch returns the original record unchanged, preserving its first `resolvedAt` and
+`resolvedBy`.
 
 ## Operator loop
 
@@ -156,6 +163,18 @@ prints nothing and exits 0 — agents can poll safely.
 4. Agent (cwd = project root): `morpheus qa comments pending`, then `show` /
    `resolve`. Until this lands on Morpheus main, use
    `pnpm morpheus` from the claim worktree with `--root` pointing at the project.
+
+## Preview and overlay lifecycles
+
+The overlay process and the project preview are separate. Stopping or restarting
+`preview.sh` does not stop an existing overlay. Use Ctrl+C in the overlay terminal
+when QA ends; restart the preview first, then the overlay, after a simulator change.
+A missing stream shows “No MJPEG stream — pass --stream-url or start serve-sim first.”
+
+`/health` reports the overlay's configuration and process health; it does **not**
+probe the upstream stream. Confirm live app pixels before QA. If port 3456 is busy,
+inspect `lsof -nP -iTCP:3456 -sTCP:LISTEN`, stop the overlay you own, or select another
+`--port`. Do not stop another operator's process merely to reclaim the default port.
 
 ## Hooking ios-qa / preview.sh later
 

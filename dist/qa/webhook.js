@@ -10,8 +10,8 @@ export const QA_COMMENTS_WEBHOOK_FILE = `${QA_COMMENTS_DIR}/webhook.json`;
  * `{ "url": "…", "authorization"?: "Bearer …" | "<token>" }`.
  *
  * Session overrides:
- * - `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces url when set
- * - `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces authorization when set
+ * - `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces url when set; empty disables waking
+ * - `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces authorization when set; empty clears it
  */
 export async function resolveWebhookConfig(root) {
     let url;
@@ -28,10 +28,10 @@ export async function resolveWebhookConfig(root) {
         /* absent or unreadable — fine */
     }
     const envUrl = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL?.trim();
-    if (envUrl)
+    if (envUrl !== undefined)
         url = envUrl;
     const envAuth = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION?.trim();
-    if (envAuth)
+    if (envAuth !== undefined)
         authorization = envAuth;
     if (!url)
         return null;

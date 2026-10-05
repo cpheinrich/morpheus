@@ -171,7 +171,7 @@ export async function dispatchQaComments(
           if (info.streamUrl) console.log(`Stream proxied from: ${info.streamUrl}`);
           else {
             console.log(
-              "No MJPEG stream discovered — Comment mode overlays the iframe (frame.png may be omitted).",
+              "No MJPEG stream — pass --stream-url or start serve-sim first.",
             );
           }
           console.log("Open the overlay URL in a browser. Ctrl+C stops the server.");

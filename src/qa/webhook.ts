@@ -29,8 +29,8 @@ export interface QaCommentsWebhookConfig {
  * `{ "url": "…", "authorization"?: "Bearer …" | "<token>" }`.
  *
  * Session overrides:
- * - `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces url when set
- * - `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces authorization when set
+ * - `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces url when set; empty disables waking
+ * - `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces authorization when set; empty clears it
  */
 export async function resolveWebhookConfig(
   root: string,
@@ -51,9 +51,9 @@ export async function resolveWebhookConfig(
   }
 
   const envUrl = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL?.trim();
-  if (envUrl) url = envUrl;
+  if (envUrl !== undefined) url = envUrl;
   const envAuth = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION?.trim();
-  if (envAuth) authorization = envAuth;
+  if (envAuth !== undefined) authorization = envAuth;
 
   if (!url) return null;
   return authorization ? { url, authorization } : { url };
