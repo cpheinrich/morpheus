@@ -5,7 +5,7 @@
 > [#320](https://github.com/cpheinrich/morpheus/pull/320) pins the smallest fully patched release
 > admitted by the parent range and makes the production audit clean.
 
-Baseline: `44ef974a7d7f` (`origin/main`). Scope: 1,265 tracked files, production and development
+Baseline: `44ef974a7d7f` (`origin/main`). Scope: 1,266 tracked files, production and development
 dependencies, dead-code and tracked-artifact inventories, configured source similarity,
 complexity, repository-native validation, governance records, and current-head hosted runs.
 
