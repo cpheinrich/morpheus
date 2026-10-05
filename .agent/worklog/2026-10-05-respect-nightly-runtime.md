@@ -39,4 +39,25 @@ pre-coordination CBM generation. No other session was interrupted. Direct source
 nightly-core.ts, its complete tests, the architecture contract and live Evo adapter/workflow.
 No graph freshness or completeness is claimed.
 
-Independent review is pending.
+Independent reviewer /root/review_nightly_runtime completed and cleared the exact remote head with no findings at high risk. The reviewer verified 37 focused tests, compiled-module probes for all three queue statuses in both orderings, duplicate-dispatch refusal, uncertain-upload and unresolved-reservation refusals, generated outputs, and live Evo adapter/workflow evidence. Consumer adoption remains EV-26-10-01-13.30.14; no activation is included.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "44ef974a7d7fc4fbb3f0d3e25c56c4eff2d9feb9",
+  "reviewed": "16e45194727c548ec22d0e1448ef7784d13a94e1",
+  "covered": "16e45194727c548ec22d0e1448ef7784d13a94e1",
+  "authorSession": "01a10d70-d792-73d1-92b1-2350f0a012fe",
+  "reviewerSession": "/root/review_nightly_runtime",
+  "risk": "high",
+  "elapsedMinutes": 3.8,
+  "timing": {
+    "source": "clock",
+    "durationMs": 228000,
+    "evidence": "Author clock immediately before spawn 2026-10-05 19:24:48 UTC; first parent clock observing returned result 2026-10-05 19:28:36 UTC. Reviewer final clock was 19:27:26 UTC. Full measured invocation through parent observation is 228000 ms, including tool time; no workload estimate."
+  },
+  "outcome": "complete",
+  "summary": "Independent reviewer /root/review_nightly_runtime completed and cleared the exact remote head with no findings at high risk. The reviewer verified 37 focused tests, compiled-module probes for all three queue statuses in both orderings, duplicate-dispatch refusal, uncertain-upload and unresolved-reservation refusals, generated outputs, and live Evo adapter/workflow evidence. Consumer adoption remains EV-26-10-01-13.30.14; no activation is included.",
+  "findings": []
+}
+```
