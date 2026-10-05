@@ -36,7 +36,7 @@ Independent review cleared the normal-risk audit with no substantive findings. D
   "version": 2,
   "base": "44ef974a7d7fc4fbb3f0d3e25c56c4eff2d9feb9",
   "reviewed": "628cf424fa3396d3b0d0dc54d1e4b396bdeaefb0",
-  "covered": "628cf424fa3396d3b0d0dc54d1e4b396bdeaefb0",
+  "covered": "986322b05cddcd6ce6f0e165e9a6366d949b4e5f",
   "authorSession": "01a10ccb-946e-7cc2-b04f-2d8991fe1e9d",
   "reviewerSession": "01a10d0b-6e6a-7c13-a29e-2b9ab2f0b69a",
   "risk": "normal",
