@@ -3073,7 +3073,11 @@ Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination
 An optional `watch-paths` list uses Git pathspecs to compare the verified pull-request merge
 checkout to its first parent. When nothing matches, the same job reports success after checkout
 without Xcode, simulator, package, build or test work; there is no separate selector or aggregate
-check. Manual/nightly calls and an empty list retain normal execution. Invalid comparison evidence
+check. Scoped PR checkouts fetch full history to verify that the merge's base descends from the
+event base, allowing GitHub to regenerate the merge after trunk advances. Its head must still match
+the event exactly. The diff uses the actual first parent, so changes already on trunk do not count
+as PR changes. Wrong parents or missing history fail with diagnostics. Other callers keep a
+depth-two checkout. Manual/nightly calls and an empty list retain normal execution. Invalid comparison evidence
 fails instead of bypassing. The job still briefly acquires its runner, so this avoids native work,
 not runner queue time. Callers own the path policy and still require independent review for changes.
 Callers may opt into a changed-source style gate with `swift-format-lint`; it validates the
@@ -3088,9 +3092,9 @@ worse than no local check at all. `tests/swift-changed-files.test.ts` pins the t
 repository state, so a pathspec or delimiter that drifts in either is caught there rather than in
 a consumer's pull request. The base a consumer compares against stays the consumer's: CI asks
 about a commit and its first parent, a developer asks what a branch changed since the trunk, and
-only the second has a merge base to speak of. The checkout retains only the commit and its first
-parent, which is enough to cover a pull request's synthetic merge commit and a push to `main`
-without downloading full history. Existing Swift is adopted incrementally: enabling the gate does
+only the second has a merge base to speak of. The formatter only requires the commit and its first
+parent, enough to cover a pull request's synthetic merge commit and a push to `main`; scoped PRs
+fetch full history separately for native-scope ancestry validation. Existing Swift is adopted incrementally: enabling the gate does
 not create a repository-wide formatting rewrite, while any Swift file being changed must leave the
 commit fully formatted.
 The caller supplies a shared Xcode scheme; that scheme or its optional test plan remains the source
