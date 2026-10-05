@@ -8,8 +8,9 @@ allowBuilds:
   esbuild: true
   protobufjs: false
 
-# Vite's PostCSS dependency permits the fixed patch release, but its previous
-# lockfile resolution retained nanoid 3.3.16 (GHSA-2v37-7h3g-55p8).
+# Parent ranges permit both security patches, but prior lockfile resolutions
+# retained brace-expansion 5.0.9 (three production advisories) and nanoid 3.3.16
+# through Vite's PostCSS dependency (GHSA-2v37-7h3g-55p8).
 overrides:
   brace-expansion: 5.0.12
   nanoid: 3.3.18
