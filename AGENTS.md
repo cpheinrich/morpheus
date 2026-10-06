@@ -498,6 +498,15 @@ findings in the same session and lands the result; it marks abandoned drafts inc
 obsolete work, and escalates what needs a human with `manager:needs-human`.
 [`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is the whole design.
 
+**Morpheus is opted in too**, with its policy in `.github/morpheus-gh-manager.json` and its
+additions to the session brief in `.github/gh-manager-prompt.md`. Because this repository is the
+manager's own engine, the policy's `protectedPaths` keep the manager from clearing a change to
+itself (`src/gh-manager/`, its CLI, `check pr`, `src/review/`) or to what other projects inherit
+(`src/init/templates.ts`, the review and manager runbooks); `.github/` is already normative. Such a
+pull request needs the ordinary independent review. If you are deliberately leaving a pull request
+open for Chris to decide, say so plainly in `## Open questions` so the manager escalates it instead
+of treating it as a stall.
+
 **It is a backstop, not a plan.** The authoring agent still owns its review loop, CI and merge, and
 must not leave a pull request for the manager to finish. The manager waits 8 hours after a ready
 pull request's last commit and 48 after a draft's before touching it, and what it lands carries a
