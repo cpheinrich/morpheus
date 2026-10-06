@@ -58,3 +58,50 @@ happen outside this pull request.
 - `managerPolicy` in `src/review/manager.ts` reads the policy at the PR's head, so a PR could in
   principle drop a protected path from its own policy. It cannot benefit: the policy file is under
   `.github/`, which is normative, so that PR is gated anyway.
+
+## Independent review
+
+One fresh reviewer session reviewed b8d8648 at normal risk. It found one substantive gap, cleared on condition: check pr's gate logic and the waiver policies were not protected. It also found one minor over-escalation in the overlay. Both are fixed in bcde023.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "3e376b4189548eb06fe9b171e86e426892a64036",
+  "reviewed": "b8d8648c478f8e90d37e684feae1fb76a8c3d59b",
+  "covered": "bcde0234fa312bcb3d68948aa0d2199599b97204",
+  "authorSession": "27eae6da-fbd7-435d-a5ed-0ed0c3b55db2",
+  "reviewerSession": "a4b2da88bd27bb74b",
+  "risk": "normal",
+  "elapsedMinutes": 1.5419,
+  "timing": {
+    "source": "runner",
+    "durationMs": 92514,
+    "evidence": "Task notification for reviewer agent a4b2da88bd27bb74b: duration_ms=92514."
+  },
+  "outcome": "complete",
+  "summary": "One fresh reviewer session reviewed b8d8648 at normal risk. It found one substantive gap, cleared on condition: check pr's gate logic and the waiver policies were not protected. It also found one minor over-escalation in the overlay. Both are fixed in bcde023.",
+  "findings": [
+    {
+      "id": "S01",
+      "severity": "substantive",
+      "description": "protectedPaths omitted the gate logic check pr applies (src/check/pr.ts, src/paths.ts, src/dependabot/policy.ts, src/security/policy.ts), so the manager could clear a change to the rules every caller of pr-check.yml is judged by, and AGENTS.md claimed check pr was covered.",
+      "paths": [".github/morpheus-gh-manager.json", "tests/gh-manager.test.ts", "AGENTS.md", ".github/gh-manager-prompt.md"],
+      "disposition": "fixed",
+      "response": "Added src/check, src/paths.ts, src/dependabot/policy.ts and src/security/policy.ts to protectedPaths, one positive path from each to the test's engine list, and named them in AGENTS.md and the overlay.",
+      "condition": {
+        "paths": [".github/morpheus-gh-manager.json", "tests/gh-manager.test.ts", "AGENTS.md", ".github/gh-manager-prompt.md"],
+        "evidence": "pnpm typecheck && npx vitest run tests/gh-manager.test.ts, then full CI."
+      },
+      "conditionMet": "Commit bcde023 changed only the conditioned paths; pnpm typecheck passed and tests/gh-manager.test.ts passed 50/50; full CI runs on the PR."
+    },
+    {
+      "id": "M01",
+      "severity": "minor",
+      "description": "The overlay told the session to escalate engine and reusable-workflow PRs even when engine step 5 (a complete author review covering head, landed by a clean trunk merge) would land them.",
+      "paths": [".github/gh-manager-prompt.md"],
+      "disposition": "fixed",
+      "response": "Both escalation paragraphs now say step 5 still applies; escalation is for PRs that would rest on the manager's own review."
+    }
+  ]
+}
+```
