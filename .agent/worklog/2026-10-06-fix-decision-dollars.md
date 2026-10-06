@@ -31,7 +31,7 @@ One fresh reviewer session reviewed 670d1a5 at small risk and cleared it with no
   "version": 2,
   "base": "337b0cdff72a17905295edc6eb647aabdbf3c6b3",
   "reviewed": "670d1a54bcd16b61fffc1e86ce5f007235229469",
-  "covered": "670d1a54bcd16b61fffc1e86ce5f007235229469",
+  "covered": "5714b790f117fb3f91e2c79c3fab2c56bcf0c869",
   "authorSession": "27eae6da-fbd7-435d-a5ed-0ed0c3b55db2",
   "reviewerSession": "a8b60329eaf21724e",
   "risk": "small",
@@ -43,6 +43,21 @@ One fresh reviewer session reviewed 670d1a5 at small risk and cleared it with no
   },
   "outcome": "complete",
   "summary": "One fresh reviewer session reviewed 670d1a5 at small risk and cleared it with no findings: the instruction renders literally inside the template literal, the session can use its Write tool because nothing restricts tools, and the test pins the instruction under the Decision file heading.",
-  "findings": []
+  "findings": [],
+  "followUps": [
+    {
+      "reviewerSession": "a8b60329eaf21724e",
+      "commit": "5714b790f117fb3f91e2c79c3fab2c56bcf0c869",
+      "outcome": "cleared",
+      "scopeReason": "late correction after clearance: the roadmap item's status moved to review, which check pr requires when the PR opens",
+      "elapsedMinutes": 0.3998,
+      "timing": {
+        "source": "runner",
+        "durationMs": 23988,
+        "evidence": "Task notification for reviewer agent a8b60329eaf21724e, follow-up turn: duration_ms=23988."
+      },
+      "summary": "670d1a5..5714b79 changes records only: the roadmap status line and this worklog. The cleared code is unchanged."
+    }
+  ]
 }
 ```
