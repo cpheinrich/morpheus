@@ -34,6 +34,8 @@ export const TRUSTED_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"])
  * as `CONTRIBUTOR` to the manager: on its first Evo run every one of Chris's own pull requests
  * was skipped as untrusted. The repository permission is the fact the association stands in for.
  */
+// The endpoint's `permission` field reports a maintainer as `write` and triage as `read` (the exact
+// role is in `role_name`); `maintain` is listed in case that ever changes, and costs nothing.
 export const TRUSTED_PERMISSIONS = new Set(["admin", "maintain", "write"]);
 /** Lanes with their own deterministic maintainer. The manager reports on them and never touches them. */
 export const BOT_LANES = new Set(["morpheus-security[bot]", "dependabot[bot]", GH_MANAGER_LOGIN]);

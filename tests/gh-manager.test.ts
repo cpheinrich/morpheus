@@ -90,8 +90,11 @@ describe("routing one pull request", () => {
 
   it("trusts an author by repository permission when private org membership hides the association", () => {
     // The first Evo run: an organization owner with admin rights read as CONTRIBUTOR to the App.
+    // Exactly the route an OWNER gets, not merely "something other than untrusted".
+    const owner = route();
     for (const authorPermission of ["admin", "maintain", "write"]) {
-      expect(route({ authorAssociation: "CONTRIBUTOR", authorPermission }).reason, authorPermission).not.toBe("untrusted-author");
+      const routed = route({ authorAssociation: "CONTRIBUTOR", authorPermission });
+      expect({ route: routed.route, reason: routed.reason, detail: routed.detail }, authorPermission).toEqual({ route: owner.route, reason: owner.reason, detail: owner.detail });
     }
     // A fork is still someone else's branch, whatever their permission.
     expect(route({ authorAssociation: "CONTRIBUTOR", authorPermission: "admin", isCrossRepository: true })).toMatchObject({ route: "skip", reason: "untrusted-author" });
