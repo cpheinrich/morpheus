@@ -585,7 +585,7 @@ A cycle goes out on its own `inbox-<YYYY-MM-DD>` branch — see the records exce
 
 **The state lives in the heading**, not inline — `❗` and `✅` carry colour, so scanning does not
 depend on the renderer's text colour. Items are `##` with no wrapping section header, because
-Nimbalyst dims each descending heading level.
+many Markdown renderers dim each descending heading level.
 
 | State | Shape |
 |---|---|
