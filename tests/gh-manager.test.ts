@@ -56,6 +56,7 @@ describe("policy", () => {
     for (const prefix of own.protectedPaths) expect(existsSync(join(REPO, prefix)), prefix).toBe(true);
     const engine = [
       "src/gh-manager/decision.ts", "src/gh-manager/prompt.ts", "src/cli/gh-manager.ts", "src/cli/check.ts",
+      "src/check/pr.ts", "src/paths.ts", "src/dependabot/policy.ts", "src/security/policy.ts",
       "src/review/manager.ts", "src/review/local.ts", ".github/workflows/gh-manager.yml",
       "src/init/templates.ts", "docs/runbooks/independent-review.md", "docs/runbooks/gh-manager.md",
     ];

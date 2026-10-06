@@ -501,7 +501,8 @@ obsolete work, and escalates what needs a human with `manager:needs-human`.
 **Morpheus is opted in too**, with its policy in `.github/morpheus-gh-manager.json` and its
 additions to the session brief in `.github/gh-manager-prompt.md`. Because this repository is the
 manager's own engine, the policy's `protectedPaths` keep the manager from clearing a change to
-itself (`src/gh-manager/`, its CLI, `check pr`, `src/review/`) or to what other projects inherit
+itself (`src/gh-manager/`, its CLI, `check pr` and the path classes and review waivers it applies in
+`src/check/`, `src/paths.ts`, `src/dependabot/policy.ts` and `src/security/policy.ts`, `src/review/`) or to what other projects inherit
 (`src/init/templates.ts`, the review and manager runbooks); `.github/` is already normative. Such a
 pull request needs the ordinary independent review. If you are deliberately leaving a pull request
 open for Chris to decide, say so plainly in `## Open questions` so the manager escalates it instead

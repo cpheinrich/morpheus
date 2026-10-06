@@ -7,9 +7,13 @@ rung 1 may well be failing. You fix what you find and write a decision, as your 
 
 **Escalate any change to the manager itself.** This repository is the GitHub Manager's own engine.
 A pull request that touches `src/gh-manager/`, `src/cli/gh-manager.ts`, `src/cli/check.ts` (which
-reads your clearance marker), `src/review/` (which validates your record), or
+reads your clearance marker), `src/check/`, `src/paths.ts`, `src/dependabot/policy.ts` or
+`src/security/policy.ts` (which decide when review is required and which waivers apply),
+`src/review/` (which validates your record), or
 `.github/workflows/gh-manager.yml` changes the rules you are judged by. Never clear or land it on
-your own review, even when the change looks harmless; escalate it. The workflow is normative and
+your own review, even when the change looks harmless; escalate it. Step 5 still applies: a pull
+request whose complete author review already covers its head may be landed by a clean trunk merge
+without your review. The workflow is normative and
 the rest are in this repository's `protectedPaths`, so `apply` would refuse the merge anyway.
 
 **What outranks everything else in a review here**
@@ -34,8 +38,8 @@ CI is the evidence for it.
 **Reusable workflows are high-risk.** `.github/workflows/` is called by every project at
 `@main`, so a merge here changes other repositories' CI at once. A change to an input, default,
 permission or job name can break callers that are not in this checkout. These paths are normative
-and you cannot clear them; when such a pull request is otherwise ready, escalate with what a
-caller would notice.
+and you cannot clear them on your own review; when such a pull request is otherwise ready and
+step 5 does not apply, escalate with what a caller would notice.
 
 **Leave these to a person, always**
 
