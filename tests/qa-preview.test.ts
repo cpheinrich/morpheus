@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseIosPreviewConfig, expand, RESERVED_FLAGS } from "../src/qa/preview/config.js";
 import {
-  checkoutKey, defaultPort, launchEnvironment, launchPlist, OVERLAY_PORT_OFFSET, parsePreviewArgs,
+  checkoutKey, defaultPort, launchEnvironment, launchPlist, OVERLAY_PORT_OFFSET, parsePreviewArgs, prepareLaunchEnvironment,
   repairSimulatorInput, requireFreePort, selectRuntime, serveSimCli, shutdownPreview, tunnelCommand,
   withPreviewCancellation, type Runtime,
 } from "../src/qa/preview/ios.js";
@@ -330,5 +330,62 @@ describe("lifecycle guarantees carried over from Evo", () => {
     ready();
     await expect(operation).rejects.toThrow(/interrupted/);
     expect(events).toEqual(["cleanup", "lock released"]);
+  });
+});
+
+// Review of #332: SUB-1 (mode flags the global parser swallows) and SUB-2 (the credential path).
+describe("review guarantees", () => {
+  it("reserves every flag the global parser consumes, so a mode flag can never be swallowed", async () => {
+    const { globalFlags } = await import("../src/cli/args.js");
+    for (const flag of globalFlags()) expect(RESERVED_FLAGS.has(flag), flag).toBe(true);
+    for (const flag of ["--dir", "--base", "--issue", "--ceiling", "--author", "--isbn", "--offline", "--account", "--title", "--worktree"]) {
+      expect(RESERVED_FLAGS.has(flag), flag).toBe(true);
+    }
+    const parsed = parseIosPreviewConfig({ ios: { ...EVO.ios, modes: { demo: { flags: ["--offline"], args: [] } }, defaultMode: "demo" } }, "Evo");
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) expect(parsed.issues.join("\n")).toContain("--offline is reserved");
+  });
+
+  it("runs a credentialed prepare under morpheus credentials, in the checkout, with output kept in memory", () => {
+    const calls: { command: string; args: string[]; options: unknown }[] = [];
+    const env = prepareLaunchEnvironment(evo().modes.live!, { key: "012345abcdef", root: "/repo" }, (command, args, options) => {
+      calls.push({ command, args, options });
+      return JSON.stringify({ env: { EVO_QA_UID: "evo-qa-012345abcdef", EVO_QA_CUSTOM_TOKEN: "t" } });
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.command).toBe("morpheus");
+    expect(calls[0]!.args).toEqual(["credentials", "run", "--", "node", "apps/ios/scripts/chat-preview.mjs", "012345abcdef"]);
+    expect(calls[0]!.options).toEqual({ cwd: "/repo", stdio: "pipe" });
+    expect(env).toEqual({ SIMCTL_CHILD_EVO_QA_UID: "evo-qa-012345abcdef", SIMCTL_CHILD_EVO_QA_CUSTOM_TOKEN: "t" });
+  });
+
+  it("runs an uncredentialed prepare directly, and a mode without one prepares nothing", () => {
+    const seen: string[] = [];
+    prepareLaunchEnvironment({ name: "x", args: [], flags: [], summary: "", prepare: { command: ["node", "p.mjs", "{root}"], credentials: false } },
+      { key: "k", root: "/r" }, (command, args) => { seen.push([command, ...args].join(" ")); return '{"env": {}}'; });
+    expect(seen).toEqual(["node p.mjs /r"]);
+    expect(prepareLaunchEnvironment(evo().modes.demo!, { key: "k", root: "/r" }, () => { throw new Error("must not run"); })).toEqual({});
+  });
+
+  it("never lets a failing prepare's output into the error", () => {
+    const leak = "secret-token-ABC123";
+    expect(() => prepareLaunchEnvironment(evo().modes.live!, { key: "012345abcdef", root: "/repo" }, () => {
+      throw Object.assign(new Error(`Command failed: ${leak}`), { stdout: leak, stderr: leak });
+    })).toThrow(/could not prepare its launch/);
+    try {
+      prepareLaunchEnvironment(evo().modes.live!, { key: "012345abcdef", root: "/repo" }, () => { throw new Error(leak); });
+    } catch (error) {
+      expect(String((error as Error).message)).not.toContain(leak);
+    }
+    try {
+      prepareLaunchEnvironment(evo().modes.live!, { key: "012345abcdef", root: "/repo" }, () => `not json ${leak}`);
+    } catch (error) {
+      expect(String((error as Error).message)).not.toContain(leak);
+    }
+  });
+
+  it("refuses a namespace that could climb out of the caches directory", () => {
+    const parsed = parseIosPreviewConfig({ ios: { ...EVO.ios, namespace: "a..b" } }, "Evo");
+    expect(parsed.ok).toBe(false);
   });
 });

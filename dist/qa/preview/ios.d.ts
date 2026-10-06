@@ -68,6 +68,16 @@ export declare function shutdownPreview(state: {
  * string values is accepted; names must be environment-variable shaped.
  */
 export declare function launchEnvironment(prepared: string): Record<string, string>;
+/**
+ * Runs a mode's prepare command and returns only the app's launch environment. With
+ * `credentials: true` it runs under `morpheus credentials run --`. Its output is captured in memory
+ * (piped, never inherited) and a failure reports a fixed message, so nothing the command printed —
+ * a token included — can reach a terminal, a log, state or launchd.
+ */
+export declare function prepareLaunchEnvironment(mode: PreviewMode, vars: {
+    key: string;
+    root: string;
+}, run: Run): Record<string, string>;
 export declare function withPreviewCancellation<T>(operation: (check: () => void) => Promise<T>, cleanup: () => Promise<void>, signals?: NodeJS.EventEmitter): Promise<T>;
 /** serve-sim's CLI. Its exports hide the file, so it is found beside an exported entry. */
 export declare function serveSimCli(): {

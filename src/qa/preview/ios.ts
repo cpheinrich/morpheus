@@ -119,6 +119,16 @@ export function tunnelCommand(host: string, port: number): string {
   return `ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:${port}:127.0.0.1:${port} ${host}`;
 }
 
+/** The overlay on this port is ours only if its /health names this preview's stream as upstream. */
+async function overlayServes(overlayPort: number, previewPort: number): Promise<boolean> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${overlayPort}/health`, { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) return false;
+    const body = (await response.json()) as { previewUrl?: unknown };
+    return body.previewUrl === `http://127.0.0.1:${previewPort}/`;
+  } catch { return false; }
+}
+
 export async function requireFreePort(port: number): Promise<void> {
   await new Promise<void>((ok, fail) => {
     const server = createServer();
@@ -162,6 +172,24 @@ export function launchEnvironment(prepared: string): Record<string, string> {
     out[`SIMCTL_CHILD_${name}`] = value;
   }
   return out;
+}
+
+/**
+ * Runs a mode's prepare command and returns only the app's launch environment. With
+ * `credentials: true` it runs under `morpheus credentials run --`. Its output is captured in memory
+ * (piped, never inherited) and a failure reports a fixed message, so nothing the command printed —
+ * a token included — can reach a terminal, a log, state or launchd.
+ */
+export function prepareLaunchEnvironment(
+  mode: PreviewMode, vars: { key: string; root: string }, run: Run,
+): Record<string, string> {
+  if (!mode.prepare) return {};
+  const command = mode.prepare.command.map((a) => expand(a, vars));
+  const [c, ...a] = mode.prepare.credentials ? ["morpheus", "credentials", "run", "--", ...command] : command;
+  let out: string;
+  try { out = run(c!, a, { cwd: vars.root, stdio: "pipe" }); }
+  catch { throw new Error(`The ${mode.name} mode could not prepare its launch. Check morpheus credentials setup; no other mode was launched.`); }
+  return launchEnvironment(out);
 }
 
 // Signal handlers only record intent. The operation owns sequencing and awaits its current
@@ -264,7 +292,7 @@ export async function healthy(ctx: PreviewContext, state: PreviewState | undefin
       && (String(record?.pid) === pid || Boolean(pid && record?.pid && ctx.run("ps", ["-o", "ppid=", "-p", String(record.pid)]) === pid));
     if (!owned || !(await reachable(state.port))) return false;
     // A legacy preview (started by a project's own script) has no overlay port; it stays usable.
-    return state.overlayPort ? reachable(state.overlayPort, "/health") : true;
+    return state.overlayPort ? overlayServes(state.overlayPort, state.port) : true;
   } catch { return false; }
 }
 
@@ -337,9 +365,10 @@ export async function runPreview(ctx: PreviewContext, options: PreviewOptions): 
     return;
   }
   const runtime = options.command === "stop" ? undefined : prerequisites(ctx);
-  const serveSim = serveSimCli();
+  // stop needs only launchctl and simctl; a broken serve-sim install must not keep a preview up.
+  const serveSim = options.command === "stop" ? undefined : serveSimCli();
   if (options.command === "doctor") {
-    log(`Ready on ${hostname()}: iOS ${runtime!.version}; Node ${process.versions.node}; serve-sim ${serveSim.version}. No other Mac is required.`);
+    log(`Ready on ${hostname()}: iOS ${runtime!.version}; Node ${process.versions.node}; serve-sim ${serveSim!.version}. No other Mac is required.`);
     return;
   }
   mkdirSync(ctx.stateDir, { recursive: true, mode: 0o700 });
@@ -390,15 +419,8 @@ export async function runPreview(ctx: PreviewContext, options: PreviewOptions): 
         repairSimulatorInput(device.udid, run);
         sim("bootstatus", device.udid, "-b");
         sim("install", device.udid, app);
-        let launchEnv: NodeJS.ProcessEnv = { ...process.env };
-        if (mode.prepare) {
-          const prepare = cmd(mode.prepare.command);
-          const [c, ...a] = mode.prepare.credentials ? ["morpheus", "credentials", "run", "--", ...prepare] : prepare;
-          let out: string;
-          try { out = run(c!, a, { cwd: ctx.root }); }
-          catch { throw new Error(`The ${mode.name} mode could not prepare its launch. Check morpheus credentials setup; no other mode was launched.`); }
-          launchEnv = { ...launchEnv, ...launchEnvironment(out) };
-        }
+        // The prepared environment goes to simctl launch only: never to state, the plist or a log.
+        const launchEnv: NodeJS.ProcessEnv = { ...process.env, ...prepareLaunchEnvironment(mode, vars, run) };
         run("xcrun", ["simctl", "launch", "--terminate-running-process", device.udid, config.bundleId, ...cmd(mode.args)], { env: launchEnv });
         const revision = run("git", ["rev-parse", "--short", "HEAD"], { cwd: ctx.root });
         const dirty = run("git", ["status", "--porcelain"], { cwd: ctx.root }) ? " (working tree changes)" : "";
@@ -410,7 +432,7 @@ export async function runPreview(ctx: PreviewContext, options: PreviewOptions): 
         const plist = join(ctx.stateDir, "preview.plist");
         writeFileSync(plist, launchPlist({
           label: ctx.label,
-          args: [process.execPath, supervisorPath(), ctx.stateFile, serveSim.path],
+          args: [process.execPath, supervisorPath(), ctx.stateFile, serveSim!.path],
           cwd: ctx.root, log: join(ctx.stateDir, "preview.log"),
           env: { PATH: process.env.PATH ?? "", HOME: homedir(), ...(process.env.DEVELOPER_DIR ? { DEVELOPER_DIR: process.env.DEVELOPER_DIR } : {}) },
         }), { mode: 0o600 });

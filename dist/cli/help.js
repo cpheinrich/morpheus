@@ -120,10 +120,11 @@ Usage
   morpheus qa comments resolve <batchId> [ids...]
                             mark batch(es) resolved (moves pending → resolved)
   morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
-  morpheus qa preview ios [start|status|stop|doctor] [--mode <name>] [--port <n>] [--no-build] [--root <project>]
+                            local overlay: tap → multi-comment → Send into local/qa-comments/
+  morpheus qa preview ios [start|status|stop|doctor|help] [--mode <name>] [--port <n>] [--no-build] [--root <project>]
                          One simulator preview per checkout with the comment overlay; app declared in morpheus.json qa.ios
   morpheus qa guide       The comment-QA instructions every agent follows
-                            local overlay: tap → multi-comment → Send into local/qa-comments/
+
 Options
   --dir <path>   Product directory (default: hq/product)
   --base <ref>   Base ref for the PR diff (default: origin/main)

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { globalFlags } from "../../cli/args.js";
 const isStrings = (v) => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string" && x.length > 0);
 const record = (v) => v !== null && typeof v === "object" && !Array.isArray(v) ? v : null;
 /** Validates `qa.ios`, reporting every problem rather than the first. */
@@ -26,8 +27,8 @@ export function parseIosPreviewConfig(raw, projectName = "Project") {
     const minimumXcode = text("minimumXcode", "26.0");
     if (minimumXcode && !/^\d+(\.\d+)?$/.test(minimumXcode))
         issues.push("qa.ios.minimumXcode must look like 26.5.");
-    if (namespace && !/^[A-Za-z0-9.-]+$/.test(namespace))
-        issues.push("qa.ios.namespace may hold letters, digits, dots and dashes only.");
+    if (namespace && (!/^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(namespace) || namespace.includes("..")))
+        issues.push("qa.ios.namespace may hold letters, digits, single dots and dashes only.");
     const build = ios.build;
     if (!isStrings(build))
         issues.push("qa.ios.build must be a non-empty array of strings (the build command).");
@@ -95,11 +96,9 @@ export function parseIosPreviewConfig(raw, projectName = "Project") {
         },
     };
 }
-/** Flags the preview command owns, plus global flags the morpheus parser consumes first. */
-export const RESERVED_FLAGS = new Set([
-    "--port", "--ttl-minutes", "--no-build", "--ssh-host", "--root", "--mode", "--help",
-    "--project", "--name", "--kind", "--source", "--json", "--check", "--print", "--dry-run", "--all",
-]);
+/** Flags the preview command owns, plus every flag the morpheus parser consumes first. */
+export const PREVIEW_FLAGS = ["--port", "--ttl-minutes", "--no-build", "--ssh-host", "--root", "--mode"];
+export const RESERVED_FLAGS = new Set([...PREVIEW_FLAGS, ...globalFlags()]);
 export async function loadIosPreviewConfig(root) {
     let manifest;
     try {

@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { startQaCommentServer } from "../serve.js";
@@ -61,9 +61,11 @@ export function supervise(child, { expired, cleanup, interval = 5000, grace = 30
     });
 }
 /** serve-sim is ready once it has written its state record for this device and answers. */
-async function waitForStream(state, attempts = 120) {
+async function waitForStream(state, stopped, attempts = 120) {
     const recordPath = join(tmpdir(), "serve-sim", `server-${state.udid}.json`);
     for (let i = 0; i < attempts; i++) {
+        if (stopped())
+            return false;
         if (existsSync(recordPath)) {
             try {
                 if ((await fetch(`http://127.0.0.1:${state.port}/`, { signal: AbortSignal.timeout(2000) })).ok)
@@ -79,12 +81,17 @@ async function main([stateFile, cli]) {
     if (!stateFile || !cli)
         throw new Error("usage: supervisor <state.json> <serve-sim.js>");
     const state = JSON.parse(readFileSync(stateFile, "utf8"));
-    if (!/^[\w .-]+ [a-f0-9]{12}$/.test(state.name))
-        throw new Error("Refusing to supervise a device whose name does not carry a checkout key.");
+    // Ownership is bound to this job's own checkout key — the state directory's name — so a corrupted
+    // or foreign state file cannot point the supervisor at another checkout's simulator.
+    const key = basename(dirname(stateFile));
+    if (!/^[a-f0-9]{12}$/.test(key) || !/^[\w .-]+$/.test(state.name) || !state.name.endsWith(` ${key}`)) {
+        throw new Error("Refusing to supervise a device whose name does not carry this checkout's key.");
+    }
     const sim = (...args) => execFileSync("xcrun", ["simctl", ...args], { encoding: "utf8", timeout: 120000 });
     const child = spawn(process.execPath, [cli, state.udid, "--port", String(state.port), "--host", "127.0.0.1", "--fit", "--panes", "none"], { stdio: "inherit" });
     let overlay;
-    const ready = waitForStream(state).then(async (ok) => {
+    let stopping = false;
+    const ready = waitForStream(state, () => stopping).then(async (ok) => {
         if (!ok) {
             console.error("serve-sim did not come up; the overlay was not started.");
             return;
@@ -105,6 +112,7 @@ async function main([stateFile, cli]) {
             return current.udid !== state.udid || !Number.isFinite(current.expiresAt) || Date.now() >= current.expiresAt;
         },
         cleanup: async () => {
+            stopping = true;
             await ready.catch(() => undefined);
             await overlay?.close().catch(() => undefined);
             shutdownPreview(state, state.name, sim);

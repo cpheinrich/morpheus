@@ -58,7 +58,8 @@ export type ConfigResult = {
 };
 /** Validates `qa.ios`, reporting every problem rather than the first. */
 export declare function parseIosPreviewConfig(raw: unknown, projectName?: string): ConfigResult;
-/** Flags the preview command owns, plus global flags the morpheus parser consumes first. */
+/** Flags the preview command owns, plus every flag the morpheus parser consumes first. */
+export declare const PREVIEW_FLAGS: string[];
 export declare const RESERVED_FLAGS: Set<string>;
 export declare function loadIosPreviewConfig(root: string): Promise<ConfigResult>;
 /** Expands `{key}` and `{root}`. */
