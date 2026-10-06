@@ -6,6 +6,7 @@ import {
   NEEDS_HUMAN_LABEL,
   STALE_LABEL,
   TRUSTED_ASSOCIATIONS,
+  TRUSTED_PERMISSIONS,
 } from "./policy.js";
 
 /**
@@ -40,6 +41,11 @@ export interface PullRequestFacts {
   title: string;
   author: string;
   authorAssociation: string;
+  /**
+   * The author's permission on the repository, read only when the association alone does not
+   * establish trust. Undefined when it was not read or could not be, which is not trust.
+   */
+  authorPermission?: string | undefined;
   isDraft: boolean;
   /** Head branch lives in another repository (a fork). */
   isCrossRepository: boolean;
@@ -135,8 +141,10 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   const routed = (route: Route, reason: string, detail: string): Routed => ({ number: pr.number, title: pr.title, headSha: pr.headSha, route, reason, detail, attempts });
 
   if (BOT_LANES.has(pr.author)) return routed("skip", "bot-lane", `${pr.author} has its own maintainer`);
-  if (!TRUSTED_ASSOCIATIONS.has(pr.authorAssociation) || pr.isCrossRepository) {
-    return routed("skip", "untrusted-author", `author ${pr.author} is ${pr.authorAssociation}${pr.isCrossRepository ? " on a fork" : ""}; reported, not acted on`);
+  const trusted = TRUSTED_ASSOCIATIONS.has(pr.authorAssociation) || TRUSTED_PERMISSIONS.has(pr.authorPermission ?? "");
+  if (!trusted || pr.isCrossRepository) {
+    const standing = `${pr.authorAssociation}${pr.authorPermission ? ` with ${pr.authorPermission} permission` : ""}`;
+    return routed("skip", "untrusted-author", `author ${pr.author} is ${standing}${pr.isCrossRepository ? " on a fork" : ""}; reported, not acted on`);
   }
   // The branch name is the one piece of author-controlled text the brief has to carry.
   if (!SAFE_REF.test(pr.headRefName)) return routed("skip", "unsafe-branch-name", "the branch name has characters the manager will not put in a brief");

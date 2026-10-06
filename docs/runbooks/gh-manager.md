@@ -127,8 +127,11 @@ trunk carries a workflow change may be refused on push; the session escalates th
 Pull request text does not enter the session's brief, with one exception: the branch and base
 names, which must be plain (`[A-Za-z0-9._/-]`) or the pull request is skipped, and are quoted
 where a command uses them. Otherwise the session is given a number and fetches the content
-itself. Only pull requests from `OWNER`, `MEMBER` or `COLLABORATOR` on a branch in the
-repository itself are acted on (decisions.md, 2026-08-03). `morpheus-security[bot]` and Dependabot
+itself. Only pull requests from a trusted author on a branch in the repository itself are acted
+on (decisions.md, 2026-08-03). Trusted means an `OWNER`, `MEMBER` or `COLLABORATOR` association,
+or, when that is hidden, `admin`, `maintain` or `write` permission on the repository. The second
+check exists because an App's token cannot see private organization membership: on the first
+Evo run an organization owner read as `CONTRIBUTOR`. `morpheus-security[bot]` and Dependabot
 pull requests have their own maintainers and are only reported.
 
 The App key and the Claude subscription token live only in the private operations repository.

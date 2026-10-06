@@ -80,8 +80,24 @@ describe("routing one pull request", () => {
     expect(route({ author: "dependabot[bot]" })).toMatchObject({ route: "skip", reason: "bot-lane" });
     expect(route({ authorAssociation: "CONTRIBUTOR" })).toMatchObject({ route: "skip", reason: "untrusted-author" });
     expect(route({ authorAssociation: "NONE" })).toMatchObject({ route: "skip", reason: "untrusted-author" });
+    // Read access is not trust, and an unreadable permission is not trust either.
+    expect(route({ authorAssociation: "CONTRIBUTOR", authorPermission: "read" })).toMatchObject({ route: "skip", reason: "untrusted-author", detail: "author cpheinrich is CONTRIBUTOR with read permission; reported, not acted on" });
+    expect(route({ authorAssociation: "CONTRIBUTOR", authorPermission: "triage" })).toMatchObject({ route: "skip", reason: "untrusted-author" });
+    expect(route({ authorAssociation: "CONTRIBUTOR", authorPermission: undefined })).toMatchObject({ route: "skip", reason: "untrusted-author" });
     // A collaborator's pull request from a fork is still someone else's branch.
     expect(route({ isCrossRepository: true })).toMatchObject({ route: "skip", reason: "untrusted-author" });
+  });
+
+  it("trusts an author by repository permission when private org membership hides the association", () => {
+    // The first Evo run: an organization owner with admin rights read as CONTRIBUTOR to the App.
+    // Exactly the route an OWNER gets, not merely "something other than untrusted".
+    const owner = route();
+    for (const authorPermission of ["admin", "maintain", "write"]) {
+      const routed = route({ authorAssociation: "CONTRIBUTOR", authorPermission });
+      expect({ route: routed.route, reason: routed.reason, detail: routed.detail }, authorPermission).toEqual({ route: owner.route, reason: owner.reason, detail: owner.detail });
+    }
+    // A fork is still someone else's branch, whatever their permission.
+    expect(route({ authorAssociation: "CONTRIBUTOR", authorPermission: "admin", isCrossRepository: true })).toMatchObject({ route: "skip", reason: "untrusted-author" });
   });
 
   it("applies the cooldown at its boundary: under 8h is active, exactly 8h is not", () => {
