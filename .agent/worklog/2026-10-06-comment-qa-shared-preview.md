@@ -93,6 +93,22 @@ PR cpheinrich/morpheus#332. A fresh reviewer at normal-leaning-high risk compare
   },
   "outcome": "complete",
   "summary": "A fresh reviewer at normal-leaning-high risk compared the code against Evo's preview.mjs, supervisor and tests, ran the focused suites, typecheck and lint, confirmed dist matches a fresh compile, and checked the checkout key, Evo's identity, the credential handoff, legacy previews, the health probe, shutdown safety, serve-sim resolution under a global install, the overlay root, the guide, the skill and init. Two substantive findings, both cleared conditionally and fixed under their conditions: mode flags were not refused when the global parser would swallow them, so a declared flag such as --offline could silently launch the default (for Evo, credentialed live) mode — RESERVED_FLAGS is now built from the parser's own tables; and the credential path Evo's tests pinned was not pinned again — the prepare step is now an exported function tested for the credentials prefix, cwd, piped stdio, key expansion and an error that never carries the command's output. Five minors fixed (stop no longer needs serve-sim; supervisor ownership bound to its own checkout key; a stop during startup aborts the stream wait; health requires the overlay to name this preview as upstream; help ordering) and one incidental fixed (namespace refuses '..'). The fixed supervisor and health check were re-run on a real simulator: a preview the old supervisor started was stopped, a new one started and reported healthy. Cleared.",
+  "followUps": [
+    {
+      "reviewerSession": "a9f7189cb018351b2",
+      "commit": "64d7437e613371e9576bcf2ddad283505c346c14",
+      "base": "cd99305d009fb0b9a262d40bc4f4ee0dd7e8b9b3",
+      "scopeReason": "The fix commit also regenerated the committed dist/ for the changed sources (dist/cli/args.*, dist/cli/help.*, dist/qa/preview/config.*, ios.*, supervisor.*), which the reviewer's conditions did not name; the checker required explicit coverage, so the same reviewer reviewed cd99305d..64d7437e.",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.92231666666666667,
+      "timing": {
+        "source": "runner",
+        "durationMs": 55339,
+        "evidence": "Agent tool task-notification usage.duration_ms=55339 for the follow-up turn of reviewer agent a9f7189cb018351b2; reviewer clock readings 23:51:59 to 23:52:35 UTC."
+      },
+      "summary": "Same reviewer, follow-up turn on the fix commit, which also regenerated dist/ for the changed sources: every finding resolved as asked (SUB-1 RESERVED_FLAGS now built from the global parser's own tables, so a later global flag is reserved automatically; SUB-2 the prepare step exported and pinned for prefix, argv, cwd, piped stdio, expansion and a token-free error); the minors and the incidental resolved; dist/ equal to a fresh pnpm compile of src at the fix commit; focused tests 112/112, typecheck and lint clean. No new findings. Cleared."
+    }
+  ],
   "findings": [
     {
       "id": "SUB-001-mode-flags-swallowed-by-global-parser",
@@ -171,3 +187,5 @@ PR cpheinrich/morpheus#332. A fresh reviewer at normal-leaning-high risk compare
   ]
 }
 ```
+
+Follow-up turn on the fix commit: Same reviewer, follow-up turn on the fix commit, which also regenerated dist/ for the changed sources: every finding resolved as asked (SUB-1 RESERVED_FLAGS now built from the global parser's own tables, so a later global flag is reserved automatically; SUB-2 the prepare step exported and pinned for prefix, argv, cwd, piped stdio, expansion and a token-free error); the minors and the incidental resolved; dist/ equal to a fresh pnpm compile of src at the fix commit; focused tests 112/112, typecheck and lint clean. No new findings. Cleared.
