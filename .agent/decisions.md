@@ -212,7 +212,9 @@ the goal is minimal external use, the mechanism is private visibility, not a str
 
 ## Tooling, continued
 
-**Nimbalyst as Chris's editor, but never a requirement** — 2026-07-29. Documented in the README
+**Nimbalyst as Chris's editor, but never a requirement** — 2026-07-29. *Superseded 2026-10-05:
+Chris no longer uses or recommends Nimbalyst, and the README no longer suggests it. Any editor
+works; validation stays in CI.* Documented in the README
 as a suggestion so collaborators can use anything. Validation lives in CI, not the editor, which
 is what keeps it optional.
 
@@ -294,8 +296,8 @@ peers). Validated against GitHub's handle rule so it cannot drift into a display
 one project-wide timeline rather than per-person threads. The handle is last only for uniqueness.
 
 **State markers live in the heading, not inline** — `❗`/`✅` in an `##` heading carry colour, so
-scanning does not depend on the renderer's text colour. Nimbalyst dims each descending heading
-level, which is why items are `##` with no wrapping section header.
+scanning does not depend on the renderer's text colour. Many Markdown renderers dim each
+descending heading level, which is why items are `##` with no wrapping section header.
 
 **Standup items link a roadmap id optionally, never mandatorily** — some items are prerequisites,
 decisions, or credentials rather than tasks. Requiring an id would mean inventing fake ones.

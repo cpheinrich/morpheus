@@ -151,11 +151,7 @@ waves nearly free.
 
 Everything Morpheus manages is plain markdown with YAML frontmatter, so **any editor works** —
 the tooling is deliberately editor-agnostic and nothing here depends on a particular one.
-
-If you want a WYSIWYG surface, [Nimbalyst](https://github.com/nimbalyst/nimbalyst) is a good
-fit: it renders frontmatter as typed form fields, so roadmap items and inboxes get form editing
-for free, and it manages parallel Claude and Codex sessions. That is a suggestion, not a
-requirement — validation happens in CI, not in the editor, which is what keeps it optional.
+Validation happens in CI, not in the editor, which is what keeps the choice open.
 
 ## Documentation
 
