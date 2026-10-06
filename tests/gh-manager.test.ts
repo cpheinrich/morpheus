@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { Decision, inert, type LiveState, planDecision, planNoDecision, planRoute } from "../src/gh-manager/decision.js";
 import { renderDigest } from "../src/gh-manager/digest.js";
@@ -5,6 +8,7 @@ import { GhManagerPolicy, humanGatedPaths, parsePolicy } from "../src/gh-manager
 import { sessionPrompt } from "../src/gh-manager/prompt.js";
 import { parseMarker, renderMarker, routePullRequest, sweep, type PullRequestFacts } from "../src/gh-manager/sweep.js";
 
+const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NOW = new Date("2026-10-01T12:00:00Z");
 const HEAD = "a".repeat(40);
 const OTHER = "b".repeat(40);
@@ -44,6 +48,19 @@ describe("policy", () => {
     expect(humanGatedPaths(paths, { protectedPaths: [] })).toEqual(["AGENTS.md", "apps/web/.github/workflows/ci.yml", "morpheus.json"]);
     // A prefix matches the directory, not every path that happens to start with the same letters.
     expect(humanGatedPaths(paths, { protectedPaths: ["infra/billing"] })).toEqual(["AGENTS.md", "apps/web/.github/workflows/ci.yml", "morpheus.json", "infra/billing/plan.ts"]);
+  });
+  // Morpheus is the manager's own engine. Its policy must stop the manager clearing a change to
+  // itself, and a prefix left behind by a rename would protect nothing without saying so.
+  it("Morpheus's own policy gates every change to the manager's engine", () => {
+    const own = parsePolicy(readFileSync(join(REPO, ".github/morpheus-gh-manager.json"), "utf8"));
+    for (const prefix of own.protectedPaths) expect(existsSync(join(REPO, prefix)), prefix).toBe(true);
+    const engine = [
+      "src/gh-manager/decision.ts", "src/gh-manager/prompt.ts", "src/cli/gh-manager.ts", "src/cli/check.ts",
+      "src/check/pr.ts", "src/paths.ts", "src/dependabot/policy.ts", "src/security/policy.ts",
+      "src/review/manager.ts", "src/review/local.ts", ".github/workflows/gh-manager.yml",
+      "src/init/templates.ts", "docs/runbooks/independent-review.md", "docs/runbooks/gh-manager.md",
+    ];
+    expect(humanGatedPaths([...engine, "src/pm/parse.ts", "src/cli/index.ts", "docs/runbooks/qa-comments.md"], own)).toEqual(engine);
   });
 });
 
