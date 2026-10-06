@@ -392,6 +392,13 @@ describe("session prompt", () => {
     expect(text).toContain("/tmp/d.json");
     expect(text).not.toContain("This repository's additions");
   });
+  it("tells the session to write the decision without the shell, which eats dollar figures", () => {
+    // Evo #341's escalation quoted $429.99 as 29.99: the session wrote the file through bash.
+    const text = sessionPrompt(brief);
+    const section = text.slice(text.indexOf("## Decision file"));
+    expect(section).toContain("Create it with your file-writing tool, never through the shell");
+    expect(section).toContain("`$429.99` would reach the audit comment as `29.99`");
+  });
   it("appends the project's overlay under a heading that says it cannot relax the rules", () => {
     const text = sessionPrompt({ ...brief, overlay: "Lead on dose arithmetic." });
     expect(text).toContain("## This repository's additions");
