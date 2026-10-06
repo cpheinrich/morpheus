@@ -2906,17 +2906,23 @@ improvement?* Yes → kit. No → template.
 ### 18.0 Optional personal agent plugins
 
 `plugins/codex-claude/` is a deliberate exception to the kit's single-package distribution:
-it is a personal Codex integration, not a dependency of company repositories. It owns its
+it is a personal Codex/Claude Code integration, not a dependency of company repositories. It owns its
 manifest, skill, hooks, runtime, lockfile, tests and installation documentation. Neither
 `morpheus init` nor the CLI installer activates it. Explicit per-device installation copies
 the package into a personal marketplace; execution remains off until enabled. Personal
 settings and session records stay outside the repository.
 
-The bridge routes at safe checkpoints using Codex allowance, keeps explicit task/operation
-overrides, and starts subscription-authenticated Claude on the same host and worktree.
-Automatic mode defaults to delegating below 30% remaining in the least remaining reported
-allowance window, reserving coordination headroom; explicit saved thresholds are preserved.
-Codex remains the coordinator and consumes its own allowance. Native Claude session ids
+The bridge works in both directions. Whichever agent holds the conversation is the
+coordinator; it routes at safe checkpoints using its *own* subscription allowance, keeps
+explicit task/operation overrides, and starts the other agent subscription-authenticated on
+the same host and worktree. Automatic mode defaults to delegating below 50% remaining in the
+coordinator's least remaining reported allowance window; explicit saved thresholds are
+preserved. The coordinator consumes its own allowance while supervising. Codex reports its
+windows through the app server; Claude Code exposes them only to its status line, so a
+recorder status line (chaining any existing one) writes them for routing, and missing or
+stale data never triggers a handoff. Claude permission modes map onto Codex's sandbox
+without widening (only an explicit bypass reaches full access). Delegated workers are marked
+so neither side's hooks or tools delegate back. Native Claude session ids
 provide persistence; a leased process guardian bounds live workers. Permission metadata
 must be verified before delegation, and unknown/restricted confinement fails closed in the
 initial version. Cross-agent memory consists of explicitly selected read-only excerpts,

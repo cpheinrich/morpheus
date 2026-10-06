@@ -1085,6 +1085,15 @@ bridge's default from 20% to 30% to leave coordination headroom while other Code
 consume the shared allowance. Automatic routing still delegates strictly below the
 threshold and remains opt-in. Existing saved thresholds are preserved.
 
+**The Codex/Claude bridge runs both ways, at 50% remaining** — 2026-10-05. Chris asked for
+Claude Code sessions to delegate to Codex too, and for delegation to begin at half the
+coordinator's allowance. One package, service and settings file serve both directions; the
+shared `threshold` default is now 50 and saved values are still preserved (this host's was set
+explicitly). Claude's subscription windows are read from a recorder status line because Claude
+Code exposes them nowhere else a plugin can read without its OAuth token, which the bridge
+still never reads. Claude permission modes map onto Codex sandboxes without widening. No new
+dependency: `codex exec --json` and the existing guardian cover execution.
+
 **One automatic finalization-only review turn per pull request** — 2026-09-27. Chris's call after
 Evo #291 stalled on a paragraph: its reviewer's condition named the source paths, the author's fix
 commit also carried the runbook prose explaining that fix, and no honest route existed — the author

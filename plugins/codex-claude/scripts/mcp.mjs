@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { call } from "../src/client.mjs";
+import { delegatedMarker } from "../src/config.mjs";
 const server = new McpServer({ name: "codex-claude", version: "0.1.0" });
 const task = {
   threadId: z.string().describe("Current Codex task id; never an invented id."),
@@ -65,6 +66,9 @@ for (const [method, [description, inputSchema]] of Object.entries(specs))
     { description, inputSchema },
     async (args) => {
       try {
+        // A worker launched by this bridge must never hand its task back.
+        if (process.env[delegatedMarker] && method === "start")
+          throw new Error("Delegated workers cannot delegate again.");
         return {
           content: [
             { type: "text", text: JSON.stringify(await call(method, args)) },
