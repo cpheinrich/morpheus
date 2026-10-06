@@ -71,3 +71,103 @@ Mac in this work); the tunnel command is unit-tested, not run across two Macs.
 
 `pnpm typecheck`; `pnpm test` 60 files / 1,656 tests before the ported lifecycle tests, all green
 after; `pnpm compile` refreshes `dist/`.
+
+## Independent review
+
+PR cpheinrich/morpheus#332. A fresh reviewer at normal-leaning-high risk compared the code against Evo's preview.mjs, supervisor and tests, ran the focused suites, typecheck and lint, confirmed dist matches a fresh compile, and checked the checkout key, Evo's identity, the credential handoff, legacy previews, the health probe, shutdown safety, serve-sim resolution under a global install, the overlay root, the guide, the skill and init. Two substantive findings, both cleared conditionally and fixed under their conditions: mode flags were not refused when the global parser would swallow them, so a declared flag such as --offline could silently launch the default (for Evo, credentialed live) mode — RESERVED_FLAGS is now built from the parser's own tables; and the credential path Evo's tests pinned was not pinned again — the prepare step is now an exported function tested for the credentials prefix, cwd, piped stdio, key expansion and an error that never carries the command's output. Five minors fixed (stop no longer needs serve-sim; supervisor ownership bound to its own checkout key; a stop during startup aborts the stream wait; health requires the overlay to name this preview as upstream; help ordering) and one incidental fixed (namespace refuses '..'). The fixed supervisor and health check were re-run on a real simulator: a preview the old supervisor started was stopped, a new one started and reported healthy. Cleared.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "f1d416e4c32e9a8e33f15d7358a0f8588c23d0a4",
+  "reviewed": "cd99305d009fb0b9a262d40bc4f4ee0dd7e8b9b3",
+  "covered": "64d7437e613371e9576bcf2ddad283505c346c14",
+  "authorSession": "f963f54d-05ca-4439-8ec1-1dedd1e49e13",
+  "reviewerSession": "a9f7189cb018351b2",
+  "risk": "normal",
+  "elapsedMinutes": 5.113583333333333,
+  "timing": {
+    "source": "runner",
+    "durationMs": 306815,
+    "evidence": "Agent tool task-notification usage.duration_ms=306815 for reviewer agent a9f7189cb018351b2 (initial review, started 2026-10-06 23:33 UTC from author session f963f54d-05ca-4439-8ec1-1dedd1e49e13); reviewer clock readings 23:33:00 to 23:37:21 UTC."
+  },
+  "outcome": "complete",
+  "summary": "A fresh reviewer at normal-leaning-high risk compared the code against Evo's preview.mjs, supervisor and tests, ran the focused suites, typecheck and lint, confirmed dist matches a fresh compile, and checked the checkout key, Evo's identity, the credential handoff, legacy previews, the health probe, shutdown safety, serve-sim resolution under a global install, the overlay root, the guide, the skill and init. Two substantive findings, both cleared conditionally and fixed under their conditions: mode flags were not refused when the global parser would swallow them, so a declared flag such as --offline could silently launch the default (for Evo, credentialed live) mode — RESERVED_FLAGS is now built from the parser's own tables; and the credential path Evo's tests pinned was not pinned again — the prepare step is now an exported function tested for the credentials prefix, cwd, piped stdio, key expansion and an error that never carries the command's output. Five minors fixed (stop no longer needs serve-sim; supervisor ownership bound to its own checkout key; a stop during startup aborts the stream wait; health requires the overlay to name this preview as upstream; help ordering) and one incidental fixed (namespace refuses '..'). The fixed supervisor and health check were re-run on a real simulator: a preview the old supervisor started was stopped, a new one started and reported healthy. Cleared.",
+  "findings": [
+    {
+      "id": "SUB-001-mode-flags-swallowed-by-global-parser",
+      "severity": "substantive",
+      "disposition": "fixed",
+      "paths": ["src/cli/args.ts", "src/qa/preview/config.ts", "tests/qa-preview.test.ts"],
+      "description": "RESERVED_FLAGS listed only some of the flags the global parser consumes, so a mode could declare one (--offline, --account, ...) that never reached the preview: the default mode, possibly the credentialed live one, would launch instead with no error.",
+      "response": "args.ts exports globalFlags() built from its stringOptions, booleanOptions and switch flags; RESERVED_FLAGS is that set plus the preview's own flags. Tests assert every global flag is reserved, list the switch-handled ones explicitly, and refuse --offline as a mode flag.",
+      "condition": {
+        "paths": ["src/cli/args.ts", "src/qa/preview/config.ts", "tests/qa-preview.test.ts"],
+        "evidence": "npx vitest run tests/qa-preview.test.ts and pnpm typecheck."
+      },
+      "conditionMet": "On 64d7437e: npx vitest run tests/qa-preview.test.ts passed 38 tests including the new reserved-flag test; pnpm typecheck clean; the full suite passed 60 files / 1670 tests."
+    },
+    {
+      "id": "SUB-002-credential-path-not-pinned",
+      "severity": "substantive",
+      "disposition": "fixed",
+      "paths": ["src/qa/preview/ios.ts", "tests/qa-preview.test.ts"],
+      "description": "Evo pinned that the live prepare runs under morpheus credentials run --, in the checkout, with piped stdio; nothing here pinned the prefix, cwd, stdio, key expansion or that a failure's message carries no output.",
+      "response": "The prepare step is exported as prepareLaunchEnvironment and runPreview calls it; tests assert the argv prefix, cwd, stdio pipe, {key} and {root} expansion, that a mode without prepare runs nothing, and that neither a throwing command nor bad JSON puts a fake token into the error.",
+      "condition": {
+        "paths": ["src/qa/preview/ios.ts", "tests/qa-preview.test.ts"],
+        "evidence": "The focused vitest run and pnpm typecheck."
+      },
+      "conditionMet": "On 64d7437e: npx vitest run tests/qa-preview.test.ts passed 38 tests including four credential-path tests; pnpm typecheck clean."
+    },
+    {
+      "id": "MIN-001-stop-needs-serve-sim",
+      "severity": "minor",
+      "disposition": "fixed",
+      "paths": ["src/qa/preview/ios.ts"],
+      "description": "serveSimCli() ran before the stop branch, so a broken serve-sim install made stop fail and left the preview up until its lease ended.",
+      "response": "serve-sim is resolved only for doctor and start."
+    },
+    {
+      "id": "MIN-002-supervisor-ownership-from-state",
+      "severity": "minor",
+      "disposition": "fixed",
+      "paths": ["src/qa/preview/supervisor.ts"],
+      "description": "The supervisor accepted any '<name> <12 hex>' device named in its state file.",
+      "response": "The device name must end in the job's own checkout key, the state directory's name. Re-run on a real simulator: start under the new supervisor came up healthy."
+    },
+    {
+      "id": "MIN-003-stop-during-startup-delayed",
+      "severity": "minor",
+      "disposition": "fixed",
+      "paths": ["src/qa/preview/supervisor.ts"],
+      "description": "Cleanup awaited the stream wait, which kept polling after serve-sim was killed, so a stop during startup could take twenty seconds or more.",
+      "response": "Cleanup marks the supervisor stopping and the wait returns at its next poll."
+    },
+    {
+      "id": "MIN-004-stray-overlay-reported-as-ours",
+      "severity": "minor",
+      "disposition": "fixed",
+      "paths": ["src/qa/preview/ios.ts"],
+      "description": "Health accepted any 200 from /health on the overlay port, so a standalone overlay bound there during a long build could be reported as this preview's.",
+      "response": "Health requires /health's previewUrl to equal this preview's stream URL. Re-run on a real simulator: status reported the new preview healthy."
+    },
+    {
+      "id": "MIN-005-help-ordering",
+      "severity": "minor",
+      "disposition": "fixed",
+      "paths": ["src/cli/help.ts"],
+      "description": "The new lines separated qa comments serve from its description.",
+      "response": "The new lines follow the serve description."
+    },
+    {
+      "id": "INC-001-namespace-dotdot",
+      "severity": "incidental",
+      "disposition": "fixed",
+      "paths": ["src/qa/preview/config.ts"],
+      "description": "The namespace regex accepted '..'.",
+      "response": "Refused, tested."
+    }
+  ]
+}
+```
