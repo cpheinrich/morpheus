@@ -97,7 +97,6 @@ PR cpheinrich/morpheus#332. A fresh reviewer at normal-leaning-high risk compare
     {
       "reviewerSession": "a9f7189cb018351b2",
       "commit": "64d7437e613371e9576bcf2ddad283505c346c14",
-      "base": "cd99305d009fb0b9a262d40bc4f4ee0dd7e8b9b3",
       "scopeReason": "The fix commit also regenerated the committed dist/ for the changed sources (dist/cli/args.*, dist/cli/help.*, dist/qa/preview/config.*, ios.*, supervisor.*), which the reviewer's conditions did not name; the checker required explicit coverage, so the same reviewer reviewed cd99305d..64d7437e.",
       "outcome": "cleared",
       "elapsedMinutes": 0.92231666666666667,
