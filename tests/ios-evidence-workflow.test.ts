@@ -45,20 +45,21 @@ describe('native selection and result evidence', () => {
       await expect(readFile(join(f.dir,'injected'))).rejects.toThrow();
     } finally { await rm(f.dir,{recursive:true,force:true}); }
   });
-  it('relaunches the test host on every retried attempt, and only when retries are enabled', async () => {
+  it('retries failed tests in the same process, and only when retries are enabled', async () => {
     const f = await fixture();
     try {
       await f.run('Run unit and UI tests');
       const plain = (await readFile(f.env.ARG_LOG,'utf8')).trim().split('\n');
       expect(plain).not.toContain('-retry-tests-on-failure');
       expect(plain).not.toContain('-test-iterations');
-      expect(plain).not.toContain('-test-repetition-relaunch-enabled');
       f.env.TEST_ITERATIONS = '3';
       await f.run('Run unit and UI tests');
       const args = (await readFile(f.env.ARG_LOG,'utf8')).trim().split('\n');
       const at = args.indexOf('-retry-tests-on-failure');
       expect(at).toBeGreaterThan(0);
-      expect(args.slice(at, at + 5)).toEqual(['-retry-tests-on-failure','-test-iterations','3','-test-repetition-relaunch-enabled','YES']);
+      expect(args.slice(at, at + 3)).toEqual(['-retry-tests-on-failure','-test-iterations','3']);
+      // A relaunch per retry re-executes the whole UI bundle (2026-10-05); it must not come back.
+      expect(args).not.toContain('-test-repetition-relaunch-enabled');
     } finally { await rm(f.dir,{recursive:true,force:true}); }
   });
   it('retains the exact manifest and commit, runs the validator, and uploads after any result', async () => {
