@@ -205,8 +205,11 @@ function report(ctx, state, options) {
     ctx.log(`\nQA overlay: ${url}`);
     ctx.log("Open the overlay, not the dev server, in the agent's browser:");
     ctx.log(`  Claude:  the Browser pane (preview_start with this url)\n  Codex:   the in-app browser panel\n  Grok, or any agent without a browser panel:  open ${url}`);
-    ctx.log("The site works as usual. Right-click anything (or turn on Comment and click) to pin a comment; Enter saves it, ⌘Enter sends the batch.");
+    ctx.log("The site works as usual, with a comment column on the right. Right-click anything (or turn on Comment and click) to pin a comment; Enter saves it, ⌘Enter sends the batch.");
     ctx.log(`Inbox: morpheus qa comments pending --root ${ctx.root}\nInstructions: morpheus qa guide`);
+    // A Send writes a batch and nothing else; an agent that has not armed a watch never hears of it
+    // (MO-26-10-07-13.27.17: the first real web batch sat unread for exactly this reason).
+    ctx.log("Agent: arm the inbox watch now, before handing the overlay to the person. Claude: a Monitor polling the Inbox command above; Codex and Grok: run it between turns.");
     ctx.log(`Log: ${join(ctx.stateDir, "preview.log")}`);
     if (options.sshHost)
         ctx.log(`\nOn the Mac displaying your browser, leave this running:\n${tunnelCommand(options.sshHost, state.port)}\nThen open the overlay URL above on that Mac.`);

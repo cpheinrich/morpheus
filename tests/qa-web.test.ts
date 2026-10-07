@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { JSDOM } from "jsdom";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseBatch } from "../src/qa/comments.js";
-import { decode, injectOverlay, normalizeUpstream, ownHost, rewriteLocation, startWebQaServer, upstreamHeaders } from "../src/qa/web/server.js";
+import { decode, injectOverlay, normalizeUpstream, ownHost, rewriteLocation, shellHtml, startWebQaServer, upstreamHeaders, wantsShell } from "../src/qa/web/server.js";
 import { WEB_OVERLAY_JS } from "../src/qa/web/overlay-client.js";
 import { defaultWebPort, frontable, frontedSite, overlayUrl, parseWebPreviewArgs, parseWebPreviewConfig, sitePort, spareDevPort, webKey } from "../src/qa/preview/web.js";
 import { QA_GUIDE } from "../src/qa/guide.js";
@@ -67,7 +67,7 @@ describe("the proxy against a fake dev server", () => {
     upstream = createServer((req, res) => {
       seen.push({ host: req.headers.host, origin: req.headers.origin as string | undefined, referer: req.headers.referer, encoding: req.headers["accept-encoding"] as string | undefined });
       if (req.url === "/") {
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-encoding": "gzip", "content-security-policy": "script-src 'none'" });
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-encoding": "gzip", "content-security-policy": "script-src 'none'", "x-frame-options": "DENY" });
         res.end(gzipSync("<html><head><title>Home</title></head><body>hi</body></html>"));
       } else if (req.url === "/hq") {
         res.writeHead(307, { location: `http://localhost:${upstreamPort}/hq/sign-in?next=%2Fhq` });
@@ -102,7 +102,21 @@ describe("the proxy against a fake dev server", () => {
     expect(html).toBe('<html><head><title>Home</title><script src="/__qa/overlay.js" defer></script></head><body>hi</body></html>');
     expect(response.headers.get("content-security-policy")).toBeNull();
     expect(response.headers.get("content-encoding")).toBeNull();
+    expect(response.headers.get("x-frame-options")).toBeNull();
     expect(seen.at(-1)).toMatchObject({ host: `127.0.0.1:${upstreamPort}`, encoding: "identity" });
+  });
+
+  it("answers a top-level page load with the shell, and the shell's frame with the injected site", async () => {
+    const before = seen.length;
+    const shell = await raw("/hq?tab=1", { host: `127.0.0.1:${qa.port}`, "sec-fetch-dest": "document", accept: "text/html" });
+    expect(shell.status).toBe(200);
+    expect(shell.body).toContain('id="morpheus-qa-site"');
+    expect(shell.body).toContain("window.__morpheusQaShell = true");
+    expect(shell.body).toContain('<script src="/__qa/overlay.js"></script>');
+    expect(seen.length).toBe(before); // the dev server is not asked for the shell
+    const framed = await raw("/", { host: `127.0.0.1:${qa.port}`, "sec-fetch-dest": "iframe", accept: "text/html" });
+    expect(framed.body).toContain('<script src="/__qa/overlay.js" defer></script>');
+    expect(seen.length).toBe(before + 1);
   });
 
   it("passes everything else through untouched, as the dev server sees its own origin", async () => {
@@ -202,6 +216,21 @@ describe("the proxy against a fake dev server", () => {
   });
 });
 
+describe("the shell", () => {
+  it("is chosen only for a browser's top-level GET", () => {
+    expect(wantsShell({ method: "GET", headers: { "sec-fetch-dest": "document" } })).toBe(true);
+    expect(wantsShell({ method: "GET", headers: { "sec-fetch-dest": "iframe" } })).toBe(false);
+    expect(wantsShell({ method: "GET", headers: {} })).toBe(false);
+    expect(wantsShell({ method: "POST", headers: { "sec-fetch-dest": "document" } })).toBe(false);
+  });
+
+  it("escapes the project name and loads the frame from the shell's own address", () => {
+    const html = shellHtml('Acme <b>"Co"</b>');
+    expect(html).not.toContain("<b>");
+    expect(html).toContain("location.pathname + location.search + location.hash");
+  });
+});
+
 describe("the injected client", () => {
   // jsdom reports "loading" until DOMContentLoaded fires, so the overlay waits to mount, as it does
   // for a page still parsing; tests wait for it too.
@@ -237,6 +266,35 @@ describe("the injected client", () => {
     expect(anchor.page.url).toBe("http://localhost:4309/");
     expect(() => parseBatch({ version: 1, id: "x", project: "p", createdAt: "t", preview: { url: "u", kind: "web" }, status: "pending",
       comments: [{ id: "c1", text: "t", createdAt: "t", anchor }] })).not.toThrow();
+  });
+
+  it("takes its colours and font from the site, light or dark", async () => {
+    const light = await load(`<body style="background:rgb(242,240,233);color:rgb(23,25,24);font-family:Inter"><p>x</p></body>`);
+    const qa = (light as unknown as { __morpheusQa: { siteTheme: (w: Window) => { dark: boolean; font: string; bg: number[] } } }).__morpheusQa;
+    expect(qa.siteTheme(light)).toMatchObject({ dark: false, font: "Inter", bg: [242, 240, 233, 1] });
+    const dark = await load(`<body style="background:rgb(23,25,24);color:rgb(242,240,233)"><p>x</p></body>`);
+    expect((dark as unknown as { __morpheusQa: typeof qa }).__morpheusQa.siteTheme(dark).dark).toBe(true);
+    // A transparent body falls back to white, and ink too close to the surface is replaced.
+    const bare = await load(`<body style="color:rgb(250,250,250)"><p>x</p></body>`);
+    expect((bare as unknown as { __morpheusQa: typeof qa }).__morpheusQa.siteTheme(bare)).toMatchObject({ dark: false, bg: [255, 255, 255, 1] });
+  });
+
+  it("draws a full-height column and makes room for it when the page arrives without the shell", async () => {
+    const w = await load(`<body><p>x</p></body>`);
+    const host = w.document.querySelector("morpheus-qa")!;
+    const col = host.shadowRoot!.querySelector(".col") as HTMLElement;
+    expect(col).toBeTruthy();
+    expect(host.shadowRoot!.querySelector("textarea")).toBeTruthy();
+    expect(w.document.documentElement.style.getPropertyValue("margin-right")).toBe("340px");
+  });
+
+  it("stays out of the way inside the shell's frame, which the shell drives", async () => {
+    const dom = new JSDOM(`<body><p>x</p></body>`, { runScripts: "outside-only", pretendToBeVisual: true, url: "http://localhost:4309/" });
+    const w = dom.window as unknown as Window & { __morpheusQa: { framed?: boolean } };
+    Object.defineProperty(w, "parent", { value: { __morpheusQaShell: true } });
+    (w as unknown as { eval: (source: string) => void }).eval(WEB_OVERLAY_JS.replace("__MORPHEUS_QA_PROJECT__", '"Lakina"'));
+    expect(w.__morpheusQa.framed).toBe(true);
+    expect(w.document.querySelector("morpheus-qa")).toBeNull();
   });
 
   it("mounts once, outside the body React manages", async () => {

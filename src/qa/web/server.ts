@@ -6,16 +6,18 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import { BatchRejected, recordBatch, type PostedBatch } from "../batches.js";
-import { WEB_OVERLAY_JS } from "./overlay-client.js";
+import { WEB_OVERLAY_COLUMN_PX, WEB_OVERLAY_JS } from "./overlay-client.js";
 
 /**
  * The web comment overlay (MO-26-10-06-18.13.32): a reverse proxy in front of a local dev server
  * that injects one script into every HTML page. The page stays the app — same paths, same
  * cookies, same hot reload — with a comment toolbar and pins on top.
  *
- * Why a proxy and not an iframe: an iframe on another port is another origin, so the overlay could
- * not read the page to anchor a pin to an element, and absolute asset paths (`/_next/...`) would
- * resolve against the overlay. Proxying makes the overlay and the page one origin.
+ * Why a proxy: an iframe of the dev server on another port is another origin, so the overlay could
+ * not read the page to anchor a pin to an element. Proxying makes the overlay and the page one
+ * origin — which is also what lets the overlay frame the site itself. A top-level page load gets
+ * `shellHtml`: the proxied site in a same-origin frame beside a full-height comment column, the
+ * iOS overlay's shape (MO-26-10-07-13.27.17). The framed page is the site, injected as before.
  *
  * Reserved paths live under `/__qa/` so they cannot shadow an app route.
  */
@@ -96,6 +98,31 @@ export function decode(body: Buffer, encoding: string | undefined): Buffer | nul
     case "deflate": return inflateSync(body);
     default: return null;
   }
+}
+
+/**
+ * The page a browser gets for a top-level navigation: the site in a frame on the left, the comment
+ * column (drawn by the overlay script) on the right. The frame loads the same address, so the site's
+ * own paths, cookies and redirects are unchanged; the script keeps the address bar in step with it.
+ */
+export function shellHtml(project: string): string {
+  const title = project.replace(/[<&>"]/g, "");
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title} · QA</title>
+<style>html,body{margin:0;height:100%;overflow:hidden}#morpheus-qa-site{position:fixed;left:0;top:0;height:100%;width:calc(100% - ${WEB_OVERLAY_COLUMN_PX}px);border:0;display:block}</style>
+<script>window.__morpheusQaShell = true;</script>
+</head><body>
+<iframe id="morpheus-qa-site" title="${title}" allow="clipboard-read; clipboard-write; fullscreen"></iframe>
+<script>document.getElementById("morpheus-qa-site").src = location.pathname + location.search + location.hash;</script>
+<script src="${QA_PREFIX}/overlay.js"></script>
+</body></html>
+`;
+}
+
+/** A browser's top-level page load, which gets the shell rather than the site. */
+export function wantsShell(req: Pick<IncomingMessage, "method" | "headers">): boolean {
+  return req.method === "GET" && req.headers["sec-fetch-dest"] === "document";
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -188,7 +215,12 @@ export async function startWebQaServer(options: WebQaServerOptions): Promise<{ p
         return;
       }
 
-      const wantsHtml = req.method === "GET" && (req.headers["sec-fetch-dest"] === "document" || /text\/html/.test(req.headers.accept ?? ""));
+      if (wantsShell(req)) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(shellHtml(options.project));
+        return;
+      }
+      const wantsHtml = req.method === "GET" && (req.headers["sec-fetch-dest"] === "iframe" || /text\/html/.test(req.headers.accept ?? ""));
       const up = lib({
         protocol: upstream.protocol, hostname: upstream.hostname, port: upstream.port || (upstream.protocol === "https:" ? 443 : 80),
         path: `${url.pathname}${url.search}`, method: req.method, headers: upstreamHeaders(req, upstream, own, wantsHtml, presented),
@@ -223,6 +255,8 @@ export async function startWebQaServer(options: WebQaServerOptions): Promise<{ p
             // A dev-only tool on a local origin: a page CSP would refuse the injected script.
             delete headers["content-security-policy"];
             delete headers["content-security-policy-report-only"];
+            // The shell frames the page on its own origin; a frame refusal would blank it.
+            delete headers["x-frame-options"];
             headers["cache-control"] = "no-store";
             res.writeHead(upstreamRes.statusCode ?? 502, headers);
             res.end(body);
