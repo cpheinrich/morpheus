@@ -103,6 +103,7 @@ describe("the GitHub Manager's review record", () => {
     expect(check(save(r))[0]?.level).toBe("waived");
     expect(message(save(r, `<!-- ${r.summary} -->`))).toContain("visible paragraph");
     expect(message(save(r, "```text\n" + r.summary + "\n```"))).toContain("visible paragraph");
+    expect(message(save(r, "~~~text\n" + r.summary + "\n~~~"))).toContain("visible paragraph");
   });
 
   it("accepts fix commits inside the paths its findings name, and counts them", () => {

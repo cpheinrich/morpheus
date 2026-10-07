@@ -185,7 +185,7 @@ describe("visible evidence and trunk integration", () => {
     const r = { ...record(), summary: "Reviewed `src/review/local.ts` and found no actionable defects." };
     expect(check(save(r))).toEqual([]);
     // Still refused when the only copy is hidden.
-    for (const hidden of [`<!-- ${r.summary} -->`, `\`\`\`text\n${r.summary}\n\`\`\``]) {
+    for (const hidden of [`<!-- ${r.summary} -->`, `\`\`\`text\n${r.summary}\n\`\`\``, `~~~text\n${r.summary}\n~~~`]) {
       writeFileSync(join(root, path), `${hidden}\n\n\`\`\`morpheus-review\n${JSON.stringify(r)}\n\`\`\`\n`);
       expect(check(commit())[0]?.message).toContain("visible paragraph");
     }
