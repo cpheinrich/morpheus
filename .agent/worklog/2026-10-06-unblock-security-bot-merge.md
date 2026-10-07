@@ -18,10 +18,7 @@ Before the PR: frozen install, typecheck, all 1,692 tests in 60 files, compile, 
 passed. The item was claimed in an isolated worktree. Claim reconciliation touched three unrelated
 roadmap statuses; those changes were reverted so this PR's final diff remains scoped to this item.
 
-The independent reviewer cleared commit 610c95f at high risk after a same-session follow-up.
-The initial finding claimed older cancelled pr / conventions runs would block merging; the
-reviewer retracted it after checking the deployed engine and REST run IDs. Its gate accepts the
-newer successful run. The live bot merge remains the post-deployment acceptance check.
+The independent reviewer cleared commit 610c95f at high risk after a same-session follow-up. The initial finding claimed older cancelled pr / conventions runs would block merging; the reviewer retracted it after checking the deployed engine and REST run IDs. Its gate accepts the newer successful run. The live bot merge remains the post-deployment acceptance check.
 
 ```morpheus-review
 {
