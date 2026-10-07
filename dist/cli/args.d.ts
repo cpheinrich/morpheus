@@ -73,4 +73,10 @@ export interface Flags {
     print: boolean;
     positional: string[];
 }
+/**
+ * Every flag the global parser consumes before a subcommand sees its arguments. A subcommand that
+ * lets a project declare its own flags (qa preview modes) must refuse these, or the flag is
+ * silently swallowed and the command runs as if it were never given.
+ */
+export declare function globalFlags(): Set<string>;
 export declare function parseArgs(argv: string[]): Flags;

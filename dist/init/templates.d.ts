@@ -179,3 +179,9 @@ export declare const websiteInitSkill: () => string;
  */
 export declare const contextFreshness: () => string;
 export declare const reviewMetadata: () => string;
+/**
+ * The comment-QA skill (MO-26-10-06-15.17.01). A pointer to `morpheus qa guide`, so the steps ship
+ * with the CLI that runs them; written to both `.agents/skills` (Codex, Grok) and `.claude/skills`
+ * (Claude) from this one function.
+ */
+export declare const commentQaSkill: () => string;

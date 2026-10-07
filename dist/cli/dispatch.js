@@ -28,7 +28,7 @@ import { noteWrite } from "../session/context.js";
 import { install as codebaseMemoryInstall } from "./codebase-memory.js";
 import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
-import { dispatchQaComments } from "./qa.js";
+import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
     if (command === "check" || command === undefined)
@@ -394,6 +394,10 @@ async function dispatchQa({ flags, command, rest }) {
     if (command === "comments") {
         return dispatchQaComments(process.cwd(), rest[0], rest.slice(1), flags.project);
     }
+    if (command === "preview")
+        return dispatchQaPreview(process.cwd(), rest[0], rest.slice(1));
+    if (command === "guide")
+        return dispatchQaGuide();
     console.error(`Unknown qa command "${command ?? ""}".\n\n${HELP}`);
     return 1;
 }
