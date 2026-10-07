@@ -3068,10 +3068,13 @@ pull-request set as the durable source of truth.
 
 Every reusable job carries a `timeout-minutes` ceiling set well above its honest runtime, so it
 fires only on a hang. Without one a stuck step runs to GitHub's six-hour default on billed
-minutes, which is how a hung Playwright install once cost forty. The jobs that gate a pull request
-also carry a job-level concurrency group so a superseded push cancels rather than running beside
-its replacement — job-level rather than workflow-level, because a called workflow's top-level
-`concurrency` does not govern the caller's run.
+minutes, which is how a hung Playwright install once cost forty. Most jobs that gate a pull
+request carry a job-level concurrency group so a superseded push cancels rather than running
+beside its replacement. The required `pr / conventions` job in `pr-check.yml` and its `CI` and
+`Review metadata` callers are exempt: every required check run must finish. GitHub replaces a
+pending run in a concurrency group even when `cancel-in-progress` is false; a cancelled required
+run can leave an otherwise green pull request blocked. Job-level grouping governs a called job;
+a called workflow's top-level `concurrency` does not govern the caller's run.
 
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
@@ -3200,6 +3203,16 @@ because it runs from a pinned runtime copy on the host, where no `node_modules` 
 `morpheus ios nightly-core write <file>` vendors it with a digest of the exact module, and `check`
 tells a hand edit from an upgrade. Each app's adapter owns its upload job and step names, window,
 run-title format, incident hook, notifications and installer.
+
+The adapter also owns `runTimeoutMinutes` (240 by default), set above the sum of sequential
+job timeout ceilings plus scheduling/preflight overhead. A running attempt ages from GitHub's
+`run_started_at`, falling back to `created_at` for legacy adapters; retries do not inherit the
+original attempt's age. A queued, pending or requested run waits while another run of the same
+release workflow is in progress. With no active predecessor it still has the configured age
+limit, and a stuck running predecessor is never masked by a queued pair. Callers supply runs
+from one release workflow. All active runs still prevent another automated dispatch; timeout
+configuration does not relax reservations or uncertain-upload refusal. To adopt, re-vendor the
+module and set the timeout in the app's admission config (Evo tracks this in EV-26-10-01-13.30.14).
 
 Screenshots are reviewed from the nightly run itself: every named XCTest attachment is exported
 from the run's `.xcresult` into its `ios-screenshots-<run>-<attempt>` artifact, kept for 14 days.

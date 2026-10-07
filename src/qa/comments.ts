@@ -14,7 +14,40 @@ export const QA_COMMENTS_RESOLVED = `${QA_COMMENTS_DIR}/resolved`;
 
 const norm = z.number().min(0).max(1);
 
-/** Point or region on the captured frame. Prefer normalized coords. */
+/**
+ * What a web pin points at (MO-26-10-06-18.13.32). A page reflows and scrolls, so a fraction of
+ * the frame alone goes stale after one edit; the element is what the comment is about. `selector`
+ * is a CSS path that resolved to exactly this element when the pin was placed; `offsetX`/`offsetY`
+ * are fractions of its box; `text` is its trimmed visible text, cut short.
+ */
+export const QaElementAnchor = z
+  .object({
+    selector: z.string().min(1),
+    tag: z.string().min(1),
+    text: z.string().optional(),
+    offsetX: norm,
+    offsetY: norm,
+  })
+  .strict();
+
+/** Where the page was when a web pin was placed. `x`/`y` on the anchor are page pixels. */
+export const QaPageContext = z
+  .object({
+    url: z.string().min(1),
+    title: z.string().optional(),
+    scrollX: z.number(),
+    scrollY: z.number(),
+    viewportWidth: z.number().positive(),
+    viewportHeight: z.number().positive(),
+    pageWidth: z.number().positive(),
+    pageHeight: z.number().positive(),
+  })
+  .strict();
+
+/**
+ * Point or region on the captured frame. Prefer normalized coords. For a web page the frame is the
+ * whole page, so normX/normY are fractions of the page; `element` and `page` say what and where.
+ */
 export const QaAnchor = z
   .object({
     normX: norm.optional(),
@@ -23,6 +56,8 @@ export const QaAnchor = z
     y: z.number().optional(),
     w: z.number().positive().optional(),
     h: z.number().positive().optional(),
+    element: QaElementAnchor.optional(),
+    page: QaPageContext.optional(),
   })
   .strict()
   .refine(

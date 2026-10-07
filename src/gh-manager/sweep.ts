@@ -34,6 +34,12 @@ export interface ManagerMarker {
    * this head but exact trunk merges, so a later push cannot ride on the label.
    */
   cleared?: string | undefined;
+  /**
+   * The head an update-branch was attempted on. A successful update moves the head, so finding
+   * this equal to the current head means GitHub refused it, and the next run escalates once
+   * instead of retrying every run.
+   */
+  updated?: string | undefined;
 }
 
 export interface PullRequestFacts {
@@ -58,6 +64,19 @@ export interface PullRequestFacts {
   labels: string[];
   autoMerge: boolean;
   mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+  /**
+   * The base has moved past the branch and strict protection requires it up to date. GitHub's
+   * auto-merge never updates a branch itself, so a queued pull request in this state waits for
+   * ever unless something brings it up to date.
+   */
+  behind?: boolean | undefined;
+  /**
+   * The head is the update the manager itself made: a two-parent commit authored by the App whose
+   * first parent is the head it recorded updating. Only that is exempt from the quiet period. A
+   * session's fix commit is not, and neither is a commit merely claiming the App's address.
+   */
+  headFirstParent?: string | undefined;
+  headByManager?: boolean | undefined;
   /** The latest run of each check on the head commit, one entry per name. */
   checks: { name: string; state: CheckState; runId?: number | undefined }[];
   marker?: ManagerMarker | undefined;
@@ -115,7 +134,8 @@ export function parseMarker(body: string): ManagerMarker | undefined {
     if (typeof raw.head !== "string" || typeof raw.verdict !== "string" || typeof raw.attempts !== "number" || typeof raw.at !== "string") return undefined;
     if (!["merge", "escalate", "close", "warn-stale", "incomplete", "wait"].includes(raw.verdict)) return undefined;
     if (raw.cleared !== undefined && typeof raw.cleared !== "string") return undefined;
-    return { head: raw.head, verdict: raw.verdict, attempts: raw.attempts, at: raw.at, ...(raw.cleared ? { cleared: raw.cleared } : {}) };
+    if (raw.updated !== undefined && typeof raw.updated !== "string") return undefined;
+    return { head: raw.head, verdict: raw.verdict, attempts: raw.attempts, at: raw.at, ...(raw.cleared ? { cleared: raw.cleared } : {}), ...(raw.updated ? { updated: raw.updated } : {}) };
   } catch {
     return undefined;
   }
@@ -162,7 +182,8 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   const quiet = pr.isDraft ? policy.draftQuietHours : policy.quietHours;
   // An unparseable date is not "old". Treat it as active rather than acting on a branch whose
   // age is unknown.
-  if (!Number.isFinite(age) || age < quiet * HOUR) {
+  const managerUpdate = pr.headByManager === true && pr.headFirstParent !== undefined && marker?.updated === pr.headFirstParent;
+  if (!managerUpdate && (!Number.isFinite(age) || age < quiet * HOUR)) {
     return routed("skip", "active", pr.isDraft
       ? `draft, and its head commit is under ${quiet}h old; not yet presumed abandoned`
       : `head commit is under ${quiet}h old; an author may still be driving it`);
@@ -183,6 +204,12 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
 
   if (pr.autoMerge && !failing.length && pr.mergeable !== "CONFLICTING") {
     if (cancelled.length && policy.actions.merge) return routed("merge", "rerun-cancelled", `auto-merge is on but ${cancelled.length} check(s) were cancelled; rerunning them`);
+    if (pr.behind && policy.actions.merge) {
+      // Tried on this exact head already and the head did not move: GitHub refused the update.
+      // Escalate once; retrying would post the same two comments every run for ever.
+      if (marker?.updated === pr.headSha) return routed("escalate", "update-refused", "GitHub refused to bring this branch up to date with its base. A likely cause is that the merge from trunk carries a workflow change, which the manager's App is not permitted to push. Merge the base into the branch by hand; auto-merge is still queued");
+      return routed("merge", "update-behind", "auto-merge is on but the branch is behind its base; bringing it up to date");
+    }
     return routed("skip", "waiting", pending.length ? `auto-merge is on; ${pending.length} check(s) running` : "auto-merge is on and checks are green; GitHub merges it");
   }
 

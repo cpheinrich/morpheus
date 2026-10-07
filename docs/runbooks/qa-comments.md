@@ -139,44 +139,111 @@ prints nothing and exits 0 — agents can poll safely.
 
 ## Operator loop
 
-1. Start the project preview (Evo: `apps/ios/scripts/preview.sh start`).
-2. From a checkout that has this CLI (Morpheus worktree until merged):
+1. From the project checkout: `morpheus qa preview ios start`. It builds the checkout, boots a
+   simulator this checkout owns, launches the app, and starts serve-sim **and this overlay** under
+   one launchd supervisor. It prints `QA overlay: http://127.0.0.1:<port>/`.
+2. Open that overlay URL — the same page in every agent: Claude's Browser pane, Codex's in-app
+   browser panel, and for Grok (or any agent without a panel) `open <url>`, the default browser.
+   Not the stream URL, and not a host's native simulator panel or annotation tool.
+3. Left-drag drives the app; **right-click** pins a comment; **Enter** saves the pin; **⌘Enter**
+   sends the batch. Batches land in `<root>/local/qa-comments/pending/`.
+4. The agent polls `morpheus qa comments pending`, then `show` / `resolve`.
+5. `morpheus qa preview ios stop` ends the simulator, serve-sim and the overlay together.
 
-   ```sh
-   pnpm morpheus qa comments serve \
-     --preview http://127.0.0.1:3200/ \
-     --root /Users/chrisheinrich/code/evo \
-     --port 3456
-   ```
+`morpheus qa guide` prints the agent's full instructions; the `comment-qa` skill every project
+carries points at it. `morpheus qa comments serve` remains for a preview Morpheus did not start.
 
-3. Open the printed overlay URL. Left-drag the stream to drive the sim;
-   **right-click** to pin a comment; **Enter** saves the pin; **⌘Enter** sends
-   the batch (pins clear after Send). Batches land in
-   `<root>/local/qa-comments/pending/`. Configure the wake webhook once (above).
-4. Agent (cwd = project root): `morpheus qa comments pending`, then `show` /
-   `resolve`. Until this lands on Morpheus main, use
-   `pnpm morpheus` from the claim worktree with `--root` pointing at the project.
+## The shared iOS preview (MO-26-10-06-15.17.01)
 
-## Hooking ios-qa / preview.sh later
+Moved from Evo's `apps/ios/scripts/preview.mjs` so every project with an iOS app gets the same
+lifecycle. A project declares only what Morpheus cannot know, in `morpheus.json`:
 
-Evo's ios-qa skill today: doctor → start → open Codex panel → use Codex
-annotations. After this lands:
+```json
+"qa": { "ios": {
+  "app": "apps/ios",
+  "build": ["bash", "apps/ios/scripts/dev.sh", "build"],
+  "precheck": ["bash", "apps/ios/scripts/lint.sh"],
+  "product": "Build/Products/Debug-iphonesimulator/App.app",
+  "derivedData": "/private/tmp/AppDerivedData-{key}",
+  "bundleId": "com.example.app",
+  "device": { "name": "App QA", "type": "iPhone 17 Pro" },
+  "minimumXcode": "26.5",
+  "defaultMode": "demo",
+  "modes": {
+    "demo": { "flags": ["--demo"], "args": ["-ui-testing"], "summary": "Mode: demo. …" },
+    "live": { "flags": ["--live"], "args": ["--qa-live"],
+              "prepare": { "command": ["node", "apps/ios/scripts/qa-account.mjs", "{key}"], "credentials": true },
+              "summary": "Mode: live. …" }
+  }
+} }
+```
 
-- `preview.sh start` keeps owning sim + serve-sim lifecycle and prints the
-  preview URL; run `morpheus qa comments serve --preview <that-url> --root <evo>`
-  beside it (no Evo claim required for the first usable loop).
-- ios-qa step 3 can later print/auto-open the serve command when no Codex
-  panel is available.
-- The skill's "first annotation must confirm pixels arrived" check becomes:
-  confirm `frame.png` (or the overlay's live canvas) shows real app pixels
-  before treating comments as authoritative.
+- `{key}` is the checkout key (first 12 hex of SHA-256 over the app directory's absolute path)
+  and `{root}` the project root; both expand in commands, paths and launch arguments.
+- The build command receives `DERIVED_DATA_PATH`, `SIMULATOR_NAME`, `SIMULATOR_OS` and
+  `SIMULATOR_UDID` for the simulator the preview booted.
+- A mode's `prepare` command prints `{"env": {"NAME": "value"}}`; each entry reaches the app as a
+  launch environment variable. With `credentials: true` it runs under
+  `morpheus credentials run --`. Its stdout stays in memory: never in arguments, state files or
+  launchd.
+- `namespace` (launchd label and `~/Library/Caches/<namespace>/<key>` state) and `device.name`
+  default to `morpheus.qa.<project>` and `<Project> QA`; Evo sets its old values so previews its own
+  script started stay addressable across the move.
+- Default ports are spread per checkout (3200–3455) so two projects' previews do not collide; the
+  overlay is always 256 above the stream. `--port` overrides.
+- serve-sim is a pinned dependency of the CLI, no longer installed per project.
 
-No change to serve-sim networking rules: stay on `127.0.0.1`; no LAN bind; no
-public tunnel.
+Everything the old script guaranteed carries over and is tested in `tests/qa-preview.test.ts`:
+launchd owns exactly this preview; a device is shut down only when its name proves this checkout
+owns it; the lease defaults to four hours; a signal is intent, not an abort; Xcode 27's Device Hub
+input shadowing is repaired before launch; occupied ports are refused, never freed.
+
+## The web preview (MO-26-10-06-18.13.32)
+
+`morpheus qa preview web start|status|stop|help` puts the comment overlay in front of a project's
+local dev server. The project declares it in `morpheus.json`:
+
+```json
+"qa": { "web": { "url": "http://localhost:5173", "command": ["npx", "next", "dev", "--port", "{port}"], "cwd": "apps/web", "path": "/" } }
+```
+
+- **Attach or start.** If something already answers at `url`, the preview attaches and `stop` leaves
+  it running. Otherwise it runs `command` in `cwd` under the launchd supervisor, in its own process
+  group, and `stop` (or the lease, or the dev server exiting) ends the whole group.
+- **The site's own address (MO-26-10-06-22.17.47).** When the preview starts the dev server and
+  `command` contains `{port}`, the dev server runs on the first free port above `url`'s and the
+  overlay listens on `url` itself. Sign-in allowlists (a Firebase browser key's HTTP referrers,
+  OAuth redirect URIs), cookies and redirects then see exactly the address they were configured for.
+  On a separate overlay port, Firebase refused Google sign-in with
+  `auth/requests-from-referer-http://localhost:4342/-are-blocked`, and a proxy cannot fix that: the
+  browser calls Google directly. Without `{port}`, or when a dev server already holds `url`, the
+  overlay sits on its own port and `start` says that sign-in may be refused there; `--port` also
+  keeps it on its own port. When fronting, requests reach the dev server with the site's own host,
+  origin and referer, so absolute URLs it builds (an OAuth `redirect_uri`) name the site too. A dev script that
+  hard-codes its port needs the underlying command, e.g. `["npx", "next", "dev", "--port", "{port}"]`.
+- **A proxy, not an iframe.** The overlay serves the site on its own port and injects
+  `<script src="/__qa/overlay.js" defer>` at the end of every HTML page's head. Paths, cookies and
+  hot reload are the site's own: requests reach the dev server with its own host, origin and referer;
+  redirects to the dev server's origin come back through the overlay; websockets are tunnelled. The
+  page's CSP header is dropped (a dev-only tool on a local origin). Reserved paths live under
+  `/__qa/` (health, the overlay script, the capture library, the batch endpoint).
+- **The end of head, not the start.** React hydrates head children in order; a script placed first
+  was paired with the layout's own first script and reported as a hydration mismatch.
+- **Hostname.** The overlay URL uses the dev server's hostname (usually `localhost`) so cookies set for
+  the dev server — a signed-in session — apply. Cookies ignore ports. The batch endpoint accepts JSON
+  from the overlay's own origin, as `localhost` or `127.0.0.1`.
+- **Pins.** Right-click any element (Shift+right-click keeps the browser menu), or turn on Comment
+  and click. Each anchor carries `element` (a CSS selector that matched exactly that element, its
+  tag, visible text and the point within it) and `page` (url, scroll, viewport and page size);
+  `normX`/`normY` are fractions of the whole page, which is what the frame is.
+- **Frame.** modern-screenshot 4.7.0 (zero dependencies) renders the whole page on Send, overlay
+  excluded. It inlines fonts only from stylesheets the page can read, so the overlay adds a temporary
+  same-origin copy of cross-origin `@font-face` rules (Google Fonts) for the capture; without it the
+  image used a fallback font and text reflowed. A capture that fails still sends, without a frame.
+- **Default port** 4300–4555, spread per checkout; `--port` overrides.
 
 ## Non-goals (v1)
 
-- Replacing Codex annotations where that panel already works.
 - Committing frames or batches.
 - Cross-machine sync of `local/qa-comments/` (use chat / PR for remote agents).
-- DOM-level element selectors for native sim streams.
+- DOM-level element selectors for native sim streams (web pins carry them; a simulator stream has no DOM).

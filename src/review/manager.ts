@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Finding } from "../check/pr.js";
-import { visibleProse } from "../check/pr.js";
+import { visibleProse, visibleText } from "../check/pr.js";
 import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, humanGatedPaths, MANAGER_REVIEWED_LABEL, parsePolicy } from "../gh-manager/policy.js";
 import { changedPaths, git, isAncestor, reviewRequired, verifyUncoveredCommits } from "./local.js";
 
@@ -67,7 +67,7 @@ export function parseManagerReviewRecord(markdown: string): ManagerReviewRecord 
   if (blocks.length !== 1) throw new Error("worklog needs exactly one morpheus-manager-review JSON block");
   const record = ManagerReviewRecord.parse(JSON.parse(blocks[0]![1]!));
   // Same rule as the ordinary record: the audit must be readable without parsing JSON.
-  if (!visibleProse(markdown.replace(blocks[0]![0], "")).includes(record.summary)) {
+  if (!visibleText(markdown.replace(blocks[0]![0], "")).includes(record.summary)) {
     throw new Error("repeat the manager review summary as a visible paragraph outside the JSON block");
   }
   return record;

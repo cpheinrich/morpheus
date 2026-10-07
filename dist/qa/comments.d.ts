@@ -9,7 +9,34 @@ import { z } from "zod";
 export declare const QA_COMMENTS_DIR = "local/qa-comments";
 export declare const QA_COMMENTS_PENDING = "local/qa-comments/pending";
 export declare const QA_COMMENTS_RESOLVED = "local/qa-comments/resolved";
-/** Point or region on the captured frame. Prefer normalized coords. */
+/**
+ * What a web pin points at (MO-26-10-06-18.13.32). A page reflows and scrolls, so a fraction of
+ * the frame alone goes stale after one edit; the element is what the comment is about. `selector`
+ * is a CSS path that resolved to exactly this element when the pin was placed; `offsetX`/`offsetY`
+ * are fractions of its box; `text` is its trimmed visible text, cut short.
+ */
+export declare const QaElementAnchor: z.ZodObject<{
+    selector: z.ZodString;
+    tag: z.ZodString;
+    text: z.ZodOptional<z.ZodString>;
+    offsetX: z.ZodNumber;
+    offsetY: z.ZodNumber;
+}, z.core.$strict>;
+/** Where the page was when a web pin was placed. `x`/`y` on the anchor are page pixels. */
+export declare const QaPageContext: z.ZodObject<{
+    url: z.ZodString;
+    title: z.ZodOptional<z.ZodString>;
+    scrollX: z.ZodNumber;
+    scrollY: z.ZodNumber;
+    viewportWidth: z.ZodNumber;
+    viewportHeight: z.ZodNumber;
+    pageWidth: z.ZodNumber;
+    pageHeight: z.ZodNumber;
+}, z.core.$strict>;
+/**
+ * Point or region on the captured frame. Prefer normalized coords. For a web page the frame is the
+ * whole page, so normX/normY are fractions of the page; `element` and `page` say what and where.
+ */
 export declare const QaAnchor: z.ZodObject<{
     normX: z.ZodOptional<z.ZodNumber>;
     normY: z.ZodOptional<z.ZodNumber>;
@@ -17,6 +44,23 @@ export declare const QaAnchor: z.ZodObject<{
     y: z.ZodOptional<z.ZodNumber>;
     w: z.ZodOptional<z.ZodNumber>;
     h: z.ZodOptional<z.ZodNumber>;
+    element: z.ZodOptional<z.ZodObject<{
+        selector: z.ZodString;
+        tag: z.ZodString;
+        text: z.ZodOptional<z.ZodString>;
+        offsetX: z.ZodNumber;
+        offsetY: z.ZodNumber;
+    }, z.core.$strict>>;
+    page: z.ZodOptional<z.ZodObject<{
+        url: z.ZodString;
+        title: z.ZodOptional<z.ZodString>;
+        scrollX: z.ZodNumber;
+        scrollY: z.ZodNumber;
+        viewportWidth: z.ZodNumber;
+        viewportHeight: z.ZodNumber;
+        pageWidth: z.ZodNumber;
+        pageHeight: z.ZodNumber;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 export declare const QaComment: z.ZodObject<{
     id: z.ZodString;
@@ -29,6 +73,23 @@ export declare const QaComment: z.ZodObject<{
         y: z.ZodOptional<z.ZodNumber>;
         w: z.ZodOptional<z.ZodNumber>;
         h: z.ZodOptional<z.ZodNumber>;
+        element: z.ZodOptional<z.ZodObject<{
+            selector: z.ZodString;
+            tag: z.ZodString;
+            text: z.ZodOptional<z.ZodString>;
+            offsetX: z.ZodNumber;
+            offsetY: z.ZodNumber;
+        }, z.core.$strict>>;
+        page: z.ZodOptional<z.ZodObject<{
+            url: z.ZodString;
+            title: z.ZodOptional<z.ZodString>;
+            scrollX: z.ZodNumber;
+            scrollY: z.ZodNumber;
+            viewportWidth: z.ZodNumber;
+            viewportHeight: z.ZodNumber;
+            pageWidth: z.ZodNumber;
+            pageHeight: z.ZodNumber;
+        }, z.core.$strict>>;
     }, z.core.$strict>;
 }, z.core.$strict>;
 export declare const QaPreview: z.ZodObject<{
@@ -77,6 +138,23 @@ export declare const QaCommentBatch: z.ZodObject<{
             y: z.ZodOptional<z.ZodNumber>;
             w: z.ZodOptional<z.ZodNumber>;
             h: z.ZodOptional<z.ZodNumber>;
+            element: z.ZodOptional<z.ZodObject<{
+                selector: z.ZodString;
+                tag: z.ZodString;
+                text: z.ZodOptional<z.ZodString>;
+                offsetX: z.ZodNumber;
+                offsetY: z.ZodNumber;
+            }, z.core.$strict>>;
+            page: z.ZodOptional<z.ZodObject<{
+                url: z.ZodString;
+                title: z.ZodOptional<z.ZodString>;
+                scrollX: z.ZodNumber;
+                scrollY: z.ZodNumber;
+                viewportWidth: z.ZodNumber;
+                viewportHeight: z.ZodNumber;
+                pageWidth: z.ZodNumber;
+                pageHeight: z.ZodNumber;
+            }, z.core.$strict>>;
         }, z.core.$strict>;
     }, z.core.$strict>>;
     status: z.ZodEnum<{

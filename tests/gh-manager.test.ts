@@ -163,6 +163,16 @@ describe("routing one pull request", () => {
     expect(route({ labels: ["agent-reviewed"], checks: [{ name: "test", state: "cancelled", runId: 5 }] })).toMatchObject({ route: "merge", reason: "reviewed-and-green" });
     expect(route({ labels: ["agent-reviewed"], autoMerge: true, checks: [{ name: "test", state: "cancelled", runId: 5 }] })).toMatchObject({ route: "merge", reason: "rerun-cancelled" });
   });
+  it("brings a queued pull request up to date when strict protection holds it behind", () => {
+    // Morpheus #262 and #322 sat behind main for hours with auto-merge on: GitHub never updates
+    // a branch itself.
+    expect(route({ autoMerge: true, behind: true })).toMatchObject({ route: "merge", reason: "update-behind" });
+    expect(route({ autoMerge: true, behind: false })).toMatchObject({ route: "skip", reason: "waiting" });
+    expect(route({ autoMerge: true, behind: true }, policy({ actions: { merge: false } }))).toMatchObject({ route: "skip", reason: "waiting" });
+    // Behind and failing, or behind and conflicting, is work for a session, not an update.
+    expect(route({ autoMerge: true, behind: true, checks: [{ name: "test", state: "failure" }] })).toMatchObject({ route: "session" });
+    expect(route({ autoMerge: true, behind: true, mergeable: "CONFLICTING" })).toMatchObject({ route: "session" });
+  });
   it("waits on a pull request that already has auto-merge on", () => {
     expect(route({ autoMerge: true })).toMatchObject({ route: "skip", reason: "waiting" });
     expect(route({ autoMerge: true, checks: [{ name: "test", state: "failure" }] })).toMatchObject({ route: "session" });
@@ -352,6 +362,67 @@ describe("applying a session's decision", () => {
     expect(() => Decision.parse({ version: 1, pr: 7, head: "abc", action: "merge", summary: "long enough", reasoning: "long enough" })).toThrow();
     expect(() => Decision.parse({ version: 1, pr: 7, head: HEAD, action: "approve", summary: "long enough", reasoning: "long enough" })).toThrow();
     expect(() => Decision.parse({ version: 1, pr: 7, head: HEAD, action: "merge", summary: "long enough", reasoning: "long enough", admin: true })).toThrow();
+  });
+});
+
+describe("a refused update, and the manager's own commits", () => {
+  it("records the head it tried to update, escalates once if that head did not move, and keeps auto-merge", () => {
+    const routed = { number: 7, title: "t", headSha: HEAD, route: "merge" as const, reason: "update-behind", detail: "behind", attempts: 1 };
+    const first = planRoute(routed, live({ autoMerge: true, behind: true }), ctx());
+    const marker = parseMarker((first.operations[0] as { body: string }).body)!;
+    expect(marker.updated).toBe(HEAD);
+    // The comment says what is about to happen, not that it happened.
+    expect((first.operations[0] as { body: string }).body).toContain("Merging the base in");
+    // Next run, same head: GitHub refused it. Escalate rather than try again.
+    expect(route({ autoMerge: true, behind: true, marker })).toMatchObject({ route: "escalate", reason: "update-refused" });
+    const plan = planRoute({ ...routed, route: "escalate", reason: "update-refused", detail: "GitHub refused" }, live({ autoMerge: true, behind: true }), ctx());
+    expect(kinds(plan)).toEqual(["comment", "add-label:manager:needs-human"]);
+    // And the run after that is quiet: the pull request is escalated at this head.
+    expect(route({ autoMerge: true, behind: true, labels: ["manager:needs-human"], marker: { ...marker, verdict: "escalate" } })).toMatchObject({ route: "skip", reason: "escalated" });
+    // An update that landed moved the head, so the record no longer matches and it proceeds.
+    expect(route({ autoMerge: true, behind: true, headSha: OTHER, marker })).toMatchObject({ route: "merge", reason: "update-behind" });
+  });
+  it("records the attempt on a session-decided merge too", () => {
+    const plan = planDecision(decision(), live({ labels: ["agent-reviewed"], behind: true }), ctx());
+    expect(parseMarker((plan.operations[0] as { body: string }).body)?.updated).toBe(HEAD);
+    expect(parseMarker((planDecision(decision(), live({ labels: ["agent-reviewed"] }), ctx()).operations[0] as { body: string }).body)).not.toHaveProperty("updated");
+  });
+  it("exempts only the update the manager recorded from the quiet period", () => {
+    const recorded = { head: OTHER, verdict: "merge" as const, attempts: 1, at: hoursAgo(1), updated: OTHER };
+    const fresh = { headCommittedAt: hoursAgo(0.1) };
+    // The manager's update of OTHER: exempt, so the queue is not held for another eight hours.
+    expect(route({ ...fresh, headByManager: true, headFirstParent: OTHER, marker: recorded }).reason).not.toBe("active");
+    // A session's fix commit (one parent), an update of some other head, an author's merge, or
+    // a manager commit with no recorded update: all still read as active.
+    expect(route({ ...fresh, headByManager: true, marker: recorded })).toMatchObject({ route: "skip", reason: "active" });
+    expect(route({ ...fresh, headByManager: true, headFirstParent: "c".repeat(40), marker: recorded })).toMatchObject({ route: "skip", reason: "active" });
+    expect(route({ ...fresh, headByManager: false, headFirstParent: OTHER, marker: recorded })).toMatchObject({ route: "skip", reason: "active" });
+    expect(route({ ...fresh, headByManager: true, headFirstParent: OTHER, marker: { ...recorded, updated: undefined } })).toMatchObject({ route: "skip", reason: "active" });
+  });
+  it("keeps the manager's label on a refused update, so the pull request can still land", () => {
+    const plan = planRoute({ number: 7, title: "t", headSha: HEAD, route: "escalate", reason: "update-refused", detail: "GitHub refused", attempts: 1 }, live({ autoMerge: true, behind: true, labels: ["manager-reviewed"] }), ctx());
+    expect(kinds(plan)).toEqual(["comment", "add-label:manager:needs-human"]);
+    // Any other escalation still withdraws both.
+    const other = planRoute({ number: 7, title: "t", headSha: HEAD, route: "escalate", reason: "attempts-spent", detail: "spent", attempts: 2 }, live({ autoMerge: true, labels: ["manager-reviewed"] }), ctx());
+    expect(kinds(other)).toEqual(["comment", "disable-auto-merge", "remove-label:manager-reviewed", "add-label:manager:needs-human"]);
+  });
+});
+
+describe("bringing a branch up to date", () => {
+  const routed = { number: 7, title: "t", headSha: HEAD, route: "merge" as const, reason: "update-behind", detail: "behind", attempts: 1 };
+  it("updates a queued branch guarded on the head it planned for, and records it", () => {
+    const plan = planRoute(routed, live({ autoMerge: true, behind: true }), ctx());
+    expect(kinds(plan)).toEqual(["comment", "update-branch"]);
+    expect(plan.operations[1]).toEqual({ kind: "update-branch", expectedHead: HEAD });
+    expect((plan.operations[0] as { body: string }).body).toContain("update-branch");
+  });
+  it("queues auto-merge before updating, so the queue follows the new CI run", () => {
+    expect(kinds(planRoute({ ...routed, reason: "reviewed-and-green" }, live({ behind: true }), ctx()))).toEqual(["comment", "auto-merge", "update-branch"]);
+    expect(kinds(planDecision(decision(), live({ labels: ["agent-reviewed"], behind: true }), ctx()))).toEqual(["comment", "auto-merge", "update-branch"]);
+  });
+  it("does not update a branch that is not behind", () => {
+    expect(kinds(planRoute(routed, live({ autoMerge: true, behind: false }), ctx()))).toEqual([]);
+    expect(kinds(planDecision(decision(), live({ labels: ["agent-reviewed"] }), ctx()))).not.toContain("update-branch");
   });
 });
 

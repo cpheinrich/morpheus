@@ -1,5 +1,12 @@
 import { listPending, resolveBatch, showBatch } from "../qa/store.js";
 import { startQaCommentServer } from "../qa/serve.js";
+import { execFileSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { join, resolve as resolvePath } from "node:path";
+import { QA_GUIDE } from "../qa/guide.js";
+import { loadIosPreviewConfig } from "../qa/preview/config.js";
+import { parsePreviewArgs, previewContext, runPreview } from "../qa/preview/ios.js";
+import { loadWebPreviewConfig, parseWebPreviewArgs, runWebPreview, webContext } from "../qa/preview/web.js";
 /**
  * `morpheus qa comments …` — agent-facing side of the QA comment loop.
  *
@@ -183,5 +190,102 @@ export async function dispatchQaComments(root, command, rest, projectFlag) {
     }
     console.error(`Unknown qa comments command "${command}".\n\n${USAGE}`);
     return 1;
+}
+// ---------------------------------------------------------------------------------------------
+// `morpheus qa preview ios …` and `morpheus qa guide` (MO-26-10-06-15.17.01)
+const PREVIEW_USAGE = `Usage
+  morpheus qa preview ios [start|status|stop|doctor|help] [--mode <name>] [--port <n>] [--ttl-minutes <1-1440>]
+                          [--no-build] [--ssh-host <user@host>] [--root <project>]
+  morpheus qa preview web [start|status|stop|help] [--path </page>] [--port <n>] [--ttl-minutes <1-1440>]
+                          [--ssh-host <user@host>] [--root <project>]
+  The project's morpheus.json declares qa.ios (the app, its build, its launch modes; "ios help"
+  lists them) and qa.web (the dev server url, the command that starts it, the first page).
+  Every agent opens the QA overlay URL that start prints. Instructions: morpheus qa guide`;
+function projectRootFrom(cwd, rest) {
+    const taken = takeRootFlag(rest, "");
+    if (taken.root)
+        return { root: resolvePath(taken.root), rest: taken.rest };
+    try {
+        return { root: execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(), rest: taken.rest };
+    }
+    catch {
+        return { root: cwd, rest: taken.rest };
+    }
+}
+export async function dispatchQaPreview(cwd, platform, rest) {
+    if (platform === "web")
+        return dispatchWebPreview(cwd, rest);
+    if (platform !== "ios") {
+        console.error(platform === undefined || platform === "--help" || platform === "-h" ? PREVIEW_USAGE : `Unknown preview platform "${platform}". Use ios or web.\n\n${PREVIEW_USAGE}`);
+        return platform === "--help" || platform === "-h" ? 0 : 1;
+    }
+    let root;
+    let args;
+    try {
+        ({ root, rest: args } = projectRootFrom(cwd, rest));
+    }
+    catch (error) {
+        console.error(error.message);
+        return 1;
+    }
+    const loaded = await loadIosPreviewConfig(root);
+    if (!loaded.ok) {
+        console.error(`${loaded.issues.join("\n")}\n\n${PREVIEW_USAGE}`);
+        return 1;
+    }
+    const { config } = loaded;
+    // `help` is a word, not a flag: the global parser consumes --help before this command runs.
+    if (args[0] === "help") {
+        console.log(PREVIEW_USAGE);
+        console.log(`\nModes for this project (default ${config.defaultMode}):`);
+        for (const mode of Object.values(config.modes)) {
+            console.log(`  ${mode.name}${mode.flags.length ? ` (${mode.flags.join(", ")})` : ""}: ${mode.summary}`);
+        }
+        return 0;
+    }
+    try {
+        const options = parsePreviewArgs(args, config.modes);
+        await runPreview(previewContext(root, config), options);
+        return 0;
+    }
+    catch (error) {
+        console.error(`Preview: ${error.message}`);
+        return 1;
+    }
+}
+async function dispatchWebPreview(cwd, rest) {
+    let root;
+    let args;
+    try {
+        ({ root, rest: args } = projectRootFrom(cwd, rest));
+    }
+    catch (error) {
+        console.error(error.message);
+        return 1;
+    }
+    const loaded = await loadWebPreviewConfig(root);
+    if (!loaded.ok) {
+        console.error(`${loaded.issues.join("\n")}\n\n${PREVIEW_USAGE}`);
+        return 1;
+    }
+    const { config } = loaded;
+    if (args[0] === "help") {
+        console.log(PREVIEW_USAGE);
+        console.log(`\nThis project's dev server: ${config.url}${config.command ? ` (started with: ${config.command.join(" ")} in ${config.cwd})` : " (must already be running)"}; first page ${config.path}.`);
+        return 0;
+    }
+    try {
+        const manifest = JSON.parse(await readFile(join(root, "morpheus.json"), "utf8"));
+        await runWebPreview(webContext(root, config), parseWebPreviewArgs(args), manifest.name ?? "project");
+        return 0;
+    }
+    catch (error) {
+        console.error(`Web preview: ${error.message}`);
+        return 1;
+    }
+}
+export function dispatchQaGuide() {
+    console.log(QA_GUIDE);
+    return 0;
 }
 //# sourceMappingURL=qa.js.map

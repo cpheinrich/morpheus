@@ -8,7 +8,7 @@ import {
   IOS_NIGHTLY_SECRETS,
   analyticsSchema,
   brandReviewSkill,
-  motionDesignExplorationSkill,
+  motionDesignExplorationSkill, commentQaSkill,
 } from "../src/init/templates.js";
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../src/analytics/contract.js";
 import ts from "typescript";
@@ -735,6 +735,12 @@ describe("morpheus init", () => {
     expect(await read(".agents/skills/motion-design-exploration/SKILL.md")).toBe(
       repositorySkill,
     );
+  });
+
+  it("scaffolds the comment-QA skill for Codex, Grok and Claude from one template", async () => {
+    await scaffold(dir, SEED);
+    expect(await read(".agents/skills/comment-qa/SKILL.md")).toBe(commentQaSkill());
+    expect(await read(".claude/skills/comment-qa/SKILL.md")).toBe(commentQaSkill());
   });
 
   it("gives every directory a tracked file, since git drops empty ones", async () => {

@@ -39,6 +39,8 @@ interface RestPull {
     }[];
     auto_merge: unknown;
     mergeable?: boolean | null;
+    /** REST's lower-case merge state: `behind`, `dirty`, `clean`, `blocked`, `unstable`, `unknown`. */
+    mergeable_state?: string;
     merged?: boolean;
     state: string;
 }
