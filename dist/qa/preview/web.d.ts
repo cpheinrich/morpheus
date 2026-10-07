@@ -10,7 +10,12 @@ import { type Run } from "./ios.js";
 export interface WebPreviewConfig {
     /** The dev server's origin, e.g. http://localhost:5173 — local only. */
     url: string;
-    /** Starts the dev server when it is not already running; omitted, the preview only attaches. */
+    /**
+     * Starts the dev server when it is not already running; omitted, the preview only attaches. With a
+     * `{port}` placeholder the preview takes the site's own address: the dev server runs on a spare
+     * port and the overlay listens on `url`'s port, so sign-in allowlists, cookies and redirects see
+     * exactly the address they were configured for (MO-26-10-06-22.17.47).
+     */
     command?: string[];
     /** Working directory for the command, relative to the project root. */
     cwd: string;
@@ -40,9 +45,18 @@ export declare function webKey(root: string, config: Pick<WebPreviewConfig, "cwd
 export declare function defaultWebPort(key: string): number;
 /** The page to open: the dev server's own hostname, so its cookies (a signed-in session) apply. */
 export declare function overlayUrl(upstream: string, port: number, path: string): string;
+/** True when the dev command can be told its port, so the overlay can take the site's own address. */
+export declare function frontable(config: Pick<WebPreviewConfig, "command">): boolean;
+/** The site's address when the overlay holds it (own-address mode), else undefined. */
+export declare function frontedSite(state: Pick<WebPreviewState, "site" | "port">): string | undefined;
+export declare function sitePort(url: string): number;
+/** The first port after `from` that is free on loopback, for the relocated dev server. */
+export declare function spareDevPort(from: number, exclude: number, attempts?: number): Promise<number>;
 export interface WebPreviewState {
+    /** `upstream` is where the dev server answers; `site` is the address people open (its own, when fronted). */
     root: string;
     upstream: string;
+    site?: string;
     port: number;
     path: string;
     expiresAt: number;

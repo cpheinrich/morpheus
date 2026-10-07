@@ -28,6 +28,12 @@ export interface WebQaServerOptions {
   /** The dev server's origin, e.g. http://localhost:5173 */
   upstream: string;
   port: number;
+  /**
+   * The address people open when the overlay fronts the site at its own address, e.g.
+   * http://localhost:5173 while the dev server runs on 5174. The dev server then sees this host,
+   * origin and referer, so absolute URLs it builds (OAuth redirect_uri callbacks) name the site.
+   */
+  publicOrigin?: string;
   onListen?: (info: { port: number }) => void;
 }
 
@@ -108,15 +114,15 @@ function readBody(req: IncomingMessage, limit = 64 * 1024 * 1024): Promise<Buffe
 }
 
 /** The request as the dev server should see it: its own host, origin and referer. */
-export function upstreamHeaders(req: IncomingMessage, upstream: URL, own: string, html: boolean): Record<string, string | string[]> {
+export function upstreamHeaders(req: IncomingMessage, upstream: URL, own: string, html: boolean, presented: URL = upstream): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const [name, value] of Object.entries(req.headers)) {
     if (value === undefined || HOP_BY_HOP.has(name)) continue;
     out[name] = value;
   }
-  out.host = upstream.host;
-  if (typeof out.origin === "string" && out.origin === own) out.origin = upstream.origin;
-  if (typeof out.referer === "string" && out.referer.startsWith(own)) out.referer = upstream.origin + out.referer.slice(own.length);
+  out.host = presented.host;
+  if (typeof out.origin === "string" && out.origin === own) out.origin = presented.origin;
+  if (typeof out.referer === "string" && out.referer.startsWith(own)) out.referer = presented.origin + out.referer.slice(own.length);
   // A page we inject into must arrive uncompressed so the script can be inserted.
   if (html) out["accept-encoding"] = "identity";
   return out;
@@ -129,6 +135,7 @@ function screenshotLibraryPath(): string {
 
 export async function startWebQaServer(options: WebQaServerOptions): Promise<{ port: number; close: () => Promise<void> }> {
   const upstream = normalizeUpstream(options.upstream);
+  const presented = options.publicOrigin ? normalizeUpstream(options.publicOrigin) : upstream;
   const lib = upstream.protocol === "https:" ? httpsRequest : httpRequest;
   const library = await readFile(screenshotLibraryPath(), "utf8");
   // Set once the port is bound (a test may ask for port 0); requests arrive only after that.
@@ -184,7 +191,7 @@ export async function startWebQaServer(options: WebQaServerOptions): Promise<{ p
       const wantsHtml = req.method === "GET" && (req.headers["sec-fetch-dest"] === "document" || /text\/html/.test(req.headers.accept ?? ""));
       const up = lib({
         protocol: upstream.protocol, hostname: upstream.hostname, port: upstream.port || (upstream.protocol === "https:" ? 443 : 80),
-        path: `${url.pathname}${url.search}`, method: req.method, headers: upstreamHeaders(req, upstream, own, wantsHtml),
+        path: `${url.pathname}${url.search}`, method: req.method, headers: upstreamHeaders(req, upstream, own, wantsHtml, presented),
       }, (upstreamRes) => {
         const headers: Record<string, string | string[]> = {};
         for (const [name, value] of Object.entries(upstreamRes.headers)) {
@@ -249,7 +256,7 @@ export async function startWebQaServer(options: WebQaServerOptions): Promise<{ p
     tunnels.add(socket);
     socket.once("close", () => tunnels.delete(socket));
     const target = connect({ host: upstream.hostname.replace(/^\[|\]$/g, ""), port: Number(upstream.port || 80) }, () => {
-      const headers = upstreamHeaders(req, upstream, own, false);
+      const headers = upstreamHeaders(req, upstream, own, false, presented);
       headers.connection = "Upgrade";
       headers.upgrade = String(req.headers.upgrade ?? "websocket");
       const lines = [`${req.method} ${req.url} HTTP/1.1`, ...Object.entries(headers).flatMap(([k, v]) => (Array.isArray(v) ? v : [v]).map((x) => `${k}: ${x}`))];

@@ -104,6 +104,31 @@ export function overlayUrl(upstream, port, path) {
     const host = new URL(upstream).hostname;
     return `http://${host === "[::1]" ? "localhost" : host}:${port}${path}`;
 }
+/** True when the dev command can be told its port, so the overlay can take the site's own address. */
+export function frontable(config) {
+    return Boolean(config.command?.some((a) => a.includes("{port}")));
+}
+/** The site's address when the overlay holds it (own-address mode), else undefined. */
+export function frontedSite(state) {
+    return state.site !== undefined && sitePort(state.site) === state.port ? state.site : undefined;
+}
+export function sitePort(url) {
+    const u = new URL(url);
+    return Number(u.port || (u.protocol === "https:" ? 443 : 80));
+}
+/** The first port after `from` that is free on loopback, for the relocated dev server. */
+export async function spareDevPort(from, exclude, attempts = 50) {
+    for (let port = from + 1; port <= Math.min(65535, from + attempts); port++) {
+        if (port === exclude)
+            continue;
+        try {
+            await requireFreePort(port);
+            return port;
+        }
+        catch { /* taken */ }
+    }
+    throw new Error(`No free port after ${from} for the dev server.`);
+}
 export function webContext(root, config, run = defaultRun, log = console.log) {
     const key = webKey(root, config);
     const stateDir = join(homedir(), "Library", "Caches", config.namespace, `web-${key}`);
@@ -164,8 +189,18 @@ async function stopWeb(ctx) {
     rmSync(ctx.stateFile, { force: true });
 }
 function report(ctx, state, options) {
-    const url = overlayUrl(state.upstream, state.port, state.path);
+    const url = overlayUrl(state.site ?? state.upstream, state.port, state.path);
+    const fronted = frontedSite(state) !== undefined;
     ctx.log(`Host: ${hostname()}\nCheckout: ${ctx.root}\nDev server: ${state.upstream} (${state.spawned ? "started by this preview" : "already running; left as found on stop"})`);
+    if (fronted)
+        ctx.log(`The overlay holds the site's own address (${state.site}), so sign-in allowlists and cookies see the address they expect.`);
+    else if (state.site !== undefined) {
+        // Only for previews that know about own-address mode; an older state file has no `site`.
+        const why = !state.spawned ? `the dev server already holds ${state.site}; stop it and run start again to let the preview take its address`
+            : frontable(ctx.config) ? "--port was given, which keeps the overlay on a port of its own"
+                : `add a {port} placeholder to qa.web.command (e.g. ["npx", "next", "dev", "--port", "{port}"]) to let the preview take ${state.site}`;
+        ctx.log(`Note: the overlay is not on the site's own address, so an allowlist for that address (Firebase or Google sign-in) may refuse requests: ${why}.`);
+    }
     ctx.log(`Preview expires: ${new Date(state.expiresAt).toISOString()}. Run start to renew, or stop when finished.`);
     ctx.log(`\nQA overlay: ${url}`);
     ctx.log("Open the overlay, not the dev server, in the agent's browser:");
@@ -209,12 +244,22 @@ export async function runWebPreview(ctx, options, project) {
             }
             await stop();
             check();
-            const port = options.port ?? previous?.port ?? defaultWebPort(ctx.key);
-            await requireFreePort(port);
-            const upstream = ctx.config.url;
-            const running = await answers(upstream);
+            const site = ctx.config.url;
+            const running = await answers(site);
             if (!running && !ctx.config.command)
-                throw new Error(`Nothing answers at ${upstream}. Start the dev server, or declare qa.web.command so the preview can.`);
+                throw new Error(`Nothing answers at ${site}. Start the dev server, or declare qa.web.command so the preview can.`);
+            // Front the site at its own address when the preview starts the dev server and can choose its
+            // port; otherwise sit beside it on a port of our own.
+            // --port is an explicit request for a port of our own, so it turns own-address mode off.
+            const askedSite = options.port === sitePort(site);
+            const front = !running && frontable(ctx.config) && (options.port === undefined || askedSite);
+            if (askedSite && !front)
+                throw new Error(`--port ${options.port} is the site's own port, which ${running ? "its dev server already holds" : "the dev server will take"}; choose another port or omit --port.`);
+            const port = front ? sitePort(site) : options.port ?? previous?.port ?? defaultWebPort(ctx.key);
+            await requireFreePort(port);
+            const devPort = front ? await spareDevPort(port, port) : sitePort(site);
+            const siteUrl = new URL(site);
+            const upstream = front ? `${siteUrl.protocol}//${siteUrl.hostname}:${devPort}` : site;
             if (!running) {
                 // Fail now, with the reason, rather than after the readiness wait: a command not on PATH.
                 const binary = ctx.config.command[0];
@@ -228,9 +273,10 @@ export async function runWebPreview(ctx, options, project) {
                 }
             }
             const state = {
-                root: ctx.root, upstream, port, path: options.path ?? ctx.config.path, cwd: ctx.config.cwd, project,
+                root: ctx.root, upstream, site, port, path: options.path ?? ctx.config.path, cwd: ctx.config.cwd, project,
                 expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000,
-                spawned: !running, ...(ctx.config.command ? { command: ctx.config.command } : {}),
+                spawned: !running,
+                ...(ctx.config.command ? { command: ctx.config.command.map((a) => a.replaceAll("{port}", String(devPort))) } : {}),
             };
             const temporary = `${ctx.stateFile}.tmp`;
             writeFileSync(temporary, JSON.stringify(state, null, 2), { mode: 0o600 });
@@ -243,7 +289,7 @@ export async function runWebPreview(ctx, options, project) {
             try {
                 ctx.run("launchctl", ["bootstrap", `gui/${process.getuid()}`, plist]);
                 if (state.spawned)
-                    ctx.log(`Starting the dev server (${ctx.config.command.join(" ")}) — the first compile can take a minute…`);
+                    ctx.log(`Starting the dev server (${state.command.join(" ")}) — the first compile can take a minute…`);
                 let ready = false;
                 for (let attempt = 0; attempt < 360 && !ready; attempt++) {
                     ready = (await webHealthy(state)) && (await answers(upstream));

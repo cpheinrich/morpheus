@@ -17,6 +17,12 @@ export interface WebQaServerOptions {
     /** The dev server's origin, e.g. http://localhost:5173 */
     upstream: string;
     port: number;
+    /**
+     * The address people open when the overlay fronts the site at its own address, e.g.
+     * http://localhost:5173 while the dev server runs on 5174. The dev server then sees this host,
+     * origin and referer, so absolute URLs it builds (OAuth redirect_uri callbacks) name the site.
+     */
+    publicOrigin?: string;
     onListen?: (info: {
         port: number;
     }) => void;
@@ -43,7 +49,7 @@ export declare function rewriteLocation(location: string, upstream: URL, own: st
 /** Decodes a single known encoding; null for anything else, so the response passes through untouched. */
 export declare function decode(body: Buffer, encoding: string | undefined): Buffer | null;
 /** The request as the dev server should see it: its own host, origin and referer. */
-export declare function upstreamHeaders(req: IncomingMessage, upstream: URL, own: string, html: boolean): Record<string, string | string[]>;
+export declare function upstreamHeaders(req: IncomingMessage, upstream: URL, own: string, html: boolean, presented?: URL): Record<string, string | string[]>;
 export declare function startWebQaServer(options: WebQaServerOptions): Promise<{
     port: number;
     close: () => Promise<void>;

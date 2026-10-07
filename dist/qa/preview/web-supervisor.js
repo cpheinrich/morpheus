@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { startWebQaServer } from "../web/server.js";
+import { frontedSite } from "./web.js";
 /**
  * The launchd job for one web preview: the dev server when this preview started it, and the
  * comment overlay in front of it. A lease end, `stop` or the dev server exiting ends both. The dev
@@ -34,7 +35,17 @@ async function main([stateFile]) {
         // A missing binary emits "error", not "exit"; unhandled, it would crash the supervisor silently.
         child.once("error", (error) => { console.error(`dev server could not start: ${error.message}; ending the preview.`); process.exit(1); });
     }
-    const server = await startWebQaServer({ root: state.root, project: state.project, upstream: state.upstream, port: state.port });
+    let server;
+    try {
+        const publicOrigin = frontedSite(state);
+        server = await startWebQaServer({ root: state.root, project: state.project, upstream: state.upstream, port: state.port, ...(publicOrigin ? { publicOrigin } : {}) });
+    }
+    catch (error) {
+        // The dev server runs in its own process group, so nothing else would end it if the overlay
+        // cannot bind (found in review of MO-26-10-06-22.17.47).
+        await endGroup(child);
+        throw error;
+    }
     console.log(`QA web overlay on port ${server.port} in front of ${state.upstream}${child ? ` (dev server pid ${child.pid})` : ""}`);
     let stopping = false;
     const stop = async (code) => {
