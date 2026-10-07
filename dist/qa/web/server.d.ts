@@ -4,9 +4,11 @@ import { type IncomingMessage } from "node:http";
  * that injects one script into every HTML page. The page stays the app — same paths, same
  * cookies, same hot reload — with a comment toolbar and pins on top.
  *
- * Why a proxy and not an iframe: an iframe on another port is another origin, so the overlay could
- * not read the page to anchor a pin to an element, and absolute asset paths (`/_next/...`) would
- * resolve against the overlay. Proxying makes the overlay and the page one origin.
+ * Why a proxy: an iframe of the dev server on another port is another origin, so the overlay could
+ * not read the page to anchor a pin to an element. Proxying makes the overlay and the page one
+ * origin — which is also what lets the overlay frame the site itself. A top-level page load gets
+ * `shellHtml`: the proxied site in a same-origin frame beside a full-height comment column, the
+ * iOS overlay's shape (MO-26-10-07-13.27.17). The framed page is the site, injected as before.
  *
  * Reserved paths live under `/__qa/` so they cannot shadow an app route.
  */
@@ -48,6 +50,19 @@ export declare function injectOverlay(html: string): string;
 export declare function rewriteLocation(location: string, upstream: URL, own: string): string;
 /** Decodes a single known encoding; null for anything else, so the response passes through untouched. */
 export declare function decode(body: Buffer, encoding: string | undefined): Buffer | null;
+/**
+ * The page a browser gets for a top-level navigation: the site in a frame on the left, the comment
+ * column (drawn by the overlay script) on the right. The frame loads the same address, so the site's
+ * own paths, cookies and redirects are unchanged; the script keeps the address bar in step with it.
+ */
+export declare function shellHtml(project: string): string;
+/**
+ * A browser's top-level page load, which gets the shell rather than the site. Not for a file opened
+ * in a tab (a non-HTML extension, or an Accept without text/html), and not while the person has
+ * chosen Full page (the `morpheus_qa_layout=inline` cookie the column sets), which is the way out
+ * for a sign-in redirect to a provider that refuses to be framed.
+ */
+export declare function wantsShell(req: Pick<IncomingMessage, "method" | "headers" | "url">): boolean;
 /** The request as the dev server should see it: its own host, origin and referer. */
 export declare function upstreamHeaders(req: IncomingMessage, upstream: URL, own: string, html: boolean, presented?: URL): Record<string, string | string[]>;
 export declare function startWebQaServer(options: WebQaServerOptions): Promise<{
