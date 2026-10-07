@@ -251,7 +251,10 @@ export async function runWebPreview(ctx, options, project) {
             // Front the site at its own address when the preview starts the dev server and can choose its
             // port; otherwise sit beside it on a port of our own.
             // --port is an explicit request for a port of our own, so it turns own-address mode off.
-            const front = !running && frontable(ctx.config) && options.port === undefined;
+            const askedSite = options.port === sitePort(site);
+            const front = !running && frontable(ctx.config) && (options.port === undefined || askedSite);
+            if (askedSite && !front)
+                throw new Error(`--port ${options.port} is the site's own port, which ${running ? "its dev server already holds" : "the dev server will take"}; choose another port or omit --port.`);
             const port = front ? sitePort(site) : options.port ?? previous?.port ?? defaultWebPort(ctx.key);
             await requireFreePort(port);
             const devPort = front ? await spareDevPort(port, port) : sitePort(site);
