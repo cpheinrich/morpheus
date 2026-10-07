@@ -74,7 +74,8 @@ export function routePullRequest(pr, policy, now) {
     const quiet = pr.isDraft ? policy.draftQuietHours : policy.quietHours;
     // An unparseable date is not "old". Treat it as active rather than acting on a branch whose
     // age is unknown.
-    if (!pr.headByManager && (!Number.isFinite(age) || age < quiet * HOUR)) {
+    const managerUpdate = pr.headByManager === true && pr.headFirstParent !== undefined && marker?.updated === pr.headFirstParent;
+    if (!managerUpdate && (!Number.isFinite(age) || age < quiet * HOUR)) {
         return routed("skip", "active", pr.isDraft
             ? `draft, and its head commit is under ${quiet}h old; not yet presumed abandoned`
             : `head commit is under ${quiet}h old; an author may still be driving it`);

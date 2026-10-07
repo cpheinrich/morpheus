@@ -58,9 +58,11 @@ export interface PullRequestFacts {
      */
     behind?: boolean | undefined;
     /**
-     * The head commit was made by the manager itself (a fix, or a trunk merge it brought in). Its
-     * own commits are not an author driving the branch, so they do not restart the quiet period.
+     * The head is the update the manager itself made: a two-parent commit authored by the App whose
+     * first parent is the head it recorded updating. Only that is exempt from the quiet period. A
+     * session's fix commit is not, and neither is a commit merely claiming the App's address.
      */
+    headFirstParent?: string | undefined;
     headByManager?: boolean | undefined;
     /** The latest run of each check on the head commit, one entry per name. */
     checks: {

@@ -155,7 +155,7 @@ export function fetchPullRequest(repo: string, number: number): { pull: RestPull
     pause(2000);
     pull = api<RestPull>(`repos/${repo}/pulls/${number}`);
   }
-  const commit = api<{ commit: { committer: { date: string } }; author: { login: string } | null }>(`repos/${repo}/commits/${pull.head.sha}`);
+  const commit = api<{ commit: { committer: { date: string } }; author: { login: string } | null; parents: { sha: string }[] }>(`repos/${repo}/commits/${pull.head.sha}`);
   return {
     pull,
     facts: {
@@ -170,6 +170,7 @@ export function fetchPullRequest(repo: string, number: number): { pull: RestPull
       headSha: pull.head.sha,
       headCommittedAt: commit.commit.committer.date,
       headByManager: commit.author?.login === GH_MANAGER_LOGIN,
+      ...(commit.parents.length === 2 ? { headFirstParent: commit.parents[0]!.sha } : {}),
       createdAt: pull.created_at,
       labels: pull.labels.map(l => l.name),
       autoMerge: pull.auto_merge !== null && pull.auto_merge !== undefined,

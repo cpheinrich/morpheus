@@ -387,9 +387,24 @@ describe("a refused update, and the manager's own commits", () => {
     expect(parseMarker((plan.operations[0] as { body: string }).body)?.updated).toBe(HEAD);
     expect(parseMarker((planDecision(decision(), live({ labels: ["agent-reviewed"] }), ctx()).operations[0] as { body: string }).body)).not.toHaveProperty("updated");
   });
-  it("does not let the manager's own commit restart the quiet period", () => {
-    expect(route({ headCommittedAt: hoursAgo(0.1), headByManager: false })).toMatchObject({ route: "skip", reason: "active" });
-    expect(route({ headCommittedAt: hoursAgo(0.1), headByManager: true }).reason).not.toBe("active");
+  it("exempts only the update the manager recorded from the quiet period", () => {
+    const recorded = { head: OTHER, verdict: "merge" as const, attempts: 1, at: hoursAgo(1), updated: OTHER };
+    const fresh = { headCommittedAt: hoursAgo(0.1) };
+    // The manager's update of OTHER: exempt, so the queue is not held for another eight hours.
+    expect(route({ ...fresh, headByManager: true, headFirstParent: OTHER, marker: recorded }).reason).not.toBe("active");
+    // A session's fix commit (one parent), an update of some other head, an author's merge, or
+    // a manager commit with no recorded update: all still read as active.
+    expect(route({ ...fresh, headByManager: true, marker: recorded })).toMatchObject({ route: "skip", reason: "active" });
+    expect(route({ ...fresh, headByManager: true, headFirstParent: "c".repeat(40), marker: recorded })).toMatchObject({ route: "skip", reason: "active" });
+    expect(route({ ...fresh, headByManager: false, headFirstParent: OTHER, marker: recorded })).toMatchObject({ route: "skip", reason: "active" });
+    expect(route({ ...fresh, headByManager: true, headFirstParent: OTHER, marker: { ...recorded, updated: undefined } })).toMatchObject({ route: "skip", reason: "active" });
+  });
+  it("keeps the manager's label on a refused update, so the pull request can still land", () => {
+    const plan = planRoute({ number: 7, title: "t", headSha: HEAD, route: "escalate", reason: "update-refused", detail: "GitHub refused", attempts: 1 }, live({ autoMerge: true, behind: true, labels: ["manager-reviewed"] }), ctx());
+    expect(kinds(plan)).toEqual(["comment", "add-label:manager:needs-human"]);
+    // Any other escalation still withdraws both.
+    const other = planRoute({ number: 7, title: "t", headSha: HEAD, route: "escalate", reason: "attempts-spent", detail: "spent", attempts: 2 }, live({ autoMerge: true, labels: ["manager-reviewed"] }), ctx());
+    expect(kinds(other)).toEqual(["comment", "disable-auto-merge", "remove-label:manager-reviewed", "add-label:manager:needs-human"]);
   });
 });
 

@@ -163,8 +163,10 @@ function escalate(live: LiveState, why: string, sections: string[], marker: Mana
       // exception: the review stands, and once a person merges the base in it should land.
       ...(live.autoMerge && !keepAutoMerge ? [{ kind: "disable-auto-merge" as const }] : []),
       // An escalated pull request is not cleared; leaving the label would let it merge on a
-      // record the manager itself no longer stands behind.
-      ...removeLabels(live, MANAGER_REVIEWED_LABEL),
+      // record the manager itself no longer stands behind. A refused update is different: the
+      // clearance still stands, and a person's merge of the base is an exact trunk merge it
+      // accepts, so the label stays and the pull request can still land.
+      ...(keepAutoMerge ? [] : removeLabels(live, MANAGER_REVIEWED_LABEL)),
       ...(live.labels.includes(NEEDS_HUMAN_LABEL) ? [] : [{ kind: "add-label" as const, label: NEEDS_HUMAN_LABEL }]),
     ],
   };

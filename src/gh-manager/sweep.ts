@@ -71,9 +71,11 @@ export interface PullRequestFacts {
    */
   behind?: boolean | undefined;
   /**
-   * The head commit was made by the manager itself (a fix, or a trunk merge it brought in). Its
-   * own commits are not an author driving the branch, so they do not restart the quiet period.
+   * The head is the update the manager itself made: a two-parent commit authored by the App whose
+   * first parent is the head it recorded updating. Only that is exempt from the quiet period. A
+   * session's fix commit is not, and neither is a commit merely claiming the App's address.
    */
+  headFirstParent?: string | undefined;
   headByManager?: boolean | undefined;
   /** The latest run of each check on the head commit, one entry per name. */
   checks: { name: string; state: CheckState; runId?: number | undefined }[];
@@ -180,7 +182,8 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   const quiet = pr.isDraft ? policy.draftQuietHours : policy.quietHours;
   // An unparseable date is not "old". Treat it as active rather than acting on a branch whose
   // age is unknown.
-  if (!pr.headByManager && (!Number.isFinite(age) || age < quiet * HOUR)) {
+  const managerUpdate = pr.headByManager === true && pr.headFirstParent !== undefined && marker?.updated === pr.headFirstParent;
+  if (!managerUpdate && (!Number.isFinite(age) || age < quiet * HOUR)) {
     return routed("skip", "active", pr.isDraft
       ? `draft, and its head commit is under ${quiet}h old; not yet presumed abandoned`
       : `head commit is under ${quiet}h old; an author may still be driving it`);
