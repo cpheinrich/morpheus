@@ -28,9 +28,9 @@ visible project opt-out. Records/board-only changes, exact dependency-only Depen
 marked dependency-only PRs from the exact `morpheus-security[bot]` App keep narrow exemptions.
 The security-App exemption waives human authoring and independent review only; branch-protection
 checks remain mandatory. This gate covers all other authors, not just particular model names.
-The reusable PR conventions job uses a caller-specific concurrency group so `CI` and
-`Review metadata` checks on the same head can both finish. Metadata edits may cancel an older
-metadata run, but must not cancel the required CI run.
+The reusable PR conventions job and its callers do not use concurrency groups. GitHub treats a
+cancelled required check as failing branch protection even if another conventions run on the same
+head succeeds. Every `CI` and `Review metadata` run must finish, including bursts of metadata edits.
 The legacy `review-waived:` line does not waive independent review; `check pr` reports it as
 waiving legacy delivery only and says so in the same line.
 

@@ -2531,8 +2531,8 @@ describe("python-ci", () => {
  * A job with no `timeout-minutes` runs a hung step to GitHub's six-hour default
  * on billed minutes. That has already happened here once, to a Playwright
  * install that hung for forty. Every reusable job must bound itself, and every
- * job that gates a pull request must cancel rather than run beside its
- * replacement.
+ * other reusable gates cancel superseded runs. PR conventions is the exception:
+ * GitHub can block a merge on any cancelled required run for the current head.
  */
 describe("every reusable job", () => {
   type Bounded = {
@@ -2559,8 +2559,9 @@ describe("every reusable job", () => {
     }
   });
 
-  it("cancels a superseded push on the checks that gate a pull request", async () => {
+  it("cancels superseded runs on gates other than required PR conventions", async () => {
     for (const file of GATES) {
+      if (file === "pr-check.yml") continue; // Checked for absence of concurrency below.
       const jobs = ((await read(file)) as Bounded).jobs ?? {};
       for (const [name, job] of Object.entries(jobs)) {
         if (job.uses) continue;
@@ -2610,12 +2611,19 @@ describe("beta app review submission", () => {
 });
 
 describe("local review metadata", () => {
-  it("keeps CI and metadata conventions checks from cancelling each other", async () => {
+  it("lets every required conventions check finish, including metadata bursts", async () => {
     const wf = await read("pr-check.yml") as {
-      jobs: { conventions: { concurrency: { group: string; "cancel-in-progress": boolean } } };
+      concurrency?: unknown;
+      jobs: { conventions: { concurrency?: unknown } };
     };
-    expect(wf.jobs.conventions.concurrency.group).toBe("pr-check-${{ github.workflow }}-${{ github.ref }}");
-    expect(wf.jobs.conventions.concurrency["cancel-in-progress"]).toBe(true);
+    const ci = await read("ci.yml") as { concurrency?: unknown; jobs: { pr: { concurrency?: unknown } } };
+    const metadata = await read("review-metadata.yml") as { concurrency?: unknown; jobs: { pr: { concurrency?: unknown } } };
+    expect(wf.concurrency).toBeUndefined();
+    expect(wf.jobs.conventions.concurrency).toBeUndefined();
+    expect(ci.concurrency).toBeUndefined();
+    expect(ci.jobs.pr.concurrency).toBeUndefined();
+    expect(metadata.concurrency).toBeUndefined();
+    expect(metadata.jobs.pr.concurrency).toBeUndefined();
   });
   it("reruns only conventions without replacing build/test statuses", async () => {
     const wf = await read("review-metadata.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses: string }> };
