@@ -78,6 +78,25 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     };
   }
   function clamp(v) { return Math.min(1, Math.max(0, v)); }
+  function contains(rect, x, y) { return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom; }
+  /**
+   * The element the person pointed at. elementFromPoint alone returns the top of the stack, which on
+   * a card with a stretched link (a::after over the whole card) is the link — whose own box is only
+   * its text, so the pin was clamped to the link's left edge (found on Lakina's experiment cards,
+   * 2026-10-07). Prefer the first element in the stack whose own box contains the point.
+   */
+  function pickAt(doc, x, y, skip) {
+    var stack = doc.elementsFromPoint ? doc.elementsFromPoint(x, y) : [doc.elementFromPoint(x, y)];
+    var first = null;
+    for (var i = 0; i < stack.length; i++) {
+      var el = stack[i];
+      if (!isElement(el) || (skip && skip(el))) continue;
+      if (!first) first = el;
+      if (el === doc.documentElement || el === doc.body) break;
+      if (contains(el.getBoundingClientRect(), x, y)) return el;
+    }
+    return first;
+  }
   /** The anchor for a pin at the site viewport point (cx, cy) on element el. */
   function anchorFor(el, cx, cy) {
     var win = el.ownerDocument.defaultView || window;
@@ -216,14 +235,14 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   function setStatus(text, kind) { statusEl.textContent = text || ""; statusEl.className = "status" + (kind ? " " + kind : ""); }
   function persist() {
     if (!storeKey) return;
-    try { sessionStorage.setItem(storeKey, JSON.stringify({ pins: pins.map(function (p) { return { id: p.id, n: p.n, anchor: p.anchor, text: p.text }; }), nextN: nextN })); } catch (e) { /* storage may be unavailable */ }
+    try { sessionStorage.setItem(storeKey, JSON.stringify({ pins: pins.map(function (p) { return { id: p.id, n: p.n, anchor: p.anchor, text: p.text, byPage: !!p.byPage }; }), nextN: nextN })); } catch (e) { /* storage may be unavailable */ }
   }
   function restore() {
     pins = []; nextN = 1; focusedId = null;
     try {
       var saved = JSON.parse(sessionStorage.getItem(storeKey) || "null");
       if (saved && saved.pins && saved.pins.length) {
-        pins = saved.pins.filter(function (p) { return p && p.anchor && typeof p.n === "number"; }).map(function (p) { return { id: p.id, n: p.n, anchor: p.anchor, text: p.text || "", el: null }; });
+        pins = saved.pins.filter(function (p) { return p && p.anchor && typeof p.n === "number"; }).map(function (p) { return { id: p.id, n: p.n, anchor: p.anchor, text: p.text || "", el: null, byPage: !!p.byPage }; });
         nextN = Math.max(saved.nextN || 1, pins.reduce(function (m, p) { return Math.max(m, p.n + 1); }, 1));
       }
     } catch (e) { pins = []; }
@@ -234,7 +253,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   function position(p) {
     if (!site) return;
     var x, y, doc = site.doc;
-    var el = p.el && p.el.isConnected ? p.el : (p.anchor.element ? doc.querySelector(p.anchor.element.selector) : null);
+    var el = p.byPage ? null : p.el && p.el.isConnected ? p.el : (p.anchor.element ? doc.querySelector(p.anchor.element.selector) : null);
     if (el) {
       p.el = el;
       var r = el.getBoundingClientRect();
@@ -294,6 +313,8 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   }
   function addPin(el, cx, cy) {
     var p = { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), n: nextN++, el: el, anchor: anchorFor(el, cx, cy), text: "" };
+    // A point outside the element's own box (nothing better under it) is drawn where it was clicked.
+    if (!contains(el.getBoundingClientRect(), cx, cy)) p.byPage = true;
     pins.push(p); focusedId = p.id; textEl.disabled = false; textEl.value = ""; render(); persist(); textEl.focus();
     setStatus("Pin " + p.n + " placed. Type a comment, Enter saves.");
   }
@@ -360,11 +381,8 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   var raf = 0;
   function follow() { if (raf) return; raf = requestAnimationFrame(function () { raf = 0; pins.forEach(function (p) { if (p.marker) position(p); }); }); }
   function targetAt(cx, cy) {
-    if (shell) return site.doc.elementFromPoint(cx, cy);
-    ui.style.display = "none";
-    var el = document.elementFromPoint(cx, cy);
-    ui.style.display = "";
-    return el;
+    if (shell) return pickAt(site.doc, cx, cy, null);
+    return pickAt(document, cx, cy, function (el) { return el === ui; });
   }
   function ours(target) { return !shell && (target === ui || (target && target.closest && target.closest("morpheus-qa"))); }
   function attach(win) {
@@ -511,7 +529,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     watch();
   }
   window.__morpheusQa = {
-    cssPath: cssPath, anchorFor: anchorFor, siteTheme: siteTheme, parseColor: parseColor,
+    cssPath: cssPath, anchorFor: anchorFor, siteTheme: siteTheme, parseColor: parseColor, pickAt: pickAt,
     pins: function () { return pins; }, shell: shell
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount); else mount();
