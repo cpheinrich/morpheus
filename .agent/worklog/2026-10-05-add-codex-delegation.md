@@ -48,3 +48,22 @@ agent: claude
   `codex_inspect` → `codex_start` → `codex_wait`; real Codex wrote `hello.txt` and returned a
   structured `completed` result with its session id saved. Interactive Claude TUI in a pty
   rendered `5h 29% · 7d 52%` and wrote `claude-usage.json`; doctor reported 48% remaining.
+
+## GitHub Manager review
+
+The PR had no independent review on record (only the conventions gate failing for the missing `agent-reviewed` label). I merged origin/main cleanly (c20f18e) and reviewed the whole change against MO-26-10-05-22.41.19: routing with the coordinating agent as primary, the strict-below-50% boundary, fail-closed handling of missing, stale, future-dated or reset Claude usage snapshots, the codex exec argv/event folding, session resume per working directory, the delegation marker on both sides, API-key refusal and the orphan-recovery/launch refactor. One substantive finding: Claude's `default` permission mode, which asks before every edit, was mapped to Codex `workspace-write` with `approval_policy="never"`, so an automatic handoff from a default-mode session could edit files with no approval — contrary to the item's "permission mapping never widens" acceptance and to the existing direction's rule that approval and confinement are independent. I mapped `default` to `read-only`, pinned it with a test (mutating it back fails the suite), and updated the package README and the delegate-to-codex skill. Package tests 46/46; root typecheck, 1631 tests, compile (no dist change) and pm index are clean. Not verifiable here: the macOS-only installer and the live Claude/Codex handoff, which the author reports having run; the codex-claude CI job runs on macOS.
+
+```morpheus-manager-review
+{
+  "version": 1,
+  "managerSession": "https://github.com/cpheinrich/morpheus-gh-manager-ops/actions/runs/37549663365 (pull request 327)",
+  "reviewed": "c20f18ecb1d63246c60addd4ae6ab3428271b52f",
+  "covered": "83aaca4f31fe48b73ee72bcb52afc63e44c15d83",
+  "priorReview": { "state": "none", "note": "The body names this worklog as review-record, but it holds no morpheus-review block and the PR has no agent-reviewed label or reviews." },
+  "findings": [
+    { "id": "M01", "severity": "substantive", "description": "codexPermission mapped Claude's `default` mode (asks before each edit) to Codex workspace-write with approval_policy=never. When automatic routing hands work off from a default-mode session, Codex edits the checkout with no approval at all, widening the session's permissions against the item's acceptance.", "paths": ["plugins/codex-claude/src/config.mjs", "plugins/codex-claude/tests/reverse.test.mjs", "plugins/codex-claude/README.md", "plugins/codex-claude/claude-plugin/skills/delegate-to-codex/SKILL.md"], "disposition": "fixed", "response": "Mapped `default` to the read-only sandbox; acceptEdits/auto keep workspace-write. Added a test asserting the exact read-only args for `default`; reverting the mapping fails it (45/46). Updated README and skill text. Package pnpm test 46/46; root typecheck/test/compile/pm index clean." }
+  ],
+  "outcome": "cleared",
+  "summary": "The PR had no independent review on record (only the conventions gate failing for the missing `agent-reviewed` label). I merged origin/main cleanly (c20f18e) and reviewed the whole change against MO-26-10-05-22.41.19: routing with the coordinating agent as primary, the strict-below-50% boundary, fail-closed handling of missing, stale, future-dated or reset Claude usage snapshots, the codex exec argv/event folding, session resume per working directory, the delegation marker on both sides, API-key refusal and the orphan-recovery/launch refactor. One substantive finding: Claude's `default` permission mode, which asks before every edit, was mapped to Codex `workspace-write` with `approval_policy=\"never\"`, so an automatic handoff from a default-mode session could edit files with no approval — contrary to the item's \"permission mapping never widens\" acceptance and to the existing direction's rule that approval and confinement are independent. I mapped `default` to `read-only`, pinned it with a test (mutating it back fails the suite), and updated the package README and the delegate-to-codex skill. Package tests 46/46; root typecheck, 1631 tests, compile (no dist change) and pm index are clean. Not verifiable here: the macOS-only installer and the live Claude/Codex handoff, which the author reports having run; the codex-claude CI job runs on macOS."
+}
+```
