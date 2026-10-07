@@ -18,3 +18,31 @@ roadmap items shipped; those incidental changes were restored to the current tru
 
 Before PR: frozen install, typecheck, all 1,693 tests in 60 files, compile, PM index, and
 `git diff --check` passed. Generated indexes were unchanged.
+
+The first review attempt ended below Morpheus's one-minute floor and was not used as clearance.
+Chris explicitly authorized a fresh independent review in this chat. The replacement reviewer
+cleared commit `446a7bb62d4423e90910d61f942e85c93ecfe74b` at high risk with no findings.
+The reviewer inspected both caller workflows, generated callers, the exact concurrency expression,
+and GitHub's reusable-workflow context documentation; three focused workflow tests passed. The
+reviewer made no changes. The merge from current main was automatic and preceded this review.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "f167b7bfa88d21e8ab4cb244745293a7147ac855",
+  "reviewed": "446a7bb62d4423e90910d61f942e85c93ecfe74b",
+  "covered": "446a7bb62d4423e90910d61f942e85c93ecfe74b",
+  "authorSession": "01a113aa-c8cc-75e3-993c-cde4f0720b61",
+  "reviewerSession": "/root/pr341_replacement_review",
+  "risk": "high",
+  "elapsedMinutes": 1.1277,
+  "timing": {
+    "source": "clock",
+    "durationMs": 67662,
+    "evidence": "Date.now readings immediately before reviewer spawn 2026-10-07T06:23:25.975Z (1791354205975 ms) and immediately after completion notice 2026-10-07T06:24:33.637Z (1791354273637 ms); reviewer /root/pr341_replacement_review."
+  },
+  "outcome": "complete",
+  "summary": "The fresh independent reviewer cleared commit 446a7bb62d4423e90910d61f942e85c93ecfe74b at high risk with no findings after inspecting both caller workflows, generated callers, the concurrency expression, official GitHub documentation, and focused tests.",
+  "findings": []
+}
+```
