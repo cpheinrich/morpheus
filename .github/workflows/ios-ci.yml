@@ -648,15 +648,15 @@ jobs:
           # flake costs seconds instead of the whole job. It does not weaken the
           # gate: a test that fails every attempt still fails the run.
           #
-          # Each retry relaunches the test host. Without that, every attempt
-          # shares one process, and a daemon the process talks to (the
-          # simulator's StoreKit ledger, for one) that has stopped answering
-          # fails all of them within milliseconds of each other: three
-          # executions, one data point. A relaunch gives the retry the fresh
-          # process a flake needs and costs a few seconds of app launch.
+          # Retries share the test host's process on purpose. Relaunching it
+          # (`-test-repetition-relaunch-enabled YES`, tried 2026-10-04 to
+          # 2026-10-05) made xcodebuild re-execute the whole UI test bundle for
+          # every retry rather than the failed cases: Evo's release lane ran
+          # its suite twice over, hit the job's three-hour limit, and produced
+          # no evidence at all. A flake that lives in the process is left to
+          # the next release instead.
           if [ "${TEST_ITERATIONS:-0}" != "0" ]; then
-            args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS"
-              -test-repetition-relaunch-enabled YES)
+            args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS")
           fi
           if [ "$FIREBASE_EMULATORS" = "true" ]; then
             printf -v test_command '%q ' xcodebuild test-without-building "${args[@]}"

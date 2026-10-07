@@ -46,6 +46,12 @@ interface RestPull {
 export declare function fetchChecks(repo: string, sha: string): PullRequestFacts["checks"];
 /** The manager's most recent marker on a pull request, from its own comments only. */
 export declare function fetchMarker(repo: string, number: number): ManagerMarker | undefined;
+/**
+ * The author's permission on the repository, or undefined when it cannot be read. Asked only
+ * when the association does not already establish trust, because the association is what the
+ * App's token can see, and private organization membership is invisible to it.
+ */
+export declare function fetchAuthorPermission(repo: string, login: string): string | undefined;
 export declare function fetchPullRequest(repo: string, number: number): {
     pull: RestPull;
     facts: PullRequestFacts;

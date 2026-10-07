@@ -61,7 +61,7 @@ import {
   update as selfUpdate,
 } from "./self.js";
 
-import { dispatchQaComments } from "./qa.js";
+import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
 import { HELP } from "./help.js";
 import type { Flags } from "./args.js";
 
@@ -447,6 +447,8 @@ async function dispatchQa({ flags, command, rest }: Invocation): Promise<number>
     if (command === "comments") {
       return dispatchQaComments(process.cwd(), rest[0], rest.slice(1), flags.project);
     }
+    if (command === "preview") return dispatchQaPreview(process.cwd(), rest[0], rest.slice(1));
+    if (command === "guide") return dispatchQaGuide();
     console.error(`Unknown qa command "${command ?? ""}".\n\n${HELP}`);
     return 1;
   

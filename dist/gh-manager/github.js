@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, LOG_LABEL, parsePolicy } from "./policy.js";
+import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, LOG_LABEL, parsePolicy, TRUSTED_ASSOCIATIONS } from "./policy.js";
 import { parseMarker } from "./sweep.js";
 /**
  * Everything that talks to GitHub, through `gh` and its ambient `GH_TOKEN`.
@@ -102,6 +102,20 @@ function mergeableState(pull) {
 function pause(ms) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
+/**
+ * The author's permission on the repository, or undefined when it cannot be read. Asked only
+ * when the association does not already establish trust, because the association is what the
+ * App's token can see, and private organization membership is invisible to it.
+ */
+export function fetchAuthorPermission(repo, login) {
+    try {
+        return api(`repos/${repo}/collaborators/${encodeURIComponent(login)}/permission`).permission;
+    }
+    catch {
+        // A failure to read is not a permission. It stays undefined, which the sweep does not trust.
+        return undefined;
+    }
+}
 export function fetchPullRequest(repo, number) {
     let pull = api(`repos/${repo}/pulls/${number}`);
     // GitHub computes mergeability lazily: the first read of a pull request nobody has looked at
@@ -119,6 +133,7 @@ export function fetchPullRequest(repo, number) {
             title: pull.title,
             author: pull.user.login,
             authorAssociation: pull.author_association,
+            ...(TRUSTED_ASSOCIATIONS.has(pull.author_association) ? {} : { authorPermission: fetchAuthorPermission(repo, pull.user.login) }),
             isDraft: pull.draft,
             isCrossRepository: pull.head.repo?.full_name !== pull.base.repo.full_name,
             headRefName: pull.head.ref,

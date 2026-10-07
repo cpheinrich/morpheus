@@ -146,56 +146,81 @@ batch returns the original record unchanged, preserving its first `resolvedAt` a
 
 ## Operator loop
 
-1. Start the project preview (Evo: `apps/ios/scripts/preview.sh start`).
-2. From a checkout that has this CLI (Morpheus worktree until merged):
+1. From the project checkout: `morpheus qa preview ios start`. It builds the checkout, boots a
+   simulator this checkout owns, launches the app, and starts serve-sim **and this overlay** under
+   one launchd supervisor. It prints `QA overlay: http://127.0.0.1:<port>/`.
+2. Open that overlay URL — the same page in every agent: Claude's Browser pane, Codex's in-app
+   browser panel, and for Grok (or any agent without a panel) `open <url>`, the default browser.
+   Not the stream URL, and not a host's native simulator panel or annotation tool.
+3. Left-drag drives the app; **right-click** pins a comment; **Enter** saves the pin; **⌘Enter**
+   sends the batch. Batches land in `<root>/local/qa-comments/pending/`.
+4. The agent polls `morpheus qa comments pending`, then `show` / `resolve`.
+5. `morpheus qa preview ios stop` ends the simulator, serve-sim and the overlay together.
 
-   ```sh
-   pnpm morpheus qa comments serve \
-     --preview http://127.0.0.1:3200/ \
-     --root /Users/chrisheinrich/code/evo \
-     --port 3456
-   ```
+`morpheus qa guide` prints the agent's full instructions; the `comment-qa` skill every project
+carries points at it. `morpheus qa comments serve` remains for a preview Morpheus did not start.
 
-3. Open the printed overlay URL. Left-drag the stream to drive the sim;
-   **right-click** to pin a comment; **Enter** saves the pin; **⌘Enter** sends
-   the batch (pins clear after Send). Batches land in
-   `<root>/local/qa-comments/pending/`. Configure the wake webhook once (above).
-4. Agent (cwd = project root): `morpheus qa comments pending`, then `show` /
-   `resolve`. Until this lands on Morpheus main, use
-   `pnpm morpheus` from the claim worktree with `--root` pointing at the project.
+## The shared iOS preview (MO-26-10-06-15.17.01)
 
-## Preview and overlay lifecycles
+Moved from Evo's `apps/ios/scripts/preview.mjs` so every project with an iOS app gets the same
+lifecycle. A project declares only what Morpheus cannot know, in `morpheus.json`:
 
-The overlay process and the project preview are separate. Stopping or restarting
-`preview.sh` does not stop an existing overlay. Use Ctrl+C in the overlay terminal
-when QA ends; restart the preview first, then the overlay, after a simulator change.
-A missing stream shows “No MJPEG stream — pass --stream-url or start serve-sim first.”
+```json
+"qa": { "ios": {
+  "app": "apps/ios",
+  "build": ["bash", "apps/ios/scripts/dev.sh", "build"],
+  "precheck": ["bash", "apps/ios/scripts/lint.sh"],
+  "product": "Build/Products/Debug-iphonesimulator/App.app",
+  "derivedData": "/private/tmp/AppDerivedData-{key}",
+  "bundleId": "com.example.app",
+  "device": { "name": "App QA", "type": "iPhone 17 Pro" },
+  "minimumXcode": "26.5",
+  "defaultMode": "demo",
+  "modes": {
+    "demo": { "flags": ["--demo"], "args": ["-ui-testing"], "summary": "Mode: demo. …" },
+    "live": { "flags": ["--live"], "args": ["--qa-live"],
+              "prepare": { "command": ["node", "apps/ios/scripts/qa-account.mjs", "{key}"], "credentials": true },
+              "summary": "Mode: live. …" }
+  }
+} }
+```
+
+- `{key}` is the checkout key (first 12 hex of SHA-256 over the app directory's absolute path)
+  and `{root}` the project root; both expand in commands, paths and launch arguments.
+- The build command receives `DERIVED_DATA_PATH`, `SIMULATOR_NAME`, `SIMULATOR_OS` and
+  `SIMULATOR_UDID` for the simulator the preview booted.
+- A mode's `prepare` command prints `{"env": {"NAME": "value"}}`; each entry reaches the app as a
+  launch environment variable. With `credentials: true` it runs under
+  `morpheus credentials run --`. Its stdout stays in memory: never in arguments, state files or
+  launchd.
+- `namespace` (launchd label and `~/Library/Caches/<namespace>/<key>` state) and `device.name`
+  default to `morpheus.qa.<project>` and `<Project> QA`; Evo sets its old values so previews its own
+  script started stay addressable across the move.
+- Default ports are spread per checkout (3200–3455) so two projects' previews do not collide; the
+  overlay is always 256 above the stream. `--port` overrides.
+- serve-sim is a pinned dependency of the CLI, no longer installed per project.
+
+Everything the old script guaranteed carries over and is tested in `tests/qa-preview.test.ts`:
+launchd owns exactly this preview; a device is shut down only when its name proves this checkout
+owns it; the lease defaults to four hours; a signal is intent, not an abort; Xcode 27's Device Hub
+input shadowing is repaired before launch; occupied ports are refused, never freed.
+
+## Standalone overlay lifecycle
+
+This applies to `morpheus qa comments serve` beside a preview Morpheus did not start;
+`morpheus qa preview ios stop` already ends its own overlay. The standalone overlay process and
+the project preview are separate. Stopping or restarting the preview does not stop an existing
+overlay. Use Ctrl+C in the overlay terminal when QA ends; restart the preview first, then the
+overlay, after a simulator change. A missing stream shows “No MJPEG stream — pass --stream-url or
+start serve-sim first.”
 
 `/health` reports the overlay's configuration and process health; it does **not**
 probe the upstream stream. Confirm live app pixels before QA. If port 3456 is busy,
 inspect `lsof -nP -iTCP:3456 -sTCP:LISTEN`, stop the overlay you own, or select another
 `--port`. Do not stop another operator's process merely to reclaim the default port.
 
-## Hooking ios-qa / preview.sh later
-
-Evo's ios-qa skill today: doctor → start → open Codex panel → use Codex
-annotations. After this lands:
-
-- `preview.sh start` keeps owning sim + serve-sim lifecycle and prints the
-  preview URL; run `morpheus qa comments serve --preview <that-url> --root <evo>`
-  beside it (no Evo claim required for the first usable loop).
-- ios-qa step 3 can later print/auto-open the serve command when no Codex
-  panel is available.
-- The skill's "first annotation must confirm pixels arrived" check becomes:
-  confirm `frame.png` (or the overlay's live canvas) shows real app pixels
-  before treating comments as authoritative.
-
-No change to serve-sim networking rules: stay on `127.0.0.1`; no LAN bind; no
-public tunnel.
-
 ## Non-goals (v1)
 
-- Replacing Codex annotations where that panel already works.
 - Committing frames or batches.
 - Cross-machine sync of `local/qa-comments/` (use chat / PR for remote agents).
 - DOM-level element selectors for native sim streams.
