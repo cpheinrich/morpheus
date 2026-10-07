@@ -25,6 +25,15 @@ export declare const LOG_LABEL = "gh-manager-log";
  * 2026-08-03): the manager may *report* anything and *act* only for these.
  */
 export declare const TRUSTED_ASSOCIATIONS: Set<string>;
+/**
+ * Repository permissions that make an author trusted whatever `author_association` says.
+ *
+ * The association is computed from what the *reader* can see. An App's installation token
+ * cannot see private organization membership, so an organization owner with admin rights reads
+ * as `CONTRIBUTOR` to the manager: on its first Evo run every one of Chris's own pull requests
+ * was skipped as untrusted. The repository permission is the fact the association stands in for.
+ */
+export declare const TRUSTED_PERMISSIONS: Set<string>;
 /** Lanes with their own deterministic maintainer. The manager reports on them and never touches them. */
 export declare const BOT_LANES: Set<string>;
 export declare const GhManagerPolicy: z.ZodObject<{

@@ -543,3 +543,14 @@ Keep the upload id returned by the transport. Poll `builds uploads get` for term
 failure while separately polling `builds list` for the exact valid build used for distribution.
 The two resources answer different questions: whether Apple accepted the binary, and whether the
 binary became a distributable TestFlight build.
+
+## An agent writing a file through the shell silently eats `$<digit>`
+
+2026-10-06. The GitHub Manager's escalation on Evo #341 quoted three supplier prices with the `$`
+and the next digit missing (`$429.99` became `29.99`). The text was already wrong in the session's
+decision file, before any of Morpheus's own string handling touched it: the session had written
+the JSON through bash, where an unquoted heredoc expands `$4` as an empty positional parameter.
+The result is still valid JSON and plausible prose, so nothing downstream can detect it.
+
+When a prompt asks an unattended agent to write a file whose content a person will rely on, tell it
+to use its file-writing tool rather than the shell, and say why.

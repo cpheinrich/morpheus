@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "protectedPaths": [
+    "src/gh-manager",
+    "src/cli/gh-manager.ts",
+    "src/cli/check.ts",
+    "src/check",
+    "src/paths.ts",
+    "src/dependabot/policy.ts",
+    "src/security/policy.ts",
+    "src/review",
+    "src/init/templates.ts",
+    "docs/runbooks/gh-manager.md",
+    "docs/runbooks/independent-review.md"
+  ]
+}

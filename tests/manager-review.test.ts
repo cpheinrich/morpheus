@@ -96,6 +96,16 @@ describe("the GitHub Manager's review record", () => {
     expect(message(save(record(), "A different paragraph."))).toContain("visible paragraph");
   });
 
+  it("accepts a summary that names code, and refuses one only hidden in a comment or fence", () => {
+    // The first Morpheus manager review (PR #327) was refused for this: its summary named
+    // `src/...` paths in backticks and the check stripped them from the page but not the summary.
+    const r = record({ summary: "Manager review of `code.ts` found nothing further to fix." });
+    expect(check(save(r))[0]?.level).toBe("waived");
+    expect(message(save(r, `<!-- ${r.summary} -->`))).toContain("visible paragraph");
+    expect(message(save(r, "```text\n" + r.summary + "\n```"))).toContain("visible paragraph");
+    expect(message(save(r, "~~~text\n" + r.summary + "\n~~~"))).toContain("visible paragraph");
+  });
+
   it("accepts fix commits inside the paths its findings name, and counts them", () => {
     put("code.ts", "export const answer = 3;");
     const covered = commit("manager fix");

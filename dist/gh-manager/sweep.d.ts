@@ -22,12 +22,23 @@ export interface ManagerMarker {
      * this head but exact trunk merges, so a later push cannot ride on the label.
      */
     cleared?: string | undefined;
+    /**
+     * The head an update-branch was attempted on. A successful update moves the head, so finding
+     * this equal to the current head means GitHub refused it, and the next run escalates once
+     * instead of retrying every run.
+     */
+    updated?: string | undefined;
 }
 export interface PullRequestFacts {
     number: number;
     title: string;
     author: string;
     authorAssociation: string;
+    /**
+     * The author's permission on the repository, read only when the association alone does not
+     * establish trust. Undefined when it was not read or could not be, which is not trust.
+     */
+    authorPermission?: string | undefined;
     isDraft: boolean;
     /** Head branch lives in another repository (a fork). */
     isCrossRepository: boolean;
@@ -40,6 +51,19 @@ export interface PullRequestFacts {
     labels: string[];
     autoMerge: boolean;
     mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+    /**
+     * The base has moved past the branch and strict protection requires it up to date. GitHub's
+     * auto-merge never updates a branch itself, so a queued pull request in this state waits for
+     * ever unless something brings it up to date.
+     */
+    behind?: boolean | undefined;
+    /**
+     * The head is the update the manager itself made: a two-parent commit authored by the App whose
+     * first parent is the head it recorded updating. Only that is exempt from the quiet period. A
+     * session's fix commit is not, and neither is a commit merely claiming the App's address.
+     */
+    headFirstParent?: string | undefined;
+    headByManager?: boolean | undefined;
     /** The latest run of each check on the head commit, one entry per name. */
     checks: {
         name: string;
