@@ -114,15 +114,24 @@ export function shellHtml(project: string): string {
 <script>window.__morpheusQaShell = true;</script>
 </head><body>
 <iframe id="morpheus-qa-site" title="${title}" allow="clipboard-read; clipboard-write; fullscreen"></iframe>
-<script>document.getElementById("morpheus-qa-site").src = location.pathname + location.search + location.hash;</script>
+<script>document.getElementById("morpheus-qa-site").src = location.href;</script>
 <script src="${QA_PREFIX}/overlay.js"></script>
 </body></html>
 `;
 }
 
-/** A browser's top-level page load, which gets the shell rather than the site. */
-export function wantsShell(req: Pick<IncomingMessage, "method" | "headers">): boolean {
-  return req.method === "GET" && req.headers["sec-fetch-dest"] === "document";
+/**
+ * A browser's top-level page load, which gets the shell rather than the site. Not for a file opened
+ * in a tab (a non-HTML extension, or an Accept without text/html), and not while the person has
+ * chosen Full page (the `morpheus_qa_layout=inline` cookie the column sets), which is the way out
+ * for a sign-in redirect to a provider that refuses to be framed.
+ */
+export function wantsShell(req: Pick<IncomingMessage, "method" | "headers" | "url">): boolean {
+  if (req.method !== "GET" || req.headers["sec-fetch-dest"] !== "document") return false;
+  if (!/text\/html|\*\/\*/.test(req.headers.accept ?? "*/*")) return false;
+  const path = (req.url ?? "/").split("?")[0]!;
+  if (/\.[a-z0-9]{1,8}$/i.test(path) && !/\.html?$/i.test(path)) return false;
+  return !/(?:^|;\s*)morpheus_qa_layout=inline(?:;|$)/.test(String(req.headers.cookie ?? ""));
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {

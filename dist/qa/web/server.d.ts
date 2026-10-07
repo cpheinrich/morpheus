@@ -56,8 +56,13 @@ export declare function decode(body: Buffer, encoding: string | undefined): Buff
  * own paths, cookies and redirects are unchanged; the script keeps the address bar in step with it.
  */
 export declare function shellHtml(project: string): string;
-/** A browser's top-level page load, which gets the shell rather than the site. */
-export declare function wantsShell(req: Pick<IncomingMessage, "method" | "headers">): boolean;
+/**
+ * A browser's top-level page load, which gets the shell rather than the site. Not for a file opened
+ * in a tab (a non-HTML extension, or an Accept without text/html), and not while the person has
+ * chosen Full page (the `morpheus_qa_layout=inline` cookie the column sets), which is the way out
+ * for a sign-in redirect to a provider that refuses to be framed.
+ */
+export declare function wantsShell(req: Pick<IncomingMessage, "method" | "headers" | "url">): boolean;
 /** The request as the dev server should see it: its own host, origin and referer. */
 export declare function upstreamHeaders(req: IncomingMessage, upstream: URL, own: string, html: boolean, presented?: URL): Record<string, string | string[]>;
 export declare function startWebQaServer(options: WebQaServerOptions): Promise<{

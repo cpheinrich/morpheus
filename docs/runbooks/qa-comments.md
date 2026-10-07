@@ -229,7 +229,16 @@ local dev server. The project declares it in `morpheus.json`:
   (`Sec-Fetch-Dest: iframe`) is the proxied site with the script injected; inside the shell's
   frame the script does nothing, because the shell drives that document. `X-Frame-Options` is
   dropped from proxied pages. A browser that sends no `Sec-Fetch-Dest` gets the column fixed inside
-  the page itself, with the page's margin moved to make room.
+  the page itself, with the page's margin moved to make room. Any framed document other than the
+  top draws nothing, so a site's own iframes stay clean.
+- **Full page, the way out of the frame.** Some flows cannot run in a frame: a sign-in that sends
+  the page to Google or GitHub (Auth.js's default, Firebase `signInWithRedirect`) lands on a
+  provider that refuses to be framed, and a site that frame-busts would reload forever. The
+  column's Full page button sets a `morpheus_qa_layout=inline` cookie, which makes the server skip
+  the shell and serve the site full width with the column inside it; Column clears it. When the
+  frame leaves the site's origin the column says so and offers the same switch. A popup sign-in
+  (`signInWithPopup`) works inside the frame. A file opened in a tab (a non-HTML extension, or an
+  Accept without `text/html`) never gets the shell.
 - **The site's own look.** The column reads the framed page's computed background, text colour and
   font (the first opaque background from body up) and re-reads them as the page changes, so it
   follows a light, dark or toggled theme on any product. Pins stay one fixed signal colour.

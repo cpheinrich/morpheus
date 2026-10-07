@@ -29,9 +29,10 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
   var PROJECT = __MORPHEUS_QA_PROJECT__;
   var COLUMN = 340;
 
-  // Inside the shell's frame: the shell drives this document.
+  // Any framed document — the shell's frame, which the shell drives, or a frame the site embeds
+  // itself — draws nothing; only the top window owns the column.
   var framed = false;
-  try { framed = window.parent !== window && !!window.parent.__morpheusQaShell; } catch (e) { framed = false; }
+  try { framed = window.top !== window; } catch (e) { framed = true; }
   if (framed) { window.__morpheusQa = { framed: true }; return; }
   var shell = !!window.__morpheusQaShell;
 
@@ -163,11 +164,13 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     ".pin.focused{outline:2px solid #e4572e;outline-offset:2px}" +
     ".hl{position:fixed;border:2px solid #e4572e;background:rgba(228,87,46,.08);pointer-events:none;display:none;border-radius:2px}" +
     ".clip{position:fixed;top:0;left:0;bottom:0;overflow:hidden;pointer-events:none}" +
+    ".away{font-size:12px;padding:8px;border:1px solid #e4572e;border-radius:6px}.away button{margin-top:6px}[hidden]{display:none}" +
     "</style>" +
     "<div class=clip><div class=hl></div><div class=pins></div></div>" +
     "<aside class=col>" +
-    "<header><div class=title><strong></strong><button class=mode type=button title='Click to pin instead of using the site'>Comment</button></div>" +
-    "<div class=hint>Right-click anything in the page to pin a comment, or turn on Comment and click.</div></header>" +
+    "<header><div class=title><strong></strong></div><div class=title><button class=mode type=button title='Click to pin instead of using the site'>Comment</button><span style='flex:1'></span><button class=layout type=button></button></div>" +
+    "<div class=hint>Right-click anything in the page to pin a comment, or turn on Comment and click.</div>" +
+    "<div class=away hidden>The page left this site (a sign-in redirect?) and cannot be shown beside the column. <button class=go type=button>Continue full page</button></div></header>" +
     "<h2>Comments</h2><ol></ol>" +
     "<div class=composer><div class=status></div>" +
     "<textarea placeholder='Comment for this pin…' disabled></textarea>" +
@@ -178,6 +181,21 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
   var col = root.querySelector(".col"), listEl = root.querySelector("ol"), pinsLayer = root.querySelector(".pins"), clip = root.querySelector(".clip");
   var hl = root.querySelector(".hl"), modeBtn = root.querySelector(".mode"), sendBtn = root.querySelector(".primary");
   var textEl = root.querySelector("textarea"), statusEl = root.querySelector(".status");
+  var layoutBtn = root.querySelector(".layout"), awayEl = root.querySelector(".away");
+  var LAYOUT_COOKIE = "morpheus_qa_layout";
+  var lastSiteUrl = location.href;
+  /**
+   * Full page: the server skips the shell while this cookie says inline, for flows a frame cannot
+   * hold (a redirect to a provider that refuses framing). Column clears it.
+   */
+  function setLayout(inline, url) {
+    document.cookie = LAYOUT_COOKIE + "=" + (inline ? "inline" : "") + "; path=/; SameSite=Lax" + (inline ? "" : "; max-age=0");
+    location.href = url || lastSiteUrl;
+  }
+  layoutBtn.textContent = shell ? "Full page" : "Column";
+  layoutBtn.title = shell ? "Show the site full width with the column inside it (for sign-in redirects)" : "Put the site back in a frame beside the column";
+  layoutBtn.addEventListener("click", function () { setLayout(shell, site ? site.win.location.href : lastSiteUrl); });
+  root.querySelector(".go").addEventListener("click", function () { setLayout(true, lastSiteUrl); });
 
   var pins = [], nextN = 1, focusedId = null, commenting = false, sending = false, escArmedAt = 0;
   var site = null; // { win, doc, offsetX, offsetY }
@@ -296,8 +314,15 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     if (focused()) { saveFocused(true); textEl.blur(); setStatus("Press Esc again to delete pin " + focused().n); }
   }
   function onKey(e) {
+    // Keys typed in the column are the textarea's own handler's; handling them here as well ran
+    // Esc twice in one keypress and deleted the pin (found in review).
+    if (e.composedPath && e.composedPath().indexOf(ui) >= 0) return;
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && pins.length) { e.preventDefault(); send(); return; }
-    if (e.key === "Escape" && (commenting || focused())) escape();
+    if (e.key !== "Escape") return;
+    // The second Esc of "Esc Esc deletes" lands here once the first has left the comment box. Only
+    // the box arms it, so Esc used by the site itself (closing its own dialogs) never deletes a pin.
+    if (escArmedAt && Date.now() - escArmedAt < 1000 && focused()) { e.preventDefault(); deleteFocused(); escArmedAt = 0; return; }
+    if (commenting) setMode(false);
   }
   document.addEventListener("keydown", onKey, true);
   modeBtn.addEventListener("click", function () { setMode(!commenting); });
@@ -378,12 +403,14 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     var win = siteWindow();
     if (!win) return;
     var doc;
-    try { doc = win.document; } catch (e) { return; } // navigated off-origin: nothing to drive
+    try { doc = win.document; void doc.documentElement; } catch (e) { awayEl.hidden = false; return; } // navigated off-origin
+    awayEl.hidden = true;
     // The frame's initial about:blank is not the site; its "pathname" would rewrite the address bar.
     if (win.location.protocol !== location.protocol) return;
     if (!site || site.doc !== doc) { if (doc.readyState !== "loading" && doc.documentElement) attach(win); return; }
     if (storeKey !== "morpheus-qa:" + pagePath(win)) { storeKey = "morpheus-qa:" + pagePath(win); restore(); render(); setStatus(""); }
     if (shell) syncAddress(win);
+    lastSiteUrl = win.location.href;
     applyTheme();
   }
 

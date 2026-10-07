@@ -224,10 +224,22 @@ describe("the shell", () => {
     expect(wantsShell({ method: "POST", headers: { "sec-fetch-dest": "document" } })).toBe(false);
   });
 
+  it("is skipped for a file opened in a tab and while the person has chosen Full page", () => {
+    const doc = { "sec-fetch-dest": "document", accept: "text/html,*/*" };
+    expect(wantsShell({ method: "GET", url: "/hq?x=1", headers: doc })).toBe(true);
+    expect(wantsShell({ method: "GET", url: "/page.html", headers: doc })).toBe(true);
+    expect(wantsShell({ method: "GET", url: "/export.csv", headers: doc })).toBe(false);
+    expect(wantsShell({ method: "GET", url: "/report.pdf?dl=1", headers: doc })).toBe(false);
+    expect(wantsShell({ method: "GET", url: "/hq", headers: { "sec-fetch-dest": "document", accept: "application/json" } })).toBe(false);
+    expect(wantsShell({ method: "GET", url: "/hq", headers: { ...doc, cookie: "a=1; morpheus_qa_layout=inline" } })).toBe(false);
+    expect(wantsShell({ method: "GET", url: "/hq", headers: { ...doc, cookie: "morpheus_qa_layout=" } })).toBe(true);
+  });
+
   it("escapes the project name and loads the frame from the shell's own address", () => {
     const html = shellHtml('Acme <b>"Co"</b>');
     expect(html).not.toContain("<b>");
-    expect(html).toContain("location.pathname + location.search + location.hash");
+    // location.href is always this origin; a pathname like //evil.example would be protocol-relative.
+    expect(html).toContain('.src = location.href;');
   });
 });
 
@@ -288,13 +300,47 @@ describe("the injected client", () => {
     expect(w.document.documentElement.style.getPropertyValue("margin-right")).toBe("340px");
   });
 
-  it("stays out of the way inside the shell's frame, which the shell drives", async () => {
-    const dom = new JSDOM(`<body><p>x</p></body>`, { runScripts: "outside-only", pretendToBeVisual: true, url: "http://localhost:4309/" });
-    const w = dom.window as unknown as Window & { __morpheusQa: { framed?: boolean } };
-    Object.defineProperty(w, "parent", { value: { __morpheusQaShell: true } });
-    (w as unknown as { eval: (source: string) => void }).eval(WEB_OVERLAY_JS.replace("__MORPHEUS_QA_PROJECT__", '"Lakina"'));
-    expect(w.__morpheusQa.framed).toBe(true);
-    expect(w.document.querySelector("morpheus-qa")).toBeNull();
+  it("saves on the first Esc in the comment box and deletes only on the second", async () => {
+    const w = await load(`<body><h1>Title</h1></body>`);
+    const qa = (w as unknown as { __morpheusQa: { pins: () => unknown[] } }).__morpheusQa;
+    const h1 = w.document.querySelector("h1")!;
+    h1.dispatchEvent(new w.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    // jsdom has no layout, so elementFromPoint finds nothing; place the pin through the same path a hit would.
+    if (qa.pins().length === 0) {
+      (w.document as unknown as { elementFromPoint: () => Element }).elementFromPoint = () => h1;
+      h1.dispatchEvent(new w.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    }
+    expect(qa.pins()).toHaveLength(1);
+    const box = w.document.querySelector("morpheus-qa")!.shadowRoot!.querySelector("textarea")!;
+    box.value = "hello"; box.dispatchEvent(new w.Event("input"));
+    box.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true, cancelable: true }));
+    expect(qa.pins()).toHaveLength(1);
+    expect((qa.pins()[0] as { text: string }).text).toBe("hello");
+    // The first Esc left the box; the second arrives on the page and deletes.
+    w.document.body.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(qa.pins()).toHaveLength(0);
+  });
+
+  it("never deletes a pin on Esc pressed in the site alone", async () => {
+    const w = await load(`<body><h1>Title</h1></body>`);
+    const qa = (w as unknown as { __morpheusQa: { pins: () => unknown[] } }).__morpheusQa;
+    const h1 = w.document.querySelector("h1")!;
+    (w.document as unknown as { elementFromPoint: () => Element }).elementFromPoint = () => h1;
+    h1.dispatchEvent(new w.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    const esc = () => w.document.body.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    esc(); esc(); esc();
+    expect(qa.pins()).toHaveLength(1);
+  });
+
+  it("draws nothing in any framed document: the shell's frame, or a frame the site embeds itself", async () => {
+    for (const shellParent of [true, false]) {
+      const dom = new JSDOM(`<body><iframe></iframe></body>`, { runScripts: "outside-only", pretendToBeVisual: true, url: "http://localhost:4309/" });
+      if (shellParent) (dom.window as unknown as { __morpheusQaShell: boolean }).__morpheusQaShell = true;
+      const child = dom.window.document.querySelector("iframe")!.contentWindow as unknown as Window & { eval: (s: string) => void; __morpheusQa: { framed?: boolean } };
+      child.eval(WEB_OVERLAY_JS.replace("__MORPHEUS_QA_PROJECT__", '"Lakina"'));
+      expect(child.__morpheusQa.framed).toBe(true);
+      expect(child.document.querySelector("morpheus-qa")).toBeNull();
+    }
   });
 
   it("mounts once, outside the body React manages", async () => {

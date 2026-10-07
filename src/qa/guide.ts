@@ -60,7 +60,8 @@ On the web overlay the site sits on the left, as usual, and a full-height commen
 right takes the site's own colours, font and light or dark mode. Right-click any element
 (Shift+right-click keeps the browser's own menu), or turn on Comment and click, to pin a comment;
 the column lists every pin. Enter saves, Shift+Enter is a newline, Esc Esc deletes the focused pin,
-⌘Enter sends. Unsent pins survive a reload of the same page.
+⌘Enter sends. Unsent pins survive a reload of the same page. For a sign-in that redirects the
+whole page to a provider, use the column's Full page button; Column puts the frame back.
 
 ## 3. Watch the inbox instead of asking the person to paste comments
 
