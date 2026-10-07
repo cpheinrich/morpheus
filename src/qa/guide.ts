@@ -9,12 +9,22 @@
 
 export const QA_GUIDE = `# Comment QA
 
-The person runs the app, pins comments on it, and you act on them. Every agent — Claude, Codex,
-Grok — uses the same surface: the QA overlay page the preview prints. Do not substitute a host's
-native simulator panel or its own annotation tool; the overlay is what writes comment batches you
-can read back.
+The person runs the app — the iOS app in a simulator, or the website in a browser — pins comments
+on it, and you act on them. Every agent — Claude, Codex, Grok — uses the same surface: the QA
+overlay page the preview prints. Do not substitute a host's native simulator panel or its own
+annotation tool; the overlay is what writes comment batches you can read back.
 
 ## 1. Start the preview
+
+For the website (morpheus.json qa.web names the dev server and how to start it):
+
+    morpheus qa preview web start [--path /page] [--ttl-minutes N]
+
+start attaches to the dev server if it is already running, or starts the declared command, and puts
+the overlay in front of it: the same site, same paths and cookies, with a comment toolbar on top.
+stop ends the overlay and only a dev server this preview started.
+
+For the iOS app:
 
     morpheus qa preview ios doctor
     morpheus qa preview ios start [--mode <name>] [--no-build] [--ttl-minutes N]
@@ -30,8 +40,10 @@ existing build, and say its freshness is unverified. To keep the person's curren
 
 ## 2. Open the overlay — the same page in every agent
 
-start prints \`QA overlay: http://127.0.0.1:<port>/\`. Open that URL, never the stream URL beside
-it, and always at 127.0.0.1 (the overlay refuses POSTs from any other origin, localhost included).
+start prints \`QA overlay: <url>\`. Open exactly that URL — never the stream or the dev server beside
+it. The iOS overlay is at 127.0.0.1 and refuses POSTs from any other origin, localhost included; the
+web overlay uses the dev server's own hostname (often localhost) so a signed-in session's cookies
+apply there too.
 
 - Claude: the Browser pane — preview_start with the url (or navigate).
 - Codex: the in-app browser panel.
@@ -41,8 +53,12 @@ Then verify before calling QA ready: take a screenshot of the overlay and confir
 app pixels, not a blank stage or "No MJPEG stream"; click one control in the overlay and confirm
 the screen changed (allow a second or two), then return to the screen you started on.
 
-In the overlay, left-click and drag drive the app, right-click places a numbered pin, Enter saves
+In the iOS overlay, left-click and drag drive the app, right-click places a numbered pin, Enter saves
 its text, Shift+Enter is a newline, ⌘Enter sends the batch, Esc Esc deletes the focused pin.
+
+On the web overlay the site works as usual. Right-click any element (Shift+right-click keeps the
+browser's own menu), or turn on Comment in the toolbar and click, to pin a comment on it; Enter
+saves, ⌘Enter sends, Esc leaves Comment mode. Unsent pins survive a reload of the same page.
 
 ## 3. Watch the inbox instead of asking the person to paste comments
 
@@ -57,6 +73,13 @@ anchor (normX/normY are fractions of the frame's width and height) to what is on
 or answer each comment, then \`morpheus qa comments resolve <id> --root <checkout>\`. Confirm the
 first batch's frame.png shows real app pixels before treating its anchors as authoritative.
 
+A web batch's frame is the whole page, so normX/normY are fractions of the page, not the window.
+Each web anchor also carries \`page\` (url, scroll, viewport and page size) and, when it could be
+resolved, \`element\`: a CSS \`selector\` that matched exactly the pinned element, its \`tag\`, its
+visible \`text\`, and the point within it (offsetX/offsetY). Find the element in the source by its
+text and selector — it is what the comment is about. A batch can arrive without a frame when the
+page could not be captured; the element and page context still locate every comment.
+
 A wake webhook in local/qa-comments/webhook.json, when present, belongs to another agent's routine
 and fires for every batch at that root: do not depend on it, and resolve your own test batches at
 once so they do not become that agent's stale work.
@@ -70,9 +93,9 @@ overlay tab, and never rebuild or relaunch, while they are commenting without sa
 
 ## 5. End the session
 
-    morpheus qa preview ios stop
+    morpheus qa preview web stop      # or: morpheus qa preview ios stop
 
-stop ends this checkout's preview and its overlay together and shuts its simulator down, keeping
+stop ends this checkout's preview and its overlay together; for iOS it shuts the simulator down, keeping
 its data. Closing a browser tab or panel stops nothing. Previews expire after four hours by default
 (--ttl-minutes sets 1–1440); start renews the lease, status does not. For your own screenshot or
 interaction checks, stop in cleanup. Leave a preview running only as a requested interactive QA

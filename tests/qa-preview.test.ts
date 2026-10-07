@@ -231,7 +231,7 @@ describe("serve-sim and the guide", () => {
     expect(QA_GUIDE).toContain("Claude: the Browser pane");
     expect(QA_GUIDE).toContain("Codex: the in-app browser panel");
     expect(QA_GUIDE).toContain("Grok, or any agent without a browser panel: `open <url>`");
-    expect(QA_GUIDE).toMatch(/never the stream URL/);
+    expect(QA_GUIDE).toMatch(/never the stream or the dev server/);
     expect(QA_GUIDE).toMatch(/127\.0\.0\.1/);
     expect(QA_GUIDE).not.toMatch(/\bEvo\b|\bLakina\b/);
   });
