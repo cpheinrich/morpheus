@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import type { Finding } from "../check/pr.js";
-import { visibleProse } from "../check/pr.js";
+import { visibleProse, visibleText } from "../check/pr.js";
 import { ROADMAP_ID } from "../pm/id.js";
 
 const Sha = z.string().regex(/^[a-f0-9]{40}$/);
@@ -185,7 +185,7 @@ export function parseReviewRecord(markdown: string): LocalReviewRecord {
   if (blocks.length !== 1) throw new Error("worklog needs exactly one morpheus-review JSON block");
   const record = ReviewRecord.parse(JSON.parse(blocks[0]![1]!));
   // The human audit must remain visible without reading JSON.
-  if (!visibleProse(markdown.replace(blocks[0]![0], "")).includes(record.summary)) {
+  if (!visibleText(markdown.replace(blocks[0]![0], "")).includes(record.summary)) {
     throw new Error("repeat the review summary as a visible paragraph outside the JSON block");
   }
   return record;

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, LOG_LABEL, parsePolicy } from "./policy.js";
+import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, LOG_LABEL, parsePolicy, TRUSTED_ASSOCIATIONS } from "./policy.js";
 import { parseMarker } from "./sweep.js";
 /**
  * Everything that talks to GitHub, through `gh` and its ambient `GH_TOKEN`.
@@ -102,6 +102,20 @@ function mergeableState(pull) {
 function pause(ms) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
+/**
+ * The author's permission on the repository, or undefined when it cannot be read. Asked only
+ * when the association does not already establish trust, because the association is what the
+ * App's token can see, and private organization membership is invisible to it.
+ */
+export function fetchAuthorPermission(repo, login) {
+    try {
+        return api(`repos/${repo}/collaborators/${encodeURIComponent(login)}/permission`).permission;
+    }
+    catch {
+        // A failure to read is not a permission. It stays undefined, which the sweep does not trust.
+        return undefined;
+    }
+}
 export function fetchPullRequest(repo, number) {
     let pull = api(`repos/${repo}/pulls/${number}`);
     // GitHub computes mergeability lazily: the first read of a pull request nobody has looked at
@@ -119,15 +133,19 @@ export function fetchPullRequest(repo, number) {
             title: pull.title,
             author: pull.user.login,
             authorAssociation: pull.author_association,
+            ...(TRUSTED_ASSOCIATIONS.has(pull.author_association) ? {} : { authorPermission: fetchAuthorPermission(repo, pull.user.login) }),
             isDraft: pull.draft,
             isCrossRepository: pull.head.repo?.full_name !== pull.base.repo.full_name,
             headRefName: pull.head.ref,
             headSha: pull.head.sha,
             headCommittedAt: commit.commit.committer.date,
+            headByManager: commit.author?.login === GH_MANAGER_LOGIN,
+            ...(commit.parents.length === 2 ? { headFirstParent: commit.parents[0].sha } : {}),
             createdAt: pull.created_at,
             labels: pull.labels.map(l => l.name),
             autoMerge: pull.auto_merge !== null && pull.auto_merge !== undefined,
             mergeable: mergeableState(pull),
+            behind: pull.mergeable_state === "behind",
             checks: fetchChecks(repo, pull.head.sha),
             marker: fetchMarker(repo, pull.number),
         },
@@ -162,6 +180,7 @@ export function fetchLiveState(repo, number, supersededBy) {
         isDraft: facts.isDraft,
         labels: facts.labels,
         autoMerge: facts.autoMerge,
+        behind: facts.behind,
         body: pull.body ?? "",
         changedFiles: pages(`repos/${repo}/pulls/${number}/files?per_page=100`).map(f => f.filename),
         supersededMerged,
@@ -199,6 +218,9 @@ export function execute(repo, number, op) {
             return;
         case "auto-merge":
             gh(["pr", "merge", pr, "--repo", repo, "--auto", "--squash"]);
+            return;
+        case "update-branch":
+            gh(["api", "--method", "PUT", `repos/${repo}/pulls/${pr}/update-branch`, "-f", `expected_head_sha=${op.expectedHead}`]);
             return;
         case "disable-auto-merge":
             gh(["pr", "merge", pr, "--repo", repo, "--disable-auto"]);

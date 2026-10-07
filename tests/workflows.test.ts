@@ -396,8 +396,11 @@ describe("central security remediation opt-in", () => {
       "node / check",
       "pm / pm",
       "pr / conventions",
-      "agent-review / delivery",
     ]);
+    // The review delivery job is intentionally skipped for this exact bot lane.
+    // Branch protection still requires its reported skipped check; the bot's
+    // own successful-check list must contain only checks that can pass.
+    expect(config.requiredChecks).not.toContain("agent-review / delivery");
     expect(config).not.toHaveProperty("incidentRepository");
   });
 });
@@ -2042,7 +2045,9 @@ describe("ios-ci.yml", () => {
     const lint = steps.find((step) => step.name === "Lint changed Swift sources");
     const script = String(lint?.run);
 
-    expect((checkout?.with as Record<string, unknown>)?.["fetch-depth"]).toBe(2);
+    expect((checkout?.with as Record<string, unknown>)?.["fetch-depth"]).toBe(
+      "${{ github.event_name == 'pull_request' && inputs.watch-paths != '' && '0' || '2' }}",
+    );
     expect(lint?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}");
     expect(lint?.env).toMatchObject({
       SWIFT_FORMAT_CONFIGURATION: "${{ inputs.swift-format-configuration }}",
@@ -2526,8 +2531,8 @@ describe("python-ci", () => {
  * A job with no `timeout-minutes` runs a hung step to GitHub's six-hour default
  * on billed minutes. That has already happened here once, to a Playwright
  * install that hung for forty. Every reusable job must bound itself, and every
- * job that gates a pull request must cancel rather than run beside its
- * replacement.
+ * other reusable gates cancel superseded runs. PR conventions is the exception:
+ * GitHub can block a merge on any cancelled required run for the current head.
  */
 describe("every reusable job", () => {
   type Bounded = {
@@ -2554,8 +2559,9 @@ describe("every reusable job", () => {
     }
   });
 
-  it("cancels a superseded push on the checks that gate a pull request", async () => {
+  it("cancels superseded runs on gates other than required PR conventions", async () => {
     for (const file of GATES) {
+      if (file === "pr-check.yml") continue; // Checked for absence of concurrency below.
       const jobs = ((await read(file)) as Bounded).jobs ?? {};
       for (const [name, job] of Object.entries(jobs)) {
         if (job.uses) continue;
@@ -2605,6 +2611,20 @@ describe("beta app review submission", () => {
 });
 
 describe("local review metadata", () => {
+  it("lets every required conventions check finish, including metadata bursts", async () => {
+    const wf = await read("pr-check.yml") as {
+      concurrency?: unknown;
+      jobs: { conventions: { concurrency?: unknown } };
+    };
+    const ci = await read("ci.yml") as { concurrency?: unknown; jobs: { pr: { concurrency?: unknown } } };
+    const metadata = await read("review-metadata.yml") as { concurrency?: unknown; jobs: { pr: { concurrency?: unknown } } };
+    expect(wf.concurrency).toBeUndefined();
+    expect(wf.jobs.conventions.concurrency).toBeUndefined();
+    expect(ci.concurrency).toBeUndefined();
+    expect(ci.jobs.pr.concurrency).toBeUndefined();
+    expect(metadata.concurrency).toBeUndefined();
+    expect(metadata.jobs.pr.concurrency).toBeUndefined();
+  });
   it("reruns only conventions without replacing build/test statuses", async () => {
     const wf = await read("review-metadata.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses: string }> };
     expect(wf.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);

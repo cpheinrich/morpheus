@@ -167,6 +167,10 @@ export async function scaffold(root, seed) {
     // Motion exploration is useful in every project kind: when there is no brand
     // package, the skill deliberately takes the live product as its visual source.
     await put(".agents/skills/motion-design-exploration/SKILL.md", t.motionDesignExplorationSkill());
+    // Comment QA is a pointer to `morpheus qa guide`, in both skill directories because Claude reads
+    // .claude/skills and Codex and Grok read .agents/skills. One template, so the copies cannot drift.
+    await put(".agents/skills/comment-qa/SKILL.md", t.commentQaSkill());
+    await put(".claude/skills/comment-qa/SKILL.md", t.commentQaSkill());
     // The generated exploration prompt is the session-specific handoff. This
     // small skill is the durable discovery point for any agent that returns once
     // the first review is complete, and makes visual-first review the default

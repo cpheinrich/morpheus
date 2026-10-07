@@ -21,7 +21,6 @@
  *
  * Extracted from darwin-health/evo #307 and #309 without changing behaviour.
  */
-const FOUR_HOURS = 4 * 60 * 60 * 1000;
 const THIRTY_MINUTES = 30 * 60 * 1000;
 export function localTime(value, zone) {
     const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
@@ -166,8 +165,24 @@ export async function schedule({ state, now, runs, config, deps, save }) {
  * a release and a scheduling error cannot silence a finished run's report.
  */
 export async function admit({ state, now, runs, config, deps, save }) {
-    if (runs.some((r) => r.status !== "completed" && Date.parse(now) - Date.parse(r.created_at) > FOUR_HOURS)) {
-        throw Error("A release has been queued or running for more than four hours; inspect the runner and workflow");
+    const timeout = config.runTimeoutMinutes ?? 240;
+    if (!Number.isSafeInteger(timeout) || timeout <= 0 || !Number.isSafeInteger(timeout * 60_000)) {
+        throw Error("runTimeoutMinutes must be a positive safe integer whose milliseconds are also safe");
+    }
+    const running = runs.some((r) => r.status === "in_progress");
+    for (const run of runs) {
+        if (run.status === "completed")
+            continue;
+        if (running && ["queued", "pending", "requested"].includes(run.status))
+            continue;
+        const started = Date.parse(run.status === "in_progress" ? (run.run_started_at ?? run.created_at) : run.created_at);
+        const current = Date.parse(now);
+        if (!Number.isFinite(started) || !Number.isFinite(current)) {
+            throw Error(`Cannot determine the age of release run ${run.id}; inspect its timestamps`);
+        }
+        if (current - started > timeout * 60_000) {
+            throw Error(`Run ${run.id} has been ${run.status} for more than ${timeout} minutes; inspect the runner and workflow`);
+        }
     }
     reconcile(state, runs, now, config);
     save();

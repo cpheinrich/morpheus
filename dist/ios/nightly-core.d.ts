@@ -38,6 +38,8 @@ export interface Run {
     id: number;
     run_attempt: number;
     created_at: string;
+    /** Start of the current attempt, including a later retry of an older run. */
+    run_started_at?: string | null;
     updated_at: string;
     head_sha: string;
     status: string;
@@ -78,6 +80,13 @@ export interface AdmissionConfig {
      * is refused rather than silently reinterpreted as a day.
      */
     slotMinutes?: number;
+    /**
+     * Stale-run ceiling in minutes (default 240). Set above the sum of sequential
+     * job timeouts plus scheduling overhead. Running attempts age from run_started_at
+     * when available; queued/pending/requested runs wait while a release is in progress.
+     * Supply runs from one release workflow so that predecessor relationship is meaningful.
+     */
+    runTimeoutMinutes?: number;
     /** The run title the release workflow gives an automated dispatch for `nonce`. */
     title: (nonce: string) => string;
 }

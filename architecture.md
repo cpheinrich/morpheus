@@ -3062,10 +3062,13 @@ pull-request set as the durable source of truth.
 
 Every reusable job carries a `timeout-minutes` ceiling set well above its honest runtime, so it
 fires only on a hang. Without one a stuck step runs to GitHub's six-hour default on billed
-minutes, which is how a hung Playwright install once cost forty. The jobs that gate a pull request
-also carry a job-level concurrency group so a superseded push cancels rather than running beside
-its replacement — job-level rather than workflow-level, because a called workflow's top-level
-`concurrency` does not govern the caller's run.
+minutes, which is how a hung Playwright install once cost forty. Most jobs that gate a pull
+request carry a job-level concurrency group so a superseded push cancels rather than running
+beside its replacement. The required `pr / conventions` job in `pr-check.yml` and its `CI` and
+`Review metadata` callers are exempt: every required check run must finish. GitHub replaces a
+pending run in a concurrency group even when `cancel-in-progress` is false; a cancelled required
+run can leave an otherwise green pull request blocked. Job-level grouping governs a called job;
+a called workflow's top-level `concurrency` does not govern the caller's run.
 
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
@@ -3073,7 +3076,11 @@ Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination
 An optional `watch-paths` list uses Git pathspecs to compare the verified pull-request merge
 checkout to its first parent. When nothing matches, the same job reports success after checkout
 without Xcode, simulator, package, build or test work; there is no separate selector or aggregate
-check. Manual/nightly calls and an empty list retain normal execution. Invalid comparison evidence
+check. Scoped PR checkouts fetch full history to verify that the merge's base descends from the
+event base, allowing GitHub to regenerate the merge after trunk advances. Its head must still match
+the event exactly. The diff uses the actual first parent, so changes already on trunk do not count
+as PR changes. Wrong parents or missing history fail with diagnostics. Other callers keep a
+depth-two checkout. Manual/nightly calls and an empty list retain normal execution. Invalid comparison evidence
 fails instead of bypassing. The job still briefly acquires its runner, so this avoids native work,
 not runner queue time. Callers own the path policy and still require independent review for changes.
 Callers may opt into a changed-source style gate with `swift-format-lint`; it validates the
@@ -3088,9 +3095,9 @@ worse than no local check at all. `tests/swift-changed-files.test.ts` pins the t
 repository state, so a pathspec or delimiter that drifts in either is caught there rather than in
 a consumer's pull request. The base a consumer compares against stays the consumer's: CI asks
 about a commit and its first parent, a developer asks what a branch changed since the trunk, and
-only the second has a merge base to speak of. The checkout retains only the commit and its first
-parent, which is enough to cover a pull request's synthetic merge commit and a push to `main`
-without downloading full history. Existing Swift is adopted incrementally: enabling the gate does
+only the second has a merge base to speak of. The formatter only requires the commit and its first
+parent, enough to cover a pull request's synthetic merge commit and a push to `main`; scoped PRs
+fetch full history separately for native-scope ancestry validation. Existing Swift is adopted incrementally: enabling the gate does
 not create a repository-wide formatting rewrite, while any Swift file being changed must leave the
 commit fully formatted.
 The caller supplies a shared Xcode scheme; that scheme or its optional test plan remains the source
@@ -3190,6 +3197,16 @@ because it runs from a pinned runtime copy on the host, where no `node_modules` 
 `morpheus ios nightly-core write <file>` vendors it with a digest of the exact module, and `check`
 tells a hand edit from an upgrade. Each app's adapter owns its upload job and step names, window,
 run-title format, incident hook, notifications and installer.
+
+The adapter also owns `runTimeoutMinutes` (240 by default), set above the sum of sequential
+job timeout ceilings plus scheduling/preflight overhead. A running attempt ages from GitHub's
+`run_started_at`, falling back to `created_at` for legacy adapters; retries do not inherit the
+original attempt's age. A queued, pending or requested run waits while another run of the same
+release workflow is in progress. With no active predecessor it still has the configured age
+limit, and a stuck running predecessor is never masked by a queued pair. Callers supply runs
+from one release workflow. All active runs still prevent another automated dispatch; timeout
+configuration does not relax reservations or uncertain-upload refusal. To adopt, re-vendor the
+module and set the timeout in the app's admission config (Evo tracks this in EV-26-10-01-13.30.14).
 
 Screenshots are reviewed from the nightly run itself: every named XCTest attachment is exported
 from the run's `.xcresult` into its `ios-screenshots-<run>-<attempt>` artifact, kept for 14 days.

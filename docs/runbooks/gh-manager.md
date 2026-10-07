@@ -16,6 +16,7 @@ Every run starts with a sweep that uses no model. Each open pull request gets on
 | Route | When | What happens |
 |---|---|---|
 | `merge` | Reviewed, checks green, auto-merge never enabled | Auto-merge is switched on; cancelled checks are rerun. No session. |
+| `merge` (update) | Auto-merge is on but strict protection holds the branch behind its base | The base is merged in with GitHub's `update-branch`, guarded on the current head. No session. If GitHub refuses (most likely because the merge from trunk carries a workflow change and the App has no Workflows permission), the next run escalates once with `manager:needs-human` and leaves auto-merge and any `manager-reviewed` clearance in place, so the pull request lands once a person merges the base in. |
 | `session` | Anything that needs judgment: no completed review, failing checks, conflicts, an abandoned draft | One fresh Claude session (below). |
 | `close` | A stale warning's grace period ran out | Closed with a comment. The branch is left in place. |
 | `escalate` | The attempt budget is spent | Labelled `manager:needs-human`. |
@@ -127,8 +128,11 @@ trunk carries a workflow change may be refused on push; the session escalates th
 Pull request text does not enter the session's brief, with one exception: the branch and base
 names, which must be plain (`[A-Za-z0-9._/-]`) or the pull request is skipped, and are quoted
 where a command uses them. Otherwise the session is given a number and fetches the content
-itself. Only pull requests from `OWNER`, `MEMBER` or `COLLABORATOR` on a branch in the
-repository itself are acted on (decisions.md, 2026-08-03). `morpheus-security[bot]` and Dependabot
+itself. Only pull requests from a trusted author on a branch in the repository itself are acted
+on (decisions.md, 2026-08-03). Trusted means an `OWNER`, `MEMBER` or `COLLABORATOR` association,
+or, when that is hidden, `admin`, `maintain` or `write` permission on the repository. The second
+check exists because an App's token cannot see private organization membership: on the first
+Evo run an organization owner read as `CONTRIBUTOR`. `morpheus-security[bot]` and Dependabot
 pull requests have their own maintainers and are only reported.
 
 The App key and the Claude subscription token live only in the private operations repository.

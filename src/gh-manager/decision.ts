@@ -68,6 +68,12 @@ export type Operation =
   | { kind: "add-label"; label: string }
   | { kind: "remove-label"; label: string }
   | { kind: "auto-merge" }
+  /**
+   * Merge the base into the branch with GitHub's update-branch endpoint, guarded on the head the
+   * plan was made for: if anyone pushed in between, GitHub refuses rather than merging over it.
+   * A merge GitHub performs reproduces exactly, so it keeps any review on record valid.
+   */
+  | { kind: "update-branch"; expectedHead: string }
   | { kind: "disable-auto-merge" }
   | { kind: "rerun"; runIds: number[] }
   | { kind: "close" }
@@ -79,6 +85,8 @@ export interface LiveState {
   isDraft: boolean;
   labels: string[];
   autoMerge: boolean;
+  /** Strict protection holds the branch behind its base; see `PullRequestFacts.behind`. */
+  behind?: boolean | undefined;
   body: string;
   /** Every path the pull request changes against its base. */
   changedFiles: string[];
@@ -145,16 +153,20 @@ function hasVisibleLine(body: string, key: string): boolean {
   return new RegExp(`^${key}:[ \\t]*\\S+[ \\t]*$`, "m").test(visibleProse(body));
 }
 
-function escalate(live: LiveState, why: string, sections: string[], marker: ManagerMarker, overridden?: string): Plan {
+function escalate(live: LiveState, why: string, sections: string[], marker: ManagerMarker, overridden?: string, keepAutoMerge = false): Plan {
   return {
     verdict: "escalate",
     ...(overridden ? { overridden } : {}),
     operations: [
       comment("escalate", [`**Needs you:** ${why}`, ...sections], { ...marker, verdict: "escalate" }),
-      ...(live.autoMerge ? [{ kind: "disable-auto-merge" as const }] : []),
+      // Normally an escalated pull request must not merge on its own. A refused update is the
+      // exception: the review stands, and once a person merges the base in it should land.
+      ...(live.autoMerge && !keepAutoMerge ? [{ kind: "disable-auto-merge" as const }] : []),
       // An escalated pull request is not cleared; leaving the label would let it merge on a
-      // record the manager itself no longer stands behind.
-      ...removeLabels(live, MANAGER_REVIEWED_LABEL),
+      // record the manager itself no longer stands behind. A refused update is different: the
+      // clearance still stands, and a person's merge of the base is an exact trunk merge it
+      // accepts, so the label stays and the pull request can still land.
+      ...(keepAutoMerge ? [] : removeLabels(live, MANAGER_REVIEWED_LABEL)),
       ...(live.labels.includes(NEEDS_HUMAN_LABEL) ? [] : [{ kind: "add-label" as const, label: NEEDS_HUMAN_LABEL }]),
     ],
   };
@@ -246,7 +258,7 @@ export function planDecision(decision: Decision, live: LiveState, ctx: Context):
     operations: [
       // First, and before the label: the label event re-runs `check pr`, which reads the cleared
       // head from this comment.
-      comment("merge", ["Auto-merge is being enabled; GitHub merges this once the required checks pass.", ...sections], decision.usedManagerReview ? { ...marker, cleared: live.headSha } : marker),
+      comment("merge", [`Auto-merge is being enabled; GitHub merges this once the required checks pass.${live.behind ? " The branch is behind its base, so the base is being merged in." : ""}`, ...sections], { ...marker, ...(decision.usedManagerReview ? { cleared: live.headSha } : {}), ...(live.behind ? { updated: live.headSha } : {}) }),
       ...(decision.body !== undefined && decision.body !== live.body ? [{ kind: "set-body" as const, body: decision.body }] : []),
       ...(live.isDraft ? [{ kind: "ready" as const }] : []),
       ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL, INCOMPLETE_LABEL),
@@ -255,8 +267,14 @@ export function planDecision(decision: Decision, live: LiveState, ctx: Context):
       ...(decision.usedManagerReview ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label" as const, label: MANAGER_REVIEWED_LABEL }] : []),
       ...(live.cancelledRunIds.length ? [{ kind: "rerun" as const, runIds: live.cancelledRunIds }] : []),
       ...(live.autoMerge ? [] : [{ kind: "auto-merge" as const }]),
+      ...updateIfBehind(live),
     ],
   };
+}
+
+/** Last, after auto-merge is queued: the update starts a fresh CI run that the queue then follows. */
+function updateIfBehind(live: LiveState): Operation[] {
+  return live.behind ? [{ kind: "update-branch", expectedHead: live.headSha }] : [];
 }
 
 /** Operations for a route the sweep decided without a session. */
@@ -268,14 +286,19 @@ export function planRoute(routed: Routed, live: LiveState, ctx: Context): Plan {
 
   if (routed.route === "merge") {
     const rerun: Operation[] = live.cancelledRunIds.length ? [{ kind: "rerun", runIds: live.cancelledRunIds }] : [];
-    // Already queued: a rerun needs no new comment every run.
-    if (live.autoMerge) return { verdict: "merge", operations: rerun };
-    return { verdict: "merge", operations: [comment("merge", [`${routed.detail}. No session was needed: the review on record is complete and the checks pass.`, run], { ...marker, verdict: "merge" }), ...rerun, { kind: "auto-merge" }] };
+    if (live.autoMerge) {
+      // Already queued. Bringing it up to date pushes a commit, so it is recorded; a rerun alone
+      // needs no new comment every run.
+      if (!live.behind) return { verdict: "merge", operations: rerun };
+      return { verdict: "merge", operations: [comment("merge", ["Auto-merge is waiting on a branch behind its base, which strict protection never merges. Merging the base in with GitHub's update-branch; CI then runs again and auto-merge follows it.", run], { ...marker, verdict: "merge", updated: live.headSha }), ...rerun, ...updateIfBehind(live)] };
+    }
+    return { verdict: "merge", operations: [comment("merge", [`${routed.detail}. No session was needed: the review on record is complete and the checks pass.${live.behind ? " The branch is behind its base, so the base is being merged in." : ""}`, run], { ...marker, verdict: "merge", ...(live.behind ? { updated: live.headSha } : {}) }), ...rerun, { kind: "auto-merge" }, ...updateIfBehind(live)] };
   }
   if (routed.route === "close") {
     return { verdict: "close", operations: [comment("close", [`${routed.detail}. Reopen this if it is still wanted; the branch is untouched.`, run], { ...marker, verdict: "close" }), ...removeLabels(live, STALE_LABEL), { kind: "close" }] };
   }
   if (routed.route === "escalate") {
+    if (routed.reason === "update-refused") return escalate(live, `${routed.detail}.`, [run], marker, undefined, true);
     return escalate(live, `${routed.detail}. The manager has stopped working on this pull request until it gets a new push.`, [run], marker);
   }
   return { verdict: "wait", operations: [] };

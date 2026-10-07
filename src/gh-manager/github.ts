@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LiveState, Operation } from "./decision.js";
-import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, type GhManagerPolicy, LOG_LABEL, parsePolicy } from "./policy.js";
+import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, type GhManagerPolicy, LOG_LABEL, parsePolicy, TRUSTED_ASSOCIATIONS } from "./policy.js";
 import { type CheckState, type ManagerMarker, parseMarker, type PullRequestFacts } from "./sweep.js";
 
 /**
@@ -72,6 +72,8 @@ interface RestPull {
   labels: { name: string }[];
   auto_merge: unknown;
   mergeable?: boolean | null;
+  /** REST's lower-case merge state: `behind`, `dirty`, `clean`, `blocked`, `unstable`, `unknown`. */
+  mergeable_state?: string;
   merged?: boolean;
   state: string;
 }
@@ -130,6 +132,20 @@ function pause(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+/**
+ * The author's permission on the repository, or undefined when it cannot be read. Asked only
+ * when the association does not already establish trust, because the association is what the
+ * App's token can see, and private organization membership is invisible to it.
+ */
+export function fetchAuthorPermission(repo: string, login: string): string | undefined {
+  try {
+    return api<{ permission?: string }>(`repos/${repo}/collaborators/${encodeURIComponent(login)}/permission`).permission;
+  } catch {
+    // A failure to read is not a permission. It stays undefined, which the sweep does not trust.
+    return undefined;
+  }
+}
+
 export function fetchPullRequest(repo: string, number: number): { pull: RestPull; facts: PullRequestFacts } {
   let pull = api<RestPull>(`repos/${repo}/pulls/${number}`);
   // GitHub computes mergeability lazily: the first read of a pull request nobody has looked at
@@ -139,7 +155,7 @@ export function fetchPullRequest(repo: string, number: number): { pull: RestPull
     pause(2000);
     pull = api<RestPull>(`repos/${repo}/pulls/${number}`);
   }
-  const commit = api<{ commit: { committer: { date: string } } }>(`repos/${repo}/commits/${pull.head.sha}`);
+  const commit = api<{ commit: { committer: { date: string } }; author: { login: string } | null; parents: { sha: string }[] }>(`repos/${repo}/commits/${pull.head.sha}`);
   return {
     pull,
     facts: {
@@ -147,15 +163,19 @@ export function fetchPullRequest(repo: string, number: number): { pull: RestPull
       title: pull.title,
       author: pull.user.login,
       authorAssociation: pull.author_association,
+      ...(TRUSTED_ASSOCIATIONS.has(pull.author_association) ? {} : { authorPermission: fetchAuthorPermission(repo, pull.user.login) }),
       isDraft: pull.draft,
       isCrossRepository: pull.head.repo?.full_name !== pull.base.repo.full_name,
       headRefName: pull.head.ref,
       headSha: pull.head.sha,
       headCommittedAt: commit.commit.committer.date,
+      headByManager: commit.author?.login === GH_MANAGER_LOGIN,
+      ...(commit.parents.length === 2 ? { headFirstParent: commit.parents[0]!.sha } : {}),
       createdAt: pull.created_at,
       labels: pull.labels.map(l => l.name),
       autoMerge: pull.auto_merge !== null && pull.auto_merge !== undefined,
       mergeable: mergeableState(pull),
+      behind: pull.mergeable_state === "behind",
       checks: fetchChecks(repo, pull.head.sha),
       marker: fetchMarker(repo, pull.number),
     },
@@ -187,6 +207,7 @@ export function fetchLiveState(repo: string, number: number, supersededBy?: numb
     isDraft: facts.isDraft,
     labels: facts.labels,
     autoMerge: facts.autoMerge,
+    behind: facts.behind,
     body: pull.body ?? "",
     changedFiles: pages<{ filename: string }>(`repos/${repo}/pulls/${number}/files?per_page=100`).map(f => f.filename),
     supersededMerged,
@@ -226,6 +247,9 @@ export function execute(repo: string, number: number, op: Operation): void {
       return;
     case "auto-merge":
       gh(["pr", "merge", pr, "--repo", repo, "--auto", "--squash"]);
+      return;
+    case "update-branch":
+      gh(["api", "--method", "PUT", `repos/${repo}/pulls/${pr}/update-branch`, "-f", `expected_head_sha=${op.expectedHead}`]);
       return;
     case "disable-auto-merge":
       gh(["pr", "merge", pr, "--repo", repo, "--disable-auto"]);
