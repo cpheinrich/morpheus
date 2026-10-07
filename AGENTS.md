@@ -59,6 +59,8 @@ pnpm morpheus voice knowledge      # standing explainer, uploaded once as projec
 pnpm morpheus voice brief "topic"  # today's state, to paste into a voice session
 pnpm morpheus team validate        # the roster, and every meeting note
 pnpm morpheus registry list        # every Morpheus project on this machine
+pnpm morpheus simulator watchdog run --dry-run  # which idle simulators would be shut down
+pnpm morpheus simulator watchdog enable   # per-Mac launchd agent, once; --idle-hours N to tune
 pnpm morpheus brand status         # what the brand package still needs
 pnpm morpheus brand init           # scaffold brand-vibes.md, local moodboard, and concept-media folders
 pnpm morpheus brand explore        # refresh the five-direction brand review handoff
@@ -488,6 +490,13 @@ In the PR test plan and worklog, record the actual focused commands and why that
 selected. Continue adding or updating tests and performing relevant simulator/visual QA.
 
 New projects inherit this policy from `src/init/templates.ts`; keep that template aligned.
+
+**Idle simulators are shut down, so enable the watchdog once per Mac.**
+`morpheus simulator watchdog enable` installs a launchd agent that shuts down any simulator booted
+for 24 hours with no activity in it, and only shuts down: it never deletes or erases. `morpheus
+doctor` and `morpheus qa preview ios start` say when a Mac has not decided. Never `shutdown all`,
+`erase` or `delete` a simulator you did not create; `morpheus simulator watchdog run --dry-run`
+shows what would go. See [`docs/runbooks/simulator-watchdog.md`](docs/runbooks/simulator-watchdog.md).
 
 ## The GitHub Manager
 

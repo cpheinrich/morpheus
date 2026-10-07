@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { BatchRejected, recordBatch, type PostedBatch } from "./batches.js";
 import { pageHtml } from "./overlay-page.js";
 import { TouchPacer } from "./touch-pacer.js";
+import { recordSimulatorActivity } from "../simulator/activity.js";
 
 export interface ServeOptions {
   /** Project checkout that receives local/qa-comments/ (e.g. Evo). */
@@ -336,6 +337,8 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           sendJson(res, 400, { error: "normX/normY required" });
           return;
         }
+        // Someone is driving the device: tell the idle watchdog, which cannot see a scroll.
+        if (udid) recordSimulatorActivity(udid);
         hid.sendTouch(raw.type, Math.min(1, Math.max(0, normX)), Math.min(1, Math.max(0, normY)));
         res.writeHead(204);
         res.end();
@@ -360,6 +363,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           sendJson(res, 400, { error: "unsupported key code" });
           return;
         }
+        if (udid) recordSimulatorActivity(udid);
         hid.sendKey(body.type, body.usage);
         res.writeHead(204);
         res.end();

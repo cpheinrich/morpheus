@@ -62,6 +62,7 @@ import {
 } from "./self.js";
 
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
+import { watchdog as simulatorWatchdog } from "./simulator.js";
 import { HELP } from "./help.js";
 import type { Flags } from "./args.js";
 
@@ -454,6 +455,12 @@ async function dispatchQa({ flags, command, rest }: Invocation): Promise<number>
   
 }
 
+async function dispatchSimulator({ flags, command, rest }: Invocation): Promise<number> {
+    if (command === "watchdog") return simulatorWatchdog(rest[0], rest.slice(1), flags.dryRun);
+    console.error(`Unknown simulator command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+}
+
 async function dispatchCheck({ flags, command, dir }: Invocation): Promise<number> {
     if (command === "pr") return pr(dir, flags.base);
     console.error(`Unknown check command "${command ?? ""}".\n\n${HELP}`);
@@ -561,6 +568,7 @@ const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "context": dispatchContext,
   "check": dispatchCheck,
   "qa": dispatchQa,
+  "simulator": dispatchSimulator,
   pm: dispatchPm,
 };
 

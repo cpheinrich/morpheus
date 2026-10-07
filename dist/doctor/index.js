@@ -7,6 +7,7 @@ import { parseInboxFile } from "../inbox/parse.js";
 import { readRegistry } from "../registry/index.js";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { projectPolicy } from "../session/policy.js";
+import { watchdogNudge } from "../simulator/agent.js";
 import { ABSENT, CANONICAL_INPUTS, UNREADABLE } from "../session/lease.js";
 import { BOOTSTRAP_MARKER, MORPHEUS_BOOTSTRAP, MORPHEUS_SESSION_START, SESSION_START_MARKER, } from "../session/bootstrap.js";
 import { ANALYTICS_SCHEMA_DIRECTORY, EMPTY_ANALYTICS_EVENT_MAP, findAnalyticsContracts, } from "../analytics/contract.js";
@@ -490,6 +491,15 @@ export async function doctor(opts) {
             for (const i of parsed.issues)
                 add("error", "inbox", `${f}: ${i.message}`);
         }
+    }
+    // --- simulator watchdog: a Mac that builds an iOS project should know about it -----------------
+    // Read raw: the manifest schema above deliberately keeps almost nothing, and `qa.ios` is the
+    // declaration that makes this an iOS project that boots simulators.
+    const declared = await readFile(join(root, "morpheus.json"), "utf8").then((t) => JSON.parse(t)).catch(() => null);
+    if (declared?.qa?.ios !== undefined && declared.qa.ios !== null) {
+        const nudge = await (opts.simulatorWatchdogNudge ?? (() => watchdogNudge()))();
+        if (nudge)
+            add("warning", "simulator-watchdog", nudge);
     }
     return findings;
 }

@@ -910,6 +910,12 @@ merge. Use the repository's build/test wrapper when available, with explicit tes
 In the PR test plan and worklog, record the actual focused commands and why that scope was
 selected. Continue adding or updating tests and performing relevant simulator/visual QA.
 
+**Idle simulators are shut down, so enable the watchdog once per Mac.**
+\`morpheus simulator watchdog enable\` installs a launchd agent that shuts down any simulator booted
+for 24 hours with no activity in it, and only shuts down: it never deletes or erases. Never
+\`shutdown all\`, \`erase\` or \`delete\` a simulator you did not create; \`morpheus simulator watchdog
+run --dry-run\` shows what would go.
+
 ## Branch protection
 
 \`main\` is protected. **Never push to \`main\`** — work on a branch, open a PR, and merge it

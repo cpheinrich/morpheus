@@ -34,6 +34,8 @@ export interface DoctorOptions {
     root: string;
     /** Skip checks that need the network. */
     offline?: boolean;
+    /** Test seam for the simulator-watchdog check, which otherwise inspects this Mac. */
+    simulatorWatchdogNudge?: () => Promise<string | null>;
 }
 export declare function doctor(opts: DoctorOptions): Promise<Finding[]>;
 export declare function formatFindings(findings: Finding[], label?: string): string;

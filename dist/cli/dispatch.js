@@ -29,6 +29,7 @@ import { install as codebaseMemoryInstall } from "./codebase-memory.js";
 import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
+import { watchdog as simulatorWatchdog } from "./simulator.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
     if (command === "check" || command === undefined)
@@ -401,6 +402,12 @@ async function dispatchQa({ flags, command, rest }) {
     console.error(`Unknown qa command "${command ?? ""}".\n\n${HELP}`);
     return 1;
 }
+async function dispatchSimulator({ flags, command, rest }) {
+    if (command === "watchdog")
+        return simulatorWatchdog(rest[0], rest.slice(1), flags.dryRun);
+    console.error(`Unknown simulator command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+}
 async function dispatchCheck({ flags, command, dir }) {
     if (command === "pr")
         return pr(dir, flags.base);
@@ -493,6 +500,7 @@ const groups = {
     "context": dispatchContext,
     "check": dispatchCheck,
     "qa": dispatchQa,
+    "simulator": dispatchSimulator,
     pm: dispatchPm,
 };
 export async function dispatch(flags) {

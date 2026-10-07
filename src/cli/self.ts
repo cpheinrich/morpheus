@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   formatMorpheusInstallStatus,
   installCurrentMorpheus,
@@ -9,9 +11,30 @@ import {
   disableAutoUpdate,
   enableAutoUpdate,
   ensureAutoUpdate,
+  findMorpheusBinary,
   type AutoUpdateChange,
   type EnsureResult,
 } from "../self-auto-update.js";
+
+const exec = promisify(execFile);
+
+/**
+ * Keeps an enabled simulator watchdog pointed at the Morpheus that was just installed. It runs the
+ * *installed* binary rather than this process: this process is still the code that was on disk
+ * before the update, and would write the old agent definition. A Mac that never enabled the
+ * watchdog, or that disabled it, is left alone by `refresh` itself.
+ */
+async function refreshSimulatorWatchdog(): Promise<void> {
+  if (process.platform !== "darwin") return;
+  const binary = await findMorpheusBinary();
+  if (!binary) return;
+  try {
+    const { stdout } = await exec(binary, ["simulator", "watchdog", "refresh"], { timeout: 60_000 });
+    if (stdout.trim()) console.log(stdout.trim());
+  } catch (error) {
+    console.error(`~ Simulator watchdog refresh failed: ${((error as Error).message ?? String(error)).split("\n")[0]}`);
+  }
+}
 
 export async function check(offline: boolean): Promise<number> {
   const status = await morpheusInstallStatus({ offline });
@@ -26,6 +49,7 @@ export async function install(source: string): Promise<number> {
       `Installed Morpheus ${result.commit.slice(0, 7)} as a standalone global package.\n` +
         `Source checkout left unchanged: ${source}`,
     );
+    await refreshSimulatorWatchdog();
     return 0;
   } catch (error) {
     console.error(`Could not install Morpheus: ${(error as Error).message}`);
@@ -40,6 +64,7 @@ export async function update(): Promise<number> {
       `Updated Morpheus to current main ${result.commit.slice(0, 7)}.\n` +
         "The disposable checkout was removed; no working repository was changed.",
     );
+    await refreshSimulatorWatchdog();
     return 0;
   } catch (error) {
     console.error(`Could not update Morpheus: ${(error as Error).message}`);
@@ -76,12 +101,18 @@ function printAutoUpdate(change: AutoUpdateChange): number {
 export async function ensure(): Promise<number> {
   const result = await ensureAutoUpdate();
   printEnsure(result, true);
+  if (result.outcome === "updated") await refreshSimulatorWatchdog();
   return result.outcome === "failed" ? 1 : 0;
 }
 
 export async function autoUpdate(action: string | undefined, root: string): Promise<number> {
   try {
-    if (action === "enable") return printAutoUpdate(await enableAutoUpdate(root));
+    if (action === "enable") {
+      const change = await enableAutoUpdate(root);
+      const code = printAutoUpdate(change);
+      if (change.ensure?.outcome === "updated") await refreshSimulatorWatchdog();
+      return code;
+    }
     if (action === "disable") return printAutoUpdate(await disableAutoUpdate(root));
     if (action === "status" || action === undefined) {
       return printAutoUpdate(await autoUpdateStatus(root));

@@ -1159,3 +1159,33 @@ adopted here; the dependency is a compiler and a second workflow dialect). `clau
 was considered for the session step and the pinned Claude Code CLI used instead, because the
 action couples to the calling repository's event context and this run is called from a different
 repository than the one it works on. No new package dependency: Zod, native Git and `gh`.
+
+## 2026-10-06 — Idle simulators are shut down by a per-Mac watchdog, enabled explicitly
+
+A Mac hit 100% disk with 85 GB of simulators, most of them for checkouts nobody had touched in
+days. `qa preview ios` leases its own device and CI deletes its own, so everything else was
+unbounded. `morpheus simulator watchdog` shuts down a booted device that has been booted for 24 hours
+with no activity in it, in the default and XCTest clone sets.
+
+**Activity is measured on a real device, not assumed.** Whole-tree mtimes and Apple's own AppGroup
+and PluginKit containers are rewritten every few minutes on an untouched simulator (logd, the News
+widget cache, chrono timelines, Intelligence embeddings), so counting them makes every device look
+busy forever. The signals are the age of the device's `launchd_sim` process, writes inside
+user-installed apps (`simctl listapps` marks them `ApplicationType = User`), an install, and a
+heartbeat the QA overlay writes on each forwarded touch or key. The heartbeat exists because a
+person who only looks, scrolling and tapping, writes nothing. Whatever cannot be measured keeps the
+device up: a wrong shutdown costs someone's session, a missed one costs a sweep.
+
+**It only issues `shutdown`.** Never `delete`, `erase` or `shutdown all`, the rule `qa preview ios`
+already keeps. A test pins the set of simctl verbs the sweep can emit. It frees RAM, not disk.
+
+**Enabling is an explicit device action, not an install side effect** — the same rule as
+codebase-memory and auto-update. `self update` and `self ensure` run `watchdog refresh`, which repairs
+an enabled agent and never re-enables a disabled one; `doctor` (iOS projects only) and
+`qa preview ios start` nudge a Mac that has not decided, and never one that has. Default-on at
+install was considered and rejected for that reason; it is one `refresh` change if Chris wants it.
+
+Considered: `node-simctl` (a simctl wrapper, maintained July 2026) and `appium-ios-simulator`. Neither
+detects idleness or runs a watchdog, and a wrapper would save a few lines of `execFile` for a
+dependency tree. Built on `simctl`, `ps`, `plutil`, `launchctl` and Node built-ins; no dependency.
+
