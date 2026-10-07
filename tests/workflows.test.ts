@@ -396,8 +396,11 @@ describe("central security remediation opt-in", () => {
       "node / check",
       "pm / pm",
       "pr / conventions",
-      "agent-review / delivery",
     ]);
+    // The review delivery job is intentionally skipped for this exact bot lane.
+    // Branch protection still requires its reported skipped check; the bot's
+    // own successful-check list must contain only checks that can pass.
+    expect(config.requiredChecks).not.toContain("agent-review / delivery");
     expect(config).not.toHaveProperty("incidentRepository");
   });
 });

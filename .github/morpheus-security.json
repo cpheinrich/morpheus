@@ -4,7 +4,6 @@
   "requiredChecks": [
     "node / check",
     "pm / pm",
-    "pr / conventions",
-    "agent-review / delivery"
+    "pr / conventions"
   ]
 }
