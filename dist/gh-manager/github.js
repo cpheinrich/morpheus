@@ -139,6 +139,7 @@ export function fetchPullRequest(repo, number) {
             headRefName: pull.head.ref,
             headSha: pull.head.sha,
             headCommittedAt: commit.commit.committer.date,
+            headByManager: commit.author?.login === GH_MANAGER_LOGIN,
             createdAt: pull.created_at,
             labels: pull.labels.map(l => l.name),
             autoMerge: pull.auto_merge !== null && pull.auto_merge !== undefined,

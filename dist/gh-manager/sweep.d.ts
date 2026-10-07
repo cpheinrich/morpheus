@@ -22,6 +22,12 @@ export interface ManagerMarker {
      * this head but exact trunk merges, so a later push cannot ride on the label.
      */
     cleared?: string | undefined;
+    /**
+     * The head an update-branch was attempted on. A successful update moves the head, so finding
+     * this equal to the current head means GitHub refused it, and the next run escalates once
+     * instead of retrying every run.
+     */
+    updated?: string | undefined;
 }
 export interface PullRequestFacts {
     number: number;
@@ -51,6 +57,11 @@ export interface PullRequestFacts {
      * ever unless something brings it up to date.
      */
     behind?: boolean | undefined;
+    /**
+     * The head commit was made by the manager itself (a fix, or a trunk merge it brought in). Its
+     * own commits are not an author driving the branch, so they do not restart the quiet period.
+     */
+    headByManager?: boolean | undefined;
     /** The latest run of each check on the head commit, one entry per name. */
     checks: {
         name: string;
