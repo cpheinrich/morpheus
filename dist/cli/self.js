@@ -1,5 +1,31 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { findInstalledMorpheus } from "../simulator/agent.js";
+import { errorSummary } from "../simulator/watchdog.js";
 import { formatMorpheusInstallStatus, installCurrentMorpheus, morpheusInstallStatus, updateMorpheus, } from "../self.js";
 import { autoUpdateStatus, disableAutoUpdate, enableAutoUpdate, ensureAutoUpdate, } from "../self-auto-update.js";
+const exec = promisify(execFile);
+/**
+ * Keeps an enabled simulator watchdog pointed at the Morpheus that was just installed. It runs the
+ * *installed* binary rather than this process: this process is still the code that was on disk
+ * before the update, and would write the old agent definition. A Mac that never enabled the
+ * watchdog, or that disabled it, is left alone by `refresh` itself.
+ */
+async function refreshSimulatorWatchdog() {
+    if (process.platform !== "darwin")
+        return;
+    const binary = await findInstalledMorpheus();
+    if (!binary)
+        return;
+    try {
+        const { stdout } = await exec(binary, ["simulator", "watchdog", "refresh"], { timeout: 60_000 });
+        if (stdout.trim())
+            console.log(stdout.trim());
+    }
+    catch (error) {
+        console.error(`~ Simulator watchdog refresh failed: ${errorSummary(error)}`);
+    }
+}
 export async function check(offline) {
     const status = await morpheusInstallStatus({ offline });
     console.log(formatMorpheusInstallStatus(status));
@@ -10,6 +36,7 @@ export async function install(source) {
         const result = await installCurrentMorpheus(source);
         console.log(`Installed Morpheus ${result.commit.slice(0, 7)} as a standalone global package.\n` +
             `Source checkout left unchanged: ${source}`);
+        await refreshSimulatorWatchdog();
         return 0;
     }
     catch (error) {
@@ -22,6 +49,7 @@ export async function update() {
         const result = await updateMorpheus();
         console.log(`Updated Morpheus to current main ${result.commit.slice(0, 7)}.\n` +
             "The disposable checkout was removed; no working repository was changed.");
+        await refreshSimulatorWatchdog();
         return 0;
     }
     catch (error) {
@@ -57,12 +85,19 @@ function printAutoUpdate(change) {
 export async function ensure() {
     const result = await ensureAutoUpdate();
     printEnsure(result, true);
+    if (result.outcome === "updated")
+        await refreshSimulatorWatchdog();
     return result.outcome === "failed" ? 1 : 0;
 }
 export async function autoUpdate(action, root) {
     try {
-        if (action === "enable")
-            return printAutoUpdate(await enableAutoUpdate(root));
+        if (action === "enable") {
+            const change = await enableAutoUpdate(root);
+            const code = printAutoUpdate(change);
+            if (change.ensure?.outcome === "updated")
+                await refreshSimulatorWatchdog();
+            return code;
+        }
         if (action === "disable")
             return printAutoUpdate(await disableAutoUpdate(root));
         if (action === "status" || action === undefined) {

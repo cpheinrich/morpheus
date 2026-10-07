@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -399,3 +399,34 @@ describe("inherits", () => {
     expect(findings.some((x) => x.check === "marketing")).toBe(false);
   });
 });
+
+describe("doctor: simulator watchdog", () => {
+  const declareIos = async (qa: unknown) => {
+    const path = join(root, "morpheus.json");
+    await writeFile(path, JSON.stringify({ ...JSON.parse(await readFile(path, "utf8")), qa }, null, 2));
+  };
+  const NUDGE = "This Mac has no simulator watchdog. Run `morpheus simulator watchdog enable`.";
+
+  it("tells a Mac that builds an iOS project, and has not decided, how to turn it on", async () => {
+    await scaffold("internal");
+    await declareIos({ ios: { app: "apps/ios" } });
+    const found = (await doctor({ root, simulatorWatchdogNudge: async () => NUDGE })).filter((f) => f.check === "simulator-watchdog");
+    expect(found).toEqual([{ severity: "warning", check: "simulator-watchdog", message: NUDGE }]);
+  });
+
+  it("says nothing once the Mac has decided", async () => {
+    await scaffold("internal");
+    await declareIos({ ios: { app: "apps/ios" } });
+    expect(has(await doctor({ root, simulatorWatchdogNudge: async () => null }), "simulator-watchdog")).toBe(false);
+  });
+
+  it("never looks at the Mac for a project that declares no iOS app", async () => {
+    await scaffold("internal");
+    await declareIos({ web: { url: "http://localhost:3000" } });
+    let asked = false;
+    const f = await doctor({ root, simulatorWatchdogNudge: async () => { asked = true; return NUDGE; } });
+    expect(asked).toBe(false);
+    expect(has(f, "simulator-watchdog")).toBe(false);
+  });
+});
+

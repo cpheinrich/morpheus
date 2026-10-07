@@ -1603,6 +1603,18 @@ public-repository pull-request code never receives a route to an operator workst
 Physical devices additionally need a provisioning profile and a connected device, so simulator is
 the default for the review loop.
 
+**Idle simulators.** A booted simulator holds RAM and keeps CoreSimulator busy, and each device
+carries 2-5 GB of state; one Mac reached 100% disk with 85 GB of simulators belonging to checkouts
+nobody had touched in days. `qa preview ios` bounds its own device with a lease and CI deletes the
+devices it creates, so the watchdog covers the rest: `morpheus simulator watchdog` shuts down any
+booted device, in the default or XCTest's clone set, that has been booted for 24 hours with no
+activity in it. Activity is a write inside a user-installed app, an install, or a heartbeat from the
+QA overlay's touch and key routes; Apple's own apps are excluded because they rewrite their
+containers every few minutes on a device nobody is using. It issues `shutdown` and nothing else.
+It is a per-Mac launchd agent that a person enables explicitly, like codebase-memory, and that
+`self update` repairs but never re-enables. See
+[`docs/runbooks/simulator-watchdog.md`](./docs/runbooks/simulator-watchdog.md).
+
 **Feedback convention.** iOS has no anchored-comment equivalent, so screenshots are emitted with
 stable numbered names tied to the test step that produced them — `MO-014-03-paywall-presented.png`
 — and a comment saying "03 — the CTA is too low" is unambiguous. The `ios-ci` workflow enforces the

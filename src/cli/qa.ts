@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import { QA_GUIDE } from "../qa/guide.js";
+import { watchdogNudge } from "../simulator/agent.js";
 import { loadIosPreviewConfig } from "../qa/preview/config.js";
 import { parsePreviewArgs, previewContext, runPreview } from "../qa/preview/ios.js";
 import { loadWebPreviewConfig, parseWebPreviewArgs, runWebPreview, webContext } from "../qa/preview/web.js";
@@ -252,6 +253,11 @@ export async function dispatchQaPreview(cwd: string, platform: string | undefine
   try {
     const options = parsePreviewArgs(args, config.modes);
     await runPreview(previewContext(root, config), options);
+    // A preview has just booted a simulator; this is when a forgotten one is most on someone's mind.
+    if (options.command === "start") {
+      const nudge = await watchdogNudge().catch(() => null);
+      if (nudge) console.log(`\n${nudge}`);
+    }
     return 0;
   } catch (error) {
     console.error(`Preview: ${(error as Error).message}`);
