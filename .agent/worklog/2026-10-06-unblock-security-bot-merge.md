@@ -42,7 +42,7 @@ newer successful run. The live bot merge remains the post-deployment acceptance 
   "summary": "The independent reviewer cleared commit 610c95f at high risk after a same-session follow-up. The initial finding claimed older cancelled pr / conventions runs would block merging; the reviewer retracted it after checking the deployed engine and REST run IDs. Its gate accepts the newer successful run. The live bot merge remains the post-deployment acceptance check.",
   "findings": [
     {
-      "id": "F1",
+      "id": "F01",
       "severity": "substantive",
       "description": "Initially claimed that older cancelled pr / conventions runs on bot PR #338 would block reconciliation.",
       "paths": [".github/morpheus-security.json"],
@@ -61,7 +61,7 @@ newer successful run. The live bot merge remains the post-deployment acceptance 
         "durationMs": 21000,
         "evidence": "Observed UTC clock from same-reviewer follow-up invocation at 2026-10-07 01:16:25 to revised verdict at 01:16:46."
       },
-      "summary": "F1 retracted after verifying the deployed engine's REST check-run logic and exact live IDs; no remaining findings."
+      "summary": "F01 retracted after verifying the deployed engine's REST check-run logic and exact live IDs; no remaining findings."
     }
   ]
 }
