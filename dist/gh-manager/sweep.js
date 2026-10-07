@@ -91,6 +91,8 @@ export function routePullRequest(pr, policy, now) {
     if (pr.autoMerge && !failing.length && pr.mergeable !== "CONFLICTING") {
         if (cancelled.length && policy.actions.merge)
             return routed("merge", "rerun-cancelled", `auto-merge is on but ${cancelled.length} check(s) were cancelled; rerunning them`);
+        if (pr.behind && policy.actions.merge)
+            return routed("merge", "update-behind", "auto-merge is on but the branch is behind its base; bringing it up to date");
         return routed("skip", "waiting", pending.length ? `auto-merge is on; ${pending.length} check(s) running` : "auto-merge is on and checks are green; GitHub merges it");
     }
     if (reviewed && !pr.isDraft && !failing.length && pr.mergeable !== "CONFLICTING") {

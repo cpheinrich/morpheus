@@ -185,8 +185,13 @@ export function planDecision(decision, live, ctx) {
             ...(decision.usedManagerReview ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label", label: MANAGER_REVIEWED_LABEL }] : []),
             ...(live.cancelledRunIds.length ? [{ kind: "rerun", runIds: live.cancelledRunIds }] : []),
             ...(live.autoMerge ? [] : [{ kind: "auto-merge" }]),
+            ...updateIfBehind(live),
         ],
     };
+}
+/** Last, after auto-merge is queued: the update starts a fresh CI run that the queue then follows. */
+function updateIfBehind(live) {
+    return live.behind ? [{ kind: "update-branch", expectedHead: live.headSha }] : [];
 }
 /** Operations for a route the sweep decided without a session. */
 export function planRoute(routed, live, ctx) {
@@ -197,10 +202,14 @@ export function planRoute(routed, live, ctx) {
         return { verdict: "wait", overridden: "the branch moved after the sweep", operations: [] };
     if (routed.route === "merge") {
         const rerun = live.cancelledRunIds.length ? [{ kind: "rerun", runIds: live.cancelledRunIds }] : [];
-        // Already queued: a rerun needs no new comment every run.
-        if (live.autoMerge)
-            return { verdict: "merge", operations: rerun };
-        return { verdict: "merge", operations: [comment("merge", [`${routed.detail}. No session was needed: the review on record is complete and the checks pass.`, run], { ...marker, verdict: "merge" }), ...rerun, { kind: "auto-merge" }] };
+        if (live.autoMerge) {
+            // Already queued. Bringing it up to date pushes a commit, so it is recorded; a rerun alone
+            // needs no new comment every run.
+            if (!live.behind)
+                return { verdict: "merge", operations: rerun };
+            return { verdict: "merge", operations: [comment("merge", ["Auto-merge was waiting on a branch behind its base, which strict protection never merges. Merged the base in with GitHub's update-branch; CI runs again and auto-merge follows it.", run], { ...marker, verdict: "merge" }), ...rerun, ...updateIfBehind(live)] };
+        }
+        return { verdict: "merge", operations: [comment("merge", [`${routed.detail}. No session was needed: the review on record is complete and the checks pass.`, run], { ...marker, verdict: "merge" }), ...rerun, { kind: "auto-merge" }, ...updateIfBehind(live)] };
     }
     if (routed.route === "close") {
         return { verdict: "close", operations: [comment("close", [`${routed.detail}. Reopen this if it is still wanted; the branch is untouched.`, run], { ...marker, verdict: "close" }), ...removeLabels(live, STALE_LABEL), { kind: "close" }] };

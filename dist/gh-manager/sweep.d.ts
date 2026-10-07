@@ -45,6 +45,12 @@ export interface PullRequestFacts {
     labels: string[];
     autoMerge: boolean;
     mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+    /**
+     * The base has moved past the branch and strict protection requires it up to date. GitHub's
+     * auto-merge never updates a branch itself, so a queued pull request in this state waits for
+     * ever unless something brings it up to date.
+     */
+    behind?: boolean | undefined;
     /** The latest run of each check on the head commit, one entry per name. */
     checks: {
         name: string;

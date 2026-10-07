@@ -143,6 +143,7 @@ export function fetchPullRequest(repo, number) {
             labels: pull.labels.map(l => l.name),
             autoMerge: pull.auto_merge !== null && pull.auto_merge !== undefined,
             mergeable: mergeableState(pull),
+            behind: pull.mergeable_state === "behind",
             checks: fetchChecks(repo, pull.head.sha),
             marker: fetchMarker(repo, pull.number),
         },
@@ -177,6 +178,7 @@ export function fetchLiveState(repo, number, supersededBy) {
         isDraft: facts.isDraft,
         labels: facts.labels,
         autoMerge: facts.autoMerge,
+        behind: facts.behind,
         body: pull.body ?? "",
         changedFiles: pages(`repos/${repo}/pulls/${number}/files?per_page=100`).map(f => f.filename),
         supersededMerged,
@@ -214,6 +216,9 @@ export function execute(repo, number, op) {
             return;
         case "auto-merge":
             gh(["pr", "merge", pr, "--repo", repo, "--auto", "--squash"]);
+            return;
+        case "update-branch":
+            gh(["api", "--method", "PUT", `repos/${repo}/pulls/${pr}/update-branch`, "-f", `expected_head_sha=${op.expectedHead}`]);
             return;
         case "disable-auto-merge":
             gh(["pr", "merge", pr, "--repo", repo, "--disable-auto"]);

@@ -58,6 +58,12 @@ export interface PullRequestFacts {
   labels: string[];
   autoMerge: boolean;
   mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+  /**
+   * The base has moved past the branch and strict protection requires it up to date. GitHub's
+   * auto-merge never updates a branch itself, so a queued pull request in this state waits for
+   * ever unless something brings it up to date.
+   */
+  behind?: boolean | undefined;
   /** The latest run of each check on the head commit, one entry per name. */
   checks: { name: string; state: CheckState; runId?: number | undefined }[];
   marker?: ManagerMarker | undefined;
@@ -183,6 +189,7 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
 
   if (pr.autoMerge && !failing.length && pr.mergeable !== "CONFLICTING") {
     if (cancelled.length && policy.actions.merge) return routed("merge", "rerun-cancelled", `auto-merge is on but ${cancelled.length} check(s) were cancelled; rerunning them`);
+    if (pr.behind && policy.actions.merge) return routed("merge", "update-behind", "auto-merge is on but the branch is behind its base; bringing it up to date");
     return routed("skip", "waiting", pending.length ? `auto-merge is on; ${pending.length} check(s) running` : "auto-merge is on and checks are green; GitHub merges it");
   }
 

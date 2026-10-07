@@ -68,6 +68,12 @@ export type Operation =
   | { kind: "add-label"; label: string }
   | { kind: "remove-label"; label: string }
   | { kind: "auto-merge" }
+  /**
+   * Merge the base into the branch with GitHub's update-branch endpoint, guarded on the head the
+   * plan was made for: if anyone pushed in between, GitHub refuses rather than merging over it.
+   * A merge GitHub performs reproduces exactly, so it keeps any review on record valid.
+   */
+  | { kind: "update-branch"; expectedHead: string }
   | { kind: "disable-auto-merge" }
   | { kind: "rerun"; runIds: number[] }
   | { kind: "close" }
@@ -79,6 +85,8 @@ export interface LiveState {
   isDraft: boolean;
   labels: string[];
   autoMerge: boolean;
+  /** Strict protection holds the branch behind its base; see `PullRequestFacts.behind`. */
+  behind?: boolean | undefined;
   body: string;
   /** Every path the pull request changes against its base. */
   changedFiles: string[];
@@ -255,8 +263,14 @@ export function planDecision(decision: Decision, live: LiveState, ctx: Context):
       ...(decision.usedManagerReview ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label" as const, label: MANAGER_REVIEWED_LABEL }] : []),
       ...(live.cancelledRunIds.length ? [{ kind: "rerun" as const, runIds: live.cancelledRunIds }] : []),
       ...(live.autoMerge ? [] : [{ kind: "auto-merge" as const }]),
+      ...updateIfBehind(live),
     ],
   };
+}
+
+/** Last, after auto-merge is queued: the update starts a fresh CI run that the queue then follows. */
+function updateIfBehind(live: LiveState): Operation[] {
+  return live.behind ? [{ kind: "update-branch", expectedHead: live.headSha }] : [];
 }
 
 /** Operations for a route the sweep decided without a session. */
@@ -268,9 +282,13 @@ export function planRoute(routed: Routed, live: LiveState, ctx: Context): Plan {
 
   if (routed.route === "merge") {
     const rerun: Operation[] = live.cancelledRunIds.length ? [{ kind: "rerun", runIds: live.cancelledRunIds }] : [];
-    // Already queued: a rerun needs no new comment every run.
-    if (live.autoMerge) return { verdict: "merge", operations: rerun };
-    return { verdict: "merge", operations: [comment("merge", [`${routed.detail}. No session was needed: the review on record is complete and the checks pass.`, run], { ...marker, verdict: "merge" }), ...rerun, { kind: "auto-merge" }] };
+    if (live.autoMerge) {
+      // Already queued. Bringing it up to date pushes a commit, so it is recorded; a rerun alone
+      // needs no new comment every run.
+      if (!live.behind) return { verdict: "merge", operations: rerun };
+      return { verdict: "merge", operations: [comment("merge", ["Auto-merge was waiting on a branch behind its base, which strict protection never merges. Merged the base in with GitHub's update-branch; CI runs again and auto-merge follows it.", run], { ...marker, verdict: "merge" }), ...rerun, ...updateIfBehind(live)] };
+    }
+    return { verdict: "merge", operations: [comment("merge", [`${routed.detail}. No session was needed: the review on record is complete and the checks pass.`, run], { ...marker, verdict: "merge" }), ...rerun, { kind: "auto-merge" }, ...updateIfBehind(live)] };
   }
   if (routed.route === "close") {
     return { verdict: "close", operations: [comment("close", [`${routed.detail}. Reopen this if it is still wanted; the branch is untouched.`, run], { ...marker, verdict: "close" }), ...removeLabels(live, STALE_LABEL), { kind: "close" }] };

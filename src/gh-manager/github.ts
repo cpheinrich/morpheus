@@ -72,6 +72,8 @@ interface RestPull {
   labels: { name: string }[];
   auto_merge: unknown;
   mergeable?: boolean | null;
+  /** REST's lower-case merge state: `behind`, `dirty`, `clean`, `blocked`, `unstable`, `unknown`. */
+  mergeable_state?: string;
   merged?: boolean;
   state: string;
 }
@@ -171,6 +173,7 @@ export function fetchPullRequest(repo: string, number: number): { pull: RestPull
       labels: pull.labels.map(l => l.name),
       autoMerge: pull.auto_merge !== null && pull.auto_merge !== undefined,
       mergeable: mergeableState(pull),
+      behind: pull.mergeable_state === "behind",
       checks: fetchChecks(repo, pull.head.sha),
       marker: fetchMarker(repo, pull.number),
     },
@@ -202,6 +205,7 @@ export function fetchLiveState(repo: string, number: number, supersededBy?: numb
     isDraft: facts.isDraft,
     labels: facts.labels,
     autoMerge: facts.autoMerge,
+    behind: facts.behind,
     body: pull.body ?? "",
     changedFiles: pages<{ filename: string }>(`repos/${repo}/pulls/${number}/files?per_page=100`).map(f => f.filename),
     supersededMerged,
@@ -241,6 +245,9 @@ export function execute(repo: string, number: number, op: Operation): void {
       return;
     case "auto-merge":
       gh(["pr", "merge", pr, "--repo", repo, "--auto", "--squash"]);
+      return;
+    case "update-branch":
+      gh(["api", "--method", "PUT", `repos/${repo}/pulls/${pr}/update-branch`, "-f", `expected_head_sha=${op.expectedHead}`]);
       return;
     case "disable-auto-merge":
       gh(["pr", "merge", pr, "--repo", repo, "--disable-auto"]);
