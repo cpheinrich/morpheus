@@ -47,6 +47,8 @@ export declare function defaultWebPort(key: string): number;
 export declare function overlayUrl(upstream: string, port: number, path: string): string;
 /** True when the dev command can be told its port, so the overlay can take the site's own address. */
 export declare function frontable(config: Pick<WebPreviewConfig, "command">): boolean;
+/** The site's address when the overlay holds it (own-address mode), else undefined. */
+export declare function frontedSite(state: Pick<WebPreviewState, "site" | "port">): string | undefined;
 export declare function sitePort(url: string): number;
 /** The first port after `from` that is free on loopback, for the relocated dev server. */
 export declare function spareDevPort(from: number, exclude: number, attempts?: number): Promise<number>;

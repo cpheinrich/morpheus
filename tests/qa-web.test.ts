@@ -8,9 +8,9 @@ import { join } from "node:path";
 import { JSDOM } from "jsdom";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseBatch } from "../src/qa/comments.js";
-import { decode, injectOverlay, normalizeUpstream, ownHost, rewriteLocation, startWebQaServer } from "../src/qa/web/server.js";
+import { decode, injectOverlay, normalizeUpstream, ownHost, rewriteLocation, startWebQaServer, upstreamHeaders } from "../src/qa/web/server.js";
 import { WEB_OVERLAY_JS } from "../src/qa/web/overlay-client.js";
-import { defaultWebPort, frontable, overlayUrl, parseWebPreviewArgs, parseWebPreviewConfig, sitePort, spareDevPort, webKey } from "../src/qa/preview/web.js";
+import { defaultWebPort, frontable, frontedSite, overlayUrl, parseWebPreviewArgs, parseWebPreviewConfig, sitePort, spareDevPort, webKey } from "../src/qa/preview/web.js";
 import { QA_GUIDE } from "../src/qa/guide.js";
 
 describe("injection and rewriting", () => {
@@ -288,6 +288,17 @@ describe("qa.web configuration and arguments", () => {
     expect(key).toMatch(/^[a-f0-9]{12}$/);
     expect(defaultWebPort(key)).toBeGreaterThanOrEqual(4300);
     expect(defaultWebPort(key)).toBeLessThan(4556);
+  });
+
+  it("shows the dev server the site's own host when the overlay fronts it, so callbacks name the site", () => {
+    const req = { headers: { host: "localhost:5173", origin: "http://localhost:5173", referer: "http://localhost:5173/hq" } } as never;
+    const fronted = upstreamHeaders(req, new URL("http://localhost:5174"), "http://localhost:5173", false, new URL("http://localhost:5173"));
+    expect(fronted).toMatchObject({ host: "localhost:5173", origin: "http://localhost:5173", referer: "http://localhost:5173/hq" });
+    const beside = upstreamHeaders({ headers: { host: "localhost:4342", origin: "http://localhost:4342" } } as never, new URL("http://localhost:5173"), "http://localhost:4342", false);
+    expect(beside).toMatchObject({ host: "localhost:5173", origin: "http://localhost:5173" });
+    expect(frontedSite({ site: "http://localhost:5173", port: 5173 })).toBe("http://localhost:5173");
+    expect(frontedSite({ site: "http://localhost:5173", port: 4342 })).toBeUndefined();
+    expect(frontedSite({ port: 4342 })).toBeUndefined();
   });
 
   it("takes the site's own address only when the dev command can be told its port", async () => {

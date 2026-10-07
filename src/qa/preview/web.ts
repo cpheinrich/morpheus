@@ -128,6 +128,11 @@ export function frontable(config: Pick<WebPreviewConfig, "command">): boolean {
   return Boolean(config.command?.some((a) => a.includes("{port}")));
 }
 
+/** The site's address when the overlay holds it (own-address mode), else undefined. */
+export function frontedSite(state: Pick<WebPreviewState, "site" | "port">): string | undefined {
+  return state.site !== undefined && sitePort(state.site) === state.port ? state.site : undefined;
+}
+
 export function sitePort(url: string): number {
   const u = new URL(url);
   return Number(u.port || (u.protocol === "https:" ? 443 : 80));
@@ -198,10 +203,16 @@ async function stopWeb(ctx: WebContext): Promise<void> {
 
 function report(ctx: WebContext, state: WebPreviewState, options: Pick<WebPreviewOptions, "sshHost">): void {
   const url = overlayUrl(state.site ?? state.upstream, state.port, state.path);
-  const fronted = state.site !== undefined && sitePort(state.site) === state.port;
+  const fronted = frontedSite(state) !== undefined;
   ctx.log(`Host: ${hostname()}\nCheckout: ${ctx.root}\nDev server: ${state.upstream} (${state.spawned ? "started by this preview" : "already running; left as found on stop"})`);
   if (fronted) ctx.log(`The overlay holds the site's own address (${state.site}), so sign-in allowlists and cookies see the address they expect.`);
-  else if (frontable(ctx.config)) ctx.log(`Note: the dev server already holds ${ctx.config.url}, so the overlay is on another port, where an allowlist for that address (Firebase or Google sign-in) may refuse requests. Stop that dev server and run start again to let the preview take its address.`);
+  else if (state.site !== undefined) {
+    // Only for previews that know about own-address mode; an older state file has no `site`.
+    const why = !state.spawned ? `the dev server already holds ${state.site}; stop it and run start again to let the preview take its address`
+      : frontable(ctx.config) ? "--port was given, which keeps the overlay on a port of its own"
+      : `add a {port} placeholder to qa.web.command (e.g. ["npx", "next", "dev", "--port", "{port}"]) to let the preview take ${state.site}`;
+    ctx.log(`Note: the overlay is not on the site's own address, so an allowlist for that address (Firebase or Google sign-in) may refuse requests: ${why}.`);
+  }
   ctx.log(`Preview expires: ${new Date(state.expiresAt).toISOString()}. Run start to renew, or stop when finished.`);
   ctx.log(`\nQA overlay: ${url}`);
   ctx.log("Open the overlay, not the dev server, in the agent's browser:");
@@ -240,7 +251,8 @@ export async function runWebPreview(ctx: WebContext, options: WebPreviewOptions,
       if (!running && !ctx.config.command) throw new Error(`Nothing answers at ${site}. Start the dev server, or declare qa.web.command so the preview can.`);
       // Front the site at its own address when the preview starts the dev server and can choose its
       // port; otherwise sit beside it on a port of our own.
-      const front = !running && frontable(ctx.config);
+      // --port is an explicit request for a port of our own, so it turns own-address mode off.
+      const front = !running && frontable(ctx.config) && options.port === undefined;
       const port = front ? sitePort(site) : options.port ?? previous?.port ?? defaultWebPort(ctx.key);
       await requireFreePort(port);
       const devPort = front ? await spareDevPort(port, port) : sitePort(site);

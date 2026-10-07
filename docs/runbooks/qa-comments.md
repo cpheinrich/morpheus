@@ -217,7 +217,9 @@ local dev server. The project declares it in `morpheus.json`:
   On a separate overlay port, Firebase refused Google sign-in with
   `auth/requests-from-referer-http://localhost:4342/-are-blocked`, and a proxy cannot fix that: the
   browser calls Google directly. Without `{port}`, or when a dev server already holds `url`, the
-  overlay sits on its own port and `start` says that sign-in may be refused there. A dev script that
+  overlay sits on its own port and `start` says that sign-in may be refused there; `--port` also
+  keeps it on its own port. When fronting, requests reach the dev server with the site's own host,
+  origin and referer, so absolute URLs it builds (an OAuth `redirect_uri`) name the site too. A dev script that
   hard-codes its port needs the underlying command, e.g. `["npx", "next", "dev", "--port", "{port}"]`.
 - **A proxy, not an iframe.** The overlay serves the site on its own port and injects
   `<script src="/__qa/overlay.js" defer>` at the end of every HTML page's head. Paths, cookies and
