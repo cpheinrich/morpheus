@@ -1,4 +1,4 @@
-import { BOT_LANES, INCOMPLETE_LABEL, MANAGER_REVIEWED_LABEL, NEEDS_HUMAN_LABEL, STALE_LABEL, TRUSTED_ASSOCIATIONS, } from "./policy.js";
+import { BOT_LANES, INCOMPLETE_LABEL, MANAGER_REVIEWED_LABEL, NEEDS_HUMAN_LABEL, STALE_LABEL, TRUSTED_ASSOCIATIONS, TRUSTED_PERMISSIONS, } from "./policy.js";
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const MARKER = /<!-- morpheus-gh-manager (\{[^\n]*\}) -->/g;
@@ -52,8 +52,10 @@ export function routePullRequest(pr, policy, now) {
     const routed = (route, reason, detail) => ({ number: pr.number, title: pr.title, headSha: pr.headSha, route, reason, detail, attempts });
     if (BOT_LANES.has(pr.author))
         return routed("skip", "bot-lane", `${pr.author} has its own maintainer`);
-    if (!TRUSTED_ASSOCIATIONS.has(pr.authorAssociation) || pr.isCrossRepository) {
-        return routed("skip", "untrusted-author", `author ${pr.author} is ${pr.authorAssociation}${pr.isCrossRepository ? " on a fork" : ""}; reported, not acted on`);
+    const trusted = TRUSTED_ASSOCIATIONS.has(pr.authorAssociation) || TRUSTED_PERMISSIONS.has(pr.authorPermission ?? "");
+    if (!trusted || pr.isCrossRepository) {
+        const standing = `${pr.authorAssociation}${pr.authorPermission ? ` with ${pr.authorPermission} permission` : ""}`;
+        return routed("skip", "untrusted-author", `author ${pr.author} is ${standing}${pr.isCrossRepository ? " on a fork" : ""}; reported, not acted on`);
     }
     // The branch name is the one piece of author-controlled text the brief has to carry.
     if (!SAFE_REF.test(pr.headRefName))

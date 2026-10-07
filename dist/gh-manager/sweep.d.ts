@@ -28,6 +28,11 @@ export interface PullRequestFacts {
     title: string;
     author: string;
     authorAssociation: string;
+    /**
+     * The author's permission on the repository, read only when the association alone does not
+     * establish trust. Undefined when it was not read or could not be, which is not trust.
+     */
+    authorPermission?: string | undefined;
     isDraft: boolean;
     /** Head branch lives in another repository (a fork). */
     isCrossRepository: boolean;

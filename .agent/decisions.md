@@ -212,7 +212,9 @@ the goal is minimal external use, the mechanism is private visibility, not a str
 
 ## Tooling, continued
 
-**Nimbalyst as Chris's editor, but never a requirement** — 2026-07-29. Documented in the README
+**Nimbalyst as Chris's editor, but never a requirement** — 2026-07-29. *Superseded 2026-10-05:
+Chris no longer uses or recommends Nimbalyst, and the README no longer suggests it. Any editor
+works; validation stays in CI.* Documented in the README
 as a suggestion so collaborators can use anything. Validation lives in CI, not the editor, which
 is what keeps it optional.
 
@@ -294,8 +296,8 @@ peers). Validated against GitHub's handle rule so it cannot drift into a display
 one project-wide timeline rather than per-person threads. The handle is last only for uniqueness.
 
 **State markers live in the heading, not inline** — `❗`/`✅` in an `##` heading carry colour, so
-scanning does not depend on the renderer's text colour. Nimbalyst dims each descending heading
-level, which is why items are `##` with no wrapping section header.
+scanning does not depend on the renderer's text colour. Many Markdown renderers dim each
+descending heading level, which is why items are `##` with no wrapping section header.
 
 **Standup items link a roadmap id optionally, never mandatorily** — some items are prerequisites,
 decisions, or credentials rather than tasks. Requiring an id would mean inventing fake ones.
@@ -490,6 +492,12 @@ input from `OWNER`, `MEMBER` or `COLLABORATOR`. Nothing is on by default that a 
 This is already load-bearing in three places and is written down now because it was implicit in all
 three: the `${{ github.head_ref }}` injection the reviewer caught (a branch name interpolated into a
 `run:` block), the issue-triage agent's trusted-author gate, and chat capture refusing a public repo.
+
+*Refined 2026-10-05 (MO-26-10-05-23.14.22).* "Collaboration access" is what this rule protects, and
+the association is how it was first read. An App's installation token cannot see private
+organization membership, so to the GitHub Manager an owner with admin rights read as
+`CONTRIBUTOR`. The manager therefore trusts the association **or** `admin`, `maintain` or `write`
+permission on the repository. A permission it cannot read is not trust, and forks stay refused.
 
 **The correct default when in doubt is to do nothing and say so**, which is the same shape as the
 unconfigured-verifier rule — a capability that silently degrades to "did nothing" is safe; one that

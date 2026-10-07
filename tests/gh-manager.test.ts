@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { Decision, inert, type LiveState, planDecision, planNoDecision, planRoute } from "../src/gh-manager/decision.js";
 import { renderDigest } from "../src/gh-manager/digest.js";
@@ -5,6 +8,7 @@ import { GhManagerPolicy, humanGatedPaths, parsePolicy } from "../src/gh-manager
 import { sessionPrompt } from "../src/gh-manager/prompt.js";
 import { parseMarker, renderMarker, routePullRequest, sweep, type PullRequestFacts } from "../src/gh-manager/sweep.js";
 
+const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NOW = new Date("2026-10-01T12:00:00Z");
 const HEAD = "a".repeat(40);
 const OTHER = "b".repeat(40);
@@ -45,6 +49,19 @@ describe("policy", () => {
     // A prefix matches the directory, not every path that happens to start with the same letters.
     expect(humanGatedPaths(paths, { protectedPaths: ["infra/billing"] })).toEqual(["AGENTS.md", "apps/web/.github/workflows/ci.yml", "morpheus.json", "infra/billing/plan.ts"]);
   });
+  // Morpheus is the manager's own engine. Its policy must stop the manager clearing a change to
+  // itself, and a prefix left behind by a rename would protect nothing without saying so.
+  it("Morpheus's own policy gates every change to the manager's engine", () => {
+    const own = parsePolicy(readFileSync(join(REPO, ".github/morpheus-gh-manager.json"), "utf8"));
+    for (const prefix of own.protectedPaths) expect(existsSync(join(REPO, prefix)), prefix).toBe(true);
+    const engine = [
+      "src/gh-manager/decision.ts", "src/gh-manager/prompt.ts", "src/cli/gh-manager.ts", "src/cli/check.ts",
+      "src/check/pr.ts", "src/paths.ts", "src/dependabot/policy.ts", "src/security/policy.ts",
+      "src/review/manager.ts", "src/review/local.ts", ".github/workflows/gh-manager.yml",
+      "src/init/templates.ts", "docs/runbooks/independent-review.md", "docs/runbooks/gh-manager.md",
+    ];
+    expect(humanGatedPaths([...engine, "src/pm/parse.ts", "src/cli/index.ts", "docs/runbooks/qa-comments.md"], own)).toEqual(engine);
+  });
 });
 
 describe("marker", () => {
@@ -80,8 +97,24 @@ describe("routing one pull request", () => {
     expect(route({ author: "dependabot[bot]" })).toMatchObject({ route: "skip", reason: "bot-lane" });
     expect(route({ authorAssociation: "CONTRIBUTOR" })).toMatchObject({ route: "skip", reason: "untrusted-author" });
     expect(route({ authorAssociation: "NONE" })).toMatchObject({ route: "skip", reason: "untrusted-author" });
+    // Read access is not trust, and an unreadable permission is not trust either.
+    expect(route({ authorAssociation: "CONTRIBUTOR", authorPermission: "read" })).toMatchObject({ route: "skip", reason: "untrusted-author", detail: "author cpheinrich is CONTRIBUTOR with read permission; reported, not acted on" });
+    expect(route({ authorAssociation: "CONTRIBUTOR", authorPermission: "triage" })).toMatchObject({ route: "skip", reason: "untrusted-author" });
+    expect(route({ authorAssociation: "CONTRIBUTOR", authorPermission: undefined })).toMatchObject({ route: "skip", reason: "untrusted-author" });
     // A collaborator's pull request from a fork is still someone else's branch.
     expect(route({ isCrossRepository: true })).toMatchObject({ route: "skip", reason: "untrusted-author" });
+  });
+
+  it("trusts an author by repository permission when private org membership hides the association", () => {
+    // The first Evo run: an organization owner with admin rights read as CONTRIBUTOR to the App.
+    // Exactly the route an OWNER gets, not merely "something other than untrusted".
+    const owner = route();
+    for (const authorPermission of ["admin", "maintain", "write"]) {
+      const routed = route({ authorAssociation: "CONTRIBUTOR", authorPermission });
+      expect({ route: routed.route, reason: routed.reason, detail: routed.detail }, authorPermission).toEqual({ route: owner.route, reason: owner.reason, detail: owner.detail });
+    }
+    // A fork is still someone else's branch, whatever their permission.
+    expect(route({ authorAssociation: "CONTRIBUTOR", authorPermission: "admin", isCrossRepository: true })).toMatchObject({ route: "skip", reason: "untrusted-author" });
   });
 
   it("applies the cooldown at its boundary: under 8h is active, exactly 8h is not", () => {
@@ -375,6 +408,13 @@ describe("session prompt", () => {
     expect(text).toContain('"managerSession": "run 9"');
     expect(text).toContain("/tmp/d.json");
     expect(text).not.toContain("This repository's additions");
+  });
+  it("tells the session to write the decision without the shell, which eats dollar figures", () => {
+    // Evo #341's escalation quoted $429.99 as 29.99: the session wrote the file through bash.
+    const text = sessionPrompt(brief);
+    const section = text.slice(text.indexOf("## Decision file"));
+    expect(section).toContain("Create it with your file-writing tool, never through the shell");
+    expect(section).toContain("`$429.99` would reach the audit comment as `29.99`");
   });
   it("appends the project's overlay under a heading that says it cannot relax the rules", () => {
     const text = sessionPrompt({ ...brief, overlay: "Lead on dose arithmetic." });
