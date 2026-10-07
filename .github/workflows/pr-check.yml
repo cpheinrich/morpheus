@@ -44,12 +44,13 @@ jobs:
     # minutes. This ceiling sits far above the honest runtime, so it only ever
     # fires on a hang — which it then reports quickly and legibly.
     timeout-minutes: 10
-    # A superseded push must cancel rather than run to completion
-    # beside its replacement. Job-level because this file is called,
-    # and a called workflow's top-level concurrency does not govern
-    # the caller's run.
+    # A superseded push must cancel rather than run beside its replacement.
+    # Keep different callers separate: CI and Review metadata can run for the
+    # same PR head, and cancelling CI's required check blocks the bot merge.
+    # Job-level because this file is called; a called workflow's top-level
+    # concurrency does not govern the caller's run.
     concurrency:
-      group: pr-check-${{ github.ref }}
+      group: pr-check-${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
     permissions:
       contents: read

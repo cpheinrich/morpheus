@@ -2610,6 +2610,13 @@ describe("beta app review submission", () => {
 });
 
 describe("local review metadata", () => {
+  it("keeps CI and metadata conventions checks from cancelling each other", async () => {
+    const wf = await read("pr-check.yml") as {
+      jobs: { conventions: { concurrency: { group: string; "cancel-in-progress": boolean } } };
+    };
+    expect(wf.jobs.conventions.concurrency.group).toBe("pr-check-${{ github.workflow }}-${{ github.ref }}");
+    expect(wf.jobs.conventions.concurrency["cancel-in-progress"]).toBe(true);
+  });
   it("reruns only conventions without replacing build/test statuses", async () => {
     const wf = await read("review-metadata.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses: string }> };
     expect(wf.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
