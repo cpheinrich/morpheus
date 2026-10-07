@@ -88,12 +88,14 @@ test("Claude permission modes never widen into Codex", () => {
   assert.deepEqual(codexPermission("bypassPermissions").args, [
     "--dangerously-bypass-approvals-and-sandbox",
   ]);
-  for (const mode of ["default", "acceptEdits", "auto"]) {
+  for (const mode of ["acceptEdits", "auto"]) {
     const p = codexPermission(mode);
     assert.equal(p.name, "workspace-write");
     assert.deepEqual(p.args, ["-c", 'sandbox_mode="workspace-write"', "-c", 'approval_policy="never"']);
   }
   assert.equal(codexPermission("plan").name, "read-only");
+  // Default mode asks before each edit; approval-free Codex writes would widen it.
+  assert.deepEqual(codexPermission("default").args, ["-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"']);
   assert.deepEqual(codexPermission("plan", ["/repo/.git"]).args.length, 4);
   assert.deepEqual(codexPermission("auto", ["/repo/.git"]).args.slice(4), [
     "-c",

@@ -34,7 +34,8 @@ MCP server and CLI; never submit a local task to a different machine by guessing
 5. Model and effort map from this session (recorded by the hooks) to Codex through
    `codexModelMap`/`codexEffortMap`; unmapped values use Codex's configured default.
    Permissions map without widening: `bypassPermissions` → Codex full access; `auto`,
-   `acceptEdits`, `default` → the `workspace-write` sandbox (no network); `plan` → read-only;
+   `acceptEdits` → the `workspace-write` sandbox (no network); `default` (asks before edits)
+   and `plan` → read-only;
    anything else refuses. Overrides require a user request. Full access is never permission to
    bypass a business approval, repository review, spending, or sending rule.
 6. Call `codex_wait` (up to 25 seconds) until completion. This renews the owner lease. Publish

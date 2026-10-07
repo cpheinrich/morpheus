@@ -121,9 +121,10 @@ both. Start a new Claude session after installing, and review its hooks.
   approved `codexModels` entry; `codexEffortMap` maps effort. Unmapped values use Codex's own
   configured default rather than a guess.
 - **Permissions, never widened.** `bypassPermissions` → Codex full access
-  (`--dangerously-bypass-approvals-and-sandbox`). `auto`, `acceptEdits` and `default` → the
+  (`--dangerously-bypass-approvals-and-sandbox`). `auto` and `acceptEdits` → the
   `workspace-write` sandbox with approvals off (writes inside the checkout, plus a linked
-  worktree's Git directory; no network). `plan` → `read-only`. Any other mode refuses. Under
+  worktree's Git directory; no network). `default` and `plan` → `read-only`: `default` asks
+  before each edit, and Codex exec cannot ask. Any other mode refuses. Under
   `workspace-write` Codex may be unable to push or reach the network; Claude does those steps.
 - **Execution.** Each handoff runs `codex exec --json` under the same guardian lease, output
   cap and run limit as Claude workers, with the prompt on stdin. The saved Codex session id is

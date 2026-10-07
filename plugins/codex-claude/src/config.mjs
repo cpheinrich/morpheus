@@ -207,7 +207,8 @@ export function codexPermission(mode, writableRoots = []) {
       name: "danger-full-access",
       args: ["--dangerously-bypass-approvals-and-sandbox"],
     };
-  const sandbox = { plan: "read-only", default: "workspace-write", acceptEdits: "workspace-write", auto: "workspace-write" }[mode];
+  // Codex exec cannot ask, so a mode that asks before every edit (`default`) may only read.
+  const sandbox = { plan: "read-only", default: "read-only", acceptEdits: "workspace-write", auto: "workspace-write" }[mode];
   if (!sandbox)
     throw new Error(
       `Claude permission mode ${mode ?? "unknown"} has no verified Codex sandbox; delegation refused.`,
