@@ -1,5 +1,10 @@
 import { listPending, resolveBatch, showBatch } from "../qa/store.js";
 import { startQaCommentServer } from "../qa/serve.js";
+import { execFileSync } from "node:child_process";
+import { resolve as resolvePath } from "node:path";
+import { QA_GUIDE } from "../qa/guide.js";
+import { loadIosPreviewConfig } from "../qa/preview/config.js";
+import { parsePreviewArgs, previewContext, runPreview } from "../qa/preview/ios.js";
 
 /**
  * `morpheus qa comments …` — agent-facing side of the QA comment loop.
@@ -193,4 +198,63 @@ export async function dispatchQaComments(
 
   console.error(`Unknown qa comments command "${command}".\n\n${USAGE}`);
   return 1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// `morpheus qa preview ios …` and `morpheus qa guide` (MO-26-10-06-15.17.01)
+
+const PREVIEW_USAGE = `Usage
+  morpheus qa preview ios [start|status|stop|doctor|help] [--mode <name>] [--port <n>] [--ttl-minutes <1-1440>]
+                          [--no-build] [--ssh-host <user@host>] [--root <project>]
+  The project's morpheus.json declares qa.ios: the app, its build, and its launch modes;
+  "morpheus qa preview ios help" lists them.
+  Every agent opens the QA overlay URL that start prints. Instructions: morpheus qa guide`;
+
+function projectRootFrom(cwd: string, rest: string[]): { root: string; rest: string[] } {
+  const taken = takeRootFlag(rest, "");
+  if (taken.root) return { root: resolvePath(taken.root), rest: taken.rest };
+  try {
+    return { root: execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(), rest: taken.rest };
+  } catch {
+    return { root: cwd, rest: taken.rest };
+  }
+}
+
+export async function dispatchQaPreview(cwd: string, platform: string | undefined, rest: string[]): Promise<number> {
+  if (platform !== "ios") {
+    console.error(platform === undefined || platform === "--help" || platform === "-h" ? PREVIEW_USAGE : `Unknown preview platform "${platform}". Only ios is available.\n\n${PREVIEW_USAGE}`);
+    return platform === "--help" || platform === "-h" ? 0 : 1;
+  }
+  let root: string;
+  let args: string[];
+  try { ({ root, rest: args } = projectRootFrom(cwd, rest)); }
+  catch (error) { console.error((error as Error).message); return 1; }
+  const loaded = await loadIosPreviewConfig(root);
+  if (!loaded.ok) {
+    console.error(`${loaded.issues.join("\n")}\n\n${PREVIEW_USAGE}`);
+    return 1;
+  }
+  const { config } = loaded;
+  // `help` is a word, not a flag: the global parser consumes --help before this command runs.
+  if (args[0] === "help") {
+    console.log(PREVIEW_USAGE);
+    console.log(`\nModes for this project (default ${config.defaultMode}):`);
+    for (const mode of Object.values(config.modes)) {
+      console.log(`  ${mode.name}${mode.flags.length ? ` (${mode.flags.join(", ")})` : ""}: ${mode.summary}`);
+    }
+    return 0;
+  }
+  try {
+    const options = parsePreviewArgs(args, config.modes);
+    await runPreview(previewContext(root, config), options);
+    return 0;
+  } catch (error) {
+    console.error(`Preview: ${(error as Error).message}`);
+    return 1;
+  }
+}
+
+export function dispatchQaGuide(): number {
+  console.log(QA_GUIDE);
+  return 0;
 }

@@ -54,6 +54,7 @@
     "jose": "^6.2.5",
     "minimatch": "10.2.6",
     "minisearch": "^7.2.0",
+    "serve-sim": "0.1.47",
     "zod": "^4.1.12"
   },
   "peerDependencies": {

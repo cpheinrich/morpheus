@@ -48,6 +48,15 @@ export type Operation = {
     label: string;
 } | {
     kind: "auto-merge";
+}
+/**
+ * Merge the base into the branch with GitHub's update-branch endpoint, guarded on the head the
+ * plan was made for: if anyone pushed in between, GitHub refuses rather than merging over it.
+ * A merge GitHub performs reproduces exactly, so it keeps any review on record valid.
+ */
+ | {
+    kind: "update-branch";
+    expectedHead: string;
 } | {
     kind: "disable-auto-merge";
 } | {
@@ -65,6 +74,8 @@ export interface LiveState {
     isDraft: boolean;
     labels: string[];
     autoMerge: boolean;
+    /** Strict protection holds the branch behind its base; see `PullRequestFacts.behind`. */
+    behind?: boolean | undefined;
     body: string;
     /** Every path the pull request changes against its base. */
     changedFiles: string[];

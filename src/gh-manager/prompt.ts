@@ -106,7 +106,7 @@ Work in this repository is written by agent sessions that open a pull request, s
 
 ## Decision file
 
-Write JSON to \`${brief.decisionPath}\` as your last act, after your final push. Nothing is applied without it.
+Write JSON to \`${brief.decisionPath}\` as your last act, after your final push. Nothing is applied without it. Create it with your file-writing tool, never through the shell: a heredoc or \`echo\` expands \`$\` followed by a digit, so \`$429.99\` would reach the audit comment as \`29.99\`. The summary and reasoning are what a person decides on, so every figure in them must survive intact.
 
 \`\`\`json
 {

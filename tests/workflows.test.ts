@@ -2042,7 +2042,9 @@ describe("ios-ci.yml", () => {
     const lint = steps.find((step) => step.name === "Lint changed Swift sources");
     const script = String(lint?.run);
 
-    expect((checkout?.with as Record<string, unknown>)?.["fetch-depth"]).toBe(2);
+    expect((checkout?.with as Record<string, unknown>)?.["fetch-depth"]).toBe(
+      "${{ github.event_name == 'pull_request' && inputs.watch-paths != '' && '0' || '2' }}",
+    );
     expect(lint?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}");
     expect(lint?.env).toMatchObject({
       SWIFT_FORMAT_CONFIGURATION: "${{ inputs.swift-format-configuration }}",

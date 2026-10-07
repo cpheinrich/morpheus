@@ -172,9 +172,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          # The style gate compares the checked-out commit to its first parent.
-          # Depth two keeps that boundary available without fetching full history.
-          fetch-depth: 2
+          # Scoped PRs need ancestry to verify a merge regenerated after the event.
+          # Other callers only need the first parent for the style gate.
+          fetch-depth: ${{ github.event_name == 'pull_request' && inputs.watch-paths != '' && '0' || '2' }}
           persist-credentials: false
 
       - name: Check native change scope
@@ -191,11 +191,28 @@ jobs:
             echo 'run=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Depth two contains both parents of the exact PR merge checkout.
-          # Never interpret an incomplete/wrong comparison as an unrelated PR.
-          [[ "$PR_BASE_SHA" =~ ^[a-f0-9]{40}$ && "$PR_HEAD_SHA" =~ ^[a-f0-9]{40}$ ]]
-          test "$(git rev-parse HEAD^1)" = "$PR_BASE_SHA"
-          test "$(git rev-parse HEAD^2)" = "$PR_HEAD_SHA"
+          # GitHub can regenerate the merge ref against newer trunk while the
+          # event still names its old base. Verify ancestry, but keep the exact head.
+          if ! [[ "$PR_BASE_SHA" =~ ^[a-f0-9]{40}$ && "$PR_HEAD_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+            echo '::error::Native scope requires valid event base and head SHAs.' >&2
+            exit 1
+          fi
+          read -r -a parents <<< "$(git show -s --format=%P HEAD)"
+          if [ "${#parents[@]}" -ne 2 ]; then
+            echo '::error::Native scope requires a two-parent PR merge.' >&2
+            exit 1
+          fi
+          merge_base="${parents[0]}"
+          merge_head="${parents[1]}"
+          echo "Native scope: event base=$PR_BASE_SHA head=$PR_HEAD_SHA; checkout base=$merge_base head=$merge_head"
+          if [ "$merge_head" != "$PR_HEAD_SHA" ]; then
+            echo '::error::PR merge head does not match event head.' >&2
+            exit 1
+          fi
+          if ! git cat-file -e "$merge_head^{commit}" || ! git merge-base --is-ancestor "$PR_BASE_SHA" "$merge_base"; then
+            echo '::error::PR merge base is not descended from event base, or comparison history is missing.' >&2
+            exit 1
+          fi
           test -n "${WATCH_PATHS//[[:space:]]/}"
           pathspecs=()
           while IFS= read -r pathspec; do
@@ -631,15 +648,15 @@ jobs:
           # flake costs seconds instead of the whole job. It does not weaken the
           # gate: a test that fails every attempt still fails the run.
           #
-          # Each retry relaunches the test host. Without that, every attempt
-          # shares one process, and a daemon the process talks to (the
-          # simulator's StoreKit ledger, for one) that has stopped answering
-          # fails all of them within milliseconds of each other: three
-          # executions, one data point. A relaunch gives the retry the fresh
-          # process a flake needs and costs a few seconds of app launch.
+          # Retries share the test host's process on purpose. Relaunching it
+          # (`-test-repetition-relaunch-enabled YES`, tried 2026-10-04 to
+          # 2026-10-05) made xcodebuild re-execute the whole UI test bundle for
+          # every retry rather than the failed cases: Evo's release lane ran
+          # its suite twice over, hit the job's three-hour limit, and produced
+          # no evidence at all. A flake that lives in the process is left to
+          # the next release instead.
           if [ "${TEST_ITERATIONS:-0}" != "0" ]; then
-            args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS"
-              -test-repetition-relaunch-enabled YES)
+            args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS")
           fi
           if [ "$FIREBASE_EMULATORS" = "true" ]; then
             printf -v test_command '%q ' xcodebuild test-without-building "${args[@]}"

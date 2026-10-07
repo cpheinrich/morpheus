@@ -38,15 +38,28 @@ export function isRealReason(reason) {
 export function visibleProse(body) {
     return stripCode(stripHtmlComments(body));
 }
+/**
+ * The text a reader actually sees rendered — HTML comments and fenced blocks removed, inline code
+ * kept.
+ *
+ * For checking that a review summary is repeated where a person will read it. That needs the
+ * opposite answer to `visibleProse` on inline code: a backticked path renders, so a summary that
+ * names one is visible. Comparing against `visibleProse` failed every summary containing a code
+ * span, because the span was stripped from the page but not from the summary (the GitHub Manager's
+ * first Morpheus review, PR #327, was escalated for exactly this).
+ */
+export function visibleText(body) {
+    return stripFences(stripHtmlComments(body));
+}
+function stripFences(body) {
+    return body.replace(/```[\s\S]*?```/g, "").replace(/~~~[\s\S]*?~~~/g, "");
+}
 function stripHtmlComments(body) {
     return body.replace(/<!--[\s\S]*?-->/g, "");
 }
 /** Remove places where Markdown presents text as an example rather than prose. */
 function stripCode(body) {
-    return body
-        .replace(/```[\s\S]*?```/g, "")
-        .replace(/~~~[\s\S]*?~~~/g, "")
-        .replace(/`[^`\r\n]*`/g, "");
+    return stripFences(body).replace(/`[^`\r\n]*`/g, "");
 }
 /** Whether the PR body uses one of GitHub's same-repository closing keywords. */
 export function closesIssue(body, issue) {

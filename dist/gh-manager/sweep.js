@@ -1,4 +1,4 @@
-import { BOT_LANES, INCOMPLETE_LABEL, MANAGER_REVIEWED_LABEL, NEEDS_HUMAN_LABEL, STALE_LABEL, TRUSTED_ASSOCIATIONS, } from "./policy.js";
+import { BOT_LANES, INCOMPLETE_LABEL, MANAGER_REVIEWED_LABEL, NEEDS_HUMAN_LABEL, STALE_LABEL, TRUSTED_ASSOCIATIONS, TRUSTED_PERMISSIONS, } from "./policy.js";
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const MARKER = /<!-- morpheus-gh-manager (\{[^\n]*\}) -->/g;
@@ -27,7 +27,9 @@ export function parseMarker(body) {
             return undefined;
         if (raw.cleared !== undefined && typeof raw.cleared !== "string")
             return undefined;
-        return { head: raw.head, verdict: raw.verdict, attempts: raw.attempts, at: raw.at, ...(raw.cleared ? { cleared: raw.cleared } : {}) };
+        if (raw.updated !== undefined && typeof raw.updated !== "string")
+            return undefined;
+        return { head: raw.head, verdict: raw.verdict, attempts: raw.attempts, at: raw.at, ...(raw.cleared ? { cleared: raw.cleared } : {}), ...(raw.updated ? { updated: raw.updated } : {}) };
     }
     catch {
         return undefined;
@@ -52,8 +54,10 @@ export function routePullRequest(pr, policy, now) {
     const routed = (route, reason, detail) => ({ number: pr.number, title: pr.title, headSha: pr.headSha, route, reason, detail, attempts });
     if (BOT_LANES.has(pr.author))
         return routed("skip", "bot-lane", `${pr.author} has its own maintainer`);
-    if (!TRUSTED_ASSOCIATIONS.has(pr.authorAssociation) || pr.isCrossRepository) {
-        return routed("skip", "untrusted-author", `author ${pr.author} is ${pr.authorAssociation}${pr.isCrossRepository ? " on a fork" : ""}; reported, not acted on`);
+    const trusted = TRUSTED_ASSOCIATIONS.has(pr.authorAssociation) || TRUSTED_PERMISSIONS.has(pr.authorPermission ?? "");
+    if (!trusted || pr.isCrossRepository) {
+        const standing = `${pr.authorAssociation}${pr.authorPermission ? ` with ${pr.authorPermission} permission` : ""}`;
+        return routed("skip", "untrusted-author", `author ${pr.author} is ${standing}${pr.isCrossRepository ? " on a fork" : ""}; reported, not acted on`);
     }
     // The branch name is the one piece of author-controlled text the brief has to carry.
     if (!SAFE_REF.test(pr.headRefName))
@@ -70,7 +74,8 @@ export function routePullRequest(pr, policy, now) {
     const quiet = pr.isDraft ? policy.draftQuietHours : policy.quietHours;
     // An unparseable date is not "old". Treat it as active rather than acting on a branch whose
     // age is unknown.
-    if (!Number.isFinite(age) || age < quiet * HOUR) {
+    const managerUpdate = pr.headByManager === true && pr.headFirstParent !== undefined && marker?.updated === pr.headFirstParent;
+    if (!managerUpdate && (!Number.isFinite(age) || age < quiet * HOUR)) {
         return routed("skip", "active", pr.isDraft
             ? `draft, and its head commit is under ${quiet}h old; not yet presumed abandoned`
             : `head commit is under ${quiet}h old; an author may still be driving it`);
@@ -89,6 +94,13 @@ export function routePullRequest(pr, policy, now) {
     if (pr.autoMerge && !failing.length && pr.mergeable !== "CONFLICTING") {
         if (cancelled.length && policy.actions.merge)
             return routed("merge", "rerun-cancelled", `auto-merge is on but ${cancelled.length} check(s) were cancelled; rerunning them`);
+        if (pr.behind && policy.actions.merge) {
+            // Tried on this exact head already and the head did not move: GitHub refused the update.
+            // Escalate once; retrying would post the same two comments every run for ever.
+            if (marker?.updated === pr.headSha)
+                return routed("escalate", "update-refused", "GitHub refused to bring this branch up to date with its base. A likely cause is that the merge from trunk carries a workflow change, which the manager's App is not permitted to push. Merge the base into the branch by hand; auto-merge is still queued");
+            return routed("merge", "update-behind", "auto-merge is on but the branch is behind its base; bringing it up to date");
+        }
         return routed("skip", "waiting", pending.length ? `auto-merge is on; ${pending.length} check(s) running` : "auto-merge is on and checks are green; GitHub merges it");
     }
     if (reviewed && !pr.isDraft && !failing.length && pr.mergeable !== "CONFLICTING") {
