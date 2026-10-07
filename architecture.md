@@ -3062,10 +3062,13 @@ pull-request set as the durable source of truth.
 
 Every reusable job carries a `timeout-minutes` ceiling set well above its honest runtime, so it
 fires only on a hang. Without one a stuck step runs to GitHub's six-hour default on billed
-minutes, which is how a hung Playwright install once cost forty. The jobs that gate a pull request
-also carry a job-level concurrency group so a superseded push cancels rather than running beside
-its replacement — job-level rather than workflow-level, because a called workflow's top-level
-`concurrency` does not govern the caller's run.
+minutes, which is how a hung Playwright install once cost forty. Most jobs that gate a pull
+request carry a job-level concurrency group so a superseded push cancels rather than running
+beside its replacement. The required `pr / conventions` job in `pr-check.yml` and its `CI` and
+`Review metadata` callers are exempt: every required check run must finish. GitHub replaces a
+pending run in a concurrency group even when `cancel-in-progress` is false; a cancelled required
+run can leave an otherwise green pull request blocked. Job-level grouping governs a called job;
+a called workflow's top-level `concurrency` does not govern the caller's run.
 
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
