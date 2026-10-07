@@ -301,7 +301,7 @@ describe("the injected client", () => {
   });
 
   it("saves on the first Esc in the comment box and deletes only on the second", async () => {
-    const w = await load(`<body><h1>Title</h1></body>`);
+    const w = (await load(`<body><h1>Title</h1></body>`)) as unknown as typeof globalThis & Window;
     const qa = (w as unknown as { __morpheusQa: { pins: () => unknown[] } }).__morpheusQa;
     const h1 = w.document.querySelector("h1")!;
     h1.dispatchEvent(new w.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
@@ -322,7 +322,7 @@ describe("the injected client", () => {
   });
 
   it("never deletes a pin on Esc pressed in the site alone", async () => {
-    const w = await load(`<body><h1>Title</h1></body>`);
+    const w = (await load(`<body><h1>Title</h1></body>`)) as unknown as typeof globalThis & Window;
     const qa = (w as unknown as { __morpheusQa: { pins: () => unknown[] } }).__morpheusQa;
     const h1 = w.document.querySelector("h1")!;
     (w.document as unknown as { elementFromPoint: () => Element }).elementFromPoint = () => h1;
@@ -341,6 +341,15 @@ describe("the injected client", () => {
       expect(child.__morpheusQa.framed).toBe(true);
       expect(child.document.querySelector("morpheus-qa")).toBeNull();
     }
+  });
+
+  it("still draws the shell's column when a tool shows the overlay inside its own frame", async () => {
+    const dom = new JSDOM(`<body><iframe></iframe></body>`, { runScripts: "outside-only", pretendToBeVisual: true, url: "http://localhost:4309/" });
+    const child = dom.window.document.querySelector("iframe")!.contentWindow as unknown as Window & { eval: (s: string) => void; __morpheusQaShell: boolean; __morpheusQa: { framed?: boolean; shell?: boolean } };
+    child.__morpheusQaShell = true;
+    child.eval(WEB_OVERLAY_JS.replace("__MORPHEUS_QA_PROJECT__", '"Lakina"'));
+    expect(child.__morpheusQa.shell).toBe(true);
+    expect(child.__morpheusQa.framed).toBeUndefined();
   });
 
   it("mounts once, outside the body React manages", async () => {

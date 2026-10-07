@@ -29,10 +29,14 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   var PROJECT = __MORPHEUS_QA_PROJECT__;
   var COLUMN = 340;
 
-  // Any framed document — the shell's frame, which the shell drives, or a frame the site embeds
-  // itself — draws nothing; only the top window owns the column.
+  // A document framed by a same-origin parent — the shell's frame, which the shell drives, or a
+  // frame the site embeds itself — draws nothing. The shell never counts as framed, and neither does
+  // a page whose parent is another origin (a tool showing the overlay in its own frame): those own
+  // the column.
   var framed = false;
-  try { framed = window.top !== window; } catch (e) { framed = true; }
+  if (!window.__morpheusQaShell) {
+    try { framed = window.parent !== window && !!window.parent.document; } catch (e) { framed = false; }
+  }
   if (framed) { window.__morpheusQa = { framed: true }; return; }
   var shell = !!window.__morpheusQaShell;
 
