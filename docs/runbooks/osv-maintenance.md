@@ -104,6 +104,10 @@ The default has no holds. A hold is visible policy, not model judgment. Unsuppor
 remediation or an advisory with no safe fixed version fails the run and preserves the evidence; it
 does not dismiss or ignore the advisory.
 
+List in `requiredChecks` only checks that report success for exact bot PRs. Morpheus's
+`agent-review / delivery` check is intentionally skipped for that lane: GitHub branch protection
+still requires the reported check, while the security bot's success-only gate must omit it.
+
 ## Package-manager adapters
 
 Detection is cross-ecosystem because OSV scans repository lockfiles. Delivery uses small native

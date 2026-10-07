@@ -41,6 +41,8 @@ export interface Run {
   id: number;
   run_attempt: number;
   created_at: string;
+  /** Start of the current attempt, including a later retry of an older run. */
+  run_started_at?: string | null;
   updated_at: string;
   head_sha: string;
   status: string;
@@ -82,6 +84,13 @@ export interface AdmissionConfig {
    * is refused rather than silently reinterpreted as a day.
    */
   slotMinutes?: number;
+  /**
+   * Stale-run ceiling in minutes (default 240). Set above the sum of sequential
+   * job timeouts plus scheduling overhead. Running attempts age from run_started_at
+   * when available; queued/pending/requested runs wait while a release is in progress.
+   * Supply runs from one release workflow so that predecessor relationship is meaningful.
+   */
+  runTimeoutMinutes?: number;
   /** The run title the release workflow gives an automated dispatch for `nonce`. */
   title: (nonce: string) => string;
 }
@@ -115,7 +124,6 @@ export interface AdmissionDeps<R extends Run = Run> {
   dispatch: (nonce: string) => Promise<unknown>;
 }
 
-const FOUR_HOURS = 4 * 60 * 60 * 1000;
 const THIRTY_MINUTES = 30 * 60 * 1000;
 
 export function localTime(value: string | number | Date, zone: string): { day: string; minute: number } {
@@ -260,8 +268,22 @@ export async function schedule<R extends Run>({ state, now, runs, config, deps, 
 export async function admit<R extends Run>({ state, now, runs, config, deps, save }: {
   state: State; now: string; runs: R[]; config: AdmissionConfig; deps: AdmissionDeps<R>; save: () => void;
 }): Promise<void> {
-  if (runs.some((r) => r.status !== "completed" && Date.parse(now) - Date.parse(r.created_at) > FOUR_HOURS)) {
-    throw Error("A release has been queued or running for more than four hours; inspect the runner and workflow");
+  const timeout = config.runTimeoutMinutes ?? 240;
+  if (!Number.isSafeInteger(timeout) || timeout <= 0 || !Number.isSafeInteger(timeout * 60_000)) {
+    throw Error("runTimeoutMinutes must be a positive safe integer whose milliseconds are also safe");
+  }
+  const running = runs.some((r) => r.status === "in_progress");
+  for (const run of runs) {
+    if (run.status === "completed") continue;
+    if (running && ["queued", "pending", "requested"].includes(run.status)) continue;
+    const started = Date.parse(run.status === "in_progress" ? (run.run_started_at ?? run.created_at) : run.created_at);
+    const current = Date.parse(now);
+    if (!Number.isFinite(started) || !Number.isFinite(current)) {
+      throw Error(`Cannot determine the age of release run ${run.id}; inspect its timestamps`);
+    }
+    if (current - started > timeout * 60_000) {
+      throw Error(`Run ${run.id} has been ${run.status} for more than ${timeout} minutes; inspect the runner and workflow`);
+    }
   }
   reconcile(state, runs, now, config); save();
   // An upload that failed once the upload step had started may still have
