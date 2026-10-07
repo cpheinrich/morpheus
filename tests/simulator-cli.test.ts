@@ -34,4 +34,17 @@ describe("morpheus simulator watchdog argument handling", () => {
     expect(await watchdog("nuke", [], false)).toBe(1);
     expect(error).toHaveBeenCalledWith(`Unknown watchdog command "nuke".\n\n${SIMULATOR_USAGE}`);
   });
+
+  it.each(["enable", "disable", "refresh"])("refuses --dry-run for `%s`, which would otherwise change this Mac while looking like a preview", async (action) => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await watchdog(action, [], true)).toBe(1);
+    expect(error).toHaveBeenCalledWith(`Simulator watchdog: --dry-run applies to \`run\` only; \`${action}\` changes this Mac.`);
+  });
+
+  it.each(["disable", "refresh", "status"])("refuses --idle-hours for `%s`, which would ignore it", async (action) => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await watchdog(action, ["--idle-hours", "5"], false)).toBe(1);
+    expect(error).toHaveBeenCalledWith("Simulator watchdog: --idle-hours applies to `run` and `enable` only.");
+  });
 });
+

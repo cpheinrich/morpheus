@@ -27,6 +27,14 @@ export declare const MAX_IDLE_HOURS = 720;
 export declare const WALK_BUDGET = 250000;
 export type Exec = (command: string, args: string[], input?: string) => string;
 export declare const defaultExec: Exec;
+/** Everything a failed command said: its stderr, or the error's own message. */
+export declare const errorText: (error: unknown) => string;
+/**
+ * The cause, not the header. simctl reports `An error was encountered processing the command
+ * (domain=…, code=405):` and then the reason on the next line, and `execFile` prefixes its own
+ * "Command failed:" line, so the useful text is always last.
+ */
+export declare const errorSummary: (error: unknown) => string;
 export declare function parseIdleHours(value: string): number;
 export type DeviceSet = "default" | "testing";
 export declare const testingSetDirectory: () => string;
@@ -79,6 +87,7 @@ export declare function parseUserApps(json: string): UserApp[];
 export declare function writtenSince(root: string, since: number, budget?: number): {
     found: number | null;
     truncated: boolean;
+    unreadable: boolean;
 };
 export type Activity = {
     kind: "active";

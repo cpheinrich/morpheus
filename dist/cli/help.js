@@ -126,7 +126,7 @@ Usage
   morpheus qa preview web [start|status|stop|help] [--path </page>] [--port <n>] [--root <project>]
                          The local website behind the comment overlay; dev server declared in morpheus.json qa.web
   morpheus qa guide       The comment-QA instructions every agent follows
-  morpheus simulator watchdog [run|enable|disable|status|refresh] [--dry-run] [--idle-hours N]
+  morpheus simulator watchdog run [--dry-run] [--idle-hours N] | enable [--idle-hours N] | disable | status | refresh
                          Shut down iOS simulators idle for 24 hours (default); enable installs the launchd agent
 
 Options

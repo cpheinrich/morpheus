@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { activityPath, recordSimulatorActivity, resetActivityThrottle } from "../src/simulator/activity.js";
 import {
-  busyDevices, DEFAULT_IDLE_HOURS, formatDuration, formatSweep, parseEtime, parseIdleHours, parseRunningDevices,
+  busyDevices, DEFAULT_IDLE_HOURS, errorSummary, errorText, formatDuration, formatSweep, parseEtime, parseIdleHours, parseRunningDevices,
   parseUserApps, recentActivity, sweep, writtenSince, type Exec, type UserApp,
 } from "../src/simulator/watchdog.js";
 
@@ -56,6 +56,23 @@ describe("parseEtime", () => {
   ])("reads %s as %d seconds", (text, seconds) => expect(parseEtime(text)).toBe(seconds));
 
   it.each(["", "garbage", "12", "1:2:3:4", "-5:00"])("refuses %j rather than guessing an age", (text) => expect(parseEtime(text)).toBeNull());
+});
+
+describe("error text", () => {
+  const header = "An error was encountered processing the command (domain=com.apple.CoreSimulator.SimError, code=405):";
+  it("summarises simctl's failure by its cause, which is the last line, not its header", () => {
+    const stderr = `${header}\nUnable to shutdown device in current state: Shutdown\n`;
+    const error = Object.assign(new Error(`Command failed: xcrun simctl shutdown X\n${stderr}`), { stderr: Buffer.from(stderr) });
+    expect(errorSummary(error)).toBe("Unable to shutdown device in current state: Shutdown");
+    expect(errorText(error)).toContain(header);
+    expect(errorText(error)).toContain("current state: Shutdown");
+  });
+
+  it("falls back to the message when there is no stderr, and survives a non-Error", () => {
+    expect(errorSummary(new Error("Command failed: /x/morpheus refresh\nboom: it broke"))).toBe("boom: it broke");
+    expect(errorSummary("plain")).toBe("plain");
+    expect(errorSummary(new Error(""))).toBe("Error");
+  });
 });
 
 describe("parseIdleHours", () => {
@@ -123,12 +140,12 @@ describe("parseUserApps", () => {
 describe("writtenSince", () => {
   it("is quiet for a tree older than the cutoff and reports the first newer write", () => {
     container(dir, 30, "a/b/old.txt");
-    expect(writtenSince(dir, NOW - 24 * HOUR)).toEqual({ found: null, truncated: false });
+    expect(writtenSince(dir, NOW - 24 * HOUR)).toEqual({ found: null, truncated: false, unreadable: false });
 
     writeFileSync(join(dir, "a/b/new.txt"), "x");
     settle(dir, 30);
     age(join(dir, "a/b/new.txt"), 2);
-    expect(writtenSince(dir, NOW - 24 * HOUR)).toEqual({ found: NOW - 2 * HOUR, truncated: false });
+    expect(writtenSince(dir, NOW - 24 * HOUR)).toEqual({ found: NOW - 2 * HOUR, truncated: false, unreadable: false });
   });
 
   it("counts a directory's own mtime, because deleting a file leaves no file to find", () => {
@@ -158,11 +175,26 @@ describe("writtenSince", () => {
     }
   });
 
+  it("reports a tree it could not read as unreadable, not as quiet", () => {
+    container(dir, 30, "locked/new.txt");
+    age(join(dir, "locked/new.txt"), 1);
+    chmodSync(join(dir, "locked"), 0o000);
+    try {
+      expect(writtenSince(dir, NOW - 24 * HOUR)).toEqual({ found: null, truncated: false, unreadable: true });
+    } finally {
+      chmodSync(join(dir, "locked"), 0o755);
+    }
+  });
+
+  it("reports a root that does not exist as unreadable", () => {
+    expect(writtenSince(join(dir, "never-created"), NOW - 24 * HOUR)).toEqual({ found: null, truncated: false, unreadable: true });
+  });
+
   it("gives up with truncated, not a verdict, when the tree exceeds its budget", () => {
     for (let i = 0; i < 20; i++) writeFileSync(join(dir, `f${i}.txt`), "x");
     settle(dir, 30);
-    expect(writtenSince(dir, NOW - 24 * HOUR, 10)).toEqual({ found: null, truncated: true });
-    expect(writtenSince(dir, NOW - 24 * HOUR, 100)).toEqual({ found: null, truncated: false });
+    expect(writtenSince(dir, NOW - 24 * HOUR, 10)).toMatchObject({ found: null, truncated: true });
+    expect(writtenSince(dir, NOW - 24 * HOUR, 100)).toEqual({ found: null, truncated: false, unreadable: false });
   });
 });
 
@@ -209,6 +241,32 @@ describe("recentActivity", () => {
     expect(recentActivity({ udid: A, apps: [], since, heartbeatDir: beats() })).toEqual({ kind: "idle" });
   });
 
+  it("counts a heartbeat or an install exactly at the cutoff as idle, and one second newer as active", () => {
+    container(join(dir, "Data/D1"), 40);
+    container(join(dir, "Bundle/B1"), 40, "Evo.app/Info.plist");
+    recordSimulatorActivity(A, NOW - 24 * HOUR, beats());
+    expect(recentActivity({ udid: A, apps: [app()], since, heartbeatDir: beats() })).toEqual({ kind: "idle" });
+    resetActivityThrottle(); // the one-a-minute throttle would otherwise swallow the second write
+    recordSimulatorActivity(A, NOW - 24 * HOUR + 1000, beats());
+    expect(recentActivity({ udid: A, apps: [app()], since, heartbeatDir: beats() })).toMatchObject({ kind: "active", source: "driven by Morpheus tooling" });
+
+    resetActivityThrottle();
+    age(join(dir, "Bundle/B1"), 24);
+    expect(recentActivity({ udid: B, apps: [app()], since, heartbeatDir: beats() })).toEqual({ kind: "idle" });
+    age(join(dir, "Bundle/B1"), 24 - 1 / 3600);
+    expect(recentActivity({ udid: B, apps: [app()], since, heartbeatDir: beats() })).toMatchObject({ kind: "active", source: "evo.med.staging was installed" });
+  });
+
+  it("is unmeasurable when a listed data container is gone or unreadable, and idle when the app has none yet", () => {
+    container(join(dir, "Bundle/B1"), 40, "Evo.app/Info.plist");
+    const gone: UserApp = { ...app(), dataContainer: join(dir, "Data/never-created") };
+    expect(recentActivity({ udid: A, apps: [gone], since, heartbeatDir: beats() })).toEqual({
+      kind: "unmeasurable", why: "evo.med.staging's container could not be fully read",
+    });
+    // An installed app that has never launched has no data container, which is a fact, not a gap.
+    expect(recentActivity({ udid: A, apps: [{ ...app(), dataContainer: null }], since, heartbeatDir: beats() })).toEqual({ kind: "idle" });
+  });
+
   it("is unmeasurable, not idle, when a container is too large to walk", () => {
     container(join(dir, "Data/D1"), 40);
     for (let i = 0; i < 12; i++) writeFileSync(join(dir, `Data/D1/f${i}.txt`), "x");
@@ -240,6 +298,16 @@ describe("heartbeat", () => {
     expect(recordSimulatorActivity(A, NOW, join(blocker, "sub"))).toBe(false);
   });
 });
+
+/**
+ * simctl's real failure shape, captured from `xcrun simctl shutdown <udid>` on a Shutdown device
+ * 2026-10-06: a generic header line, then the cause. execFile's own message prepends "Command failed:".
+ * The first version of this fake used one line, which hid a bug where only the header was read.
+ */
+function simctlError(cause: string): Error {
+  const stderr = `An error was encountered processing the command (domain=com.apple.CoreSimulator.SimError, code=405):\n${cause}\n`;
+  return Object.assign(new Error(`Command failed: xcrun simctl\n${stderr}`), { stderr: Buffer.from(stderr) });
+}
 
 /** A scripted Mac: the devices and processes `simctl` and `ps` report, and every call recorded. */
 interface FakeDevice {
@@ -273,11 +341,11 @@ function fakeMac(devices: FakeDevice[], extra: { ps?: string; psFails?: boolean 
     }
     const device = devices.find((d) => d.udid === rest[1] && (d.set ?? "default") === set);
     if (rest[0] === "listapps") {
-      if (!device || device.listappsFails) throw new Error("simctl listapps failed");
+      if (!device || device.listappsFails) throw simctlError("Unable to lookup in current state: Shutdown");
       return JSON.stringify(device.apps ?? {});
     }
     if (rest[0] === "shutdown") {
-      if (device?.shutdownFails) throw Object.assign(new Error("failed"), { stderr: Buffer.from(device.shutdownFails) });
+      if (device?.shutdownFails) throw simctlError(device.shutdownFails);
       return "";
     }
     throw new Error(`unscripted simctl ${rest.join(" ")}`);
@@ -364,7 +432,7 @@ describe("sweep", () => {
 
     const appsFail = fakeMac([{ udid: B, name: "x", bootedHoursAgo: 90, listappsFails: true }]);
     expect(run(appsFail).decisions[0]).toMatchObject({ action: "keep" });
-    expect(run(appsFail).decisions[0]!.reason).toMatch(/activity could not be measured: its apps could not be listed/);
+    expect(run(appsFail).decisions[0]!.reason).toMatch(/activity could not be measured: its apps could not be listed \(Unable to lookup in current state: Shutdown\)/);
 
     const bigTree = fakeMac([{ udid: C, name: "x", bootedHoursAgo: 90, apps: userApp(C, 80) }]);
     expect(run(bigTree, { walkBudget: 1 }).decisions[0]!.reason).toMatch(/too many files to inspect/);

@@ -38,11 +38,17 @@ export const defaultExec = (command, args, input) => execFileSync(command, args,
     maxBuffer: 256 * 1024 * 1024,
     stdio: ["pipe", "pipe", "pipe"],
 }).toString();
-const message = (error) => {
+/** Everything a failed command said: its stderr, or the error's own message. */
+export const errorText = (error) => {
     const e = error;
-    const stderr = e?.stderr?.toString().trim();
-    return (stderr || e?.message || String(error)).split("\n")[0];
+    return (e?.stderr?.toString().trim() || e?.message || String(error)).trim();
 };
+/**
+ * The cause, not the header. simctl reports `An error was encountered processing the command
+ * (domain=…, code=405):` and then the reason on the next line, and `execFile` prefixes its own
+ * "Command failed:" line, so the useful text is always last.
+ */
+export const errorSummary = (error) => errorText(error).split("\n").map((line) => line.trim()).filter(Boolean).at(-1) ?? "unknown error";
 export function parseIdleHours(value) {
     const hours = Number(value);
     if (!/^\d+(\.\d+)?$/.test(value) || hours < MIN_IDLE_HOURS || hours > MAX_IDLE_HOURS) {
@@ -74,7 +80,7 @@ export function listBooted(exec, testingSet = existsSync(testingSetDirectory()))
             }
         }
         catch (error) {
-            issues.push(`Could not list the ${set} simulator set: ${message(error)}`);
+            issues.push(`Could not list the ${set} simulator set: ${errorSummary(error)}`);
         }
     }
     return { devices, issues };
@@ -155,25 +161,33 @@ export function writtenSince(root, since, budget = WALK_BUDGET) {
             return null;
         }
     };
+    // A container the listing names but that cannot be read is not an idle container: it is unknown.
+    if (mtime(root) === null)
+        return { found: null, truncated: false, unreadable: true };
     const stack = [root];
     let seen = 0;
+    let unreadable = false;
     while (stack.length) {
         const dir = stack.pop();
         if (++seen > budget)
-            return { found: null, truncated: true };
+            return { found: null, truncated: true, unreadable };
         const own = mtime(dir);
         if (own !== null && own > since)
-            return { found: own, truncated: false };
+            return { found: own, truncated: false, unreadable };
         let entries;
         try {
             entries = readdirSync(dir, { withFileTypes: true });
         }
-        catch {
+        catch (error) {
+            // A directory that vanished mid-walk was removed by the app, which is itself activity the
+            // parent's mtime already shows; anything else (permissions, I/O) means part of the tree was not seen.
+            if (error.code !== "ENOENT")
+                unreadable = true;
             continue;
         }
         for (const entry of entries) {
             if (++seen > budget)
-                return { found: null, truncated: true };
+                return { found: null, truncated: true, unreadable };
             if (entry.isSymbolicLink())
                 continue;
             const path = join(dir, entry.name);
@@ -183,10 +197,10 @@ export function writtenSince(root, since, budget = WALK_BUDGET) {
             }
             const t = mtime(path);
             if (t !== null && t > since)
-                return { found: t, truncated: false };
+                return { found: t, truncated: false, unreadable };
         }
     }
-    return { found: null, truncated: false };
+    return { found: null, truncated: false, unreadable };
 }
 /** Cheapest signals first: the heartbeat, then installs, then the walk over each app's data. */
 export function recentActivity({ udid, apps, since, heartbeatDir, budget }) {
@@ -219,11 +233,13 @@ export function recentActivity({ udid, apps, since, heartbeatDir, budget }) {
     for (const app of apps) {
         if (!app.dataContainer)
             continue;
-        const { found, truncated } = writtenSince(app.dataContainer, since, budget);
+        const { found, truncated, unreadable } = writtenSince(app.dataContainer, since, budget);
         if (found !== null)
             return { kind: "active", source: `${app.bundleId} wrote data`, at: found };
         if (truncated)
             return { kind: "unmeasurable", why: `${app.bundleId}'s container has too many files to inspect` };
+        if (unreadable)
+            return { kind: "unmeasurable", why: `${app.bundleId}'s container could not be fully read` };
     }
     return { kind: "idle" };
 }
@@ -256,7 +272,7 @@ export function sweep(options = {}) {
     }
     catch (error) {
         // Without boot times nothing can be aged, so nothing is shut down.
-        result.issues.push(`Could not read the process list: ${message(error)}`);
+        result.issues.push(`Could not read the process list: ${errorSummary(error)}`);
     }
     const running = parseRunningDevices(ps, now);
     const busy = busyDevices(ps);
@@ -282,7 +298,7 @@ export function sweep(options = {}) {
             activity = recentActivity({ udid: device.udid, apps: userApps(exec, device), since, heartbeatDir: options.heartbeatDir, budget: options.walkBudget });
         }
         catch (error) {
-            activity = { kind: "unmeasurable", why: `its apps could not be listed (${message(error)})` };
+            activity = { kind: "unmeasurable", why: `its apps could not be listed (${errorSummary(error)})` };
         }
         if (activity.kind === "active") {
             decision.reason = `booted ${formatDuration(age)} ago; ${activity.source} ${formatDuration(now - activity.at)} ago`;
@@ -301,12 +317,11 @@ export function sweep(options = {}) {
             decision.shutDown = true;
         }
         catch (error) {
-            const why = message(error);
             // Something else shut it down between the listing and now: the outcome is the one we wanted.
-            if (/current state: Shutdown/i.test(why))
+            if (/current state: Shutdown/i.test(errorText(error)))
                 decision.shutDown = true;
             else
-                decision.error = why;
+                decision.error = errorSummary(error);
         }
     }
     return result;

@@ -2,7 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { findMorpheusBinary } from "../self-auto-update.js";
-import { DEFAULT_IDLE_HOURS, defaultExec, type Exec } from "./watchdog.js";
+import { DEFAULT_IDLE_HOURS, defaultExec, errorSummary, type Exec } from "./watchdog.js";
 
 /**
  * The per-device launchd agent that runs the idle sweep, and the preference that governs it.
@@ -106,6 +106,19 @@ export function agentPlist({ binary, node, log }: { binary: string; node: string
 `;
 }
 
+/**
+ * The installed `morpheus`, not a project's copy. `pnpm exec` and `npx` put `node_modules/.bin` first
+ * on PATH, and `morpheus-kit` declares a `bin`, so a plain PATH search from inside a project finds a
+ * shim that can be a stale pin, or vanish with its worktree, and would leave the agent failing
+ * every thirty minutes. The global install is never in a `node_modules/.bin` directory.
+ */
+export function withoutProjectShims(pathValue: string): string {
+  return pathValue.split(delimiter).filter((entry) => entry && !/(^|\/)node_modules\/\.bin\/?$/.test(entry)).join(delimiter);
+}
+
+export const findInstalledMorpheus = (pathValue = process.env["PATH"] ?? ""): Promise<string | null> =>
+  findMorpheusBinary(withoutProjectShims(pathValue));
+
 export interface AgentDeps {
   paths?: WatchdogPaths;
   run?: Exec;
@@ -121,7 +134,7 @@ export interface AgentDeps {
 const resolved = (deps: AgentDeps) => ({
   paths: deps.paths ?? watchdogPaths(),
   run: deps.run ?? defaultExec,
-  findBinary: deps.findBinary ?? (() => findMorpheusBinary()),
+  findBinary: deps.findBinary ?? (() => findInstalledMorpheus()),
   platform: deps.platform ?? process.platform,
   uid: deps.uid ?? process.getuid?.() ?? 0,
   node: deps.node ?? process.execPath,
@@ -172,8 +185,7 @@ async function installAgent(deps: ReturnType<typeof resolved>, binary: string): 
     if (loaded) run("launchctl", ["bootout", target(uid)]);
     run("launchctl", ["bootstrap", `gui/${uid}`, paths.plist]);
   } catch (error) {
-    const why = (error as { stderr?: Buffer | string; message?: string }).stderr?.toString().trim() || (error as Error).message;
-    warnings.push(`launchd would not load the agent now (${why.split("\n")[0]}); it loads at your next login.`);
+    warnings.push(`launchd would not load the agent now (${errorSummary(error)}); it loads at your next login.`);
   }
   return { outcome: existing === null ? "installed" : changed ? "updated" : "loaded", warnings };
 }

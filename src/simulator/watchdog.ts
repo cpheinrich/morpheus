@@ -45,11 +45,19 @@ export const defaultExec: Exec = (command, args, input) =>
     stdio: ["pipe", "pipe", "pipe"],
   }).toString();
 
-const message = (error: unknown): string => {
+/** Everything a failed command said: its stderr, or the error's own message. */
+export const errorText = (error: unknown): string => {
   const e = error as { stderr?: Buffer | string; message?: string };
-  const stderr = e?.stderr?.toString().trim();
-  return (stderr || e?.message || String(error)).split("\n")[0]!;
+  return (e?.stderr?.toString().trim() || e?.message || String(error)).trim();
 };
+
+/**
+ * The cause, not the header. simctl reports `An error was encountered processing the command
+ * (domain=…, code=405):` and then the reason on the next line, and `execFile` prefixes its own
+ * "Command failed:" line, so the useful text is always last.
+ */
+export const errorSummary = (error: unknown): string =>
+  errorText(error).split("\n").map((line) => line.trim()).filter(Boolean).at(-1) ?? "unknown error";
 
 export function parseIdleHours(value: string): number {
   const hours = Number(value);
@@ -92,7 +100,7 @@ export function listBooted(exec: Exec, testingSet = existsSync(testingSetDirecto
         if (d.state === "Booted") devices.push({ udid: d.udid.toUpperCase(), name: d.name, set });
       }
     } catch (error) {
-      issues.push(`Could not list the ${set} simulator set: ${message(error)}`);
+      issues.push(`Could not list the ${set} simulator set: ${errorSummary(error)}`);
     }
   }
   return { devices, issues };
@@ -179,29 +187,37 @@ export function parseUserApps(json: string): UserApp[] {
  * and an idle device is the only case that walks the whole tree. Symlinks are never followed. A
  * walk over `budget` entries reports `truncated` rather than a verdict.
  */
-export function writtenSince(root: string, since: number, budget = WALK_BUDGET): { found: number | null; truncated: boolean } {
+export function writtenSince(root: string, since: number, budget = WALK_BUDGET): { found: number | null; truncated: boolean; unreadable: boolean } {
   const mtime = (path: string): number | null => {
     try { return lstatSync(path).mtimeMs; } catch { return null; }
   };
+  // A container the listing names but that cannot be read is not an idle container: it is unknown.
+  if (mtime(root) === null) return { found: null, truncated: false, unreadable: true };
   const stack = [root];
   let seen = 0;
+  let unreadable = false;
   while (stack.length) {
     const dir = stack.pop()!;
-    if (++seen > budget) return { found: null, truncated: true };
+    if (++seen > budget) return { found: null, truncated: true, unreadable };
     const own = mtime(dir);
-    if (own !== null && own > since) return { found: own, truncated: false };
+    if (own !== null && own > since) return { found: own, truncated: false, unreadable };
     let entries: Dirent[];
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch (error) {
+      // A directory that vanished mid-walk was removed by the app, which is itself activity the
+      // parent's mtime already shows; anything else (permissions, I/O) means part of the tree was not seen.
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") unreadable = true;
+      continue;
+    }
     for (const entry of entries) {
-      if (++seen > budget) return { found: null, truncated: true };
+      if (++seen > budget) return { found: null, truncated: true, unreadable };
       if (entry.isSymbolicLink()) continue;
       const path = join(dir, entry.name);
       if (entry.isDirectory()) { stack.push(path); continue; }
       const t = mtime(path);
-      if (t !== null && t > since) return { found: t, truncated: false };
+      if (t !== null && t > since) return { found: t, truncated: false, unreadable };
     }
   }
-  return { found: null, truncated: false };
+  return { found: null, truncated: false, unreadable };
 }
 
 export type Activity =
@@ -232,9 +248,10 @@ export function recentActivity({ udid, apps, since, heartbeatDir, budget }: {
   }
   for (const app of apps) {
     if (!app.dataContainer) continue;
-    const { found, truncated } = writtenSince(app.dataContainer, since, budget);
+    const { found, truncated, unreadable } = writtenSince(app.dataContainer, since, budget);
     if (found !== null) return { kind: "active", source: `${app.bundleId} wrote data`, at: found };
     if (truncated) return { kind: "unmeasurable", why: `${app.bundleId}'s container has too many files to inspect` };
+    if (unreadable) return { kind: "unmeasurable", why: `${app.bundleId}'s container could not be fully read` };
   }
   return { kind: "idle" };
 }
@@ -295,7 +312,7 @@ export function sweep(options: SweepOptions = {}): SweepResult {
   let ps = "";
   try { ps = exec("ps", ["-axo", "etime=,command="]); } catch (error) {
     // Without boot times nothing can be aged, so nothing is shut down.
-    result.issues.push(`Could not read the process list: ${message(error)}`);
+    result.issues.push(`Could not read the process list: ${errorSummary(error)}`);
   }
   const running = parseRunningDevices(ps, now);
   const busy = busyDevices(ps);
@@ -313,7 +330,7 @@ export function sweep(options: SweepOptions = {}): SweepResult {
     try {
       activity = recentActivity({ udid: device.udid, apps: userApps(exec, device), since, heartbeatDir: options.heartbeatDir, budget: options.walkBudget });
     } catch (error) {
-      activity = { kind: "unmeasurable", why: `its apps could not be listed (${message(error)})` };
+      activity = { kind: "unmeasurable", why: `its apps could not be listed (${errorSummary(error)})` };
     }
     if (activity.kind === "active") { decision.reason = `booted ${formatDuration(age)} ago; ${activity.source} ${formatDuration(now - activity.at)} ago`; continue; }
     if (activity.kind === "unmeasurable") { decision.reason = `booted ${formatDuration(age)} ago; activity could not be measured: ${activity.why}`; continue; }
@@ -325,10 +342,9 @@ export function sweep(options: SweepOptions = {}): SweepResult {
       exec("xcrun", ["simctl", ...SET_ARGS[device.set], "shutdown", device.udid]);
       decision.shutDown = true;
     } catch (error) {
-      const why = message(error);
       // Something else shut it down between the listing and now: the outcome is the one we wanted.
-      if (/current state: Shutdown/i.test(why)) decision.shutDown = true;
-      else decision.error = why;
+      if (/current state: Shutdown/i.test(errorText(error))) decision.shutDown = true;
+      else decision.error = errorSummary(error);
     }
   }
   return result;

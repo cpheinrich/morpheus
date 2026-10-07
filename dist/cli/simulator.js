@@ -50,6 +50,14 @@ export async function watchdog(action, rest, dryRun) {
             return action === undefined ? 1 : 0;
         }
         const flags = watchdogFlags(rest);
+        // A flag a command ignores is worse than one it refuses: `enable --dry-run` would otherwise
+        // read as a preview and change this Mac.
+        if (dryRun && (action === "enable" || action === "disable" || action === "refresh")) {
+            throw new Error(`--dry-run applies to \`run\` only; \`${action}\` changes this Mac.`);
+        }
+        if (flags.idleHours !== undefined && action !== "run" && action !== "enable") {
+            throw new Error("--idle-hours applies to `run` and `enable` only.");
+        }
         if (action === "run") {
             const config = await readWatchdogConfig();
             const idleHours = flags.idleHours ?? config.idleHours;

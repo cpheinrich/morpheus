@@ -1,7 +1,9 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { findInstalledMorpheus } from "../simulator/agent.js";
+import { errorSummary } from "../simulator/watchdog.js";
 import { formatMorpheusInstallStatus, installCurrentMorpheus, morpheusInstallStatus, updateMorpheus, } from "../self.js";
-import { autoUpdateStatus, disableAutoUpdate, enableAutoUpdate, ensureAutoUpdate, findMorpheusBinary, } from "../self-auto-update.js";
+import { autoUpdateStatus, disableAutoUpdate, enableAutoUpdate, ensureAutoUpdate, } from "../self-auto-update.js";
 const exec = promisify(execFile);
 /**
  * Keeps an enabled simulator watchdog pointed at the Morpheus that was just installed. It runs the
@@ -12,7 +14,7 @@ const exec = promisify(execFile);
 async function refreshSimulatorWatchdog() {
     if (process.platform !== "darwin")
         return;
-    const binary = await findMorpheusBinary();
+    const binary = await findInstalledMorpheus();
     if (!binary)
         return;
     try {
@@ -21,7 +23,7 @@ async function refreshSimulatorWatchdog() {
             console.log(stdout.trim());
     }
     catch (error) {
-        console.error(`~ Simulator watchdog refresh failed: ${(error.message ?? String(error)).split("\n")[0]}`);
+        console.error(`~ Simulator watchdog refresh failed: ${errorSummary(error)}`);
     }
 }
 export async function check(offline) {

@@ -35,6 +35,14 @@ export declare function agentPlist({ binary, node, log }: {
     node: string;
     log: string;
 }): string;
+/**
+ * The installed `morpheus`, not a project's copy. `pnpm exec` and `npx` put `node_modules/.bin` first
+ * on PATH, and `morpheus-kit` declares a `bin`, so a plain PATH search from inside a project finds a
+ * shim that can be a stale pin, or vanish with its worktree, and would leave the agent failing
+ * every thirty minutes. The global install is never in a `node_modules/.bin` directory.
+ */
+export declare function withoutProjectShims(pathValue: string): string;
+export declare const findInstalledMorpheus: (pathValue?: string) => Promise<string | null>;
 export interface AgentDeps {
     paths?: WatchdogPaths;
     run?: Exec;

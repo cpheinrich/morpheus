@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  agentPlist, disableWatchdog, enableWatchdog, readWatchdogConfig, refreshWatchdog, watchdogNudge, watchdogPaths, watchdogStatus,
+  agentPlist, disableWatchdog, enableWatchdog, findInstalledMorpheus, readWatchdogConfig, refreshWatchdog, watchdogNudge, watchdogPaths, watchdogStatus, withoutProjectShims,
   WATCHDOG_INTERVAL_SECONDS, WATCHDOG_LABEL, type AgentDeps,
 } from "../src/simulator/agent.js";
 import type { Exec } from "../src/simulator/watchdog.js";
@@ -273,3 +273,25 @@ describe("watchdogNudge", () => {
     expect(await watchdogNudge(deps(fakeLaunchd({ simctl: false })))).toBeNull();
   });
 });
+
+describe("which morpheus the agent runs", () => {
+  const bin = (path: string) => { mkdirSync(path, { recursive: true }); writeFileSync(join(path, "morpheus"), "#!/bin/sh\n"); chmodSync(join(path, "morpheus"), 0o755); return join(path, "morpheus"); };
+
+  it("drops a project's node_modules/.bin from PATH, which `pnpm exec` and `npx` put first", () => {
+    expect(withoutProjectShims("/p/apps/web/node_modules/.bin:/opt/homebrew/bin:/q/node_modules/.bin/:/usr/bin:")).toBe("/opt/homebrew/bin:/usr/bin");
+    expect(withoutProjectShims("/opt/homebrew/lib/node_modules/morpheus-kit/bin:/usr/bin")).toBe("/opt/homebrew/lib/node_modules/morpheus-kit/bin:/usr/bin");
+  });
+
+  it("finds the installed copy even when a project's shim is first on PATH", async () => {
+    const shim = bin(join(home, "project/node_modules/.bin"));
+    const installed = bin(join(home, "global/bin"));
+    expect(await findInstalledMorpheus([join(home, "project/node_modules/.bin"), join(home, "global/bin")].join(":"))).toBe(installed);
+    expect(shim).not.toBe(installed);
+  });
+
+  it("finds nothing, rather than a project shim, when only a shim exists", async () => {
+    bin(join(home, "project/node_modules/.bin"));
+    expect(await findInstalledMorpheus(join(home, "project/node_modules/.bin"))).toBeNull();
+  });
+});
+
