@@ -4,10 +4,7 @@ import { request as httpsRequest } from "node:https";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { writePendingBatch } from "./store.js";
-import type { QaCommentBatch } from "./comments.js";
-import { QA_COMMENTS_PENDING, parseBatch } from "./comments.js";
-import { notifyBatchPending, QA_COMMENTS_WEBHOOK_FILE, resolveWebhookConfig } from "./webhook.js";
+import { BatchRejected, recordBatch, type PostedBatch } from "./batches.js";
 import { pageHtml } from "./overlay-page.js";
 import { TouchPacer } from "./touch-pacer.js";
 
@@ -92,12 +89,6 @@ export async function discoverStreamUrl(previewOrigin: string): Promise<string |
   return null;
 }
 
-function newBatchId(): string {
-  const d = new Date();
-  const stamp = d.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
-  const suffix = Math.random().toString(36).slice(2, 8);
-  return `${stamp}-${suffix}`;
-}
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -377,77 +368,14 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
       }
 
       if (req.method === "POST" && url.pathname === "/api/batches") {
-        const raw = JSON.parse((await readBody(req)).toString("utf8")) as {
-          preview?: { url: string; kind?: "serve-sim" | "web" | "other"; label?: string };
-          comments: Array<{
-            id: string;
-            text: string;
-            createdAt: string;
-            anchor: { normX?: number; normY?: number; x?: number; y?: number; w?: number; h?: number };
-          }>;
-          frame?: {
-            path?: string;
-            width: number;
-            height: number;
-            capturedAt?: string;
-            dataUrl?: string;
-          };
-        };
-        if (!Array.isArray(raw.comments) || raw.comments.length === 0) {
-          sendJson(res, 400, { error: "comments required" });
-          return;
+        const raw = JSON.parse((await readBody(req)).toString("utf8")) as PostedBatch;
+        try {
+          const { id, path } = await recordBatch(options.root, project, raw, { url: previewUrl, kind: "serve-sim" });
+          sendJson(res, 201, { id, path });
+        } catch (error) {
+          if (error instanceof BatchRejected) { sendJson(res, 400, { error: error.message }); return; }
+          throw error;
         }
-        const id = newBatchId();
-        let frameBytes: Buffer | undefined;
-        let frameMeta: { path?: "frame.png"; width: number; height: number; capturedAt: string } | undefined = raw.frame
-          ? {
-              width: raw.frame.width,
-              height: raw.frame.height,
-              ...(raw.frame.capturedAt ? { capturedAt: raw.frame.capturedAt } : { capturedAt: new Date().toISOString() }),
-            }
-          : undefined;
-        if (raw.frame?.dataUrl?.startsWith("data:image/png;base64,")) {
-          frameBytes = Buffer.from(raw.frame.dataUrl.slice("data:image/png;base64,".length), "base64");
-          frameMeta = {
-            path: "frame.png",
-            width: raw.frame.width,
-            height: raw.frame.height,
-            capturedAt: new Date().toISOString(),
-          };
-        }
-        const batch: QaCommentBatch = parseBatch({
-          version: 1,
-          id,
-          project,
-          createdAt: new Date().toISOString(),
-          preview: raw.preview ?? { url: previewUrl, kind: "serve-sim" },
-          ...(frameMeta ? { frame: frameMeta } : {}),
-          comments: raw.comments,
-          status: "pending",
-        });
-        const path = await writePendingBatch(options.root, batch, frameBytes);
-        const webhook = await resolveWebhookConfig(options.root);
-        if (webhook) {
-          notifyBatchPending(
-            webhook.url,
-            {
-              event: "qa.comments.batch_pending",
-              id,
-              project,
-              root: options.root,
-              pendingDir: join(options.root, QA_COMMENTS_PENDING),
-              path,
-              commentCount: batch.comments.length,
-              createdAt: batch.createdAt,
-            },
-            webhook.authorization ? { authorization: webhook.authorization } : undefined,
-          );
-        } else {
-          console.log(
-            `qa comments webhook: unset — batch ${id} written; set MORPHEUS_QA_COMMENTS_WEBHOOK_URL or ${QA_COMMENTS_WEBHOOK_FILE} to wake an agent`,
-          );
-        }
-        sendJson(res, 201, { id, path });
         return;
       }
       sendJson(res, 404, { error: "not found" });

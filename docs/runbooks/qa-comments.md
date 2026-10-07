@@ -219,8 +219,52 @@ probe the upstream stream. Confirm live app pixels before QA. If port 3456 is bu
 inspect `lsof -nP -iTCP:3456 -sTCP:LISTEN`, stop the overlay you own, or select another
 `--port`. Do not stop another operator's process merely to reclaim the default port.
 
+## The web preview (MO-26-10-06-18.13.32)
+
+`morpheus qa preview web start|status|stop|help` puts the comment overlay in front of a project's
+local dev server. The project declares it in `morpheus.json`:
+
+```json
+"qa": { "web": { "url": "http://localhost:5173", "command": ["npx", "next", "dev", "--port", "{port}"], "cwd": "apps/web", "path": "/" } }
+```
+
+- **Attach or start.** If something already answers at `url`, the preview attaches and `stop` leaves
+  it running. Otherwise it runs `command` in `cwd` under the launchd supervisor, in its own process
+  group, and `stop` (or the lease, or the dev server exiting) ends the whole group.
+- **The site's own address (MO-26-10-06-22.17.47).** When the preview starts the dev server and
+  `command` contains `{port}`, the dev server runs on the first free port above `url`'s and the
+  overlay listens on `url` itself. Sign-in allowlists (a Firebase browser key's HTTP referrers,
+  OAuth redirect URIs), cookies and redirects then see exactly the address they were configured for.
+  On a separate overlay port, Firebase refused Google sign-in with
+  `auth/requests-from-referer-http://localhost:4342/-are-blocked`, and a proxy cannot fix that: the
+  browser calls Google directly. Without `{port}`, or when a dev server already holds `url`, the
+  overlay sits on its own port and `start` says that sign-in may be refused there; `--port` also
+  keeps it on its own port. When fronting, requests reach the dev server with the site's own host,
+  origin and referer, so absolute URLs it builds (an OAuth `redirect_uri`) name the site too. A dev script that
+  hard-codes its port needs the underlying command, e.g. `["npx", "next", "dev", "--port", "{port}"]`.
+- **A proxy, not an iframe.** The overlay serves the site on its own port and injects
+  `<script src="/__qa/overlay.js" defer>` at the end of every HTML page's head. Paths, cookies and
+  hot reload are the site's own: requests reach the dev server with its own host, origin and referer;
+  redirects to the dev server's origin come back through the overlay; websockets are tunnelled. The
+  page's CSP header is dropped (a dev-only tool on a local origin). Reserved paths live under
+  `/__qa/` (health, the overlay script, the capture library, the batch endpoint).
+- **The end of head, not the start.** React hydrates head children in order; a script placed first
+  was paired with the layout's own first script and reported as a hydration mismatch.
+- **Hostname.** The overlay URL uses the dev server's hostname (usually `localhost`) so cookies set for
+  the dev server — a signed-in session — apply. Cookies ignore ports. The batch endpoint accepts JSON
+  from the overlay's own origin, as `localhost` or `127.0.0.1`.
+- **Pins.** Right-click any element (Shift+right-click keeps the browser menu), or turn on Comment
+  and click. Each anchor carries `element` (a CSS selector that matched exactly that element, its
+  tag, visible text and the point within it) and `page` (url, scroll, viewport and page size);
+  `normX`/`normY` are fractions of the whole page, which is what the frame is.
+- **Frame.** modern-screenshot 4.7.0 (zero dependencies) renders the whole page on Send, overlay
+  excluded. It inlines fonts only from stylesheets the page can read, so the overlay adds a temporary
+  same-origin copy of cross-origin `@font-face` rules (Google Fonts) for the capture; without it the
+  image used a fallback font and text reflowed. A capture that fails still sends, without a frame.
+- **Default port** 4300–4555, spread per checkout; `--port` overrides.
+
 ## Non-goals (v1)
 
 - Committing frames or batches.
 - Cross-machine sync of `local/qa-comments/` (use chat / PR for remote agents).
-- DOM-level element selectors for native sim streams.
+- DOM-level element selectors for native sim streams (web pins carry them; a simulator stream has no DOM).

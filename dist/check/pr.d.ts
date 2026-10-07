@@ -64,6 +64,17 @@ export declare function isRealReason(reason: string): boolean;
  * and matching it raw lets an example self-waive a required check.
  */
 export declare function visibleProse(body: string): string;
+/**
+ * The text a reader actually sees rendered — HTML comments and fenced blocks removed, inline code
+ * kept.
+ *
+ * For checking that a review summary is repeated where a person will read it. That needs the
+ * opposite answer to `visibleProse` on inline code: a backticked path renders, so a summary that
+ * names one is visible. Comparing against `visibleProse` failed every summary containing a code
+ * span, because the span was stripped from the page but not from the summary (the GitHub Manager's
+ * first Morpheus review, PR #327, was escalated for exactly this).
+ */
+export declare function visibleText(body: string): string;
 /** Whether the PR body uses one of GitHub's same-repository closing keywords. */
 export declare function closesIssue(body: string, issue: number): boolean;
 export { roadmapIdFromBranch };
