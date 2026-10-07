@@ -314,6 +314,7 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
   function addPin(el, cx, cy) {
     var p = { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), n: nextN++, el: el, anchor: anchorFor(el, cx, cy), text: "" };
     // A point outside the element's own box (nothing better under it) is drawn where it was clicked.
+    // It follows window scroll only; a site that scrolls an inner container moves it off its spot.
     if (!contains(el.getBoundingClientRect(), cx, cy)) p.byPage = true;
     pins.push(p); focusedId = p.id; textEl.disabled = false; textEl.value = ""; render(); persist(); textEl.focus();
     setStatus("Pin " + p.n + " placed. Type a comment, Enter saves.");
@@ -402,8 +403,9 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
     doc.addEventListener("mousemove", function (e) {
       if (!commenting) return;
       var el = targetAt(e.clientX, e.clientY);
-      if (!isElement(el)) { hl.style.display = "none"; return; }
-      var r = el.getBoundingClientRect();
+      var r = isElement(el) ? el.getBoundingClientRect() : null;
+      // Nothing under the pointer holds the point: the pin will be drawn at the point, so outline nothing.
+      if (!r || !contains(r, e.clientX, e.clientY)) { hl.style.display = "none"; return; }
       hl.style.display = "block"; hl.style.left = (r.left + site.offsetX) + "px"; hl.style.top = (r.top + site.offsetY) + "px"; hl.style.width = r.width + "px"; hl.style.height = r.height + "px";
     }, true);
     if (shell) doc.addEventListener("keydown", onKey, true);
