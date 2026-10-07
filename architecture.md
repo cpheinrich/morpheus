@@ -3195,6 +3195,16 @@ because it runs from a pinned runtime copy on the host, where no `node_modules` 
 tells a hand edit from an upgrade. Each app's adapter owns its upload job and step names, window,
 run-title format, incident hook, notifications and installer.
 
+The adapter also owns `runTimeoutMinutes` (240 by default), set above the sum of sequential
+job timeout ceilings plus scheduling/preflight overhead. A running attempt ages from GitHub's
+`run_started_at`, falling back to `created_at` for legacy adapters; retries do not inherit the
+original attempt's age. A queued, pending or requested run waits while another run of the same
+release workflow is in progress. With no active predecessor it still has the configured age
+limit, and a stuck running predecessor is never masked by a queued pair. Callers supply runs
+from one release workflow. All active runs still prevent another automated dispatch; timeout
+configuration does not relax reservations or uncertain-upload refusal. To adopt, re-vendor the
+module and set the timeout in the app's admission config (Evo tracks this in EV-26-10-01-13.30.14).
+
 Screenshots are reviewed from the nightly run itself: every named XCTest attachment is exported
 from the run's `.xcresult` into its `ios-screenshots-<run>-<attempt>` artifact, kept for 14 days.
 The full `.xcresult` is uploaded only when tests fail. Apps own a screen inventory
