@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseBatch } from "../src/qa/comments.js";
 import { decode, injectOverlay, normalizeUpstream, ownHost, rewriteLocation, startWebQaServer } from "../src/qa/web/server.js";
 import { WEB_OVERLAY_JS } from "../src/qa/web/overlay-client.js";
-import { defaultWebPort, overlayUrl, parseWebPreviewArgs, parseWebPreviewConfig, webKey } from "../src/qa/preview/web.js";
+import { defaultWebPort, frontable, overlayUrl, parseWebPreviewArgs, parseWebPreviewConfig, sitePort, spareDevPort, webKey } from "../src/qa/preview/web.js";
 import { QA_GUIDE } from "../src/qa/guide.js";
 
 describe("injection and rewriting", () => {
@@ -288,6 +288,22 @@ describe("qa.web configuration and arguments", () => {
     expect(key).toMatch(/^[a-f0-9]{12}$/);
     expect(defaultWebPort(key)).toBeGreaterThanOrEqual(4300);
     expect(defaultWebPort(key)).toBeLessThan(4556);
+  });
+
+  it("takes the site's own address only when the dev command can be told its port", async () => {
+    expect(frontable({ command: ["npx", "next", "dev", "--port", "{port}"] })).toBe(true);
+    expect(frontable({ command: ["npm", "run", "dev"] })).toBe(false);
+    expect(frontable({})).toBe(false);
+    expect(sitePort("http://localhost:5173")).toBe(5173);
+    expect(sitePort("http://localhost")).toBe(80);
+    const held = createServer();
+    await new Promise<void>((r) => held.listen(0, "127.0.0.1", () => r()));
+    const heldPort = (held.address() as { port: number }).port;
+    try {
+      const spare = await spareDevPort(heldPort - 1, heldPort - 1);
+      expect(spare).toBeGreaterThan(heldPort - 1);
+      expect(spare).not.toBe(heldPort);
+    } finally { held.close(); }
   });
 });
 
