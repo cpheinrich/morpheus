@@ -212,6 +212,14 @@ export async function runWebPreview(ctx: WebContext, options: WebPreviewOptions,
       const upstream = ctx.config.url;
       const running = await answers(upstream);
       if (!running && !ctx.config.command) throw new Error(`Nothing answers at ${upstream}. Start the dev server, or declare qa.web.command so the preview can.`);
+      if (!running) {
+        // Fail now, with the reason, rather than after the readiness wait: a command not on PATH.
+        const binary = ctx.config.command![0]!;
+        if (!binary.includes("/")) {
+          try { ctx.run("/usr/bin/which", [binary]); }
+          catch { throw new Error(`qa.web.command starts with "${binary}", which is not on PATH.`); }
+        }
+      }
       const state: WebPreviewState = {
         root: ctx.root, upstream, port, path: options.path ?? ctx.config.path, cwd: ctx.config.cwd, project,
         expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000,

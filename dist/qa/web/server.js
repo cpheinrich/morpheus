@@ -22,8 +22,10 @@ export const QA_PREFIX = "/__qa";
 const HOP_BY_HOP = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
 export function normalizeUpstream(raw) {
     const url = new URL(raw);
-    if (url.protocol !== "http:" && url.protocol !== "https:")
-        throw new Error(`Upstream must be http(s); got ${url.protocol}`);
+    // http only: a local https dev server's self-signed certificate would be refused, and the
+    // websocket tunnel is plain TCP.
+    if (url.protocol !== "http:")
+        throw new Error(`Upstream must be an http:// dev server; got ${url.protocol}`);
     if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
         throw new Error(`Upstream must be a local dev server (127.0.0.1 or localhost); got ${url.hostname}. Comment QA never fronts a remote site.`);
     }
@@ -31,7 +33,18 @@ export function normalizeUpstream(raw) {
 }
 /** Our own origins: the overlay is reachable as 127.0.0.1 or localhost on its port. */
 export function ownOrigins(port) {
-    return new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
+    return new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, `http://[::1]:${port}`]);
+}
+/**
+ * The Host header names one of our own loopback names, or the request is refused. A DNS-rebinding
+ * page (evil.example resolving to 127.0.0.1) sends its own name; trusting it would make the page
+ * "ours", rewrite its origin to the dev server's, and so defeat the dev server's own rebinding
+ * checks (found in review of #342). The overlay's own origin is derived only from a host that passed.
+ */
+export function ownHost(hostHeader, port) {
+    if (!hostHeader)
+        return null;
+    return ownOrigins(port).has(`http://${hostHeader.toLowerCase()}`) ? `http://${hostHeader.toLowerCase()}` : null;
 }
 /**
  * Inserts the overlay script at the end of the page's head. Not the start: React hydrates head
@@ -55,12 +68,15 @@ export function injectOverlay(html) {
 export function rewriteLocation(location, upstream, own) {
     return location.startsWith(upstream.origin) ? own + location.slice(upstream.origin.length) : location;
 }
-function decode(body, encoding) {
-    switch ((encoding ?? "").toLowerCase()) {
+/** Decodes a single known encoding; null for anything else, so the response passes through untouched. */
+export function decode(body, encoding) {
+    switch ((encoding ?? "").trim().toLowerCase()) {
+        case "":
+        case "identity": return body;
         case "gzip": return gunzipSync(body);
         case "br": return brotliDecompressSync(body);
         case "deflate": return inflateSync(body);
-        default: return body;
+        default: return null;
     }
 }
 function sendJson(res, status, body) {
@@ -107,18 +123,21 @@ export async function startWebQaServer(options) {
     const upstream = normalizeUpstream(options.upstream);
     const lib = upstream.protocol === "https:" ? httpsRequest : httpRequest;
     const library = await readFile(screenshotLibraryPath(), "utf8");
-    // Set once the port is bound (a test may ask for port 0).
-    let origins = ownOrigins(options.port);
+    // Set once the port is bound (a test may ask for port 0); requests arrive only after that.
+    let port = options.port;
     const handler = async (req, res) => {
         try {
             const url = new URL(req.url ?? "/", "http://127.0.0.1");
-            const host = req.headers.host ?? `127.0.0.1:${options.port}`;
-            const own = `http://${host}`;
+            const own = ownHost(req.headers.host, port);
+            if (!own) {
+                sendJson(res, 403, { error: "This overlay answers only to 127.0.0.1, localhost or [::1] on its own port." });
+                return;
+            }
             if (url.pathname.startsWith(`${QA_PREFIX}/`)) {
                 if (req.method !== "GET" && req.method !== "HEAD") {
                     const origin = req.headers.origin;
                     const type = req.headers["content-type"] ?? "";
-                    if (!origin || !origins.has(origin) || !type.startsWith("application/json")) {
+                    if (!origin || !ownOrigins(port).has(origin) || !type.startsWith("application/json")) {
                         sendJson(res, 403, { error: "QA endpoints accept JSON from this overlay's own origin only" });
                         return;
                     }
@@ -129,7 +148,8 @@ export async function startWebQaServer(options) {
                 }
                 if (req.method === "GET" && url.pathname === `${QA_PREFIX}/overlay.js`) {
                     res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-store" });
-                    res.end(WEB_OVERLAY_JS.replace("__MORPHEUS_QA_PROJECT__", JSON.stringify(options.project)));
+                    // A replacer function, so a "$" in the project name is not read as a replacement pattern.
+                    res.end(WEB_OVERLAY_JS.replace("__MORPHEUS_QA_PROJECT__", () => JSON.stringify(options.project)));
                     return;
                 }
                 if (req.method === "GET" && url.pathname === `${QA_PREFIX}/modern-screenshot.js`) {
@@ -178,7 +198,15 @@ export async function startWebQaServer(options) {
                 upstreamRes.on("data", (c) => chunks.push(c));
                 upstreamRes.on("end", () => {
                     try {
-                        const body = injectOverlay(decode(Buffer.concat(chunks), upstreamRes.headers["content-encoding"]).toString("utf8"));
+                        const raw = Buffer.concat(chunks);
+                        const decoded = decode(raw, upstreamRes.headers["content-encoding"]);
+                        if (!decoded) {
+                            // An encoding we cannot read (zstd, stacked): pass the page through without the overlay.
+                            res.writeHead(upstreamRes.statusCode ?? 502, headers);
+                            res.end(raw);
+                            return;
+                        }
+                        const body = injectOverlay(decoded.toString("utf8"));
                         delete headers["content-length"];
                         delete headers["content-encoding"];
                         // A dev-only tool on a local origin: a page CSP would refuse the injected script.
@@ -216,9 +244,13 @@ export async function startWebQaServer(options) {
     const tunnels = new Set();
     /** Hot reload and any other websocket: a raw tunnel to the dev server with its own host and origin. */
     const upgrade = (req, socket, head) => {
+        const own = ownHost(req.headers.host, port);
+        if (!own) {
+            socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+            return;
+        }
         tunnels.add(socket);
         socket.once("close", () => tunnels.delete(socket));
-        const own = `http://${req.headers.host ?? `127.0.0.1:${options.port}`}`;
         const target = connect({ host: upstream.hostname.replace(/^\[|\]$/g, ""), port: Number(upstream.port || 80) }, () => {
             const headers = upstreamHeaders(req, upstream, own, false);
             headers.connection = "Upgrade";
@@ -239,7 +271,6 @@ export async function startWebQaServer(options) {
     // Bound to both loopback families: the page may be opened as localhost, which a browser can
     // resolve to ::1 first. Never to a LAN address.
     const servers = [];
-    let port = options.port;
     for (const host of ["127.0.0.1", "::1"]) {
         const server = createServer((req, res) => void handler(req, res));
         server.on("upgrade", upgrade);
@@ -254,12 +285,15 @@ export async function startWebQaServer(options) {
                 port = bound.port;
         }
         catch (error) {
-            if (host === "127.0.0.1")
+            const code = error.code;
+            // No IPv6 loopback on this machine: 127.0.0.1 alone is enough. Anything else — another
+            // process already on [::1]:port — would let "localhost" reach that process, so it fails.
+            if (host === "127.0.0.1" || (code !== "EADDRNOTAVAIL" && code !== "EAFNOSUPPORT")) {
+                await Promise.all(servers.map((s) => new Promise((resolve) => s.close(() => resolve()))));
                 throw error;
-            // No IPv6 loopback on this machine, or the port is taken there: 127.0.0.1 alone is enough.
+            }
         }
     }
-    origins = ownOrigins(port);
     options.onListen?.({ port });
     return {
         port,

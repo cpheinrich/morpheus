@@ -31,6 +31,8 @@ async function main([stateFile]) {
     if (state.spawned && state.command) {
         const [command, ...args] = state.command;
         child = spawn(command, args, { cwd: resolve(state.root, state.cwd), stdio: "inherit", detached: true, env: process.env });
+        // A missing binary emits "error", not "exit"; unhandled, it would crash the supervisor silently.
+        child.once("error", (error) => { console.error(`dev server could not start: ${error.message}; ending the preview.`); process.exit(1); });
     }
     const server = await startWebQaServer({ root: state.root, project: state.project, upstream: state.upstream, port: state.port });
     console.log(`QA web overlay on port ${server.port} in front of ${state.upstream}${child ? ` (dev server pid ${child.pid})` : ""}`);

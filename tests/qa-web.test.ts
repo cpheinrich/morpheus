@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { JSDOM } from "jsdom";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseBatch } from "../src/qa/comments.js";
-import { injectOverlay, normalizeUpstream, rewriteLocation, startWebQaServer } from "../src/qa/web/server.js";
+import { decode, injectOverlay, normalizeUpstream, ownHost, rewriteLocation, startWebQaServer } from "../src/qa/web/server.js";
 import { WEB_OVERLAY_JS } from "../src/qa/web/overlay-client.js";
 import { defaultWebPort, overlayUrl, parseWebPreviewArgs, parseWebPreviewConfig, webKey } from "../src/qa/preview/web.js";
 import { QA_GUIDE } from "../src/qa/guide.js";
@@ -33,7 +33,23 @@ describe("injection and rewriting", () => {
   it("fronts local dev servers only", () => {
     expect(normalizeUpstream("http://localhost:5173/hq").origin).toBe("http://localhost:5173");
     expect(normalizeUpstream("http://127.0.0.1:3000").origin).toBe("http://127.0.0.1:3000");
-    for (const bad of ["https://lakinacapital.com", "http://192.168.1.83:5173", "ftp://localhost:1"]) expect(() => normalizeUpstream(bad), bad).toThrow();
+    for (const bad of ["https://lakinacapital.com", "http://192.168.1.83:5173", "ftp://localhost:1", "https://localhost:5173"]) expect(() => normalizeUpstream(bad), bad).toThrow();
+  });
+});
+
+describe("host and encoding guards (review of #342)", () => {
+  it("accepts only its own loopback names on its own port as the Host", () => {
+    expect(ownHost("127.0.0.1:4309", 4309)).toBe("http://127.0.0.1:4309");
+    expect(ownHost("LOCALHOST:4309", 4309)).toBe("http://localhost:4309");
+    expect(ownHost("[::1]:4309", 4309)).toBe("http://[::1]:4309");
+    for (const bad of [undefined, "", "evil.example:4309", "localhost:4310", "localhost", "127.0.0.1.nip.io:4309"]) expect(ownHost(bad, 4309), String(bad)).toBeNull();
+  });
+
+  it("decodes one known encoding and refuses anything else rather than corrupting it", () => {
+    expect(decode(Buffer.from("x"), undefined)?.toString()).toBe("x");
+    expect(decode(gzipSync("y"), "gzip")?.toString()).toBe("y");
+    expect(decode(Buffer.from("z"), "zstd")).toBeNull();
+    expect(decode(Buffer.from("z"), "gzip, br")).toBeNull();
   });
 });
 
@@ -101,6 +117,35 @@ describe("the proxy against a fake dev server", () => {
     // The fake answers with localhost; the overlay was reached at 127.0.0.1, so it is not rewritten here —
     // rewriteLocation is unit-tested above for the matching case.
     expect(response.headers.get("location")).toContain("/hq/sign-in?next=%2Fhq");
+  });
+
+  const raw = (path: string, headers: Record<string, string>) => new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const r = request({ host: "127.0.0.1", port: qa.port, path, headers }, (res) => {
+      let body = ""; res.on("data", (d) => (body += d)); res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+    });
+    r.on("error", reject); r.end();
+  });
+
+  it("refuses a request whose Host is not its own, so a rebound page cannot borrow the dev server's identity", async () => {
+    const before = seen.length;
+    const rebound = await raw("/api/data", { host: `evil.example:${qa.port}`, origin: `http://evil.example:${qa.port}` });
+    expect(rebound.status).toBe(403);
+    expect((await raw("/__qa/health", { host: `evil.example:${qa.port}` })).status).toBe(403);
+    expect(seen.length).toBe(before);
+  });
+
+  it("passes a foreign Origin through unchanged, so the dev server's own checks still see it", async () => {
+    await raw("/api/data", { host: `127.0.0.1:${qa.port}`, origin: "https://evil.example" });
+    expect(seen.at(-1)?.origin).toBe("https://evil.example");
+  });
+
+  it("refuses a websocket upgrade whose Host is not its own", async () => {
+    const socket = connect(qa.port, "127.0.0.1");
+    await new Promise<void>((resolve) => socket.once("connect", () => resolve()));
+    socket.write(`GET /_next/hmr HTTP/1.1\r\nHost: evil.example:${qa.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`);
+    const reply = await new Promise<string>((resolve) => socket.once("data", (d) => resolve(d.toString())));
+    expect(reply).toMatch(/^HTTP\/1\.1 403/);
+    socket.destroy();
   });
 
   it("serves its own script, with the project, and the capture library", async () => {
@@ -199,6 +244,18 @@ describe("the injected client", () => {
     (w as unknown as { eval: (source: string) => void }).eval(WEB_OVERLAY_JS.replace("__MORPHEUS_QA_PROJECT__", '"Lakina"'));
     expect(w.document.querySelectorAll("morpheus-qa")).toHaveLength(1);
     expect(w.document.querySelector("morpheus-qa")!.parentElement).toBe(w.document.documentElement);
+  });
+});
+
+describe("project names in the injected script", () => {
+  it("survives a $ in the project name, which a string replacement would read as a pattern", async () => {
+    const root = await mkdtemp(join(tmpdir(), "qa-web-name-"));
+    const server = await startWebQaServer({ root, project: "Acme $' Co", upstream: "http://127.0.0.1:9", port: 0 });
+    try {
+      const script = await (await fetch(`http://127.0.0.1:${server.port}/__qa/overlay.js`)).text();
+      expect(script).toContain(`var PROJECT = "Acme $' Co";`);
+      expect(() => new Function(script)).not.toThrow();
+    } finally { await server.close(); await rm(root, { recursive: true, force: true }); }
   });
 });
 
