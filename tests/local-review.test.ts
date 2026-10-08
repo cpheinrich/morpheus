@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkLocalReview, git, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
+import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
 import { checkPr } from "../src/check/pr.js";
-import { prepareReview } from "../src/cli/review.js";
+import { prepareReview, validateReview } from "../src/cli/review.js";
 
 let root: string;
 let base: string;
@@ -56,7 +56,7 @@ describe("independent review lifecycle", () => {
     expect(check(head, `review-record: ${path}`, [])).toEqual([{
       level: "error",
       rule: "agent-review",
-      message: "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending.",
+      message: "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is under way, keep the PR a draft (gh pr ready --undo): conventions then wait, unreported, until it is labelled or marked ready.",
     }]);
   });
   it.each(["incomplete", "blocked"] as const)("refuses %s review", outcome => {
@@ -154,8 +154,9 @@ describe("measured review timing", () => {
     expect(check(save({ ...measured(), version: 1, elapsedMinutes: 3 }))[0]?.message).toContain("elapsedMinutes must equal");
   });
   it("preserves measured budget and floor boundaries without rounding", () => {
-    expect(check(save(measured(60000)))).toEqual([]);
-    expect(check(save(measured(59999)))[0]?.message).toContain("under one minute");
+    expect(check(save(measured(30000)))).toEqual([]);
+    expect(check(save(measured(48176)))).toEqual([]);
+    expect(check(save(measured(29999)))[0]?.message).toContain("under 30 seconds");
     expect(check(save(measured(900000)))).toEqual([]);
     expect(check(save(measured(900001)))[0]?.message).toContain("exceeded its budget");
     const r = measured();
@@ -482,11 +483,11 @@ describe("review evidence floors and shapes", () => {
     r.followUp.reviewerSession = "/root/other";
     expect(check(save(r))[0]?.message).toContain("original reviewer");
   });
-  it("floors the initial review at one minute for normal and high risk only", () => {
-    expect(check(save({ ...record(), elapsedMinutes: 0.99 }))[0]?.message).toContain("under one minute");
-    expect(check(save({ ...record(), elapsedMinutes: 1 }))).toEqual([]);
-    expect(check(save({ ...record(), risk: "high", elapsedMinutes: 0.7 }))[0]?.message).toContain("under one minute");
-    expect(check(save({ ...record(), risk: "small", elapsedMinutes: 0.5 }))).toEqual([]);
+  it("floors the initial review at 30 seconds for normal and high risk only", () => {
+    expect(check(save({ ...record(), elapsedMinutes: 0.49 }))[0]?.message).toContain("under 30 seconds");
+    expect(check(save({ ...record(), elapsedMinutes: 0.5 }))).toEqual([]);
+    expect(check(save({ ...record(), risk: "high", elapsedMinutes: 0.4 }))[0]?.message).toContain("under 30 seconds");
+    expect(check(save({ ...record(), risk: "small", elapsedMinutes: 0.4 }))).toEqual([]);
   });
   it("gives small risk a ten-minute ceiling and a five-minute follow-up ceiling", () => {
     expect(check(save({ ...record(), risk: "small", elapsedMinutes: 10 }))).toEqual([]);
@@ -866,5 +867,175 @@ describe("authorized continuation after missing review evidence", () => {
     r.followUps![1]!.reviewerSession = r.reviewerSession;
     r.followUps![1]!.outcome = "incomplete";
     expect(check(save(r))[0]?.message).toContain("final follow-up must clear");
+  });
+});
+
+describe("an authorized follow-up rescues an initial review under the floor", () => {
+  const authorization = { approvedBy: "cpheinrich", approvedAt: "2026-10-08T11:06:12Z", reason: "Authorized one extra same-reviewer turn after a clean initial review fell under the floor." };
+  const timing = (durationMs: number) => ({ source: "runner" as const, durationMs, evidence: `Runner total_duration_ms for this turn: ${durationMs}.` });
+  // Shaped like kairos#70: a clean 22 s initial pass recorded incomplete, then one authorized turn.
+  function rescued(followUpMs = 30000): LocalReviewRecord {
+    const r = record();
+    return {
+      ...r, version: 2, elapsedMinutes: 22000 / 60000, timing: timing(22000), initialOutcome: "incomplete",
+      followUps: [{ reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: followUpMs / 60000, timing: timing(followUpMs), humanAuthorization: authorization, summary: "Re-read the change in full and cleared it." }],
+    };
+  }
+  it("accepts an authorized clearing follow-up of exactly 30 seconds, and preserves the initial verdict", () => {
+    const r = rescued(30000);
+    expect(check(save(r))).toEqual([]);
+    const written = readFileSync(join(root, path), "utf8");
+    expect(parseReviewRecord(written).initialOutcome).toBe("incomplete");
+  });
+  // Under the floor the rescue predicate refuses first; over it, the finalization predecessor check does.
+  it.each([
+    [22000, "authorized same-reviewer turn of at least 30 seconds that clears"],
+    [180000, "the incomplete turn before it"],
+  ])("refuses a finalization turn as the only follow-up to a %i ms incomplete initial review", (initialMs, message) => {
+    const r = rescued(30000);
+    r.elapsedMinutes = initialMs / 60000; r.timing = timing(initialMs);
+    r.followUps![0] = { ...r.followUps![0]!, scopeReason: "Finalize the documentation.", finalization: { paths: ["README.md"], evidence: "Re-read README.md.", attestation: "Restates already-reviewed behaviour." } };
+    expect(check(save(r))[0]?.message).toContain(message);
+  });
+  it("does not count an authorized finalization turn as the review that meets the floor", () => {
+    const r = rescued(30000);
+    const authorized = r.followUps![0]!;
+    r.followUps = [
+      { ...authorized, elapsedMinutes: 20000 / 60000, timing: timing(20000) },
+      { ...authorized, commit: r.covered, scopeReason: "Finalize the documentation.", finalization: { paths: [path], evidence: "Re-read the worklog.", attestation: "Closes out the record only." } },
+    ];
+    expect(check(save(r))[0]?.message).toContain("authorized same-reviewer turn of at least 30 seconds that clears");
+  });
+  it("refuses an authorized follow-up one millisecond under the floor", () => {
+    expect(check(save(rescued(29999)))[0]?.message).toContain("authorized same-reviewer turn of at least 30 seconds that clears");
+  });
+  it("refuses an under-floor initial review recorded as cleared rather than incomplete", () => {
+    const r = rescued(); delete r.initialOutcome;
+    expect(check(save(r))[0]?.message).toContain("under 30 seconds at normal or high risk is not a review");
+    // A scope reason does not turn it into one either.
+    r.followUps![0]!.scopeReason = "Late correction after an under-floor initial review.";
+    expect(check(save(r))[0]?.message).toContain("under 30 seconds at normal or high risk is not a review");
+  });
+  it("refuses an unauthorized follow-up", () => {
+    const r = rescued(); delete r.followUps![0]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+  });
+  it("refuses a malformed authorization", () => {
+    const r = rescued(); r.followUps![0]!.humanAuthorization = { ...authorization, approvedAt: "yesterday" };
+    expect(check(save(r))[0]?.message).toMatch(/approvedAt|datetime/i);
+  });
+  it("refuses a follow-up from a different reviewer", () => {
+    const r = rescued(); r.followUps![0]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
+    expect(check(save(r))[0]?.message).toContain("original reviewer");
+  });
+  it("refuses an incomplete initial review with no follow-up at all", () => {
+    const r = rescued(); delete r.followUps;
+    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+  });
+  it("refuses an authorized follow-up that does not clear", () => {
+    const r = rescued(); r.followUps![0]!.outcome = "blocked";
+    expect(check(save(r))[0]?.message).toContain("that clears");
+  });
+  it("keeps the 30-second initial boundary when nothing is resumed", () => {
+    const r = rescued(); delete r.initialOutcome; delete r.followUps;
+    r.elapsedMinutes = 30000 / 60000; r.timing = timing(30000);
+    expect(check(save(r))).toEqual([]);
+  });
+  it("still requires authorization to resume an incomplete initial review that met the floor", () => {
+    const r = rescued(); r.elapsedMinutes = 180000 / 60000; r.timing = timing(180000);
+    expect(check(save(r))).toEqual([]);
+    delete r.followUps![0]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+  });
+});
+
+describe("the gate itself never waives the label", () => {
+  it("fails a PR without agent-reviewed whatever else the caller passes", () => {
+    const head = save(record());
+    const loose = { root, body: `review-record: ${path}`, labels: [], head, base, draft: true } as Parameters<typeof checkLocalReview>[0];
+    expect(checkLocalReview(loose)).toEqual([{ level: "error", rule: "agent-review", message: MISSING_LABEL }]);
+  });
+});
+
+describe("reading morpheus.json at the head", () => {
+  it("treats a manifest absent at a present commit as defaults, so review stays required", () => {
+    git(root, ["rm", "-q", "morpheus.json"]);
+    const head = commit();
+    expect(committedConfig(root, head)).toEqual({});
+    expect(check(head, `review-record: ${path}`, [])).toEqual([{ level: "error", rule: "agent-review", message: MISSING_LABEL }]);
+  });
+  it("names a head the checkout does not hold instead of surfacing a raw git failure", () => {
+    const missing = "f".repeat(40);
+    expect(() => committedConfig(root, missing)).toThrow(`commit ${missing} is not in this checkout`);
+    expect(check(missing)[0]?.message).toContain(`git fetch origin ${missing}`);
+    expect(check(missing)[0]?.message).not.toContain("Command failed");
+  });
+  it("reports an unparseable manifest as such", () => {
+    writeFileSync(join(root, "morpheus.json"), "{ not json");
+    const head = commit();
+    expect(check(head)[0]?.message).toContain(`morpheus.json at ${head.slice(0, 12)} is not valid JSON`);
+  });
+});
+
+describe("review validate runs CI's record check before a push", () => {
+  let log: string[];
+  let errors: string[];
+  let cwd: string;
+  beforeEach(() => {
+    log = []; errors = [];
+    vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => { log.push(args.join(" ")); });
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => { errors.push(args.join(" ")); });
+    cwd = process.cwd();
+  });
+  afterEach(() => { vi.restoreAllMocks(); process.chdir(cwd); });
+  it("finds the branch's committed record without being told, and passes it", () => {
+    const head = save(record());
+    expect(validateReview(root, base)).toBe(0);
+    expect(log[0]).toBe(`✓ ${path} validates at ${head.slice(0, 12)} against ${base}.`);
+  });
+  it("refuses exactly what CI refuses, with CI's message", () => {
+    // The commonest format failure in the field: the summary only inside the JSON block.
+    const r = record();
+    writeFileSync(join(root, path), `Some other prose.\n\n\`\`\`morpheus-review\n${JSON.stringify(r)}\n\`\`\`\n`);
+    const head = commit();
+    const ci = check(head)[0]!.message;
+    expect(ci).toBe("repeat the review summary as a visible paragraph outside the JSON block");
+    expect(validateReview(root, base, path)).toBe(1);
+    expect(errors).toEqual([`✗ [agent-review] ${ci}`]);
+  });
+  it("refuses code committed after the covered commit, as CI does", () => {
+    save(record()); writeFileSync(join(root, "code.ts"), "unreviewed change"); commit();
+    expect(validateReview(root, base, path)).toBe(1);
+    expect(errors[0]).toBe("✗ [agent-review] changes after covered commit invalidate review (only its worklog and trunk merges may follow)");
+  });
+  it("checks the PR body's review-record line and that it names the same file", () => {
+    save(record());
+    const body = join(root, "body.md");
+    writeFileSync(body, "## Test plan\nno pointer here\n");
+    expect(validateReview(root, base, undefined, body)).toBe(1);
+    expect(errors[0]).toBe("✗ [agent-review] PR body needs one visible review-record: .agent/worklog/<task>.md line");
+    writeFileSync(body, `review-record: ${path}\n`);
+    expect(validateReview(root, base, ".agent/worklog/2026-09-10-other.md", body)).toBe(1);
+    expect(errors[1]).toBe(`✗ [agent-review] the PR body names ${path}, not .agent/worklog/2026-09-10-other.md`);
+    expect(validateReview(root, base, undefined, body)).toBe(0);
+  });
+  it("refuses to guess between records, or when none is committed", () => {
+    expect(validateReview(root, base)).toBe(1);
+    expect(errors[0]).toBe(`✗ [agent-review] no committed worklog changed since ${base} carries a morpheus-review block; commit the record, or name its path`);
+    save(record());
+    writeFileSync(join(root, ".agent/worklog/2026-09-10-second.md"), `x\n\n\`\`\`morpheus-review\n{}\n\`\`\`\n`); commit();
+    expect(validateReview(root, base)).toBe(1);
+    expect(errors[1]).toContain("several worklogs on this branch carry a review record");
+  });
+  it("warns that uncommitted edits to the record were not validated", () => {
+    save(record());
+    writeFileSync(join(root, path), "edited but not committed");
+    expect(validateReview(root, base, path)).toBe(0);
+    expect(log[1]).toBe(`! ${path} has uncommitted changes; they were not validated and CI will not see them until committed.`);
+  });
+  it("does not require the label it exists to justify applying", () => {
+    save(record());
+    expect(validateReview(root, base, path)).toBe(0);
+    expect(errors).toEqual([]);
   });
 });

@@ -67,6 +67,14 @@ export interface Flags {
   language?: string;
   rulesPath?: string;
   out?: string;
+  /** `profile`: earliest session start, `YYYY-MM-DD`. */
+  since?: string;
+  /** `profile`: substring of a session's repository or working directory. */
+  repo?: string;
+  /** `wait-ci`: how long to wait, e.g. `45m`. */
+  timeout?: string;
+  /** `wait-ci`: only checks branch protection requires. */
+  requiredOnly: boolean;
   full: boolean;
   json: boolean;
   dispatch: boolean;
@@ -116,6 +124,9 @@ const stringOptions: Record<string, (flags: Flags, value: string | undefined) =>
   "--language": (flags, value) => { flags.language = value; },
   "--rules-path": (flags, value) => { flags.rulesPath = value; },
   "--out": (flags, value) => { flags.out = value; },
+  "--since": (flags, value) => { flags.since = value; },
+  "--repo": (flags, value) => { flags.repo = value; },
+  "--timeout": (flags, value) => { flags.timeout = value; },
 };
 
 const booleanOptions: Record<string, (flags: Flags) => void> = {
@@ -133,6 +144,7 @@ const booleanOptions: Record<string, (flags: Flags) => void> = {
   "--nul": (flags) => { flags.nul = true; },
   "--full": (flags) => { flags.full = true; },
   "--dispatch": (flags) => { flags.dispatch = true; },
+  "--required-only": (flags) => { flags.requiredOnly = true; },
 };
 
 /** Flags `parseArgs` consumes in its switch rather than through the option tables. */
@@ -159,6 +171,7 @@ export function parseArgs(argv: string[]): Flags {
     all: false,
     offline: false,
     full: false,
+    requiredOnly: false,
     json: false,
     dispatch: false,
     print: false,

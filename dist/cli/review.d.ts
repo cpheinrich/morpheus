@@ -46,3 +46,12 @@ export declare function reviewNeeded(base: string, priorReviewPath?: string, jso
  */
 export declare function reviewDelivery(beforeCommentId?: string, commentId?: string, bodyPath?: string, prBodyPath?: string): number;
 export declare function prepareReview(productDir: string, root: string, base: string): Promise<number>;
+/**
+ * `morpheus review validate` — run the review-record half of `check pr` before pushing.
+ *
+ * It calls `verifyReviewRecord`, the function CI's gate calls once the label and the
+ * `review-record:` line are present, so a record that passes here passes there. The label is
+ * deliberately not consulted: it is the author's declaration that review is finished, which is
+ * the thing this command exists to check before making it. Reads committed state only, as CI does.
+ */
+export declare function validateReview(root: string, base: string, worklog?: string, prBodyFile?: string): number;
