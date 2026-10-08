@@ -71,6 +71,14 @@ describe("Morpheus's own AGENTS.md", () => {
     expect(text).toContain("Never re-run an unchanged suite");
     expect(text).toContain("If the same command fails the same way twice");
   });
+
+  it("requires focused validation before the first independent review", async () => {
+    for (const text of [await read(), agents(SEED)]) {
+      expect(text).toContain("Finish the relevant focused tests");
+      expect(text).toMatch(/packet before (its|the reviewer's) first turn|before the reviewer's first turn; send the full packet/);
+      expect(text).toMatch(/third turn is a ceiling/i);
+    }
+  });
 });
 
 describe("the scaffolded AGENTS.md", () => {

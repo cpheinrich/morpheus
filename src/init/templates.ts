@@ -870,7 +870,11 @@ three times, stop: change approach, or \`pm block\` with what you learned. Never
 when the next step depends on the result, run \`morpheus wait-ci <n>\` once — never poll
 \`gh run view\` or \`gh pr checks\` in a loop.
 
-**The authoring agent owns the entire review loop.** After committing implementation/tests,
+**The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
+results before the reviewer's first turn; send the full packet and available UI evidence. If a test
+cannot run, document why and keep the PR draft until validation finishes. Aim for one review and
+one response; the third turn is a ceiling for genuine late corrections or unresolved findings.
+After committing implementation/tests,
 run \`morpheus review prepare --base origin/main\`; this prints a review packet and does not
 launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
 repository access and that packet, without inheriting the author's conversation history.
@@ -887,9 +891,9 @@ the PR open with auto-merge disabled; never substitute self-review or assume a m
 [review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): the three-turn
 cap, budgets and floors, conditional clearance, the finalization turn, \`humanAuthorization\`,
 deferrals naming a roadmap item, and the record fields. Record the review in the task worklog, commit
-it, and run \`morpheus review validate\` (the record check CI runs); then open the PR with a visible
-\`review-record:\` line and the label already applied (\`gh pr create --label agent-reviewed\`). Open
-it as a draft if it must exist earlier: an unlabelled draft waits instead of failing. Merge trunk rather
+it, and run \`morpheus review validate\`. Then label the PR and mark it ready, or create it labelled
+with a visible \`review-record:\` line. For CI or PR evidence, open an unlabelled draft before
+review; drafts wait instead of failing. Merge trunk rather
 than rebase after review. \`review.required\` defaults to true; project false opts out visibly.
 
 **Every PR must carry** tests for anything testable, a documentation update when behaviour

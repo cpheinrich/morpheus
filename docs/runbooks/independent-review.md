@@ -1,6 +1,15 @@
 # Independent review before merge
 
-**The authoring agent owns the entire review loop.** After committing implementation/tests,
+**The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
+their actual results before the initial review. Send the whole review packet, not fragments; a
+missing packet caused one reviewer to find a basic issue only in a later turn. For UI work,
+provide available simulator evidence at the start and replace it after fixes. If a test cannot
+run, record the exact limitation and keep the PR draft until validation finishes. CI can run in
+parallel, but an avoidable late test correction consumes a review turn. Aim for an initial review
+and one focused response; three ordinary turns are a ceiling, not a plan. Commit implementation
+and tests. When CI, visual evidence or PR metadata matters to review, move the item to `review`
+and open an unlabelled draft first; the reviewer should see that evidence and the final ticket
+state. Then
 run `morpheus review prepare --base origin/main`; this prints a review packet and does not
 launch a reviewer. The packet carries the contract, the repository path, the test commands derived
 from the project's manifests, the review range, and the ticket. An unclaimed change or one without
@@ -125,6 +134,9 @@ such slots and a review that already used a fix follow-up has one; the author ma
 decision within the task's budget, and the record shows it. Otherwise a `cleared` turn ends the
 review, and an `incomplete` one escalates. Missing evidence can leave a turn incomplete within
 its budget; explicit `humanAuthorization` on the next same-reviewer turn permits resuming it.
+New user-requested scope after clearance is not a late correction. Put separable work in its own
+roadmap item and PR; if it is inseparable from this PR's acceptance, explain that in `scopeReason`
+and use a remaining same-reviewer turn. The cap still applies.
 Keep the original incomplete verdict. Every historical and new turn must still meet its budget;
 authorization never waives an overrun. Nothing follows an incomplete turn automatically. The cap is
 what stops an author and a reviewer trading fixes and findings indefinitely, at a session's cost
@@ -140,6 +152,12 @@ condition it already set. Add `finalization: { paths, evidence, attestation }` t
 `followUps` entry, alongside a `scopeReason` naming what it finalized. The reviewer writes it;
 an author cannot certify their own work by filling it in, and `authorSession` may not be the
 reviewer.
+
+The author writes the ordinary review record after the reviewer returns. Do not invoke a
+finalization turn to repair a missing timing measurement, an incomplete review, or routine
+record prose. It requires an already cleared turn and cannot assess new implementation. A failed
+attempt to do paperwork does not create code-review clearance or justify asking for an extra
+implementation review; use a remaining ordinary follow-up for an actual late correction.
 
 It is bounded on every side, because an automatic turn that could approve implementation would
 simply be a fourth review with no decision behind it:
