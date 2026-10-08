@@ -6,7 +6,10 @@ missing packet caused one reviewer to find a basic issue only in a later turn. F
 provide available simulator evidence at the start and replace it after fixes. If a test cannot
 run, record the exact limitation and keep the PR draft until validation finishes. CI can run in
 parallel, but an avoidable late test correction consumes a review turn. Aim for an initial review
-and one focused response; three ordinary turns are a ceiling, not a plan. After committing implementation/tests,
+and one focused response; three ordinary turns are a ceiling, not a plan. Commit implementation
+and tests. When CI, visual evidence or PR metadata matters to review, move the item to `review`
+and open an unlabelled draft first; the reviewer should see that evidence and the final ticket
+state. Then
 run `morpheus review prepare --base origin/main`; this prints a review packet and does not
 launch a reviewer. The packet carries the contract, the repository path, the test commands derived
 from the project's manifests, the review range, and the ticket. An unclaimed change or one without

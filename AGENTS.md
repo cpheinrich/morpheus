@@ -150,8 +150,9 @@ their actual results, and give the reviewer the complete packet before its first
 include the available simulator evidence. If a test cannot run, state the exact limitation and
 keep the PR draft until validation finishes; a later code correction spends a remaining review
 turn. Aim to finish in an initial review and one focused response. The third turn is a ceiling for
-a genuine late correction or unresolved substantive finding, not a planned step. After committing,
-run
+a genuine late correction or unresolved substantive finding, not a planned step. Commit the
+implementation and tests. When CI, visual evidence or PR metadata matters to review, move the
+item to `review` and open an unlabelled draft PR first so the reviewer sees them. Then run
 `morpheus review prepare --base origin/main` (it prints a packet; it launches nothing), spawn
 **one fresh reviewer** with repository access and that packet and no inherited history, then
 handle findings, the record, CI and merge yourself. Do not wait for a monitor, another agent or

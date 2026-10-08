@@ -891,9 +891,9 @@ the PR open with auto-merge disabled; never substitute self-review or assume a m
 [review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): the three-turn
 cap, budgets and floors, conditional clearance, the finalization turn, \`humanAuthorization\`,
 deferrals naming a roadmap item, and the record fields. Record the review in the task worklog, commit
-it, and run \`morpheus review validate\` (the record check CI runs); then open the PR with a visible
-\`review-record:\` line and the label already applied (\`gh pr create --label agent-reviewed\`). Open
-it as a draft if it must exist earlier: an unlabelled draft waits instead of failing. Merge trunk rather
+it, and run \`morpheus review validate\`. Then label the PR and mark it ready, or create it labelled
+with a visible \`review-record:\` line. For CI or PR evidence, open an unlabelled draft before
+review; drafts wait instead of failing. Merge trunk rather
 than rebase after review. \`review.required\` defaults to true; project false opts out visibly.
 
 **Every PR must carry** tests for anything testable, a documentation update when behaviour
