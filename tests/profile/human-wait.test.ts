@@ -102,6 +102,11 @@ describe("activeTime with human waits", () => {
     expect(activeTime([0, 2 * T], [], T, [{ start: 0, end: 1.2 * T }])).toBe(0.8 * T);
   });
 
+  it("a wait inside a busy gap is still removed, and the busy rest is not capped", () => {
+    // A 20-minute gap fully covered by a running tool, 2 minutes of it waiting on a person.
+    expect(activeTime([0, 4 * T], [{ start: 0, end: 4 * T }], T, [{ start: T, end: T + 120_000 }])).toBe(4 * T - 120_000);
+  });
+
   it("is unchanged with no waits", () => {
     expect(activeTime([0, 60_000, 120_000], [], T, [])).toBe(120_000);
   });
