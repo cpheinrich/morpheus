@@ -961,6 +961,9 @@ yourself once checks pass.
 gh pr merge <n> --squash --auto --delete-branch
 \`\`\`
 
+When the next step depends on the result, run \`morpheus wait-ci <n>\` once — never poll
+\`gh run view\` or \`gh pr checks\` in a loop.
+
 ## Style
 
 - Small, single-purpose modules with named exports

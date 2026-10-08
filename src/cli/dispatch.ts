@@ -63,6 +63,7 @@ import {
 
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
 import { profileExtract, profileReport } from "./profile.js";
+import { waitCiCommand } from "./wait-ci.js";
 import { HELP } from "./help.js";
 import type { Flags } from "./args.js";
 
@@ -547,6 +548,10 @@ async function dispatchProfile({ flags, command }: Invocation): Promise<number> 
   return 1;
 }
 
+async function dispatchWaitCi({ flags, command, rest }: Invocation): Promise<number> {
+  return waitCiCommand({ target: command, extra: rest, repo: flags.repo, timeout: flags.timeout, requiredOnly: flags.requiredOnly });
+}
+
 const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "self": dispatchSelf,
   "doctor": dispatchDoctor,
@@ -571,6 +576,7 @@ const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "check": dispatchCheck,
   "qa": dispatchQa,
   "profile": dispatchProfile,
+  "wait-ci": dispatchWaitCi,
   pm: dispatchPm,
 };
 

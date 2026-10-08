@@ -61,6 +61,7 @@ pnpm morpheus team validate        # the roster, and every meeting note
 pnpm morpheus registry list        # every Morpheus project on this machine
 pnpm morpheus profile report --since 2026-09-01  # where agent time and tokens went, from local transcripts
 pnpm morpheus profile extract --out rows.jsonl   # the session and tool-call rows behind the report
+pnpm morpheus wait-ci <pr>         # block once on CI; digest of failures with log tails — never poll gh
 pnpm morpheus brand status         # what the brand package still needs
 pnpm morpheus brand init           # scaffold brand-vibes.md, local moodboard, and concept-media folders
 pnpm morpheus brand explore        # refresh the five-direction brand review handoff
@@ -526,16 +527,11 @@ commit tells it to look again.
 `main` is protected on Morpheus and every project repo. **Never push to `main`** — work on a
 branch, open a PR, and merge it yourself once checks pass. Chris does not need to merge for you.
 
-Do not wait on checks by polling. Two better options:
-
-```sh
-gh pr merge <n> --squash --auto --delete-branch   # merges itself when checks go green
-gh pr checks <n> --watch --fail-fast              # blocks until they finish, then decide
-```
-
-Prefer `--auto` — it hands the merge to GitHub so the session is not held open waiting, and a
-failing check simply leaves the PR unmerged rather than merging something broken. Use `--watch`
-only when the next step depends on the merge having landed.
+Prefer `gh pr merge <n> --squash --auto --delete-branch` — it hands the merge to GitHub so the
+session is not held open, and a failing check simply leaves the PR unmerged. When the next step
+depends on the result, run `morpheus wait-ci <n>` **once**: it blocks until the head's checks
+finish and prints a digest with the failing step's log. **Never poll `gh run view` or
+`gh pr checks` in a loop** — each poll re-reads the whole session context to learn "still running".
 
 **Finish the author-managed independent review before enabling auto-merge.** Opening a PR,
 pushing commits, or changing labels never starts a reviewer session. Follow the
