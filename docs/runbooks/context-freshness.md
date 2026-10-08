@@ -3,9 +3,56 @@
 **Read this when** a gated command refuses, you are offline or on a fork, a hook is not firing, or you are wiring `context install` into a project. `AGENTS.md` keeps the everyday rule; the reasoning is [`architecture.md` §7.10](../../architecture.md).
 
 Run `morpheus context brief` at session start if the standard hook did not run. It fetches the
-canonical trunk and fast-forwards only a clean local trunk. It never rebases an active task or
-rewrites dirty work. Follow its absolute `WORK IN` path when a session has a saved task association.
+canonical trunk and fast-forwards the local trunk. It never rebases an active task or touches a
+task branch. Follow its absolute `WORK IN` path when a session has a saved task association.
 A behind checkout cannot issue a fresh receipt: integrate trunk explicitly, then re-read records.
+
+### A dirty trunk checkout is rescued, not left behind
+
+A trunk checkout with uncommitted edits cannot fast-forward, and a one-line "behind" notice is
+easy to ignore: Lakina's main checkout sat 188 commits behind for three weeks behind one
+Xcode-rewritten `project.pbxproj`. So when HEAD is the trunk branch and tracked files are modified
+(staged or not), `brief`:
+
+1. commits the working tree's tracked content to `wip/trunk-<YYYY-MM-DD>-<host>` (Pacific date;
+   `-2`, `-3`… if taken locally) without touching your index, and proves the commit matches the
+   tree — once before creating the branch and again immediately before resetting;
+2. resets trunk to its last commit. Nothing slow runs between the proof and the reset, so an
+   editor saving during the push below lands on the reset tree instead of being lost;
+3. pushes the branch to `origin` and opens a **draft** PR titled *WIP: uncommitted changes rescued
+   from <repo> main (<date>)*, listing the files, the diffstat and how far behind trunk was (on a
+   fork, against the trunk remote's repository), then fast-forwards and prints one line with the
+   PR URL.
+
+It refuses, and reports instead, when a file's staged content differs from both HEAD and the
+working tree (committing the tree would drop the staged version), and when anything under
+`hq/team/` is edited — those are inbox replies, which belong to the session starting there to read
+them, on an `inbox-<date>` branch.
+
+**Untracked files are never committed or deleted** — that is where secrets and build junk live.
+They are listed in the PR, and untracked build output whose source no longer exists
+(`dist/foo.js` with no `src/foo.ts`) is named as safe to delete. Git's own `--ff-only` refuses if
+the merge would overwrite one, and `brief` says so. Nothing happens mid-merge, -rebase,
+-cherry-pick, -revert or -bisect; the checkout is reported loudly instead. If the push fails the
+edits stay on the local branch and the reset still happens; if `gh` fails, the branch is pushed and
+the command to open the PR is printed.
+
+The draft is not a finished change: `check pr` conventions wait on drafts, and the GitHub Manager
+escalates an unadopted `wip/trunk-*` draft to a human once it passes the 48-hour draft quiet period
+— it never reviews, repairs or merges one. Adopt it onto a roadmap item's branch, or close it.
+
+A checkout still behind after startup prints `!!! STALE CHECKOUT` past 20 commits or once the oldest
+missing commit is more than 3 days old (`STALE_BEHIND_*` in `src/session/trunk-rescue.ts`).
+
+**Fleet view.** `brief` only acts in the checkout a session starts in, which is exactly the one
+nobody opens. `morpheus doctor --all` reports every registered project whose trunk checkout is
+dirty or behind past those thresholds, and orphaned build output, without writing anything. It
+measures against the remote tip when that commit is already local, otherwise against the cached
+remote-tracking ref, and says when that cache may be stale.
+
+`morpheus self install` refusing a dirty source checkout lists tracked edits, orphaned build output
+(safe to delete) and other untracked files separately. `self update` and `self ensure` build from a
+disposable clone and never read a working checkout, so they have nothing to rescue.
 
 **Read `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md`, then:**
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { orphanBuildOutputs, parsePorcelain, shellQuote } from "./session/trunk-rescue.js";
 
 const exec = promisify(execFile);
 
@@ -100,7 +101,7 @@ function parseReceipt(raw: string): InstallReceipt | null {
 async function exactCheckout(
   source: string,
   runner: MorpheusCommandRunner,
-): Promise<{ head: string; dirty: boolean } | null> {
+): Promise<{ head: string; dirty: boolean; status: string } | null> {
   const root = await runner("git", ["rev-parse", "--show-toplevel"], source);
   if (root.code !== 0) return null;
   const [reported, actual] = await Promise.all([
@@ -113,11 +114,13 @@ async function exactCheckout(
   if (reported !== actual) return null;
   const [head, status] = await Promise.all([
     runner("git", ["rev-parse", "HEAD"], source),
-    runner("git", ["status", "--porcelain"], source),
+    runner("git", ["status", "--porcelain", "--untracked-files=all"], source),
   ]);
   if (head.code !== 0 || status.code !== 0) return null;
   const sha = head.stdout.trim();
-  return /^[0-9a-f]{40}$/i.test(sha) ? { head: sha, dirty: Boolean(status.stdout.trim()) } : null;
+  return /^[0-9a-f]{40}$/i.test(sha)
+    ? { head: sha, dirty: Boolean(status.stdout.trim()), status: status.stdout }
+    : null;
 }
 
 let defaultStatus: Promise<MorpheusInstallStatus> | undefined;
@@ -297,6 +300,38 @@ export interface MorpheusInstallResult {
   packageRoot: string;
 }
 
+/**
+ * Name what makes the source checkout dirty instead of only saying that it
+ * is. Orphaned build output — `dist/foo.js` compiled from a `src/foo.ts`
+ * since deleted — blocked an install with a bare "has local changes" and no
+ * hint that every offending file was safe to remove. Only reported: this
+ * command never deletes or moves anything in a working checkout, and tracked
+ * trunk edits are what `morpheus context brief` moves to a draft PR.
+ */
+export async function describeLocalChanges(
+  source: string,
+  porcelain: string,
+  exists?: (path: string) => Promise<boolean>,
+): Promise<string> {
+  const dirt = parsePorcelain(porcelain);
+  const orphans = await orphanBuildOutputs(source, dirt.untracked, exists);
+  const orphanSet = new Set(orphans);
+  const otherUntracked = dirt.untracked.filter((p) => !orphanSet.has(p));
+  const cap = (paths: string[]) =>
+    paths.slice(0, 10).map((p) => `    ${p}`).concat(paths.length > 10 ? [`    … and ${paths.length - 10} more`] : []);
+  const lines = ["The source checkout has local changes; install from clean main."];
+  if (dirt.tracked.length) {
+    lines.push(`  Tracked edits (${dirt.tracked.length}) — on trunk, \`morpheus context brief\` there moves them to a wip/trunk-* draft PR:`, ...cap(dirt.tracked));
+  }
+  if (orphans.length) {
+    lines.push(`  Untracked build output whose source no longer exists (${orphans.length}) — safe to delete:`, ...cap(orphans.map((p) => `rm ${shellQuote(p)}`)));
+  }
+  if (otherUntracked.length) {
+    lines.push(`  Other untracked files (${otherUntracked.length}) — commit, move or delete them yourself:`, ...cap(otherUntracked));
+  }
+  return lines.join("\n");
+}
+
 /** Install one clean, exact current-main checkout as a copied global package. */
 export async function installCurrentMorpheus(
   sourceRoot: string,
@@ -309,7 +344,7 @@ export async function installCurrentMorpheus(
     throw new MorpheusInstallError(`${source} is not the root of a Morpheus Git checkout.`);
   }
   if (checkout.dirty) {
-    throw new MorpheusInstallError("The source checkout has local changes; install from clean main.");
+    throw new MorpheusInstallError(await describeLocalChanges(source, checkout.status));
   }
   const remote = await requireSuccess(
     runner,
