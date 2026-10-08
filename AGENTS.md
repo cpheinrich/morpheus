@@ -365,7 +365,10 @@ check compares the commits it covers against the worklog, the conditioned paths 
 explanatory Markdown. `AGENTS.md`, `CLAUDE.md`, `morpheus.json` and `.github/`, `.ci/`, `.morpheus/`
 are normative policy and stay substantive. A reviewer setting a condition should name the related
 documentation and generated files in it, so the backstop is rarely needed. All review and CI requirements still apply. Record the review paragraph and structured evidence in the task
-worklog, link it with a visible `review-record:` PR-body line, then apply `agent-reviewed`.
+worklog, commit it, and run `morpheus review validate` — the same record check CI runs. Then open the
+PR with a visible `review-record:` line and the label already applied
+(`gh pr create --label agent-reviewed`). A PR opened before review is recorded is opened as a
+draft: conventions report a draft without the label as pending, and fail a ready one.
 `review.required` defaults to true; project false opts out visibly. After the covered commit only
 the named worklog may change, and merging trunk never invalidates the review: a merge Git
 reproduces exactly needs no entry, a hand-resolved one is named in the record, and CI must still

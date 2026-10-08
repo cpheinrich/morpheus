@@ -16,6 +16,12 @@ name: PR check
 # 403. A called workflow can only narrow what its caller grants, so declaring
 # the permission below documents the need and makes a caller that omits it
 # fail at validation instead of at runtime.
+#
+# The caller must also trigger on `ready_for_review`. A draft without the
+# `agent-reviewed` label passes as pending, because GitHub refuses to merge a
+# draft; the rerun when it is marked ready is what then requires the label, in
+# the same way an `unlabeled` rerun does. Morpheus, the scaffolded `ci.yml`, and
+# Evo, Lakina and Kairos all do.
 
 on:
   workflow_call:
@@ -104,6 +110,15 @@ jobs:
           # Reruns must read current labels/body, not the original event snapshot.
           gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/live-pr.json"
           jq -e --arg sha "$EXPECTED_HEAD" '.head.sha == $sha' "$RUNNER_TEMP/live-pr.json" > /dev/null
+          # The review gate reads morpheus.json and the record at the PR head.
+          # That head is normally a parent of the merge commit checked out, but
+          # not when GitHub has not yet recomputed refs/pull/N/merge for the
+          # newest push, and a fork's branch is not among origin's heads to
+          # fall back on. Fetch it by its pull ref rather than fail on
+          # `git show <sha>:morpheus.json`.
+          if ! git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null; then
+            git fetch --no-tags origin "+refs/pull/$PR_NUMBER/head:refs/remotes/pull/$PR_NUMBER/head"
+          fi
           # Who applied the GitHub Manager's label is not in the pull request
           # payload. The newest `labeled` event for it is; an author applying the
           # label to their own record is refused on that evidence. A failed read

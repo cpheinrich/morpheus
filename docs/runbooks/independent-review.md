@@ -292,18 +292,40 @@ Put a visible line in the PR body (not inside a comment or code fence):
 
     review-record: .agent/worklog/YYYY-MM-DD-task.md
 
-Also link the worklog and summarize the outcome. Once complete, apply `agent-reviewed` (create the
-repository label if absent), commit the worklog and push. Run local conventions with the actual PR
-body and `MORPHEUS_PR_LABELS=agent-reviewed`. Never enable auto-merge until review and CI are complete.
-When the label is absent, conventions reports that the PR is not marked merge-ready and that
+Also link the worklog and summarize the outcome. Once complete, commit the worklog and run
+
+    morpheus review validate [<worklog>] [--pr-body-file <file>]
+
+before pushing. It calls the same `verifyReviewRecord` the CI gate calls, against committed `HEAD`,
+so every record failure CI reports — the summary missing from the visible prose, more or less than
+one JSON block, commits after `covered`, author fixes beyond the minor paths, a hand-resolved merge
+left unnamed, an exhausted budget, a stale base — shows up here first. With no path it finds the one
+worklog changed on the branch that carries a record. It does not consult the label, which is the
+author's declaration that this check has passed. Then push and open the PR with the label already
+applied (`gh pr create --label agent-reviewed`, creating the repository label if absent), so the
+first conventions run validates the record instead of failing on a missing label. Never enable
+auto-merge until review and CI are complete.
+
+**Open the PR as a draft if it has to exist before review is recorded** (`gh pr create --draft`,
+or `gh pr ready --undo`). A draft without the label is reported as pending — a warning, not a
+failure — because GitHub refuses to merge a draft. A ready PR without the label fails, and every
+caller re-runs conventions on `ready_for_review` the way it does on `unlabeled`, so marking the
+draft ready without the label turns the check red again. Merge still requires a green run on the
+current head with the label and a valid record; what changed is only that a review in progress is
+no longer reported as a broken one. A draft that carries the label is validated in full.
+
+When a ready PR lacks the label, conventions reports that it is not marked merge-ready and that
 record validation was not run. This also covers an author deliberately removing the label while
-a correction or follow-up is pending; the missing label alone does not establish an incomplete record.
+a correction or follow-up is pending (convert to draft to show it as pending instead); the missing
+label alone does not establish an incomplete record.
 This is an auditable attestation, not a security boundary against an author fabricating evidence.
 
 ## Existing projects
 
 The shared `pr-check.yml` enforces the gate automatically when using updated Morpheus. Each existing
-caller must grant `contents: read` and `pull-requests: read` on its `pr` job and needs a separate metadata-only workflow for `edited`, `labeled`, and `unlabeled` events,
+caller must grant `contents: read` and `pull-requests: read` on its `pr` job, must trigger on `ready_for_review`
+(the draft-pending rule above depends on it), and needs a separate metadata-only workflow for `edited`, `labeled`,
+`unlabeled` and, optionally, `converted_to_draft` events,
 calling `pr-check.yml` under the same `pr` job name. The scaffold writes
 `.github/workflows/review-metadata.yml`; re-running `morpheus init` adds it without overwriting
 existing files. Do not add skipped build/test jobs there: skipped statuses can satisfy required

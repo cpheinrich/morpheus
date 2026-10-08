@@ -89,7 +89,7 @@ describe("morpheus init", () => {
     await scaffold(dir, SEED);
     expect(JSON.parse(await read("morpheus.json")).review.required).toBe(true);
     const workflow = load(await read(".github/workflows/review-metadata.yml")) as { on: { pull_request: { types: string[] } }; jobs: Record<string, unknown> };
-    expect(workflow.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
+    expect(workflow.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled", "converted_to_draft"]);
     expect(Object.keys(workflow.jobs)).toEqual(["pr"]);
     // The check reads the live pull request through the job token. A repository
     // whose default token is contents/packages read only answers that with 403

@@ -915,7 +915,10 @@ explanatory Markdown. \`AGENTS.md\`, \`CLAUDE.md\`, \`morpheus.json\` and \`.git
 \`.morpheus/\` are normative policy and stay substantive. A reviewer setting a condition should name
 the related documentation and generated files in it, so the backstop is rarely needed.
 All review and CI requirements still apply. Record the review paragraph and structured evidence in the task
-worklog, link it with a visible \`review-record:\` PR-body line, then apply \`agent-reviewed\`.
+worklog, commit it, and run \`morpheus review validate\` — the same record check CI runs. Then open
+the PR with a visible \`review-record:\` line and the label already applied
+(\`gh pr create --label agent-reviewed\`). A PR opened before review is recorded is opened as a
+draft: conventions report a draft without the label as pending, and fail a ready one.
 \`review.required\` defaults to true; project false opts out visibly. After the covered commit only
 the named worklog may change, and merging trunk never invalidates the review: a merge Git
 reproduces exactly needs no entry, a hand-resolved one is named in the record, and CI must still
@@ -1400,7 +1403,8 @@ recording; screenshots are accepted otherwise.
 
 <!-- The authoring agent must launch a fresh reviewer session; review prepare only prints the packet.
 CI validates evidence and does not start a reviewer.
-After review, add agent-reviewed and a visible review-record: .agent/worklog/<task>.md line.
+After review, run morpheus review validate, then add agent-reviewed and a visible
+review-record: .agent/worklog/<task>.md line. Open the PR as a draft until then.
 Include a short outcome and a link to the worklog. Run morpheus review prepare for the contract. -->
 
 ## Open questions
@@ -1765,9 +1769,11 @@ Why this exists, and the failure modes it is built against:
 export const reviewMetadata = (): string => `name: Review metadata
 
 # No build/test jobs here: skipped results must not replace required checks.
+# \`converted_to_draft\` lets a PR whose review is back in progress report
+# pending rather than failed; \`ready_for_review\` lives in ci.yml.
 on:
   pull_request:
-    types: [edited, labeled, unlabeled]
+    types: [edited, labeled, unlabeled, converted_to_draft]
 
 jobs:
   pr:

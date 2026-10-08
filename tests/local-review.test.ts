@@ -3,9 +3,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkLocalReview, git, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
-import { checkPr } from "../src/check/pr.js";
-import { prepareReview } from "../src/cli/review.js";
+import { checkLocalReview, committedConfig, DRAFT_PENDING, git, MISSING_LABEL, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
+import { checkPr, formatFindings } from "../src/check/pr.js";
+import { prepareReview, validateReview } from "../src/cli/review.js";
 
 let root: string;
 let base: string;
@@ -56,7 +56,7 @@ describe("independent review lifecycle", () => {
     expect(check(head, `review-record: ${path}`, [])).toEqual([{
       level: "error",
       rule: "agent-review",
-      message: "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending.",
+      message: "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is still under way, keep the PR a draft (gh pr ready --undo) and this check reports pending instead of failing.",
     }]);
   });
   it.each(["incomplete", "blocked"] as const)("refuses %s review", outcome => {
@@ -867,5 +867,115 @@ describe("authorized continuation after missing review evidence", () => {
     r.followUps![1]!.reviewerSession = r.reviewerSession;
     r.followUps![1]!.outcome = "incomplete";
     expect(check(save(r))[0]?.message).toContain("final follow-up must clear");
+  });
+});
+
+describe("a draft is pending, not failing", () => {
+  const draft = (head: string, labels: string[], body = `review-record: ${path}`) => checkLocalReview({ root, body, labels, head, base, draft: true });
+  it("reports a draft without the label as a pending warning, never an error", () => {
+    const head = save(record());
+    expect(draft(head, [])).toEqual([{ level: "warning", rule: "agent-review", message: DRAFT_PENDING }]);
+  });
+  it("fails the same PR once it is ready, and when draft state is unknown", () => {
+    const head = save(record());
+    expect(checkLocalReview({ root, body: "", labels: [], head, base, draft: false })).toEqual([{ level: "error", rule: "agent-review", message: MISSING_LABEL }]);
+    expect(checkLocalReview({ root, body: "", labels: [], head, base })).toEqual([{ level: "error", rule: "agent-review", message: MISSING_LABEL }]);
+  });
+  it("still validates the record on a draft once the label claims review is complete", () => {
+    const head = save({ ...record(), outcome: "blocked" });
+    expect(draft(head, ["agent-reviewed"])).toEqual([{ level: "error", rule: "agent-review", message: "review is blocked; leave the PR open and disable auto-merge" }]);
+    expect(draft(save(record()), ["agent-reviewed"])).toEqual([]);
+  });
+  it("keeps a pending draft from failing PR conventions, and a ready one from passing", async () => {
+    const head = save(record());
+    const ctx = { body: "## Test plan\nRan tests\n## Open questions\nNone", branch: "inbox-2026-10-07", changedFiles: ["code.ts"], productDir: join(root, "hq/product") };
+    const pending = await checkPr({ ...ctx, agentReview: draft(head, []) });
+    expect(pending.filter(f => f.level === "error")).toEqual([]);
+    expect(formatFindings(pending)).toContain(`! [agent-review] ${DRAFT_PENDING}`);
+    const ready = await checkPr({ ...ctx, agentReview: check(head, `review-record: ${path}`, []) });
+    expect(ready.filter(f => f.level === "error").map(f => f.message)).toEqual([MISSING_LABEL]);
+  });
+});
+
+describe("reading morpheus.json at the head", () => {
+  it("treats a manifest absent at a present commit as defaults, so review stays required", () => {
+    git(root, ["rm", "-q", "morpheus.json"]);
+    const head = commit();
+    expect(committedConfig(root, head)).toEqual({});
+    expect(check(head, `review-record: ${path}`, [])).toEqual([{ level: "error", rule: "agent-review", message: MISSING_LABEL }]);
+  });
+  it("names a head the checkout does not hold instead of surfacing a raw git failure", () => {
+    const missing = "f".repeat(40);
+    expect(() => committedConfig(root, missing)).toThrow(`commit ${missing} is not in this checkout`);
+    expect(check(missing)[0]?.message).toContain(`git fetch origin ${missing}`);
+    expect(check(missing)[0]?.message).not.toContain("Command failed");
+  });
+  it("reports an unparseable manifest as such", () => {
+    writeFileSync(join(root, "morpheus.json"), "{ not json");
+    const head = commit();
+    expect(check(head)[0]?.message).toContain(`morpheus.json at ${head.slice(0, 12)} is not valid JSON`);
+  });
+});
+
+describe("review validate runs CI's record check before a push", () => {
+  let log: string[];
+  let errors: string[];
+  let cwd: string;
+  beforeEach(() => {
+    log = []; errors = [];
+    vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => { log.push(args.join(" ")); });
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => { errors.push(args.join(" ")); });
+    cwd = process.cwd();
+  });
+  afterEach(() => { vi.restoreAllMocks(); process.chdir(cwd); });
+  it("finds the branch's committed record without being told, and passes it", () => {
+    const head = save(record());
+    expect(validateReview(root, base)).toBe(0);
+    expect(log[0]).toBe(`✓ ${path} validates at ${head.slice(0, 12)} against ${base}.`);
+  });
+  it("refuses exactly what CI refuses, with CI's message", () => {
+    // The commonest format failure in the field: the summary only inside the JSON block.
+    const r = record();
+    writeFileSync(join(root, path), `Some other prose.\n\n\`\`\`morpheus-review\n${JSON.stringify(r)}\n\`\`\`\n`);
+    const head = commit();
+    const ci = check(head)[0]!.message;
+    expect(ci).toBe("repeat the review summary as a visible paragraph outside the JSON block");
+    expect(validateReview(root, base, path)).toBe(1);
+    expect(errors).toEqual([`✗ [agent-review] ${ci}`]);
+  });
+  it("refuses code committed after the covered commit, as CI does", () => {
+    save(record()); writeFileSync(join(root, "code.ts"), "unreviewed change"); commit();
+    expect(validateReview(root, base, path)).toBe(1);
+    expect(errors[0]).toBe("✗ [agent-review] changes after covered commit invalidate review (only its worklog and trunk merges may follow)");
+  });
+  it("checks the PR body's review-record line and that it names the same file", () => {
+    save(record());
+    const body = join(root, "body.md");
+    writeFileSync(body, "## Test plan\nno pointer here\n");
+    expect(validateReview(root, base, undefined, body)).toBe(1);
+    expect(errors[0]).toBe("✗ [agent-review] PR body needs one visible review-record: .agent/worklog/<task>.md line");
+    writeFileSync(body, `review-record: ${path}\n`);
+    expect(validateReview(root, base, ".agent/worklog/2026-09-10-other.md", body)).toBe(1);
+    expect(errors[1]).toBe(`✗ [agent-review] the PR body names ${path}, not .agent/worklog/2026-09-10-other.md`);
+    expect(validateReview(root, base, undefined, body)).toBe(0);
+  });
+  it("refuses to guess between records, or when none is committed", () => {
+    expect(validateReview(root, base)).toBe(1);
+    expect(errors[0]).toBe(`✗ [agent-review] no committed worklog changed since ${base} carries a morpheus-review block; commit the record, or name its path`);
+    save(record());
+    writeFileSync(join(root, ".agent/worklog/2026-09-10-second.md"), `x\n\n\`\`\`morpheus-review\n{}\n\`\`\`\n`); commit();
+    expect(validateReview(root, base)).toBe(1);
+    expect(errors[1]).toContain("several worklogs on this branch carry a review record");
+  });
+  it("warns that uncommitted edits to the record were not validated", () => {
+    save(record());
+    writeFileSync(join(root, path), "edited but not committed");
+    expect(validateReview(root, base, path)).toBe(0);
+    expect(log[1]).toBe(`! ${path} has uncommitted changes; they were not validated and CI will not see them until committed.`);
+  });
+  it("does not require the label it exists to justify applying", () => {
+    save(record());
+    expect(validateReview(root, base, path)).toBe(0);
+    expect(errors).toEqual([]);
   });
 });

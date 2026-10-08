@@ -23,6 +23,9 @@ Usage
   morpheus pm migrate-ids   [--check] — integer roadmap ids to the dated scheme (MO-057)
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus review prepare   independent local review handoff and worklog template [--base <ref>]
+  morpheus review validate  [<worklog>] [--pr-body-file <file>] [--base <ref>]
+                            run CI's review-record check on the committed record
+                            before pushing; finds the branch's record if unnamed
   morpheus review prompt    assemble the rung-2 reviewer prompt for this branch
   morpheus review needed    [--base <ref>] [--prior-review <file>]
                             is this change worth a review, or a re-review?

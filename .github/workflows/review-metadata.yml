@@ -1,9 +1,11 @@
 name: Review metadata
 
 # No build/test jobs here: skipped results must not replace required checks.
+# `converted_to_draft` lets a PR whose review is back in progress report
+# pending rather than failed; `ready_for_review` lives in ci.yml.
 on:
   pull_request:
-    types: [edited, labeled, unlabeled]
+    types: [edited, labeled, unlabeled, converted_to_draft]
 
 jobs:
   pr:

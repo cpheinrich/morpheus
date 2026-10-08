@@ -305,63 +305,109 @@ function trunkMerges(root: string, from: string, to: string, trunk: string): str
   });
 }
 
+/**
+ * The project manifest as committed at `commit`, for the review gate.
+ *
+ * Two different absences, answered differently. A commit this checkout does not hold is a fact
+ * about the checkout (shallow, single-branch, or a head pushed after the event was sent), not about
+ * the pull request, so it is named as such instead of surfacing as a raw `git show` failure. A
+ * manifest absent at a commit that is present means the project has no configuration there, and
+ * the defaults apply: review stays required, which is the safe direction.
+ */
+export function committedConfig(root: string, commit: string): unknown {
+  try { git(root, ["cat-file", "-e", `${commit}^{commit}`]); } catch {
+    throw new Error(`commit ${commit} is not in this checkout, so morpheus.json and the review record at the pull request head cannot be read. Fetch it (git fetch origin ${commit}) or check out with full history, then re-run.`);
+  }
+  if (!git(root, ["ls-tree", "--name-only", commit, "--", "morpheus.json"])) return {};
+  const text = git(root, ["show", `${commit}:morpheus.json`]);
+  try { return JSON.parse(text); } catch (error) {
+    throw new Error(`morpheus.json at ${commit.slice(0, 12)} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** What a PR without the agent-reviewed label means, by whether GitHub will let it merge. */
+export const MISSING_LABEL = "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is still under way, keep the PR a draft (gh pr ready --undo) and this check reports pending instead of failing.";
+export const DRAFT_PENDING = "pending: draft PR without agent-reviewed, so independent review is not yet marked complete and record validation was not run. GitHub refuses to merge a draft. Marking it ready for review or applying the label re-runs this check, which then requires the label and a valid review record.";
+
 /** Read only committed evidence; paths and refs are data, never shell text. */
-export function checkLocalReview(opts: { root: string; body: string; labels: string[]; head: string; base: string }): Finding[] {
+export function checkLocalReview(opts: { root: string; body: string; labels: string[]; head: string; base: string; draft?: boolean }): Finding[] {
   try {
-    const config = JSON.parse(git(opts.root, ["show", `${opts.head}:morpheus.json`]));
+    const config = committedConfig(opts.root, opts.head);
     if (!reviewRequired(config)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
-    if (!opts.labels.includes("agent-reviewed")) throw new Error("agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending.");
-    const lines = [...visibleProse(opts.body).matchAll(/^review-record:[ \t]*(\S+)[ \t]*$/gm)];
-    if (lines.length !== 1) throw new Error("PR body needs one visible review-record: .agent/worklog/<task>.md line");
-    const path = lines[0]![1]!;
-    if (!/^\.agent\/worklog\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(path)) throw new Error("review-record must name a worklog Markdown file");
-    const mode = git(opts.root, ["ls-tree", opts.head, "--", path]).split(" ")[0];
-    if (mode !== "100644") throw new Error("review worklog must be a regular committed file");
-    const record = parseReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
-    validateReviewRecord(record);
-    checkFreshReviewer(opts.root, record, path, opts.head);
-    checkTrackedDeferrals(opts.root, record, opts.head);
-    for (const [older, newer] of [[record.base, record.reviewed], [record.reviewed, record.covered], [record.covered, opts.head]]) {
-      git(opts.root, ["merge-base", "--is-ancestor", older!, newer!]);
+    if (!opts.labels.includes("agent-reviewed")) {
+      // A draft cannot merge, so a review still in progress is not a failure there. The guarantee
+      // is unchanged: every caller re-runs this check on ready_for_review, exactly as it does on
+      // unlabeled, and a ready PR without the label fails below.
+      if (opts.draft === true) return [{ level: "warning", rule: "agent-review", message: DRAFT_PENDING }];
+      throw new Error(MISSING_LABEL);
     }
-    checkFollowUpChain(opts.root, record);
-    // The reviewer's base must be real trunk history behind this PR; trunk may have moved on since.
-    if (!isAncestor(opts.root, coveredBase(record), git(opts.root, ["merge-base", opts.base, opts.head]))) {
-      throw new Error("the recorded review base must precede the PR's merge base with trunk; reconcile the base and coverage explicitly");
-    }
-    const merges = new Set<string>();
-    const turns = followUpTurns(record);
-    const conditional = conditionallyCleared(record);
-    if (!turns.length && record.reviewed !== record.covered) {
-      const allowed = new Set([path, ...conditional, ...record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths)]);
-      for (const commit of verifyUncoveredCommits(opts.root, record, record.reviewed, record.covered, opts.base, allowed, "author-only fixes exceed the minor finding paths and reviewer conditions; review coverage must be renewed explicitly")) merges.add(commit);
-    }
-    const last = turns[turns.length - 1];
-    if (last && last.commit !== record.covered) {
-      // Only a conditional clearance lets `covered` run past the final turn, and only within its paths.
-      if (!isAncestor(opts.root, last.commit, record.covered)) throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
-      for (const commit of verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional]), "author fixes after the final follow-up exceed the reviewer's recorded conditions")) merges.add(commit);
-    }
-    // The attestation is checked against the diff it claims to cover, so an automatic turn cannot
-    // clear implementation by naming a documentation path.
-    for (const [index, turn] of turns.entries()) {
-      if (!turn.finalization) continue;
-      const problems = finalizationProblems(record, turn, path);
-      if (problems.length) throw new Error(`finalization turn is out of scope: ${problems.join("; ")}`);
-      const from = turns[index - 1]?.commit ?? record.reviewed;
-      const allowed = new Set([path, ...conditional, ...turn.finalization.paths]);
-      for (const commit of verifyUncoveredCommits(opts.root, record, from, turn.commit, opts.base, allowed, "a finalization turn may cover only the review record, previously conditioned paths and the explanatory documentation it attested")) merges.add(commit);
-    }
-    for (const commit of verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)")) merges.add(commit);
-    // A hand-resolved merge named before a late correction moved `covered` past it now sits in a
-    // range the correction turn cleared. The entry stays true and accepted; it is not stray.
-    if (followUpTurns(record).length) for (const commit of trunkMerges(opts.root, record.reviewed, record.covered, opts.base)) merges.add(commit);
-    const stray = (record.trunkIntegrations ?? []).find(entry => !merges.has(entry.commit));
-    if (stray) throw new Error("trunkIntegrations names a commit that is not a trunk merge on this branch after review");
+    verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
     return [];
   } catch (error) {
     return [{ level: "error", rule: "agent-review", message: error instanceof Error ? error.message : String(error) }];
   }
+}
+
+/** The worklog path a PR body's single visible `review-record:` line names; throws CI's message otherwise. */
+export function reviewRecordLine(body: string): string {
+  const lines = [...visibleProse(body).matchAll(/^review-record:[ \t]*(\S+)[ \t]*$/gm)];
+  if (lines.length !== 1) throw new Error("PR body needs one visible review-record: .agent/worklog/<task>.md line");
+  return lines[0]![1]!;
+}
+
+/**
+ * Everything the gate checks once it knows which worklog holds the record: the same function
+ * `check pr` runs in CI and `review validate` runs before a push, so the two cannot disagree.
+ * Throws the first problem found.
+ */
+export function verifyReviewRecord(opts: { root: string; path: string; head: string; base: string }): LocalReviewRecord {
+  const path = opts.path;
+  if (!/^\.agent\/worklog\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(path)) throw new Error("review-record must name a worklog Markdown file");
+  const mode = git(opts.root, ["ls-tree", opts.head, "--", path]).split(" ")[0];
+  if (mode !== "100644") throw new Error("review worklog must be a regular committed file");
+  const record = parseReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
+  validateReviewRecord(record);
+  checkFreshReviewer(opts.root, record, path, opts.head);
+  checkTrackedDeferrals(opts.root, record, opts.head);
+  // Named rather than left to a raw `git merge-base` failure, which reads as a tool crash.
+  for (const [older, newer, olderName, newerName] of [[record.base, record.reviewed, "base", "reviewed"], [record.reviewed, record.covered, "reviewed", "covered"], [record.covered, opts.head, "covered", "the PR head"]] as const) {
+    if (!isAncestor(opts.root, older, newer)) throw new Error(`record ${olderName} ${older.slice(0, 12)} is not an ancestor of ${newerName} ${newer.slice(0, 12)} on this branch (or is not in this checkout); base, reviewed, covered and the head must form one chain`);
+  }
+  checkFollowUpChain(opts.root, record);
+  // The reviewer's base must be real trunk history behind this PR; trunk may have moved on since.
+  if (!isAncestor(opts.root, coveredBase(record), git(opts.root, ["merge-base", opts.base, opts.head]))) {
+    throw new Error("the recorded review base must precede the PR's merge base with trunk; reconcile the base and coverage explicitly");
+  }
+  const merges = new Set<string>();
+  const turns = followUpTurns(record);
+  const conditional = conditionallyCleared(record);
+  if (!turns.length && record.reviewed !== record.covered) {
+    const allowed = new Set([path, ...conditional, ...record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths)]);
+    for (const commit of verifyUncoveredCommits(opts.root, record, record.reviewed, record.covered, opts.base, allowed, "author-only fixes exceed the minor finding paths and reviewer conditions; review coverage must be renewed explicitly")) merges.add(commit);
+  }
+  const last = turns[turns.length - 1];
+  if (last && last.commit !== record.covered) {
+    // Only a conditional clearance lets `covered` run past the final turn, and only within its paths.
+    if (!isAncestor(opts.root, last.commit, record.covered)) throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
+    for (const commit of verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional]), "author fixes after the final follow-up exceed the reviewer's recorded conditions")) merges.add(commit);
+  }
+  // The attestation is checked against the diff it claims to cover, so an automatic turn cannot
+  // clear implementation by naming a documentation path.
+  for (const [index, turn] of turns.entries()) {
+    if (!turn.finalization) continue;
+    const problems = finalizationProblems(record, turn, path);
+    if (problems.length) throw new Error(`finalization turn is out of scope: ${problems.join("; ")}`);
+    const from = turns[index - 1]?.commit ?? record.reviewed;
+    const allowed = new Set([path, ...conditional, ...turn.finalization.paths]);
+    for (const commit of verifyUncoveredCommits(opts.root, record, from, turn.commit, opts.base, allowed, "a finalization turn may cover only the review record, previously conditioned paths and the explanatory documentation it attested")) merges.add(commit);
+  }
+  for (const commit of verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)")) merges.add(commit);
+  // A hand-resolved merge named before a late correction moved `covered` past it now sits in a
+  // range the correction turn cleared. The entry stays true and accepted; it is not stray.
+  if (followUpTurns(record).length) for (const commit of trunkMerges(opts.root, record.reviewed, record.covered, opts.base)) merges.add(commit);
+  const stray = (record.trunkIntegrations ?? []).find(entry => !merges.has(entry.commit));
+  if (stray) throw new Error("trunkIntegrations names a commit that is not a trunk merge on this branch after review");
+  return record;
 }
 
 /**
