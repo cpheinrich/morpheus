@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkLocalReview, committedConfig, git, MISSING_LABEL, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
+import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
 import { checkPr } from "../src/check/pr.js";
 import { prepareReview, validateReview } from "../src/cli/review.js";
 
@@ -884,7 +884,27 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
   it("accepts an authorized clearing follow-up of exactly 30 seconds, and preserves the initial verdict", () => {
     const r = rescued(30000);
     expect(check(save(r))).toEqual([]);
-    expect(r.initialOutcome).toBe("incomplete");
+    const written = readFileSync(join(root, path), "utf8");
+    expect(parseReviewRecord(written).initialOutcome).toBe("incomplete");
+  });
+  // Under the floor the rescue predicate refuses first; over it, the finalization predecessor check does.
+  it.each([
+    [22000, "authorized same-reviewer turn of at least 30 seconds that clears"],
+    [180000, "the incomplete turn before it"],
+  ])("refuses a finalization turn as the only follow-up to a %i ms incomplete initial review", (initialMs, message) => {
+    const r = rescued(30000);
+    r.elapsedMinutes = initialMs / 60000; r.timing = timing(initialMs);
+    r.followUps![0] = { ...r.followUps![0]!, scopeReason: "Finalize the documentation.", finalization: { paths: ["README.md"], evidence: "Re-read README.md.", attestation: "Restates already-reviewed behaviour." } };
+    expect(check(save(r))[0]?.message).toContain(message);
+  });
+  it("does not count an authorized finalization turn as the review that meets the floor", () => {
+    const r = rescued(30000);
+    const authorized = r.followUps![0]!;
+    r.followUps = [
+      { ...authorized, elapsedMinutes: 20000 / 60000, timing: timing(20000) },
+      { ...authorized, commit: r.covered, scopeReason: "Finalize the documentation.", finalization: { paths: [path], evidence: "Re-read the worklog.", attestation: "Closes out the record only." } },
+    ];
+    expect(check(save(r))[0]?.message).toContain("authorized same-reviewer turn of at least 30 seconds that clears");
   });
   it("refuses an authorized follow-up one millisecond under the floor", () => {
     expect(check(save(rescued(29999)))[0]?.message).toContain("authorized same-reviewer turn of at least 30 seconds that clears");

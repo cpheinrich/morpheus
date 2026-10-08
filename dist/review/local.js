@@ -239,7 +239,8 @@ export function validateReviewRecord(record) {
     if (record.risk !== "small" && record.elapsedMinutes < 0.5) {
         if (!resumed)
             throw new Error("an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done");
-        if (!turns.some(turn => turn.humanAuthorization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5)) {
+        // A finalization turn only closes out an existing clearance, so it is never the review that counts.
+        if (!turns.some(turn => turn.humanAuthorization && !turn.finalization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5)) {
             throw new Error("an initial review under 30 seconds at normal or high risk needs an authorized same-reviewer turn of at least 30 seconds that clears");
         }
     }
@@ -271,8 +272,11 @@ export function validateReviewRecord(record) {
         // It finalizes a clearance, so there has to be one. Without this, the five-minute automatic turn
         // is what turns a review the reviewer blocked on a substantive finding into a merge.
         const previous = turns[finalizationIndex - 1];
-        if (previous && previous.outcome !== "cleared")
-            throw new Error(`a finalization turn only follows a cleared turn; the ${previous.outcome} turn before it leaves the pull request blocked`);
+        // With no earlier follow-up, the predecessor is the initial turn: a clearance unless it was
+        // preserved as incomplete, which a finalization turn cannot repair.
+        const previousOutcome = previous?.outcome ?? (resumed ? "incomplete" : "cleared");
+        if (previousOutcome !== "cleared")
+            throw new Error(`a finalization turn only follows a cleared turn; the ${previousOutcome} turn before it leaves the pull request blocked`);
         if (unconditional && previous?.outcome !== "cleared")
             throw new Error("an automatic finalization turn cannot resolve substantive findings; an ordinary turn must clear them first");
     }
