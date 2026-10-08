@@ -1214,3 +1214,20 @@ because `--all` reaches checkouts no session is in. `self update`/`self ensure` 
 clone and have nothing to rescue, so only `self install`'s refusal was improved. The GitHub Manager
 escalates an unadopted rescue draft to a human rather than giving it a session. Native Git plumbing
 (a private index, `commit-tree`, a create-only `update-ref`) and `gh`; no dependency.
+
+**The review floor is waived for a trivially small change** — 2026-10-08 (MO-26-10-08-06.45.12).
+Chris's option A after six independent reviews of the same five-line workflow `if:` (evo#412,
+lakinacapital#509, kairos#70) took 21–30 s, all clean: on a change that small the 30-second floor
+measures the diff, not diligence. The validator computes the size itself from Git over the whole
+reviewed range, `base` to `covered`, so an author cannot declare it: at most 20 changed non-test
+lines (added plus removed) and 40 test lines, every non-test file configuration, workflow or prose
+by extension, nothing binary. `.agent/worklog/` and `hq/product/` are not counted — they are the
+task's own records. Generated output such as `dist/` *is* counted, because excluding it would trust
+every project to verify its mirror. Tests get their own, larger cap because they change no shipped
+behaviour and CI executes them, but still a cap, so a large test rewrite keeps the floor. Any source
+file, script or extensionless file keeps the floor however few lines change. A test is recognised
+by its file name, never its directory, because `tests/` also holds helpers and actions with
+executable steps. A turn recorded at zero never qualifies: zero is the template's placeholder, and
+the waiver relaxes the 30 seconds, not the measurement. Only the floor is
+waived: authorization to resume an incomplete turn, ceilings and every other rule stand. Native
+`git diff --numstat`; no dependency.
