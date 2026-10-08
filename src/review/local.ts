@@ -173,6 +173,53 @@ export function finalizationProblems(record: LocalReviewRecord, turn: ReviewFoll
 /** Initial-review ceilings in minutes; a follow-up gets half. Small was 5 until the data showed only creative accounting. */
 export const REVIEW_BUDGET_MINUTES = { small: 10, normal: 15, high: 30 } as const;
 
+/**
+ * The 30-second floor measures diff size, not diligence, once a change is small enough: six
+ * independent reviews of the same five-line workflow `if:` (evo#412, lakinacapital#509, kairos#70)
+ * took 21–30 s, all clean. Below these sizes the floor only produced incomplete records and extra
+ * turns, so it is waived — computed from Git by the validator, never declared by the author.
+ *
+ * 20 lines is a hunk a reader takes in at a glance. Tests are counted separately and more
+ * generously (40), because they change no shipped behaviour and a CI run executes them, but are
+ * still capped so a large test rewrite keeps the floor.
+ */
+export const TRIVIAL_DIFF_MAX_LINES = 20;
+export const TRIVIAL_DIFF_MAX_TEST_LINES = 40;
+/**
+ * The task's own records: worklogs (the review record lives here, and is written after the review)
+ * and roadmap items with their generated indexes. Prose about the change, not the change. Generated
+ * build output such as Morpheus's `dist/` is deliberately counted: excluding it would trust every
+ * project to verify its mirror, and counting it only doubles a change already small.
+ */
+const TRIVIAL_DIFF_RECORDS = /^(?:\.agent\/worklog\/|hq\/product\/)/;
+const TRIVIAL_DIFF_TESTS = /(?:^|\/)(?:tests?|__tests__|[A-Za-z0-9_-]*Tests)\/|\.(?:test|spec)\.[A-Za-z0-9]+$|(?:^|\/)test_[^/]+\.py$|_test\.(?:py|go)$/;
+/**
+ * Configuration, workflows and prose. Anything else with real logic — source in any language, a
+ * shell script, an extensionless file — keeps the floor however few lines change. Workflows stay
+ * eligible because the motivating changes were workflow conditions.
+ */
+const TRIVIAL_DIFF_CONFIG = /\.(?:md|mdx|txt|ya?ml|json|jsonc|toml)$/i;
+
+/**
+ * Whether `older..newer` is small enough to waive the floor, with the counts as a reason either
+ * way. Binary or rename-ambiguous output is never trivial: what cannot be counted is not small.
+ */
+export function trivialDiff(root: string, older: string, newer: string): { trivial: boolean; reason: string } {
+  let lines = 0, tests = 0;
+  const logic: string[] = [];
+  for (const row of git(root, ["diff", "--numstat", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean)) {
+    const [added, removed, file] = row.split("\t");
+    if (!file || TRIVIAL_DIFF_RECORDS.test(file)) continue;
+    if (!/^\d+$/.test(added ?? "") || !/^\d+$/.test(removed ?? "")) return { trivial: false, reason: `${file} is binary and cannot be measured` };
+    const count = Number(added) + Number(removed);
+    if (TRIVIAL_DIFF_TESTS.test(file)) { tests += count; continue; }
+    lines += count;
+    if (!TRIVIAL_DIFF_CONFIG.test(file)) logic.push(file);
+  }
+  const reason = `${lines} changed non-test lines (max ${TRIVIAL_DIFF_MAX_LINES}), ${tests} test lines (max ${TRIVIAL_DIFF_MAX_TEST_LINES})${logic.length ? `, source outside configuration and docs: ${logic.slice(0, 3).join(", ")}` : ""}`;
+  return { trivial: lines <= TRIVIAL_DIFF_MAX_LINES && tests <= TRIVIAL_DIFF_MAX_TEST_LINES && !logic.length, reason };
+}
+
 export function reviewRequired(config: unknown): boolean {
   const parsed = z.object({ review: z.object({ required: z.boolean().optional() }).passthrough().optional() }).passthrough().parse(config);
   return parsed.review?.required ?? true;
@@ -197,7 +244,11 @@ export function parseReviewRecord(markdown: string): LocalReviewRecord {
   return record;
 }
 
-export function validateReviewRecord(record: LocalReviewRecord): void {
+/**
+ * `trivialChange` is consulted only when a turn is under the floor, and only `verifyReviewRecord`
+ * supplies it, from Git; without it the floor applies.
+ */
+export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialChange?: () => { trivial: boolean; reason: string } } = {}): void {
   if (bareSession(record.authorSession) === bareSession(record.reviewerSession)) throw new Error("reviewer must be a fresh independent session");
   if (record.outcome !== "complete") throw new Error(`review is ${record.outcome}; leave the PR open and disable auto-merge`);
   if (new Set(record.findings.map(f => f.id)).size !== record.findings.length) throw new Error("finding IDs must be unique");
@@ -232,11 +283,15 @@ export function validateReviewRecord(record: LocalReviewRecord): void {
   // A pass under the floor is not a review, so it cannot count as one. It can only be preserved
   // as incomplete, and the review is then the authorized same-reviewer turn, which must meet the
   // floor itself and clear. Without this the authorized resumption the contract offers never lands.
-  if (record.risk !== "small" && record.elapsedMinutes < 0.5) {
-    if (!resumed) throw new Error("an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done");
-    // A finalization turn only closes out an existing clearance, so it is never the review that counts.
-    if (!turns.some(turn => turn.humanAuthorization && !turn.finalization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5)) {
-      throw new Error("an initial review under 30 seconds at normal or high risk needs an authorized same-reviewer turn of at least 30 seconds that clears");
+  // A trivially small change (TRIVIAL_DIFF_MAX_LINES) is waived: there the floor measures the diff.
+  const rescuedByTurn = turns.some(turn => turn.humanAuthorization && !turn.finalization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5);
+  if (record.risk !== "small" && record.elapsedMinutes < 0.5 && !(resumed && rescuedByTurn)) {
+    const size = opts.trivialChange?.();
+    if (!size?.trivial) {
+      const why = size ? ` (not a trivial change: ${size.reason})` : "";
+      // A finalization turn only closes out an existing clearance, so it is never the review that counts.
+      if (!resumed) throw new Error(`an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done${why}`);
+      throw new Error(`an initial review under 30 seconds at normal or high risk needs an authorized same-reviewer turn of at least 30 seconds that clears${why}`);
     }
   }
   // A turn after a clearance is a late correction, such as a fix full CI asked for after the
@@ -385,7 +440,11 @@ export function verifyReviewRecord(opts: { root: string; path: string; head: str
   const mode = git(opts.root, ["ls-tree", opts.head, "--", path]).split(" ")[0];
   if (mode !== "100644") throw new Error("review worklog must be a regular committed file");
   const record = parseReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
-  validateReviewRecord(record);
+  // The whole reviewed change, base to covered. A trunk merge inside it only adds lines, which errs
+  // toward keeping the floor; a range that cannot be measured keeps it too.
+  validateReviewRecord(record, { trivialChange: () => {
+    try { return trivialDiff(opts.root, record.base, record.covered); } catch { return { trivial: false, reason: "the reviewed range could not be measured" }; }
+  } });
   checkFreshReviewer(opts.root, record, path, opts.head);
   checkTrackedDeferrals(opts.root, record, opts.head);
   // Named rather than left to a raw `git merge-base` failure, which reads as a tool crash.

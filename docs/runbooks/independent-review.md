@@ -62,7 +62,11 @@ There is also a floor: an initial review under 30 seconds at normal or high risk
 Small risk has no floor. An under-floor initial turn can only be preserved as `"initialOutcome":
 "incomplete"`; the record is then accepted when a same-reviewer follow-up carrying
 `humanAuthorization` measures at least 30 seconds and clears. The next turn after any incomplete
-initial turn needs that authorization, and a late-correction `scopeReason` is not required of it. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
+initial turn needs that authorization, and a late-correction `scopeReason` is not required of it.
+The floor is waived when the validator, reading Git from `base` to `covered`, finds a trivial
+change: at most 20 changed non-test lines and 40 test lines, every non-test file configuration,
+workflow or prose (`.md .mdx .txt .yml .yaml .json .jsonc .toml`), worklogs and `hq/product/` not
+counted, nothing binary — below that size the floor measures the diff, not the reviewer. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
 validates reported durations; it cannot interrupt a provider's session or measure its billing.
 No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
 budget exhaustion or missing evidence, record incomplete and keep the PR open.

@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
+import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, reviewRequired, trivialDiff, type LocalReviewRecord } from "../src/review/local.js";
 import { checkPr } from "../src/check/pr.js";
 import { prepareReview, validateReview } from "../src/cli/review.js";
 
@@ -946,6 +946,98 @@ describe("an authorized follow-up rescues an initial review under the floor", ()
     expect(check(save(r))).toEqual([]);
     delete r.followUps![0]!.humanAuthorization;
     expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+  });
+});
+
+describe("the floor is waived for a trivially small change, measured from Git", () => {
+  const lines = (n: number, prefix = "line") => Array.from({ length: n }, (_, i) => `${prefix} ${i}`).join("\n") + "\n";
+  /** A reviewed commit straight off base that changes exactly these files. */
+  function change(files: Record<string, string | Buffer>) {
+    git(root, ["reset", "-q", "--hard", base]);
+    mkdirSync(join(root, ".agent/worklog"), { recursive: true });
+    for (const [file, text] of Object.entries(files)) {
+      mkdirSync(join(root, file, ".."), { recursive: true });
+      writeFileSync(join(root, file), text);
+    }
+    reviewed = commit();
+  }
+  const quick = (over: Partial<LocalReviewRecord> = {}): LocalReviewRecord => ({ ...record(), elapsedMinutes: 22000 / 60000, ...over });
+
+  it("waives at exactly the line limit and refuses one line over it", () => {
+    change({ ".github/workflows/ci.yml": lines(20) });
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: true, reason: "20 changed non-test lines (max 20), 0 test lines (max 40)" });
+    expect(check(save(quick()))).toEqual([]);
+    change({ ".github/workflows/ci.yml": lines(21) });
+    expect(trivialDiff(root, base, reviewed).trivial).toBe(false);
+    expect(check(save(quick()))[0]?.message).toBe("an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done (not a trivial change: 21 changed non-test lines (max 20), 0 test lines (max 40))");
+  });
+  it("counts added and removed lines together", () => {
+    change({ "docs/a.md": lines(10) });
+    // Rewriting ten lines is ten removed and ten added.
+    writeFileSync(join(root, "docs/a.md"), lines(10, "other")); const rewritten = commit();
+    expect(trivialDiff(root, reviewed, rewritten).reason).toMatch(/^20 changed non-test lines/);
+    writeFileSync(join(root, "docs/a.md"), lines(10, "other") + "one more\n"); const over = commit();
+    expect(trivialDiff(root, reviewed, over)).toMatchObject({ trivial: false, reason: expect.stringMatching(/^21 changed non-test lines/) });
+  });
+  it("counts tests against their own limit of 40 lines", () => {
+    change({ ".github/workflows/ci.yml": lines(5), "qa/ci.test.mjs": lines(40) });
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: true, reason: "5 changed non-test lines (max 20), 40 test lines (max 40)" });
+    expect(check(save(quick()))).toEqual([]);
+    change({ ".github/workflows/ci.yml": lines(5), "tests/ci.ts": lines(41) });
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "5 changed non-test lines (max 20), 41 test lines (max 40)" });
+    expect(check(save(quick()))[0]?.message).toContain("41 test lines (max 40)");
+  });
+  it("does not count the task's worklogs and roadmap records, but counts other records and generated output", () => {
+    change({ ".github/workflows/ci.yml": lines(5), ".agent/worklog/other.md": lines(200), "hq/product/roadmap/MO-1.md": lines(200), "hq/product/roadmap/README.md": lines(50) });
+    expect(trivialDiff(root, base, reviewed).reason).toBe("5 changed non-test lines (max 20), 0 test lines (max 40)");
+    expect(check(save(quick()))).toEqual([]);
+    change({ ".github/workflows/ci.yml": lines(5), ".agent/decisions.md": lines(16) });
+    expect(trivialDiff(root, base, reviewed).reason).toMatch(/^21 changed non-test lines/);
+    change({ "dist/config.json": lines(21) });
+    expect(trivialDiff(root, base, reviewed).trivial).toBe(false);
+  });
+  it("keeps the floor for any source logic, however few lines change", () => {
+    change({ "src/a.ts": "export const a = 1;\n" });
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "1 changed non-test lines (max 20), 0 test lines (max 40), source outside configuration and docs: src/a.ts" });
+    expect(check(save(quick()))[0]?.message).toContain("source outside configuration and docs: src/a.ts");
+    change({ "scripts/release": "#!/bin/sh\n" });
+    expect(trivialDiff(root, base, reviewed).trivial).toBe(false);
+  });
+  it("never treats a binary change as trivial", () => {
+    change({ "assets/icon.png": Buffer.from([0, 1, 2, 0, 255]) });
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "assets/icon.png is binary and cannot be measured" });
+  });
+  it("measures the whole range to covered, not only what the initial turn saw", () => {
+    change({ ".github/workflows/ci.yml": lines(5) });
+    writeFileSync(join(root, "src.ts"), "export const late = 1;\n"); const covered = commit();
+    const turn = { reviewerSession: record().reviewerSession, commit: covered, outcome: "cleared" as const, elapsedMinutes: 1, scopeReason: "Late correction for a CI failure.", summary: "Cleared the late correction." };
+    expect(check(save(quick({ covered, followUps: [turn] })))[0]?.message).toContain("source outside configuration and docs: src.ts");
+  });
+  it("leaves the floor in force above the limit at its 30-second boundary", () => {
+    change({ ".github/workflows/ci.yml": lines(21) });
+    expect(check(save(quick({ elapsedMinutes: 29999 / 60000 })))[0]?.message).toContain("under 30 seconds");
+    expect(check(save(quick({ elapsedMinutes: 30000 / 60000 })))).toEqual([]);
+  });
+  it("leaves small risk unaffected: no floor whatever the size", () => {
+    change({ "src/a.ts": lines(300) });
+    expect(check(save(quick({ risk: "small", elapsedMinutes: 0.1 })))).toEqual([]);
+  });
+  // Shaped like evo#412 and kairos#70: an under-floor initial turn honestly recorded incomplete,
+  // then an authorized same-reviewer turn that cleared, also under 30 seconds.
+  it("accepts the incomplete-then-authorized shape on a trivial change and refuses it otherwise", () => {
+    const timing = (durationMs: number) => ({ source: "runner" as const, durationMs, evidence: `Runner total_duration_ms for this turn: ${durationMs}.` });
+    const shaped = (): LocalReviewRecord => ({
+      ...record(), version: 2, covered: reviewed, elapsedMinutes: 22100 / 60000, timing: timing(22100), initialOutcome: "incomplete",
+      followUps: [{ reviewerSession: record().reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: 24492 / 60000, timing: timing(24492), humanAuthorization: { approvedBy: "cpheinrich", approvedAt: "2026-10-08T11:06:12Z", reason: "Authorized one extra same-reviewer turn after the clean initial review." }, summary: "Re-read the workflow change and its test; cleared." }],
+    });
+    change({ ".github/workflows/pr-check.yml": lines(5), "docs/runbook.md": lines(2), "qa/ci-scoping.test.mjs": lines(19) });
+    expect(check(save(shaped()))).toEqual([]);
+    change({ ".github/workflows/pr-check.yml": lines(5), "src/gate.ts": lines(2) });
+    expect(check(save(shaped()))[0]?.message).toContain("needs an authorized same-reviewer turn of at least 30 seconds that clears (not a trivial change");
+    // The waiver relaxes only the floor: authorization is still required to resume an incomplete turn.
+    change({ ".github/workflows/pr-check.yml": lines(5) });
+    const unauthorized = shaped(); delete unauthorized.followUps![0]!.humanAuthorization;
+    expect(check(save(unauthorized))[0]?.message).toContain("resumes only with explicit humanAuthorization");
   });
 });
 
