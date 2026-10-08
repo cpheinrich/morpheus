@@ -1181,3 +1181,14 @@ summaries): it answers "what did this cost by day and model" but has no tool-cal
 classification, idle-capped active time or subagent attribution, which are the questions here,
 and the transcript reading it would replace is a few dozen lines of `readline`. Revisit if a
 pricing table is wanted — that is the part `ccusage` maintains and this command does not.
+
+**AGENTS.md holds per-task invariants; detail lives in runbooks read on demand** — 2026-10-07
+(MO-26-10-07-21.31.01). Chris approved cutting startup context after profiling showed the ~50KB
+`AGENTS.md` loaded into every session and subagent. Rules stay in `AGENTS.md` as one or two lines
+with a "read when" pointer; their detail moved verbatim into `docs/runbooks/`, never deleted. A
+test holds the file to 20KB, resolves every runbook link and anchor, and requires every `GATED`
+command to be named. Runbooks rather than `.claude/skills/` because one Markdown file serves Claude,
+Codex and humans with no duplicate to drift; revisit if agents demonstrably miss a trigger. Same
+change: **refresh once, then only on refusal** (the gate already re-certifies past the term when
+nothing moved), **focused local tests first with at most one full suite per PR**, and a **loop
+breaker** — instruction changes, mirrored into the scaffold template.
