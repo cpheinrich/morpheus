@@ -12,6 +12,7 @@ export const PHASES = [
   "checks",
   "ci-wait",
   "wait",
+  "human-wait",
   "review",
   "git",
   "gh",

@@ -18,6 +18,19 @@ export interface ParsedSession {
     spans: SpanRow[];
     issues: ProfileIssue[];
 }
+/**
+ * A tool result saying a person answered a permission prompt by refusing it.
+ * The call's duration is the prompt waiting on that person. Current Claude Code
+ * writes `toolDenialKind: "user-rejected"`; older versions only the string.
+ *
+ * Denials by the auto-mode classifier or a permission rule involve nobody, and
+ * an *approved* prompt leaves no marker at all, so its wait stays inside the
+ * tool's own duration — a known gap, not something this parser can see.
+ */
+export declare function humanDenial(line: {
+    toolDenialKind?: unknown;
+    toolUseResult?: unknown;
+}): boolean;
 export declare function claudeUsage(usage: unknown): TokenTotals;
 /**
  * Streaming parser for one Claude Code transcript. Feed it lines with `push`,

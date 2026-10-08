@@ -49,8 +49,18 @@ interface ToolUse {
   messageId: string;
 }
 
-/** Tools that block on a person, whose duration is not the agent working. */
-const HUMAN_WAIT = new Set(["AskUserQuestion", "ExitPlanMode"]);
+/**
+ * A tool result saying a person answered a permission prompt by refusing it.
+ * The call's duration is the prompt waiting on that person. Current Claude Code
+ * writes `toolDenialKind: "user-rejected"`; older versions only the string.
+ *
+ * Denials by the auto-mode classifier or a permission rule involve nobody, and
+ * an *approved* prompt leaves no marker at all, so its wait stays inside the
+ * tool's own duration — a known gap, not something this parser can see.
+ */
+export function humanDenial(line: { toolDenialKind?: unknown; toolUseResult?: unknown }): boolean {
+  return line.toolDenialKind === "user-rejected" || line.toolUseResult === "User rejected tool use";
+}
 
 const REVIEW = /review/i;
 
@@ -97,7 +107,7 @@ export class ClaudeTranscript {
   private readonly timestamps: number[] = [];
   private readonly requests = new Map<string, Request>();
   private readonly toolUses: ToolUse[] = [];
-  private readonly results = new Map<string, { at: number; background: boolean }>();
+  private readonly results = new Map<string, { at: number; background: boolean; rejected: boolean }>();
   private sessionId: string | null = null;
   private cwds: string[] = [];
   private branches: string[] = [];
@@ -179,11 +189,12 @@ export class ClaudeTranscript {
     const content = message && Array.isArray(message.content) ? message.content : [];
     const result = obj(o.toolUseResult);
     const background = Boolean(result && (result.backgroundTaskId || result.isAsync === true));
+    const rejected = humanDenial(o);
     for (const block of content) {
       const b = obj(block);
       if (!b || b.type !== "tool_result") continue;
       const toolId = str(b.tool_use_id);
-      if (toolId && at !== null && !this.results.has(toolId)) this.results.set(toolId, { at, background });
+      if (toolId && at !== null && !this.results.has(toolId)) this.results.set(toolId, { at, background, rejected });
     }
   }
 
@@ -223,12 +234,18 @@ export class ClaudeTranscript {
 
     const spans: SpanRow[] = [];
     const busy: Interval[] = [];
+    const waiting: Interval[] = [];
     for (const use of this.toolUses) {
       const result = this.results.get(use.id);
       const durationMs = result ? Math.max(0, result.at - use.at) : null;
       const input = obj(use.input) ?? {};
       const background = Boolean(result?.background || input.run_in_background === true);
-      if (credible(durationMs) && !HUMAN_WAIT.has(use.name)) busy.push({ start: use.at, end: use.at + durationMs });
+      const phase = result?.rejected ? "human-wait" : classifyTool(use.name, use.input);
+      if (phase === "human-wait") {
+        if (durationMs !== null) waiting.push({ start: use.at, end: use.at + durationMs });
+      } else if (credible(durationMs)) {
+        busy.push({ start: use.at, end: use.at + durationMs });
+      }
       const request = this.requests.get(use.messageId);
       const share = request && request.model !== "<synthetic>" ? request.toolUseIds.length : 0;
       const command = typeof input.command === "string" && use.name === "Bash" ? truncateCommand(input.command) : null;
@@ -240,7 +257,7 @@ export class ClaudeTranscript {
         role,
         repo,
         tool: use.name,
-        phase: classifyTool(use.name, use.input),
+        phase,
         start: new Date(use.at).toISOString(),
         durationMs,
         command,
@@ -270,7 +287,7 @@ export class ClaudeTranscript {
       start: start === undefined ? null : new Date(start).toISOString(),
       end: end === undefined ? null : new Date(end).toISOString(),
       wallMs: start === undefined || end === undefined ? 0 : end - start,
-      activeMs: activeTime(sorted, busy),
+      activeMs: activeTime(sorted, busy, undefined, waiting),
       requests: real.length,
       toolCalls: this.toolUses.length,
       tokens,
