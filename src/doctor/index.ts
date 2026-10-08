@@ -215,7 +215,7 @@ async function checkTrunk(
   declared: string | undefined,
   offline: boolean,
   add: (severity: Severity, check: string, message: string) => void,
-): Promise<void> {
+): Promise<string | null | undefined> {
   const { resolveTrunk, trunkSha } = await import("../session/git.js");
   const trunk = await resolveTrunk(root, declared);
   const remotes = await gitLines(root, ["remote"]);
@@ -299,6 +299,26 @@ async function checkTrunk(
         `refused with a message blaming the network. Set context.trunk in morpheus.json.`,
     );
   }
+  return observed.sha;
+}
+
+/**
+ * Report a trunk checkout that is dirty, or behind past the stale threshold —
+ * the state that left Lakina's main checkout 188 commits behind for three
+ * weeks while every session read a one-line notice. `brief` rescues; this
+ * only reports, because `doctor --all` reaches projects no session is in.
+ */
+async function checkTrunkCheckout(
+  root: string,
+  declared: string | undefined,
+  remoteSha: string | null,
+  add: (severity: Severity, check: string, message: string) => void,
+): Promise<void> {
+  const { resolveTrunk } = await import("../session/git.js");
+  const { inspectTrunkCheckout, trunkCheckoutFindings } = await import("../session/trunk-health.js");
+  const report = await inspectTrunkCheckout(root, await resolveTrunk(root, declared), remoteSha);
+  if (!report) return; // Not a Git checkout: checkTrunk has already said so.
+  for (const finding of trunkCheckoutFindings(report, new Date())) add(finding.severity, "trunk-checkout", finding.message);
 }
 
 /**
@@ -515,12 +535,9 @@ export async function doctor(opts: DoctorOptions): Promise<Finding[]> {
   // the one that names it.
   await checkRequiredRecords(root, add, handleReported ? [`hq/team/${handle!}.md`] : []);
 
-  await checkTrunk(
-    root,
-    typeof raw["trunk"] === "string" ? raw["trunk"] : undefined,
-    opts.offline === true,
-    add,
-  );
+  const declaredTrunk = typeof raw["trunk"] === "string" ? raw["trunk"] : undefined;
+  const remoteTrunkSha = await checkTrunk(root, declaredTrunk, opts.offline === true, add);
+  await checkTrunkCheckout(root, declaredTrunk, remoteTrunkSha ?? null, add);
 
   // --- structure ----------------------------------------------------------
   const inheritsRaw = manifest.inherits;

@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { projectPolicy } from "./policy.js";
 import { resolveTrunk } from "./git.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
+import { measureLag, rescueDirtyTrunk, readDirt, type Lag, type RescueDeps, type RescueResult } from "./trunk-rescue.js";
 
 const exec = promisify(execFile);
 export const sessionGit = async (root: string, args: string[]): Promise<string> =>
@@ -26,6 +27,12 @@ export interface SourceState {
   task?: string;
   behind: number;
   advanced: boolean;
+  /** How far behind, and since when, after any fast-forward. */
+  lag: Lag;
+  /** What happened to tracked edits on the trunk branch. */
+  rescue?: RescueResult;
+  /** Why a fast-forward that should have happened did not. */
+  fastForwardError?: string;
 }
 
 /** Fetch into a private ref so concurrent sessions cannot replace FETCH_HEAD. */
@@ -44,31 +51,51 @@ export async function fetchTrunk(root: string): Promise<{ sha: string; trunk: st
 }
 
 /**
- * Startup does not allocate a task. Only an exactly named, clean local trunk
- * may fast-forward. Feature branches, detached work and dirty checkouts stay
- * untouched, with the missing commits reported instead of called current.
+ * Startup does not allocate a task. Only an exactly named local trunk may
+ * fast-forward. Feature branches and detached work stay untouched, with the
+ * missing commits reported instead of called current. Tracked edits on the
+ * trunk branch are first moved to a pushed WIP branch and draft PR (see
+ * `trunk-rescue.ts`); untracked files stay, and Git's own `--ff-only` refuses
+ * when one would be overwritten. `rescueDeps: false` disables the rescue.
  */
-export async function prepareRepository(cwd: string, offline = false): Promise<SourceState> {
+export async function prepareRepository(cwd: string, offline = false, rescueDeps: RescueDeps | false = {}): Promise<SourceState> {
   const { root } = await checkoutIdentity(cwd);
   const manifest: unknown = JSON.parse(await readFile(resolve(root, "morpheus.json"), "utf8"));
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("A Morpheus project manifest is required.");
   if (offline) throw new Error("Offline: latest remote code is unverified. Existing local work may continue explicitly offline; do not claim the checkout is current.");
   const fetched = await fetchTrunk(root);
   const branch = await sessionGit(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  let rescue: RescueResult | undefined;
+  if (branch === fetched.branch && rescueDeps !== false) {
+    rescue = await rescueDirtyTrunk(root, { trunk: fetched.trunk, branch: fetched.branch, sha: fetched.sha }, rescueDeps);
+  }
   const before = await sessionGit(root, ["rev-parse", "HEAD"]);
-  const dirty = await sessionGit(root, ["status", "--porcelain"]);
+  const trackedDirty = (await readDirt(root)).tracked.length > 0;
   let advanced = false;
-  if (branch === fetched.branch && !dirty && before !== fetched.sha) {
+  let fastForwardError: string | undefined;
+  if (branch === fetched.branch && !trackedDirty && before !== fetched.sha) {
     // Only behind, never ahead/diverged: ff-only alone could keep local-only
     // trunk commits and misleadingly describe that checkout as exact trunk.
     const ancestor = await sessionGit(root, ["merge-base", "--is-ancestor", before, fetched.sha]).then(() => true, () => false);
     if (ancestor) {
-      await sessionGit(root, ["merge", "--ff-only", fetched.sha]);
-      advanced = true;
+      try {
+        // Untracked files no longer block this; Git refuses by itself when
+        // the merge would overwrite one, and that refusal is reported.
+        await sessionGit(root, ["merge", "--ff-only", "--quiet", fetched.sha]);
+        advanced = true;
+      } catch (error) {
+        const failed = error as { stderr?: string; message?: string };
+        fastForwardError = (failed.stderr || failed.message || String(error)).trim();
+      }
     }
   }
-  const behind = Number(await sessionGit(root, ["rev-list", "--count", `HEAD..${fetched.sha}`]));
-  return { root, sha: fetched.sha, trunk: fetched.trunk, branch, task: roadmapIdFromBranch(branch) ?? undefined, behind, advanced };
+  const lag = await measureLag(root, fetched.sha);
+  return {
+    root, sha: fetched.sha, trunk: fetched.trunk, branch, task: roadmapIdFromBranch(branch) ?? undefined,
+    behind: lag.behind, advanced, lag,
+    ...(rescue ? { rescue } : {}),
+    ...(fastForwardError ? { fastForwardError } : {}),
+  };
 }
 
 /** Local proof used even inside a receipt's term, including same-branch resets. */

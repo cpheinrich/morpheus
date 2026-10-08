@@ -6,8 +6,8 @@ export declare const Decision: z.ZodObject<{
     pr: z.ZodNumber;
     head: z.ZodString;
     action: z.ZodEnum<{
-        incomplete: "incomplete";
         merge: "merge";
+        incomplete: "incomplete";
         close: "close";
         escalate: "escalate";
         wait: "wait";

@@ -95,6 +95,8 @@ export interface Routed {
 }
 /** A branch name the brief can carry verbatim. Git allows `;`, `$`, backticks and more in a ref. */
 export declare const SAFE_REF: RegExp;
+/** Branches `context brief` creates for tracked edits rescued from a dirty trunk checkout. */
+export declare const RESCUED_TRUNK_PREFIX = "wip/trunk-";
 export declare function renderMarker(marker: ManagerMarker): string;
 /**
  * The marker in a comment body, or undefined.

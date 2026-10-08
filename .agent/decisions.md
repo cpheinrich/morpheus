@@ -1192,3 +1192,15 @@ Codex and humans with no duplicate to drift; revisit if agents demonstrably miss
 change: **refresh once, then only on refusal** (the gate already re-certifies past the term when
 nothing moved), **focused local tests first with at most one full suite per PR**, and a **loop
 breaker** — instruction changes, mirrored into the scaffold template.
+
+**A dirty trunk checkout is rescued to a draft PR at session start** — 2026-10-08
+(MO-26-10-08-04.06.59). Chris's call after Lakina's main checkout sat 188 commits behind for three
+weeks behind one Xcode-rewritten tracked file: "if local main is dirty then it should just move the
+uncommitted changes to a branch and push that as a WIP PR." `context brief` commits tracked edits on
+the trunk branch to `wip/trunk-<date>-<host>`, pushes, opens a draft PR, resets and fast-forwards.
+Untracked files are never committed (secrets, build junk) and never deleted; orphaned build output
+is only named. Mid-operation or off-trunk it reports instead. `doctor` reports rather than acts,
+because `--all` reaches checkouts no session is in. `self update`/`self ensure` use a disposable
+clone and have nothing to rescue, so only `self install`'s refusal was improved. The GitHub Manager
+escalates an unadopted rescue draft to a human rather than giving it a session. Native Git plumbing
+(a private index, `commit-tree`, a create-only `update-ref`) and `gh`; no dependency.
