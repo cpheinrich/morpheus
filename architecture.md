@@ -929,12 +929,25 @@ It declines to declare a handle whose `hq/team/<handle>.md` does not exist. A de
 is absent is unresolvable, therefore never `fresh`, and no flag reaches it — writing that to clear
 a warning would be the repair causing the outage.
 
-**Five commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
+**Seven commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
 knowing what merged), `pm new` (filing an item that already exists), `pm link-issue` (attaching an
 issue to obsolete or unrelated work), `pm block` (escalating a question the inbox answered),
-`access sync` (granting from an allowlist that moved). A gate that
+`access sync` (granting from an allowlist that moved), `firebase auth setup` (changing an
+authentication provider and its OAuth domains), and the provisioning half of `web init`. `GATED`
+in `src/session/gate.ts` is the list. A gate that
 also fired on `pm index` or `check pr` would train people to route around it, and **the
 routing-around is permanent where the staleness was temporary.**
+
+**Refresh once; after that, let the gate do the checking.** An agent reads the records and takes a
+receipt once per session. Past the five-minute term `check` re-observes that receipt itself and
+re-certifies it when neither the trunk nor the records moved, so a second `context refresh` buys
+nothing unless a gated command has refused. On refusal the agent re-reads only what the refusal or
+the refresh's delta names. Measured from local transcripts in August–October 2026, agents ran
+`context refresh` 738 times (median four per session, maximum 70), about half within five minutes
+of the previous one, re-reading roughly 1.8M tokens of records before them — while only 25 of 828
+gated commands were ever refused, and 305 refreshes were piped through `head` or `tail`, discarding
+the delta that is the reason to run it. The instructions, not the lease, were producing the
+ritual.
 
 **Startup prepares source; explicit refresh certifies reading.** The existing standard shim
 continues to invoke `morpheus context brief`, now also available as `context start`. The shared CLI
@@ -3011,6 +3024,20 @@ tool result arriving more than four hours late is reported as an outlier rather 
 work. Rows never carry prompt text, file contents read or written by a tool, or tool output. A command
 is kept to its first 120 characters with credential-shaped values masked and any heredoc body cut;
 arguments typed on the command line itself can still appear within that prefix.
+
+#### Waiting on CI
+
+`morpheus wait-ci [<pr|branch>] [--repo] [--timeout 45m] [--required-only]` exists because the
+profile showed polling running processes and CI as about a quarter of agent busy time: each
+`gh run view` or `gh pr checks` poll re-reads the whole session context to learn "still running".
+It blocks in one tool call, polling one GraphQL query with backoff (10 s growing to 60 s) and
+printing nothing, then prints a digest: the verdict, one line per failed or cancelled check, and
+each failed Actions job's failing step — the lines between that step's echoed script and its
+`##[error]`, de-duplicated, ANSI-stripped and cut to a head and tail. Exit 0 green, 1 failed,
+2 timeout or no checks, 3 usage or `gh` error. The head SHA and checks come from the same response;
+a head that moves mid-wait is followed and named in the digest. A `conventions` failure whose only
+blocking line is the missing `agent-reviewed` label is labelled as that race, not as a code
+failure. Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
 
 ### 18.2 Reusable GitHub workflows
 

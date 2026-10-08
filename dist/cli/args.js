@@ -42,6 +42,7 @@ const stringOptions = {
     "--out": (flags, value) => { flags.out = value; },
     "--since": (flags, value) => { flags.since = value; },
     "--repo": (flags, value) => { flags.repo = value; },
+    "--timeout": (flags, value) => { flags.timeout = value; },
 };
 const booleanOptions = {
     "--check": (flags) => { flags.check = true; },
@@ -58,6 +59,7 @@ const booleanOptions = {
     "--nul": (flags) => { flags.nul = true; },
     "--full": (flags) => { flags.full = true; },
     "--dispatch": (flags) => { flags.dispatch = true; },
+    "--required-only": (flags) => { flags.requiredOnly = true; },
 };
 /** Flags `parseArgs` consumes in its switch rather than through the option tables. */
 const SWITCH_FLAGS = ["--dir", "--base", "--issue", "--ceiling", "--author", "--isbn"];
@@ -81,6 +83,7 @@ export function parseArgs(argv) {
         all: false,
         offline: false,
         full: false,
+        requiredOnly: false,
         json: false,
         dispatch: false,
         print: false,

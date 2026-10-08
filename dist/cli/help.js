@@ -117,6 +117,10 @@ Usage
                             transcripts, as JSONL; read-only, nothing leaves the machine
   morpheus profile report   [--since YYYY-MM-DD] [--repo <substring>] [--json]
                             where time and tokens went: by phase, repo, role, model×effort
+  morpheus wait-ci [<pr|branch>] [--repo owner/name] [--timeout 45m] [--required-only]
+                            block once until the PR head's checks finish, then print a
+                            digest with failing-step logs; exit 0 green, 1 failed,
+                            2 timeout, 3 usage or gh error. Never poll gh in a loop
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge
   morpheus voice brief ["<topic>"] [--slug x] [--notes "..."] [--full]
                             today's state, to paste into a voice session

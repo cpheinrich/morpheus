@@ -30,6 +30,7 @@ import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
 import { profileExtract, profileReport } from "./profile.js";
+import { waitCiCommand } from "./wait-ci.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
     if (command === "check" || command === undefined)
@@ -482,6 +483,9 @@ async function dispatchProfile({ flags, command }) {
     console.error(`Unknown profile command "${command}".\n\n${HELP}`);
     return 1;
 }
+async function dispatchWaitCi({ flags, command, rest }) {
+    return waitCiCommand({ target: command, extra: rest, repo: flags.repo, timeout: flags.timeout, requiredOnly: flags.requiredOnly });
+}
 const groups = {
     "self": dispatchSelf,
     "doctor": dispatchDoctor,
@@ -506,6 +510,7 @@ const groups = {
     "check": dispatchCheck,
     "qa": dispatchQa,
     "profile": dispatchProfile,
+    "wait-ci": dispatchWaitCi,
     pm: dispatchPm,
 };
 export async function dispatch(flags) {
