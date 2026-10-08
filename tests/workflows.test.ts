@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { ci as ciTemplate, iosNightly } from "../src/init/templates.js";
+import { ci as ciTemplate, iosNightly, PR_CHECK_CALLER_IF, reviewMetadata } from "../src/init/templates.js";
 
 /**
  * The workflows are shipped to every project, so a mistake here breaks repos
@@ -948,7 +948,14 @@ describe("ci.yml", () => {
 
     // No caller-level skip, on this job or any other: the delivery check must
     // be reported on every push for required-check protection to be satisfiable.
+    // One deliberate exception: `pr` skips an unlabelled *draft*, using exactly
+    // that unreported state as "waiting". A draft cannot merge anyway, and
+    // marking it ready (a trigger here) or labelling it runs the check.
     for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+      if (name === "pr") {
+        expect(job.if).toBe(`\${{ ${PR_CHECK_CALLER_IF} }}`);
+        continue;
+      }
       expect(job.if, `${name} must run on every push`).toBeUndefined();
     }
 
@@ -2627,9 +2634,42 @@ describe("local review metadata", () => {
   });
   it("reruns only conventions without replacing build/test statuses", async () => {
     const wf = await read("review-metadata.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses: string }> };
-    expect(wf.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled", "converted_to_draft"]);
+    expect(wf.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
     expect(Object.keys(wf.jobs)).toEqual(["pr"]);
     expect(wf.jobs.pr?.uses).toContain("pr-check.yml");
+  });
+  it("puts the draft skip on every pr-check caller job, never inside the reusable workflow", async () => {
+    const want = `\${{ ${PR_CHECK_CALLER_IF} }}`;
+    type Caller = { jobs: Record<string, { if?: string; uses?: string }> };
+    const callers: Array<[string, Caller]> = [
+      ["ci.yml", await read("ci.yml") as Caller],
+      ["review-metadata.yml", await read("review-metadata.yml") as Caller],
+      ["scaffold ci", load(ciTemplate({ node: true })) as Caller],
+      ["scaffold review-metadata", load(reviewMetadata()) as Caller],
+    ];
+    for (const [name, wf] of callers) {
+      expect(wf.jobs.pr?.uses, name).toContain("pr-check.yml");
+      expect(wf.jobs.pr?.if, name).toBe(want);
+    }
+    // Inside, a skip would report `pr / conventions` as skipped, which satisfies protection.
+    const inner = await read("pr-check.yml") as { jobs: { conventions: { if?: string } } };
+    expect(inner.jobs.conventions.if).toBe("github.event_name == 'pull_request'");
+  });
+  it("skips only an unlabelled draft", () => {
+    // Evaluate the expression itself, translated mechanically, against the payloads that matter.
+    const js = PR_CHECK_CALLER_IF
+      .replace(/contains\(github\.event\.pull_request\.labels\.\*\.name, ('[^']+')\)/g, "labels.includes($1)")
+      .replace(/github\.event\.pull_request\.draft/g, "draft")
+      .replace(/github\.event_name/g, "eventName")
+      .replace(/!=/g, "!==");
+    expect(js).not.toMatch(/github\./);
+    const runs = new Function("eventName", "draft", "labels", `return ${js};`) as (e: string, d: boolean, l: string[]) => boolean;
+    expect(runs("pull_request", true, [])).toBe(false);
+    expect(runs("pull_request", true, ["bug"])).toBe(false);
+    expect(runs("pull_request", true, ["agent-reviewed"])).toBe(true);
+    expect(runs("pull_request", true, ["manager-reviewed"])).toBe(true);
+    expect(runs("pull_request", false, [])).toBe(true);
+    expect(runs("push", false, [])).toBe(true);
   });
   it("re-runs conventions when a draft becomes ready, in this repository and in the scaffold", async () => {
     // A draft without agent-reviewed passes as pending because GitHub will not merge a draft.
@@ -2642,48 +2682,86 @@ describe("local review metadata", () => {
     expect(scaffold.jobs.pr?.uses).toContain("pr-check.yml");
     expect(scaffold.on.pull_request.types).toContain("ready_for_review");
   });
-  it("fetches a PR head the checkout does not hold, by its pull ref, before reading morpheus.json", async () => {
-    // Reproduces `Command failed: git show <sha>:morpheus.json`: the head is on GitHub's
-    // refs/pull/N/head and on no branch the checkout fetched (a fork, or a merge ref GitHub has not
-    // recomputed for the newest push). The workflow's own snippet is run, not a copy of it.
+  const prHeadBlock = async () => {
     const wf = await read("pr-check.yml") as { jobs: { conventions: { steps: Array<{ name?: string; run?: string }> } } };
     const run = wf.jobs.conventions.steps.find(s => s.name === "Check PR conventions")?.run ?? "";
-    const snippet = /^if ! git cat-file -e "\$EXPECTED_HEAD\^\{commit\}".*?^fi$/ms.exec(run)?.[0];
-    expect(snippet).toBeDefined();
-    expect(run.indexOf(snippet!)).toBeLessThan(run.indexOf("check pr"));
-    const tmp = await mkdtemp(join(tmpdir(), "pr-head-"));
+    const block = /^# >>> pr-head$.*?^# <<< pr-head$/ms.exec(run)?.[0];
+    expect(block).toBeDefined();
+    expect(run.indexOf(block!)).toBeLessThan(run.indexOf("check pr"));
+    return block!;
+  };
+  /** An origin whose PR head is reachable only from refs/pull/7/head, as for a fork. */
+  async function forkOrigin(tmp: string) {
     const git = (cwd: string, ...args: string[]) => execFileAsync("git", args, { cwd }).then(r => r.stdout.trim());
+    const origin = join(tmp, "origin");
+    await mkdir(origin);
+    await git(origin, "init", "-q", "-b", "main");
+    await git(origin, "config", "user.email", "t@example.com");
+    await git(origin, "config", "user.name", "T");
+    await writeFile(join(origin, "morpheus.json"), "{}");
+    await git(origin, "add", ".");
+    await git(origin, "commit", "-qm", "base");
+    await git(origin, "checkout", "-q", "-b", "fork-only");
+    await writeFile(join(origin, "morpheus.json"), '{"review":{"required":true}}');
+    await git(origin, "commit", "-qam", "head");
+    const head = await git(origin, "rev-parse", "HEAD");
+    await git(origin, "update-ref", "refs/pull/7/head", head);
+    await git(origin, "checkout", "-q", "main");
+    await git(origin, "branch", "-q", "-D", "fork-only");
+    return { git, origin, head };
+  }
+  it("fetches and checks out a PR head the checkout does not hold, before reading morpheus.json", async () => {
+    // Reproduces `Command failed: git show <sha>:morpheus.json` ("exists on disk, but not in
+    // <sha>", Git's wording for a missing commit): the run checked out the base branch, and the
+    // head was on refs/pull/N/head only. The workflow's own block is run, not a copy of it.
+    const block = await prHeadBlock();
+    const tmp = await mkdtemp(join(tmpdir(), "pr-head-"));
     try {
-      const origin = join(tmp, "origin");
-      await mkdir(origin);
-      await git(origin, "init", "-q", "-b", "main");
-      await git(origin, "config", "user.email", "t@example.com");
-      await git(origin, "config", "user.name", "T");
-      await writeFile(join(origin, "morpheus.json"), "{}");
-      await git(origin, "add", ".");
-      await git(origin, "commit", "-qm", "base");
-      await git(origin, "checkout", "-q", "-b", "fork-only");
-      await writeFile(join(origin, "morpheus.json"), '{"review":{"required":true}}');
-      await git(origin, "commit", "-qam", "head");
-      const head = await git(origin, "rev-parse", "HEAD");
-      await git(origin, "update-ref", "refs/pull/7/head", head);
-      await git(origin, "checkout", "-q", "main");
-      await git(origin, "branch", "-q", "-D", "fork-only");
+      const { git, origin, head } = await forkOrigin(tmp);
       const clone = join(tmp, "clone");
       // --no-local: a transport clone copies only reachable objects, as a fetch from GitHub does.
       await execFileAsync("git", ["clone", "-q", "--no-local", origin, clone]);
-      await expect(git(clone, "cat-file", "-e", `${head}^{commit}`)).rejects.toThrow();
-      await execFileAsync("bash", ["-c", `set -euo pipefail\n${snippet!}`], { cwd: clone, env: { ...process.env, EXPECTED_HEAD: head, PR_NUMBER: "7" } });
+      await expect(git(clone, "show", `${head}:morpheus.json`)).rejects.toThrow("exists on disk, but not in");
+      await execFileAsync("bash", ["-c", `set -euo pipefail\n${block}`], { cwd: clone, env: { ...process.env, EXPECTED_HEAD: head, PR_NUMBER: "7" } });
       expect(await git(clone, "show", `${head}:morpheus.json`)).toBe('{"review":{"required":true}}');
+      expect(await git(clone, "rev-parse", "HEAD")).toBe(head);
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }
   });
-  it("hands the live draft state to the check", async () => {
-    // The event file is the live pull request (`. + {...}`), so `draft` is current on a rerun.
-    const wf = await read("pr-check.yml") as { jobs: { conventions: { steps: Array<{ name?: string; run?: string }> } } };
-    const run = wf.jobs.conventions.steps.find(s => s.name === "Check PR conventions")?.run ?? "";
-    expect(run).toMatch(/\{pull_request: \(\. \+ \{/);
+  it("leaves the named error to check pr when the head cannot be fetched", async () => {
+    const block = await prHeadBlock();
+    const tmp = await mkdtemp(join(tmpdir(), "pr-head-"));
+    try {
+      const { git, origin } = await forkOrigin(tmp);
+      const clone = join(tmp, "clone");
+      await execFileAsync("git", ["clone", "-q", "--no-local", origin, clone]);
+      const before = await git(clone, "rev-parse", "HEAD");
+      const { stdout } = await execFileAsync("bash", ["-c", `set -euo pipefail\n${block}`], { cwd: clone, env: { ...process.env, EXPECTED_HEAD: "f".repeat(40), PR_NUMBER: "99" } });
+      expect(stdout).toContain("::warning::Could not fetch refs/pull/99/head.");
+      expect(await git(clone, "rev-parse", "HEAD")).toBe(before);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+  it("leaves a merge-commit checkout of the right head alone", async () => {
+    const block = await prHeadBlock();
+    const tmp = await mkdtemp(join(tmpdir(), "pr-head-"));
+    try {
+      const { git, origin, head } = await forkOrigin(tmp);
+      const clone = join(tmp, "clone");
+      await execFileAsync("git", ["clone", "-q", "--no-local", origin, clone]);
+      await git(clone, "config", "user.email", "t@example.com");
+      await git(clone, "config", "user.name", "T");
+      await git(clone, "fetch", "-q", "origin", `+refs/pull/7/head:refs/remotes/pull/7/head`);
+      await git(clone, "merge", "-q", "--no-ff", "-m", "merge", head);
+      const merge = await git(clone, "rev-parse", "HEAD");
+      expect(await git(clone, "rev-parse", "HEAD^2")).toBe(head);
+      await execFileAsync("bash", ["-c", `set -euo pipefail\n${block}`], { cwd: clone, env: { ...process.env, EXPECTED_HEAD: head, PR_NUMBER: "7" } });
+      expect(await git(clone, "rev-parse", "HEAD")).toBe(merge);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   });
   it("checks live PR metadata and rejects a superseded head", async () => {
     const wf = await read("pr-check.yml") as { jobs: { conventions: { steps: Array<{ name?: string; run?: string }> } } };

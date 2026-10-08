@@ -368,7 +368,8 @@ documentation and generated files in it, so the backstop is rarely needed. All r
 worklog, commit it, and run `morpheus review validate` — the same record check CI runs. Then open the
 PR with a visible `review-record:` line and the label already applied
 (`gh pr create --label agent-reviewed`). A PR opened before review is recorded is opened as a
-draft: conventions report a draft without the label as pending, and fail a ready one.
+draft: conventions wait on an unlabelled draft instead of failing, and fail a ready PR without the
+label.
 `review.required` defaults to true; project false opts out visibly. After the covered commit only
 the named worklog may change, and merging trunk never invalidates the review: a merge Git
 reproduces exactly needs no entry, a hand-resolved one is named in the record, and CI must still

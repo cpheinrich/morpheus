@@ -1,14 +1,14 @@
 name: Review metadata
 
 # No build/test jobs here: skipped results must not replace required checks.
-# `converted_to_draft` lets a PR whose review is back in progress report
-# pending rather than failed; `ready_for_review` lives in ci.yml.
 on:
   pull_request:
-    types: [edited, labeled, unlabeled, converted_to_draft]
+    types: [edited, labeled, unlabeled]
 
 jobs:
   pr:
+    # Same condition as ci.yml: an unreviewed draft waits instead of failing.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'agent-reviewed') || contains(github.event.pull_request.labels.*.name, 'manager-reviewed') }}
     # The reusable check reads the live pull request through the job token;
     # a called workflow can only narrow what its caller grants.
     permissions:

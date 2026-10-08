@@ -3,8 +3,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkLocalReview, committedConfig, DRAFT_PENDING, git, MISSING_LABEL, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
-import { checkPr, formatFindings } from "../src/check/pr.js";
+import { checkLocalReview, committedConfig, git, MISSING_LABEL, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
+import { checkPr } from "../src/check/pr.js";
 import { prepareReview, validateReview } from "../src/cli/review.js";
 
 let root: string;
@@ -56,7 +56,7 @@ describe("independent review lifecycle", () => {
     expect(check(head, `review-record: ${path}`, [])).toEqual([{
       level: "error",
       rule: "agent-review",
-      message: "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is still under way, keep the PR a draft (gh pr ready --undo) and this check reports pending instead of failing.",
+      message: "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is under way, keep the PR a draft (gh pr ready --undo): conventions then wait, unreported, until it is labelled or marked ready.",
     }]);
   });
   it.each(["incomplete", "blocked"] as const)("refuses %s review", outcome => {
@@ -870,30 +870,11 @@ describe("authorized continuation after missing review evidence", () => {
   });
 });
 
-describe("a draft is pending, not failing", () => {
-  const draft = (head: string, labels: string[], body = `review-record: ${path}`) => checkLocalReview({ root, body, labels, head, base, draft: true });
-  it("reports a draft without the label as a pending warning, never an error", () => {
+describe("the gate itself never waives the label", () => {
+  it("fails a PR without agent-reviewed whatever else the caller passes", () => {
     const head = save(record());
-    expect(draft(head, [])).toEqual([{ level: "warning", rule: "agent-review", message: DRAFT_PENDING }]);
-  });
-  it("fails the same PR once it is ready, and when draft state is unknown", () => {
-    const head = save(record());
-    expect(checkLocalReview({ root, body: "", labels: [], head, base, draft: false })).toEqual([{ level: "error", rule: "agent-review", message: MISSING_LABEL }]);
-    expect(checkLocalReview({ root, body: "", labels: [], head, base })).toEqual([{ level: "error", rule: "agent-review", message: MISSING_LABEL }]);
-  });
-  it("still validates the record on a draft once the label claims review is complete", () => {
-    const head = save({ ...record(), outcome: "blocked" });
-    expect(draft(head, ["agent-reviewed"])).toEqual([{ level: "error", rule: "agent-review", message: "review is blocked; leave the PR open and disable auto-merge" }]);
-    expect(draft(save(record()), ["agent-reviewed"])).toEqual([]);
-  });
-  it("keeps a pending draft from failing PR conventions, and a ready one from passing", async () => {
-    const head = save(record());
-    const ctx = { body: "## Test plan\nRan tests\n## Open questions\nNone", branch: "inbox-2026-10-07", changedFiles: ["code.ts"], productDir: join(root, "hq/product") };
-    const pending = await checkPr({ ...ctx, agentReview: draft(head, []) });
-    expect(pending.filter(f => f.level === "error")).toEqual([]);
-    expect(formatFindings(pending)).toContain(`! [agent-review] ${DRAFT_PENDING}`);
-    const ready = await checkPr({ ...ctx, agentReview: check(head, `review-record: ${path}`, []) });
-    expect(ready.filter(f => f.level === "error").map(f => f.message)).toEqual([MISSING_LABEL]);
+    const loose = { root, body: `review-record: ${path}`, labels: [], head, base, draft: true } as Parameters<typeof checkLocalReview>[0];
+    expect(checkLocalReview(loose)).toEqual([{ level: "error", rule: "agent-review", message: MISSING_LABEL }]);
   });
 });
 

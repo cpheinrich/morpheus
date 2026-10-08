@@ -101,10 +101,7 @@ export async function pr(productDir, base) {
     // inside it names the commit, and that is what binds the label to something the App reviewed.
     const clearance = reviewEvent.pull_request?.manager_clearance ?? process.env["MORPHEUS_MANAGER_CLEARANCE"] ?? "";
     const clearedHead = parseMarker(clearance)?.cleared;
-    // Read from the live pull request the workflow fetched, so a rerun after "ready for review"
-    // sees the current state rather than the original event's. Locally, MORPHEUS_PR_DRAFT=1.
-    const draft = reviewEvent.pull_request?.draft ?? process.env["MORPHEUS_PR_DRAFT"] === "1";
-    const review = { root: process.cwd(), body: prBody(), labels, head, base, draft };
+    const review = { root: process.cwd(), body: prBody(), labels, head, base };
     const findings = await checkPr({
         agentReview: usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor, clearedHead }) : checkLocalReview(review),
         body: prBody(),

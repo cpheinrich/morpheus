@@ -102,7 +102,7 @@ function projectVisualEvidencePolicy(): VisualEvidencePolicy {
 }
 
 export async function pr(productDir: string, base: string): Promise<number> {
-  let reviewEvent: { pull_request?: { head?: { sha?: string }; draft?: boolean; labels?: { name: string }[]; manager_label_actor?: string | null; manager_clearance?: string | null } } = {};
+  let reviewEvent: { pull_request?: { head?: { sha?: string }; labels?: { name: string }[]; manager_label_actor?: string | null; manager_clearance?: string | null } } = {};
   try { reviewEvent = JSON.parse(readFileSync(process.env["GITHUB_EVENT_PATH"] ?? "", "utf8")); } catch { /* local overrides below */ }
   const head = reviewEvent.pull_request?.head?.sha ?? gitOutput(["rev-parse", "HEAD"]);
   const labels = reviewEvent.pull_request?.labels?.map(l => l.name) ?? (process.env["MORPHEUS_PR_LABELS"] ?? "").split(",").map(s => s.trim());
@@ -113,10 +113,7 @@ export async function pr(productDir: string, base: string): Promise<number> {
   // inside it names the commit, and that is what binds the label to something the App reviewed.
   const clearance = reviewEvent.pull_request?.manager_clearance ?? process.env["MORPHEUS_MANAGER_CLEARANCE"] ?? "";
   const clearedHead = parseMarker(clearance)?.cleared;
-  // Read from the live pull request the workflow fetched, so a rerun after "ready for review"
-  // sees the current state rather than the original event's. Locally, MORPHEUS_PR_DRAFT=1.
-  const draft = reviewEvent.pull_request?.draft ?? process.env["MORPHEUS_PR_DRAFT"] === "1";
-  const review = { root: process.cwd(), body: prBody(), labels, head, base, draft };
+  const review = { root: process.cwd(), body: prBody(), labels, head, base };
   const findings = await checkPr({
     agentReview: usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor, clearedHead }) : checkLocalReview(review),
     body: prBody(),

@@ -223,9 +223,12 @@ export declare function verifyUncoveredCommits(root: string, record: {
  * the defaults apply: review stays required, which is the safe direction.
  */
 export declare function committedConfig(root: string, commit: string): unknown;
-/** What a PR without the agent-reviewed label means, by whether GitHub will let it merge. */
-export declare const MISSING_LABEL = "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is still under way, keep the PR a draft (gh pr ready --undo) and this check reports pending instead of failing.";
-export declare const DRAFT_PENDING = "pending: draft PR without agent-reviewed, so independent review is not yet marked complete and record validation was not run. GitHub refuses to merge a draft. Marking it ready for review or applying the label re-runs this check, which then requires the label and a valid review record.";
+/**
+ * A PR without the label is never passed here, draft or not. Keeping a draft from going red is the
+ * caller's job: its `pr` job skips an unlabelled draft, which leaves the required check unreported,
+ * and an unreported required check blocks merge where a passing or skipped one would not.
+ */
+export declare const MISSING_LABEL = "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is under way, keep the PR a draft (gh pr ready --undo): conventions then wait, unreported, until it is labelled or marked ready.";
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export declare function checkLocalReview(opts: {
     root: string;
@@ -233,7 +236,6 @@ export declare function checkLocalReview(opts: {
     labels: string[];
     head: string;
     base: string;
-    draft?: boolean;
 }): Finding[];
 /** The worklog path a PR body's single visible `review-record:` line names; throws CI's message otherwise. */
 export declare function reviewRecordLine(body: string): string;

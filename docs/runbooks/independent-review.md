@@ -307,12 +307,18 @@ first conventions run validates the record instead of failing on a missing label
 auto-merge until review and CI are complete.
 
 **Open the PR as a draft if it has to exist before review is recorded** (`gh pr create --draft`,
-or `gh pr ready --undo`). A draft without the label is reported as pending — a warning, not a
-failure — because GitHub refuses to merge a draft. A ready PR without the label fails, and every
-caller re-runs conventions on `ready_for_review` the way it does on `unlabeled`, so marking the
-draft ready without the label turns the check red again. Merge still requires a green run on the
-current head with the label and a valid record; what changed is only that a review in progress is
-no longer reported as a broken one. A draft that carries the label is validated in full.
+or `gh pr ready --undo`). The caller's `pr` job skips a draft that carries neither `agent-reviewed`
+nor `manager-reviewed`, so `pr / conventions` is not reported at all: GitHub shows the required
+check as expected and waiting, and merge stays blocked, but nothing is red. The skip has to be on
+the caller job. A skip inside the reusable workflow would report `pr / conventions` as skipped, and
+a skipped required check satisfies branch protection, as a pass would. The check itself never passes
+a PR without the label. Labelling the draft or marking it ready runs the full check, so a ready PR
+without the label fails as before. A draft carrying the label is validated in full.
+
+The one window this leaves is the one that already exists for removing the label: a draft that
+was labelled (and went green) and then unlabelled keeps that green result on the same head until
+something re-runs it, and marking it ready re-runs it. Removing the label is deliberate; an
+unreviewed draft that was never labelled has no result to inherit.
 
 When a ready PR lacks the label, conventions reports that it is not marked merge-ready and that
 record validation was not run. This also covers an author deliberately removing the label while
@@ -323,13 +329,15 @@ This is an auditable attestation, not a security boundary against an author fabr
 ## Existing projects
 
 The shared `pr-check.yml` enforces the gate automatically when using updated Morpheus. Each existing
-caller must grant `contents: read` and `pull-requests: read` on its `pr` job, must trigger on `ready_for_review`
-(the draft-pending rule above depends on it), and needs a separate metadata-only workflow for `edited`, `labeled`,
-`unlabeled` and, optionally, `converted_to_draft` events,
+caller must grant `contents: read` and `pull-requests: read` on its `pr` job and needs a separate metadata-only workflow for `edited`, `labeled`, and `unlabeled` events,
 calling `pr-check.yml` under the same `pr` job name. The scaffold writes
 `.github/workflows/review-metadata.yml`; re-running `morpheus init` adds it without overwriting
 existing files. Do not add skipped build/test jobs there: skipped statuses can satisfy required
 checks and must not replace a still-running build. The ordinary CI retains its normal triggers.
+For an unreviewed draft to wait rather than fail, each caller's `pr` job also needs
+`if: ${{ <PR_CHECK_CALLER_IF> }}`, the expression exported from `src/init/templates.ts`, and must
+trigger on `ready_for_review`. This is a caller edit, so `@main` does not deliver it; a caller
+without it keeps a red check on an unreviewed draft, which is the old behaviour, not a weaker one.
 Until a caller is updated, rerun its conventions workflow after changing the body/label: the shared
 check fetches live PR metadata, so reruns do not keep validating the original event snapshot.
 Pushes still trigger verification normally. Keep legacy required delivery jobs wired in and skipped;

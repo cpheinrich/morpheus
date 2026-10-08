@@ -350,23 +350,20 @@ export function committedConfig(root, commit) {
         throw new Error(`morpheus.json at ${commit.slice(0, 12)} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
-/** What a PR without the agent-reviewed label means, by whether GitHub will let it merge. */
-export const MISSING_LABEL = "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is still under way, keep the PR a draft (gh pr ready --undo) and this check reports pending instead of failing.";
-export const DRAFT_PENDING = "pending: draft PR without agent-reviewed, so independent review is not yet marked complete and record validation was not run. GitHub refuses to merge a draft. Marking it ready for review or applying the label re-runs this check, which then requires the label and a valid review record.";
+/**
+ * A PR without the label is never passed here, draft or not. Keeping a draft from going red is the
+ * caller's job: its `pr` job skips an unlabelled draft, which leaves the required check unreported,
+ * and an unreported required check blocks merge where a passing or skipped one would not.
+ */
+export const MISSING_LABEL = "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is under way, keep the PR a draft (gh pr ready --undo): conventions then wait, unreported, until it is labelled or marked ready.";
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts) {
     try {
         const config = committedConfig(opts.root, opts.head);
         if (!reviewRequired(config))
             return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
-        if (!opts.labels.includes("agent-reviewed")) {
-            // A draft cannot merge, so a review still in progress is not a failure there. The guarantee
-            // is unchanged: every caller re-runs this check on ready_for_review, exactly as it does on
-            // unlabeled, and a ready PR without the label fails below.
-            if (opts.draft === true)
-                return [{ level: "warning", rule: "agent-review", message: DRAFT_PENDING }];
+        if (!opts.labels.includes("agent-reviewed"))
             throw new Error(MISSING_LABEL);
-        }
         verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
         return [];
     }
