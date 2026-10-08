@@ -1,5 +1,5 @@
-import { EXIT, exitCode, failed, parseRollup, ROLLUP_QUERY, settled, verdict } from "./checks.js";
-import { checkKey, renderDigest } from "./digest.js";
+import { checkKey, EXIT, exitCode, failed, parseRollup, ROLLUP_QUERY, settled, verdict } from "./checks.js";
+import { renderDigest } from "./digest.js";
 import { isLabelRace, trimFailedLog } from "./logs.js";
 export const FIRST_DELAY_MS = 10_000;
 export const MAX_DELAY_MS = 60_000;
@@ -60,7 +60,10 @@ async function failureDetails(deps, repo, checks) {
             continue;
         }
         const log = trimFailedLog(res.stdout, perJob);
-        details.set(checkKey(check), { log, labelRace: isLabelRace(check.name, log.lines) });
+        // Decided on the whole failing step, not the trimmed view: a real `✗` cut
+        // from the middle must not leave the label line looking like the only one.
+        const whole = trimFailedLog(res.stdout, Number.MAX_SAFE_INTEGER);
+        details.set(checkKey(check), { log, labelRace: isLabelRace(check.name, whole.lines) });
     }
     return details;
 }

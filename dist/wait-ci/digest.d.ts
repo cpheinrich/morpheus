@@ -24,8 +24,6 @@ export interface DigestInput {
     /** Checks dropped by `--required-only`, so an empty required set is not mistaken for no CI. */
     ignored: number;
 }
-/** Checks are unique by name after {@link dedupe}, so the name is the key. */
-export declare function checkKey(check: Check): string;
 /**
  * The whole output of a wait: one line when green, and otherwise only what an
  * agent acts on — which check, where, and the failing step's own words.

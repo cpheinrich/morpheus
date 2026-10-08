@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { waitCiCommand } from "../../src/cli/wait-ci.js";
-import type { Check } from "../../src/wait-ci/checks.js";
+import { type Check, checkKey } from "../../src/wait-ci/checks.js";
 import { renderDigest } from "../../src/wait-ci/digest.js";
 import {
   FIRST_DELAY_MS,
@@ -133,6 +133,28 @@ describe("waitCi", () => {
     ]);
   });
 
+  it("decides the label race on the whole step, so a real ✗ trimmed from the middle still counts", async () => {
+    const line = (t: string) => `pr / conventions\tUNKNOWN STEP\t2026-10-07T11:11:14.0000000Z ${t}`;
+    const raw = [
+      line("##[group]Run set -euo pipefail"),
+      line("##[endgroup]"),
+      line("✗ [agent-review] agent-reviewed label is not applied, so the PR is not marked merge-ready."),
+      ...Array.from({ length: 40 }, (_, i) => line(`detail ${i}`)),
+      line("✗ [tests] source changed with no test change"),
+      ...Array.from({ length: 60 }, (_, i) => line(`more ${i}`)),
+      line("2 blocking issue(s)."),
+      line("##[error]Process completed with exit code 1."),
+    ].join("\n");
+    const red = ok(rollup(SHA_A, [run("pr / conventions", "COMPLETED", "FAILURE", { required: true, job: "7" })]));
+    const result = await waitCi(fakeGh([red], { "7": ok(raw) }).deps, opts);
+    const lines = result.output.split("\n");
+    expect(lines[0]).toMatch(/^✗ CI failed — /);
+    // The trimmed view really did lose the second ✗ ...
+    expect(lines.some((l) => l.includes("[tests]"))).toBe(false);
+    // ... and the check is still not called a label race.
+    expect(lines[1]).toBe("  ✗ pr / conventions (CI) — https://github.com/cpheinrich/morpheus/actions/runs/37724037716/job/7");
+  });
+
   it("says when a failing job's log could not be read, rather than omitting the job", async () => {
     const red = ok(rollup(SHA_A, [run("node / check", "COMPLETED", "FAILURE", { job: "9" })]));
     const { deps } = fakeGh([red], { "9": fail("HTTP 410: logs expired\nmore") });
@@ -206,8 +228,10 @@ describe("renderDigest", () => {
   });
 
   it("a real failure beside a label race is a failure, with both listed", () => {
-    const details = new Map([["pr / conventions", { labelRace: true }], ["node / check", { log: { step: "pnpm test", lines: ["FAIL x"], omitted: 0, omittedAfter: 1 } }]]);
-    const out = renderDigest({ ...base, verdict: "failed", details, checks: [c("pr / conventions", "fail"), c("node / check", "fail")] });
+    const race = c("pr / conventions", "fail");
+    const test = c("node / check", "fail");
+    const details = new Map([[checkKey(race), { labelRace: true }], [checkKey(test), { log: { step: "pnpm test", lines: ["FAIL x"], omitted: 0, omittedAfter: 1 } }]]);
+    const out = renderDigest({ ...base, verdict: "failed", details, checks: [race, test] });
     expect(out.split("\n")).toEqual([
       "✗ CI failed — o/r#7 @ 59cb7d5 (2 checks: 2 failed) after 1m01s",
       "  ✗ pr / conventions — label race: agent-reviewed not applied yet; not a code failure",

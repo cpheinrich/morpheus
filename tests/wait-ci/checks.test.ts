@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type Check,
+  checkKey,
   checkRunOutcome,
   counts,
   dedupe,
@@ -99,6 +100,23 @@ describe("dedupe", () => {
     const relabelled = { name: "pr / conventions", workflow: "Review metadata", outcome: "pass" as const, required: true, startedAt: "2026-10-08T04:19:19Z" };
     expect(dedupe([raced, relabelled])).toEqual([relabelled]);
     expect(dedupe([relabelled, raced])).toEqual([relabelled]);
+  });
+
+  it("a queued replacement (no startedAt) supersedes an earlier failure, in either order", () => {
+    const failedRun = { name: "pr / conventions", workflow: "CI", outcome: "fail" as const, required: true, startedAt: "2026-10-08T04:19:14Z" };
+    const queued = { name: "pr / conventions", workflow: "Review metadata", outcome: "pending" as const, required: true };
+    expect(dedupe([failedRun, queued])).toEqual([queued]);
+    expect(dedupe([queued, failedRun])).toEqual([queued]);
+    expect(settled(dedupe([failedRun, queued, { name: "node / check", outcome: "pass", required: true, startedAt: "2026-10-08T04:19:00Z" }]))).toBe(false);
+  });
+
+  it("keeps same-named optional checks from different workflows apart", () => {
+    const a = { name: "test", workflow: "Python", outcome: "fail" as const, required: false, startedAt: "2026-10-08T04:00:00Z" };
+    const b = { name: "test", workflow: "Web", outcome: "pass" as const, required: false, startedAt: "2026-10-08T04:05:00Z" };
+    expect(dedupe([a, b])).toEqual([a, b]);
+    expect(verdict(dedupe([a, b]))).toBe("failed");
+    expect(checkKey(a)).not.toBe(checkKey(b));
+    expect(checkKey({ ...a, required: true })).toBe(checkKey({ ...b, required: true }));
   });
 
   it("lets the later row win a tie, and keeps distinct names", () => {

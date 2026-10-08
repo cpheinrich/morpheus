@@ -1,4 +1,4 @@
-import { type Check, counts, failed, formatDuration, type Verdict } from "./checks.js";
+import { type Check, checkKey, counts, failed, formatDuration, type Verdict } from "./checks.js";
 import type { TrimmedLog } from "./logs.js";
 
 /** What one failed check contributes beyond its line: its log, or why there is none. */
@@ -25,11 +25,6 @@ export interface DigestInput {
   truncated: boolean;
   /** Checks dropped by `--required-only`, so an empty required set is not mistaken for no CI. */
   ignored: number;
-}
-
-/** Checks are unique by name after {@link dedupe}, so the name is the key. */
-export function checkKey(check: Check): string {
-  return check.name;
 }
 
 const short = (sha: string) => sha.slice(0, 7);

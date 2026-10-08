@@ -1,8 +1,4 @@
-import { counts, failed, formatDuration } from "./checks.js";
-/** Checks are unique by name after {@link dedupe}, so the name is the key. */
-export function checkKey(check) {
-    return check.name;
-}
+import { checkKey, counts, failed, formatDuration } from "./checks.js";
 const short = (sha) => sha.slice(0, 7);
 function label(check) {
     return check.workflow && !check.name.startsWith(check.workflow) ? `${check.name} (${check.workflow})` : check.name;

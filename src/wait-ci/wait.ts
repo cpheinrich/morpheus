@@ -1,5 +1,5 @@
-import { type Check, EXIT, exitCode, failed, parseRollup, ROLLUP_QUERY, settled, type Snapshot, verdict } from "./checks.js";
-import { checkKey, type FailureDetail, renderDigest } from "./digest.js";
+import { type Check, checkKey, EXIT, exitCode, failed, parseRollup, ROLLUP_QUERY, settled, type Snapshot, verdict } from "./checks.js";
+import { type FailureDetail, renderDigest } from "./digest.js";
 import { isLabelRace, trimFailedLog } from "./logs.js";
 
 /**
@@ -95,7 +95,10 @@ async function failureDetails(deps: WaitDeps, repo: string, checks: Check[]): Pr
       continue;
     }
     const log = trimFailedLog(res.stdout, perJob);
-    details.set(checkKey(check), { log, labelRace: isLabelRace(check.name, log.lines) });
+    // Decided on the whole failing step, not the trimmed view: a real `✗` cut
+    // from the middle must not leave the label line looking like the only one.
+    const whole = trimFailedLog(res.stdout, Number.MAX_SAFE_INTEGER);
+    details.set(checkKey(check), { log, labelRace: isLabelRace(check.name, whole.lines) });
   }
   return details;
 }

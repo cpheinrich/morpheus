@@ -49,11 +49,21 @@ export declare function parseRollup(json: unknown): Snapshot | {
     error: string;
 };
 /**
- * One row per check name, the most recently started winning — the rule branch
- * protection itself applies to a required context. A re-run leaves the old
- * attempt beside the new one, and a label-triggered workflow can add a second
- * `pr / conventions` that supersedes the first; reporting both would show a
- * superseded failure as still blocking.
+ * The identity two rollup rows share when one supersedes the other.
+ *
+ * A required check is keyed by name alone — the rule branch protection itself
+ * applies — so the `pr / conventions` a label-triggered workflow adds supersedes
+ * CI's own. Anything else is keyed by workflow and name, so two unrelated
+ * workflows that each have a `test` job stay two rows and one cannot hide the
+ * other's failure.
+ */
+export declare function checkKey(check: Check): string;
+/**
+ * One row per {@link checkKey}, the most recent attempt winning. A re-run
+ * leaves the old attempt beside the new one; reporting both would show a
+ * superseded failure as still blocking. A queued replacement has no
+ * `startedAt` and must still win, or a fresh run would be judged by the
+ * failure it replaces.
  */
 export declare function dedupe(checks: Check[]): Check[];
 export declare function failed(check: Check): boolean;
