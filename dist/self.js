@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "./git-env.js";
 import { orphanBuildOutputs, parsePorcelain, shellQuote } from "./session/trunk-rescue.js";
 const exec = promisify(execFile);
 export const MORPHEUS_REMOTE = "https://github.com/cpheinrich/morpheus.git";
@@ -13,8 +14,11 @@ export const MORPHEUS_PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.ur
 export const runMorpheusCommand = async (command, args, cwd) => {
     try {
         const remoteRead = command === "git" && args[0] === "ls-remote";
+        // Every command here targets the Morpheus checkout or clone at `cwd`,
+        // never the repository whose Git hook started `self ensure`.
         const { stdout, stderr } = await exec(command, args, {
             cwd,
+            env: gitSubprocessEnv(),
             timeout: remoteRead ? 15_000 : 15 * 60_000,
             maxBuffer: 20 * 1024 * 1024,
         });
@@ -209,7 +213,9 @@ export async function describeLocalChanges(source, porcelain, exists) {
     const orphanSet = new Set(orphans);
     const otherUntracked = dirt.untracked.filter((p) => !orphanSet.has(p));
     const cap = (paths) => paths.slice(0, 10).map((p) => `    ${p}`).concat(paths.length > 10 ? [`    … and ${paths.length - 10} more`] : []);
-    const lines = ["The source checkout has local changes; install from clean main."];
+    // Name the checkout: `self update` inspects a disposable clone, so "the
+    // source checkout" alone left nobody able to tell which tree was dirty.
+    const lines = [`The source checkout ${source} has local changes; install from clean main.`];
     if (dirt.tracked.length) {
         lines.push(`  Tracked edits (${dirt.tracked.length}) — on trunk, \`morpheus context brief\` there moves them to a wip/trunk-* draft PR:`, ...cap(dirt.tracked));
     }

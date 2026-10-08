@@ -67,7 +67,7 @@ describe("orphan build output", () => {
   it("describes a dirty install source by kind, naming orphans as safe to delete", async () => {
     const message = await describeLocalChanges("/src", " M package.json\n?? dist/gone.js\n?? dist/kept.js\n?? scratch.txt\n", async (p) => p === "src/kept.ts");
     expect(message).toBe([
-      "The source checkout has local changes; install from clean main.",
+      "The source checkout /src has local changes; install from clean main.",
       "  Tracked edits (1) — on trunk, `morpheus context brief` there moves them to a wip/trunk-* draft PR:",
       "    package.json",
       "  Untracked build output whose source no longer exists (1) — safe to delete:",

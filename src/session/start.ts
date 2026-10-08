@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "../git-env.js";
 import { projectPolicy } from "./policy.js";
 import { resolveTrunk } from "./git.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
@@ -10,7 +11,7 @@ import { measureLag, rescueDirtyTrunk, readDirt, type Lag, type RescueDeps, type
 
 const exec = promisify(execFile);
 export const sessionGit = async (root: string, args: string[]): Promise<string> =>
-  (await exec("git", args, { cwd: root, timeout: 30_000 })).stdout.trim();
+  (await exec("git", args, { cwd: root, timeout: 30_000, env: gitSubprocessEnv() })).stdout.trim();
 
 export async function checkoutIdentity(cwd: string): Promise<{ root: string; common: string; linked: boolean }> {
   const root = await realpath(await sessionGit(cwd, ["rev-parse", "--show-toplevel"]));

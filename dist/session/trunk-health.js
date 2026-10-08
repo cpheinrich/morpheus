@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "../git-env.js";
 import { STALE_BEHIND_COMMITS, STALE_BEHIND_DAYS, lagDays, lagSeverity, measureLag, orphanBuildOutputs, readDirt, shellQuote, } from "./trunk-rescue.js";
 /**
  * The read-only half of the trunk rescue, for `doctor` and `doctor --all`.
@@ -14,7 +15,7 @@ import { STALE_BEHIND_COMMITS, STALE_BEHIND_DAYS, lagDays, lagSeverity, measureL
 const exec = promisify(execFile);
 async function git(root, args) {
     try {
-        return (await exec("git", args, { cwd: root, timeout: 15_000, maxBuffer: 20 * 1024 * 1024 })).stdout;
+        return (await exec("git", args, { cwd: root, timeout: 15_000, maxBuffer: 20 * 1024 * 1024, env: gitSubprocessEnv() })).stdout;
     }
     catch {
         return null;
