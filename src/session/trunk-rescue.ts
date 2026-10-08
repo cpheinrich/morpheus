@@ -249,6 +249,8 @@ export type RescueResult =
       orphans: string[];
       wipBranch: string;
       commit: string;
+      /** The remote the branch was (or was to be) pushed to. */
+      remote: string;
       pushed: boolean;
       pushError?: string;
       prUrl?: string;
@@ -292,25 +294,70 @@ export function rescuePrBody(input: {
   ].join("\n");
 }
 
+/**
+ * Names already used, from local branches and the cached remote-tracking
+ * refs only. Deliberately no network call: the name is chosen inside the
+ * window between proving the commit and resetting, and nothing slow may sit
+ * there. Every rescue leaves its local branch, and a push updates the
+ * tracking ref, so this host's earlier rescues are all visible locally; a
+ * name taken only on the remote makes the push fail, which keeps the edits
+ * on the local branch and says so.
+ */
 async function takenBranches(root: string, remote: string, base: string): Promise<Set<string>> {
   const taken = new Set<string>();
-  const local = await git(root, ["for-each-ref", "--format=%(refname:short)", `refs/heads/${base}*`]).catch(() => "");
-  for (const line of local.split("\n")) if (line.trim()) taken.add(line.trim());
-  const remoteHeads = await git(root, ["ls-remote", "--heads", remote, `${base}*`]).catch(() => "");
-  for (const line of remoteHeads.split("\n")) {
-    const ref = line.split(/\s+/)[1];
-    if (ref?.startsWith("refs/heads/")) taken.add(ref.slice("refs/heads/".length));
+  const refs = await git(root, ["for-each-ref", "--format=%(refname)", `refs/heads/${base}*`, `refs/remotes/${remote}/${base}*`]).catch(() => "");
+  for (const line of refs.split("\n")) {
+    const ref = line.trim();
+    if (ref.startsWith("refs/heads/")) taken.add(ref.slice("refs/heads/".length));
+    else if (ref.startsWith(`refs/remotes/${remote}/`)) taken.add(ref.slice(`refs/remotes/${remote}/`.length));
   }
   return taken;
 }
 
 /**
- * Move tracked edits on the trunk branch to a pushed WIP branch and a draft
- * pull request, then reset the checkout to its own HEAD. Does not fast-forward;
- * the caller does that once this returns.
+ * Paths whose staged content differs from both HEAD and the working tree
+ * (`MM`, `AM`, `AD`, `RM`…). Committing the working tree would drop the
+ * staged version, so these are refused rather than silently flattened.
+ */
+export function divergentStaged(raw: string): string[] {
+  const out: string[] = [];
+  const entries = raw.split("\0");
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    if (entry.length < 4) continue;
+    const [x, y] = [entry[0]!, entry[1]!];
+    if (x === "R" || x === "C") i++;
+    if (x !== " " && x !== "?" && x !== "!" && y !== " " && y !== "?" && y !== "!") out.push(entry.slice(3));
+  }
+  return out;
+}
+
+/**
+ * The one file a human edits by hand to reply to agents. A reply typed on a
+ * trunk checkout must reach the session that starts there to read it, so its
+ * presence stops the rescue instead of moving it to a draft PR.
+ */
+export const HUMAN_RECORDS = "hq/team/";
+
+/** `owner/repo` from a GitHub remote URL, or null. */
+export function githubRepo(url: string): string | null {
+  const m = url.trim().match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
+  return m ? `${m[1]}/${m[2]}` : null;
+}
+
+/**
+ * Move tracked edits on the trunk branch to a WIP branch, reset the checkout
+ * to its own HEAD, then push and open a draft pull request. Does not
+ * fast-forward; the caller does that once this returns.
+ *
+ * Everything between proving the commit and resetting is local and fast. The
+ * network (push, `gh`) comes after the reset, so a write landing during it —
+ * an IDE autosave, Xcode regenerating the project file — lands on the reset
+ * tree and survives, instead of being reset away unrecorded.
  */
 export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: RescueDeps = {}): Promise<RescueResult> {
-  const dirt = await readDirt(root);
+  const raw = await git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+  const dirt = parsePorcelain(raw, true);
   const orphans = await orphanBuildOutputs(root, dirt.untracked);
   if (!dirt.tracked.length) return { outcome: "clean", dirt, orphans };
 
@@ -319,12 +366,19 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
   if (branch !== target.branch) return skip(`HEAD is ${branch}, not the trunk branch ${target.branch}`);
   const operation = await operationInProgress(root);
   if (operation) return skip(`a ${operation} is in progress`);
+  const replies = dirt.tracked.filter((p) => p.startsWith(HUMAN_RECORDS));
+  if (replies.length) return skip(`${replies.join(", ")} has uncommitted edits, likely inbox replies; commit them on an inbox-<date> branch`);
+  const divergent = divergentStaged(raw);
+  if (divergent.length) return skip(`${divergent.join(", ")} has staged content that differs from the working tree; commit or unstage it`);
 
   const now = deps.now ?? new Date();
   const host = shortHost(deps.hostname ?? osHostname());
   const date = pacificDate(now);
   const remote = deps.pushRemote ?? "origin";
   const head = (await git(root, ["rev-parse", "HEAD"])).trim();
+  const lag = await measureLag(root, target.sha).catch((): Lag => ({ behind: 0, oldest: null }));
+  const ahead = Number((await git(root, ["rev-list", "--count", `${target.sha}..HEAD`]).catch(() => "0")).trim()) || 0;
+  const wipBranch = wipBranchName(date, host, await takenBranches(root, remote, `wip/trunk-${date}-${host}`));
 
   // A private index seeded from the real one keeps staged additions and
   // renames; `add -u` then records the working tree's tracked content over
@@ -357,19 +411,20 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
   if (!(await gitOk(root, ["diff", "--quiet", commit, "--"]))) {
     return skip("the working tree did not match the rescue commit; left untouched");
   }
-
-  const wipBranch = wipBranchName(date, host, await takenBranches(root, remote, `wip/trunk-${date}-${host}`));
   try {
     // Empty old-value: create only, never move an existing branch.
     await git(root, ["update-ref", `refs/heads/${wipBranch}`, commit, ""]);
   } catch (error) {
     return skip(`could not create ${wipBranch} (${firstLine(error)})`);
   }
+  // Proven again immediately before the reset, so the window a write could
+  // slip through is two local Git calls wide, not a network round trip.
+  if (!(await gitOk(root, ["diff", "--quiet", commit, "--"]))) {
+    return skip(`the working tree changed while rescuing; nothing was reset (the earlier state is on ${wipBranch})`);
+  }
+  await git(root, ["reset", "--hard", "--quiet", "HEAD"]);
 
-  const lag = await measureLag(root, target.sha).catch((): Lag => ({ behind: 0, oldest: null }));
-  const ahead = Number((await git(root, ["rev-list", "--count", `${target.sha}..HEAD`]).catch(() => "0")).trim()) || 0;
   const diffstat = await git(root, ["diff", "--stat", head, commit]).catch(() => "");
-
   let pushed = false;
   let pushError: string | undefined;
   try {
@@ -385,8 +440,21 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
     const runner = deps.runner ?? runCommand;
     const body = rescuePrBody({ root, host, date, trunk: target.trunk, lag, ahead, diffstat, tracked: dirt.tracked, untracked: dirt.untracked, orphans, now });
     const repoName = root.split(/[\\/]/).filter(Boolean).pop() ?? "repository";
+    // On a fork the trunk remote (upstream) is not the push remote (origin):
+    // name the base repository and qualify the head with the fork's owner, or
+    // gh looks for the branch where it was never pushed.
+    const trunkRemote = target.trunk.endsWith(`/${target.branch}`) ? target.trunk.slice(0, -target.branch.length - 1) : remote;
+    let repoArgs: string[] = [];
+    let prHead = wipBranch;
+    if (trunkRemote !== remote) {
+      const [base, fork] = await Promise.all([
+        git(root, ["remote", "get-url", trunkRemote]).then(githubRepo, () => null),
+        git(root, ["remote", "get-url", remote]).then(githubRepo, () => null),
+      ]);
+      if (base && fork) { repoArgs = ["--repo", base]; prHead = `${fork.split("/")[0]}:${wipBranch}`; }
+    }
     const created = await runner("gh", [
-      "pr", "create", "--draft", "--base", target.branch, "--head", wipBranch,
+      "pr", "create", "--draft", ...repoArgs, "--base", target.branch, "--head", prHead,
       "--title", `WIP: uncommitted changes rescued from ${repoName} ${target.branch} (${date})`,
       "--body", body,
     ], root);
@@ -394,10 +462,8 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
     else prError = (created.stderr || created.stdout || `exit ${created.code}`).trim().split("\n")[0];
   }
 
-  // Safe now: the content is on a local ref (and pushed when the push worked).
-  await git(root, ["reset", "--hard", "--quiet", "HEAD"]);
   return {
-    outcome: "rescued", dirt, orphans, wipBranch, commit, pushed, lag,
+    outcome: "rescued", dirt, orphans, wipBranch, commit, pushed, lag, remote,
     ...(pushError ? { pushError } : {}),
     ...(prUrl ? { prUrl } : {}),
     ...(prError ? { prError } : {}),
@@ -416,7 +482,7 @@ export function formatRescue(result: RescueResult, trunk: string): string[] {
     const n = result.dirt.tracked.length;
     const where = result.prUrl ? `draft PR ${result.prUrl}` : `branch ${result.wipBranch}`;
     lines.push(`Moved ${n} uncommitted tracked file(s) from dirty trunk to ${where}; trunk reset to its last commit.`);
-    if (!result.pushed) lines.push(`  ! Push failed (${result.pushError ?? "unknown"}). The edits are safe on local branch ${result.wipBranch}; push it with: git push origin ${result.wipBranch}`);
+    if (!result.pushed) lines.push(`  ! Push failed (${result.pushError ?? "unknown"}). The edits are safe on local branch ${result.wipBranch}; push it with: git push ${result.remote} ${result.wipBranch}`);
     else if (!result.prUrl) lines.push(`  ! Pushed ${result.wipBranch}, but the draft PR was not opened (${result.prError ?? "unknown"}). Open it with: gh pr create --draft --head ${result.wipBranch}`);
   } else if (result.outcome === "skipped") {
     lines.push(`!!! TRUNK CHECKOUT IS DIRTY AND WAS NOT RESCUED: ${result.reason}.`);

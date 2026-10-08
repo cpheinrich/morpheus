@@ -8,7 +8,9 @@ import {
   STALE_BEHIND_COMMITS,
   STALE_BEHIND_DAYS,
   buildSourceCandidates,
+  divergentStaged,
   formatLag,
+  githubRepo,
   lagSeverity,
   orphanBuildOutputs,
   pacificDate,
@@ -100,6 +102,19 @@ describe("lag thresholds", () => {
       `This checkout is 2 commit(s) behind origin/main; the oldest missing commit landed 1 day(s) ago (${ago(1).slice(0, 10)}).`,
     );
     expect(formatLag({ behind: 0, oldest: null }, "origin/main", NOW)).toEqual([]);
+  });
+});
+
+describe("index states and remotes", () => {
+  it("finds staged content that differs from both HEAD and the working tree", () => {
+    const raw = ["MM both.ts", "AM added.ts", "AD gone.ts", "M  staged-only.ts", " M tree-only.ts", " A intent.ts", "RM new.ts", "old.ts", "?? u.txt", ""].join("\0");
+    expect(divergentStaged(raw)).toEqual(["both.ts", "added.ts", "gone.ts", "new.ts"]);
+  });
+  it("reads owner/repo from GitHub remote URLs only", () => {
+    expect(githubRepo("https://github.com/cpheinrich/morpheus.git")).toBe("cpheinrich/morpheus");
+    expect(githubRepo("git@github.com:cpheinrich/morpheus.git")).toBe("cpheinrich/morpheus");
+    expect(githubRepo("https://github.com/cpheinrich/morpheus")).toBe("cpheinrich/morpheus");
+    expect(githubRepo("/tmp/remote.git")).toBeNull();
   });
 });
 
@@ -209,6 +224,56 @@ describe("rescuing a dirty trunk checkout", () => {
     expect(body).toContain("safe to delete:\n\n- `dist/gone.js`");
     expect(body).toContain("`check pr` conventions");
     expect(body).not.toContain("never-commit");
+  });
+
+  it("keeps a write that lands while the branch is pushed and the PR opened", async () => {
+    await writeFile(join(local, "project.pbxproj"), "edit1\n");
+    gh.mockImplementation(async () => {
+      // An IDE autosave, or Xcode regenerating the project, during the network calls.
+      await writeFile(join(local, "project.pbxproj"), "edit2-concurrent\n");
+      return { code: 0, stdout: "https://github.com/o/r/pull/43\n", stderr: "" };
+    });
+    const rescue = (await prepareRepository(local, false, deps())).rescue!;
+    expect(rescue.outcome).toBe("rescued");
+    expect(await git(remote, "show", `refs/heads/${branchBase}:project.pbxproj`)).toBe("edit1");
+    expect(await readFile(join(local, "project.pbxproj"), "utf8")).toBe("edit2-concurrent\n");
+  });
+
+  it("refuses staged content that differs from the working tree, changing nothing", async () => {
+    await writeFile(join(local, "project.pbxproj"), "staged\n");
+    await git(local, "add", "project.pbxproj");
+    await writeFile(join(local, "project.pbxproj"), "worktree\n");
+    const result = await prepareRepository(local, false, deps());
+    expect(result.rescue).toMatchObject({ outcome: "skipped", reason: "project.pbxproj has staged content that differs from the working tree; commit or unstage it" });
+    expect(await git(local, "show", ":project.pbxproj")).toBe("staged");
+    expect(await readFile(join(local, "project.pbxproj"), "utf8")).toBe("worktree\n");
+    expect(await git(local, "for-each-ref", "refs/heads/wip")).toBe("");
+    expect(gh).not.toHaveBeenCalled();
+  });
+
+  it("leaves inbox replies on a trunk checkout for the session that reads them", async () => {
+    await mkdir(join(source, "hq/team"), { recursive: true });
+    await writeFile(join(source, "hq/team/chris.md"), "## ❗ 1. Q\n\n~\n");
+    await git(source, "add", "."); await git(source, "commit", "-m", "inbox"); await git(source, "push", "origin", "main");
+    await git(local, "pull", "--quiet", "--ff-only");
+    await writeFile(join(local, "hq/team/chris.md"), "## ❗ 1. Q\n\n~ yes, do A\n");
+    await writeFile(join(local, "project.pbxproj"), "mine\n");
+    const result = await prepareRepository(local, false, deps());
+    expect(result.rescue).toMatchObject({ outcome: "skipped", reason: "hq/team/chris.md has uncommitted edits, likely inbox replies; commit them on an inbox-<date> branch" });
+    expect(await readFile(join(local, "hq/team/chris.md"), "utf8")).toBe("## ❗ 1. Q\n\n~ yes, do A\n");
+    expect(await readFile(join(local, "project.pbxproj"), "utf8")).toBe("mine\n");
+  });
+
+  it("on a fork, opens the PR against the trunk remote's repository with an owner-qualified head", async () => {
+    await git(local, "remote", "set-url", "origin", "https://github.com/fork-owner/project.git");
+    await git(local, "remote", "set-url", "--push", "origin", remote);
+    await git(local, "remote", "add", "upstream", "git@github.com:up-owner/project.git");
+    await writeFile(join(local, "project.pbxproj"), "mine\n");
+    const sha = await git(local, "rev-parse", "HEAD");
+    const result = await rescueDirtyTrunk(local, { trunk: "upstream/main", branch: "main", sha }, deps());
+    expect(result.outcome).toBe("rescued");
+    const args = gh.mock.calls[0]![1];
+    expect(args.slice(0, 9)).toEqual(["pr", "create", "--draft", "--repo", "up-owner/project", "--base", "main", "--head", `fork-owner:${branchBase}`]);
   });
 
   it("is idempotent within a day: a second rescue takes the next suffix", async () => {

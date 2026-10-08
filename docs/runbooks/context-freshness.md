@@ -15,10 +15,19 @@ Xcode-rewritten `project.pbxproj`. So when HEAD is the trunk branch and tracked 
 (staged or not), `brief`:
 
 1. commits the working tree's tracked content to `wip/trunk-<YYYY-MM-DD>-<host>` (Pacific date;
-   `-2`, `-3`… if taken) without touching your index, and proves the commit matches the tree;
-2. pushes it to `origin` and opens a **draft** PR titled *WIP: uncommitted changes rescued from
-   <repo> main (<date>)*, listing the files, the diffstat and how far behind trunk was;
-3. resets trunk to its last commit and fast-forwards, printing one line with the PR URL.
+   `-2`, `-3`… if taken locally) without touching your index, and proves the commit matches the
+   tree — once before creating the branch and again immediately before resetting;
+2. resets trunk to its last commit. Nothing slow runs between the proof and the reset, so an
+   editor saving during the push below lands on the reset tree instead of being lost;
+3. pushes the branch to `origin` and opens a **draft** PR titled *WIP: uncommitted changes rescued
+   from <repo> main (<date>)*, listing the files, the diffstat and how far behind trunk was (on a
+   fork, against the trunk remote's repository), then fast-forwards and prints one line with the
+   PR URL.
+
+It refuses, and reports instead, when a file's staged content differs from both HEAD and the
+working tree (committing the tree would drop the staged version), and when anything under
+`hq/team/` is edited — those are inbox replies, which belong to the session starting there to read
+them, on an `inbox-<date>` branch.
 
 **Untracked files are never committed or deleted** — that is where secrets and build junk live.
 They are listed in the PR, and untracked build output whose source no longer exists

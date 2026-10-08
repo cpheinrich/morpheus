@@ -89,6 +89,8 @@ export type RescueResult = {
     orphans: string[];
     wipBranch: string;
     commit: string;
+    /** The remote the branch was (or was to be) pushed to. */
+    remote: string;
     pushed: boolean;
     pushError?: string;
     prUrl?: string;
@@ -109,9 +111,28 @@ export declare function rescuePrBody(input: {
     now: Date;
 }): string;
 /**
- * Move tracked edits on the trunk branch to a pushed WIP branch and a draft
- * pull request, then reset the checkout to its own HEAD. Does not fast-forward;
- * the caller does that once this returns.
+ * Paths whose staged content differs from both HEAD and the working tree
+ * (`MM`, `AM`, `AD`, `RM`…). Committing the working tree would drop the
+ * staged version, so these are refused rather than silently flattened.
+ */
+export declare function divergentStaged(raw: string): string[];
+/**
+ * The one file a human edits by hand to reply to agents. A reply typed on a
+ * trunk checkout must reach the session that starts there to read it, so its
+ * presence stops the rescue instead of moving it to a draft PR.
+ */
+export declare const HUMAN_RECORDS = "hq/team/";
+/** `owner/repo` from a GitHub remote URL, or null. */
+export declare function githubRepo(url: string): string | null;
+/**
+ * Move tracked edits on the trunk branch to a WIP branch, reset the checkout
+ * to its own HEAD, then push and open a draft pull request. Does not
+ * fast-forward; the caller does that once this returns.
+ *
+ * Everything between proving the commit and resetting is local and fast. The
+ * network (push, `gh`) comes after the reset, so a write landing during it —
+ * an IDE autosave, Xcode regenerating the project file — lands on the reset
+ * tree and survives, instead of being reset away unrecorded.
  */
 export declare function rescueDirtyTrunk(root: string, target: TrunkTarget, deps?: RescueDeps): Promise<RescueResult>;
 /** The one-line-plus-detail report `context brief` prints after a rescue attempt. */
