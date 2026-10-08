@@ -3020,8 +3020,16 @@ and a broken workflow is noticed and fixed in minutes.
 
 **The caller chooses the runner.** `node-ci`, `web-ci` and `python-ci` take a `runner` input, a single
 label defaulting to `ubuntu-latest`, as `ios-ci` already does. A private project may pass an isolated
-self-hosted label (`with: runner: linux-vm`); any fallback to a hosted image is the caller's, since a
-reusable workflow cannot retry a job on another runner.
+self-hosted label (`with: runner: linux-vm`), under the isolation rules for repo-scoped self-hosted
+runners in the iOS CI section above (never the operator's account, never a public repository). Three
+consequences stay with the caller:
+
+- A reusable workflow cannot retry a job on another runner, so any fallback to a hosted image is the
+  caller's.
+- An offline self-hosted label leaves the job queued for up to GitHub's 24-hour limit rather than
+  failing, so a fallback needs a probe job whose result feeds `runner`.
+- `web-ci`'s optional Playwright step runs `playwright install --with-deps`, which needs root or
+  passwordless sudo, so `run-e2e` on a self-hosted runner needs that or a prepared image.
 
 Deployment follows the same boundary as validation. `vercel-deploy.yml` owns the Vercel CLI
 sequence, fork guard, environment receipt and pull-request preview comment. Each project owns only
