@@ -1225,6 +1225,9 @@ by extension, nothing binary. `.agent/worklog/` and `hq/product/` are not counte
 task's own records. Generated output such as `dist/` *is* counted, because excluding it would trust
 every project to verify its mirror. Tests get their own, larger cap because they change no shipped
 behaviour and CI executes them, but still a cap, so a large test rewrite keeps the floor. Any source
-file, script or extensionless file keeps the floor however few lines change. Only the floor is
+file, script or extensionless file keeps the floor however few lines change. A test is recognised
+by its file name, never its directory, because `tests/` also holds helpers and actions with
+executable steps. A turn recorded at zero never qualifies: zero is the template's placeholder, and
+the waiver relaxes the 30 seconds, not the measurement. Only the floor is
 waived: authorization to resume an incomplete turn, ceilings and every other rule stand. Native
 `git diff --numstat`; no dependency.

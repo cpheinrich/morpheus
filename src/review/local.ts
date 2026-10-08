@@ -192,7 +192,11 @@ export const TRIVIAL_DIFF_MAX_TEST_LINES = 40;
  * project to verify its mirror, and counting it only doubles a change already small.
  */
 const TRIVIAL_DIFF_RECORDS = /^(?:\.agent\/worklog\/|hq\/product\/)/;
-const TRIVIAL_DIFF_TESTS = /(?:^|\/)(?:tests?|__tests__|[A-Za-z0-9_-]*Tests)\/|\.(?:test|spec)\.[A-Za-z0-9]+$|(?:^|\/)test_[^/]+\.py$|_test\.(?:py|go)$/;
+/**
+ * A test is recognised by its own file name, never by its directory: a `tests/` or `test/` folder
+ * also holds helpers, fixtures and actions with executable steps, which must count as logic.
+ */
+const TRIVIAL_DIFF_TESTS = /\.(?:test|spec)\.[A-Za-z0-9]+$|(?:^|\/)test_[^/]+\.py$|_test\.(?:py|go)$|Tests?\.(?:swift|kt|java)$/;
 /**
  * Configuration, workflows and prose. Anything else with real logic — source in any language, a
  * shell script, an extensionless file — keeps the floor however few lines change. Workflows stay
@@ -284,9 +288,12 @@ export function validateReviewRecord(record: LocalReviewRecord, opts: { trivialC
   // as incomplete, and the review is then the authorized same-reviewer turn, which must meet the
   // floor itself and clear. Without this the authorized resumption the contract offers never lands.
   // A trivially small change (TRIVIAL_DIFF_MAX_LINES) is waived: there the floor measures the diff.
+  // The waiver relaxes the 30 seconds, not the measurement: a zero duration is the template's
+  // placeholder, so a record with any zero-length turn never qualifies.
   const rescuedByTurn = turns.some(turn => turn.humanAuthorization && !turn.finalization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5);
   if (record.risk !== "small" && record.elapsedMinutes < 0.5 && !(resumed && rescuedByTurn)) {
-    const size = opts.trivialChange?.();
+    const measured = [record, ...turns].every(turn => turn.elapsedMinutes > 0);
+    const size = measured ? opts.trivialChange?.() : undefined;
     if (!size?.trivial) {
       const why = size ? ` (not a trivial change: ${size.reason})` : "";
       // A finalization turn only closes out an existing clearance, so it is never the review that counts.

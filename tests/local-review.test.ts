@@ -983,7 +983,7 @@ describe("the floor is waived for a trivially small change, measured from Git", 
     change({ ".github/workflows/ci.yml": lines(5), "qa/ci.test.mjs": lines(40) });
     expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: true, reason: "5 changed non-test lines (max 20), 40 test lines (max 40)" });
     expect(check(save(quick()))).toEqual([]);
-    change({ ".github/workflows/ci.yml": lines(5), "tests/ci.ts": lines(41) });
+    change({ ".github/workflows/ci.yml": lines(5), "tests/ci.test.ts": lines(41) });
     expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "5 changed non-test lines (max 20), 41 test lines (max 40)" });
     expect(check(save(quick()))[0]?.message).toContain("41 test lines (max 40)");
   });
@@ -1002,6 +1002,22 @@ describe("the floor is waived for a trivially small change, measured from Git", 
     expect(check(save(quick()))[0]?.message).toContain("source outside configuration and docs: src/a.ts");
     change({ "scripts/release": "#!/bin/sh\n" });
     expect(trivialDiff(root, base, reviewed).trivial).toBe(false);
+  });
+  it("recognises a test by its file name, so helpers and actions under a test directory count as logic", () => {
+    for (const file of ["qa/a.test.mjs", "src/a.spec.ts", "py/test_a.py", "py/a_test.py", "go/a_test.go", "AppTests/LoginTests.swift", "app/src/test/LoginTest.kt"]) {
+      change({ [file]: lines(3) });
+      expect(trivialDiff(root, base, reviewed).reason).toBe("0 changed non-test lines (max 20), 3 test lines (max 40)");
+    }
+    change({ ".github/workflows/ci.yml": "uses: ./tests/ci/deploy\n", "tests/ci/deploy/action.yml": lines(3), "tests/helpers.ts": lines(3) });
+    expect(trivialDiff(root, base, reviewed)).toEqual({ trivial: false, reason: "7 changed non-test lines (max 20), 0 test lines (max 40), source outside configuration and docs: tests/helpers.ts" });
+  });
+  it("never waives a turn with no measurement: zero is the template's placeholder", () => {
+    change({ ".github/workflows/ci.yml": lines(5) });
+    expect(check(save(quick({ elapsedMinutes: 0 })))[0]?.message).toBe("an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done");
+    expect(check(save(quick({ elapsedMinutes: 1 / 60000 })))).toEqual([]);
+    const turn = { reviewerSession: record().reviewerSession, commit: reviewed, outcome: "cleared" as const, scopeReason: "Late correction for a CI failure.", summary: "Cleared the late correction." };
+    expect(check(save(quick({ followUps: [{ ...turn, elapsedMinutes: 0 }] })))[0]?.message).toContain("under 30 seconds");
+    expect(check(save(quick({ followUps: [{ ...turn, elapsedMinutes: 1 / 60000 }] })))).toEqual([]);
   });
   it("never treats a binary change as trivial", () => {
     change({ "assets/icon.png": Buffer.from([0, 1, 2, 0, 255]) });
