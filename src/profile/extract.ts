@@ -33,9 +33,14 @@ export interface Extraction {
 /** Parse `--since`. Returns null for a malformed date so the caller can refuse it. */
 export function sinceMs(since: string | undefined): number | null | undefined {
   if (since === undefined) return undefined;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) return null;
-  const t = new Date(`${since}T00:00:00`).getTime();
-  return Number.isNaN(t) ? null : t;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(since);
+  if (!m) return null;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  // `Date` rolls an impossible day over — 2026-02-30 becomes March 2 — so the
+  // parsed fields must read back unchanged, or the date did not exist.
+  const d = new Date(year, month - 1, day);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+  return d.getTime();
 }
 
 async function list(dir: string): Promise<string[]> {

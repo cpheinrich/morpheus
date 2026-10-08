@@ -20,7 +20,7 @@ async function roots(): Promise<string[]> {
 
 async function run(flags: ProfileFlags): Promise<Extraction | null> {
   if (sinceMs(flags.since) === null) {
-    console.error(`--since must be YYYY-MM-DD, got "${flags.since}".`);
+    console.error(`--since must be a real calendar date in YYYY-MM-DD, got "${flags.since}".`);
     return null;
   }
   return extract({ since: flags.since, repo: flags.repo, roots: await roots() });

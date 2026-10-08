@@ -3021,7 +3021,10 @@ commands. The phase of a shell command comes from an ordered rule table in
 `src/profile/classify.ts` — priority, not position, so `git push && gh pr checks --watch` is CI
 wait. Active time caps each idle gap at five minutes unless a running tool call covers it, and a
 tool result arriving more than four hours late is reported as an outlier rather than counted as
-work. Rows never carry prompt text, file contents read or written by a tool, or tool output. A command
+work. Time blocked on a person — an `AskUserQuestion` or `ExitPlanMode` call, or a permission
+prompt the person refused (`toolDenialKind: "user-rejected"`) — is phase `human-wait` and never
+active time, however short. An *approved* permission prompt leaves no marker in the transcript, so
+its wait stays inside that tool call's duration. `--since` must be a real calendar date. Rows never carry prompt text, file contents read or written by a tool, or tool output. A command
 is kept to its first 120 characters with credential-shaped values masked and any heredoc body cut;
 arguments typed on the command line itself can still appear within that prefix.
 

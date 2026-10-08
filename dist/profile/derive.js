@@ -27,18 +27,34 @@ export function credible(durationMs) {
  * Active time across sorted-or-unsorted event timestamps (epoch ms): the sum
  * of consecutive gaps, each capped at `idleMs` unless a busy interval covers
  * it entirely.
+ *
+ * Time inside a `waiting` interval — the agent blocked on a person answering
+ * a question or a permission prompt — is never active, however short. It is
+ * removed from each gap before the cap applies, so a two-minute wait for an
+ * answer is not counted as two minutes of agent work.
  */
-export function activeTime(timestamps, busy = [], idleMs = IDLE_THRESHOLD_MS) {
+export function activeTime(timestamps, busy = [], idleMs = IDLE_THRESHOLD_MS, waiting = []) {
     const ts = timestamps.filter(Number.isFinite).sort((a, b) => a - b);
     const merged = mergeIntervals(busy);
+    const human = mergeIntervals(waiting);
     let total = 0;
     for (let i = 1; i < ts.length; i++) {
         const from = ts[i - 1];
         const to = ts[i];
-        const gap = to - from;
+        const gap = to - from - overlap(human, from, to);
         total += gap <= idleMs || covered(merged, from, to) ? gap : idleMs;
     }
     return total;
+}
+/** Milliseconds of [from, to] that merged, sorted `intervals` cover. */
+export function overlap(intervals, from, to) {
+    let sum = 0;
+    for (const i of intervals) {
+        if (i.start >= to)
+            break;
+        sum += Math.max(0, Math.min(i.end, to) - Math.max(i.start, from));
+    }
+    return sum;
 }
 function mergeIntervals(intervals) {
     const sorted = intervals.filter((i) => i.end > i.start).sort((a, b) => a.start - b.start);
