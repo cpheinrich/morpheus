@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkLocalReview, committedConfig, git, MISSING_LABEL, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
+import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, reviewRequired, type LocalReviewRecord } from "../src/review/local.js";
 import { checkPr } from "../src/check/pr.js";
 import { prepareReview, validateReview } from "../src/cli/review.js";
 
@@ -867,6 +867,85 @@ describe("authorized continuation after missing review evidence", () => {
     r.followUps![1]!.reviewerSession = r.reviewerSession;
     r.followUps![1]!.outcome = "incomplete";
     expect(check(save(r))[0]?.message).toContain("final follow-up must clear");
+  });
+});
+
+describe("an authorized follow-up rescues an initial review under the floor", () => {
+  const authorization = { approvedBy: "cpheinrich", approvedAt: "2026-10-08T11:06:12Z", reason: "Authorized one extra same-reviewer turn after a clean initial review fell under the floor." };
+  const timing = (durationMs: number) => ({ source: "runner" as const, durationMs, evidence: `Runner total_duration_ms for this turn: ${durationMs}.` });
+  // Shaped like kairos#70: a clean 22 s initial pass recorded incomplete, then one authorized turn.
+  function rescued(followUpMs = 30000): LocalReviewRecord {
+    const r = record();
+    return {
+      ...r, version: 2, elapsedMinutes: 22000 / 60000, timing: timing(22000), initialOutcome: "incomplete",
+      followUps: [{ reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: followUpMs / 60000, timing: timing(followUpMs), humanAuthorization: authorization, summary: "Re-read the change in full and cleared it." }],
+    };
+  }
+  it("accepts an authorized clearing follow-up of exactly 30 seconds, and preserves the initial verdict", () => {
+    const r = rescued(30000);
+    expect(check(save(r))).toEqual([]);
+    const written = readFileSync(join(root, path), "utf8");
+    expect(parseReviewRecord(written).initialOutcome).toBe("incomplete");
+  });
+  // Under the floor the rescue predicate refuses first; over it, the finalization predecessor check does.
+  it.each([
+    [22000, "authorized same-reviewer turn of at least 30 seconds that clears"],
+    [180000, "the incomplete turn before it"],
+  ])("refuses a finalization turn as the only follow-up to a %i ms incomplete initial review", (initialMs, message) => {
+    const r = rescued(30000);
+    r.elapsedMinutes = initialMs / 60000; r.timing = timing(initialMs);
+    r.followUps![0] = { ...r.followUps![0]!, scopeReason: "Finalize the documentation.", finalization: { paths: ["README.md"], evidence: "Re-read README.md.", attestation: "Restates already-reviewed behaviour." } };
+    expect(check(save(r))[0]?.message).toContain(message);
+  });
+  it("does not count an authorized finalization turn as the review that meets the floor", () => {
+    const r = rescued(30000);
+    const authorized = r.followUps![0]!;
+    r.followUps = [
+      { ...authorized, elapsedMinutes: 20000 / 60000, timing: timing(20000) },
+      { ...authorized, commit: r.covered, scopeReason: "Finalize the documentation.", finalization: { paths: [path], evidence: "Re-read the worklog.", attestation: "Closes out the record only." } },
+    ];
+    expect(check(save(r))[0]?.message).toContain("authorized same-reviewer turn of at least 30 seconds that clears");
+  });
+  it("refuses an authorized follow-up one millisecond under the floor", () => {
+    expect(check(save(rescued(29999)))[0]?.message).toContain("authorized same-reviewer turn of at least 30 seconds that clears");
+  });
+  it("refuses an under-floor initial review recorded as cleared rather than incomplete", () => {
+    const r = rescued(); delete r.initialOutcome;
+    expect(check(save(r))[0]?.message).toContain("under 30 seconds at normal or high risk is not a review");
+    // A scope reason does not turn it into one either.
+    r.followUps![0]!.scopeReason = "Late correction after an under-floor initial review.";
+    expect(check(save(r))[0]?.message).toContain("under 30 seconds at normal or high risk is not a review");
+  });
+  it("refuses an unauthorized follow-up", () => {
+    const r = rescued(); delete r.followUps![0]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+  });
+  it("refuses a malformed authorization", () => {
+    const r = rescued(); r.followUps![0]!.humanAuthorization = { ...authorization, approvedAt: "yesterday" };
+    expect(check(save(r))[0]?.message).toMatch(/approvedAt|datetime/i);
+  });
+  it("refuses a follow-up from a different reviewer", () => {
+    const r = rescued(); r.followUps![0]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
+    expect(check(save(r))[0]?.message).toContain("original reviewer");
+  });
+  it("refuses an incomplete initial review with no follow-up at all", () => {
+    const r = rescued(); delete r.followUps;
+    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+  });
+  it("refuses an authorized follow-up that does not clear", () => {
+    const r = rescued(); r.followUps![0]!.outcome = "blocked";
+    expect(check(save(r))[0]?.message).toContain("that clears");
+  });
+  it("keeps the 30-second initial boundary when nothing is resumed", () => {
+    const r = rescued(); delete r.initialOutcome; delete r.followUps;
+    r.elapsedMinutes = 30000 / 60000; r.timing = timing(30000);
+    expect(check(save(r))).toEqual([]);
+  });
+  it("still requires authorization to resume an incomplete initial review that met the floor", () => {
+    const r = rescued(); r.elapsedMinutes = 180000 / 60000; r.timing = timing(180000);
+    expect(check(save(r))).toEqual([]);
+    delete r.followUps![0]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
   });
 });
 

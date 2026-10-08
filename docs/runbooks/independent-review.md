@@ -59,7 +59,10 @@ reason. Small was 5 minutes until the first two weeks showed that every small re
 execution rather than reading overran it, and two worklogs chose between two elapsed figures by
 which side of the ceiling each landed on; a ceiling that only produces accounting is not a ceiling.
 There is also a floor: an initial review under 30 seconds at normal or high risk is refused.
-Small risk has no floor. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
+Small risk has no floor. An under-floor initial turn can only be preserved as `"initialOutcome":
+"incomplete"`; the record is then accepted when a same-reviewer follow-up carrying
+`humanAuthorization` measures at least 30 seconds and clears. The next turn after any incomplete
+initial turn needs that authorization, and a late-correction `scopeReason` is not required of it. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
 validates reported durations; it cannot interrupt a provider's session or measure its billing.
 No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
 budget exhaustion or missing evidence, record incomplete and keep the PR open.
