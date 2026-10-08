@@ -49,8 +49,8 @@ These are ceilings, not targets. One initial extension of at most 50% is allowed
 reason. Small was 5 minutes until the first two weeks showed that every small review needing
 execution rather than reading overran it, and two worklogs chose between two elapsed figures by
 which side of the ceiling each landed on; a ceiling that only produces accounting is not a ceiling.
-There is also a floor: an initial review under one minute at normal or high risk is refused. The
-PR that adopted this policy on one project was "reviewed" in 42 seconds. Small risk has no floor. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
+There is also a floor: an initial review under 30 seconds at normal or high risk is refused.
+Small risk has no floor. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
 validates reported durations; it cannot interrupt a provider's session or measure its billing.
 No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
 budget exhaustion or missing evidence, record incomplete and keep the PR open.
@@ -83,8 +83,8 @@ rounding. The checker requires timing for every version 2 turn and rejects a mis
 The source reference is an auditable attestation; CI does not fetch private provider transcripts.
 Historical version 1 records remain valid; any timing attached to them is checked too. Do not
 rewrite old outcomes from an estimated duration or manufacture a measurement to clear a gate.
-Without a reliable measurement, record incomplete and obtain the evidence. Existing ceilings,
-the initial floor, review outcomes and escalation rules are unchanged.
+Without a reliable measurement, record incomplete and obtain the evidence. Review ceilings,
+outcomes and escalation rules are unchanged.
 
 The author responds to every finding. For minor-only findings, one fix/response round is enough.
 For any substantive finding, resume the original reviewer to assess responses, fixes and their

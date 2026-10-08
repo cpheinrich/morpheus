@@ -217,9 +217,9 @@ export function validateReviewRecord(record: LocalReviewRecord): void {
   const budget = REVIEW_BUDGET_MINUTES[record.risk];
   const multiplier = record.extensionReason ? 1.5 : 1;
   if (record.elapsedMinutes > budget * multiplier) throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
-  // A 42-second "review" at normal risk cleared the PR that adopted this policy. Small risk keeps
-  // no floor: a one-line change can genuinely be read in under a minute.
-  if (record.risk !== "small" && record.elapsedMinutes < 1) throw new Error("an initial review under one minute at normal or high risk is not a review; record what was actually done");
+  // Normal and high risk require a measured initial pass of at least 30 seconds.
+  // Small risk keeps no floor: a one-line change can genuinely be read faster.
+  if (record.risk !== "small" && record.elapsedMinutes < 0.5) throw new Error("an initial review under 30 seconds at normal or high risk is not a review; record what was actually done");
   // A turn after a clearance is a late correction, such as a fix full CI asked for after the
   // reviewer cleared the code. It spends one of the remaining turns and must name the scope
   // decision in its scopeReason, so the record shows why a cleared review was reopened. A turn

@@ -1016,6 +1016,13 @@ mechanical conditions only: the reviewer sets paths and evidence, the author rec
 and `check pr` verifies the fix stayed inside the paths; a condition cannot be added or widened by
 the author.
 
+**The initial normal/high-risk review floor is 30 seconds** — 2026-10-07, Chris's call while
+reviewing Evo's Dataset Collector change. This supersedes the one-minute floor above. A measured
+48-second independent review found a substantive race, and its same-reviewer follow-up verified
+the fix; the old floor rejected that useful review solely for its duration. The floor still rejects
+shorter normal/high-risk reviews, while small risk keeps no floor and all timing evidence,
+ceilings, same-reviewer, and finding-resolution requirements remain.
+
 
 **Each iOS CI test job owns disposable simulator devices** — 2026-09-25. The reusable
 workflow resolves the caller’s destination to type/runtime and creates a fresh uniquely
