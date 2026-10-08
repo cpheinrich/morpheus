@@ -77,6 +77,7 @@ export declare const ReviewRecord: z.ZodObject<{
         incomplete: "incomplete";
         complete: "complete";
     }>;
+    initialOutcome: z.ZodOptional<z.ZodLiteral<"incomplete">>;
     summary: z.ZodString;
     trunkIntegrations: z.ZodOptional<z.ZodArray<z.ZodObject<{
         commit: z.ZodString;
@@ -213,6 +214,22 @@ export declare function verifyUncoveredCommits(root: string, record: {
         commit: string;
     }[] | undefined;
 }, from: string, to: string, trunk: string, allowed: Set<string>, refusal: string): Set<string>;
+/**
+ * The project manifest as committed at `commit`, for the review gate.
+ *
+ * Two different absences, answered differently. A commit this checkout does not hold is a fact
+ * about the checkout (shallow, single-branch, or a head pushed after the event was sent), not about
+ * the pull request, so it is named as such instead of surfacing as a raw `git show` failure. A
+ * manifest absent at a commit that is present means the project has no configuration there, and
+ * the defaults apply: review stays required, which is the safe direction.
+ */
+export declare function committedConfig(root: string, commit: string): unknown;
+/**
+ * A PR without the label is never passed here, draft or not. Keeping a draft from going red is the
+ * caller's job: its `pr` job skips an unlabelled draft, which leaves the required check unreported,
+ * and an unreported required check blocks merge where a passing or skipped one would not.
+ */
+export declare const MISSING_LABEL = "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is under way, keep the PR a draft (gh pr ready --undo): conventions then wait, unreported, until it is labelled or marked ready.";
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export declare function checkLocalReview(opts: {
     root: string;
@@ -221,4 +238,17 @@ export declare function checkLocalReview(opts: {
     head: string;
     base: string;
 }): Finding[];
+/** The worklog path a PR body's single visible `review-record:` line names; throws CI's message otherwise. */
+export declare function reviewRecordLine(body: string): string;
+/**
+ * Everything the gate checks once it knows which worklog holds the record: the same function
+ * `check pr` runs in CI and `review validate` runs before a push, so the two cannot disagree.
+ * Throws the first problem found.
+ */
+export declare function verifyReviewRecord(opts: {
+    root: string;
+    path: string;
+    head: string;
+    base: string;
+}): LocalReviewRecord;
 export {};

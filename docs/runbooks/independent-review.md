@@ -1,6 +1,15 @@
 # Independent review before merge
 
-**The authoring agent owns the entire review loop.** After committing implementation/tests,
+**The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
+their actual results before the initial review. Send the whole review packet, not fragments; a
+missing packet caused one reviewer to find a basic issue only in a later turn. For UI work,
+provide available simulator evidence at the start and replace it after fixes. If a test cannot
+run, record the exact limitation and keep the PR draft until validation finishes. CI can run in
+parallel, but an avoidable late test correction consumes a review turn. Aim for an initial review
+and one focused response; three ordinary turns are a ceiling, not a plan. Commit implementation
+and tests. When CI, visual evidence or PR metadata matters to review, move the item to `review`
+and open an unlabelled draft first; the reviewer should see that evidence and the final ticket
+state. Then
 run `morpheus review prepare --base origin/main`; this prints a review packet and does not
 launch a reviewer. The packet carries the contract, the repository path, the test commands derived
 from the project's manifests, the review range, and the ticket. An unclaimed change or one without
@@ -49,8 +58,11 @@ These are ceilings, not targets. One initial extension of at most 50% is allowed
 reason. Small was 5 minutes until the first two weeks showed that every small review needing
 execution rather than reading overran it, and two worklogs chose between two elapsed figures by
 which side of the ceiling each landed on; a ceiling that only produces accounting is not a ceiling.
-There is also a floor: an initial review under one minute at normal or high risk is refused. The
-PR that adopted this policy on one project was "reviewed" in 42 seconds. Small risk has no floor. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
+There is also a floor: an initial review under 30 seconds at normal or high risk is refused.
+Small risk has no floor. An under-floor initial turn can only be preserved as `"initialOutcome":
+"incomplete"`; the record is then accepted when a same-reviewer follow-up carrying
+`humanAuthorization` measures at least 30 seconds and clears. The next turn after any incomplete
+initial turn needs that authorization, and a late-correction `scopeReason` is not required of it. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
 validates reported durations; it cannot interrupt a provider's session or measure its billing.
 No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
 budget exhaustion or missing evidence, record incomplete and keep the PR open.
@@ -83,8 +95,8 @@ rounding. The checker requires timing for every version 2 turn and rejects a mis
 The source reference is an auditable attestation; CI does not fetch private provider transcripts.
 Historical version 1 records remain valid; any timing attached to them is checked too. Do not
 rewrite old outcomes from an estimated duration or manufacture a measurement to clear a gate.
-Without a reliable measurement, record incomplete and obtain the evidence. Existing ceilings,
-the initial floor, review outcomes and escalation rules are unchanged.
+Without a reliable measurement, record incomplete and obtain the evidence. Review ceilings,
+outcomes and escalation rules are unchanged.
 
 The author responds to every finding. For minor-only findings, one fix/response round is enough.
 For any substantive finding, resume the original reviewer to assess responses, fixes and their
@@ -125,6 +137,9 @@ such slots and a review that already used a fix follow-up has one; the author ma
 decision within the task's budget, and the record shows it. Otherwise a `cleared` turn ends the
 review, and an `incomplete` one escalates. Missing evidence can leave a turn incomplete within
 its budget; explicit `humanAuthorization` on the next same-reviewer turn permits resuming it.
+New user-requested scope after clearance is not a late correction. Put separable work in its own
+roadmap item and PR; if it is inseparable from this PR's acceptance, explain that in `scopeReason`
+and use a remaining same-reviewer turn. The cap still applies.
 Keep the original incomplete verdict. Every historical and new turn must still meet its budget;
 authorization never waives an overrun. Nothing follows an incomplete turn automatically. The cap is
 what stops an author and a reviewer trading fixes and findings indefinitely, at a session's cost
@@ -140,6 +155,12 @@ condition it already set. Add `finalization: { paths, evidence, attestation }` t
 `followUps` entry, alongside a `scopeReason` naming what it finalized. The reviewer writes it;
 an author cannot certify their own work by filling it in, and `authorSession` may not be the
 reviewer.
+
+The author writes the ordinary review record after the reviewer returns. Do not invoke a
+finalization turn to repair a missing timing measurement, an incomplete review, or routine
+record prose. It requires an already cleared turn and cannot assess new implementation. A failed
+attempt to do paperwork does not create code-review clearance or justify asking for an extra
+implementation review; use a remaining ordinary follow-up for an actual late correction.
 
 It is bounded on every side, because an automatic turn that could approve implementation would
 simply be a fourth review with no decision behind it:
@@ -292,12 +313,38 @@ Put a visible line in the PR body (not inside a comment or code fence):
 
     review-record: .agent/worklog/YYYY-MM-DD-task.md
 
-Also link the worklog and summarize the outcome. Once complete, apply `agent-reviewed` (create the
-repository label if absent), commit the worklog and push. Run local conventions with the actual PR
-body and `MORPHEUS_PR_LABELS=agent-reviewed`. Never enable auto-merge until review and CI are complete.
-When the label is absent, conventions reports that the PR is not marked merge-ready and that
+Also link the worklog and summarize the outcome. Once complete, commit the worklog and run
+
+    morpheus review validate [<worklog>] [--pr-body-file <file>]
+
+before pushing. It calls the same `verifyReviewRecord` the CI gate calls, against committed `HEAD`,
+so every record failure CI reports — the summary missing from the visible prose, more or less than
+one JSON block, commits after `covered`, author fixes beyond the minor paths, a hand-resolved merge
+left unnamed, an exhausted budget, a stale base — shows up here first. With no path it finds the one
+worklog changed on the branch that carries a record. It does not consult the label, which is the
+author's declaration that this check has passed. Then push and open the PR with the label already
+applied (`gh pr create --label agent-reviewed`, creating the repository label if absent), so the
+first conventions run validates the record instead of failing on a missing label. Never enable
+auto-merge until review and CI are complete.
+
+**Open the PR as a draft if it has to exist before review is recorded** (`gh pr create --draft`,
+or `gh pr ready --undo`). The caller's `pr` job skips a draft that carries neither `agent-reviewed`
+nor `manager-reviewed`, so `pr / conventions` is not reported at all: GitHub shows the required
+check as expected and waiting, and merge stays blocked, but nothing is red. The skip has to be on
+the caller job. A skip inside the reusable workflow would report `pr / conventions` as skipped, and
+a skipped required check satisfies branch protection, as a pass would. The check itself never passes
+a PR without the label. Labelling the draft or marking it ready runs the full check, so a ready PR
+without the label fails as before. A draft carrying the label is validated in full.
+
+The one window this leaves is the one that already exists for removing the label: a draft that
+was labelled (and went green) and then unlabelled keeps that green result on the same head until
+something re-runs it, and marking it ready re-runs it. Removing the label is deliberate; an
+unreviewed draft that was never labelled has no result to inherit.
+
+When a ready PR lacks the label, conventions reports that it is not marked merge-ready and that
 record validation was not run. This also covers an author deliberately removing the label while
-a correction or follow-up is pending; the missing label alone does not establish an incomplete record.
+a correction or follow-up is pending (converting to draft does not re-run the check; only a draft never labelled waits unreported); the missing
+label alone does not establish an incomplete record.
 This is an auditable attestation, not a security boundary against an author fabricating evidence.
 
 ## Existing projects
@@ -308,6 +355,10 @@ calling `pr-check.yml` under the same `pr` job name. The scaffold writes
 `.github/workflows/review-metadata.yml`; re-running `morpheus init` adds it without overwriting
 existing files. Do not add skipped build/test jobs there: skipped statuses can satisfy required
 checks and must not replace a still-running build. The ordinary CI retains its normal triggers.
+For an unreviewed draft to wait rather than fail, each caller's `pr` job also needs
+`if: ${{ <PR_CHECK_CALLER_IF> }}`, the expression exported from `src/init/templates.ts`, and must
+trigger on `ready_for_review`. This is a caller edit, so `@main` does not deliver it; a caller
+without it keeps a red check on an unreviewed draft, which is the old behaviour, not a weaker one.
 Until a caller is updated, rerun its conventions workflow after changing the body/label: the shared
 check fetches live PR metadata, so reruns do not keep validating the original event snapshot.
 Pushes still trigger verification normally. Keep legacy required delivery jobs wired in and skipped;

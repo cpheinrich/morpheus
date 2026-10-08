@@ -313,6 +313,7 @@ export function report(ctx: PreviewContext, state: PreviewState, options: Pick<P
   }
   log(`Stream (diagnostics only): http://127.0.0.1:${state.port}/`);
   log(`Inbox: morpheus qa comments pending --root ${shellQuote(ctx.root)}\nInstructions: morpheus qa guide`);
+  log("Agent: arm the inbox watch now, before handing the overlay to the person. Claude: a Monitor polling the Inbox command above; Codex and Grok: run it between turns.");
   log(`Log: ${join(ctx.stateDir, "preview.log")}`);
   if (options.sshHost && state.overlayPort) log(`\nOn the Mac displaying your browser, leave this running:\n${tunnelCommand(options.sshHost, state.overlayPort)}\nThen open the overlay URL above on that Mac.`);
   else if (!options.sshHost) log("Viewing from another Mac? Run status --ssh-host user@simulator-host for the tunnel command.");

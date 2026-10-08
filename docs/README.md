@@ -16,3 +16,18 @@ Keep runbooks about *doing*: decisions and their reasons belong in `architecture
 - [Research library](runbooks/research-library.md) — deterministic private publication.
 - [iOS simulator cleanup](runbooks/ios-simulator-cleanup.md) — bounded host recovery.
 - [QA comment batches](runbooks/qa-comments.md) — local tap→comment→send batches agents can poll.
+
+## Agent procedures
+
+Moved out of `AGENTS.md` on 2026-10-07 so every session stops loading them; `AGENTS.md` keeps the
+one-line rule and says when to read each.
+
+- [Project-management workflow](runbooks/pm-workflow.md) — claims, ids, blocking, PR contents, merging.
+- [Context freshness](runbooks/context-freshness.md) — gated commands, offline, forks, hooks, receipts.
+- [Device bootstrap](runbooks/device-bootstrap.md) — CLI auto-update consent and codebase-memory.
+- [What makes a test count](runbooks/test-quality.md) — test quality and mutation testing.
+- [The inbox cycle](runbooks/inbox-cycle.md) — writing, answering and archiving inboxes.
+- [Building a website](runbooks/website.md) — `web init`, consumer auth, Firebase Google sign-in.
+- [Folder documentation](runbooks/folder-readmes.md) — when a folder gets a README.
+- [Command reference](runbooks/cli-commands.md) — the full `morpheus` command list.
+- [GitHub Manager](runbooks/gh-manager.md) — the scheduled pull-request sweeper.

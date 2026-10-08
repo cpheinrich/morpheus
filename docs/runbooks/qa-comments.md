@@ -242,7 +242,28 @@ local dev server. The project declares it in `morpheus.json`:
   keeps it on its own port. When fronting, requests reach the dev server with the site's own host,
   origin and referer, so absolute URLs it builds (an OAuth `redirect_uri`) name the site too. A dev script that
   hard-codes its port needs the underlying command, e.g. `["npx", "next", "dev", "--port", "{port}"]`.
-- **A proxy, not an iframe.** The overlay serves the site on its own port and injects
+- **A column beside the site (MO-26-10-07-13.27.17).** A browser's top-level page load
+  (`Sec-Fetch-Dest: document`) gets a small shell: the site in a same-origin frame on the left and
+  a full-height comment column on the right, the iOS overlay's shape. The site gets a genuinely
+  narrower viewport, so its fixed elements and media queries behave; the shell keeps the address
+  bar and title in step with the framed page, so a reload returns to it. The framed request
+  (`Sec-Fetch-Dest: iframe`) is the proxied site with the script injected; inside the shell's
+  frame the script does nothing, because the shell drives that document. `X-Frame-Options` is
+  dropped from proxied pages. A browser that sends no `Sec-Fetch-Dest` gets the column fixed inside
+  the page itself, with the page's margin moved to make room. Any framed document other than the
+  top draws nothing, so a site's own iframes stay clean.
+- **Full page, the way out of the frame.** Some flows cannot run in a frame: a sign-in that sends
+  the page to Google or GitHub (Auth.js's default, Firebase `signInWithRedirect`) lands on a
+  provider that refuses to be framed, and a site that frame-busts would reload forever. The
+  column's Full page button sets a `morpheus_qa_layout=inline` cookie, which makes the server skip
+  the shell and serve the site full width with the column inside it; Column clears it. When the
+  frame leaves the site's origin the column says so and offers the same switch. A popup sign-in
+  (`signInWithPopup`) works inside the frame. A file opened in a tab (a non-HTML extension, or an
+  Accept without `text/html`) never gets the shell.
+- **The site's own look.** The column reads the framed page's computed background, text colour and
+  font (the first opaque background from body up) and re-reads them as the page changes, so it
+  follows a light, dark or toggled theme on any product. Pins stay one fixed signal colour.
+- **A proxy, not an iframe of the dev server.** The overlay serves the site on its own port and injects
   `<script src="/__qa/overlay.js" defer>` at the end of every HTML page's head. Paths, cookies and
   hot reload are the site's own: requests reach the dev server with its own host, origin and referer;
   redirects to the dev server's origin come back through the overlay; websockets are tunnelled. The
