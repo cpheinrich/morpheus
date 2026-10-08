@@ -40,6 +40,8 @@ const stringOptions = {
     "--language": (flags, value) => { flags.language = value; },
     "--rules-path": (flags, value) => { flags.rulesPath = value; },
     "--out": (flags, value) => { flags.out = value; },
+    "--since": (flags, value) => { flags.since = value; },
+    "--repo": (flags, value) => { flags.repo = value; },
 };
 const booleanOptions = {
     "--check": (flags) => { flags.check = true; },

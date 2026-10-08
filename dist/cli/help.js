@@ -109,6 +109,11 @@ Usage
   morpheus gh-manager routes|prompt|apply|digest ...
                             the steps the GitHub Manager operations workflow runs;
                             see docs/runbooks/gh-manager.md
+  morpheus profile extract  [--since YYYY-MM-DD] [--repo <substring>] [--out <file>]
+                            session and tool-call rows from local Claude Code and Codex
+                            transcripts, as JSONL; read-only, nothing leaves the machine
+  morpheus profile report   [--since YYYY-MM-DD] [--repo <substring>] [--json]
+                            where time and tokens went: by phase, repo, role, model×effort
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge
   morpheus voice brief ["<topic>"] [--slug x] [--notes "..."] [--full]
                             today's state, to paste into a voice session

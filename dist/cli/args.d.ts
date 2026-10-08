@@ -67,6 +67,10 @@ export interface Flags {
     language?: string;
     rulesPath?: string;
     out?: string;
+    /** `profile`: earliest session start, `YYYY-MM-DD`. */
+    since?: string;
+    /** `profile`: substring of a session's repository or working directory. */
+    repo?: string;
     full: boolean;
     json: boolean;
     dispatch: boolean;

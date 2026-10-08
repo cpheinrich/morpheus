@@ -67,6 +67,10 @@ export interface Flags {
   language?: string;
   rulesPath?: string;
   out?: string;
+  /** `profile`: earliest session start, `YYYY-MM-DD`. */
+  since?: string;
+  /** `profile`: substring of a session's repository or working directory. */
+  repo?: string;
   full: boolean;
   json: boolean;
   dispatch: boolean;
@@ -116,6 +120,8 @@ const stringOptions: Record<string, (flags: Flags, value: string | undefined) =>
   "--language": (flags, value) => { flags.language = value; },
   "--rules-path": (flags, value) => { flags.rulesPath = value; },
   "--out": (flags, value) => { flags.out = value; },
+  "--since": (flags, value) => { flags.since = value; },
+  "--repo": (flags, value) => { flags.repo = value; },
 };
 
 const booleanOptions: Record<string, (flags: Flags) => void> = {

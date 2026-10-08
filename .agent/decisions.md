@@ -1166,3 +1166,18 @@ adopted here; the dependency is a compiler and a second workflow dialect). `clau
 was considered for the session step and the pinned Claude Code CLI used instead, because the
 action couples to the calling repository's event context and this run is called from a different
 repository than the one it works on. No new package dependency: Zod, native Git and `gh`.
+
+## Agent profiling reads local transcripts, never self-reports — 2026-10-07
+
+`morpheus profile` measures where agent time and tokens go from the transcripts Claude Code and
+Codex already write on the machine. Agents are not asked to report their own phases or timings:
+that costs tokens in every session and records what an agent believes it did. No telemetry is
+sent anywhere. Rows never carry prompts, tool-read file contents or tool output; commands are cut
+to 120 characters, credential-masked and stripped of heredoc bodies, so a report can be pasted into
+a PR after a glance at the command columns.
+
+Built with no new dependency. Considered `ccusage` (maintained, Claude-and-Codex token and cost
+summaries): it answers "what did this cost by day and model" but has no tool-call spans, phase
+classification, idle-capped active time or subagent attribution, which are the questions here,
+and the transcript reading it would replace is a few dozen lines of `readline`. Revisit if a
+pricing table is wanted — that is the part `ccusage` maintains and this command does not.
