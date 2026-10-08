@@ -9,6 +9,7 @@ name: Python CI
 #       with:
 #         working-directory: apps/backend
 #         coverage-source: src/lakina
+#         runner: linux-vm   # optional; defaults to ubuntu-latest
 #
 # Improving CI for every project is then one commit here.
 #
@@ -20,6 +21,13 @@ on:
       working-directory:
         type: string
         default: "."
+      runner:
+        description: >
+          Single runner label for the job: a GitHub-hosted image
+          (ubuntu-latest) or a self-hosted runner label such as linux-vm.
+          One label, not JSON; the caller owns any fallback.
+        type: string
+        default: "ubuntu-latest"
       python-versions:
         description: >
           JSON array of versions for the test matrix. A library is tested
@@ -63,7 +71,7 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}

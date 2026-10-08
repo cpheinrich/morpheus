@@ -24,6 +24,13 @@ on:
       working-directory:
         type: string
         default: "."
+      runner:
+        description: >
+          Single runner label for the job: a GitHub-hosted image
+          (ubuntu-latest) or a self-hosted runner label such as linux-vm.
+          One label, not JSON; the caller owns any fallback.
+        type: string
+        default: "ubuntu-latest"
       run-lint:
         type: boolean
         default: false
@@ -46,7 +53,7 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}

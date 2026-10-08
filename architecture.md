@@ -3018,6 +3018,11 @@ Improving CI for every project becomes one commit in Morpheus. **Projects pin `@
 with one operator and a handful of repos, instant propagation is worth more than staged rollout,
 and a broken workflow is noticed and fixed in minutes.
 
+**The caller chooses the runner.** `node-ci`, `web-ci` and `python-ci` take a `runner` input, a single
+label defaulting to `ubuntu-latest`, as `ios-ci` already does. A private project may pass an isolated
+self-hosted label (`with: runner: linux-vm`); any fallback to a hosted image is the caller's, since a
+reusable workflow cannot retry a job on another runner.
+
 Deployment follows the same boundary as validation. `vercel-deploy.yml` owns the Vercel CLI
 sequence, fork guard, environment receipt and pull-request preview comment. Each project owns only
 its triggers, application directory and encrypted `VERCEL_TOKEN`, `VERCEL_ORG_ID` and
