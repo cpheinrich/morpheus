@@ -154,8 +154,9 @@ describe("measured review timing", () => {
     expect(check(save({ ...measured(), version: 1, elapsedMinutes: 3 }))[0]?.message).toContain("elapsedMinutes must equal");
   });
   it("preserves measured budget and floor boundaries without rounding", () => {
-    expect(check(save(measured(60000)))).toEqual([]);
-    expect(check(save(measured(59999)))[0]?.message).toContain("under one minute");
+    expect(check(save(measured(30000)))).toEqual([]);
+    expect(check(save(measured(48176)))).toEqual([]);
+    expect(check(save(measured(29999)))[0]?.message).toContain("under 30 seconds");
     expect(check(save(measured(900000)))).toEqual([]);
     expect(check(save(measured(900001)))[0]?.message).toContain("exceeded its budget");
     const r = measured();
@@ -482,11 +483,11 @@ describe("review evidence floors and shapes", () => {
     r.followUp.reviewerSession = "/root/other";
     expect(check(save(r))[0]?.message).toContain("original reviewer");
   });
-  it("floors the initial review at one minute for normal and high risk only", () => {
-    expect(check(save({ ...record(), elapsedMinutes: 0.99 }))[0]?.message).toContain("under one minute");
-    expect(check(save({ ...record(), elapsedMinutes: 1 }))).toEqual([]);
-    expect(check(save({ ...record(), risk: "high", elapsedMinutes: 0.7 }))[0]?.message).toContain("under one minute");
-    expect(check(save({ ...record(), risk: "small", elapsedMinutes: 0.5 }))).toEqual([]);
+  it("floors the initial review at 30 seconds for normal and high risk only", () => {
+    expect(check(save({ ...record(), elapsedMinutes: 0.49 }))[0]?.message).toContain("under 30 seconds");
+    expect(check(save({ ...record(), elapsedMinutes: 0.5 }))).toEqual([]);
+    expect(check(save({ ...record(), risk: "high", elapsedMinutes: 0.4 }))[0]?.message).toContain("under 30 seconds");
+    expect(check(save({ ...record(), risk: "small", elapsedMinutes: 0.4 }))).toEqual([]);
   });
   it("gives small risk a ten-minute ceiling and a five-minute follow-up ceiling", () => {
     expect(check(save({ ...record(), risk: "small", elapsedMinutes: 10 }))).toEqual([]);
