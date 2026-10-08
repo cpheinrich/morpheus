@@ -83,6 +83,12 @@ export const ReviewRecord = z.object({
   timing: Timing.optional(),
   extensionReason: Text.optional(),
   outcome: z.enum(["complete", "incomplete", "blocked"]),
+  /**
+   * The initial turn's own verdict, when it was incomplete and an authorized same-reviewer turn
+   * later completed the review. `outcome` is the final verdict, so without this the incomplete
+   * initial verdict would have to be rewritten rather than preserved.
+   */
+  initialOutcome: z.literal("incomplete").optional(),
   summary: Text,
   /**
    * Hand-resolved trunk merges after coverage. A merge Git reproduces exactly needs no entry;
@@ -217,16 +223,29 @@ export function validateReviewRecord(record: LocalReviewRecord): void {
   const budget = REVIEW_BUDGET_MINUTES[record.risk];
   const multiplier = record.extensionReason ? 1.5 : 1;
   if (record.elapsedMinutes > budget * multiplier) throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
+  // An incomplete initial turn resumes only on explicit human authorization, exactly as an
+  // incomplete follow-up does; it is not a clearance, so it needs no late-correction scope reason.
+  const resumed = record.initialOutcome === "incomplete";
+  if (resumed && !turns[0]?.humanAuthorization) throw new Error("an incomplete initial review resumes only with explicit humanAuthorization on the next same-reviewer turn");
   // Normal and high risk require a measured initial pass of at least 30 seconds.
   // Small risk keeps no floor: a one-line change can genuinely be read faster.
-  if (record.risk !== "small" && record.elapsedMinutes < 0.5) throw new Error("an initial review under 30 seconds at normal or high risk is not a review; record what was actually done");
+  // A pass under the floor is not a review, so it cannot count as one. It can only be preserved
+  // as incomplete, and the review is then the authorized same-reviewer turn, which must meet the
+  // floor itself and clear. Without this the authorized resumption the contract offers never lands.
+  if (record.risk !== "small" && record.elapsedMinutes < 0.5) {
+    if (!resumed) throw new Error("an initial review under 30 seconds at normal or high risk is not a review; record it as initialOutcome incomplete, or record what was actually done");
+    // A finalization turn only closes out an existing clearance, so it is never the review that counts.
+    if (!turns.some(turn => turn.humanAuthorization && !turn.finalization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5)) {
+      throw new Error("an initial review under 30 seconds at normal or high risk needs an authorized same-reviewer turn of at least 30 seconds that clears");
+    }
+  }
   // A turn after a clearance is a late correction, such as a fix full CI asked for after the
   // reviewer cleared the code. It spends one of the remaining turns and must name the scope
   // decision in its scopeReason, so the record shows why a cleared review was reopened. A turn
   // after blocked, or after substantive initial findings, is the ordinary fix follow-up and needs
   // none. An incomplete turn may be missing evidence; only explicit human authorization can
   // resume it. Per-turn budget checks still reject exhausted reviews, including historical turns.
-  if (!substantive && turns[0] && !turns[0].scopeReason) throw new Error("a follow-up after a clean initial review is a late correction and needs an explicit scope reason");
+  if (!substantive && !resumed && turns[0] && !turns[0].scopeReason) throw new Error("a follow-up after a clean initial review is a late correction and needs an explicit scope reason");
   // One automatic finalization-only turn per pull request; later turns need human authorization. It finishes
   // an approved change: it cannot resolve a substantive finding, run long, or be repeated, and a
   // reviewer that still has a concern records blocked or incomplete instead, which stays blocked.
@@ -242,7 +261,10 @@ export function validateReviewRecord(record: LocalReviewRecord): void {
     // It finalizes a clearance, so there has to be one. Without this, the five-minute automatic turn
     // is what turns a review the reviewer blocked on a substantive finding into a merge.
     const previous = turns[finalizationIndex - 1];
-    if (previous && previous.outcome !== "cleared") throw new Error(`a finalization turn only follows a cleared turn; the ${previous.outcome} turn before it leaves the pull request blocked`);
+    // With no earlier follow-up, the predecessor is the initial turn: a clearance unless it was
+    // preserved as incomplete, which a finalization turn cannot repair.
+    const previousOutcome = previous?.outcome ?? (resumed ? "incomplete" : "cleared");
+    if (previousOutcome !== "cleared") throw new Error(`a finalization turn only follows a cleared turn; the ${previousOutcome} turn before it leaves the pull request blocked`);
     if (unconditional && previous?.outcome !== "cleared") throw new Error("an automatic finalization turn cannot resolve substantive findings; an ordinary turn must clear them first");
   }
   turns.forEach((turn, index) => {

@@ -77,6 +77,7 @@ export declare const ReviewRecord: z.ZodObject<{
         incomplete: "incomplete";
         complete: "complete";
     }>;
+    initialOutcome: z.ZodOptional<z.ZodLiteral<"incomplete">>;
     summary: z.ZodString;
     trunkIntegrations: z.ZodOptional<z.ZodArray<z.ZodObject<{
         commit: z.ZodString;

@@ -1023,6 +1023,16 @@ the fix; the old floor rejected that useful review solely for its duration. The 
 shorter normal/high-risk reviews, while small risk keeps no floor and all timing evidence,
 ceilings, same-reviewer, and finding-resolution requirements remain.
 
+**An authorized same-reviewer turn can rescue an under-floor initial review** — 2026-10-08
+(MO-26-10-08-04.07.50). Chris authorized extra turns on evo#412, lakinacapital#509 and kairos#70,
+whose clean 21–25 s initial reviews were honestly recorded incomplete, and the floor check made that
+authorization useless. The under-floor pass still never counts as a review: it is preserved as
+`initialOutcome: "incomplete"` (the record's `outcome` stays the final verdict), and the record is
+accepted only when a same-reviewer follow-up with `humanAuthorization` measures at least 30 seconds
+and clears. An incomplete initial turn of any length resumes only with authorization on the next
+turn, matching incomplete follow-ups; that turn needs no late-correction `scopeReason`, because it
+reopens no clearance. No dependency: Zod and the existing validator.
+
 
 **Each iOS CI test job owns disposable simulator devices** — 2026-09-25. The reusable
 workflow resolves the caller’s destination to type/runtime and creates a fresh uniquely
