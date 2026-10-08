@@ -82,7 +82,8 @@ first batch's frame.png shows real app pixels before treating its anchors as aut
 A web batch's frame is the whole page, so normX/normY are fractions of the page, not the window.
 Each web anchor also carries \`page\` (url, scroll, viewport and page size) and, when it could be
 resolved, \`element\`: a CSS \`selector\` that matched exactly the pinned element, its \`tag\`, its
-visible \`text\`, and the point within it (offsetX/offsetY). Find the element in the source by its
+visible \`text\`, and the point within it (offsetX/offsetY; when the click fell outside every element's
+own box, the offsets are clamped to its edge and x/y is the real point). Find the element in the source by its
 text and selector — it is what the comment is about. A batch can arrive without a frame when the
 page could not be captured; the element and page context still locate every comment.
 

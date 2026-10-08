@@ -67,6 +67,14 @@ export interface Flags {
     language?: string;
     rulesPath?: string;
     out?: string;
+    /** `profile`: earliest session start, `YYYY-MM-DD`. */
+    since?: string;
+    /** `profile`: substring of a session's repository or working directory. */
+    repo?: string;
+    /** `wait-ci`: how long to wait, e.g. `45m`. */
+    timeout?: string;
+    /** `wait-ci`: only checks branch protection requires. */
+    requiredOnly: boolean;
     full: boolean;
     json: boolean;
     dispatch: boolean;

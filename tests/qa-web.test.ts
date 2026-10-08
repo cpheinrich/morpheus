@@ -352,6 +352,23 @@ describe("the injected client", () => {
     expect(child.__morpheusQa.framed).toBeUndefined();
   });
 
+  it("pins the element under a stretched link rather than the link's own text box", async () => {
+    // A card whose title link has a::after over the whole card: the link is the top of the stack
+    // everywhere on the card, but its own box is only its text (Lakina's experiment cards).
+    const w = await load(`<body><article><h3><a href="#">Title</a></h3><p><strong>Mixed</strong></p></article></body>`);
+    const doc = w.document;
+    const link = doc.querySelector("a")!, badge = doc.querySelector("strong")!;
+    const box = (left: number, top: number, width: number, height: number) => () => ({ left, top, right: left + width, bottom: top + height, width, height, x: left, y: top, toJSON() {} }) as DOMRect;
+    link.getBoundingClientRect = box(10, 10, 60, 20);
+    badge.getBoundingClientRect = box(400, 10, 80, 20);
+    (doc as unknown as { elementsFromPoint: () => Element[] }).elementsFromPoint = () => [link, badge, doc.querySelector("article")!, doc.body, doc.documentElement];
+    const qa = (w as unknown as { __morpheusQa: { pickAt: (d: Document, x: number, y: number, skip: null) => Element } }).__morpheusQa;
+    expect(qa.pickAt(doc, 420, 15, null)).toBe(badge);
+    // Nothing under the point holds it: the top of the stack, which the pin then draws by page point.
+    (doc as unknown as { elementsFromPoint: () => Element[] }).elementsFromPoint = () => [link, doc.body];
+    expect(qa.pickAt(doc, 900, 15, null)).toBe(link);
+  });
+
   it("mounts once, outside the body React manages", async () => {
     const w = await load(`<body><p>x</p></body>`);
     (w as unknown as { eval: (source: string) => void }).eval(WEB_OVERLAY_JS.replace("__MORPHEUS_QA_PROJECT__", '"Lakina"'));

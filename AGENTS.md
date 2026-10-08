@@ -1,7 +1,8 @@
 # Morpheus — agent instructions
 
 Read this before doing anything. `CLAUDE.md` is a symlink to this file so Claude and Codex
-read the same instructions.
+read the same instructions. It holds the rules every task needs; detail lives in runbooks that
+the **Read when** pointers below name — open one when its trigger applies, not before.
 
 ## What this repo is
 
@@ -20,9 +21,10 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `src/pm/` | Project management: schemas, parser, index generator |
 | `src/cli/` | The `morpheus` command |
 | `src/gh-manager/` | The GitHub Manager: sweep, session brief, decision checks — see its runbook |
+| `src/init/templates.ts` | What every scaffolded project's `AGENTS.md` and files say — keep aligned with this file |
 | `hq/product/` | Morpheus's own roadmap and goals — it eats its own dog food |
 | `.github/workflows/` | Reusable workflows called by every project |
-| `docs/runbooks/` | Operational steps a human performs — consoles, DNS, keys |
+| `docs/runbooks/` | Procedures, for humans and agents — read on demand (index below) |
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
 | `.claude/skills/` | Named, repeatable procedures — `voice-handoff`, `voice-import` |
 | `.agents/skills/` | Repository-owned Codex skills, copied into every scaffold — `motion-design-exploration` |
@@ -36,735 +38,205 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `hq/team/members.md` | The roster — handles, names, and how to work with each person |
 | `hq/team/meeting-notes/` | Distilled meeting summaries, never transcripts |
 
+### Runbooks — read when
+
+| Read | When |
+|---|---|
+| [`pm-workflow.md`](docs/runbooks/pm-workflow.md) | Filing or claiming an item, roadmap ids and slugs, blocking/resuming, records-only or meeting-note PRs, waivers, closing issues, visual evidence, or `check pr` refuses |
+| [`independent-review.md`](docs/runbooks/independent-review.md) | Before spawning a reviewer, and before writing the review record — budgets, turns, finalization, conditions, record fields |
+| [`context-freshness.md`](docs/runbooks/context-freshness.md) | A gated command refuses; offline; on a fork; hooks not firing; `context install` |
+| [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md) | Startup reports Morpheus stale or bootstrap required; installing codebase-memory |
+| [`test-quality.md`](docs/runbooks/test-quality.md) | Writing or reviewing tests; before calling anything "tested" |
+| [`inbox-cycle.md`](docs/runbooks/inbox-cycle.md) | Writing, answering or archiving an inbox |
+| [`website.md`](docs/runbooks/website.md) | Any website, waitlist, signup/contact form, `/hq`, consumer auth, or a new Firebase project |
+| [`gh-manager.md`](docs/runbooks/gh-manager.md) | A PR may sit unattended, or the manager has touched yours |
+| [`folder-readmes.md`](docs/runbooks/folder-readmes.md) | Creating a directory, or deciding whether it needs a README |
+| [`cli-commands.md`](docs/runbooks/cli-commands.md) | You need a command not listed below |
+
 ## Commands
 
 ```sh
 pnpm install
-pnpm compile && node dist/cli/index.js self install  # clean current main — copied, never linked
-pnpm typecheck             # tsc --noEmit
-pnpm test                  # vitest run
-pnpm test:rules            # generated firestore.rules vs the emulator — needs Java
-pnpm compile               # tsc -p tsconfig.build.json; refreshes committed dist/
-pnpm morpheus pm validate   # validate hq/product frontmatter
-pnpm morpheus pm index      # retire legacy roadmap tables; refresh goal/request indexes
-pnpm morpheus pm new roadmap "Title here" --priority P1 [--issue 123]
-pnpm morpheus pm link-issue MO-014 123  # attach an issue to existing work
-pnpm morpheus pm migrate-ids --check   # integer roadmap ids → the dated scheme (MO-057)
-pnpm morpheus pm block MO-051 --needs "what would unblock this"
-pnpm morpheus pm unblock MO-051
-pnpm morpheus heartbeat            # what should happen next, and whether anything should
-pnpm morpheus gh-manager sweep <owner/repo>  # how the GitHub Manager would route each open PR
-pnpm morpheus review prompt        # the rung-2 reviewer prompt for this branch
-pnpm morpheus voice knowledge      # standing explainer, uploaded once as project knowledge
-pnpm morpheus voice brief "topic"  # today's state, to paste into a voice session
-pnpm morpheus team validate        # the roster, and every meeting note
-pnpm morpheus registry list        # every Morpheus project on this machine
-pnpm morpheus brand status         # what the brand package still needs
-pnpm morpheus brand init           # scaffold brand-vibes.md, local moodboard, and concept-media folders
-pnpm morpheus brand explore        # refresh the five-direction brand review handoff
-pnpm morpheus brand finalize --selection "Name" # promote a reviewed direction into canonical records
-pnpm morpheus init                 # scaffold a project — safe to re-run, never overwrites
-pnpm morpheus init status          # how far through project setup this repo is
-pnpm morpheus web init             # provision and scaffold the website: waitlist + /hq sign-in
-pnpm morpheus web add-consumer-auth # consumer accounts: staging project, auth plumbing, three suites
-pnpm morpheus web status           # what the web surface has, and what it is missing
-pnpm morpheus firebase auth setup --project <id> --domain <public-origin>
-pnpm morpheus firebase auth check --project <id> --domain <public-origin>
-pnpm morpheus access sync          # apply morpheus.json's allowlist to Firebase custom claims
-pnpm morpheus hq rules --rules-path infra/firebase/firestore.rules
-pnpm morpheus hq rules --check --rules-path infra/firebase/firestore.rules
-pnpm morpheus context refresh      # take a context receipt — after reading the records
-pnpm morpheus context status       # what the current lease says, and how old it is
-pnpm morpheus context install      # wire the session-start hooks — run it once per project
-pnpm morpheus codebase-memory install         # trusted-device bootstrap, safe to re-run
-pnpm morpheus codebase-memory install --check # verify operational mode without changing it
+pnpm typecheck                     # tsc --noEmit
+pnpm exec vitest run tests/<file>.test.ts   # focused tests — see "Testing" below
+pnpm test                          # full vitest run — at most once per PR, see below
+pnpm compile                       # tsc -p tsconfig.build.json; refreshes committed dist/
+pnpm morpheus pm index             # refresh goal/request indexes
+pnpm morpheus pm new roadmap "Title" --slug verb-noun --priority P1 [--issue 123]
+pnpm morpheus pm claim <ID>        # stake the branch; prints WORK IN for a fresh worktree
+pnpm morpheus pm resume <ID>       # continue a claimed or blocked task
+pnpm morpheus pm block <ID> --needs "what would unblock this"
+pnpm morpheus review prepare --base origin/main   # the reviewer packet
+pnpm morpheus review validate      # CI's review-record check, run before pushing
+pnpm morpheus inbox validate       # before finishing an inbox
+pnpm morpheus context refresh      # once, after reading the records — see below
+pnpm morpheus wait-ci <pr>         # block once on CI, then a digest of failures — never poll gh
 ```
 
 ## Device bootstrap
 
-The checked-in `.morpheus/session-start.sh` shim recovers common non-login tool paths and
-diagnoses missing, old, or broken installations. Only when the device preference is absent
-and startup reports automatic updates are unconfigured, ask the user exactly: **"Morpheus is stale. Enable automatic
-updates after pulls on this device?"** Do not infer consent.
-
-- If the shim reports **Morpheus bootstrap required**, yes means
-  `sh .morpheus/bootstrap.sh enable`; no means `sh .morpheus/bootstrap.sh disable`.
-- Otherwise yes means `morpheus self auto-update enable`; no means
-  `morpheus self auto-update disable`.
-
-A stale startup notice is not evidence that consent is missing. Check the saved device
-preference first. Honor an existing enabled choice with the supported refresh/repair command;
-never ask again because PATH, the runtime, or a managed hook failed. A disabled choice stays
-disabled, and invalid preferences must be diagnosed rather than overwritten.
-
-The legacy bootstrap never calls the installed `morpheus` binary. A yes clones reviewed current
-`main`, installs that clone's reviewed lockfile, invokes its committed CLI directly, installs the
-standalone package, registers the current project and installs the managed hooks. A no only records
-the choice.
-
-Consent installs managed `post-merge` and `post-rewrite` blocks in every registered Morpheus
-project, beside rather than over any existing hook. Later pulls and rebases check the reviewed
-Morpheus `main` commit and update through a disposable clone only when stale. Git deliberately does
-not activate a hook delivered by the pull that contains it, so the checked-in session shim and
-these instructions are the first-use bridge; no repository may silently turn consent on.
-
-Before structural code discovery, run `morpheus codebase-memory install --check`. If it is not
-operational, run `morpheus codebase-memory install` on the trusted device. The repair is
-idempotent: it installs Morpheus's reviewed package pin when absent or at another version, configures supported local
-agent clients, enables automatic indexing and watching, fully indexes this exact checkout, and
-verifies the index against `HEAD`. A worktree needs its own exact-checkout index even when the main
-clone is already indexed.
-
-Installing codebase-memory is an explicit device action, never an npm lifecycle script or a
-session-hook download.
-Morpheus's global CLI is a self-contained copy, never a link to a source checkout or worktree.
-`morpheus self check` compares its commit receipt to current `main`; `context brief` and `doctor`
-surface the same drift. `morpheus self update` is the one-time/manual repair; consented Git hooks
-call `morpheus self ensure` after later pulls and rebases. Both build in a disposable clone, install
-the copy, and remove the clone without touching active work. The codebase-memory version stays
-pinned until a reviewed Morpheus change advances it.
+Startup's `.morpheus/session-start.sh` diagnoses the CLI. Only when no device preference is saved
+and startup reports automatic updates unconfigured, ask exactly: **"Morpheus is stale. Enable
+automatic updates after pulls on this device?"** Do not infer consent; an existing choice is
+honoured, never re-asked. Before structural code discovery run
+`morpheus codebase-memory install --check`, and `morpheus codebase-memory install` if it is not
+operational. **Read [`device-bootstrap.md`](docs/runbooks/device-bootstrap.md)** for what yes and no
+run and for anything the shim reports.
 
 ## Context freshness
 
-Run `morpheus context brief` at session start if the standard hook did not run. It fetches the
-canonical trunk and fast-forwards only a clean local trunk. It never rebases an active task or
-rewrites dirty work. Follow its absolute `WORK IN` path when a session has a saved task association.
-A behind checkout cannot issue a fresh receipt: integrate trunk explicitly, then re-read records.
+Run `morpheus context brief` at session start if the hook did not; follow its `WORK IN` path.
 
-**Read `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md`, then:**
+**Read `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md` once at session
+start, then run `morpheus context refresh` once.** After that, just run the gated command
+(`pm claim`, `pm new`, `pm link-issue`, `pm block`, `access sync`, `firebase auth setup`,
+`web init` provisioning). Past the five-minute term the gate re-checks trunk and the records itself and
+re-certifies when nothing moved; read-only and mechanical commands are never gated.
+**Refresh again only when a gated command refuses**, and then
+re-read only what the refusal or the refresh names. Never pipe `refresh` output through
+`head`/`tail` — the delta it prints is the point. **Do not refresh without reading**: the receipt
+is your assertion, and one taken to clear a gate is the failure the protocol cannot detect.
 
-```sh
-morpheus context refresh
-```
-
-This takes a *context receipt* — your assertion that you have loaded current project state,
-fingerprinted against the tip of `origin/main`. It is good for **five minutes**, after which the
-next governed command re-checks the trunk and those records rather than trusting the old verdict.
-
-**Until you have one, these are refused:** `pm claim`, `pm new`, `pm link-issue`, `pm block`,
-`access sync`. Nothing
-else is gated — a check that fires on `pm index` trains you to route around it, and the
-routing-around outlives the staleness.
-
-```sh
-morpheus context status    # what the current lease says, and how old it is
-morpheus context check     # exit non-zero unless fresh — for hooks and scripts
-morpheus context brief     # session start: fetches trunk, updates clean trunk, identifies task
-morpheus context install   # wire the hooks that run `brief`, and declare the inbox
-```
-
-**`brief` runs by itself only where something is wired to run it.** Two files, one per
-provider, both scaffolded by `morpheus init` and both repairable by `morpheus context install`:
-
-| File | Read by |
-|---|---|
-| `.claude/settings.json` | Claude Code — `hooks.SessionStart` |
-| `.codex/hooks.json` | Codex — the same schema, its own file |
-
-`context install` is the path for a project that already exists, because `init` skips any file
-already present — correct for a scaffold, and the reason six of eight projects had no hook months
-after the protocol shipped. It merges rather than overwrites, is safe to re-run, and also declares
-`context.handle` so `hq/team/<handle>.md` joins the required set. Without that declaration a
-session certifies `fresh` having never opened the file a human replies in.
-
-**Codex will not run an untrusted hook, and says nothing when it declines.** Once per project, run
-`/hooks` in a Codex session and trust it. Trust is recorded against the hook's hash, so editing the
-file means trusting it again — and until then `.codex/hooks.json` exists and does nothing, which
-looks exactly like working.
-
-**When something has moved**, `context refresh` prints what landed on the trunk and which records
-changed. Re-read those and refresh again — the delta is the point, not the ceremony. **Do not
-refresh without reading.** The receipt is your assertion, and a receipt taken to clear a gate is
-the one failure mode the whole protocol cannot detect.
-
-**Offline**, set `MORPHEUS_OFFLINE=1` — or pass `--offline`. Local work proceeds; anything that leaves the machine —
-pushing a claim, granting access — stays refused, because an unverified trunk is exactly when you
-should not be operating external controls. **`pm block` still works**: it writes the records and
-skips the push, telling you the block is not visible to other sessions yet. Blocking rather than
-guessing is the one escape hatch a stuck session needs most, so it is not the one to take away.
-
-**On a fork**, set `"context": { "trunk": "upstream/main" }` in `morpheus.json`. `origin` is
-your fork, whose `main` sits still while the real trunk moves — measured against it, a lease
-certifies fresh forever. `morpheus doctor` reports a trunk that does not resolve.
-
-Receipts live in `local/sessions/`, keyed by worktree, and are gitignored. A receipt says *this
-working copy read these files*, which is true of one machine — committing it would turn a local
-observation into a claim about everyone. Shared evidence stays the worklog, the commit and the PR.
-
-Why it exists and what it is built against: [`architecture.md` §7.10](./architecture.md).
+Offline: `MORPHEUS_OFFLINE=1`. Forks, hooks, receipts and Codex hook trust: **read
+[`context-freshness.md`](docs/runbooks/context-freshness.md)**; why: [`architecture.md` §7.10](./architecture.md).
 
 ## Working conventions
 
-**Claim work before starting it:**
-
-```sh
-morpheus pm claims           # what is already taken
-morpheus pm claim MO-014     # stakes the branch on origin, sets in-progress, pushes
-```
-
-The remote branch **is** the claim — `pm claim` refuses if `origin` already has `mo-014-*`.
-
-**Roadmap ids come from the clock** — `MO-26-08-01-15.26.34`, `PREFIX-YY-MM-DD-HH.MM.SS` in
-**Pacific time on every machine**, not the author's local zone. A fixed zone is what makes ids
-from different contributors comparable; a local one silently reorders the board the moment two
-people are in different places.
-No remote is consulted because none can help: a fork contributor's `origin` is their fork, so no
-query would say which ids Morpheus has issued. On collision the seconds field steps forward, so a
-fan-out gets `:34 :35 :36 :37` and ordering survives. **Name the slug like a branch.** `morpheus pm new roadmap "<title>" --slug update-roadmap-ids`
-— verb-noun, two to four words, ≤ 32 characters. It is a handle, not a summary: the description
-belongs in the title and body, and the id above it is already unique, so the slug does not have
-to be. Omitting `--slug` derives one from the title, which is a fallback rather than the intent —
-"Roadmap ids become timestamps, not a coordinated integer" derives to
-`roadmap-ids-become-timestamps` where `update-roadmap-ids` says as much in half the space.
-
-Items migrated from the old integer scheme read `MO-26-07-29-045`: their own creation date plus the
-old number, so `grep MO-045` still resolves against git history that cannot be rewritten.
-
-`morpheus pm migrate-ids` also **repoints structured references** — `roadmap:` in worklog
-frontmatter, which a tool would otherwise fail to resolve. Prose mentions are left alone
-deliberately: the number is still in the new id, and rewriting narrative in a historical record
-edits the past rather than repairing a link.
-
-**Goals and requests are still sequential**, and for those `pm new` allocates against the remote
-as well as the item files, because the files only hold ids that have already merged — an id
-another session holds sits on its branch and nowhere else. If `origin` cannot be reached it still
-allocates, but says so; treat that id as provisional until `pm claim` accepts it.
-
-**Never create the branch by hand.** `pm claim` derives it from the item id, so the two cannot
-disagree; hand-naming has already failed `check pr` twice by referencing an id that did not exist
-yet.
-Never start an item without claiming it; another agent, possibly on someone else's machine,
-may be on it. Move the item to `review` when you open the PR. Merging deletes the branch and
-releases the claim.
-
-Use **one worktree per implementation task**, not per conversation. Read-only investigation
-needs no new worktree. `pm claim <ID>` from a shared or unrelated checkout prepares a detached
-worktree at freshly fetched trunk and prints its absolute path. It moves only that item's new,
-untracked intake file; existing items come from trunk. Read the destination's records, refresh
-context there, then repeat `pm claim` there to stake the branch. No receipt is copied automatically.
-An already isolated detached worktree can claim directly after reading and refreshing.
-
-Use `morpheus pm resume <ID>` to continue an explicitly named existing task. It reuses the
-worktree holding its claimed branch, or checks out that branch in a worktree when needed.
-Preserve its commits and edits; fetch and integrate trunk explicitly when behind. A resumed session
-must not silently attach an unrelated request to its old task. Provider session IDs associate
-sessions with tasks; `--session-id` on claim/resume supplies one explicitly (Codex defaults to
-`CODEX_THREAD_ID`). Without an ID, the currently checked-out claimed branch identifies the task.
-Do not run concurrent authors on the same task worktree.
+**Claim before starting**, with `morpheus pm claim <ID>` — the remote branch **is** the claim.
+Never create the branch by hand. Use **one worktree per implementation task**: from a shared
+checkout `pm claim` prints a fresh worktree; read its records, refresh there, and claim again
+there. Do not run concurrent authors on one task worktree. **Name slugs like branches**
+(`--slug update-roadmap-ids`, verb-noun, ≤ 32 characters). Ids, worktrees and resume:
+[`pm-workflow.md`](docs/runbooks/pm-workflow.md).
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
-voice and browser chat enter the same lifecycle as every other request: create or link the roadmap
-item, claim it, work on its branch, test it, open a PR and merge it. A trusted author can authorize
-the work; the channel cannot waive the records or review path. Never edit or release directly from
-a conversation transcript.
+voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work
+on its branch, test it, open a PR and merge it. A trusted author can authorize the work; the
+channel cannot waive the records or review path. Never edit or release directly from a transcript.
 
 **An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
-with explicit account, project and full resource identifiers; console prose is fallback only. Put
-the caller-perspective verification probe and expected result beside the mutation. Upload, archive
-or deploy success proves delivery, not acceptance: close the item only with evidence of the
-requested user-visible result. Release jobs must depend on
+with explicit account, project and resource identifiers (console prose is fallback only), with a
+caller-perspective verification probe and expected result beside it. Delivery is not acceptance:
+close the item only with evidence of the user-visible result. Release jobs depend on
 `cpheinrich/morpheus/.github/workflows/release-preflight.yml@main` and check out its `sha` output.
 Do not extract a recurring production probe until a second project needs the same one.
 
-**When you hit real ambiguity, block — do not guess:**
+**When you hit real ambiguity, block — do not guess:** `morpheus pm block <ID> --needs "<what would
+unblock you>"`. Escalating is cheap; shipping half-baked is expensive. "Blocked on Chris" is not a
+`needs`. A blocked item keeps its branch; resume with `pm resume`. Detail:
+[`pm-workflow.md`](docs/runbooks/pm-workflow.md#blocking).
 
-```sh
-morpheus pm block MO-051 --needs "which model, and whose subscription pays for it"
-morpheus pm unblock MO-051    # once answered
-```
+**Break loops.** If the same command fails the same way twice, or you have polled the same thing
+three times, stop: change approach, or `pm block` with what you learned. Never idle-loop
+(`sleep`/`true`/`echo` loops, repeated status checks). To wait on CI prefer `gh pr merge --auto`;
+when the next step depends on the result, run `morpheus wait-ci <n>` once — never poll
+`gh run view` or `gh pr checks` in a loop.
 
-This sets `status: blocked` and `needs:` on the item, writes a worklog entry, raises an open
-`❗` item in the inbox, then commits and pushes those records on the claimed branch. Online it
-refuses the protected trunk before writing anything; the explicitly
-offline path may write locally there because it never commits or pushes. **Escalating is cheap;
-shipping half-baked is expensive** — a plausible guess costs far more to discover later than a
-question costs to ask now.
+**Browser-reachable work is not blocked.** If the *single, entire* obstacle is that something has
+to happen in a browser — a console, a dashboard, a setting — do it yourself rather than describe
+what someone should click. Where a human is wanted for **judgment** — spending, publishing,
+sending, granting access — the gate stands; the browser changes nothing.
 
-`needs` is required by the schema when an item is blocked, so say what would actually unblock you.
-"Blocked on Chris" is not an answer; "which model, and whose subscription pays for it" is.
+**Build vs. borrow — check before writing a generic module.** Before implementing anything not
+specific to this domain — parsing, diffing, scheduling, retries, rate limiting, fuzzy search, date
+handling, CLI plumbing — make one quick registry search for a maintained package; check its last
+publish and dependency footprint. **Propose, don't decide silently — in either direction:** an ❗
+inbox item when the choice shapes the architecture, a PR-body line ("considered X, built instead
+because Y") when small. **Prefer lightweight:** build when the need is under ~100 lines,
+domain-specific, or every candidate is unmaintained. Record the outcome in `.agent/decisions.md`.
 
-**A blocked item keeps its branch** — the partial work is on it, and blocked work holds no lane in
-the heartbeat's ceiling. So resuming is a checkout, not a fresh claim; `pm claim` will refuse and
-print exactly this:
+**The authoring agent owns the entire review loop.** Finish the relevant focused tests, inspect
+their actual results, and give the reviewer the complete packet before its first turn. For UI work,
+include the available simulator evidence. If a test cannot run, state the exact limitation and
+keep the PR draft until validation finishes; a later code correction spends a remaining review
+turn. Aim to finish in an initial review and one focused response. The third turn is a ceiling for
+a genuine late correction or unresolved substantive finding, not a planned step. Commit the
+implementation and tests. When CI, visual evidence or PR metadata matters to review, move the
+item to `review` and open an unlabelled draft PR first so the reviewer sees them. Then run
+`morpheus review prepare --base origin/main` (it prints a packet; it launches nothing), spawn
+**one fresh reviewer** with repository access and that packet and no inherited history, then
+handle findings, the record, CI and merge yourself. Do not wait for a monitor, another agent or
+GitHub Actions. If no independent session can be started, say so and leave the PR open with
+auto-merge off — never self-review. **Read [`independent-review.md`](docs/runbooks/independent-review.md)
+before spawning the reviewer**: it holds the turn cap, budgets and floors, timing evidence,
+conditional clearance, finalization, `humanAuthorization`, record fields, the `review-record:`
+line and the `agent-reviewed` label. Commit the record and run `morpheus review validate` before
+pushing; open the PR with the label already applied (`gh pr create --label agent-reviewed`), or as a
+draft if it must exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather
+than rebase after review.
 
-```sh
-morpheus pm resume MO-051
-# In the reported worktree, after reading current records:
-morpheus pm unblock MO-051
-```
+**Every PR carries** tests for anything testable (or an explicit reason), a documentation update
+when behaviour changes, a test plan with the commands actually run, open questions stated plainly,
+the roadmap item moved to `review`, `Closes #N` for each issue in the item's `issues:`, and visual
+evidence for paths under `review.visualEvidence`. A records-only change (`hq/team/`, `.agent/`)
+goes on an `inbox-<YYYY-MM-DD>` branch; meeting notes go in isolated PRs; **never borrow an
+unrelated item's branch**. Waivers (`skip-tests:`, `records-only:`) need a real reason. All of it:
+[`pm-workflow.md`](docs/runbooks/pm-workflow.md#what-a-pr-carries).
 
-Do not open a PR from the blocked branch: it must retain the partial work. If the block records
-need to land on trunk, copy them to a records branch that stakes no item (for example
-`inbox-YYYY-MM-DD`). `check pr` names this route and explicitly refuses the tempting but false
-answer of changing the item to `review`.
+**Append a worklog entry** to `.agent/worklog/YYYY-MM-DD-slug.md` before opening a PR — dead ends
+especially. Decisions in `.agent/decisions.md` are settled; if one looks wrong, ask rather than
+work around it ([`.agent/README.md`](.agent/README.md) relates the records).
 
-**Browser-reachable work is not blocked.** If the only thing standing between you and finishing is
-that something has to happen in a browser — a console to click through, a dashboard to read, a
-setting to verify — **do it yourself.** Do not stop and describe what someone should click. This
-has cost hours repeatedly: work parked, a human asked, and then the same agent clearing it in a
-minute once told to try.
+### Testing: focused first
 
-The boundary is about obstacles, not gates. Where a human is wanted for **judgment** — spending,
-publishing, sending, granting access — the gate stands and the browser being where it happens
-changes nothing. The rule applies only when browser use is the *single, entire* obstacle.
+Run the tests for the files you changed and their direct dependents —
+`pnpm exec vitest run tests/<area>.test.ts …` — while iterating. **CI runs the full suite and must
+pass before merge.** Run the full `pnpm test` locally **at most once per PR**, and only when you
+touched shared core (`src/pm/`, `src/check/`, `src/session/`, `src/review/`,
+`src/init/templates.ts`). Never re-run an unchanged suite to see whether it passes this time.
+Record the focused commands, and why that scope, in the test plan.
 
-**Build vs. borrow — check before writing a generic module.** Before implementing any capability
-that is not specific to this product's domain — parsing, diffing, scheduling, retries, rate
-limiting, fuzzy search, date handling, CLI plumbing — make one quick search of the ecosystem's
-registry for a maintained package that already solves it. If a credible candidate appears, check
-its last publish and dependency footprint before deciding.
+**Before opening a PR**, run `pnpm typecheck`, the focused tests, `pnpm compile` and
+`pnpm morpheus pm index`, and commit any generated changes. CI runs the same checks.
 
-**Propose, don't decide silently — in either direction.** If a credible package exists, say so
-before building: an ❗ inbox item when the choice shapes the architecture, a line in the PR body
-("considered X, built instead because Y" / "adopted X, N deps, maintained") when it is small.
-Silently building what a package solves and silently adopting a heavy dependency are the same
-mistake.
-
-**Prefer lightweight.** Zero-to-few dependencies beats featureful; a framework pulled in to save
-60 lines is worse than the 60 lines. Build when the need is small — roughly under 100 lines —
-genuinely domain-specific, or every candidate is unmaintained. Record the outcome in
-`.agent/decisions.md` so the choice is not relitigated next session.
-
-**The authoring agent owns the entire review loop.** After committing implementation/tests,
-run `morpheus review prepare --base origin/main`; this prints a review packet and does not
-launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
-repository access and that packet, without inheriting the author's conversation history.
-The reviewer returns findings to the author; the author manages fixes, any allowed follow-up,
-the review record, CI, and merge. Do not wait for a PR monitor, another standing agent, or
-GitHub Actions to start this review. CI checks the evidence; it does not perform the review.
-The author measures each turn from runner duration metadata or actual clock readings, never a
-reviewer's workload estimate. New version 2 records require timing source, milliseconds and
-evidence for every turn; compute elapsedMinutes as durationMs / 60000 without rounding.
-If the runner cannot start an independent session, report that concrete limitation and keep
-the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
-
-**Independent review is required before merge.**
-Respond once; substantive findings require a follow-up by the same reviewer unless the reviewer
-cleared them conditionally, with exact paths and evidence, in which case the author fixes within
-that condition and records it. Minor-only findings allow author fixes without a second pass. A
-finding left deferred or open names the roadmap item that tracks it. The reviewer session id is
-the runner-issued one, never a composed label, and is not reused across tasks. Canonical
-Codex task paths such as /root/reviewer use the globally scoped parent runner session ID
-in authorSession as their namespace; record the exact path returned by the runner. A review is capped at three turns, the initial review and
-two follow-ups; a follow-up resolves what the previous turn left blocked, or spends a remaining turn
-on a late correction after clearance (a fix full CI asked for), recorded with its `scopeReason`.
-Unresolved substantive disagreements after that, an incomplete review, or a correction once the
-turns are spent, keep the PR open and auto-merge disabled. An explicit human exception may authorize
-one additional same-reviewer turn; record `humanAuthorization` with `approvedBy`, `approvedAt`
-(ISO timestamp), and `reason` on that extra follow-up. Each extra turn needs its own authorization;
-never infer it or reset the history. An incomplete turn awaiting evidence may resume only with
-explicit human authorization on its next same-reviewer turn. Preserve the incomplete verdict;
-every historical and new turn must satisfy its budget. Beyond that, one **automatic finalization-only** turn per PR is
-allowed: the same reviewer, at most five minutes, closing out work it already cleared — the
-explanatory prose for it, the review record, or the completion of a condition it set. The reviewer
-records `finalization` (`paths`, `evidence`, `attestation`) and a `scopeReason`; an author cannot
-certify their own. It must be the last automatic turn; every later same-reviewer turn requires explicit `humanAuthorization`. It must follow a cleared turn, must itself be `cleared`, cannot resolve a substantive finding, and the
-check compares the commits it covers against the worklog, the conditioned paths and the attested
-explanatory Markdown. `AGENTS.md`, `CLAUDE.md`, `morpheus.json` and `.github/`, `.ci/`, `.morpheus/`
-are normative policy and stay substantive. A reviewer setting a condition should name the related
-documentation and generated files in it, so the backstop is rarely needed. All review and CI requirements still apply. Record the review paragraph and structured evidence in the task
-worklog, link it with a visible `review-record:` PR-body line, then apply `agent-reviewed`.
-`review.required` defaults to true; project false opts out visibly. After the covered commit only
-the named worklog may change, and merging trunk never invalidates the review: a merge Git
-reproduces exactly needs no entry, a hand-resolved one is named in the record, and CI must still
-pass. Merge rather than rebase after review. Follow the [review contract](docs/runbooks/independent-review.md)
-for budgets, related-code scope, record fields and escalation.
-
-**Every PR must carry:**
-
-- Tests for anything testable — a source change with no test change needs an explicit reason,
-  and see **What makes a test count** below, because "a test exists" is not the bar
-- A documentation update when behaviour or a public API changes
-- A test plan: what you verified and how
-- Any open questions you could not resolve, stated plainly rather than guessed at
-- The roadmap item moved to `review`
-- `Closes #<number>` for every GitHub issue declared in the roadmap item's `issues:` field
-- For changed paths declared by `review.visualEvidence` in `morpheus.json`, a screen recording
-  attached under `## Visual evidence` when practical, otherwise screenshots
-
-The visual-evidence gate is a deterministic repository-owned path contract, not an attempt to
-infer whether rendered pixels changed. CI validates the presence of either a GitHub attachment or
-an HTTPS URL under a repository-approved `allowedUrlPrefixes` location, without fetching it; a
-human or independent reviewer still decides whether the evidence actually demonstrates the change.
-Declare the narrowest stable prefix that owns the media, such as a specific bucket path rather than
-all of `storage.googleapis.com`. A repository may opt out only with `enabled: false` and a
-substantive `reason` in its manifest. A legacy manifest with no declaration warns rather than blocks
-until its explicit rollout commit lands.
-
-When an issue becomes roadmap work, create it with `morpheus pm new roadmap "<title>" --issue 123`.
-For an existing item, use `morpheus pm link-issue <ID> 123`. Both write structured closure intent
-into the item. `check pr` then requires GitHub's closing keyword in the PR body, so merging the
-fix cannot leave the issue open as a second, stale backlog.
-An issue merely mentioned as related is not declared and is not closed.
-
-**Except a PR that only touches records** — `hq/team/` and `.agent/`. An inbox cycle belongs to
-no feature and has no item to move. Branch it as `inbox-<YYYY-MM-DD>`, staking no id, and
-`check pr` will not ask for one.
-
-**Meeting notes are delivered in isolated PRs.** Put each note on an `inbox-<YYYY-MM-DD>` branch,
-staking no id, in a PR that contains only the factual, canonical meeting record. Roadmap changes,
-strategy refinement, implementation work, decision promotion, and any other follow-up
-interpretation go in separate PRs. When a follow-up PR files roadmap items, it backfills their ids
-into the note's `roadmap:` field as bookkeeping.
-
-**Never borrow an unrelated item's branch for this.** Merging a branch that stakes an id marks
-that item shipped, so a PR which changes only records and `hq/product/` bookkeeping is refused on
-a claimed branch — it demonstrably did not do that item's work. That is how MO-010 came to read as
-shipped against a PR that only moved the inbox, and a shipped item is never looked at again.
-
-When the deliverable genuinely *is* the record — a decision item like MO-003, whose whole outcome
-was "do not publish, use a git dependency" — put `records-only: <reason>` in the PR body, the same
-shape as `skip-tests:`.
-
-**Both waivers are reported, not swallowed.** They are your own say-so about your own PR, so
-`check pr` prints them as `~ waived` with the reason attached and never says "conventions
-satisfied" without listing them. They still pass — the reason just has to be visible to whoever
-reads the check.
-
-**A waiver needs a real reason.** `skip-tests: yes` is refused, as are `true`, `n/a` and an empty
-value. Say what cannot be tested and why.
-
-**Before opening a PR**, run `pnpm typecheck && pnpm test && pnpm compile && pnpm morpheus pm index`,
-and commit any one-time roadmap README migration or generated goal/request index changes. The
-roadmap README is static after that migration. CI runs the same checks and will fail otherwise.
+iOS projects: focused tests only, with the repository's build/test wrapper and explicit test
+filters; never the full iOS suite locally unless Chris asks. New projects inherit this from
+`src/init/templates.ts`; keep it aligned.
 
 ### What makes a test count
 
-*"Tests for anything testable"* is satisfied by a test that would pass whatever the code did, and
-that is the common failure rather than an exotic one. A project repository hit it on the module
-its own documentation listed as "working and tested":
-
-```python
-def test_sharpe_ratio_positive():
-    curve = [Decimal(str(100 + i)) for i in range(253)]   # monotonically rising
-    assert sr > 0                                          # any positive number passes
-```
-
-At 87% line coverage, mutation testing showed that adding the risk-free rate instead of
-subtracting it, dividing by the annualization factor instead of multiplying, and counting flat
-periods as downside **all passed the suite**. The one test in that file which pinned a number was
-the one test whose mutant died.
-
-**Assert the value, not the sign.** A test that would still pass if the answer were wrong is not
-a test, whatever it does to the coverage percentage. `> 0`, `!= 0`, `is not None` and "did not
-raise" are shapes to be suspicious of — legitimate sometimes, and worth a second look every time.
-
-**Test a guard at its boundary.** `x <= 0` and `x < 0` differ at exactly zero and nowhere else, so
-a guard exercised only with `-1` is not exercised.
-
-**A comment saying "never do X" needs a test that fails when X is done.** An invariant stated only
-in prose is a convention; one with a test behind it is a constraint, and the difference is
-invisible until someone breaks it.
-
-**Coverage is a floor against deletion, not evidence of quality.** Gate it under the measured
-number so it catches tests being removed, and do not raise it as a proxy for the suite getting
-better — that is the metric being chased rather than the property being bought. `python-ci.yml`
-defaults `coverage-fail-under` to 0 for the same reason.
-
-**To check rather than assume, run mutation testing** — break the source, run the suite, see what
-it fails to notice. Keep it out of CI: it is slow, and a mutation score turned into a gate gets
-chased exactly like a coverage target. Read survivors instead of counting them, because a mutant
-survives for three reasons and only the first is a test gap:
-
-1. nothing tests that behaviour — write the test;
-2. the mutation changes nothing observable — an equivalent mutant, and every codebase has some;
-3. something else refuses first — defence in depth, so the guard is untested but the system is
-   safe, which is the thing to write down.
-
-A cheap proxy that costs one AST walk: **assertions per test**. In the audit above, the file with
-the lowest density in the suite was the file with the worst mutation score.
-
-Worked example, with the harness, the findings and the two mistakes made while fixing them:
-[`qa/audits/2026-08-19-python-test-quality.md`](https://github.com/cpheinrich/lakinacapital/blob/main/qa/audits/2026-08-19-python-test-quality.md)
-and [`qa/mutation/`](https://github.com/cpheinrich/lakinacapital/tree/main/qa/mutation) in Lakina.
-
-## iOS projects
-
-**Local iOS testing: focused tests only.** Run tests covering the feature under development
-and directly affected features or shared dependencies. Do not run the full iOS test suite
-locally unless Chris explicitly requests it: CI runs the full suite and must pass before
-merge. Use the repository's build/test wrapper when available, with explicit test filters.
-In the PR test plan and worklog, record the actual focused commands and why that scope was
-selected. Continue adding or updating tests and performing relevant simulator/visual QA.
-
-New projects inherit this policy from `src/init/templates.ts`; keep that template aligned.
-
-## The GitHub Manager
-
-A scheduled agent, `morpheus-gh-manager[bot]`, sweeps open pull requests in repositories that opt
-in with `.github/morpheus-gh-manager.json`. It enables auto-merge on reviewed, green pull requests;
-for ones that stalled it reads the reviews on record, conducts one more if needed, fixes its own
-findings in the same session and lands the result; it marks abandoned drafts incomplete, closes
-obsolete work, and escalates what needs a human with `manager:needs-human`.
-[`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is the whole design.
-
-**Morpheus is opted in too**, with its policy in `.github/morpheus-gh-manager.json` and its
-additions to the session brief in `.github/gh-manager-prompt.md`. Because this repository is the
-manager's own engine, the policy's `protectedPaths` keep the manager from clearing a change to
-itself (`src/gh-manager/`, its CLI, `check pr` and the path classes and review waivers it applies in
-`src/check/`, `src/paths.ts`, `src/dependabot/policy.ts` and `src/security/policy.ts`, `src/review/`) or to what other projects inherit
-(`src/init/templates.ts`, the review and manager runbooks); `.github/` is already normative. Such a
-pull request needs the ordinary independent review. If you are deliberately leaving a pull request
-open for Chris to decide, say so plainly in `## Open questions` so the manager escalates it instead
-of treating it as a stall.
-
-**It is a backstop, not a plan.** The authoring agent still owns its review loop, CI and merge, and
-must not leave a pull request for the manager to finish. The manager waits 8 hours after a ready
-pull request's last commit and 48 after a draft's before touching it, and what it lands carries a
-visible `~ [agent-review] cleared by the GitHub Manager` waiver.
-
-**Leave its labels and records alone.** `manager-reviewed` counts only when the App applied it and
-only for the head the App's comment names; a push after that needs the manager, or the ordinary
-review, again. A `morpheus-manager-review` block is written by the manager, never by an author. If the manager
-has pushed to your branch, pull before continuing. Removing `manager:needs-human` or pushing a new
-commit tells it to look again.
+"A test exists" is not the bar. **Assert the value, not the sign** — `> 0`, `!= 0`,
+`is not None` and "did not raise" deserve a second look. **Test a guard at its boundary** —
+`x <= 0` and `x < 0` differ only at zero. **A comment saying "never do X" needs a test that fails
+when X is done.** **Coverage is a floor against deletion, not evidence of quality.** To check
+rather than assume, mutation-test outside CI and read the survivors. Worked example and the three
+reasons a mutant survives: [`test-quality.md`](docs/runbooks/test-quality.md).
 
 ## Branch protection
 
-`main` is protected on Morpheus and every project repo. **Never push to `main`** — work on a
-branch, open a PR, and merge it yourself once checks pass. Chris does not need to merge for you.
+`main` is protected here and on every project repo. **Never push to `main`**; open a PR and merge
+it yourself — Chris does not need to merge for you. Finish the independent review and CI first,
+then `gh pr merge <n> --squash --auto --delete-branch`. **Never merge with `--admin`**, and never
+use a delivery waiver to bypass independent review. Respond to every GitHub review finding;
+explain declined ones in their threads before resolving. `pm claim` reconciles merged work to
+`shipped`. Detail: [`pm-workflow.md`](docs/runbooks/pm-workflow.md#merging-the-board-and-the-worklog).
 
-Do not wait on checks by polling. Two better options:
+## The GitHub Manager
 
-```sh
-gh pr merge <n> --squash --auto --delete-branch   # merges itself when checks go green
-gh pr checks <n> --watch --fail-fast              # blocks until they finish, then decide
-```
-
-Prefer `--auto` — it hands the merge to GitHub so the session is not held open waiting, and a
-failing check simply leaves the PR unmerged rather than merging something broken. Use `--watch`
-only when the next step depends on the merge having landed.
-
-**Finish the author-managed independent review before enabling auto-merge.** Opening a PR,
-pushing commits, or changing labels never starts a reviewer session. Follow the
-[review contract](docs/runbooks/independent-review.md), return to the original reviewer for the
-permitted follow-up turns when required, and publish complete evidence before merging.
-
-**Legacy GitHub review is opt-in.** Only repositories explicitly enabling the old
-`agent-review.yml` run a model when a PR opens or a collaborator requests `@claude` re-review.
-Its `agent-review / delivery` check may remain skipped to satisfy existing branch protection;
-skipped delivery is not an independent review. A legacy `review-waived:` line applies only to
-that delivery job and cannot waive the independent-review requirement.
-
-Read and respond to any GitHub review findings as well, explaining declined findings in their
-threads before resolving them. Unresolved substantive independent findings keep the PR open.
-**Never merge with `--admin`** or use a delivery waiver to bypass independent review.
-
-**`pm claim` reconciles the board first**, marking merged work shipped and recording its PR number,
-so those status changes ride along in the claim commit. Nothing else advances an item to `shipped`,
-and a board that lags reality stops being read — thirteen items had drifted before anyone noticed.
-
-Running it after a merge instead leaves the status change in a dirty working tree on protected
-`main` with nowhere to go, which is how a housekeeping step gets quietly dropped. `morpheus pm ship`
-still exists for running it deliberately, and `morpheus pm ship <ID>` for work that shipped without
-a PR it can see.
-
-It confirms against a merged PR rather than inferring from a missing branch, and writes nothing when
-`gh` is unavailable. It also reports merged branches that were never deleted — those read as live
-claims and would make `pm claim` refuse the item forever.
-
-**Append a worklog entry** to `.agent/worklog/YYYY-MM-DD-slug.md` before opening a PR. Record
-what you learned, especially dead ends that produced no code — git history cannot capture those.
-
-**At the start of a session** read `.agent/decisions.md` and `.agent/learned.md` — see
-[`.agent/README.md`](.agent/README.md) for how the four records relate. Decisions are
-settled choices — if one looks wrong, say so and ask rather than quietly working around it.
+`morpheus-gh-manager[bot]` sweeps open PRs in opted-in repos — Morpheus included — and lands stalled
+ones. **It is a backstop, not a plan:** never leave a PR for it to finish. Leave its labels and
+`morpheus-manager-review` blocks alone; if it pushed to your branch, pull first; to leave a PR for
+Chris, say so under `## Open questions`. Read [`gh-manager.md`](docs/runbooks/gh-manager.md) when it
+applies.
 
 ## The inbox cycle
 
-`hq/team/<handle>.md` is how a human and their agents exchange state. These are the only
-files a human is expected to edit.
+`hq/team/<handle>.md` is how a human and their agents exchange state, and the only files a human is
+expected to edit. At the end of a session write a prose summary first, then `##` items — `✅`
+closed with no reply slot, or `❗` open ending in `~` on its own line; a decision gets three
+concrete options (recommended first) plus `Other`. Next session: act on replies, promote durable
+ones to `decisions.md`, archive to `.agent/inbox-archive/`, write a fresh inbox. Run
+`morpheus inbox validate`. **Read [`inbox-cycle.md`](docs/runbooks/inbox-cycle.md) before writing one.**
 
-**One inbox per person, not per session.** A person's file collects items from every agent
-working for them, each heading tagged with the agent that raised it (`` `claude` ``,
-`` `codex` ``). Two agents share a working copy so writes serialise; two *people* never touch
-the same file, so git never merges a status.
+## Other rules
 
-1. I write it at the end of a working session: **a prose summary of what got done first**, then
-   numbered items, each ending in a `~`. Summary-before-blockers is the order a human expects.
-2. He replies inline after the `~`, leaving the marker in place.
-3. On my next turn I: read the replies, act on them, promote anything durable to
-   `.agent/decisions.md`, archive the whole exchange to
-   `.agent/inbox-archive/YYYY-MM-DD-HHMM-<handle>.md` (date first, so the archive reads as one timeline), and write a fresh inbox.
-
-A cycle goes out on its own `inbox-<YYYY-MM-DD>` branch — see the records exception above.
-
-**Markers.** Three, and the distinction matters because Chris scans rather than reads:
-
-**Every item is either closed or open. Never both, never neither.**
-
-**The state lives in the heading**, not inline — `❗` and `✅` carry colour, so scanning does not
-depend on the renderer's text colour. Items are `##` with no wrapping section header, because
-many Markdown renderers dim each descending heading level.
-
-| State | Shape |
-|---|---|
-| **Closed** | `## ✅ 2. Title · \`claude\`` → answer, **no reply slot** |
-| **Open** | `## ❗ 1. Title · \`claude\`` → answer → **`~` on its own line** to reply into |
-
-Two mistakes to avoid, both made in the first round:
-
-1. **`❗` without a following `~`.** He has nowhere to answer. The `~` at the top of an item is
-   his *previous* reply, not a fresh one.
-2. **`✅` on an item that still asks a question.** If there is a question, it is open.
-
-**An open item proposes options.** Where the item is a decision, give **three concrete options
-and an `Other`**, one marked recommended and placed first, so replying is a selection rather than
-a composition:
-
-```markdown
-## ❗ 3. Which way on the contact form? · `claude`
-
-Delivery still calls Cloudflare's Email Sending API…
-
-- **A — keep Cloudflare (recommended).** Works today, already in the stack, no new account.
-- **B — move to Resend.** Removes the dependency; needs an account, a verified domain, a key.
-- **C — drop the form.** Point people at the social links already on the page.
-- **Other —** something else, or none of these is the right frame.
-
-~
-```
-
-Chris's reply time is the bottleneck, not agent generation time, and an item demanding prose
-spends the scarce resource to save the abundant one. The second reason matters more: **three real
-options cannot be written without having done the analysis**, where a bare `~` lets an
-under-examined question be handed over as though that were collaboration. Items get longer; that
-is the trade.
-
-**`Other` is structural, not decoration.** Options railroad — three plausible choices can hide
-that the answer is a fourth thing, and a reader scanning quickly takes the least-bad rather than
-noticing the frame is wrong. This is not hypothetical: a question went out as *"darwin and evo use
-Vercel DNS — if so, cut over"* when they in fact use Cloudflare DNS pointed at Vercel. As three
-Vercel-DNS-flavoured options, that false premise would have been *harder* to catch, since each
-option would have quietly reasserted it.
-
-So: **options only where the analysis is real.** Filler is worse than an honest open question. And
-not every item is a decision — an FYI or a genuinely open-ended question takes a plain `~`.
-
-`morpheus inbox validate` enforces both, plus dense numbering, the GitHub-handle rule, and a
-summary before the first item. Run it before finishing; CI runs it too.
-
-**Link roadmap items with relative markdown paths** — `[MO-011](product/roadmap/MO-011.md)`
-from `hq/STATUS.md`. These resolve in Obsidian *and* render on GitHub, unlike `[[wikilinks]]`
-which only work in Obsidian.
-
-Keep **Needs you** as one list. Splitting "waiting on you" from "blocked" was a false
-distinction — both mean the same thing to the person reading it.
-
-Never let an inbox accumulate history. It is a snapshot; the archive is the record.
-
-## Sharing Google links
-
-**Always append `?authuser=<email>`** (or `&authuser=`) to any Google or Google Cloud URL —
-console, Firebase, payments, admin. Without it the link opens under whichever identity the
-account switcher last used, and switching loses the link context. Use the email address rather
-than an index.
-
-## Building a website
-
-**When someone asks for a website — a landing page, email capture, a signup or contact form, or
-the internal dashboard — run `morpheus web init` before writing any of it by hand.**
-
-```sh
-morpheus web status   # what the surface has, and what it is missing
-morpheus web init     # add whatever is missing
-```
-
-It does the half `morpheus init` deliberately does not: it provisions the GCP project, Firebase,
-Firestore (`nam5`), the registered web app, and the Workload Identity a Vercel deployment
-authenticates as — then scaffolds the code that depends on those. A Next.js app when there is
-none, **email waitlist capture**, and **`/hq` behind Google sign-in**, gated on the same `role`
-custom claim that Firestore rules read.
-
-Scaffolded projects carry this as the `website-init` skill, so an agent finds it at the moment it
-is needed rather than by going looking for a CLI it has never run.
-
-**It never overwrites**, the same contract as `init` — every existing file is skipped and
-reported, which is what makes "create the website" and "add the missing half to a live site" one
-command. It will not edit a working home page; it tells you where to render the form instead.
-Three files are *merged* rather than skipped, because skipping them would leave the generated code
-unable to resolve: the app's `package.json` dependencies, the shared package's `exports` map, and
-the Firestore rules — and the rules block is inserted only above an anchor the tool can actually
-find, never at a guessed position.
-
-**The Firebase-dependent half is written only when a Firebase project is real.** With
-`--no-provision`, or when provisioning is blocked, the waitlist and `/hq` are skipped and reported
-rather than written against placeholder configuration. A sign-in page holding a placeholder
-`firebaseConfig` looks finished and cannot work, which is the failure shape `learned.md` records
-four times over.
-
-Afterwards: `pnpm install`, render `<WaitlistForm source="hero" />` on the page, add a
-`waitlist_joined` event to the project's analytics contract and pass it to the form's `onJoined`
-prop, then `morpheus access sync` so the allowlist becomes the `role` claim. Until that sync runs,
-a signed-in account has no role and `/hq` refuses it — the gate working, not a broken sign-in.
-
-**When a project wants people to sign themselves up, run `morpheus web add-consumer-auth`** — do
-not hand-build Firebase auth. It extends `web init` with what Evo shipped and hardened
-(cpheinrich/morpheus#135): a second Firebase project for staging with **staging as the default**
-(only a Vercel Production build reaches production data), the auth plumbing whose review findings
-are already encoded (login CSRF, the enumeration-oracle-proof reset route, the backslash open
-redirect, the cross-device verification remint), starter sign-in/sign-up/reset/action pages, and
-**three test suites that run against the Firebase emulators with no secrets** — wired into CI via
-the reusable `firebase-tests.yml`. `--check` reports drift between a project's shared auth files
-and the current templates. The console half — providers, authorized domains, the service-account
-key scoped to Vercel Preview *only*, mail keys, the staging domain — is
-[`docs/runbooks/consumer-auth.md`](docs/runbooks/consumer-auth.md).
-
-`--no-provision` skips the cloud entirely; the provisioning half is what makes `web init` a
-context-gated command, and the scaffolding half is not gated at all.
-
-## Firebase Google sign-in bootstrap
-
-**Do not call Firebase-ready just because the project, SDK config, or Auth tab exists.** Immediately
-after an agent creates a Firebase project for a web/HQ surface, run:
-
-```sh
-morpheus firebase auth setup --project <firebase-project> --domain <public-origin>
-```
-
-The command writes the Google-provider configuration into `firebase.json`, deploys it with the
-Firebase CLI, adds the app's authorized domain through the Firebase API, and verifies both remote
-facts. It first tries the existing `gcloud` and Firebase CLI sessions. If either needs an interactive
-Google authorization, the CLI launches its browser flow; if a Firebase consent/ToS screen still
-blocks deployment, it opens Firebase Authentication and fails with the exact recovery step. Use
-`morpheus firebase auth check` in a later session or CI to fail closed rather than rediscovering a
-disabled provider or missing custom domain from a spinning sign-in screen. Successful setup records
-the normalized origin and user-visible OAuth support identity as `publicDomain` and `supportEmail`
-in `morpheus.json`; pass `--domain` explicitly on the first run. The check refuses to call an app
-ready when it cannot determine that origin. Declare legitimate preview or secondary Auth hosts in
-`authorizedDomains` as bare hostnames; the command reports any other remote domains for manual
-review instead of silently retaining or automatically revoking them.
-
-## Folder documentation
-
-**A folder gets a `README.md` when an agent could plausibly do the wrong thing without it.**
-Concretely, when any of these is true:
-
-| Trigger | Example |
-|---|---|
-| It is an **input to something** | `hq/` feeds the dashboard; `qa/acceptance/` feeds verifier rung 3 |
-| It has a **convention filenames do not reveal** | worklog naming, inbox markers, id formats |
-| It is **generated**, or partly | `hq/product/goals/README.md`, the role helpers in `firestore.rules` |
-| It is a **seam** | shared packages, kit boundaries, anywhere two projects meet |
-
-**Not** for framework-standard directories — `app/`, `components/`, `__tests__/` — whose meaning
-is universal. A README restating the folder name is noise that can also go stale.
-
-**Keep them short, and point rather than repeat.** Three lines and a link into `architecture.md`
-beats a second copy of the reasoning. Locality is what a README buys: eight lines where an agent
-is standing beat 1,400 lines in another repo. Two copies of the same explanation drift, so depth
-stays in one place.
-
-This exists because a `/hq` dashboard was built that did not match the folder structure it was
-rendering. The explanation existed — in `architecture.md`, in another repo — and the agent never
-reached it.
-
-**A tool reads the filesystem, not the README.** If a dashboard derives its sections from prose,
-the README has quietly become a config file that looks like documentation, and the two will
-disagree. The README explains *intent* to a reader; code reads *reality*.
-
-`morpheus init` scaffolds these for the directories it creates. It is a convention, not a check —
-a check that demands a file gets a file, and the result is stubs written to satisfy the check.
+- **Google links:** always append `?authuser=<email>` (or `&authuser=`) — the address, not an index.
+- **Websites:** when asked for a website, waitlist, signup or contact form or `/hq`, run
+  `morpheus web init` before writing any of it by hand; for consumer accounts,
+  `morpheus web add-consumer-auth`; after creating a Firebase project,
+  `morpheus firebase auth setup`. Read [`website.md`](docs/runbooks/website.md) first.
+- **Folder READMEs:** a folder gets one when an agent could plausibly do the wrong thing without
+  it — short, pointing rather than repeating. See [`folder-readmes.md`](docs/runbooks/folder-readmes.md).
 
 ## Style
 

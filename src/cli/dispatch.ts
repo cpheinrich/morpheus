@@ -39,7 +39,7 @@ import { webAddConsumerAuth, webInit, webStatus } from "./web.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
 import { ghManagerApply, ghManagerDigest, ghManagerPrompt, ghManagerRoutes, ghManagerSweep } from "./gh-manager.js";
-import { prompt as reviewPrompt, reviewDelivery, reviewNeeded, prepareReview } from "./review.js";
+import { prompt as reviewPrompt, reviewDelivery, reviewNeeded, prepareReview, validateReview } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
 import {
@@ -62,6 +62,8 @@ import {
 } from "./self.js";
 
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
+import { profileExtract, profileReport } from "./profile.js";
+import { waitCiCommand } from "./wait-ci.js";
 import { HELP } from "./help.js";
 import type { Flags } from "./args.js";
 
@@ -399,9 +401,10 @@ async function dispatchInbox({ flags, command, dir }: Invocation): Promise<numbe
   
 }
 
-async function dispatchReview({ flags, command, dir }: Invocation): Promise<number> {
+async function dispatchReview({ flags, command, rest, dir }: Invocation): Promise<number> {
     if (command === "prepare") return prepareReview(dir, process.cwd(), flags.base);
     if (command === "prompt") return reviewPrompt(dir, process.cwd());
+    if (command === "validate") return validateReview(process.cwd(), flags.base, rest[0], flags.prBodyFile);
     if (command === "needed") return reviewNeeded(flags.base, flags.priorReview, flags.json);
     if (command === "delivery") {
       return reviewDelivery(flags.beforeCommentId, flags.commentId, flags.bodyFile, flags.prBodyFile);
@@ -538,6 +541,18 @@ async function dispatchPm({ flags, command, rest, dir }: Invocation): Promise<nu
   }
 }
 
+async function dispatchProfile({ flags, command }: Invocation): Promise<number> {
+  const options = { since: flags.since, repo: flags.repo, out: flags.out, json: flags.json };
+  if (command === "extract") return profileExtract(options);
+  if (command === "report" || command === undefined) return profileReport(options);
+  console.error(`Unknown profile command "${command}".\n\n${HELP}`);
+  return 1;
+}
+
+async function dispatchWaitCi({ flags, command, rest }: Invocation): Promise<number> {
+  return waitCiCommand({ target: command, extra: rest, repo: flags.repo, timeout: flags.timeout, requiredOnly: flags.requiredOnly });
+}
+
 const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "self": dispatchSelf,
   "doctor": dispatchDoctor,
@@ -561,6 +576,8 @@ const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "context": dispatchContext,
   "check": dispatchCheck,
   "qa": dispatchQa,
+  "profile": dispatchProfile,
+  "wait-ci": dispatchWaitCi,
   pm: dispatchPm,
 };
 

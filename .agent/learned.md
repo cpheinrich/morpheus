@@ -554,3 +554,14 @@ The result is still valid JSON and plausible prose, so nothing downstream can de
 
 When a prompt asks an unattended agent to write a file whose content a person will rely on, tell it
 to use its file-writing tool rather than the shell, and say why.
+
+## Claude Code writes one transcript line per content block, each repeating the usage
+
+2026-10-07. One API response with thinking, text and two tool calls appears as several `assistant`
+lines sharing `message.id`, and every one of them carries the response's full `usage`. Summing
+usage per line over-counts tokens two to five times (sampled on this machine: 3,511 messages on
+two lines, 2,607 on three, 464 on four or more). Count usage once per `message.id`.
+Subagent transcripts live beside the parent at `<session>/subagents/agent-<id>.jsonl` with a
+`.meta.json` naming the agent type and description; their lines carry the *parent's* `sessionId`.
+Codex re-emits identical cumulative `token_count` events around tool calls, so count a response
+only when `total_token_usage` moves.

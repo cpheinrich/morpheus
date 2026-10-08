@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Finding } from "../check/pr.js";
 import { visibleProse, visibleText } from "../check/pr.js";
 import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, humanGatedPaths, MANAGER_REVIEWED_LABEL, parsePolicy } from "../gh-manager/policy.js";
-import { changedPaths, git, isAncestor, reviewRequired, verifyUncoveredCommits } from "./local.js";
+import { changedPaths, committedConfig, git, isAncestor, reviewRequired, verifyUncoveredCommits } from "./local.js";
 
 /**
  * The GitHub Manager's review: one review and its own fixes, in one session.
@@ -106,7 +106,7 @@ export function usesManagerReview(labels: string[]): boolean {
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkManagerReview(opts: ManagerReviewInput): Finding[] {
   try {
-    const config = JSON.parse(git(opts.root, ["show", `${opts.head}:morpheus.json`]));
+    const config = committedConfig(opts.root, opts.head);
     if (!reviewRequired(config)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
     // An unreadable actor is not the App. Refusing here is what stops an author
     // applying the label to their own record.
