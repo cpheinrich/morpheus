@@ -4,6 +4,7 @@ import { access, chmod, mkdir, open, readFile, rm, stat, unlink, writeFile, } fr
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "./git-env.js";
 import { readRegistry } from "./registry/index.js";
 import { morpheusInstallStatus, updateMorpheus, } from "./self.js";
 const exec = promisify(execFile);
@@ -91,6 +92,7 @@ async function gitHookPath(root, hook) {
     const { stdout } = await exec("git", ["rev-parse", "--git-path", `hooks/${hook}`], {
         cwd: root,
         timeout: 10_000,
+        env: gitSubprocessEnv(),
     });
     const path = stdout.trim();
     if (!path)

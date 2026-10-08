@@ -952,8 +952,11 @@ ritual.
 **Startup prepares source; explicit refresh certifies reading.** The existing standard shim
 continues to invoke `morpheus context brief`, now also available as `context start`. The shared CLI
 fetches the configured canonical trunk into an invocation-private ref so simultaneous fetches cannot
-exchange `FETCH_HEAD`. A clean local trunk behind that exact commit fast-forwards; dirty checkouts,
-feature branches and divergent trunks remain intact and report missing commits. Offline or fetch
+exchange `FETCH_HEAD`. A local trunk behind that exact commit fast-forwards; feature branches and
+divergent trunks remain intact and report missing commits. Tracked edits on the trunk branch are
+first committed to a pushed `wip/trunk-*` draft PR and the trunk reset only once that commit is
+proven to hold them — a dirty trunk otherwise never advances, and one did not for three weeks.
+Untracked files are never committed; `doctor --all` reports stuck trunk checkouts fleet-wide. Offline or fetch
 failure is explicitly unverified, never a successful current-source report. A receipt is refused
 when the checkout does not contain the observed trunk. Checks repeat local source containment
 inside the lease term and before re-anchoring after a branch switch; code-only drift and

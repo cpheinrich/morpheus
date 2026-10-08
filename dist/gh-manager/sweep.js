@@ -4,6 +4,8 @@ const DAY = 24 * HOUR;
 const MARKER = /<!-- morpheus-gh-manager (\{[^\n]*\}) -->/g;
 /** A branch name the brief can carry verbatim. Git allows `;`, `$`, backticks and more in a ref. */
 export const SAFE_REF = /^[A-Za-z0-9._/-]+$/;
+/** Branches `context brief` creates for tracked edits rescued from a dirty trunk checkout. */
+export const RESCUED_TRUNK_PREFIX = "wip/trunk-";
 export function renderMarker(marker) {
     return `<!-- morpheus-gh-manager ${JSON.stringify(marker)} -->`;
 }
@@ -91,6 +93,13 @@ export function routePullRequest(pr, policy, now) {
     }
     const { failing, pending, cancelled } = summarize(pr.checks);
     const reviewed = pr.labels.includes("agent-reviewed") || pr.labels.includes(MANAGER_REVIEWED_LABEL);
+    // Edits `context brief` rescued from a dirty trunk checkout. Nobody has decided they are a
+    // change at all — an IDE rewriting a generated file is the usual cause — so no session may
+    // review, repair or land one on its own judgment. Past the draft quiet period it goes to a
+    // human once; adopting it (review, or marking it ready) returns it to the ordinary routes.
+    if (pr.isDraft && !reviewed && pr.headRefName.startsWith(RESCUED_TRUNK_PREFIX)) {
+        return routed("escalate", "rescued-trunk-edits", "uncommitted edits rescued from a dirty trunk checkout; adopt them onto a roadmap item's branch or close this");
+    }
     if (pr.autoMerge && !failing.length && pr.mergeable !== "CONFLICTING") {
         if (cancelled.length && policy.actions.merge)
             return routed("merge", "rerun-cancelled", `auto-merge is on but ${cancelled.length} check(s) were cancelled; rerunning them`);

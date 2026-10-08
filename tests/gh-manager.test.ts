@@ -92,6 +92,18 @@ describe("marker", () => {
 });
 
 describe("routing one pull request", () => {
+  it("hands a rescued-trunk draft to a human past the draft quiet period, never a session", () => {
+    const wip = { isDraft: true, headRefName: "wip/trunk-2026-10-08-box", checks: [{ name: "conventions", state: "failure" as const }] };
+    expect(route({ ...wip, headCommittedAt: hoursAgo(47.9) })).toMatchObject({ route: "skip", reason: "active" });
+    expect(route({ ...wip, headCommittedAt: hoursAgo(48) })).toMatchObject({ route: "escalate", reason: "rescued-trunk-edits" });
+    // Once escalated on this head, it waits on the human like any escalation.
+    expect(route({ ...wip, headCommittedAt: hoursAgo(48), labels: ["manager:needs-human"], marker: { head: HEAD, verdict: "escalate", attempts: 0, at: hoursAgo(1) } })).toMatchObject({ route: "skip", reason: "escalated" });
+    // Adopted — marked ready or reviewed — it follows the ordinary routes.
+    expect(route({ ...wip, isDraft: false, headCommittedAt: hoursAgo(48) }).reason).not.toBe("rescued-trunk-edits");
+    expect(route({ ...wip, headCommittedAt: hoursAgo(48), labels: ["agent-reviewed"] }).reason).not.toBe("rescued-trunk-edits");
+    // Only the rescue prefix: an ordinary draft still gets a session.
+    expect(route({ ...wip, headRefName: "wip/other", headCommittedAt: hoursAgo(48) }).route).toBe("session");
+  });
   it("leaves bot lanes and untrusted authors alone", () => {
     expect(route({ author: "morpheus-security[bot]" })).toMatchObject({ route: "skip", reason: "bot-lane" });
     expect(route({ author: "dependabot[bot]" })).toMatchObject({ route: "skip", reason: "bot-lane" });

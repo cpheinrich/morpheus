@@ -6,6 +6,7 @@ import { prepareRepository, parseSessionInput, sessionGit, type SessionStartInpu
 import { projectPolicy } from "../session/policy.js";
 import { CANONICAL_INPUTS } from "../session/lease.js";
 import { brief, type BriefOptions } from "./context.js";
+import { formatLag, formatRescue } from "../session/trunk-rescue.js";
 
 /** Hooks pipe JSON; interactive calls must not wait for terminal input. */
 export async function sessionHookInput(): Promise<SessionStartInput> {
@@ -43,8 +44,10 @@ export async function startSession(root: string, input: SessionStartInput, opts:
     const here = roadmapIdFromBranch(await sessionGit(root, ["rev-parse", "--abbrev-ref", "HEAD"]));
     if (binding && here && here !== binding.task) throw new Error(`This checkout is task ${here}, but the session is associated with ${binding.task}. Use pm resume <ID> to choose explicitly.`);
     if (binding && binding.root !== root) await endTerm(binding.root);
-    const prepared = await prepareRepository(binding?.root ?? root, opts.offline);
+    const prepared = await prepareRepository(binding?.root ?? root, opts.offline, opts.rescue ?? {});
     console.log(`Fetched ${prepared.trunk} at ${prepared.sha}.`);
+    if (prepared.rescue) for (const line of formatRescue(prepared.rescue, prepared.trunk)) console.log(line);
+    if (prepared.fastForwardError) console.log(`!!! Could not fast-forward clean trunk: ${prepared.fastForwardError.split("\n")[0]} Move or delete the named untracked file(s), then rerun morpheus context brief.`);
     if (prepared.advanced) console.log("Fast-forwarded clean local trunk. Read the updated records before refreshing context.");
     console.log(`WORK IN: ${prepared.root}`);
     if (prepared.task) {
@@ -55,7 +58,10 @@ export async function startSession(root: string, input: SessionStartInput, opts:
     } else {
       console.log("No implementation task is associated with this checkout. Investigation needs no new worktree. Use morpheus pm claim <ID> when new implementation starts, or morpheus pm resume <ID> for existing work.");
     }
-    if (prepared.behind) console.log(`This checkout is ${prepared.behind} commit(s) behind fetched trunk. Existing edits were preserved. Integrate trunk explicitly before certifying context; inspect latest source with git show ${prepared.sha}:<path>.`);
+    if (prepared.behind) {
+      for (const line of formatLag(prepared.lag, prepared.trunk, new Date())) console.log(line);
+      console.log(`Existing edits were preserved. Integrate trunk explicitly before certifying context; inspect latest source with git show ${prepared.sha}:<path>.`);
+    }
     console.log("Use this absolute directory for subsequent commands. A hook cannot change its parent agent's working directory.");
     console.log("Read AGENTS.md and required context records from the chosen checkout:");
     const policy = await projectPolicy(prepared.root);
