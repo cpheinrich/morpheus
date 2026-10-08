@@ -231,3 +231,35 @@ tells the manager to try that one again.
 - **The attestation is auditable, not cryptographic**, the same as the ordinary record. What is
   enforced is who applied the label and which paths the fix commits touched.
 - **Issues are not triaged yet.** That is a follow-up item.
+
+
+## For authors in a repository the manager sweeps
+
+**Read this when** your pull request may sit unattended, or the manager has touched it. `AGENTS.md` keeps a three-line summary.
+
+A scheduled agent, `morpheus-gh-manager[bot]`, sweeps open pull requests in repositories that opt
+in with `.github/morpheus-gh-manager.json`. It enables auto-merge on reviewed, green pull requests;
+for ones that stalled it reads the reviews on record, conducts one more if needed, fixes its own
+findings in the same session and lands the result; it marks abandoned drafts incomplete, closes
+obsolete work, and escalates what needs a human with `manager:needs-human`.
+
+**Morpheus is opted in too**, with its policy in `.github/morpheus-gh-manager.json` and its
+additions to the session brief in `.github/gh-manager-prompt.md`. Because this repository is the
+manager's own engine, the policy's `protectedPaths` keep the manager from clearing a change to
+itself (`src/gh-manager/`, its CLI, `check pr` and the path classes and review waivers it applies in
+`src/check/`, `src/paths.ts`, `src/dependabot/policy.ts` and `src/security/policy.ts`, `src/review/`) or to what other projects inherit
+(`src/init/templates.ts`, the review and manager runbooks); `.github/` is already normative. Such a
+pull request needs the ordinary independent review. If you are deliberately leaving a pull request
+open for Chris to decide, say so plainly in `## Open questions` so the manager escalates it instead
+of treating it as a stall.
+
+**It is a backstop, not a plan.** The authoring agent still owns its review loop, CI and merge, and
+must not leave a pull request for the manager to finish. The manager waits 8 hours after a ready
+pull request's last commit and 48 after a draft's before touching it, and what it lands carries a
+visible `~ [agent-review] cleared by the GitHub Manager` waiver.
+
+**Leave its labels and records alone.** `manager-reviewed` counts only when the App applied it and
+only for the head the App's comment names; a push after that needs the manager, or the ordinary
+review, again. A `morpheus-manager-review` block is written by the manager, never by an author. If the manager
+has pushed to your branch, pull before continuing. Removing `manager:needs-human` or pushing a new
+commit tells it to look again.
