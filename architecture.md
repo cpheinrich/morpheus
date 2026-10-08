@@ -929,12 +929,25 @@ It declines to declare a handle whose `hq/team/<handle>.md` does not exist. A de
 is absent is unresolvable, therefore never `fresh`, and no flag reaches it — writing that to clear
 a warning would be the repair causing the outage.
 
-**Five commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
+**Seven commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
 knowing what merged), `pm new` (filing an item that already exists), `pm link-issue` (attaching an
 issue to obsolete or unrelated work), `pm block` (escalating a question the inbox answered),
-`access sync` (granting from an allowlist that moved). A gate that
+`access sync` (granting from an allowlist that moved), `firebase auth setup` (changing an
+authentication provider and its OAuth domains), and the provisioning half of `web init`. `GATED`
+in `src/session/gate.ts` is the list. A gate that
 also fired on `pm index` or `check pr` would train people to route around it, and **the
 routing-around is permanent where the staleness was temporary.**
+
+**Refresh once; after that, let the gate do the checking.** An agent reads the records and takes a
+receipt once per session. Past the five-minute term `check` re-observes that receipt itself and
+re-certifies it when neither the trunk nor the records moved, so a second `context refresh` buys
+nothing unless a gated command has refused. On refusal the agent re-reads only what the refusal or
+the refresh's delta names. Measured from local transcripts in August–October 2026, agents ran
+`context refresh` 738 times (median four per session, maximum 70), about half within five minutes
+of the previous one, re-reading roughly 1.8M tokens of records before them — while only 25 of 828
+gated commands were ever refused, and 305 refreshes were piped through `head` or `tail`, discarding
+the delta that is the reason to run it. The instructions, not the lease, were producing the
+ritual.
 
 **Startup prepares source; explicit refresh certifies reading.** The existing standard shim
 continues to invoke `morpheus context brief`, now also available as `context start`. The shared CLI
@@ -1518,7 +1531,9 @@ version 1 records stay compatible. Provider evidence remains a human-auditable a
 `morpheus-review` JSON block records sessions, base/reviewed/covered commits, findings, author
 responses and any original-reviewer follow-up. The PR links it with `review-record:` and carries
 `agent-reviewed` only on completion. `check pr` validates those facts, unresolved findings, budgets,
-ancestry and coverage. A follow-up that inspected a trunk integration records its new base and
+ancestry and coverage; `review validate` runs the same record check locally before a push. The
+caller skips an unlabelled draft, leaving the required check unreported, which blocks merge without
+reporting a failure; the check itself never passes a PR without the label. A follow-up that inspected a trunk integration records its new base and
 scope reason with the original base/reviewed SHA retained. Only the named worklog may change after
 the covered commit, avoiding the self-referential commit hash problem, and merging trunk never
 invalidates the review: native Git must reproduce an integration merge's tree exactly, or the
@@ -2998,6 +3013,40 @@ missing-value semantics. Invocation tests cover routing, errors, help precedence
 provisioning guards before changing this contract. Shared internal `file-io.ts` helpers
 separate best-effort discovery from content reads that propagate non-absence errors;
 `markdown.ts` shares table rendering while callers choose empty-state text.
+
+#### Session profiling
+
+`morpheus profile extract|report` measures the workflow from transcripts both agent runtimes
+already write — `~/.claude/projects/**` (with subagent transcripts attributed to their parent) and
+`~/.codex/sessions/**`. Nothing is self-reported by an agent and nothing leaves the machine:
+self-reporting costs every session tokens and measures what an agent believes it did, and the
+transcripts already hold timestamps, model, effort, token usage and every tool call. `extract`
+emits one JSONL `session` row per transcript and one `span` row per tool call; `report` sums them
+by phase, repository, role, model × effort, first-turn context, and slowest and most-repeated
+commands. The phase of a shell command comes from an ordered rule table in
+`src/profile/classify.ts` — priority, not position, so `git push && gh pr checks --watch` is CI
+wait. Active time caps each idle gap at five minutes unless a running tool call covers it, and a
+tool result arriving more than four hours late is reported as an outlier rather than counted as
+work. Time blocked on a person — an `AskUserQuestion` or `ExitPlanMode` call, or a permission
+prompt the person refused (`toolDenialKind: "user-rejected"`) — is phase `human-wait` and never
+active time, however short. An *approved* permission prompt leaves no marker in the transcript, so
+its wait stays inside that tool call's duration. `--since` must be a real calendar date. Rows never carry prompt text, file contents read or written by a tool, or tool output. A command
+is kept to its first 120 characters with credential-shaped values masked and any heredoc body cut;
+arguments typed on the command line itself can still appear within that prefix.
+
+#### Waiting on CI
+
+`morpheus wait-ci [<pr|branch>] [--repo] [--timeout 45m] [--required-only]` exists because the
+profile showed polling running processes and CI as about a quarter of agent busy time: each
+`gh run view` or `gh pr checks` poll re-reads the whole session context to learn "still running".
+It blocks in one tool call, polling one GraphQL query with backoff (10 s growing to 60 s) and
+printing nothing, then prints a digest: the verdict, one line per failed or cancelled check, and
+each failed Actions job's failing step — the lines between that step's echoed script and its
+`##[error]`, de-duplicated, ANSI-stripped and cut to a head and tail. Exit 0 green, 1 failed,
+2 timeout or no checks, 3 usage or `gh` error. The head SHA and checks come from the same response;
+a head that moves mid-wait is followed and named in the digest. A `conventions` failure whose only
+blocking line is the missing `agent-reviewed` label is labelled as that race, not as a code
+failure. Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
 
 ### 18.2 Reusable GitHub workflows
 

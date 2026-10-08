@@ -16,6 +16,14 @@ name: PR check
 # 403. A called workflow can only narrow what its caller grants, so declaring
 # the permission below documents the need and makes a caller that omits it
 # fail at validation instead of at runtime.
+#
+# To show an unreviewed draft as waiting rather than failed, the caller puts
+# PR_CHECK_CALLER_IF (src/init/templates.ts) on its `pr` job and triggers on
+# `ready_for_review` and `labeled`. The skip must be the caller's: a skipped
+# caller job leaves `pr / conventions` unreported, which blocks merge, while a
+# skip or pass in here would satisfy branch protection. This workflow itself
+# never passes a PR without the label. A caller without the condition keeps
+# the old behaviour, a red check on an unreviewed draft.
 
 on:
   workflow_call:
@@ -104,6 +112,29 @@ jobs:
           # Reruns must read current labels/body, not the original event snapshot.
           gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/live-pr.json"
           jq -e --arg sha "$EXPECTED_HEAD" '.head.sha == $sha' "$RUNNER_TEMP/live-pr.json" > /dev/null
+          # >>> pr-head
+          # Every check below must read the PR head: the review gate reads
+          # morpheus.json and the record there, the rest diff and read its tree.
+          # Normally the checkout is refs/pull/N/merge, whose second parent is
+          # the head. Some runs get a checkout of the base branch instead, or a
+          # merge ref GitHub has not recomputed for the newest push, and then
+          # the head may be absent — which `git show <sha>:morpheus.json`
+          # reports as "exists on disk, but not in <sha>". Fetch it by its pull
+          # ref (that also covers a fork, whose branch is not among origin's
+          # heads) and check it out, rather than judge some other tree.
+          # A failed fetch is not fatal here: `check pr` then names the missing
+          # commit, which says more than a raw fetch error would.
+          if ! git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null; then
+            git fetch --no-tags origin "+refs/pull/$PR_NUMBER/head:refs/remotes/pull/$PR_NUMBER/head" \
+              || echo "::warning::Could not fetch refs/pull/$PR_NUMBER/head."
+          fi
+          if git cat-file -e "$EXPECTED_HEAD^{commit}" 2> /dev/null \
+            && [ "$(git rev-parse HEAD)" != "$EXPECTED_HEAD" ] \
+            && [ "$(git rev-parse --verify --quiet 'HEAD^2' || true)" != "$EXPECTED_HEAD" ]; then
+            echo "::notice::The checkout is not this pull request's merge commit; checking the PR head out directly."
+            git checkout --quiet --detach "$EXPECTED_HEAD"
+          fi
+          # <<< pr-head
           # Who applied the GitHub Manager's label is not in the pull request
           # payload. The newest `labeled` event for it is; an author applying the
           # label to their own record is refused on that evidence. A failed read

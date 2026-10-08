@@ -23,6 +23,9 @@ Usage
   morpheus pm migrate-ids   [--check] — integer roadmap ids to the dated scheme (MO-057)
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus review prepare   independent local review handoff and worklog template [--base <ref>]
+  morpheus review validate  [<worklog>] [--pr-body-file <file>] [--base <ref>]
+                            run CI's review-record check on the committed record
+                            before pushing; finds the branch's record if unnamed
   morpheus review prompt    assemble the rung-2 reviewer prompt for this branch
   morpheus review needed    [--base <ref>] [--prior-review <file>]
                             is this change worth a review, or a re-review?
@@ -109,6 +112,15 @@ Usage
   morpheus gh-manager routes|prompt|apply|digest ...
                             the steps the GitHub Manager operations workflow runs;
                             see docs/runbooks/gh-manager.md
+  morpheus profile extract  [--since YYYY-MM-DD] [--repo <substring>] [--out <file>]
+                            session and tool-call rows from local Claude Code and Codex
+                            transcripts, as JSONL; read-only, nothing leaves the machine
+  morpheus profile report   [--since YYYY-MM-DD] [--repo <substring>] [--json]
+                            where time and tokens went: by phase, repo, role, model×effort
+  morpheus wait-ci [<pr|branch>] [--repo owner/name] [--timeout 45m] [--required-only]
+                            block once until the PR head's checks finish, then print a
+                            digest with failing-step logs; exit 0 green, 1 failed,
+                            2 timeout, 3 usage or gh error. Never poll gh in a loop
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge
   morpheus voice brief ["<topic>"] [--slug x] [--notes "..."] [--full]
                             today's state, to paste into a voice session

@@ -1016,6 +1016,23 @@ mechanical conditions only: the reviewer sets paths and evidence, the author rec
 and `check pr` verifies the fix stayed inside the paths; a condition cannot be added or widened by
 the author.
 
+**The initial normal/high-risk review floor is 30 seconds** — 2026-10-07, Chris's call while
+reviewing Evo's Dataset Collector change. This supersedes the one-minute floor above. A measured
+48-second independent review found a substantive race, and its same-reviewer follow-up verified
+the fix; the old floor rejected that useful review solely for its duration. The floor still rejects
+shorter normal/high-risk reviews, while small risk keeps no floor and all timing evidence,
+ceilings, same-reviewer, and finding-resolution requirements remain.
+
+**An authorized same-reviewer turn can rescue an under-floor initial review** — 2026-10-08
+(MO-26-10-08-04.07.50). Chris authorized extra turns on evo#412, lakinacapital#509 and kairos#70,
+whose clean 21–25 s initial reviews were honestly recorded incomplete, and the floor check made that
+authorization useless. The under-floor pass still never counts as a review: it is preserved as
+`initialOutcome: "incomplete"` (the record's `outcome` stays the final verdict), and the record is
+accepted only when a same-reviewer follow-up with `humanAuthorization` measures at least 30 seconds
+and clears. An incomplete initial turn of any length resumes only with authorization on the next
+turn, matching incomplete follow-ups; that turn needs no late-correction `scopeReason`, because it
+reopens no clearance. No dependency: Zod and the existing validator.
+
 
 **Each iOS CI test job owns disposable simulator devices** — 2026-09-25. The reusable
 workflow resolves the caller’s destination to type/runtime and creates a fresh uniquely
@@ -1168,3 +1185,29 @@ adopted here; the dependency is a compiler and a second workflow dialect). `clau
 was considered for the session step and the pinned Claude Code CLI used instead, because the
 action couples to the calling repository's event context and this run is called from a different
 repository than the one it works on. No new package dependency: Zod, native Git and `gh`.
+
+## Agent profiling reads local transcripts, never self-reports — 2026-10-07
+
+`morpheus profile` measures where agent time and tokens go from the transcripts Claude Code and
+Codex already write on the machine. Agents are not asked to report their own phases or timings:
+that costs tokens in every session and records what an agent believes it did. No telemetry is
+sent anywhere. Rows never carry prompts, tool-read file contents or tool output; commands are cut
+to 120 characters, credential-masked and stripped of heredoc bodies, so a report can be pasted into
+a PR after a glance at the command columns.
+
+Built with no new dependency. Considered `ccusage` (maintained, Claude-and-Codex token and cost
+summaries): it answers "what did this cost by day and model" but has no tool-call spans, phase
+classification, idle-capped active time or subagent attribution, which are the questions here,
+and the transcript reading it would replace is a few dozen lines of `readline`. Revisit if a
+pricing table is wanted — that is the part `ccusage` maintains and this command does not.
+
+**AGENTS.md holds per-task invariants; detail lives in runbooks read on demand** — 2026-10-07
+(MO-26-10-07-21.31.01). Chris approved cutting startup context after profiling showed the ~50KB
+`AGENTS.md` loaded into every session and subagent. Rules stay in `AGENTS.md` as one or two lines
+with a "read when" pointer; their detail moved verbatim into `docs/runbooks/`, never deleted. A
+test holds the file to 20KB, resolves every runbook link and anchor, and requires every `GATED`
+command to be named. Runbooks rather than `.claude/skills/` because one Markdown file serves Claude,
+Codex and humans with no duplicate to drift; revisit if agents demonstrably miss a trigger. Same
+change: **refresh once, then only on refusal** (the gate already re-certifies past the term when
+nothing moved), **focused local tests first with at most one full suite per PR**, and a **loop
+breaker** — instruction changes, mirrored into the scaffold template.

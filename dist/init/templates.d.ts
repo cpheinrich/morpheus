@@ -86,6 +86,20 @@ export declare const inboxArchiveReadme: () => string;
 export declare const meetingNotesReadme: () => string;
 export declare const inbox: (s: Seed) => string;
 /**
+ * The `if:` every `pr-check.yml` caller puts on its `pr` job: skip a draft that carries
+ * neither review label.
+ *
+ * At the caller, not inside the reusable workflow, and that placement is the whole design. A
+ * caller-level skip reports only the caller job (`pr`, skipped); the required `pr / conventions`
+ * is never reported, and GitHub holds a PR whose required check is unreported as waiting — merge
+ * blocked, nothing red. A job-level skip inside the called workflow would report
+ * `pr / conventions` as skipped, which satisfies branch protection, and a pass would too. So an
+ * unreviewed draft shows pending, and the moment it is labelled or marked ready the check runs and
+ * enforces the review in full. Event payload fields are right here: `labeled` carries the new
+ * label and `ready_for_review` carries `draft: false`.
+ */
+export declare const PR_CHECK_CALLER_IF: string;
+/**
  * CI for the project, matched to what the project actually is.
  *
  * `node-ci` runs `pnpm install --frozen-lockfile`, so wiring it into a static

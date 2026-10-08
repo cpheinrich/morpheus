@@ -20,7 +20,7 @@ For the website (morpheus.json qa.web names the dev server and how to start it):
     morpheus qa preview web start [--path /page] [--ttl-minutes N]
 
 start attaches to the dev server if it is already running, or starts the declared command, and puts
-the overlay in front of it: the same site, same paths and cookies, with a comment toolbar on top.
+the overlay in front of it: the same site, same paths and cookies, with a comment column beside it.
 stop ends the overlay and only a dev server this preview started.
 
 For the iOS app:
@@ -55,13 +55,19 @@ the screen changed (allow a second or two), then return to the screen you starte
 In the iOS overlay, left-click and drag drive the app, right-click places a numbered pin, Enter saves
 its text, Shift+Enter is a newline, ⌘Enter sends the batch, Esc Esc deletes the focused pin.
 
-On the web overlay the site works as usual. Right-click any element (Shift+right-click keeps the
-browser's own menu), or turn on Comment in the toolbar and click, to pin a comment on it; Enter
-saves, ⌘Enter sends, Esc leaves Comment mode. Unsent pins survive a reload of the same page.
+On the web overlay the site sits on the left, as usual, and a full-height comment column on the
+right takes the site's own colours, font and light or dark mode. Right-click any element
+(Shift+right-click keeps the browser's own menu), or turn on Comment and click, to pin a comment;
+the column lists every pin. Enter saves, Shift+Enter is a newline, Esc Esc deletes the focused pin,
+⌘Enter sends. Unsent pins survive a reload of the same page. For a sign-in that redirects the
+whole page to a provider, use the column's Full page button; Column puts the frame back.
 
 ## 3. Watch the inbox instead of asking the person to paste comments
 
 Each Send writes local/qa-comments/pending/<batchId>/{batch.json,frame.png} in the checkout.
+
+Arm the watch as soon as the preview is up, before the person starts commenting; a Send writes the
+batch and notifies no one.
 
 - Claude: arm a Monitor that polls \`morpheus qa comments pending --root <checkout>\` every few
   seconds and emits new batch ids.
@@ -75,7 +81,8 @@ first batch's frame.png shows real app pixels before treating its anchors as aut
 A web batch's frame is the whole page, so normX/normY are fractions of the page, not the window.
 Each web anchor also carries \`page\` (url, scroll, viewport and page size) and, when it could be
 resolved, \`element\`: a CSS \`selector\` that matched exactly the pinned element, its \`tag\`, its
-visible \`text\`, and the point within it (offsetX/offsetY). Find the element in the source by its
+visible \`text\`, and the point within it (offsetX/offsetY; when the click fell outside every element's
+own box, the offsets are clamped to its edge and x/y is the real point). Find the element in the source by its
 text and selector — it is what the comment is about. A batch can arrive without a frame when the
 page could not be captured; the element and page context still locate every comment.
 

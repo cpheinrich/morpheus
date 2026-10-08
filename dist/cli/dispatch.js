@@ -19,7 +19,7 @@ import { webAddConsumerAuth, webInit, webStatus } from "./web.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
 import { ghManagerApply, ghManagerDigest, ghManagerPrompt, ghManagerRoutes, ghManagerSweep } from "./gh-manager.js";
-import { prompt as reviewPrompt, reviewDelivery, reviewNeeded, prepareReview } from "./review.js";
+import { prompt as reviewPrompt, reviewDelivery, reviewNeeded, prepareReview, validateReview } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
 import { check as contextCheck, guard, install as contextInstall, refresh as contextRefresh, status as contextStatus, } from "./context.js";
@@ -29,6 +29,8 @@ import { install as codebaseMemoryInstall } from "./codebase-memory.js";
 import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
+import { profileExtract, profileReport } from "./profile.js";
+import { waitCiCommand } from "./wait-ci.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
     if (command === "check" || command === undefined)
@@ -346,11 +348,13 @@ async function dispatchInbox({ flags, command, dir }) {
     console.error(`Unknown inbox command "${command ?? ""}".\n\n${HELP}`);
     return 1;
 }
-async function dispatchReview({ flags, command, dir }) {
+async function dispatchReview({ flags, command, rest, dir }) {
     if (command === "prepare")
         return prepareReview(dir, process.cwd(), flags.base);
     if (command === "prompt")
         return reviewPrompt(dir, process.cwd());
+    if (command === "validate")
+        return validateReview(process.cwd(), flags.base, rest[0], flags.prBodyFile);
     if (command === "needed")
         return reviewNeeded(flags.base, flags.priorReview, flags.json);
     if (command === "delivery") {
@@ -470,6 +474,18 @@ async function dispatchPm({ flags, command, rest, dir }) {
             return 1;
     }
 }
+async function dispatchProfile({ flags, command }) {
+    const options = { since: flags.since, repo: flags.repo, out: flags.out, json: flags.json };
+    if (command === "extract")
+        return profileExtract(options);
+    if (command === "report" || command === undefined)
+        return profileReport(options);
+    console.error(`Unknown profile command "${command}".\n\n${HELP}`);
+    return 1;
+}
+async function dispatchWaitCi({ flags, command, rest }) {
+    return waitCiCommand({ target: command, extra: rest, repo: flags.repo, timeout: flags.timeout, requiredOnly: flags.requiredOnly });
+}
 const groups = {
     "self": dispatchSelf,
     "doctor": dispatchDoctor,
@@ -493,6 +509,8 @@ const groups = {
     "context": dispatchContext,
     "check": dispatchCheck,
     "qa": dispatchQa,
+    "profile": dispatchProfile,
+    "wait-ci": dispatchWaitCi,
     pm: dispatchPm,
 };
 export async function dispatch(flags) {
