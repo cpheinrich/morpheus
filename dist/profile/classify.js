@@ -11,6 +11,7 @@
 export const COMMAND_RULES = [
     { phase: "ci-wait", pattern: /^gh (pr checks\b.*--watch|run watch\b)/, why: "blocks until CI finishes" },
     { phase: "ci-wait", pattern: /^(until|while)\b.*\bgh (pr checks|run (view|list))\b/, why: "a hand-rolled CI poll loop" },
+    { phase: "ci-wait", pattern: /^morpheus wait-ci\b/, why: "blocks once until CI finishes" },
     { phase: "review", pattern: /^morpheus review\b/, why: "the independent-review packet and record" },
     { phase: "review", pattern: /^codex review\b/, why: "a model review run" },
     { phase: "checks", pattern: /^morpheus check\b/, why: "`check pr` is the PR convention gate" },
@@ -70,6 +71,8 @@ const TOOL_PHASES = {
     send_message: "subagent",
     followup_task: "subagent",
     list_agents: "subagent",
+    AskUserQuestion: "human-wait",
+    ExitPlanMode: "human-wait",
     wait_agent: "wait",
     Monitor: "wait",
     ScheduleWakeup: "wait",

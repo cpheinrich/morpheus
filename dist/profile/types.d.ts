@@ -5,7 +5,7 @@
  * field is self-reported by an agent.
  */
 export type Provider = "claude" | "codex";
-export declare const PHASES: readonly ["context", "checks", "ci-wait", "wait", "review", "git", "gh", "build", "browser", "simulator", "subagent", "read/search", "edit", "other"];
+export declare const PHASES: readonly ["context", "checks", "ci-wait", "wait", "human-wait", "review", "git", "gh", "build", "browser", "simulator", "subagent", "read/search", "edit", "other"];
 export type Phase = (typeof PHASES)[number];
 /** Who a session was working for. A reviewer is a subagent whose job is review. */
 export type Role = "main" | "subagent" | "reviewer";

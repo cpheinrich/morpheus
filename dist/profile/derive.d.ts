@@ -28,8 +28,15 @@ export interface Interval {
  * Active time across sorted-or-unsorted event timestamps (epoch ms): the sum
  * of consecutive gaps, each capped at `idleMs` unless a busy interval covers
  * it entirely.
+ *
+ * Time inside a `waiting` interval — the agent blocked on a person answering
+ * a question or a permission prompt — is never active, however short. It is
+ * removed from each gap before the cap applies, so a two-minute wait for an
+ * answer is not counted as two minutes of agent work.
  */
-export declare function activeTime(timestamps: number[], busy?: Interval[], idleMs?: number): number;
+export declare function activeTime(timestamps: number[], busy?: Interval[], idleMs?: number, waiting?: Interval[]): number;
+/** Milliseconds of [from, to] that merged, sorted `intervals` cover. */
+export declare function overlap(intervals: Interval[], from: number, to: number): number;
 export declare function deriveItem(...sources: Array<string | null | undefined>): string | null;
 /**
  * The repository a working directory belongs to, by its directory name.
