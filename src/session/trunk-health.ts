@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "../git-env.js";
 import {
   STALE_BEHIND_COMMITS,
   STALE_BEHIND_DAYS,
@@ -28,7 +29,7 @@ import type { TrunkRef } from "./git.js";
 const exec = promisify(execFile);
 async function git(root: string, args: string[]): Promise<string | null> {
   try {
-    return (await exec("git", args, { cwd: root, timeout: 15_000, maxBuffer: 20 * 1024 * 1024 })).stdout;
+    return (await exec("git", args, { cwd: root, timeout: 15_000, maxBuffer: 20 * 1024 * 1024, env: gitSubprocessEnv() })).stdout;
   } catch {
     return null;
   }

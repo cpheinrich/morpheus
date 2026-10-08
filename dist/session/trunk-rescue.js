@@ -4,6 +4,7 @@ import { access, copyFile, rm } from "node:fs/promises";
 import { hostname as osHostname } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "../git-env.js";
 /**
  * A dirty trunk checkout is a stuck checkout.
  *
@@ -30,7 +31,9 @@ async function git(root, args, env) {
         cwd: root,
         timeout: 60_000,
         maxBuffer: 20 * 1024 * 1024,
-        ...(env ? { env: { ...process.env, ...env } } : {}),
+        // Scrubbed first, so a private index passed here is the only override and
+        // an inherited hook GIT_DIR/GIT_INDEX_FILE can never aim a reset elsewhere.
+        env: { ...gitSubprocessEnv(), ...env },
     });
     return stdout;
 }
@@ -194,7 +197,7 @@ export function shortHost(raw) {
 }
 const runCommand = async (command, args, cwd) => {
     try {
-        const { stdout, stderr } = await exec(command, args, { cwd, timeout: 60_000 });
+        const { stdout, stderr } = await exec(command, args, { cwd, timeout: 60_000, env: gitSubprocessEnv() });
         return { code: 0, stdout, stderr };
     }
     catch (error) {

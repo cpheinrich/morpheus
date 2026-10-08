@@ -3,12 +3,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "../git-env.js";
 import { projectPolicy } from "./policy.js";
 import { resolveTrunk } from "./git.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { measureLag, rescueDirtyTrunk, readDirt } from "./trunk-rescue.js";
 const exec = promisify(execFile);
-export const sessionGit = async (root, args) => (await exec("git", args, { cwd: root, timeout: 30_000 })).stdout.trim();
+export const sessionGit = async (root, args) => (await exec("git", args, { cwd: root, timeout: 30_000, env: gitSubprocessEnv() })).stdout.trim();
 export async function checkoutIdentity(cwd) {
     const root = await realpath(await sessionGit(cwd, ["rev-parse", "--show-toplevel"]));
     const common = await realpath(resolve(root, await sessionGit(root, ["rev-parse", "--git-common-dir"])));

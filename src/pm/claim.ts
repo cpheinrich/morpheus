@@ -2,6 +2,7 @@ import { roadmapIdFromBranch, slugForFilename } from "./id.js";
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "../git-env.js";
 import { today, updateFrontmatter } from "./frontmatter.js";
 import { parseArtifact } from "./parse.js";
 
@@ -31,7 +32,7 @@ export interface Claim {
 export class ClaimError extends Error {}
 
 async function git(args: string[], cwd: string): Promise<string> {
-  const { stdout } = await exec("git", args, { cwd });
+  const { stdout } = await exec("git", args, { cwd, env: gitSubprocessEnv() });
   return stdout.trim();
 }
 

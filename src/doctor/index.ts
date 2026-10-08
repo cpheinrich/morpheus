@@ -5,6 +5,7 @@ import { z } from "zod";
 import { parseArtifact } from "../pm/parse.js";
 import { parseInboxFile } from "../inbox/parse.js";
 import { readRegistry } from "../registry/index.js";
+import { gitSubprocessEnv } from "../git-env.js";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { projectPolicy } from "../session/policy.js";
 import { ABSENT, CANONICAL_INPUTS, UNREADABLE } from "../session/lease.js";
@@ -335,7 +336,7 @@ async function gitLines(root: string, args: string[]): Promise<string[] | null> 
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   try {
-    const { stdout } = await promisify(execFile)("git", args, { cwd: root, timeout: 10_000 });
+    const { stdout } = await promisify(execFile)("git", args, { cwd: root, timeout: 10_000, env: gitSubprocessEnv() });
     return stdout.trim().split("\n").filter(Boolean);
   } catch {
     return null;
