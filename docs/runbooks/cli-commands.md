@@ -25,6 +25,7 @@ pnpm morpheus team validate        # the roster, and every meeting note
 pnpm morpheus registry list        # every Morpheus project on this machine
 pnpm morpheus profile report --since 2026-09-01  # where agent time and tokens went, from local transcripts
 pnpm morpheus profile extract --out rows.jsonl   # the session and tool-call rows behind the report
+pnpm morpheus wait-ci <pr>         # block once on CI; digest of failures with log tails — never poll gh
 pnpm morpheus brand status         # what the brand package still needs
 pnpm morpheus brand init           # scaffold brand-vibes.md, local moodboard, and concept-media folders
 pnpm morpheus brand explore        # refresh the five-direction brand review handoff

@@ -69,6 +69,7 @@ pnpm morpheus pm block <ID> --needs "what would unblock this"
 pnpm morpheus review prepare --base origin/main   # the reviewer packet
 pnpm morpheus inbox validate       # before finishing an inbox
 pnpm morpheus context refresh      # once, after reading the records — see below
+pnpm morpheus wait-ci <pr>         # block once on CI, then a digest of failures — never poll gh
 ```
 
 ## Device bootstrap
@@ -126,8 +127,9 @@ unblock you>"`. Escalating is cheap; shipping half-baked is expensive. "Blocked 
 
 **Break loops.** If the same command fails the same way twice, or you have polled the same thing
 three times, stop: change approach, or `pm block` with what you learned. Never idle-loop
-(`sleep`/`true`/`echo` loops, repeated status checks); to wait on CI use
-`gh pr merge --auto` or one `gh pr checks <n> --watch --fail-fast`.
+(`sleep`/`true`/`echo` loops, repeated status checks). To wait on CI prefer `gh pr merge --auto`;
+when the next step depends on the result, run `morpheus wait-ci <n>` once — never poll
+`gh run view` or `gh pr checks` in a loop.
 
 **Browser-reachable work is not blocked.** If the *single, entire* obstacle is that something has
 to happen in a browser — a console, a dashboard, a setting — do it yourself rather than describe

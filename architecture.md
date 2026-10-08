@@ -3023,6 +3023,20 @@ work. Rows never carry prompt text, file contents read or written by a tool, or 
 is kept to its first 120 characters with credential-shaped values masked and any heredoc body cut;
 arguments typed on the command line itself can still appear within that prefix.
 
+#### Waiting on CI
+
+`morpheus wait-ci [<pr|branch>] [--repo] [--timeout 45m] [--required-only]` exists because the
+profile showed polling running processes and CI as about a quarter of agent busy time: each
+`gh run view` or `gh pr checks` poll re-reads the whole session context to learn "still running".
+It blocks in one tool call, polling one GraphQL query with backoff (10 s growing to 60 s) and
+printing nothing, then prints a digest: the verdict, one line per failed or cancelled check, and
+each failed Actions job's failing step — the lines between that step's echoed script and its
+`##[error]`, de-duplicated, ANSI-stripped and cut to a head and tail. Exit 0 green, 1 failed,
+2 timeout or no checks, 3 usage or `gh` error. The head SHA and checks come from the same response;
+a head that moves mid-wait is followed and named in the digest. A `conventions` failure whose only
+blocking line is the missing `agent-reviewed` label is labelled as that race, not as a code
+failure. Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
+
 ### 18.2 Reusable GitHub workflows
 
 General project-management workflows with an `on: workflow_call` trigger live in Morpheus; each

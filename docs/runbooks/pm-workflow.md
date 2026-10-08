@@ -157,12 +157,14 @@ Do not wait on checks by polling. Two better options:
 
 ```sh
 gh pr merge <n> --squash --auto --delete-branch   # merges itself when checks go green
-gh pr checks <n> --watch --fail-fast              # blocks until they finish, then decide
+morpheus wait-ci <n>                              # blocks once, then a digest of what failed
 ```
 
 Prefer `--auto` — it hands the merge to GitHub so the session is not held open waiting, and a
-failing check simply leaves the PR unmerged rather than merging something broken. Use `--watch`
-only when the next step depends on the merge having landed.
+failing check simply leaves the PR unmerged rather than merging something broken. Use `wait-ci`
+only when the next step depends on the result: it prints nothing while it waits, then one line when
+green or the failing step's log when not, and exits 0 green, 1 failed, 2 timeout, 3 error. Never
+poll `gh run view` or `gh pr checks` in a loop — each poll re-reads the whole session context.
 
 **Finish the author-managed independent review before enabling auto-merge.** Opening a PR,
 pushing commits, or changing labels never starts a reviewer session. Follow the

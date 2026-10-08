@@ -1,0 +1,186 @@
+node / check	UNKNOWN STEP	﻿2026-10-03T04:13:11.8944134Z Current runner version: '2.337.0'
+node / check	UNKNOWN STEP	2026-10-03T04:13:11.8970098Z ##[group]Runner Image Provisioner
+node / check	UNKNOWN STEP	2026-10-03T04:13:11.8971047Z Hosted Compute Agent
+node / check	UNKNOWN STEP	2026-10-03T04:13:11.8971675Z Version: 20260901.588
+node / check	UNKNOWN STEP	2026-10-03T04:13:11.8972415Z Commit: f88ec8081b781fac6c440065ac7ff9e710ce3d0b
+node / check	UNKNOWN STEP	2026-10-03T04:13:11.8973183Z Build Date: 2026-09-01T19:56:44Z
+node / check	UNKNOWN STEP	2026-10-03T04:13:35.2740075Z ##[group]Run pnpm test
+node / check	UNKNOWN STEP	2026-10-03T04:13:35.2740371Z ^[[36;1mpnpm test^[[0m
+node / check	UNKNOWN STEP	2026-10-03T04:13:35.2809460Z shell: /usr/bin/bash -e {0}
+node / check	UNKNOWN STEP	2026-10-03T04:13:35.2809734Z env:
+node / check	UNKNOWN STEP	2026-10-03T04:13:35.2810012Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+node / check	UNKNOWN STEP	2026-10-03T04:13:35.2810357Z ##[endgroup]
+node / check	UNKNOWN STEP	2026-10-03T04:13:36.1586140Z Already up to date
+node / check	UNKNOWN STEP	2026-10-03T04:13:36.1594929Z Done in 400ms using pnpm v11.9.0
+node / check	UNKNOWN STEP	2026-10-03T04:13:36.1988163Z $ vitest run
+node / check	UNKNOWN STEP	2026-10-03T04:13:36.4999669Z 
+node / check	UNKNOWN STEP	2026-10-03T04:13:36.5001401Z ^[[1m^[[30m^[[46m RUN ^[[49m^[[39m^[[22m ^[[36mv4.1.11 ^[[39m^[[90m/home/runner/work/morpheus/morpheus^[[39m
+node / check	UNKNOWN STEP	2026-10-03T04:13:36.5002257Z 
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5219542Z ##[group]Run if [ -z "$BUILD_OUTPUT_DIRECTORY" ]; then
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5220017Z ^[[36;1mif [ -z "$BUILD_OUTPUT_DIRECTORY" ]; then^[[0m
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5220438Z ^[[36;1m  echo "verify-build-clean requires build-output-directory" >&2^[[0m
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5220834Z ^[[36;1m  exit 1^[[0m
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5221046Z ^[[36;1mfi^[[0m
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5221294Z ^[[36;1mgit add --all -- "$BUILD_OUTPUT_DIRECTORY"^[[0m
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5221690Z ^[[36;1mgit diff --cached --exit-code -- "$BUILD_OUTPUT_DIRECTORY"^[[0m
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5290769Z shell: /usr/bin/bash -e {0}
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5291047Z env:
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5291324Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5291688Z   BUILD_OUTPUT_DIRECTORY: dist
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5291944Z ##[endgroup]
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5632648Z diff --git a/dist/cli/dispatch.js b/dist/cli/dispatch.js
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5633224Z index 6e269c1..e7053d9 100644
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5633531Z --- a/dist/cli/dispatch.js
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5634006Z +++ b/dist/cli/dispatch.js
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5634677Z @@ -28,6 +28,7 @@ import { noteWrite } from "../session/context.js";
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5635200Z  import { install as codebaseMemoryInstall } from "./codebase-memory.js";
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5635788Z  import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5636745Z  import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5637679Z +import { dispatchQaComments } from "./qa.js";
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5638153Z  import { HELP } from "./help.js";
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5638534Z  async function dispatchSelf({ flags, command, rest }) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5639416Z      if (command === "check" || command === undefined)
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5644549Z @@ -389,6 +390,13 @@ async function dispatchContext({ flags, command }) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5645436Z      console.error(`Unknown context command "${command}".\n\n${HELP}`);
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5646035Z      return 1;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5646353Z  }
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5646796Z +async function dispatchQa({ command, rest }) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5647357Z +    if (command === "comments") {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5648098Z +        return dispatchQaComments(process.cwd(), rest[0], rest.slice(1));
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5648921Z +    }
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5649532Z +    console.error(`Unknown qa command "${command ?? ""}".\n\n${HELP}`);
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5650129Z +    return 1;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5650432Z +}
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5650889Z  async function dispatchCheck({ flags, command, dir }) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5651577Z      if (command === "pr")
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5652297Z          return pr(dir, flags.base);
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5652805Z @@ -480,6 +488,7 @@ const groups = {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5653235Z      "team": dispatchTeam,
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5653663Z      "context": dispatchContext,
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5654086Z      "check": dispatchCheck,
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5654516Z +    "qa": dispatchQa,
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5654891Z      pm: dispatchPm,
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5655218Z  };
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5655606Z  export async function dispatch(flags) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5656318Z diff --git a/dist/cli/dispatch.js.map b/dist/cli/dispatch.js.map
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5656928Z index b9ab92c..7fcd7a1 100644
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5657400Z --- a/dist/cli/dispatch.js.map
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5657859Z +++ b/dist/cli/dispatch.js.map
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5658241Z @@ -1 +1 @@
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5757282Z -{"version":3,"file":"dispatch.js","sourceRoot":"","sources":["../../src/cli/dispatch.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,gBAAgB,EAAE,YAAY,EAAE,MAAM,oBAAoB,CAAC;AACpE,OAAO,EAAE,OAAO,EAAE,MAAM,WAAW,CAAC;AACpC,OAAO,EACL,KAAK,EACL,KAAK,EACL,MAAM,EACN,MAAM,EACN,MAAM,EACN,KAAK,EACL,SAAS,EACT,UAAU,EACV,IAAI,EACJ,OAAO,EACP,QAAQ,GACT,MAAM,SAAS,
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5827599Z \ No newline at end of file
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5919591Z +{"version":3,"file":"dispatch.js","sourceRoot":"","sources":["../../src/cli/dispatch.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,gBAAgB,EAAE,YAAY,EAAE,MAAM,oBAAoB,CAAC;AACpE,OAAO,EAAE,OAAO,EAAE,MAAM,WAAW,CAAC;AACpC,OAAO,EACL,KAAK,EACL,KAAK,EACL,MAAM,EACN,MAAM,EACN,MAAM,EACN,KAAK,EACL,SAAS,EACT,UAAU,EACV,IAAI,EACJ,OAAO,EACP,QAAQ,GACT,MAAM,SAAS,
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5990686Z \ No newline at end of file
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5991077Z diff --git a/dist/cli/help.d.ts b/dist/cli/help.d.ts
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5991436Z index eb59e52..752161f 100644
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5991712Z --- a/dist/cli/help.d.ts
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5991975Z +++ b/dist/cli/help.d.ts
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.5992205Z @@ -1 +1 @@
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6030471Z -export declare const HELP = "Credentials companions:\n  morpheus credentials init <repository-url> [--path <relative-path>] [--command bin/<wrapper>]\n  morpheus credentials setup [--create]\n  morpheus credentials status | sync | list | doctor\n  morpheus credentials run -- <trusted-command> [args...]\n\nmorpheus \u2014 an operating system f
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6098685Z +export declare const HELP = "Credentials companions:\n  morpheus credentials init <repository-url> [--path <relative-path>] [--command bin/<wrapper>]\n  morpheus credentials setup [--create]\n  morpheus credentials status | sync | list | doctor\n  morpheus credentials run -- <trusted-command> [args...]\n\nmorpheus \u2014 an operating system f
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6128606Z diff --git a/dist/cli/help.js b/dist/cli/help.js
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6129045Z index 11eeedb..138dee1 100644
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6129331Z --- a/dist/cli/help.js
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6129573Z +++ b/dist/cli/help.js
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6129812Z @@ -113,6 +113,14 @@ Usage
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6130205Z    morpheus voice brief ["<topic>"] [--slug x] [--notes "..."] [--full]
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6130690Z                              today's state, to paste into a voice session
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6131160Z  
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6131413Z +  morpheus qa comments pending
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6131895Z +                            list pending visual-QA comment batches under local/qa-comments/
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6132354Z +  morpheus qa comments show <batchId>
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6132715Z +                            print one batch.json
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6133099Z +  morpheus qa comments resolve <batchId> [ids...]
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6133860Z +                            mark batch(es) resolved (moves pending → resolved)
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6134433Z +  morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6135129Z +                            local overlay: tap → multi-comment → Send into local/qa-comments/
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6135542Z  Options
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6135849Z    --dir <path>   Product directory (default: hq/product)
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6759765Z + * - `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces authorization when set
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6759856Z + */
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6760064Z +export async function resolveWebhookConfig(root) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6760161Z +    let url;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6760277Z +    let authorization;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6760370Z +    try {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6760717Z +        const raw = JSON.parse(await readFile(join(root, QA_COMMENTS_WEBHOOK_FILE), "utf8"));
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6760928Z +        if (typeof raw.url === "string" && raw.url.trim())
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6761074Z +            url = raw.url.trim();
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6761366Z +        if (typeof raw.authorization === "string" && raw.authorization.trim()) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6761561Z +            authorization = raw.authorization.trim();
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6761650Z +        }
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6761742Z +    }
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6761834Z +    catch {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6762046Z +        /* absent or unreadable — fine */
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6762138Z +    }
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6762415Z +    const envUrl = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_URL?.trim();
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6762518Z +    if (envUrl)
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6762630Z +        url = envUrl;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6762942Z +    const envAuth = process.env.MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION?.trim();
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6763054Z +    if (envAuth)
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6763198Z +        authorization = envAuth;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6763294Z +    if (!url)
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6763396Z +        return null;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6763625Z +    return authorization ? { url, authorization } : { url };
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6763715Z +}
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6764103Z +/** @deprecated Prefer resolveWebhookConfig — kept for call-site clarity in logs. */
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6764297Z +export async function resolveWebhookUrl(root) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6764522Z +    return (await resolveWebhookConfig(root))?.url ?? null;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6764605Z +}
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6764810Z +/** Normalize to a full Authorization header value. */
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6764998Z +export function authorizationHeaderValue(raw) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6765319Z +    const trimmed = raw.trim();
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6765468Z +    if (/^bearer\s+/i.test(trimmed))
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6765588Z +        return trimmed;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6765752Z +    return `***;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6765837Z +}
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6765986Z +const WEBHOOK_TIMEOUT_MS = 2500;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6766076Z +/**
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6766382Z + * Fire-and-forget POST. Never throws to the caller; logs a one-line result.
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6766515Z + * Send must not wait on this.
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6766606Z + */
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6766882Z +export function notifyBatchPending(webhookUrl, payload, options) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6767039Z +    const body = JSON.stringify(payload);
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6767152Z +    const headers = {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6767320Z +        "Content-Type": "application/json",
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6767462Z +        Accept: "application/json",
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6767555Z +    };
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6767702Z +    if (options?.authorization) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6768029Z +        headers.Authorization = authorizationHeaderValue(options.authorization);
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6768242Z +    }
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6768367Z +    void fetch(webhookUrl, {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6768487Z +        method: "POST",
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6768584Z +        headers,
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6768677Z +        body,
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6769158Z +        signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6769281Z +    })
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6769463Z +        .then((res) => {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6769634Z +        if (!res.ok) {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6770319Z +            console.error(`qa comments webhook: ${res.status} ${res.statusText} for batch ${payload.id}`);
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6770461Z +            return;
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6770550Z +        }
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6770846Z +        console.log(`qa comments webhook: notified for batch ${payload.id}`);
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6770939Z +    })
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6771051Z +        .catch((err) => {
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6771309Z +        const msg = err instanceof Error ? err.message : String(err);
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6771632Z +        console.error(`qa comments webhook: failed for batch ${payload.id} (${msg})`);
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6771729Z +    });
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6771815Z +}
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6771976Z +//# sourceMappingURL=webhook.js.map
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6772104Z \ No newline at end of file
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6772353Z diff --git a/dist/qa/webhook.js.map b/dist/qa/webhook.js.map
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6772467Z new file mode 100644
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6772586Z index 0000000..cbf237b
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6772683Z --- /dev/null
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6772798Z +++ b/dist/qa/webhook.js.map
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6772893Z @@ -0,0 +1 @@
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6783913Z +{"version":3,"file":"webhook.js","sourceRoot":"","sources":["../../src/qa/webhook.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,QAAQ,EAAE,MAAM,kBAAkB,CAAC;AAC5C,OAAO,EAAE,IAAI,EAAE,MAAM,WAAW,CAAC;AACjC,OAAO,EAAE,eAAe,EAAE,MAAM,eAAe,CAAC;AAEhD,0EAA0E;AAC1E,MAAM,CAAC,MAAM,wBAAwB,GAAG,GAAG,eAAe,eAAe,CAAC;AAmB1E;;;;;;;;;GASG;AACH,MAAM,CAAC,KAAK,UAAU
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6784177Z \ No newline at end of file
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6793748Z ##[error]Process completed with exit code 1.
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.6886556Z Post job cleanup.
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.8401295Z Pruning is unnecessary.
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.8684411Z Post job cleanup.
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.9598029Z [command]/usr/bin/git version
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.9644138Z git version 2.55.0
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.9685083Z Temporarily overriding HOME='/home/runner/work/_temp/004ab0a3-2fd8-4299-8ab8-6b94821dc705' before making global git config changes
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.9686172Z Adding repository directory to the temporary git global config as a safe directory
+node / check	UNKNOWN STEP	2026-10-03T04:14:11.9691733Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/morpheus/morpheus
