@@ -565,3 +565,17 @@ Subagent transcripts live beside the parent at `<session>/subagents/agent-<id>.j
 `.meta.json` naming the agent type and description; their lines carry the *parent's* `sessionId`.
 Codex re-emits identical cumulative `token_count` events around tool calls, so count a response
 only when `total_token_usage` moves.
+
+## A subprocess started from a Git hook inherits the hook's repository
+
+2026-10-08 (MO-26-10-08-06.43.59). Git exports `GIT_DIR` into every hook it runs — an absolute
+`.git/worktrees/<name>` path in a linked worktree — plus `GIT_PREFIX`, and a child `git` honours
+those over its `cwd`. The managed `post-merge` block's `morpheus self ensure` therefore ran
+`git status` in its disposable Morpheus clone against the *project's* repository and index, and
+refused with "the source checkout has local changes" listing the project's files. Running
+`self update` by hand worked, because a shell has no `GIT_DIR`. On Git 2.54 a top-level merge,
+pull or rebase in a main checkout exports neither variable, which is why worktrees failed first.
+
+Any git subprocess that must operate on the repository at its `cwd` takes
+`env: gitSubprocessEnv()` from `src/git-env.ts`. `git clone` was not misdirected, so nothing was
+written into a project's repository — the damage was a refused update, not a corrupted one.

@@ -1211,3 +1211,32 @@ Codex and humans with no duplicate to drift; revisit if agents demonstrably miss
 change: **refresh once, then only on refusal** (the gate already re-certifies past the term when
 nothing moved), **focused local tests first with at most one full suite per PR**, and a **loop
 breaker** — instruction changes, mirrored into the scaffold template.
+
+**A dirty trunk checkout is rescued to a draft PR at session start** — 2026-10-08
+(MO-26-10-08-04.06.59). Chris's call after Lakina's main checkout sat 188 commits behind for three
+weeks behind one Xcode-rewritten tracked file: "if local main is dirty then it should just move the
+uncommitted changes to a branch and push that as a WIP PR." `context brief` commits tracked edits on
+the trunk branch to `wip/trunk-<date>-<host>`, pushes, opens a draft PR, resets and fast-forwards.
+Untracked files are never committed (secrets, build junk) and never deleted; orphaned build output
+is only named. Mid-operation or off-trunk it reports instead. `doctor` reports rather than acts,
+because `--all` reaches checkouts no session is in. `self update`/`self ensure` use a disposable
+clone and have nothing to rescue, so only `self install`'s refusal was improved. The GitHub Manager
+escalates an unadopted rescue draft to a human rather than giving it a session. Native Git plumbing
+(a private index, `commit-tree`, a create-only `update-ref`) and `gh`; no dependency.
+
+**The review floor is waived for a trivially small change** — 2026-10-08 (MO-26-10-08-06.45.12).
+Chris's option A after six independent reviews of the same five-line workflow `if:` (evo#412,
+lakinacapital#509, kairos#70) took 21–30 s, all clean: on a change that small the 30-second floor
+measures the diff, not diligence. The validator computes the size itself from Git over the whole
+reviewed range, `base` to `covered`, so an author cannot declare it: at most 20 changed non-test
+lines (added plus removed) and 40 test lines, every non-test file configuration, workflow or prose
+by extension, nothing binary. `.agent/worklog/` and `hq/product/` are not counted — they are the
+task's own records. Generated output such as `dist/` *is* counted, because excluding it would trust
+every project to verify its mirror. Tests get their own, larger cap because they change no shipped
+behaviour and CI executes them, but still a cap, so a large test rewrite keeps the floor. Any source
+file, script or extensionless file keeps the floor however few lines change. A test is recognised
+by its file name, never its directory, because `tests/` also holds helpers and actions with
+executable steps. A turn recorded at zero never qualifies: zero is the template's placeholder, and
+the waiver relaxes the 30 seconds, not the measurement. Only the floor is
+waived: authorization to resume an incomplete turn, ceilings and every other rule stand. Native
+`git diff --numstat`; no dependency.
