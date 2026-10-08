@@ -104,7 +104,7 @@ describe("waitCi", () => {
 
   it("fetches the failing job's log by job id and prints only the failing step", async () => {
     const red = ok(rollup(SHA_A, [run("node / check", "COMPLETED", "FAILURE", { required: true, job: "111125356260" }), run("pm / pm", "COMPLETED", "SUCCESS", { job: "2" })]));
-    const { deps, calls } = fakeGh([red], { "111125356260": ok(fixture("build-diff.log")) });
+    const { deps, calls } = fakeGh([red], { "111125356260": ok(fixture("build-diff.txt")) });
     const result = await waitCi(deps, opts);
     expect(result.exitCode).toBe(1);
     expect(calls.find((c) => c[0] === "run")).toEqual(["run", "view", "--repo", "cpheinrich/morpheus", "--job", "111125356260", "--log-failed"]);
@@ -123,7 +123,7 @@ describe("waitCi", () => {
 
   it("labels a conventions failure that is only the label race, and prints no log for it", async () => {
     const red = ok(rollup(SHA_A, [run("pr / conventions", "COMPLETED", "FAILURE", { required: true, job: "112762456967" }), run("node / check", "COMPLETED", "SUCCESS", { job: "2" })]));
-    const { deps } = fakeGh([red], { "112762456967": ok(fixture("label-race.log")) });
+    const { deps } = fakeGh([red], { "112762456967": ok(fixture("label-race.txt")) });
     const result = await waitCi(deps, opts);
     expect(result.exitCode).toBe(1);
     expect(result.output.split("\n")).toEqual([

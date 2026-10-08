@@ -31,7 +31,7 @@ describe("log line text", () => {
 
 describe("trimFailedLog on real failures", () => {
   it("label race: the conventions step output, without the echoed script, env or cleanup", () => {
-    const trimmed = trimFailedLog(fixture("label-race.log"));
+    const trimmed = trimFailedLog(fixture("label-race.txt"));
     expect(trimmed.step).toBe("set -euo pipefail");
     expect(trimmed.omitted).toBe(0);
     expect(trimmed.lines).toEqual([
@@ -45,7 +45,7 @@ describe("trimFailedLog on real failures", () => {
   });
 
   it("a genuine conventions failure is not a label race", () => {
-    const trimmed = trimFailedLog(fixture("review-summary.log"));
+    const trimmed = trimFailedLog(fixture("review-summary.txt"));
     expect(trimmed.lines).toEqual([
       "✗ [agent-review] repeat the review summary as a visible paragraph outside the JSON block",
       "",
@@ -56,7 +56,7 @@ describe("trimFailedLog on real failures", () => {
   });
 
   it("a long diff keeps its head (which file) and tail (the error), with the gap counted", () => {
-    const trimmed = trimFailedLog(fixture("build-diff.log"), 60);
+    const trimmed = trimFailedLog(fixture("build-diff.txt"), 60);
     expect(trimmed.step).toBe('if [ -z "$BUILD_OUTPUT_DIRECTORY" ]; then');
     expect(trimmed.lines).toHaveLength(60);
     expect(trimmed.omittedAfter).toBe(15);
@@ -64,7 +64,7 @@ describe("trimFailedLog on real failures", () => {
     expect(trimmed.lines.at(-1)).toBe("error: Process completed with exit code 1.");
     // Earlier steps (pnpm test ran and passed) and cleanup never leak in.
     expect(trimmed.lines.some((l) => l.includes("Post job cleanup") || l.includes("Run pnpm test"))).toBe(false);
-    const kept = trimFailedLog(fixture("build-diff.log"), 10_000);
+    const kept = trimFailedLog(fixture("build-diff.txt"), 10_000);
     expect(kept.omitted).toBe(0);
     expect(trimmed.omitted).toBe(kept.lines.length - 60);
   });
