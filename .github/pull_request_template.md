@@ -22,7 +22,8 @@ Paste GitHub attachments here. Prefer a screen recording; screenshots are accept
 
 <!-- The authoring agent must launch a fresh reviewer session; review prepare only prints the packet.
 CI validates evidence and does not start a reviewer.
-Add a visible review-record: .agent/worklog/<task>.md line, a linked summary, and agent-reviewed after completion. -->
+Add a visible review-record: .agent/worklog/<task>.md line, a linked summary, and agent-reviewed after completion.
+Run morpheus review validate before pushing. Open the PR as a draft until review is recorded. -->
 
 ## Open questions
 

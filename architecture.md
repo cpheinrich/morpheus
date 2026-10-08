@@ -1531,7 +1531,9 @@ version 1 records stay compatible. Provider evidence remains a human-auditable a
 `morpheus-review` JSON block records sessions, base/reviewed/covered commits, findings, author
 responses and any original-reviewer follow-up. The PR links it with `review-record:` and carries
 `agent-reviewed` only on completion. `check pr` validates those facts, unresolved findings, budgets,
-ancestry and coverage. A follow-up that inspected a trunk integration records its new base and
+ancestry and coverage; `review validate` runs the same record check locally before a push. The
+caller skips an unlabelled draft, leaving the required check unreported, which blocks merge without
+reporting a failure; the check itself never passes a PR without the label. A follow-up that inspected a trunk integration records its new base and
 scope reason with the original base/reviewed SHA retained. Only the named worklog may change after
 the covered commit, avoiding the self-referential commit hash problem, and merging trunk never
 invalidates the review: native Git must reproduce an integration merge's tree exactly, or the

@@ -19,7 +19,7 @@ import { webAddConsumerAuth, webInit, webStatus } from "./web.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
 import { ghManagerApply, ghManagerDigest, ghManagerPrompt, ghManagerRoutes, ghManagerSweep } from "./gh-manager.js";
-import { prompt as reviewPrompt, reviewDelivery, reviewNeeded, prepareReview } from "./review.js";
+import { prompt as reviewPrompt, reviewDelivery, reviewNeeded, prepareReview, validateReview } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
 import { check as contextCheck, guard, install as contextInstall, refresh as contextRefresh, status as contextStatus, } from "./context.js";
@@ -348,11 +348,13 @@ async function dispatchInbox({ flags, command, dir }) {
     console.error(`Unknown inbox command "${command ?? ""}".\n\n${HELP}`);
     return 1;
 }
-async function dispatchReview({ flags, command, dir }) {
+async function dispatchReview({ flags, command, rest, dir }) {
     if (command === "prepare")
         return prepareReview(dir, process.cwd(), flags.base);
     if (command === "prompt")
         return reviewPrompt(dir, process.cwd());
+    if (command === "validate")
+        return validateReview(process.cwd(), flags.base, rest[0], flags.prBodyFile);
     if (command === "needed")
         return reviewNeeded(flags.base, flags.priorReview, flags.json);
     if (command === "delivery") {

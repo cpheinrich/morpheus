@@ -90,6 +90,6 @@ For a canonical Codex task path such as /root/author/reviewer, record the exact 
 path and the globally scoped parent runner thread/session ID in authorSession; that pair
 identifies the reviewer across worklogs. Follow-ups keep the exact same task path. Set outcome complete only after this contract is satisfied.
 PR body: a visible review-record: .agent/worklog/<task>.md line, plus a linked summary.
-Apply agent-reviewed only when complete. Remove it for stale, blocked or incomplete review.
+Apply agent-reviewed only when complete and morpheus review validate passes. Remove it for stale, blocked or incomplete review.
 The record is an auditable attestation, not cryptographic proof of independent judgment.
 `;

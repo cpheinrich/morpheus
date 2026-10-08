@@ -67,6 +67,7 @@ pnpm morpheus pm claim <ID>        # stake the branch; prints WORK IN for a fres
 pnpm morpheus pm resume <ID>       # continue a claimed or blocked task
 pnpm morpheus pm block <ID> --needs "what would unblock this"
 pnpm morpheus review prepare --base origin/main   # the reviewer packet
+pnpm morpheus review validate      # CI's review-record check, run before pushing
 pnpm morpheus inbox validate       # before finishing an inbox
 pnpm morpheus context refresh      # once, after reading the records — see below
 pnpm morpheus wait-ci <pr>         # block once on CI, then a digest of failures — never poll gh
@@ -152,7 +153,10 @@ GitHub Actions. If no independent session can be started, say so and leave the P
 auto-merge off — never self-review. **Read [`independent-review.md`](docs/runbooks/independent-review.md)
 before spawning the reviewer**: it holds the turn cap, budgets and floors, timing evidence,
 conditional clearance, finalization, `humanAuthorization`, record fields, the `review-record:`
-line and the `agent-reviewed` label. Merge trunk rather than rebase after review.
+line and the `agent-reviewed` label. Commit the record and run `morpheus review validate` before
+pushing; open the PR with the label already applied (`gh pr create --label agent-reviewed`), or as a
+draft if it must exist earlier — an unlabelled draft waits instead of failing. Merge trunk rather
+than rebase after review.
 
 **Every PR carries** tests for anything testable (or an explicit reason), a documentation update
 when behaviour changes, a test plan with the commands actually run, open questions stated plainly,
