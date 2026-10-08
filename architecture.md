@@ -929,12 +929,25 @@ It declines to declare a handle whose `hq/team/<handle>.md` does not exist. A de
 is absent is unresolvable, therefore never `fresh`, and no flag reaches it — writing that to clear
 a warning would be the repair causing the outage.
 
-**Five commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
+**Seven commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
 knowing what merged), `pm new` (filing an item that already exists), `pm link-issue` (attaching an
 issue to obsolete or unrelated work), `pm block` (escalating a question the inbox answered),
-`access sync` (granting from an allowlist that moved). A gate that
+`access sync` (granting from an allowlist that moved), `firebase auth setup` (changing an
+authentication provider and its OAuth domains), and the provisioning half of `web init`. `GATED`
+in `src/session/gate.ts` is the list. A gate that
 also fired on `pm index` or `check pr` would train people to route around it, and **the
 routing-around is permanent where the staleness was temporary.**
+
+**Refresh once; after that, let the gate do the checking.** An agent reads the records and takes a
+receipt once per session. Past the five-minute term `check` re-observes that receipt itself and
+re-certifies it when neither the trunk nor the records moved, so a second `context refresh` buys
+nothing unless a gated command has refused. On refusal the agent re-reads only what the refusal or
+the refresh's delta names. Measured from local transcripts in August–October 2026, agents ran
+`context refresh` 738 times (median four per session, maximum 70), about half within five minutes
+of the previous one, re-reading roughly 1.8M tokens of records before them — while only 25 of 828
+gated commands were ever refused, and 305 refreshes were piped through `head` or `tail`, discarding
+the delta that is the reason to run it. The instructions, not the lease, were producing the
+ritual.
 
 **Startup prepares source; explicit refresh certifies reading.** The existing standard shim
 continues to invoke `morpheus context brief`, now also available as `context start`. The shared CLI
