@@ -145,7 +145,13 @@ inbox item when the choice shapes the architecture, a PR-body line ("considered 
 because Y") when small. **Prefer lightweight:** build when the need is under ~100 lines,
 domain-specific, or every candidate is unmaintained. Record the outcome in `.agent/decisions.md`.
 
-**The authoring agent owns the entire review loop.** After committing, run
+**The authoring agent owns the entire review loop.** Finish the relevant focused tests, inspect
+their actual results, and give the reviewer the complete packet before its first turn. For UI work,
+include the available simulator evidence. If a test cannot run, state the exact limitation and
+keep the PR draft until validation finishes; a later code correction spends a remaining review
+turn. Aim to finish in an initial review and one focused response. The third turn is a ceiling for
+a genuine late correction or unresolved substantive finding, not a planned step. After committing,
+run
 `morpheus review prepare --base origin/main` (it prints a packet; it launches nothing), spawn
 **one fresh reviewer** with repository access and that packet and no inherited history, then
 handle findings, the record, CI and merge yourself. Do not wait for a monitor, another agent or

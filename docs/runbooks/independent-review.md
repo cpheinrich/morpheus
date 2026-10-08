@@ -1,6 +1,12 @@
 # Independent review before merge
 
-**The authoring agent owns the entire review loop.** After committing implementation/tests,
+**The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
+their actual results before the initial review. Send the whole review packet, not fragments; a
+missing packet caused one reviewer to find a basic issue only in a later turn. For UI work,
+provide available simulator evidence at the start and replace it after fixes. If a test cannot
+run, record the exact limitation and keep the PR draft until validation finishes. CI can run in
+parallel, but an avoidable late test correction consumes a review turn. Aim for an initial review
+and one focused response; three ordinary turns are a ceiling, not a plan. After committing implementation/tests,
 run `morpheus review prepare --base origin/main`; this prints a review packet and does not
 launch a reviewer. The packet carries the contract, the repository path, the test commands derived
 from the project's manifests, the review range, and the ticket. An unclaimed change or one without
@@ -140,6 +146,12 @@ condition it already set. Add `finalization: { paths, evidence, attestation }` t
 `followUps` entry, alongside a `scopeReason` naming what it finalized. The reviewer writes it;
 an author cannot certify their own work by filling it in, and `authorSession` may not be the
 reviewer.
+
+The author writes the ordinary review record after the reviewer returns. Do not invoke a
+finalization turn to repair a missing timing measurement, an incomplete review, or routine
+record prose. It requires an already cleared turn and cannot assess new implementation. A failed
+attempt to do paperwork does not create code-review clearance or justify asking for an extra
+implementation review; use a remaining ordinary follow-up for an actual late correction.
 
 It is bounded on every side, because an automatic turn that could approve implementation would
 simply be a fourth review with no decision behind it:

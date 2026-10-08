@@ -870,7 +870,11 @@ three times, stop: change approach, or \`pm block\` with what you learned. Never
 when the next step depends on the result, run \`morpheus wait-ci <n>\` once — never poll
 \`gh run view\` or \`gh pr checks\` in a loop.
 
-**The authoring agent owns the entire review loop.** After committing implementation/tests,
+**The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
+results before the reviewer's first turn; send the full packet and available UI evidence. If a test
+cannot run, document why and keep the PR draft until validation finishes. Aim for one review and
+one response; the third turn is a ceiling for genuine late corrections or unresolved findings.
+After committing implementation/tests,
 run \`morpheus review prepare --base origin/main\`; this prints a review packet and does not
 launch a reviewer. The authoring agent must spawn one fresh reviewer subagent/session with
 repository access and that packet, without inheriting the author's conversation history.
