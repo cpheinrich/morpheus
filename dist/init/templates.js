@@ -1594,7 +1594,8 @@ export const contextFreshness = () => `## Context freshness
 
 Run \`morpheus context brief\` at session start if the standard hook did not run. It fetches
 canonical trunk and fast-forwards only a clean local trunk, preserving active branches and dirty
-work. Follow its absolute \`WORK IN\` path.
+work. Follow its absolute \`WORK IN\` path. A stale checkout cannot certify fresh context; integrate
+trunk explicitly and re-read records before refreshing.
 
 Use **one worktree per implementation task**, not per conversation. \`pm claim <ID>\` from a shared
 checkout prepares a fresh worktree from current trunk: move there, read its records, refresh, then
@@ -1605,8 +1606,8 @@ checked-out task, and do not run concurrent authors in one worktree.
 
 **Read \`.agent/decisions.md\`, \`.agent/learned.md\` and your inbox once at session start, then run
 \`morpheus context refresh\` once.** After that, just run the gated command — \`pm claim\`,
-\`pm new\`, \`pm link-issue\`, \`pm block\`, \`access sync\`, \`firebase auth setup\`, \`web init\`.
-Past the five-minute term the gate re-checks trunk and the records itself and re-certifies when
+\`pm new\`, \`pm link-issue\`, \`pm block\`, \`access sync\`, \`firebase auth setup\`, \`web init\` (provisioning;
+\`--no-provision\` is not gated). Read-only and mechanical commands are not gated. Past the five-minute term the gate re-checks trunk and the records itself and re-certifies when
 nothing moved. **Refresh again only when a gated command refuses**, and then re-read only what the
 refusal or the refresh names. Never pipe \`refresh\` output through \`head\`/\`tail\` — the delta it
 prints is the point. Do not refresh without reading: the receipt is your assertion.

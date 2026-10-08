@@ -29,6 +29,7 @@ describe("Morpheus's own AGENTS.md", () => {
       await expect(access(join(ROOT, path!)), path).resolves.toBeUndefined();
       if (anchor) {
         const headings = (await readFile(join(ROOT, path!), "utf8"))
+          .replace(/```[\s\S]*?```/g, "")
           .split("\n")
           .filter((l) => /^#{1,4} /.test(l))
           .map((l) => l.replace(/^#+ /, "").toLowerCase().replace(/[^a-z0-9 -]/g, "").replace(/ /g, "-"));

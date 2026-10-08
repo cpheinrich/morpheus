@@ -88,8 +88,9 @@ Run `morpheus context brief` at session start if the hook did not; follow its `W
 **Read `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md` once at session
 start, then run `morpheus context refresh` once.** After that, just run the gated command
 (`pm claim`, `pm new`, `pm link-issue`, `pm block`, `access sync`, `firebase auth setup`,
-`web init`). Past the five-minute term the gate re-checks trunk and the records itself and
-re-certifies when nothing moved. **Refresh again only when a gated command refuses**, and then
+`web init` provisioning). Past the five-minute term the gate re-checks trunk and the records itself and
+re-certifies when nothing moved; read-only and mechanical commands are never gated.
+**Refresh again only when a gated command refuses**, and then
 re-read only what the refusal or the refresh names. Never pipe `refresh` output through
 `head`/`tail` — the delta it prints is the point. **Do not refresh without reading**: the receipt
 is your assertion, and one taken to clear a gate is the failure the protocol cannot detect.
