@@ -196,7 +196,7 @@ export async function prepareReview(productDir, root, base) {
         console.log("\nCommit the worklog, then validate the record before pushing — the same checker CI runs:");
         console.log("  morpheus review validate [<worklog path>] [--pr-body-file <file>]");
         console.log("Open the PR only once it passes, with the label already applied: gh pr create --label agent-reviewed.");
-        console.log("Opening earlier? Open it as a draft (gh pr create --draft): conventions then report the review as pending, not failed.");
+        console.log("Opening earlier? Open it as a draft (gh pr create --draft): conventions then wait, unreported, until it is labelled or marked ready, instead of failing.");
         console.log("Invent no fields: every key above is in the schema, and an unknown one is refused.");
         return 0;
     }

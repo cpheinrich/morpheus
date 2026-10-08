@@ -322,7 +322,7 @@ unreviewed draft that was never labelled has no result to inherit.
 
 When a ready PR lacks the label, conventions reports that it is not marked merge-ready and that
 record validation was not run. This also covers an author deliberately removing the label while
-a correction or follow-up is pending (convert to draft to show it as pending instead); the missing
+a correction or follow-up is pending (converting to draft does not re-run the check; only a draft never labelled waits unreported); the missing
 label alone does not establish an incomplete record.
 This is an auditable attestation, not a security boundary against an author fabricating evidence.
 
