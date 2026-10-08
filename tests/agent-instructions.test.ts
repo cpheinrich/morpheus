@@ -37,6 +37,17 @@ describe("Morpheus's own AGENTS.md", () => {
     }
   });
 
+  it("leaves no broken relative link inside the runbooks it points at", async () => {
+    const text = await read();
+    const runbooks = new Set([...text.matchAll(/\]\((docs\/runbooks\/[^)#]+)/g)].map((m) => m[1]!));
+    for (const runbook of runbooks) {
+      const body = (await readFile(join(ROOT, runbook), "utf8")).replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
+      for (const [, target] of body.matchAll(/\]\(((?!https?:|#|mailto:)[^)#\s]+)/g)) {
+        await expect(access(join(ROOT, dirname(runbook), target!)), `${runbook} → ${target}`).resolves.toBeUndefined();
+      }
+    }
+  });
+
   it("keeps the anchor consumer projects link to", async () => {
     // Every scaffolded AGENTS.md links to #what-makes-a-test-count.
     expect(await read()).toMatch(/^### What makes a test count$/m);
@@ -74,6 +85,9 @@ describe("the scaffolded AGENTS.md", () => {
     expect(section).toContain("once at session start");
     expect(section).toContain("Refresh again only when a gated command refuses");
     expect(section).toContain("Never pipe `refresh` output");
+    // Trimming must not drop how a session binds to its task.
+    expect(section).toContain("--session-id");
+    expect(section).toContain("CODEX_THREAD_ID");
   });
 
   it("generalises focused local testing beyond iOS and keeps the iOS rule", () => {

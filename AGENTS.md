@@ -108,13 +108,15 @@ there. Do not run concurrent authors on one task worktree. **Name slugs like bra
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
 voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work
-on its branch, test it, open a PR and merge it. The channel cannot waive the records or review path.
+on its branch, test it, open a PR and merge it. A trusted author can authorize the work; the
+channel cannot waive the records or review path. Never edit or release directly from a transcript.
 
 **An external mutation ships with an exact target and proof.** Prefer a pasted one-shot CLI command
-with explicit account, project and resource identifiers, with a caller-perspective verification
-probe and expected result beside it. Delivery is not acceptance: close the item only with evidence
-of the user-visible result. Release jobs depend on
+with explicit account, project and resource identifiers (console prose is fallback only), with a
+caller-perspective verification probe and expected result beside it. Delivery is not acceptance:
+close the item only with evidence of the user-visible result. Release jobs depend on
 `cpheinrich/morpheus/.github/workflows/release-preflight.yml@main` and check out its `sha` output.
+Do not extract a recurring production probe until a second project needs the same one.
 
 **When you hit real ambiguity, block — do not guess:** `morpheus pm block <ID> --needs "<what would
 unblock you>"`. Escalating is cheap; shipping half-baked is expensive. "Blocked on Chris" is not a

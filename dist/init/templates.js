@@ -1598,8 +1598,10 @@ work. Follow its absolute \`WORK IN\` path.
 
 Use **one worktree per implementation task**, not per conversation. \`pm claim <ID>\` from a shared
 checkout prepares a fresh worktree from current trunk: move there, read its records, refresh, then
-repeat the claim there. \`pm resume <ID>\` reuses a task's existing worktree. Never infer that an
-unrelated request belongs to the checked-out task, and do not run concurrent authors in one worktree.
+repeat the claim there; only that item's new, untracked intake moves with it. \`pm resume <ID>\`
+reuses a task's existing worktree. Pass \`--session-id\` to claim/resume when startup prints one
+(Codex defaults to \`CODEX_THREAD_ID\`). Never infer that an unrelated request belongs to the
+checked-out task, and do not run concurrent authors in one worktree.
 
 **Read \`.agent/decisions.md\`, \`.agent/learned.md\` and your inbox once at session start, then run
 \`morpheus context refresh\` once.** After that, just run the gated command — \`pm claim\`,
