@@ -131,6 +131,9 @@ such slots and a review that already used a fix follow-up has one; the author ma
 decision within the task's budget, and the record shows it. Otherwise a `cleared` turn ends the
 review, and an `incomplete` one escalates. Missing evidence can leave a turn incomplete within
 its budget; explicit `humanAuthorization` on the next same-reviewer turn permits resuming it.
+New user-requested scope after clearance is not a late correction. Put separable work in its own
+roadmap item and PR; if it is inseparable from this PR's acceptance, explain that in `scopeReason`
+and use a remaining same-reviewer turn. The cap still applies.
 Keep the original incomplete verdict. Every historical and new turn must still meet its budget;
 authorization never waives an overrun. Nothing follows an incomplete turn automatically. The cap is
 what stops an author and a reviewer trading fixes and findings indefinitely, at a session's cost
