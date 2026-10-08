@@ -69,6 +69,8 @@ export async function resolveBatch(root, id, resolvedBy = "agent") {
         batch = await readBatchFile(resolvedPath);
         if (!batch)
             return null;
+        if (batch.status === "resolved")
+            return batch;
         from = resolvedPath;
     }
     const next = {
