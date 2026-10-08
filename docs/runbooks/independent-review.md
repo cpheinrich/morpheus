@@ -83,8 +83,8 @@ rounding. The checker requires timing for every version 2 turn and rejects a mis
 The source reference is an auditable attestation; CI does not fetch private provider transcripts.
 Historical version 1 records remain valid; any timing attached to them is checked too. Do not
 rewrite old outcomes from an estimated duration or manufacture a measurement to clear a gate.
-Without a reliable measurement, record incomplete and obtain the evidence. Existing ceilings,
-the initial floor, review outcomes and escalation rules are unchanged.
+Without a reliable measurement, record incomplete and obtain the evidence. Review ceilings,
+outcomes and escalation rules are unchanged.
 
 The author responds to every finding. For minor-only findings, one fix/response round is enough.
 For any substantive finding, resume the original reviewer to assess responses, fixes and their
