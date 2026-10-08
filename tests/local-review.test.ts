@@ -870,6 +870,65 @@ describe("authorized continuation after missing review evidence", () => {
   });
 });
 
+describe("an authorized follow-up rescues an initial review under the floor", () => {
+  const authorization = { approvedBy: "cpheinrich", approvedAt: "2026-10-08T11:06:12Z", reason: "Authorized one extra same-reviewer turn after a clean initial review fell under the floor." };
+  const timing = (durationMs: number) => ({ source: "runner" as const, durationMs, evidence: `Runner total_duration_ms for this turn: ${durationMs}.` });
+  // Shaped like kairos#70: a clean 22 s initial pass recorded incomplete, then one authorized turn.
+  function rescued(followUpMs = 30000): LocalReviewRecord {
+    const r = record();
+    return {
+      ...r, version: 2, elapsedMinutes: 22000 / 60000, timing: timing(22000), initialOutcome: "incomplete",
+      followUps: [{ reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: followUpMs / 60000, timing: timing(followUpMs), humanAuthorization: authorization, summary: "Re-read the change in full and cleared it." }],
+    };
+  }
+  it("accepts an authorized clearing follow-up of exactly 30 seconds, and preserves the initial verdict", () => {
+    const r = rescued(30000);
+    expect(check(save(r))).toEqual([]);
+    expect(r.initialOutcome).toBe("incomplete");
+  });
+  it("refuses an authorized follow-up one millisecond under the floor", () => {
+    expect(check(save(rescued(29999)))[0]?.message).toContain("authorized same-reviewer turn of at least 30 seconds that clears");
+  });
+  it("refuses an under-floor initial review recorded as cleared rather than incomplete", () => {
+    const r = rescued(); delete r.initialOutcome;
+    expect(check(save(r))[0]?.message).toContain("under 30 seconds at normal or high risk is not a review");
+    // A scope reason does not turn it into one either.
+    r.followUps![0]!.scopeReason = "Late correction after an under-floor initial review.";
+    expect(check(save(r))[0]?.message).toContain("under 30 seconds at normal or high risk is not a review");
+  });
+  it("refuses an unauthorized follow-up", () => {
+    const r = rescued(); delete r.followUps![0]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+  });
+  it("refuses a malformed authorization", () => {
+    const r = rescued(); r.followUps![0]!.humanAuthorization = { ...authorization, approvedAt: "yesterday" };
+    expect(check(save(r))[0]?.message).toMatch(/approvedAt|datetime/i);
+  });
+  it("refuses a follow-up from a different reviewer", () => {
+    const r = rescued(); r.followUps![0]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
+    expect(check(save(r))[0]?.message).toContain("original reviewer");
+  });
+  it("refuses an incomplete initial review with no follow-up at all", () => {
+    const r = rescued(); delete r.followUps;
+    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+  });
+  it("refuses an authorized follow-up that does not clear", () => {
+    const r = rescued(); r.followUps![0]!.outcome = "blocked";
+    expect(check(save(r))[0]?.message).toContain("that clears");
+  });
+  it("keeps the 30-second initial boundary when nothing is resumed", () => {
+    const r = rescued(); delete r.initialOutcome; delete r.followUps;
+    r.elapsedMinutes = 30000 / 60000; r.timing = timing(30000);
+    expect(check(save(r))).toEqual([]);
+  });
+  it("still requires authorization to resume an incomplete initial review that met the floor", () => {
+    const r = rescued(); r.elapsedMinutes = 180000 / 60000; r.timing = timing(180000);
+    expect(check(save(r))).toEqual([]);
+    delete r.followUps![0]!.humanAuthorization;
+    expect(check(save(r))[0]?.message).toContain("resumes only with explicit humanAuthorization");
+  });
+});
+
 describe("the gate itself never waives the label", () => {
   it("fails a PR without agent-reviewed whatever else the caller passes", () => {
     const head = save(record());
