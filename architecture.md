@@ -3006,8 +3006,9 @@ commands. The phase of a shell command comes from an ordered rule table in
 `src/profile/classify.ts` — priority, not position, so `git push && gh pr checks --watch` is CI
 wait. Active time caps each idle gap at five minutes unless a running tool call covers it, and a
 tool result arriving more than four hours late is reported as an outlier rather than counted as
-work. Rows carry truncated, credential-masked commands and never prompt text, file contents or
-tool output.
+work. Rows never carry prompt text, file contents read or written by a tool, or tool output. A command
+is kept to its first 120 characters with credential-shaped values masked and any heredoc body cut;
+arguments typed on the command line itself can still appear within that prefix.
 
 ### 18.2 Reusable GitHub workflows
 

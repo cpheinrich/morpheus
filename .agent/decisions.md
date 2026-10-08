@@ -1172,8 +1172,9 @@ repository than the one it works on. No new package dependency: Zod, native Git 
 `morpheus profile` measures where agent time and tokens go from the transcripts Claude Code and
 Codex already write on the machine. Agents are not asked to report their own phases or timings:
 that costs tokens in every session and records what an agent believes it did. No telemetry is
-sent anywhere. Rows carry truncated, credential-masked commands and never prompts, file contents
-or tool output, so a report can be pasted into a PR.
+sent anywhere. Rows never carry prompts, tool-read file contents or tool output; commands are cut
+to 120 characters, credential-masked and stripped of heredoc bodies, so a report can be pasted into
+a PR after a glance at the command columns.
 
 Built with no new dependency. Considered `ccusage` (maintained, Claude-and-Codex token and cost
 summaries): it answers "what did this cost by day and model" but has no tool-call spans, phase

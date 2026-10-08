@@ -100,8 +100,12 @@ async function modifiedSince(path, from) {
 function keep(session, from, repo) {
     if (from !== undefined && (session.start === null || Date.parse(session.start) < from))
         return false;
-    if (repo && !`${session.repo ?? ""}\u0000${session.cwd ?? ""}`.toLowerCase().includes(repo.toLowerCase()))
-        return false;
+    if (repo) {
+        // The working directory stands in only when no repository could be derived from it.
+        const subject = session.repo ?? session.cwd ?? "";
+        if (!subject.toLowerCase().includes(repo.toLowerCase()))
+            return false;
+    }
     return true;
 }
 /**

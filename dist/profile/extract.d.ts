@@ -3,7 +3,12 @@ import type { ProfileIssue, ProfileRow, SessionRow, SpanRow } from "./types.js";
 export interface ExtractOptions {
     /** `YYYY-MM-DD`; sessions that started before local midnight of this day are skipped. */
     since?: string;
-    /** Substring matched against each session's repo and cwd. */
+    /**
+     * Substring of each session's derived repository name, case-insensitive. Not
+     * matched against the path: every task worktree sits under
+     * `.morpheus-worktrees/` and every scratchpad under a path naming its parent
+     * project, so `--repo morpheus` would otherwise pull in all of them.
+     */
     repo?: string;
     claudeDir?: string;
     codexDir?: string;

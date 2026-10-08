@@ -32,6 +32,17 @@ describe("extract", () => {
     expect(evo.spans.every((s) => s.sessionId === "C1")).toBe(true);
   });
 
+  it("matches --repo against the derived repository, never against the path", async () => {
+    // C1's worktree path contains "claude" and S1's contains "morpheus-worktrees/morpheus";
+    // the evo reviewer C2 sits under no morpheus path, and must stay excluded either way.
+    const morpheus = await extract({ ...dirs, repo: "morpheus" });
+    expect(morpheus.sessions.map((s) => s.sessionId).sort()).toEqual(["S1", "S1:abc123"]);
+    const pathOnly = await extract({ ...dirs, repo: ".claude" });
+    expect(pathOnly.sessions).toEqual([]);
+    const crossRepo = await extract({ ...dirs, repo: "morpheus", claudeDir: join(FIXTURES, "cross-repo") });
+    expect(crossRepo.sessions.map((s) => [s.sessionId, s.repo])).toEqual([]);
+  });
+
   it("refuses a malformed --since rather than silently including everything", () => {
     expect(sinceMs("2026-9-1")).toBeNull();
     expect(sinceMs(undefined)).toBeUndefined();

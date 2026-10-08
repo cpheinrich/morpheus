@@ -37,4 +37,9 @@ export declare const COMMAND_LIMIT = 120;
  * what was sent.
  */
 export declare function redactCommand(command: string): string;
+/**
+ * A heredoc body is file content or a script, not the command: keep the line
+ * that opens it, through the delimiter, and drop the rest.
+ */
+export declare function cutHeredoc(command: string): string;
 export declare function truncateCommand(command: string): string;

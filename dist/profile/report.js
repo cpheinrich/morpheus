@@ -166,7 +166,7 @@ export function renderReport(r, heading) {
     out.push(`${r.sessions} sessions (${r.mainSessions} main, ${r.sessions - r.mainSessions} subagent) · ` +
         `active ${formatDuration(r.activeMs)} · main-session wall ${formatDuration(r.wallMs)} · ` +
         `tokens ${formatTokens(totalTokens(r.tokens))} (output ${formatTokens(r.tokens.output)}, ` +
-        `cache read ${formatTokens(r.tokens.cacheRead)}) · Claude cost $${r.costUSD.toFixed(2)}`, "");
+        `cache read ${formatTokens(r.tokens.cacheRead)}) · recorded Claude cost $${r.costUSD.toFixed(2)}`, "");
     out.push("### Time and tokens by phase", "");
     out.push(markdownTable(["phase", "calls", "main time", "subagent time", "tokens", "output"], r.byPhase.map((p) => [
         p.phase,

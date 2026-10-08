@@ -181,6 +181,13 @@ export const COMMAND_LIMIT = 120;
  */
 export function redactCommand(command: string): string {
   return command
+    // URL userinfo: `https://user:pass@host`.
+    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi, "$1***@")
+    // Header values: `-H "X-Api-Key: …"`, `Authorization: Basic …`, `Cookie: …`.
+    .replace(/\b((?:[A-Za-z-]*(?:key|token|secret|auth|authorization|cookie|password))\s*:\s*)(?:(?:Bearer|Basic|token)\s+)?[^\s"']+/gi, "$1***")
+    // `curl -u user:pass`, `mysql -pSECRET`.
+    .replace(/(\s-u\s+|\s--user[= ])("[^"]*"|'[^']*'|[^\s:]+:\S+)/g, "$1***")
+    .replace(/(\b(?:mysql|mysqldump|mariadb)\b[^|;&]*?\s-p)(?!\s)\S+/g, "$1***")
     .replace(/\b([A-Za-z_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|AUTH|CREDENTIALS?)[A-Za-z_]*)=("[^"]*"|'[^']*'|\S+)/gi, "$1=***")
     .replace(/(--(?:token|password|secret|api-key|auth)[= ])("[^"]*"|'[^']*'|\S+)/gi, "$1***")
     .replace(/\b(Bearer|token)\s+[A-Za-z0-9._~+/=-]{16,}/gi, "$1 ***")
@@ -188,7 +195,19 @@ export function redactCommand(command: string): string {
     .replace(/[A-Za-z0-9+/_-]{40,}={0,2}/g, (m) => (/[0-9]/.test(m) && /[A-Za-z]/.test(m) && !m.includes("/") ? "***" : m));
 }
 
+/**
+ * A heredoc body is file content or a script, not the command: keep the line
+ * that opens it, through the delimiter, and drop the rest.
+ */
+export function cutHeredoc(command: string): string {
+  const m = /<<-?\s*(['"]?)[A-Za-z_][A-Za-z0-9_]*\1/.exec(command);
+  if (!m) return command;
+  const end = m.index + m[0].length;
+  const lineEnd = command.indexOf("\n", end);
+  return `${command.slice(0, lineEnd === -1 ? command.length : lineEnd)}${lineEnd === -1 ? "" : " …"}`;
+}
+
 export function truncateCommand(command: string): string {
-  const oneLine = redactCommand(displayCommand(command)).replace(/\s+/g, " ").trim();
+  const oneLine = redactCommand(cutHeredoc(displayCommand(command))).replace(/\s+/g, " ").trim();
   return oneLine.length > COMMAND_LIMIT ? `${oneLine.slice(0, COMMAND_LIMIT - 1)}…` : oneLine;
 }

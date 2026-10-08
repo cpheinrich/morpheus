@@ -10,7 +10,12 @@ import type { ProfileIssue, ProfileRow, SessionRow, SpanRow } from "./types.js";
 export interface ExtractOptions {
   /** `YYYY-MM-DD`; sessions that started before local midnight of this day are skipped. */
   since?: string;
-  /** Substring matched against each session's repo and cwd. */
+  /**
+   * Substring of each session's derived repository name, case-insensitive. Not
+   * matched against the path: every task worktree sits under
+   * `.morpheus-worktrees/` and every scratchpad under a path naming its parent
+   * project, so `--repo morpheus` would otherwise pull in all of them.
+   */
   repo?: string;
   claudeDir?: string;
   codexDir?: string;
@@ -119,7 +124,11 @@ async function modifiedSince(path: string, from: number | undefined): Promise<bo
 
 function keep(session: SessionRow, from: number | undefined, repo: string | undefined): boolean {
   if (from !== undefined && (session.start === null || Date.parse(session.start) < from)) return false;
-  if (repo && !`${session.repo ?? ""}\u0000${session.cwd ?? ""}`.toLowerCase().includes(repo.toLowerCase())) return false;
+  if (repo) {
+    // The working directory stands in only when no repository could be derived from it.
+    const subject = session.repo ?? session.cwd ?? "";
+    if (!subject.toLowerCase().includes(repo.toLowerCase())) return false;
+  }
   return true;
 }
 

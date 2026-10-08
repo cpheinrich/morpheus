@@ -78,6 +78,12 @@ describe("command display", () => {
     expect(displayCommand("cd /tmp")).toBe("cd /tmp");
   });
 
+  it("keeps the line that opens a heredoc and drops its body", () => {
+    expect(truncateCommand("cat > f.ts <<'EOF'\nconst secret = 1; // file body\nEOF")).toBe("cat > f.ts <<'EOF' …");
+    expect(truncateCommand("python3 - <<EOF\nprint(1)\nEOF\n")).toBe("python3 - <<EOF …");
+    expect(truncateCommand("git log --oneline | head")).toBe("git log --oneline | head");
+  });
+
   it("truncates at the limit to one line", () => {
     const long = `echo ${"x".repeat(300)}`;
     const out = truncateCommand(long);
@@ -88,10 +94,16 @@ describe("command display", () => {
 
   it("masks credential-shaped values", () => {
     expect(redactCommand("GITHUB_TOKEN=ghp_abcdefghijklmnop1234 gh api user")).toBe("GITHUB_TOKEN=*** gh api user");
-    expect(redactCommand("curl -H 'Authorization: Bearer abcdefghijklmnop1234567'")).toBe("curl -H 'Authorization: Bearer ***'");
+    expect(redactCommand("curl -H 'Authorization: Bearer abcdefghijklmnop1234567'")).toBe("curl -H 'Authorization: ***'");
     expect(redactCommand("tool --password hunter2 run")).toBe("tool --password *** run");
     expect(redactCommand("echo sk-ant-abcdefghijklmnopqrstuv")).toBe("echo ***");
     expect(redactCommand("git status")).toBe("git status");
+    expect(redactCommand("curl https://chris:hunter2pass@example.com/x")).toBe("curl https://***@example.com/x");
+    expect(redactCommand('curl -H "X-Api-Key: abc123def456" https://e.com')).toBe('curl -H "X-Api-Key: ***" https://e.com');
+    expect(redactCommand("curl -H 'Authorization: Basic dXNlcjpwYXNz' x")).toBe("curl -H 'Authorization: ***' x");
+    expect(redactCommand("curl -u admin:s3cretpw https://e.com")).toBe("curl -u *** https://e.com");
+    expect(redactCommand("mysql -pS3cretPass db")).toBe("mysql -p*** db");
+    expect(redactCommand("git log -p src")).toBe("git log -p src");
   });
 });
 
