@@ -2993,6 +2993,22 @@ provisioning guards before changing this contract. Shared internal `file-io.ts` 
 separate best-effort discovery from content reads that propagate non-absence errors;
 `markdown.ts` shares table rendering while callers choose empty-state text.
 
+#### Session profiling
+
+`morpheus profile extract|report` measures the workflow from transcripts both agent runtimes
+already write — `~/.claude/projects/**` (with subagent transcripts attributed to their parent) and
+`~/.codex/sessions/**`. Nothing is self-reported by an agent and nothing leaves the machine:
+self-reporting costs every session tokens and measures what an agent believes it did, and the
+transcripts already hold timestamps, model, effort, token usage and every tool call. `extract`
+emits one JSONL `session` row per transcript and one `span` row per tool call; `report` sums them
+by phase, repository, role, model × effort, first-turn context, and slowest and most-repeated
+commands. The phase of a shell command comes from an ordered rule table in
+`src/profile/classify.ts` — priority, not position, so `git push && gh pr checks --watch` is CI
+wait. Active time caps each idle gap at five minutes unless a running tool call covers it, and a
+tool result arriving more than four hours late is reported as an outlier rather than counted as
+work. Rows carry truncated, credential-masked commands and never prompt text, file contents or
+tool output.
+
 ### 18.2 Reusable GitHub workflows
 
 General project-management workflows with an `on: workflow_call` trigger live in Morpheus; each

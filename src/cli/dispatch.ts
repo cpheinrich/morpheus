@@ -62,6 +62,7 @@ import {
 } from "./self.js";
 
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
+import { profileExtract, profileReport } from "./profile.js";
 import { HELP } from "./help.js";
 import type { Flags } from "./args.js";
 
@@ -538,6 +539,14 @@ async function dispatchPm({ flags, command, rest, dir }: Invocation): Promise<nu
   }
 }
 
+async function dispatchProfile({ flags, command }: Invocation): Promise<number> {
+  const options = { since: flags.since, repo: flags.repo, out: flags.out, json: flags.json };
+  if (command === "extract") return profileExtract(options);
+  if (command === "report" || command === undefined) return profileReport(options);
+  console.error(`Unknown profile command "${command}".\n\n${HELP}`);
+  return 1;
+}
+
 const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "self": dispatchSelf,
   "doctor": dispatchDoctor,
@@ -561,6 +570,7 @@ const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "context": dispatchContext,
   "check": dispatchCheck,
   "qa": dispatchQa,
+  "profile": dispatchProfile,
   pm: dispatchPm,
 };
 

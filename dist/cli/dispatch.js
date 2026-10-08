@@ -29,6 +29,7 @@ import { install as codebaseMemoryInstall } from "./codebase-memory.js";
 import { initResearchLibrary, runResearchLibrary } from "./research-library.js";
 import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure, install as selfInstall, update as selfUpdate, } from "./self.js";
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
+import { profileExtract, profileReport } from "./profile.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
     if (command === "check" || command === undefined)
@@ -470,6 +471,15 @@ async function dispatchPm({ flags, command, rest, dir }) {
             return 1;
     }
 }
+async function dispatchProfile({ flags, command }) {
+    const options = { since: flags.since, repo: flags.repo, out: flags.out, json: flags.json };
+    if (command === "extract")
+        return profileExtract(options);
+    if (command === "report" || command === undefined)
+        return profileReport(options);
+    console.error(`Unknown profile command "${command}".\n\n${HELP}`);
+    return 1;
+}
 const groups = {
     "self": dispatchSelf,
     "doctor": dispatchDoctor,
@@ -493,6 +503,7 @@ const groups = {
     "context": dispatchContext,
     "check": dispatchCheck,
     "qa": dispatchQa,
+    "profile": dispatchProfile,
     pm: dispatchPm,
 };
 export async function dispatch(flags) {
