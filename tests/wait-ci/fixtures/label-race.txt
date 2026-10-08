@@ -1,0 +1,54 @@
+pr / conventions	UNKNOWN STEP	﻿2026-10-07T11:11:14.9369672Z Current runner version: '2.337.0'
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:14.9395084Z ##[group]Runner Image Provisioner
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:14.9395901Z Hosted Compute Agent
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:14.9396411Z Version: 20260901.588
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:14.9397029Z Commit: f88ec8081b781fac6c440065ac7ff9e710ce3d0b
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:14.9397722Z Build Date: 2026-09-01T19:56:44Z
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3372006Z ##[group]Run set -euo pipefail
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3372361Z ^[[36;1mset -euo pipefail^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3372743Z ^[[36;1m# Reruns must read current labels/body, not the original event snapshot.^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3373258Z ^[[36;1mgh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/live-pr.json"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3374024Z ^[[36;1mjq -e --arg sha "$EXPECTED_HEAD" '.head.sha == $sha' "$RUNNER_TEMP/live-pr.json" > /dev/null^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3374559Z ^[[36;1m# Who applied the GitHub Manager's label is not in the pull request^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3375031Z ^[[36;1m# payload. The newest `labeled` event for it is; an author applying the^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3375507Z ^[[36;1m# label to their own record is refused on that evidence. A failed read^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3375937Z ^[[36;1m# leaves the actor empty, which the check also refuses.^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3376504Z ^[[36;1mMANAGER_LABEL_ACTOR="$(gh api --paginate "repos/$REPOSITORY/issues/$PR_NUMBER/events?per_page=100" \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3377196Z ^[[36;1m  --jq '.[] | select(.event == "labeled" and .label.name == "manager-reviewed") | .actor.login' | tail -n 1 || true)"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3377956Z ^[[36;1m# The label says who; the App's own comment says which commit. Its^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3378405Z ^[[36;1m# newest comment carrying a cleared head is the only clearance the^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3378841Z ^[[36;1m# check accepts, so a push after it cannot ride on the label.^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3379363Z ^[[36;1mgh api --paginate --slurp "repos/$REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3379947Z ^[[36;1m  > "$RUNNER_TEMP/comments.json" 2> /dev/null || echo '[]' > "$RUNNER_TEMP/comments.json"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3380490Z ^[[36;1mjq -r '[.[][] | select(.user.login == "morpheus-gh-manager[bot]") | .body // ""^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3381007Z ^[[36;1m        | select(test("<!-- morpheus-gh-manager \\{[^\n]*\"cleared\""))] | last // ""' \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3381518Z ^[[36;1m  "$RUNNER_TEMP/comments.json" > "$RUNNER_TEMP/manager-clearance.md"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3382075Z ^[[36;1mjq --arg actor "$MANAGER_LABEL_ACTOR" --rawfile clearance "$RUNNER_TEMP/manager-clearance.md" \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3382534Z ^[[36;1m  '{pull_request: (. + {^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3382892Z ^[[36;1m     manager_label_actor: (if $actor == "" then null else $actor end),^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3383410Z ^[[36;1m     manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)})}' \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3384091Z ^[[36;1m  "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3384654Z ^[[36;1mGITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json" node .morpheus/dist/cli/index.js check pr \^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3385165Z ^[[36;1m  --dir "$PRODUCT_DIR" --base "origin/$BASE_REF"^[[0m
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3422545Z shell: /usr/bin/bash -e {0}
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3422809Z env:
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3423092Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3426216Z   GH_TOKEN: ***
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3426444Z   PR_NUMBER: 327
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3426665Z   REPOSITORY: cpheinrich/morpheus
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3426976Z   EXPECTED_HEAD: 9d6db5d0a1655a643537c5201d34d2aaa4c5db6e
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3427287Z   PRODUCT_DIR: hq/product
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3427516Z   BASE_REF: main
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:30.3427718Z ##[endgroup]
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.4629078Z ✗ [agent-review] agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending.
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.4630516Z 
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.4630725Z 1 blocking issue(s).
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.4722822Z ##[error]Process completed with exit code 1.
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.4827410Z Post job cleanup.
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.6236853Z Pruning is unnecessary.
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.6362790Z Post job cleanup.
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.7314783Z [command]/usr/bin/git version
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.7374985Z git version 2.55.0
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.7385788Z Temporarily overriding HOME='/home/runner/work/_temp/5923e290-e527-41bf-8c99-5938ce4485ee' before making global git config changes
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.7387504Z Adding repository directory to the temporary git global config as a safe directory
+pr / conventions	UNKNOWN STEP	2026-10-07T11:11:33.7392453Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/morpheus/morpheus/.morpheus
