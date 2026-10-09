@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { QA_COMMENTS_PENDING, parseBatch } from "./comments.js";
-import { writePendingBatch } from "./store.js";
+import { listPending, writePendingBatch } from "./store.js";
+import { isResponderActive } from "./responder.js";
 import { notifyBatchPending, QA_COMMENTS_WEBHOOK_FILE, resolveWebhookConfig } from "./webhook.js";
 export class BatchRejected extends Error {
 }
@@ -37,6 +38,6 @@ export async function recordBatch(root, project, raw, defaultPreview) {
     else {
         console.log(`qa comments webhook: unset — batch ${id} written; set MORPHEUS_QA_COMMENTS_WEBHOOK_URL or ${QA_COMMENTS_WEBHOOK_FILE} to wake an agent`);
     }
-    return { id, path, batch };
+    return { id, path, batch, pendingCount: (await listPending(root)).length, wakeConfigured: Boolean(webhook), responderActive: await isResponderActive(root) };
 }
 //# sourceMappingURL=batches.js.map

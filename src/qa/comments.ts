@@ -10,6 +10,7 @@ import { z } from "zod";
 
 export const QA_COMMENTS_DIR = "local/qa-comments";
 export const QA_COMMENTS_PENDING = `${QA_COMMENTS_DIR}/pending`;
+export const QA_COMMENTS_CLAIMS = `${QA_COMMENTS_DIR}/claims`;
 export const QA_COMMENTS_RESOLVED = `${QA_COMMENTS_DIR}/resolved`;
 
 const norm = z.number().min(0).max(1);

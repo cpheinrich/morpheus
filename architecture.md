@@ -1485,6 +1485,17 @@ qa/
 | Pre-deploy | E2E against the preview deployment | Deploy |
 | Human review | Preview link + screenshots + test plan | Deploy |
 
+Interactive comment QA uses a checkout-local durable queue. Each Send atomically
+publishes one batch and optional frame under `local/qa-comments/pending/`; later
+batches accumulate while a responder works. An agent claims one batch with an
+exclusive on-disk record before acting, resolves it after work, or releases the
+claim on failure. The queue and claim commands are agent-neutral. A webhook is
+an optional notification to a host-managed responder, not an agent scheduler;
+whether a chat can wake or work in parallel is determined by that host.
+An opt-in checkout-local responder can instead invoke any configured agent CLI
+as a separate serial process. Its on-disk owner marker reserves the checkout
+until stopped; later batches accumulate without occupying the interactive chat.
+
 ### The verifier stack
 
 A **verifier** answers *is this correct?* without trusting the doer's own say-so. Independence is

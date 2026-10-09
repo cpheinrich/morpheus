@@ -219,9 +219,8 @@ function report(ctx: WebContext, state: WebPreviewState, options: Pick<WebPrevie
   ctx.log(`  Claude:  the Browser pane (preview_start with this url)\n  Codex:   the in-app browser panel\n  Grok, or any agent without a browser panel:  open ${url}`);
   ctx.log("The site works as usual, with a comment column on the right. Right-click anything (or turn on Comment and click) to pin a comment; Enter saves it, ⌘Enter sends the batch.");
   ctx.log(`Inbox: morpheus qa comments pending --root ${ctx.root}\nInstructions: morpheus qa guide`);
-  // A Send writes a batch and nothing else; an agent that has not armed a watch never hears of it
-  // (MO-26-10-07-13.27.17: the first real web batch sat unread for exactly this reason).
-  ctx.log("Agent: arm the inbox watch now, before handing the overlay to the person. Claude: a Monitor polling the Inbox command above; Codex and Grok: run it between turns.");
+  // A Send queues a batch; only a configured host responder can wake independently of this chat.
+  ctx.log("Agent: arrange a separate responder where your host supports one; it should claim and drain the queue. Otherwise check pending batches between turns. Send alone does not wake this chat without a configured route.");
   ctx.log(`Log: ${join(ctx.stateDir, "preview.log")}`);
   if (options.sshHost) ctx.log(`\nOn the Mac displaying your browser, leave this running:\n${tunnelCommand(options.sshHost, state.port)}\nThen open the overlay URL above on that Mac.`);
 }
