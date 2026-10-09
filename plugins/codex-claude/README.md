@@ -1,7 +1,8 @@
 # Codex Claude
 
-Use a persistent Codex task to coordinate Claude Code on the same machine and checkout,
-using the locally authenticated Claude subscription. This package is optional and **off
+Two-way subscription delegation between Codex and Claude Code on the same machine and
+checkout. A persistent Codex task can coordinate Claude Code, and a Claude Code session can
+coordinate Codex (see [Claude coordinating Codex](#claude-coordinating-codex)). This package is optional and **off
 by default**. Cloning Morpheus, installing its CLI, and scaffolding projects do not install
 or activate it.
 
@@ -70,12 +71,13 @@ Ask Codex naturally:
 - “Show Claude's live output.”
 
 Automatic mode checks the least remaining fresh reported Codex allowance window. At
-**less than 30% remaining** by default, Codex delegates at the next safe checkpoint.
-At exactly 30%, Codex continues. This is subscription allowance, not a token count for a
+**less than 50% remaining** by default, Codex delegates at the next safe checkpoint.
+At exactly 50%, Codex continues. The same threshold applies in the other direction. This is subscription allowance, not a token count for a
 single chat. Codex still consumes allowance while supervising; this cannot keep Codex
 coordinating once its account is exhausted. Missing/stale usage is reported as unknown.
-The 30% default leaves headroom for supervision and other active Codex chats. Existing
-saved thresholds are preserved when updating the plugin.
+The 50% default hands work over while half the coordinator's allowance remains, leaving
+ample headroom for supervision and other active chats. Existing saved thresholds are
+preserved when updating the plugin; change one with `bridge.mjs config`.
 Routing hooks advise the coordinating agent; they do not replace the desktop's model
 engine or forcibly preempt a running generation.
 
@@ -104,6 +106,45 @@ from an earlier release still parses but no longer restricts anything; `doctor` 
 Configuration is a validated JSON document. Read it with `bridge.mjs config`, edit a copy,
 and apply it with `bridge.mjs config -` with `{"value": <complete configuration>}` on stdin.
 Do not edit settings while a second writer is updating them. Unknown settings are rejected.
+
+## Claude coordinating Codex
+
+The installer also registers a Claude Code plugin (`claude-plugin/`, marketplace
+`codex-claude-local`) with a `delegate-to-codex` skill, `codex_*` tools and hooks, and sets a
+recorder status line. Skip that half with `node scripts/install.mjs --codex-only`. The same
+`mode`, `threshold` and `projects` settings govern both directions; `bridge.mjs disable` stops
+both. Start a new Claude session after installing, and review its hooks.
+
+- **Allowance.** Claude Code gives its five-hour and weekly subscription windows only to the
+  status line command. `bridge.mjs statusline install` points the status line at
+  `scripts/claude-statusline.mjs`, which records the windows to `claude-usage.json` and prints
+  `5h N% · 7d N%`; an existing status line is kept and run through it instead
+  (`statusline uninstall` restores it). A snapshot older than 20 minutes, or one with an
+  expired window, is unknown and never triggers a handoff. Surfaces that do not run a status
+  line (headless `-p`, possibly the desktop app) therefore stay unknown until an interactive
+  terminal session records one; manual delegation still works.
+- **Settings source.** Hooks record the session's working directory and permission mode from
+  Claude's own hook input, its effort from `CLAUDE_EFFORT`, and its model from the latest
+  assistant reply in the transcript. Until a hook has run, delegation refuses.
+- **Model and effort.** `codexModelMap` maps the Claude family (fable/opus/sonnet/haiku) to an
+  approved `codexModels` entry; `codexEffortMap` maps effort. Unmapped values use Codex's own
+  configured default rather than a guess.
+- **Permissions, never widened.** `bypassPermissions` → Codex full access
+  (`--dangerously-bypass-approvals-and-sandbox`). `auto` and `acceptEdits` → the
+  `workspace-write` sandbox with approvals off (writes inside the checkout, plus a linked
+  worktree's Git directory; no network). `default` and `plan` → `read-only`: `default` asks
+  before each edit, and Codex exec cannot ask. Any other mode refuses. Under
+  `workspace-write` Codex may be unable to push or reach the network; Claude does those steps.
+- **Execution.** Each handoff runs `codex exec --json` under the same guardian lease, output
+  cap and run limit as Claude workers, with the prompt on stdin. The saved Codex session id is
+  resumed per working directory with `codex exec resume`. Codex cannot ask mid-run, so a
+  question arrives as a `needs_input` result and is answered by starting again with
+  `replySource` (`claude` or `user`) and `replyReason`, within the same supervision budget.
+- **Subscription only.** The bridge requires `codex login status` to report a ChatGPT
+  sign-in and strips `OPENAI_*`/`CODEX_API_KEY` from the worker. Paid Codex credits cannot be
+  detected from `exec` output; manage that in your ChatGPT account.
+- **No loops.** Both workers run with `CODEX_CLAUDE_DELEGATED=1`; the hooks of either plugin
+  then do nothing and both MCP servers refuse to start a further delegation.
 
 ## Sessions, output and supervision
 

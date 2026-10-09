@@ -18,7 +18,8 @@ never submit a local task to a different machine by guessing its project path.
    is performed by Codex without changing the persistent override. Stop a running Claude
    writer and wait until terminal before taking over its files.
 3. Automatic mode checks the least remaining reported Codex allowance window at safe
-   checkpoints. Keep executing in Codex while above the threshold; below it delegate
+   checkpoints. Keep executing in Codex at or above the threshold (50% remaining by
+   default); below it delegate
    substantive work and reserve Codex for coordination. Recheck after tools or completed
    stages. Unknown/stale allowance is not zero. Do not switch an in-flight writer. A
    threshold is a subscription percentage, not a local token counter; coordination still

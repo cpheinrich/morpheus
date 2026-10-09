@@ -1,6 +1,8 @@
+// Claude Code hook: records the session's own settings and injects the routing advice.
 import { configRead } from "../src/store.mjs";
 import { call } from "../src/client.mjs";
 import { delegatedMarker } from "../src/config.mjs";
+import { transcriptModel } from "../src/claude-usage.mjs";
 try {
   if (process.env[delegatedMarker]) process.exit(0);
   const config = await configRead();
@@ -12,9 +14,18 @@ try {
   }
   const input = JSON.parse(text);
   const event = input.hook_event_name || process.argv[2];
-  const threadId = input.session_id || process.env.CODEX_THREAD_ID;
-  if (!threadId) process.exit(0);
-  const result = await call("hook", { threadId, event });
+  if (!input.session_id) process.exit(0);
+  const result = await call("codex.hook", {
+    sessionId: input.session_id,
+    event,
+    cwd: input.cwd,
+    permissionMode: input.permission_mode,
+    model:
+      (typeof input.model === "string" ? input.model : input.model?.id) ??
+      (await transcriptModel(input.transcript_path)) ??
+      undefined,
+    effort: process.env.CLAUDE_EFFORT,
+  });
   if (result.additionalContext)
     console.log(
       JSON.stringify({

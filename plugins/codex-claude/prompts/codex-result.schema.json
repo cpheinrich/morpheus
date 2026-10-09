@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "outcome": { "type": "string", "enum": ["completed", "needs_input", "failed"] },
+    "summary": { "type": "string" },
+    "evidence": { "type": "array", "items": { "type": "string" } },
+    "question": { "type": "string" }
+  },
+  "required": ["outcome", "summary", "evidence", "question"],
+  "additionalProperties": false
+}
