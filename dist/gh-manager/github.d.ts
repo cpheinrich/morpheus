@@ -1,4 +1,5 @@
 import type { LiveState, Operation } from "./decision.js";
+import { type EvidenceItem } from "./evidence.js";
 import { type GhManagerPolicy } from "./policy.js";
 import { type ManagerMarker, type PullRequestFacts } from "./sweep.js";
 export declare function assertRepository(repo: string): string;
@@ -71,6 +72,16 @@ export declare function fetchLiveState(repo: string, number: number, supersededB
 };
 /** Carry out one operation. Text reaches `gh` as a file or an argument, never as shell. */
 export declare function execute(repo: string, number: number, op: Operation): void;
+/**
+ * Publish screenshots as one orphan commit tagged `gh-manager-evidence/<commit>`, and return each
+ * file's URL through that tag. A tag rather than a branch: a branch push would start every
+ * Git-connected deployment. The commit has no parent, so nothing in it can reach the product.
+ */
+export declare function publishEvidence(repo: string, pr: number, items: EvidenceItem[]): {
+    file: string;
+    caption: string;
+    url: string;
+}[];
 /** Append a run digest to the repository's rolling log issue, creating the issue on first use. */
 export declare function postDigest(repo: string, markdown: string): number;
 export {};

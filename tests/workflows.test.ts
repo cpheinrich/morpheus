@@ -2979,6 +2979,20 @@ describe("gh-manager.yml", () => {
     expect(steps.indexOf(checkout!)).toBeLessThan(steps.indexOf(apply!));
   });
 
+  it("installs a pinned Playwright for screenshots before any credential, and carries the evidence to apply", async () => {
+    const raw = await readFile(join(DIR, "gh-manager.yml"), "utf8");
+    const wf = load(raw) as Manager;
+    expect(wf.on?.workflow_call?.inputs?.["playwright-version"]?.default).toBe("1.63.0");
+    const steps = wf.jobs?.session?.steps ?? [];
+    const install = steps.find(step => step.name === "Install tooling and move it out of the workspace");
+    expect(install?.run).toContain('"playwright@$PLAYWRIGHT_VERSION"');
+    expect(install?.run).toContain("playwright install --with-deps chromium");
+    expect(JSON.stringify(install?.env ?? {})).not.toContain("secrets.");
+    expect(steps.indexOf(install!)).toBeLessThan(steps.findIndex(step => step.id === "session"));
+    const upload = steps.find(step => step.name === "Hand the decision to the apply job");
+    expect(String(upload?.with?.path)).toContain("${{ runner.temp }}/manager/evidence-${{ matrix.pr }}/");
+  });
+
   it("applies on a separate runner, after the sessions, even when one failed", async () => {
     const wf = (await read("gh-manager.yml")) as Manager;
     expect(wf.jobs?.apply?.needs).toEqual(["sweep", "session"]);

@@ -479,7 +479,7 @@ describe("digest", () => {
 });
 
 describe("session prompt", () => {
-  const brief = { repo: "o/r", number: 7, branch: "ev-1-thing", base: "main", sweepDetail: "no completed review", attempts: 1, runRef: "run 9", decisionPath: "/tmp/d.json", cli: "node cli.js", policy: policy({ protectedPaths: ["billing"] }) };
+  const brief = { repo: "o/r", number: 7, branch: "ev-1-thing", base: "main", sweepDetail: "no completed review", attempts: 1, runRef: "run 9", decisionPath: "/tmp/d.json", evidenceDir: "/tmp/evidence-7", cli: "node cli.js", policy: policy({ protectedPaths: ["billing"] }) };
   it("carries the facts and the rules, and no pull request text", () => {
     const text = sessionPrompt(brief);
     expect(text).toContain("pull request #7 (branch `ev-1-thing`, base `main`)");

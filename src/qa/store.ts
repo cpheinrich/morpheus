@@ -98,6 +98,7 @@ export async function resolveBatch(
   if (!batch) {
     batch = await readBatchFile(resolvedPath);
     if (!batch) return null;
+    if (batch.status === "resolved") return batch;
     from = resolvedPath;
   }
 

@@ -16,6 +16,10 @@ export declare const Decision: z.ZodObject<{
     reasoning: z.ZodString;
     usedManagerReview: z.ZodDefault<z.ZodBoolean>;
     body: z.ZodOptional<z.ZodString>;
+    evidence: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        file: z.ZodString;
+        caption: z.ZodString;
+    }, z.core.$strict>>>;
     markReady: z.ZodDefault<z.ZodBoolean>;
     supersededBy: z.ZodOptional<z.ZodNumber>;
     missing: z.ZodOptional<z.ZodString>;

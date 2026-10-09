@@ -2,7 +2,8 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, write
 import { dirname, join } from "node:path";
 import { Decision, type Plan, planDecision, planNoDecision, planRoute } from "../gh-manager/decision.js";
 import { type Outcome, renderDigest } from "../gh-manager/digest.js";
-import { assertRepository, execute, fetchLiveState, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
+import { applyEvidence, evidenceUrl } from "../gh-manager/evidence.js";
+import { assertRepository, execute, publishEvidence, fetchLiveState, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
 import { GH_MANAGER_POLICY_PATH, GhManagerPolicy } from "../gh-manager/policy.js";
 import { OVERLAY_PATH, sessionPrompt } from "../gh-manager/prompt.js";
 import { type Routed, SAFE_REF, sweep } from "../gh-manager/sweep.js";
@@ -154,6 +155,9 @@ export function ghManagerPrompt(repoArg: string | undefined, prArg: string | und
   if (!SAFE_REF.test(live.branch) || !SAFE_REF.test(live.base)) throw new Error(`#${number} has a branch or base name the manager will not put in a brief`);
   const decisionPath = process.env["GH_MANAGER_DECISION"];
   if (!decisionPath) throw new Error("GH_MANAGER_DECISION must name where the session writes its decision");
+  // Beside the decision, so the one artifact upload carries both to the apply job.
+  const evidenceDir = join(dirname(decisionPath), `evidence-${number}`);
+  mkdirSync(evidenceDir, { recursive: true });
   write(out, sessionPrompt({
     repo,
     number,
@@ -163,6 +167,7 @@ export function ghManagerPrompt(repoArg: string | undefined, prArg: string | und
     attempts: routed.attempts,
     runRef: `${runUrl()} (pull request ${number})`,
     decisionPath,
+    evidenceDir,
     cli: process.env["MORPHEUS_CLI"] ?? "morpheus",
     policy: file.policy,
     overlay: overlay(repo),
@@ -193,6 +198,18 @@ export function ghManagerApply(repoArg: string | undefined, prArg: string | unde
   }
 
   const live = fetchLiveState(repo, number, decision?.supersededBy);
+  // Screenshots matter only to a merge on the head the session finished on; they are published
+  // before the plan so the body it writes already carries their links.
+  if (decision && decisionPath) {
+    decision = applyEvidence(decision, {
+      dir: join(dirname(decisionPath), `evidence-${number}`),
+      liveHead: live.headSha,
+      open: live.open,
+      dryRun,
+      publish: items => publishEvidence(repo, number, items),
+      preview: items => items.map(item => ({ file: item.file, caption: item.caption, url: evidenceUrl(repo, "0".repeat(40), number, item) })),
+    });
+  }
   // A checkout of the target lets the session's own commits and record be read with Git rather
   // than taken on its word. Without one both stay at their refusing values.
   const checkout = process.env["GH_MANAGER_CHECKOUT"];

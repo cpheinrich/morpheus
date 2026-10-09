@@ -222,10 +222,39 @@ Set `"enabled": false` in the policy, or remove the repository from the operatio
 Either takes effect on the next run. Removing the `manager:needs-human` label from a pull request
 tells the manager to try that one again.
 
+## Visual evidence
+
+A session can screenshot a pull request's **web** preview itself; iOS and simulator screens remain
+an escalation. It runs a pinned Playwright (`playwright-version` input) against the preview
+deployment built from its final head, taking the URL from GitHub's deployment records for that
+commit (never from a comment, which anyone can write), checks each image, and lists the files in
+its decision with `{{gh-manager-evidence:<file>}}` placeholders in the body.
+
+The **apply** step, not the session, handles them, and only for a merge on the head the session
+finished on. It validates the files (PNG or JPEG by content, at most 10 of 5 MB), checks the body
+can place every one, then writes them as one orphan commit tagged `gh-manager-evidence/<commit>`
+and substitutes links of the form
+`https://github.com/<owner>/<repo>/raw/gh-manager-evidence/<commit>/pr-<n>/<sha256>.png`. Anything
+that cannot be validated, placed or published turns the merge into an escalation. The session
+holds no new credential for any of this.
+
+**Tags, not a branch.** A branch push starts every Git-connected deployment (Vercel builds each
+pushed branch), and a tree of screenshots would fail to build every time. A tag starts nothing. Each
+file is named by its SHA-256, so a swapped image is detectable; but a tag is a ref anyone with
+contents write can move, so a repository that wants the links immutable should add a ruleset
+restricting creation, update and deletion of `gh-manager-evidence/*` tags to the App. A repository
+whose workflows trigger on *all* tags (`tags: ['*']`) would run on these; scope such triggers, for
+example to `v*`.
+
+A repository opts in by adding `https://github.com/<owner>/<repo>/raw/gh-manager-evidence/` to
+`review.visualEvidence.allowedUrlPrefixes` in `morpheus.json`. Without it the session escalates
+missing evidence as before. Images render inline for anyone who can see the pull request, private
+repositories included (verified 2026-10-08).
+
 ## Limits worth knowing
 
 - **Sessions run on Linux.** An iOS suite cannot run there; the record says so and CI is the
-  evidence. Missing visual evidence the manager cannot produce is an escalation.
+  evidence. iOS visual evidence is an escalation; web evidence it captures itself.
 - **Sessions spend the operator's Claude subscription** and private-repository runner minutes.
   `maxSessionsPerRun` is the lever.
 - **The attestation is auditable, not cryptographic**, the same as the ordinary record. What is
