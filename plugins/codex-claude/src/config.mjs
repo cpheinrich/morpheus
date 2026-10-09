@@ -6,6 +6,19 @@ export const home = () =>
   process.env.CODEX_CLAUDE_HOME ||
   join(homedir(), ".local", "share", "codex-claude");
 export const modeSchema = z.enum(["off", "manual", "automatic"]);
+/**
+ * A Claude model id or family alias as the CLI's --model accepts it, optionally with the
+ * bracketed context suffix the CLI understands (`sonnet[1m]`). The first character may
+ * not be a dash, so a value can never be read by the CLI as another flag.
+ */
+export const modelIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*(\[[a-zA-Z0-9]+\])?$/;
+/**
+ * Aliases that resolve to whatever the CLI currently considers best are refused: the
+ * subscription allowlist existed to stop one of these selecting a paid-credit-only
+ * model, and that is the only part of it worth keeping. A family alias (opus, sonnet,
+ * haiku, fable) or a full id names one thing and is passed through.
+ */
+export const MOVING_MODEL_ALIASES = new Set(["best", "latest", "default", "newest", "auto"]);
 export const configSchema = z
   .object({
     version: z.literal(1).default(1),
@@ -18,10 +31,11 @@ export const configSchema = z
     maxRunSeconds: z.number().int().min(10).max(28800).default(7200),
     maxSupervisionReplies: z.number().int().min(0).max(50).default(8),
     memorySharing: z.boolean().default(false),
-    // An explicit list prevents a moving "best" alias selecting a paid-credit-only model.
-    subscriptionModels: z
-      .array(z.string().regex(/^[a-zA-Z0-9_.-]+$/))
-      .default(["opus", "sonnet", "haiku"]),
+    // Deprecated and ignored: earlier releases launched only models in this list, which
+    // blocked every model the Claude CLI gained after the plugin shipped. The CLI is the
+    // authority on what the subscription can run (an unavailable id fails the run with a
+    // clear error and no cost). Accepted so an installed configuration keeps parsing.
+    subscriptionModels: z.array(z.string().regex(modelIdPattern)).optional(),
     modelMap: z.record(z.string(), z.string()).default({
       "gpt-6-astra": "opus",
       "gpt-5.6-sol": "opus",
@@ -153,9 +167,17 @@ export function claudeRemaining(snapshot, now = Date.now(), maxAgeMs = 20 * 6000
 export function modelSelection(config, snapshot, override = {}) {
   const model = override.model ?? config.modelMap[snapshot.model];
   const effort = override.effort ?? config.effortMap[snapshot.reasoningEffort];
-  if (!model || !config.subscriptionModels.includes(model))
+  if (!model)
     throw new Error(
-      "No approved subscription model mapping. Configure modelMap/subscriptionModels explicitly.",
+      `No Claude model mapping for Codex model "${snapshot.model ?? "unknown"}". Add it to modelMap or pass an explicit model.`,
+    );
+  if (typeof model !== "string" || !modelIdPattern.test(model))
+    throw new Error(
+      "Unsupported Claude model identifier. Pass a full model id or a family alias as `claude --model` accepts it.",
+    );
+  if (MOVING_MODEL_ALIASES.has(model.toLowerCase()))
+    throw new Error(
+      `Claude model alias "${model}" moves with releases and could select a paid-credit-only model; name the model explicitly.`,
     );
   if (!["low", "medium", "high", "xhigh", "max"].includes(effort))
     throw new Error("No effort mapping for the current Codex selection.");

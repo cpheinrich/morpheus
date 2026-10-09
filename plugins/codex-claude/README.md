@@ -92,7 +92,16 @@ The selected model and effort are mapped independently at each Claude launch:
 Low/medium/high/xhigh map to their matching effort values; minimal/none map to low;
 max/ultra map to max. These are configurable approximations, not claims of equivalence.
 Unsupported combinations fail visibly. Explicit model/effort overrides take precedence.
-Only configured subscription model aliases are accepted; `best` is not selected implicitly.
+
+Any explicit model is passed through to `claude --model`: a family alias (`opus`, `sonnet`,
+`haiku`, `fable`) or a full id such as `claude-fable-5-1`, from an override or from
+`modelMap`. The Claude CLI is the authority on what the subscription can run: an id it does
+not recognize fails that run at the first request with the CLI's own error, at no cost, and
+the bridge reports it as a failed run rather than guessing a substitute. Moving aliases
+(`best`, `latest`, `default`, `newest`, `auto`) are refused because they could select a
+paid-credit-only model without anyone choosing it. There is no fixed allowlist: a model
+released after this plugin needs no configuration change. A saved `subscriptionModels` list
+from an earlier release still parses but no longer restricts anything; `doctor` says so.
 
 Configuration is a validated JSON document. Read it with `bridge.mjs config`, edit a copy,
 and apply it with `bridge.mjs config -` with `{"value": <complete configuration>}` on stdin.

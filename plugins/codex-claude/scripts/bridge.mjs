@@ -88,6 +88,10 @@ try {
       recordedAt: usage?.recordedAt ?? null,
     };
     result.config = await configRead();
+    if (result.config.subscriptionModels)
+      (result.notes ??= []).push(
+        "config.subscriptionModels is deprecated and ignored: any explicit model id is passed to the Claude CLI, which decides availability. Remove the key when convenient.",
+      );
     console.log(JSON.stringify(result, null, 2));
   } else {
     let input = rest.join(" ");
