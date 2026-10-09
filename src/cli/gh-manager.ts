@@ -17,7 +17,7 @@ import { execFileSync } from "node:child_process";
  *   sweep  <owner/repo>                        route every open pull request, no model
  *   routes <owner/repo> <sweep.json>           carry out the routes that need no session
  *   prompt <owner/repo> <pr> <sweep.json>      print the brief for one session
- *   preview-url <owner/repo> <pr> [sha]      the web preview built from a commit (default HEAD)
+ *   preview-url <owner/repo> <pr> [sha]        the web preview built from a commit (default HEAD)
  *   apply  <owner/repo> <pr> <sweep.json> [decision.json]
  *                                              check a session's decision and act on it
  *   digest <owner/repo> <sweep.json> <outcomes-dir>

@@ -12,9 +12,22 @@
  *    comment, authored by the `vercel[bot]` App identity, whose `[vc]:` line embeds each project's
  *    `inspectorUrl` and `previewUrl`. Only a comment by that identity is read, and only a project
  *    whose `inspectorUrl` equals the commit's successful status `target_url` is used: the author
- *    proves who wrote it, the inspector URL proves which commit it describes.
+ *    shows Vercel wrote it, the inspector URL shows which commit it describes. A collaborator can
+ *    still edit the comment, so its preview must also be a `*.vercel.app` host.
+ *
+ * The comment's `previewUrl` is the branch alias, which follows the branch's newest ready
+ * deployment. It is bound to the commit only when this runs; a push after that moves it, and the
+ * apply step's refusal to act on a moved head is what closes that gap.
  */
 export const VERCEL_BOT = "vercel[bot]";
+/**
+ * A preview read from the comment must be on Vercel's own domain. A collaborator can edit any
+ * comment, Vercel's included, and the API still names `vercel[bot]` as its author; keeping the
+ * origin to `*.vercel.app` means such an edit can at most point at another Vercel deployment.
+ */
+function vercelHost(url) {
+    return url && new URL(url).hostname.endsWith(".vercel.app") ? url : undefined;
+}
 function httpsUrl(raw) {
     if (!raw)
         return undefined;
@@ -60,8 +73,10 @@ export function resolvePreview(sources) {
         if (status.creator === VERCEL_BOT && isVercelContext(status.context) && !latest.has(status.context))
             latest.set(status.context, status);
     }
+    // Vercel's first status arrives seconds after a push, so none yet is the start of a build, not
+    // its absence; the caller's ten-minute retry turns a commit Vercel never sees into an escalation.
     if (!latest.size)
-        return { kind: "none", reason: "Vercel has set no status on this commit, so there is no preview for it" };
+        return { kind: "pending", reason: "Vercel has not set a status on this commit yet" };
     const succeeded = [...latest.values()].filter(s => s.state === "success" && s.targetUrl);
     if (!succeeded.length) {
         const states = [...latest.values()].map(s => s.state);
@@ -74,7 +89,7 @@ export function resolvePreview(sources) {
         .flatMap(c => vercelCommentProjects(c.body));
     const urls = succeeded
         .map(status => projects.find(p => p.inspectorUrl === status.targetUrl))
-        .map(project => httpsUrl(project?.previewUrl))
+        .map(project => vercelHost(httpsUrl(project?.previewUrl)))
         .filter((u) => Boolean(u));
     if (urls.length)
         return { kind: "ready", urls: [...new Set(urls)], source: "vercel-status" };

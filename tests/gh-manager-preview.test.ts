@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type CommentSource, type PreviewSources, resolvePreview, type StatusSource, vercelCommentProjects } from "../src/gh-manager/preview.js";
 
 const INSPECTOR = "https://vercel.com/darwin-health/evo/7dM5zS3qrM7pwTFSwFD8t4WHgDJs";
@@ -54,7 +54,7 @@ describe("resolvePreview", () => {
   });
 
   it("ignores a status set by anyone but vercel[bot]", () => {
-    expect(resolvePreview(sources({ statuses: [vercelStatus("success", INSPECTOR, "mallory")] }))).toEqual({ kind: "none", reason: expect.stringContaining("no status") });
+    expect(resolvePreview(sources({ statuses: [vercelStatus("success", INSPECTOR, "mallory")] }))).toEqual({ kind: "pending", reason: "Vercel has not set a status on this commit yet" });
   });
 
   it("waits while the comment still describes an earlier deployment", () => {
@@ -88,7 +88,69 @@ describe("resolvePreview", () => {
     expect(resolvePreview(sources({ comments: withCredentials })).kind).toBe("pending");
   });
 
-  it("has nothing to offer a commit Vercel never saw", () => {
-    expect(resolvePreview(sources({ statuses: [] }))).toEqual({ kind: "none", reason: "Vercel has set no status on this commit, so there is no preview for it" });
+  it("waits for Vercel's first status, which arrives seconds after a push", () => {
+    expect(resolvePreview(sources({ statuses: [] }))).toEqual({ kind: "pending", reason: "Vercel has not set a status on this commit yet" });
+  });
+
+  it("takes only a *.vercel.app preview from the comment, which a collaborator can edit", () => {
+    const edited = [vercelComment([{ inspectorUrl: INSPECTOR, previewUrl: "https://evil.example" }])];
+    expect(resolvePreview(sources({ comments: edited })).kind).toBe("pending");
+    const lookalike = [vercelComment([{ inspectorUrl: INSPECTOR, previewUrl: "https://evo.vercel.app.evil.example" }])];
+    expect(resolvePreview(sources({ comments: lookalike })).kind).toBe("pending");
+  });
+});
+
+describe("fetchPreviewSources and the preview-url command", () => {
+  const SHA = "5a4b40d442124e6f27ce59f403169f85e96266c5";
+  afterEach(() => { vi.doUnmock("node:child_process"); vi.resetModules(); });
+
+  /** Stub `gh`: each call is matched by its endpoint; an Error with stderr stands for a refusal. */
+  async function load(route: (path: string) => unknown) {
+    vi.resetModules();
+    vi.doMock("node:child_process", async orig => ({
+      ...(await orig<typeof import("node:child_process")>()),
+      execFileSync: (_cmd: string, args: string[]) => {
+        const path = args.find(a => a.startsWith("repos/"))!;
+        const result = route(path);
+        if (result instanceof Error) throw result;
+        // --slurp wraps pages in an outer array.
+        return JSON.stringify(args.includes("--slurp") ? [result] : result);
+      },
+    }));
+    return { github: await import("../src/gh-manager/github.js"), cli: await import("../src/cli/gh-manager.js") };
+  }
+  const refused = (message: string) => Object.assign(new Error("gh failed"), { stderr: message });
+  const live = (deployments: unknown, statuses: unknown[]) => (path: string) =>
+    path.includes("/deployments") ? deployments
+      : path.includes("/statuses") ? statuses
+      : [{ body: vercelComment([{ inspectorUrl: INSPECTOR, previewUrl: PREVIEW }]).body, user: { login: "vercel[bot]", type: "Bot" } }, { body: null, user: null }];
+
+  it("records a token without Deployments access as forbidden, and maps null fields", async () => {
+    const { github } = await load(live(refused("gh: Resource not accessible by integration (HTTP 403)"), [{ context: "Vercel", state: "success", target_url: INSPECTOR, creator: { login: "vercel[bot]" } }, { context: "ci", state: "success", target_url: null, creator: null }]));
+    expect(github.fetchPreviewSources("darwin-health/evo", 378, SHA)).toEqual({
+      deployments: "forbidden",
+      statuses: [{ context: "Vercel", state: "success", targetUrl: INSPECTOR, creator: "vercel[bot]" }, { context: "ci", state: "success", targetUrl: undefined, creator: "" }],
+      comments: [{ author: "vercel[bot]", authorType: "Bot", body: vercelComment([{ inspectorUrl: INSPECTOR, previewUrl: PREVIEW }]).body }, { author: "", authorType: "", body: "" }],
+    });
+  });
+
+  it("does not swallow any other failure", async () => {
+    const { github } = await load(live(refused("gh: Server Error (HTTP 502)"), []));
+    expect(() => github.fetchPreviewSources("darwin-health/evo", 378, SHA)).toThrow();
+  });
+
+  it("exits 0 with the URL, 2 while pending and 1 with nothing to capture", async () => {
+    const forbidden = refused("HTTP 403");
+    const status = (state: string) => [{ context: "Vercel", state, target_url: INSPECTOR, creator: { login: "vercel[bot]" } }];
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await load(live(forbidden, status("success")))).cli.ghManagerPreviewUrl("darwin-health/evo", "378", SHA)).toBe(0);
+    expect(log).toHaveBeenCalledWith(`https://${PREVIEW}`);
+    expect((await load(live(forbidden, status("pending")))).cli.ghManagerPreviewUrl("darwin-health/evo", "378", SHA)).toBe(2);
+    expect((await load(live(forbidden, status("failure")))).cli.ghManagerPreviewUrl("darwin-health/evo", "378", SHA)).toBe(1);
+    const { cli } = await load(live(forbidden, []));
+    expect(() => cli.ghManagerPreviewUrl("darwin-health/evo", "0", SHA)).toThrow("is not a pull request number");
+    expect(() => cli.ghManagerPreviewUrl("darwin-health/evo", "378", "5a4b40d")).toThrow("is not a full commit SHA");
+    log.mockRestore(); err.mockRestore();
   });
 });

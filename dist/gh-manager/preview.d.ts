@@ -12,7 +12,12 @@
  *    comment, authored by the `vercel[bot]` App identity, whose `[vc]:` line embeds each project's
  *    `inspectorUrl` and `previewUrl`. Only a comment by that identity is read, and only a project
  *    whose `inspectorUrl` equals the commit's successful status `target_url` is used: the author
- *    proves who wrote it, the inspector URL proves which commit it describes.
+ *    shows Vercel wrote it, the inspector URL shows which commit it describes. A collaborator can
+ *    still edit the comment, so its preview must also be a `*.vercel.app` host.
+ *
+ * The comment's `previewUrl` is the branch alias, which follows the branch's newest ready
+ * deployment. It is bound to the commit only when this runs; a push after that moves it, and the
+ * apply step's refusal to act on a moved head is what closes that gap.
  */
 export declare const VERCEL_BOT = "vercel[bot]";
 export interface DeploymentSource {
