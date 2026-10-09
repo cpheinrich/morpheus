@@ -21,6 +21,8 @@ export interface SessionBrief {
     runRef: string;
     /** Where the session must write its decision. */
     decisionPath: string;
+    /** Where the session saves screenshots for the apply step to publish. */
+    evidenceDir: string;
     /** How to invoke the Morpheus CLI in this runner. */
     cli: string;
     policy: GhManagerPolicy;
