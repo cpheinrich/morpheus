@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import { QA_GUIDE } from "../qa/guide.js";
-import { loadResponderConfig, recoverStoppedResponder, requestResponderStop, responderStatus, runQaResponder } from "../qa/responder.js";
+import { isResponderActive, loadResponderConfig, recoverStoppedResponder, requestResponderStop, responderStatus, runQaResponder } from "../qa/responder.js";
 import { loadIosPreviewConfig } from "../qa/preview/config.js";
 import { parsePreviewArgs, previewContext, runPreview } from "../qa/preview/ios.js";
 import { loadWebPreviewConfig, parseWebPreviewArgs, runWebPreview, webContext } from "../qa/preview/web.js";
@@ -224,7 +224,9 @@ export async function dispatchQaComments(
       }
       if (action === "status") {
         const marker = await responderStatus(taken.root);
-        console.log(marker ? JSON.stringify(marker, null, 2) : "No QA responder running.");
+        if (!marker) console.log("No QA responder running.");
+        else if (await isResponderActive(taken.root)) console.log(JSON.stringify(marker, null, 2));
+        else console.log(`Stale QA responder marker (pid ${marker.pid}). Verify no agent process is editing, then run responder recover --confirm-no-agent-process.`);
       } else if (action === "stop") {
         console.log(await requestResponderStop(taken.root) ? "QA responder will stop after the current batch." : "No QA responder running.");
       } else if (action === "recover") {

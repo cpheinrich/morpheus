@@ -79,13 +79,25 @@ export async function responderStatus(root) {
         throw error;
     }
 }
+function responderPidAlive(marker) {
+    if (!Number.isInteger(marker.pid) || marker.pid <= 0)
+        return false;
+    try {
+        process.kill(marker.pid, 0);
+        return true;
+    }
+    catch (error) {
+        if (error.code === "ESRCH")
+            return false;
+        if (error.code === "EPERM")
+            return true;
+        throw error;
+    }
+}
 export async function isResponderActive(root) {
     try {
         const marker = await responderStatus(root);
-        if (!marker || !Number.isInteger(marker.pid) || marker.pid <= 0)
-            return false;
-        process.kill(marker.pid, 0);
-        return true;
+        return marker ? responderPidAlive(marker) : false;
     }
     catch {
         // The optional status indicator must never turn a successful Send into an error.
@@ -96,6 +108,8 @@ export async function requestResponderStop(root) {
     const marker = await responderStatus(root);
     if (!marker)
         return false;
+    if (!responderPidAlive(marker))
+        throw new Error(`QA responder pid ${marker.pid} has stopped; verify no agent process is editing, then run responder recover --confirm-no-agent-process`);
     await writeFile(stopFile(root, marker.pid), "stop after current batch\n", "utf8");
     return true;
 }

@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseBatch, type QaCommentBatch } from "../src/qa/comments.js";
 import { BatchClaimedError, claimNextBatch, listPending, readBatchClaim, releaseBatchClaim, resolveBatch, showBatch, writePendingBatch } from "../src/qa/store.js";
 import { dispatchQaComments } from "../src/cli/qa.js";
@@ -279,6 +279,12 @@ setTimeout(() => {
     await mkdir(commentsDir, { recursive: true });
     const lock = join(commentsDir, "responder.lock");
     await writeFile(lock, JSON.stringify({ agent: "codex:dead", pid: 9999999, startedAt: new Date().toISOString(), root }), "utf8");
+    await expect(requestResponderStop(root)).rejects.toThrow(/has stopped/);
+    const output = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      expect(await dispatchQaComments(root, "responder", ["status"])).toBe(0);
+      expect(String(output.mock.calls.at(-1)?.[0])).toMatch(/Stale QA responder marker/);
+    } finally { output.mockRestore(); }
     await expect(recoverStoppedResponder(root)).rejects.toThrow(/confirm-no-agent-process/);
     expect((await responderStatus(root))?.agent).toBe("codex:dead");
     expect(await recoverStoppedResponder(root, true)).toBe(true);
