@@ -30,6 +30,9 @@ command. A failed child leaves its claim and stops for recovery. The ownership
 marker tells other chats not to edit the same checkout until the responder
 stops. The child remains on the QA session branch and commits locally; the
 interactive chat completes review and PR work after the session.
+The child prompt names the exact Morpheus CLI that launched the worker, so a
+previously installed global CLI cannot accidentally bypass the new claim
+contract during a pre-merge QA session.
 
 Focused verification covers concurrent claims, resolver races, later batches,
 wrong-agent resolution, claim recovery, serial background handling, failed
