@@ -1,4 +1,4 @@
-import { listPending, resolveBatch, showBatch } from "../qa/store.js";
+import { BatchClaimedError, claimNextBatch, listPending, releaseBatchClaim, resolveBatch, showBatch } from "../qa/store.js";
 import { startQaCommentServer } from "../qa/serve.js";
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -17,8 +17,10 @@ import { loadWebPreviewConfig, parseWebPreviewArgs, runWebPreview, webContext } 
 
 const USAGE = `Usage
   morpheus qa comments pending [--root <project>]
+  morpheus qa comments claim --agent <identity> [--root <project>]
   morpheus qa comments show <batchId> [--root <project>]
-  morpheus qa comments resolve <batchId> [batchId...] [--root <project>]
+  morpheus qa comments resolve <batchId> [batchId...] [--agent <identity>] [--root <project>]
+  morpheus qa comments release <batchId> --agent <identity> [--root <project>] [--force]
   morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
   --project <name> is the global flag (the parser consumes it before this command) and labels batches.
 `;
@@ -37,6 +39,20 @@ function takeRootFlag(argv: string[], fallback: string): { root: string; rest: s
     }
   }
   return { root, rest };
+}
+
+function takeAgentFlag(argv: string[]): { agent: string | undefined; rest: string[] } {
+  const rest: string[] = [];
+  let agent: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--agent") {
+      agent = argv[++i];
+      if (!agent?.trim()) throw new Error("--agent requires an identity");
+    } else {
+      rest.push(argv[i]!);
+    }
+  }
+  return { agent, rest };
 }
 
 function parseServeArgs(argv: string[]): {
@@ -123,13 +139,49 @@ export async function dispatchQaComments(
     return 0;
   }
 
+  if (command === "claim") {
+    try {
+      const taken = takeRootFlag(rest, root);
+      const { agent, rest: args } = takeAgentFlag(taken.rest);
+      if (!agent || args.length) throw new Error(`claim requires --agent <identity> and no batch id.\n\n${USAGE}`);
+      const claim = await claimNextBatch(taken.root, agent);
+      if (claim) console.log(`${claim.id}\t${claim.agent}\t${claim.claimedAt}`);
+      return 0;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  }
+
+  if (command === "release") {
+    try {
+      const taken = takeRootFlag(rest, root);
+      const { agent, rest: args } = takeAgentFlag(taken.rest);
+      const force = args.includes("--force");
+      const ids = args.filter((arg) => arg !== "--force");
+      if ((!agent && !force) || ids.length !== 1 || ids[0]?.startsWith("-")) {
+        throw new Error(`release requires one batch id and --agent <identity> (or --force).\n\n${USAGE}`);
+      }
+      const released = await releaseBatchClaim(taken.root, ids[0]!, agent ?? "", force);
+      if (!released) throw new Error(`No claim for QA batch "${ids[0]}".`);
+      console.log(`Released ${ids[0]}`);
+      return 0;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  }
+
   if (command === "resolve") {
     let projectRoot = root;
     let args = rest;
+    let resolvedBy = "agent";
     try {
       const taken = takeRootFlag(rest, root);
       projectRoot = taken.root;
-      args = taken.rest;
+      const agentTaken = takeAgentFlag(taken.rest);
+      args = agentTaken.rest;
+      resolvedBy = agentTaken.agent ?? "agent";
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
       return 1;
@@ -140,7 +192,15 @@ export async function dispatchQaComments(
     }
     let failed = 0;
     for (const id of args) {
-      const resolved = await resolveBatch(projectRoot, id);
+      let resolved;
+      try {
+        resolved = await resolveBatch(projectRoot, id, resolvedBy);
+      } catch (error) {
+        if (!(error instanceof BatchClaimedError)) throw error;
+        console.error(error.message);
+        failed += 1;
+        continue;
+      }
       if (!resolved) {
         console.error(`No QA comment batch "${id}" under local/qa-comments/.`);
         failed += 1;

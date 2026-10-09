@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseBatch, type QaCommentBatch } from "../src/qa/comments.js";
-import { listPending, resolveBatch, showBatch, writePendingBatch } from "../src/qa/store.js";
+import { BatchClaimedError, claimNextBatch, listPending, readBatchClaim, releaseBatchClaim, resolveBatch, showBatch, writePendingBatch } from "../src/qa/store.js";
 import { dispatchQaComments } from "../src/cli/qa.js";
 import { hidKeyBody, hidTouchBody, startQaCommentServer } from "../src/qa/serve.js";
 import { TouchPacer, type TouchEvent } from "../src/qa/touch-pacer.js";
@@ -85,6 +85,61 @@ describe("qa comment batches", () => {
     root = await mkdtemp(join(tmpdir(), "morpheus-qa-"));
     const code = await dispatchQaComments(root, "pending", []);
     expect(code).toBe(0);
+  });
+
+  it("queues later batches while two agents own distinct earlier batches", async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-qa-"));
+    const first = sample("20261002T192800Z-ab12");
+    const second = sample("20261002T192801Z-ab12");
+    const third = sample("20261002T192802Z-ab12");
+    await writePendingBatch(root, first, Buffer.from("first-frame"));
+    await writePendingBatch(root, second);
+
+    const [a, b] = await Promise.all([
+      claimNextBatch(root, "claude:session-a"),
+      claimNextBatch(root, "codex:session-b"),
+    ]);
+    expect(new Set([a?.id, b?.id])).toEqual(new Set([first.id, second.id]));
+    expect(await claimNextBatch(root, "grok:session-c")).toBeNull();
+
+    await writePendingBatch(root, third);
+    expect((await listPending(root)).map((batch) => batch.id)).toEqual([first.id, second.id, third.id]);
+    expect((await claimNextBatch(root, "grok:session-c"))?.id).toBe(third.id);
+    expect(await readFile(join(root, "local/qa-comments/pending", first.id, "frame.png"), "utf8")).toBe("first-frame");
+  });
+
+  it("keeps a claimed batch pending until its owner resolves or releases it", async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-qa-"));
+    await writePendingBatch(root, sample());
+    const claim = await claimNextBatch(root, "codex:qa-session");
+    expect(claim?.id).toBe(sample().id);
+    await expect(resolveBatch(root, sample().id, "claude:other-session")).rejects.toThrow(BatchClaimedError);
+    expect((await listPending(root)).map((batch) => batch.id)).toEqual([sample().id]);
+    await expect(releaseBatchClaim(root, sample().id, "claude:other-session")).rejects.toThrow(BatchClaimedError);
+    expect((await readBatchClaim(root, sample().id))?.agent).toBe("codex:qa-session");
+
+    expect((await resolveBatch(root, sample().id, "codex:qa-session"))?.status).toBe("resolved");
+    expect(await readBatchClaim(root, sample().id)).toBeNull();
+    expect(await listPending(root)).toEqual([]);
+  });
+
+  it("can explicitly recover an abandoned claim without discarding its comments", async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-qa-"));
+    await writePendingBatch(root, sample());
+    await claimNextBatch(root, "codex:dead-session");
+    expect(await releaseBatchClaim(root, sample().id, "operator", true)).toBe(true);
+    expect((await claimNextBatch(root, "claude:new-session"))?.id).toBe(sample().id);
+    expect((await showBatch(root, sample().id))?.batch.comments).toEqual(sample().comments);
+  });
+
+  it("CLI claim and resolve use the same agent identity", async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-qa-"));
+    await writePendingBatch(root, sample());
+    expect(await dispatchQaComments(root, "claim", ["--agent", "codex:qa-session"])).toBe(0);
+    expect((await readBatchClaim(root, sample().id))?.agent).toBe("codex:qa-session");
+    expect(await dispatchQaComments(root, "resolve", [sample().id, "--agent", "claude:other"])).toBe(1);
+    expect(await dispatchQaComments(root, "resolve", [sample().id, "--agent", "codex:qa-session"])).toBe(0);
+    expect((await showBatch(root, sample().id))?.batch.resolvedBy).toBe("codex:qa-session");
   });
 });
 
@@ -313,8 +368,10 @@ describe("qa comments serve", () => {
       }),
     });
     expect(res.status).toBe(201);
-    const created = (await res.json()) as { id: string; path: string };
+    const created = (await res.json()) as { id: string; path: string; pendingCount: number; wakeConfigured: boolean };
     expect(created.id).toMatch(/Z-/);
+    expect(created.pendingCount).toBe(1);
+    expect(created.wakeConfigured).toBe(false);
 
     const pending = await listPending(root);
     expect(pending).toHaveLength(1);
@@ -347,6 +404,7 @@ describe("qa comments serve", () => {
       body: JSON.stringify({ comments: sample().comments }),
     });
     expect(local.status).toBe(201);
+    expect(((await local.json()) as { pendingCount: number }).pendingCount).toBe(2);
     for (const [origin, site] of [
       [`http://localhost:${server.port + 1}`, "same-origin"],
       [`https://localhost:${server.port}`, "same-origin"],
@@ -498,7 +556,8 @@ describe("qa comments webhook", () => {
       }),
     });
     expect(res.status).toBe(201);
-    const created = (await res.json()) as { id: string };
+    const created = (await res.json()) as { id: string; wakeConfigured: boolean };
+    expect(created.wakeConfigured).toBe(true);
 
     // Fire-and-forget — give the webhook a moment.
     for (let i = 0; i < 20 && !received; i++) {

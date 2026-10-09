@@ -198,8 +198,8 @@ export async function startWebQaServer(options) {
                 if (req.method === "POST" && url.pathname === `${QA_PREFIX}/api/batches`) {
                     const raw = JSON.parse((await readBody(req)).toString("utf8"));
                     try {
-                        const { id, path } = await recordBatch(options.root, options.project, raw, { url: upstream.origin, kind: "web" });
-                        sendJson(res, 201, { id, path });
+                        const { id, path, pendingCount, wakeConfigured } = await recordBatch(options.root, options.project, raw, { url: upstream.origin, kind: "web" });
+                        sendJson(res, 201, { id, path, pendingCount, wakeConfigured });
                     }
                     catch (error) {
                         if (error instanceof BatchRejected || error.name === "ZodError") {

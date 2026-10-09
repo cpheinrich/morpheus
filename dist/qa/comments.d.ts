@@ -8,6 +8,7 @@ import { z } from "zod";
  */
 export declare const QA_COMMENTS_DIR = "local/qa-comments";
 export declare const QA_COMMENTS_PENDING = "local/qa-comments/pending";
+export declare const QA_COMMENTS_CLAIMS = "local/qa-comments/claims";
 export declare const QA_COMMENTS_RESOLVED = "local/qa-comments/resolved";
 /**
  * What a web pin points at (MO-26-10-06-18.13.32). A page reflows and scrolls, so a fraction of

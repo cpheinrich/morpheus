@@ -31,4 +31,6 @@ export declare function recordBatch(root: string, project: string, raw: PostedBa
     id: string;
     path: string;
     batch: QaCommentBatch;
+    pendingCount: number;
+    wakeConfigured: boolean;
 }>;

@@ -16,6 +16,8 @@ local/qa-comments/
     <batchId>/
       batch.json      # schema below
       frame.png       # optional captured frame at Send
+  claims/
+    <batchId>.json    # exclusive agent claim; survives process exit
   resolved/
     <batchId>/        # same shape, moved here by `resolve`
 ```
@@ -23,11 +25,26 @@ local/qa-comments/
 `batchId` is `YYYYMMDDTHHMMSSZ-<short>` (UTC clock + 4–6 char suffix) so ids
 sort chronologically without consulting a remote.
 
+Send publishes `batch.json` and its optional frame together, then returns the
+batch id and current open-batch count. Later Sends append to the queue while an
+agent is working. A claim is created exclusively for one agent identity; other
+agents can claim other batches but cannot resolve or release that claim. Claims
+do not expire automatically, because a long-running QA edit must not be handed
+to another agent mid-work. Use `release --force` only after confirming the
+original responder stopped. The batch remains in `pending/` while claimed.
+
 
 ## Agent wake webhook (one true config)
 
 After **Send** writes a pending batch, the serve process POSTs a small JSON
-payload so an agent (e.g. Grok Bot) can wake and call `qa comments pending`.
+payload when a wake webhook is configured. The webhook is only a notification;
+the receiver must claim and drain the on-disk queue. Configure it to start a
+separate responder where the agent host supports that. Morpheus cannot make an
+active Claude, Codex, or Grok chat continue in the background by itself. In
+particular, a new Codex checkout without a configured wake route will retain
+the comments but will not wake its chat. The overlay reports "Queued", the
+open count, and whether a wake route is configured; it never claims that an
+agent has started.
 
 **Durable config (preferred):** under the project that receives batches (Evo,
 Lakina, …), create the gitignored file:
@@ -123,9 +140,12 @@ See `src/qa/comments.ts` (`QaCommentBatch`). Summary:
 ## CLI
 
 ```sh
-morpheus qa comments pending          # list pending batches (paths + comment counts)
+morpheus qa comments pending          # inspect open batches (including claimed)
+morpheus qa comments claim --agent <session-id>  # reserve oldest unclaimed batch
 morpheus qa comments show <batchId>   # print one batch.json
-morpheus qa comments resolve <batchId> [...ids]
+morpheus qa comments resolve <batchId> --agent <session-id>
+morpheus qa comments release <batchId> --agent <session-id>  # return failed work to queue
+morpheus qa comments release <batchId> --force  # recover an abandoned claim
 morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
 ```
 
@@ -154,7 +174,10 @@ batch returns the original record unchanged, preserving its first `resolvedAt` a
    Not the stream URL, and not a host's native simulator panel or annotation tool.
 3. Left-drag drives the app; **right-click** pins a comment; **Enter** saves the pin; **⌘Enter**
    sends the batch. Batches land in `<root>/local/qa-comments/pending/`.
-4. The agent polls `morpheus qa comments pending`, then `show` / `resolve`.
+4. A separate responder, monitor, or the agent between turns calls `claim --agent
+   <session-id>`, then `show` / `resolve --agent <session-id>` for each returned
+   id until `claim` prints nothing. If work fails, `release` it so another agent
+   can pick it up. `pending` remains a read-only inspection command.
 5. `morpheus qa preview ios stop` ends the simulator, serve-sim and the overlay together.
 
 `morpheus qa guide` prints the agent's full instructions; the `comment-qa` skill every project

@@ -127,10 +127,14 @@ Usage
 
   morpheus qa comments pending
                             list pending visual-QA comment batches under local/qa-comments/
+  morpheus qa comments claim --agent <identity>
+                            reserve the oldest unclaimed batch for one responder
   morpheus qa comments show <batchId>
                             print one batch.json
-  morpheus qa comments resolve <batchId> [ids...]
+  morpheus qa comments resolve <batchId> [ids...] [--agent <identity>]
                             mark batch(es) resolved (moves pending → resolved)
+  morpheus qa comments release <batchId> --agent <identity> [--force]
+                            return failed work to the queue; --force recovers an abandoned claim
   morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
                             local overlay: tap → multi-comment → Send into local/qa-comments/
   morpheus qa preview ios [start|status|stop|doctor|help] [--mode <name>] [--port <n>] [--no-build] [--root <project>]

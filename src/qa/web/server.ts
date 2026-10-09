@@ -212,8 +212,8 @@ export async function startWebQaServer(options: WebQaServerOptions): Promise<{ p
         if (req.method === "POST" && url.pathname === `${QA_PREFIX}/api/batches`) {
           const raw = JSON.parse((await readBody(req)).toString("utf8")) as PostedBatch;
           try {
-            const { id, path } = await recordBatch(options.root, options.project, raw, { url: upstream.origin, kind: "web" });
-            sendJson(res, 201, { id, path });
+            const { id, path, pendingCount, wakeConfigured } = await recordBatch(options.root, options.project, raw, { url: upstream.origin, kind: "web" });
+            sendJson(res, 201, { id, path, pendingCount, wakeConfigured });
           } catch (error) {
             if (error instanceof BatchRejected || (error as { name?: string }).name === "ZodError") { sendJson(res, 400, { error: (error as Error).message }); return; }
             throw error;

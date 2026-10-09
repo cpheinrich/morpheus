@@ -1685,7 +1685,7 @@ The short form:
    declares in \`morpheus.json\` under \`qa.web\` and \`qa.ios\`.
 2. Open the \`QA overlay\` URL it prints — Claude in the Browser pane, Codex in its in-app browser
    panel, Grok or any agent without a panel with \`open <url>\`. Every agent uses this one page.
-3. Watch \`morpheus qa comments pending\` and act on each batch, then resolve it.
+3. Use a separate responder when the host supports one. It runs \`morpheus qa comments claim --agent <identity>\` until empty, then shows and resolves each claimed batch with the same identity. Sending a batch only queues it when no wake route is configured.
 4. \`morpheus qa preview web stop\` (or \`ios stop\`) ends the preview and the overlay together.
 
 If \`morpheus qa preview\` is unknown, or has no \`web\`, the installed CLI predates it: run
