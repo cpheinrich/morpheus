@@ -1,4 +1,5 @@
 import type { LiveState, Operation } from "./decision.js";
+import { type EvidenceItem } from "./evidence.js";
 import { type GhManagerPolicy } from "./policy.js";
 import { type ManagerMarker, type PullRequestFacts } from "./sweep.js";
 export declare function assertRepository(repo: string): string;
@@ -71,6 +72,16 @@ export declare function fetchLiveState(repo: string, number: number, supersededB
 };
 /** Carry out one operation. Text reaches `gh` as a file or an argument, never as shell. */
 export declare function execute(repo: string, number: number, op: Operation): void;
+/**
+ * Push screenshots to the repository's evidence branch, creating it as an orphan on first use, and
+ * return each file's URL. A file already there (same content hash) is not pushed again. The branch
+ * shares no history with the code, so nothing on it can ever be merged into the product.
+ */
+export declare function publishEvidence(repo: string, pr: number, items: EvidenceItem[]): {
+    file: string;
+    caption: string;
+    url: string;
+}[];
 /** Append a run digest to the repository's rolling log issue, creating the issue on first use. */
 export declare function postDigest(repo: string, markdown: string): number;
 export {};

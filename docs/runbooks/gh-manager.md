@@ -222,10 +222,25 @@ Set `"enabled": false` in the policy, or remove the repository from the operatio
 Either takes effect on the next run. Removing the `manager:needs-human` label from a pull request
 tells the manager to try that one again.
 
+## Visual evidence
+
+A session can screenshot a pull request's **web** preview itself; iOS and simulator screens remain
+an escalation. It runs a pinned Playwright (`playwright-version` input) against the preview
+deployment built from its final head, checks each image, and lists the files in its decision with
+`{{gh-manager-evidence:<file>}}` placeholders in the body. The **apply** step, not the session,
+validates them (PNG or JPEG by content, at most 10 files of 5 MB), pushes them to the
+`gh-manager-evidence` branch of the same repository (an orphan branch nothing else writes, files
+named by SHA-256), and substitutes the image links. A file that cannot be validated or published
+turns the decision into an escalation. The session holds no new credential for any of this.
+
+A repository opts in by adding `https://github.com/<owner>/<repo>/raw/gh-manager-evidence/` to
+`review.visualEvidence.allowedUrlPrefixes` in `morpheus.json`. Without it the session escalates
+missing evidence as before.
+
 ## Limits worth knowing
 
 - **Sessions run on Linux.** An iOS suite cannot run there; the record says so and CI is the
-  evidence. Missing visual evidence the manager cannot produce is an escalation.
+  evidence. iOS visual evidence is an escalation; web evidence it captures itself.
 - **Sessions spend the operator's Claude subscription** and private-repository runner minutes.
   `maxSessionsPerRun` is the lever.
 - **The attestation is auditable, not cryptographic**, the same as the ordinary record. What is

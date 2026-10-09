@@ -45,6 +45,11 @@ export const Decision = z.object({
   usedManagerReview: z.boolean().default(false),
   /** A complete replacement pull request body, when the session had to repair it. */
   body: z.string().max(60_000).optional(),
+  /**
+   * Screenshots the session captured into its evidence directory. The apply step publishes them
+   * and replaces each `{{gh-manager-evidence:<file>}}` in `body` with the image.
+   */
+  evidence: z.array(z.object({ file: z.string().min(1).max(100), caption: z.string().trim().min(3).max(200) }).strict()).max(20).default([]),
   /** Mark a draft ready for review. */
   markReady: z.boolean().default(false),
   /** For `close`: the merged pull request that made this one obsolete. */
