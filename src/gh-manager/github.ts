@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LiveState, Operation } from "./decision.js";
-import { EVIDENCE_BRANCH, type EvidenceItem, evidencePath, evidenceUrl } from "./evidence.js";
+import { EVIDENCE_TAG_PREFIX, type EvidenceItem, evidencePath, evidenceUrl } from "./evidence.js";
 import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, type GhManagerPolicy, LOG_LABEL, parsePolicy, TRUSTED_ASSOCIATIONS } from "./policy.js";
 import { type CheckState, type ManagerMarker, parseMarker, type PullRequestFacts } from "./sweep.js";
 
@@ -268,35 +268,19 @@ export function execute(repo: string, number: number, op: Operation): void {
 }
 
 /**
- * Push screenshots to the repository's evidence branch, creating it as an orphan on first use, and
- * return each file's URL. A file already there (same content hash) is not pushed again. The branch
- * shares no history with the code, so nothing on it can ever be merged into the product.
+ * Publish screenshots as one orphan commit tagged `gh-manager-evidence/<commit>`, and return each
+ * file's URL through that tag. A tag rather than a branch: a branch push would start every
+ * Git-connected deployment. The commit has no parent, so nothing in it can reach the product.
  */
 export function publishEvidence(repo: string, pr: number, items: EvidenceItem[]): { file: string; caption: string; url: string }[] {
-  let exists = true;
-  try { api(`repos/${repo}/git/ref/heads/${EVIDENCE_BRANCH}`); } catch (error) {
-    if (!/HTTP 404/.test(status(error))) throw error;
-    exists = false;
-  }
-  if (!exists) {
-    const readme = "Screenshots the GitHub Manager captured as pull request evidence. Written only by morpheus-gh-manager[bot]; files are named by their SHA-256. See docs/runbooks/gh-manager.md in cpheinrich/morpheus.\n";
-    const blob = withBodyFile(readme, path => api<{ sha: string }>(`repos/${repo}/git/blobs`, "--method", "POST", "-F", `content=@${path}`, "-f", "encoding=utf-8").sha);
-    const tree = api<{ sha: string }>(`repos/${repo}/git/trees`, "--method", "POST", "-f", "tree[][path]=README.md", "-f", "tree[][mode]=100644", "-f", "tree[][type]=blob", "-f", `tree[][sha]=${blob}`).sha;
-    const commit = api<{ sha: string }>(`repos/${repo}/git/commits`, "--method", "POST", "-f", "message=Start the GitHub Manager evidence branch", "-f", `tree=${tree}`).sha;
-    api(`repos/${repo}/git/refs`, "--method", "POST", "-f", `ref=refs/heads/${EVIDENCE_BRANCH}`, "-f", `sha=${commit}`);
-  }
-  return items.map(item => {
-    const path = evidencePath(pr, item);
-    let present = true;
-    try { api(`repos/${repo}/contents/${path}?ref=${EVIDENCE_BRANCH}`); } catch (error) {
-      if (!/HTTP 404/.test(status(error))) throw error;
-      present = false;
-    }
-    if (!present) {
-      withBodyFile(item.bytes.toString("base64"), b64 => api(`repos/${repo}/contents/${path}`, "--method", "PUT", "-f", `message=Evidence for #${pr}: ${item.file}`, "-f", `branch=${EVIDENCE_BRANCH}`, "-F", `content=@${b64}`));
-    }
-    return { file: item.file, caption: item.caption, url: evidenceUrl(repo, pr, item) };
-  });
+  const tree = items.map(item => {
+    const sha = withBodyFile(item.bytes.toString("base64"), b64 => api<{ sha: string }>(`repos/${repo}/git/blobs`, "--method", "POST", "-F", `content=@${b64}`, "-f", "encoding=base64").sha);
+    return ["-f", `tree[][path]=${evidencePath(pr, item)}`, "-f", "tree[][mode]=100644", "-f", "tree[][type]=blob", "-f", `tree[][sha]=${sha}`];
+  }).flat();
+  const treeSha = api<{ sha: string }>(`repos/${repo}/git/trees`, "--method", "POST", ...tree).sha;
+  const commit = api<{ sha: string }>(`repos/${repo}/git/commits`, "--method", "POST", "-f", `message=Visual evidence for #${pr}, captured by morpheus-gh-manager`, "-f", `tree=${treeSha}`).sha;
+  api(`repos/${repo}/git/refs`, "--method", "POST", "-f", `ref=refs/tags/${EVIDENCE_TAG_PREFIX}/${commit}`, "-f", `sha=${commit}`);
+  return items.map(item => ({ file: item.file, caption: item.caption, url: evidenceUrl(repo, commit, pr, item) }));
 }
 
 /** Append a run digest to the repository's rolling log issue, creating the issue on first use. */

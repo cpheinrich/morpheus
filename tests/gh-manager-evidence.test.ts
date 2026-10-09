@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Decision } from "../src/gh-manager/decision.js";
-import { evidencePrefix, evidenceUrl, hasPlaceholder, MAX_EVIDENCE_FILES, prepareEvidence, substituteEvidence } from "../src/gh-manager/evidence.js";
+import { applyEvidence, type EvidenceItem, evidencePrefix, evidenceUrl, hasPlaceholder, MAX_EVIDENCE_FILES, prepareEvidence, substituteEvidence } from "../src/gh-manager/evidence.js";
 import { GhManagerPolicy } from "../src/gh-manager/policy.js";
 import { sessionPrompt } from "../src/gh-manager/prompt.js";
 
@@ -14,9 +14,9 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "evidence-")); });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("evidence URLs", () => {
-  it("lives on one branch per repository, named by content", () => {
+  it("links through the tag of the commit the apply step wrote, named by content", () => {
     expect(evidencePrefix("darwin-health/evo")).toBe("https://github.com/darwin-health/evo/raw/gh-manager-evidence/");
-    expect(evidenceUrl("darwin-health/evo", 378, { sha256: "ab".repeat(32), ext: "png" })).toBe(`https://github.com/darwin-health/evo/raw/gh-manager-evidence/pr-378/${"ab".repeat(32)}.png`);
+    expect(evidenceUrl("darwin-health/evo", "c".repeat(40), 378, { sha256: "ab".repeat(32), ext: "png" })).toBe(`https://github.com/darwin-health/evo/raw/gh-manager-evidence/${"c".repeat(40)}/pr-378/${"ab".repeat(32)}.png`);
   });
 });
 
@@ -50,6 +50,10 @@ describe("placing the published images in the body", () => {
     const result = substituteEvidence("## Visual evidence\n\n{{gh-manager-evidence:home.png}}\n", published);
     expect(result).toEqual({ body: "## Visual evidence\n\n![Home  desktop](https://example.test/a.png)\n" });
   });
+  it("keeps a backslash or backtick in a caption from breaking the image", () => {
+    const result = substituteEvidence("{{gh-manager-evidence:home.png}}", [{ file: "home.png", caption: "Settings `page` \\", url: "https://example.test/a.png" }]);
+    expect(result).toEqual({ body: "![Settings  page](https://example.test/a.png)" });
+  });
   it("refuses a placeholder for an image that was not captured, and an image never placed", () => {
     expect(substituteEvidence("{{gh-manager-evidence:other.png}} {{gh-manager-evidence:home.png}}", published)).toEqual({ problem: 'the body refers to "other.png", which was not captured' });
     expect(substituteEvidence("no placeholder", published)).toEqual({ problem: '"home.png" was captured but the body never shows it' });
@@ -73,5 +77,58 @@ describe("the decision and the brief", () => {
     expect(text).toContain(`playwright screenshot --full-page --viewport-size=1280,900 '<url>' "/t/evidence-378/<name>.png"`);
     expect(text).toContain("{{gh-manager-evidence:<name>.png}}");
     expect(text).toContain("You cannot capture iOS or simulator screens");
+    // The preview URL comes from deployment records bound to the commit, never a comment.
+    expect(text).toContain(`gh api "repos/darwin-health/evo/deployments?sha=$(git rev-parse HEAD)"`);
+    expect(text).toContain('select(.creator.login == "vercel[bot]")');
+    expect(text).toContain("never from a comment");
+  });
+});
+
+describe("the apply step's handling of screenshots", () => {
+  const HEAD = "a".repeat(40);
+  const body = "## Visual evidence\n\n{{gh-manager-evidence:home.png}}\n\nmanager-review-record: .agent/worklog/x.md";
+  const merge = { action: "merge", head: HEAD, body, evidence: [{ file: "home.png", caption: "Home" }] };
+  const link = (items: EvidenceItem[]) => items.map(i => ({ file: i.file, caption: i.caption, url: `https://example.test/${i.sha256}.png` }));
+  let published = 0;
+  const opts = (over: Partial<Parameters<typeof applyEvidence>[1]> = {}) => ({ dir, liveHead: HEAD, open: true, dryRun: false, publish: (items: EvidenceItem[]) => { published++; return link(items); }, preview: link, ...over });
+  beforeEach(() => { published = 0; writeFileSync(join(dir, "home.png"), PNG); });
+
+  it("publishes and places the images for a merge on the session's head, keeping the record line", () => {
+    const out = applyEvidence(merge, opts());
+    expect(out.action).toBe("merge");
+    expect(out.body).toMatch(/^## Visual evidence\n\n!\[Home\]\(https:\/\/example\.test\/[0-9a-f]{64}\.png\)\n\nmanager-review-record: \.agent\/worklog\/x\.md$/);
+    expect(published).toBe(1);
+  });
+  it("turns the merge into an escalation when publishing fails, and never merges", () => {
+    const out = applyEvidence(merge, opts({ publish: () => { throw Object.assign(new Error("x"), { stderr: "HTTP 403: Resource not accessible\nmore" }); } }));
+    expect(out).toMatchObject({ action: "escalate", needsHuman: "The session captured screenshots as visual evidence, but they could not be published: HTTP 403: Resource not accessible. Attach the evidence by hand." });
+  });
+  it("refuses before publishing when the body cannot place the images", () => {
+    const out = applyEvidence({ ...merge, body: "no placeholder here" }, opts());
+    expect(out).toMatchObject({ action: "escalate" });
+    expect(published).toBe(0);
+    expect(applyEvidence({ ...merge, evidence: [{ file: "missing.png", caption: "Gone" }] }, opts())).toMatchObject({ action: "escalate" });
+    expect(applyEvidence({ ...merge, body: undefined }, opts())).toMatchObject({ action: "escalate" });
+    expect(published).toBe(0);
+  });
+  it("never publishes in a dry run, but still substitutes the would-be links", () => {
+    const out = applyEvidence(merge, opts({ dryRun: true }));
+    expect(published).toBe(0);
+    expect(out.action).toBe("merge");
+    expect(out.body).toContain("![Home](https://example.test/");
+  });
+  it("leaves every other action, a moved head and a closed pull request alone", () => {
+    for (const action of ["escalate", "wait", "incomplete", "close"]) {
+      const decision = { ...merge, action, needsHuman: "the session's own question", evidence: [{ file: "missing.png", caption: "Gone" }] };
+      expect(applyEvidence(decision, opts()), action).toBe(decision);
+    }
+    expect(applyEvidence(merge, opts({ liveHead: "b".repeat(40) }))).toBe(merge);
+    expect(applyEvidence(merge, opts({ open: false }))).toBe(merge);
+    expect(published).toBe(0);
+  });
+  it("escalates a merge that left a placeholder but listed no screenshots", () => {
+    expect(applyEvidence({ ...merge, evidence: [] }, opts())).toMatchObject({ action: "escalate" });
+    const plain = { ...merge, body: "no evidence needed", evidence: [] };
+    expect(applyEvidence(plain, opts())).toBe(plain);
   });
 });

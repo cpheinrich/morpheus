@@ -73,9 +73,9 @@ export declare function fetchLiveState(repo: string, number: number, supersededB
 /** Carry out one operation. Text reaches `gh` as a file or an argument, never as shell. */
 export declare function execute(repo: string, number: number, op: Operation): void;
 /**
- * Push screenshots to the repository's evidence branch, creating it as an orphan on first use, and
- * return each file's URL. A file already there (same content hash) is not pushed again. The branch
- * shares no history with the code, so nothing on it can ever be merged into the product.
+ * Publish screenshots as one orphan commit tagged `gh-manager-evidence/<commit>`, and return each
+ * file's URL through that tag. A tag rather than a branch: a branch push would start every
+ * Git-connected deployment. The commit has no parent, so nothing in it can reach the product.
  */
 export declare function publishEvidence(repo: string, pr: number, items: EvidenceItem[]): {
     file: string;

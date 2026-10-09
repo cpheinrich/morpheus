@@ -2,7 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, write
 import { dirname, join } from "node:path";
 import { Decision, planDecision, planNoDecision, planRoute } from "../gh-manager/decision.js";
 import { renderDigest } from "../gh-manager/digest.js";
-import { evidenceUrl, hasPlaceholder, prepareEvidence, substituteEvidence } from "../gh-manager/evidence.js";
+import { applyEvidence, evidenceUrl } from "../gh-manager/evidence.js";
 import { assertRepository, execute, publishEvidence, fetchLiveState, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
 import { GH_MANAGER_POLICY_PATH, GhManagerPolicy } from "../gh-manager/policy.js";
 import { OVERLAY_PATH, sessionPrompt } from "../gh-manager/prompt.js";
@@ -189,19 +189,19 @@ export function ghManagerApply(repoArg, prArg, sweepPath, decisionPath, out, dry
             problem = `the decision file is invalid (${error instanceof Error ? error.message.split("\n")[0] : String(error)})`;
         }
     }
-    // Screenshots go up before anything is planned, so the body the plan writes already carries
-    // their links. If they cannot be published the merge cannot rest on them: escalate instead.
-    if (decision && decision.evidence.length && decisionPath) {
-        const outcome = publishDecisionEvidence(repo, number, decision, join(dirname(decisionPath), `evidence-${number}`), dryRun);
-        if ("problem" in outcome)
-            decision = { ...decision, action: "escalate", needsHuman: `The session captured screenshots as visual evidence, but they could not be published: ${outcome.problem}. Attach the evidence by hand.` };
-        else
-            decision = { ...decision, body: outcome.body };
-    }
-    else if (decision?.body && hasPlaceholder(decision.body)) {
-        decision = { ...decision, action: "escalate", needsHuman: "The session left a screenshot placeholder in the pull request body but listed no screenshots. Attach the visual evidence by hand." };
-    }
     const live = fetchLiveState(repo, number, decision?.supersededBy);
+    // Screenshots matter only to a merge on the head the session finished on; they are published
+    // before the plan so the body it writes already carries their links.
+    if (decision && decisionPath) {
+        decision = applyEvidence(decision, {
+            dir: join(dirname(decisionPath), `evidence-${number}`),
+            liveHead: live.headSha,
+            open: live.open,
+            dryRun,
+            publish: items => publishEvidence(repo, number, items),
+            preview: items => items.map(item => ({ file: item.file, caption: item.caption, url: evidenceUrl(repo, "0".repeat(40), number, item) })),
+        });
+    }
     // A checkout of the target lets the session's own commits and record be read with Git rather
     // than taken on its word. Without one both stay at their refusing values.
     const checkout = process.env["GH_MANAGER_CHECKOUT"];
@@ -227,23 +227,6 @@ export function ghManagerApply(repoArg, prArg, sweepPath, decisionPath, out, dry
     console.error(`#${number} ${outcome.verdict}: ${outcome.did.join(", ") || "nothing to do"}${outcome.overridden ? ` (overridden: ${outcome.overridden})` : ""}${outcome.error ? ` — FAILED ${outcome.error}` : ""}`);
     write(out, JSON.stringify(outcome, null, 2));
     return outcome.error ? 1 : 0;
-}
-function publishDecisionEvidence(repo, pr, decision, dir, dryRun) {
-    if (!decision.body)
-        return { problem: "the decision lists screenshots but carries no body to show them in" };
-    const prepared = prepareEvidence(dir, decision.evidence);
-    if ("problem" in prepared)
-        return prepared;
-    let published;
-    try {
-        published = dryRun
-            ? prepared.items.map(item => ({ file: item.file, caption: item.caption, url: evidenceUrl(repo, pr, item) }))
-            : publishEvidence(repo, pr, prepared.items);
-    }
-    catch (error) {
-        return { problem: firstLine(error) };
-    }
-    return substituteEvidence(decision.body, published);
 }
 function sessionStarted(decisionPath, number) {
     return Boolean(decisionPath && existsSync(join(dirname(decisionPath), `session-result-${number}.json`)));

@@ -226,16 +226,28 @@ tells the manager to try that one again.
 
 A session can screenshot a pull request's **web** preview itself; iOS and simulator screens remain
 an escalation. It runs a pinned Playwright (`playwright-version` input) against the preview
-deployment built from its final head, checks each image, and lists the files in its decision with
-`{{gh-manager-evidence:<file>}}` placeholders in the body. The **apply** step, not the session,
-validates them (PNG or JPEG by content, at most 10 files of 5 MB), pushes them to the
-`gh-manager-evidence` branch of the same repository (an orphan branch nothing else writes, files
-named by SHA-256), and substitutes the image links. A file that cannot be validated or published
-turns the decision into an escalation. The session holds no new credential for any of this.
+deployment built from its final head, taking the URL from GitHub's deployment records for that
+commit (never from a comment, which anyone can write), checks each image, and lists the files in
+its decision with `{{gh-manager-evidence:<file>}}` placeholders in the body.
+
+The **apply** step, not the session, handles them, and only for a merge on the head the session
+finished on. It validates the files (PNG or JPEG by content, at most 10 of 5 MB), checks the body
+can place every one, then writes them as one orphan commit tagged `gh-manager-evidence/<commit>`
+and substitutes links of the form
+`https://github.com/<owner>/<repo>/raw/gh-manager-evidence/<commit>/pr-<n>/<sha256>.png`. Anything
+that cannot be validated, placed or published turns the merge into an escalation. The session
+holds no new credential for any of this.
+
+**Tags, not a branch.** A branch push starts every Git-connected deployment (Vercel builds each
+pushed branch), and a tree of screenshots would fail to build every time. A tag starts nothing. Each
+link also names the exact commit the apply step wrote, so the bytes behind it cannot be replaced by
+a later push. A repository whose workflows trigger on *all* tags (`tags: ['*']`) would run on
+these; scope such triggers, for example to `v*`.
 
 A repository opts in by adding `https://github.com/<owner>/<repo>/raw/gh-manager-evidence/` to
 `review.visualEvidence.allowedUrlPrefixes` in `morpheus.json`. Without it the session escalates
-missing evidence as before.
+missing evidence as before. Images render inline for anyone who can see the pull request, private
+repositories included (verified 2026-10-08).
 
 ## Limits worth knowing
 
