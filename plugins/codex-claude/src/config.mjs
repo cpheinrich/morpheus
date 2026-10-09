@@ -7,10 +7,11 @@ export const home = () =>
   join(homedir(), ".local", "share", "codex-claude");
 export const modeSchema = z.enum(["off", "manual", "automatic"]);
 /**
- * A Claude model id or family alias as the CLI's --model accepts it. The first character
- * may not be a dash, so a value can never be read by the CLI as another flag.
+ * A Claude model id or family alias as the CLI's --model accepts it, optionally with the
+ * bracketed context suffix the CLI understands (`sonnet[1m]`). The first character may
+ * not be a dash, so a value can never be read by the CLI as another flag.
  */
-export const modelIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
+export const modelIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*(\[[a-zA-Z0-9]+\])?$/;
 /**
  * Aliases that resolve to whatever the CLI currently considers best are refused: the
  * subscription allowlist existed to stop one of these selecting a paid-credit-only

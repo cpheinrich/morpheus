@@ -128,10 +128,22 @@ test("any explicit model id is passed to the CLI; moving aliases and unsafe ids 
     () => modelSelection(c, { model: "gpt-7", reasoningEffort: "low" }),
     /moves with releases/,
   );
-  for (const unsafe of ["opus;rm -rf", "--model", "claude fable", "a/b", ""])
-    assert.throws(() =>
-      modelSelection(c, {}, { model: unsafe, effort: "high" }),
+  assert.deepEqual(
+    modelSelection(c, {}, { model: "claude-sonnet-5-5[1m]", effort: "high" }),
+    { model: "claude-sonnet-5-5[1m]", effort: "high" },
+  );
+  // The guard, at its boundary: a leading dash is the one character that turns a
+  // model value into another CLI flag.
+  for (const unsafe of ["-opus", "--model", "opus;rm -rf", "claude fable", "a/b", "opus[1m", "opus[1 m]"])
+    assert.throws(
+      () => modelSelection(c, {}, { model: unsafe, effort: "high" }),
+      /Unsupported Claude model identifier/,
+      unsafe,
     );
+  assert.throws(
+    () => modelSelection(c, {}, { model: "", effort: "high" }),
+    /No Claude model mapping/,
+  );
 });
 test("a saved subscriptionModels list still parses and no longer restricts the model", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "claude-allowlist-"));
