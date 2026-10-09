@@ -3,8 +3,9 @@ import { dirname, join } from "node:path";
 import { Decision, type Plan, planDecision, planNoDecision, planRoute } from "../gh-manager/decision.js";
 import { type Outcome, renderDigest } from "../gh-manager/digest.js";
 import { applyEvidence, evidenceUrl } from "../gh-manager/evidence.js";
-import { assertRepository, execute, publishEvidence, fetchLiveState, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
+import { assertRepository, execute, publishEvidence, fetchLiveState, fetchPreviewSources, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
 import { GH_MANAGER_POLICY_PATH, GhManagerPolicy } from "../gh-manager/policy.js";
+import { resolvePreview } from "../gh-manager/preview.js";
 import { OVERLAY_PATH, sessionPrompt } from "../gh-manager/prompt.js";
 import { type Routed, SAFE_REF, sweep } from "../gh-manager/sweep.js";
 import { managerRecordProblem, sessionPushed } from "../gh-manager/verify.js";
@@ -16,6 +17,7 @@ import { execFileSync } from "node:child_process";
  *   sweep  <owner/repo>                        route every open pull request, no model
  *   routes <owner/repo> <sweep.json>           carry out the routes that need no session
  *   prompt <owner/repo> <pr> <sweep.json>      print the brief for one session
+ *   preview-url <owner/repo> <pr> [sha]      the web preview built from a commit (default HEAD)
  *   apply  <owner/repo> <pr> <sweep.json> [decision.json]
  *                                              check a session's decision and act on it
  *   digest <owner/repo> <sweep.json> <outcomes-dir>
@@ -252,4 +254,24 @@ export function ghManagerDigest(repoArg: string | undefined, sweepPath: string |
   const summary = process.env["GITHUB_STEP_SUMMARY"];
   if (summary) appendFileSync(summary, `## ${repo}\n\n${markdown}\n`);
   return 0;
+}
+
+/**
+ * Print the preview URL(s) for a commit, one per line. Exit 0 when ready, 2 while Vercel is still
+ * building or has not yet described the commit, 1 when there is no preview to capture.
+ */
+export function ghManagerPreviewUrl(repoArg: string | undefined, prArg: string | undefined, shaArg: string | undefined): number {
+  const repo = assertRepository(repoArg ?? "");
+  const pr = Number(prArg);
+  if (!Number.isInteger(pr) || pr <= 0) throw new Error(`"${prArg ?? ""}" is not a pull request number`);
+  const sha = shaArg ?? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`"${sha}" is not a full commit SHA`);
+  const preview = resolvePreview(fetchPreviewSources(repo, pr, sha));
+  if (preview.kind === "ready") {
+    console.error(`Preview for ${sha.slice(0, 7)} from ${preview.source === "deployment" ? "GitHub deployment records" : "Vercel's commit status and its pull request comment"}.`);
+    console.log(preview.urls.join("\n"));
+    return 0;
+  }
+  console.error(preview.reason);
+  return preview.kind === "pending" ? 2 : 1;
 }

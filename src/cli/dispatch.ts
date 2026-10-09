@@ -38,7 +38,7 @@ import { init as initScaffold } from "./init.js";
 import { webAddConsumerAuth, webInit, webStatus } from "./web.js";
 import { build as tokensBuild } from "./tokens.js";
 import { heartbeat } from "./heartbeat.js";
-import { ghManagerApply, ghManagerDigest, ghManagerPrompt, ghManagerRoutes, ghManagerSweep } from "./gh-manager.js";
+import { ghManagerApply, ghManagerDigest, ghManagerPreviewUrl, ghManagerPrompt, ghManagerRoutes, ghManagerSweep } from "./gh-manager.js";
 import { prompt as reviewPrompt, reviewDelivery, reviewNeeded, prepareReview, validateReview } from "./review.js";
 import { brief as voiceBrief, knowledge as voiceKnowledge } from "./voice.js";
 import { validate as teamValidate } from "./team.js";
@@ -139,6 +139,7 @@ async function dispatchGhManager({ flags, command, rest }: Invocation): Promise<
       if (command === "sweep") return ghManagerSweep(rest[0], flags.out);
       if (command === "routes") return ghManagerRoutes(rest[0], rest[1], flags.out, flags.dryRun);
       if (command === "prompt") return ghManagerPrompt(rest[0], rest[1], rest[2], flags.out);
+      if (command === "preview-url") return ghManagerPreviewUrl(rest[0], rest[1], rest[2]);
       if (command === "apply") return ghManagerApply(rest[0], rest[1], rest[2], rest[3], flags.out, flags.dryRun);
       if (command === "digest") return ghManagerDigest(rest[0], rest[1], rest[2], flags.dryRun);
     } catch (error) {
