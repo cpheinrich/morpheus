@@ -1492,6 +1492,9 @@ exclusive on-disk record before acting, resolves it after work, or releases the
 claim on failure. The queue and claim commands are agent-neutral. A webhook is
 an optional notification to a host-managed responder, not an agent scheduler;
 whether a chat can wake or work in parallel is determined by that host.
+An opt-in checkout-local responder can instead invoke any configured agent CLI
+as a separate serial process. Its on-disk owner marker reserves the checkout
+until stopped; later batches accumulate without occupying the interactive chat.
 
 ### The verifier stack
 

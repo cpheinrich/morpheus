@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { QA_COMMENTS_PENDING, parseBatch, type QaCommentBatch } from "./comments.js";
 import { listPending, writePendingBatch } from "./store.js";
+import { isResponderActive } from "./responder.js";
 import { notifyBatchPending, QA_COMMENTS_WEBHOOK_FILE, resolveWebhookConfig } from "./webhook.js";
 
 /**
@@ -28,7 +29,7 @@ export async function recordBatch(
   project: string,
   raw: PostedBatch,
   defaultPreview: { url: string; kind: "serve-sim" | "web" | "other" },
-): Promise<{ id: string; path: string; batch: QaCommentBatch; pendingCount: number; wakeConfigured: boolean }> {
+): Promise<{ id: string; path: string; batch: QaCommentBatch; pendingCount: number; wakeConfigured: boolean; responderActive: boolean }> {
   if (!Array.isArray(raw.comments) || raw.comments.length === 0) throw new BatchRejected("comments required");
   const id = newBatchId();
   let frameBytes: Buffer | undefined;
@@ -55,5 +56,5 @@ export async function recordBatch(
   } else {
     console.log(`qa comments webhook: unset — batch ${id} written; set MORPHEUS_QA_COMMENTS_WEBHOOK_URL or ${QA_COMMENTS_WEBHOOK_FILE} to wake an agent`);
   }
-  return { id, path, batch, pendingCount: (await listPending(root)).length, wakeConfigured: Boolean(webhook) };
+  return { id, path, batch, pendingCount: (await listPending(root)).length, wakeConfigured: Boolean(webhook), responderActive: await isResponderActive(root) };
 }

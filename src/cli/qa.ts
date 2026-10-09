@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import { QA_GUIDE } from "../qa/guide.js";
+import { loadResponderConfig, recoverStoppedResponder, requestResponderStop, responderStatus, runQaResponder } from "../qa/responder.js";
 import { loadIosPreviewConfig } from "../qa/preview/config.js";
 import { parsePreviewArgs, previewContext, runPreview } from "../qa/preview/ios.js";
 import { loadWebPreviewConfig, parseWebPreviewArgs, runWebPreview, webContext } from "../qa/preview/web.js";
@@ -21,6 +22,7 @@ const USAGE = `Usage
   morpheus qa comments show <batchId> [--root <project>]
   morpheus qa comments resolve <batchId> [batchId...] [--agent <identity>] [--root <project>]
   morpheus qa comments release <batchId> --agent <identity> [--root <project>] [--force]
+  morpheus qa comments responder start|status|stop|recover [--root <project>]
   morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
   --project <name> is the global flag (the parser consumes it before this command) and labels batches.
 `;
@@ -209,6 +211,39 @@ export async function dispatchQaComments(
       console.log(`Resolved ${resolved.id}`);
     }
     return failed === 0 ? 0 : 1;
+  }
+
+  if (command === "responder") {
+    try {
+      const taken = takeRootFlag(rest, root);
+      const action = taken.rest[0] ?? "status";
+      if (taken.rest.length > 1 || !["start", "status", "stop", "recover"].includes(action)) {
+        throw new Error(`Unknown responder action.\n\n${USAGE}`);
+      }
+      if (action === "status") {
+        const marker = await responderStatus(taken.root);
+        console.log(marker ? JSON.stringify(marker, null, 2) : "No QA responder running.");
+      } else if (action === "stop") {
+        console.log(await requestResponderStop(taken.root) ? "QA responder will stop after the current batch." : "No QA responder running.");
+      } else if (action === "recover") {
+        console.log(await recoverStoppedResponder(taken.root) ? "Removed stale QA responder ownership marker." : "No QA responder marker found.");
+      } else {
+        const config = await loadResponderConfig(taken.root);
+        const controller = new AbortController();
+        const onSignal = () => controller.abort();
+        process.once("SIGINT", onSignal);
+        process.once("SIGTERM", onSignal);
+        try { await runQaResponder(taken.root, config, controller.signal); }
+        finally {
+          process.off("SIGINT", onSignal);
+          process.off("SIGTERM", onSignal);
+        }
+      }
+      return 0;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
   }
 
   if (command === "serve") {

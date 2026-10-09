@@ -18,6 +18,8 @@ local/qa-comments/
       frame.png       # optional captured frame at Send
   claims/
     <batchId>.json    # exclusive agent claim; survives process exit
+  responder.json      # optional local command for a separate agent process
+  responder.lock/     # active checkout owner; do not edit concurrently
   resolved/
     <batchId>/        # same shape, moved here by `resolve`
 ```
@@ -33,6 +35,41 @@ do not expire automatically, because a long-running QA edit must not be handed
 to another agent mid-work. Use `release --force` only after confirming the
 original responder stopped. The batch remains in `pending/` while claimed.
 
+## Background responder
+
+For QA while the interactive chat stays free, run one separate responder process
+per checkout. Put its command in gitignored `local/qa-comments/responder.json`:
+
+```json
+{
+  "agent": "codex:evo-qa",
+  "command": ["codex", "exec", "-C", "{root}", "-"],
+  "pollMs": 2000
+}
+```
+
+This example uses Codex's noninteractive CLI. A Claude, Grok, or other responder
+can supply its own argv array. Morpheus executes the array directly without a
+shell, replaces `{root}`, `{id}`, and `{agent}` in each argument, and sends the
+batch instructions on stdin. Do not put secrets in command arguments. The
+responder claims one batch, waits for that child to finish and resolve it, then
+claims the next. Later Sends append while it is busy. If the child exits without
+resolving, the responder stops and leaves the claim for investigation.
+
+```sh
+morpheus qa comments responder start --root <checkout>   # separate terminal/process
+morpheus qa comments responder status --root <checkout>
+morpheus qa comments responder stop --root <checkout>    # after current batch
+morpheus qa comments responder recover --root <checkout> # stale dead-process marker only
+```
+
+While `responder.lock/owner.json` exists, that process owns the checkout for
+comment implementation. Other chats may inspect or converse, but should not
+edit the checkout. Stop it and wait for the marker to disappear before handing
+the checkout to another author. The child works on the existing QA session
+branch and commits locally; the interactive chat owns session-end review, push,
+and PR creation. The responder does not rebuild or relaunch a live preview.
+
 
 ## Agent wake webhook (one true config)
 
@@ -43,8 +80,9 @@ separate responder where the agent host supports that. Morpheus cannot make an
 active Claude, Codex, or Grok chat continue in the background by itself. In
 particular, a new Codex checkout without a configured wake route will retain
 the comments but will not wake its chat. The overlay reports "Queued", the
-open count, and whether a wake route is configured; it never claims that an
-agent has started.
+open count, and whether a background responder is running or another wake
+route is configured; it never claims that an agent has started from a webhook
+alone.
 
 **Durable config (preferred):** under the project that receives batches (Evo,
 Lakina, …), create the gitignored file:
@@ -146,6 +184,7 @@ morpheus qa comments show <batchId>   # print one batch.json
 morpheus qa comments resolve <batchId> --agent <session-id>
 morpheus qa comments release <batchId> --agent <session-id>  # return failed work to queue
 morpheus qa comments release <batchId> --force  # recover an abandoned claim
+morpheus qa comments responder start|status|stop|recover --root <checkout>
 morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
 ```
 

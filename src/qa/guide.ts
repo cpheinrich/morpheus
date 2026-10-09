@@ -73,6 +73,16 @@ can run one separately from the interactive chat. Configure the optional wake we
 responder's session, not an unrelated agent's routine. A fresh checkout with no wake route keeps
 the queue but cannot automatically resume a Codex chat; say so plainly to the person.
 
+For a separate local responder, put a gitignored \`local/qa-comments/responder.json\` in this checkout
+with an agent identity and argv command (see docs/runbooks/qa-comments.md), then run
+\`morpheus qa comments responder start --root <checkout>\` in a separate process. The Codex CLI
+example is \`["codex", "exec", "-C", "{root}", "-"]\`; other agent CLIs can use their own argv.
+The responder claims one batch, waits for that agent process to finish, then takes the next. Its
+\`local/qa-comments/responder.lock/owner.json\` means it owns edits in this checkout. Stop it with
+\`morpheus qa comments responder stop --root <checkout>\` and wait for the marker to disappear
+before editing here from this chat or closing the QA session. The child commits locally on this
+session's branch; this chat handles session-end review, push and PR.
+
 - Claude: a Monitor or separate agent session can watch and drain the queue.
 - Codex and Grok: use a separate responder if the host exposes a supported wake route; otherwise
   check the queue between turns. Do not claim that the active chat will wake on Send.

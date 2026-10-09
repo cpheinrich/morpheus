@@ -31,36 +31,43 @@ export async function readBatchClaim(root, id) {
     throw new BatchClaimedError(`QA batch ${id} has an unreadable claim; release it with --force`);
 }
 /** Atomically reserve the oldest unclaimed batch for one agent. Claims survive process exits. */
+async function tryClaimBatch(root, id, agent) {
+    await mkdir(claimsRoot(root), { recursive: true });
+    const path = claimPath(root, id);
+    let file;
+    try {
+        file = await open(path, "wx", 0o600);
+    }
+    catch (error) {
+        if (error.code === "EEXIST")
+            return null;
+        throw error;
+    }
+    const claim = { id, agent, claimedAt: new Date().toISOString() };
+    try {
+        await file.writeFile(`${JSON.stringify(claim, null, 2)}\n`, "utf8");
+    }
+    catch (error) {
+        await unlink(path).catch(() => undefined);
+        throw error;
+    }
+    finally {
+        await file.close();
+    }
+    // An older resolver may already have moved the batch. Do not hand it out.
+    if (await readBatchFile(join(pendingRoot(root), id)))
+        return claim;
+    await unlink(path).catch(() => undefined);
+    return null;
+}
+/** Atomically reserve the oldest unclaimed batch for one agent. Claims survive process exits. */
 export async function claimNextBatch(root, agent) {
     if (!agent.trim())
         throw new Error("Agent identity is required to claim QA comments");
-    await mkdir(claimsRoot(root), { recursive: true });
     for (const batch of await listPending(root)) {
-        const path = claimPath(root, batch.id);
-        let file;
-        try {
-            file = await open(path, "wx", 0o600);
-        }
-        catch (error) {
-            if (error.code === "EEXIST")
-                continue;
-            throw error;
-        }
-        const claim = { id: batch.id, agent, claimedAt: new Date().toISOString() };
-        try {
-            await file.writeFile(`${JSON.stringify(claim, null, 2)}\n`, "utf8");
-        }
-        catch (error) {
-            await unlink(path).catch(() => undefined);
-            throw error;
-        }
-        finally {
-            await file.close();
-        }
-        // Resolution may have raced the claim. Never hand out a resolved batch.
-        if (await readBatchFile(join(pendingRoot(root), batch.id)))
+        const claim = await tryClaimBatch(root, batch.id, agent);
+        if (claim)
             return claim;
-        await unlink(path).catch(() => undefined);
     }
     return null;
 }
@@ -148,7 +155,16 @@ export async function resolveBatch(root, id, resolvedBy = "agent") {
             return batch;
         from = resolvedPath;
     }
-    const claim = await readBatchClaim(root, id);
+    // Legacy callers may resolve without first claiming. They must acquire the same exclusive
+    // boundary as claimNextBatch before moving the batch, or two agents can both receive it.
+    const claim = (await readBatchClaim(root, id)) ?? (await tryClaimBatch(root, id, resolvedBy)) ?? (await readBatchClaim(root, id));
+    if (!claim) {
+        // Another resolver may have completed and removed its claim while we waited.
+        const completed = await readBatchFile(resolvedPath);
+        if (completed?.status === "resolved")
+            return completed;
+        throw new BatchClaimedError(`QA batch ${id} changed while resolving; retry`);
+    }
     if (claim && claim.agent !== resolvedBy) {
         throw new BatchClaimedError(`QA batch ${id} is claimed by ${claim.agent}; resolve it as that agent or release the claim`);
     }

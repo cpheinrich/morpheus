@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parseBatch, type QaCommentBatch } from "../src/qa/comments.js";
 import { BatchClaimedError, claimNextBatch, listPending, readBatchClaim, releaseBatchClaim, resolveBatch, showBatch, writePendingBatch } from "../src/qa/store.js";
 import { dispatchQaComments } from "../src/cli/qa.js";
+import { isResponderActive, loadResponderConfig, requestResponderStop, responderStatus, runQaResponder } from "../src/qa/responder.js";
 import { hidKeyBody, hidTouchBody, startQaCommentServer } from "../src/qa/serve.js";
 import { TouchPacer, type TouchEvent } from "../src/qa/touch-pacer.js";
 import {
@@ -140,6 +141,129 @@ describe("qa comment batches", () => {
     expect(await dispatchQaComments(root, "resolve", [sample().id, "--agent", "claude:other"])).toBe(1);
     expect(await dispatchQaComments(root, "resolve", [sample().id, "--agent", "codex:qa-session"])).toBe(0);
     expect((await showBatch(root, sample().id))?.batch.resolvedBy).toBe("codex:qa-session");
+  });
+
+  it("never hands out a batch while an unclaimed resolver takes ownership", async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-qa-"));
+    for (let i = 0; i < 60; i++) {
+      const id = `race-${i}`;
+      await writePendingBatch(root, sample(id));
+      const [resolution, competingClaim] = await Promise.allSettled([
+        resolveBatch(root, id, "agent-a"),
+        claimNextBatch(root, "agent-b"),
+      ]);
+      const aResolved = resolution.status === "fulfilled" && resolution.value?.status === "resolved";
+      const bClaimed = competingClaim.status === "fulfilled" && competingClaim.value?.id === id;
+      expect(aResolved && bClaimed, `batch ${id} was both resolved and claimed`).toBe(false);
+      if (bClaimed) {
+        expect((await showBatch(root, id))?.batch.status).toBe("pending");
+        await resolveBatch(root, id, "agent-b");
+      } else {
+        expect(aResolved, `batch ${id} was neither resolved nor claimed`).toBe(true);
+      }
+      expect(await readBatchClaim(root, id)).toBeNull();
+    }
+  });
+});
+
+describe("QA background responder", () => {
+  let root: string;
+
+  afterEach(async () => {
+    if (root) await rm(root, { recursive: true, force: true });
+  });
+
+  it("serially handles a batch sent during work and exposes checkout ownership", async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-qa-responder-"));
+    const first = sample("responder-first");
+    const second = sample("responder-second");
+    await writePendingBatch(root, first);
+    const script = join(root, "fake-agent.cjs");
+    await writeFile(script, `const fs = require("node:fs");
+const path = require("node:path");
+const root = process.env.MORPHEUS_QA_ROOT;
+const id = process.env.MORPHEUS_QA_BATCH_ID;
+fs.appendFileSync(path.join(root, "invocations.txt"), id + ":start\\n");
+setTimeout(() => {
+  const from = path.join(root, "local/qa-comments/pending", id);
+  const to = path.join(root, "local/qa-comments/resolved", id);
+  fs.mkdirSync(path.dirname(to), { recursive: true });
+  fs.renameSync(from, to);
+  const record = JSON.parse(fs.readFileSync(path.join(to, "batch.json"), "utf8"));
+  record.status = "resolved";
+  record.resolvedBy = process.env.MORPHEUS_QA_AGENT;
+  record.resolvedAt = new Date().toISOString();
+  fs.writeFileSync(path.join(to, "batch.json"), JSON.stringify(record));
+  fs.unlinkSync(path.join(root, "local/qa-comments/claims", id + ".json"));
+  fs.appendFileSync(path.join(root, "invocations.txt"), id + ":done\\n");
+}, 120);
+`, "utf8");
+    await mkdir(join(root, "local/qa-comments"), { recursive: true });
+    await writeFile(join(root, "local/qa-comments/responder.json"), JSON.stringify({ agent: "codex:background", command: [process.execPath, script], pollMs: 250 }));
+    const config = await loadResponderConfig(root);
+    const controller = new AbortController();
+    const worker = runQaResponder(root, config, controller.signal, () => undefined);
+    try {
+      for (let i = 0; i < 50; i++) {
+        const marker = await responderStatus(root);
+        if (marker && (await readFile(join(root, "invocations.txt"), "utf8").catch(() => "")).includes("responder-first:start")) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect((await responderStatus(root))?.agent).toBe("codex:background");
+      expect(await isResponderActive(root)).toBe(true);
+      await writePendingBatch(root, second);
+      for (let i = 0; i < 100; i++) {
+        if ((await showBatch(root, second.id))?.batch.status === "resolved") break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect((await showBatch(root, first.id))?.batch.status).toBe("resolved");
+      expect((await showBatch(root, second.id))?.batch.status).toBe("resolved");
+      expect(await readBatchClaim(root, first.id)).toBeNull();
+      expect(await readBatchClaim(root, second.id)).toBeNull();
+      expect(await readFile(join(root, "invocations.txt"), "utf8")).toBe("responder-first:start\nresponder-first:done\nresponder-second:start\nresponder-second:done\n");
+    } finally {
+      controller.abort();
+      await worker;
+    }
+    expect(await responderStatus(root)).toBeNull();
+    expect(await isResponderActive(root)).toBe(false);
+  });
+
+  it("rejects a second checkout owner and stops cleanly on request", async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-qa-responder-"));
+    const config = { agent: "codex:one", command: [process.execPath, "-e", ""], pollMs: 250 };
+    const controller = new AbortController();
+    const worker = runQaResponder(root, config, controller.signal, () => undefined);
+    try {
+      for (let i = 0; i < 50 && !await responderStatus(root); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      await expect(runQaResponder(root, { ...config, agent: "claude:two" }, new AbortController().signal)).rejects.toThrow(/already owns/);
+      expect(await requestResponderStop(root)).toBe(true);
+      await worker;
+      expect(await responderStatus(root)).toBeNull();
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("preserves a failed child's batch and claim for recovery", async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-qa-responder-"));
+    await writePendingBatch(root, sample("failed-child"));
+    const config = { agent: "codex:failed", command: [process.execPath, "-e", "process.exit(2)"], pollMs: 250 };
+    await expect(runQaResponder(root, config, new AbortController().signal, () => undefined)).rejects.toThrow(/command exited 2/);
+    expect((await showBatch(root, "failed-child"))?.batch.status).toBe("pending");
+    expect((await readBatchClaim(root, "failed-child"))?.agent).toBe("codex:failed");
+    expect(await responderStatus(root)).toBeNull();
+  });
+
+  it("treats a malformed responder marker as inactive", async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-qa-responder-"));
+    const lock = join(root, "local/qa-comments/responder.lock");
+    await mkdir(lock, { recursive: true });
+    await writeFile(join(lock, "owner.json"), "{invalid", "utf8");
+    expect(await isResponderActive(root)).toBe(false);
   });
 });
 

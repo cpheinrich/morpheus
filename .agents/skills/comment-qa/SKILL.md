@@ -16,7 +16,7 @@ The short form:
    declares in `morpheus.json` under `qa.web` and `qa.ios`.
 2. Open the `QA overlay` URL it prints — Claude in the Browser pane, Codex in its in-app browser
    panel, Grok or any agent without a panel with `open <url>`. Every agent uses this one page.
-3. Use a separate responder when the host supports one. It runs `morpheus qa comments claim --agent <identity>` until empty, then shows and resolves each claimed batch with the same identity. Sending a batch only queues it when no wake route is configured.
+3. To keep this chat free, configure `local/qa-comments/responder.json` and run `morpheus qa comments responder start` in a separate process. It serially claims and resolves batches with one agent identity. See `morpheus qa guide` for checkout ownership and session-end steps.
 4. `morpheus qa preview web stop` (or `ios stop`) ends the preview and the overlay together.
 
 If `morpheus qa preview` is unknown, or has no `web`, the installed CLI predates it: run

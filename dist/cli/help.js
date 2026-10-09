@@ -135,6 +135,8 @@ Usage
                             mark batch(es) resolved (moves pending → resolved)
   morpheus qa comments release <batchId> --agent <identity> [--force]
                             return failed work to the queue; --force recovers an abandoned claim
+  morpheus qa comments responder start|status|stop|recover [--root <project>]
+                            separate serial queue consumer using local responder.json
   morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
                             local overlay: tap → multi-comment → Send into local/qa-comments/
   morpheus qa preview ios [start|status|stop|doctor|help] [--mode <name>] [--port <n>] [--no-build] [--root <project>]

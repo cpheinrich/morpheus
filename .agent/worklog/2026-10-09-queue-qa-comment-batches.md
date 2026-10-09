@@ -3,7 +3,7 @@ date: 2026-10-09
 agent: codex
 roadmap: MO-26-10-09-16.02.57
 outcome: in-progress
-summary: Durable agent-neutral QA comment queue with exclusive claims and honest overlay status.
+summary: Durable agent-neutral QA comment queue and serialized background responder.
 ---
 
 # QA comment queue
@@ -22,14 +22,21 @@ batches remain queued while earlier ones are claimed. Both overlays report the
 open count and whether a wake route is configured. The guide and skills use the
 same agent-neutral contract for Claude, Codex, Grok, and other hosts.
 
-The queue cannot start a background Codex turn by itself. A host-provided
-responder or wake route is still necessary for automatic handling while the
-interactive chat remains free. With no route, the overlay tells the person to
-message the agent to resume.
+The background responder reads a local agent command and invokes it in a
+separate process. One responder owns the checkout and handles claimed batches
+serially, so a later Send appends while the interactive chat stays free. Codex
+can use its noninteractive `codex exec` CLI; other agents can supply their own
+command. A failed child leaves its claim and stops for recovery. The ownership
+marker tells other chats not to edit the same checkout until the responder
+stops. The child remains on the QA session branch and commits locally; the
+interactive chat completes review and PR work after the session.
 
-Focused verification: `pnpm exec vitest run tests/qa-comments.test.ts
-tests/qa-web.test.ts tests/qa-preview.test.ts` (97 passed), `pnpm lint`,
-`pnpm typecheck`, and `pnpm compile` passed. `pnpm morpheus pm index` made no
-changes. Tests cover concurrent claims, later batches, wrong-agent resolution,
-claim recovery, and queue status in the simulator overlay response. Independent
-review is pending.
+Focused verification covers concurrent claims, resolver races, later batches,
+wrong-agent resolution, claim recovery, serial background handling, failed
+children, and queue status in both overlays. Final check results and review
+evidence follow below.
+
+Final local checks: focused QA tests 102/102 passed; full `pnpm test` 2083/2083
+passed; `pnpm typecheck`, `pnpm lint`, and `pnpm compile` passed. `pnpm
+morpheus pm index --dir hq/product` made no changes. These checks ran after
+the resolver race fix and background responder were added.

@@ -370,8 +370,8 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
       if (req.method === "POST" && url.pathname === "/api/batches") {
         const raw = JSON.parse((await readBody(req)).toString("utf8")) as PostedBatch;
         try {
-          const { id, path, pendingCount, wakeConfigured } = await recordBatch(options.root, project, raw, { url: previewUrl, kind: "serve-sim" });
-          sendJson(res, 201, { id, path, pendingCount, wakeConfigured });
+          const { id, path, pendingCount, wakeConfigured, responderActive } = await recordBatch(options.root, project, raw, { url: previewUrl, kind: "serve-sim" });
+          sendJson(res, 201, { id, path, pendingCount, wakeConfigured, responderActive });
         } catch (error) {
           if (error instanceof BatchRejected) { sendJson(res, 400, { error: error.message }); return; }
           throw error;

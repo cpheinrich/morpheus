@@ -516,7 +516,7 @@ export function pageHtml(opts) {
       forget();
       renderList();
       renderPins();
-      setStatus('Queued ' + json.id + ' · ' + json.pendingCount + ' open batch(es). ' + (json.wakeConfigured ? 'Agent wake configured.' : 'No agent wake configured; message your agent to resume.'), 'ok');
+      setStatus('Queued ' + json.id + ' · ' + json.pendingCount + ' open batch(es). ' + (json.responderActive ? 'Background responder running.' : json.wakeConfigured ? 'Agent wake configured.' : 'No agent wake configured; message your agent to resume.'), 'ok');
     } catch (err) {
       setStatus(String(err.message || err), 'err');
       sendBtn.disabled = !pins.some((p) => p.text.trim());
