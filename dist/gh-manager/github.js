@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { EVIDENCE_TAG_PREFIX, evidencePath, evidenceUrl } from "./evidence.js";
 import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, LOG_LABEL, parsePolicy, TRUSTED_ASSOCIATIONS } from "./policy.js";
 import { parseMarker } from "./sweep.js";
 /**
@@ -236,6 +237,23 @@ export function execute(repo, number, op) {
             withBodyFile(op.body, path => gh(["pr", "comment", pr, "--repo", repo, "--body-file", path]));
             return;
     }
+}
+/**
+ * Publish screenshots as one orphan commit tagged `gh-manager-evidence/<commit>`, and return each
+ * file's URL through that tag. A tag rather than a branch: a branch push would start every
+ * Git-connected deployment. The commit has no parent, so nothing in it can reach the product.
+ */
+export function publishEvidence(repo, pr, items) {
+    // Identical captures share one content-addressed path; a tree may name each path only once.
+    const unique = [...new Map(items.map(item => [evidencePath(pr, item), item])).values()];
+    const tree = unique.map(item => {
+        const sha = withBodyFile(item.bytes.toString("base64"), b64 => api(`repos/${repo}/git/blobs`, "--method", "POST", "-F", `content=@${b64}`, "-f", "encoding=base64").sha);
+        return ["-f", `tree[][path]=${evidencePath(pr, item)}`, "-f", "tree[][mode]=100644", "-f", "tree[][type]=blob", "-f", `tree[][sha]=${sha}`];
+    }).flat();
+    const treeSha = api(`repos/${repo}/git/trees`, "--method", "POST", ...tree).sha;
+    const commit = api(`repos/${repo}/git/commits`, "--method", "POST", "-f", `message=Visual evidence for #${pr}, captured by morpheus-gh-manager`, "-f", `tree=${treeSha}`).sha;
+    api(`repos/${repo}/git/refs`, "--method", "POST", "-f", `ref=refs/tags/${EVIDENCE_TAG_PREFIX}/${commit}`, "-f", `sha=${commit}`);
+    return items.map(item => ({ file: item.file, caption: item.caption, url: evidenceUrl(repo, commit, pr, item) }));
 }
 /** Append a run digest to the repository's rolling log issue, creating the issue on first use. */
 export function postDigest(repo, markdown) {

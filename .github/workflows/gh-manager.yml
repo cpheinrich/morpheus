@@ -47,6 +47,12 @@ on:
         description: Pinned Claude Code release the sessions run on.
         type: string
         default: "2.1.287"
+      playwright-version:
+        description: >
+          Pinned Playwright release a session uses to screenshot a pull request's
+          web preview as visual evidence.
+        type: string
+        default: "1.63.0"
       dry-run:
         description: Sweep and run sessions, but report what apply would do without doing it.
         type: boolean
@@ -195,11 +201,15 @@ jobs:
       - name: Install tooling and move it out of the workspace
         env:
           CLAUDE_CODE_VERSION: ${{ inputs.claude-code-version }}
+          PLAYWRIGHT_VERSION: ${{ inputs.playwright-version }}
         run: |
           set -euo pipefail
           (cd tooling && pnpm install --frozen-lockfile)
           mv tooling "$RUNNER_TEMP/tooling"
-          npm install --global "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+          npm install --global "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" "playwright@$PLAYWRIGHT_VERSION"
+          # Chromium and its system libraries, installed before any credential is in
+          # the environment. The session uses it only to screenshot web previews.
+          playwright install --with-deps chromium
           mkdir -p "$RUNNER_TEMP/manager"
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -282,9 +292,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: decision-${{ inputs.target-name }}-${{ matrix.pr }}
+          # Screenshots travel beside the decision; apply validates and publishes them.
           path: |
             ${{ runner.temp }}/manager/decision-${{ matrix.pr }}.json
             ${{ runner.temp }}/manager/session-result-${{ matrix.pr }}.json
+            ${{ runner.temp }}/manager/evidence-${{ matrix.pr }}/
           # Absent is an outcome apply reports, not an upload failure.
           if-no-files-found: ignore
           retention-days: 30
