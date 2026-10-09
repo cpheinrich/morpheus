@@ -30,9 +30,13 @@ never submit a local task to a different machine by guessing its project path.
    Do not ask it to redo mutations already completed. Default background=false; true is
    only for explicit user authorization to continue after disconnection.
 5. Model and effort are read from the active Codex turn, mapped separately, and applied to
-   the next Claude invocation. Optional overrides require a user request. Unsupported
-   model/effort/permission metadata must be reported, never guessed. Full access is not
-   permission to bypass a business approval, repository review, spending, or sending rule.
+   the next Claude invocation. Optional overrides require a user request; any explicit model
+   id or family alias the user names is passed to the Claude CLI, which decides whether the
+   subscription can run it. A run that fails with the CLI's unrecognized-model error means
+   that model is unavailable here: report it and use the model the user authorized as the
+   fallback, never a moving alias such as `best`. Unsupported effort/permission metadata must
+   be reported, never guessed. Full access is not permission to bypass a business approval,
+   repository review, spending, or sending rule.
 6. Call `claude_wait` (up to 25 seconds) until completion or a question. This renews the
    owner lease. Publish meaningful concise progress in this Codex task. `claude_view`
    returns a read-only live page; open it with Codex's browser-panel tool if useful. For a

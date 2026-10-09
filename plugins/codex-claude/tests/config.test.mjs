@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configRead, configWrite } from "../src/store.mjs";
 import {
+  configSchema,
   defaults,
   route,
   remaining,
@@ -91,13 +92,65 @@ test("model and effort independent, unknown mappings rejected", () => {
     modelSelection(c, { model: "gpt-5.6-luna", reasoningEffort: "medium" }),
     { model: "haiku", effort: "medium" },
   );
-  assert.throws(() =>
-    modelSelection(c, { model: "unknown", reasoningEffort: "medium" }),
+  assert.throws(
+    () => modelSelection(c, { model: "unknown", reasoningEffort: "medium" }),
+    /No Claude model mapping for Codex model "unknown"/,
   );
   assert.throws(() =>
     modelSelection(c, { model: "gpt-6-astra", reasoningEffort: null }),
   );
-  assert.throws(() => modelSelection(c, {}, { model: "best", effort: "high" }));
+});
+test("any explicit model id is passed to the CLI; moving aliases and unsafe ids are refused", () => {
+  const c = defaults();
+  assert.equal("subscriptionModels" in c, false);
+  // A model released after the plugin needs no configuration change: the CLI decides
+  // whether the subscription can run it.
+  assert.deepEqual(
+    modelSelection(c, {}, { model: "claude-fable-5-1", effort: "max" }),
+    { model: "claude-fable-5-1", effort: "max" },
+  );
+  assert.deepEqual(
+    modelSelection(c, {}, { model: "fable", effort: "high" }),
+    { model: "fable", effort: "high" },
+  );
+  c.modelMap["gpt-7"] = "claude-opus-5-5";
+  assert.deepEqual(
+    modelSelection(c, { model: "gpt-7", reasoningEffort: "low" }),
+    { model: "claude-opus-5-5", effort: "low" },
+  );
+  for (const alias of ["best", "Latest", "default", "newest", "auto"])
+    assert.throws(
+      () => modelSelection(c, {}, { model: alias, effort: "high" }),
+      /moves with releases/,
+    );
+  c.modelMap["gpt-7"] = "best";
+  assert.throws(
+    () => modelSelection(c, { model: "gpt-7", reasoningEffort: "low" }),
+    /moves with releases/,
+  );
+  for (const unsafe of ["opus;rm -rf", "--model", "claude fable", "a/b", ""])
+    assert.throws(() =>
+      modelSelection(c, {}, { model: unsafe, effort: "high" }),
+    );
+});
+test("a saved subscriptionModels list still parses and no longer restricts the model", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "claude-allowlist-"));
+  const previous = process.env.CODEX_CLAUDE_HOME;
+  process.env.CODEX_CLAUDE_HOME = directory;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.CODEX_CLAUDE_HOME;
+    else process.env.CODEX_CLAUDE_HOME = previous;
+    await rm(directory, { recursive: true, force: true });
+  });
+  const fresh = await configRead();
+  await configWrite({ ...fresh, subscriptionModels: ["opus", "sonnet", "haiku"] });
+  const saved = await configRead();
+  assert.deepEqual(saved.subscriptionModels, ["opus", "sonnet", "haiku"]);
+  assert.deepEqual(
+    modelSelection(saved, {}, { model: "claude-fable-5-1", effort: "max" }),
+    { model: "claude-fable-5-1", effort: "max" },
+  );
+  assert.throws(() => configSchema.parse({ subscriptionModels: ["bad id"] }));
 });
 test("permissions never widened and credential overrides removed without changing memory setting", () => {
   assert.equal(
