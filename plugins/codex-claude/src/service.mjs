@@ -19,6 +19,9 @@ import {
   remaining,
   modelSelection,
   permissionMode,
+  claudeRemaining,
+  codexSelection,
+  codexPermission,
 } from "./config.mjs";
 import {
   atomic,
@@ -33,6 +36,13 @@ import {
 } from "./store.mjs";
 import { Codex } from "./codex.mjs";
 import { checkClaude, handoff, claudeArgs } from "./claude.mjs";
+import {
+  checkCodex,
+  codexHandoff,
+  codexArgs,
+  applyCodexEvent,
+} from "./codex-exec.mjs";
+import { readClaudeUsage } from "./claude-usage.mjs";
 import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
@@ -124,26 +134,7 @@ export class Manager {
         throw new Error("Delegation concurrency limit reached.");
       if (active.some((r) => r.cwd === task.cwd))
         throw new Error("Another Claude run owns this working directory.");
-      // Never launch over an orphan after a service restart. Guardian will expire its lease.
-      for (const id of (await readdir(join(home(), "runs"))).filter((id) =>
-        /^[0-9a-f-]{36}$/.test(id),
-      )) {
-        const p = await readJSON(join(runDir(id), "process.json"), null);
-        if (p?.state !== "running" && p?.state !== "starting") continue;
-        const record = await readJSON(join(runDir(id), "run.json"), null);
-        if (
-          record &&
-          (record.threadId === task.id || record.cwd === task.cwd) &&
-          !this.runs.has(id)
-        ) {
-          await writeFile(join(runDir(id), "cancel"), "recovery", {
-            mode: 0o600,
-          });
-          throw new Error(
-            "An interrupted run is being cleaned up. Check status before retrying.",
-          );
-        }
-      }
+      await this.recoverOrphans(task);
       const selection = modelSelection(config, snapshot, {
         model: args.model,
         effort: args.effort,
@@ -170,6 +161,7 @@ export class Manager {
       const prompt = await handoff(args.prompt, memories);
       const record = {
         id,
+        executor: "claude",
         threadId: task.id,
         cwd: task.cwd,
         host: hostname(),
@@ -185,63 +177,99 @@ export class Manager {
         replySource: args.replySource,
         replyReason: args.replyReason,
       };
-      await atomic(join(dir, "run.json"), record);
-      await atomic(join(dir, "job.json"), {
-        runId: id,
-        argv: claudeArgs(task.claudeSession, selection, permissions),
-        cwd: task.cwd,
-        prompt,
-        background: record.background,
-        graceSeconds: config.disconnectGraceSeconds,
-        maxRunSeconds: config.maxRunSeconds,
-      });
-      const guardian = spawn(
-        "python3",
-        [
-          fileURLToPath(new URL("./guardian.py", import.meta.url)),
-          join(dir, "job.json"),
-        ],
-        { env, stdio: ["pipe", "ignore", "pipe"], detached: true },
+      await this.launch(
+        record,
+        {
+          runId: id,
+          argv: claudeArgs(task.claudeSession, selection, permissions),
+          cwd: task.cwd,
+          prompt,
+          background: record.background,
+          graceSeconds: config.disconnectGraceSeconds,
+          maxRunSeconds: config.maxRunSeconds,
+        },
+        env,
+        config,
       );
-      const run = {
-        ...record,
-        guardian,
-        offset: 0,
-        partial: "",
-        decoder: new StringDecoder("utf8"),
-        progress: "",
-        sequence: 0,
-        lastLease: Date.now(),
-        grace: config.disconnectGraceSeconds * 1000,
-      };
-      this.runs.set(id, run);
-      guardian.stdin.on("error", () => {});
-      guardian.stderr.on("data", () => {});
-      guardian.on("error", (e) => {
-        run.error = e.message;
-        run.state = "failed";
-        run.terminal = true;
-        run.guardianExited = true;
-      });
-      guardian.on("exit", () => {
-        run.guardianExited = true;
-      });
       task.runId = id;
       task.supervisionReplies = replies;
       await taskWrite(task);
-      run.timer = setInterval(
-        () =>
-          this.tick(run).catch((e) => {
-            run.error = e.message;
-            this.cancel(id).catch(() => {});
-          }),
-        250,
-      );
-      this.send(run, { type: "heartbeat" });
-      return this.public(run);
+      return this.begin(id);
     } finally {
       this.busy = false;
     }
+  }
+  async recoverOrphans(task) {
+    // Never launch over an orphan after a service restart. Guardian will expire its lease.
+    for (const id of (await readdir(join(home(), "runs"))).filter((id) =>
+      /^[0-9a-f-]{36}$/.test(id),
+    )) {
+      const p = await readJSON(join(runDir(id), "process.json"), null);
+      if (p?.state !== "running" && p?.state !== "starting") continue;
+      const record = await readJSON(join(runDir(id), "run.json"), null);
+      if (
+        record &&
+        (record.threadId === task.id || record.cwd === task.cwd) &&
+        !this.runs.has(id)
+      ) {
+        await writeFile(join(runDir(id), "cancel"), "recovery", {
+          mode: 0o600,
+        });
+        throw new Error(
+          "An interrupted run is being cleaned up. Check status before retrying.",
+        );
+      }
+    }
+  }
+  // Shared by both directions: one guardian owns one worker process group.
+  async launch(record, job, env, config) {
+    await atomic(join(runDir(record.id), "run.json"), record);
+    await atomic(join(runDir(record.id), "job.json"), job);
+    const guardian = spawn(
+      "python3",
+      [
+        fileURLToPath(new URL("./guardian.py", import.meta.url)),
+        join(runDir(record.id), "job.json"),
+      ],
+      { env, stdio: ["pipe", "ignore", "pipe"], detached: true },
+    );
+    const run = {
+      ...record,
+      guardian,
+      offset: 0,
+      partial: "",
+      decoder: new StringDecoder("utf8"),
+      progress: "",
+      sequence: 0,
+      lastLease: Date.now(),
+      grace: config.disconnectGraceSeconds * 1000,
+    };
+    this.runs.set(record.id, run);
+    guardian.stdin.on("error", () => {});
+    guardian.stderr.on("data", () => {});
+    guardian.on("error", (e) => {
+      run.error = e.message;
+      run.state = "failed";
+      run.terminal = true;
+      run.guardianExited = true;
+    });
+    guardian.on("exit", () => {
+      run.guardianExited = true;
+    });
+    return run;
+  }
+  begin(id) {
+    const run = this.runs.get(id);
+    run.timer = setInterval(
+      () =>
+        this.tick(run).catch((e) => {
+          run.error = e.message;
+          this.cancel(id).catch(() => {});
+        }),
+      250,
+    );
+    this.send(run, { type: "heartbeat" });
+    return this.public(run);
   }
   send(run, message) {
     if (!run.guardian.stdin.destroyed)
@@ -330,6 +358,7 @@ export class Manager {
     }
   }
   async event(run, event) {
+    if (run.executor === "codex") return this.codexEvent(run, event);
     if (
       event.type === "stream_event" &&
       event.event?.delta?.type === "text_delta"
@@ -380,9 +409,23 @@ export class Manager {
     if (run.state === "starting") run.state = "running";
     await atomic(join(runDir(run.id), "run.json"), this.public(run));
   }
+  async codexEvent(run, event) {
+    const ended = applyCodexEvent(run, event);
+    if (run.newSession && !run.codexSession) {
+      run.codexSession = run.newSession;
+      const task = await taskRead(run.threadId);
+      task.codexSessions = { ...task.codexSessions, [run.cwd]: run.newSession };
+      await taskWrite(task);
+    }
+    if (ended) this.send(run, { type: "close" });
+    if (run.state === "starting") run.state = "running";
+    await atomic(join(runDir(run.id), "run.json"), this.public(run));
+  }
   public(run) {
     const {
       id,
+      executor,
+      codexSession,
       threadId,
       cwd,
       host,
@@ -403,6 +446,8 @@ export class Manager {
     } = run;
     return {
       id,
+      executor,
+      codexSession,
       threadId,
       cwd,
       host,
@@ -542,6 +587,174 @@ export class Manager {
     }
     return { stopping: id };
   }
+  // Claude-coordinated sessions: Claude is primary and Codex is the delegate.
+  async claudeInspect(sessionId, operation) {
+    const config = await configRead();
+    const task = await taskRead(claudeTaskId(sessionId));
+    if (task.session?.cwd)
+      Object.assign(task, await projectIdentity(task.session.cwd));
+    await taskWrite(task);
+    const usage = await readClaudeUsage();
+    const allowance = claudeRemaining(usage);
+    return {
+      task,
+      session: task.session ?? null,
+      allowance,
+      usageRecordedAt: usage?.recordedAt ?? null,
+      route: route(config, task, allowance, operation, "claude"),
+    };
+  }
+  async codexStart(args) {
+    if (this.draining)
+      throw new Error("Bridge upgrade is in progress; retry afterward.");
+    if (this.busy)
+      throw new Error("Another delegation is starting; retry shortly.");
+    this.busy = true;
+    try {
+      const config = await configRead();
+      const { task, route: decision } = await this.claudeInspect(
+        args.sessionId,
+        args.operation,
+      );
+      if (decision.executor !== "codex") throw new Error(decision.reason);
+      const session = task.session;
+      if (!session?.cwd || !session.permissionMode)
+        throw new Error(
+          "No verified Claude session settings yet. The plugin's hooks record them; trust the hooks and send a message first.",
+        );
+      const identity = await projectIdentity(args.cwd || session.cwd);
+      if (identity.project !== task.project)
+        throw new Error(
+          "Delegation directory must belong to the Claude session repository.",
+        );
+      task.cwd = identity.cwd;
+      const codexSession = task.codexSessions?.[task.cwd] || null;
+      const previous = task.runId ? await this.status(task.runId) : null;
+      if (previous && !previous.terminal)
+        throw new Error(
+          "This session already has an active run. Resume monitoring it instead.",
+        );
+      // Codex exec cannot ask mid-run, so every question arrives as needs_input.
+      const continuation = previous?.state === "needs_input";
+      if (
+        continuation &&
+        (!["claude", "user"].includes(args.replySource) || !args.replyReason)
+      )
+        throw new Error(
+          "Resuming a question requires replySource and replyReason.",
+        );
+      const replies =
+        continuation && args.replySource === "claude"
+          ? task.supervisionReplies + 1
+          : 0;
+      if (replies > config.maxSupervisionReplies)
+        throw new Error("Supervision limit reached. Escalate to the user.");
+      const active = [...this.runs.values()].filter((r) => !r.terminal);
+      if (active.length >= config.maxConcurrent)
+        throw new Error("Delegation concurrency limit reached.");
+      if (active.some((r) => r.cwd === task.cwd))
+        throw new Error("Another delegated run owns this working directory.");
+      await this.recoverOrphans(task);
+      const selection = codexSelection(config, session, {
+        model: args.model,
+        effort: args.effort,
+      });
+      const outside = !`${identity.project}/`.startsWith(`${identity.cwd}/`);
+      const permission = codexPermission(
+        session.permissionMode,
+        outside ? [identity.project] : [],
+      );
+      const { env } = await checkCodex(task.cwd);
+      const latestConfig = await configRead();
+      const latestTask = await taskRead(task.id);
+      if (
+        latestConfig.mode === "off" ||
+        latestConfig.projects[task.project] === "off" ||
+        latestTask.disabled
+      )
+        throw new Error("Delegation was disabled during preflight");
+      if (this.draining)
+        throw new Error("Bridge upgrade is in progress; retry afterward.");
+      const id = randomUUID();
+      await mkdir(runDir(id), { mode: 0o700 });
+      // Claude's own memory switches are checked inside memoryContext.
+      task.memoryEnabled = config.memorySharing;
+      const memories = await memoryContext(config, task, "claude");
+      const prompt = await codexHandoff(args.prompt, memories);
+      const record = {
+        id,
+        executor: "codex",
+        threadId: task.id,
+        sessionId: args.sessionId,
+        cwd: task.cwd,
+        host: hostname(),
+        selection,
+        permissions: permission.name,
+        background: args.background === true,
+        createdAt: Date.now(),
+        state: "starting",
+        terminal: false,
+        question: null,
+        result: null,
+        codexSession,
+        replySource: args.replySource,
+        replyReason: args.replyReason,
+      };
+      await this.launch(
+        record,
+        {
+          runId: id,
+          argv: codexArgs(codexSession, selection, permission),
+          cwd: task.cwd,
+          prompt,
+          input: "text",
+          background: record.background,
+          graceSeconds: config.disconnectGraceSeconds,
+          maxRunSeconds: config.maxRunSeconds,
+        },
+        env,
+        config,
+      );
+      task.runId = id;
+      task.supervisionReplies = replies;
+      await taskWrite(task);
+      return this.begin(id);
+    } finally {
+      this.busy = false;
+    }
+  }
+  async codexHook(args) {
+    const config = await configRead();
+    if (config.mode === "off") return {};
+    const task = await taskRead(claudeTaskId(args.sessionId));
+    if (args.event === "SessionEnd") {
+      if (task.runId) {
+        const r = await this.status(task.runId);
+        if (!r.terminal && !r.background) await this.cancel(task.runId);
+      }
+      return {};
+    }
+    // Hook input is Claude's own report of the session, so it is the settings source.
+    const previous = task.session ?? {};
+    task.session = {
+      cwd: args.cwd ?? previous.cwd,
+      permissionMode: args.permissionMode ?? previous.permissionMode,
+      model: args.model ?? previous.model,
+      effort: args.effort ?? previous.effort,
+      updatedAt: Date.now(),
+    };
+    await taskWrite(task);
+    try {
+      const s = await this.claudeInspect(args.sessionId);
+      return {
+        additionalContext: `Codex delegation routing (sessionId ${args.sessionId}): ${JSON.stringify(s.route)}. Use the codex-claude delegate-to-codex skill and codex_* tools. Read current run status before starting another run. Explicit user instructions override automatic routing.`,
+      };
+    } catch (e) {
+      return {
+        additionalContext: `Codex delegation unavailable: ${e.message}. Do not infer permissions or allowance.`,
+      };
+    }
+  }
   async dispatch(method, args = {}) {
     if (method === "config") {
       if (!args.value) return configRead();
@@ -601,6 +814,24 @@ export class Manager {
       await taskWrite(task);
       return task;
     }
+    if (method === "codex.inspect")
+      return this.claudeInspect(args.sessionId, args.operation);
+    if (method === "codex.start") return this.codexStart(args);
+    if (method === "codex.hook") return this.codexHook(args);
+    if (method === "codex.override") {
+      const task = await taskRead(claudeTaskId(args.sessionId));
+      if (!["auto", "codex", "claude", "off"].includes(args.executor))
+        throw new Error("Invalid override");
+      task.disabled = args.executor === "off";
+      task.override = args.executor === "off" ? "auto" : args.executor;
+      await taskWrite(task);
+      return task;
+    }
+    if (method === "codex.memories") {
+      const { task } = await this.claudeInspect(args.sessionId);
+      task.memoryEnabled = (await configRead()).memorySharing;
+      return memoryContext(await configRead(), task, args.owner);
+    }
     if (method === "memories") {
       const { task } = await this.inspect(args.threadId);
       task.memoryEnabled = await codexMemoryEnabled(await this.client(), task);
@@ -631,6 +862,11 @@ export class Manager {
     }
     throw new Error("Unknown bridge operation");
   }
+}
+export function claudeTaskId(sessionId) {
+  if (!/^[a-zA-Z0-9-]{1,90}$/.test(sessionId ?? ""))
+    throw new Error("Invalid Claude session id");
+  return `claude_${sessionId}`;
 }
 export async function serve() {
   await initStore();

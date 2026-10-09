@@ -18,8 +18,8 @@ test("off overrides automatic, project and manual choices", () => {
   c.projects[task.project] = "automatic";
   assert.equal(route(c, task, 1, "claude").executor, "codex");
   c.mode = "automatic";
-  assert.equal(route(c, task, 30).executor, "codex");
-  assert.equal(route(c, task, 29.99).executor, "claude");
+  assert.equal(route(c, task, 50).executor, "codex");
+  assert.equal(route(c, task, 49.99).executor, "claude");
   assert.equal(route(c, task, null).executor, "unknown");
   assert.equal(route(c, task, 0, "codex").executor, "codex");
   assert.equal(route(c, task, 90, "claude").executor, "claude");
@@ -31,7 +31,7 @@ test("off overrides automatic, project and manual choices", () => {
   assert.equal(route(c, task, 0).executor, "codex");
   assert.equal(route(c, task, 90, "claude").executor, "claude");
 });
-test("fresh settings default to 30 percent and preserve saved thresholds", async (t) => {
+test("fresh settings default to 50 percent and preserve saved thresholds", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "claude-threshold-"));
   const previous = process.env.CODEX_CLAUDE_HOME;
   process.env.CODEX_CLAUDE_HOME = directory;
@@ -41,18 +41,21 @@ test("fresh settings default to 30 percent and preserve saved thresholds", async
     await rm(directory, { recursive: true, force: true });
   });
   const fresh = await configRead();
-  assert.equal(fresh.threshold, 30);
+  assert.equal(fresh.threshold, 50);
   assert.equal(fresh.mode, "off");
   fresh.mode = "automatic";
-  assert.equal(route(fresh, task, 30.01).executor, "codex");
-  assert.equal(route(fresh, task, 30).executor, "codex");
-  assert.equal(route(fresh, task, 29.99).executor, "claude");
-  await configWrite({ ...fresh, threshold: 20 });
+  assert.equal(route(fresh, task, 50.01).executor, "codex");
+  assert.equal(route(fresh, task, 50).executor, "codex");
+  assert.equal(route(fresh, task, 49.99).executor, "claude");
+  // The same threshold applies when Claude coordinates and Codex is the delegate.
+  assert.equal(route(fresh, task, 50, undefined, "claude").executor, "claude");
+  assert.equal(route(fresh, task, 49.99, undefined, "claude").executor, "codex");
+  await configWrite({ ...fresh, threshold: 30 });
   const saved = await configRead();
-  assert.equal(saved.threshold, 20);
-  assert.equal(route(saved, task, 29.99).executor, "codex");
-  assert.equal(route(saved, task, 20).executor, "codex");
-  assert.equal(route(saved, task, 19.99).executor, "claude");
+  assert.equal(saved.threshold, 30);
+  assert.equal(route(saved, task, 49.99).executor, "codex");
+  assert.equal(route(saved, task, 30).executor, "codex");
+  assert.equal(route(saved, task, 29.99).executor, "claude");
 });
 test("allowance uses most depleted fresh known window and fails closed", () => {
   const window = (usedPercent) => ({
@@ -134,6 +137,10 @@ test("permissions never widened and credential overrides removed without changin
       CLAUDECODE: "1",
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
     }),
-    { PATH: "bin", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" },
+    {
+      PATH: "bin",
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+      CODEX_CLAUDE_DELEGATED: "1",
+    },
   );
 });

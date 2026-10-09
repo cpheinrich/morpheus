@@ -48,9 +48,11 @@ def stop(signum=signal.SIGINT):
 def on_signal(signum, frame): stop()
 signal.signal(signal.SIGTERM, on_signal); signal.signal(signal.SIGINT, on_signal)
 os.set_blocking(child.stdin.fileno(), False)
-pending_input = (json.dumps({'type':'user','message':{'role':'user','content':job['prompt']}})+'\n').encode()
+# Claude reads a stream-json conversation; Codex exec reads one plain prompt until EOF.
+text_input = job.get('input') == 'text'
+pending_input = job['prompt'].encode() if text_input else (json.dumps({'type':'user','message':{'role':'user','content':job['prompt']}})+'\n').encode()
 input_registered = False
-close_requested = False
+close_requested = text_input
 try:
     while True:
         now=time.monotonic()

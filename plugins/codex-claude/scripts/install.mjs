@@ -29,8 +29,24 @@ const helper =
 const marketplace = join(homedir(), ".agents", "plugins", "marketplace.json");
 const destination = join(homedir(), "plugins", "codex-claude");
 const temp = await mkdtemp(join(tmpdir(), "codex-claude-install-"));
+// The Claude Code half is registered too unless explicitly skipped; routing stays at the
+// saved mode either way, so registration alone never starts delegating.
+const withClaude = !process.argv.includes("--codex-only");
 const run = (command, args, options = {}) =>
   execFileSync(command, args, { stdio: "inherit", ...options });
+function installClaudePlugin(path) {
+  const quiet = (args) =>
+    execFileSync("claude", args, { encoding: "utf8", stdio: "pipe" });
+  const markets = JSON.parse(quiet(["plugin", "marketplace", "list", "--json"]));
+  if (markets.some?.((m) => m.name === "codex-claude-local"))
+    quiet(["plugin", "marketplace", "update", "codex-claude-local"]);
+  else quiet(["plugin", "marketplace", "add", path]);
+  const installed = JSON.parse(quiet(["plugin", "list", "--json"]));
+  const id = "codex-claude@codex-claude-local";
+  if (installed.some?.((p) => p.id === id || p.name === id))
+    quiet(["plugin", "update", id]);
+  else quiet(["plugin", "install", id]);
+}
 try {
   if (process.platform !== "darwin")
     throw new Error("This release is supported on macOS execution hosts only.");
@@ -72,7 +88,7 @@ try {
   );
   run(process.execPath, ["scripts/check.mjs"], { cwd: staged });
   run("pnpm", ["test"], { cwd: staged });
-  const { probe } = await import(
+  const { probe, probeClaude } = await import(
     pathToFileURL(join(staged, "scripts", "probe.mjs")).href
   );
   // Use the official helper to update only the requested personal marketplace entry.
@@ -120,6 +136,16 @@ try {
     );
     await probe(installed.installedPath);
     console.log(`Verified installed MCP tools at ${installed.installedPath}`);
+    if (withClaude) {
+      await probeClaude(destination);
+      installClaudePlugin(join(destination, "claude-plugin"));
+      run(process.execPath, [
+        join(destination, "scripts", "bridge.mjs"),
+        "statusline",
+        "install",
+      ]);
+      console.log("Registered the Claude Code plugin and status-line recorder.");
+    }
   } catch (e) {
     await rm(destination, { recursive: true, force: true });
     try {
@@ -129,7 +155,7 @@ try {
   }
   await rm(previous, { recursive: true, force: true });
   console.log(
-    `Installed a standalone copy at ${destination}. Routing remains at its existing setting (off on first install). Start a new Codex task to load the plugin and review/trust its hooks. Then run doctor and explicitly enable manual or automatic mode.`,
+    `Installed a standalone copy at ${destination}. Routing remains at its existing setting (off on first install). Start a new Codex task (and Claude session) to load the plugin and review/trust its hooks. Then run doctor and explicitly enable manual or automatic mode.`,
   );
 } catch (e) {
   console.error(e.message);

@@ -1,7 +1,7 @@
 {
   "name": "codex-claude",
   "version": "0.1.0",
-  "description": "Opt-in subscription delegation from Codex to Claude Code with persistent sessions and bounded supervision.",
+  "description": "Opt-in subscription delegation between Codex and Claude Code with persistent sessions and bounded supervision.",
   "author": {
     "name": "Morpheus contributors"
   },
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Codex Claude",
     "shortDescription": "Coordinate Claude work inside Codex.",
-    "longDescription": "Opt-in subscription delegation from Codex to Claude Code with persistent sessions and bounded supervision.",
+    "longDescription": "Opt-in subscription delegation between Codex and Claude Code with persistent sessions and bounded supervision. This Codex half delegates to Claude; the bundled Claude Code plugin delegates to Codex.",
     "developerName": "Morpheus",
     "category": "Productivity",
     "capabilities": [],
