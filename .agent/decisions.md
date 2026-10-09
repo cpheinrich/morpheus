@@ -1080,7 +1080,9 @@ the day it was needed, and the Claude CLI already refuses an unavailable model a
 request with its own error and no cost, so the list only ever duplicated that check a release
 late. What it was really guarding against — a moving `best`-style alias quietly selecting a
 paid-credit-only model — is kept as an explicit refusal of those aliases. Ids must be plain
-(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`) so a value can never be read as another CLI flag. A saved
+(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*(\[[a-zA-Z0-9]+\])?$`: letters, digits, `_ . -`, an optional
+bracketed context suffix such as `[1m]`, never a leading dash) so a value can never be read as
+another CLI flag. A saved
 `subscriptionModels` key still parses and is ignored, reported by `doctor`. No dependency.
 
 **Selected native tests retain complete execution evidence** — 2026-09-26. The reusable iOS
