@@ -2987,6 +2987,10 @@ describe("gh-manager.yml", () => {
     const install = steps.find(step => step.name === "Install tooling and move it out of the workspace");
     expect(install?.run).toContain('"playwright@$PLAYWRIGHT_VERSION"');
     expect(install?.run).toContain("playwright install --with-deps chromium");
+    // A stalled apt mirror once held this step for the whole job: the browser install is bounded
+    // and optional, and the step itself has a ceiling well inside the job's.
+    expect(install?.run).toContain("if ! timeout 480 playwright install --with-deps chromium; then");
+    expect((install as { "timeout-minutes"?: number } | undefined)?.["timeout-minutes"]).toBe(15);
     expect(JSON.stringify(install?.env ?? {})).not.toContain("secrets.");
     expect(steps.indexOf(install!)).toBeLessThan(steps.findIndex(step => step.id === "session"));
     const upload = steps.find(step => step.name === "Hand the decision to the apply job");
