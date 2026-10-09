@@ -268,4 +268,29 @@ export function postDigest(repo, markdown) {
     withBodyFile(markdown, path => gh(["issue", "comment", String(number), "--repo", repo, "--body-file", path]));
     return number;
 }
+/**
+ * What `resolvePreview` decides from, for one commit. A token without the Deployments permission
+ * gets 403 on the deployments list; that is recorded as `"forbidden"`, not an error, because the
+ * status-bound comment is the intended fallback.
+ */
+export function fetchPreviewSources(repo, pr, sha) {
+    let deployments;
+    try {
+        const list = api(`repos/${repo}/deployments?sha=${sha}&per_page=20`);
+        deployments = list.map(d => {
+            const latest = api(`repos/${repo}/deployments/${d.id}/statuses?per_page=1`)[0];
+            return { creator: d.creator?.login ?? "", state: latest?.state, environmentUrl: latest?.environment_url };
+        });
+    }
+    catch (error) {
+        if (!/HTTP 403|HTTP 404|Resource not accessible/.test(status(error)))
+            throw error;
+        deployments = "forbidden";
+    }
+    const statuses = pages(`repos/${repo}/commits/${sha}/statuses?per_page=100`)
+        .map(s => ({ context: s.context, state: s.state, targetUrl: s.target_url ?? undefined, creator: s.creator?.login ?? "" }));
+    const comments = pages(`repos/${repo}/issues/${pr}/comments?per_page=100`)
+        .map(c => ({ author: c.user?.login ?? "", authorType: c.user?.type ?? "", body: c.body ?? "" }));
+    return { deployments, statuses, comments };
+}
 //# sourceMappingURL=github.js.map

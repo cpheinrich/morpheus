@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LiveState, Operation } from "./decision.js";
+import type { PreviewSources } from "./preview.js";
 import { EVIDENCE_TAG_PREFIX, type EvidenceItem, evidencePath, evidenceUrl } from "./evidence.js";
 import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, type GhManagerPolicy, LOG_LABEL, parsePolicy, TRUSTED_ASSOCIATIONS } from "./policy.js";
 import { type CheckState, type ManagerMarker, parseMarker, type PullRequestFacts } from "./sweep.js";
@@ -297,4 +298,28 @@ export function postDigest(repo: string, markdown: string): number {
   }
   withBodyFile(markdown, path => gh(["issue", "comment", String(number), "--repo", repo, "--body-file", path]));
   return number;
+}
+
+/**
+ * What `resolvePreview` decides from, for one commit. A token without the Deployments permission
+ * gets 403 on the deployments list; that is recorded as `"forbidden"`, not an error, because the
+ * status-bound comment is the intended fallback.
+ */
+export function fetchPreviewSources(repo: string, pr: number, sha: string): PreviewSources {
+  let deployments: PreviewSources["deployments"];
+  try {
+    const list = api<{ id: number; creator: { login: string } | null }[]>(`repos/${repo}/deployments?sha=${sha}&per_page=20`);
+    deployments = list.map(d => {
+      const latest = api<{ state: string; environment_url?: string }[]>(`repos/${repo}/deployments/${d.id}/statuses?per_page=1`)[0];
+      return { creator: d.creator?.login ?? "", state: latest?.state, environmentUrl: latest?.environment_url };
+    });
+  } catch (error) {
+    if (!/HTTP 403|HTTP 404|Resource not accessible/.test(status(error))) throw error;
+    deployments = "forbidden";
+  }
+  const statuses = pages<{ context: string; state: string; target_url: string | null; creator: { login: string } | null }>(`repos/${repo}/commits/${sha}/statuses?per_page=100`)
+    .map(s => ({ context: s.context, state: s.state, targetUrl: s.target_url ?? undefined, creator: s.creator?.login ?? "" }));
+  const comments = pages<{ body: string | null; user: { login: string; type: string } | null }>(`repos/${repo}/issues/${pr}/comments?per_page=100`)
+    .map(c => ({ author: c.user?.login ?? "", authorType: c.user?.type ?? "", body: c.body ?? "" }));
+  return { deployments, statuses, comments };
 }

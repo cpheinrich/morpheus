@@ -226,9 +226,19 @@ tells the manager to try that one again.
 
 A session can screenshot a pull request's **web** preview itself; iOS and simulator screens remain
 an escalation. It runs a pinned Playwright (`playwright-version` input) against the preview
-deployment built from its final head, taking the URL from GitHub's deployment records for that
-commit (never from a comment, which anyone can write), checks each image, and lists the files in
-its decision with `{{gh-manager-evidence:<file>}}` placeholders in the body.
+deployment built from its final head, checks each image, and lists the files in its decision with
+`{{gh-manager-evidence:<file>}}` placeholders in the body.
+
+The URL comes from `morpheus gh-manager preview-url <repo> <pr>`, never from text a session reads
+itself, because anyone can write a comment naming any URL. The command prefers GitHub deployment
+records for the commit. The App has no Deployments permission (it would need re-approval on every
+installation), so in practice it binds Vercel's own pull request comment to the commit: only a
+comment authored by `vercel[bot]` is read, and only a project whose embedded `inspectorUrl` equals
+the `target_url` of the commit's successful `Vercel` status, and only a `*.vercel.app` preview
+from it, because a collaborator can edit any comment, Vercel's included. It exits 2 until Vercel
+has a successful build of the commit, so a session that just pushed waits rather than capturing an
+older deployment. That URL is the branch alias, bound to the commit when the command runs; a
+later push moves it, and the apply step's refusal to act on a moved head closes that gap.
 
 The **apply** step, not the session, handles them, and only for a merge on the head the session
 finished on. It validates the files (PNG or JPEG by content, at most 10 of 5 MB), checks the body

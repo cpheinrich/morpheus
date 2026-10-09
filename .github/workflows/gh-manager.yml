@@ -199,6 +199,9 @@ jobs:
           node-version: "22"
 
       - name: Install tooling and move it out of the workspace
+        # apt mirrors have hung for the whole job (2026-10-09, 50 minutes on one
+        # update); bound the step so the session keeps its time.
+        timeout-minutes: 15
         env:
           CLAUDE_CODE_VERSION: ${{ inputs.claude-code-version }}
           PLAYWRIGHT_VERSION: ${{ inputs.playwright-version }}
@@ -209,7 +212,12 @@ jobs:
           npm install --global "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" "playwright@$PLAYWRIGHT_VERSION"
           # Chromium and its system libraries, installed before any credential is in
           # the environment. The session uses it only to screenshot web previews.
-          playwright install --with-deps chromium
+          # A browser is only needed for web evidence, so a failed or stalled
+          # install leaves the session without one rather than without a session:
+          # it escalates if it then needs screenshots.
+          if ! timeout 480 playwright install --with-deps chromium; then
+            echo "::warning::Chromium did not install; this session cannot capture screenshots."
+          fi
           mkdir -p "$RUNNER_TEMP/manager"
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4

@@ -1,4 +1,5 @@
 import type { LiveState, Operation } from "./decision.js";
+import type { PreviewSources } from "./preview.js";
 import { type EvidenceItem } from "./evidence.js";
 import { type GhManagerPolicy } from "./policy.js";
 import { type ManagerMarker, type PullRequestFacts } from "./sweep.js";
@@ -84,4 +85,10 @@ export declare function publishEvidence(repo: string, pr: number, items: Evidenc
 }[];
 /** Append a run digest to the repository's rolling log issue, creating the issue on first use. */
 export declare function postDigest(repo: string, markdown: string): number;
+/**
+ * What `resolvePreview` decides from, for one commit. A token without the Deployments permission
+ * gets 403 on the deployments list; that is recorded as `"forbidden"`, not an error, because the
+ * status-bound comment is the intended fallback.
+ */
+export declare function fetchPreviewSources(repo: string, pr: number, sha: string): PreviewSources;
 export {};
