@@ -18,8 +18,9 @@ import { join } from "node:path";
  * Evidence is published as **tags**, not a branch. A branch push starts every Git-connected
  * deployment (Vercel builds each pushed branch), and an evidence-only tree would fail to build on
  * every screenshot. A tag starts nothing. Each publish is one orphan commit holding the files and a
- * tag `gh-manager-evidence/<commit>`, so a link names the exact commit the apply step wrote: the
- * bytes behind it cannot be swapped later by anyone pushing to a shared branch.
+ * tag `gh-manager-evidence/<commit>`. Files are named by their SHA-256, so a swapped image is
+ * detectable, but a tag is a ref anyone with contents write can move: a repository that wants the
+ * links immutable restricts updates and deletion of `gh-manager-evidence/*` tags to the App.
  */
 export const EVIDENCE_TAG_PREFIX = "gh-manager-evidence";
 export const MAX_EVIDENCE_FILES = 10;

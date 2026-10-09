@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Decision } from "../src/gh-manager/decision.js";
 import { applyEvidence, type EvidenceItem, evidencePrefix, evidenceUrl, hasPlaceholder, MAX_EVIDENCE_FILES, prepareEvidence, substituteEvidence } from "../src/gh-manager/evidence.js";
 import { GhManagerPolicy } from "../src/gh-manager/policy.js";
@@ -130,5 +130,25 @@ describe("the apply step's handling of screenshots", () => {
     expect(applyEvidence({ ...merge, evidence: [] }, opts())).toMatchObject({ action: "escalate" });
     const plain = { ...merge, body: "no evidence needed", evidence: [] };
     expect(applyEvidence(plain, opts())).toBe(plain);
+  });
+});
+
+describe("publishEvidence", () => {
+  it("writes identical captures once, since a tree may name a path only once", async () => {
+    const calls: string[][] = [];
+    vi.resetModules();
+    vi.doMock("node:child_process", async (orig) => ({
+      ...(await orig<typeof import("node:child_process")>()),
+      execFileSync: (_cmd: string, args: string[]) => { calls.push(args); return JSON.stringify({ sha: "a".repeat(40) }); },
+    }));
+    const { publishEvidence } = await import("../src/gh-manager/github.js");
+    const item = (file: string): EvidenceItem => ({ file, caption: "same page", bytes: PNG, ext: "png", sha256: "b".repeat(64) });
+    const published = publishEvidence("o/r", 7, [item("one.png"), item("two.png")]);
+    vi.doUnmock("node:child_process");
+    const tree = calls.find(args => args.some(a => a.endsWith("git/trees")))!;
+    expect(tree.filter(a => a.startsWith("tree[][path]="))).toEqual([`tree[][path]=pr-7/${"b".repeat(64)}.png`]);
+    expect(calls.filter(args => args.some(a => a.endsWith("git/blobs")))).toHaveLength(1);
+    expect(published.map(p => p.file)).toEqual(["one.png", "two.png"]);
+    expect(new Set(published.map(p => p.url)).size).toBe(1);
   });
 });

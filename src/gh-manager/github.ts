@@ -273,7 +273,9 @@ export function execute(repo: string, number: number, op: Operation): void {
  * Git-connected deployment. The commit has no parent, so nothing in it can reach the product.
  */
 export function publishEvidence(repo: string, pr: number, items: EvidenceItem[]): { file: string; caption: string; url: string }[] {
-  const tree = items.map(item => {
+  // Identical captures share one content-addressed path; a tree may name each path only once.
+  const unique = [...new Map(items.map(item => [evidencePath(pr, item), item])).values()];
+  const tree = unique.map(item => {
     const sha = withBodyFile(item.bytes.toString("base64"), b64 => api<{ sha: string }>(`repos/${repo}/git/blobs`, "--method", "POST", "-F", `content=@${b64}`, "-f", "encoding=base64").sha);
     return ["-f", `tree[][path]=${evidencePath(pr, item)}`, "-f", "tree[][mode]=100644", "-f", "tree[][type]=blob", "-f", `tree[][sha]=${sha}`];
   }).flat();

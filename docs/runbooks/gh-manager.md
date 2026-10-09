@@ -240,9 +240,11 @@ holds no new credential for any of this.
 
 **Tags, not a branch.** A branch push starts every Git-connected deployment (Vercel builds each
 pushed branch), and a tree of screenshots would fail to build every time. A tag starts nothing. Each
-link also names the exact commit the apply step wrote, so the bytes behind it cannot be replaced by
-a later push. A repository whose workflows trigger on *all* tags (`tags: ['*']`) would run on
-these; scope such triggers, for example to `v*`.
+file is named by its SHA-256, so a swapped image is detectable; but a tag is a ref anyone with
+contents write can move, so a repository that wants the links immutable should add a ruleset
+restricting creation, update and deletion of `gh-manager-evidence/*` tags to the App. A repository
+whose workflows trigger on *all* tags (`tags: ['*']`) would run on these; scope such triggers, for
+example to `v*`.
 
 A repository opts in by adding `https://github.com/<owner>/<repo>/raw/gh-manager-evidence/` to
 `review.visualEvidence.allowedUrlPrefixes` in `morpheus.json`. Without it the session escalates
