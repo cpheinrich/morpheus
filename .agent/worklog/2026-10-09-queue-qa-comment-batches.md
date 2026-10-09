@@ -35,13 +35,17 @@ installed global CLI cannot bypass the new claim contract during a pre-merge
 QA session. The worker normalizes a relative checkout root, publishes its
 ownership marker atomically, and waits for an interrupted child process group
 to exit before releasing ownership.
+After a crash, recovery refuses to release ownership until an operator confirms
+that the child agent and descendants have stopped. A short exclusive recovery
+guard prevents another responder from acquiring the checkout while the stale
+owner is removed.
 
 Focused verification covers concurrent claims, resolver races, later batches,
 wrong-agent resolution, claim recovery, serial background handling, failed
 children, and queue status in both overlays. Final check results and review
 evidence follow below.
 
-Local checks: focused QA tests 103/103 passed on the final responder changes;
+Local checks: focused QA tests 104/104 passed on the final responder changes;
 full `pnpm test` 2083/2083 passed on the preceding implementation commit;
 `pnpm typecheck`, `pnpm lint`, and `pnpm compile` passed after the final
 changes. `pnpm morpheus pm index --dir hq/product` made no changes. CI runs the

@@ -22,7 +22,8 @@ const USAGE = `Usage
   morpheus qa comments show <batchId> [--root <project>]
   morpheus qa comments resolve <batchId> [batchId...] [--agent <identity>] [--root <project>]
   morpheus qa comments release <batchId> --agent <identity> [--root <project>] [--force]
-  morpheus qa comments responder start|status|stop|recover [--root <project>]
+  morpheus qa comments responder start|status|stop [--root <project>]
+  morpheus qa comments responder recover --confirm-no-agent-process [--root <project>]
   morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
   --project <name> is the global flag (the parser consumes it before this command) and labels batches.
 `;
@@ -217,7 +218,8 @@ export async function dispatchQaComments(
     try {
       const taken = takeRootFlag(rest, root);
       const action = taken.rest[0] ?? "status";
-      if (taken.rest.length > 1 || !["start", "status", "stop", "recover"].includes(action)) {
+      const confirmed = action === "recover" && taken.rest[1] === "--confirm-no-agent-process";
+      if (taken.rest.length > (confirmed ? 2 : 1) || !["start", "status", "stop", "recover"].includes(action)) {
         throw new Error(`Unknown responder action.\n\n${USAGE}`);
       }
       if (action === "status") {
@@ -226,7 +228,7 @@ export async function dispatchQaComments(
       } else if (action === "stop") {
         console.log(await requestResponderStop(taken.root) ? "QA responder will stop after the current batch." : "No QA responder running.");
       } else if (action === "recover") {
-        console.log(await recoverStoppedResponder(taken.root) ? "Removed stale QA responder ownership marker." : "No QA responder marker found.");
+        console.log(await recoverStoppedResponder(taken.root, confirmed) ? "Removed stale QA responder ownership marker." : "No QA responder marker found.");
       } else {
         const config = await loadResponderConfig(taken.root);
         const controller = new AbortController();

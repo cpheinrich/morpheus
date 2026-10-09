@@ -61,8 +61,16 @@ resolving, the responder stops and leaves the claim for investigation.
 morpheus qa comments responder start --root <checkout>   # separate terminal/process
 morpheus qa comments responder status --root <checkout>
 morpheus qa comments responder stop --root <checkout>    # after current batch
-morpheus qa comments responder recover --root <checkout> # stale dead-process marker only
+morpheus qa comments responder recover --confirm-no-agent-process --root <checkout>
 ```
+
+If the responder is killed while its agent child is still editing, the owner
+record remains. `recover` refuses to remove it until an operator verifies the
+agent process and its descendants have stopped and passes
+`--confirm-no-agent-process`. A short-lived `responder.recovering` guard keeps
+another responder from starting during that recovery. If recovery itself
+crashes and leaves that guard, verify that no recovery or agent process is
+running before removing the stale guard file manually.
 
 While `responder.lock` exists, that process owns the checkout for
 comment implementation. Other chats may inspect or converse, but should not
@@ -185,7 +193,8 @@ morpheus qa comments show <batchId>   # print one batch.json
 morpheus qa comments resolve <batchId> --agent <session-id>
 morpheus qa comments release <batchId> --agent <session-id>  # return failed work to queue
 morpheus qa comments release <batchId> --force  # recover an abandoned claim
-morpheus qa comments responder start|status|stop|recover --root <checkout>
+morpheus qa comments responder start|status|stop --root <checkout>
+morpheus qa comments responder recover --confirm-no-agent-process --root <checkout>
 morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
 ```
 

@@ -81,11 +81,13 @@ The responder claims one batch, waits for that agent process to finish, then tak
 \`local/qa-comments/responder.lock\` means it owns edits in this checkout. Stop it with
 \`morpheus qa comments responder stop --root <checkout>\` and wait for the marker to disappear
 before editing here from this chat or closing the QA session. The child commits locally on this
-session's branch; this chat handles session-end review, push and PR.
+session's branch; this chat handles session-end review, push and PR. If the worker crashes, first
+verify its child agent and descendants have stopped. Only then run responder recover
+--confirm-no-agent-process to release ownership.
 
 - Claude: a Monitor or separate agent session can watch and drain the queue.
-- Codex and Grok: use a separate responder if the host exposes a supported wake route; otherwise
-  check the queue between turns. Do not claim that the active chat will wake on Send.
+- Codex and Grok: a separate local CLI responder can process batches without a chat wake route.
+  Without one, check the queue between turns. Do not claim that the active chat will wake on Send.
 
 Choose a stable responder identity, such as \`codex:<session-id>\`. Call
 \`morpheus qa comments claim --agent <identity> --root <checkout>\` until it prints nothing. For

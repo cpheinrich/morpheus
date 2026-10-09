@@ -273,6 +273,24 @@ setTimeout(() => {
     expect(await isResponderActive(root)).toBe(false);
   });
 
+  it("requires operator confirmation to recover a dead owner and blocks starts during recovery", async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-qa-responder-"));
+    const commentsDir = join(root, "local/qa-comments");
+    await mkdir(commentsDir, { recursive: true });
+    const lock = join(commentsDir, "responder.lock");
+    await writeFile(lock, JSON.stringify({ agent: "codex:dead", pid: 9999999, startedAt: new Date().toISOString(), root }), "utf8");
+    await expect(recoverStoppedResponder(root)).rejects.toThrow(/confirm-no-agent-process/);
+    expect((await responderStatus(root))?.agent).toBe("codex:dead");
+    expect(await recoverStoppedResponder(root, true)).toBe(true);
+    expect(await responderStatus(root)).toBeNull();
+
+    const recoveryGuard = join(commentsDir, "responder.recovering");
+    await writeFile(recoveryGuard, "recovery in progress\n", "utf8");
+    const config = { agent: "codex:new", command: [process.execPath, "-e", ""], pollMs: 250 };
+    await expect(runQaResponder(root, config, new AbortController().signal)).rejects.toThrow(/recovery owns/);
+    expect(await responderStatus(root)).toBeNull();
+  });
+
   it("keeps checkout ownership until an uncooperative child exits", async () => {
     root = await mkdtemp(join(tmpdir(), "morpheus-qa-responder-"));
     await writePendingBatch(root, sample("abort-child"));

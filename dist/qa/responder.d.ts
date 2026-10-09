@@ -15,7 +15,7 @@ interface ResponderMarker {
 export declare function responderStatus(root: string): Promise<ResponderMarker | null>;
 export declare function isResponderActive(root: string): Promise<boolean>;
 export declare function requestResponderStop(root: string): Promise<boolean>;
-export declare function recoverStoppedResponder(root: string): Promise<boolean>;
+export declare function recoverStoppedResponder(root: string, confirmedNoAgentProcess?: boolean): Promise<boolean>;
 /** One process per checkout. Later Sends accumulate while the configured agent handles a batch. */
 export declare function runQaResponder(root: string, config: QaResponderConfig, signal: AbortSignal, log?: {
     (...data: any[]): void;

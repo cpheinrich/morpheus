@@ -1,13 +1,25 @@
 import { spawn } from "node:child_process";
-import { access, link, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { access, link, mkdir, mkdtemp, open, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { QA_COMMENTS_DIR } from "./comments.js";
 import { claimNextBatch, listPending, readBatchClaim, releaseBatchClaim, showBatch } from "./store.js";
 export const QA_RESPONDER_CONFIG = `${QA_COMMENTS_DIR}/responder.json`;
 export const QA_RESPONDER_LOCK = `${QA_COMMENTS_DIR}/responder.lock`;
+const RECOVERY_LOCK = `${QA_COMMENTS_DIR}/responder.recovering`;
 function stopFile(root, pid) {
     return join(root, QA_COMMENTS_DIR, `responder.stop.${pid}`);
+}
+async function recoveryActive(root) {
+    try {
+        await access(join(root, RECOVERY_LOCK));
+        return true;
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            return false;
+        throw error;
+    }
 }
 export async function loadResponderConfig(root) {
     const path = join(root, QA_RESPONDER_CONFIG);
@@ -29,6 +41,8 @@ export async function loadResponderConfig(root) {
 async function acquireResponder(root, agent) {
     const path = join(root, QA_RESPONDER_LOCK);
     await mkdir(join(root, QA_COMMENTS_DIR), { recursive: true });
+    if (await recoveryActive(root))
+        throw new Error(`QA responder recovery owns ${root}; retry after it finishes`);
     const marker = { agent, pid: process.pid, startedAt: new Date().toISOString(), root };
     const staging = await mkdtemp(join(root, QA_COMMENTS_DIR, ".responder-"));
     try {
@@ -36,6 +50,10 @@ async function acquireResponder(root, agent) {
         await writeFile(prepared, `${JSON.stringify(marker, null, 2)}\n`, { mode: 0o600 });
         // A hard link publishes a complete marker with exclusive EEXIST semantics.
         await link(prepared, path);
+        if (await recoveryActive(root)) {
+            await unlink(path);
+            throw new Error(`QA responder recovery owns ${root}; retry after it finishes`);
+        }
     }
     catch (error) {
         if (error.code !== "EEXIST")
@@ -81,21 +99,41 @@ export async function requestResponderStop(root) {
     await writeFile(stopFile(root, marker.pid), "stop after current batch\n", "utf8");
     return true;
 }
-export async function recoverStoppedResponder(root) {
-    const marker = await responderStatus(root);
-    if (!marker)
-        return false;
+export async function recoverStoppedResponder(root, confirmedNoAgentProcess = false) {
+    await mkdir(join(root, QA_COMMENTS_DIR), { recursive: true });
+    const recoveryPath = join(root, RECOVERY_LOCK);
+    let guard;
     try {
-        process.kill(marker.pid, 0);
-        throw new Error(`QA responder pid ${marker.pid} is still running; stop it first`);
+        guard = await open(recoveryPath, "wx", 0o600);
     }
     catch (error) {
-        if (error.code !== "ESRCH")
-            throw error;
+        if (error.code === "EEXIST")
+            throw new Error(`QA responder recovery is already in progress for ${root}`);
+        throw error;
     }
-    await unlink(join(root, QA_RESPONDER_LOCK));
-    await rm(stopFile(root, marker.pid), { force: true });
-    return true;
+    try {
+        const marker = await responderStatus(root);
+        if (!marker)
+            return false;
+        try {
+            process.kill(marker.pid, 0);
+            throw new Error(`QA responder pid ${marker.pid} is still running; stop it first`);
+        }
+        catch (error) {
+            if (error.code !== "ESRCH")
+                throw error;
+        }
+        if (!confirmedNoAgentProcess) {
+            throw new Error(`QA responder pid ${marker.pid} stopped, but its agent process may still be editing; verify it has stopped, then retry with --confirm-no-agent-process`);
+        }
+        await unlink(join(root, QA_RESPONDER_LOCK));
+        await rm(stopFile(root, marker.pid), { force: true });
+        return true;
+    }
+    finally {
+        await guard.close();
+        await unlink(recoveryPath);
+    }
 }
 async function stopRequested(root) {
     const marker = await responderStatus(root);
