@@ -19,7 +19,8 @@ local/qa-comments/
   claims/
     <batchId>.json    # exclusive agent claim; survives process exit
   responder.json      # optional local command for a separate agent process
-  responder.lock/     # active checkout owner; do not edit concurrently
+  responder.lock      # active checkout owner; do not edit concurrently
+  responder.stop.<pid> # graceful stop request for that owner
   resolved/
     <batchId>/        # same shape, moved here by `resolve`
 ```
@@ -63,7 +64,7 @@ morpheus qa comments responder stop --root <checkout>    # after current batch
 morpheus qa comments responder recover --root <checkout> # stale dead-process marker only
 ```
 
-While `responder.lock/owner.json` exists, that process owns the checkout for
+While `responder.lock` exists, that process owns the checkout for
 comment implementation. Other chats may inspect or converse, but should not
 edit the checkout. Stop it and wait for the marker to disappear before handing
 the checkout to another author. The child works on the existing QA session

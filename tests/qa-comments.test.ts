@@ -1,12 +1,12 @@
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseBatch, type QaCommentBatch } from "../src/qa/comments.js";
 import { BatchClaimedError, claimNextBatch, listPending, readBatchClaim, releaseBatchClaim, resolveBatch, showBatch, writePendingBatch } from "../src/qa/store.js";
 import { dispatchQaComments } from "../src/cli/qa.js";
-import { isResponderActive, loadResponderConfig, requestResponderStop, responderStatus, runQaResponder } from "../src/qa/responder.js";
+import { isResponderActive, loadResponderConfig, recoverStoppedResponder, requestResponderStop, responderStatus, runQaResponder } from "../src/qa/responder.js";
 import { hidKeyBody, hidTouchBody, startQaCommentServer } from "../src/qa/serve.js";
 import { TouchPacer, type TouchEvent } from "../src/qa/touch-pacer.js";
 import {
@@ -183,6 +183,9 @@ describe("QA background responder", () => {
 const path = require("node:path");
 const root = process.env.MORPHEUS_QA_ROOT;
 const id = process.env.MORPHEUS_QA_BATCH_ID;
+fs.writeFileSync(path.join(root, "prompt.txt"), fs.readFileSync(0, "utf8"));
+const laggard = require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => require('node:fs').appendFileSync(process.env.MORPHEUS_QA_ROOT + '/late.txt', 'late'), 300)"], { stdio: "ignore" });
+laggard.unref();
 fs.appendFileSync(path.join(root, "invocations.txt"), id + ":start\\n");
 setTimeout(() => {
   const from = path.join(root, "local/qa-comments/pending", id);
@@ -202,7 +205,7 @@ setTimeout(() => {
     await writeFile(join(root, "local/qa-comments/responder.json"), JSON.stringify({ agent: "codex:background", command: [process.execPath, script], pollMs: 250 }));
     const config = await loadResponderConfig(root);
     const controller = new AbortController();
-    const worker = runQaResponder(root, config, controller.signal, () => undefined);
+    const worker = runQaResponder(relative(process.cwd(), root), config, controller.signal, () => undefined);
     try {
       for (let i = 0; i < 50; i++) {
         const marker = await responderStatus(root);
@@ -210,6 +213,7 @@ setTimeout(() => {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
       expect((await responderStatus(root))?.agent).toBe("codex:background");
+      expect((await responderStatus(root))?.root).toBe(root);
       expect(await isResponderActive(root)).toBe(true);
       await writePendingBatch(root, second);
       for (let i = 0; i < 100; i++) {
@@ -221,6 +225,9 @@ setTimeout(() => {
       expect(await readBatchClaim(root, first.id)).toBeNull();
       expect(await readBatchClaim(root, second.id)).toBeNull();
       expect(await readFile(join(root, "invocations.txt"), "utf8")).toBe("responder-first:start\nresponder-first:done\nresponder-second:start\nresponder-second:done\n");
+      expect(await readFile(join(root, "prompt.txt"), "utf8")).toContain("/dist/cli/index.js");
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      await expect(readFile(join(root, "late.txt"), "utf8")).rejects.toThrow();
     } finally {
       controller.abort();
       await worker;
@@ -261,10 +268,39 @@ setTimeout(() => {
   it("treats a malformed responder marker as inactive", async () => {
     root = await mkdtemp(join(tmpdir(), "morpheus-qa-responder-"));
     const lock = join(root, "local/qa-comments/responder.lock");
-    await mkdir(lock, { recursive: true });
-    await writeFile(join(lock, "owner.json"), "{invalid", "utf8");
+    await mkdir(join(root, "local/qa-comments"), { recursive: true });
+    await writeFile(lock, "{invalid", "utf8");
     expect(await isResponderActive(root)).toBe(false);
   });
+
+  it("keeps checkout ownership until an uncooperative child exits", async () => {
+    root = await mkdtemp(join(tmpdir(), "morpheus-qa-responder-"));
+    await writePendingBatch(root, sample("abort-child"));
+    const script = join(root, "ignore-term.cjs");
+    await writeFile(script, `const fs = require("node:fs");
+fs.writeFileSync(process.env.MORPHEUS_QA_ROOT + "/child.pid", String(process.pid));
+process.on("SIGTERM", () => {});
+setInterval(() => {}, 100);
+`, "utf8");
+    const config = { agent: "codex:abort", command: [process.execPath, script], pollMs: 250 };
+    const controller = new AbortController();
+    const worker = runQaResponder(root, config, controller.signal, () => undefined);
+    let pid = 0;
+    for (let i = 0; i < 100; i++) {
+      pid = Number(await readFile(join(root, "child.pid"), "utf8").catch(() => "0"));
+      if (pid) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(pid).toBeGreaterThan(0);
+    controller.abort();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect((await responderStatus(root))?.pid).toBe(process.pid);
+    await expect(worker).rejects.toThrow(/command exited/);
+    expect(await responderStatus(root)).toBeNull();
+    expect(await readBatchClaim(root, "abort-child")).not.toBeNull();
+    expect(() => process.kill(pid, 0)).toThrow();
+    expect(await recoverStoppedResponder(root)).toBe(false);
+  }, 10000);
 });
 
 describe("serve-sim touch payload", () => {

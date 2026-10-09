@@ -30,16 +30,19 @@ command. A failed child leaves its claim and stops for recovery. The ownership
 marker tells other chats not to edit the same checkout until the responder
 stops. The child remains on the QA session branch and commits locally; the
 interactive chat completes review and PR work after the session.
-The child prompt names the exact Morpheus CLI that launched the worker, so a
-previously installed global CLI cannot accidentally bypass the new claim
-contract during a pre-merge QA session.
+The child prompt names this worker's compiled Morpheus CLI, so a previously
+installed global CLI cannot bypass the new claim contract during a pre-merge
+QA session. The worker normalizes a relative checkout root, publishes its
+ownership marker atomically, and waits for an interrupted child process group
+to exit before releasing ownership.
 
 Focused verification covers concurrent claims, resolver races, later batches,
 wrong-agent resolution, claim recovery, serial background handling, failed
 children, and queue status in both overlays. Final check results and review
 evidence follow below.
 
-Final local checks: focused QA tests 102/102 passed; full `pnpm test` 2083/2083
-passed; `pnpm typecheck`, `pnpm lint`, and `pnpm compile` passed. `pnpm
-morpheus pm index --dir hq/product` made no changes. These checks ran after
-the resolver race fix and background responder were added.
+Local checks: focused QA tests 103/103 passed on the final responder changes;
+full `pnpm test` 2083/2083 passed on the preceding implementation commit;
+`pnpm typecheck`, `pnpm lint`, and `pnpm compile` passed after the final
+changes. `pnpm morpheus pm index --dir hq/product` made no changes. CI runs the
+full suite on the final commit.

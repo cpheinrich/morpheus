@@ -77,7 +77,7 @@ with an agent identity and argv command (see docs/runbooks/qa-comments.md), then
 \`morpheus qa comments responder start --root <checkout>\` in a separate process. The Codex CLI
 example is \`["codex", "exec", "-C", "{root}", "-"]\`; other agent CLIs can use their own argv.
 The responder claims one batch, waits for that agent process to finish, then takes the next. Its
-\`local/qa-comments/responder.lock/owner.json\` means it owns edits in this checkout. Stop it with
+\`local/qa-comments/responder.lock\` means it owns edits in this checkout. Stop it with
 \`morpheus qa comments responder stop --root <checkout>\` and wait for the marker to disappear
 before editing here from this chat or closing the QA session. The child commits locally on this
 session's branch; this chat handles session-end review, push and PR.
