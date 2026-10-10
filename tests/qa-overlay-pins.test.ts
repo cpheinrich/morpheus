@@ -6,6 +6,57 @@ import { pageHtml } from "../src/qa/overlay-page.js";
 import { qaAxSnapshotFromTree, screenIdFromAxTree } from "../src/qa/screen-id.js";
 
 describe("iOS QA pins", () => {
+  it("rejects a pin when the native capture differs from the screen ID at click", async () => {
+    let emitAx: ((snapshot: unknown) => void) | undefined;
+    let posted: Record<string, unknown> | null = null;
+    const dom = new JSDOM(pageHtml({
+      previewUrl: "http://127.0.0.1:3427/", streamPath: "/proxy/stream.mjpeg", axPath: "/api/ax", project: "evo",
+    }), {
+      url: "http://127.0.0.1:3683/", runScripts: "dangerously", pretendToBeVisual: true,
+      beforeParse(window: Window & typeof globalThis) {
+        Object.defineProperty(window.HTMLImageElement.prototype, "naturalWidth", { get: () => 390 });
+        Object.defineProperty(window.HTMLImageElement.prototype, "naturalHeight", { get: () => 844 });
+        window.HTMLCanvasElement.prototype.getContext = (() => ({ drawImage() {} })) as unknown as typeof window.HTMLCanvasElement.prototype.getContext;
+        window.HTMLCanvasElement.prototype.toDataURL = () => "data:image/png;base64,Qg==";
+        window.HTMLElement.prototype.getBoundingClientRect = function () {
+          return { left: 0, top: 0, right: 390, bottom: 844, width: 390, height: 844, x: 0, y: 0, toJSON() {} };
+        };
+        class FakeEventSource {
+          onmessage?: (event: { data: string }) => void;
+          constructor() { emitAx = (snapshot) => this.onmessage?.({ data: JSON.stringify(snapshot) }); }
+        }
+        Object.defineProperty(window, "EventSource", { value: FakeEventSource });
+        Object.defineProperty(window, "fetch", { value: async (url: string, init: { body: string }) => {
+          if (url === "/api/placement") return { ok: true, json: async () => ({
+            screenId: "screenBScreen",
+            snapshot: { screen: { width: 390, height: 844 }, elements: [] },
+            frame: { dataUrl: "data:image/png;base64,TkFUSVZFLUI=", width: 390, height: 844, capturedAt: new Date().toISOString() },
+          }) };
+          if (url !== "/api/batches") throw new Error("Unexpected request");
+          posted = JSON.parse(init.body) as Record<string, unknown>;
+          return { ok: true, json: async () => ({ id: "batch-1", pendingCount: 1 }) };
+        } });
+      },
+    });
+    try {
+      emitAx?.({ screen: { width: 390, height: 844 }, screenId: "screenAScreen", elements: [] });
+      dom.window.document.getElementById("stage")!.dispatchEvent(new dom.window.MouseEvent("contextmenu", {
+        bubbles: true, cancelable: true, clientX: 195, clientY: 420,
+      }));
+      const editor = dom.window.document.querySelector<HTMLTextAreaElement>("#text")!;
+      editor.value = "This is B";
+      editor.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      emitAx?.({ screen: { width: 390, height: 844 }, screenId: "screenBScreen", elements: [] });
+      dom.window.document.querySelector<HTMLButtonElement>("#send")!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(posted).toBeNull();
+      expect(dom.window.document.getElementById("status")!.textContent).toContain("lost its placement image");
+      expect(dom.window.document.getElementById("placementPreview")!.hidden).toBe(true);
+    } finally {
+      dom.window.close();
+    }
+  });
+
   it.each([
     { scenario: "distinct screen landmarks", axIdA: "screenAScreen", axIdB: "screenBScreen" },
     { scenario: "a shared screen landmark", axIdA: "sharedHeading", axIdB: "sharedHeading" },
@@ -36,6 +87,11 @@ describe("iOS QA pins", () => {
         }
         Object.defineProperty(window, "EventSource", { value: FakeEventSource });
         Object.defineProperty(window, "fetch", { value: (url: string, init: { body: string }) => {
+          if (url === "/api/placement") return Promise.resolve({ ok: true, json: async () => ({
+            screenId: "screenAScreen",
+            snapshot: { screen: { width: 390, height: 844 }, elements: [{ id: axIdA, path: "0.1", frame: { x: 10, y: 10, width: 50, height: 50 } }] },
+            frame: { dataUrl: "data:image/png;base64,QQ==", width: 390, height: 844, capturedAt: new Date().toISOString() },
+          }) });
           if (url !== "/api/batches") throw new Error("Unexpected request");
           posted = JSON.parse(init.body) as Record<string, unknown>;
           return Promise.resolve({ ok: true, json: async () => ({ id: "batch-1", pendingCount: 1 }) });
@@ -54,6 +110,7 @@ describe("iOS QA pins", () => {
         bubbles: true, cancelable: true, clientX: 195, clientY: 700,
       }));
       expect(dom.window.document.querySelector(".pin")).not.toBeNull();
+      for (let i = 0; i < 20 && !dom.window.document.querySelector<HTMLImageElement>("#placementImage")?.src.startsWith("data:image/png"); i++) await new Promise((resolve) => setTimeout(resolve, 0));
       const editor = dom.window.document.querySelector<HTMLTextAreaElement>("#text")!;
       editor.value = "Screen A only";
       frame = "data:image/png;base64,UHJvZ3Jlc3M=";
@@ -78,7 +135,7 @@ describe("iOS QA pins", () => {
     }
   });
 
-  it("opens the editor immediately and tracks scrolling from each native snapshot", () => {
+  it("opens the editor immediately and tracks scrolling from each native snapshot", async () => {
     let emitAx: ((snapshot: unknown) => void) | undefined;
     const dom = new JSDOM(pageHtml({
       previewUrl: "http://127.0.0.1:3427/",
@@ -101,7 +158,14 @@ describe("iOS QA pins", () => {
           constructor() { emitAx = (snapshot) => this.onmessage?.({ data: JSON.stringify(snapshot) }); }
         }
         Object.defineProperty(window, "EventSource", { value: FakeEventSource });
-        Object.defineProperty(window, "fetch", { value: () => { throw new Error("Unexpected request"); } });
+        Object.defineProperty(window, "fetch", { value: (url: string) => {
+          if (url !== "/api/placement") throw new Error("Unexpected request");
+          return Promise.resolve({ ok: true, json: async () => ({
+            screenId: "mealReviewScreen",
+            snapshot: { screen: { width: 390, height: 844 }, elements: [{ id: "mealReviewImage", path: "0.1.0", frame: { x: 0, y: 100, width: 390, height: 100 } }] },
+            frame: { dataUrl: "data:image/png;base64,Zmlyc3Q=", width: 390, height: 844, capturedAt: new Date().toISOString() },
+          }) });
+        } });
       },
     });
     try {
@@ -117,6 +181,7 @@ describe("iOS QA pins", () => {
       }));
       expect(dom.window.document.querySelector<HTMLElement>(".pin")?.style.top).toBe("150px");
       expect(dom.window.document.activeElement).toBe(dom.window.document.getElementById("text"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
       emitAx?.(snapshot(40));
       expect(dom.window.document.querySelector<HTMLElement>(".pin")?.style.top).toBe("90px");
     } finally {
@@ -183,6 +248,11 @@ describe("iOS QA pins", () => {
         }
         Object.defineProperty(window, "EventSource", { value: FakeEventSource });
         Object.defineProperty(window, "fetch", { value: async (_url: string, init: { body: string }) => {
+          if (_url === "/api/placement") return { ok: true, json: async () => ({
+            screenId: "mealReviewScreen",
+            snapshot: { screen: { width: 390, height: 844 }, elements: [{ id: "mealReviewImage", path: "0.1.0", frame: { x: 0, y: 100, width: 390, height: 100 } }] },
+            frame: { dataUrl: "data:image/png;base64,Zmlyc3Q=", width: 390, height: 844, capturedAt: new Date().toISOString() },
+          }) };
           posted = JSON.parse(init.body) as Record<string, unknown>;
           return { ok: true, json: async () => ({ id: "batch-1", pendingCount: 1 }) };
         } });
@@ -196,9 +266,9 @@ describe("iOS QA pins", () => {
         errors: [],
       });
       emitAx?.(snapshot(100));
-      await new Promise((resolve) => setTimeout(resolve, 0));
       const stage = dom.window.document.getElementById("stage")!;
       stage.dispatchEvent(new dom.window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 195, clientY: 150 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
       for (let i = 0; i < 20 && !dom.window.document.querySelector(".pin"); i++) await new Promise((resolve) => setTimeout(resolve, 0));
       expect(dom.window.document.querySelector<HTMLElement>(".pin")?.style.top).toBe("150px");
 
@@ -239,7 +309,19 @@ describe("iOS QA pins", () => {
         { AXUniqueId: "mealReviewImage", frame: { x: 0, y: -600, width: 402, height: 402 } },
         { AXUniqueId: "addRemainingPortionPhotoButton", frame: { x: 20, y: 500, width: 362, height: 50 } },
       ],
-    }])).toBe("ax:mealReviewImage");
+    }])).toMatch(/^ax:mealReviewImage:[a-f0-9]{12}$/);
+  });
+
+  it("distinguishes fallback screens with a shared first landmark and ignores scroll frames", () => {
+    const tree = (id: string, y: number) => [{
+      frame: { x: 0, y: 0, width: 402, height: 874 },
+      children: [
+        { AXUniqueId: "sharedHeading", frame: { x: 20, y, width: 360, height: 50 } },
+        { AXUniqueId: id, frame: { x: 20, y: y + 60, width: 360, height: 50 } },
+      ],
+    }];
+    expect(screenIdFromAxTree(tree("screenAContent", 100))).toBe(screenIdFromAxTree(tree("screenAContent", 40)));
+    expect(screenIdFromAxTree(tree("screenAContent", 100))).not.toBe(screenIdFromAxTree(tree("screenBContent", 100)));
   });
 
   it("emits screen identity and scrolling elements from one native tree", () => {

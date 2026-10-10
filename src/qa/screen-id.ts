@@ -1,5 +1,12 @@
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 interface AxNode {
   AXUniqueId?: string | null;
@@ -47,7 +54,10 @@ export function screenIdFromAxTree(roots: AxNode[]): string | null {
     for (const child of node.children ?? []) visit(child);
   };
   for (const root of roots) visit(root);
-  return named[0] ?? (landmarks[0] ? `ax:${landmarks[0]}` : null);
+  if (named[0]) return named[0];
+  if (!landmarks[0]) return null;
+  const digest = createHash("sha256").update([...new Set(landmarks)].sort().join("\n")).digest("hex").slice(0, 12);
+  return `ax:${landmarks[0]}:${digest}`;
 }
 
 /** Preserve serve-sim's element paths while retaining the screen ID from that same native tree. */
@@ -92,6 +102,39 @@ function nativeAxTree(udid: string): Promise<AxNode[]> {
 
 export async function currentQaAxSnapshot(udid: string): Promise<QaAxSnapshot> {
   return qaAxSnapshotFromTree(await nativeAxTree(udid));
+}
+
+/** Capture the image between matching native screen identities, so the saved PNG and ID agree. */
+export async function captureQaPlacement(udid: string): Promise<{
+  screenId: string;
+  snapshot: QaAxSnapshot;
+  frame: { dataUrl: string; width: number; height: number; capturedAt: string };
+}> {
+  const before = await currentQaAxSnapshot(udid);
+  if (!before.screenId) throw new Error("Simulator screen ID unavailable");
+  const dir = await mkdtemp(join(tmpdir(), "morpheus-qa-placement-"));
+  const path = join(dir, "frame.png");
+  try {
+    await execFileAsync("xcrun", ["simctl", "io", udid, "screenshot", "--type=png", path], { timeout: 5000 });
+    const capturedAt = new Date().toISOString();
+    const [bytes, after] = await Promise.all([readFile(path), currentQaAxSnapshot(udid)]);
+    if (after.screenId !== before.screenId) throw new Error("Screen changed during placement capture");
+    if (bytes.length < 24 || bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
+      throw new Error("Simulator placement screenshot is invalid");
+    }
+    return {
+      screenId: before.screenId,
+      snapshot: after,
+      frame: {
+        dataUrl: `data:image/png;base64,${bytes.toString("base64")}`,
+        width: bytes.readUInt32BE(16),
+        height: bytes.readUInt32BE(20),
+        capturedAt,
+      },
+    };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 /** The pinned serve-sim package ships the same native AX bridge used by its preview. */

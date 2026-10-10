@@ -41,6 +41,17 @@ export declare function screenIdFromAxTree(roots: AxNode[]): string | null;
 /** Preserve serve-sim's element paths while retaining the screen ID from that same native tree. */
 export declare function qaAxSnapshotFromTree(roots: AxNode[]): QaAxSnapshot;
 export declare function currentQaAxSnapshot(udid: string): Promise<QaAxSnapshot>;
+/** Capture the image between matching native screen identities, so the saved PNG and ID agree. */
+export declare function captureQaPlacement(udid: string): Promise<{
+    screenId: string;
+    snapshot: QaAxSnapshot;
+    frame: {
+        dataUrl: string;
+        width: number;
+        height: number;
+        capturedAt: string;
+    };
+}>;
 /** The pinned serve-sim package ships the same native AX bridge used by its preview. */
 export declare function currentScreenId(udid: string): Promise<string | null>;
 export {};

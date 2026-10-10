@@ -44,6 +44,8 @@ export function pageHtml(opts) {
   #status { font-size: 12px; color: #9aa0a6; min-height: 1.2em; }
   #status.ok { color: #81c995; }
   #status.err { color: #f28b82; }
+  .placement-preview { border: 1px solid #3c4043; border-radius: 8px; padding: 6px; font-size: 11px; color: #c4c7c5; }
+  .placement-preview img { display: block; max-width: 100%; max-height: 180px; margin: 5px auto 0; }
   .shortcut-hint { font-size: 11px; color: #9aa0a6; }
   .missing { color: #f28b82; padding: 24px; text-align: center; }
 </style>
@@ -66,6 +68,7 @@ export function pageHtml(opts) {
     <ul id="list"></ul>
     <div class="composer">
       <div id="status">Right-click the frame to place a pin</div>
+      <div class="placement-preview" id="placementPreview" hidden><span id="placementLabel"></span><img id="placementImage" alt="Captured placement screen"/></div>
       <textarea id="text" placeholder="Comment for this pin… (Enter to save, Shift+Enter newline)" disabled></textarea>
       <div class="shortcut-hint">Enter saves pin · Shift+Enter newline · ⌘Enter / Ctrl+Enter sends batch</div>
       <div class="row">
@@ -122,6 +125,18 @@ export function pageHtml(opts) {
   /** @type {{id:string, n:number, normX:number, normY:number, text:string, createdAt:string, screenId?:string, axAnchor?:object, frame?:object, displayX?:number, displayY?:number}[]} */
   let pins = [];
   const frameMemory = new Map();
+  const pinScreenReads = new Map();
+  const placementPreview = document.getElementById('placementPreview');
+  const placementImage = document.getElementById('placementImage');
+  const placementLabel = document.getElementById('placementLabel');
+  function showPlacement(pin) {
+    const frame = pin && frameMemory.get(pin.id);
+    placementPreview.hidden = !frame?.dataUrl;
+    if (frame?.dataUrl) {
+      placementImage.src = frame.dataUrl;
+      placementLabel.textContent = 'Captured pin ' + pin.n + ' · ' + (pin.screenId || 'screen ID unavailable');
+    }
+  }
   let frameDb = null;
   function openFrameDb() {
     if (!('indexedDB' in window)) return Promise.resolve(null);
@@ -272,6 +287,7 @@ export function pageHtml(opts) {
       void storedFrame(pin.id).then((frame) => {
         if (!pins.includes(pin)) return;
         if (frame) frameMemory.set(pin.id, frame);
+        if (focusedId === pin.id) showPlacement(pin);
         updatePinPositions();
       });
     }
@@ -357,6 +373,7 @@ export function pageHtml(opts) {
     textEl.disabled = false;
     textEl.value = p.text;
     textEl.focus();
+    showPlacement(p);
     setStatus('Editing pin ' + p.n + ' — Enter saves, Esc Esc deletes');
     renderList();
     renderPins();
@@ -381,6 +398,7 @@ export function pageHtml(opts) {
     focusedId = null;
     textEl.value = '';
     textEl.disabled = true;
+    showPlacement(null);
     setStatus('Deleted pin ' + p.n);
     renderList();
     renderPins();
@@ -388,9 +406,8 @@ export function pageHtml(opts) {
   }
 
   function placePin(normX, normY) {
-    const frame = captureFrame();
-    const snapshot = latestAx;
-    const screenId = currentScreenId;
+    const frame = axPath ? null : captureFrame();
+    const screenIdAtClick = currentScreenId;
     const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const pin = {
       id,
@@ -399,8 +416,6 @@ export function pageHtml(opts) {
       normY,
       text: '',
       createdAt: new Date().toISOString(),
-      screenId: screenId || undefined,
-      axAnchor: nearestAxAnchor(snapshot, normX, normY) || undefined,
       frame: frame ? { width: frame.width, height: frame.height, capturedAt: frame.capturedAt } : undefined,
     };
     if (frame) {
@@ -412,14 +427,39 @@ export function pageHtml(opts) {
     textEl.disabled = false;
     textEl.value = '';
     textEl.focus();
-    setStatus(!frame
-      ? 'Placement image unavailable. Wait for the stream, then replace this pin.'
-      : !pin.screenId
-        ? 'Screen ID unavailable. Wait for the simulator, then replace this pin.'
-        : 'Pin ' + pin.n + ' placed — type a comment, Enter to save', frame && pin.screenId ? undefined : 'err');
+    showPlacement(pin);
+    setStatus(axPath ? 'Capturing pin ' + pin.n + ' from the simulator…'
+      : frame ? 'Pin ' + pin.n + ' placed — type a comment, Enter to save'
+        : 'Placement image unavailable. Wait for the stream, then replace this pin.', axPath || frame ? undefined : 'err');
     renderList();
     renderPins();
     persist();
+    if (axPath) {
+      const read = fetch('/api/placement', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      }).then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Placement capture unavailable');
+        if (!pins.includes(pin)) return;
+        if (!screenIdAtClick || result.screenId !== screenIdAtClick) {
+          throw new Error('Screen changed during placement');
+        }
+        pin.screenId = result.screenId;
+        pin.axAnchor = nearestAxAnchor(result.snapshot, normX, normY) || undefined;
+        pin.frame = { width: result.frame.width, height: result.frame.height, capturedAt: result.frame.capturedAt };
+        frameMemory.set(id, result.frame);
+        void storedFrame(id, result.frame);
+        if (focusedId === id) {
+          showPlacement(pin);
+          setStatus('Pin ' + pin.n + ' captured · review its snapshot, then type your comment');
+        }
+        updatePinPositions();
+        persist();
+      }).catch((error) => {
+        if (focusedId === id && pins.includes(pin)) setStatus(String(error.message || error) + '. Delete and replace this pin.', 'err');
+      }).finally(() => pinScreenReads.delete(id));
+      pinScreenReads.set(id, read);
+    }
   }
 
   // Picture rect inside the stage after object-fit: contain (no letterbox when aspects match).
@@ -627,6 +667,7 @@ export function pageHtml(opts) {
     if (ready.length === 0) return;
     sendBtn.disabled = true;
     setStatus('Sending…');
+    await Promise.all(ready.map((pin) => pinScreenReads.get(pin.id)));
     const frameInfo = await captureFrame();
     const comments = await Promise.all(ready.map(async (p) => {
       const savedFrame = frameMemory.get(p.id) || await storedFrame(p.id);
@@ -675,6 +716,7 @@ export function pageHtml(opts) {
       focusedId = null;
       textEl.value = '';
       textEl.disabled = true;
+      showPlacement(null);
       forget();
       renderList();
       renderPins();
