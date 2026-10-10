@@ -125,7 +125,7 @@ export function pageHtml(opts: {
     requestAnimationFrame(renderPins);
   }
 
-  /** @type {{id:string, n:number, normX:number, normY:number, text:string, createdAt:string, screenId?:string, axScreenId?:string, axAnchor?:object, frame?:object, displayX?:number, displayY?:number}[]} */
+  /** @type {{id:string, n:number, normX:number, normY:number, text:string, createdAt:string, screenId?:string, axAnchor?:object, frame?:object, displayX?:number, displayY?:number}[]} */
   let pins = [];
   const frameMemory = new Map();
   let frameDb = null;
@@ -167,32 +167,6 @@ export function pageHtml(opts: {
   }
   let latestAx = null;
   let currentScreenId = null;
-  let currentScreenFrame = null;
-  let currentAxScreenId = null;
-  let verifiedAxScreenId = null;
-  let axEpoch = 0;
-  const pinScreenReads = new Map();
-  async function readScreenId() {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    try {
-      const response = await fetch('/api/screen', { signal: controller.signal });
-      if (!response.ok) return null;
-      const data = await response.json();
-      return typeof data.screenId === 'string' && data.screenId ? data.screenId : null;
-    } catch (_) {
-      return null;
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-  function screenIdFor(snapshot) {
-    if (!snapshot || !Array.isArray(snapshot.elements)) return null;
-    const ids = snapshot.elements.map((e) => e.id)
-      .filter((id) => typeof id === 'string' && /^[A-Za-z][A-Za-z0-9_-]*$/.test(id)
-        && !id.startsWith('_Tt') && !id.startsWith('mainNavigation'));
-    return ids.find((id) => /Screen$/.test(id)) || (ids[0] ? 'ax:' + ids[0] : null);
-  }
   function nearestAxAnchor(snapshot, normX, normY) {
     if (!snapshot || !snapshot.screen || !snapshot.elements) return null;
     const x = normX * snapshot.screen.width;
@@ -215,23 +189,13 @@ export function pageHtml(opts: {
     if (!latestAx || !latestAx.screen) return;
     const w = latestAx.screen.width;
     const h = latestAx.screen.height;
-    const visibleFrame = captureFrame()?.dataUrl;
     for (const p of pins) {
-      const verifiedCurrent = verifiedAxScreenId === currentAxScreenId;
-      const changedAxScreen = p.axScreenId && currentAxScreenId && p.axScreenId !== currentAxScreenId;
-      const changedNativeScreen = verifiedCurrent && p.screenId && currentScreenId
-        && p.screenId !== currentScreenId;
-      if ((changedAxScreen && !verifiedCurrent) || changedNativeScreen) {
+      if (p.screenId && p.screenId !== currentScreenId) {
         p.displayX = -1;
         p.displayY = -1;
         continue;
       }
       if (!p.axAnchor) {
-        if (visibleFrame && frameMemory.get(p.id)?.dataUrl !== visibleFrame) {
-          p.displayX = -1;
-          p.displayY = -1;
-          continue;
-        }
         p.displayX = p.normX;
         p.displayY = p.normY;
         continue;
@@ -245,53 +209,33 @@ export function pageHtml(opts: {
       }
       p.displayX = (e.frame.x + p.axAnchor.dx) / w;
       p.displayY = (e.frame.y + p.axAnchor.dy) / h;
-      if (visibleFrame && frameMemory.get(p.id)?.dataUrl !== visibleFrame
-        && Math.abs(p.displayX - p.normX) < 0.001 && Math.abs(p.displayY - p.normY) < 0.001) {
-        p.displayX = -1;
-        p.displayY = -1;
-      }
     }
     renderPins();
   }
   if (axPath) {
     const axStream = new EventSource(axPath);
-    let screenReadPending = false;
-    let screenReadAgain = false;
-    function refreshScreenId() {
-      if (screenReadPending) {
-        screenReadAgain = true;
-        return;
+    const clearAx = () => {
+      latestAx = null;
+      currentScreenId = null;
+      for (const pin of pins) {
+        pin.displayX = -1;
+        pin.displayY = -1;
       }
-      screenReadPending = true;
-      const lookupEpoch = axEpoch;
-      void readScreenId().then((id) => {
-        if (lookupEpoch !== axEpoch) return;
-        currentScreenId = id;
-        currentScreenFrame = id ? captureFrame()?.dataUrl : null;
-        verifiedAxScreenId = id ? currentAxScreenId : null;
-        updatePinPositions();
-      }).finally(() => {
-        screenReadPending = false;
-        if (screenReadAgain) {
-          screenReadAgain = false;
-          refreshScreenId();
-        }
-      });
-    }
+      renderPins();
+    };
     axStream.onmessage = (event) => {
       try {
         const snapshot = JSON.parse(event.data);
-        if (!snapshot.screen || !Array.isArray(snapshot.elements) || snapshot.errors?.length) return;
-        latestAx = snapshot;
-        const axScreenId = screenIdFor(snapshot);
-        if (axScreenId !== currentAxScreenId) {
-          currentAxScreenId = axScreenId;
-          axEpoch++;
+        if (!snapshot.screen || !Array.isArray(snapshot.elements) || snapshot.errors?.length) {
+          clearAx();
+          return;
         }
+        latestAx = snapshot;
+        currentScreenId = typeof snapshot.screenId === 'string' ? snapshot.screenId : null;
         updatePinPositions();
-        refreshScreenId();
-      } catch (_) {}
+      } catch (_) { clearAx(); }
     };
+    axStream.onerror = clearAx;
   }
   let focusedId = null;
   let escArmedAt = 0;
@@ -452,10 +396,7 @@ export function pageHtml(opts: {
   function placePin(normX, normY) {
     const frame = captureFrame();
     const snapshot = latestAx;
-    const axScreenId = screenIdFor(snapshot);
-    const placementEpoch = axEpoch;
-    const screenId = frame?.dataUrl && currentScreenFrame === frame.dataUrl && verifiedAxScreenId === axScreenId
-      ? currentScreenId : null;
+    const screenId = currentScreenId;
     const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const pin = {
       id,
@@ -465,7 +406,6 @@ export function pageHtml(opts: {
       text: '',
       createdAt: new Date().toISOString(),
       screenId: screenId || undefined,
-      axScreenId: axScreenId || undefined,
       axAnchor: nearestAxAnchor(snapshot, normX, normY) || undefined,
       frame: frame ? { width: frame.width, height: frame.height, capturedAt: frame.capturedAt } : undefined,
     };
@@ -478,19 +418,14 @@ export function pageHtml(opts: {
     textEl.disabled = false;
     textEl.value = '';
     textEl.focus();
-    setStatus(frame
-      ? 'Pin ' + pin.n + ' placed — type a comment, Enter to save' + (pin.screenId ? '' : ' · identifying screen')
-      : 'Placement image unavailable. Wait for the stream, then replace this pin.', frame ? undefined : 'err');
+    setStatus(!frame
+      ? 'Placement image unavailable. Wait for the stream, then replace this pin.'
+      : !pin.screenId
+        ? 'Screen ID unavailable. Wait for the simulator, then replace this pin.'
+        : 'Pin ' + pin.n + ' placed — type a comment, Enter to save', frame && pin.screenId ? undefined : 'err');
     renderList();
     renderPins();
     persist();
-    const screenRead = readScreenId().then((id) => {
-      if (!pins.includes(pin)) return;
-      if (id && placementEpoch === axEpoch && frame?.dataUrl === captureFrame()?.dataUrl) pin.screenId = id;
-      if (focusedId === pin.id && !pin.screenId) setStatus('Screen ID could not be tied to pin ' + pin.n + '. Replace this pin before sending.', 'err');
-      persist();
-    }).finally(() => pinScreenReads.delete(id));
-    pinScreenReads.set(id, screenRead);
   }
 
   // Picture rect inside the stage after object-fit: contain (no letterbox when aspects match).
@@ -698,7 +633,6 @@ export function pageHtml(opts: {
     if (ready.length === 0) return;
     sendBtn.disabled = true;
     setStatus('Sending…');
-    await Promise.all(ready.map((p) => pinScreenReads.get(p.id)));
     const frameInfo = await captureFrame();
     const comments = await Promise.all(ready.map(async (p) => {
       const savedFrame = frameMemory.get(p.id) || await storedFrame(p.id);

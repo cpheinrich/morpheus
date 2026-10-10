@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { BatchRejected, recordBatch, type PostedBatch } from "./batches.js";
 import { pageHtml } from "./overlay-page.js";
 import { TouchPacer } from "./touch-pacer.js";
-import { currentScreenId } from "./screen-id.js";
+import { currentQaAxSnapshot, currentScreenId } from "./screen-id.js";
 
 export interface ServeOptions {
   /** Project checkout that receives local/qa-comments/ (e.g. Evo). */
@@ -290,7 +290,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
     options.streamUrl ?? (await discoverStreamUrl(previewOrigin));
   const streamPath = discovered ? "/proxy/stream.mjpeg" : null;
   const udid = udidFromStreamUrl(discovered);
-  const axPath = udid ? "/proxy/ax" : null;
+  const axPath = udid ? "/api/ax" : null;
   const hid = udid ? await openHidBridge(previewOrigin, udid) : null;
 
   const server = createServer(async (req, res) => {
@@ -328,6 +328,36 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           return;
         }
         proxyRequest(`${previewOrigin}/ax?device=${encodeURIComponent(udid)}`, req, res);
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/api/ax") {
+        if (!udid) {
+          sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-store",
+          Connection: "keep-alive",
+        });
+        let closed = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        res.on("close", () => {
+          closed = true;
+          if (timer) clearTimeout(timer);
+        });
+        const poll = async () => {
+          if (closed) return;
+          try {
+            const snapshot = await currentQaAxSnapshot(udid);
+            if (!closed) res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+          } catch {
+            if (!closed) res.write(`data: ${JSON.stringify({ screen: { width: 1, height: 1 }, screenId: null, elements: [], errors: ["Accessibility unavailable"] })}\n\n`);
+          } finally {
+            if (!closed) timer = setTimeout(() => { void poll(); }, 500);
+          }
+        };
+        void poll();
         return;
       }
       if (req.method === "GET" && url.pathname === "/api/screen") {

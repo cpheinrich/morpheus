@@ -1,5 +1,10 @@
 interface AxNode {
     AXUniqueId?: string | null;
+    AXLabel?: string | null;
+    AXValue?: string | null;
+    enabled?: boolean;
+    role_description?: string;
+    type?: string;
     frame?: {
         x: number;
         y: number;
@@ -8,8 +13,34 @@ interface AxNode {
     };
     children?: AxNode[];
 }
+export interface QaAxSnapshot {
+    screen: {
+        width: number;
+        height: number;
+    };
+    screenId: string | null;
+    elements: Array<{
+        id: string;
+        path: string;
+        frame: {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+        };
+        label: string;
+        value: string;
+        role: string;
+        type: string;
+        enabled: boolean;
+    }>;
+    errors?: string[];
+}
 /** Use the app's screen identifier when SwiftUI exposes it in the raw AX tree. */
 export declare function screenIdFromAxTree(roots: AxNode[]): string | null;
+/** Preserve serve-sim's element paths while retaining the screen ID from that same native tree. */
+export declare function qaAxSnapshotFromTree(roots: AxNode[]): QaAxSnapshot;
+export declare function currentQaAxSnapshot(udid: string): Promise<QaAxSnapshot>;
 /** The pinned serve-sim package ships the same native AX bridge used by its preview. */
 export declare function currentScreenId(udid: string): Promise<string | null>;
 export {};
