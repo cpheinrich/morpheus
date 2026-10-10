@@ -161,6 +161,7 @@ export function pageHtml(opts) {
   }
   let latestAx = null;
   let currentScreenId = null;
+  const pinScreenReads = new Map();
   async function readScreenId() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
@@ -229,18 +230,32 @@ export function pageHtml(opts) {
   }
   if (axPath) {
     const axStream = new EventSource(axPath);
-    let sequence = 0;
+    let screenReadPending = false;
+    let screenReadAgain = false;
+    function refreshScreenId() {
+      if (screenReadPending) {
+        screenReadAgain = true;
+        return;
+      }
+      screenReadPending = true;
+      void readScreenId().then((id) => {
+        currentScreenId = id || screenIdFor(latestAx) || currentScreenId;
+        updatePinPositions();
+      }).finally(() => {
+        screenReadPending = false;
+        if (screenReadAgain) {
+          screenReadAgain = false;
+          refreshScreenId();
+        }
+      });
+    }
     axStream.onmessage = (event) => {
       try {
         const snapshot = JSON.parse(event.data);
         if (!snapshot.screen || !Array.isArray(snapshot.elements) || snapshot.errors?.length) return;
         latestAx = snapshot;
-        const ticket = ++sequence;
-        void readScreenId().then((id) => {
-          if (ticket !== sequence) return;
-          currentScreenId = id || screenIdFor(snapshot);
-          updatePinPositions();
-        });
+        updatePinPositions();
+        refreshScreenId();
       } catch (_) {}
     };
   }
@@ -393,11 +408,10 @@ export function pageHtml(opts) {
     persist();
   }
 
-  async function placePin(normX, normY) {
+  function placePin(normX, normY) {
     const frame = captureFrame();
     const snapshot = latestAx;
-    const screenId = await readScreenId() || screenIdFor(snapshot) || currentScreenId;
-    currentScreenId = screenId;
+    const screenId = currentScreenId || screenIdFor(snapshot);
     const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const pin = {
       id,
@@ -419,10 +433,19 @@ export function pageHtml(opts) {
     textEl.disabled = false;
     textEl.value = '';
     textEl.focus();
-    setStatus('Pin ' + pin.n + ' placed — type a comment, Enter to save' + (pin.screenId ? '' : ' · screen ID unavailable'), pin.screenId ? undefined : 'err');
+    setStatus(frame
+      ? 'Pin ' + pin.n + ' placed — type a comment, Enter to save' + (pin.screenId ? '' : ' · identifying screen')
+      : 'Placement image unavailable. Wait for the stream, then replace this pin.', frame ? undefined : 'err');
     renderList();
     renderPins();
     persist();
+    const screenRead = readScreenId().then((id) => {
+      if (!pins.includes(pin)) return;
+      if (id) pin.screenId = id;
+      if (focusedId === pin.id && !pin.screenId) setStatus('Screen ID unavailable for pin ' + pin.n, 'err');
+      persist();
+    }).finally(() => pinScreenReads.delete(id));
+    pinScreenReads.set(id, screenRead);
   }
 
   // Picture rect inside the stage after object-fit: contain (no letterbox when aspects match).
@@ -630,6 +653,7 @@ export function pageHtml(opts) {
     if (ready.length === 0) return;
     sendBtn.disabled = true;
     setStatus('Sending…');
+    await Promise.all(ready.map((p) => pinScreenReads.get(p.id)));
     const frameInfo = await captureFrame();
     const comments = await Promise.all(ready.map(async (p) => {
       const savedFrame = frameMemory.get(p.id) || await storedFrame(p.id);
@@ -642,6 +666,16 @@ export function pageHtml(opts) {
         ...(p.frame ? { frame: { ...p.frame, ...(savedFrame ? { dataUrl: savedFrame.dataUrl } : {}) } } : {}),
       };
     }));
+    if (comments.some((comment) => !comment.frame?.dataUrl)) {
+      setStatus('A pin lost its placement image. Delete and place that pin again before sending.', 'err');
+      sendBtn.disabled = false;
+      return;
+    }
+    if (axPath && comments.some((comment) => !comment.screenId)) {
+      setStatus('A pin has no screen ID. Wait for the simulator, then replace that pin before sending.', 'err');
+      sendBtn.disabled = false;
+      return;
+    }
     const body = {
       preview: { url: previewUrl, kind: 'serve-sim' },
       comments,
