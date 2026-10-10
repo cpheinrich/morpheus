@@ -2535,6 +2535,32 @@ describe("python-ci", () => {
 });
 
 /**
+ * The caller, not the shared workflow, chooses where CI runs: a private
+ * repository may put it on an isolated self-hosted runner (`linux-vm`) and keep
+ * GitHub-hosted `ubuntu-latest` as its fallback. A hardcoded `runs-on` would
+ * make that a fork of the workflow rather than one `with:` line, and a
+ * different default would move every existing caller off the hosted image.
+ */
+describe("node-ci, python-ci and web-ci runner input", () => {
+  interface Runnable {
+    on?: { workflow_call?: { inputs?: Record<string, { default?: unknown; type?: string }> } };
+    jobs?: Record<string, { "runs-on"?: unknown }>;
+  }
+
+  it.each([
+    ["node-ci.yml", "check"],
+    ["python-ci.yml", "check"],
+    ["web-ci.yml", "web"],
+  ])("%s takes the job's runner label from a string input defaulting to ubuntu-latest", async (file, job) => {
+    const wf = (await read(file)) as Runnable;
+    const input = wf.on?.workflow_call?.inputs?.["runner"];
+    expect(input?.type).toBe("string");
+    expect(input?.default).toBe("ubuntu-latest");
+    expect(wf.jobs?.[job]?.["runs-on"]).toBe("${{ inputs.runner }}");
+  });
+});
+
+/**
  * A job with no `timeout-minutes` runs a hung step to GitHub's six-hour default
  * on billed minutes. That has already happened here once, to a Playwright
  * install that hung for forty. Every reusable job must bound itself, and every
