@@ -161,6 +161,7 @@ export function pageHtml(opts) {
   }
   let latestAx = null;
   let currentScreenId = null;
+  let currentScreenFrame = null;
   let currentAxScreenId = null;
   let verifiedAxScreenId = null;
   let axEpoch = 0;
@@ -208,17 +209,23 @@ export function pageHtml(opts) {
     if (!latestAx || !latestAx.screen) return;
     const w = latestAx.screen.width;
     const h = latestAx.screen.height;
+    const visibleFrame = captureFrame()?.dataUrl;
     for (const p of pins) {
       const verifiedCurrent = verifiedAxScreenId === currentAxScreenId;
       const changedAxScreen = p.axScreenId && currentAxScreenId && p.axScreenId !== currentAxScreenId;
       const changedNativeScreen = verifiedCurrent && p.screenId && currentScreenId
-        && p.screenId !== currentScreenId && !(p.screenId === p.axScreenId && !changedAxScreen);
+        && p.screenId !== currentScreenId;
       if ((changedAxScreen && !verifiedCurrent) || changedNativeScreen) {
         p.displayX = -1;
         p.displayY = -1;
         continue;
       }
       if (!p.axAnchor) {
+        if (visibleFrame && frameMemory.get(p.id)?.dataUrl !== visibleFrame) {
+          p.displayX = -1;
+          p.displayY = -1;
+          continue;
+        }
         p.displayX = p.normX;
         p.displayY = p.normY;
         continue;
@@ -232,6 +239,11 @@ export function pageHtml(opts) {
       }
       p.displayX = (e.frame.x + p.axAnchor.dx) / w;
       p.displayY = (e.frame.y + p.axAnchor.dy) / h;
+      if (visibleFrame && frameMemory.get(p.id)?.dataUrl !== visibleFrame
+        && Math.abs(p.displayX - p.normX) < 0.001 && Math.abs(p.displayY - p.normY) < 0.001) {
+        p.displayX = -1;
+        p.displayY = -1;
+      }
     }
     renderPins();
   }
@@ -248,8 +260,9 @@ export function pageHtml(opts) {
       const lookupEpoch = axEpoch;
       void readScreenId().then((id) => {
         if (lookupEpoch !== axEpoch) return;
-        currentScreenId = id || currentAxScreenId || currentScreenId;
-        verifiedAxScreenId = currentAxScreenId;
+        currentScreenId = id;
+        currentScreenFrame = id ? captureFrame()?.dataUrl : null;
+        verifiedAxScreenId = id ? currentAxScreenId : null;
         updatePinPositions();
       }).finally(() => {
         screenReadPending = false;
@@ -311,6 +324,13 @@ export function pageHtml(opts) {
       ...p,
       ...(axPath && p.screenId ? { displayX: -1, displayY: -1 } : {}),
     }));
+    for (const pin of pins) {
+      void storedFrame(pin.id).then((frame) => {
+        if (!pins.includes(pin)) return;
+        if (frame) frameMemory.set(pin.id, frame);
+        updatePinPositions();
+      });
+    }
     const highest = Math.max(...pins.map((p) => p.n));
     nextN = Number.isInteger(saved.nextN) && saved.nextN > highest ? saved.nextN : highest + 1;
     if (typeof saved.focusedId === 'string' && pins.some((p) => p.id === saved.focusedId)) {
@@ -428,7 +448,8 @@ export function pageHtml(opts) {
     const snapshot = latestAx;
     const axScreenId = screenIdFor(snapshot);
     const placementEpoch = axEpoch;
-    const screenId = verifiedAxScreenId === axScreenId ? currentScreenId : axScreenId;
+    const screenId = frame?.dataUrl && currentScreenFrame === frame.dataUrl && verifiedAxScreenId === axScreenId
+      ? currentScreenId : axScreenId && !axScreenId.startsWith('ax:') ? axScreenId : null;
     const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const pin = {
       id,
@@ -459,8 +480,8 @@ export function pageHtml(opts) {
     persist();
     const screenRead = readScreenId().then((id) => {
       if (!pins.includes(pin)) return;
-      if (id && placementEpoch === axEpoch) pin.screenId = id;
-      if (focusedId === pin.id && !pin.screenId) setStatus('Screen ID unavailable for pin ' + pin.n, 'err');
+      if (id && placementEpoch === axEpoch && frame?.dataUrl === captureFrame()?.dataUrl) pin.screenId = id;
+      if (focusedId === pin.id && !pin.screenId) setStatus('Screen ID could not be tied to pin ' + pin.n + '. Replace this pin before sending.', 'err');
       persist();
     }).finally(() => pinScreenReads.delete(id));
     pinScreenReads.set(id, screenRead);

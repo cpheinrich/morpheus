@@ -6,7 +6,10 @@ import { pageHtml } from "../src/qa/overlay-page.js";
 import { screenIdFromAxTree } from "../src/qa/screen-id.js";
 
 describe("iOS QA pins", () => {
-  it("hides an unanchored pin on navigation and keeps the placement screen ID", async () => {
+  it.each([
+    { scenario: "distinct screen landmarks", axIdA: "screenAScreen", axIdB: "screenBScreen", canSend: true },
+    { scenario: "a shared screen landmark", axIdA: "sharedHeading", axIdB: "sharedHeading", canSend: false },
+  ])("hides a pin on navigation with $scenario", async ({ axIdA, axIdB, canSend }) => {
     let emitAx: ((snapshot: unknown) => void) | undefined;
     let frame = "data:image/png;base64,QQ==";
     let posted: Record<string, unknown> | null = null;
@@ -46,7 +49,7 @@ describe("iOS QA pins", () => {
         elements: [{ id, path: "0.1", frame: { x: 10, y: 10, width: 50, height: 50 } }],
         errors: [],
       });
-      emitAx?.(snapshot("screenAScreen"));
+      emitAx?.(snapshot(axIdA));
       dom.window.document.getElementById("stage")!.dispatchEvent(new dom.window.MouseEvent("contextmenu", {
         bubbles: true, cancelable: true, clientX: 195, clientY: 700,
       }));
@@ -54,7 +57,7 @@ describe("iOS QA pins", () => {
       const editor = dom.window.document.querySelector<HTMLTextAreaElement>("#text")!;
       editor.value = "Screen A only";
       frame = "data:image/png;base64,Qg==";
-      emitAx?.(snapshot("screenBScreen"));
+      emitAx?.(snapshot(axIdB));
       expect(dom.window.document.querySelector(".pin")).toBeNull();
       const response = { ok: true, json: async () => ({ screenId: "screenBScreen" }) };
       for (const resolve of screenReads) resolve(response);
@@ -65,10 +68,15 @@ describe("iOS QA pins", () => {
       editor.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       dom.window.document.querySelector<HTMLButtonElement>("#send")!.click();
       for (let i = 0; i < 20 && !posted; i++) await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(posted, dom.window.document.getElementById("status")!.textContent || "no status").not.toBeNull();
-      const comment = (posted!.comments as Array<Record<string, unknown>>)[0]!;
-      expect(comment.screenId).toBe("screenAScreen");
-      expect(comment.frame).toMatchObject({ dataUrl: "data:image/png;base64,QQ==" });
+      if (canSend) {
+        expect(posted, dom.window.document.getElementById("status")!.textContent || "no status").not.toBeNull();
+        const comment = (posted!.comments as Array<Record<string, unknown>>)[0]!;
+        expect(comment.screenId).toBe("screenAScreen");
+        expect(comment.frame).toMatchObject({ dataUrl: "data:image/png;base64,QQ==" });
+      } else {
+        expect(posted).toBeNull();
+        expect(dom.window.document.getElementById("status")!.textContent).toContain("no screen ID");
+      }
     } finally {
       dom.window.close();
     }
@@ -201,6 +209,7 @@ describe("iOS QA pins", () => {
         errors: [],
       });
       emitAx?.(snapshot(100));
+      await new Promise((resolve) => setTimeout(resolve, 0));
       const stage = dom.window.document.getElementById("stage")!;
       stage.dispatchEvent(new dom.window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 195, clientY: 150 }));
       for (let i = 0; i < 20 && !dom.window.document.querySelector(".pin"); i++) await new Promise((resolve) => setTimeout(resolve, 0));

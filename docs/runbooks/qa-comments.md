@@ -167,8 +167,13 @@ outside the visible frame or on another screen is hidden, while its comment stay
 `screenId` comes from the raw simulator accessibility tree: the app's `*Screen` identifier when
 exposed (including SwiftUI roots omitted from the simplified stream), otherwise an `ax:` ID
 from the first app-specific landmark in the tree, including scrolling content outside the
-viewport. If accessibility data is unavailable
-at placement, the overlay warns and leaves `screenId` absent rather than inventing one.
+viewport. The browser uses a native screen ID already verified against the placement frame,
+or reads one while that frame remains unchanged. A named `*Screen` ID in the accessibility
+snapshot is also usable immediately. If the frame changes before the native read completes
+and no placement ID was available, the pin cannot be verified: the overlay asks the operator
+to replace it and blocks Send. Send also blocks if the pin's placement PNG is missing. An
+unanchored marker hides when the visible frame changes, since its original viewport position
+is no longer reliable.
 
 Header hint: *Right click to add comment. Press Esc twice to Delete*.
 
