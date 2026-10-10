@@ -194,6 +194,24 @@ export function pageHtml(opts) {
     }
     return best ? { id: best.id, path: best.path, dx: best.dx, dy: best.dy } : null;
   }
+  function stablePlacementAnchor(atClick, before, after, normX, normY) {
+    if (!atClick?.screen || !before?.screen || !after?.screen ||
+        Math.abs(atClick.screen.width - before.screen.width) > 1 ||
+        Math.abs(atClick.screen.height - before.screen.height) > 1 ||
+        Math.abs(before.screen.width - after.screen.width) > 1 ||
+        Math.abs(before.screen.height - after.screen.height) > 1) {
+      throw new Error('Screen size changed during placement');
+    }
+    const clicked = nearestAxAnchor(atClick, normX, normY);
+    const first = nearestAxAnchor(before, normX, normY);
+    const last = nearestAxAnchor(after, normX, normY);
+    const same = (a, b) => (!a && !b) || (a && b && a.id === b.id &&
+      Math.abs(a.dx - b.dx) <= 2 && Math.abs(a.dy - b.dy) <= 2);
+    if (!same(clicked, first) || !same(first, last)) {
+      throw new Error('Content moved during placement capture');
+    }
+    return first || undefined;
+  }
   function updatePinPositions() {
     if (!latestAx || !latestAx.screen) return;
     const w = latestAx.screen.width;
@@ -408,6 +426,7 @@ export function pageHtml(opts) {
   function placePin(normX, normY) {
     const frame = axPath ? null : captureFrame();
     const screenIdAtClick = currentScreenId;
+    const axAtClick = latestAx;
     const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const pin = {
       id,
@@ -444,8 +463,9 @@ export function pageHtml(opts) {
         if (!screenIdAtClick || result.screenId !== screenIdAtClick) {
           throw new Error('Screen changed during placement');
         }
+        const anchor = stablePlacementAnchor(axAtClick, result.beforeSnapshot, result.snapshot, normX, normY);
         pin.screenId = result.screenId;
-        pin.axAnchor = nearestAxAnchor(result.snapshot, normX, normY) || undefined;
+        pin.axAnchor = anchor;
         pin.frame = { width: result.frame.width, height: result.frame.height, capturedAt: result.frame.capturedAt };
         frameMemory.set(id, result.frame);
         void storedFrame(id, result.frame);

@@ -44,6 +44,7 @@ export declare function currentQaAxSnapshot(udid: string): Promise<QaAxSnapshot>
 /** Capture the image between matching native screen identities, so the saved PNG and ID agree. */
 export declare function captureQaPlacement(udid: string): Promise<{
     screenId: string;
+    beforeSnapshot: QaAxSnapshot;
     snapshot: QaAxSnapshot;
     frame: {
         dataUrl: string;

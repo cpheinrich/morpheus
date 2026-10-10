@@ -31,7 +31,10 @@ export function screenIdFromAxTree(roots) {
         return named[0];
     if (!landmarks[0])
         return null;
-    const digest = createHash("sha256").update([...new Set(landmarks)].sort().join("\n")).digest("hex").slice(0, 12);
+    // Use the first two app landmarks as a conservative fallback signature.
+    // Lazy lists add/remove later row IDs as they scroll; hashing every ID made
+    // one unchanged screen look like a different screen on every new row.
+    const digest = createHash("sha256").update([...new Set(landmarks)].slice(0, 2).join("\n")).digest("hex").slice(0, 12);
     return `ax:${landmarks[0]}:${digest}`;
 }
 /** Preserve serve-sim's element paths while retaining the screen ID from that same native tree. */
@@ -93,6 +96,7 @@ export async function captureQaPlacement(udid) {
         }
         return {
             screenId: before.screenId,
+            beforeSnapshot: before,
             snapshot: after,
             frame: {
                 dataUrl: `data:image/png;base64,${bytes.toString("base64")}`,
