@@ -6,6 +6,74 @@ import { pageHtml } from "../src/qa/overlay-page.js";
 import { screenIdFromAxTree } from "../src/qa/screen-id.js";
 
 describe("iOS QA pins", () => {
+  it("hides an unanchored pin on navigation and keeps the placement screen ID", async () => {
+    let emitAx: ((snapshot: unknown) => void) | undefined;
+    let frame = "data:image/png;base64,QQ==";
+    let posted: Record<string, unknown> | null = null;
+    const screenReads: Array<(value: unknown) => void> = [];
+    const dom = new JSDOM(pageHtml({
+      previewUrl: "http://127.0.0.1:3427/",
+      streamPath: "/proxy/stream.mjpeg",
+      axPath: "/proxy/ax",
+      project: "evo",
+    }), {
+      url: "http://127.0.0.1:3683/",
+      runScripts: "dangerously",
+      pretendToBeVisual: true,
+      beforeParse(window: Window & typeof globalThis) {
+        Object.defineProperty(window.HTMLImageElement.prototype, "naturalWidth", { get: () => 390 });
+        Object.defineProperty(window.HTMLImageElement.prototype, "naturalHeight", { get: () => 844 });
+        window.HTMLCanvasElement.prototype.getContext = (() => ({ drawImage() {} })) as unknown as typeof window.HTMLCanvasElement.prototype.getContext;
+        window.HTMLCanvasElement.prototype.toDataURL = () => frame;
+        window.HTMLElement.prototype.getBoundingClientRect = function () {
+          return { left: 0, top: 0, right: 390, bottom: 844, width: 390, height: 844, x: 0, y: 0, toJSON() {} };
+        };
+        class FakeEventSource {
+          onmessage?: (event: { data: string }) => void;
+          constructor() { emitAx = (snapshot) => this.onmessage?.({ data: JSON.stringify(snapshot) }); }
+        }
+        Object.defineProperty(window, "EventSource", { value: FakeEventSource });
+        Object.defineProperty(window, "fetch", { value: (url: string, init: { body: string }) => {
+          if (url === "/api/screen") return new Promise((resolve) => screenReads.push(resolve));
+          posted = JSON.parse(init.body) as Record<string, unknown>;
+          return Promise.resolve({ ok: true, json: async () => ({ id: "batch-1", pendingCount: 1 }) });
+        } });
+      },
+    });
+    try {
+      const snapshot = (id: string) => ({
+        screen: { width: 390, height: 844 },
+        elements: [{ id, path: "0.1", frame: { x: 10, y: 10, width: 50, height: 50 } }],
+        errors: [],
+      });
+      emitAx?.(snapshot("screenAScreen"));
+      dom.window.document.getElementById("stage")!.dispatchEvent(new dom.window.MouseEvent("contextmenu", {
+        bubbles: true, cancelable: true, clientX: 195, clientY: 700,
+      }));
+      expect(dom.window.document.querySelector(".pin")).not.toBeNull();
+      const editor = dom.window.document.querySelector<HTMLTextAreaElement>("#text")!;
+      editor.value = "Screen A only";
+      frame = "data:image/png;base64,Qg==";
+      emitAx?.(snapshot("screenBScreen"));
+      expect(dom.window.document.querySelector(".pin")).toBeNull();
+      const response = { ok: true, json: async () => ({ screenId: "screenBScreen" }) };
+      for (const resolve of screenReads) resolve(response);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(dom.window.document.querySelector(".pin")).toBeNull();
+      expect(screenReads.length).toBe(3);
+      for (const resolve of screenReads.slice(2)) resolve(response);
+      editor.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      dom.window.document.querySelector<HTMLButtonElement>("#send")!.click();
+      for (let i = 0; i < 20 && !posted; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(posted, dom.window.document.getElementById("status")!.textContent || "no status").not.toBeNull();
+      const comment = (posted!.comments as Array<Record<string, unknown>>)[0]!;
+      expect(comment.screenId).toBe("screenAScreen");
+      expect(comment.frame).toMatchObject({ dataUrl: "data:image/png;base64,QQ==" });
+    } finally {
+      dom.window.close();
+    }
+  });
+
   it("opens the editor and tracks scrolling while screen ID reads are slow", async () => {
     let emitAx: ((snapshot: unknown) => void) | undefined;
     const screenReads: Array<(value: unknown) => void> = [];
