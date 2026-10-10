@@ -74,6 +74,15 @@ export const QaComment = z
     text: z.string().min(1),
     createdAt: z.string().min(1),
     anchor: QaAnchor,
+    /** Stable accessibility identifier for the screen at pin placement. */
+    screenId: z.string().min(1).optional(),
+    /** The immutable simulator frame captured when this pin was placed. */
+    frame: z.object({
+      path: z.string().min(1).optional(),
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+      capturedAt: z.string().optional(),
+    }).strict().optional(),
   })
   .strict();
 

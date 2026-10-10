@@ -2,6 +2,7 @@
 export function pageHtml(opts) {
     const preview = JSON.stringify(opts.previewUrl);
     const streamPath = JSON.stringify(opts.streamPath);
+    const axPath = JSON.stringify(opts.axPath);
     const project = JSON.stringify(opts.project);
     return `<!DOCTYPE html>
 <html lang="en">
@@ -77,6 +78,7 @@ export function pageHtml(opts) {
 (() => {
   const previewUrl = ${preview};
   const streamPath = ${streamPath};
+  const axPath = ${axPath};
   const project = ${project};
   document.getElementById('projectLabel').textContent = project;
 
@@ -117,8 +119,131 @@ export function pageHtml(opts) {
     requestAnimationFrame(renderPins);
   }
 
-  /** @type {{id:string, n:number, normX:number, normY:number, text:string, createdAt:string}[]} */
+  /** @type {{id:string, n:number, normX:number, normY:number, text:string, createdAt:string, screenId?:string, axAnchor?:object, frame?:object, displayX?:number, displayY?:number}[]} */
   let pins = [];
+  const frameMemory = new Map();
+  let frameDb = null;
+  function openFrameDb() {
+    if (!('indexedDB' in window)) return Promise.resolve(null);
+    if (frameDb) return frameDb;
+    frameDb = new Promise((resolve) => {
+      const request = indexedDB.open('morpheus-qa-pin-frames', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('frames');
+      request.onsuccess = () => {
+        const db = request.result;
+        resolve(db);
+        const cursor = db.transaction('frames', 'readwrite').objectStore('frames').openCursor();
+        cursor.onsuccess = () => {
+          const row = cursor.result;
+          if (!row) return;
+          const capturedAt = Date.parse(row.value?.capturedAt || '');
+          if (!Number.isFinite(capturedAt) || Date.now() - capturedAt > 24 * 60 * 60 * 1000) {
+            row.delete();
+          }
+          row.continue();
+        };
+      };
+      request.onerror = () => resolve(null);
+    });
+    return frameDb;
+  }
+  async function storedFrame(id, value) {
+    const db = await openFrameDb();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction('frames', value === undefined ? 'readonly' : 'readwrite');
+      const request = value === undefined
+        ? tx.objectStore('frames').get(id)
+        : value === null ? tx.objectStore('frames').delete(id) : tx.objectStore('frames').put(value, id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => resolve(null);
+    });
+  }
+  let latestAx = null;
+  let currentScreenId = null;
+  async function readScreenId() {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    try {
+      const response = await fetch('/api/screen', { signal: controller.signal });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return typeof data.screenId === 'string' && data.screenId ? data.screenId : null;
+    } catch (_) {
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  function screenIdFor(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.elements)) return null;
+    const ids = snapshot.elements.map((e) => e.id)
+      .filter((id) => typeof id === 'string' && /^[A-Za-z][A-Za-z0-9_-]*$/.test(id)
+        && !id.startsWith('_Tt') && !id.startsWith('mainNavigation'));
+    return ids.find((id) => /Screen$/.test(id)) || (ids[0] ? 'ax:' + ids[0] : null);
+  }
+  function nearestAxAnchor(snapshot, normX, normY) {
+    if (!snapshot || !snapshot.screen || !snapshot.elements) return null;
+    const x = normX * snapshot.screen.width;
+    const y = normY * snapshot.screen.height;
+    let best = null;
+    for (const e of snapshot.elements) {
+      const r = e.frame;
+      if (!r || r.width <= 0 || r.height <= 0) continue;
+      const dx = Math.max(r.x - x, 0, x - r.x - r.width);
+      const dy = Math.max(r.y - y, 0, y - r.y - r.height);
+      const distance = Math.hypot(dx, dy);
+      if (distance > 80) continue;
+      const semantic = typeof e.id === 'string' && !/^\\d+(\\.\\d+)*$/.test(e.id);
+      const score = distance * 10 + Math.sqrt(r.width * r.height) + (semantic ? 0 : 100);
+      if (!best || score < best.score) best = { score, id: e.id, path: e.path, dx: x - r.x, dy: y - r.y };
+    }
+    return best ? { id: best.id, path: best.path, dx: best.dx, dy: best.dy } : null;
+  }
+  function updatePinPositions() {
+    if (!latestAx || !latestAx.screen) return;
+    const w = latestAx.screen.width;
+    const h = latestAx.screen.height;
+    for (const p of pins) {
+      if (p.screenId && currentScreenId && p.screenId !== currentScreenId) {
+        p.displayX = -1;
+        p.displayY = -1;
+        continue;
+      }
+      if (!p.axAnchor) {
+        p.displayX = p.normX;
+        p.displayY = p.normY;
+        continue;
+      }
+      const e = latestAx.elements.find((item) => item.id === p.axAnchor.id && item.path === p.axAnchor.path)
+        || latestAx.elements.find((item) => item.id === p.axAnchor.id);
+      if (!e) {
+        p.displayX = -1;
+        p.displayY = -1;
+        continue;
+      }
+      p.displayX = (e.frame.x + p.axAnchor.dx) / w;
+      p.displayY = (e.frame.y + p.axAnchor.dy) / h;
+    }
+    renderPins();
+  }
+  if (axPath) {
+    const axStream = new EventSource(axPath);
+    let sequence = 0;
+    axStream.onmessage = (event) => {
+      try {
+        const snapshot = JSON.parse(event.data);
+        if (!snapshot.screen || !Array.isArray(snapshot.elements) || snapshot.errors?.length) return;
+        latestAx = snapshot;
+        const ticket = ++sequence;
+        void readScreenId().then((id) => {
+          if (ticket !== sequence) return;
+          currentScreenId = id || screenIdFor(snapshot);
+          updatePinPositions();
+        });
+      } catch (_) {}
+    };
+  }
   let focusedId = null;
   let escArmedAt = 0;
   let nextN = 1;
@@ -130,7 +255,7 @@ export function pageHtml(opts) {
   function persist() {
     try {
       sessionStorage.setItem(storageKey, JSON.stringify({
-        pins,
+        pins: pins.map(({ displayX, displayY, ...p }) => p),
         nextN,
         focusedId,
         draft: textEl.disabled ? null : textEl.value,
@@ -152,7 +277,10 @@ export function pageHtml(opts) {
       forget();
       return false;
     }
-    pins = usable;
+    pins = usable.map((p) => ({
+      ...p,
+      ...(axPath && p.screenId ? { displayX: -1, displayY: -1 } : {}),
+    }));
     const highest = Math.max(...pins.map((p) => p.n));
     nextN = Number.isInteger(saved.nextN) && saved.nextN > highest ? saved.nextN : highest + 1;
     if (typeof saved.focusedId === 'string' && pins.some((p) => p.id === saved.focusedId)) {
@@ -203,11 +331,14 @@ export function pageHtml(opts) {
     const boxW = box ? box.width : 0;
     const boxH = box ? box.height : 0;
     pins.forEach((p) => {
+      const x = p.displayX ?? p.normX;
+      const y = p.displayY ?? p.normY;
+      if (x < 0 || x > 1 || y < 0 || y > 1) return;
       const el = document.createElement('div');
       el.className = 'pin' + (p.id === focusedId ? ' focused' : '');
       el.textContent = String(p.n);
-      el.style.left = (originX + p.normX * boxW) + 'px';
-      el.style.top = (originY + p.normY * boxH) + 'px';
+      el.style.left = (originX + x * boxW) + 'px';
+      el.style.top = (originY + y * boxH) + 'px';
       el.addEventListener('pointerdown', (ev) => {
         ev.stopPropagation();
       });
@@ -251,6 +382,8 @@ export function pageHtml(opts) {
     const p = focused();
     if (!p) return;
     pins = pins.filter((x) => x.id !== p.id);
+    frameMemory.delete(p.id);
+    void storedFrame(p.id, null);
     focusedId = null;
     textEl.value = '';
     textEl.disabled = true;
@@ -260,7 +393,11 @@ export function pageHtml(opts) {
     persist();
   }
 
-  function placePin(normX, normY) {
+  async function placePin(normX, normY) {
+    const frame = captureFrame();
+    const snapshot = latestAx;
+    const screenId = await readScreenId() || screenIdFor(snapshot) || currentScreenId;
+    currentScreenId = screenId;
     const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const pin = {
       id,
@@ -269,13 +406,20 @@ export function pageHtml(opts) {
       normY,
       text: '',
       createdAt: new Date().toISOString(),
+      screenId: screenId || undefined,
+      axAnchor: nearestAxAnchor(snapshot, normX, normY) || undefined,
+      frame: frame ? { width: frame.width, height: frame.height, capturedAt: frame.capturedAt } : undefined,
     };
+    if (frame) {
+      frameMemory.set(id, frame);
+      void storedFrame(id, frame);
+    }
     pins.push(pin);
     focusedId = id;
     textEl.disabled = false;
     textEl.value = '';
     textEl.focus();
-    setStatus('Pin ' + pin.n + ' placed — type a comment, Enter to save');
+    setStatus('Pin ' + pin.n + ' placed — type a comment, Enter to save' + (pin.screenId ? '' : ' · screen ID unavailable'), pin.screenId ? undefined : 'err');
     renderList();
     renderPins();
     persist();
@@ -368,7 +512,7 @@ export function pageHtml(opts) {
     if (ev.target && ev.target.classList && ev.target.classList.contains('pin')) return;
     const c = coordsFromEvent(ev);
     if (!c) return;
-    placePin(c.normX, c.normY);
+    void placePin(c.normX, c.normY);
   });
 
   // Left pointer on the picture → drive the simulator via HID.
@@ -460,7 +604,7 @@ export function pageHtml(opts) {
     void sendKey('up', ev.code);
   });
 
-  async function captureFrame() {
+  function captureFrame() {
     if (stream.hidden || !stream.naturalWidth) return null;
     try {
       const canvas = document.createElement('canvas');
@@ -472,6 +616,7 @@ export function pageHtml(opts) {
         dataUrl: canvas.toDataURL('image/png'),
         width: canvas.width,
         height: canvas.height,
+        capturedAt: new Date().toISOString(),
       };
     } catch (err) {
       console.warn('frame capture failed', err);
@@ -486,14 +631,20 @@ export function pageHtml(opts) {
     sendBtn.disabled = true;
     setStatus('Sending…');
     const frameInfo = await captureFrame();
-    const body = {
-      preview: { url: previewUrl, kind: 'serve-sim' },
-      comments: ready.map((p) => ({
+    const comments = await Promise.all(ready.map(async (p) => {
+      const savedFrame = frameMemory.get(p.id) || await storedFrame(p.id);
+      return {
         id: 'c' + p.n,
         text: p.text.trim(),
         createdAt: p.createdAt,
         anchor: { normX: p.normX, normY: p.normY },
-      })),
+        ...(p.screenId ? { screenId: p.screenId } : {}),
+        ...(p.frame ? { frame: { ...p.frame, ...(savedFrame ? { dataUrl: savedFrame.dataUrl } : {}) } } : {}),
+      };
+    }));
+    const body = {
+      preview: { url: previewUrl, kind: 'serve-sim' },
+      comments,
       frame: frameInfo
         ? { path: 'frame.png', width: frameInfo.width, height: frameInfo.height, dataUrl: frameInfo.dataUrl }
         : stream.naturalWidth
@@ -508,6 +659,10 @@ export function pageHtml(opts) {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || res.statusText);
+      for (const p of pins) {
+        frameMemory.delete(p.id);
+        void storedFrame(p.id, null);
+      }
       pins = [];
       nextN = 1;
       focusedId = null;

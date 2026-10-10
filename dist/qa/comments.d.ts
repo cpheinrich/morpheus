@@ -92,6 +92,13 @@ export declare const QaComment: z.ZodObject<{
             pageHeight: z.ZodNumber;
         }, z.core.$strict>>;
     }, z.core.$strict>;
+    screenId: z.ZodOptional<z.ZodString>;
+    frame: z.ZodOptional<z.ZodObject<{
+        path: z.ZodOptional<z.ZodString>;
+        width: z.ZodNumber;
+        height: z.ZodNumber;
+        capturedAt: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 export declare const QaPreview: z.ZodObject<{
     url: z.ZodString;
@@ -157,6 +164,13 @@ export declare const QaCommentBatch: z.ZodObject<{
                 pageHeight: z.ZodNumber;
             }, z.core.$strict>>;
         }, z.core.$strict>;
+        screenId: z.ZodOptional<z.ZodString>;
+        frame: z.ZodOptional<z.ZodObject<{
+            path: z.ZodOptional<z.ZodString>;
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+            capturedAt: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>>;
     }, z.core.$strict>>;
     status: z.ZodEnum<{
         pending: "pending";

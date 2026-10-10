@@ -16,6 +16,7 @@ local/qa-comments/
     <batchId>/
       batch.json      # schema below
       frame.png       # optional captured frame at Send
+      comment-1.png   # iOS pin 1 at placement (one per captured pin)
   claims/
     <batchId>.json    # exclusive agent claim; survives process exit
   responder.json      # optional local command for a separate agent process
@@ -28,7 +29,7 @@ local/qa-comments/
 `batchId` is `YYYYMMDDTHHMMSSZ-<short>` (UTC clock + 4–6 char suffix) so ids
 sort chronologically without consulting a remote.
 
-Send publishes `batch.json` and its optional frame together, then returns the
+Send publishes `batch.json` and its optional frames together, then returns the
 batch id and current open-batch count. Later Sends append to the queue while an
 agent is working. A claim is created exclusively for one agent identity; other
 agents can claim other batches but cannot resolve or release that claim. Claims
@@ -158,6 +159,16 @@ finger down until the next tap, which made switches flip late or flip two contro
 Pins stay for the session until deleted or cleared after a successful **Send**. They and the
 draft being typed are mirrored into the tab's `sessionStorage`, so a page reload, an overlay
 server restart or a simulator relaunch brings them back; closing the tab forgets them.
+Each iOS pin's screenshot is captured when placed and stored in the browser's IndexedDB until
+Send succeeds. The batch also retains the Send-time frame for older agents. The pin's original
+coordinates refer to its own screenshot, even after the app scrolls. The overlay reads the
+simulator accessibility stream to follow the nearby native element while it scrolls; a marker
+outside the visible frame or on another screen is hidden, while its comment stays in the list.
+`screenId` comes from the raw simulator accessibility tree: the app's `*Screen` identifier when
+exposed (including SwiftUI roots omitted from the simplified stream), otherwise an `ax:` ID
+from the first app-specific landmark in the tree, including scrolling content outside the
+viewport. If accessibility data is unavailable
+at placement, the overlay warns and leaves `screenId` absent rather than inventing one.
 
 Header hint: *Right click to add comment. Press Esc twice to Delete*.
 
@@ -179,7 +190,9 @@ See `src/qa/comments.ts` (`QaCommentBatch`). Summary:
 | `createdAt` | ISO-8601 with offset |
 | `preview` | `{ url, kind?: "serve-sim" \| "web" \| "other", label? }` |
 | `frame` | `{ path?: "frame.png", width, height, capturedAt? }` |
-| `comments` | ordered list of `{ id, text, createdAt, anchor }` |
+| `comments` | ordered list of `{ id, text, createdAt, anchor, screenId?, frame? }` |
+| `comments[].screenId` | screen identifier captured at iOS pin placement |
+| `comments[].frame` | `{ path?: "comment-N.png", width, height, capturedAt? }`, captured at iOS pin placement |
 | `anchor` | `{ normX, normY }` in 0–1 of the frame, and/or `{ x, y }` pixels, and/or `{ x, y, w, h }` region |
 | `status` | `pending` \| `resolved` |
 | `resolvedAt` / `resolvedBy` | set by `morpheus qa comments resolve` |

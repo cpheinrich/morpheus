@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { BatchRejected, recordBatch, type PostedBatch } from "./batches.js";
 import { pageHtml } from "./overlay-page.js";
 import { TouchPacer } from "./touch-pacer.js";
+import { currentScreenId } from "./screen-id.js";
 
 export interface ServeOptions {
   /** Project checkout that receives local/qa-comments/ (e.g. Evo). */
@@ -131,7 +132,11 @@ function proxyRequest(target: string, req: IncomingMessage, res: ServerResponse)
       up.pipe(res);
     },
   );
+  // SSE and MJPEG stay open indefinitely; a disconnected browser must also
+  // release the upstream socket or server.close() can hang after QA ends.
+  res.on("close", () => upstream.destroy());
   upstream.on("error", (err) => {
+    if (res.destroyed) return;
     if (!res.headersSent) sendJson(res, 502, { error: String(err) });
     else res.destroy(err);
   });
@@ -285,6 +290,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
     options.streamUrl ?? (await discoverStreamUrl(previewOrigin));
   const streamPath = discovered ? "/proxy/stream.mjpeg" : null;
   const udid = udidFromStreamUrl(discovered);
+  const axPath = udid ? "/proxy/ax" : null;
   const hid = udid ? await openHidBridge(previewOrigin, udid) : null;
 
   const server = createServer(async (req, res) => {
@@ -295,7 +301,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
       if (refuseCrossOriginPost(req, res, boundPort)) return;
       if (req.method === "GET" && url.pathname === "/") {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(pageHtml({ previewUrl, streamPath, project }));
+        res.end(pageHtml({ previewUrl, streamPath, axPath, project }));
         return;
       }
       if (req.method === "GET" && url.pathname === "/health") {
@@ -314,6 +320,26 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           return;
         }
         proxyRequest(discovered, req, res);
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/proxy/ax") {
+        if (!udid) {
+          sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
+          return;
+        }
+        proxyRequest(`${previewOrigin}/ax?device=${encodeURIComponent(udid)}`, req, res);
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/api/screen") {
+        if (!udid) {
+          sendJson(res, 404, { error: "No simulator discovered for screen ID" });
+          return;
+        }
+        try {
+          sendJson(res, 200, { screenId: await currentScreenId(udid) });
+        } catch {
+          sendJson(res, 503, { error: "Simulator screen ID unavailable" });
+        }
         return;
       }
 

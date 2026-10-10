@@ -65,7 +65,7 @@ whole page to a provider, use the column's Full page button; Column puts the fra
 
 ## 3. Queue comments and keep the person's chat free
 
-Each Send writes local/qa-comments/pending/<batchId>/{batch.json,frame.png} in the checkout.
+Each Send writes local/qa-comments/pending/<batchId>/batch.json and its captured PNGs in the checkout.
 
 Every Send adds another complete batch to the durable queue and shows the open-batch count. It does
 not mean a responder has started. Arm a responder before the person starts commenting when the host
@@ -91,12 +91,15 @@ verify its child agent and descendants have stopped. Only then run responder rec
 
 Choose a stable responder identity, such as \`codex:<session-id>\`. Call
 \`morpheus qa comments claim --agent <identity> --root <checkout>\` until it prints nothing. For
-each claimed id: \`morpheus qa comments show <id> --root <checkout>\`, open frame.png, map every
-anchor (normX/normY are fractions of the frame's width and height) to what is on screen, act on
+each claimed id: \`morpheus qa comments show <id> --root <checkout>\`. For iOS, open each comment's
+\`frame.path\` first: it is the frame from pin placement, and \`screenId\` identifies the screen.
+The batch-level frame is from Send and may show different content after scrolling. For web or
+older batches without comment frames, use the batch-level frame. Map each anchor (normX/normY
+are fractions of its matching frame's width and height) to what is on screen, act on
 or answer each comment, then \`morpheus qa comments resolve <id> --agent <identity> --root <checkout>\`.
 If work fails, release that claim; if the responder died, an operator can release it with
 \`--force\` after confirming the old responder stopped. Confirm the
-first batch's frame.png shows real app pixels before treating its anchors as authoritative.
+first batch's captured PNG shows real app pixels before treating its anchors as authoritative.
 
 A web batch's frame is the whole page, so normX/normY are fractions of the page, not the window.
 Each web anchor also carries \`page\` (url, scroll, viewport and page size) and, when it could be
