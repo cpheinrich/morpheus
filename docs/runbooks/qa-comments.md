@@ -162,15 +162,16 @@ server restart or a simulator relaunch brings them back; closing the tab forgets
 Each iOS pin gets a native screenshot when placed, with the native screen ID checked both
 before and after capture. The captured image is shown beside the editor and stored in the
 browser's IndexedDB until Send succeeds. Review that image while writing the comment; if the
-app navigated while the capture was taken, delete and place the pin again. The batch also
+app navigated or the element under the click moved before or during capture, delete and place
+the pin again. The batch also
 retains the Send-time frame for older agents. The pin's original
 coordinates refer to its own screenshot, even after the app scrolls. The overlay reads the
 simulator accessibility stream to follow the nearby native element while it scrolls; a marker
 outside the visible frame or on another screen is hidden, while its comment stays in the list.
 `screenId` comes from the raw simulator accessibility tree: the app's `*Screen` identifier when
 exposed (including SwiftUI roots omitted from the simplified stream), otherwise an `ax:` ID
-the first app-specific landmark plus a digest of all app-specific identifiers in the tree,
-including scrolling content outside the viewport. The overlay's accessibility stream derives the screen ID and element positions from
+from the first two app-specific landmarks. Later lazy-loaded row identifiers do not change
+the ID. The overlay's accessibility stream derives the screen ID and element positions from
 the same native tree, so animations cannot make a later screen-ID response mislabel a pin.
 The pin keeps the ID from its native placement capture and hides when a later snapshot has
 a different or unavailable ID. Send waits for pending captures and blocks if the placement

@@ -89,6 +89,7 @@ describe("iOS QA pins", () => {
         Object.defineProperty(window, "fetch", { value: (url: string, init: { body: string }) => {
           if (url === "/api/placement") return Promise.resolve({ ok: true, json: async () => ({
             screenId: "screenAScreen",
+            beforeSnapshot: { screen: { width: 390, height: 844 }, elements: [{ id: axIdA, path: "0.1", frame: { x: 10, y: 10, width: 50, height: 50 } }] },
             snapshot: { screen: { width: 390, height: 844 }, elements: [{ id: axIdA, path: "0.1", frame: { x: 10, y: 10, width: 50, height: 50 } }] },
             frame: { dataUrl: "data:image/png;base64,QQ==", width: 390, height: 844, capturedAt: new Date().toISOString() },
           }) });
@@ -162,6 +163,7 @@ describe("iOS QA pins", () => {
           if (url !== "/api/placement") throw new Error("Unexpected request");
           return Promise.resolve({ ok: true, json: async () => ({
             screenId: "mealReviewScreen",
+            beforeSnapshot: { screen: { width: 390, height: 844 }, elements: [{ id: "mealReviewImage", path: "0.1.0", frame: { x: 0, y: 100, width: 390, height: 100 } }] },
             snapshot: { screen: { width: 390, height: 844 }, elements: [{ id: "mealReviewImage", path: "0.1.0", frame: { x: 0, y: 100, width: 390, height: 100 } }] },
             frame: { dataUrl: "data:image/png;base64,Zmlyc3Q=", width: 390, height: 844, capturedAt: new Date().toISOString() },
           }) });
@@ -184,6 +186,58 @@ describe("iOS QA pins", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       emitAx?.(snapshot(40));
       expect(dom.window.document.querySelector<HTMLElement>(".pin")?.style.top).toBe("90px");
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it.each([
+    { phase: "before capture begins", beforeId: "ingredientB", afterId: "ingredientB" },
+    { phase: "during capture", beforeId: "ingredientA", afterId: "ingredientB" },
+  ])("rejects a screenshot when scrolling changes the element under the pin $phase", async ({ beforeId, afterId }) => {
+    let emitAx: ((snapshot: unknown) => void) | undefined;
+    let posted = false;
+    const elements = (id: string) => [{ id, path: "0.1", frame: { x: 0, y: 100, width: 390, height: 100 } }];
+    const dom = new JSDOM(pageHtml({
+      previewUrl: "http://127.0.0.1:3427/", streamPath: "/proxy/stream.mjpeg", axPath: "/api/ax", project: "evo",
+    }), {
+      url: "http://127.0.0.1:3683/", runScripts: "dangerously", pretendToBeVisual: true,
+      beforeParse(window: Window & typeof globalThis) {
+        Object.defineProperty(window.HTMLImageElement.prototype, "naturalWidth", { get: () => 390 });
+        Object.defineProperty(window.HTMLImageElement.prototype, "naturalHeight", { get: () => 844 });
+        window.HTMLElement.prototype.getBoundingClientRect = function () {
+          return { left: 0, top: 0, right: 390, bottom: 844, width: 390, height: 844, x: 0, y: 0, toJSON() {} };
+        };
+        class FakeEventSource {
+          onmessage?: (event: { data: string }) => void;
+          constructor() { emitAx = (snapshot) => this.onmessage?.({ data: JSON.stringify(snapshot) }); }
+        }
+        Object.defineProperty(window, "EventSource", { value: FakeEventSource });
+        Object.defineProperty(window, "fetch", { value: async (url: string) => {
+          if (url === "/api/placement") return { ok: true, json: async () => ({
+            screenId: "mealReviewScreen",
+            beforeSnapshot: { screen: { width: 390, height: 844 }, elements: elements(beforeId) },
+            snapshot: { screen: { width: 390, height: 844 }, elements: elements(afterId) },
+            frame: { dataUrl: "data:image/png;base64,QQ==", width: 390, height: 844, capturedAt: new Date().toISOString() },
+          }) };
+          posted = true;
+          return { ok: true, json: async () => ({ id: "batch-1" }) };
+        } });
+      },
+    });
+    try {
+      emitAx?.({ screen: { width: 390, height: 844 }, screenId: "mealReviewScreen", elements: elements("ingredientA") });
+      dom.window.document.getElementById("stage")!.dispatchEvent(new dom.window.MouseEvent("contextmenu", {
+        bubbles: true, cancelable: true, clientX: 195, clientY: 150,
+      }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(dom.window.document.getElementById("status")!.textContent).toContain("Content moved during placement capture");
+      const editor = dom.window.document.querySelector<HTMLTextAreaElement>("#text")!;
+      editor.value = "Comment on A";
+      editor.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      dom.window.document.querySelector<HTMLButtonElement>("#send")!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(posted).toBe(false);
     } finally {
       dom.window.close();
     }
@@ -250,6 +304,7 @@ describe("iOS QA pins", () => {
         Object.defineProperty(window, "fetch", { value: async (_url: string, init: { body: string }) => {
           if (_url === "/api/placement") return { ok: true, json: async () => ({
             screenId: "mealReviewScreen",
+            beforeSnapshot: { screen: { width: 390, height: 844 }, elements: [{ id: "mealReviewImage", path: "0.1.0", frame: { x: 0, y: 100, width: 390, height: 100 } }] },
             snapshot: { screen: { width: 390, height: 844 }, elements: [{ id: "mealReviewImage", path: "0.1.0", frame: { x: 0, y: 100, width: 390, height: 100 } }] },
             frame: { dataUrl: "data:image/png;base64,Zmlyc3Q=", width: 390, height: 844, capturedAt: new Date().toISOString() },
           }) };
@@ -322,6 +377,9 @@ describe("iOS QA pins", () => {
     }];
     expect(screenIdFromAxTree(tree("screenAContent", 100))).toBe(screenIdFromAxTree(tree("screenAContent", 40)));
     expect(screenIdFromAxTree(tree("screenAContent", 100))).not.toBe(screenIdFromAxTree(tree("screenBContent", 100)));
+    const withLazyRow = tree("screenAContent", 40);
+    withLazyRow[0]!.children!.push({ AXUniqueId: "lazyRow2", frame: { x: 20, y: 160, width: 360, height: 50 } });
+    expect(screenIdFromAxTree(tree("screenAContent", 100))).toBe(screenIdFromAxTree(withLazyRow));
   });
 
   it("emits screen identity and scrolling elements from one native tree", () => {

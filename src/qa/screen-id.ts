@@ -56,7 +56,10 @@ export function screenIdFromAxTree(roots: AxNode[]): string | null {
   for (const root of roots) visit(root);
   if (named[0]) return named[0];
   if (!landmarks[0]) return null;
-  const digest = createHash("sha256").update([...new Set(landmarks)].sort().join("\n")).digest("hex").slice(0, 12);
+  // Use the first two app landmarks as a conservative fallback signature.
+  // Lazy lists add/remove later row IDs as they scroll; hashing every ID made
+  // one unchanged screen look like a different screen on every new row.
+  const digest = createHash("sha256").update([...new Set(landmarks)].slice(0, 2).join("\n")).digest("hex").slice(0, 12);
   return `ax:${landmarks[0]}:${digest}`;
 }
 
@@ -107,6 +110,7 @@ export async function currentQaAxSnapshot(udid: string): Promise<QaAxSnapshot> {
 /** Capture the image between matching native screen identities, so the saved PNG and ID agree. */
 export async function captureQaPlacement(udid: string): Promise<{
   screenId: string;
+  beforeSnapshot: QaAxSnapshot;
   snapshot: QaAxSnapshot;
   frame: { dataUrl: string; width: number; height: number; capturedAt: string };
 }> {
@@ -124,6 +128,7 @@ export async function captureQaPlacement(udid: string): Promise<{
     }
     return {
       screenId: before.screenId,
+      beforeSnapshot: before,
       snapshot: after,
       frame: {
         dataUrl: `data:image/png;base64,${bytes.toString("base64")}`,
