@@ -33,7 +33,7 @@ export class QaScreenIdentity {
         const candidate = snapshot.screenId;
         if (!candidate)
             return snapshot;
-        if (!candidate.startsWith("ax:") || !this.stableId || !this.stableId.startsWith("ax:")) {
+        if (!candidate.startsWith("ax:") || !this.stableId) {
             this.stableId = candidate;
         }
         else if (candidate !== this.candidateId && !this.verticalScroll) {

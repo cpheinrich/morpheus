@@ -400,6 +400,13 @@ describe("iOS QA pins", () => {
     identity.noteTouch("begin", 0.5, 0.5);
     identity.noteTouch("end", 0.5, 0.5);
     expect(identity.observe(qaAxSnapshotFromTree(tree("otherScreenContent"))).screenId).not.toBe(first);
+
+    const named = new QaScreenIdentity();
+    named.observe({ ...qaAxSnapshotFromTree(tree("lazyRowA")), screenId: "mealReviewScreen" });
+    named.noteTouch("begin", 0.5, 0.8);
+    named.noteTouch("move", 0.5, 0.3);
+    named.noteTouch("end", 0.5, 0.3);
+    expect(named.observe(qaAxSnapshotFromTree(tree("lazyRowB"))).screenId).toBe("mealReviewScreen");
   });
 
   it("emits screen identity and scrolling elements from one native tree", () => {
