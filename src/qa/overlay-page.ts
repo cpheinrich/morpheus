@@ -197,9 +197,9 @@ export function pageHtml(opts: {
       // Tree paths are recycled by native lazy lists and cannot identify an item.
       if (typeof e.id !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(e.id) || e.id.startsWith('_Tt')) continue;
       const score = distance * 10 + Math.sqrt(r.width * r.height);
-      if (!best || score < best.score) best = { score, id: e.id, path: e.path, dx: x - r.x, dy: y - r.y };
+      if (!best || score < best.score) best = { score, id: e.id, path: e.path, label: e.label || '', dx: x - r.x, dy: y - r.y };
     }
-    return best ? { id: best.id, path: best.path, dx: best.dx, dy: best.dy } : null;
+    return best ? { id: best.id, path: best.path, label: best.label, dx: best.dx, dy: best.dy } : null;
   }
   function stablePlacementAnchor(atClick, before, after, normX, normY) {
     if (!atClick?.screen || !before?.screen || !after?.screen ||
@@ -212,7 +212,7 @@ export function pageHtml(opts: {
     const clicked = nearestAxAnchor(atClick, normX, normY);
     const first = nearestAxAnchor(before, normX, normY);
     const last = nearestAxAnchor(after, normX, normY);
-    const same = (a, b) => (!a && !b) || (a && b && a.id === b.id &&
+    const same = (a, b) => (!a && !b) || (a && b && a.id === b.id && a.label === b.label &&
       Math.abs(a.dx - b.dx) <= 2 && Math.abs(a.dy - b.dy) <= 2);
     if (!same(clicked, first) || !same(first, last)) {
       throw new Error('Content moved during placement capture');

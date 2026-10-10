@@ -195,10 +195,11 @@ describe("iOS QA pins", () => {
     { phase: "before capture begins", atClickId: "ingredientA", beforeId: "ingredientB", afterId: "ingredientB", error: "Content moved" },
     { phase: "during capture", atClickId: "ingredientA", beforeId: "ingredientA", afterId: "ingredientB", error: "Content moved" },
     { phase: "with a recycled anonymous path", atClickId: "0.1", beforeId: "0.1", afterId: "0.1", error: "No stable native element" },
-  ])("rejects a screenshot $phase", async ({ atClickId, beforeId, afterId, error }) => {
+    { phase: "with a reused named row ID", atClickId: "ingredientRow", beforeId: "ingredientRow", afterId: "ingredientRow", afterLabel: "Rice", error: "Content moved" },
+  ])("rejects a screenshot $phase", async ({ atClickId, beforeId, afterId, afterLabel, error }) => {
     let emitAx: ((snapshot: unknown) => void) | undefined;
     let posted = false;
-    const elements = (id: string) => [{ id, path: "0.1", frame: { x: 0, y: 100, width: 390, height: 100 } }];
+    const elements = (id: string, label = "Chicken") => [{ id, path: "0.1", label, frame: { x: 0, y: 100, width: 390, height: 100 } }];
     const dom = new JSDOM(pageHtml({
       previewUrl: "http://127.0.0.1:3427/", streamPath: "/proxy/stream.mjpeg", axPath: "/api/ax", project: "evo",
     }), {
@@ -218,7 +219,7 @@ describe("iOS QA pins", () => {
           if (url === "/api/placement") return { ok: true, json: async () => ({
             screenId: "mealReviewScreen",
             beforeSnapshot: { screen: { width: 390, height: 844 }, elements: elements(beforeId) },
-            snapshot: { screen: { width: 390, height: 844 }, elements: elements(afterId) },
+            snapshot: { screen: { width: 390, height: 844 }, elements: elements(afterId, afterLabel) },
             frame: { dataUrl: "data:image/png;base64,QQ==", width: 390, height: 844, capturedAt: new Date().toISOString() },
           }) };
           posted = true;
