@@ -50,6 +50,10 @@ describe("iOS QA pins", () => {
         errors: [],
       });
       emitAx?.(snapshot(axIdA));
+      if (canSend) {
+        screenReads[0]!({ ok: true, json: async () => ({ screenId: "screenAScreen" }) });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
       dom.window.document.getElementById("stage")!.dispatchEvent(new dom.window.MouseEvent("contextmenu", {
         bubbles: true, cancelable: true, clientX: 195, clientY: 700,
       }));

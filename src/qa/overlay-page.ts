@@ -455,7 +455,7 @@ export function pageHtml(opts: {
     const axScreenId = screenIdFor(snapshot);
     const placementEpoch = axEpoch;
     const screenId = frame?.dataUrl && currentScreenFrame === frame.dataUrl && verifiedAxScreenId === axScreenId
-      ? currentScreenId : axScreenId && !axScreenId.startsWith('ax:') ? axScreenId : null;
+      ? currentScreenId : null;
     const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const pin = {
       id,
