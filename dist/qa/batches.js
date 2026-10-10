@@ -21,13 +21,35 @@ export async function recordBatch(root, project, raw, defaultPreview) {
         frameBytes = Buffer.from(raw.frame.dataUrl.slice("data:image/png;base64,".length), "base64");
         frameMeta = { path: "frame.png", width: raw.frame.width, height: raw.frame.height, capturedAt: new Date().toISOString() };
     }
+    const commentFrames = new Map();
+    const comments = raw.comments.map((value, index) => {
+        if (!value || typeof value !== "object" || Array.isArray(value))
+            return value;
+        const comment = value;
+        const postedFrame = comment.frame;
+        if (!postedFrame || typeof postedFrame !== "object" || Array.isArray(postedFrame))
+            return value;
+        const frame = postedFrame;
+        const { dataUrl, ...metadata } = frame;
+        if (dataUrl === undefined)
+            return value;
+        if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/png;base64,")) {
+            throw new BatchRejected("comment frame must be a PNG data URL");
+        }
+        const bytes = Buffer.from(dataUrl.slice("data:image/png;base64,".length), "base64");
+        if (bytes.length === 0)
+            throw new BatchRejected("comment frame is empty");
+        const path = `comment-${index + 1}.png`;
+        commentFrames.set(path, bytes);
+        return { ...comment, frame: { ...metadata, path } };
+    });
     const batch = parseBatch({
         version: 1, id, project, createdAt: new Date().toISOString(),
         preview: raw.preview ?? defaultPreview,
         ...(frameMeta ? { frame: frameMeta } : {}),
-        comments: raw.comments, status: "pending",
+        comments, status: "pending",
     });
-    const path = await writePendingBatch(root, batch, frameBytes);
+    const path = await writePendingBatch(root, batch, frameBytes, commentFrames);
     const webhook = await resolveWebhookConfig(root);
     if (webhook) {
         notifyBatchPending(webhook.url, {

@@ -218,6 +218,7 @@ export async function writePendingBatch(
   root: string,
   batch: QaCommentBatch,
   frameBytes?: Buffer,
+  commentFrames: ReadonlyMap<string, Buffer> = new Map(),
 ): Promise<string> {
   const dir = join(pendingRoot(root), batch.id);
   await mkdir(pendingRoot(root), { recursive: true });
@@ -225,6 +226,10 @@ export async function writePendingBatch(
   try {
     await writeFile(join(staging, "batch.json"), `${JSON.stringify(batch, null, 2)}\n`, "utf8");
     if (frameBytes) await writeFile(join(staging, "frame.png"), frameBytes);
+    for (const [name, bytes] of commentFrames) {
+      if (!/^comment-[A-Za-z0-9_-]+\.png$/.test(name)) throw new Error("Invalid QA comment frame name");
+      await writeFile(join(staging, name), bytes);
+    }
     await rename(staging, dir);
   } catch (error) {
     await rm(staging, { recursive: true, force: true });

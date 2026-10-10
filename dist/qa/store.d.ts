@@ -32,5 +32,5 @@ export declare function showBatch(root: string, id: string): Promise<{
  */
 export declare function resolveBatch(root: string, id: string, resolvedBy?: string): Promise<QaCommentBatch | null>;
 /** Publish the complete batch and optional frame atomically into the durable queue. */
-export declare function writePendingBatch(root: string, batch: QaCommentBatch, frameBytes?: Buffer): Promise<string>;
+export declare function writePendingBatch(root: string, batch: QaCommentBatch, frameBytes?: Buffer, commentFrames?: ReadonlyMap<string, Buffer>): Promise<string>;
 export declare function removeBatchTree(root: string): Promise<void>;

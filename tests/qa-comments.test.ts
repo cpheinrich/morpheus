@@ -546,6 +546,16 @@ describe("qa comments serve", () => {
             text: "Ship it",
             createdAt: "2026-10-02T12:30:00-07:00",
             anchor: { normX: 0.4, normY: 0.6 },
+            screenId: "ax:mealReviewImage",
+            frame: { width: 100, height: 200, capturedAt: "2026-10-02T12:30:00-07:00", dataUrl: "data:image/png;base64,Zmlyc3Q=" },
+          },
+          {
+            id: "c2",
+            text: "A different screen",
+            createdAt: "2026-10-02T12:31:00-07:00",
+            anchor: { normX: 0.2, normY: 0.3 },
+            screenId: "todayScreen",
+            frame: { width: 100, height: 200, capturedAt: "2026-10-02T12:31:00-07:00", dataUrl: "data:image/png;base64,c2Vjb25k" },
           },
         ],
         frame: { width: 100, height: 200 },
@@ -562,6 +572,12 @@ describe("qa comments serve", () => {
     expect(pending[0]?.id).toBe(created.id);
     const disk = JSON.parse(await readFile(join(created.path, "batch.json"), "utf8"));
     expect(disk.comments[0].text).toBe("Ship it");
+    expect(disk.comments[0].screenId).toBe("ax:mealReviewImage");
+    expect(disk.comments[0].frame).toMatchObject({ path: "comment-1.png", width: 100, height: 200, capturedAt: "2026-10-02T12:30:00-07:00" });
+    expect(await readFile(join(created.path, "comment-1.png"), "utf8")).toBe("first");
+    expect(disk.comments[1].screenId).toBe("todayScreen");
+    expect(disk.comments[1].frame.path).toBe("comment-2.png");
+    expect(await readFile(join(created.path, "comment-2.png"), "utf8")).toBe("second");
     expect(disk.project).toBe("evo");
     expect(disk.frame?.path).toBeUndefined();
 
@@ -617,6 +633,38 @@ describe("qa comments serve", () => {
         port: 0,
       }),
     ).rejects.toThrow(/127\.0\.0\.1/);
+  });
+
+  it("releases an accessibility stream when the browser disconnects", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-qa-ax-"));
+    closers.push(async () => rm(root, { recursive: true, force: true }));
+    const upstream = createServer((req, res) => {
+      if (req.url?.startsWith("/ax?")) {
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write('data: {"screen":{"width":390,"height":844},"elements":[]}\n\n');
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    closers.push(() => new Promise<void>((resolve) => upstream.close(() => resolve())));
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("no upstream port");
+    const origin = `http://127.0.0.1:${address.port}`;
+    const server = await startQaCommentServer({
+      root, previewUrl: origin, port: 0, project: "evo",
+      streamUrl: `${origin}/helper/test-device/stream.mjpeg`,
+    });
+    const response = await fetch(`${server.url}proxy/ax`);
+    expect(response.status).toBe(200);
+    const reader = response.body!.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('"width":390');
+    await reader.cancel();
+    await Promise.race([
+      server.close(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("AX proxy kept server open")), 1000)),
+    ]);
   });
 });
 

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { BatchRejected, recordBatch, type PostedBatch } from "./batches.js";
 import { pageHtml } from "./overlay-page.js";
 import { TouchPacer } from "./touch-pacer.js";
+import { captureQaPlacement, currentQaAxSnapshot, QaScreenIdentity } from "./screen-id.js";
 
 export interface ServeOptions {
   /** Project checkout that receives local/qa-comments/ (e.g. Evo). */
@@ -131,7 +132,11 @@ function proxyRequest(target: string, req: IncomingMessage, res: ServerResponse)
       up.pipe(res);
     },
   );
+  // SSE and MJPEG stay open indefinitely; a disconnected browser must also
+  // release the upstream socket or server.close() can hang after QA ends.
+  res.on("close", () => upstream.destroy());
   upstream.on("error", (err) => {
+    if (res.destroyed) return;
     if (!res.headersSent) sendJson(res, 502, { error: String(err) });
     else res.destroy(err);
   });
@@ -285,7 +290,9 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
     options.streamUrl ?? (await discoverStreamUrl(previewOrigin));
   const streamPath = discovered ? "/proxy/stream.mjpeg" : null;
   const udid = udidFromStreamUrl(discovered);
+  const axPath = udid ? "/api/ax" : null;
   const hid = udid ? await openHidBridge(previewOrigin, udid) : null;
+  const screenIdentity = new QaScreenIdentity();
 
   const server = createServer(async (req, res) => {
     try {
@@ -295,7 +302,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
       if (refuseCrossOriginPost(req, res, boundPort)) return;
       if (req.method === "GET" && url.pathname === "/") {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(pageHtml({ previewUrl, streamPath, project }));
+        res.end(pageHtml({ previewUrl, streamPath, axPath, project }));
         return;
       }
       if (req.method === "GET" && url.pathname === "/health") {
@@ -314,6 +321,68 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           return;
         }
         proxyRequest(discovered, req, res);
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/proxy/ax") {
+        if (!udid) {
+          sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
+          return;
+        }
+        proxyRequest(`${previewOrigin}/ax?device=${encodeURIComponent(udid)}`, req, res);
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/api/ax") {
+        if (!udid) {
+          sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-store",
+          Connection: "keep-alive",
+        });
+        let closed = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        res.on("close", () => {
+          closed = true;
+          if (timer) clearTimeout(timer);
+        });
+        const poll = async () => {
+          if (closed) return;
+          try {
+            const snapshot = screenIdentity.observe(await currentQaAxSnapshot(udid));
+            if (!closed) res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+          } catch {
+            if (!closed) res.write(`data: ${JSON.stringify({ screen: { width: 1, height: 1 }, screenId: null, elements: [], errors: ["Accessibility unavailable"] })}\n\n`);
+          } finally {
+            if (!closed) timer = setTimeout(() => { void poll(); }, 500);
+          }
+        };
+        void poll();
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/api/screen") {
+        if (!udid) {
+          sendJson(res, 404, { error: "No simulator discovered for screen ID" });
+          return;
+        }
+        try {
+          sendJson(res, 200, { screenId: screenIdentity.observe(await currentQaAxSnapshot(udid)).screenId });
+        } catch {
+          sendJson(res, 503, { error: "Simulator screen ID unavailable" });
+        }
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/placement") {
+        if (!udid) {
+          sendJson(res, 404, { error: "No simulator discovered for placement capture" });
+          return;
+        }
+        try {
+          sendJson(res, 200, await captureQaPlacement(udid, (snapshot) => screenIdentity.observe(snapshot)));
+        } catch (error) {
+          sendJson(res, 503, { error: error instanceof Error ? error.message : "Placement capture unavailable" });
+        }
         return;
       }
 
@@ -337,7 +406,10 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           sendJson(res, 400, { error: "normX/normY required" });
           return;
         }
-        hid.sendTouch(raw.type, Math.min(1, Math.max(0, normX)), Math.min(1, Math.max(0, normY)));
+        const x = Math.min(1, Math.max(0, normX));
+        const y = Math.min(1, Math.max(0, normY));
+        screenIdentity.noteTouch(raw.type, x, y);
+        hid.sendTouch(raw.type, x, y);
         res.writeHead(204);
         res.end();
         return;
