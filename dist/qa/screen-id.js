@@ -6,6 +6,43 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
+/** Keep a fallback identity through a vertical drag, when lazy rows may be recycled. */
+export class QaScreenIdentity {
+    stableId = null;
+    candidateId = null;
+    touchStart = null;
+    verticalScroll = false;
+    noteTouch(type, x, y) {
+        if (type === "begin") {
+            this.touchStart = { x, y };
+            return;
+        }
+        if (!this.touchStart)
+            return;
+        const dx = Math.abs(x - this.touchStart.x);
+        const dy = Math.abs(y - this.touchStart.y);
+        if (dy > 0.035 && dy > dx * 1.5)
+            this.verticalScroll = true;
+        if (type === "end") {
+            if (!(dy > 0.035 && dy > dx * 1.5))
+                this.verticalScroll = false;
+            this.touchStart = null;
+        }
+    }
+    observe(snapshot) {
+        const candidate = snapshot.screenId;
+        if (!candidate)
+            return snapshot;
+        if (!candidate.startsWith("ax:") || !this.stableId || !this.stableId.startsWith("ax:")) {
+            this.stableId = candidate;
+        }
+        else if (candidate !== this.candidateId && !this.verticalScroll) {
+            this.stableId = candidate;
+        }
+        this.candidateId = candidate;
+        return { ...snapshot, screenId: this.stableId };
+    }
+}
 /** Use the app's screen identifier when SwiftUI exposes it in the raw AX tree. */
 export function screenIdFromAxTree(roots) {
     const screen = roots[0]?.frame;
@@ -79,8 +116,8 @@ export async function currentQaAxSnapshot(udid) {
     return qaAxSnapshotFromTree(await nativeAxTree(udid));
 }
 /** Capture the image between matching native screen identities, so the saved PNG and ID agree. */
-export async function captureQaPlacement(udid) {
-    const before = await currentQaAxSnapshot(udid);
+export async function captureQaPlacement(udid, identify = (snapshot) => snapshot) {
+    const before = identify(await currentQaAxSnapshot(udid));
     if (!before.screenId)
         throw new Error("Simulator screen ID unavailable");
     const dir = await mkdtemp(join(tmpdir(), "morpheus-qa-placement-"));
@@ -88,7 +125,8 @@ export async function captureQaPlacement(udid) {
     try {
         await execFileAsync("xcrun", ["simctl", "io", udid, "screenshot", "--type=png", path], { timeout: 5000 });
         const capturedAt = new Date().toISOString();
-        const [bytes, after] = await Promise.all([readFile(path), currentQaAxSnapshot(udid)]);
+        const [bytes, rawAfter] = await Promise.all([readFile(path), currentQaAxSnapshot(udid)]);
+        const after = identify(rawAfter);
         if (after.screenId !== before.screenId)
             throw new Error("Screen changed during placement capture");
         if (bytes.length < 24 || bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {

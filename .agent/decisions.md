@@ -1258,8 +1258,11 @@ For MO-26-10-09-22.50.25, each pin captures its own PNG and screen ID at placeme
 existing serve-sim accessibility stream moves the visible marker with native content; a marker
 is hidden off screen or after navigation. Screen IDs come from serve-sim's pinned native AX
 bridge, because its simplified stream removes screen-sized SwiftUI roots such as `todayScreen`.
-When a root ID is unavailable, the first two app-specific AX landmarks form a conservative
-`ax:` fallback; later lazy rows do not change it. A pin is accepted only when the element at
-its coordinate remains stable from click through the bracketed native screenshot capture.
+When a root ID is unavailable, the first two app-specific AX landmarks form an `ax:`
+fallback candidate. The overlay server retains its current fallback identity through a
+vertical drag, because lazy lists can recycle even the second row. A later tap permits a
+new candidate to indicate navigation. A pin is accepted only when a stable named native
+element at its coordinate remains in place from click through the bracketed screenshot;
+anonymous tree paths are not anchors because lazy lists recycle them.
 Browser IndexedDB holds unsent PNGs across reloads. No package was added: screenshot matching
 would introduce heavier image processing and would be less reliable on changing content.

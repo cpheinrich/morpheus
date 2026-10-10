@@ -36,13 +36,22 @@ export interface QaAxSnapshot {
     }>;
     errors?: string[];
 }
+/** Keep a fallback identity through a vertical drag, when lazy rows may be recycled. */
+export declare class QaScreenIdentity {
+    private stableId;
+    private candidateId;
+    private touchStart;
+    private verticalScroll;
+    noteTouch(type: "begin" | "move" | "end", x: number, y: number): void;
+    observe(snapshot: QaAxSnapshot): QaAxSnapshot;
+}
 /** Use the app's screen identifier when SwiftUI exposes it in the raw AX tree. */
 export declare function screenIdFromAxTree(roots: AxNode[]): string | null;
 /** Preserve serve-sim's element paths while retaining the screen ID from that same native tree. */
 export declare function qaAxSnapshotFromTree(roots: AxNode[]): QaAxSnapshot;
 export declare function currentQaAxSnapshot(udid: string): Promise<QaAxSnapshot>;
 /** Capture the image between matching native screen identities, so the saved PNG and ID agree. */
-export declare function captureQaPlacement(udid: string): Promise<{
+export declare function captureQaPlacement(udid: string, identify?: (snapshot: QaAxSnapshot) => QaAxSnapshot): Promise<{
     screenId: string;
     beforeSnapshot: QaAxSnapshot;
     snapshot: QaAxSnapshot;

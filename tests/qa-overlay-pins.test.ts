@@ -3,7 +3,7 @@
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import { pageHtml } from "../src/qa/overlay-page.js";
-import { qaAxSnapshotFromTree, screenIdFromAxTree } from "../src/qa/screen-id.js";
+import { QaScreenIdentity, qaAxSnapshotFromTree, screenIdFromAxTree } from "../src/qa/screen-id.js";
 
 describe("iOS QA pins", () => {
   it("rejects a pin when the native capture differs from the screen ID at click", async () => {
@@ -108,7 +108,7 @@ describe("iOS QA pins", () => {
       });
       emitAx?.(snapshot(axIdA, "screenAScreen", "20%"));
       dom.window.document.getElementById("stage")!.dispatchEvent(new dom.window.MouseEvent("contextmenu", {
-        bubbles: true, cancelable: true, clientX: 195, clientY: 700,
+        bubbles: true, cancelable: true, clientX: 35, clientY: 35,
       }));
       expect(dom.window.document.querySelector(".pin")).not.toBeNull();
       for (let i = 0; i < 20 && !dom.window.document.querySelector<HTMLImageElement>("#placementImage")?.src.startsWith("data:image/png"); i++) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -192,9 +192,10 @@ describe("iOS QA pins", () => {
   });
 
   it.each([
-    { phase: "before capture begins", beforeId: "ingredientB", afterId: "ingredientB" },
-    { phase: "during capture", beforeId: "ingredientA", afterId: "ingredientB" },
-  ])("rejects a screenshot when scrolling changes the element under the pin $phase", async ({ beforeId, afterId }) => {
+    { phase: "before capture begins", atClickId: "ingredientA", beforeId: "ingredientB", afterId: "ingredientB", error: "Content moved" },
+    { phase: "during capture", atClickId: "ingredientA", beforeId: "ingredientA", afterId: "ingredientB", error: "Content moved" },
+    { phase: "with a recycled anonymous path", atClickId: "0.1", beforeId: "0.1", afterId: "0.1", error: "No stable native element" },
+  ])("rejects a screenshot $phase", async ({ atClickId, beforeId, afterId, error }) => {
     let emitAx: ((snapshot: unknown) => void) | undefined;
     let posted = false;
     const elements = (id: string) => [{ id, path: "0.1", frame: { x: 0, y: 100, width: 390, height: 100 } }];
@@ -226,12 +227,12 @@ describe("iOS QA pins", () => {
       },
     });
     try {
-      emitAx?.({ screen: { width: 390, height: 844 }, screenId: "mealReviewScreen", elements: elements("ingredientA") });
+      emitAx?.({ screen: { width: 390, height: 844 }, screenId: "mealReviewScreen", elements: elements(atClickId) });
       dom.window.document.getElementById("stage")!.dispatchEvent(new dom.window.MouseEvent("contextmenu", {
         bubbles: true, cancelable: true, clientX: 195, clientY: 150,
       }));
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(dom.window.document.getElementById("status")!.textContent).toContain("Content moved during placement capture");
+      expect(dom.window.document.getElementById("status")!.textContent).toContain(error);
       const editor = dom.window.document.querySelector<HTMLTextAreaElement>("#text")!;
       editor.value = "Comment on A";
       editor.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
@@ -380,6 +381,25 @@ describe("iOS QA pins", () => {
     const withLazyRow = tree("screenAContent", 40);
     withLazyRow[0]!.children!.push({ AXUniqueId: "lazyRow2", frame: { x: 20, y: 160, width: 360, height: 50 } });
     expect(screenIdFromAxTree(tree("screenAContent", 100))).toBe(screenIdFromAxTree(withLazyRow));
+  });
+
+  it("holds a fallback screen ID while a native drag recycles the second row", () => {
+    const tree = (row: string) => [{
+      frame: { x: 0, y: 0, width: 402, height: 874 },
+      children: [
+        { AXUniqueId: "sharedHeading", frame: { x: 0, y: 10, width: 300, height: 40 } },
+        { AXUniqueId: row, frame: { x: 0, y: 100, width: 300, height: 60 } },
+      ],
+    }];
+    const identity = new QaScreenIdentity();
+    const first = identity.observe(qaAxSnapshotFromTree(tree("lazyRowA"))).screenId;
+    identity.noteTouch("begin", 0.5, 0.8);
+    identity.noteTouch("move", 0.5, 0.3);
+    identity.noteTouch("end", 0.5, 0.3);
+    expect(identity.observe(qaAxSnapshotFromTree(tree("lazyRowB"))).screenId).toBe(first);
+    identity.noteTouch("begin", 0.5, 0.5);
+    identity.noteTouch("end", 0.5, 0.5);
+    expect(identity.observe(qaAxSnapshotFromTree(tree("otherScreenContent"))).screenId).not.toBe(first);
   });
 
   it("emits screen identity and scrolling elements from one native tree", () => {

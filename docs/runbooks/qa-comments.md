@@ -170,14 +170,15 @@ simulator accessibility stream to follow the nearby native element while it scro
 outside the visible frame or on another screen is hidden, while its comment stays in the list.
 `screenId` comes from the raw simulator accessibility tree: the app's `*Screen` identifier when
 exposed (including SwiftUI roots omitted from the simplified stream), otherwise an `ax:` ID
-from the first two app-specific landmarks. Later lazy-loaded row identifiers do not change
-the ID. The overlay's accessibility stream derives the screen ID and element positions from
+from the first two app-specific landmarks. During a vertical drag the overlay server retains
+that fallback ID even if a lazy list recycles those landmarks; a subsequent tap permits a new
+screen candidate. The overlay's accessibility stream derives the screen ID and element positions from
 the same native tree, so animations cannot make a later screen-ID response mislabel a pin.
 The pin keeps the ID from its native placement capture and hides when a later snapshot has
 a different or unavailable ID. Send waits for pending captures and blocks if the placement
-PNG or screen ID is missing. An
-unanchored marker remains at its viewport position; it cannot follow native scrolling without
-an accessibility element.
+PNG or screen ID is missing. A pin needs a nearby native element with a stable accessibility
+identifier. Anonymous tree paths can be reused for different rows, so the overlay rejects
+those placements and asks you to place the pin near named content.
 
 Header hint: *Right click to add comment. Press Esc twice to Delete*.
 

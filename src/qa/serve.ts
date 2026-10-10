@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { BatchRejected, recordBatch, type PostedBatch } from "./batches.js";
 import { pageHtml } from "./overlay-page.js";
 import { TouchPacer } from "./touch-pacer.js";
-import { captureQaPlacement, currentQaAxSnapshot, currentScreenId } from "./screen-id.js";
+import { captureQaPlacement, currentQaAxSnapshot, QaScreenIdentity } from "./screen-id.js";
 
 export interface ServeOptions {
   /** Project checkout that receives local/qa-comments/ (e.g. Evo). */
@@ -292,6 +292,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
   const udid = udidFromStreamUrl(discovered);
   const axPath = udid ? "/api/ax" : null;
   const hid = udid ? await openHidBridge(previewOrigin, udid) : null;
+  const screenIdentity = new QaScreenIdentity();
 
   const server = createServer(async (req, res) => {
     try {
@@ -349,7 +350,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
         const poll = async () => {
           if (closed) return;
           try {
-            const snapshot = await currentQaAxSnapshot(udid);
+            const snapshot = screenIdentity.observe(await currentQaAxSnapshot(udid));
             if (!closed) res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
           } catch {
             if (!closed) res.write(`data: ${JSON.stringify({ screen: { width: 1, height: 1 }, screenId: null, elements: [], errors: ["Accessibility unavailable"] })}\n\n`);
@@ -366,7 +367,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           return;
         }
         try {
-          sendJson(res, 200, { screenId: await currentScreenId(udid) });
+          sendJson(res, 200, { screenId: screenIdentity.observe(await currentQaAxSnapshot(udid)).screenId });
         } catch {
           sendJson(res, 503, { error: "Simulator screen ID unavailable" });
         }
@@ -378,7 +379,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           return;
         }
         try {
-          sendJson(res, 200, await captureQaPlacement(udid));
+          sendJson(res, 200, await captureQaPlacement(udid, (snapshot) => screenIdentity.observe(snapshot)));
         } catch (error) {
           sendJson(res, 503, { error: error instanceof Error ? error.message : "Placement capture unavailable" });
         }
@@ -405,7 +406,10 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           sendJson(res, 400, { error: "normX/normY required" });
           return;
         }
-        hid.sendTouch(raw.type, Math.min(1, Math.max(0, normX)), Math.min(1, Math.max(0, normY)));
+        const x = Math.min(1, Math.max(0, normX));
+        const y = Math.min(1, Math.max(0, normY));
+        screenIdentity.noteTouch(raw.type, x, y);
+        hid.sendTouch(raw.type, x, y);
         res.writeHead(204);
         res.end();
         return;

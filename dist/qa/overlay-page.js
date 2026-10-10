@@ -188,8 +188,9 @@ export function pageHtml(opts) {
       const dy = Math.max(r.y - y, 0, y - r.y - r.height);
       const distance = Math.hypot(dx, dy);
       if (distance > 80) continue;
-      const semantic = typeof e.id === 'string' && !/^\\d+(\\.\\d+)*$/.test(e.id);
-      const score = distance * 10 + Math.sqrt(r.width * r.height) + (semantic ? 0 : 100);
+      // Tree paths are recycled by native lazy lists and cannot identify an item.
+      if (typeof e.id !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(e.id) || e.id.startsWith('_Tt')) continue;
+      const score = distance * 10 + Math.sqrt(r.width * r.height);
       if (!best || score < best.score) best = { score, id: e.id, path: e.path, dx: x - r.x, dy: y - r.y };
     }
     return best ? { id: best.id, path: best.path, dx: best.dx, dy: best.dy } : null;
@@ -210,7 +211,8 @@ export function pageHtml(opts) {
     if (!same(clicked, first) || !same(first, last)) {
       throw new Error('Content moved during placement capture');
     }
-    return first || undefined;
+    if (!first) throw new Error('No stable native element near this pin');
+    return first;
   }
   function updatePinPositions() {
     if (!latestAx || !latestAx.screen) return;
