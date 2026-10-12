@@ -361,18 +361,6 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
         void poll();
         return;
       }
-      if (req.method === "GET" && url.pathname === "/api/screen") {
-        if (!udid) {
-          sendJson(res, 404, { error: "No simulator discovered for screen ID" });
-          return;
-        }
-        try {
-          sendJson(res, 200, { screenId: screenIdentity.observe(await currentQaAxSnapshot(udid)).screenId });
-        } catch {
-          sendJson(res, 503, { error: "Simulator screen ID unavailable" });
-        }
-        return;
-      }
       if (req.method === "POST" && url.pathname === "/api/placement") {
         if (!udid) {
           sendJson(res, 404, { error: "No simulator discovered for placement capture" });

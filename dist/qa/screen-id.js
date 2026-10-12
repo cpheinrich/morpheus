@@ -148,8 +148,4 @@ export async function captureQaPlacement(udid, identify = (snapshot) => snapshot
         await rm(dir, { recursive: true, force: true });
     }
 }
-/** The pinned serve-sim package ships the same native AX bridge used by its preview. */
-export async function currentScreenId(udid) {
-    return screenIdFromAxTree(await nativeAxTree(udid));
-}
 //# sourceMappingURL=screen-id.js.map

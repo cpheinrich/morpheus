@@ -62,6 +62,4 @@ export declare function captureQaPlacement(udid: string, identify?: (snapshot: Q
         capturedAt: string;
     };
 }>;
-/** The pinned serve-sim package ships the same native AX bridge used by its preview. */
-export declare function currentScreenId(udid: string): Promise<string | null>;
 export {};
