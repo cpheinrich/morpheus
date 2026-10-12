@@ -24,12 +24,14 @@ is left to CI because this change does not touch the repository's shared core pa
 
 One fresh reviewer reviewed 1e7b6fa at high risk. It found one substantive apply-stage gap: WIP could publish screenshot evidence before the guard, and a missing decision could leave queued auto-merge on. The reviewer cleared this on the condition that the early guard and focused regressions be added. Commit 841c121 satisfies that condition; all 62 focused manager tests, typecheck and compile passed.
 
+Full CI then reported one transient `ENOTEMPTY` while cleaning up a local-review test's temporary Git repository. Commit 1c7aa39 added bounded cleanup retries. The same reviewer cleared that late CI correction with no findings; the focused local-review suite passed 126 tests and typecheck passed. CI will verify the combined branch.
+
 ```morpheus-review
 {
   "version": 2,
   "base": "f063880c0002819d9be85901cd0b714c1afbbea5",
   "reviewed": "1e7b6faa4e8efb262b8a7325d102b0dfb32edb78",
-  "covered": "841c1217142cbd5eb12d45e8e5918d8a320e4267",
+  "covered": "1c7aa39286c45caaf191499a0a48c1304a904aa2",
   "authorSession": "01a13160-29e9-7f53-a091-c559bb7a05ae",
   "reviewerSession": "/root/wip_manager_reviewer",
   "risk": "high",
@@ -54,6 +56,21 @@ One fresh reviewer reviewed 1e7b6fa at high risk. It found one substantive apply
         "evidence": "Focused manager tests for late WIP evidence and no-decision paths, pnpm typecheck, and pnpm compile."
       },
       "conditionMet": "Commit 841c121 changed only the conditioned paths; pnpm exec vitest run tests/gh-manager.test.ts passed 62/62, pnpm typecheck passed, and pnpm compile regenerated dist/cli/gh-manager artifacts."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/wip_manager_reviewer",
+      "commit": "1c7aa39286c45caaf191499a0a48c1304a904aa2",
+      "scopeReason": "Late CI correction: local-review fixture cleanup failed with a transient ENOTEMPTY after the initial clearance.",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.31666666666666665,
+      "timing": {
+        "source": "clock",
+        "durationMs": 19000,
+        "evidence": "Clock readings around same reviewer follow-up /root/wip_manager_reviewer: 2026-10-12 18:39:22 UTC to 2026-10-12 18:39:41 UTC."
+      },
+      "summary": "The same reviewer cleared the bounded local-review test cleanup retry in commit 1c7aa39 and reported no findings."
     }
   ]
 }
