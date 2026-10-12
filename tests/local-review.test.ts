@@ -35,7 +35,9 @@ beforeEach(() => {
   writeFileSync(join(root, "code.ts"), 'export const answer = 1;'); base = commit();
   writeFileSync(join(root, "code.ts"), 'export const answer = 2;'); reviewed = commit();
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+// A completed Git command may leave filesystem activity finishing under .git/objects on CI.
+// Retry ENOTEMPTY rather than turning a passing assertion into a cleanup failure.
+afterEach(() => rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }));
 
 describe("independent review lifecycle", () => {
   it("defaults on and refuses malformed configuration", () => {
