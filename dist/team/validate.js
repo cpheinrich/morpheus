@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import matter from "gray-matter";
+import matter from "@11ty/gray-matter";
 import { MEETING_NOTES_DIR, MEMBERS_FILE } from "../paths.js";
 import { parseDir } from "../pm/parse.js";
 import { MeetingNote, Members } from "./schema.js";

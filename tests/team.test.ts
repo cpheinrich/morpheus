@@ -90,11 +90,10 @@ describe("the meeting-note schema", () => {
   });
 
   /**
-   * YAML turns an unquoted timestamp into a Date, which is the trap `isoDate`
-   * already exists for one layer up. Without the preprocessor a note written
-   * the natural way fails with "expected string, received Date".
+   * Older YAML parsers turned an unquoted timestamp into a Date. Retaining the
+   * preprocessor keeps already-materialised metadata valid after parser upgrades.
    */
-  it("tolerates a timestamp YAML has already turned into a Date", () => {
+  it("tolerates a timestamp a legacy YAML parser turned into a Date", () => {
     const r = MeetingNote.safeParse({ ...base, occurred: new Date("2026-08-03T16:30:00Z") });
     expect(r.success).toBe(true);
   });

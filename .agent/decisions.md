@@ -1266,3 +1266,11 @@ element at its coordinate remains in place from click through the bracketed scre
 anonymous tree paths are not anchors because lazy lists recycle them.
 Browser IndexedDB holds unsent PNGs across reloads. No package was added: screenshot matching
 would introduce heavier image processing and would be less reliable on changing content.
+
+## Frontmatter uses the maintained Eleventy fork — 2026-10-12
+
+Morpheus uses `@11ty/gray-matter` for Markdown frontmatter. The original `gray-matter` package
+still pulls `js-yaml` 3 and its unpatched `sprintf-js` advisory; the Eleventy-maintained fork
+preserves the API Morpheus uses while tracking current `js-yaml`. A custom parser was rejected:
+four independent records surfaces depend on the edge cases this small library already handles,
+so replacing it with bespoke parsing would increase risk and maintenance rather than remove it.

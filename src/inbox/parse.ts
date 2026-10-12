@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import matter from "gray-matter";
+import matter from "@11ty/gray-matter";
 import type { ParseIssue } from "../pm/parse.js";
 import { Inbox, InboxItem, MARK_STATE } from "./schema.js";
 

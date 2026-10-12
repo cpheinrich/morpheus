@@ -26,7 +26,7 @@ export declare const TEAM_DIR = "hq/team";
 export declare const INBOX_DIR = "hq/team";
 export declare const MEETING_NOTES_DIR = "hq/team/meeting-notes";
 /**
- * The roster. Markdown with frontmatter, not YAML — `gray-matter` is already a
+ * The roster. Markdown with frontmatter, not YAML — the frontmatter parser is already a
  * runtime dependency and `yaml` is not, and `morpheus-kit` ships to every
  * project, so one file is not worth a new dependency in all of them. It also
  * keeps `hq/` uniform: everything a human edits here is markdown with

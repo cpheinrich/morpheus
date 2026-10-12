@@ -1,7 +1,7 @@
 import { readIfExists } from "../file-io.js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import matter from "gray-matter";
+import matter from "@11ty/gray-matter";
 import { appendOpenItem } from "../inbox/append.js";
 import { updateFrontmatter, today } from "./frontmatter.js";
 import { INBOX_DIR } from "../paths.js";
