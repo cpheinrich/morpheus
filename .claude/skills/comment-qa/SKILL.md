@@ -10,6 +10,12 @@ CLI, so they always match the commands you will run.
 
 The short form:
 
+**One branch until the person ends the session.** Commit each batch's changes locally on the
+one claimed branch for this QA session. Do not push, open a PR, start independent review or run
+CI per batch: even a draft PR push starts CI. Ship the changes together only when the person
+says the session is done. Tell them before rebuilding or relaunching the preview, or reloading
+or navigating their overlay tab.
+
 1. From this checkout: `morpheus qa preview web start` for the website, or
    `morpheus qa preview ios start` for the iOS app. Each starts the comment overlay with it.
    `morpheus qa preview web help` and `morpheus qa preview ios help` show what this project

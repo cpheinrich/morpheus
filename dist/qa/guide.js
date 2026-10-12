@@ -13,7 +13,18 @@ on it, and you act on them. Every agent — Claude, Codex, Grok — uses the sam
 overlay page the preview prints. Do not substitute a host's native simulator panel or its own
 annotation tool; the overlay is what writes comment batches you can read back.
 
-## 1. Start the preview
+## 1. Keep the session together
+
+**One branch until the person ends the session.** Commit each batch's changes locally on the
+one claimed branch for this QA session. Do not push, open a PR, start independent review or run
+CI per batch: even a draft PR push starts CI. Ship the changes together only when the person
+says the session is done. Tell them before rebuilding or relaunching the preview, or reloading
+or navigating their overlay tab.
+
+Drain claimed batches in order. Run focused local checks as needed; session-end review and CI
+cover the combined changes.
+
+## 2. Start the preview
 
 For the website (morpheus.json qa.web names the dev server and how to start it):
 
@@ -37,7 +48,7 @@ setup or licence prompts may need the person. Use --no-build only for an explici
 existing build, and say its freshness is unverified. To keep the person's current screen, use
 \`status\`, not \`start\` — start relaunches the app.
 
-## 2. Open the overlay — the same page in every agent
+## 3. Open the overlay — the same page in every agent
 
 start prints \`QA overlay: <url>\`. Open exactly that URL — never the stream or the dev server beside
 it. The iOS overlay is at 127.0.0.1 and refuses POSTs from any other origin, localhost included; the
@@ -62,7 +73,7 @@ the column lists every pin. Enter saves, Shift+Enter is a newline, Esc Esc delet
 ⌘Enter sends. Unsent pins survive a reload of the same page. For a sign-in that redirects the
 whole page to a provider, use the column's Full page button; Column puts the frame back.
 
-## 3. Queue comments and keep the person's chat free
+## 4. Queue comments and keep the person's chat free
 
 Each Send writes local/qa-comments/pending/<batchId>/batch.json and its captured PNGs in the checkout.
 
@@ -111,13 +122,6 @@ page could not be captured; the element and page context still locate every comm
 A wake webhook in local/qa-comments/webhook.json is scoped to that checkout, not this chat. It
 fires for every batch at the root. Never copy another checkout's webhook or assume its target is
 your responder.
-
-## 4. Changes from one session ride together
-
-Drain claimed batches in order, but keep every change from one QA session on one claimed branch,
-commit locally, and push or open the pull request only when the person says the session is done:
-comments arrive in several batches and are merged together. Never reload or navigate the person's
-overlay tab, and never rebuild or relaunch, while they are commenting without saying so first.
 
 ## 5. End the session
 
