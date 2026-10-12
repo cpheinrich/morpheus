@@ -38,3 +38,18 @@ Independent high-risk review cleared the exact remote head with no findings. The
   "findings": []
 }
 ```
+
+## Late CI correction: fixture cleanup
+
+CI run 38299683141 passed all archive-configuration tests but failed review-fixture cleanup
+with ENOTEMPTY under .git/objects, despite the existing bounded synchronous retries. Node
+22.23.3 source shows synchronous removal retries rmdir without rescanning children, whereas
+async removal repeats traversal. A deterministic probe inserts one file after traversal:
+Node 22.23.3 sync removal fails ENOTEMPTY and leaves it; async removal removes it and the root.
+This reproduces the cleanup mechanism, not proof of which process wrote the CI file.
+
+Changed only this suite's afterEach to return bounded async rm, which Vitest awaits. Existing
+assertions and cleanup-error propagation remain intact. No new cleanup module or dependency.
+Node source: https://github.com/nodejs/node/blob/v22.23.3/lib/internal/fs/rimraf.js
+The previously failing test passed in isolation before the change, confirming its assertion
+was not the reported failure. The same independent reviewer will assess this late CI correction.
