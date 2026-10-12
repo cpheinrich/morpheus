@@ -863,9 +863,7 @@ and fail when a stated invariant is broken; coverage alone is not evidence of qu
 **Front-end changes must carry visual evidence.** When a changed path matches
 \`review.visualEvidence.include\` in \`morpheus.json\` (minus \`exclude\`), attach a screen recording
 to the PR when practical, otherwise screenshots, and list them under \`## Visual evidence\`.
-Capture each materially changed screen and state from the final passing build before independent
-review. Open the captures yourself and check that they render the intended change. Replace them
-after a visual fix so the reviewer sees the final pixels.
+Capture final-build screens/states; author and reviewer inspect pixels. Refresh after fixes.
 \`morpheus check pr\` accepts GitHub attachments and exact public HTTPS prefixes declared in
 \`allowedUrlPrefixes\`, without fetching them. The path and media-location contracts are
 deterministic; they do not claim to infer whether rendered pixels changed. A repository may disable
