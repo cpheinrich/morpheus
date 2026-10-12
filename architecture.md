@@ -3300,6 +3300,20 @@ installs `openssl@3`, `asccli` and optionally `sentry-cli`, then archives, expor
 uploads. A caller is reduced to a checkout of the verified SHA and one `uses:` block of
 identifiers.
 
+Binary acceptance and distribution are separate action steps. Acceptance requires the pinned
+asccli upload state PROCESSING or COMPLETE with a valid id and no errors; AWAITING_UPLOAD is
+confirmed within the existing processing timeout, while absent/unknown states stay uncertain.
+Automatic build numbers take the greater of Apple's next number and the account's persistent
+per-app/version reservation plus one, under the signing lock, so the phase split cannot reuse
+an accepted number before Apple exposes it in builds. Failed attempts may leave number gaps. A sanitized, create-only
+`accepted.json` records the exact checked-out SHA, run/attempt/job, app/bundle identity,
+version/build number, upload id and acceptance time. The pinned artifact action persists it
+under a unique per-invocation name before processing, group assignment or beta review; later
+failure cannot overwrite a prior attempt. Retention is 90 days subject to repository limits.
+Missing evidence remains uncertain (including interruption before artifact persistence), never
+proof of no upload. This exposes a receipt contract for consumer adoption without changing
+nightly admission policy or activating a release. See the action README.
+
 Its contract is deliberately narrow: typed inputs for the project shape, the Apple identifiers, the
 beta-group policy (`any`, or `one-internal-one-external` for a project whose every release must
 reach outside testers), newline-separated `archive-build-settings`, an optional Firebase client
