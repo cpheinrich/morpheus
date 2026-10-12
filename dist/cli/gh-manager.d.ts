@@ -1,7 +1,11 @@
+import { type LiveState, type Plan, planRoute } from "../gh-manager/decision.js";
+import { type Routed } from "../gh-manager/sweep.js";
 export declare function ghManagerSweep(repoArg: string | undefined, out: string | undefined): number;
 export declare function ghManagerRoutes(repoArg: string | undefined, sweepPath: string | undefined, outDir: string | undefined, dryRun: boolean): number;
 export declare function ghManagerPrompt(repoArg: string | undefined, prArg: string | undefined, sweepPath: string | undefined, out: string | undefined): number;
 export declare function ghManagerApply(repoArg: string | undefined, prArg: string | undefined, sweepPath: string | undefined, decisionPath: string | undefined, out: string | undefined, dryRun: boolean): number;
+/** Check the live WIP signal before any evidence publication or session fallback. */
+export declare function planWithLiveWipGuard(live: LiveState, routed: Routed, ctx: Parameters<typeof planRoute>[2], proceed: () => Plan): Plan;
 export declare function ghManagerDigest(repoArg: string | undefined, sweepPath: string | undefined, outcomesDir: string | undefined, dryRun: boolean): number;
 /**
  * Print the preview URL(s) for a commit, one per line. Exit 0 when ready, 2 while Vercel is still

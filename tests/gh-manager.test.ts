@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { planWithLiveWipGuard } from "../src/cli/gh-manager.js";
 import { Decision, inert, type LiveState, planDecision, planNoDecision, planRoute } from "../src/gh-manager/decision.js";
 import { renderDigest } from "../src/gh-manager/digest.js";
 import { GhManagerPolicy, humanGatedPaths, parsePolicy } from "../src/gh-manager/policy.js";
@@ -461,6 +462,22 @@ describe("applying a route that needed no session", () => {
   it("closes and escalates", () => {
     expect(kinds(planRoute(routed({ route: "close" }), live({ labels: ["manager:stale"] }), ctx()))).toEqual(["comment", "remove-label:manager:stale", "close"]);
     expect(kinds(planRoute(routed({ route: "escalate" }), live(), ctx()))).toEqual(["comment", "add-label:manager:needs-human"]);
+  });
+});
+
+describe("applying a session after the PR becomes WIP", () => {
+  const routed = { number: 7, title: "t", headSha: HEAD, route: "session" as const, reason: "needs-judgment", detail: "review", attempts: 1 };
+  it("does not enter evidence publication for a late WIP merge decision", () => {
+    const publishAndPlan = vi.fn(() => planDecision(decision({ usedManagerReview: true, body: RECORD_BODY }), live({ autoMerge: true }), ctx()));
+    const plan = planWithLiveWipGuard(live({ isDraft: true, autoMerge: true }), routed, ctx(), publishAndPlan);
+    expect(publishAndPlan).not.toHaveBeenCalled();
+    expect(kinds(plan)).toEqual(["comment", "disable-auto-merge"]);
+  });
+  it("cancels queued auto-merge even when the session wrote no usable decision", () => {
+    const noDecision = vi.fn(() => planNoDecision("no decision file", live(), ctx()));
+    const plan = planWithLiveWipGuard(live({ title: "WIP: Add a thing", autoMerge: true }), routed, ctx(), noDecision);
+    expect(noDecision).not.toHaveBeenCalled();
+    expect(kinds(plan)).toEqual(["comment", "disable-auto-merge"]);
   });
 });
 
