@@ -35,7 +35,7 @@ beforeEach(() => {
   writeFileSync(join(root, "code.ts"), 'export const answer = 1;'); base = commit();
   writeFileSync(join(root, "code.ts"), 'export const answer = 2;'); reviewed = commit();
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 10 }));
 
 describe("independent review lifecycle", () => {
   it("defaults on and refuses malformed configuration", () => {
