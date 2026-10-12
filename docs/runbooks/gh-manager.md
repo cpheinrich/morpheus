@@ -228,8 +228,12 @@ tells the manager to try that one again.
 
 ## Visual evidence
 
-A session can screenshot a pull request's **web** preview itself; iOS and simulator screens remain
-an escalation. It runs a pinned Playwright (`playwright-version` input) against the preview
+A session first opens the PR's existing captures and inspects the rendered pixels and relevant
+recording frames for visual defects. Authors should supply iOS simulator captures from the final
+passing build before independent review; that reviewer also inspects them. Missing iOS captures
+remain an escalation because Manager sessions run on Linux, even though a project's iOS CI may
+run on a separate Mac. A session can screenshot a pull request's **web** preview itself. It runs
+a pinned Playwright (`playwright-version` input) against the preview
 deployment built from its final head, checks each image, and lists the files in its decision with
 `{{gh-manager-evidence:<file>}}` placeholders in the body.
 
@@ -268,7 +272,8 @@ repositories included (verified 2026-10-08).
 ## Limits worth knowing
 
 - **Sessions run on Linux.** An iOS suite cannot run there; the record says so and CI is the
-  evidence. iOS visual evidence is an escalation; web evidence it captures itself.
+  evidence. iOS visual evidence is authored on a Mac and inspected by the reviewer and Manager;
+  missing captures are an escalation. Web evidence can be captured by Manager itself.
 - **Sessions spend the operator's Claude subscription** and private-repository runner minutes.
   `maxSessionsPerRun` is the lever.
 - **The attestation is auditable, not cryptographic**, the same as the ordinary record. What is

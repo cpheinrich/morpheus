@@ -1,6 +1,6 @@
 import type { LiveState } from "./decision.js";
 import { GH_MANAGER_LOGIN, MANAGER_REVIEWED_LABEL } from "./policy.js";
-import { git, isAncestor, verifyUncoveredCommits } from "../review/local.js";
+import { checkLocalReview, git, isAncestor, verifyUncoveredCommits } from "../review/local.js";
 import { checkManagerReview } from "../review/manager.js";
 
 /**
@@ -42,4 +42,11 @@ export function managerRecordProblem(root: string, body: string, head: string, t
   const finding = checkManagerReview({ root, body, labels: [MANAGER_REVIEWED_LABEL], labelActor: GH_MANAGER_LOGIN, clearedHead: head, head, base: trunk })
     .find(f => f.level === "error");
   return finding?.message;
+}
+
+/** Validate an author's committed review independently of the label that may have been missed. */
+export function authorRecordProblem(root: string, body: string, head: string, trunk: string): string | undefined {
+  if (!isCommit(root, head) || !isCommit(root, trunk)) return "the pull request head or base could not be read in the apply checkout";
+  return checkLocalReview({ root, body, labels: ["agent-reviewed"], head, base: trunk })
+    .find(f => f.level === "error")?.message;
 }

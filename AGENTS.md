@@ -148,7 +148,9 @@ domain-specific, or every candidate is unmaintained. Record the outcome in `.age
 
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests, inspect
 their actual results, and give the reviewer the complete packet before its first turn. For UI work,
-include the available simulator evidence. If a test cannot run, state the exact limitation and
+include final-build simulator captures of each materially changed screen and state. Open the
+captures yourself; the independent reviewer must inspect their pixels. Replace them after visual
+fixes. If a test cannot run, state the exact limitation and
 keep the PR draft until validation finishes; a later code correction spends a remaining review
 turn. Aim to finish in an initial review and one focused response. The third turn is a ceiling for
 a genuine late correction or unresolved substantive finding, not a planned step. Commit the

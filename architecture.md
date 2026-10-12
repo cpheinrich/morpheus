@@ -1339,6 +1339,10 @@ reviews on record, conducts one more if needed, and fixes its own findings; a se
 deterministic step checks each session's decision against live state and policy before anything is
 labelled, merged or closed. The session's token can write contents and nothing else: it cannot
 label, comment, close, or change a workflow file.
+If the author finished a valid independent review but missed its label, the deterministic apply
+step validates the committed review at the current head and applies `agent-reviewed`; an absent
+or invalid record still cannot merge. Front-end reviews inspect actual screenshot pixels and
+recording frames, including evidence already attached to the PR.
 Drafts, `wip/` branches, and `[WIP]` or `WIP:` titles remain with their authors; the manager
 cancels queued auto-merge on them. A ready pull request waits 24 hours after its latest head
 commit or opening, whichever is later, before the manager acts.
@@ -1591,7 +1595,9 @@ PR under `## Visual evidence`; `check pr` verifies either a stable GitHub attach
 HTTPS URL under a repository-approved `allowedUrlPrefixes` location. External locations are exact
 path prefixes, so approving one bucket on a shared provider does not approve every bucket there.
 The check does not fetch the URL, classify its pixels, or claim it meaningfully demonstrates the
-UI. Recording is a warning-level preference so a screenshot-only change is never blocked merely
+UI. The author captures the final build and the independent reviewer opens and inspects the
+evidence; missing or inaccessible required captures leave review incomplete. Recording is a
+warning-level preference so a screenshot-only change is never blocked merely
 because video was impractical. Web feedback returns as Vercel comments anchored to page elements
 and synced into the PR (§10.2).
 
