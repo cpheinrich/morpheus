@@ -2,6 +2,7 @@
 export function pageHtml(opts) {
     const preview = JSON.stringify(opts.previewUrl);
     const streamPath = JSON.stringify(opts.streamPath);
+    const axPath = JSON.stringify(opts.axPath);
     const project = JSON.stringify(opts.project);
     return `<!DOCTYPE html>
 <html lang="en">
@@ -43,6 +44,8 @@ export function pageHtml(opts) {
   #status { font-size: 12px; color: #9aa0a6; min-height: 1.2em; }
   #status.ok { color: #81c995; }
   #status.err { color: #f28b82; }
+  .placement-preview { border: 1px solid #3c4043; border-radius: 8px; padding: 6px; font-size: 11px; color: #c4c7c5; }
+  .placement-preview img { display: block; max-width: 100%; max-height: 180px; margin: 5px auto 0; }
   .shortcut-hint { font-size: 11px; color: #9aa0a6; }
   .missing { color: #f28b82; padding: 24px; text-align: center; }
 </style>
@@ -65,6 +68,7 @@ export function pageHtml(opts) {
     <ul id="list"></ul>
     <div class="composer">
       <div id="status">Right-click the frame to place a pin</div>
+      <div class="placement-preview" id="placementPreview" hidden><span id="placementLabel"></span><img id="placementImage" alt="Captured placement screen"/></div>
       <textarea id="text" placeholder="Comment for this pin… (Enter to save, Shift+Enter newline)" disabled></textarea>
       <div class="shortcut-hint">Enter saves pin · Shift+Enter newline · ⌘Enter / Ctrl+Enter sends batch</div>
       <div class="row">
@@ -77,6 +81,7 @@ export function pageHtml(opts) {
 (() => {
   const previewUrl = ${preview};
   const streamPath = ${streamPath};
+  const axPath = ${axPath};
   const project = ${project};
   document.getElementById('projectLabel').textContent = project;
 
@@ -117,8 +122,150 @@ export function pageHtml(opts) {
     requestAnimationFrame(renderPins);
   }
 
-  /** @type {{id:string, n:number, normX:number, normY:number, text:string, createdAt:string}[]} */
+  /** @type {{id:string, n:number, normX:number, normY:number, text:string, createdAt:string, screenId?:string, axAnchor?:object, frame?:object, displayX?:number, displayY?:number}[]} */
   let pins = [];
+  const frameMemory = new Map();
+  const pinScreenReads = new Map();
+  const placementPreview = document.getElementById('placementPreview');
+  const placementImage = document.getElementById('placementImage');
+  const placementLabel = document.getElementById('placementLabel');
+  function showPlacement(pin) {
+    const frame = pin && frameMemory.get(pin.id);
+    placementPreview.hidden = !frame?.dataUrl;
+    if (frame?.dataUrl) {
+      placementImage.src = frame.dataUrl;
+      placementLabel.textContent = 'Captured pin ' + pin.n + ' · ' + (pin.screenId || 'screen ID unavailable');
+    }
+  }
+  let frameDb = null;
+  function openFrameDb() {
+    if (!('indexedDB' in window)) return Promise.resolve(null);
+    if (frameDb) return frameDb;
+    frameDb = new Promise((resolve) => {
+      const request = indexedDB.open('morpheus-qa-pin-frames', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('frames');
+      request.onsuccess = () => {
+        const db = request.result;
+        resolve(db);
+        const cursor = db.transaction('frames', 'readwrite').objectStore('frames').openCursor();
+        cursor.onsuccess = () => {
+          const row = cursor.result;
+          if (!row) return;
+          const capturedAt = Date.parse(row.value?.capturedAt || '');
+          if (!Number.isFinite(capturedAt) || Date.now() - capturedAt > 24 * 60 * 60 * 1000) {
+            row.delete();
+          }
+          row.continue();
+        };
+      };
+      request.onerror = () => resolve(null);
+    });
+    return frameDb;
+  }
+  async function storedFrame(id, value) {
+    const db = await openFrameDb();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction('frames', value === undefined ? 'readonly' : 'readwrite');
+      const request = value === undefined
+        ? tx.objectStore('frames').get(id)
+        : value === null ? tx.objectStore('frames').delete(id) : tx.objectStore('frames').put(value, id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => resolve(null);
+    });
+  }
+  let latestAx = null;
+  let currentScreenId = null;
+  function nearestAxAnchor(snapshot, normX, normY) {
+    if (!snapshot || !snapshot.screen || !snapshot.elements) return null;
+    const x = normX * snapshot.screen.width;
+    const y = normY * snapshot.screen.height;
+    let best = null;
+    for (const e of snapshot.elements) {
+      const r = e.frame;
+      if (!r || r.width <= 0 || r.height <= 0) continue;
+      const dx = Math.max(r.x - x, 0, x - r.x - r.width);
+      const dy = Math.max(r.y - y, 0, y - r.y - r.height);
+      const distance = Math.hypot(dx, dy);
+      if (distance > 80) continue;
+      // Tree paths are recycled by native lazy lists and cannot identify an item.
+      if (typeof e.id !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(e.id) || e.id.startsWith('_Tt')) continue;
+      const score = distance * 10 + Math.sqrt(r.width * r.height);
+      if (!best || score < best.score) best = { score, id: e.id, path: e.path, label: e.label || '', dx: x - r.x, dy: y - r.y };
+    }
+    return best ? { id: best.id, path: best.path, label: best.label, dx: best.dx, dy: best.dy } : null;
+  }
+  function stablePlacementAnchor(atClick, before, after, normX, normY) {
+    if (!atClick?.screen || !before?.screen || !after?.screen ||
+        Math.abs(atClick.screen.width - before.screen.width) > 1 ||
+        Math.abs(atClick.screen.height - before.screen.height) > 1 ||
+        Math.abs(before.screen.width - after.screen.width) > 1 ||
+        Math.abs(before.screen.height - after.screen.height) > 1) {
+      throw new Error('Screen size changed during placement');
+    }
+    const clicked = nearestAxAnchor(atClick, normX, normY);
+    const first = nearestAxAnchor(before, normX, normY);
+    const last = nearestAxAnchor(after, normX, normY);
+    const same = (a, b) => (!a && !b) || (a && b && a.id === b.id && a.label === b.label &&
+      Math.abs(a.dx - b.dx) <= 2 && Math.abs(a.dy - b.dy) <= 2);
+    if (!same(clicked, first) || !same(first, last)) {
+      throw new Error('Content moved during placement capture');
+    }
+    if (!first) throw new Error('No stable native element near this pin');
+    return first;
+  }
+  function updatePinPositions() {
+    if (!latestAx || !latestAx.screen) return;
+    const w = latestAx.screen.width;
+    const h = latestAx.screen.height;
+    for (const p of pins) {
+      if (p.screenId && p.screenId !== currentScreenId) {
+        p.displayX = -1;
+        p.displayY = -1;
+        continue;
+      }
+      if (!p.axAnchor) {
+        p.displayX = p.normX;
+        p.displayY = p.normY;
+        continue;
+      }
+      const e = latestAx.elements.find((item) => item.id === p.axAnchor.id && item.path === p.axAnchor.path)
+        || latestAx.elements.find((item) => item.id === p.axAnchor.id);
+      if (!e) {
+        p.displayX = -1;
+        p.displayY = -1;
+        continue;
+      }
+      p.displayX = (e.frame.x + p.axAnchor.dx) / w;
+      p.displayY = (e.frame.y + p.axAnchor.dy) / h;
+    }
+    renderPins();
+  }
+  if (axPath) {
+    const axStream = new EventSource(axPath);
+    const clearAx = () => {
+      latestAx = null;
+      currentScreenId = null;
+      for (const pin of pins) {
+        pin.displayX = -1;
+        pin.displayY = -1;
+      }
+      renderPins();
+    };
+    axStream.onmessage = (event) => {
+      try {
+        const snapshot = JSON.parse(event.data);
+        if (!snapshot.screen || !Array.isArray(snapshot.elements) || snapshot.errors?.length) {
+          clearAx();
+          return;
+        }
+        latestAx = snapshot;
+        currentScreenId = typeof snapshot.screenId === 'string' ? snapshot.screenId : null;
+        updatePinPositions();
+      } catch (_) { clearAx(); }
+    };
+    axStream.onerror = clearAx;
+  }
   let focusedId = null;
   let escArmedAt = 0;
   let nextN = 1;
@@ -130,7 +277,7 @@ export function pageHtml(opts) {
   function persist() {
     try {
       sessionStorage.setItem(storageKey, JSON.stringify({
-        pins,
+        pins: pins.map(({ displayX, displayY, ...p }) => p),
         nextN,
         focusedId,
         draft: textEl.disabled ? null : textEl.value,
@@ -152,7 +299,18 @@ export function pageHtml(opts) {
       forget();
       return false;
     }
-    pins = usable;
+    pins = usable.map((p) => ({
+      ...p,
+      ...(axPath && p.screenId ? { displayX: -1, displayY: -1 } : {}),
+    }));
+    for (const pin of pins) {
+      void storedFrame(pin.id).then((frame) => {
+        if (!pins.includes(pin)) return;
+        if (frame) frameMemory.set(pin.id, frame);
+        if (focusedId === pin.id) showPlacement(pin);
+        updatePinPositions();
+      });
+    }
     const highest = Math.max(...pins.map((p) => p.n));
     nextN = Number.isInteger(saved.nextN) && saved.nextN > highest ? saved.nextN : highest + 1;
     if (typeof saved.focusedId === 'string' && pins.some((p) => p.id === saved.focusedId)) {
@@ -203,11 +361,14 @@ export function pageHtml(opts) {
     const boxW = box ? box.width : 0;
     const boxH = box ? box.height : 0;
     pins.forEach((p) => {
+      const x = p.displayX ?? p.normX;
+      const y = p.displayY ?? p.normY;
+      if (x < 0 || x > 1 || y < 0 || y > 1) return;
       const el = document.createElement('div');
       el.className = 'pin' + (p.id === focusedId ? ' focused' : '');
       el.textContent = String(p.n);
-      el.style.left = (originX + p.normX * boxW) + 'px';
-      el.style.top = (originY + p.normY * boxH) + 'px';
+      el.style.left = (originX + x * boxW) + 'px';
+      el.style.top = (originY + y * boxH) + 'px';
       el.addEventListener('pointerdown', (ev) => {
         ev.stopPropagation();
       });
@@ -232,6 +393,7 @@ export function pageHtml(opts) {
     textEl.disabled = false;
     textEl.value = p.text;
     textEl.focus();
+    showPlacement(p);
     setStatus('Editing pin ' + p.n + ' — Enter saves, Esc Esc deletes');
     renderList();
     renderPins();
@@ -251,9 +413,12 @@ export function pageHtml(opts) {
     const p = focused();
     if (!p) return;
     pins = pins.filter((x) => x.id !== p.id);
+    frameMemory.delete(p.id);
+    void storedFrame(p.id, null);
     focusedId = null;
     textEl.value = '';
     textEl.disabled = true;
+    showPlacement(null);
     setStatus('Deleted pin ' + p.n);
     renderList();
     renderPins();
@@ -261,6 +426,9 @@ export function pageHtml(opts) {
   }
 
   function placePin(normX, normY) {
+    const frame = axPath ? null : captureFrame();
+    const screenIdAtClick = currentScreenId;
+    const axAtClick = latestAx;
     const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const pin = {
       id,
@@ -269,16 +437,51 @@ export function pageHtml(opts) {
       normY,
       text: '',
       createdAt: new Date().toISOString(),
+      frame: frame ? { width: frame.width, height: frame.height, capturedAt: frame.capturedAt } : undefined,
     };
+    if (frame) {
+      frameMemory.set(id, frame);
+      void storedFrame(id, frame);
+    }
     pins.push(pin);
     focusedId = id;
     textEl.disabled = false;
     textEl.value = '';
     textEl.focus();
-    setStatus('Pin ' + pin.n + ' placed — type a comment, Enter to save');
+    showPlacement(pin);
+    setStatus(axPath ? 'Capturing pin ' + pin.n + ' from the simulator…'
+      : frame ? 'Pin ' + pin.n + ' placed — type a comment, Enter to save'
+        : 'Placement image unavailable. Wait for the stream, then replace this pin.', axPath || frame ? undefined : 'err');
     renderList();
     renderPins();
     persist();
+    if (axPath) {
+      const read = fetch('/api/placement', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      }).then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Placement capture unavailable');
+        if (!pins.includes(pin)) return;
+        if (!screenIdAtClick || result.screenId !== screenIdAtClick) {
+          throw new Error('Screen changed during placement');
+        }
+        const anchor = stablePlacementAnchor(axAtClick, result.beforeSnapshot, result.snapshot, normX, normY);
+        pin.screenId = result.screenId;
+        pin.axAnchor = anchor;
+        pin.frame = { width: result.frame.width, height: result.frame.height, capturedAt: result.frame.capturedAt };
+        frameMemory.set(id, result.frame);
+        void storedFrame(id, result.frame);
+        if (focusedId === id) {
+          showPlacement(pin);
+          setStatus('Pin ' + pin.n + ' captured · review its snapshot, then type your comment');
+        }
+        updatePinPositions();
+        persist();
+      }).catch((error) => {
+        if (focusedId === id && pins.includes(pin)) setStatus(String(error.message || error) + '. Delete and replace this pin.', 'err');
+      }).finally(() => pinScreenReads.delete(id));
+      pinScreenReads.set(id, read);
+    }
   }
 
   // Picture rect inside the stage after object-fit: contain (no letterbox when aspects match).
@@ -368,7 +571,7 @@ export function pageHtml(opts) {
     if (ev.target && ev.target.classList && ev.target.classList.contains('pin')) return;
     const c = coordsFromEvent(ev);
     if (!c) return;
-    placePin(c.normX, c.normY);
+    void placePin(c.normX, c.normY);
   });
 
   // Left pointer on the picture → drive the simulator via HID.
@@ -460,7 +663,7 @@ export function pageHtml(opts) {
     void sendKey('up', ev.code);
   });
 
-  async function captureFrame() {
+  function captureFrame() {
     if (stream.hidden || !stream.naturalWidth) return null;
     try {
       const canvas = document.createElement('canvas');
@@ -472,6 +675,7 @@ export function pageHtml(opts) {
         dataUrl: canvas.toDataURL('image/png'),
         width: canvas.width,
         height: canvas.height,
+        capturedAt: new Date().toISOString(),
       };
     } catch (err) {
       console.warn('frame capture failed', err);
@@ -485,15 +689,32 @@ export function pageHtml(opts) {
     if (ready.length === 0) return;
     sendBtn.disabled = true;
     setStatus('Sending…');
+    await Promise.all(ready.map((pin) => pinScreenReads.get(pin.id)));
     const frameInfo = await captureFrame();
-    const body = {
-      preview: { url: previewUrl, kind: 'serve-sim' },
-      comments: ready.map((p) => ({
+    const comments = await Promise.all(ready.map(async (p) => {
+      const savedFrame = frameMemory.get(p.id) || await storedFrame(p.id);
+      return {
         id: 'c' + p.n,
         text: p.text.trim(),
         createdAt: p.createdAt,
         anchor: { normX: p.normX, normY: p.normY },
-      })),
+        ...(p.screenId ? { screenId: p.screenId } : {}),
+        ...(p.frame ? { frame: { ...p.frame, ...(savedFrame ? { dataUrl: savedFrame.dataUrl } : {}) } } : {}),
+      };
+    }));
+    if (comments.some((comment) => !comment.frame?.dataUrl)) {
+      setStatus('A pin lost its placement image. Delete and place that pin again before sending.', 'err');
+      sendBtn.disabled = false;
+      return;
+    }
+    if (axPath && comments.some((comment) => !comment.screenId)) {
+      setStatus('A pin has no screen ID. Wait for the simulator, then replace that pin before sending.', 'err');
+      sendBtn.disabled = false;
+      return;
+    }
+    const body = {
+      preview: { url: previewUrl, kind: 'serve-sim' },
+      comments,
       frame: frameInfo
         ? { path: 'frame.png', width: frameInfo.width, height: frameInfo.height, dataUrl: frameInfo.dataUrl }
         : stream.naturalWidth
@@ -508,11 +729,16 @@ export function pageHtml(opts) {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || res.statusText);
+      for (const p of pins) {
+        frameMemory.delete(p.id);
+        void storedFrame(p.id, null);
+      }
       pins = [];
       nextN = 1;
       focusedId = null;
       textEl.value = '';
       textEl.disabled = true;
+      showPlacement(null);
       forget();
       renderList();
       renderPins();

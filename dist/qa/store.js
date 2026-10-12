@@ -186,7 +186,7 @@ export async function resolveBatch(root, id, resolvedBy = "agent") {
     return next;
 }
 /** Publish the complete batch and optional frame atomically into the durable queue. */
-export async function writePendingBatch(root, batch, frameBytes) {
+export async function writePendingBatch(root, batch, frameBytes, commentFrames = new Map()) {
     const dir = join(pendingRoot(root), batch.id);
     await mkdir(pendingRoot(root), { recursive: true });
     const staging = await mkdtemp(join(pendingRoot(root), ".staging-"));
@@ -194,6 +194,11 @@ export async function writePendingBatch(root, batch, frameBytes) {
         await writeFile(join(staging, "batch.json"), `${JSON.stringify(batch, null, 2)}\n`, "utf8");
         if (frameBytes)
             await writeFile(join(staging, "frame.png"), frameBytes);
+        for (const [name, bytes] of commentFrames) {
+            if (!/^comment-[A-Za-z0-9_-]+\.png$/.test(name))
+                throw new Error("Invalid QA comment frame name");
+            await writeFile(join(staging, name), bytes);
+        }
         await rename(staging, dir);
     }
     catch (error) {
