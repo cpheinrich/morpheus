@@ -17,3 +17,5 @@ Native macOS launchd reproduction: a temporary checkout ran a Node dev command e
 Start failed in0.535seconds with supervisor exit1 and the actual fixture's failure/exit23 log
 lines, then removed its job/state and stopped the owned preview. No unrelated preview touched.
 Typecheck, compile, pm index, lint, inbox and diff checks passed.
+
+After merging currentmain, full `pnpm test` passed2120tests across77files in69.07seconds.
