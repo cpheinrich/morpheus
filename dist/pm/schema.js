@@ -26,20 +26,20 @@ export function prefixOf(id) {
     return /^([A-Z]{2,4})-/.exec(id)?.[1] ?? null;
 }
 /**
- * An ISO date (YYYY-MM-DD) tolerant of YAML's date handling.
+ * An ISO date (YYYY-MM-DD) compatible with legacy YAML date handling.
  *
- * YAML parses an unquoted `2026-07-01` into a Date object, so frontmatter
- * would otherwise fail validation unless every date were quoted. Normalising
- * here keeps the files natural to write by hand. js-yaml parses as UTC, so
- * slicing the ISO string cannot shift the day.
+ * Older YAML parsers converted an unquoted `2026-07-01` into a Date object;
+ * the current parser returns a string. Accepting both preserves compatibility
+ * with already-materialised metadata. Legacy Date values are UTC, so slicing
+ * the ISO string cannot shift the day.
  */
 export const isoDate = z.preprocess((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v), z.iso.date());
 /**
- * An ISO timestamp with an offset, tolerant of YAML's date handling.
+ * An ISO timestamp with an offset, compatible with legacy YAML date handling.
  *
- * Same trap as `isoDate` one layer up: YAML parses an unquoted
- * `2026-08-03T09:30:00-07:00` into a Date, so a meeting note written the
- * natural way fails with "expected string, received Date".
+ * Older YAML parsers converted an unquoted `2026-08-03T09:30:00-07:00` into a
+ * Date. The current parser returns a string, but accepting both preserves
+ * compatibility with already-materialised metadata.
  *
  * **The offset is preserved rather than normalised to UTC.** A meeting note's
  * id reads as the wall clock of the people who were in it, and converting to

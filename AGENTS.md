@@ -247,13 +247,14 @@ Match the surrounding code. This codebase favours:
 - Explicit types at boundaries; inference inside
 - Errors surfaced as data (`ParseIssue[]`) rather than thrown, so one bad input cannot abort a
   batch — see `src/pm/parse.ts`
-- Comments that explain *why*, not *what*. The YAML-date preprocessing in `src/pm/schema.ts` is
-  the model: it exists because YAML silently converts unquoted dates, and that is not obvious.
+- Comments that explain *why*, not *what*. The backward-compatible YAML-date preprocessing in
+  `src/pm/schema.ts` is the model: it accepts `Date` values produced by older parsers, and that is
+  not obvious from the current parser's string output.
 
 ## Things that have bitten us
 
-- **YAML converts unquoted `2026-07-01` into a Date object.** Frontmatter dates go through
-  `isoDate`, which normalises both forms.
+- **Older YAML parsers converted unquoted `2026-07-01` into a Date object.** The current parser
+  returns a string, while `isoDate` retains backward compatibility with both forms.
 - **A colon in a title breaks YAML.** `pm new` quotes scalars defensively; hand-written
   frontmatter with a colon must be quoted.
 - Generated files (`hq/product/*/README.md` between the `morpheus:` markers) are never edited by

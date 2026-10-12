@@ -1456,8 +1456,9 @@ An item file is frontmatter plus free prose — the schema constrains the metada
 This is the same validation approach used for Firestore documents (§14.1): **one way to describe a
 shape, whether it lands in a markdown file or a database row.**
 
-> **Gotchas.** YAML silently converts an unquoted `2026-07-01` into a Date object, so frontmatter
-> dates go through `isoDate`, which normalises both forms. A colon in a title breaks YAML — `pm
+> **Gotchas.** Older YAML parsers converted an unquoted `2026-07-01` into a Date object. The
+> current parser returns a string, while `isoDate` retains backward compatibility with both forms.
+> A colon in a title breaks YAML — `pm
 > new` quotes scalars defensively, and hand-written frontmatter with a colon must be quoted.
 
 ## 9. Testing and QA
