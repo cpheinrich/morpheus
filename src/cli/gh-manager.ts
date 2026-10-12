@@ -119,7 +119,7 @@ export function ghManagerRoutes(repoArg: string | undefined, sweepPath: string |
   const repo = assertRepository(repoArg ?? "");
   const file = readSweep(sweepPath);
   let failed = 0;
-  for (const routed of file.routed.filter(r => r.route === "merge" || r.route === "close" || r.route === "escalate")) {
+  for (const routed of file.routed.filter(r => r.route === "merge" || r.route === "close" || r.route === "escalate" || r.route === "hold")) {
     const live = fetchLiveState(repo, routed.number);
     const plan = live.open ? planRoute(routed, live, { policy: file.policy, attempts: routed.attempts, now: new Date(), runUrl: runUrl() }) : { verdict: "wait" as const, overridden: "already closed", operations: [] };
     const outcome = carryOut(repo, routed.number, plan, dryRun);

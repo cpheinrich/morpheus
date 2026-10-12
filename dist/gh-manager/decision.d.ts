@@ -75,6 +75,8 @@ export type Operation = {
 /** Live facts the plan is checked against, read after the session ended. */
 export interface LiveState {
     headSha: string;
+    title: string;
+    headRefName: string;
     isDraft: boolean;
     labels: string[];
     autoMerge: boolean;

@@ -178,6 +178,8 @@ export function fetchLiveState(repo, number, supersededBy) {
         base: pull.base.ref,
         sessionPushed: "unverified",
         headSha: facts.headSha,
+        title: facts.title,
+        headRefName: facts.headRefName,
         isDraft: facts.isDraft,
         labels: facts.labels,
         autoMerge: facts.autoMerge,

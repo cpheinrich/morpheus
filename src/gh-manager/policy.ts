@@ -67,11 +67,10 @@ export const GhManagerPolicy = z.object({
    * authoring session may still be driving the branch, and two authors on one
    * branch is the collision the worktree rule exists to prevent.
    */
-  quietHours: z.number().min(0).max(24 * 14).default(8),
+  quietHours: z.number().min(0).max(24 * 14).default(24),
   /**
-   * The same wait for a draft, and much longer: a draft says its author is not
-   * finished. Only after this long untouched is it presumed abandoned — the
-   * author forgot to mark it ready or to merge it — and checked for completeness.
+   * Legacy wait used only to escalate a rescued `wip/trunk-*` draft to a human.
+   * Drafts are never reviewed, undrafted or merged by the manager.
    */
   draftQuietHours: z.number().min(0).max(24 * 30).default(48),
   /** Model sessions per run. Each one spends subscription usage and runner minutes. */

@@ -1190,6 +1190,13 @@ a ready pull request and 48 for a draft; an abandoned draft that has not done it
 work is marked incomplete rather than finished for its author. Rolled out to Evo first and acting
 at once, with no dry-run period, watched for about twelve hours before Lakina and Morpheus.
 
+**WIP pull requests stay with their authors; ready PRs get 24 hours** — 2026-10-12. Chris found
+that WIP pull requests often need more input, so the manager must not promote or merge a draft,
+`wip/` branch, or `[WIP]`/`WIP:` titled pull request. It cancels any auto-merge already queued on
+one. The ready PR cooldown is 24 hours after the later of opening and the latest head commit.
+This supersedes the 8-hour ready cooldown and draft-completion behavior above; the 48-hour draft
+wait remains only for a rescued trunk draft's human escalation.
+
 Considered: Claude Code routines (acts as Chris's own GitHub user, prompt lives outside the
 repository, research preview) and GitHub Agentic Workflows (its safe-outputs split is the pattern
 adopted here; the dependency is a compiler and a second workflow dialect). `claude-code-action`

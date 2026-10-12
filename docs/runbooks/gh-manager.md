@@ -17,15 +17,16 @@ Every run starts with a sweep that uses no model. Each open pull request gets on
 |---|---|---|
 | `merge` | Reviewed, checks green, auto-merge never enabled | Auto-merge is switched on; cancelled checks are rerun. No session. |
 | `merge` (update) | Auto-merge is on but strict protection holds the branch behind its base | The base is merged in with GitHub's `update-branch`, guarded on the current head. No session. If GitHub refuses (most likely because the merge from trunk carries a workflow change and the App has no Workflows permission), the next run escalates once with `manager:needs-human` and leaves auto-merge and any `manager-reviewed` clearance in place, so the pull request lands once a person merges the base in. |
-| `session` | Anything that needs judgment: no completed review, failing checks, conflicts, an abandoned draft | One fresh Claude session (below). |
+| `session` | A ready pull request needs judgment: no completed review, failing checks or conflicts | One fresh Claude session (below). |
+| `hold` | A WIP pull request already has auto-merge queued | The manager cancels auto-merge and leaves the pull request open. |
 | `close` | A stale warning's grace period ran out | Closed with a comment. The branch is left in place. |
 | `escalate` | The attempt budget is spent | Labelled `manager:needs-human`. |
-| `skip` | Recently active, already queued, a bot lane, an untrusted author, already escalated or marked incomplete | Reported in the digest, not touched. |
+| `skip` | WIP, recently active, already queued, a bot lane, an untrusted author, already escalated or marked incomplete | Reported in the digest, not touched. |
 
 A session ends in one of five decisions:
 
 - **merge** — on the author's review if it is complete and valid, otherwise on the manager's own.
-- **incomplete** — a draft that has not done what its roadmap item defines. Labelled
+- **incomplete** — a ready pull request that has not done what its roadmap item defines. Labelled
   `manager:incomplete` with what is missing. The manager lands finished work; it does not finish
   features.
 - **close** — other merged work made it obsolete. Closed at once when the session names the merged
@@ -37,8 +38,10 @@ A session ends in one of five decisions:
 ### Cooldowns
 
 The manager does not touch a branch its author may still be driving. A ready pull request is left
-alone until `quietHours` (default 8) after the later of its head commit and the time it was opened. A draft gets `draftQuietHours`
-(default 48): only after that long untouched is it presumed abandoned and checked for completeness.
+alone until `quietHours` (default 24) after the later of its head commit and the time it was opened.
+A draft, a `wip/` branch, or a title beginning `[WIP]` or `WIP:` is held regardless of age or review.
+The manager never marks a draft ready. A rescued `wip/trunk-*` draft still escalates to a human after
+`draftQuietHours` (default 48), without a review or merge.
 
 ## The manager review
 
@@ -156,7 +159,7 @@ that repository; invalid is an error, not "off".
 {
   "version": 1,
   "enabled": true,
-  "quietHours": 8,
+  "quietHours": 24,
   "draftQuietHours": 48,
   "maxSessionsPerRun": 4,
   "maxAttemptsPerPullRequest": 2,
@@ -168,7 +171,8 @@ that repository; invalid is an error, not "off".
 }
 ```
 
-Everything but `version` is optional and shown at its default. `sessionBeforeMerge` is for a
+Everything but `version` is optional and shown at its default. `draftQuietHours` only controls the
+rescued trunk escalation; it does not make drafts eligible for merge. `sessionBeforeMerge` is for a
 project whose authors deliberately leave finished work open for a human to merge or redirect: a
 reviewed, green pull request then goes through a session, which reads it, instead of having
 auto-merge enabled from the sweep. `protectedPaths` are plain repository-relative prefixes; globs

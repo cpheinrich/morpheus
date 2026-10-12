@@ -91,6 +91,8 @@ export type Route =
   | "escalate"
   /** One model session. */
   | "session"
+  /** Cancel a previously queued auto-merge on work in progress. */
+  | "hold"
   | "skip";
 
 export interface Routed {
@@ -115,6 +117,11 @@ const MARKER = /<!-- morpheus-gh-manager (\{[^\n]*\}) -->/g;
 export const SAFE_REF = /^[A-Za-z0-9._/-]+$/;
 /** Branches `context brief` creates for tracked edits rescued from a dirty trunk checkout. */
 export const RESCUED_TRUNK_PREFIX = "wip/trunk-";
+
+/** An explicit WIP signal is a human request to leave this pull request alone. */
+export function isWorkInProgress(pr: Pick<PullRequestFacts, "isDraft" | "headRefName" | "title">): boolean {
+  return pr.isDraft || /^wip\//i.test(pr.headRefName) || /^\s*(?:\[wip\]|wip:)/i.test(pr.title);
+}
 
 export function renderMarker(marker: ManagerMarker): string {
   return `<!-- morpheus-gh-manager ${JSON.stringify(marker)} -->`;
@@ -170,6 +177,16 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   }
   // The branch name is the one piece of author-controlled text the brief has to carry.
   if (!SAFE_REF.test(pr.headRefName)) return routed("skip", "unsafe-branch-name", "the branch name has characters the manager will not put in a brief");
+  if (pr.isDraft && !pr.autoMerge && !pr.labels.includes("agent-reviewed") && !pr.labels.includes(MANAGER_REVIEWED_LABEL) && pr.headRefName.startsWith(RESCUED_TRUNK_PREFIX)) {
+    const rescuedAge = now.getTime() - Math.max(Date.parse(pr.headCommittedAt), Date.parse(pr.createdAt));
+    if (Number.isFinite(rescuedAge) && rescuedAge >= policy.draftQuietHours * HOUR) {
+      if (pr.labels.includes(NEEDS_HUMAN_LABEL) && marker?.head === pr.headSha) return routed("skip", "escalated", "waiting on a human since the last run; a new push reopens it");
+      return routed("escalate", "rescued-trunk-edits", "uncommitted edits rescued from a dirty trunk checkout; adopt them onto a roadmap item's branch or close this");
+    }
+  }
+  if (isWorkInProgress(pr)) return pr.autoMerge
+    ? routed("hold", "wip-auto-merge", "work in progress; cancelling queued auto-merge")
+    : routed("skip", "work-in-progress", "draft, WIP branch or WIP title; awaiting a human to mark it ready");
   if (pr.labels.includes(NEEDS_HUMAN_LABEL) && marker?.head === pr.headSha) {
     return routed("skip", "escalated", "waiting on a human since the last run; a new push reopens it");
   }
@@ -181,14 +198,12 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   // The later of the commit date and the day the pull request opened: a commit can be made long
   // before it is pushed, and its date alone would call a branch quiet minutes after it appeared.
   const age = now.getTime() - Math.max(Date.parse(pr.headCommittedAt), Date.parse(pr.createdAt));
-  const quiet = pr.isDraft ? policy.draftQuietHours : policy.quietHours;
+  const quiet = policy.quietHours;
   // An unparseable date is not "old". Treat it as active rather than acting on a branch whose
   // age is unknown.
   const managerUpdate = pr.headByManager === true && pr.headFirstParent !== undefined && marker?.updated === pr.headFirstParent;
   if (!managerUpdate && (!Number.isFinite(age) || age < quiet * HOUR)) {
-    return routed("skip", "active", pr.isDraft
-      ? `draft, and its head commit is under ${quiet}h old; not yet presumed abandoned`
-      : `head commit is under ${quiet}h old; an author may still be driving it`);
+    return routed("skip", "active", `head commit is under ${quiet}h old; an author may still be driving it`);
   }
 
   if (pr.labels.includes(STALE_LABEL) && marker?.verdict === "warn-stale" && marker.head === pr.headSha) {
@@ -203,14 +218,6 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
 
   const { failing, pending, cancelled } = summarize(pr.checks);
   const reviewed = pr.labels.includes("agent-reviewed") || pr.labels.includes(MANAGER_REVIEWED_LABEL);
-
-  // Edits `context brief` rescued from a dirty trunk checkout. Nobody has decided they are a
-  // change at all — an IDE rewriting a generated file is the usual cause — so no session may
-  // review, repair or land one on its own judgment. Past the draft quiet period it goes to a
-  // human once; adopting it (review, or marking it ready) returns it to the ordinary routes.
-  if (pr.isDraft && !reviewed && pr.headRefName.startsWith(RESCUED_TRUNK_PREFIX)) {
-    return routed("escalate", "rescued-trunk-edits", "uncommitted edits rescued from a dirty trunk checkout; adopt them onto a roadmap item's branch or close this");
-  }
 
   if (pr.autoMerge && !failing.length && pr.mergeable !== "CONFLICTING") {
     if (cancelled.length && policy.actions.merge) return routed("merge", "rerun-cancelled", `auto-merge is on but ${cancelled.length} check(s) were cancelled; rerunning them`);
