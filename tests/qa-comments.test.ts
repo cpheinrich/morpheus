@@ -8,6 +8,7 @@ import { BatchClaimedError, claimNextBatch, listPending, readBatchClaim, release
 import { dispatchQaComments } from "../src/cli/qa.js";
 import { isResponderActive, loadResponderConfig, recoverStoppedResponder, requestResponderStop, responderStatus, runQaResponder } from "../src/qa/responder.js";
 import { hidKeyBody, hidTouchBody, startQaCommentServer } from "../src/qa/serve.js";
+import { BatchRejected, recordBatch } from "../src/qa/batches.js";
 import { TouchPacer, type TouchEvent } from "../src/qa/touch-pacer.js";
 import {
   authorizationHeaderValue,
@@ -804,5 +805,32 @@ describe("qa comments webhook", () => {
     });
     expect((received as { pendingDir: string }).pendingDir).toContain("local/qa-comments/pending");
     expect(receivedAuth).toBe("Bearer test-wake-key");
+  });
+});
+
+describe("qa comment placement frames", () => {
+  const comment = (dataUrl: string) => ({
+    id: "c1",
+    text: "Pin",
+    createdAt: "2026-10-02T12:30:00-07:00",
+    anchor: { normX: 0.4, normY: 0.6 },
+    frame: { width: 100, height: 200, dataUrl },
+  });
+
+  it("rejects a non-PNG or empty pin frame and writes nothing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-qa-pin-frame-"));
+    try {
+      const preview = { url: "http://127.0.0.1:3200/", kind: "serve-sim" as const };
+      await expect(recordBatch(root, "evo", { comments: [comment("data:image/jpeg;base64,Zmlyc3Q=")] }, preview))
+        .rejects.toThrow(new BatchRejected("comment frame must be a PNG data URL"));
+      await expect(recordBatch(root, "evo", { comments: [comment("data:image/png;base64,")] }, preview))
+        .rejects.toThrow(new BatchRejected("comment frame is empty"));
+      expect(await listPending(root)).toEqual([]);
+
+      const kept = await recordBatch(root, "evo", { comments: [comment("data:image/png;base64,Zmlyc3Q=")] }, preview);
+      expect(await readFile(join(kept.path, "comment-1.png"), "utf8")).toBe("first");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

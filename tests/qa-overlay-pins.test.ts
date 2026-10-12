@@ -400,7 +400,9 @@ describe("iOS QA pins", () => {
     expect(identity.observe(qaAxSnapshotFromTree(tree("lazyRowB"))).screenId).toBe(first);
     identity.noteTouch("begin", 0.5, 0.5);
     identity.noteTouch("end", 0.5, 0.5);
-    expect(identity.observe(qaAxSnapshotFromTree(tree("otherScreenContent"))).screenId).not.toBe(first);
+    expect(identity.observe(qaAxSnapshotFromTree(tree("otherScreenContent"))).screenId)
+      .toBe(screenIdFromAxTree(tree("otherScreenContent")));
+    expect(screenIdFromAxTree(tree("otherScreenContent"))).not.toBe(first);
 
     const named = new QaScreenIdentity();
     named.observe({ ...qaAxSnapshotFromTree(tree("lazyRowA")), screenId: "mealReviewScreen" });
