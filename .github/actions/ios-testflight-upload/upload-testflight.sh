@@ -22,6 +22,7 @@ PLIST_BUDDY=/usr/libexec/PlistBuddy
 REPOSITORY_ROOT="${GITHUB_WORKSPACE:-$PWD}"
 PROJECT_PATH="${PROJECT_PATH:-}"
 SCHEME_NAME="${SCHEME_NAME:-}"
+BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-Release}"
 # A runner that keeps a build cache between jobs names it in MORPHEUS_IOS_CI_CACHE
 # (see ios-ci.yml); the archive's DerivedData and checkouts then persist there.
 BUILD_CACHE_ROOT="${RUNNER_TEMP:-/private/tmp}"
@@ -218,7 +219,7 @@ if [[ -z "$MARKETING_VERSION" ]]; then
     run_without_release_secrets xcodebuild -showBuildSettings \
       -project "$PROJECT_PATH" \
       -scheme "$SCHEME_NAME" \
-      -configuration Release \
+      -configuration "$BUILD_CONFIGURATION" \
       -destination "generic/platform=iOS" \
       -clonedSourcePackagesDirPath "$SOURCE_PACKAGES_PATH" \
       -disableAutomaticPackageResolution \
@@ -601,7 +602,7 @@ plutil -insert uploadSymbols -bool true "$EXPORT_OPTIONS_PATH"
 archive_arguments=(
   -project "$PROJECT_PATH"
   -scheme "$SCHEME_NAME"
-  -configuration Release
+  -configuration "$BUILD_CONFIGURATION"
   -destination "generic/platform=iOS"
   -archivePath "$ARCHIVE_PATH"
   -derivedDataPath "$DERIVED_DATA_PATH"
@@ -721,7 +722,7 @@ fi
 # they are escaped below so the lookup addresses one key rather than four.
 codesign -d --entitlements :- "$EXPORTED_APPLICATION_PATH" > "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null
 python3 "$ENTITLEMENTS_TOOL" verify "$EXPECTED_ENTITLEMENTS_PATH" "$EXPORTED_ENTITLEMENTS_PATH"
-echo "Exported app preserves every declared Release entitlement."
+echo "Exported app preserves every declared $BUILD_CONFIGURATION entitlement."
 exported_application_identifier="$(plutil -extract application-identifier raw -o - "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null || true)"
 exported_team_identifier="$(plutil -extract 'com\.apple\.developer\.team-identifier' raw -o - "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null || true)"
 exported_get_task_allow="$(plutil -extract get-task-allow raw -o - "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null || true)"
