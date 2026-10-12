@@ -6,6 +6,43 @@ import { pageHtml } from "../src/qa/overlay-page.js";
 import { QaScreenIdentity, qaAxSnapshotFromTree, screenIdFromAxTree } from "../src/qa/screen-id.js";
 
 describe("iOS QA pins", () => {
+  it("forwards a drag without letting Safari select text in the simulator image", async () => {
+    const html = pageHtml({
+      previewUrl: "http://127.0.0.1:3427/", streamPath: "/proxy/stream.mjpeg", axPath: null, project: "evo",
+    });
+    const touches: string[] = [];
+    const dom = new JSDOM(html, {
+      url: "http://127.0.0.1:3683/", runScripts: "dangerously", pretendToBeVisual: true,
+      beforeParse(window: Window & typeof globalThis) {
+        window.HTMLElement.prototype.getBoundingClientRect = function () {
+          return { left: 0, top: 0, right: 390, bottom: 844, width: 390, height: 844, x: 0, y: 0, toJSON() {} };
+        };
+        Object.defineProperty(window, "fetch", { value: async (_url: string, init: { body: string }) => {
+          touches.push(JSON.parse(init.body).type as string);
+          return { ok: true };
+        } });
+      },
+    });
+    try {
+      const stage = dom.window.document.getElementById("stage")!;
+      const image = dom.window.document.getElementById("stream")!;
+      expect(dom.window.getComputedStyle(image).pointerEvents).toBe("none");
+      expect(html).toContain("-webkit-user-select: none");
+      const pointer = (type: string, y: number) => new dom.window.MouseEvent(type, {
+        bubbles: true, cancelable: true, button: 0, clientX: 195, clientY: y,
+      });
+      const down = pointer("pointerdown", 500);
+      stage.dispatchEvent(down);
+      stage.dispatchEvent(pointer("pointermove", 300));
+      stage.dispatchEvent(pointer("pointerup", 300));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(down.defaultPrevented).toBe(true);
+      expect(touches).toEqual(["begin", "move", "end"]);
+    } finally {
+      dom.window.close();
+    }
+  });
+
   it("rejects a pin when the native capture differs from the screen ID at click", async () => {
     let emitAx: ((snapshot: unknown) => void) | undefined;
     let posted: Record<string, unknown> | null = null;
