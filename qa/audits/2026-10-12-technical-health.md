@@ -1,6 +1,6 @@
 # Morpheus technical-health audit — 2026-10-12
 
-Baseline: `f063880c0002` (`origin/main`). Scope: 1,516 tracked files, production/development
+Baseline: `f063880c0002` (`origin/main`). Scope: 1,515 tracked files, production/development
 dependencies, dead-code and tracked-artifact inventories, configured similarity and complexity,
 repository-native validation, governance records, and exact-head hosted runs.
 
