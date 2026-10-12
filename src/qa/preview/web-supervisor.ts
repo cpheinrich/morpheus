@@ -57,6 +57,12 @@ async function main([stateFile]: string[]): Promise<void> {
   process.on("SIGTERM", () => void stop(0));
   process.on("SIGINT", () => void stop(0));
   child?.once("exit", (code) => { console.error(`dev server exited (${code ?? "signal"}); ending the preview.`); void stop(1); });
+  // The dev command can finish while the overlay is binding, before its exit listener exists.
+  if (child && (child.exitCode !== null || child.signalCode !== null)) {
+    console.error(`dev server exited (${child.exitCode ?? child.signalCode}); ending the preview.`);
+    await stop(1);
+    return;
+  }
   for (;;) {
     await sleep(5000);
     try {
