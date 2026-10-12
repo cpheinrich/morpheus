@@ -18,7 +18,7 @@ beforeEach(async () => {
 });
 afterEach(async () => { vi.unstubAllGlobals(); await rm(root, { recursive: true, force: true }); });
 
-it.each(["state = not running\nruns = 1\nlast exit code = 2", "state = not running\nruns = 1\nlast exit code = 0", "state = not running\nlast terminating signal = 15", ""])("fails immediately for a dead supervisor: %s", async status => {
+it.each(["state = not running\nruns = 1\nlast exit code = 2", "state = not running\nruns = 1\nlast exit code = 0", "state = not running\nlast terminating signal = 15", "state = not running\nruns = 1", ""])("fails immediately for a dead supervisor: %s", async status => {
   const log = join(root, "preview.log");
   await writeFile(log, "old output\n".repeat(10000) + "build failed: missing script\ndev server exited (2)\n");
   const error = await waitForWebPreview(state(), () => status, log, () => undefined).catch(error => error as Error);
@@ -30,7 +30,7 @@ it.each(["state = not running\nruns = 1\nlast exit code = 2", "state = not runni
 });
 
 it("allows a pending first launch and a compiling live process to become ready", async () => {
-  const readJob = vi.fn().mockReturnValueOnce("state = spawn scheduled\nruns = 0").mockReturnValue("state = running\npid = 123\nruns = 1");
+  const readJob = vi.fn().mockReturnValueOnce("state = not running\nruns = 0\nlast exit code = (never exited)").mockReturnValue("state = running\npid = 123\nruns = 1");
   fetchMock.mockResolvedValueOnce(new Response("", { status: 503 }))
     .mockResolvedValueOnce(new Response(JSON.stringify({ kind: "web", upstream: state().upstream })))
     .mockResolvedValueOnce(new Response("ready"));

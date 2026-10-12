@@ -19,3 +19,8 @@ lines, then removed its job/state and stopped the owned preview. No unrelated pr
 Typecheck, compile, pm index, lint, inbox and diff checks passed.
 
 After merging currentmain, full `pnpm test` passed2120tests across77files in69.07seconds.
+
+Review WEB-EXIT-1 found launchd's actual pending sentinel `last exit code = (never exited)`
+was mistaken for completion. Under the reviewer's exact-path condition, the author restricted
+exit/signal matching to numeric values and added pending-sentinel and ran-without-status cases.
+All84 focused QA tests, typecheck and compile passed; no extra review turn required.

@@ -249,7 +249,7 @@ export async function waitForWebPreview(state: WebPreviewState, readJob: () => s
     const status = readJob();
     const hasPid = /\bpid = \d+/.test(status);
     const ran = Number(status.match(/\bruns = (\d+)/)?.[1] ?? "0") > 0;
-    if (!status || (!hasPid && (ran || /last exit code =|last terminating signal =/.test(status)))) {
+    if (!status || (!hasPid && (ran || /last (?:exit code|terminating signal) = -?\d+\b/.test(status)))) {
       const exit = status.match(/last exit code = (-?\d+)/)?.[1];
       throw readinessError(`The web preview supervisor exited before readiness${exit ? ` (exit ${exit})` : ""}.`, logPath);
     }
