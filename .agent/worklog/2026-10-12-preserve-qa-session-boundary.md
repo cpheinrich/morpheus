@@ -12,3 +12,5 @@ Used skill-creator guidance for a narrow correction to the existing skill. No ne
 unit test for a prose-only change: the existing skill/template consistency checks protect
 scaffold propagation, and independent review assesses the operative instructions. Graph transport
 and coverage calls failed, so exact source/template/tests were inspected directly.
+
+Validation: frozen install;149 focused tests across qa-preview/init/qa-web; typecheck,compile,pm index,lint,inbox and diff checks passed. Both skill folders passed skill-creator quick_validate using uv with PyYAML (system and bundled Python lacked yaml). Merged current main before review; full pnpm test passed2110tests/75files in66.32seconds. No UI behavior changed, so no simulator/browser session was needed.
