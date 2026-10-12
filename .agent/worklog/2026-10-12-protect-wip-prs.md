@@ -22,11 +22,7 @@ is left to CI because this change does not touch the repository's shared core pa
 
 ## Independent review
 
-One fresh reviewer reviewed 1e7b6fa at high risk. It found one substantive apply-stage gap:
-WIP could publish screenshot evidence before the guard, and a missing decision could leave queued
-auto-merge on. The reviewer cleared this on the condition that the early guard and focused
-regressions be added. Commit 841c121 satisfies that condition; all 62 focused manager tests,
-typecheck and compile passed.
+One fresh reviewer reviewed 1e7b6fa at high risk. It found one substantive apply-stage gap: WIP could publish screenshot evidence before the guard, and a missing decision could leave queued auto-merge on. The reviewer cleared this on the condition that the early guard and focused regressions be added. Commit 841c121 satisfies that condition; all 62 focused manager tests, typecheck and compile passed.
 
 ```morpheus-review
 {
