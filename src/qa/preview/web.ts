@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
@@ -227,6 +227,40 @@ function report(ctx: WebContext, state: WebPreviewState, options: Pick<WebPrevie
 
 const supervisorPath = () => fileURLToPath(new URL("./web-supervisor.js", import.meta.url));
 
+/** Keep failure output bounded even when a dev server has written a large log. */
+function readinessError(reason: string, logPath: string): Error {
+  let tail = "";
+  try {
+    const fd = openSync(logPath, "r");
+    try {
+      const size = fstatSync(fd).size;
+      const buffer = Buffer.alloc(Math.min(size, 8192));
+      const bytes = readSync(fd, buffer, 0, buffer.length, Math.max(0, size - buffer.length));
+      tail = buffer.subarray(0, bytes).toString("utf8").trimEnd().split("\n").slice(-20).join("\n");
+    } finally { closeSync(fd); }
+  } catch { /* The supervisor may have failed before opening its log. */ }
+  return new Error(`${reason} Read ${logPath}.${tail ? `\nRecent preview log:\n${tail}` : ""}`);
+}
+
+/** A registered job may be pending its first launch; only a missing or exited job is fatal. */
+export async function waitForWebPreview(state: WebPreviewState, readJob: () => string, logPath: string, check: () => void): Promise<void> {
+  for (let attempt = 0; attempt < 360; attempt++) {
+    check();
+    const status = readJob();
+    const hasPid = /\bpid = \d+/.test(status);
+    const ran = Number(status.match(/\bruns = (\d+)/)?.[1] ?? "0") > 0;
+    if (!status || (!hasPid && (ran || /last (?:exit code|terminating signal) = -?\d+\b/.test(status)))) {
+      const exit = status.match(/last exit code = (-?\d+)/)?.[1];
+      throw readinessError(`The web preview supervisor exited before readiness${exit ? ` (exit ${exit})` : ""}.`, logPath);
+    }
+    const ready = (await webHealthy(state)) && (await answers(state.upstream));
+    check();
+    if (ready) return;
+    await sleep(500);
+  }
+  throw readinessError(`The web preview did not become ready on port ${state.port}.`, logPath);
+}
+
 export async function runWebPreview(ctx: WebContext, options: WebPreviewOptions, project: string): Promise<void> {
   const previous = readJSON<WebPreviewState>(ctx.stateFile);
   if (options.command === "status") {
@@ -287,13 +321,7 @@ export async function runWebPreview(ctx: WebContext, options: WebPreviewOptions,
       try {
         ctx.run("launchctl", ["bootstrap", `gui/${process.getuid!()}`, plist]);
         if (state.spawned) ctx.log(`Starting the dev server (${state.command!.join(" ")}) — the first compile can take a minute…`);
-        let ready = false;
-        for (let attempt = 0; attempt < 360 && !ready; attempt++) {
-          ready = (await webHealthy(state)) && (await answers(upstream));
-          check();
-          if (!ready) await sleep(500);
-        }
-        if (!ready) throw new Error(`The web preview did not become ready on port ${port}. Read ${join(ctx.stateDir, "preview.log")}.`);
+        await waitForWebPreview(state, () => job(ctx), join(ctx.stateDir, "preview.log"), check);
         report(ctx, state, options);
       } catch (error) {
         await stop();
