@@ -1749,11 +1749,7 @@ describe("ios-testflight-upload action", () => {
     const cache = steps.find((step) => step.uses?.startsWith("actions/cache@"));
     const tooling = steps.find((step) => step.name === "Install release tooling");
 
-    // working-directory, project and scheme are written into GITHUB_ENV, one
-    // KEY=VALUE per line; a value carrying a newline would append an arbitrary
-    // variable to the calling job.
-    expect(validate?.run).toContain('for caller_value in "$WORKING_DIRECTORY" "$PROJECT" "$SCHEME"');
-    expect(validate?.run).toContain("*[[:space:]]*)");
+    // Executable name validation and argv coverage live in upload-configuration.test.ts.
     expect(validate?.run).toContain('versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
     expect(validate?.run).toContain("elif [ -d /Applications/Xcode.app ]");
     expect(validate?.run).toContain('installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild"');

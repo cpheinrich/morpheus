@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,9 +36,9 @@ beforeEach(() => {
   writeFileSync(join(root, "code.ts"), 'export const answer = 1;'); base = commit();
   writeFileSync(join(root, "code.ts"), 'export const answer = 2;'); reviewed = commit();
 });
-// A completed Git command may leave filesystem activity finishing under .git/objects on CI.
-// Retry ENOTEMPTY rather than turning a passing assertion into a cleanup failure.
-afterEach(() => rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }));
+// Git can leave a late object after directory traversal. Node 22 rmSync retries only rmdir
+// without rescanning children; async rm retries traversal and Vitest awaits its promise.
+afterEach(() => rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }));
 
 describe("independent review lifecycle", () => {
   it("defaults on and refuses malformed configuration", () => {

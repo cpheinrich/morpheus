@@ -3298,7 +3298,9 @@ as inputs — which is what makes the *implementation* shareable even though the
 selects the exact Xcode, downloads the Metal toolchain on request, restores the SwiftPM cache,
 installs `openssl@3`, `asccli` and optionally `sentry-cli`, then archives, exports, verifies and
 uploads. A caller is reduced to a checkout of the verified SHA and one `uses:` block of
-identifiers.
+identifiers. The optional `configuration` input defaults to `Release` and is used consistently
+for both build-settings queries and archive; scheme/configuration names may contain spaces but
+not CR/LF, and remain single argv values.
 
 Binary acceptance and distribution are separate action steps. Acceptance requires the pinned
 asccli upload state PROCESSING or COMPLETE with a valid id and no errors; AWAITING_UPLOAD is

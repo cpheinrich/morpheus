@@ -19,6 +19,22 @@ so inspect that state before retrying a forcibly terminated release. The lock pr
 it does not repair artifacts left by a killed process. See architecture.md's iOS release contract.
 
 
+## Scheme and configuration
+
+`scheme` accepts spaces, such as `Evo Production`. `configuration` defaults to `Release` and
+selects the configuration for both build-settings queries and the archive. Set it explicitly
+when the shared scheme's Archive action uses another configuration, for example:
+
+```yaml
+with:
+  scheme: Evo Production
+  configuration: Production
+```
+
+Names must be non-blank single-line values. Spaces are preserved as part of one Xcode argument;
+CR/LF are refused before writing the job environment. The working-directory/project restrictions
+are unchanged. `archive-build-settings` still supplies explicit per-setting overrides.
+
 ## Upload acceptance receipts
 
 After Apple returns a successful upload response with one upload id, the action writes
