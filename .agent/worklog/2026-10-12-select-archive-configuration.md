@@ -23,7 +23,7 @@ Independent high-risk review cleared the exact remote head with no findings. The
   "version": 2,
   "base": "01bdb63b53f5db34da05910fbce1aa9c12bcf2c7",
   "reviewed": "a0d6474e500bd5e7ad524b24b51d604fa0da25f8",
-  "covered": "a0d6474e500bd5e7ad524b24b51d604fa0da25f8",
+  "covered": "d0b1e8f26d25a16477251dd3143c366e428d2b72",
   "authorSession": "01a1317d-1201-7161-a2b9-b09e0a7fe8ab",
   "reviewerSession": "/root/review_archive_configuration",
   "risk": "high",
@@ -35,7 +35,22 @@ Independent high-risk review cleared the exact remote head with no findings. The
   },
   "outcome": "complete",
   "summary": "Independent high-risk review cleared the exact remote head with no findings. The reviewer verified configuration propagation through both metadata queries and the archive, quoted scheme/path handling, validation before environment writes, and compatibility with sampled callers; all 10 configuration tests passed independently. No actual archive, signing, or upload was performed. Exact worktree source supplied coverage where the primary graph lacked new files.",
-  "findings": []
+  "findings": [],
+  "followUps": [
+    {
+      "reviewerSession": "/root/review_archive_configuration",
+      "commit": "d0b1e8f26d25a16477251dd3143c366e428d2b72",
+      "scopeReason": "Late CI correction: review fixture cleanup failed ENOTEMPTY after the initial clearance; asynchronous removal rescans late files within the same retry bounds.",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.9064166666666666,
+      "timing": {
+        "source": "clock",
+        "durationMs": 114385,
+        "evidence": "Same-reviewer follow-up invocation start 2026-10-12T19:49:26.076767+00:00; completion observed 2026-10-12T19:51:20.461082+00:00."
+      },
+      "summary": "The same reviewer cleared the late CI cleanup correction with no findings. Vitest awaits the returned removal promise and reports cleanup rejection as failure; assertions and retry bounds are unchanged. The reviewer independently reproduced the Node 22.23.3 late-file probe. All 136 focused review/configuration tests, typecheck and lint passed; the actual CI writer remains unknown."
+    }
+  ]
 }
 ```
 
@@ -52,4 +67,6 @@ Changed only this suite's afterEach to return bounded async rm, which Vitest awa
 assertions and cleanup-error propagation remain intact. No new cleanup module or dependency.
 Node source: https://github.com/nodejs/node/blob/v22.23.3/lib/internal/fs/rimraf.js
 The previously failing test passed in isolation before the change, confirming its assertion
-was not the reported failure. The same independent reviewer will assess this late CI correction.
+was not the reported failure. The same independent reviewer assessed this late CI correction.
+
+The same reviewer cleared the late CI cleanup correction with no findings. Vitest awaits the returned removal promise and reports cleanup rejection as failure; assertions and retry bounds are unchanged. The reviewer independently reproduced the Node 22.23.3 late-file probe. All 136 focused review/configuration tests, typecheck and lint passed; the actual CI writer remains unknown.
