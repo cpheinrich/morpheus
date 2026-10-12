@@ -1339,6 +1339,9 @@ reviews on record, conducts one more if needed, and fixes its own findings; a se
 deterministic step checks each session's decision against live state and policy before anything is
 labelled, merged or closed. The session's token can write contents and nothing else: it cannot
 label, comment, close, or change a workflow file.
+Drafts, `wip/` branches, and `[WIP]` or `WIP:` titles remain with their authors; the manager
+cancels queued auto-merge on them. A ready pull request waits 24 hours after its latest head
+commit or opening, whichever is later, before the manager acts.
 
 It follows the Morpheus Security shape (§18): a public reviewed engine in this repository, a
 private operations repository holding the App key, the subscription token and the schedule, and a

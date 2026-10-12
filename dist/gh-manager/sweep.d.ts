@@ -80,7 +80,9 @@ export type Route =
 /** Deterministic: the attempt budget is spent. */
  | "escalate"
 /** One model session. */
- | "session" | "skip";
+ | "session"
+/** Cancel a previously queued auto-merge on work in progress. */
+ | "hold" | "skip";
 export interface Routed {
     number: number;
     title: string;
@@ -97,6 +99,8 @@ export interface Routed {
 export declare const SAFE_REF: RegExp;
 /** Branches `context brief` creates for tracked edits rescued from a dirty trunk checkout. */
 export declare const RESCUED_TRUNK_PREFIX = "wip/trunk-";
+/** An explicit WIP signal is a human request to leave this pull request alone. */
+export declare function isWorkInProgress(pr: Pick<PullRequestFacts, "isDraft" | "headRefName" | "title">): boolean;
 export declare function renderMarker(marker: ManagerMarker): string;
 /**
  * The marker in a comment body, or undefined.

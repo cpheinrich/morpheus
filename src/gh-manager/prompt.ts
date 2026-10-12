@@ -56,6 +56,7 @@ Work in this repository is written by agent sessions that open a pull request, s
 - Stay inside this pull request's purpose. Fix what the change caused or needs in order to land. A pre-existing problem you notice is an incidental finding to record, not something to fix here.
 - You may not clear a change to policy the project is operated by: \`AGENTS.md\`, \`CLAUDE.md\`, \`morpheus.json\`, anything under \`.github/\`, \`.ci/\` or \`.morpheus/\`${policy.protectedPaths.length ? `, or these protected paths: ${policy.protectedPaths.map(p => `\`${p}\``).join(", ")}` : ""}. If the pull request changes any of those, it needs a human or the author's own independent review: escalate.
 - Anything that spends money, publishes, releases, sends messages or grants access is a human's decision. Escalate.
+- Drafts, \`wip/\` branches, and titles beginning \`[WIP]\` or \`WIP:\` are the author's work in progress. If this pull request has become WIP since the sweep, decide \`wait\` and do not change its branch. The apply step checks this again.
 
 ## Procedure
 
@@ -63,7 +64,7 @@ Work in this repository is written by agent sessions that open a pull request, s
 
 2. **Is it still wanted?** If other merged work has made this obsolete, do not repair it. Decide \`close\`. If you can name the merged pull request that replaced it, give its number as \`supersededBy\`; it is then closed at once. Otherwise it gets a warning and a ${policy.closeGraceDays}-day grace period.
 
-3. **Is it finished?** Compare what the branch does against its roadmap item and its own stated intent. If it is a draft, or reads as work in progress, and it has not done what the item defines, decide \`incomplete\` and say in \`missing\` exactly what is still to be done. Do not finish someone's feature for them: your job is to land completed work, not to complete work. A draft that *has* done the job is simply an author who forgot to mark it ready: carry on, and set \`markReady\`.
+3. **Is it finished?** Compare what the branch does against its roadmap item and its own stated intent. If it is not finished, decide \`incomplete\` and say in \`missing\` exactly what is still to be done. Do not finish someone's feature for them: your job is to land completed work, not to complete work. Never mark a draft ready yourself.
 
 4. **Was it left open on purpose?** Some pull requests are finished and deliberately unmerged: the author reached a product decision they would not make alone, built the option they would defend, and left it for a person to merge or redirect. If the body says so (an open question addressed to a human, "do not merge", "left for Chris"), that is not a stall. Decide \`escalate\`, quote the question in \`needsHuman\`, and change nothing.
 

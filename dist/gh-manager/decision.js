@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { visibleProse } from "../check/pr.js";
 import { humanGatedPaths, INCOMPLETE_LABEL, MANAGER_REVIEWED_LABEL, NEEDS_HUMAN_LABEL, STALE_LABEL, } from "./policy.js";
-import { renderMarker } from "./sweep.js";
+import { isWorkInProgress, renderMarker } from "./sweep.js";
 /**
  * What a session asks for, and what is actually done about it.
  *
@@ -66,6 +66,14 @@ const HEADLINE = {
 function comment(verdict, sections, marker) {
     return { kind: "comment", body: [`### GitHub Manager — ${HEADLINE[verdict]}`, ...sections.filter(Boolean), renderMarker(marker)].join("\n\n") };
 }
+function holdWorkInProgress(live, marker, run) {
+    if (!live.autoMerge)
+        return { verdict: "wait", operations: [] };
+    return { verdict: "wait", operations: [
+            comment("wait", ["This pull request is marked WIP. Cancelling queued auto-merge; a human can make it ready when the needed input arrives.", run], marker),
+            { kind: "disable-auto-merge" },
+        ] };
+}
 /**
  * Model-written text, made unable to open or close an HTML comment. The marker is an HTML
  * comment; `parseMarker` already reads only the last one, and this keeps a forged one from
@@ -109,6 +117,8 @@ export function planDecision(decision, live, ctx) {
     const marker = { head: live.headSha, verdict: decision.action, attempts: ctx.attempts + 1, at: ctx.now.toISOString() };
     const sections = [inert(decision.summary), `**Why:** ${inert(decision.reasoning)}`, findingsTable(decision), `Run: ${ctx.runUrl}`];
     const refuse = (why) => escalate(live, why, sections, marker, why);
+    if (isWorkInProgress(live))
+        return holdWorkInProgress(live, { ...marker, verdict: "wait" }, `Run: ${ctx.runUrl}`);
     // The session reported the head it finished on. If the branch has moved since, somebody else
     // is working on it and everything the session concluded is about a different commit.
     if (decision.head !== live.headSha) {
@@ -207,6 +217,9 @@ export function planRoute(routed, live, ctx) {
     // No session ran, so the attempt count is carried, not incremented.
     const marker = { head: live.headSha, verdict: "wait", attempts: routed.attempts, at: ctx.now.toISOString() };
     const run = `Run: ${ctx.runUrl}`;
+    if (isWorkInProgress(live) && !(routed.route === "escalate" && routed.reason === "rescued-trunk-edits" && !live.autoMerge)) {
+        return holdWorkInProgress(live, marker, run);
+    }
     if (routed.headSha !== live.headSha)
         return { verdict: "wait", overridden: "the branch moved after the sweep", operations: [] };
     if (routed.route === "merge") {
