@@ -1732,7 +1732,7 @@ describe("ios-testflight-upload action", () => {
     expect(release?.env?.VALIDATE_APP_SCRIPT).toBe("${{ inputs.validate-app-script }}");
     // The credentials are the last thing to enter a process, after the
     // toolchain and the project layout have been proven good.
-    expect(steps.indexOf(release!)).toBe(steps.length - 1);
+    expect(steps.indexOf(release!)).toBeGreaterThan(steps.findIndex((step) => step.name === "Install release tooling"));
     expect(steps.findIndex((step) => step.name === "Install release tooling")).toBeLessThan(
       steps.length - 1,
     );
@@ -1819,8 +1819,9 @@ describe("ios-testflight-upload action", () => {
     );
     expect(raw).toContain('--file "$IPA_PATH"');
     expect(raw).toContain("builds next-number");
-    expect(raw).toContain("builds add-beta-group");
-    expect(raw).toContain("processingState");
+    const distribution = await readFile(join(ACTION_DIR, "distribute-testflight.sh"), "utf8");
+    expect(distribution).toContain("builds add-beta-group");
+    expect(distribution).toContain("processingState");
   });
 
   it("seeds declared entitlements before export and rejects their loss before upload", async () => {
@@ -1838,10 +1839,10 @@ describe("ios-testflight-upload action", () => {
   });
 
   it("surfaces terminal upload-processing errors before the build-list deadline", async () => {
-    const raw = await script();
+    const raw = await readFile(join(ACTION_DIR, "distribute-testflight.sh"), "utf8");
 
-    expect(raw).toContain('upload_json="$(');
-    expect(raw).toContain('upload_id="$(json_value "$upload_json" "data.0.id"');
+    expect(await script()).toContain('upload_json="$(');
+    expect(raw).toContain('upload_id="${UPLOAD_ID:?Missing confirmed upload id}"');
     expect(raw).toContain("run_asccli builds uploads get");
     expect(raw).toContain('[[ "$upload_state" == "FAILED" ]]');
     expect(raw).toContain("data.0.errors.0.code");
@@ -2597,7 +2598,7 @@ describe("beta app review submission", () => {
    * into an error code, and only fails when no submission exists at all.
    */
   it("treats a pending review as success and a genuine error as failure", async () => {
-    const script = await readFile(join(actionDir, "upload-testflight.sh"), "utf8");
+    const script = await readFile(join(actionDir, "distribute-testflight.sh"), "utf8");
     expect(script).toMatch(/pending:sibling-build-in-review/);
     expect(script).toMatch(/pending:this-build-/);
     expect(script).toMatch(/betaAppReviewSubmission"/);
@@ -2610,7 +2611,7 @@ describe("beta app review submission", () => {
    * the wrong line. This cost a debugging round; the guard is one line.
    */
   it("keeps apostrophes out of the embedded python heredoc", async () => {
-    const script = await readFile(join(actionDir, "upload-testflight.sh"), "utf8");
+    const script = await readFile(join(actionDir, "distribute-testflight.sh"), "utf8");
     const body = script.split("<<'PYTHON'\n")[1]?.split("\nPYTHON")[0] ?? "";
     expect(body.length).toBeGreaterThan(0);
     expect(body).not.toMatch(/'/);
