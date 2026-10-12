@@ -9,7 +9,20 @@ import { resolveTrunk } from "./git.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { measureLag, rescueDirtyTrunk, readDirt } from "./trunk-rescue.js";
 const exec = promisify(execFile);
-export const sessionGit = async (root, args) => (await exec("git", args, { cwd: root, timeout: 30_000, env: gitSubprocessEnv() })).stdout.trim();
+export const sessionGit = async (root, args) => {
+    try {
+        return (await exec("git", args, { cwd: root, timeout: 30_000, env: gitSubprocessEnv() })).stdout.trim();
+    }
+    catch (error) {
+        const failure = error;
+        // Node's timeout can kill Git before it writes stderr. Buffer limits and external
+        // signals are different failures and must retain their original diagnostics.
+        if (failure?.killed === true && failure.signal === "SIGTERM" && failure.code === null && typeof failure.message === "string") {
+            throw new Error(`Git command timed out after 30 seconds and was stopped (SIGTERM). Check network access if this command contacts a remote.\n${failure.message}`, { cause: error });
+        }
+        throw error;
+    }
+};
 export async function checkoutIdentity(cwd) {
     const root = await realpath(await sessionGit(cwd, ["rev-parse", "--show-toplevel"]));
     const common = await realpath(resolve(root, await sessionGit(root, ["rev-parse", "--git-common-dir"])));
