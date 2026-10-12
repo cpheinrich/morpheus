@@ -42,18 +42,31 @@ def prepare():
              "artifact-name": f"ios-upload-acceptance-{context['runId']}-{context['runAttempt']}-{directory.name.rsplit('-', 1)[-1]}"})
 
 
-def accept():
+def upload_data():
     response = json.load(sys.stdin)
     if not isinstance(response, dict) or response.get("errors"):
         raise ValueError("Upload response does not confirm acceptance")
     data = response.get("data")
     if isinstance(data, list) and len(data) == 1:
         data = data[0]
-    if not isinstance(data, dict) or data.get("errors") or data.get("state") == "FAILED":
+    if not isinstance(data, dict) or data.get("errors") or data.get("state") not in {"AWAITING_UPLOAD", "PROCESSING", "COMPLETE"}:
         raise ValueError("Upload response does not confirm acceptance")
     upload_id = data.get("id")
     if not isinstance(upload_id, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,128}", upload_id):
         raise ValueError("Upload response has no unambiguous upload id")
+    return data
+
+
+def describe():
+    data = upload_data()
+    print(data["id"], data["state"])
+
+
+def accept():
+    data = upload_data()
+    if data["state"] not in {"PROCESSING", "COMPLETE"}:
+        raise ValueError("Upload transport acceptance is still uncertain")
+    upload_id = data["id"]
     directory = Path(os.environ["UPLOAD_RECEIPT_DIRECTORY"])
     raw_context = json.loads((directory / "context.json").read_text())
     context = {key: raw_context[key] for key in ("repository", "sourceSha", "runId", "runAttempt", "job")}
@@ -81,7 +94,7 @@ def accept():
 
 if __name__ == "__main__":
     try:
-        {"prepare": prepare, "accept": accept}[sys.argv[1]]()
+        {"prepare": prepare, "describe": describe, "accept": accept}[sys.argv[1]]()
     except (ValueError, KeyError, OSError) as error:
         # Parser errors can contain API response fragments; keep them out of public logs.
         print("Could not record upload acceptance (" + type(error).__name__ + "); outcome remains uncertain.", file=sys.stderr)

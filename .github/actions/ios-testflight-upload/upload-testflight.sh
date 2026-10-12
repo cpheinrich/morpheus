@@ -541,7 +541,9 @@ if [[ "$BETA_GROUP_POLICY" == one-internal-one-external ]] &&
   exit 1
 fi
 
+automatic_build_number=false
 if [[ -z "$BUILD_NUMBER" ]]; then
+  automatic_build_number=true
   BUILD_NUMBER="$(
     run_asccli builds next-number \
       --app-id "$ASC_APP_ID" \
@@ -555,6 +557,11 @@ if [[ ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
   echo "App Store Connect did not return a positive build number." >&2
   exit 1
 fi
+
+# Apple may not expose an accepted upload in builds yet. Reserve under the account
+# signing lock before archiving so later automatic allocations cannot reuse it.
+BUILD_NUMBER="$(ASC_APP_ID="$ASC_APP_ID" MARKETING_VERSION="$MARKETING_VERSION" \
+  python3 "$GITHUB_ACTION_PATH/build-number.py" "$BUILD_NUMBER" "$automatic_build_number")"
 
 echo "Preparing $SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER) for TestFlight."
 
@@ -745,5 +752,24 @@ upload_json="$(
 )"
 # Publish only an allowlisted receipt, never the raw API response or credentials.
 # The next composite step persists this before any processing/distribution work.
+# A created upload resource is not yet proof that Apple accepted the binary.
+# Poll only the known awaiting state, keeping ambiguous/error responses uncertain.
+upload_description="$(printf '%s' "$upload_json" | python3 "$GITHUB_ACTION_PATH/upload-receipt.py" describe)"
+read -r upload_id upload_state <<< "$upload_description"
+acceptance_deadline=$(($(date '+%s') + PROCESSING_TIMEOUT_SECONDS))
+while [[ "$upload_state" == AWAITING_UPLOAD ]]; do
+  if [[ "$(date '+%s')" -ge "$acceptance_deadline" ]]; then
+    echo "Timed out confirming upload acceptance; outcome remains uncertain." >&2
+    exit 1
+  fi
+  sleep "$PROCESSING_POLL_SECONDS"
+  upload_json="$(run_asccli builds uploads get --upload-id "$upload_id" --output json)"
+  upload_description="$(printf '%s' "$upload_json" | python3 "$GITHUB_ACTION_PATH/upload-receipt.py" describe)"
+  read -r confirmed_id upload_state <<< "$upload_description"
+  if [[ "$confirmed_id" != "$upload_id" ]]; then
+    echo "Upload confirmation id changed; outcome remains uncertain." >&2
+    exit 1
+  fi
+done
 printf '%s' "$upload_json" | MARKETING_VERSION="$MARKETING_VERSION" BUILD_NUMBER="$BUILD_NUMBER" \
   python3 "$GITHUB_ACTION_PATH/upload-receipt.py" accept

@@ -30,7 +30,10 @@ The artifact name includes the run and attempt plus a unique invocation suffix f
 and multiple apps. Artifacts never overwrite each other and are retained for 90 days (subject
 to the repository's retention cap). Consumers needing a longer cursor must preserve the receipt.
 
-Acceptance means transport acceptance, not a VALID processed build or tester availability.
+Acceptance requires an unambiguous upload id, no API errors, and the pinned asccli state
+`PROCESSING` or `COMPLETE`. `AWAITING_UPLOAD` is polled up to the existing processing timeout;
+absent, failed or unknown states remain uncertain. Acceptance does not mean a VALID processed
+build or tester availability.
 A later distribution failure still fails the action while retaining this receipt. Artifact
 persistence failure blocks distribution. A pre-upload failure creates no accepted receipt;
 missing, malformed or ambiguous responses do not become acceptance. **No receipt is not proof
@@ -38,3 +41,12 @@ that no upload occurred:** a killed runner or lost API/artifact response can lea
 unknown. Consumers must keep that case uncertain and inspect all run attempts, including
 receipts from an earlier successful upload followed by a failed rerun. Existing step-conclusion
 consumers do not automatically adopt the receipt contract.
+
+Automatic build numbers also respect a persistent per-app/version reservation under the
+account signing lock, because Apple's builds collection may lag an accepted upload. Reservations
+live in the account's `Library/Caches/morpheus/testflight-build-numbers` directory, use only
+hashed app/version keys and numbers, and intentionally permit gaps after failed runs. Explicit
+caller build numbers retain their meaning and raise the automatic floor. Do not remove this
+state while releases are active or accepted uploads remain absent from Apple's builds list.
+The lock and reservation cover one macOS account; callers spanning machines still need their
+own release concurrency boundary.

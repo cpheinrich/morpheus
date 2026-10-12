@@ -32,3 +32,19 @@ No real Apple upload, signing material, production deployment, or beta distribut
 Graph-first discovery used current primary generation 2026-10-12T19:01:36Z and clean recorded
 coverage for the original action/tests. Worktree bootstrap succeeded with configuration ownership
 warnings; the active MCP transport then closed, so new files and moved code were read directly.
+
+Independent review RCP-001 reproduced false acceptance for absent, awaiting and unknown states.
+Verified pinned asccli v0.18.2 SDKBuildUploadRepository.swift returns the current upload state
+and defaults missing state to AWAITING_UPLOAD. Acceptance now requires PROCESSING or COMPLETE;
+awaiting is boundedly polled and resource identity must remain stable. Added positive-state,
+unknown/absent/awaiting, deadline and mismatched-id regressions.
+
+RCP-002 identified a new allocation race when signing cleanup releases the account lock before
+processing exposes the accepted build. A small domain-specific standard-library helper reserves
+per-app/version numbers under that same lock before archive. Later automatic allocation uses
+max(Apple next, reserved + 1). Explicit numbers retain existing meaning and update the floor.
+A delayed-visibility regression proves consecutive API suggestions of42 allocate42 then43;
+other app/version trains remain independent, newer server numbers win, and corrupt local state
+fails closed. No new dependency: this is a domain-specific reservation of fewer than50 lines.
+
+After review fixes: nine executable Python receipt/reservation regressions passed; all159 focused Vitest tests passed, plus typecheck, compile, pm index, lint, bash syntax and diff checks. Full suite was already run once for this PR; required CI verifies the final revision.
