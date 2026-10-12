@@ -84,7 +84,7 @@ describe("Morpheus installation freshness", () => {
     const runner: MorpheusCommandRunner = async (command, args) => {
       if (args.join(" ") === "rev-parse --show-toplevel") return ok(`${root}\n`);
       if (args.join(" ") === "rev-parse HEAD") return ok(`${CURRENT}\n`);
-      if (args.join(" ") === "status --porcelain") return ok(" M dist/cli/index.js\n");
+      if (args.join(" ") === "status --porcelain --untracked-files=all") return ok(" M dist/cli/index.js\n");
       if (args[0] === "ls-remote") return ok(`${CURRENT}\trefs/heads/main\n`);
       return fail(`unexpected ${command} ${args.join(" ")}`);
     };
@@ -101,7 +101,7 @@ describe("Morpheus installation freshness", () => {
     const runner: MorpheusCommandRunner = async (command, args) => {
       if (args.join(" ") === "rev-parse --show-toplevel") return ok(`${root}\n`);
       if (args.join(" ") === "rev-parse HEAD") return ok(`${AHEAD}\n`);
-      if (args.join(" ") === "status --porcelain") return ok();
+      if (args.join(" ") === "status --porcelain --untracked-files=all") return ok();
       if (args[0] === "ls-remote") return ok(`${CURRENT}\trefs/heads/main\n`);
       if (args.join(" ") === `merge-base --is-ancestor ${CURRENT} ${AHEAD}`) return ok();
       return fail(`unexpected ${command} ${args.join(" ")}`);
@@ -128,7 +128,7 @@ function installerRunner(
     }
     if (command === "git" && args.join(" ") === "rev-parse --show-toplevel") return ok(`${cwd}\n`);
     if (command === "git" && args.join(" ") === "rev-parse HEAD") return ok(`${CURRENT}\n`);
-    if (command === "git" && args.join(" ") === "status --porcelain") return ok();
+    if (command === "git" && args.join(" ") === "status --porcelain --untracked-files=all") return ok();
     if (command === "git" && args[0] === "ls-remote") {
       return ok(`${CURRENT}\trefs/heads/main\n`);
     }

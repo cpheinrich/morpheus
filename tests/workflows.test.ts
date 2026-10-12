@@ -1732,7 +1732,7 @@ describe("ios-testflight-upload action", () => {
     expect(release?.env?.VALIDATE_APP_SCRIPT).toBe("${{ inputs.validate-app-script }}");
     // The credentials are the last thing to enter a process, after the
     // toolchain and the project layout have been proven good.
-    expect(steps.indexOf(release!)).toBe(steps.length - 1);
+    expect(steps.indexOf(release!)).toBeGreaterThan(steps.findIndex((step) => step.name === "Install release tooling"));
     expect(steps.findIndex((step) => step.name === "Install release tooling")).toBeLessThan(
       steps.length - 1,
     );
@@ -1749,11 +1749,7 @@ describe("ios-testflight-upload action", () => {
     const cache = steps.find((step) => step.uses?.startsWith("actions/cache@"));
     const tooling = steps.find((step) => step.name === "Install release tooling");
 
-    // working-directory, project and scheme are written into GITHUB_ENV, one
-    // KEY=VALUE per line; a value carrying a newline would append an arbitrary
-    // variable to the calling job.
-    expect(validate?.run).toContain('for caller_value in "$WORKING_DIRECTORY" "$PROJECT" "$SCHEME"');
-    expect(validate?.run).toContain("*[[:space:]]*)");
+    // Executable name validation and argv coverage live in upload-configuration.test.ts.
     expect(validate?.run).toContain('versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
     expect(validate?.run).toContain("elif [ -d /Applications/Xcode.app ]");
     expect(validate?.run).toContain('installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild"');
@@ -1819,8 +1815,9 @@ describe("ios-testflight-upload action", () => {
     );
     expect(raw).toContain('--file "$IPA_PATH"');
     expect(raw).toContain("builds next-number");
-    expect(raw).toContain("builds add-beta-group");
-    expect(raw).toContain("processingState");
+    const distribution = await readFile(join(ACTION_DIR, "distribute-testflight.sh"), "utf8");
+    expect(distribution).toContain("builds add-beta-group");
+    expect(distribution).toContain("processingState");
   });
 
   it("seeds declared entitlements before export and rejects their loss before upload", async () => {
@@ -1838,10 +1835,10 @@ describe("ios-testflight-upload action", () => {
   });
 
   it("surfaces terminal upload-processing errors before the build-list deadline", async () => {
-    const raw = await script();
+    const raw = await readFile(join(ACTION_DIR, "distribute-testflight.sh"), "utf8");
 
-    expect(raw).toContain('upload_json="$(');
-    expect(raw).toContain('upload_id="$(json_value "$upload_json" "data.0.id"');
+    expect(await script()).toContain('upload_json="$(');
+    expect(raw).toContain('upload_id="${UPLOAD_ID:?Missing confirmed upload id}"');
     expect(raw).toContain("run_asccli builds uploads get");
     expect(raw).toContain('[[ "$upload_state" == "FAILED" ]]');
     expect(raw).toContain("data.0.errors.0.code");
@@ -2623,7 +2620,7 @@ describe("beta app review submission", () => {
    * into an error code, and only fails when no submission exists at all.
    */
   it("treats a pending review as success and a genuine error as failure", async () => {
-    const script = await readFile(join(actionDir, "upload-testflight.sh"), "utf8");
+    const script = await readFile(join(actionDir, "distribute-testflight.sh"), "utf8");
     expect(script).toMatch(/pending:sibling-build-in-review/);
     expect(script).toMatch(/pending:this-build-/);
     expect(script).toMatch(/betaAppReviewSubmission"/);
@@ -2636,7 +2633,7 @@ describe("beta app review submission", () => {
    * the wrong line. This cost a debugging round; the guard is one line.
    */
   it("keeps apostrophes out of the embedded python heredoc", async () => {
-    const script = await readFile(join(actionDir, "upload-testflight.sh"), "utf8");
+    const script = await readFile(join(actionDir, "distribute-testflight.sh"), "utf8");
     const body = script.split("<<'PYTHON'\n")[1]?.split("\nPYTHON")[0] ?? "";
     expect(body.length).toBeGreaterThan(0);
     expect(body).not.toMatch(/'/);
@@ -3003,6 +3000,24 @@ describe("gh-manager.yml", () => {
     const apply = steps.find(step => step.id === "decisions");
     expect(apply?.env?.GH_MANAGER_CHECKOUT).toBe("${{ github.workspace }}/target");
     expect(steps.indexOf(checkout!)).toBeLessThan(steps.indexOf(apply!));
+  });
+
+  it("installs a pinned Playwright for screenshots before any credential, and carries the evidence to apply", async () => {
+    const raw = await readFile(join(DIR, "gh-manager.yml"), "utf8");
+    const wf = load(raw) as Manager;
+    expect(wf.on?.workflow_call?.inputs?.["playwright-version"]?.default).toBe("1.63.0");
+    const steps = wf.jobs?.session?.steps ?? [];
+    const install = steps.find(step => step.name === "Install tooling and move it out of the workspace");
+    expect(install?.run).toContain('"playwright@$PLAYWRIGHT_VERSION"');
+    expect(install?.run).toContain("playwright install --with-deps chromium");
+    // A stalled apt mirror once held this step for the whole job: the browser install is bounded
+    // and optional, and the step itself has a ceiling well inside the job's.
+    expect(install?.run).toContain("if ! timeout 480 playwright install --with-deps chromium; then");
+    expect((install as { "timeout-minutes"?: number } | undefined)?.["timeout-minutes"]).toBe(15);
+    expect(JSON.stringify(install?.env ?? {})).not.toContain("secrets.");
+    expect(steps.indexOf(install!)).toBeLessThan(steps.findIndex(step => step.id === "session"));
+    const upload = steps.find(step => step.name === "Hand the decision to the apply job");
+    expect(String(upload?.with?.path)).toContain("${{ runner.temp }}/manager/evidence-${{ matrix.pr }}/");
   });
 
   it("applies on a separate runner, after the sessions, even when one failed", async () => {

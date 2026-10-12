@@ -14,7 +14,18 @@ on it, and you act on them. Every agent — Claude, Codex, Grok — uses the sam
 overlay page the preview prints. Do not substitute a host's native simulator panel or its own
 annotation tool; the overlay is what writes comment batches you can read back.
 
-## 1. Start the preview
+## 1. Keep the session together
+
+**One branch until the person ends the session.** Commit each batch's changes locally on the
+one claimed branch for this QA session. Do not push, open a PR, start independent review or run
+CI per batch: even a draft PR push starts CI. Ship the changes together only when the person
+says the session is done. Tell them before rebuilding or relaunching the preview, or reloading
+or navigating their overlay tab.
+
+Drain claimed batches in order. Run focused local checks as needed; session-end review and CI
+cover the combined changes.
+
+## 2. Start the preview
 
 For the website (morpheus.json qa.web names the dev server and how to start it):
 
@@ -38,7 +49,7 @@ setup or licence prompts may need the person. Use --no-build only for an explici
 existing build, and say its freshness is unverified. To keep the person's current screen, use
 \`status\`, not \`start\` — start relaunches the app.
 
-## 2. Open the overlay — the same page in every agent
+## 3. Open the overlay — the same page in every agent
 
 start prints \`QA overlay: <url>\`. Open exactly that URL — never the stream or the dev server beside
 it. The iOS overlay is at 127.0.0.1 and refuses POSTs from any other origin, localhost included; the
@@ -63,21 +74,43 @@ the column lists every pin. Enter saves, Shift+Enter is a newline, Esc Esc delet
 ⌘Enter sends. Unsent pins survive a reload of the same page. For a sign-in that redirects the
 whole page to a provider, use the column's Full page button; Column puts the frame back.
 
-## 3. Watch the inbox instead of asking the person to paste comments
+## 4. Queue comments and keep the person's chat free
 
-Each Send writes local/qa-comments/pending/<batchId>/{batch.json,frame.png} in the checkout.
+Each Send writes local/qa-comments/pending/<batchId>/batch.json and its captured PNGs in the checkout.
 
-Arm the watch as soon as the preview is up, before the person starts commenting; a Send writes the
-batch and notifies no one.
+Every Send adds another complete batch to the durable queue and shows the open-batch count. It does
+not mean a responder has started. Arm a responder before the person starts commenting when the host
+can run one separately from the interactive chat. Configure the optional wake webhook for that
+responder's session, not an unrelated agent's routine. A fresh checkout with no wake route keeps
+the queue but cannot automatically resume a Codex chat; say so plainly to the person.
 
-- Claude: arm a Monitor that polls \`morpheus qa comments pending --root <checkout>\` every few
-  seconds and emits new batch ids.
-- Codex and Grok: poll the same command between turns.
+For a separate local responder, put a gitignored \`local/qa-comments/responder.json\` in this checkout
+with an agent identity and argv command (see docs/runbooks/qa-comments.md), then run
+\`morpheus qa comments responder start --root <checkout>\` in a separate process. The Codex CLI
+example is \`["codex", "exec", "-C", "{root}", "-"]\`; other agent CLIs can use their own argv.
+The responder claims one batch, waits for that agent process to finish, then takes the next. Its
+\`local/qa-comments/responder.lock\` means it owns edits in this checkout. Stop it with
+\`morpheus qa comments responder stop --root <checkout>\` and wait for the marker to disappear
+before editing here from this chat or closing the QA session. The child commits locally on this
+session's branch; this chat handles session-end review, push and PR. If the worker crashes, first
+verify its child agent and descendants have stopped. Only then run responder recover
+--confirm-no-agent-process to release ownership.
 
-For each batch: \`morpheus qa comments show <id> --root <checkout>\`, open frame.png, map every
-anchor (normX/normY are fractions of the frame's width and height) to what is on screen, act on
-or answer each comment, then \`morpheus qa comments resolve <id> --root <checkout>\`. Confirm the
-first batch's frame.png shows real app pixels before treating its anchors as authoritative.
+- Claude: a Monitor or separate agent session can watch and drain the queue.
+- Codex and Grok: a separate local CLI responder can process batches without a chat wake route.
+  Without one, check the queue between turns. Do not claim that the active chat will wake on Send.
+
+Choose a stable responder identity, such as \`codex:<session-id>\`. Call
+\`morpheus qa comments claim --agent <identity> --root <checkout>\` until it prints nothing. For
+each claimed id: \`morpheus qa comments show <id> --root <checkout>\`. For iOS, open each comment's
+\`frame.path\` first: it is the frame from pin placement, and \`screenId\` identifies the screen.
+The batch-level frame is from Send and may show different content after scrolling. For web or
+older batches without comment frames, use the batch-level frame. Map each anchor (normX/normY
+are fractions of its matching frame's width and height) to what is on screen, act on
+or answer each comment, then \`morpheus qa comments resolve <id> --agent <identity> --root <checkout>\`.
+If work fails, release that claim; if the responder died, an operator can release it with
+\`--force\` after confirming the old responder stopped. Confirm the
+first batch's captured PNG shows real app pixels before treating its anchors as authoritative.
 
 A web batch's frame is the whole page, so normX/normY are fractions of the page, not the window.
 Each web anchor also carries \`page\` (url, scroll, viewport and page size) and, when it could be
@@ -87,16 +120,9 @@ own box, the offsets are clamped to its edge and x/y is the real point). Find th
 text and selector — it is what the comment is about. A batch can arrive without a frame when the
 page could not be captured; the element and page context still locate every comment.
 
-A wake webhook in local/qa-comments/webhook.json, when present, belongs to another agent's routine
-and fires for every batch at that root: do not depend on it, and resolve your own test batches at
-once so they do not become that agent's stale work.
-
-## 4. Changes from one session ride together
-
-Act on each batch as it lands, but keep every change from one QA session on one claimed branch,
-commit locally, and push or open the pull request only when the person says the session is done:
-comments arrive in several batches and are merged together. Never reload or navigate the person's
-overlay tab, and never rebuild or relaunch, while they are commenting without saying so first.
+A wake webhook in local/qa-comments/webhook.json is scoped to that checkout, not this chat. It
+fires for every batch at the root. Never copy another checkout's webhook or assume its target is
+your responder.
 
 ## 5. End the session
 

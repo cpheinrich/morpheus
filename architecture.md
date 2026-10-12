@@ -952,8 +952,11 @@ ritual.
 **Startup prepares source; explicit refresh certifies reading.** The existing standard shim
 continues to invoke `morpheus context brief`, now also available as `context start`. The shared CLI
 fetches the configured canonical trunk into an invocation-private ref so simultaneous fetches cannot
-exchange `FETCH_HEAD`. A clean local trunk behind that exact commit fast-forwards; dirty checkouts,
-feature branches and divergent trunks remain intact and report missing commits. Offline or fetch
+exchange `FETCH_HEAD`. A local trunk behind that exact commit fast-forwards; feature branches and
+divergent trunks remain intact and report missing commits. Tracked edits on the trunk branch are
+first committed to a pushed `wip/trunk-*` draft PR and the trunk reset only once that commit is
+proven to hold them — a dirty trunk otherwise never advances, and one did not for three weeks.
+Untracked files are never committed; `doctor --all` reports stuck trunk checkouts fleet-wide. Offline or fetch
 failure is explicitly unverified, never a successful current-source report. A receipt is refused
 when the checkout does not contain the observed trunk. Checks repeat local source containment
 inside the lease term and before re-anchoring after a branch switch; code-only drift and
@@ -1336,6 +1339,9 @@ reviews on record, conducts one more if needed, and fixes its own findings; a se
 deterministic step checks each session's decision against live state and policy before anything is
 labelled, merged or closed. The session's token can write contents and nothing else: it cannot
 label, comment, close, or change a workflow file.
+Drafts, `wip/` branches, and `[WIP]` or `WIP:` titles remain with their authors; the manager
+cancels queued auto-merge on them. A ready pull request waits 24 hours after its latest head
+commit or opening, whichever is later, before the manager acts.
 
 It follows the Morpheus Security shape (§18): a public reviewed engine in this repository, a
 private operations repository holding the App key, the subscription token and the schedule, and a
@@ -1481,6 +1487,17 @@ qa/
 | Every PR | Above + `morpheus check pr` + build | Merge |
 | Pre-deploy | E2E against the preview deployment | Deploy |
 | Human review | Preview link + screenshots + test plan | Deploy |
+
+Interactive comment QA uses a checkout-local durable queue. Each Send atomically
+publishes one batch and optional frame under `local/qa-comments/pending/`; later
+batches accumulate while a responder works. An agent claims one batch with an
+exclusive on-disk record before acting, resolves it after work, or releases the
+claim on failure. The queue and claim commands are agent-neutral. A webhook is
+an optional notification to a host-managed responder, not an agent scheduler;
+whether a chat can wake or work in parallel is determined by that host.
+An opt-in checkout-local responder can instead invoke any configured agent CLI
+as a separate serial process. Its on-disk owner marker reserves the checkout
+until stopped; later batches accumulate without occupying the interactive chat.
 
 ### The verifier stack
 
@@ -2921,17 +2938,23 @@ improvement?* Yes → kit. No → template.
 ### 18.0 Optional personal agent plugins
 
 `plugins/codex-claude/` is a deliberate exception to the kit's single-package distribution:
-it is a personal Codex integration, not a dependency of company repositories. It owns its
+it is a personal Codex/Claude Code integration, not a dependency of company repositories. It owns its
 manifest, skill, hooks, runtime, lockfile, tests and installation documentation. Neither
 `morpheus init` nor the CLI installer activates it. Explicit per-device installation copies
 the package into a personal marketplace; execution remains off until enabled. Personal
 settings and session records stay outside the repository.
 
-The bridge routes at safe checkpoints using Codex allowance, keeps explicit task/operation
-overrides, and starts subscription-authenticated Claude on the same host and worktree.
-Automatic mode defaults to delegating below 30% remaining in the least remaining reported
-allowance window, reserving coordination headroom; explicit saved thresholds are preserved.
-Codex remains the coordinator and consumes its own allowance. Native Claude session ids
+The bridge works in both directions. Whichever agent holds the conversation is the
+coordinator; it routes at safe checkpoints using its *own* subscription allowance, keeps
+explicit task/operation overrides, and starts the other agent subscription-authenticated on
+the same host and worktree. Automatic mode defaults to delegating below 50% remaining in the
+coordinator's least remaining reported allowance window; explicit saved thresholds are
+preserved. The coordinator consumes its own allowance while supervising. Codex reports its
+windows through the app server; Claude Code exposes them only to its status line, so a
+recorder status line (chaining any existing one) writes them for routing, and missing or
+stale data never triggers a handoff. Claude permission modes map onto Codex's sandbox
+without widening (only an explicit bypass reaches full access). Delegated workers are marked
+so neither side's hooks or tools delegate back. Native Claude session ids
 provide persistence; a leased process guardian bounds live workers. Permission metadata
 must be verified before delegation, and unknown/restricted confinement fails closed in the
 initial version. Cross-agent memory consists of explicitly selected read-only excerpts,
@@ -3288,7 +3311,23 @@ as inputs — which is what makes the *implementation* shareable even though the
 selects the exact Xcode, downloads the Metal toolchain on request, restores the SwiftPM cache,
 installs `openssl@3`, `asccli` and optionally `sentry-cli`, then archives, exports, verifies and
 uploads. A caller is reduced to a checkout of the verified SHA and one `uses:` block of
-identifiers.
+identifiers. The optional `configuration` input defaults to `Release` and is used consistently
+for both build-settings queries and archive; scheme/configuration names may contain spaces but
+not CR/LF, and remain single argv values.
+
+Binary acceptance and distribution are separate action steps. Acceptance requires the pinned
+asccli upload state PROCESSING or COMPLETE with a valid id and no errors; AWAITING_UPLOAD is
+confirmed within the existing processing timeout, while absent/unknown states stay uncertain.
+Automatic build numbers take the greater of Apple's next number and the account's persistent
+per-app/version reservation plus one, under the signing lock, so the phase split cannot reuse
+an accepted number before Apple exposes it in builds. Failed attempts may leave number gaps. A sanitized, create-only
+`accepted.json` records the exact checked-out SHA, run/attempt/job, app/bundle identity,
+version/build number, upload id and acceptance time. The pinned artifact action persists it
+under a unique per-invocation name before processing, group assignment or beta review; later
+failure cannot overwrite a prior attempt. Retention is 90 days subject to repository limits.
+Missing evidence remains uncertain (including interruption before artifact persistence), never
+proof of no upload. This exposes a receipt contract for consumer adoption without changing
+nightly admission policy or activating a release. See the action README.
 
 Its contract is deliberately narrow: typed inputs for the project shape, the Apple identifiers, the
 beta-group policy (`any`, or `one-internal-one-external` for a project whose every release must

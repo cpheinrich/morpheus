@@ -512,7 +512,7 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
       pins = pins.filter(function (p) { return ready.indexOf(p) < 0; });
       if (!pins.length) nextN = 1;
       focusedId = null; textEl.value = ""; textEl.disabled = true; persist(); render();
-      setStatus("Sent " + result[0].id + (result[1] ? "" : " (no page image: capture failed)") + " → local/qa-comments/pending/", "ok");
+      setStatus("Queued " + result[0].id + " · " + result[0].pendingCount + " open batch(es). " + (result[0].responderActive ? "Background responder running." : result[0].wakeConfigured ? "Agent wake configured." : "No agent wake configured; message your agent to resume.") + (result[1] ? "" : " (no page image: capture failed)"), "ok");
     }).catch(function (e) { setStatus("Send failed: " + e.message + ". Pins kept.", "err"); })
       .then(function () { sending = false; renderList(); });
   }

@@ -8,6 +8,7 @@ import { z } from "zod";
  */
 export declare const QA_COMMENTS_DIR = "local/qa-comments";
 export declare const QA_COMMENTS_PENDING = "local/qa-comments/pending";
+export declare const QA_COMMENTS_CLAIMS = "local/qa-comments/claims";
 export declare const QA_COMMENTS_RESOLVED = "local/qa-comments/resolved";
 /**
  * What a web pin points at (MO-26-10-06-18.13.32). A page reflows and scrolls, so a fraction of
@@ -91,6 +92,13 @@ export declare const QaComment: z.ZodObject<{
             pageHeight: z.ZodNumber;
         }, z.core.$strict>>;
     }, z.core.$strict>;
+    screenId: z.ZodOptional<z.ZodString>;
+    frame: z.ZodOptional<z.ZodObject<{
+        path: z.ZodOptional<z.ZodString>;
+        width: z.ZodNumber;
+        height: z.ZodNumber;
+        capturedAt: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 export declare const QaPreview: z.ZodObject<{
     url: z.ZodString;
@@ -156,6 +164,13 @@ export declare const QaCommentBatch: z.ZodObject<{
                 pageHeight: z.ZodNumber;
             }, z.core.$strict>>;
         }, z.core.$strict>;
+        screenId: z.ZodOptional<z.ZodString>;
+        frame: z.ZodOptional<z.ZodObject<{
+            path: z.ZodOptional<z.ZodString>;
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+            capturedAt: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>>;
     }, z.core.$strict>>;
     status: z.ZodEnum<{
         pending: "pending";

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { BatchRejected, recordBatch, type PostedBatch } from "./batches.js";
 import { pageHtml } from "./overlay-page.js";
 import { TouchPacer } from "./touch-pacer.js";
+import { captureQaPlacement, currentQaAxSnapshot, QaScreenIdentity } from "./screen-id.js";
 
 export interface ServeOptions {
   /** Project checkout that receives local/qa-comments/ (e.g. Evo). */
@@ -131,7 +132,11 @@ function proxyRequest(target: string, req: IncomingMessage, res: ServerResponse)
       up.pipe(res);
     },
   );
+  // SSE and MJPEG stay open indefinitely; a disconnected browser must also
+  // release the upstream socket or server.close() can hang after QA ends.
+  res.on("close", () => upstream.destroy());
   upstream.on("error", (err) => {
+    if (res.destroyed) return;
     if (!res.headersSent) sendJson(res, 502, { error: String(err) });
     else res.destroy(err);
   });
@@ -257,12 +262,13 @@ function headerValue(value: string | string[] | undefined): string | undefined {
 }
 
 /** Browser pages on other origins can POST to loopback without a preflight. */
-function refuseCrossOriginPost(req: IncomingMessage, res: ServerResponse, ownOrigin: string): boolean {
+function refuseCrossOriginPost(req: IncomingMessage, res: ServerResponse, port: number | undefined): boolean {
   if (req.method !== "POST") return false;
   const site = headerValue(req.headers["sec-fetch-site"]);
   const origin = headerValue(req.headers.origin);
   const type = (headerValue(req.headers["content-type"]) ?? "").toLowerCase();
-  if (site === "cross-site" || (origin !== undefined && origin !== ownOrigin) || !type.startsWith("application/json")) {
+  const ownOrigins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
+  if (site === "cross-site" || (origin !== undefined && !ownOrigins.includes(origin)) || !type.startsWith("application/json")) {
     sendJson(res, 403, { error: "cross-origin POST refused" });
     return true;
   }
@@ -284,17 +290,19 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
     options.streamUrl ?? (await discoverStreamUrl(previewOrigin));
   const streamPath = discovered ? "/proxy/stream.mjpeg" : null;
   const udid = udidFromStreamUrl(discovered);
+  const axPath = udid ? "/api/ax" : null;
   const hid = udid ? await openHidBridge(previewOrigin, udid) : null;
+  const screenIdentity = new QaScreenIdentity();
 
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       const bound = server.address();
       const boundPort = bound && typeof bound !== "string" ? bound.port : options.port;
-      if (refuseCrossOriginPost(req, res, `http://127.0.0.1:${boundPort}`)) return;
+      if (refuseCrossOriginPost(req, res, boundPort)) return;
       if (req.method === "GET" && url.pathname === "/") {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(pageHtml({ previewUrl, streamPath, project }));
+        res.end(pageHtml({ previewUrl, streamPath, axPath, project }));
         return;
       }
       if (req.method === "GET" && url.pathname === "/health") {
@@ -313,6 +321,56 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           return;
         }
         proxyRequest(discovered, req, res);
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/proxy/ax") {
+        if (!udid) {
+          sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
+          return;
+        }
+        proxyRequest(`${previewOrigin}/ax?device=${encodeURIComponent(udid)}`, req, res);
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/api/ax") {
+        if (!udid) {
+          sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-store",
+          Connection: "keep-alive",
+        });
+        let closed = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        res.on("close", () => {
+          closed = true;
+          if (timer) clearTimeout(timer);
+        });
+        const poll = async () => {
+          if (closed) return;
+          try {
+            const snapshot = screenIdentity.observe(await currentQaAxSnapshot(udid));
+            if (!closed) res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+          } catch {
+            if (!closed) res.write(`data: ${JSON.stringify({ screen: { width: 1, height: 1 }, screenId: null, elements: [], errors: ["Accessibility unavailable"] })}\n\n`);
+          } finally {
+            if (!closed) timer = setTimeout(() => { void poll(); }, 500);
+          }
+        };
+        void poll();
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/api/placement") {
+        if (!udid) {
+          sendJson(res, 404, { error: "No simulator discovered for placement capture" });
+          return;
+        }
+        try {
+          sendJson(res, 200, await captureQaPlacement(udid, (snapshot) => screenIdentity.observe(snapshot)));
+        } catch (error) {
+          sendJson(res, 503, { error: error instanceof Error ? error.message : "Placement capture unavailable" });
+        }
         return;
       }
 
@@ -336,7 +394,10 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           sendJson(res, 400, { error: "normX/normY required" });
           return;
         }
-        hid.sendTouch(raw.type, Math.min(1, Math.max(0, normX)), Math.min(1, Math.max(0, normY)));
+        const x = Math.min(1, Math.max(0, normX));
+        const y = Math.min(1, Math.max(0, normY));
+        screenIdentity.noteTouch(raw.type, x, y);
+        hid.sendTouch(raw.type, x, y);
         res.writeHead(204);
         res.end();
         return;
@@ -369,8 +430,8 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
       if (req.method === "POST" && url.pathname === "/api/batches") {
         const raw = JSON.parse((await readBody(req)).toString("utf8")) as PostedBatch;
         try {
-          const { id, path } = await recordBatch(options.root, project, raw, { url: previewUrl, kind: "serve-sim" });
-          sendJson(res, 201, { id, path });
+          const { id, path, pendingCount, wakeConfigured, responderActive } = await recordBatch(options.root, project, raw, { url: previewUrl, kind: "serve-sim" });
+          sendJson(res, 201, { id, path, pendingCount, wakeConfigured, responderActive });
         } catch (error) {
           if (error instanceof BatchRejected) { sendJson(res, 400, { error: error.message }); return; }
           throw error;

@@ -1,3 +1,4 @@
+import type { RescueDeps } from "../session/trunk-rescue.js";
 import { type Reach } from "../session/gate.js";
 import { type MorpheusInstallStatus } from "../self.js";
 import { type AutoUpdatePreference } from "../self-auto-update.js";
@@ -45,6 +46,8 @@ export interface BriefOptions {
     offline?: boolean;
     morpheus?: MorpheusInstallStatus;
     autoUpdatePreference?: AutoUpdatePreference;
+    /** Dependencies for moving dirty trunk edits to a draft PR at session start; tests inject `gh`. */
+    rescue?: RescueDeps | false;
 }
 export declare function brief(root: string, opts?: BriefOptions): Promise<number>;
 /**

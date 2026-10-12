@@ -2,10 +2,12 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, write
 import { dirname, join } from "node:path";
 import { Decision, planDecision, planNoDecision, planRoute } from "../gh-manager/decision.js";
 import { renderDigest } from "../gh-manager/digest.js";
-import { assertRepository, execute, fetchLiveState, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
+import { applyEvidence, evidenceUrl } from "../gh-manager/evidence.js";
+import { assertRepository, execute, publishEvidence, fetchLiveState, fetchPreviewSources, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
 import { GH_MANAGER_POLICY_PATH, GhManagerPolicy } from "../gh-manager/policy.js";
+import { resolvePreview } from "../gh-manager/preview.js";
 import { OVERLAY_PATH, sessionPrompt } from "../gh-manager/prompt.js";
-import { SAFE_REF, sweep } from "../gh-manager/sweep.js";
+import { isWorkInProgress, SAFE_REF, sweep } from "../gh-manager/sweep.js";
 import { managerRecordProblem, sessionPushed } from "../gh-manager/verify.js";
 import { execFileSync } from "node:child_process";
 function write(path, text) {
@@ -99,7 +101,7 @@ export function ghManagerRoutes(repoArg, sweepPath, outDir, dryRun) {
     const repo = assertRepository(repoArg ?? "");
     const file = readSweep(sweepPath);
     let failed = 0;
-    for (const routed of file.routed.filter(r => r.route === "merge" || r.route === "close" || r.route === "escalate")) {
+    for (const routed of file.routed.filter(r => r.route === "merge" || r.route === "close" || r.route === "escalate" || r.route === "hold")) {
         const live = fetchLiveState(repo, routed.number);
         const plan = live.open ? planRoute(routed, live, { policy: file.policy, attempts: routed.attempts, now: new Date(), runUrl: runUrl() }) : { verdict: "wait", overridden: "already closed", operations: [] };
         const outcome = carryOut(repo, routed.number, plan, dryRun);
@@ -143,6 +145,9 @@ export function ghManagerPrompt(repoArg, prArg, sweepPath, out) {
     const decisionPath = process.env["GH_MANAGER_DECISION"];
     if (!decisionPath)
         throw new Error("GH_MANAGER_DECISION must name where the session writes its decision");
+    // Beside the decision, so the one artifact upload carries both to the apply job.
+    const evidenceDir = join(dirname(decisionPath), `evidence-${number}`);
+    mkdirSync(evidenceDir, { recursive: true });
     write(out, sessionPrompt({
         repo,
         number,
@@ -152,6 +157,7 @@ export function ghManagerPrompt(repoArg, prArg, sweepPath, out) {
         attempts: routed.attempts,
         runRef: `${runUrl()} (pull request ${number})`,
         decisionPath,
+        evidenceDir,
         cli: process.env["MORPHEUS_CLI"] ?? "morpheus",
         policy: file.policy,
         overlay: overlay(repo),
@@ -185,31 +191,45 @@ export function ghManagerApply(repoArg, prArg, sweepPath, decisionPath, out, dry
         }
     }
     const live = fetchLiveState(repo, number, decision?.supersededBy);
-    // A checkout of the target lets the session's own commits and record be read with Git rather
-    // than taken on its word. Without one both stay at their refusing values.
-    const checkout = process.env["GH_MANAGER_CHECKOUT"];
-    if (checkout && decision) {
-        const trunk = `origin/${live.base}`;
-        live.sessionPushed = sessionPushed(checkout, routed.headSha, live.headSha, trunk);
-        if (decision.usedManagerReview)
-            live.recordProblem = managerRecordProblem(checkout, decision.body ?? live.body, live.headSha, trunk);
-    }
-    else if (decision?.usedManagerReview) {
-        live.recordProblem = "no checkout was available to validate it";
-    }
     const plan = !live.open
         ? { verdict: "wait", overridden: "the pull request closed or merged during the session", operations: [] }
-        // The session step leaves a result file the moment it starts, even if it then times out.
-        // No decision and no result file means no session ran at all (the brief was refused, most
-        // often because the branch moved after the sweep), and nothing is counted against the
-        // pull request. A session that started and reported nothing is counted.
-        : !decision && !sessionStarted(decisionPath, number)
-            ? { verdict: "wait", overridden: "no session ran for this pull request", operations: [] }
-            : decision ? planDecision(decision, live, ctx) : planNoDecision(problem, live, ctx);
+        : planWithLiveWipGuard(live, routed, ctx, () => {
+            // This callback is never entered for WIP, so a late WIP signal cannot publish evidence.
+            if (decision && decisionPath) {
+                decision = applyEvidence(decision, {
+                    dir: join(dirname(decisionPath), `evidence-${number}`),
+                    liveHead: live.headSha,
+                    open: live.open,
+                    dryRun,
+                    publish: items => publishEvidence(repo, number, items),
+                    preview: items => items.map(item => ({ file: item.file, caption: item.caption, url: evidenceUrl(repo, "0".repeat(40), number, item) })),
+                });
+            }
+            // A checkout of the target verifies the session's commits and review record with Git.
+            const checkout = process.env["GH_MANAGER_CHECKOUT"];
+            if (checkout && decision) {
+                const trunk = `origin/${live.base}`;
+                live.sessionPushed = sessionPushed(checkout, routed.headSha, live.headSha, trunk);
+                if (decision.usedManagerReview)
+                    live.recordProblem = managerRecordProblem(checkout, decision.body ?? live.body, live.headSha, trunk);
+            }
+            else if (decision?.usedManagerReview) {
+                live.recordProblem = "no checkout was available to validate it";
+            }
+            // No decision and no result means no session ran. A started session without a decision
+            // counts as an attempt. Both cases are reached only for a ready pull request.
+            if (!decision && !sessionStarted(decisionPath, number))
+                return { verdict: "wait", overridden: "no session ran for this pull request", operations: [] };
+            return decision ? planDecision(decision, live, ctx) : planNoDecision(problem, live, ctx);
+        });
     const outcome = carryOut(repo, number, plan, dryRun);
     console.error(`#${number} ${outcome.verdict}: ${outcome.did.join(", ") || "nothing to do"}${outcome.overridden ? ` (overridden: ${outcome.overridden})` : ""}${outcome.error ? ` — FAILED ${outcome.error}` : ""}`);
     write(out, JSON.stringify(outcome, null, 2));
     return outcome.error ? 1 : 0;
+}
+/** Check the live WIP signal before any evidence publication or session fallback. */
+export function planWithLiveWipGuard(live, routed, ctx, proceed) {
+    return isWorkInProgress(live) ? planRoute({ ...routed, route: "hold" }, live, ctx) : proceed();
 }
 function sessionStarted(decisionPath, number) {
     return Boolean(decisionPath && existsSync(join(dirname(decisionPath), `session-result-${number}.json`)));
@@ -231,5 +251,26 @@ export function ghManagerDigest(repoArg, sweepPath, outcomesDir, dryRun) {
     if (summary)
         appendFileSync(summary, `## ${repo}\n\n${markdown}\n`);
     return 0;
+}
+/**
+ * Print the preview URL(s) for a commit, one per line. Exit 0 when ready, 2 while Vercel is still
+ * building or has not yet described the commit, 1 when there is no preview to capture.
+ */
+export function ghManagerPreviewUrl(repoArg, prArg, shaArg) {
+    const repo = assertRepository(repoArg ?? "");
+    const pr = Number(prArg);
+    if (!Number.isInteger(pr) || pr <= 0)
+        throw new Error(`"${prArg ?? ""}" is not a pull request number`);
+    const sha = shaArg ?? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    if (!/^[0-9a-f]{40}$/.test(sha))
+        throw new Error(`"${sha}" is not a full commit SHA`);
+    const preview = resolvePreview(fetchPreviewSources(repo, pr, sha));
+    if (preview.kind === "ready") {
+        console.error(`Preview for ${sha.slice(0, 7)} from ${preview.source === "deployment" ? "GitHub deployment records" : "Vercel's commit status and its pull request comment"}.`);
+        console.log(preview.urls.join("\n"));
+        return 0;
+    }
+    console.error(preview.reason);
+    return preview.kind === "pending" ? 2 : 1;
 }
 //# sourceMappingURL=gh-manager.js.map

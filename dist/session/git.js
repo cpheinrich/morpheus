@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "../git-env.js";
 const run = promisify(execFile);
 /** `origin/main` unless a project says otherwise. */
 export const DEFAULT_TRUNK = "origin/main";
 async function git(root, args) {
     try {
-        const { stdout } = await run("git", args, { cwd: root, timeout: 15_000 });
+        const { stdout } = await run("git", args, { cwd: root, timeout: 15_000, env: gitSubprocessEnv() });
         return { ok: true, stdout: stdout.trim(), code: 0 };
     }
     catch (error) {

@@ -17,15 +17,16 @@ Every run starts with a sweep that uses no model. Each open pull request gets on
 |---|---|---|
 | `merge` | Reviewed, checks green, auto-merge never enabled | Auto-merge is switched on; cancelled checks are rerun. No session. |
 | `merge` (update) | Auto-merge is on but strict protection holds the branch behind its base | The base is merged in with GitHub's `update-branch`, guarded on the current head. No session. If GitHub refuses (most likely because the merge from trunk carries a workflow change and the App has no Workflows permission), the next run escalates once with `manager:needs-human` and leaves auto-merge and any `manager-reviewed` clearance in place, so the pull request lands once a person merges the base in. |
-| `session` | Anything that needs judgment: no completed review, failing checks, conflicts, an abandoned draft | One fresh Claude session (below). |
+| `session` | A ready pull request needs judgment: no completed review, failing checks or conflicts | One fresh Claude session (below). |
+| `hold` | A WIP pull request already has auto-merge queued | The manager cancels auto-merge and leaves the pull request open. |
 | `close` | A stale warning's grace period ran out | Closed with a comment. The branch is left in place. |
 | `escalate` | The attempt budget is spent | Labelled `manager:needs-human`. |
-| `skip` | Recently active, already queued, a bot lane, an untrusted author, already escalated or marked incomplete | Reported in the digest, not touched. |
+| `skip` | WIP, recently active, already queued, a bot lane, an untrusted author, already escalated or marked incomplete | Reported in the digest, not touched. |
 
 A session ends in one of five decisions:
 
 - **merge** — on the author's review if it is complete and valid, otherwise on the manager's own.
-- **incomplete** — a draft that has not done what its roadmap item defines. Labelled
+- **incomplete** — a ready pull request that has not done what its roadmap item defines. Labelled
   `manager:incomplete` with what is missing. The manager lands finished work; it does not finish
   features.
 - **close** — other merged work made it obsolete. Closed at once when the session names the merged
@@ -37,8 +38,10 @@ A session ends in one of five decisions:
 ### Cooldowns
 
 The manager does not touch a branch its author may still be driving. A ready pull request is left
-alone until `quietHours` (default 8) after the later of its head commit and the time it was opened. A draft gets `draftQuietHours`
-(default 48): only after that long untouched is it presumed abandoned and checked for completeness.
+alone until `quietHours` (default 24) after the later of its head commit and the time it was opened.
+A draft, a `wip/` branch, or a title beginning `[WIP]` or `WIP:` is held regardless of age or review.
+The manager never marks a draft ready. A rescued `wip/trunk-*` draft still escalates to a human after
+`draftQuietHours` (default 48), without a review or merge.
 
 ## The manager review
 
@@ -156,7 +159,7 @@ that repository; invalid is an error, not "off".
 {
   "version": 1,
   "enabled": true,
-  "quietHours": 8,
+  "quietHours": 24,
   "draftQuietHours": 48,
   "maxSessionsPerRun": 4,
   "maxAttemptsPerPullRequest": 2,
@@ -168,7 +171,8 @@ that repository; invalid is an error, not "off".
 }
 ```
 
-Everything but `version` is optional and shown at its default. `sessionBeforeMerge` is for a
+Everything but `version` is optional and shown at its default. `draftQuietHours` only controls the
+rescued trunk escalation; it does not make drafts eligible for merge. `sessionBeforeMerge` is for a
 project whose authors deliberately leave finished work open for a human to merge or redirect: a
 reviewed, green pull request then goes through a session, which reads it, instead of having
 auto-merge enabled from the sweep. `protectedPaths` are plain repository-relative prefixes; globs
@@ -222,10 +226,49 @@ Set `"enabled": false` in the policy, or remove the repository from the operatio
 Either takes effect on the next run. Removing the `manager:needs-human` label from a pull request
 tells the manager to try that one again.
 
+## Visual evidence
+
+A session can screenshot a pull request's **web** preview itself; iOS and simulator screens remain
+an escalation. It runs a pinned Playwright (`playwright-version` input) against the preview
+deployment built from its final head, checks each image, and lists the files in its decision with
+`{{gh-manager-evidence:<file>}}` placeholders in the body.
+
+The URL comes from `morpheus gh-manager preview-url <repo> <pr>`, never from text a session reads
+itself, because anyone can write a comment naming any URL. The command prefers GitHub deployment
+records for the commit. The App has no Deployments permission (it would need re-approval on every
+installation), so in practice it binds Vercel's own pull request comment to the commit: only a
+comment authored by `vercel[bot]` is read, and only a project whose embedded `inspectorUrl` equals
+the `target_url` of the commit's successful `Vercel` status, and only a `*.vercel.app` preview
+from it, because a collaborator can edit any comment, Vercel's included. It exits 2 until Vercel
+has a successful build of the commit, so a session that just pushed waits rather than capturing an
+older deployment. That URL is the branch alias, bound to the commit when the command runs; a
+later push moves it, and the apply step's refusal to act on a moved head closes that gap.
+
+The **apply** step, not the session, handles them, and only for a merge on the head the session
+finished on. It validates the files (PNG or JPEG by content, at most 10 of 5 MB), checks the body
+can place every one, then writes them as one orphan commit tagged `gh-manager-evidence/<commit>`
+and substitutes links of the form
+`https://github.com/<owner>/<repo>/raw/gh-manager-evidence/<commit>/pr-<n>/<sha256>.png`. Anything
+that cannot be validated, placed or published turns the merge into an escalation. The session
+holds no new credential for any of this.
+
+**Tags, not a branch.** A branch push starts every Git-connected deployment (Vercel builds each
+pushed branch), and a tree of screenshots would fail to build every time. A tag starts nothing. Each
+file is named by its SHA-256, so a swapped image is detectable; but a tag is a ref anyone with
+contents write can move, so a repository that wants the links immutable should add a ruleset
+restricting creation, update and deletion of `gh-manager-evidence/*` tags to the App. A repository
+whose workflows trigger on *all* tags (`tags: ['*']`) would run on these; scope such triggers, for
+example to `v*`.
+
+A repository opts in by adding `https://github.com/<owner>/<repo>/raw/gh-manager-evidence/` to
+`review.visualEvidence.allowedUrlPrefixes` in `morpheus.json`. Without it the session escalates
+missing evidence as before. Images render inline for anyone who can see the pull request, private
+repositories included (verified 2026-10-08).
+
 ## Limits worth knowing
 
 - **Sessions run on Linux.** An iOS suite cannot run there; the record says so and CI is the
-  evidence. Missing visual evidence the manager cannot produce is an escalation.
+  evidence. iOS visual evidence is an escalation; web evidence it captures itself.
 - **Sessions spend the operator's Claude subscription** and private-repository runner minutes.
   `maxSessionsPerRun` is the lever.
 - **The attestation is auditable, not cryptographic**, the same as the ordinary record. What is

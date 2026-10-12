@@ -14,6 +14,7 @@ import {
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "./git-env.js";
 import { readRegistry } from "./registry/index.js";
 import {
   morpheusInstallStatus,
@@ -147,6 +148,7 @@ async function gitHookPath(root: string, hook: (typeof HOOKS)[number]): Promise<
   const { stdout } = await exec("git", ["rev-parse", "--git-path", `hooks/${hook}`], {
     cwd: root,
     timeout: 10_000,
+    env: gitSubprocessEnv(),
   });
   const path = stdout.trim();
   if (!path) throw new Error(`Git did not report a path for ${hook}.`);

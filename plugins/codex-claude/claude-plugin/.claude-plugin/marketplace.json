@@ -1,0 +1,16 @@
+{
+  "name": "codex-claude-local",
+  "owner": {
+    "name": "Morpheus contributors"
+  },
+  "metadata": {
+    "description": "Local install of the Morpheus codex-claude bridge for Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "codex-claude",
+      "source": "./",
+      "description": "Opt-in subscription delegation from Claude Code to Codex."
+    }
+  ]
+}

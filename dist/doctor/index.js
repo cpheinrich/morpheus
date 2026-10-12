@@ -5,6 +5,7 @@ import { z } from "zod";
 import { parseArtifact } from "../pm/parse.js";
 import { parseInboxFile } from "../inbox/parse.js";
 import { readRegistry } from "../registry/index.js";
+import { gitSubprocessEnv } from "../git-env.js";
 import { INBOX_DIR, TEAM_RESERVED } from "../paths.js";
 import { projectPolicy } from "../session/policy.js";
 import { ABSENT, CANONICAL_INPUTS, UNREADABLE } from "../session/lease.js";
@@ -223,6 +224,22 @@ async function checkTrunk(root, declared, offline, add) {
             `remote. Every observation is "unknown", so pm claim, pm block and access sync are ` +
             `refused with a message blaming the network. Set context.trunk in morpheus.json.`);
     }
+    return observed.sha;
+}
+/**
+ * Report a trunk checkout that is dirty, or behind past the stale threshold —
+ * the state that left Lakina's main checkout 188 commits behind for three
+ * weeks while every session read a one-line notice. `brief` rescues; this
+ * only reports, because `doctor --all` reaches projects no session is in.
+ */
+async function checkTrunkCheckout(root, declared, remoteSha, add) {
+    const { resolveTrunk } = await import("../session/git.js");
+    const { inspectTrunkCheckout, trunkCheckoutFindings } = await import("../session/trunk-health.js");
+    const report = await inspectTrunkCheckout(root, await resolveTrunk(root, declared), remoteSha);
+    if (!report)
+        return; // Not a Git checkout: checkTrunk has already said so.
+    for (const finding of trunkCheckoutFindings(report, new Date()))
+        add(finding.severity, "trunk-checkout", finding.message);
 }
 /**
  * `null` when git could not be asked, `[]` when it answered nothing.
@@ -238,7 +255,7 @@ async function gitLines(root, args) {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     try {
-        const { stdout } = await promisify(execFile)("git", args, { cwd: root, timeout: 10_000 });
+        const { stdout } = await promisify(execFile)("git", args, { cwd: root, timeout: 10_000, env: gitSubprocessEnv() });
         return stdout.trim().split("\n").filter(Boolean);
     }
     catch {
@@ -376,7 +393,9 @@ export async function doctor(opts) {
     // operator whose gate is shut should not read past redundant lines to find
     // the one that names it.
     await checkRequiredRecords(root, add, handleReported ? [`hq/team/${handle}.md`] : []);
-    await checkTrunk(root, typeof raw["trunk"] === "string" ? raw["trunk"] : undefined, opts.offline === true, add);
+    const declaredTrunk = typeof raw["trunk"] === "string" ? raw["trunk"] : undefined;
+    const remoteTrunkSha = await checkTrunk(root, declaredTrunk, opts.offline === true, add);
+    await checkTrunkCheckout(root, declaredTrunk, remoteTrunkSha ?? null, add);
     // --- structure ----------------------------------------------------------
     const inheritsRaw = manifest.inherits;
     const inherits = inheritsRaw && typeof inheritsRaw === "object" && !Array.isArray(inheritsRaw)

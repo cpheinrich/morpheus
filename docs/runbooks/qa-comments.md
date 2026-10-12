@@ -16,6 +16,12 @@ local/qa-comments/
     <batchId>/
       batch.json      # schema below
       frame.png       # optional captured frame at Send
+      comment-1.png   # iOS pin 1 at placement (one per captured pin)
+  claims/
+    <batchId>.json    # exclusive agent claim; survives process exit
+  responder.json      # optional local command for a separate agent process
+  responder.lock      # active checkout owner; do not edit concurrently
+  responder.stop.<pid> # graceful stop request for that owner
   resolved/
     <batchId>/        # same shape, moved here by `resolve`
 ```
@@ -23,11 +29,70 @@ local/qa-comments/
 `batchId` is `YYYYMMDDTHHMMSSZ-<short>` (UTC clock + 4–6 char suffix) so ids
 sort chronologically without consulting a remote.
 
+Send publishes `batch.json` and its optional frames together, then returns the
+batch id and current open-batch count. Later Sends append to the queue while an
+agent is working. A claim is created exclusively for one agent identity; other
+agents can claim other batches but cannot resolve or release that claim. Claims
+do not expire automatically, because a long-running QA edit must not be handed
+to another agent mid-work. Use `release --force` only after confirming the
+original responder stopped. The batch remains in `pending/` while claimed.
+
+## Background responder
+
+For QA while the interactive chat stays free, run one separate responder process
+per checkout. Put its command in gitignored `local/qa-comments/responder.json`:
+
+```json
+{
+  "agent": "codex:evo-qa",
+  "command": ["codex", "exec", "-C", "{root}", "-"],
+  "pollMs": 2000
+}
+```
+
+This example uses Codex's noninteractive CLI. A Claude, Grok, or other responder
+can supply its own argv array. Morpheus executes the array directly without a
+shell, replaces `{root}`, `{id}`, and `{agent}` in each argument, and sends the
+batch instructions on stdin. Do not put secrets in command arguments. The
+responder claims one batch, waits for that child to finish and resolve it, then
+claims the next. Later Sends append while it is busy. If the child exits without
+resolving, the responder stops and leaves the claim for investigation.
+
+```sh
+morpheus qa comments responder start --root <checkout>   # separate terminal/process
+morpheus qa comments responder status --root <checkout>
+morpheus qa comments responder stop --root <checkout>    # after current batch
+morpheus qa comments responder recover --confirm-no-agent-process --root <checkout>
+```
+
+If the responder is killed while its agent child is still editing, the owner
+record remains. `recover` refuses to remove it until an operator verifies the
+agent process and its descendants have stopped and passes
+`--confirm-no-agent-process`. A short-lived `responder.recovering` guard keeps
+another responder from starting during that recovery. If recovery itself
+crashes and leaves that guard, verify that no recovery or agent process is
+running before removing the stale guard file manually.
+
+While `responder.lock` exists, that process owns the checkout for
+comment implementation. Other chats may inspect or converse, but should not
+edit the checkout. Stop it and wait for the marker to disappear before handing
+the checkout to another author. The child works on the existing QA session
+branch and commits locally; the interactive chat owns session-end review, push,
+and PR creation. The responder does not rebuild or relaunch a live preview.
+
 
 ## Agent wake webhook (one true config)
 
 After **Send** writes a pending batch, the serve process POSTs a small JSON
-payload so an agent (e.g. Grok Bot) can wake and call `qa comments pending`.
+payload when a wake webhook is configured. The webhook is only a notification;
+the receiver must claim and drain the on-disk queue. Configure it to start a
+separate responder where the agent host supports that. Morpheus cannot make an
+active Claude, Codex, or Grok chat continue in the background by itself. In
+particular, a new Codex checkout without a configured wake route will retain
+the comments but will not wake its chat. The overlay reports "Queued", the
+open count, and whether a background responder is running or another wake
+route is configured; it never claims that an agent has started from a webhook
+alone.
 
 **Durable config (preferred):** under the project that receives batches (Evo,
 Lakina, …), create the gitignored file:
@@ -41,12 +106,16 @@ Lakina, …), create the gitignored file:
 ```
 
 `authorization` is optional. Use a full `Bearer …` value or a bare token (the
-server prefixes `Bearer` when missing). `local/` is already gitignored — never
+server prefixes `Bearer` when missing). The file applies to **every operator** writing
+batches to that root; it is not scoped to an agent or browser session. `local/` is already gitignored — never
 commit the URL or key.
 
 **Session overrides** (on the `morpheus qa comments serve` process):
-- `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces `url` when set
-- `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces `authorization` when set
+- `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces `url` when set; an empty value disables waking, including file config
+- `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces `authorization` when set; an empty value clears it
+
+For QA that should not wake the configured routine, start that serve process with
+`MORPHEUS_QA_COMMENTS_WEBHOOK_URL= morpheus qa comments serve ...`.
 
 Send **always succeeds** without a webhook. If neither env nor file is set, the
 server logs one hint line and continues. The POST is fire-and-forget (≈2.5s
@@ -90,6 +159,26 @@ finger down until the next tap, which made switches flip late or flip two contro
 Pins stay for the session until deleted or cleared after a successful **Send**. They and the
 draft being typed are mirrored into the tab's `sessionStorage`, so a page reload, an overlay
 server restart or a simulator relaunch brings them back; closing the tab forgets them.
+Each iOS pin gets a native screenshot when placed, with the native screen ID checked both
+before and after capture. The captured image is shown beside the editor and stored in the
+browser's IndexedDB until Send succeeds. Review that image while writing the comment; if the
+app navigated or the element under the click moved before or during capture, delete and place
+the pin again. The batch also
+retains the Send-time frame for older agents. The pin's original
+coordinates refer to its own screenshot, even after the app scrolls. The overlay reads the
+simulator accessibility stream to follow the nearby native element while it scrolls; a marker
+outside the visible frame or on another screen is hidden, while its comment stays in the list.
+`screenId` comes from the raw simulator accessibility tree: the app's `*Screen` identifier when
+exposed (including SwiftUI roots omitted from the simplified stream), otherwise an `ax:` ID
+from the first two app-specific landmarks. During a vertical drag the overlay server retains
+that fallback ID even if a lazy list recycles those landmarks; a subsequent tap permits a new
+screen candidate. The overlay's accessibility stream derives the screen ID and element positions from
+the same native tree, so animations cannot make a later screen-ID response mislabel a pin.
+The pin keeps the ID from its native placement capture and hides when a later snapshot has
+a different or unavailable ID. Send waits for pending captures and blocks if the placement
+PNG or screen ID is missing. A pin needs a nearby native element with a stable accessibility
+identifier. Anonymous tree paths can be reused for different rows, so the overlay rejects
+those placements and asks you to place the pin near named content.
 
 Header hint: *Right click to add comment. Press Esc twice to Delete*.
 
@@ -111,7 +200,9 @@ See `src/qa/comments.ts` (`QaCommentBatch`). Summary:
 | `createdAt` | ISO-8601 with offset |
 | `preview` | `{ url, kind?: "serve-sim" \| "web" \| "other", label? }` |
 | `frame` | `{ path?: "frame.png", width, height, capturedAt? }` |
-| `comments` | ordered list of `{ id, text, createdAt, anchor }` |
+| `comments` | ordered list of `{ id, text, createdAt, anchor, screenId?, frame? }` |
+| `comments[].screenId` | screen identifier captured at iOS pin placement |
+| `comments[].frame` | `{ path?: "comment-N.png", width, height, capturedAt? }`, captured at iOS pin placement |
 | `anchor` | `{ normX, normY }` in 0–1 of the frame, and/or `{ x, y }` pixels, and/or `{ x, y, w, h }` region |
 | `status` | `pending` \| `resolved` |
 | `resolvedAt` / `resolvedBy` | set by `morpheus qa comments resolve` |
@@ -119,9 +210,14 @@ See `src/qa/comments.ts` (`QaCommentBatch`). Summary:
 ## CLI
 
 ```sh
-morpheus qa comments pending          # list pending batches (paths + comment counts)
+morpheus qa comments pending          # inspect open batches (including claimed)
+morpheus qa comments claim --agent <session-id>  # reserve oldest unclaimed batch
 morpheus qa comments show <batchId>   # print one batch.json
-morpheus qa comments resolve <batchId> [...ids]
+morpheus qa comments resolve <batchId> --agent <session-id>
+morpheus qa comments release <batchId> --agent <session-id>  # return failed work to queue
+morpheus qa comments release <batchId> --force  # recover an abandoned claim
+morpheus qa comments responder start|status|stop --root <checkout>
+morpheus qa comments responder recover --confirm-no-agent-process --root <checkout>
 morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
 ```
 
@@ -130,12 +226,15 @@ receives `local/qa-comments/` (defaults to cwd) — for Evo QA, pass Evo's path
 even when the Morpheus CLI is running from a Morpheus worktree. `--stream-url`
 skips MJPEG discovery. `--project <name>` is the global flag (the parser
 consumes it before `qa`) and is what `batch.project` records. POSTs must be
-`Content-Type: application/json` from this server's own origin; a cross-site
+`Content-Type: application/json` from `http://127.0.0.1:<port>` or
+`http://localhost:<port>` at the bound overlay port; a cross-site
 page cannot inject a batch or drive the simulator. `frame.path` is recorded
 only when a PNG was actually written.
 
 Exit non-zero when a named batch is missing. `pending` with an empty inbox
-prints nothing and exits 0 — agents can poll safely.
+prints nothing and exits 0 — agents can poll safely. Resolving an already-resolved
+batch returns the original record unchanged, preserving its first `resolvedAt` and
+`resolvedBy`.
 
 ## Operator loop
 
@@ -147,7 +246,10 @@ prints nothing and exits 0 — agents can poll safely.
    Not the stream URL, and not a host's native simulator panel or annotation tool.
 3. Left-drag drives the app; **right-click** pins a comment; **Enter** saves the pin; **⌘Enter**
    sends the batch. Batches land in `<root>/local/qa-comments/pending/`.
-4. The agent polls `morpheus qa comments pending`, then `show` / `resolve`.
+4. A separate responder, monitor, or the agent between turns calls `claim --agent
+   <session-id>`, then `show` / `resolve --agent <session-id>` for each returned
+   id until `claim` prints nothing. If work fails, `release` it so another agent
+   can pick it up. `pending` remains a read-only inspection command.
 5. `morpheus qa preview ios stop` ends the simulator, serve-sim and the overlay together.
 
 `morpheus qa guide` prints the agent's full instructions; the `comment-qa` skill every project
@@ -198,6 +300,20 @@ launchd owns exactly this preview; a device is shut down only when its name prov
 owns it; the lease defaults to four hours; a signal is intent, not an abort; Xcode 27's Device Hub
 input shadowing is repaired before launch; occupied ports are refused, never freed.
 
+## Standalone overlay lifecycle
+
+This applies to `morpheus qa comments serve` beside a preview Morpheus did not start;
+`morpheus qa preview ios stop` already ends its own overlay. The standalone overlay process and
+the project preview are separate. Stopping or restarting the preview does not stop an existing
+overlay. Use Ctrl+C in the overlay terminal when QA ends; restart the preview first, then the
+overlay, after a simulator change. A missing stream shows “No MJPEG stream — pass --stream-url or
+start serve-sim first.”
+
+`/health` reports the overlay's configuration and process health; it does **not**
+probe the upstream stream. Confirm live app pixels before QA. If port 3456 is busy,
+inspect `lsof -nP -iTCP:3456 -sTCP:LISTEN`, stop the overlay you own, or select another
+`--port`. Do not stop another operator's process merely to reclaim the default port.
+
 ## The web preview (MO-26-10-06-18.13.32)
 
 `morpheus qa preview web start|status|stop|help` puts the comment overlay in front of a project's
@@ -207,6 +323,9 @@ local dev server. The project declares it in `morpheus.json`:
 "qa": { "web": { "url": "http://localhost:5173", "command": ["npx", "next", "dev", "--port", "{port}"], "cwd": "apps/web", "path": "/" } }
 ```
 
+- **Startup failures.** Start checks the launchd supervisor during readiness. If the job exits or
+  disappears, it fails promptly with the last20 log lines (at most8KiB) and the `preview.log`
+  path. A pending first launch or running compile keeps the normal bounded readiness wait.
 - **Attach or start.** If something already answers at `url`, the preview attaches and `stop` leaves
   it running. Otherwise it runs `command` in `cwd` under the launchd supervisor, in its own process
   group, and `stop` (or the lease, or the dev server exiting) ends the whole group.

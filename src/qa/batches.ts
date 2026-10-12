@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { QA_COMMENTS_PENDING, parseBatch, type QaCommentBatch } from "./comments.js";
-import { writePendingBatch } from "./store.js";
+import { listPending, writePendingBatch } from "./store.js";
+import { isResponderActive } from "./responder.js";
 import { notifyBatchPending, QA_COMMENTS_WEBHOOK_FILE, resolveWebhookConfig } from "./webhook.js";
 
 /**
@@ -28,7 +29,7 @@ export async function recordBatch(
   project: string,
   raw: PostedBatch,
   defaultPreview: { url: string; kind: "serve-sim" | "web" | "other" },
-): Promise<{ id: string; path: string; batch: QaCommentBatch }> {
+): Promise<{ id: string; path: string; batch: QaCommentBatch; pendingCount: number; wakeConfigured: boolean; responderActive: boolean }> {
   if (!Array.isArray(raw.comments) || raw.comments.length === 0) throw new BatchRejected("comments required");
   const id = newBatchId();
   let frameBytes: Buffer | undefined;
@@ -39,13 +40,31 @@ export async function recordBatch(
     frameBytes = Buffer.from(raw.frame.dataUrl.slice("data:image/png;base64,".length), "base64");
     frameMeta = { path: "frame.png", width: raw.frame.width, height: raw.frame.height, capturedAt: new Date().toISOString() };
   }
+  const commentFrames = new Map<string, Buffer>();
+  const comments = raw.comments.map((value, index) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const comment = value as Record<string, unknown>;
+    const postedFrame = comment.frame;
+    if (!postedFrame || typeof postedFrame !== "object" || Array.isArray(postedFrame)) return value;
+    const frame = postedFrame as Record<string, unknown>;
+    const { dataUrl, ...metadata } = frame;
+    if (dataUrl === undefined) return value;
+    if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/png;base64,")) {
+      throw new BatchRejected("comment frame must be a PNG data URL");
+    }
+    const bytes = Buffer.from(dataUrl.slice("data:image/png;base64,".length), "base64");
+    if (bytes.length === 0) throw new BatchRejected("comment frame is empty");
+    const path = `comment-${index + 1}.png`;
+    commentFrames.set(path, bytes);
+    return { ...comment, frame: { ...metadata, path } };
+  });
   const batch: QaCommentBatch = parseBatch({
     version: 1, id, project, createdAt: new Date().toISOString(),
     preview: raw.preview ?? defaultPreview,
     ...(frameMeta ? { frame: frameMeta } : {}),
-    comments: raw.comments, status: "pending",
+    comments, status: "pending",
   });
-  const path = await writePendingBatch(root, batch, frameBytes);
+  const path = await writePendingBatch(root, batch, frameBytes, commentFrames);
   const webhook = await resolveWebhookConfig(root);
   if (webhook) {
     notifyBatchPending(webhook.url, {
@@ -55,5 +74,5 @@ export async function recordBatch(
   } else {
     console.log(`qa comments webhook: unset — batch ${id} written; set MORPHEUS_QA_COMMENTS_WEBHOOK_URL or ${QA_COMMENTS_WEBHOOK_FILE} to wake an agent`);
   }
-  return { id, path, batch };
+  return { id, path, batch, pendingCount: (await listPending(root)).length, wakeConfigured: Boolean(webhook), responderActive: await isResponderActive(root) };
 }

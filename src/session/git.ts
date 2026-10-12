@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "../git-env.js";
 
 const run = promisify(execFile);
 
@@ -33,7 +34,7 @@ interface Run {
 
 async function git(root: string, args: string[]): Promise<Run> {
   try {
-    const { stdout } = await run("git", args, { cwd: root, timeout: 15_000 });
+    const { stdout } = await run("git", args, { cwd: root, timeout: 15_000, env: gitSubprocessEnv() });
     return { ok: true, stdout: stdout.trim(), code: 0 };
   } catch (error: unknown) {
     const err = error as { code?: number | string; stdout?: string };

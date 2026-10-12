@@ -18,7 +18,8 @@ never submit a local task to a different machine by guessing its project path.
    is performed by Codex without changing the persistent override. Stop a running Claude
    writer and wait until terminal before taking over its files.
 3. Automatic mode checks the least remaining reported Codex allowance window at safe
-   checkpoints. Keep executing in Codex while above the threshold; below it delegate
+   checkpoints. Keep executing in Codex at or above the threshold (50% remaining by
+   default); below it delegate
    substantive work and reserve Codex for coordination. Recheck after tools or completed
    stages. Unknown/stale allowance is not zero. Do not switch an in-flight writer. A
    threshold is a subscription percentage, not a local token counter; coordination still
@@ -30,9 +31,13 @@ never submit a local task to a different machine by guessing its project path.
    Do not ask it to redo mutations already completed. Default background=false; true is
    only for explicit user authorization to continue after disconnection.
 5. Model and effort are read from the active Codex turn, mapped separately, and applied to
-   the next Claude invocation. Optional overrides require a user request. Unsupported
-   model/effort/permission metadata must be reported, never guessed. Full access is not
-   permission to bypass a business approval, repository review, spending, or sending rule.
+   the next Claude invocation. Optional overrides require a user request; any explicit model
+   id or family alias the user names is passed to the Claude CLI, which decides whether the
+   subscription can run it. A run that fails with the CLI's unrecognized-model error means
+   that model is unavailable here: report it and use the model the user authorized as the
+   fallback, never a moving alias such as `best`. Unsupported effort/permission metadata must
+   be reported, never guessed. Full access is not permission to bypass a business approval,
+   repository review, spending, or sending rule.
 6. Call `claude_wait` (up to 25 seconds) until completion or a question. This renews the
    owner lease. Publish meaningful concise progress in this Codex task. `claude_view`
    returns a read-only live page; open it with Codex's browser-panel tool if useful. For a

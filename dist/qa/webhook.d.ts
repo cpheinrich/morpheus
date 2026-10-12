@@ -22,8 +22,8 @@ export interface QaCommentsWebhookConfig {
  * `{ "url": "…", "authorization"?: "Bearer …" | "<token>" }`.
  *
  * Session overrides:
- * - `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces url when set
- * - `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces authorization when set
+ * - `MORPHEUS_QA_COMMENTS_WEBHOOK_URL` — replaces url when set; empty disables waking
+ * - `MORPHEUS_QA_COMMENTS_WEBHOOK_AUTHORIZATION` — replaces authorization when set; empty clears it
  */
 export declare function resolveWebhookConfig(root: string): Promise<QaCommentsWebhookConfig | null>;
 /** @deprecated Prefer resolveWebhookConfig — kept for call-site clarity in logs. */

@@ -8,7 +8,7 @@ import {
   NEEDS_HUMAN_LABEL,
   STALE_LABEL,
 } from "./policy.js";
-import { type ManagerMarker, renderMarker, type Routed } from "./sweep.js";
+import { isWorkInProgress, type ManagerMarker, renderMarker, type Routed } from "./sweep.js";
 
 /**
  * What a session asks for, and what is actually done about it.
@@ -45,6 +45,11 @@ export const Decision = z.object({
   usedManagerReview: z.boolean().default(false),
   /** A complete replacement pull request body, when the session had to repair it. */
   body: z.string().max(60_000).optional(),
+  /**
+   * Screenshots the session captured into its evidence directory. The apply step publishes them
+   * and replaces each `{{gh-manager-evidence:<file>}}` in `body` with the image.
+   */
+  evidence: z.array(z.object({ file: z.string().min(1).max(100), caption: z.string().trim().min(3).max(200) }).strict()).max(20).default([]),
   /** Mark a draft ready for review. */
   markReady: z.boolean().default(false),
   /** For `close`: the merged pull request that made this one obsolete. */
@@ -82,6 +87,8 @@ export type Operation =
 /** Live facts the plan is checked against, read after the session ended. */
 export interface LiveState {
   headSha: string;
+  title: string;
+  headRefName: string;
   isDraft: boolean;
   labels: string[];
   autoMerge: boolean;
@@ -136,6 +143,14 @@ function comment(verdict: ManagerMarker["verdict"], sections: string[], marker: 
   return { kind: "comment", body: [`### GitHub Manager — ${HEADLINE[verdict]}`, ...sections.filter(Boolean), renderMarker(marker)].join("\n\n") };
 }
 
+function holdWorkInProgress(live: LiveState, marker: ManagerMarker, run: string): Plan {
+  if (!live.autoMerge) return { verdict: "wait", operations: [] };
+  return { verdict: "wait", operations: [
+    comment("wait", ["This pull request is marked WIP. Cancelling queued auto-merge; a human can make it ready when the needed input arrives.", run], marker),
+    { kind: "disable-auto-merge" },
+  ] };
+}
+
 /**
  * Model-written text, made unable to open or close an HTML comment. The marker is an HTML
  * comment; `parseMarker` already reads only the last one, and this keeps a forged one from
@@ -183,6 +198,8 @@ export function planDecision(decision: Decision, live: LiveState, ctx: Context):
   const marker: ManagerMarker = { head: live.headSha, verdict: decision.action, attempts: ctx.attempts + 1, at: ctx.now.toISOString() };
   const sections = [inert(decision.summary), `**Why:** ${inert(decision.reasoning)}`, findingsTable(decision), `Run: ${ctx.runUrl}`];
   const refuse = (why: string) => escalate(live, why, sections, marker, why);
+
+  if (isWorkInProgress(live)) return holdWorkInProgress(live, { ...marker, verdict: "wait" }, `Run: ${ctx.runUrl}`);
 
   // The session reported the head it finished on. If the branch has moved since, somebody else
   // is working on it and everything the session concluded is about a different commit.
@@ -282,6 +299,9 @@ export function planRoute(routed: Routed, live: LiveState, ctx: Context): Plan {
   // No session ran, so the attempt count is carried, not incremented.
   const marker: ManagerMarker = { head: live.headSha, verdict: "wait", attempts: routed.attempts, at: ctx.now.toISOString() };
   const run = `Run: ${ctx.runUrl}`;
+  if (isWorkInProgress(live) && !(routed.route === "escalate" && routed.reason === "rescued-trunk-edits" && !live.autoMerge)) {
+    return holdWorkInProgress(live, marker, run);
+  }
   if (routed.headSha !== live.headSha) return { verdict: "wait", overridden: "the branch moved after the sweep", operations: [] };
 
   if (routed.route === "merge") {

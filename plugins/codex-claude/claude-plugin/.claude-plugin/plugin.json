@@ -1,0 +1,8 @@
+{
+  "name": "codex-claude",
+  "version": "0.2.0",
+  "description": "Opt-in subscription delegation from Claude Code to Codex with persistent sessions and bounded supervision.",
+  "author": {
+    "name": "Morpheus contributors"
+  }
+}

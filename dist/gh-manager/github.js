@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { EVIDENCE_TAG_PREFIX, evidencePath, evidenceUrl } from "./evidence.js";
 import { GH_MANAGER_LOGIN, GH_MANAGER_POLICY_PATH, LOG_LABEL, parsePolicy, TRUSTED_ASSOCIATIONS } from "./policy.js";
 import { parseMarker } from "./sweep.js";
 /**
@@ -177,6 +178,8 @@ export function fetchLiveState(repo, number, supersededBy) {
         base: pull.base.ref,
         sessionPushed: "unverified",
         headSha: facts.headSha,
+        title: facts.title,
+        headRefName: facts.headRefName,
         isDraft: facts.isDraft,
         labels: facts.labels,
         autoMerge: facts.autoMerge,
@@ -237,6 +240,23 @@ export function execute(repo, number, op) {
             return;
     }
 }
+/**
+ * Publish screenshots as one orphan commit tagged `gh-manager-evidence/<commit>`, and return each
+ * file's URL through that tag. A tag rather than a branch: a branch push would start every
+ * Git-connected deployment. The commit has no parent, so nothing in it can reach the product.
+ */
+export function publishEvidence(repo, pr, items) {
+    // Identical captures share one content-addressed path; a tree may name each path only once.
+    const unique = [...new Map(items.map(item => [evidencePath(pr, item), item])).values()];
+    const tree = unique.map(item => {
+        const sha = withBodyFile(item.bytes.toString("base64"), b64 => api(`repos/${repo}/git/blobs`, "--method", "POST", "-F", `content=@${b64}`, "-f", "encoding=base64").sha);
+        return ["-f", `tree[][path]=${evidencePath(pr, item)}`, "-f", "tree[][mode]=100644", "-f", "tree[][type]=blob", "-f", `tree[][sha]=${sha}`];
+    }).flat();
+    const treeSha = api(`repos/${repo}/git/trees`, "--method", "POST", ...tree).sha;
+    const commit = api(`repos/${repo}/git/commits`, "--method", "POST", "-f", `message=Visual evidence for #${pr}, captured by morpheus-gh-manager`, "-f", `tree=${treeSha}`).sha;
+    api(`repos/${repo}/git/refs`, "--method", "POST", "-f", `ref=refs/tags/${EVIDENCE_TAG_PREFIX}/${commit}`, "-f", `sha=${commit}`);
+    return items.map(item => ({ file: item.file, caption: item.caption, url: evidenceUrl(repo, commit, pr, item) }));
+}
 /** Append a run digest to the repository's rolling log issue, creating the issue on first use. */
 export function postDigest(repo, markdown) {
     gh(["label", "create", LOG_LABEL, "--repo", repo, "--force", "--color", LABEL_COLORS[LOG_LABEL]]);
@@ -249,5 +269,30 @@ export function postDigest(repo, markdown) {
     }
     withBodyFile(markdown, path => gh(["issue", "comment", String(number), "--repo", repo, "--body-file", path]));
     return number;
+}
+/**
+ * What `resolvePreview` decides from, for one commit. A token without the Deployments permission
+ * gets 403 on the deployments list; that is recorded as `"forbidden"`, not an error, because the
+ * status-bound comment is the intended fallback.
+ */
+export function fetchPreviewSources(repo, pr, sha) {
+    let deployments;
+    try {
+        const list = api(`repos/${repo}/deployments?sha=${sha}&per_page=20`);
+        deployments = list.map(d => {
+            const latest = api(`repos/${repo}/deployments/${d.id}/statuses?per_page=1`)[0];
+            return { creator: d.creator?.login ?? "", state: latest?.state, environmentUrl: latest?.environment_url };
+        });
+    }
+    catch (error) {
+        if (!/HTTP 403|HTTP 404|Resource not accessible/.test(status(error)))
+            throw error;
+        deployments = "forbidden";
+    }
+    const statuses = pages(`repos/${repo}/commits/${sha}/statuses?per_page=100`)
+        .map(s => ({ context: s.context, state: s.state, targetUrl: s.target_url ?? undefined, creator: s.creator?.login ?? "" }));
+    const comments = pages(`repos/${repo}/issues/${pr}/comments?per_page=100`)
+        .map(c => ({ author: c.user?.login ?? "", authorType: c.user?.type ?? "", body: c.body ?? "" }));
+    return { deployments, statuses, comments };
 }
 //# sourceMappingURL=github.js.map

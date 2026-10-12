@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
@@ -207,14 +207,50 @@ function report(ctx, state, options) {
     ctx.log(`  Claude:  the Browser pane (preview_start with this url)\n  Codex:   the in-app browser panel\n  Grok, or any agent without a browser panel:  open ${url}`);
     ctx.log("The site works as usual, with a comment column on the right. Right-click anything (or turn on Comment and click) to pin a comment; Enter saves it, ⌘Enter sends the batch.");
     ctx.log(`Inbox: morpheus qa comments pending --root ${ctx.root}\nInstructions: morpheus qa guide`);
-    // A Send writes a batch and nothing else; an agent that has not armed a watch never hears of it
-    // (MO-26-10-07-13.27.17: the first real web batch sat unread for exactly this reason).
-    ctx.log("Agent: arm the inbox watch now, before handing the overlay to the person. Claude: a Monitor polling the Inbox command above; Codex and Grok: run it between turns.");
+    // A Send queues a batch; only a configured host responder can wake independently of this chat.
+    ctx.log("Agent: arrange a separate responder where your host supports one; it should claim and drain the queue. Otherwise check pending batches between turns. Send alone does not wake this chat without a configured route.");
     ctx.log(`Log: ${join(ctx.stateDir, "preview.log")}`);
     if (options.sshHost)
         ctx.log(`\nOn the Mac displaying your browser, leave this running:\n${tunnelCommand(options.sshHost, state.port)}\nThen open the overlay URL above on that Mac.`);
 }
 const supervisorPath = () => fileURLToPath(new URL("./web-supervisor.js", import.meta.url));
+/** Keep failure output bounded even when a dev server has written a large log. */
+function readinessError(reason, logPath) {
+    let tail = "";
+    try {
+        const fd = openSync(logPath, "r");
+        try {
+            const size = fstatSync(fd).size;
+            const buffer = Buffer.alloc(Math.min(size, 8192));
+            const bytes = readSync(fd, buffer, 0, buffer.length, Math.max(0, size - buffer.length));
+            tail = buffer.subarray(0, bytes).toString("utf8").trimEnd().split("\n").slice(-20).join("\n");
+        }
+        finally {
+            closeSync(fd);
+        }
+    }
+    catch { /* The supervisor may have failed before opening its log. */ }
+    return new Error(`${reason} Read ${logPath}.${tail ? `\nRecent preview log:\n${tail}` : ""}`);
+}
+/** A registered job may be pending its first launch; only a missing or exited job is fatal. */
+export async function waitForWebPreview(state, readJob, logPath, check) {
+    for (let attempt = 0; attempt < 360; attempt++) {
+        check();
+        const status = readJob();
+        const hasPid = /\bpid = \d+/.test(status);
+        const ran = Number(status.match(/\bruns = (\d+)/)?.[1] ?? "0") > 0;
+        if (!status || (!hasPid && (ran || /last (?:exit code|terminating signal) = -?\d+\b/.test(status)))) {
+            const exit = status.match(/last exit code = (-?\d+)/)?.[1];
+            throw readinessError(`The web preview supervisor exited before readiness${exit ? ` (exit ${exit})` : ""}.`, logPath);
+        }
+        const ready = (await webHealthy(state)) && (await answers(state.upstream));
+        check();
+        if (ready)
+            return;
+        await sleep(500);
+    }
+    throw readinessError(`The web preview did not become ready on port ${state.port}.`, logPath);
+}
 export async function runWebPreview(ctx, options, project) {
     const previous = readJSON(ctx.stateFile);
     if (options.command === "status") {
@@ -293,15 +329,7 @@ export async function runWebPreview(ctx, options, project) {
                 ctx.run("launchctl", ["bootstrap", `gui/${process.getuid()}`, plist]);
                 if (state.spawned)
                     ctx.log(`Starting the dev server (${state.command.join(" ")}) — the first compile can take a minute…`);
-                let ready = false;
-                for (let attempt = 0; attempt < 360 && !ready; attempt++) {
-                    ready = (await webHealthy(state)) && (await answers(upstream));
-                    check();
-                    if (!ready)
-                        await sleep(500);
-                }
-                if (!ready)
-                    throw new Error(`The web preview did not become ready on port ${port}. Read ${join(ctx.stateDir, "preview.log")}.`);
+                await waitForWebPreview(state, () => job(ctx), join(ctx.stateDir, "preview.log"), check);
                 report(ctx, state, options);
             }
             catch (error) {

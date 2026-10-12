@@ -86,6 +86,7 @@ run and for anything the shim reports.
 ## Context freshness
 
 Run `morpheus context brief` at session start if the hook did not; follow its `WORK IN` path.
+On a dirty trunk it moves tracked edits to a `wip/trunk-*` draft PR, then fast-forwards; `doctor --all` lists stuck trunks.
 
 **Read `.agent/decisions.md`, `.agent/learned.md` and `hq/team/<your handle>.md` once at session
 start, then run `morpheus context refresh` once.** After that, just run the gated command

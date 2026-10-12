@@ -1074,6 +1074,17 @@ closed. This compatibility surface must be reverified after Codex updates. Claud
 cannot atomically disable paid overage per invocation; account-level extra usage must be
 disabled for a hard subscription-only spend boundary. No API-key fallback is implemented.
 
+**The Codex/Claude bridge passes any explicit Claude model id to the CLI** — 2026-10-08
+(MO-26-10-08-23.01.20). The `subscriptionModels` allowlist is gone: it refused Claude Fable 5.1
+the day it was needed, and the Claude CLI already refuses an unavailable model at the first
+request with its own error and no cost, so the list only ever duplicated that check a release
+late. What it was really guarding against — a moving `best`-style alias quietly selecting a
+paid-credit-only model — is kept as an explicit refusal of those aliases. Ids must be plain
+(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*(\[[a-zA-Z0-9]+\])?$`: letters, digits, `_ . -`, an optional
+bracketed context suffix such as `[1m]`, never a leading dash) so a value can never be read as
+another CLI flag. A saved
+`subscriptionModels` key still parses and is ignored, reported by `doctor`. No dependency.
+
 **Selected native tests retain complete execution evidence** — 2026-09-26. The reusable iOS
 workflow accepts optional explicit test identifiers and a caller-owned selection manifest and
 result validator. Defaults still run the whole scheme. Structured xcresult summaries and logs
@@ -1109,6 +1120,15 @@ it does not promise to bypass the host's job-start lock or its queue.
 bridge's default from 20% to 30% to leave coordination headroom while other Codex chats
 consume the shared allowance. Automatic routing still delegates strictly below the
 threshold and remains opt-in. Existing saved thresholds are preserved.
+
+**The Codex/Claude bridge runs both ways, at 50% remaining** — 2026-10-05. Chris asked for
+Claude Code sessions to delegate to Codex too, and for delegation to begin at half the
+coordinator's allowance. One package, service and settings file serve both directions; the
+shared `threshold` default is now 50 and saved values are still preserved (this host's was set
+explicitly). Claude's subscription windows are read from a recorder status line because Claude
+Code exposes them nowhere else a plugin can read without its OAuth token, which the bridge
+still never reads. Claude permission modes map onto Codex sandboxes without widening. No new
+dependency: `codex exec --json` and the existing guardian cover execution.
 
 **One automatic finalization-only review turn per pull request** — 2026-09-27. Chris's call after
 Evo #291 stalled on a paragraph: its reviewer's condition named the source paths, the author's fix
@@ -1170,6 +1190,13 @@ a ready pull request and 48 for a draft; an abandoned draft that has not done it
 work is marked incomplete rather than finished for its author. Rolled out to Evo first and acting
 at once, with no dry-run period, watched for about twelve hours before Lakina and Morpheus.
 
+**WIP pull requests stay with their authors; ready PRs get 24 hours** — 2026-10-12. Chris found
+that WIP pull requests often need more input, so the manager must not promote or merge a draft,
+`wip/` branch, or `[WIP]`/`WIP:` titled pull request. It cancels any auto-merge already queued on
+one. The ready PR cooldown is 24 hours after the later of opening and the latest head commit.
+This supersedes the 8-hour ready cooldown and draft-completion behavior above; the 48-hour draft
+wait remains only for a rescued trunk draft's human escalation.
+
 Considered: Claude Code routines (acts as Chris's own GitHub user, prompt lives outside the
 repository, research preview) and GitHub Agentic Workflows (its safe-outputs split is the pattern
 adopted here; the dependency is a compiler and a second workflow dialect). `claude-code-action`
@@ -1202,3 +1229,47 @@ Codex and humans with no duplicate to drift; revisit if agents demonstrably miss
 change: **refresh once, then only on refusal** (the gate already re-certifies past the term when
 nothing moved), **focused local tests first with at most one full suite per PR**, and a **loop
 breaker** — instruction changes, mirrored into the scaffold template.
+
+**A dirty trunk checkout is rescued to a draft PR at session start** — 2026-10-08
+(MO-26-10-08-04.06.59). Chris's call after Lakina's main checkout sat 188 commits behind for three
+weeks behind one Xcode-rewritten tracked file: "if local main is dirty then it should just move the
+uncommitted changes to a branch and push that as a WIP PR." `context brief` commits tracked edits on
+the trunk branch to `wip/trunk-<date>-<host>`, pushes, opens a draft PR, resets and fast-forwards.
+Untracked files are never committed (secrets, build junk) and never deleted; orphaned build output
+is only named. Mid-operation or off-trunk it reports instead. `doctor` reports rather than acts,
+because `--all` reaches checkouts no session is in. `self update`/`self ensure` use a disposable
+clone and have nothing to rescue, so only `self install`'s refusal was improved. The GitHub Manager
+escalates an unadopted rescue draft to a human rather than giving it a session. Native Git plumbing
+(a private index, `commit-tree`, a create-only `update-ref`) and `gh`; no dependency.
+
+**The review floor is waived for a trivially small change** — 2026-10-08 (MO-26-10-08-06.45.12).
+Chris's option A after six independent reviews of the same five-line workflow `if:` (evo#412,
+lakinacapital#509, kairos#70) took 21–30 s, all clean: on a change that small the 30-second floor
+measures the diff, not diligence. The validator computes the size itself from Git over the whole
+reviewed range, `base` to `covered`, so an author cannot declare it: at most 20 changed non-test
+lines (added plus removed) and 40 test lines, every non-test file configuration, workflow or prose
+by extension, nothing binary. `.agent/worklog/` and `hq/product/` are not counted — they are the
+task's own records. Generated output such as `dist/` *is* counted, because excluding it would trust
+every project to verify its mirror. Tests get their own, larger cap because they change no shipped
+behaviour and CI executes them, but still a cap, so a large test rewrite keeps the floor. Any source
+file, script or extensionless file keeps the floor however few lines change. A test is recognised
+by its file name, never its directory, because `tests/` also holds helpers and actions with
+executable steps. A turn recorded at zero never qualifies: zero is the template's placeholder, and
+the waiver relaxes the 30 seconds, not the measurement. Only the floor is
+waived: authorization to resume an incomplete turn, ceilings and every other rule stand. Native
+`git diff --numstat`; no dependency.
+
+## iOS QA pins use accessibility frames and placement screenshots — 2026-10-09
+
+For MO-26-10-09-22.50.25, each pin captures its own PNG and screen ID at placement. The
+existing serve-sim accessibility stream moves the visible marker with native content; a marker
+is hidden off screen or after navigation. Screen IDs come from serve-sim's pinned native AX
+bridge, because its simplified stream removes screen-sized SwiftUI roots such as `todayScreen`.
+When a root ID is unavailable, the first two app-specific AX landmarks form an `ax:`
+fallback candidate. The overlay server retains its current fallback identity through a
+vertical drag, because lazy lists can recycle even the second row. A later tap permits a
+new candidate to indicate navigation. A pin is accepted only when a stable named native
+element at its coordinate remains in place from click through the bracketed screenshot;
+anonymous tree paths are not anchors because lazy lists recycle them.
+Browser IndexedDB holds unsent PNGs across reloads. No package was added: screenshot matching
+would introduce heavier image processing and would be less reliable on changing content.

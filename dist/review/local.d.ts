@@ -197,11 +197,40 @@ export declare const REVIEW_BUDGET_MINUTES: {
     readonly normal: 15;
     readonly high: 30;
 };
+/**
+ * The 30-second floor measures diff size, not diligence, once a change is small enough: six
+ * independent reviews of the same five-line workflow `if:` (evo#412, lakinacapital#509, kairos#70)
+ * took 21–30 s, all clean. Below these sizes the floor only produced incomplete records and extra
+ * turns, so it is waived — computed from Git by the validator, never declared by the author.
+ *
+ * 20 lines is a hunk a reader takes in at a glance. Tests are counted separately and more
+ * generously (40), because they change no shipped behaviour and a CI run executes them, but are
+ * still capped so a large test rewrite keeps the floor.
+ */
+export declare const TRIVIAL_DIFF_MAX_LINES = 20;
+export declare const TRIVIAL_DIFF_MAX_TEST_LINES = 40;
+/**
+ * Whether `older..newer` is small enough to waive the floor, with the counts as a reason either
+ * way. Binary or rename-ambiguous output is never trivial: what cannot be counted is not small.
+ */
+export declare function trivialDiff(root: string, older: string, newer: string): {
+    trivial: boolean;
+    reason: string;
+};
 export declare function reviewRequired(config: unknown): boolean;
 export declare function git(root: string, args: string[]): string;
 export declare function isAncestor(root: string, older: string, newer: string): boolean;
 export declare function parseReviewRecord(markdown: string): LocalReviewRecord;
-export declare function validateReviewRecord(record: LocalReviewRecord): void;
+/**
+ * `trivialChange` is consulted only when a turn is under the floor, and only `verifyReviewRecord`
+ * supplies it, from Git; without it the floor applies.
+ */
+export declare function validateReviewRecord(record: LocalReviewRecord, opts?: {
+    trivialChange?: () => {
+        trivial: boolean;
+        reason: string;
+    };
+}): void;
 export declare function changedPaths(root: string, older: string, newer: string): string[];
 /**
  * Walk the first-parent commits in a range that the reviewer did not clear. Merging trunk never

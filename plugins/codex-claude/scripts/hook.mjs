@@ -1,6 +1,8 @@
 import { configRead } from "../src/store.mjs";
 import { call } from "../src/client.mjs";
+import { delegatedMarker } from "../src/config.mjs";
 try {
+  if (process.env[delegatedMarker]) process.exit(0);
   const config = await configRead();
   if (config.mode === "off") process.exit(0);
   let text = "";

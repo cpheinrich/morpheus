@@ -1620,9 +1620,9 @@ command leaves it alone and says so; add the \`/hq\` matcher to the existing one
 export const contextFreshness = () => `## Context freshness
 
 Run \`morpheus context brief\` at session start if the standard hook did not run. It fetches
-canonical trunk and fast-forwards only a clean local trunk, preserving active branches and dirty
-work. Follow its absolute \`WORK IN\` path. A stale checkout cannot certify fresh context; integrate
-trunk explicitly and re-read records before refreshing.
+canonical trunk and fast-forwards local trunk, first moving tracked trunk edits to a \`wip/trunk-*\`
+draft PR. Follow its absolute \`WORK IN\` path. A stale checkout cannot certify fresh context;
+integrate trunk explicitly and re-read records before refreshing.
 
 Use **one worktree per implementation task**, not per conversation. \`pm claim <ID>\` from a shared
 checkout prepares a fresh worktree from current trunk: move there, read its records, refresh, then
@@ -1679,13 +1679,19 @@ CLI, so they always match the commands you will run.
 
 The short form:
 
+**One branch until the person ends the session.** Commit each batch's changes locally on the
+one claimed branch for this QA session. Do not push, open a PR, start independent review or run
+CI per batch: even a draft PR push starts CI. Ship the changes together only when the person
+says the session is done. Tell them before rebuilding or relaunching the preview, or reloading
+or navigating their overlay tab.
+
 1. From this checkout: \`morpheus qa preview web start\` for the website, or
    \`morpheus qa preview ios start\` for the iOS app. Each starts the comment overlay with it.
    \`morpheus qa preview web help\` and \`morpheus qa preview ios help\` show what this project
    declares in \`morpheus.json\` under \`qa.web\` and \`qa.ios\`.
 2. Open the \`QA overlay\` URL it prints — Claude in the Browser pane, Codex in its in-app browser
    panel, Grok or any agent without a panel with \`open <url>\`. Every agent uses this one page.
-3. Watch \`morpheus qa comments pending\` and act on each batch, then resolve it.
+3. To keep this chat free, configure \`local/qa-comments/responder.json\` and run \`morpheus qa comments responder start\` in a separate process. It serially claims and resolves batches with one agent identity. See \`morpheus qa guide\` for checkout ownership and session-end steps.
 4. \`morpheus qa preview web stop\` (or \`ios stop\`) ends the preview and the overlay together.
 
 If \`morpheus qa preview\` is unknown, or has no \`web\`, the installed CLI predates it: run

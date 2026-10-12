@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configRead, configWrite } from "../src/store.mjs";
 import {
+  configSchema,
   defaults,
   route,
   remaining,
@@ -18,8 +19,8 @@ test("off overrides automatic, project and manual choices", () => {
   c.projects[task.project] = "automatic";
   assert.equal(route(c, task, 1, "claude").executor, "codex");
   c.mode = "automatic";
-  assert.equal(route(c, task, 30).executor, "codex");
-  assert.equal(route(c, task, 29.99).executor, "claude");
+  assert.equal(route(c, task, 50).executor, "codex");
+  assert.equal(route(c, task, 49.99).executor, "claude");
   assert.equal(route(c, task, null).executor, "unknown");
   assert.equal(route(c, task, 0, "codex").executor, "codex");
   assert.equal(route(c, task, 90, "claude").executor, "claude");
@@ -31,7 +32,7 @@ test("off overrides automatic, project and manual choices", () => {
   assert.equal(route(c, task, 0).executor, "codex");
   assert.equal(route(c, task, 90, "claude").executor, "claude");
 });
-test("fresh settings default to 30 percent and preserve saved thresholds", async (t) => {
+test("fresh settings default to 50 percent and preserve saved thresholds", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "claude-threshold-"));
   const previous = process.env.CODEX_CLAUDE_HOME;
   process.env.CODEX_CLAUDE_HOME = directory;
@@ -41,18 +42,21 @@ test("fresh settings default to 30 percent and preserve saved thresholds", async
     await rm(directory, { recursive: true, force: true });
   });
   const fresh = await configRead();
-  assert.equal(fresh.threshold, 30);
+  assert.equal(fresh.threshold, 50);
   assert.equal(fresh.mode, "off");
   fresh.mode = "automatic";
-  assert.equal(route(fresh, task, 30.01).executor, "codex");
-  assert.equal(route(fresh, task, 30).executor, "codex");
-  assert.equal(route(fresh, task, 29.99).executor, "claude");
-  await configWrite({ ...fresh, threshold: 20 });
+  assert.equal(route(fresh, task, 50.01).executor, "codex");
+  assert.equal(route(fresh, task, 50).executor, "codex");
+  assert.equal(route(fresh, task, 49.99).executor, "claude");
+  // The same threshold applies when Claude coordinates and Codex is the delegate.
+  assert.equal(route(fresh, task, 50, undefined, "claude").executor, "claude");
+  assert.equal(route(fresh, task, 49.99, undefined, "claude").executor, "codex");
+  await configWrite({ ...fresh, threshold: 30 });
   const saved = await configRead();
-  assert.equal(saved.threshold, 20);
-  assert.equal(route(saved, task, 29.99).executor, "codex");
-  assert.equal(route(saved, task, 20).executor, "codex");
-  assert.equal(route(saved, task, 19.99).executor, "claude");
+  assert.equal(saved.threshold, 30);
+  assert.equal(route(saved, task, 49.99).executor, "codex");
+  assert.equal(route(saved, task, 30).executor, "codex");
+  assert.equal(route(saved, task, 29.99).executor, "claude");
 });
 test("allowance uses most depleted fresh known window and fails closed", () => {
   const window = (usedPercent) => ({
@@ -91,13 +95,77 @@ test("model and effort independent, unknown mappings rejected", () => {
     modelSelection(c, { model: "gpt-5.6-luna", reasoningEffort: "medium" }),
     { model: "haiku", effort: "medium" },
   );
-  assert.throws(() =>
-    modelSelection(c, { model: "unknown", reasoningEffort: "medium" }),
+  assert.throws(
+    () => modelSelection(c, { model: "unknown", reasoningEffort: "medium" }),
+    /No Claude model mapping for Codex model "unknown"/,
   );
   assert.throws(() =>
     modelSelection(c, { model: "gpt-6-astra", reasoningEffort: null }),
   );
-  assert.throws(() => modelSelection(c, {}, { model: "best", effort: "high" }));
+});
+test("any explicit model id is passed to the CLI; moving aliases and unsafe ids are refused", () => {
+  const c = defaults();
+  assert.equal("subscriptionModels" in c, false);
+  // A model released after the plugin needs no configuration change: the CLI decides
+  // whether the subscription can run it.
+  assert.deepEqual(
+    modelSelection(c, {}, { model: "claude-fable-5-1", effort: "max" }),
+    { model: "claude-fable-5-1", effort: "max" },
+  );
+  assert.deepEqual(
+    modelSelection(c, {}, { model: "fable", effort: "high" }),
+    { model: "fable", effort: "high" },
+  );
+  c.modelMap["gpt-7"] = "claude-opus-5-5";
+  assert.deepEqual(
+    modelSelection(c, { model: "gpt-7", reasoningEffort: "low" }),
+    { model: "claude-opus-5-5", effort: "low" },
+  );
+  for (const alias of ["best", "Latest", "default", "newest", "auto"])
+    assert.throws(
+      () => modelSelection(c, {}, { model: alias, effort: "high" }),
+      /moves with releases/,
+    );
+  c.modelMap["gpt-7"] = "best";
+  assert.throws(
+    () => modelSelection(c, { model: "gpt-7", reasoningEffort: "low" }),
+    /moves with releases/,
+  );
+  assert.deepEqual(
+    modelSelection(c, {}, { model: "claude-sonnet-5-5[1m]", effort: "high" }),
+    { model: "claude-sonnet-5-5[1m]", effort: "high" },
+  );
+  // The guard, at its boundary: a leading dash is the one character that turns a
+  // model value into another CLI flag.
+  for (const unsafe of ["-opus", "--model", "opus;rm -rf", "claude fable", "a/b", "opus[1m", "opus[1 m]"])
+    assert.throws(
+      () => modelSelection(c, {}, { model: unsafe, effort: "high" }),
+      /Unsupported Claude model identifier/,
+      unsafe,
+    );
+  assert.throws(
+    () => modelSelection(c, {}, { model: "", effort: "high" }),
+    /No Claude model mapping/,
+  );
+});
+test("a saved subscriptionModels list still parses and no longer restricts the model", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "claude-allowlist-"));
+  const previous = process.env.CODEX_CLAUDE_HOME;
+  process.env.CODEX_CLAUDE_HOME = directory;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.CODEX_CLAUDE_HOME;
+    else process.env.CODEX_CLAUDE_HOME = previous;
+    await rm(directory, { recursive: true, force: true });
+  });
+  const fresh = await configRead();
+  await configWrite({ ...fresh, subscriptionModels: ["opus", "sonnet", "haiku"] });
+  const saved = await configRead();
+  assert.deepEqual(saved.subscriptionModels, ["opus", "sonnet", "haiku"]);
+  assert.deepEqual(
+    modelSelection(saved, {}, { model: "claude-fable-5-1", effort: "max" }),
+    { model: "claude-fable-5-1", effort: "max" },
+  );
+  assert.throws(() => configSchema.parse({ subscriptionModels: ["bad id"] }));
 });
 test("permissions never widened and credential overrides removed without changing memory setting", () => {
   assert.equal(
@@ -134,6 +202,10 @@ test("permissions never widened and credential overrides removed without changin
       CLAUDECODE: "1",
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
     }),
-    { PATH: "bin", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" },
+    {
+      PATH: "bin",
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+      CODEX_CLAUDE_DELEGATED: "1",
+    },
   );
 });

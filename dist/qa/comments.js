@@ -8,6 +8,7 @@ import { z } from "zod";
  */
 export const QA_COMMENTS_DIR = "local/qa-comments";
 export const QA_COMMENTS_PENDING = `${QA_COMMENTS_DIR}/pending`;
+export const QA_COMMENTS_CLAIMS = `${QA_COMMENTS_DIR}/claims`;
 export const QA_COMMENTS_RESOLVED = `${QA_COMMENTS_DIR}/resolved`;
 const norm = z.number().min(0).max(1);
 /**
@@ -62,6 +63,15 @@ export const QaComment = z
     text: z.string().min(1),
     createdAt: z.string().min(1),
     anchor: QaAnchor,
+    /** Stable accessibility identifier for the screen at pin placement. */
+    screenId: z.string().min(1).optional(),
+    /** The immutable simulator frame captured when this pin was placed. */
+    frame: z.object({
+        path: z.string().min(1).optional(),
+        width: z.number().int().positive(),
+        height: z.number().int().positive(),
+        capturedAt: z.string().optional(),
+    }).strict().optional(),
 })
     .strict();
 export const QaPreview = z
