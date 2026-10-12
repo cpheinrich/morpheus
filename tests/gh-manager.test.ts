@@ -283,6 +283,14 @@ describe("applying a session's decision", () => {
     expect(kinds(plan)).toEqual(["comment", "rerun", "auto-merge"]);
     expect(parseMarker((plan.operations[0] as { body: string }).body)).not.toHaveProperty("cleared");
   });
+  it("recovers a missing author-review label only after validating its committed record", () => {
+    const verified = planDecision(decision(), live({ labels: ["manager:needs-human"], authorRecordValid: true }), ctx());
+    expect(kinds(verified)).toEqual(["comment", "remove-label:manager:needs-human", "add-label:agent-reviewed", "auto-merge"]);
+    const invalid = planDecision(decision(), live({ authorRecordProblem: "review does not cover head" }), ctx());
+    expect(invalid.verdict).toBe("escalate");
+    expect(kinds(invalid)).not.toContain("add-label:agent-reviewed");
+    expect(planDecision(decision(), live(), ctx()).verdict).toBe("escalate");
+  });
   it("will not merge on the author's review when the session pushed anything but exact trunk merges", () => {
     for (const sessionPushed of ["other", "unverified"] as const) {
       const plan = planDecision(decision(), live({ labels: ["agent-reviewed"], sessionPushed }), ctx());

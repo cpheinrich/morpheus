@@ -1273,3 +1273,14 @@ element at its coordinate remains in place from click through the bracketed scre
 anonymous tree paths are not anchors because lazy lists recycle them.
 Browser IndexedDB holds unsent PNGs across reloads. No package was added: screenshot matching
 would introduce heavier image processing and would be less reliable on changing content.
+
+## Authors capture iOS evidence; reviewers inspect pixels — 2026-10-12
+
+Morpheus GH Manager sessions run on GitHub-hosted Linux. Evo's Mac mini already runs iOS builds,
+but adding a privileged remote simulator path to the Manager would duplicate author QA and widen
+its access. Authors capture each materially changed iOS screen and state from the final passing
+build before independent review. The reviewer and Manager open approved captures and inspect
+rendered pixels or relevant recording frames; a URL alone is insufficient. Missing or stale iOS
+evidence still escalates. The Manager may recover a missing `agent-reviewed` label only after its
+apply step validates the author's committed review against the live head, avoiding the mechanical
+failure seen on Morpheus #353. No package added: the existing review checker is reused.

@@ -190,7 +190,7 @@ export function fetchLiveState(repo, number, supersededBy) {
         cancelledRunIds: [...new Set(facts.checks.filter(c => c.state === "cancelled" && c.runId !== undefined).map(c => c.runId))],
     };
 }
-const LABEL_COLORS = { "manager-reviewed": "0e8a16", "manager:needs-human": "d93f0b", "manager:stale": "c5def5", "manager:incomplete": "fbca04", [LOG_LABEL]: "ededed" };
+const LABEL_COLORS = { "agent-reviewed": "0e8a16", "manager-reviewed": "0e8a16", "manager:needs-human": "d93f0b", "manager:stale": "c5def5", "manager:incomplete": "fbca04", [LOG_LABEL]: "ededed" };
 function withBodyFile(body, run) {
     const dir = mkdtempSync(join(tmpdir(), "gh-manager-"));
     try {
