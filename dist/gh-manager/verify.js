@@ -53,7 +53,11 @@ export function managerRecordProblem(root, body, head, trunk) {
 export function authorRecordProblem(root, body, head, trunk) {
     if (!isCommit(root, head) || !isCommit(root, trunk))
         return "the pull request head or base could not be read in the apply checkout";
-    return checkLocalReview({ root, body, labels: ["agent-reviewed"], head, base: trunk })
-        .find(f => f.level === "error")?.message;
+    const findings = checkLocalReview({ root, body, labels: ["agent-reviewed"], head, base: trunk });
+    // An opt-out returns `waived` without reading a record. That cannot authorize recovery of a
+    // label which explicitly asserts a completed independent review.
+    if (findings.some(f => f.level === "waived"))
+        return "independent review is waived, so no author record was validated";
+    return findings.find(f => f.level === "error")?.message;
 }
 //# sourceMappingURL=verify.js.map
