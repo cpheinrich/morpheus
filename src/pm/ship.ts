@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "../git-env.js";
 import { branchPrefix, FETCH_PRUNE, findClaims } from "./claim.js";
 import { hasNoSubstantiveChange } from "../paths.js";
 import { parseArtifact } from "./parse.js";
@@ -28,7 +29,7 @@ const exec = promisify(execFile);
  */
 
 async function git(args: string[], cwd: string): Promise<string> {
-  const { stdout } = await exec("git", args, { cwd });
+  const { stdout } = await exec("git", args, { cwd, env: gitSubprocessEnv() });
   return stdout.trim();
 }
 

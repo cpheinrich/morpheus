@@ -27,8 +27,15 @@ async function clean(target: Worktree, common: string): Promise<void> {
   if (identity.root !== target.path || identity.common !== common) throw new Error("Worktree identity changed; retain and inspect manually.");
   if (target.locked !== undefined) throw new Error(`Locked worktree ${target.path}: ${target.locked}`);
   // Do not trim porcelain: the first column identifies staged changes.
-  const status = await git(target.path, ["status", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=none", "-z"], false);
-  if (status) throw new Error(`Dirty worktree ${target.path}; preserve all files:\n${status.split("\0").filter(Boolean).join("\n")}`);
+  const unsafe = await localData(target.path);
+  if (unsafe.length) throw new Error(`Dirty worktree ${target.path}; preserve all files:\n${unsafe.join("\n")}`);
+}
+
+async function localData(path: string): Promise<string[]> {
+  // `git worktree remove` deletes ignored files even without --force. The
+  // package install cache is reproducible; everything else is preserved.
+  const status = await git(path, ["status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching", "--ignore-submodules=none", "-z"], false);
+  return status.split("\0").filter(Boolean).filter(entry => !/^!! (?:.*\/)?node_modules\/?$/.test(entry));
 }
 
 async function assertItem(root: string, productRel: string, id: string, trunkSha: string, detached: boolean): Promise<void> {
@@ -62,7 +69,9 @@ export interface CleanupResult { path: string; branch?: string; pr?: number; dry
 export async function cleanupTask(cwd: string, productDir: string, id: string, dryRun = false): Promise<CleanupResult> {
   if (!ROADMAP_ID.test(id)) throw new Error(`Invalid roadmap ID: ${id}`);
   const identity = await checkoutIdentity(cwd);
-  const productRel = relative(identity.root, resolve(productDir));
+  // checkoutIdentity canonicalizes macOS /var -> /private/var. Compare two
+  // real paths so a valid product directory under tmpdir is not rejected.
+  const productRel = relative(identity.root, await realpath(resolve(productDir)));
   if (!productRel || productRel.startsWith("..") || isAbsolute(productRel)) throw new Error("Product directory must be inside this repository.");
   const trunk = await resolveTrunk(cwd, (await projectPolicy(cwd)).trunk);
   await git(cwd, [...FETCH_PRUNE]); // unlike reconciliation, failures here must never be swallowed
@@ -136,8 +145,8 @@ export async function worktreeStatus(cwd: string): Promise<string[]> {
     else if (!(await checkoutIdentity(w.path)).linked) status = "canonical (never removed)";
     else if (w.branch === trunk.branch) status = `POLICY VIOLATION: secondary checkout on trunk ${trunk.branch}`;
     else {
-      const dirty = await git(w.path, ["status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none"]);
-      status = dirty ? `dirty: ${dirty}` : w.detached
+      const dirty = await localData(w.path);
+      status = dirty.length ? `dirty: ${dirty.join(", ")}` : w.detached
         ? markers.some(m => m.root === w.path) ? "temporary detached (requires trunk proof)" : "unmarked detached (manual action required)"
         : roadmapIdFromBranch(w.branch ?? "") ? "task (completion unverified; use cleanup <ID> --dry-run)" : "POLICY VIOLATION: secondary checkout has no task claim";
     }

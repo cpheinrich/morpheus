@@ -111,3 +111,6 @@ export declare function ship(productDir: string, ids: string[], cwd: string, che
  * not migrated.
  */
 export declare function migrateIds(productDir: string, dryRun: boolean, repoRoot?: string): Promise<number>;
+/** Explicit cleanup only; context startup never deletes work. */
+export declare function cleanup(productDir: string, id: string, cwd: string, dryRun?: boolean): Promise<number>;
+export declare function worktrees(cwd: string, action?: string, dryRun?: boolean): Promise<number>;

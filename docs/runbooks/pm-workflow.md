@@ -52,6 +52,8 @@ worktree at freshly fetched trunk and prints its absolute path. It moves only th
 untracked intake file; existing items come from trunk. Read the destination's records, refresh
 context there, then repeat `pm claim` there to stake the branch. No receipt is copied automatically.
 An already isolated detached worktree can claim directly after reading and refreshing.
+New worktrees are allocated under the operating system's temporary directory, outside `~/code`.
+Existing task worktrees remain usable at their original paths until they are safely removed.
 
 Use `morpheus pm resume <ID>` to continue an explicitly named existing task. It reuses the
 worktree holding its claimed branch, or checks out that branch in a worktree when needed.
@@ -60,6 +62,18 @@ must not silently attach an unrelated request to its old task. Provider session 
 sessions with tasks; `--session-id` on claim/resume supplies one explicitly (Codex defaults to
 `CODEX_THREAD_ID`). Without an ID, the currently checked-out claimed branch identifies the task.
 Do not run concurrent authors on the same task worktree.
+
+After the task PR has merged, return to the primary checkout and run
+`morpheus pm cleanup <ID>`. The command verifies the exact merged PR and current trunk,
+then removes only that task's clean, unlocked linked worktree and its obsolete local and
+remote branch refs. `--dry-run` shows whether it can do so. An open PR, local edits,
+an ambiguous claim, or missing evidence leaves the worktree in place. For an unclaimed
+prepared checkout, it requires Morpheus's preparation marker and proof that its HEAD
+is on current trunk. Ignored local files are preserved except reproducible `node_modules`
+install caches. `morpheus pm worktrees` inventories legacy sibling worktrees;
+`morpheus pm worktrees prune` clears only Git registrations whose directories are
+already missing. Do not delete directories directly: Git registration and branches
+must be reconciled together.
 
 ## Blocking
 
@@ -158,6 +172,7 @@ Do not wait on checks by polling. Two better options:
 ```sh
 gh pr merge <n> --squash --auto --delete-branch   # merges itself when checks go green
 morpheus wait-ci <n>                              # blocks once, then a digest of what failed
+morpheus pm cleanup <ID>                           # from primary checkout, after merge
 ```
 
 Prefer `--auto` — it hands the merge to GitHub so the session is not held open waiting, and a

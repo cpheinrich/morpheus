@@ -1,6 +1,8 @@
-import { mkdir, mkdtemp, readFile, realpath, rename, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative } from "node:path";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rename, unlink, writeFile } from "node:fs/promises";
+import { listWorktrees, assertWorktreePolicy } from "./worktrees.js";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
 import { checkoutIdentity, fetchTrunk, sessionGit as git, sessionKey } from "./start.js";
 import { findClaims } from "../pm/claim.js";
 import { ROADMAP_ID, roadmapIdFromBranch } from "../pm/id.js";
@@ -41,7 +43,10 @@ export async function boundTask(cwd, sessionId) {
 }
 async function destination(root, task) {
     const { common } = await checkoutIdentity(root);
-    const parent = join(dirname(dirname(common)), ".morpheus-worktrees", `${basename(dirname(common))}-${sessionKey(common).slice(0, 12)}`);
+    // Keep task checkouts out of the operator's source directory. The common
+    // Git directory keys paths so repositories with the same basename cannot
+    // collide; Git still owns registration and cleanup.
+    const parent = join(tmpdir(), "morpheus-worktrees", `${basename(dirname(common))}-${sessionKey(common).slice(0, 12)}`);
     await mkdir(parent, { recursive: true });
     return mkdtemp(join(parent, `${task.toLowerCase()}-`));
 }
@@ -62,7 +67,8 @@ export async function prepareTask(root, productDir, id) {
     const itemRel = relative(checkout.root, await realpath(item.path));
     if (itemRel.startsWith(".."))
         throw new Error("The roadmap must belong to this repository.");
-    const { sha } = await fetchTrunk(root);
+    const { sha, branch: trunkBranch } = await fetchTrunk(root);
+    await assertWorktreePolicy(root, trunkBranch);
     // Reuse an explicitly prepared checkout only if it is exact trunk and
     // has no unrelated tracked edits or commits to accidentally put in a claim.
     const head = await git(root, ["rev-parse", "HEAD"]);
@@ -71,6 +77,7 @@ export async function prepareTask(root, productDir, id) {
         return null;
     const target = await destination(root, id);
     await git(root, ["worktree", "add", "--detach", "--", target, sha]);
+    await markTemporaryTask(target, id);
     // Only move an uncommitted new item. Existing canonical items come from
     // fetched trunk, never from the old branch's edits or unrelated files.
     // Moving intake also avoids leaving trunk dirty forever after a new claim.
@@ -92,16 +99,14 @@ export async function resumeTask(root, id, sessionId) {
     if (branches.length !== 1)
         throw new Error(`Expected one remote claim for ${id}; found ${branches.length}. Resolve the task identity before resuming.`);
     const branch = branches[0];
-    const listing = await git(root, ["worktree", "list", "--porcelain", "-z"]);
-    for (const entry of listing.split("\0\0")) {
-        const fields = entry.split("\0");
-        if (fields.includes(`branch refs/heads/${branch}`)) {
-            const target = fields.find(line => line.startsWith("worktree "))?.slice(9);
-            if (!target)
-                throw new Error("Git returned a worktree without its path.");
-            await bindTask(target, id, sessionId);
-            return target;
-        }
+    const matching = (await listWorktrees(root)).filter(w => w.branch === branch);
+    if (matching.length > 1)
+        throw new Error(`Multiple worktrees for ${branch}; resolve manually.`);
+    if (matching[0]) {
+        if (!(await checkoutIdentity(matching[0].path)).linked)
+            throw new Error("Task occupies the canonical checkout; move it to an isolated worktree explicitly.");
+        await bindTask(matching[0].path, id, sessionId);
+        return matching[0].path;
     }
     const local = await git(root, ["show-ref", "--verify", `refs/heads/${branch}`]).then(() => true, () => false);
     const target = await destination(root, id);
@@ -110,5 +115,63 @@ export async function resumeTask(root, id, sessionId) {
     await git(root, ["worktree", "add", "--", target, branch]);
     await bindTask(target, id, sessionId);
     return realpath(target);
+}
+/** Only preparation writes this marker; a detached HEAD by itself is never consent. */
+async function markTemporaryTask(root, task) {
+    const identity = await checkoutIdentity(root);
+    const dir = join(identity.common, "morpheus-temporary-worktrees");
+    await mkdir(dir, { recursive: true });
+    const gitDir = await realpath(resolve(root, await git(root, ["rev-parse", "--git-dir"])));
+    await writeFile(join(dir, `${sessionKey(identity.root)}.json`), JSON.stringify({ root: identity.root, task, gitDir }));
+}
+export async function temporaryTasks(common) {
+    const dir = join(common, "morpheus-temporary-worktrees");
+    let files;
+    try {
+        files = await readdir(dir);
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            return [];
+        throw error;
+    }
+    return Promise.all(files.filter(f => f.endsWith(".json")).map(async (file) => {
+        const value = JSON.parse(await readFile(join(dir, file), "utf8"));
+        if (typeof value.root !== "string" || typeof value.gitDir !== "string" || !ROADMAP_ID.test(value.task))
+            throw new Error(`Invalid temporary task marker ${file}.`);
+        return value;
+    }));
+}
+/** Remove only bindings naming the removed path, including other provider sessions. */
+export async function clearTaskBindings(common, root) {
+    const dir = join(common, "morpheus-sessions");
+    let files;
+    try {
+        files = await readdir(dir);
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            files = [];
+        else
+            throw error;
+    }
+    for (const file of files.filter(f => f.endsWith(".json"))) {
+        const path = join(dir, file);
+        const raw = await readFile(path, "utf8");
+        let binding;
+        try {
+            binding = JSON.parse(raw);
+        }
+        catch {
+            continue;
+        }
+        // Re-read to avoid clearing a session rebound while cleanup was running.
+        if (binding.root === root && await readFile(path, "utf8") === raw)
+            await unlink(path);
+    }
+    await unlink(join(common, "morpheus-temporary-worktrees", `${sessionKey(root)}.json`)).catch(error => {
+        if (error.code !== "ENOENT")
+            throw error;
+    });
 }
 //# sourceMappingURL=tasks.js.map

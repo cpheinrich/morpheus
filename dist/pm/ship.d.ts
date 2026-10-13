@@ -110,3 +110,15 @@ export declare function reconcile(productDir: string, cwd: string, opts?: {
     write: boolean;
 }): Promise<ReconcileResult>;
 export declare function formatReconcile(r: ReconcileResult): string;
+export interface CleanupPr {
+    number: number;
+    headRefName: string;
+    headRefOid: string;
+    baseRefName: string;
+    state: string;
+    mergeCommit: {
+        oid: string;
+    };
+}
+/** Stronger than board reconciliation: exact branch/repository and complete immutable PR evidence. */
+export declare function cleanupPr(cwd: string, branch: string, trunkRemote: string): Promise<CleanupPr>;

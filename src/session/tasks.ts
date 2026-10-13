@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rename, unlink, writeFile 
 import { listWorktrees, assertWorktreePolicy } from "./worktrees.js";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
 import { checkoutIdentity, fetchTrunk, sessionGit as git, sessionKey } from "./start.js";
 import { findClaims } from "../pm/claim.js";
 import { ROADMAP_ID, roadmapIdFromBranch } from "../pm/id.js";
@@ -38,7 +39,10 @@ export async function boundTask(cwd: string, sessionId?: string): Promise<TaskBi
 
 async function destination(root: string, task: string): Promise<string> {
   const { common } = await checkoutIdentity(root);
-  const parent = join(dirname(dirname(common)), ".morpheus-worktrees", `${basename(dirname(common))}-${sessionKey(common).slice(0, 12)}`);
+  // Keep task checkouts out of the operator's source directory. The common
+  // Git directory keys paths so repositories with the same basename cannot
+  // collide; Git still owns registration and cleanup.
+  const parent = join(tmpdir(), "morpheus-worktrees", `${basename(dirname(common))}-${sessionKey(common).slice(0, 12)}`);
   await mkdir(parent, { recursive: true });
   return mkdtemp(join(parent, `${task.toLowerCase()}-`));
 }

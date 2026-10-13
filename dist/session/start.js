@@ -6,12 +6,14 @@ import { promisify } from "node:util";
 import { gitSubprocessEnv } from "../git-env.js";
 import { projectPolicy } from "./policy.js";
 import { resolveTrunk } from "./git.js";
+import { assertWorktreePolicy } from "./worktrees.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { measureLag, rescueDirtyTrunk, readDirt } from "./trunk-rescue.js";
 const exec = promisify(execFile);
-export const sessionGit = async (root, args) => {
+export const sessionGit = async (root, args, trim = true) => {
     try {
-        return (await exec("git", args, { cwd: root, timeout: 30_000, env: gitSubprocessEnv() })).stdout.trim();
+        const { stdout } = await exec("git", args, { cwd: root, timeout: 30_000, env: gitSubprocessEnv() });
+        return trim ? stdout.trim() : stdout;
     }
     catch (error) {
         const failure = error;
@@ -60,6 +62,7 @@ export async function prepareRepository(cwd, offline = false, rescueDeps = {}) {
     if (offline)
         throw new Error("Offline: latest remote code is unverified. Existing local work may continue explicitly offline; do not claim the checkout is current.");
     const fetched = await fetchTrunk(root);
+    await assertWorktreePolicy(root, fetched.branch);
     const branch = await sessionGit(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
     let rescue;
     if (branch === fetched.branch && rescueDeps !== false) {

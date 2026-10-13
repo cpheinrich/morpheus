@@ -9,4 +9,12 @@ export declare function boundTask(cwd: string, sessionId?: string): Promise<Task
 export declare function prepareTask(root: string, productDir: string, id: string): Promise<string | null>;
 /** Resume by explicit roadmap identity, never by guessing which branch is meant. */
 export declare function resumeTask(root: string, id: string, sessionId?: string): Promise<string>;
+export interface TemporaryTask {
+    root: string;
+    task: string;
+    gitDir: string;
+}
+export declare function temporaryTasks(common: string): Promise<TemporaryTask[]>;
+/** Remove only bindings naming the removed path, including other provider sessions. */
+export declare function clearTaskBindings(common: string, root: string): Promise<void>;
 export {};

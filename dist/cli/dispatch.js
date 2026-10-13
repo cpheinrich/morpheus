@@ -1,6 +1,6 @@
 import { sessionHookInput, startSession } from "./session-start.js";
 import { resolve } from "node:path";
-import { block, claim, resume, claims, create, index, linkIssue, migrateIds, ship, unblock, validate, } from "./pm.js";
+import { block, claim, resume, cleanup, worktrees, claims, create, index, linkIssue, migrateIds, ship, unblock, validate, } from "./pm.js";
 import { INBOX_DIR } from "../paths.js";
 import { pr } from "./check.js";
 import { validate as validateInbox } from "./inbox.js";
@@ -424,6 +424,14 @@ async function dispatchPm({ flags, command, rest, dir }) {
         }
         case "resume":
             return resume(rest[0] ?? "", process.cwd(), flags.sessionId);
+        case "cleanup":
+            if (flags.offline) {
+                console.error("Cleanup requires fresh remote evidence; offline cleanup is refused.");
+                return 1;
+            }
+            return cleanup(dir, rest[0] ?? "", process.cwd(), flags.dryRun || flags.check);
+        case "worktrees":
+            return worktrees(process.cwd(), rest[0], flags.dryRun || flags.check);
         case "claims":
             return claims(dir, process.cwd());
         case "link-issue": {
