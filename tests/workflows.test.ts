@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { ci as ciTemplate } from "../src/init/templates.js";
+import { ci as ciTemplate, iosNightly, PR_CHECK_CALLER_IF, reviewMetadata } from "../src/init/templates.js";
 
 /**
  * The workflows are shipped to every project, so a mistake here breaks repos
@@ -281,6 +281,10 @@ describe("callers match what they call", () => {
         ciTemplate({ node: true, rulesPath: "infra/firebase/firestore.rules" }),
       ) as Workflow,
     });
+    workflows.push({
+      file: "generated ios-nightly-build.yml",
+      wf: load(iosNightly({ app: "Example" })) as Workflow,
+    });
 
     for (const { file, wf } of workflows) {
       for (const [name, job] of Object.entries(wf.jobs ?? {})) {
@@ -384,28 +388,20 @@ describe("schedule.yml", () => {
   });
 });
 
-describe("osv-scan.yml", () => {
-  it("is reusable and pins the full OSV scan workflow", async () => {
-    const wf = await read("osv-scan.yml");
-    const scan = wf.jobs?.scan;
-
-    expect(wf.on).toHaveProperty("workflow_call");
-    expect(scan?.uses).toBe(
-      "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@0c58c542420dfd23fcac08dd9c8ca3cca9c36f1a",
-    );
-  });
-
-  it("schedules scans and runs them after Morpheus reaches main", async () => {
-    const wf = await read("security.yml");
-
-    expect(wf.on).toHaveProperty("schedule");
-    expect(wf.on).toHaveProperty("workflow_dispatch");
-    expect(wf.jobs?.osv?.uses).toBe("./.github/workflows/osv-scan.yml");
-    expect((wf as { permissions?: Record<string, string> }).permissions).toEqual({
-      actions: "read",
-      contents: "read",
-      "security-events": "write",
-    });
+describe("central security remediation opt-in", () => {
+  it("keeps policy locally without a credential-bearing repository workflow", async () => {
+    await expect(readFile(join(DIR, "security.yml"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    const config = JSON.parse(await readFile(join(import.meta.dirname, "../.github/morpheus-security.json"), "utf8"));
+    expect(config.requiredChecks).toEqual([
+      "node / check",
+      "pm / pm",
+      "pr / conventions",
+    ]);
+    // The review delivery job is intentionally skipped for this exact bot lane.
+    // Branch protection still requires its reported skipped check; the bot's
+    // own successful-check list must contain only checks that can pass.
+    expect(config.requiredChecks).not.toContain("agent-review / delivery");
+    expect(config).not.toHaveProperty("incidentRepository");
   });
 });
 
@@ -952,7 +948,14 @@ describe("ci.yml", () => {
 
     // No caller-level skip, on this job or any other: the delivery check must
     // be reported on every push for required-check protection to be satisfiable.
+    // One deliberate exception: `pr` skips an unlabelled *draft*, using exactly
+    // that unreported state as "waiting". A draft cannot merge anyway, and
+    // marking it ready (a trigger here) or labelling it runs the check.
     for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+      if (name === "pr") {
+        expect(job.if).toBe(`\${{ ${PR_CHECK_CALLER_IF} }}`);
+        continue;
+      }
       expect(job.if, `${name} must run on every push`).toBeUndefined();
     }
 
@@ -1607,6 +1610,14 @@ describe("ios-nightly-build.yml", () => {
     expect(validate?.run).toContain(
       'echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"',
     );
+    // A runner-provided build cache is used only when it exists, and then the
+    // SwiftPM cache action has nothing to keep.
+    expect(validate?.id).toBe("release_paths");
+    expect(validate?.run).toContain('if [ -n "${MORPHEUS_IOS_CI_CACHE:-}" ] && [ -d "$MORPHEUS_IOS_CI_CACHE" ]; then');
+    expect(validate?.run).toContain('echo "SOURCE_PACKAGES_PATH=$MORPHEUS_IOS_CI_CACHE/$SOURCE_PACKAGES_DIRECTORY" >> "$GITHUB_ENV"');
+    const spmCache = upload?.steps?.find((step) => step.name === "Cache resolved Swift packages") as
+      { if?: string } | undefined;
+    expect(String(spmCache?.if)).toContain("steps.release_paths.outputs.cached != 'true'");
     expect(release?.env?.ASC_API_KEY_ID).toBe("${{ secrets.APP_STORE_CONNECT_KEY_ID }}");
     expect(release?.env?.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64).toBe(
       "${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}",
@@ -1710,7 +1721,9 @@ describe("ios-testflight-upload action", () => {
       (step) => step.name === "Archive, sign, verify, and upload to TestFlight",
     );
 
-    expect(release?.run).toBe('"$GITHUB_ACTION_PATH/upload-testflight.sh"');
+    expect(release?.run).toBe('python3 "$GITHUB_ACTION_PATH/signing-lock.py" "$GITHUB_ACTION_PATH/upload-testflight.sh"');
+    expect(release?.env?.SIGNING_LOCK_TIMEOUT_SECONDS).toBe("${{ inputs.signing-lock-timeout-seconds }}");
+    expect((await action()).inputs?.["signing-lock-timeout-seconds"]?.default).toBe("600");
     expect(release?.env?.ASC_API_KEY_ID).toBe("${{ inputs.asc-api-key-id }}");
     expect(release?.env?.IOS_DISTRIBUTION_P12_PASSWORD).toBe(
       "${{ inputs.ios-distribution-p12-password }}",
@@ -1719,7 +1732,7 @@ describe("ios-testflight-upload action", () => {
     expect(release?.env?.VALIDATE_APP_SCRIPT).toBe("${{ inputs.validate-app-script }}");
     // The credentials are the last thing to enter a process, after the
     // toolchain and the project layout have been proven good.
-    expect(steps.indexOf(release!)).toBe(steps.length - 1);
+    expect(steps.indexOf(release!)).toBeGreaterThan(steps.findIndex((step) => step.name === "Install release tooling"));
     expect(steps.findIndex((step) => step.name === "Install release tooling")).toBeLessThan(
       steps.length - 1,
     );
@@ -1736,11 +1749,7 @@ describe("ios-testflight-upload action", () => {
     const cache = steps.find((step) => step.uses?.startsWith("actions/cache@"));
     const tooling = steps.find((step) => step.name === "Install release tooling");
 
-    // working-directory, project and scheme are written into GITHUB_ENV, one
-    // KEY=VALUE per line; a value carrying a newline would append an arbitrary
-    // variable to the calling job.
-    expect(validate?.run).toContain('for caller_value in "$WORKING_DIRECTORY" "$PROJECT" "$SCHEME"');
-    expect(validate?.run).toContain("*[[:space:]]*)");
+    // Executable name validation and argv coverage live in upload-configuration.test.ts.
     expect(validate?.run).toContain('versioned_xcode_app="/Applications/Xcode_${XCODE_VERSION}.app"');
     expect(validate?.run).toContain("elif [ -d /Applications/Xcode.app ]");
     expect(validate?.run).toContain('installed_version=$("$xcode_app/Contents/Developer/usr/bin/xcodebuild"');
@@ -1770,7 +1779,7 @@ describe("ios-testflight-upload action", () => {
     // script no longer *does* has to read past them.
     const executable = raw.replace(/^[ \t]*#.*$/gm, "");
     const archive = raw.slice(
-      raw.indexOf("xcodebuild archive \\"),
+      raw.indexOf("archive_arguments=("),
       raw.indexOf("ARCHIVED_APPLICATIONS_PATH="),
     );
 
@@ -1787,7 +1796,7 @@ describe("ios-testflight-upload action", () => {
     const raw = await script();
     const exportOptions = raw.slice(
       raw.indexOf("plutil -create xml1"),
-      raw.indexOf("xcodebuild archive \\"),
+      raw.indexOf("archive_arguments=("),
     );
 
     expect(exportOptions).toContain("plutil -insert destination -string export");
@@ -1806,15 +1815,30 @@ describe("ios-testflight-upload action", () => {
     );
     expect(raw).toContain('--file "$IPA_PATH"');
     expect(raw).toContain("builds next-number");
-    expect(raw).toContain("builds add-beta-group");
-    expect(raw).toContain("processingState");
+    const distribution = await readFile(join(ACTION_DIR, "distribute-testflight.sh"), "utf8");
+    expect(distribution).toContain("builds add-beta-group");
+    expect(distribution).toContain("processingState");
+  });
+
+  it("seeds declared entitlements before export and rejects their loss before upload", async () => {
+    const raw = await script();
+    expect(raw).toContain('xcodebuild -showBuildSettings -json "${archive_arguments[@]}"');
+    expect(raw).toContain('xcodebuild archive "${archive_arguments[@]}"');
+    const seed = raw.indexOf('codesign --force --sign -');
+    const exportArchive = raw.indexOf('/usr/bin/xcodebuild -exportArchive');
+    const verify = raw.indexOf('python3 "$ENTITLEMENTS_TOOL" verify');
+    expect(seed).toBeGreaterThan(raw.indexOf('run_without_release_secrets "$VALIDATE_APP_SCRIPT_PATH"'));
+    expect(seed).toBeLessThan(exportArchive);
+    expect(raw).toContain('--entitlements "$EXPECTED_ENTITLEMENTS_PATH" "$ARCHIVED_APPLICATION_PATH"');
+    expect(verify).toBeGreaterThan(exportArchive);
+    expect(verify).toBeLessThan(raw.indexOf('run_asccli builds upload'));
   });
 
   it("surfaces terminal upload-processing errors before the build-list deadline", async () => {
-    const raw = await script();
+    const raw = await readFile(join(ACTION_DIR, "distribute-testflight.sh"), "utf8");
 
-    expect(raw).toContain('upload_json="$(');
-    expect(raw).toContain('upload_id="$(json_value "$upload_json" "data.0.id"');
+    expect(await script()).toContain('upload_json="$(');
+    expect(raw).toContain('upload_id="${UPLOAD_ID:?Missing confirmed upload id}"');
     expect(raw).toContain("run_asccli builds uploads get");
     expect(raw).toContain('[[ "$upload_state" == "FAILED" ]]');
     expect(raw).toContain("data.0.errors.0.code");
@@ -2025,8 +2049,10 @@ describe("ios-ci.yml", () => {
     const lint = steps.find((step) => step.name === "Lint changed Swift sources");
     const script = String(lint?.run);
 
-    expect((checkout?.with as Record<string, unknown>)?.["fetch-depth"]).toBe(2);
-    expect(lint?.if).toBe("${{ inputs.swift-format-lint }}");
+    expect((checkout?.with as Record<string, unknown>)?.["fetch-depth"]).toBe(
+      "${{ github.event_name == 'pull_request' && inputs.watch-paths != '' && '0' || '2' }}",
+    );
+    expect(lint?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}");
     expect(lint?.env).toMatchObject({
       SWIFT_FORMAT_CONFIGURATION: "${{ inputs.swift-format-configuration }}",
       WORKING_DIRECTORY: "${{ inputs.working-directory }}",
@@ -2034,12 +2060,25 @@ describe("ios-ci.yml", () => {
     expect(script).toContain("xcrun swift-format --version");
     expect(script).toContain("swift-format dump-configuration");
     expect(script).toContain("--effective");
-    expect(script).toContain("git diff-tree");
-    expect(script).toContain("--diff-filter=ACMR");
     expect(script).toContain("swift-format lint");
     expect(script).toContain("--parallel");
     expect(script).toContain("--strict");
     expect(script).not.toContain("brew install");
+
+    // The selection is shared rather than inlined: consumers call the same
+    // script, and a step that quietly went back to its own pathspec would make
+    // that false again.
+    const select = steps.find((step) => step.name === "Select changed Swift sources") as
+      | { uses?: string; if?: string; with?: Record<string, string> }
+      | undefined;
+    expect(select?.uses).toBe("cpheinrich/morpheus/.github/actions/swift-changed-files@main");
+    // Gated on the change scope like every other native step, so an unrelated
+    // change skips the selection rather than paying for a checkout of it.
+    expect(select?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}");
+    expect(select?.with?.["working-directory"]).toBe("${{ inputs.working-directory }}");
+    expect((lint?.env as Record<string, string> | undefined)?.SWIFT_CHANGED_FILES)
+      .toBe("${{ steps.swift-changed-files.outputs.file }}");
+    expect(script).not.toContain(":(glob)");
   });
 
   it("strictly lints added and modified Swift files without sweeping legacy source", async () => {
@@ -2074,6 +2113,19 @@ describe("ios-ci.yml", () => {
       const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
       const script = steps.find((step) => step.name === "Lint changed Swift sources")?.run;
       expect(script).toBeTruthy();
+
+      // The step no longer selects the files itself; the shared script does,
+      // through the composite action. Standing in for the action here keeps
+      // this test about the lint while tests/swift-changed-files.test.ts covers
+      // the selection — and keeps the two from being proved by the same code.
+      const selection = join(root, "selection");
+      const selected = await execFileAsync("bash", [
+        join(process.cwd(), "scripts/swift-changed-files.sh"),
+        "--working-directory",
+        "apps/ios",
+      ], { cwd: repo, encoding: "buffer" });
+      await writeFile(selection, selected.stdout);
+
       await execFileAsync("bash", ["-c", String(script)], {
         cwd: join(repo, "apps/ios"),
         env: {
@@ -2082,6 +2134,7 @@ describe("ios-ci.yml", () => {
           GITHUB_WORKSPACE: repo,
           SWIFT_FORMAT_CONFIGURATION: ".swift-format",
           WORKING_DIRECTORY: "apps/ios",
+          SWIFT_CHANGED_FILES: selection,
           XCRUN_LOG: log,
         },
       });
@@ -2200,11 +2253,11 @@ describe("ios-ci.yml", () => {
     const job = ((await read("ios-ci.yml")) as IosCi).jobs?.test;
     const prepare = job?.steps?.find((step) => step.name === "Prepare isolated build directories");
     expect(String(prepare?.run)).toContain('$RUNNER_TEMP/ios-ci');
-    expect(String(prepare?.run)).toContain('SOURCE_PACKAGES=$ios_ci_root/SourcePackages');
-    expect(String(prepare?.run)).toContain('DERIVED_DATA=$ios_ci_root/DerivedData');
-    expect(String(prepare?.run)).toContain('RESULTS=$ios_ci_root/Results');
-    expect(String(prepare?.run)).toContain('LOGS=$ios_ci_root/Logs');
-    expect(String(prepare?.run)).toContain('SCREENSHOTS=$ios_ci_root/Screenshots');
+    expect(String(prepare?.run)).toContain('SOURCE_PACKAGES=$cache_root/SourcePackages');
+    expect(String(prepare?.run)).toContain('DERIVED_DATA=$cache_root/DerivedData');
+    expect(String(prepare?.run)).toContain('RESULTS=$output_root/Results');
+    expect(String(prepare?.run)).toContain('LOGS=$output_root/Logs');
+    expect(String(prepare?.run)).toContain('SCREENSHOTS=$output_root/Screenshots');
 
     const raw = await readFile(join(DIR, "ios-ci.yml"), "utf8");
     expect(raw).toContain("${{ runner.temp }}/ios-ci/SourcePackages");
@@ -2213,52 +2266,113 @@ describe("ios-ci.yml", () => {
     expect(raw).toContain('"$RESULTS/Tests.xcresult"');
   });
 
-  it("clears cancelled-run outputs on a reused runner while preserving build caches", async () => {
+  it("isolates late cancelled-run writes, retries and same-attempt jobs while preserving caches", async () => {
     const root = await mkdtemp(join(tmpdir(), "morpheus ios outputs "));
     const iosRoot = join(root, "ios-ci");
     const envFile = join(root, "github-env");
+    const outputFile = join(root, "github-output");
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const script = steps.find((step) => step.name === "Prepare isolated build directories")?.run;
     expect(typeof script).toBe("string");
 
     try {
-      const prepare = () => execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
-        env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile },
-      });
-      await prepare(); // A fresh hosted runner still creates every directory.
       for (const cache of ["SourcePackages", "DerivedData"]) {
+        await mkdir(join(iosRoot, cache), { recursive: true });
         await writeFile(join(iosRoot, cache, "cached"), cache);
       }
       await writeFile(join(root, "other-job"), "untouched");
-
-      for (let attempt = 0; attempt < 2; attempt++) {
-        for (const bundle of ["Build.xcresult", "Tests.xcresult"]) {
-          await mkdir(join(iosRoot, "Results", bundle), { recursive: true });
-          await writeFile(join(iosRoot, "Results", bundle, "partial"), "cancelled");
-        }
-        await writeFile(join(iosRoot, "Logs", "previous.log"), "old log");
-        await writeFile(join(iosRoot, "Screenshots", "previous.png"), "old screenshot");
+      let previous: Record<string, string> = {
+        RESULTS: join(iosRoot, "Results"), LOGS: join(iosRoot, "Logs"),
+        SCREENSHOTS: join(iosRoot, "Screenshots"),
+      };
+      const seen = new Set<string>();
+      for (const [run, attempt] of [[100, 1], [101, 1], [101, 2], [101, 2]]) {
         await writeFile(envFile, "");
-        await prepare();
-
-        for (const output of ["Results", "Logs", "Screenshots"]) {
-          expect(await readdir(join(iosRoot, output)), output).toEqual([]);
+        await writeFile(outputFile, "");
+        await execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
+          env: { ...process.env, MORPHEUS_IOS_CI_CACHE: "", RUNNER_TEMP: root, GITHUB_ENV: envFile,
+            GITHUB_OUTPUT: outputFile, GITHUB_RUN_ID: String(run), GITHUB_RUN_ATTEMPT: String(attempt) },
+        });
+        const paths = Object.fromEntries((await readFile(envFile, "utf8")).trim().split("\n")
+          .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
+        // The superseded process writes AFTER the replacement's preparation.
+        for (const bundle of ["Build.xcresult", "Tests.xcresult"]) {
+          await mkdir(join(previous.RESULTS!, bundle), { recursive: true });
+          await writeFile(join(previous.RESULTS!, bundle, "partial"), "cancelled");
         }
-        for (const cache of ["SourcePackages", "DerivedData"]) {
-          expect(await readFile(join(iosRoot, cache, "cached"), "utf8")).toBe(cache);
+        for (const key of ["LOGS", "SCREENSHOTS"]) {
+          await mkdir(previous[key]!, { recursive: true });
+          await writeFile(join(previous[key]!, "previous"), "old evidence");
+        }
+        for (const key of ["RESULTS", "LOGS", "SCREENSHOTS"]) {
+          expect(await readdir(paths[key]!), key).toEqual([]);
+          expect(paths[key]).not.toBe(previous[key]);
+        }
+        expect(seen.has(paths.RESULTS!)).toBe(false);
+        seen.add(paths.RESULTS!);
+        for (const [key, cache] of [["SOURCE_PACKAGES", "SourcePackages"], ["DERIVED_DATA", "DerivedData"]]) {
+          expect(paths[key!]).toBe(join(iosRoot, cache!));
+          expect(await readFile(join(iosRoot, cache!, "cached"), "utf8")).toBe(cache);
         }
         expect(await readFile(join(root, "other-job"), "utf8")).toBe("untouched");
-        expect(await readFile(envFile, "utf8")).toBe([
-          `SOURCE_PACKAGES=${iosRoot}/SourcePackages`,
-          `DERIVED_DATA=${iosRoot}/DerivedData`,
-          `RESULTS=${iosRoot}/Results`,
-          `LOGS=${iosRoot}/Logs`,
-          `SCREENSHOTS=${iosRoot}/Screenshots`,
-          "",
+        expect(await readFile(outputFile, "utf8")).toBe([
+          "cached=false",
+          `results=${paths.RESULTS}`, `logs=${paths.LOGS}`, `screenshots=${paths.SCREENSHOTS}`,
+          `evidence-name=ios-test-evidence-${paths.RESULTS!.split("/").at(-2)}`, "",
         ].join("\n"));
+        previous = paths;
       }
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("roots the build caches in a runner-provided directory and keeps evidence per job", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus ios cache "));
+    const cache = join(root, "CICache", "ios-ci");
+    const envFile = join(root, "github-env");
+    const outputFile = join(root, "github-output");
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    const script = steps.find((step) => step.name === "Prepare isolated build directories")?.run;
+    const prepare = async (cacheDirectory: string) => {
+      await writeFile(envFile, "");
+      await writeFile(outputFile, "");
+      await execFileAsync("bash", ["-euo", "pipefail", "-c", String(script)], {
+        env: { ...process.env, RUNNER_TEMP: root, GITHUB_ENV: envFile, GITHUB_OUTPUT: outputFile,
+          GITHUB_RUN_ID: "7", GITHUB_RUN_ATTEMPT: "1", MORPHEUS_IOS_CI_CACHE: cacheDirectory },
+      });
+      const paths = Object.fromEntries((await readFile(envFile, "utf8")).trim().split("\n")
+        .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
+      return { paths, output: await readFile(outputFile, "utf8") };
+    };
+    try {
+      await mkdir(cache, { recursive: true });
+      const cached = await prepare(cache);
+      expect(cached.paths.SOURCE_PACKAGES).toBe(join(cache, "SourcePackages"));
+      expect(cached.paths.DERIVED_DATA).toBe(join(cache, "DerivedData"));
+      // Results are job-owned and never shared through the cache.
+      expect(cached.paths.RESULTS!.startsWith(join(root, "ios-ci") + "/")).toBe(true);
+      expect(cached.output.startsWith("cached=true\n")).toBe(true);
+      // A cache directory that does not exist is ignored rather than created
+      // somewhere the runner did not provide.
+      const missing = await prepare(join(root, "absent"));
+      expect(missing.paths.SOURCE_PACKAGES).toBe(join(root, "ios-ci", "SourcePackages"));
+      expect(missing.output.startsWith("cached=false\n")).toBe(true);
+      // The SwiftPM cache action is skipped when the runner keeps the checkouts.
+      const action = steps.find((step) => step.name === "Cache resolved Swift packages");
+      expect(String(action?.if)).toContain("steps.ios_paths.outputs.cached != 'true'");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("cannot export or upload previous evidence when preparation did not succeed", async () => {
+    const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
+    expect(steps.find((step) => step.name === "Prepare isolated build directories")?.id).toBe("ios_paths");
+    for (const name of ["Export rendered test attachments", "Upload rendered test attachments",
+      "Collect Firebase emulator diagnostics", "Upload Xcode failure evidence"]) {
+      expect(steps.find((step) => step.name === name)?.if, name)
+        .toContain("steps.ios_paths.outcome == 'success'");
     }
   });
 
@@ -2274,8 +2388,8 @@ describe("ios-ci.yml", () => {
     expect(String(test?.run)).toContain(
       '-maximum-parallel-testing-workers "$MAXIMUM_PARALLEL_TESTING_WORKERS"',
     );
-    expect(build?.if).toBe("${{ inputs.run-tests }}");
-    expect(test?.if).toBe("${{ inputs.run-tests }}");
+    expect(build?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}");
+    expect(test?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}");
   });
 
   it("can run app tests inside locked Firebase emulators with an in-context fixture", async () => {
@@ -2312,18 +2426,18 @@ describe("ios-ci.yml", () => {
     expect(String(upload?.if)).toContain("always()");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     expect(String((upload?.with as Record<string, unknown>)?.path)).toContain(
-      "${{ runner.temp }}/ios-ci/Screenshots",
+      "${{ steps.ios_paths.outputs.screenshots }}",
     );
   });
 
   it("uploads both xcresults and raw logs only when the run fails", async () => {
     const steps = ((await read("ios-ci.yml")) as IosCi).jobs?.test?.steps ?? [];
     const upload = steps.find((step) => step.name === "Upload Xcode failure evidence");
-    expect(upload?.if).toBe("failure()");
+    expect(upload?.if).toBe("${{ steps.scope.outputs.run == 'true' && failure() && steps.ios_paths.outcome == 'success' }}");
     expect(upload?.uses).toBe(UPLOAD_ARTIFACT_V7);
     const withBlock = upload?.with as Record<string, unknown> | undefined;
-    expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Results");
-    expect(String(withBlock?.path)).toContain("${{ runner.temp }}/ios-ci/Logs");
+    expect(String(withBlock?.path)).toContain("${{ steps.ios_paths.outputs.results }}");
+    expect(String(withBlock?.path)).toContain("${{ steps.ios_paths.outputs.logs }}");
   });
 
   it("passes caller-controlled values through env rather than script substitution", async () => {
@@ -2418,11 +2532,37 @@ describe("python-ci", () => {
 });
 
 /**
+ * The caller, not the shared workflow, chooses where CI runs: a private
+ * repository may put it on an isolated self-hosted runner (`linux-vm`) and keep
+ * GitHub-hosted `ubuntu-latest` as its fallback. A hardcoded `runs-on` would
+ * make that a fork of the workflow rather than one `with:` line, and a
+ * different default would move every existing caller off the hosted image.
+ */
+describe("node-ci, python-ci and web-ci runner input", () => {
+  interface Runnable {
+    on?: { workflow_call?: { inputs?: Record<string, { default?: unknown; type?: string }> } };
+    jobs?: Record<string, { "runs-on"?: unknown }>;
+  }
+
+  it.each([
+    ["node-ci.yml", "check"],
+    ["python-ci.yml", "check"],
+    ["web-ci.yml", "web"],
+  ])("%s takes the job's runner label from a string input defaulting to ubuntu-latest", async (file, job) => {
+    const wf = (await read(file)) as Runnable;
+    const input = wf.on?.workflow_call?.inputs?.["runner"];
+    expect(input?.type).toBe("string");
+    expect(input?.default).toBe("ubuntu-latest");
+    expect(wf.jobs?.[job]?.["runs-on"]).toBe("${{ inputs.runner }}");
+  });
+});
+
+/**
  * A job with no `timeout-minutes` runs a hung step to GitHub's six-hour default
  * on billed minutes. That has already happened here once, to a Playwright
  * install that hung for forty. Every reusable job must bound itself, and every
- * job that gates a pull request must cancel rather than run beside its
- * replacement.
+ * other reusable gates cancel superseded runs. PR conventions is the exception:
+ * GitHub can block a merge on any cancelled required run for the current head.
  */
 describe("every reusable job", () => {
   type Bounded = {
@@ -2449,8 +2589,9 @@ describe("every reusable job", () => {
     }
   });
 
-  it("cancels a superseded push on the checks that gate a pull request", async () => {
+  it("cancels superseded runs on gates other than required PR conventions", async () => {
     for (const file of GATES) {
+      if (file === "pr-check.yml") continue; // Checked for absence of concurrency below.
       const jobs = ((await read(file)) as Bounded).jobs ?? {};
       for (const [name, job] of Object.entries(jobs)) {
         if (job.uses) continue;
@@ -2479,7 +2620,7 @@ describe("beta app review submission", () => {
    * into an error code, and only fails when no submission exists at all.
    */
   it("treats a pending review as success and a genuine error as failure", async () => {
-    const script = await readFile(join(actionDir, "upload-testflight.sh"), "utf8");
+    const script = await readFile(join(actionDir, "distribute-testflight.sh"), "utf8");
     expect(script).toMatch(/pending:sibling-build-in-review/);
     expect(script).toMatch(/pending:this-build-/);
     expect(script).toMatch(/betaAppReviewSubmission"/);
@@ -2492,7 +2633,7 @@ describe("beta app review submission", () => {
    * the wrong line. This cost a debugging round; the guard is one line.
    */
   it("keeps apostrophes out of the embedded python heredoc", async () => {
-    const script = await readFile(join(actionDir, "upload-testflight.sh"), "utf8");
+    const script = await readFile(join(actionDir, "distribute-testflight.sh"), "utf8");
     const body = script.split("<<'PYTHON'\n")[1]?.split("\nPYTHON")[0] ?? "";
     expect(body.length).toBeGreaterThan(0);
     expect(body).not.toMatch(/'/);
@@ -2500,11 +2641,150 @@ describe("beta app review submission", () => {
 });
 
 describe("local review metadata", () => {
+  it("lets every required conventions check finish, including metadata bursts", async () => {
+    const wf = await read("pr-check.yml") as {
+      concurrency?: unknown;
+      jobs: { conventions: { concurrency?: unknown } };
+    };
+    const ci = await read("ci.yml") as { concurrency?: unknown; jobs: { pr: { concurrency?: unknown } } };
+    const metadata = await read("review-metadata.yml") as { concurrency?: unknown; jobs: { pr: { concurrency?: unknown } } };
+    expect(wf.concurrency).toBeUndefined();
+    expect(wf.jobs.conventions.concurrency).toBeUndefined();
+    expect(ci.concurrency).toBeUndefined();
+    expect(ci.jobs.pr.concurrency).toBeUndefined();
+    expect(metadata.concurrency).toBeUndefined();
+    expect(metadata.jobs.pr.concurrency).toBeUndefined();
+  });
   it("reruns only conventions without replacing build/test statuses", async () => {
     const wf = await read("review-metadata.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses: string }> };
     expect(wf.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
     expect(Object.keys(wf.jobs)).toEqual(["pr"]);
     expect(wf.jobs.pr?.uses).toContain("pr-check.yml");
+  });
+  it("puts the draft skip on every pr-check caller job, never inside the reusable workflow", async () => {
+    const want = `\${{ ${PR_CHECK_CALLER_IF} }}`;
+    type Caller = { jobs: Record<string, { if?: string; uses?: string }> };
+    const callers: Array<[string, Caller]> = [
+      ["ci.yml", await read("ci.yml") as Caller],
+      ["review-metadata.yml", await read("review-metadata.yml") as Caller],
+      ["scaffold ci", load(ciTemplate({ node: true })) as Caller],
+      ["scaffold review-metadata", load(reviewMetadata()) as Caller],
+    ];
+    for (const [name, wf] of callers) {
+      expect(wf.jobs.pr?.uses, name).toContain("pr-check.yml");
+      expect(wf.jobs.pr?.if, name).toBe(want);
+    }
+    // Inside, a skip would report `pr / conventions` as skipped, which satisfies protection.
+    const inner = await read("pr-check.yml") as { jobs: { conventions: { if?: string } } };
+    expect(inner.jobs.conventions.if).toBe("github.event_name == 'pull_request'");
+  });
+  it("skips only an unlabelled draft", () => {
+    // Evaluate the expression itself, translated mechanically, against the payloads that matter.
+    const js = PR_CHECK_CALLER_IF
+      .replace(/contains\(github\.event\.pull_request\.labels\.\*\.name, ('[^']+')\)/g, "labels.includes($1)")
+      .replace(/github\.event\.pull_request\.draft/g, "draft")
+      .replace(/github\.event_name/g, "eventName")
+      .replace(/!=/g, "!==");
+    expect(js).not.toMatch(/github\./);
+    const runs = new Function("eventName", "draft", "labels", `return ${js};`) as (e: string, d: boolean, l: string[]) => boolean;
+    expect(runs("pull_request", true, [])).toBe(false);
+    expect(runs("pull_request", true, ["bug"])).toBe(false);
+    expect(runs("pull_request", true, ["agent-reviewed"])).toBe(true);
+    expect(runs("pull_request", true, ["manager-reviewed"])).toBe(true);
+    expect(runs("pull_request", false, [])).toBe(true);
+    expect(runs("push", false, [])).toBe(true);
+  });
+  it("re-runs conventions when a draft becomes ready, in this repository and in the scaffold", async () => {
+    // A draft without agent-reviewed passes as pending because GitHub will not merge a draft.
+    // That is safe only while every caller re-runs the check on ready_for_review, the way it
+    // re-runs on unlabeled; without the trigger the draft's green result would stand.
+    const own = await read("ci.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses?: string }> };
+    expect(own.jobs.pr?.uses).toContain("pr-check.yml");
+    expect(own.on.pull_request.types).toContain("ready_for_review");
+    const scaffold = load(ciTemplate({ node: false })) as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses?: string }> };
+    expect(scaffold.jobs.pr?.uses).toContain("pr-check.yml");
+    expect(scaffold.on.pull_request.types).toContain("ready_for_review");
+  });
+  const prHeadBlock = async () => {
+    const wf = await read("pr-check.yml") as { jobs: { conventions: { steps: Array<{ name?: string; run?: string }> } } };
+    const run = wf.jobs.conventions.steps.find(s => s.name === "Check PR conventions")?.run ?? "";
+    const block = /^# >>> pr-head$.*?^# <<< pr-head$/ms.exec(run)?.[0];
+    expect(block).toBeDefined();
+    expect(run.indexOf(block!)).toBeLessThan(run.indexOf("check pr"));
+    return block!;
+  };
+  /** An origin whose PR head is reachable only from refs/pull/7/head, as for a fork. */
+  async function forkOrigin(tmp: string) {
+    const git = (cwd: string, ...args: string[]) => execFileAsync("git", args, { cwd }).then(r => r.stdout.trim());
+    const origin = join(tmp, "origin");
+    await mkdir(origin);
+    await git(origin, "init", "-q", "-b", "main");
+    await git(origin, "config", "user.email", "t@example.com");
+    await git(origin, "config", "user.name", "T");
+    await writeFile(join(origin, "morpheus.json"), "{}");
+    await git(origin, "add", ".");
+    await git(origin, "commit", "-qm", "base");
+    await git(origin, "checkout", "-q", "-b", "fork-only");
+    await writeFile(join(origin, "morpheus.json"), '{"review":{"required":true}}');
+    await git(origin, "commit", "-qam", "head");
+    const head = await git(origin, "rev-parse", "HEAD");
+    await git(origin, "update-ref", "refs/pull/7/head", head);
+    await git(origin, "checkout", "-q", "main");
+    await git(origin, "branch", "-q", "-D", "fork-only");
+    return { git, origin, head };
+  }
+  it("fetches and checks out a PR head the checkout does not hold, before reading morpheus.json", async () => {
+    // Reproduces `Command failed: git show <sha>:morpheus.json` ("exists on disk, but not in
+    // <sha>", Git's wording for a missing commit): the run checked out the base branch, and the
+    // head was on refs/pull/N/head only. The workflow's own block is run, not a copy of it.
+    const block = await prHeadBlock();
+    const tmp = await mkdtemp(join(tmpdir(), "pr-head-"));
+    try {
+      const { git, origin, head } = await forkOrigin(tmp);
+      const clone = join(tmp, "clone");
+      // --no-local: a transport clone copies only reachable objects, as a fetch from GitHub does.
+      await execFileAsync("git", ["clone", "-q", "--no-local", origin, clone]);
+      await expect(git(clone, "show", `${head}:morpheus.json`)).rejects.toThrow("exists on disk, but not in");
+      await execFileAsync("bash", ["-c", `set -euo pipefail\n${block}`], { cwd: clone, env: { ...process.env, EXPECTED_HEAD: head, PR_NUMBER: "7" } });
+      expect(await git(clone, "show", `${head}:morpheus.json`)).toBe('{"review":{"required":true}}');
+      expect(await git(clone, "rev-parse", "HEAD")).toBe(head);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+  it("leaves the named error to check pr when the head cannot be fetched", async () => {
+    const block = await prHeadBlock();
+    const tmp = await mkdtemp(join(tmpdir(), "pr-head-"));
+    try {
+      const { git, origin } = await forkOrigin(tmp);
+      const clone = join(tmp, "clone");
+      await execFileAsync("git", ["clone", "-q", "--no-local", origin, clone]);
+      const before = await git(clone, "rev-parse", "HEAD");
+      const { stdout } = await execFileAsync("bash", ["-c", `set -euo pipefail\n${block}`], { cwd: clone, env: { ...process.env, EXPECTED_HEAD: "f".repeat(40), PR_NUMBER: "99" } });
+      expect(stdout).toContain("::warning::Could not fetch refs/pull/99/head.");
+      expect(await git(clone, "rev-parse", "HEAD")).toBe(before);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+  it("leaves a merge-commit checkout of the right head alone", async () => {
+    const block = await prHeadBlock();
+    const tmp = await mkdtemp(join(tmpdir(), "pr-head-"));
+    try {
+      const { git, origin, head } = await forkOrigin(tmp);
+      const clone = join(tmp, "clone");
+      await execFileAsync("git", ["clone", "-q", "--no-local", origin, clone]);
+      await git(clone, "config", "user.email", "t@example.com");
+      await git(clone, "config", "user.name", "T");
+      await git(clone, "fetch", "-q", "origin", `+refs/pull/7/head:refs/remotes/pull/7/head`);
+      await git(clone, "merge", "-q", "--no-ff", "-m", "merge", head);
+      const merge = await git(clone, "rev-parse", "HEAD");
+      expect(await git(clone, "rev-parse", "HEAD^2")).toBe(head);
+      await execFileAsync("bash", ["-c", `set -euo pipefail\n${block}`], { cwd: clone, env: { ...process.env, EXPECTED_HEAD: head, PR_NUMBER: "7" } });
+      expect(await git(clone, "rev-parse", "HEAD")).toBe(merge);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   });
   it("checks live PR metadata and rejects a superseded head", async () => {
     const wf = await read("pr-check.yml") as { jobs: { conventions: { steps: Array<{ name?: string; run?: string }> } } };
@@ -2513,5 +2793,264 @@ describe("local review metadata", () => {
     expect(run).toContain('.head.sha == $sha');
     expect(run).toContain('GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json"');
     expect(run).toContain('--base "origin/$BASE_REF"');
+  });
+});
+
+describe("the scaffolded iOS nightly caller", () => {
+  const actionInputs = async () => {
+    const action = load(
+      await readFile(join(import.meta.dirname, "../.github/actions/ios-testflight-upload/action.yml"), "utf8"),
+    ) as { inputs: Record<string, { required?: boolean }> };
+    return action.inputs;
+  };
+  const uploadStep = () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const upload = wf.jobs?.upload as {
+      environment?: string;
+      steps?: Array<{ uses?: string; with?: Record<string, unknown> }>;
+    };
+    return { wf, upload, step: upload?.steps?.at(-1) };
+  };
+
+  /**
+   * The schedule is the one value in this template that is not app-specific,
+   * so it is the one worth pinning. 06:00 America/Los_Angeles is the standard
+   * slot. GitHub evaluates cron in UTC and has no timezone key, so the file
+   * writes the UTC equivalent and says which Pacific time it means.
+   */
+  it("offers 06:00 Pacific as the nightly slot, written as UTC cron", () => {
+    const rendered = iosNightly({ app: "Example" });
+    expect(rendered).toContain('#   - cron: "0 13 * * *"');
+    expect(rendered).toContain("06:00 America/Los_Angeles");
+    expect(rendered).toContain('"0 13" is 06:00 PDT and\n  # 05:00 PST');
+    expect(rendered).not.toMatch(/^\s*#?\s*timezone:/m);
+    // Screenshot dedup in the reusable workflow needs the caller's zone.
+    const wf = load(rendered) as Workflow;
+    expect((wf.jobs?.release as { with?: Record<string, unknown> })?.with?.["schedule-timezone"]).toBe(
+      "America/Los_Angeles",
+    );
+  });
+
+  /**
+   * A scaffolded project has no signing credentials yet, so a live cron would
+   * fail every night until someone configured them. A scaffold that is red
+   * before anyone has touched it teaches people to ignore red CI — the same
+   * reason `ci` does not wire node-ci into a non-pnpm repository.
+   */
+  it("releases only on demand until the schedule is uncommented", () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const triggers = Object.keys(wf.on ?? {});
+    expect(triggers).toContain("workflow_dispatch");
+    expect(triggers).not.toContain("schedule");
+  });
+
+  /**
+   * The upload job must stay in the caller. GitHub does not pass a caller
+   * repository's environment secrets into a cross-repository reusable
+   * workflow, so an upload job inside ios-nightly-build.yml reads every secret
+   * as an empty string. Evo and Kairos each lost a day to that separately.
+   * Inside the caller's job the composite action does the work, and every
+   * credential it needs arrives from `secrets.*` as an input.
+   */
+  it("keeps the signed upload in the caller as one action step fed from secrets", async () => {
+    const { wf, upload, step } = uploadStep();
+    const release = wf.jobs?.release as { with?: Record<string, unknown> };
+    expect(release?.with?.["run-upload"]).toBe(false);
+    expect(upload?.environment).toBe("testflight-internal");
+    expect(step?.uses).toBe("cpheinrich/morpheus/.github/actions/ios-testflight-upload@main");
+
+    const inputs = await actionInputs();
+    const passed = step?.with ?? {};
+    for (const key of Object.keys(passed)) {
+      expect(Object.keys(inputs), `${key} is not an input of ios-testflight-upload`).toContain(key);
+    }
+    for (const [key, spec] of Object.entries(inputs)) {
+      if (spec.required) expect(passed, `required input ${key} is not passed`).toHaveProperty(key);
+    }
+    const credentials = Object.entries(passed).filter(([key]) => /asc-api|distribution/.test(key));
+    expect(credentials.length).toBe(6);
+    for (const [, value] of credentials) expect(value).toMatch(/^\$\{\{ secrets\.[A-Z0-9_]+ \}\}$/);
+  });
+
+  /**
+   * With `run-upload: false`, the reusable workflow's own upload inputs are
+   * never read, and stating identifiers there as well as in the upload job is
+   * exactly the drift the workflow's input descriptions warn about.
+   */
+  it("passes the reusable workflow no upload-only inputs", () => {
+    const wf = load(iosNightly({ app: "Example" })) as Workflow;
+    const release = wf.jobs?.release as { with?: Record<string, unknown> };
+    for (const key of [
+      "environment",
+      "upload-script",
+      "source-packages-directory",
+      "apple-team-id",
+      "ios-bundle-id",
+      "app-store-connect-app-id",
+      "testflight-beta-group-ids",
+    ]) {
+      expect(release?.with, `${key} belongs to the upload job`).not.toHaveProperty(key);
+    }
+  });
+
+  /**
+   * The app-specific values cannot be guessed from the filesystem, so they are
+   * markers rather than plausible-looking defaults, stated once, on the action.
+   * A wrong-but-plausible team id fails much later and much less clearly than
+   * TODO does.
+   */
+  it("marks every value it cannot know, once", () => {
+    const { step } = uploadStep();
+    const rendered = iosNightly({ app: "Example" });
+    for (const key of [
+      "apple-team-id",
+      "ios-bundle-id",
+      "app-store-connect-app-id",
+      "testflight-beta-group-ids",
+    ]) {
+      expect(String(step?.with?.[key])).toContain("TODO");
+      expect(rendered.match(new RegExp("^\\s*" + key + ":", "gm"))?.length).toBe(1);
+    }
+  });
+
+  it("names the project's own scheme and Xcode project in both jobs", () => {
+    const { wf, step } = uploadStep();
+    const release = wf.jobs?.release as { with?: Record<string, unknown> };
+    expect(release?.with?.project).toBe("Example.xcodeproj");
+    expect(release?.with?.scheme).toBe("Example");
+    expect(step?.with?.project).toBe("Example.xcodeproj");
+    expect(step?.with?.scheme).toBe("Example");
+  });
+});
+
+describe("retired nightly screenshot gallery PR", () => {
+  // Every app carried a standing draft `nightly-ios-visual-qa` PR that never
+  // merged. It was retired on 2026-09-28; screenshots are reviewed from the
+  // nightly run's .xcresult artifacts instead.
+  it("ships no reusable workflow that publishes screenshots into a PR", async () => {
+    const files = await readdir(join(import.meta.dirname, "..", ".github", "workflows"));
+    expect(files).not.toContain("ios-visual-qa.yml");
+    for (const file of files.filter((f) => f.endsWith(".yml"))) {
+      const text = await readFile(join(import.meta.dirname, "..", ".github", "workflows", file), "utf8");
+      expect(text, file).not.toMatch(/nightly-ios-visual-qa/);
+    }
+  });
+});
+
+describe("gh-manager.yml", () => {
+  type Step = { name?: string; id?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string>; run?: string };
+  type Manager = {
+    on?: { workflow_call?: { inputs?: Record<string, { required?: boolean; default?: unknown }>; secrets?: Record<string, { required?: boolean }> } };
+    permissions?: Record<string, string>;
+    jobs?: Record<string, { needs?: string | string[]; if?: string; steps?: Step[]; strategy?: { "max-parallel"?: number; "fail-fast"?: boolean } }>;
+  };
+  const tokenStep = (wf: Manager, job: string) => wf.jobs?.[job]?.steps?.find(step => step.uses?.startsWith("actions/create-github-app-token@"));
+  const grants = (step: Step | undefined) => Object.fromEntries(Object.entries(step?.with ?? {}).filter(([key]) => key.startsWith("permission-")));
+
+  it("is reusable, pins its tooling to an exact commit, and takes every credential as a secret", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(wf.on?.workflow_call?.inputs?.["morpheus-sha"]?.required).toBe(true);
+    expect(Object.keys(wf.on?.workflow_call?.secrets ?? {}).sort()).toEqual(["app_id", "app_private_key", "claude_code_oauth_token"]);
+    expect(wf.permissions).toEqual({ contents: "read" });
+    for (const job of ["sweep", "session", "apply"]) {
+      const checkout = wf.jobs?.[job]?.steps?.find(step => step.with?.repository === "cpheinrich/morpheus");
+      expect(checkout?.with?.ref, `${job} tooling ref`).toBe("${{ inputs.morpheus-sha }}");
+      expect(checkout?.with?.["persist-credentials"], `${job} tooling credentials`).toBe(false);
+    }
+  });
+
+  it("sweeps with a token that can write nothing", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(Object.values(grants(tokenStep(wf, "sweep")))).toEqual(["read", "read", "read", "read", "read"]);
+  });
+
+  it("gives the session contents write and nothing else to write with, and no workflows permission", async () => {
+    // Contents write is repository-wide: this token could push another unprotected branch or a
+    // tag. What it cannot do is label, comment, close, or change a workflow file — the last
+    // because the permission is deliberately absent, so GitHub refuses such a push.
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(grants(tokenStep(wf, "session"))).toEqual({
+      "permission-contents": "write",
+      "permission-pull-requests": "read",
+      "permission-issues": "read",
+      "permission-checks": "read",
+      "permission-statuses": "read",
+      "permission-actions": "read",
+    });
+  });
+
+  it("keeps the model credential in the session job and the write token out of it", async () => {
+    const raw = await readFile(join(DIR, "gh-manager.yml"), "utf8");
+    const wf = load(raw) as Manager;
+    const uses = (job: string) => JSON.stringify(wf.jobs?.[job]);
+    expect(uses("session")).toContain("secrets.claude_code_oauth_token");
+    expect(uses("sweep")).not.toContain("claude_code_oauth_token");
+    expect(uses("apply")).not.toContain("claude_code_oauth_token");
+    // Only the session's own step sees the subscription token; no other step in that job does.
+    const withToken = (wf.jobs?.session?.steps ?? []).filter(step => JSON.stringify(step).includes("claude_code_oauth_token"));
+    expect(withToken.map(step => step.id)).toEqual(["session"]);
+    expect(grants(tokenStep(wf, "apply"))).toMatchObject({ "permission-pull-requests": "write", "permission-issues": "write" });
+  });
+
+  it("gives apply a full checkout of the target, so it reads the session's commits itself", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    const steps = wf.jobs?.apply?.steps ?? [];
+    const checkout = steps.find(step => step.with?.path === "target");
+    expect(checkout?.with).toMatchObject({ repository: "${{ inputs.target-repository }}", "fetch-depth": 0, "persist-credentials": false });
+    const apply = steps.find(step => step.id === "decisions");
+    expect(apply?.env?.GH_MANAGER_CHECKOUT).toBe("${{ github.workspace }}/target");
+    expect(steps.indexOf(checkout!)).toBeLessThan(steps.indexOf(apply!));
+  });
+
+  it("installs a pinned Playwright for screenshots before any credential, and carries the evidence to apply", async () => {
+    const raw = await readFile(join(DIR, "gh-manager.yml"), "utf8");
+    const wf = load(raw) as Manager;
+    expect(wf.on?.workflow_call?.inputs?.["playwright-version"]?.default).toBe("1.63.0");
+    const steps = wf.jobs?.session?.steps ?? [];
+    const install = steps.find(step => step.name === "Install tooling and move it out of the workspace");
+    expect(install?.run).toContain('"playwright@$PLAYWRIGHT_VERSION"');
+    expect(install?.run).toContain("playwright install --with-deps chromium");
+    // A stalled apt mirror once held this step for the whole job: the browser install is bounded
+    // and optional, and the step itself has a ceiling well inside the job's.
+    expect(install?.run).toContain("if ! timeout 480 playwright install --with-deps chromium; then");
+    expect((install as { "timeout-minutes"?: number } | undefined)?.["timeout-minutes"]).toBe(15);
+    expect(JSON.stringify(install?.env ?? {})).not.toContain("secrets.");
+    expect(steps.indexOf(install!)).toBeLessThan(steps.findIndex(step => step.id === "session"));
+    const upload = steps.find(step => step.name === "Hand the decision to the apply job");
+    expect(String(upload?.with?.path)).toContain("${{ runner.temp }}/manager/evidence-${{ matrix.pr }}/");
+  });
+
+  it("applies on a separate runner, after the sessions, even when one failed", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    expect(wf.jobs?.apply?.needs).toEqual(["sweep", "session"]);
+    expect(wf.jobs?.apply?.if).toContain("always()");
+    expect(wf.jobs?.session?.strategy).toMatchObject({ "fail-fast": false, "max-parallel": 2 });
+    const session = wf.jobs?.session?.steps?.find(step => step.id === "session");
+    expect(session?.run).toContain("--print");
+    expect(session?.run).not.toContain("gh-manager apply");
+  });
+
+  it("never interpolates an expression into a shell script", async () => {
+    const wf = (await read("gh-manager.yml")) as Manager;
+    for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+      for (const step of job.steps ?? []) expect(step.run ?? "", `${name}: ${step.name}`).not.toContain("${{");
+    }
+  });
+});
+
+describe("pr-check.yml and the GitHub Manager label", () => {
+  it("reads who applied manager-reviewed from the issue events, and tolerates a failed read", async () => {
+    const raw = await readFile(join(DIR, "pr-check.yml"), "utf8");
+    expect(raw).toContain('select(.event == "labeled" and .label.name == "manager-reviewed") | .actor.login');
+    expect(raw).toContain("manager_label_actor: (if $actor == \"\" then null else $actor end)");
+    expect(raw).toMatch(/\| tail -n 1 \|\| true\)"/);
+  });
+
+  it("takes the cleared head only from a comment the App wrote", async () => {
+    const raw = await readFile(join(DIR, "pr-check.yml"), "utf8");
+    expect(raw).toContain('select(.user.login == "morpheus-gh-manager[bot]") | .body // ""');
+    expect(raw).toContain("manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)");
+    // A failed read of the comments leaves no clearance, which the check refuses.
+    expect(raw).toContain("|| echo '[]' > \"$RUNNER_TEMP/comments.json\"");
   });
 });

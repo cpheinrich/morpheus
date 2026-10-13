@@ -260,7 +260,7 @@ set `enabled: false`, but must carry a substantive `reason` beside the opt-out.
 | Shared product schemas | `packages/shared/schema/` | Analytics contracts and database TS source → generated types + rules |
 | Brand messaging | `hq/brand/messaging.json` | Imported by web |
 | Analytics | PostHog Cloud + `/hq` KPIs | SaaS + dashboard |
-| Automations | `.claude/skills/`, `.github/workflows/` | Skills + Actions |
+| Automations | `.agents/skills/`, `.claude/skills/`, `.github/workflows/` | Skills + Actions |
 | Staging | Vercel preview per PR | Ephemeral — no permanent staging environment |
 | Unit tests | `apps/*/tests/` | Colocated |
 | E2E tests | `qa/e2e/` | Playwright |
@@ -280,7 +280,7 @@ set `enabled: false`, but must carry a substantive `reason` beside the opt-out.
 | Vendors, procurement | `hq/ops/vendors/`, `apps/hardware/` | YAML |
 | Secrets | `secrets.manifest.json` + GSM | Manifest; values external (§13) |
 | Customer support | Chatwoot + `/hq/support` | Self-hosted + dashboard |
-| Agent instructions | `AGENTS.md`, `.claude/skills/` | Markdown |
+| Agent instructions | `AGENTS.md`, `.agents/skills/`, `.claude/skills/` | Markdown |
 | Agent records | `.agent/` | Markdown (§7.5) |
 | Goals, roadmap, requests | `hq/product/` | Markdown (§8) |
 | Engineering docs | `docs/` → `/hq/docs` | Markdown + Mermaid |
@@ -498,7 +498,12 @@ needed.
   read exactly one file. Generated at init from `morpheus-kit/agent` fragments plus project
   specifics, with a marked region the CLI can update on `morpheus upgrade`.
 - **`apps/web/AGENTS.md`** — surface-specific.
-- **`.claude/skills/`** — named, repeatable procedures.
+- **`.agents/skills/`** — repository-owned Codex skills: named, repeatable procedures shared by
+  everyone who clones the project.
+- **`.claude/skills/`** — repository-owned Claude skills where that provider needs the same kind
+  of discoverable procedure. `launch-company` owns the cross-provider greenfield path from an
+  optional domain purchase through a verified public site and role-gated `/hq`; provider
+  commands remain the deterministic implementation beneath it.
 
 ### 7.2 Conventions and how they are enforced
 
@@ -594,6 +599,12 @@ The boundary is what makes this safe, and it is about obstacles rather than gate
 wanted for **judgment** — spending, publishing, sending, granting access, anything under §7.4's
 approval queue — the gate stands, and the browser being where it happens changes nothing. The rule
 applies only where browser use is the *single, entire* obstacle.
+
+
+Reviewer identity accepts runner-issued UUID/hex IDs and canonical Codex task paths. Task
+paths are scoped by the globally identified parent runner session in `authorSession`, so
+independent roots may reuse a task name without falsely appearing to reuse a reviewer.
+The same parent/path pair cannot review two tasks; provenance remains an attestation.
 
 ### 7.4 The review queue is GitHub
 
@@ -918,18 +929,34 @@ It declines to declare a handle whose `hq/team/<handle>.md` does not exist. A de
 is absent is unresolvable, therefore never `fresh`, and no flag reaches it — writing that to clear
 a warning would be the repair causing the outage.
 
-**Five commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
+**Seven commands are gated and the rest are not.** `pm claim` (claiming work you would not claim
 knowing what merged), `pm new` (filing an item that already exists), `pm link-issue` (attaching an
 issue to obsolete or unrelated work), `pm block` (escalating a question the inbox answered),
-`access sync` (granting from an allowlist that moved). A gate that
+`access sync` (granting from an allowlist that moved), `firebase auth setup` (changing an
+authentication provider and its OAuth domains), and the provisioning half of `web init`. `GATED`
+in `src/session/gate.ts` is the list. A gate that
 also fired on `pm index` or `check pr` would train people to route around it, and **the
 routing-around is permanent where the staleness was temporary.**
+
+**Refresh once; after that, let the gate do the checking.** An agent reads the records and takes a
+receipt once per session. Past the five-minute term `check` re-observes that receipt itself and
+re-certifies it when neither the trunk nor the records moved, so a second `context refresh` buys
+nothing unless a gated command has refused. On refusal the agent re-reads only what the refusal or
+the refresh's delta names. Measured from local transcripts in August–October 2026, agents ran
+`context refresh` 738 times (median four per session, maximum 70), about half within five minutes
+of the previous one, re-reading roughly 1.8M tokens of records before them — while only 25 of 828
+gated commands were ever refused, and 305 refreshes were piped through `head` or `tail`, discarding
+the delta that is the reason to run it. The instructions, not the lease, were producing the
+ritual.
 
 **Startup prepares source; explicit refresh certifies reading.** The existing standard shim
 continues to invoke `morpheus context brief`, now also available as `context start`. The shared CLI
 fetches the configured canonical trunk into an invocation-private ref so simultaneous fetches cannot
-exchange `FETCH_HEAD`. A clean local trunk behind that exact commit fast-forwards; dirty checkouts,
-feature branches and divergent trunks remain intact and report missing commits. Offline or fetch
+exchange `FETCH_HEAD`. A local trunk behind that exact commit fast-forwards; feature branches and
+divergent trunks remain intact and report missing commits. Tracked edits on the trunk branch are
+first committed to a pushed `wip/trunk-*` draft PR and the trunk reset only once that commit is
+proven to hold them — a dirty trunk otherwise never advances, and one did not for three weeks.
+Untracked files are never committed; `doctor --all` reports stuck trunk checkouts fleet-wide. Offline or fetch
 failure is explicitly unverified, never a successful current-source report. A receipt is refused
 when the checkout does not contain the observed trunk. Checks repeat local source containment
 inside the lease term and before re-anchoring after a branch switch; code-only drift and
@@ -1276,7 +1303,9 @@ remain intact. A new registry entry inherits an existing yes. Disable removes on
 Morpheus block. Status reports every project and malformed or incompatible hooks without editing
 them.
 
-The managed block invokes the absolute path of the copied CLI and calls `self ensure`. Ensure is
+The managed block invokes the absolute path of the copied CLI and calls `self ensure`. It adds
+the CLI and installing Node runtime directories to its subprocess PATH, preserving the surrounding
+hook environment. Ensure is
 silent when current, serialises updates with a device lock, defers when canonical `main` cannot be
 verified, and uses the same disposable-clone installation as `self update` when stale. Hook failures
 are reported but swallowed so an already-completed pull or rebase is not presented as failed.
@@ -1284,10 +1313,13 @@ are reported but swallowed so an already-completed pull or rebase is not present
 Git intentionally cannot activate a hook delivered by that same pull; otherwise cloning or pulling
 an arbitrary repository could execute code on the device. The first-use bridge is therefore a
 checked-in `.morpheus/session-start.sh` plus `AGENTS.md`. The shim only inspects: a current CLI
-continues into `context brief`, while a missing CLI or one that predates the entire `self` command
-emits the exact consent instruction.
+continues into `context brief`, even when the auto-update status reports an unhealthy Git hook.
+Session and bootstrap scripts append common user-local and Homebrew tool directories to PATH
+without sourcing shell startup files. When the CLI cannot start, the shim reads the saved device
+preference: existing yes permits repair, no remains no, and invalid/unreadable state is diagnosed
+without overwriting it. Only an absent preference emits the exact consent instruction.
 
-After yes, `.morpheus/bootstrap.sh enable` clones reviewed current `main` into a disposable
+After yes, including an already saved opt-in, `.morpheus/bootstrap.sh enable` clones reviewed current `main` into a disposable
 directory, installs its reviewed lockfile, and invokes that clone's committed CLI directly — never
 the stale installed binary. It installs the standalone package, registers the current project,
 enables the managed hooks across the registry, and removes the clone. After no, `bootstrap.sh
@@ -1296,6 +1328,30 @@ disabled choice without installing code. The provider SessionStart files call th
 `morpheus context install` safely creates or refreshes all three generated `.morpheus/` files while
 replacing the legacy direct `context brief` hook. No package lifecycle or session hook infers
 consent.
+
+### 7.13 The GitHub Manager is the backstop for a loop whose author has left
+
+Author-managed review (§9) has one failure it cannot recover from by itself: the authoring session
+ends before the loop does, and nothing else is listening. The GitHub Manager is a scheduled agent
+that sweeps each opted-in repository's open pull requests. A deterministic sweep routes them from
+facts with no model; one fresh Claude session per pull request that needs judgment reads the
+reviews on record, conducts one more if needed, and fixes its own findings; a separate
+deterministic step checks each session's decision against live state and policy before anything is
+labelled, merged or closed. The session's token can write contents and nothing else: it cannot
+label, comment, close, or change a workflow file.
+If the author finished a valid independent review but missed its label, the deterministic apply
+step validates the committed review at the current head and applies `agent-reviewed`; an absent
+or invalid record still cannot merge. Front-end reviews inspect actual screenshot pixels and
+recording frames, including evidence already attached to the PR.
+Drafts, `wip/` branches, and `[WIP]` or `WIP:` titles remain with their authors; the manager
+cancels queued auto-merge on them. A ready pull request waits 24 hours after its latest head
+commit or opening, whichever is later, before the manager acts.
+
+It follows the Morpheus Security shape (§18): a public reviewed engine in this repository, a
+private operations repository holding the App key, the subscription token and the schedule, and a
+target that opts in with a committed policy file. Its review is a narrower record than the
+author's, bounded by path checks and refused outright for normative policy.
+[`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is authoritative.
 
 ## 8. Project management as files
 
@@ -1436,6 +1492,17 @@ qa/
 | Pre-deploy | E2E against the preview deployment | Deploy |
 | Human review | Preview link + screenshots + test plan | Deploy |
 
+Interactive comment QA uses a checkout-local durable queue. Each Send atomically
+publishes one batch and optional frame under `local/qa-comments/pending/`; later
+batches accumulate while a responder works. An agent claims one batch with an
+exclusive on-disk record before acting, resolves it after work, or releases the
+claim on failure. The queue and claim commands are agent-neutral. A webhook is
+an optional notification to a host-managed responder, not an agent scheduler;
+whether a chat can wake or work in parallel is determined by that host.
+An opt-in checkout-local responder can instead invoke any configured agent CLI
+as a separate serial process. Its on-disk owner marker reserves the checkout
+until stopped; later batches accumulate without occupying the interactive chat.
+
 ### The verifier stack
 
 A **verifier** answers *is this correct?* without trusting the doer's own say-so. Independence is
@@ -1455,27 +1522,48 @@ Four of them, each catching what it can so the rung above only sees what genuine
 `review.required` defaults to true; false is a project opt-out reported by conventions. The author
 runs `morpheus review prepare` to print a packet, then explicitly spawns a fresh reviewer
 subagent/session without author chat, responds once, and resumes the same reviewer
-once if substantive findings were raised. Minor-only findings need no second pass. Unresolved
-substantive disagreements, incomplete review and exhausted budgets leave the PR open and flagged,
-with auto-merge disabled. No automatic third round. Incidental pre-existing bugs are recorded
+if substantive findings were raised. Minor-only findings need no second pass. A review is capped
+at three turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
+correction after clearance, named by its scope reason. Unresolved substantive disagreements,
+incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
+open and flagged, with auto-merge disabled. No automatic fourth substantive turn; one automatic
+finalization-only turn per PR is allowed, at five minutes, recorded as `finalization` with the
+reviewer's attested paths, evidence and scope. It must be the last automatic turn and cleared; every later same-reviewer turn requires explicit
+`humanAuthorization`. Its original scope and predecessor stay checked. It cannot resolve a
+substantive finding, and is checked against the commits it covers: the worklog, already-conditioned
+paths, and explanatory Markdown only — never normative policy files. An explicit human exception is recorded per extra same-reviewer turn
+as `humanAuthorization` (approver, ISO timestamp and reason), preserving the full history and
+all other checks; one authorization never permits subsequent turns. An evidence-pending incomplete
+turn may resume only with explicit authorization on the next same-reviewer turn; the original
+verdict stays unchanged and every historical and new turn must satisfy its budget. Incidental pre-existing bugs are recorded
 separately; related unchanged code is blocking only when causally relevant to the PR or acceptance.
 
-Initial risk-based ceilings are 5/15/30 minutes, with one justified initial extension of at most
+Initial risk-based ceilings are 10/15/30 minutes, with a one-minute floor at normal and high risk, with one justified initial extension of at most
 50%; the follow-up ceiling is half the initial budget. One reviewer, no reviewer subagents. The
 provider's authoring session owns enforcement and any available usage ceiling; CI validates the
 reported evidence without making a model call. The canonical provider-neutral prompt ships in
 `src/review/local-prompt.ts`. Project instructions and learned failures supply local context.
+The author records actual per-turn runner duration or clock readings, never a reviewer workload
+estimate. New version 2 records require a timing source, duration in milliseconds and evidence for
+each turn; conventions checks the conversion to elapsed minutes without rounding. Historical
+version 1 records stay compatible. Provider evidence remains a human-auditable attestation.
 
 **The worklog is the durable review record.** A short visible paragraph plus a structured
 `morpheus-review` JSON block records sessions, base/reviewed/covered commits, findings, author
 responses and any original-reviewer follow-up. The PR links it with `review-record:` and carries
 `agent-reviewed` only on completion. `check pr` validates those facts, unresolved findings, budgets,
-ancestry and coverage. An explicit scope decision may use the one follow-up for required trunk
-integration: retain the original base/reviewed SHA and record the follow-up base and scope reason.
-Only the named worklog may change after the covered commit, avoiding the
-self-referential commit hash problem. Author-only minor fixes are constrained to finding paths.
+ancestry and coverage; `review validate` runs the same record check locally before a push. The
+caller skips an unlabelled draft, leaving the required check unreported, which blocks merge without
+reporting a failure; the check itself never passes a PR without the label. A follow-up that inspected a trunk integration records its new base and
+scope reason with the original base/reviewed SHA retained. Only the named worklog may change after
+the covered commit, avoiding the self-referential commit hash problem, and merging trunk never
+invalidates the review: native Git must reproduce an integration merge's tree exactly, or the
+author names the hand-resolved merge and its reason in `trunkIntegrations` so the unreviewed
+resolution stays visible. CI must still pass. Any other commit after coverage, or a merge of
+anything but trunk, invalidates coverage. Author-only minor fixes are constrained to finding paths.
 This is an auditable attestation, not proof against a dishonest author. Records/board-only PRs and
-exact dependency-only Dependabot changes retain their existing exceptions.
+exact dependency-only Dependabot changes and marked dependency-only Morpheus Security App changes
+retain narrow authoring/review exceptions; neither bot exception bypasses repository checks.
 
 **GitHub validates; it does not schedule the model.** The authoring agent owns dispatch,
 responses, evidence and merge; no standing agent monitors PRs to supply this review.
@@ -1507,7 +1595,9 @@ PR under `## Visual evidence`; `check pr` verifies either a stable GitHub attach
 HTTPS URL under a repository-approved `allowedUrlPrefixes` location. External locations are exact
 path prefixes, so approving one bucket on a shared provider does not approve every bucket there.
 The check does not fetch the URL, classify its pixels, or claim it meaningfully demonstrates the
-UI. Recording is a warning-level preference so a screenshot-only change is never blocked merely
+UI. The author captures the final build and the independent reviewer opens and inspects the
+evidence; missing or inaccessible required captures leave review incomplete. Recording is a
+warning-level preference so a screenshot-only change is never blocked merely
 because video was impractical. Web feedback returns as Vercel comments anchored to page elements
 and synced into the PR (§10.2).
 
@@ -1536,6 +1626,11 @@ configuration and opt in, so no third-party install or implicit style policy rea
 consumers. Firebase-backed clients opt into a secret-free emulator boundary and
 may name one repository script to seed local fixtures; that script runs after the emulators start
 and before XCTest, so it never has to race a separately managed service.
+
+Native CI may select explicit test identifiers and retain a caller-generated selection manifest.
+It exports structured results and logs on both success and failure; an optional caller result
+validator can fail the job when selected coverage is missing. The full nightly caller forwards
+validation without narrowing coverage.
 
 Callers may select either a GitHub-hosted image or a repo-scoped self-hosted runner label. The
 workflow accepts GitHub's versioned Xcode application layout and a dedicated Mac's canonical
@@ -2258,6 +2353,15 @@ instruction to say which were not checked rather than imply they were. `## Compl
 replacements, reviewed surfaces, and checks run or not run. That makes "first working version" a
 claim with evidence and named gaps rather than the note a conversation happened to end on.
 
+The repository-level `.agents/skills/motion-design-exploration` procedure applies the same
+comparison discipline to loading, upload, scanning, analysis, processing, and transition graphics.
+It defaults to six genuinely different motion systems in the real product shell, holds one theme
+and the surrounding UI constant, and prefers an interactive HTML review surface when timing is the
+thing being judged. Where stills are more honest, each direction gets matched entry, mid-loop, and
+transition or exit frames. Determinate progress is shown only when the product knows it; every
+direction carries a static or reduced-motion state; and the procedure stops before production
+implementation so selection remains a separate human decision.
+
 ### 12.10 Setup is a checklist, not a wizard
 
 `morpheus init status` reports how far through setup a project is, writing the full list to
@@ -2285,10 +2389,15 @@ billing account.
 ### 12.11 `init` scaffolds the repository and nothing else
 
 `morpheus init` writes the manifest, `README.md`, `AGENTS.md` with `CLAUDE.md` symlinked to it,
-the `.agent/` records, the `hq/` tree for the project's kind, an inbox, a CI workflow delegating to
-the reusable ones, and `.gitignore` entries. A company scaffold also writes the deny-by-default
-Firestore gate at `infra/firebase/firestore.rules` and a minimal `firebase.json` that deploys that
-same file. Then it registers the prefix and prints `init status`.
+the `.agent/` records, the repository-level motion-design skill, the `hq/` tree for the project's
+kind, an inbox, a CI workflow delegating to the reusable ones, and `.gitignore` entries. When the
+repository has an Xcode project under `apps/ios`, it also writes the nightly TestFlight caller
+(§18.2's `ios-nightly-build` upload job as a checkout of the verified SHA plus one `ios-testflight-upload` step, the
+06:00 Pacific slot commented out until the release secrets exist, and `TODO` markers for the four
+identifiers it cannot know). A company
+scaffold also writes the deny-by-default Firestore gate at `infra/firebase/firestore.rules` and a
+minimal `firebase.json` that deploys that same file. Then it registers the prefix and prints
+`init status`.
 
 The Firestore branch is migration-aware because a second security file is worse than no generated
 one. A fresh company gets the canonical rules file, deployment config and matching
@@ -2463,8 +2572,9 @@ already present at these boundaries without reducing the security-critical code.
 
 ## 13. Secrets and credentials
 
-Values never enter git. What enters git is a manifest declaring which secrets exist and where they
-live, so an agent knows what it needs without being able to read it.
+Production and sensitive values never enter application Git repositories. Their manifest declares
+which secrets exist and where they live. Low-risk local companions are an explicit exception to
+the blanket no-Git storage rule, described in §13.0 below.
 
 ```jsonc
 // secrets.manifest.json
@@ -2477,6 +2587,26 @@ live, so an agent knows what it needs without being able to read it.
   }
 }
 ```
+
+### 13.0 Private local credentials companions
+
+Low-risk, rotatable local credentials may live in a separate private `.credentials-<name>`
+repository. They remain plaintext in that repository and its history; sensitive secrets stay in
+GSM. The consuming project tracks `.morpheus/credentials.json` with `repository`, a relative
+`path` (default `local/.credentials-<project>`) and `command` (default `bin/credentials`).
+Project access never implies companion access. Multiple projects may reference the same remote;
+each defaults to its own clone, with optional per-device shared path overrides or symlinks.
+Linked worktrees resolve paths against the primary checkout and share its local clone.
+
+`morpheus init` scaffolds metadata and instructions offline. `credentials setup` explicitly
+verifies privacy and clones a missing store; `setup --create` provisions a new private remote and
+an empty portable companion. `status` is local metadata only; `sync` updates a clean default
+branch with fast-forward only. `list`, `doctor`, and `run --` invoke the declared checkout's own
+wrapper directly, without changing global launchers or displaying secret values. Child programs
+are trusted and can disclose values; this is discovery and injection, not a security boundary.
+Declared legacy URLs can migrate only after GitHub repository-ID equality is verified. Existing
+clones and edits are preserved. Collaborator setup and migration are documented in
+[the runbook](docs/runbooks/local-credentials.md).
 
 ### 13.1 Three stores, split by who reads the secret
 
@@ -2811,6 +2941,32 @@ an explicit IAM grant, which makes the rollup opt-in per dataset rather than imp
 The test for the first two: *if I improve this, do I want every existing project to get the
 improvement?* Yes → kit. No → template.
 
+### 18.0 Optional personal agent plugins
+
+`plugins/codex-claude/` is a deliberate exception to the kit's single-package distribution:
+it is a personal Codex/Claude Code integration, not a dependency of company repositories. It owns its
+manifest, skill, hooks, runtime, lockfile, tests and installation documentation. Neither
+`morpheus init` nor the CLI installer activates it. Explicit per-device installation copies
+the package into a personal marketplace; execution remains off until enabled. Personal
+settings and session records stay outside the repository.
+
+The bridge works in both directions. Whichever agent holds the conversation is the
+coordinator; it routes at safe checkpoints using its *own* subscription allowance, keeps
+explicit task/operation overrides, and starts the other agent subscription-authenticated on
+the same host and worktree. Automatic mode defaults to delegating below 50% remaining in the
+coordinator's least remaining reported allowance window; explicit saved thresholds are
+preserved. The coordinator consumes its own allowance while supervising. Codex reports its
+windows through the app server; Claude Code exposes them only to its status line, so a
+recorder status line (chaining any existing one) writes them for routing, and missing or
+stale data never triggers a handoff. Claude permission modes map onto Codex's sandbox
+without widening (only an explicit bypass reaches full access). Delegated workers are marked
+so neither side's hooks or tools delegate back. Native Claude session ids
+provide persistence; a leased process guardian bounds live workers. Permission metadata
+must be verified before delegation, and unknown/restricted confinement fails closed in the
+initial version. Cross-agent memory consists of explicitly selected read-only excerpts,
+with native memory controls respected and separate write ownership. See the package README
+for exact compatibility, subscription-overage and remote-host boundaries.
+
 ### 18.1 Morpheus's own structure
 
 **One package, not many.** `morpheus-kit` ships everything with subpath exports, so a project
@@ -2881,10 +3037,48 @@ provisioning guards before changing this contract. Shared internal `file-io.ts` 
 separate best-effort discovery from content reads that propagate non-absence errors;
 `markdown.ts` shares table rendering while callers choose empty-state text.
 
+#### Session profiling
+
+`morpheus profile extract|report` measures the workflow from transcripts both agent runtimes
+already write — `~/.claude/projects/**` (with subagent transcripts attributed to their parent) and
+`~/.codex/sessions/**`. Nothing is self-reported by an agent and nothing leaves the machine:
+self-reporting costs every session tokens and measures what an agent believes it did, and the
+transcripts already hold timestamps, model, effort, token usage and every tool call. `extract`
+emits one JSONL `session` row per transcript and one `span` row per tool call; `report` sums them
+by phase, repository, role, model × effort, first-turn context, and slowest and most-repeated
+commands. The phase of a shell command comes from an ordered rule table in
+`src/profile/classify.ts` — priority, not position, so `git push && gh pr checks --watch` is CI
+wait. Active time caps each idle gap at five minutes unless a running tool call covers it, and a
+tool result arriving more than four hours late is reported as an outlier rather than counted as
+work. Time blocked on a person — an `AskUserQuestion` or `ExitPlanMode` call, or a permission
+prompt the person refused (`toolDenialKind: "user-rejected"`) — is phase `human-wait` and never
+active time, however short. An *approved* permission prompt leaves no marker in the transcript, so
+its wait stays inside that tool call's duration. `--since` must be a real calendar date. Rows never carry prompt text, file contents read or written by a tool, or tool output. A command
+is kept to its first 120 characters with credential-shaped values masked and any heredoc body cut;
+arguments typed on the command line itself can still appear within that prefix.
+
+#### Waiting on CI
+
+`morpheus wait-ci [<pr|branch>] [--repo] [--timeout 45m] [--required-only]` exists because the
+profile showed polling running processes and CI as about a quarter of agent busy time: each
+`gh run view` or `gh pr checks` poll re-reads the whole session context to learn "still running".
+It blocks in one tool call, polling one GraphQL query with backoff (10 s growing to 60 s) and
+printing nothing, then prints a digest: the verdict, one line per failed or cancelled check, and
+each failed Actions job's failing step — the lines between that step's echoed script and its
+`##[error]`, de-duplicated, ANSI-stripped and cut to a head and tail. Exit 0 green, 1 failed,
+2 timeout or no checks, 3 usage or `gh` error. The head SHA and checks come from the same response;
+a head that moves mid-wait is followed and named in the digest. A `conventions` failure whose only
+blocking line is the missing `agent-reviewed` label is labelled as that race, not as a code
+failure. Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
+
 ### 18.2 Reusable GitHub workflows
 
-Workflows with an `on: workflow_call` trigger live in Morpheus; each project keeps a thin delegator
-supplying project-specific inputs.
+General project-management workflows with an `on: workflow_call` trigger live in Morpheus; each
+project keeps a thin delegator supplying project-specific inputs. Security remediation is the
+exception: its reviewed source and policy live in the narrow public
+[`cpheinrich/morpheus-security`](https://github.com/cpheinrich/morpheus-security) repository so an
+operator can review and adopt it without importing Morpheus itself. A separate private operations
+repository holds the schedule, sole App key, logs, and raw scan receipts.
 
 ```yaml
 # acme/.github/workflows/ci.yml — the whole file
@@ -2902,6 +3096,19 @@ Improving CI for every project becomes one commit in Morpheus. **Projects pin `@
 with one operator and a handful of repos, instant propagation is worth more than staged rollout,
 and a broken workflow is noticed and fixed in minutes.
 
+**The caller chooses the runner.** `node-ci`, `web-ci` and `python-ci` take a `runner` input, a single
+label defaulting to `ubuntu-latest`, as `ios-ci` already does. A private project may pass an isolated
+self-hosted label (`with: runner: linux-vm`), under the isolation rules for repo-scoped self-hosted
+runners in the iOS CI section above (never the operator's account, never a public repository). Three
+consequences stay with the caller:
+
+- A reusable workflow cannot retry a job on another runner, so any fallback to a hosted image is the
+  caller's.
+- An offline self-hosted label leaves the job queued for up to GitHub's 24-hour limit rather than
+  failing, so a fallback needs a probe job whose result feeds `runner`.
+- `web-ci`'s optional Playwright step runs `playwright install --with-deps`, which needs root or
+  passwordless sudo, so `run-e2e` on a self-hosted runner needs that or a prepared image.
+
 Deployment follows the same boundary as validation. `vercel-deploy.yml` owns the Vercel CLI
 sequence, fork guard, environment receipt and pull-request preview comment. Each project owns only
 its triggers, application directory and encrypted `VERCEL_TOKEN`, `VERCEL_ORG_ID` and
@@ -2910,11 +3117,11 @@ build, while the other spends model budget to judge a change, so neither workflo
 implicitly enables the other.
 
 Shipped: `node-ci`, `web-ci`, `python-ci`, `ios-ci`, `ios-nightly-build`, `firebase-tests`,
-`osv-scan`, `pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`, `agent-review`, and
-`dependabot-maintainer`, plus one composite action, `ios-testflight-upload`. Planned:
+`pm-check`, `pr-check`, `vercel-deploy`, `heartbeat`,
+`agent-review`, and `dependabot-maintainer`, plus composite actions `ios-testflight-upload` and `firebase-release`. Planned:
 `agent-triage`, `agent-analytics-review`, and `release-kit`.
 
-Dependency maintenance splits policy, judgment, and authority. The project owns a versioned list
+Routine version maintenance splits policy, judgment, and authority. The project owns a versioned list
 of exact dependency/update-type auto-merge rules and explicit holds. `dependabot-maintainer`
 applies those deterministic rules first and sends only unmatched dependency-only changes to a
 low-cost Codex model. The model runs read-only, receives no GitHub write permission, and may return
@@ -2926,35 +3133,75 @@ When an approved head is behind a strict protected base, delivery enables auto-m
 GitHub's guarded branch update with the revalidated head SHA. The resulting CI completion invokes
 the fast path again, so several simultaneous updates converge one merge at a time as `main` moves.
 
-Projects trigger the workflow after CI for the fast path and on a nightly schedule for
-reconciliation. GitHub event delivery, a transient workflow failure, and a policy change can each
-leave work behind; the scheduled pass makes the open pull-request set the source of truth rather
-than treating one event as a durable queue.
+Security remediation is a separate deterministic lane distributed from the standalone public
+repository. A public-but-unlisted GitHub App combines active OSV findings with open GitHub reviewed
+alerts, deduplicates aliases, and opens one dependency-only PR per lockfile at a time. npm, pnpm and
+uv adapters select the smallest reachable fixed line; resolver credentials are scrubbed, builds and
+scripts are disabled, and registry provenance, lockfile integrity, diff scope, and a candidate OSV
+rescan fail closed before delivery. The creation run writes an App-owned Check Run attestation for
+the exact candidate. A later run merges only that head after every repository-configured check
+passes. A stale strict-protection candidate is closed and recreated from a freshly verified default
+branch, repeating all evidence. No AI model or OpenAI credential participates. `MAL-*` findings
+additionally create or update an issue in the affected repository. Public issues contain only
+non-secret advisory, dependency, manifest/version, and completion-checklist data; sensitive
+investigation records remain private.
+
+The private operations repository invokes an exact reviewed standalone revision for approved
+installations nightly; a maintainer may also use a default-branch repository dispatch. A transient
+workflow failure or policy change can leave work behind, so the scheduled pass treats the open
+pull-request set as the durable source of truth.
 
 Every reusable job carries a `timeout-minutes` ceiling set well above its honest runtime, so it
 fires only on a hang. Without one a stuck step runs to GitHub's six-hour default on billed
-minutes, which is how a hung Playwright install once cost forty. The jobs that gate a pull request
-also carry a job-level concurrency group so a superseded push cancels rather than running beside
-its replacement — job-level rather than workflow-level, because a called workflow's top-level
-`concurrency` does not govern the caller's run.
+minutes, which is how a hung Playwright install once cost forty. Most jobs that gate a pull
+request carry a job-level concurrency group so a superseded push cancels rather than running
+beside its replacement. The required `pr / conventions` job in `pr-check.yml` and its `CI` and
+`Review metadata` callers are exempt: every required check run must finish. GitHub replaces a
+pending run in a concurrency group even when `cancel-in-progress` is false; a cancelled required
+run can leave an otherwise green pull request blocked. Job-level grouping governs a called job;
+a called workflow's top-level `concurrency` does not govern the caller's run.
 
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
 Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination.
+An optional `watch-paths` list uses Git pathspecs to compare the verified pull-request merge
+checkout to its first parent. When nothing matches, the same job reports success after checkout
+without Xcode, simulator, package, build or test work; there is no separate selector or aggregate
+check. Scoped PR checkouts fetch full history to verify that the merge's base descends from the
+event base, allowing GitHub to regenerate the merge after trunk advances. Its head must still match
+the event exactly. The diff uses the actual first parent, so changes already on trunk do not count
+as PR changes. Wrong parents or missing history fail with diagnostics. Other callers keep a
+depth-two checkout. Manual/nightly calls and an empty list retain normal execution. Invalid comparison evidence
+fails instead of bypassing. The job still briefly acquires its runner, so this avoids native work,
+not runner queue time. Callers own the path policy and still require independent review for changes.
 Callers may opt into a changed-source style gate with `swift-format-lint`; it validates the
 caller-owned `.swift-format` configuration and runs the selected Xcode toolchain's formatter in
 strict lint mode against added, copied, modified, and renamed Swift files in the checked-out
-commit. The checkout retains only the commit and its first parent, which is enough to cover a pull
-request's synthetic merge commit and a push to `main` without downloading full history. Existing
-Swift is adopted incrementally: enabling the gate does not create a repository-wide formatting
-rewrite, while any Swift file being changed must leave the commit fully formatted.
+commit. Which files those are is `scripts/swift-changed-files.sh`, reached by the workflow through
+the `swift-changed-files` composite action, shipped in the package, and exposed as
+`morpheus ios changed-swift` — one definition, because the first consumer that reimplemented it
+for a local pre-check drifted inside a single commit, omitting Swift files directly under the
+working directory and dropping filenames outside ASCII, and a local pass that CI contradicts is
+worse than no local check at all. `tests/swift-changed-files.test.ts` pins the two modes against one
+repository state, so a pathspec or delimiter that drifts in either is caught there rather than in
+a consumer's pull request. The base a consumer compares against stays the consumer's: CI asks
+about a commit and its first parent, a developer asks what a branch changed since the trunk, and
+only the second has a merge base to speak of. The formatter only requires the commit and its first
+parent, enough to cover a pull request's synthetic merge commit and a push to `main`; scoped PRs
+fetch full history separately for native-scope ancestry validation. Existing Swift is adopted incrementally: enabling the gate does
+not create a repository-wide formatting rewrite, while any Swift file being changed must leave the
+commit fully formatted.
 The caller supplies a shared Xcode scheme; that scheme or its optional test plan remains the source
 of truth for which unit and UI targets run. The workflow refuses an absent or uncommitted
 `Package.resolved`, passes `-onlyUsePackageVersionsFromResolvedFile` to resolution and every build
 action, disables automatic package resolution after the explicit locked resolve, and separates
 SourcePackages, DerivedData, logs, screenshots, and `.xcresult` bundles under the runner's temporary
-directory. Preparation clears only results, logs and screenshots before each run, including after
-cancellation on a persistent self-hosted runner; SourcePackages and DerivedData remain reusable.
+directory. Each job invocation allocates a fresh results/logs/screenshots directory with a run/attempt label
+and a unique suffix. A canceled process can keep writing its old path without contaminating a
+replacement job, including retries or multiple calls in the same attempt. Artifact export/upload
+uses only that invocation's paths and is skipped if preparation failed; SourcePackages and
+DerivedData retain their stable cache paths. Output directories remain under the runner temporary
+directory and follow its normal lifecycle; preparation never deletes another invocation's files.
 Both build actions pass `COMPILER_INDEX_STORE_ENABLE=NO`: index-while-building serves
 Xcode's editor, and a runner has no editor and discards the store with the machine. The
 SourcePackages cache carries a prefix `restore-keys`, so bumping one dependency reuses the
@@ -3024,37 +3271,69 @@ Callers should keep their 06:00 local trigger and add off-hour recovery triggers
 Set `schedule-timezone` to the caller's IANA timezone. Morning retries reuse successful,
 unexpired screenshots only for the same source commit and local calendar day; changed iOS
 sources still build, failed runs retry, and manual forced builds always run. An explicit
-`ios-nightly-noop-<run>-<attempt>` artifact preserves the gallery on intentional skips rather
-than replacing it with missing images. This is bounded recovery, not an independent scheduler.
+`ios-nightly-noop-<run>-<attempt>` artifact records an intentional skip, so a run with no
+screenshots is distinguishable from one that failed to capture them. This is bounded recovery,
+not an independent scheduler.
 
-Their separate `workflow_run` observer calls `ios-visual-qa` after the nightly finishes; the
-publisher is never a release dependency. It accepts only completed main schedule/manual runs from
-the same repository and exact workflow, reads `qa/ios-screens.json` at the tested SHA, and consumes
-only explicitly named full-screen PNG attachments from that exact run and attempt. Caller code is
-never executed in the write-permission publisher.
+Apps whose nightly release is dispatched from the Mac mini share one admission core,
+`src/ios/nightly-core.ts`, extracted from Evo's controller (darwin-health/evo #307, #309). It
+admits at most one automated release per local calendar day in a configured window, whatever
+became of it, and writes the reservation before dispatching so a lost response never buys a second
+attempt. It reconciles each reservation to its run by the run title the release workflow gives an
+`automated-day` dispatch, and judges the last upload from the upload step inside every attempt: a
+failed rerun cannot hide a build an earlier attempt uploaded, and a step that started without
+finishing blocks admission until a later upload is confirmed. Competing schedulers cannot share that
+daily limit, so a caller using the core drops any independent release cron. The core has no imports
+because it runs from a pinned runtime copy on the host, where no `node_modules` is reachable:
+`morpheus ios nightly-core write <file>` vendors it with a digest of the exact module, and `check`
+tells a hand edit from an upgrade. Each app's adapter owns its upload job and step names, window,
+run-title format, incident hook, notifications and installer.
 
-The publisher replaces one `nightly-ios-visual-qa` draft PR with a labeled two-column gallery,
-source SHA, run link, and captured/expected count. Missing screens are visible and never filled
-from an older run. Each refresh is one screenshot-only commit above current main; images use
-immutable commit URLs, while the current PR discussion survives. The branch is reserved for this
-publisher, auto-merge stays disabled, and the PR must not be merged. Repository settings must allow
-GitHub Actions to create PRs; caller observers grant contents/pull-requests write and actions read.
-Apps own the version-1 screen inventory (`id`, `title`, `attachment`) and synthetic XCTest fixtures;
-new full-screen destinations require both an inventory entry and a named capture. Modals and
-external websites are optional. Failed nightly runs still publish available evidence and an
-explicit incomplete status. A manual observer dispatch can retry a completed run without uploading
-another build. The fixed publisher concurrency group and run-number guard prevent older runs from
-replacing newer galleries.
+The adapter also owns `runTimeoutMinutes` (240 by default), set above the sum of sequential
+job timeout ceilings plus scheduling/preflight overhead. A running attempt ages from GitHub's
+`run_started_at`, falling back to `created_at` for legacy adapters; retries do not inherit the
+original attempt's age. A queued, pending or requested run waits while another run of the same
+release workflow is in progress. With no active predecessor it still has the configured age
+limit, and a stuck running predecessor is never masked by a queued pair. Callers supply runs
+from one release workflow. All active runs still prevent another automated dispatch; timeout
+configuration does not relax reservations or uncertain-upload refusal. To adopt, re-vendor the
+module and set the timeout in the app's admission config (Evo tracks this in EV-26-10-01-13.30.14).
 
-`ios-testflight-upload` is the one *action* Morpheus ships, and the reason it is an action is the
-same constraint that shapes `ios-nightly-build`: a cross-repository reusable workflow receives none
+Screenshots are reviewed from the nightly run itself: every named XCTest attachment is exported
+from the run's `.xcresult` into its `ios-screenshots-<run>-<attempt>` artifact, kept for 14 days.
+The full `.xcresult` is uploaded only when tests fail. Apps own a screen inventory
+(`qa/ios-screens.json`: `id`, `title`, `attachment`) and synthetic XCTest fixtures; new
+full-screen destinations require both an inventory entry and a named capture. Modals and external
+websites are optional. Morpheus no longer publishes these screenshots into a standing
+`nightly-ios-visual-qa` draft PR: that gallery never merged, lived permanently in each app's
+open-PR list, and was retired on 2026-09-28 (MO-26-09-28-18.35.26). Apps keep a contract test so
+a caller of the removed publisher does not return.
+
+`ios-testflight-upload` uses a composite action because of the same constraint that shapes
+`ios-nightly-build`: a cross-repository reusable workflow receives none
 of the caller's environment secrets, so the signing job has to stay in the caller. A composite
 action runs inside that caller-owned job, where `secrets.*` resolve normally and can be handed in
 as inputs — which is what makes the *implementation* shareable even though the job cannot be. It
 selects the exact Xcode, downloads the Metal toolchain on request, restores the SwiftPM cache,
 installs `openssl@3`, `asccli` and optionally `sentry-cli`, then archives, exports, verifies and
 uploads. A caller is reduced to a checkout of the verified SHA and one `uses:` block of
-identifiers.
+identifiers. The optional `configuration` input defaults to `Release` and is used consistently
+for both build-settings queries and archive; scheme/configuration names may contain spaces but
+not CR/LF, and remain single argv values.
+
+Binary acceptance and distribution are separate action steps. Acceptance requires the pinned
+asccli upload state PROCESSING or COMPLETE with a valid id and no errors; AWAITING_UPLOAD is
+confirmed within the existing processing timeout, while absent/unknown states stay uncertain.
+Automatic build numbers take the greater of Apple's next number and the account's persistent
+per-app/version reservation plus one, under the signing lock, so the phase split cannot reuse
+an accepted number before Apple exposes it in builds. Failed attempts may leave number gaps. A sanitized, create-only
+`accepted.json` records the exact checked-out SHA, run/attempt/job, app/bundle identity,
+version/build number, upload id and acceptance time. The pinned artifact action persists it
+under a unique per-invocation name before processing, group assignment or beta review; later
+failure cannot overwrite a prior attempt. Retention is 90 days subject to repository limits.
+Missing evidence remains uncertain (including interruption before artifact persistence), never
+proof of no upload. This exposes a receipt contract for consumer adoption without changing
+nightly admission policy or activating a release. See the action README.
 
 Its contract is deliberately narrow: typed inputs for the project shape, the Apple identifiers, the
 beta-group policy (`any`, or `one-internal-one-external` for a project whose every release must
@@ -3065,6 +3344,16 @@ runs with every release credential stripped from its environment. That hook is w
 asserts what only it knows: which Firebase project is pinned, which purpose strings must be
 present, which build environment was compiled in. Anything a second project would also want belongs
 in the action instead.
+
+Releases under the same macOS user serialize through an account-wide kernel file lock before
+starting the upload script, including its keychain/profile snapshot and EXIT cleanup. The lock
+file is in the account's canonical home, not a repository or runner temporary directory. Its
+descriptor survives exec and shell children, so killing a parent cannot release a child's active
+lease. No lock-file deletion or PID-based stale recovery is needed. Waiting defaults to 600
+seconds (the caller may choose 1–3600) and counts toward the job timeout; expiry fails before any
+signing state is touched. This preserves Xcode's existing keychain search-list/export behavior.
+Older pinned actions and other signing tools still require the host-wide job lease until migrated;
+a hard kill can leave keychain/profile artifacts requiring inspection even after the lease releases.
 
 Three properties are not negotiable, because each has already cost releases. The archive is
 **unsigned** — `CODE_SIGN_IDENTITY=""`, `CODE_SIGNING_REQUIRED=NO`, `CODE_SIGNING_ALLOWED=NO`, and
@@ -3077,7 +3366,22 @@ outright. Second, the distribution checks run on the **exported IPA**, never the
 archive has no signature to check, and `get-task-allow` must be strict on the artifact that ships.
 Third, the file that is verified is the file that is uploaded: the export writes an IPA locally, the
 signature and entitlements are asserted against it, and `asccli builds upload` sends that same path.
+Before export, the action resolves the app target’s `CODE_SIGN_ENTITLEMENTS` from Release build
+settings and seeds those claims in an ad-hoc signature. The profile grants permission to claim
+capabilities; it does not add missing claims to an unsigned app. After export, every declared
+capability entitlement must retain its value or the upload stops. APS and iCloud environment
+claims are normalized to production only when the pinned profile permits that value. Unresolved entitlement build variables fail
+closed. This covers the single main app; extension entitlement preservation is not supported.
 Exporting with `destination: upload` hands the build to Apple with nothing having inspected it.
+
+`firebase-release` runs inside caller-owned protected jobs. It checks exact tested main source,
+reads policy/rules/index definitions from immutable Git blobs, optionally deploys only declared
+rules through the official CLI, then verifies live rule content and READY indexes. Receipt names
+hash the exact credential-free bytes. Project IDs and compatibility policy remain in the consumer;
+production approval and one non-cancelling lock spanning backend writes and complete client
+publication remain explicit caller obligations. No consumer is activated by shipping this action.
+The [runbook](docs/runbooks/firebase-releases.md) defines the contract, supported index shapes,
+scope limits, and adoption examples extracted from Evo's held first-consumer proposal.
 
 `firebase-tests` is the one workflow a project opts into rather than getting by default: it runs
 the emulator-backed suites (unit, Firestore rules, Playwright E2E) against the Firebase Emulator
@@ -3085,12 +3389,14 @@ Suite, needs no secrets — so it passes on fork pull requests — and is delibe
 `web-ci`, because most projects have no Firebase and would pay for a JRE, a 100 MB emulator jar and
 a boot to run nothing.
 
-`osv-scan` is a second opt-in reusable workflow: a project schedules it weekly and on `main`, where
-it performs a full dependency-vulnerability scan and uploads SARIF to GitHub code scanning. The
-schedule matters: a dependency can become vulnerable without any repository change. It deliberately
-uses a pinned full-tree scan rather than OSV's PR-diff workflow, whose current result-file handling
-can be bypassed by a pull-request-controlled symlink. It needs only `actions: read`, `contents:
-read`, and `security-events: write`; it never receives application credentials.
+`morpheus-security` is a public reviewed engine invoked by a separate private operations repository.
+The App id and private key, schedule, logs, and raw receipts live only in that private caller. A
+target opts in only when its installation, the reviewed central repository allowlist, and its
+committed policy agree. The workflow owns full-tree
+OSV plus GitHub-alert ingestion, one-dependency PR creation, deterministic artifact and scope
+gates, reconciliation, and guarded merge. The schedule matters: a dependency can become vulnerable
+without any repository change. Missing evidence never counts as clean. No local host or model
+runtime participates. See [the execution contract](docs/runbooks/osv-maintenance.md).
 
 `release-preflight` is the secret-free gate before any job that publishes outside GitHub. It accepts
 no caller-selected source: the workflow requires `refs/heads/main`, checks out `github.sha`, refuses

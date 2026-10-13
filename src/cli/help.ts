@@ -1,4 +1,10 @@
-export const HELP = `morpheus — an operating system for building and running companies
+export const HELP = `Credentials companions:
+  morpheus credentials init <repository-url> [--path <relative-path>] [--command bin/<wrapper>]
+  morpheus credentials setup [--create]
+  morpheus credentials status | sync | list | doctor
+  morpheus credentials run -- <trusted-command> [args...]
+
+morpheus — an operating system for building and running companies
 
 Usage
   morpheus pm validate [--dir <hq/product>]
@@ -19,6 +25,9 @@ Usage
   morpheus pm migrate-ids   [--check] — integer roadmap ids to the dated scheme (MO-057)
   morpheus check pr    [--dir <hq/product>] [--base origin/main]
   morpheus review prepare   independent local review handoff and worklog template [--base <ref>]
+  morpheus review validate  [<worklog>] [--pr-body-file <file>] [--base <ref>]
+                            run CI's review-record check on the committed record
+                            before pushing; finds the branch's record if unnamed
   morpheus review prompt    assemble the rung-2 reviewer prompt for this branch
   morpheus review needed    [--base <ref>] [--prior-review <file>]
                             is this change worth a review, or a re-review?
@@ -91,11 +100,53 @@ Usage
                             manage consented post-pull updates across the local registry
   morpheus doctor           [--all] [--offline]
                             --offline skips project-trunk and Morpheus-main network checks
+  morpheus ios changed-swift <dir> [--base <ref>] [--worktree] [--nul]
+                            the Swift files a change touched, repository-relative
+                            — the same answer iOS CI's swift-format lint asks for.
+                            Without --base, HEAD against its first parent, as CI
+                            asks; with it, what the branch changed since that ref
+  morpheus ios nightly-core write|check <file>
+                            vendor the shared nightly TestFlight admission core into an app
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
+  morpheus gh-manager sweep <owner/repo> [--out file]
+                            route every open pull request from facts; no model
+  morpheus gh-manager routes|prompt|apply|digest ...
+                            the steps the GitHub Manager operations workflow runs;
+                            see docs/runbooks/gh-manager.md
+  morpheus profile extract  [--since YYYY-MM-DD] [--repo <substring>] [--out <file>]
+                            session and tool-call rows from local Claude Code and Codex
+                            transcripts, as JSONL; read-only, nothing leaves the machine
+  morpheus profile report   [--since YYYY-MM-DD] [--repo <substring>] [--json]
+                            where time and tokens went: by phase, repo, role, model×effort
+  morpheus wait-ci [<pr|branch>] [--repo owner/name] [--timeout 45m] [--required-only]
+                            block once until the PR head's checks finish, then print a
+                            digest with failing-step logs; exit 0 green, 1 failed,
+                            2 timeout, 3 usage or gh error. Never poll gh in a loop
   morpheus voice knowledge  the standing explainer, to upload once as project knowledge
   morpheus voice brief ["<topic>"] [--slug x] [--notes "..."] [--full]
                             today's state, to paste into a voice session
+
+  morpheus qa comments pending
+                            list pending visual-QA comment batches under local/qa-comments/
+  morpheus qa comments claim --agent <identity>
+                            reserve the oldest unclaimed batch for one responder
+  morpheus qa comments show <batchId>
+                            print one batch.json
+  morpheus qa comments resolve <batchId> [ids...] [--agent <identity>]
+                            mark batch(es) resolved (moves pending → resolved)
+  morpheus qa comments release <batchId> --agent <identity> [--force]
+                            return failed work to the queue; --force recovers an abandoned claim
+  morpheus qa comments responder start|status|stop [--root <project>]
+  morpheus qa comments responder recover --confirm-no-agent-process [--root <project>]
+                            separate serial queue consumer using local responder.json
+  morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
+                            local overlay: tap → multi-comment → Send into local/qa-comments/
+  morpheus qa preview ios [start|status|stop|doctor|help] [--mode <name>] [--port <n>] [--no-build] [--root <project>]
+                         One simulator preview per checkout with the comment overlay; app declared in morpheus.json qa.ios
+  morpheus qa preview web [start|status|stop|help] [--path </page>] [--port <n>] [--root <project>]
+                         The local website behind the comment overlay; dev server declared in morpheus.json qa.web
+  morpheus qa guide       The comment-QA instructions every agent follows
 
 Options
   --dir <path>   Product directory (default: hq/product)

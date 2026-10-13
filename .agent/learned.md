@@ -543,3 +543,39 @@ Keep the upload id returned by the transport. Poll `builds uploads get` for term
 failure while separately polling `builds list` for the exact valid build used for distribution.
 The two resources answer different questions: whether Apple accepted the binary, and whether the
 binary became a distributable TestFlight build.
+
+## An agent writing a file through the shell silently eats `$<digit>`
+
+2026-10-06. The GitHub Manager's escalation on Evo #341 quoted three supplier prices with the `$`
+and the next digit missing (`$429.99` became `29.99`). The text was already wrong in the session's
+decision file, before any of Morpheus's own string handling touched it: the session had written
+the JSON through bash, where an unquoted heredoc expands `$4` as an empty positional parameter.
+The result is still valid JSON and plausible prose, so nothing downstream can detect it.
+
+When a prompt asks an unattended agent to write a file whose content a person will rely on, tell it
+to use its file-writing tool rather than the shell, and say why.
+
+## Claude Code writes one transcript line per content block, each repeating the usage
+
+2026-10-07. One API response with thinking, text and two tool calls appears as several `assistant`
+lines sharing `message.id`, and every one of them carries the response's full `usage`. Summing
+usage per line over-counts tokens two to five times (sampled on this machine: 3,511 messages on
+two lines, 2,607 on three, 464 on four or more). Count usage once per `message.id`.
+Subagent transcripts live beside the parent at `<session>/subagents/agent-<id>.jsonl` with a
+`.meta.json` naming the agent type and description; their lines carry the *parent's* `sessionId`.
+Codex re-emits identical cumulative `token_count` events around tool calls, so count a response
+only when `total_token_usage` moves.
+
+## A subprocess started from a Git hook inherits the hook's repository
+
+2026-10-08 (MO-26-10-08-06.43.59). Git exports `GIT_DIR` into every hook it runs — an absolute
+`.git/worktrees/<name>` path in a linked worktree — plus `GIT_PREFIX`, and a child `git` honours
+those over its `cwd`. The managed `post-merge` block's `morpheus self ensure` therefore ran
+`git status` in its disposable Morpheus clone against the *project's* repository and index, and
+refused with "the source checkout has local changes" listing the project's files. Running
+`self update` by hand worked, because a shell has no `GIT_DIR`. On Git 2.54 a top-level merge,
+pull or rebase in a main checkout exports neither variable, which is why worktrees failed first.
+
+Any git subprocess that must operate on the repository at its `cwd` takes
+`env: gitSubprocessEnv()` from `src/git-env.ts`. `git clone` was not misdirected, so nothing was
+written into a project's repository — the damage was a refused update, not a corrupted one.

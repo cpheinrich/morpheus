@@ -12,9 +12,6 @@ export declare const SESSION_START_MARKER = "# morpheus:session-start:v1";
  * installation after consent.
  */
 export declare const bootstrapScript: () => string;
-/**
- * Session hooks may execute this without consent to prepare repository source. It does not install the
- * CLI. Installation remains a separate command the agent runs after a yes.
- */
+/** Session startup diagnoses installation failures but never installs software itself. */
 export declare const sessionStartScript: () => string;
 export declare const bootstrapReadme: () => string;

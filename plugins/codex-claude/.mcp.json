@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "codex-claude": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/mcp.mjs"]
+    }
+  }
+}

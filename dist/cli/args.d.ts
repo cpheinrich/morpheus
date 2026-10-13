@@ -24,6 +24,19 @@ export interface Flags {
     dryRun: boolean;
     all: boolean;
     offline: boolean;
+    /**
+     * Whether `--base` was typed, as distinct from carrying its default. Commands
+     * whose natural answer is not "compare against the trunk" — `ios
+     * changed-swift`, whose CI-shaped mode compares a commit with its first
+     * parent — cannot otherwise tell the two apart, and would silently impose
+     * `origin/main` on a repository whose trunk has another name or no remote
+     * at all.
+     */
+    baseGiven: boolean;
+    /** `ios changed-swift`: include uncommitted and untracked Swift files. */
+    worktree: boolean;
+    /** `ios changed-swift`: NUL-delimited output, for `xargs -0`. */
+    nul: boolean;
     kind?: string;
     owner?: string;
     handle?: string;
@@ -54,10 +67,24 @@ export interface Flags {
     language?: string;
     rulesPath?: string;
     out?: string;
+    /** `profile`: earliest session start, `YYYY-MM-DD`. */
+    since?: string;
+    /** `profile`: substring of a session's repository or working directory. */
+    repo?: string;
+    /** `wait-ci`: how long to wait, e.g. `45m`. */
+    timeout?: string;
+    /** `wait-ci`: only checks branch protection requires. */
+    requiredOnly: boolean;
     full: boolean;
     json: boolean;
     dispatch: boolean;
     print: boolean;
     positional: string[];
 }
+/**
+ * Every flag the global parser consumes before a subcommand sees its arguments. A subcommand that
+ * lets a project declare its own flags (qa preview modes) must refuse these, or the flag is
+ * silently swallowed and the command runs as if it were never given.
+ */
+export declare function globalFlags(): Set<string>;
 export declare function parseArgs(argv: string[]): Flags;

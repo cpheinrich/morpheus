@@ -3,6 +3,7 @@ import { roadmapIdFromBranch } from "../pm/id.js";
 import { parseArtifact } from "../pm/parse.js";
 import { checkVisualEvidence, } from "./visual-evidence.js";
 import { DEPENDABOT_LOGIN, isDependencyOnly } from "../dependabot/policy.js";
+import { hasSecurityMarker, isSecurityDependencyOnly, MORPHEUS_SECURITY_LOGIN, } from "../security/policy.js";
 /**
  * A waiver line and the reason it gives.
  *
@@ -37,15 +38,28 @@ export function isRealReason(reason) {
 export function visibleProse(body) {
     return stripCode(stripHtmlComments(body));
 }
+/**
+ * The text a reader actually sees rendered — HTML comments and fenced blocks removed, inline code
+ * kept.
+ *
+ * For checking that a review summary is repeated where a person will read it. That needs the
+ * opposite answer to `visibleProse` on inline code: a backticked path renders, so a summary that
+ * names one is visible. Comparing against `visibleProse` failed every summary containing a code
+ * span, because the span was stripped from the page but not from the summary (the GitHub Manager's
+ * first Morpheus review, PR #327, was escalated for exactly this).
+ */
+export function visibleText(body) {
+    return stripFences(stripHtmlComments(body));
+}
+function stripFences(body) {
+    return body.replace(/```[\s\S]*?```/g, "").replace(/~~~[\s\S]*?~~~/g, "");
+}
 function stripHtmlComments(body) {
     return body.replace(/<!--[\s\S]*?-->/g, "");
 }
 /** Remove places where Markdown presents text as an example rather than prose. */
 function stripCode(body) {
-    return body
-        .replace(/```[\s\S]*?```/g, "")
-        .replace(/~~~[\s\S]*?~~~/g, "")
-        .replace(/`[^`\r\n]*`/g, "");
+    return stripFences(body).replace(/`[^`\r\n]*`/g, "");
 }
 /** Whether the PR body uses one of GitHub's same-repository closing keywords. */
 export function closesIssue(body, issue) {
@@ -126,6 +140,23 @@ export async function checkPr(ctx) {
             message: "Dependabot changed a path outside the dependency manifest allowlist; refusing the bot waiver.",
         });
     }
+    // The private Morpheus Security App gets the same narrow authoring waiver,
+    // but only for a marked dependency-only PR. The marker prevents an App PR
+    // created for another purpose from inheriting this exception.
+    if (ctx.author === MORPHEUS_SECURITY_LOGIN) {
+        if (hasSecurityMarker(body) && isSecurityDependencyOnly(changedFiles)) {
+            return [{
+                    level: "waived",
+                    rule: "morpheus-security-contract",
+                    message: "human authoring and independent review waived for a marked Morpheus Security dependency-only change; branch protection remains mandatory",
+                }];
+        }
+        findings.push({
+            level: "error",
+            rule: "morpheus-security-scope",
+            message: "Morpheus Security PR is unmarked or changes a path outside the dependency manifest allowlist.",
+        });
+    }
     if (!hasNoSubstantiveChange(changedFiles)) {
         findings.push(...(ctx.agentReview ?? [{ level: "error", rule: "agent-review", message: "Independent review evidence was not verified." }]));
     }
@@ -197,12 +228,18 @@ export async function checkPr(ctx) {
     // waiver the conventions reader never sees is a waiver swallowed. Validity
     // is checked here too, so a non-reason surfaces before the delivery job
     // refuses it. Read from visible prose — a documented example must not waive.
+    //
+    // It waives the *legacy delivery* check only. Read as "agent review waived",
+    // the line was taken for the mechanism CI recognises, and an agent told its
+    // human so while the independent-review rule below went on failing (#248).
+    // The message therefore names what it does not cover.
     const reviewReason = waiverReason(visibleProse(body), "review-waived");
     if (reviewReason !== null && isRealReason(reviewReason)) {
         findings.push({
             level: "waived",
             rule: "review-waived",
-            message: `agent review waived — "${reviewReason}"`,
+            message: `legacy agent-review delivery waived — "${reviewReason}". ` +
+                `This does not waive the independent review: agent-reviewed and a review-record: line are still required.`,
         });
     }
     else if (reviewReason !== null) {

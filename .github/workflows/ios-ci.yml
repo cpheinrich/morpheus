@@ -17,6 +17,10 @@ name: iOS CI
 on:
   workflow_call:
     inputs:
+      watch-paths:
+        description: Optional newline-separated Git pathspecs. Unrelated pull requests report success without native work; other events always run.
+        type: string
+        default: ""
       runner:
         description: GitHub-hosted image or self-hosted runner label with the requested Xcode and simulator runtime.
         type: string
@@ -64,11 +68,22 @@ on:
         description: >
           Re-run only the tests that failed, up to this many attempts in total.
           Zero disables retries. A test that fails every attempt still fails, so
-          this hides a flake rather than a defect — a suite that needs it is
-          telling you something, and the retry count belongs in the caller where
-          that is visible.
+          eventual success does not establish first-attempt reliability.
+          Intermittent product defects can pass on retry; preserve the evidence.
         type: number
         default: 0
+      only-testing:
+        description: Newline-separated xcodebuild test identifiers to include; empty preserves the complete scheme.
+        type: string
+        default: ""
+      test-selection:
+        description: Optional caller-generated JSON selection manifest, retained verbatim with result evidence.
+        type: string
+        default: ""
+      test-evidence-script:
+        description: Optional repository-relative Bash script validating exported results. Runs after tests even on failure; nonzero fails the job.
+        type: string
+        default: ""
       skip-testing:
         description: >
           Newline-separated xcodebuild -skip-testing identifiers
@@ -157,15 +172,77 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          # The style gate compares the checked-out commit to its first parent.
-          # Depth two keeps that boundary available without fetching full history.
-          fetch-depth: 2
+          # Scoped PRs need ancestry to verify a merge regenerated after the event.
+          # Other callers only need the first parent for the style gate.
+          fetch-depth: ${{ github.event_name == 'pull_request' && inputs.watch-paths != '' && '0' || '2' }}
           persist-credentials: false
+
+      - name: Check native change scope
+        id: scope
+        working-directory: .
+        env:
+          WATCH_PATHS: ${{ inputs.watch-paths }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != pull_request ] || [ -z "$WATCH_PATHS" ]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # GitHub can regenerate the merge ref against newer trunk while the
+          # event still names its old base. Verify ancestry, but keep the exact head.
+          if ! [[ "$PR_BASE_SHA" =~ ^[a-f0-9]{40}$ && "$PR_HEAD_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+            echo '::error::Native scope requires valid event base and head SHAs.' >&2
+            exit 1
+          fi
+          read -r -a parents <<< "$(git show -s --format=%P HEAD)"
+          if [ "${#parents[@]}" -ne 2 ]; then
+            echo '::error::Native scope requires a two-parent PR merge.' >&2
+            exit 1
+          fi
+          merge_base="${parents[0]}"
+          merge_head="${parents[1]}"
+          echo "Native scope: event base=$PR_BASE_SHA head=$PR_HEAD_SHA; checkout base=$merge_base head=$merge_head"
+          if [ "$merge_head" != "$PR_HEAD_SHA" ]; then
+            echo '::error::PR merge head does not match event head.' >&2
+            exit 1
+          fi
+          if ! git cat-file -e "$merge_head^{commit}" || ! git merge-base --is-ancestor "$PR_BASE_SHA" "$merge_base"; then
+            echo '::error::PR merge base is not descended from event base, or comparison history is missing.' >&2
+            exit 1
+          fi
+          test -n "${WATCH_PATHS//[[:space:]]/}"
+          pathspecs=()
+          while IFS= read -r pathspec; do
+            [ -z "$pathspec" ] || pathspecs+=("$pathspec")
+          done <<< "$WATCH_PATHS"
+          test "${#pathspecs[@]}" -gt 0
+          # Git owns matching, exclusions, deletes and names containing spaces.
+          if git diff --quiet --no-renames HEAD^1 HEAD -- "${pathspecs[@]}"; then
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+            echo 'No native app, dependency or test/build inputs changed; native work skipped.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            status=$?
+            test "$status" -eq 1
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      # A caller's Linux selection job cannot provide a runtime to this job.
+      # Persistent macOS service accounts may not have Node on their PATH.
+      - name: Set up test evidence runtime
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.test-evidence-script != '' }}
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
 
       # GitHub's macos-26 image uses a versioned application name; a dedicated
       # Mac normally uses /Applications/Xcode.app. Accept either layout, then
       # verify the actual toolchain rather than trusting the path's spelling.
       - name: Select Xcode
+        if: ${{ steps.scope.outputs.run == 'true' }}
         env:
           XCODE_VERSION: ${{ inputs.xcode-version }}
         run: |
@@ -193,7 +270,19 @@ jobs:
           echo "DEVELOPER_DIR=$xcode_app/Contents/Developer" >> "$GITHUB_ENV"
           "$xcode_app/Contents/Developer/usr/bin/xcodebuild" -version
 
+      # The post action runs on success, test failure and cancellation. Each job
+      # owns its test device and uniquely named XCTest clones, even on a shared Mac.
+      # Persistent runners keep one shut-down, dedicated warmed template; tests
+      # run only on job-owned clones. Ephemeral hosted runners create a clean device.
+      - name: Create isolated test simulator
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests && inputs.platform == 'iOS Simulator' }}
+        uses: cpheinrich/morpheus/.github/actions/ios-simulator@main
+        with:
+          destination: ${{ inputs.destination }}
+          persistent: ${{ runner.environment == 'self-hosted' }}
+
       - name: Validate locked project inputs
+        if: ${{ steps.scope.outputs.run == 'true' }}
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
@@ -205,6 +294,7 @@ jobs:
           FIREBASE_PROJECT: ${{ inputs.firebase-project }}
           FIREBASE_ONLY: ${{ inputs.firebase-only }}
           PRE_TEST_SCRIPT: ${{ inputs.pre-test-script }}
+          TEST_EVIDENCE_SCRIPT: ${{ inputs.test-evidence-script }}
           SWIFT_FORMAT_LINT: ${{ inputs.swift-format-lint }}
           SWIFT_FORMAT_CONFIGURATION: ${{ inputs.swift-format-configuration }}
         run: |
@@ -255,6 +345,13 @@ jobs:
             fi
           fi
 
+          if [ -n "$TEST_EVIDENCE_SCRIPT" ]; then
+            case "$TEST_EVIDENCE_SCRIPT" in
+              /*|*".."*) echo "test-evidence-script must be repository-relative without '..'" >&2; exit 1 ;;
+            esac
+            test -f "$GITHUB_WORKSPACE/$TEST_EVIDENCE_SCRIPT" || exit 1
+          fi
+
           if [ "$SWIFT_FORMAT_LINT" = "true" ]; then
             case "$SWIFT_FORMAT_CONFIGURATION" in
               ""|/*|*".."*)
@@ -294,30 +391,61 @@ jobs:
           fi
 
       - name: Prepare isolated build directories
+        if: ${{ steps.scope.outputs.run == 'true' }}
+        id: ios_paths
         run: |
+          set -euo pipefail
+          # A runner that keeps a build cache between jobs (the Mac mini's
+          # ephemeral VMs mount one per repo and slot) names it in
+          # MORPHEUS_IOS_CI_CACHE; DerivedData and the package checkouts live
+          # there at a path that never changes, so incremental builds survive
+          # the VM. Everything else stays under the job's own temp directory.
           ios_ci_root="$RUNNER_TEMP/ios-ci"
-          # A cancelled self-hosted run can leave bundles xcodebuild refuses to
-          # overwrite, plus logs/screenshots that must not become new evidence.
-          rm -rf "$ios_ci_root/Results" "$ios_ci_root/Logs" "$ios_ci_root/Screenshots"
-          mkdir -p \
-            "$ios_ci_root/SourcePackages" \
-            "$ios_ci_root/DerivedData" \
-            "$ios_ci_root/Results" \
-            "$ios_ci_root/Logs" \
-            "$ios_ci_root/Screenshots"
+          if [ -n "${MORPHEUS_IOS_CI_CACHE:-}" ] && [ -d "$MORPHEUS_IOS_CI_CACHE" ]; then
+            cache_root="$MORPHEUS_IOS_CI_CACHE"
+            echo "cached=true" >> "$GITHUB_OUTPUT"
+          else
+            cache_root="$ios_ci_root"
+            echo "cached=false" >> "$GITHUB_OUTPUT"
+          fi
+          mkdir -p "$cache_root/SourcePackages" "$cache_root/DerivedData" "$ios_ci_root"
+          # Cancellation can leave a child writing after the next job starts.
+          # Never reuse or clear its evidence path. The random suffix also
+          # separates multiple calls/jobs within the same run and attempt.
+          output_root=$(mktemp -d "$ios_ci_root/run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.XXXXXX")
+          mkdir -p "$output_root/Results" "$output_root/Logs" "$output_root/Screenshots"
           {
-            echo "SOURCE_PACKAGES=$ios_ci_root/SourcePackages"
-            echo "DERIVED_DATA=$ios_ci_root/DerivedData"
-            echo "RESULTS=$ios_ci_root/Results"
-            echo "LOGS=$ios_ci_root/Logs"
-            echo "SCREENSHOTS=$ios_ci_root/Screenshots"
+            echo "SOURCE_PACKAGES=$cache_root/SourcePackages"
+            echo "DERIVED_DATA=$cache_root/DerivedData"
+            echo "RESULTS=$output_root/Results"
+            echo "LOGS=$output_root/Logs"
+            echo "SCREENSHOTS=$output_root/Screenshots"
           } >> "$GITHUB_ENV"
+          {
+            echo "results=$output_root/Results"
+            echo "logs=$output_root/Logs"
+            echo "screenshots=$output_root/Screenshots"
+            echo "evidence-name=ios-test-evidence-${output_root##*/}"
+          } >> "$GITHUB_OUTPUT"
+
+      # The selection lives in scripts/swift-changed-files.sh, reached through
+      # this action, so a consumer wanting the same check locally calls the same
+      # file rather than imitating the step below. The first one that imitated
+      # it drifted inside a commit (darwin-health/evo#281), and
+      # tests/swift-changed-files.test.ts now pins every caller to one list.
+      - name: Select changed Swift sources
+        id: swift-changed-files
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}
+        uses: cpheinrich/morpheus/.github/actions/swift-changed-files@main
+        with:
+          working-directory: ${{ inputs.working-directory }}
 
       - name: Lint changed Swift sources
-        if: ${{ inputs.swift-format-lint }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}
         env:
           SWIFT_FORMAT_CONFIGURATION: ${{ inputs.swift-format-configuration }}
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          SWIFT_CHANGED_FILES: ${{ steps.swift-changed-files.outputs.file }}
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
@@ -329,16 +457,9 @@ jobs:
             --configuration "$configuration" >/dev/null
 
           swift_files=()
-          pathspec=":(glob)$WORKING_DIRECTORY/**/*.swift"
-          if git rev-parse --verify HEAD^1 >/dev/null 2>&1; then
-            while IFS= read -r -d '' file; do
-              swift_files+=("$file")
-            done < <(git diff-tree --no-commit-id --name-only --diff-filter=ACMR -r -z HEAD^1 HEAD -- "$pathspec")
-          else
-            while IFS= read -r -d '' file; do
-              swift_files+=("$file")
-            done < <(git ls-files -z -- "$pathspec")
-          fi
+          while IFS= read -r -d '' file; do
+            swift_files+=("$file")
+          done < "$SWIFT_CHANGED_FILES"
 
           if [ "${#swift_files[@]}" -eq 0 ]; then
             echo "No changed Swift sources to lint."
@@ -353,6 +474,8 @@ jobs:
             "${swift_files[@]}"
 
       - name: Cache resolved Swift packages
+        # A runner-provided cache directory already keeps the checkouts.
+        if: ${{ steps.scope.outputs.run == 'true' && steps.ios_paths.outputs.cached != 'true' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ runner.temp }}/ios-ci/SourcePackages
@@ -365,6 +488,7 @@ jobs:
             swiftpm-${{ runner.os }}-xcode-${{ inputs.xcode-version }}-
 
       - name: Resolve locked Swift packages
+        if: ${{ steps.scope.outputs.run == 'true' }}
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
@@ -379,20 +503,20 @@ jobs:
             2>&1 | tee "$LOGS/package-resolution.log"
 
       - name: Use Java 21 for Firebase emulators
-        if: ${{ inputs.run-tests && inputs.firebase-emulators }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests && inputs.firebase-emulators }}
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Install the locked Firebase emulator CLI
-        if: ${{ inputs.run-tests && inputs.firebase-emulators }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests && inputs.firebase-emulators }}
         env:
           FIREBASE_CLI_VERSION: ${{ inputs.firebase-cli-version }}
         run: npm install --global "firebase-tools@$FIREBASE_CLI_VERSION"
 
       - name: Build for testing
-        if: ${{ inputs.run-tests }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
@@ -411,7 +535,7 @@ jobs:
             -scheme "$SCHEME"
             -configuration "$CONFIGURATION"
             -sdk "$SDK"
-            -destination "platform=$PLATFORM,$DESTINATION"
+            -destination "platform=$PLATFORM,${MORPHEUS_IOS_DESTINATION:-$DESTINATION}"
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
             -derivedDataPath "$DERIVED_DATA"
             -resultBundlePath "$RESULTS/Build.xcresult"
@@ -438,7 +562,7 @@ jobs:
           xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log"
 
       - name: Build
-        if: ${{ !inputs.run-tests }}
+        if: ${{ steps.scope.outputs.run == 'true' && !inputs.run-tests }}
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
@@ -454,7 +578,7 @@ jobs:
             -scheme "$SCHEME"
             -configuration "$CONFIGURATION"
             -sdk "$SDK"
-            -destination "platform=$PLATFORM,$DESTINATION"
+            -destination "platform=$PLATFORM,${MORPHEUS_IOS_DESTINATION:-$DESTINATION}"
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
             -derivedDataPath "$DERIVED_DATA"
             -resultBundlePath "$RESULTS/Build.xcresult"
@@ -468,7 +592,7 @@ jobs:
           xcodebuild build "${args[@]}" 2>&1 | tee "$LOGS/build.log"
 
       - name: Run unit and UI tests
-        if: ${{ inputs.run-tests }}
+        if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}
         env:
           PROJECT: ${{ inputs.project }}
           SCHEME: ${{ inputs.scheme }}
@@ -477,6 +601,7 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
           DESTINATION: ${{ inputs.destination }}
           TEST_PLAN: ${{ inputs.test-plan }}
+          ONLY_TESTING: ${{ inputs.only-testing }}
           SKIP_TESTING: ${{ inputs.skip-testing }}
           TEST_ITERATIONS: ${{ inputs.test-iterations }}
           PARALLEL_TESTING: ${{ inputs.parallel-testing && 'YES' || 'NO' }}
@@ -493,7 +618,7 @@ jobs:
             -scheme "$SCHEME"
             -configuration "$CONFIGURATION"
             -sdk "$SDK"
-            -destination "platform=$PLATFORM,$DESTINATION"
+            -destination "platform=$PLATFORM,${MORPHEUS_IOS_DESTINATION:-$DESTINATION}"
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES"
             -derivedDataPath "$DERIVED_DATA"
             -resultBundlePath "$RESULTS/Tests.xcresult"
@@ -503,6 +628,12 @@ jobs:
           )
           if [ -n "$TEST_PLAN" ]; then
             args+=(-testPlan "$TEST_PLAN")
+          fi
+          if [ -n "$ONLY_TESTING" ]; then
+            while IFS= read -r identifier; do
+              [ -z "$identifier" ] && continue
+              args+=(-only-testing:"$identifier")
+            done <<< "$ONLY_TESTING"
           fi
           if [ -n "$SKIP_TESTING" ]; then
             while IFS= read -r identifier; do
@@ -516,6 +647,14 @@ jobs:
           # `-retry-tests-on-failure` re-runs only the tests that failed, so a
           # flake costs seconds instead of the whole job. It does not weaken the
           # gate: a test that fails every attempt still fails the run.
+          #
+          # Retries share the test host's process on purpose. Relaunching it
+          # (`-test-repetition-relaunch-enabled YES`, tried 2026-10-04 to
+          # 2026-10-05) made xcodebuild re-execute the whole UI test bundle for
+          # every retry rather than the failed cases: Evo's release lane ran
+          # its suite twice over, hit the job's three-hour limit, and produced
+          # no evidence at all. A flake that lives in the process is left to
+          # the next release instead.
           if [ "${TEST_ITERATIONS:-0}" != "0" ]; then
             args+=(-retry-tests-on-failure -test-iterations "$TEST_ITERATIONS")
           fi
@@ -540,8 +679,28 @@ jobs:
             xcodebuild test-without-building "${args[@]}" 2>&1 | tee "$LOGS/tests.log"
           fi
 
+      - name: Export complete test evidence
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
+        env:
+          TEST_SELECTION: ${{ inputs.test-selection }}
+          ONLY_TESTING: ${{ inputs.only-testing }}
+          TEST_EVIDENCE_SCRIPT: ${{ inputs.test-evidence-script }}
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > "$RESULTS/tested-sha.txt"
+          printf '%s\n' "$TEST_SELECTION" > "$RESULTS/selection.json"
+          printf '%s\n' "$ONLY_TESTING" > "$RESULTS/only-testing.txt"
+          result_bundle="$RESULTS/Tests.xcresult"
+          if [ -d "$result_bundle" ]; then
+            xcrun xcresulttool get test-results tests --path "$result_bundle" > "$RESULTS/tests.json"
+            xcrun xcresulttool get test-results summary --path "$result_bundle" > "$RESULTS/summary.json"
+          fi
+          if [ -n "$TEST_EVIDENCE_SCRIPT" ]; then
+            bash "$GITHUB_WORKSPACE/$TEST_EVIDENCE_SCRIPT"
+          fi
+
       - name: Export rendered test attachments
-        if: ${{ always() && inputs.run-tests }}
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         run: |
           set -o pipefail
           result_bundle="$RESULTS/Tests.xcresult"
@@ -558,16 +717,16 @@ jobs:
           fi
 
       - name: Upload rendered test attachments
-        if: ${{ always() && inputs.run-tests }}
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ios-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ios-ci/Screenshots
+          path: ${{ steps.ios_paths.outputs.screenshots }}
           if-no-files-found: ignore
           retention-days: 14
 
       - name: Collect Firebase emulator diagnostics
-        if: ${{ always() && inputs.run-tests && inputs.firebase-emulators }}
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && inputs.firebase-emulators && steps.ios_paths.outcome == 'success' }}
         run: |
           candidate_logs=(
             "$GITHUB_WORKSPACE/firebase-debug.log"
@@ -581,13 +740,25 @@ jobs:
           done
           echo "Firebase did not produce a debug log."
 
+      - name: Upload complete test evidence
+        if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ steps.ios_paths.outputs.evidence-name }}
+          path: |
+            ${{ steps.ios_paths.outputs.results }}/*.json
+            ${{ steps.ios_paths.outputs.results }}/*.txt
+            ${{ steps.ios_paths.outputs.logs }}
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload Xcode failure evidence
-        if: failure()
+        if: ${{ steps.scope.outputs.run == 'true' && failure() && steps.ios_paths.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ios-ci-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/ios-ci/Results
-            ${{ runner.temp }}/ios-ci/Logs
+            ${{ steps.ios_paths.outputs.results }}
+            ${{ steps.ios_paths.outputs.logs }}
           if-no-files-found: warn
           retention-days: 14

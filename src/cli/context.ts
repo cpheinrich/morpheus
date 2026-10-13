@@ -6,6 +6,7 @@ import {
   type SessionLease,
 } from "../session/lease.js";
 import { readInputs } from "../session/inputs.js";
+import type { RescueDeps } from "../session/trunk-rescue.js";
 import { check as checkContext, endTerm, refresh as takeReceipt } from "../session/context.js";
 import { resolveTrunk, trunkLog, worktreeRoot } from "../session/git.js";
 import { projectPolicy } from "../session/policy.js";
@@ -277,6 +278,8 @@ export interface BriefOptions {
   offline?: boolean;
   morpheus?: MorpheusInstallStatus;
   autoUpdatePreference?: AutoUpdatePreference;
+  /** Dependencies for moving dirty trunk edits to a draft PR at session start; tests inject `gh`. */
+  rescue?: RescueDeps | false;
 }
 
 export async function brief(root: string, opts: BriefOptions = {}): Promise<number> {

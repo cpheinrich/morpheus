@@ -40,6 +40,9 @@ const stringOptions = {
     "--language": (flags, value) => { flags.language = value; },
     "--rules-path": (flags, value) => { flags.rulesPath = value; },
     "--out": (flags, value) => { flags.out = value; },
+    "--since": (flags, value) => { flags.since = value; },
+    "--repo": (flags, value) => { flags.repo = value; },
+    "--timeout": (flags, value) => { flags.timeout = value; },
 };
 const booleanOptions = {
     "--check": (flags) => { flags.check = true; },
@@ -52,18 +55,35 @@ const booleanOptions = {
     "--no-waitlist": (flags) => { flags.waitlist = false; },
     "--no-hq": (flags) => { flags.hq = false; },
     "--json": (flags) => { flags.json = true; },
+    "--worktree": (flags) => { flags.worktree = true; },
+    "--nul": (flags) => { flags.nul = true; },
     "--full": (flags) => { flags.full = true; },
     "--dispatch": (flags) => { flags.dispatch = true; },
+    "--required-only": (flags) => { flags.requiredOnly = true; },
 };
+/** Flags `parseArgs` consumes in its switch rather than through the option tables. */
+const SWITCH_FLAGS = ["--dir", "--base", "--issue", "--ceiling", "--author", "--isbn"];
+/**
+ * Every flag the global parser consumes before a subcommand sees its arguments. A subcommand that
+ * lets a project declare its own flags (qa preview modes) must refuse these, or the flag is
+ * silently swallowed and the command runs as if it were never given.
+ */
+export function globalFlags() {
+    return new Set(["--help", "-h", ...Object.keys(stringOptions), ...Object.keys(booleanOptions), ...SWITCH_FLAGS]);
+}
 export function parseArgs(argv) {
     const flags = {
         dir: "hq/product",
         base: "origin/main",
+        baseGiven: false,
+        worktree: false,
+        nul: false,
         check: false,
         dryRun: false,
         all: false,
         offline: false,
         full: false,
+        requiredOnly: false,
         json: false,
         dispatch: false,
         print: false,
@@ -91,9 +111,14 @@ export function parseArgs(argv) {
             case "--dir":
                 flags.dir = argv[++i] ?? flags.dir;
                 break;
-            case "--base":
-                flags.base = argv[++i] ?? flags.base;
+            case "--base": {
+                const value = argv[++i];
+                if (value !== undefined) {
+                    flags.base = value;
+                    flags.baseGiven = true;
+                }
                 break;
+            }
             case "--issue":
                 flags.issue = argv[++i] ?? "";
                 break;

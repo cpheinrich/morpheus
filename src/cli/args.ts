@@ -24,6 +24,19 @@ export interface Flags {
   dryRun: boolean;
   all: boolean;
   offline: boolean;
+  /**
+   * Whether `--base` was typed, as distinct from carrying its default. Commands
+   * whose natural answer is not "compare against the trunk" — `ios
+   * changed-swift`, whose CI-shaped mode compares a commit with its first
+   * parent — cannot otherwise tell the two apart, and would silently impose
+   * `origin/main` on a repository whose trunk has another name or no remote
+   * at all.
+   */
+  baseGiven: boolean;
+  /** `ios changed-swift`: include uncommitted and untracked Swift files. */
+  worktree: boolean;
+  /** `ios changed-swift`: NUL-delimited output, for `xargs -0`. */
+  nul: boolean;
   kind?: string;
   owner?: string;
   handle?: string;
@@ -54,6 +67,14 @@ export interface Flags {
   language?: string;
   rulesPath?: string;
   out?: string;
+  /** `profile`: earliest session start, `YYYY-MM-DD`. */
+  since?: string;
+  /** `profile`: substring of a session's repository or working directory. */
+  repo?: string;
+  /** `wait-ci`: how long to wait, e.g. `45m`. */
+  timeout?: string;
+  /** `wait-ci`: only checks branch protection requires. */
+  requiredOnly: boolean;
   full: boolean;
   json: boolean;
   dispatch: boolean;
@@ -103,6 +124,9 @@ const stringOptions: Record<string, (flags: Flags, value: string | undefined) =>
   "--language": (flags, value) => { flags.language = value; },
   "--rules-path": (flags, value) => { flags.rulesPath = value; },
   "--out": (flags, value) => { flags.out = value; },
+  "--since": (flags, value) => { flags.since = value; },
+  "--repo": (flags, value) => { flags.repo = value; },
+  "--timeout": (flags, value) => { flags.timeout = value; },
 };
 
 const booleanOptions: Record<string, (flags: Flags) => void> = {
@@ -116,19 +140,38 @@ const booleanOptions: Record<string, (flags: Flags) => void> = {
   "--no-waitlist": (flags) => { flags.waitlist = false; },
   "--no-hq": (flags) => { flags.hq = false; },
   "--json": (flags) => { flags.json = true; },
+  "--worktree": (flags) => { flags.worktree = true; },
+  "--nul": (flags) => { flags.nul = true; },
   "--full": (flags) => { flags.full = true; },
   "--dispatch": (flags) => { flags.dispatch = true; },
+  "--required-only": (flags) => { flags.requiredOnly = true; },
 };
+
+/** Flags `parseArgs` consumes in its switch rather than through the option tables. */
+const SWITCH_FLAGS = ["--dir", "--base", "--issue", "--ceiling", "--author", "--isbn"] as const;
+
+/**
+ * Every flag the global parser consumes before a subcommand sees its arguments. A subcommand that
+ * lets a project declare its own flags (qa preview modes) must refuse these, or the flag is
+ * silently swallowed and the command runs as if it were never given.
+ */
+export function globalFlags(): Set<string> {
+  return new Set(["--help", "-h", ...Object.keys(stringOptions), ...Object.keys(booleanOptions), ...SWITCH_FLAGS]);
+}
 
 export function parseArgs(argv: string[]): Flags {
   const flags: Flags = {
     dir: "hq/product",
     base: "origin/main",
+    baseGiven: false,
+    worktree: false,
+    nul: false,
     check: false,
     dryRun: false,
     all: false,
     offline: false,
     full: false,
+    requiredOnly: false,
     json: false,
     dispatch: false,
     print: false,
@@ -157,9 +200,14 @@ export function parseArgs(argv: string[]): Flags {
       case "--dir":
         flags.dir = argv[++i] ?? flags.dir;
         break;
-      case "--base":
-        flags.base = argv[++i] ?? flags.base;
+      case "--base": {
+        const value = argv[++i];
+        if (value !== undefined) {
+          flags.base = value;
+          flags.baseGiven = true;
+        }
         break;
+      }
       case "--issue":
         flags.issue = argv[++i] ?? "";
         break;

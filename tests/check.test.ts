@@ -213,6 +213,42 @@ describe("checkPr", () => {
     );
   });
 
+  it("waives only marked dependency-only Morpheus Security PRs", async () => {
+    const accepted = await checkPr(goodPr({
+      author: "morpheus-security[bot]",
+      body: "<!-- morpheus-security-update -->",
+      branch: "morpheus-security/npm-js-yaml-ghsa-example",
+      changedFiles: ["apps/web/package-lock.json"],
+    }));
+    expect(accepted).toEqual([
+      expect.objectContaining({ rule: "morpheus-security-contract", level: "waived" }),
+    ]);
+
+    const pnpmOverride = await checkPr(goodPr({
+      author: "morpheus-security[bot]",
+      body: "<!-- morpheus-security-update -->",
+      branch: "morpheus-security/pnpm-minimist-ghsa-example",
+      changedFiles: ["pnpm-workspace.yaml", "pnpm-lock.yaml"],
+    }));
+    expect(pnpmOverride).toEqual([
+      expect.objectContaining({ rule: "morpheus-security-contract", level: "waived" }),
+    ]);
+
+    for (const change of [
+      { body: "", changedFiles: ["apps/web/package-lock.json"] },
+      { body: "<!-- morpheus-security-update -->", changedFiles: ["apps/web/app/page.tsx"] },
+    ]) {
+      const findings = await checkPr(goodPr({
+        author: "morpheus-security[bot]",
+        branch: "morpheus-security/npm-js-yaml-ghsa-example",
+        ...change,
+      }));
+      expect(findings).toContainEqual(expect.objectContaining({
+        rule: "morpheus-security-scope", level: "error",
+      }));
+    }
+  });
+
   it("blocks when the roadmap item was not moved to review", async () => {
     await seedRoadmap("EV-014", "in-progress");
     const findings = await checkPr(goodPr());
@@ -500,6 +536,22 @@ describe("the review waiver is surfaced beside the other two", () => {
         message: expect.stringContaining("the reviewer is down"),
       }),
     );
+  });
+
+  /**
+   * The waiver is honoured by the legacy delivery job and by nothing else. A
+   * `~ waived` line that reads as "agent review waived" was taken, in a real
+   * PR, for the mechanism that satisfies the independent-review rule — so the
+   * message has to say what it leaves standing.
+   */
+  it("says the waiver leaves the independent review required", async () => {
+    const findings = await checkPr(
+      goodPr({ body: withWaiver("review-waived: the reviewer is down, tracked upstream") }),
+    );
+    const waived = findings.find((f) => f.rule === "review-waived");
+    expect(waived?.message).toContain("legacy agent-review delivery waived");
+    expect(waived?.message).toContain("does not waive the independent review");
+    expect(waived?.message).toContain("agent-reviewed");
   });
 
   it("refuses a review waiver that says nothing", async () => {

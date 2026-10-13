@@ -4,6 +4,7 @@ import { access, chmod, mkdir, open, readFile, rm, stat, unlink, writeFile, } fr
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "./git-env.js";
 import { readRegistry } from "./registry/index.js";
 import { morpheusInstallStatus, updateMorpheus, } from "./self.js";
 const exec = promisify(execFile);
@@ -77,7 +78,11 @@ export function autoUpdateHookBlock(binaryPath) {
     return `${AUTO_UPDATE_START}
 MORPHEUS_AUTO_UPDATE_BIN=${shellQuote(binaryPath)}
 if [ -x "$MORPHEUS_AUTO_UPDATE_BIN" ]; then
-  "$MORPHEUS_AUTO_UPDATE_BIN" self ensure || :
+  (
+    PATH="\${PATH:-/usr/bin:/bin}":${shellQuote(dirname(binaryPath))}:${shellQuote(dirname(process.execPath))}
+    export PATH
+    "$MORPHEUS_AUTO_UPDATE_BIN" self ensure
+  ) || :
 else
   printf '%s\\n' "Morpheus auto-update is enabled, but $MORPHEUS_AUTO_UPDATE_BIN is missing." >&2
 fi
@@ -87,6 +92,7 @@ async function gitHookPath(root, hook) {
     const { stdout } = await exec("git", ["rev-parse", "--git-path", `hooks/${hook}`], {
         cwd: root,
         timeout: 10_000,
+        env: gitSubprocessEnv(),
     });
     const path = stdout.trim();
     if (!path)

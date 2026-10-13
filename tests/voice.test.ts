@@ -218,8 +218,8 @@ describe("the shipped skills", () => {
     return readFile(join(import.meta.dirname, "..", ".claude/skills", name, "SKILL.md"), "utf8");
   };
 
-  it("both declare frontmatter a loader can match on", async () => {
-    for (const name of ["voice-handoff", "voice-import"]) {
+  it("all declare frontmatter a loader can match on", async () => {
+    for (const name of ["voice-handoff", "voice-import", "launch-company"]) {
       const text = await read(name);
       expect(text.startsWith("---\n"), `${name} needs frontmatter`).toBe(true);
       expect(text).toContain(`name: ${name}`);
@@ -252,6 +252,33 @@ describe("the shipped skills", () => {
 
   it("voice-import permits filing nothing", async () => {
     expect(await read("voice-import")).toContain("did not reach a conclusion");
+  });
+
+  // Each of these was learned at a real launch; each is the line most likely to
+  // be softened by an edit that reads as a tidy-up.
+  it("launch-company inventories before it creates, and never invents an allowlist", async () => {
+    const text = await read("launch-company");
+    expect(text).toContain("Inventory each provider first");
+    expect(text).toContain("never create a second domain, repository, project, or deployment");
+    expect(text).toContain("runs only against handles the user explicitly\nsupplied");
+  });
+
+  it("launch-company checks Firebase Terms before touching IAM", async () => {
+    expect(await read("launch-company")).toContain("unaccepted Firebase Terms state before changing IAM");
+  });
+
+  // Production is released by the token-based reusable workflow from merged
+  // trunk. The tempting workaround for Vercel's commit-author check — a local
+  // `--prod` deploy from a .git-stripped copy — leaves nothing to trace.
+  it("launch-company routes production through vercel-deploy.yml, never a local --prod", async () => {
+    const text = await read("launch-company");
+    expect(text).toContain("`vercel-deploy.yml`");
+    expect(text).toContain("never with `--prod`");
+    expect(text).toContain("Root Directory to `apps/web`");
+  });
+
+  it("launch-company keeps credentials out of the repository", async () => {
+    expect(await read("launch-company")).toContain("Never copy credentials into the project repository");
   });
 });
 

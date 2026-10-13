@@ -79,7 +79,7 @@ function fakeRunner(root: string, state: FakeState, calls: string[]): CodebaseMe
     if (command === "git" && args.join(" ") === "rev-parse HEAD") {
       return ok(cwd === resolve(root) ? "abc123\n" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
     }
-    if (command === "git" && args.join(" ") === "status --porcelain") return ok();
+    if (command === "git" && args.join(" ") === "status --porcelain --untracked-files=all") return ok();
     if (command === "git" && args[0] === "ls-remote") {
       return ok("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/heads/main\n");
     }

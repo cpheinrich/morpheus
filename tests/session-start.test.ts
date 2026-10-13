@@ -60,11 +60,11 @@ describe("startup source freshness", () => {
     expect((await git(local, "worktree", "list", "--porcelain")).split("worktree ").length).toBe(worktrees.split("worktree ").length);
     expect(await readFile(join(local, "code.txt"), "utf8")).toBe("latest\n");
   });
-  it("preserves a dirty checkout and reports exactly how far behind it is", async () => {
+  it("with the rescue disabled, preserves a dirty checkout and reports exactly how far behind it is", async () => {
     const before = await git(local, "rev-parse", "HEAD");
     await writeFile(join(local, "code.txt"), "my changes\n");
     await advance();
-    expect((await prepareRepository(local)).behind).toBe(1);
+    expect((await prepareRepository(local, false, false)).behind).toBe(1);
     expect(await git(local, "rev-parse", "HEAD")).toBe(before);
     expect(await readFile(join(local, "code.txt"), "utf8")).toBe("my changes\n");
     await expect(assertCurrentSource(local)).rejects.toThrow("does not contain current");

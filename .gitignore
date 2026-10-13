@@ -16,6 +16,8 @@ local/
 !.env.example
 node_modules/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 # Editor-pasted images. Screenshots belong in chat, not in the repo — an inbox
 # archive does not need to be complete, and binaries bloat a text repo forever.

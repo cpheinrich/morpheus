@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/plugins/codex-claude/scripts/claude-hook.mjs\" SessionStart",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/plugins/codex-claude/scripts/claude-hook.mjs\" UserPromptSubmit",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/plugins/codex-claude/scripts/claude-hook.mjs\" SessionEnd",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

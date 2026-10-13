@@ -26,6 +26,7 @@
     "./hq-search/pdf": "./dist/hq-search/pdf.js",
     "./hq-search/react": "./dist/hq-search/react.js",
     "./registry": "./dist/registry/index.js",
+    "./profile": "./dist/profile/index.js",
     "./doctor": "./dist/doctor/index.js",
     "./codebase-memory": "./dist/codebase-memory.js",
     "./self": "./dist/self.js",
@@ -36,7 +37,8 @@
     "./research-library/server": "./dist/research-library/server.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "scripts/swift-changed-files.sh"
   ],
   "scripts": {
     "compile": "tsc -p tsconfig.build.json && cp src/research-library/*.py dist/research-library/ && chmod +x dist/cli/index.js dist/research-library/library.py dist/research-library/docling_html.py",
@@ -53,6 +55,8 @@
     "jose": "^6.2.5",
     "minimatch": "10.2.6",
     "minisearch": "^7.2.0",
+    "modern-screenshot": "4.7.0",
+    "serve-sim": "0.1.47",
     "zod": "^4.1.12"
   },
   "peerDependencies": {
