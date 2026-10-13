@@ -136,13 +136,16 @@ describe("completed task worktree cleanup", () => {
     await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("Another session is bound");
     expect(await git(root, "worktree", "list", "--porcelain")).toContain(target);
     expect(await git(root, "ls-remote", "--heads", "origin", `refs/heads/${branch}`)).toContain(branch);
+    await cleanupTask(root, join(root, "hq/product"), id, false, true);
+    expect(await git(root, "worktree", "list", "--porcelain")).not.toContain(target);
   });
 
   it("retains a clean worktree held open by another process", async () => {
+    await bindTask(target, id, "another-active-session");
     const process = spawn("sleep", ["30"], { cwd: target });
     await once(process, "spawn");
     try {
-      await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("A process is using");
+      await expect(cleanupTask(root, join(root, "hq/product"), id, false, true)).rejects.toThrow("A process is using");
       expect(await git(root, "worktree", "list", "--porcelain")).toContain(target);
     } finally {
       process.kill();

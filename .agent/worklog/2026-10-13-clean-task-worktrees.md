@@ -23,6 +23,11 @@ open handle or working directory in the checkout. It fails closed if process act
 cannot be checked. Two focused regression tests cover those guards; all eight cleanup
 tests and TypeScript checking pass after the change.
 
+The second review caught a lifecycle limit: bindings remain after their session exits.
+The default guard stays conservative. An operator who has confirmed the prior sessions
+ended can pass `--release-stale-sessions`; the open-process check and all Git/PR proof
+remain mandatory. The focused test covers both refusal and explicit release.
+
 Focused validation: `pnpm exec vitest run tests/worktree-cleanup.test.ts
 tests/session-start.test.ts tests/ship.test.ts tests/cli-dispatch.test.ts tests/init.test.ts`
 passed 217 tests. `tests/worktree-cleanup.test.ts` exercises real Git remotes, a squash

@@ -84,7 +84,7 @@ async function remoteHead(root: string, branch: string): Promise<string | null> 
 export interface CleanupResult { path: string; branch?: string; pr?: number; dryRun: boolean }
 
 /** All irreversible operations follow fresh, exact PR evidence; ancestry to trunk alone is insufficient. */
-export async function cleanupTask(cwd: string, productDir: string, id: string, dryRun = false): Promise<CleanupResult> {
+export async function cleanupTask(cwd: string, productDir: string, id: string, dryRun = false, releaseStaleSessions = false): Promise<CleanupResult> {
   if (!ROADMAP_ID.test(id)) throw new Error(`Invalid roadmap ID: ${id}`);
   const identity = await checkoutIdentity(cwd);
   // checkoutIdentity canonicalizes macOS /var -> /private/var. Compare two
@@ -105,7 +105,7 @@ export async function cleanupTask(cwd: string, productDir: string, id: string, d
   }
   const target = targets[0]!;
   await clean(target, identity.common);
-  await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID);
+  await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID, releaseStaleSessions);
   await assertNoOpenProcesses(target.path);
   if (target.branch === fetched.branch) throw new Error(`Policy violation: secondary worktree on trunk ${fetched.branch}.`);
   await assertItem(target.path, productRel, id, fetched.sha, target.detached);
@@ -137,7 +137,7 @@ export async function cleanupTask(cwd: string, productDir: string, id: string, d
   const current = (await listWorktrees(cwd)).find(w => w.path === target.path);
   if (!current || current.head !== target.head || current.branch !== target.branch) throw new Error("Task changed during cleanup; retry after work stops.");
   await clean(current, identity.common);
-  await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID);
+  await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID, releaseStaleSessions);
   await assertNoOpenProcesses(target.path);
   if (target.branch && await remoteHead(cwd, target.branch) !== remote) throw new Error("Remote branch changed during cleanup; retain and retry.");
   // Conditional remote deletion protects commits pushed after the proof. Do this before local

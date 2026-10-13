@@ -127,7 +127,7 @@ export async function temporaryTasks(common: string): Promise<TemporaryTask[]> {
 }
 
 /** A saved association may still belong to an open agent. Never erase another session's checkout. */
-export async function assertNoOtherTaskBindings(common: string, root: string, sessionId?: string): Promise<void> {
+export async function assertNoOtherTaskBindings(common: string, root: string, sessionId?: string, releaseStale = false): Promise<void> {
   const dir = join(common, "morpheus-sessions");
   let files: string[];
   try { files = await readdir(dir); }
@@ -138,7 +138,7 @@ export async function assertNoOtherTaskBindings(common: string, root: string, se
     let binding: TaskBinding;
     try { binding = JSON.parse(await readFile(join(dir, file), "utf8")) as TaskBinding; }
     catch { throw new Error(`Unreadable session binding ${file}; retain the worktree.`); }
-    if (binding.root === root) throw new Error(`Another session is bound to ${root}; retain it until that session releases the task.`);
+    if (binding.root === root && !releaseStale) throw new Error(`Another session is bound to ${root}; retain it. If you have confirmed all prior sessions ended, rerun with --release-stale-sessions.`);
   }
 }
 

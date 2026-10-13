@@ -72,7 +72,10 @@ evidence leaves the worktree in place. If process activity cannot be checked wit
 cleanup refuses removal. For an unclaimed
 prepared checkout, it requires Morpheus's preparation marker and proof that its HEAD
 is on current trunk. Ignored local files are preserved except reproducible `node_modules`
-install caches. `morpheus pm worktrees` inventories legacy sibling worktrees;
+install caches. Session bindings persist after a session exits. If cleanup finds one from
+another session, confirm that session has ended before using `--release-stale-sessions`;
+the command still checks for open processes and preserves all other safety proofs.
+`morpheus pm worktrees` inventories legacy sibling worktrees;
 `morpheus pm worktrees prune` clears only Git registrations whose directories are
 already missing. Do not delete directories directly: Git registration and branches
 must be reconciled together.

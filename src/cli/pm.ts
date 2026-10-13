@@ -864,10 +864,10 @@ export async function migrateIds(
 }
 
 /** Explicit cleanup only; context startup never deletes work. */
-export async function cleanup(productDir: string, id: string, cwd: string, dryRun = false): Promise<number> {
+export async function cleanup(productDir: string, id: string, cwd: string, dryRun = false, releaseStaleSessions = false): Promise<number> {
   try {
     if (offlineDeclared(false)) throw new Error("Cleanup requires fresh remote evidence; offline cleanup is refused.");
-    const result = await cleanupTask(cwd, productDir, id.toUpperCase(), dryRun);
+    const result = await cleanupTask(cwd, productDir, id.toUpperCase(), dryRun, releaseStaleSessions);
     console.log(`${dryRun ? "Safe to remove" : "Removed"}: ${result.path}${result.branch ? ` (${result.branch}, PR #${result.pr})` : " (prepared temporary worktree)"}`);
     if (dryRun) console.log("Dry run: no worktree, branch, or session binding deleted. Remote refs were fetched/pruned.");
     return 0;

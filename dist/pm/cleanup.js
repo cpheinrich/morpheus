@@ -96,7 +96,7 @@ async function remoteHead(root, branch) {
     return sha;
 }
 /** All irreversible operations follow fresh, exact PR evidence; ancestry to trunk alone is insufficient. */
-export async function cleanupTask(cwd, productDir, id, dryRun = false) {
+export async function cleanupTask(cwd, productDir, id, dryRun = false, releaseStaleSessions = false) {
     if (!ROADMAP_ID.test(id))
         throw new Error(`Invalid roadmap ID: ${id}`);
     const identity = await checkoutIdentity(cwd);
@@ -120,7 +120,7 @@ export async function cleanupTask(cwd, productDir, id, dryRun = false) {
     }
     const target = targets[0];
     await clean(target, identity.common);
-    await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID);
+    await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID, releaseStaleSessions);
     await assertNoOpenProcesses(target.path);
     if (target.branch === fetched.branch)
         throw new Error(`Policy violation: secondary worktree on trunk ${fetched.branch}.`);
@@ -162,7 +162,7 @@ export async function cleanupTask(cwd, productDir, id, dryRun = false) {
     if (!current || current.head !== target.head || current.branch !== target.branch)
         throw new Error("Task changed during cleanup; retry after work stops.");
     await clean(current, identity.common);
-    await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID);
+    await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID, releaseStaleSessions);
     await assertNoOpenProcesses(target.path);
     if (target.branch && await remoteHead(cwd, target.branch) !== remote)
         throw new Error("Remote branch changed during cleanup; retain and retry.");

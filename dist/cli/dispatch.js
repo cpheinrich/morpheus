@@ -429,7 +429,11 @@ async function dispatchPm({ flags, command, rest, dir }) {
                 console.error("Cleanup requires fresh remote evidence; offline cleanup is refused.");
                 return 1;
             }
-            return cleanup(dir, rest[0] ?? "", process.cwd(), flags.dryRun || flags.check);
+            if (rest.slice(1).some(arg => arg !== "--release-stale-sessions")) {
+                console.error("Usage: morpheus pm cleanup <ID> [--dry-run] [--release-stale-sessions]");
+                return 1;
+            }
+            return cleanup(dir, rest[0] ?? "", process.cwd(), flags.dryRun || flags.check, rest.includes("--release-stale-sessions"));
         case "worktrees":
             return worktrees(process.cwd(), rest[0], flags.dryRun || flags.check);
         case "claims":

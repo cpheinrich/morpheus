@@ -143,7 +143,7 @@ export async function temporaryTasks(common) {
     }));
 }
 /** A saved association may still belong to an open agent. Never erase another session's checkout. */
-export async function assertNoOtherTaskBindings(common, root, sessionId) {
+export async function assertNoOtherTaskBindings(common, root, sessionId, releaseStale = false) {
     const dir = join(common, "morpheus-sessions");
     let files;
     try {
@@ -165,8 +165,8 @@ export async function assertNoOtherTaskBindings(common, root, sessionId) {
         catch {
             throw new Error(`Unreadable session binding ${file}; retain the worktree.`);
         }
-        if (binding.root === root)
-            throw new Error(`Another session is bound to ${root}; retain it until that session releases the task.`);
+        if (binding.root === root && !releaseStale)
+            throw new Error(`Another session is bound to ${root}; retain it. If you have confirmed all prior sessions ended, rerun with --release-stale-sessions.`);
     }
 }
 /** Remove only bindings naming the removed path, including other provider sessions. */
