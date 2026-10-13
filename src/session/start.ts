@@ -5,11 +5,14 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { projectPolicy } from "./policy.js";
 import { resolveTrunk } from "./git.js";
+import { assertWorktreePolicy } from "./worktrees.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 
 const exec = promisify(execFile);
-export const sessionGit = async (root: string, args: string[]): Promise<string> =>
-  (await exec("git", args, { cwd: root, timeout: 30_000 })).stdout.trim();
+export const sessionGit = async (root: string, args: string[], trim = true): Promise<string> => {
+  const { stdout } = await exec("git", args, { cwd: root, timeout: 30_000 });
+  return trim ? stdout.trim() : stdout;
+};
 
 export async function checkoutIdentity(cwd: string): Promise<{ root: string; common: string; linked: boolean }> {
   const root = await realpath(await sessionGit(cwd, ["rev-parse", "--show-toplevel"]));
@@ -54,6 +57,7 @@ export async function prepareRepository(cwd: string, offline = false): Promise<S
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("A Morpheus project manifest is required.");
   if (offline) throw new Error("Offline: latest remote code is unverified. Existing local work may continue explicitly offline; do not claim the checkout is current.");
   const fetched = await fetchTrunk(root);
+  await assertWorktreePolicy(root, fetched.branch);
   const branch = await sessionGit(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
   const before = await sessionGit(root, ["rev-parse", "HEAD"]);
   const dirty = await sessionGit(root, ["status", "--porcelain"]);

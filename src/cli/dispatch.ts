@@ -4,6 +4,8 @@ import {
   block,
   claim,
   resume,
+  cleanup,
+  worktrees,
   claims,
   create,
   index,
@@ -413,6 +415,11 @@ async function dispatchPm({ flags, command, rest, dir }: Invocation): Promise<nu
     }
     case "resume":
       return resume(rest[0] ?? "", process.cwd(), flags.sessionId);
+    case "cleanup":
+      if (flags.offline) { console.error("Cleanup requires fresh remote evidence; offline cleanup is refused."); return 1; }
+      return cleanup(dir, rest[0] ?? "", process.cwd(), flags.dryRun || flags.check);
+    case "worktrees":
+      return worktrees(process.cwd(), rest[0], flags.dryRun || flags.check);
     case "claims":
       return claims(dir, process.cwd());
     case "link-issue": {

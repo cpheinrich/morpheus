@@ -8,6 +8,8 @@ Usage
                             — name the slug like a branch; derived otherwise
   morpheus pm claim <RM-014>
   morpheus pm resume <ID>   reuse an existing task worktree or its remote branch
+  morpheus pm cleanup <ID> [--dry-run|--check]  prove a merge, then remove its clean task worktree
+  morpheus pm worktrees [prune] [--dry-run]    inventory / prune only missing registrations
   morpheus pm claims
   morpheus pm link-issue <RM-014> <123>
   morpheus pm block <MO-051> --needs "<what would unblock this>" [--owner <handle>]
