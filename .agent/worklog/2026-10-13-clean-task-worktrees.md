@@ -42,3 +42,77 @@ After shortening the new instruction, `pnpm exec vitest run tests/agent-instruct
 passed all 14 tests. CI will run the full suite on the final commit; the local full suite was
 not repeated. A live `pm cleanup MO-26-10-12-15.26.15 --dry-run` against Morpheus correctly
 refused removal of its merged worktree because ignored `local/` data remains.
+
+Independent high-risk review found that clean, unlocked worktrees could still be in use by another session or process. The author added session-binding and open-process guards. The follow-up found that persistent bindings could prevent later cleanup, so the author added an explicit stale-session release option while retaining the process guard. The same reviewer cleared the final commit; no findings remain.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "90079a48f668cb6d402679a6b68036ce13af3685",
+  "reviewed": "57822dca1ac21d0b568eefd7e567819f3e202dc9",
+  "covered": "376b2f40cbaa7ec8fb2988bb3d5c5c561caca55f",
+  "authorSession": "01a13771-a9df-7da3-befc-8ec711b92491",
+  "reviewerSession": "/root/worktree_cleanup_review",
+  "risk": "high",
+  "elapsedMinutes": 0.8663333333333333,
+  "timing": {
+    "source": "clock",
+    "durationMs": 51980,
+    "evidence": "Reviewer /root/worktree_cleanup_review session event timestamps: task_started 2026-10-13T22:57:33.609Z; task_complete 2026-10-13T22:58:25.589Z."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review found that clean, unlocked worktrees could still be in use by another session or process. The author added session-binding and open-process guards. The follow-up found that persistent bindings could prevent later cleanup, so the author added an explicit stale-session release option while retaining the process guard. The same reviewer cleared the final commit; no findings remain.",
+  "findings": [
+    {
+      "id": "WC-1",
+      "severity": "substantive",
+      "description": "Cleanup checked Git cleanliness and locks but could delete a clean checkout actively used by another session or process, then erase its binding.",
+      "paths": [
+        "src/pm/cleanup.ts",
+        "src/session/tasks.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Added guards for other session bindings and lsof-detected open processes before proof and immediately before mutation. Cleanup fails closed when activity cannot be checked. Real-Git regressions cover both guards; reviewer cleared the process case."
+    },
+    {
+      "id": "WC-2",
+      "severity": "substantive",
+      "description": "Treating every saved binding as active indefinitely prevented a later session from cleaning a finished task after its author session ended.",
+      "paths": [
+        "src/session/tasks.ts",
+        "src/pm/cleanup.ts",
+        "src/cli/pm.ts",
+        "src/cli/dispatch.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Added explicit --release-stale-sessions for an operator who has confirmed prior sessions ended; normal cleanup still refuses other bindings, and the open-process and Git/PR checks remain mandatory. Focused tests cover refusal, explicit release, and live-process refusal with the option; reviewer cleared."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/worktree_cleanup_review",
+      "commit": "78591bf3edf1278dba810cf2a238c9fe1134f55f",
+      "outcome": "blocked",
+      "elapsedMinutes": 0.654,
+      "timing": {
+        "source": "clock",
+        "durationMs": 39240,
+        "evidence": "Reviewer /root/worktree_cleanup_review session event timestamps: task_started 2026-10-13T23:01:14.709Z; task_complete 2026-10-13T23:01:53.949Z."
+      },
+      "summary": "WC-1 process protection passed focused tests, but the persistent binding guard introduced WC-2; cleanup remained blocked."
+    },
+    {
+      "reviewerSession": "/root/worktree_cleanup_review",
+      "commit": "376b2f40cbaa7ec8fb2988bb3d5c5c561caca55f",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.26508333333333334,
+      "timing": {
+        "source": "clock",
+        "durationMs": 15905,
+        "evidence": "Reviewer /root/worktree_cleanup_review session event timestamps: task_started 2026-10-13T23:03:49.336Z; task_complete 2026-10-13T23:04:05.241Z."
+      },
+      "summary": "WC-1 and WC-2 resolved: normal cleanup preserves other bound sessions, explicit stale release permits later cleanup, and lsof protection still applies. No remaining findings."
+    }
+  ]
+}
+```
