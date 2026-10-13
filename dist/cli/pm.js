@@ -1,3 +1,4 @@
+import { cleanupTask, worktreeStatus, pruneStaleWorktrees } from "../pm/cleanup.js";
 import { offlineDeclared } from "../session/gate.js";
 import { guard } from "./context.js";
 import { assertCurrentSource } from "../session/start.js";
@@ -660,5 +661,35 @@ export async function migrateIds(productDir, dryRun, repoRoot = process.cwd()) {
     if (!dryRun)
         console.log("Run `morpheus pm index` to refresh product README files.");
     return result.problems.length ? 1 : 0;
+}
+/** Explicit cleanup only; context startup never deletes work. */
+export async function cleanup(productDir, id, cwd, dryRun = false, releaseStaleSessions = false) {
+    try {
+        if (offlineDeclared(false))
+            throw new Error("Cleanup requires fresh remote evidence; offline cleanup is refused.");
+        const result = await cleanupTask(cwd, productDir, id.toUpperCase(), dryRun, releaseStaleSessions);
+        console.log(`${dryRun ? "Safe to remove" : "Removed"}: ${result.path}${result.branch ? ` (${result.branch}, PR #${result.pr})` : " (prepared temporary worktree)"}`);
+        if (dryRun)
+            console.log("Dry run: no worktree, branch, or session binding deleted. Remote refs were fetched/pruned.");
+        return 0;
+    }
+    catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        return 1;
+    }
+}
+export async function worktrees(cwd, action, dryRun = false) {
+    try {
+        if (action && action !== "prune")
+            throw new Error("Usage: morpheus pm worktrees [prune] [--dry-run]");
+        console.log((await worktreeStatus(cwd)).join("\n"));
+        if (action === "prune")
+            console.log(await pruneStaleWorktrees(cwd, dryRun) || "No stale registrations pruned.");
+        return 0;
+    }
+    catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        return 1;
+    }
 }
 //# sourceMappingURL=pm.js.map

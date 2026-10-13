@@ -65,6 +65,8 @@ pnpm morpheus pm index             # refresh goal/request indexes
 pnpm morpheus pm new roadmap "Title" --slug verb-noun --priority P1 [--issue 123]
 pnpm morpheus pm claim <ID>        # stake the branch; prints WORK IN for a fresh worktree
 pnpm morpheus pm resume <ID>       # continue a claimed or blocked task
+pnpm morpheus pm cleanup <ID>      # after merge, remove the clean task worktree
+pnpm morpheus pm worktrees         # inventory linked checkouts
 pnpm morpheus pm block <ID> --needs "what would unblock this"
 pnpm morpheus review prepare --base origin/main   # the reviewer packet
 pnpm morpheus review validate      # CI's review-record check, run before pushing
@@ -109,6 +111,10 @@ checkout `pm claim` prints a fresh worktree; read its records, refresh there, an
 there. Do not run concurrent authors on one task worktree. **Name slugs like branches**
 (`--slug update-roadmap-ids`, verb-noun, ≤ 32 characters). Ids, worktrees and resume:
 [`pm-workflow.md`](docs/runbooks/pm-workflow.md).
+New task worktrees live in the system temporary directory. After the PR merges, run
+`morpheus pm cleanup <ID>` from the primary checkout. It proves the exact PR merged and
+preserves dirty, locked, active, or ambiguous worktrees. Use `pm worktrees` to inspect
+older sibling checkouts before cleaning them.
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
 voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work

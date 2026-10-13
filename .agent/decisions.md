@@ -937,6 +937,17 @@ source containing the observed trunk, and startup does not certify reading. Cons
 3.36.0 (published metadata modified 2026-04-12, five direct dependencies); native Git plus Node's
 filesystem/crypto primitives fit this repository-specific lifecycle without another Git wrapper.
 
+**Task worktrees use system temp and are removed after verified merge** — 2026-10-13.
+Chris wants source directories to contain one primary checkout per repository. New task
+worktrees go under the OS temporary directory, keyed by the common Git directory; existing
+linked worktrees are not moved while active. After a PR merges, the author runs `pm cleanup
+<ID>` from another checkout. It requires one exact merged PR, current trunk containing its
+merge commit, matching branch ancestry, and a clean unlocked linked worktree before deleting
+the checkout and obsolete branch refs. Startup never deletes a worktree because another
+session may still be using it. Ignored local data is preserved, apart from reproducible
+`node_modules` install caches. The existing native Git implementation is reused; a new Git
+wrapper dependency would add no useful safety at this boundary.
+
 
 **Cleared review survives verified integration of already reviewed documentation** — 2026-09-16.
 Chris approved this exception after Lakina's TestFlight migration exhausted both passes, cleared

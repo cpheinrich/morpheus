@@ -964,7 +964,7 @@ same-branch resets cannot reuse certification. Startup itself never issues a rec
 
 **One worktree per implementation task, not per conversation.** Startup without a task performs
 no worktree allocation. `pm claim` from a shared or unrelated checkout prepares a detached worktree
-at freshly fetched trunk, moving only a newly filed untracked roadmap item. The agent must read the
+under the operating system's temporary directory at freshly fetched trunk, moving only a newly filed untracked roadmap item. The agent must read the
 worktree's records, refresh there, and repeat the claim to create and push its derived branch.
 An already isolated detached worktree can claim directly. Read-only investigation needs no worktree.
 Existing task worktrees are identified by their claimed roadmap branch. `pm resume <ID>` resolves
@@ -984,8 +984,11 @@ absolute `WORK IN` directory and the required record paths; the agent must use t
 subsequent operations. Updated standard hooks inherit the behavior from the copied global CLI,
 without changes to each project's hook JSON. Hook trust remains provider-controlled; projects
 without the standard hook need `context install` and provider trust. Updating the runtime git
-dependency alone does not update the global CLI. Task directories persist for explicit Git cleanup;
-startup does not delete them automatically.
+dependency alone does not update the global CLI. After a task PR merges, `pm cleanup <ID>`
+uses the exact PR, current remote trunk, and clean linked checkout as evidence before removing
+the worktree and obsolete refs. An active, dirty, locked, or ambiguous checkout remains intact.
+Older sibling worktrees remain usable; `pm worktrees` inventories them. Startup does not delete
+worktrees automatically because a session can be reading or editing one while startup runs.
 
 The reporting half discards the selected worktree's prior receipt before naming records to read.
 Resumption and compaction preserve task association but require re-reading. The separate CLI-version

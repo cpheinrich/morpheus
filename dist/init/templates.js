@@ -758,8 +758,7 @@ claim an app launch date.
 `;
 export const agents = (s) => `# ${s.name} — agent instructions
 
-Read this before doing anything. \`CLAUDE.md\` is a symlink to this file so Claude and Codex
-read the same instructions.
+Read this first. \`CLAUDE.md\` links here.
 
 ${morpheusCalloutForAgents()}
 
@@ -896,6 +895,8 @@ yourself once checks pass.
 \`\`\`sh
 gh pr merge <n> --squash --auto --delete-branch
 \`\`\`
+
+After merge: \`morpheus pm cleanup <ID>\` from the primary checkout removes its worktree.
 
 ## Style
 
