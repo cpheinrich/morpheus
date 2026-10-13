@@ -948,6 +948,12 @@ session may still be using it. Ignored local data is preserved, apart from repro
 `node_modules` install caches. The existing native Git implementation is reused; a new Git
 wrapper dependency would add no useful safety at this boundary.
 
+**Generated session receipts do not prevent task cleanup** — 2026-10-13. Context refresh
+writes one ignored `local/sessions/<worktree-hash>.json` into every active task checkout.
+Preserving all ignored `local/` content made post-merge cleanup refuse routine completed
+tasks. Cleanup may remove that exact validated receipt for the worktree after the merge,
+activity, and cleanliness proofs. Any other `local/` entry remains protected.
+
 
 **Cleared review survives verified integration of already reviewed documentation** — 2026-09-16.
 Chris approved this exception after Lakina's TestFlight migration exhausted both passes, cleared

@@ -1,12 +1,14 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, rmdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, rmdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanupTask } from "../src/pm/cleanup.js";
 import { bindTask, prepareTask } from "../src/session/tasks.js";
+import { sessionId } from "../src/session/policy.js";
+import { writeLease } from "../src/session/store.js";
 
 const exec = promisify(execFile);
 const git = async (cwd: string, ...args: string[]) => (await exec("git", args, { cwd })).stdout.trim();
@@ -33,6 +35,17 @@ async function pr(state: "MERGED" | "OPEN"): Promise<void> {
     mergeCommit: state === "MERGED" ? { oid: merge } : null,
     headRepository: { nameWithOwner: "example/repo" },
   }]));
+}
+
+async function generatedReceipt(worktree = target): Promise<void> {
+  await writeFile(join(root, ".git/info/exclude"), "local/\n");
+  const result = await writeLease(target, sessionId(target), {
+    version: 1,
+    receipt: { version: 1, id: "test", createdAt: "2026-10-13T00:00:00Z", remoteSha: merge,
+      branch, worktree, inputs: [] },
+    checkedAt: "2026-10-13T00:00:00Z", status: "fresh", changedInputs: [],
+  });
+  expect(result.written).toBe(true);
 }
 
 beforeEach(async () => {
@@ -115,6 +128,42 @@ describe("completed task worktree cleanup", () => {
     await writeFile(join(target, "private.txt"), "keep this\n");
     await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("Dirty worktree");
     expect(await readFile(join(target, "private.txt"), "utf8")).toBe("keep this\n");
+  });
+
+  it("removes only a valid Morpheus receipt in local/sessions", async () => {
+    await generatedReceipt();
+    await cleanupTask(root, join(root, "hq/product"), id);
+    await expect(readFile(join(target, "local/sessions", `${sessionId(target)}.json`))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("retains unrelated local data beside a valid receipt", async () => {
+    await generatedReceipt();
+    await writeFile(join(target, "local", "notes.txt"), "preserve me\n");
+    await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("Dirty worktree");
+    expect(await readFile(join(target, "local", "notes.txt"), "utf8")).toBe("preserve me\n");
+  });
+
+  it("retains a receipt whose claimed worktree does not match its checkout", async () => {
+    await generatedReceipt(root);
+    await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("Dirty worktree");
+    expect(await git(root, "worktree", "list", "--porcelain")).toContain(target);
+  });
+
+  it("retains a malformed generated receipt", async () => {
+    await generatedReceipt();
+    await writeFile(join(target, "local/sessions", `${sessionId(target)}.json`), "not JSON\n");
+    await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("Dirty worktree");
+    expect(await git(root, "worktree", "list", "--porcelain")).toContain(target);
+  });
+
+  it("retains a symlink at the generated receipt path", async () => {
+    await generatedReceipt();
+    const receipt = join(target, "local/sessions", `${sessionId(target)}.json`);
+    await writeFile(join(dir, "external.json"), await readFile(receipt));
+    await rm(receipt);
+    await symlink(join(dir, "external.json"), receipt);
+    await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("Dirty worktree");
+    expect(await readFile(join(dir, "external.json"), "utf8")).toContain('"version": 1');
   });
 
   it("removes a generated node_modules cache with a completed task", async () => {
