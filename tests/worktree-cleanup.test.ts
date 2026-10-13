@@ -1,11 +1,12 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanupTask } from "../src/pm/cleanup.js";
-import { prepareTask } from "../src/session/tasks.js";
+import { bindTask, prepareTask } from "../src/session/tasks.js";
 
 const exec = promisify(execFile);
 const git = async (cwd: string, ...args: string[]) => (await exec("git", args, { cwd })).stdout.trim();
@@ -128,6 +129,25 @@ describe("completed task worktree cleanup", () => {
     await pr("OPEN");
     await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("not MERGED");
     expect(await git(root, "worktree", "list", "--porcelain")).toContain(target);
+  });
+
+  it("retains a clean worktree bound to another session", async () => {
+    await bindTask(target, id, "another-active-session");
+    await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("Another session is bound");
+    expect(await git(root, "worktree", "list", "--porcelain")).toContain(target);
+    expect(await git(root, "ls-remote", "--heads", "origin", `refs/heads/${branch}`)).toContain(branch);
+  });
+
+  it("retains a clean worktree held open by another process", async () => {
+    const process = spawn("sleep", ["30"], { cwd: target });
+    await once(process, "spawn");
+    try {
+      await expect(cleanupTask(root, join(root, "hq/product"), id)).rejects.toThrow("A process is using");
+      expect(await git(root, "worktree", "list", "--porcelain")).toContain(target);
+    } finally {
+      process.kill();
+      await once(process, "exit");
+    }
   });
 
   it("removes an unclaimed prepared temp checkout only with its marker and trunk proof", async () => {

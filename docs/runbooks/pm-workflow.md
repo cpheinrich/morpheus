@@ -67,7 +67,9 @@ After the task PR has merged, return to the primary checkout and run
 `morpheus pm cleanup <ID>`. The command verifies the exact merged PR and current trunk,
 then removes only that task's clean, unlocked linked worktree and its obsolete local and
 remote branch refs. `--dry-run` shows whether it can do so. An open PR, local edits,
-an ambiguous claim, or missing evidence leaves the worktree in place. For an unclaimed
+another session binding, an open process in the checkout, an ambiguous claim, or missing
+evidence leaves the worktree in place. If process activity cannot be checked with `lsof`,
+cleanup refuses removal. For an unclaimed
 prepared checkout, it requires Morpheus's preparation marker and proof that its HEAD
 is on current trunk. Ignored local files are preserved except reproducible `node_modules`
 install caches. `morpheus pm worktrees` inventories legacy sibling worktrees;

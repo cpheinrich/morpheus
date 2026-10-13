@@ -17,6 +17,12 @@ registrations whose directories are missing. Startup does not remove a checkout 
 session might still be using. No new Git wrapper package was added; the previously recorded
 simple-git evaluation and native Git implementation remain applicable.
 
+Independent review found that clean and unlocked did not prove a checkout was idle.
+Cleanup now refuses another session binding and uses `lsof` to refuse a process with an
+open handle or working directory in the checkout. It fails closed if process activity
+cannot be checked. Two focused regression tests cover those guards; all eight cleanup
+tests and TypeScript checking pass after the change.
+
 Focused validation: `pnpm exec vitest run tests/worktree-cleanup.test.ts
 tests/session-start.test.ts tests/ship.test.ts tests/cli-dispatch.test.ts tests/init.test.ts`
 passed 217 tests. `tests/worktree-cleanup.test.ts` exercises real Git remotes, a squash

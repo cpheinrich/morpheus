@@ -1,9 +1,11 @@
 import { realpath } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 import matter from "gray-matter";
 import { checkoutIdentity, fetchTrunk, sessionGit as git } from "../session/start.js";
 import { listWorktrees, missingDirectory } from "../session/worktrees.js";
-import { clearTaskBindings, temporaryTasks } from "../session/tasks.js";
+import { assertNoOtherTaskBindings, clearTaskBindings, temporaryTasks } from "../session/tasks.js";
 import { projectPolicy } from "../session/policy.js";
 import { resolveTrunk } from "../session/git.js";
 import { FETCH_PRUNE, findClaims } from "./claim.js";
@@ -12,6 +14,26 @@ import { parseArtifact } from "./parse.js";
 import { ARTIFACTS } from "./schema.js";
 import { cleanupPr } from "./ship.js";
 const oid = /^[a-f0-9]{40,64}$/;
+const exec = promisify(execFile);
+async function assertNoOpenProcesses(path) {
+    // lsof includes shells with this cwd and editors/builds holding files below it.
+    // Exit 1 with no output is its documented empty result; any other failure is unsafe.
+    try {
+        const { stdout } = await exec("lsof", ["-nP", "+D", path], { maxBuffer: 1024 * 1024 });
+        if (stdout.trim())
+            throw new Error(`A process is using ${path}; retain the worktree.`);
+    }
+    catch (error) {
+        if (error instanceof Error && error.message.includes("retain the worktree"))
+            throw error;
+        const failure = error;
+        if (failure.stdout?.trim())
+            throw new Error(`A process is using ${path}; retain the worktree.`);
+        if (String(failure.code) === "1" && !failure.stdout?.trim() && !failure.stderr?.trim())
+            return;
+        throw new Error(`Cannot verify whether ${path} is in use; retain the worktree. ${failure.message}`);
+    }
+}
 async function contained(root, ancestor, descendant, message) {
     if (!oid.test(ancestor) || !oid.test(descendant))
         throw new Error("Incomplete commit evidence.");
@@ -98,6 +120,8 @@ export async function cleanupTask(cwd, productDir, id, dryRun = false) {
     }
     const target = targets[0];
     await clean(target, identity.common);
+    await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID);
+    await assertNoOpenProcesses(target.path);
     if (target.branch === fetched.branch)
         throw new Error(`Policy violation: secondary worktree on trunk ${fetched.branch}.`);
     await assertItem(target.path, productRel, id, fetched.sha, target.detached);
@@ -138,6 +162,8 @@ export async function cleanupTask(cwd, productDir, id, dryRun = false) {
     if (!current || current.head !== target.head || current.branch !== target.branch)
         throw new Error("Task changed during cleanup; retry after work stops.");
     await clean(current, identity.common);
+    await assertNoOtherTaskBindings(identity.common, target.path, process.env.CODEX_THREAD_ID);
+    await assertNoOpenProcesses(target.path);
     if (target.branch && await remoteHead(cwd, target.branch) !== remote)
         throw new Error("Remote branch changed during cleanup; retain and retry.");
     // Conditional remote deletion protects commits pushed after the proof. Do this before local

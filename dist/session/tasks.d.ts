@@ -15,6 +15,8 @@ export interface TemporaryTask {
     gitDir: string;
 }
 export declare function temporaryTasks(common: string): Promise<TemporaryTask[]>;
+/** A saved association may still belong to an open agent. Never erase another session's checkout. */
+export declare function assertNoOtherTaskBindings(common: string, root: string, sessionId?: string): Promise<void>;
 /** Remove only bindings naming the removed path, including other provider sessions. */
 export declare function clearTaskBindings(common: string, root: string): Promise<void>;
 export {};

@@ -126,6 +126,22 @@ export async function temporaryTasks(common: string): Promise<TemporaryTask[]> {
   }));
 }
 
+/** A saved association may still belong to an open agent. Never erase another session's checkout. */
+export async function assertNoOtherTaskBindings(common: string, root: string, sessionId?: string): Promise<void> {
+  const dir = join(common, "morpheus-sessions");
+  let files: string[];
+  try { files = await readdir(dir); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
+  const caller = sessionId ? `${sessionKey(sessionId)}.json` : null;
+  for (const file of files.filter(f => f.endsWith(".json"))) {
+    if (file === caller) continue;
+    let binding: TaskBinding;
+    try { binding = JSON.parse(await readFile(join(dir, file), "utf8")) as TaskBinding; }
+    catch { throw new Error(`Unreadable session binding ${file}; retain the worktree.`); }
+    if (binding.root === root) throw new Error(`Another session is bound to ${root}; retain it until that session releases the task.`);
+  }
+}
+
 /** Remove only bindings naming the removed path, including other provider sessions. */
 export async function clearTaskBindings(common: string, root: string): Promise<void> {
   const dir = join(common, "morpheus-sessions");
