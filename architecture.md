@@ -986,7 +986,9 @@ without changes to each project's hook JSON. Hook trust remains provider-control
 without the standard hook need `context install` and provider trust. Updating the runtime git
 dependency alone does not update the global CLI. After a task PR merges, `pm cleanup <ID>`
 uses the exact PR, current remote trunk, and clean linked checkout as evidence before removing
-the worktree and obsolete refs. An active, dirty, locked, or ambiguous checkout remains intact.
+the worktree and obsolete refs. A validated receipt at the exact generated session path is
+safe to remove after those checks; unrelated ignored files remain protected. An active,
+dirty, locked, or ambiguous checkout remains intact.
 Older sibling worktrees remain usable; `pm worktrees` inventories them. Startup does not delete
 worktrees automatically because a session can be reading or editing one while startup runs.
 

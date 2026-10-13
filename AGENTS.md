@@ -114,7 +114,8 @@ there. Do not run concurrent authors on one task worktree. **Name slugs like bra
 New task worktrees live in the system temporary directory. After the PR merges, run
 `morpheus pm cleanup <ID>` from the primary checkout. It proves the exact PR merged and
 preserves dirty, locked, active, or ambiguous worktrees. Use `pm worktrees` to inspect
-older sibling checkouts before cleaning them.
+older sibling checkouts before cleaning them. Its generated session receipt is safe to
+remove after these checks; other ignored local data remains protected.
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
 voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work

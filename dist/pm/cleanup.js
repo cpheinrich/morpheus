@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { lstat, readdir, realpath } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -6,7 +6,8 @@ import matter from "gray-matter";
 import { checkoutIdentity, fetchTrunk, sessionGit as git } from "../session/start.js";
 import { listWorktrees, missingDirectory } from "../session/worktrees.js";
 import { assertNoOtherTaskBindings, clearTaskBindings, temporaryTasks } from "../session/tasks.js";
-import { projectPolicy } from "../session/policy.js";
+import { projectPolicy, sessionId } from "../session/policy.js";
+import { readLease } from "../session/store.js";
 import { resolveTrunk } from "../session/git.js";
 import { FETCH_PRUNE, findClaims } from "./claim.js";
 import { ROADMAP_ID, roadmapIdFromBranch } from "./id.js";
@@ -63,7 +64,29 @@ async function localData(path) {
     // `git worktree remove` deletes ignored files even without --force. The
     // package install cache is reproducible; everything else is preserved.
     const status = await git(path, ["status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching", "--ignore-submodules=none", "-z"], false);
-    return status.split("\0").filter(Boolean).filter(entry => !/^!! (?:.*\/)?node_modules\/?$/.test(entry));
+    const generatedLeaseOnly = await onlyGeneratedLease(path);
+    return status.split("\0").filter(Boolean).filter(entry => !/^!! (?:.*\/)?node_modules\/?$/.test(entry) && !(entry === "!! local/" && generatedLeaseOnly));
+}
+/** The one ignored local file Morpheus itself creates during context refresh. */
+async function onlyGeneratedLease(root) {
+    const local = join(root, "local");
+    const sessions = join(local, "sessions");
+    const name = `${sessionId(root)}.json`;
+    try {
+        if (!(await lstat(local)).isDirectory() || !(await lstat(sessions)).isDirectory())
+            return false;
+        if ((await readdir(local)).join("\0") !== "sessions")
+            return false;
+        if ((await readdir(sessions)).join("\0") !== name)
+            return false;
+        if (!(await lstat(join(sessions, name))).isFile())
+            return false;
+        const { lease, issue } = await readLease(root, sessionId(root));
+        return !issue && lease?.receipt.worktree === root;
+    }
+    catch {
+        return false;
+    }
 }
 async function assertItem(root, productRel, id, trunkSha, detached) {
     const parsed = await parseArtifact(join(root, productRel), "roadmap");
