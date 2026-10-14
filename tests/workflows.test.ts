@@ -1449,9 +1449,11 @@ describe("ios-nightly-build.yml", () => {
     expect(call?.inputs?.["firebase-only"]?.default).toBe("auth,firestore");
     expect(call?.inputs?.["pre-test-script"]?.default).toBe("");
     // Optional and empty by default: a release runs everything its scheme selects unless the
-    // caller names identifiers to leave out (cpheinrich/morpheus#401).
-    expect(call?.inputs?.["skip-testing"]?.required).toBeUndefined();
-    expect(call?.inputs?.["skip-testing"]?.default).toBe("");
+    // caller narrows the selection or names identifiers to leave out (cpheinrich/morpheus#401).
+    for (const selection of ["only-testing", "skip-testing"]) {
+      expect(call?.inputs?.[selection]?.required, `${selection} is optional`).toBeUndefined();
+      expect(call?.inputs?.[selection]?.default, `${selection} defaults to empty`).toBe("");
+    }
     expect(call?.inputs?.["run-upload"]?.default).toBe(true);
     expect(call?.outputs?.build?.value).toBe("${{ jobs.changes.outputs.build }}");
     expect(call?.outputs?.sha?.value).toBe("${{ jobs.preflight.outputs.sha }}");
@@ -1605,6 +1607,7 @@ describe("ios-nightly-build.yml", () => {
     expect(test?.with?.["firebase-only"]).toBe("${{ inputs.firebase-only }}");
     expect(test?.with?.["pre-test-script"]).toBe("${{ inputs.pre-test-script }}");
     expect(test?.with?.["test-iterations"]).toBe("${{ inputs.test-iterations }}");
+    expect(test?.with?.["only-testing"]).toBe("${{ inputs.only-testing }}");
     expect(test?.with?.["skip-testing"]).toBe("${{ inputs.skip-testing }}");
     expect(upload?.needs).toEqual(["changes", "preflight", "test"]);
     expect(upload?.if).toContain("inputs.run-upload");
