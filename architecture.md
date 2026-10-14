@@ -3254,7 +3254,8 @@ Only boolean presence flags enter this diagnostic; credential values remain conf
 final upload step. A blank P12 password and absent optional Firebase/Sentry credentials are valid.
 The workflow forwards the complete secret-free test contract — including
 parallel-test policy and optional maximum simulator-worker count, Firebase Emulator Suite
-configuration, and the pre-test fixture script — to `ios-ci`. Release builds default to the
+configuration, the pre-test fixture script, and any `skip-testing` identifiers the caller names
+(empty by default, so a release runs everything its scheme selects) — to `ios-ci`. Release builds default to the
 five-core M2 Pro `macos-26-xlarge` runner with parallel testing enabled and at most six simulator
 workers; callers may dial those inputs down after observing resource pressure. An app that needs
 an ignored Google service plist for its signed archive may keep its

@@ -104,6 +104,14 @@ on:
         description: Forwarded to ios-ci.yml; see its input of the same name.
         type: number
         default: 0
+      skip-testing:
+        description: >
+          Forwarded to ios-ci.yml: newline-separated xcodebuild -skip-testing identifiers
+          (TestTarget[/TestClass[/testMethod]]) left out of the release's test stage. Empty,
+          the default, runs everything the scheme selects. The caller decides what a release
+          may skip and when; a caller that exposes this should keep it off its production path.
+        type: string
+        default: ""
       test-evidence-script:
         description: Optional caller-repository result validator; full nightly selection is unchanged.
         type: string
@@ -364,6 +372,7 @@ jobs:
       maximum-parallel-testing-workers: ${{ inputs.parallel-testing && inputs.maximum-parallel-testing-workers || 0 }}
       optimize-test-build: ${{ inputs.optimize-test-build }}
       test-iterations: ${{ inputs.test-iterations }}
+      skip-testing: ${{ inputs.skip-testing }}
       firebase-emulators: ${{ inputs.firebase-emulators }}
       firebase-cli-version: ${{ inputs.firebase-cli-version }}
       firebase-config: ${{ inputs.firebase-config }}
