@@ -171,7 +171,12 @@ test('post is idempotent after devices have already been removed', () => {
 test('workflow routes builds/tests through owned destination and registers unconditional post', () => {
   const workflow = readFileSync(new URL('../../workflows/ios-ci.yml', import.meta.url), 'utf8');
   const action = readFileSync(new URL('./action.yml', import.meta.url), 'utf8');
-  assert.match(workflow, /uses: cpheinrich\/morpheus\/\.github\/actions\/ios-simulator@main/);
+  // Used by local path from a checkout of this repository at the caller-named actions-ref, so a
+  // consumer's pin covers this action too (cpheinrich/morpheus#393); never a floating @main.
+  assert.doesNotMatch(workflow, /uses: cpheinrich\/morpheus\/\.github\/actions\/ios-simulator@/);
+  assert.match(workflow, /uses: \.\/\.morpheus-ci\/\.github\/actions\/ios-simulator/);
+  assert.ok(workflow.indexOf("name: Check out this workflow's actions") < workflow.indexOf('uses: ./.morpheus-ci/.github/actions/ios-simulator'));
+  assert.match(workflow, /ref: \$\{\{ inputs\.actions-ref \}\}/);
   assert.equal((workflow.match(/MORPHEUS_IOS_DESTINATION:-\$DESTINATION/g) ?? []).length, 3);
   assert.match(workflow, /persistent: \$\{\{ runner\.environment == 'self-hosted' \}\}/);
   assert.match(action, /persistent:\n[\s\S]*default: "false"/);

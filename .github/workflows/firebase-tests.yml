@@ -26,6 +26,18 @@ name: Firebase emulator tests
 on:
   workflow_call:
     inputs:
+      concurrency-key:
+        description: >
+          Replaces the caller's ref in this workflow's per-job concurrency groups and turns
+          cancellation off. The default groups cancel an older run of the same ref, which is
+          right for a pull request's pushes but wrong for a release: a TestFlight release's
+          backend job runs these tests on main, and an unrelated merge to main then cancelled
+          them, skipped the staging deploy and the upload, and cost a recovery retry
+          (darwin-health/evo, cpheinrich/morpheus#393). A release passes something unique to
+          itself, such as its run id, and is left alone.
+        type: string
+        required: false
+        default: ''
       working-directory:
         description: >
           The Next.js app directory. Playwright is installed and run from here,
@@ -108,8 +120,8 @@ jobs:
     # caller's run; one group per job so the two jobs of one run cannot cancel
     # each other.
     concurrency:
-      group: firebase-tests-emulators-${{ github.ref }}
-      cancel-in-progress: true
+      group: firebase-tests-emulators-${{ inputs.concurrency-key || github.ref }}
+      cancel-in-progress: ${{ inputs.concurrency-key == '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -168,8 +180,8 @@ jobs:
     # hung step runs to GitHub's 6-hour default on paid minutes.
     timeout-minutes: 15
     concurrency:
-      group: firebase-tests-e2e-${{ github.ref }}
-      cancel-in-progress: true
+      group: firebase-tests-e2e-${{ inputs.concurrency-key || github.ref }}
+      cancel-in-progress: ${{ inputs.concurrency-key == '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
