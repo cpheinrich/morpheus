@@ -17,6 +17,13 @@ on:
         description: Exact reviewed main SHA that passed preflight and testing.
         value: ${{ jobs.preflight.outputs.sha }}
     inputs:
+      actions-ref:
+        description: >
+          Passed through to ios-ci.yml: the cpheinrich/morpheus revision whose composite actions
+          the test stage uses. A consumer pinning this workflow to a commit passes the same commit.
+        type: string
+        required: false
+        default: main
       workflow-file:
         description: Caller workflow filename whose latest successful run is the change baseline.
         type: string
@@ -330,18 +337,22 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  # Local references resolve inside this repository at this workflow's own commit, even when the
+  # caller is another repository (verified 2026-10-14, cpheinrich/morpheus#393). A branch
+  # reference here would float under a consumer's pin and let an unreviewed change into a release.
   preflight:
     name: Verify release source
     needs: changes
     if: ${{ needs.changes.outputs.build == 'true' }}
-    uses: cpheinrich/morpheus/.github/workflows/release-preflight.yml@main
+    uses: ./.github/workflows/release-preflight.yml
 
   test:
     name: Test before release
     needs: changes
     if: ${{ needs.changes.outputs.build == 'true' || needs.changes.outputs.capture == 'true' }}
-    uses: cpheinrich/morpheus/.github/workflows/ios-ci.yml@main
+    uses: ./.github/workflows/ios-ci.yml
     with:
+      actions-ref: ${{ inputs.actions-ref }}
       runner: ${{ inputs.runner }}
       timeout-minutes: ${{ inputs.test-timeout-minutes }}
       xcode-version: ${{ inputs.xcode-version }}

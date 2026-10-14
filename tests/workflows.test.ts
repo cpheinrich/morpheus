@@ -1352,14 +1352,15 @@ describe("firebase-tests.yml", () => {
     // would make a single run's two jobs cancel each other.
     const wf = (await read("firebase-tests.yml")) as {
       jobs?: Record<string, {
-        concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+        concurrency?: { group?: string; "cancel-in-progress"?: boolean | string };
       }>;
     };
     const groups = new Set<string>();
     for (const name of ["emulators", "e2e"]) {
       const concurrency = wf.jobs?.[name]?.concurrency;
-      expect(concurrency?.["cancel-in-progress"], `${name} must cancel-in-progress`).toBe(true);
-      expect(concurrency?.group, `${name} group must key on ref`).toContain("${{ github.ref }}");
+      // Cancellation stays on by default; only a caller naming its own key (a release) opts out.
+      expect(concurrency?.["cancel-in-progress"], `${name} must cancel-in-progress`).toBe("${{ inputs.concurrency-key == '' }}");
+      expect(concurrency?.group, `${name} group must key on ref`).toContain("${{ inputs.concurrency-key || github.ref }}");
       groups.add(concurrency!.group!);
     }
     expect(groups.size).toBe(2);
@@ -1582,10 +1583,12 @@ describe("ios-nightly-build.yml", () => {
     );
     const release = steps.find((step) => step.name === "Archive, sign, and upload to TestFlight");
 
-    expect(preflight?.uses).toBe(
-      "cpheinrich/morpheus/.github/workflows/release-preflight.yml@main",
-    );
-    expect(test?.uses).toBe("cpheinrich/morpheus/.github/workflows/ios-ci.yml@main");
+    // Local references resolve inside this repository at this workflow's own commit even when
+    // the caller is another repository (probed 2026-10-14, #393); a branch reference would float
+    // under a consumer's pin.
+    expect(preflight?.uses).toBe("./.github/workflows/release-preflight.yml");
+    expect(test?.uses).toBe("./.github/workflows/ios-ci.yml");
+    expect(test?.with?.["actions-ref"]).toBe("${{ inputs.actions-ref }}");
     expect(test?.with?.["run-tests"]).toBe(true);
     expect(test?.with?.["parallel-testing"]).toBe("${{ inputs.parallel-testing }}");
     expect(test?.with?.["maximum-parallel-testing-workers"]).toBe(
@@ -2071,7 +2074,7 @@ describe("ios-ci.yml", () => {
     const select = steps.find((step) => step.name === "Select changed Swift sources") as
       | { uses?: string; if?: string; with?: Record<string, string> }
       | undefined;
-    expect(select?.uses).toBe("cpheinrich/morpheus/.github/actions/swift-changed-files@main");
+    expect(select?.uses).toBe("./.morpheus-ci/.github/actions/swift-changed-files");
     // Gated on the change scope like every other native step, so an unrelated
     // change skips the selection rather than paying for a checkout of it.
     expect(select?.if).toBe("${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}");
@@ -2571,7 +2574,7 @@ describe("every reusable job", () => {
       {
         uses?: string;
         "timeout-minutes"?: number | string;
-        concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+        concurrency?: { group?: string; "cancel-in-progress"?: boolean | string };
       }
     >;
   };
@@ -2595,8 +2598,11 @@ describe("every reusable job", () => {
       const jobs = ((await read(file)) as Bounded).jobs ?? {};
       for (const [name, job] of Object.entries(jobs)) {
         if (job.uses) continue;
-        expect(job.concurrency?.["cancel-in-progress"], `${file} job ${name}`).toBe(true);
-        expect(job.concurrency?.group, `${file} job ${name}`).toContain("${{ github.ref }}");
+        // firebase-tests.yml keys on the caller's ref unless the caller names its own key, so a
+        // release's backend tests are not cancelled by an unrelated merge (#393).
+        const cancel = job.concurrency?.["cancel-in-progress"];
+        expect(cancel === true || cancel === "${{ inputs.concurrency-key == '' }}", `${file} job ${name}: ${String(cancel)}`).toBe(true);
+        expect(job.concurrency?.group, `${file} job ${name}`).toMatch(/\$\{\{ (inputs\.concurrency-key \|\| )?github\.ref \}\}/);
       }
     }
   });
@@ -3052,5 +3058,57 @@ describe("pr-check.yml and the GitHub Manager label", () => {
     expect(raw).toContain("manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)");
     // A failed read of the comments leaves no clearance, which the check refuses.
     expect(raw).toContain("|| echo '[]' > \"$RUNNER_TEMP/comments.json\"");
+  });
+});
+
+/**
+ * cpheinrich/morpheus#393: a consumer pins these reusable workflows to a reviewed commit, so
+ * nothing inside them may reach back to a branch. Nested workflows use local paths (which
+ * resolve at the called commit); composite actions come from a checkout at the revision the
+ * consumer names, because github.job_workflow_sha is empty inside a called workflow's steps.
+ */
+describe("shared workflows do not float under a consumer's pin", () => {
+  it("never references this repository by branch from inside a reusable workflow", async () => {
+    const files = (await readdir(DIR)).filter((f) => f.endsWith(".yml"));
+    for (const file of files) {
+      const text = await readFile(join(DIR, file), "utf8");
+      const code = text.split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
+      expect(code, file).not.toMatch(/cpheinrich\/morpheus\/\.github\/[^\s]+@main/);
+    }
+  });
+
+  it("checks out its own actions at the caller-named revision before using them by local path", async () => {
+    const wf = (await read("ios-ci.yml")) as {
+      on?: { workflow_call?: { inputs?: Record<string, { default?: unknown; type?: string }> } };
+      jobs?: { test?: { steps?: Array<{ name?: string; uses?: string; if?: string; with?: Record<string, unknown> }> } };
+    };
+    expect(wf.on?.workflow_call?.inputs?.["actions-ref"]).toMatchObject({ type: "string", default: "main" });
+    const steps = wf.jobs?.test?.steps ?? [];
+    const checkout = steps.findIndex((s) => s.name === "Check out this workflow's actions");
+    expect(checkout).toBeGreaterThanOrEqual(0);
+    expect(steps[checkout]).toMatchObject({
+      uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+      with: { repository: "cpheinrich/morpheus", ref: "${{ inputs.actions-ref }}", path: ".morpheus-ci", "persist-credentials": false },
+    });
+    expect(String(steps[checkout]?.with?.["sparse-checkout"])).toContain(".github/actions");
+    expect(String(steps[checkout]?.with?.["sparse-checkout"])).toContain("scripts");
+    for (const [name, action] of [["Create isolated test simulator", "ios-simulator"], ["Select changed Swift sources", "swift-changed-files"]]) {
+      const index = steps.findIndex((s) => s.name === name);
+      expect(index, name).toBeGreaterThan(checkout);
+      expect(steps[index]?.uses).toBe(`./.morpheus-ci/.github/actions/${action}`);
+    }
+  });
+
+  it("lets a release opt its Firebase tests out of per-ref cancellation", async () => {
+    const wf = (await read("firebase-tests.yml")) as {
+      on?: { workflow_call?: { inputs?: Record<string, { default?: unknown; type?: string }> } };
+      jobs?: Record<string, { concurrency?: { group?: string; "cancel-in-progress"?: unknown } }>;
+    };
+    expect(wf.on?.workflow_call?.inputs?.["concurrency-key"]).toMatchObject({ type: "string", default: "" });
+    for (const job of ["emulators", "e2e"]) {
+      const concurrency = wf.jobs?.[job]?.concurrency;
+      expect(concurrency?.group, job).toBe(`firebase-tests-${job}-\${{ inputs.concurrency-key || github.ref }}`);
+      expect(concurrency?.["cancel-in-progress"], job).toBe("${{ inputs.concurrency-key == '' }}");
+    }
   });
 });
