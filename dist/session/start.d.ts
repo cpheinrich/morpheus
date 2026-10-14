@@ -1,5 +1,5 @@
 import { type Lag, type RescueDeps, type RescueResult } from "./trunk-rescue.js";
-export declare const sessionGit: (root: string, args: string[]) => Promise<string>;
+export declare const sessionGit: (root: string, args: string[], trim?: boolean) => Promise<string>;
 export declare function checkoutIdentity(cwd: string): Promise<{
     root: string;
     common: string;

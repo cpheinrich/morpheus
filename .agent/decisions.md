@@ -937,6 +937,23 @@ source containing the observed trunk, and startup does not certify reading. Cons
 3.36.0 (published metadata modified 2026-04-12, five direct dependencies); native Git plus Node's
 filesystem/crypto primitives fit this repository-specific lifecycle without another Git wrapper.
 
+**Task worktrees use system temp and are removed after verified merge** — 2026-10-13.
+Chris wants source directories to contain one primary checkout per repository. New task
+worktrees go under the OS temporary directory, keyed by the common Git directory; existing
+linked worktrees are not moved while active. After a PR merges, the author runs `pm cleanup
+<ID>` from another checkout. It requires one exact merged PR, current trunk containing its
+merge commit, matching branch ancestry, and a clean unlocked linked worktree before deleting
+the checkout and obsolete branch refs. Startup never deletes a worktree because another
+session may still be using it. Ignored local data is preserved, apart from reproducible
+`node_modules` install caches. The existing native Git implementation is reused; a new Git
+wrapper dependency would add no useful safety at this boundary.
+
+**Generated session receipts do not prevent task cleanup** — 2026-10-13. Context refresh
+writes one ignored `local/sessions/<worktree-hash>.json` into every active task checkout.
+Preserving all ignored `local/` content made post-merge cleanup refuse routine completed
+tasks. Cleanup may remove that exact validated receipt for the worktree after the merge,
+activity, and cleanliness proofs. Any other `local/` entry remains protected.
+
 
 **Cleared review survives verified integration of already reviewed documentation** — 2026-09-16.
 Chris approved this exception after Lakina's TestFlight migration exhausted both passes, cleared
@@ -1190,6 +1207,13 @@ a ready pull request and 48 for a draft; an abandoned draft that has not done it
 work is marked incomplete rather than finished for its author. Rolled out to Evo first and acting
 at once, with no dry-run period, watched for about twelve hours before Lakina and Morpheus.
 
+**WIP pull requests stay with their authors; ready PRs get 24 hours** — 2026-10-12. Chris found
+that WIP pull requests often need more input, so the manager must not promote or merge a draft,
+`wip/` branch, or `[WIP]`/`WIP:` titled pull request. It cancels any auto-merge already queued on
+one. The ready PR cooldown is 24 hours after the later of opening and the latest head commit.
+This supersedes the 8-hour ready cooldown and draft-completion behavior above; the 48-hour draft
+wait remains only for a rescued trunk draft's human escalation.
+
 Considered: Claude Code routines (acts as Chris's own GitHub user, prompt lives outside the
 repository, research preview) and GitHub Agentic Workflows (its safe-outputs split is the pattern
 adopted here; the dependency is a compiler and a second workflow dialect). `claude-code-action`
@@ -1266,3 +1290,14 @@ element at its coordinate remains in place from click through the bracketed scre
 anonymous tree paths are not anchors because lazy lists recycle them.
 Browser IndexedDB holds unsent PNGs across reloads. No package was added: screenshot matching
 would introduce heavier image processing and would be less reliable on changing content.
+
+## Authors capture iOS evidence; reviewers inspect pixels — 2026-10-12
+
+Morpheus GH Manager sessions run on GitHub-hosted Linux. Evo's Mac mini already runs iOS builds,
+but adding a privileged remote simulator path to the Manager would duplicate author QA and widen
+its access. Authors capture each materially changed iOS screen and state from the final passing
+build before independent review. The reviewer and Manager open approved captures and inspect
+rendered pixels or relevant recording frames; a URL alone is insufficient. Missing or stale iOS
+evidence still escalates. The Manager may recover a missing `agent-reviewed` label only after its
+apply step validates the author's committed review against the live head, avoiding the mechanical
+failure seen on Morpheus #353. No package added: the existing review checker is reused.

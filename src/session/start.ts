@@ -6,12 +6,25 @@ import { promisify } from "node:util";
 import { gitSubprocessEnv } from "../git-env.js";
 import { projectPolicy } from "./policy.js";
 import { resolveTrunk } from "./git.js";
+import { assertWorktreePolicy } from "./worktrees.js";
 import { roadmapIdFromBranch } from "../pm/id.js";
 import { measureLag, rescueDirtyTrunk, readDirt, type Lag, type RescueDeps, type RescueResult } from "./trunk-rescue.js";
 
 const exec = promisify(execFile);
-export const sessionGit = async (root: string, args: string[]): Promise<string> =>
-  (await exec("git", args, { cwd: root, timeout: 30_000, env: gitSubprocessEnv() })).stdout.trim();
+export const sessionGit = async (root: string, args: string[], trim = true): Promise<string> => {
+  try {
+    const { stdout } = await exec("git", args, { cwd: root, timeout: 30_000, env: gitSubprocessEnv() });
+    return trim ? stdout.trim() : stdout;
+  } catch (error) {
+    const failure = error as { killed?: boolean; signal?: string; code?: string | number | null; message?: string };
+    // Node's timeout can kill Git before it writes stderr. Buffer limits and external
+    // signals are different failures and must retain their original diagnostics.
+    if (failure?.killed === true && failure.signal === "SIGTERM" && failure.code === null && typeof failure.message === "string") {
+      throw new Error(`Git command timed out after 30 seconds and was stopped (SIGTERM). Check network access if this command contacts a remote.\n${failure.message}`, { cause: error });
+    }
+    throw error;
+  }
+};
 
 export async function checkoutIdentity(cwd: string): Promise<{ root: string; common: string; linked: boolean }> {
   const root = await realpath(await sessionGit(cwd, ["rev-parse", "--show-toplevel"]));
@@ -65,6 +78,7 @@ export async function prepareRepository(cwd: string, offline = false, rescueDeps
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("A Morpheus project manifest is required.");
   if (offline) throw new Error("Offline: latest remote code is unverified. Existing local work may continue explicitly offline; do not claim the checkout is current.");
   const fetched = await fetchTrunk(root);
+  await assertWorktreePolicy(root, fetched.branch);
   const branch = await sessionGit(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
   let rescue: RescueResult | undefined;
   if (branch === fetched.branch && rescueDeps !== false) {

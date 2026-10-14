@@ -8,7 +8,7 @@ import {
   NEEDS_HUMAN_LABEL,
   STALE_LABEL,
 } from "./policy.js";
-import { type ManagerMarker, renderMarker, type Routed } from "./sweep.js";
+import { isWorkInProgress, type ManagerMarker, renderMarker, type Routed } from "./sweep.js";
 
 /**
  * What a session asks for, and what is actually done about it.
@@ -87,6 +87,8 @@ export type Operation =
 /** Live facts the plan is checked against, read after the session ended. */
 export interface LiveState {
   headSha: string;
+  title: string;
+  headRefName: string;
   isDraft: boolean;
   labels: string[];
   autoMerge: boolean;
@@ -110,6 +112,9 @@ export interface LiveState {
    * decision rests on one. Undefined means it validates, or that no record was claimed.
    */
   recordProblem?: string | undefined;
+  /** The author's record was checked against this head even if its label is missing. */
+  authorRecordValid?: boolean | undefined;
+  authorRecordProblem?: string | undefined;
 }
 
 export interface Plan {
@@ -139,6 +144,14 @@ const HEADLINE: Record<ManagerMarker["verdict"], string> = {
 
 function comment(verdict: ManagerMarker["verdict"], sections: string[], marker: ManagerMarker): Operation {
   return { kind: "comment", body: [`### GitHub Manager — ${HEADLINE[verdict]}`, ...sections.filter(Boolean), renderMarker(marker)].join("\n\n") };
+}
+
+function holdWorkInProgress(live: LiveState, marker: ManagerMarker, run: string): Plan {
+  if (!live.autoMerge) return { verdict: "wait", operations: [] };
+  return { verdict: "wait", operations: [
+    comment("wait", ["This pull request is marked WIP. Cancelling queued auto-merge; a human can make it ready when the needed input arrives.", run], marker),
+    { kind: "disable-auto-merge" },
+  ] };
 }
 
 /**
@@ -188,6 +201,8 @@ export function planDecision(decision: Decision, live: LiveState, ctx: Context):
   const marker: ManagerMarker = { head: live.headSha, verdict: decision.action, attempts: ctx.attempts + 1, at: ctx.now.toISOString() };
   const sections = [inert(decision.summary), `**Why:** ${inert(decision.reasoning)}`, findingsTable(decision), `Run: ${ctx.runUrl}`];
   const refuse = (why: string) => escalate(live, why, sections, marker, why);
+
+  if (isWorkInProgress(live)) return holdWorkInProgress(live, { ...marker, verdict: "wait" }, `Run: ${ctx.runUrl}`);
 
   // The session reported the head it finished on. If the branch has moved since, somebody else
   // is working on it and everything the session concluded is about a different commit.
@@ -247,7 +262,11 @@ export function planDecision(decision: Decision, live: LiveState, ctx: Context):
     // escalation now rather than a red check and another session later.
     if (live.recordProblem) return refuse(`the manager review record does not validate: ${live.recordProblem}`);
   } else {
-    if (!live.labels.includes("agent-reviewed")) return refuse("the session proposed merging without a manager review, and no completed independent review is on record");
+    if (!live.labels.includes("agent-reviewed") && !live.authorRecordValid) {
+      return refuse(live.authorRecordProblem
+        ? `the author's independent review record does not validate: ${live.authorRecordProblem}`
+        : "the session proposed merging without a manager review, and no completed independent review is on record");
+    }
     // Merging on the author's review means the session may have added nothing of its own. A
     // session holds push access, so "I only merged trunk" is verified, not taken on its word:
     // anything else is unreviewed authoring that the author's record would otherwise carry.
@@ -270,6 +289,7 @@ export function planDecision(decision: Decision, live: LiveState, ctx: Context):
       // Removed and re-applied on every clearance, never left in place: whoever applied it
       // before, the newest `labeled` event must be the App's and must follow the comment above.
       ...(decision.usedManagerReview ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label" as const, label: MANAGER_REVIEWED_LABEL }] : []),
+      ...(!decision.usedManagerReview && !live.labels.includes("agent-reviewed") ? [{ kind: "add-label" as const, label: "agent-reviewed" }] : []),
       ...(live.cancelledRunIds.length ? [{ kind: "rerun" as const, runIds: live.cancelledRunIds }] : []),
       ...(live.autoMerge ? [] : [{ kind: "auto-merge" as const }]),
       ...updateIfBehind(live),
@@ -287,6 +307,9 @@ export function planRoute(routed: Routed, live: LiveState, ctx: Context): Plan {
   // No session ran, so the attempt count is carried, not incremented.
   const marker: ManagerMarker = { head: live.headSha, verdict: "wait", attempts: routed.attempts, at: ctx.now.toISOString() };
   const run = `Run: ${ctx.runUrl}`;
+  if (isWorkInProgress(live) && !(routed.route === "escalate" && routed.reason === "rescued-trunk-edits" && !live.autoMerge)) {
+    return holdWorkInProgress(live, marker, run);
+  }
   if (routed.headSha !== live.headSha) return { verdict: "wait", overridden: "the branch moved after the sweep", operations: [] };
 
   if (routed.route === "merge") {

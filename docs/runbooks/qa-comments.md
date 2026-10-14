@@ -323,6 +323,9 @@ local dev server. The project declares it in `morpheus.json`:
 "qa": { "web": { "url": "http://localhost:5173", "command": ["npx", "next", "dev", "--port", "{port}"], "cwd": "apps/web", "path": "/" } }
 ```
 
+- **Startup failures.** Start checks the launchd supervisor during readiness. If the job exits or
+  disappears, it fails promptly with the last20 log lines (at most8KiB) and the `preview.log`
+  path. A pending first launch or running compile keeps the normal bounded readiness wait.
 - **Attach or start.** If something already answers at `url`, the preview attaches and `stop` leaves
   it running. Otherwise it runs `command` in `cwd` under the launchd supervisor, in its own process
   group, and `stop` (or the lease, or the dev server exiting) ends the whole group.

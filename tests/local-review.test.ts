@@ -1,11 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, reviewRequired, trivialDiff, type LocalReviewRecord } from "../src/review/local.js";
 import { checkPr } from "../src/check/pr.js";
 import { prepareReview, validateReview } from "../src/cli/review.js";
+import { authorRecordProblem } from "../src/gh-manager/verify.js";
 
 let root: string;
 let base: string;
@@ -35,7 +37,9 @@ beforeEach(() => {
   writeFileSync(join(root, "code.ts"), 'export const answer = 1;'); base = commit();
   writeFileSync(join(root, "code.ts"), 'export const answer = 2;'); reviewed = commit();
 });
-afterEach(() => rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 10 }));
+// Git can leave a late object after directory traversal. Node 22 rmSync retries only rmdir
+// without rescanning children; async rm retries traversal and Vitest awaits its promise.
+afterEach(() => rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }));
 
 describe("independent review lifecycle", () => {
   it("defaults on and refuses malformed configuration", () => {
@@ -107,7 +111,9 @@ describe("independent review lifecycle", () => {
   });
   it("reports explicit project opt-out as waived, not reviewed", () => {
     writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
-    expect(check(commit(), "", [])[0]?.level).toBe("waived");
+    const head = commit();
+    expect(check(head, "", [])[0]?.level).toBe("waived");
+    expect(authorRecordProblem(root, "", head, base)).toContain("no author record was validated");
   });
   it("wires missing evidence into PR conventions while preserving records-only work", async () => {
     const ctx = { body: "## Test plan\nRan tests", branch: "inbox-2026-09-10", changedFiles: ["code.ts"], productDir: join(root, "hq/product") };

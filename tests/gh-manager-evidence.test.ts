@@ -76,7 +76,9 @@ describe("the decision and the brief", () => {
     expect(text).toContain("https://github.com/darwin-health/evo/raw/gh-manager-evidence/");
     expect(text).toContain(`playwright screenshot --full-page --viewport-size=1280,900 '<url>' "/t/evidence-378/<name>.png"`);
     expect(text).toContain("{{gh-manager-evidence:<name>.png}}");
-    expect(text).toContain("You cannot capture iOS or simulator screens");
+    expect(text).toContain("You cannot capture iOS or simulator screens on this Linux runner");
+    expect(text).toContain("Inspect existing evidence even when you are relying on the author's completed review");
+    expect(text).toContain("A URL or filename alone is not visual review");
     expect(text).toContain("if it reports that no browser is installed, the job could not install one: escalate");
     // The preview URL comes from the deterministic command bound to the commit, never from text.
     expect(text).toContain("`morpheus gh-manager preview-url darwin-health/evo 378`");
