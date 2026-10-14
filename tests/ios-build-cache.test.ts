@@ -63,17 +63,22 @@ describe('shared DerivedData self-heal', () => {
       await mkdir(join(f.dir, 'cache/DerivedData/Build/Intermediates.noindex/XCBuildData'), { recursive: true });
       await writeFile(f.buildDb, 'damaged');
       // First call fails like a damaged cache; the second succeeds. Each call is logged.
-      await f.binary('xcodebuild', 'echo "$*" >> "$ARG_LOG"\nif [ ! -f "$RUNNER_TEMP/retried" ]; then touch "$RUNNER_TEMP/retried"; echo \'error: accessing build database "x/build.db": database disk image is malformed\'; exit 65; fi\necho built\n');
+      // Like the real tool, every invocation writes its result bundle and refuses an existing one
+      // (xcodebuild: error: Existing file at -resultBundlePath), which is what the retry must survive.
+      await f.binary('xcodebuild', 'echo "$*" >> "$ARG_LOG"\nbundle="$RESULTS/Build.xcresult"\nif [ -e "$bundle" ]; then echo "xcodebuild: error: Existing file at -resultBundlePath \\"$bundle\\""; exit 70; fi\nmkdir -p "$bundle"\nif [ ! -f "$RUNNER_TEMP/retried" ]; then touch "$RUNNER_TEMP/retried"; echo \'error: accessing build database "x/build.db": database disk image is malformed\'; exit 65; fi\necho built\n');
       const { stdout } = await f.run(step);
       expect(stdout).toMatch(/::warning::Build service failure on the cached DerivedData/);
+      expect(stdout).not.toMatch(/Existing file at -resultBundlePath/);
       expect((await readFile(f.argLog, 'utf8')).trim().split('\n')).toHaveLength(2);
       expect(await exists(f.buildDb)).toBe(false);
       expect(await exists(join(f.dir, 'logs/build-damaged-cache.log'))).toBe(true);
+      expect(await exists(join(f.dir, 'results/Build-damaged-cache.xcresult'))).toBe(true);
+      expect(await exists(join(f.dir, 'results/Build.xcresult'))).toBe(true);
       expect(await readFile(join(f.dir, 'logs/build.log'), 'utf8')).toContain('built');
       // An ordinary compile error is not retried.
       const g = await fixture();
       await g.binary('xcodebuild', 'echo "$*" >> "$ARG_LOG"\necho "error: cannot find type Foo in scope"\nexit 65\n');
-      await expect(g.run(step)).rejects.toMatchObject({ code: 1 });
+      await expect(g.run(step)).rejects.toMatchObject({ code: 65 });
       expect((await readFile(g.argLog, 'utf8')).trim().split('\n')).toHaveLength(1);
       // A second damaged-cache failure is a real failure.
       const h = await fixture();

@@ -575,14 +575,20 @@ jobs:
           fi
           # One cold retry when the build service itself fails on a damaged shared cache:
           # discard the build directory and build again. A second failure is a real one.
-          if ! xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log"; then
+          # `|| status=$?` keeps xcodebuild's own exit status under pipefail and errexit alike.
+          status=0
+          xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log" || status=$?
+          if [ "$status" -ne 0 ]; then
             if grep -qE 'accessing build database|internal inconsistency error' "$LOGS/build.log"; then
               echo "::warning::Build service failure on the cached DerivedData; discarding its build directory and building once more cold."
               rm -rf "$DERIVED_DATA/Build"
+              # Keep the failed attempt's evidence under other names: xcodebuild refuses an
+              # existing -resultBundlePath, so the retry needs its path free.
               mv "$LOGS/build.log" "$LOGS/build-damaged-cache.log"
+              if [ -e "$RESULTS/Build.xcresult" ]; then mv "$RESULTS/Build.xcresult" "$RESULTS/Build-damaged-cache.xcresult"; fi
               xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log"
             else
-              exit 1
+              exit "$status"
             fi
           fi
 
@@ -614,14 +620,20 @@ jobs:
           if [ "$OPTIMIZE_TEST_BUILD" = "true" ]; then
             args+=(SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule GCC_OPTIMIZATION_LEVEL=s)
           fi
-          if ! xcodebuild build "${args[@]}" 2>&1 | tee "$LOGS/build.log"; then
+          # `|| status=$?` keeps xcodebuild's own exit status under pipefail and errexit alike.
+          status=0
+          xcodebuild build "${args[@]}" 2>&1 | tee "$LOGS/build.log" || status=$?
+          if [ "$status" -ne 0 ]; then
             if grep -qE 'accessing build database|internal inconsistency error' "$LOGS/build.log"; then
               echo "::warning::Build service failure on the cached DerivedData; discarding its build directory and building once more cold."
               rm -rf "$DERIVED_DATA/Build"
+              # Keep the failed attempt's evidence under other names: xcodebuild refuses an
+              # existing -resultBundlePath, so the retry needs its path free.
               mv "$LOGS/build.log" "$LOGS/build-damaged-cache.log"
+              if [ -e "$RESULTS/Build.xcresult" ]; then mv "$RESULTS/Build.xcresult" "$RESULTS/Build-damaged-cache.xcresult"; fi
               xcodebuild build "${args[@]}" 2>&1 | tee "$LOGS/build.log"
             else
-              exit 1
+              exit "$status"
             fi
           fi
 
