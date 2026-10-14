@@ -18,12 +18,14 @@ const exists = (path: string) => access(path).then(() => true, () => false);
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), 'ios-build-cache-'));
   for (const child of ['bin', 'results', 'logs', 'cache']) await mkdir(join(dir, child));
-  const env: Record<string, string> = { ...process.env as Record<string, string>, PATH: `${dir}/bin:${process.env.PATH}`, RUNNER_TEMP: dir, MORPHEUS_IOS_CI_CACHE: `${dir}/cache`, GITHUB_ENV: `${dir}/env`, GITHUB_OUTPUT: `${dir}/output`, GITHUB_RUN_ID: '1', GITHUB_RUN_ATTEMPT: '1', RESULTS: `${dir}/results`, LOGS: `${dir}/logs`, ARG_LOG: `${dir}/argv`, PROJECT: 'App.xcodeproj', SCHEME: 'App', CONFIGURATION: 'Debug', SDK: 'iphonesimulator', PLATFORM: 'iOS Simulator', DESTINATION: 'id=test', SOURCE_PACKAGES: `${dir}/cache/SourcePackages`, DERIVED_DATA: `${dir}/cache/DerivedData`, PARALLEL_TESTING: 'NO', MAXIMUM_PARALLEL_TESTING_WORKERS: '0', TEST_PLAN: '', OPTIMIZE_TEST_BUILD: 'false' };
+  const argLog = `${dir}/argv`;
+  const githubEnv = `${dir}/env`;
+  const env: Record<string, string> = { ...process.env as Record<string, string>, PATH: `${dir}/bin:${process.env.PATH}`, RUNNER_TEMP: dir, MORPHEUS_IOS_CI_CACHE: `${dir}/cache`, GITHUB_ENV: githubEnv, GITHUB_OUTPUT: `${dir}/output`, GITHUB_RUN_ID: '1', GITHUB_RUN_ATTEMPT: '1', RESULTS: `${dir}/results`, LOGS: `${dir}/logs`, ARG_LOG: argLog, PROJECT: 'App.xcodeproj', SCHEME: 'App', CONFIGURATION: 'Debug', SDK: 'iphonesimulator', PLATFORM: 'iOS Simulator', DESTINATION: 'id=test', SOURCE_PACKAGES: `${dir}/cache/SourcePackages`, DERIVED_DATA: `${dir}/cache/DerivedData`, PARALLEL_TESTING: 'NO', MAXIMUM_PARALLEL_TESTING_WORKERS: '0', TEST_PLAN: '', OPTIMIZE_TEST_BUILD: 'false' };
   async function binary(name: string, script: string) { const path = join(dir, 'bin', name); await writeFile(path, '#!/bin/bash\n' + script); await chmod(path, 0o755); }
   const all = await steps();
   const run = (name: string) => exec('/bin/bash', ['-c', all.find(s => s.name === name)!.run!], { cwd: dir, env });
   const buildDb = join(dir, 'cache/DerivedData/Build/Intermediates.noindex/XCBuildData/build.db');
-  return { dir, env, run, binary, buildDb };
+  return { dir, env, run, binary, buildDb, argLog, githubEnv };
 }
 
 describe('shared DerivedData self-heal', () => {
@@ -39,7 +41,7 @@ describe('shared DerivedData self-heal', () => {
     expect(await exists(join(f.dir, 'cache/DerivedData/Build'))).toBe(false);
     expect(await exists(join(f.dir, 'cache/DerivedData/ModuleCache.noindex'))).toBe(true);
     expect(await exists(join(f.dir, 'cache/SourcePackages/checkouts'))).toBe(true);
-    expect(await readFile(f.env.GITHUB_ENV, 'utf8')).toContain(`DERIVED_DATA=${f.dir}/cache/DerivedData`);
+    expect(await readFile(f.githubEnv, 'utf8')).toContain(`DERIVED_DATA=${f.dir}/cache/DerivedData`);
   });
 
   it('keeps a healthy build database and never runs the check without a cache', async () => {
@@ -64,7 +66,7 @@ describe('shared DerivedData self-heal', () => {
       await f.binary('xcodebuild', 'echo "$*" >> "$ARG_LOG"\nif [ ! -f "$RUNNER_TEMP/retried" ]; then touch "$RUNNER_TEMP/retried"; echo \'error: accessing build database "x/build.db": database disk image is malformed\'; exit 65; fi\necho built\n');
       const { stdout } = await f.run(step);
       expect(stdout).toMatch(/::warning::Build service failure on the cached DerivedData/);
-      expect((await readFile(f.env.ARG_LOG, 'utf8')).trim().split('\n')).toHaveLength(2);
+      expect((await readFile(f.argLog, 'utf8')).trim().split('\n')).toHaveLength(2);
       expect(await exists(f.buildDb)).toBe(false);
       expect(await exists(join(f.dir, 'logs/build-damaged-cache.log'))).toBe(true);
       expect(await readFile(join(f.dir, 'logs/build.log'), 'utf8')).toContain('built');
@@ -72,12 +74,12 @@ describe('shared DerivedData self-heal', () => {
       const g = await fixture();
       await g.binary('xcodebuild', 'echo "$*" >> "$ARG_LOG"\necho "error: cannot find type Foo in scope"\nexit 65\n');
       await expect(g.run(step)).rejects.toMatchObject({ code: 1 });
-      expect((await readFile(g.env.ARG_LOG, 'utf8')).trim().split('\n')).toHaveLength(1);
+      expect((await readFile(g.argLog, 'utf8')).trim().split('\n')).toHaveLength(1);
       // A second damaged-cache failure is a real failure.
       const h = await fixture();
       await h.binary('xcodebuild', 'echo "$*" >> "$ARG_LOG"\necho "error: The build service has encountered an internal inconsistency error"\nexit 65\n');
       await expect(h.run(step)).rejects.toMatchObject({ code: 65 });
-      expect((await readFile(h.env.ARG_LOG, 'utf8')).trim().split('\n')).toHaveLength(2);
+      expect((await readFile(h.argLog, 'utf8')).trim().split('\n')).toHaveLength(2);
     });
   }
 });
