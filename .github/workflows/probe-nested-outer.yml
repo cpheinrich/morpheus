@@ -1,0 +1,12 @@
+# Temporary probe for MO-26-10-13-17.34.56: how does a called workflow's local `./` reference resolve
+# when the caller is another repository? Deleted before review.
+name: probe nested outer
+on:
+  workflow_call:
+jobs:
+  inner:
+    uses: ./.github/workflows/probe-nested-inner.yml
+  facts:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "outer repository=${{ github.repository }} sha=${{ github.sha }} job_workflow_sha=${{ github.job_workflow_sha }} job_workflow_ref=${{ github.job_workflow_ref }} workflow_sha=${{ github.workflow_sha }} workflow_ref=${{ github.workflow_ref }}"
