@@ -52,12 +52,7 @@ cleared those two findings with these exact paths and checks; no further review
 turn was required. The local full suite already ran once; CI will run it on the
 final head.
 
-The independent review found four substantive gaps across two turns. The
-first two were fixed and confirmed by the same reviewer. The reviewer
-conditionally cleared the last two after the targeted code, test, generated
-output, and documentation corrections, all within the listed paths, and the
-required checks passed. No finding remains open. Final-head CI is still the
-release check.
+The independent review found four substantive gaps across two turns. The first two were fixed and confirmed by the same reviewer. The reviewer conditionally cleared the last two after the targeted code, test, generated output, and documentation corrections, all within the listed paths, and the required checks passed. No finding remains open. Final-head CI is still the release check.
 
 ```morpheus-review
 {
