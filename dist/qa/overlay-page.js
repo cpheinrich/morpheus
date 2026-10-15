@@ -202,13 +202,14 @@ export function pageHtml(opts) {
       if (p.screenId && p.screenId !== currentScreenId) {
         p.displayX = -1;
         p.displayY = -1;
+        if (!p.axAnchor) p.unanchoredHidden = true;
         continue;
       }
       if (!p.axAnchor) {
-        // With AX available, an unanchored pin belongs to its saved image, not
-        // to whatever content later happens to occupy the same screen point.
-        p.displayX = -1;
-        p.displayY = -1;
+        // Keep an unnamed point visible on its original screen until a scroll
+        // or navigation makes the stationary marker misleading.
+        p.displayX = p.unanchoredHidden ? -1 : p.normX;
+        p.displayY = p.unanchoredHidden ? -1 : p.normY;
         continue;
       }
       const e = latestAx.elements.find((item) => item.id === p.axAnchor.id && item.path === p.axAnchor.path)
@@ -533,6 +534,10 @@ export function pageHtml(opts) {
   // parallel fetches do not promise that.
   let touchChain = Promise.resolve();
   function sendTouch(type, normX, normY) {
+    if (type === 'move') {
+      for (const pin of pins) if (!pin.axAnchor) pin.unanchoredHidden = true;
+      updatePinPositions();
+    }
     touchChain = touchChain
       .then(() =>
         fetch('/api/touch', {

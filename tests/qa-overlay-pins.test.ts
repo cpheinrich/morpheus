@@ -99,6 +99,21 @@ describe("iOS QA pins", () => {
     } finally { qa.dom.window.close(); }
   });
 
+  it("keeps an unnamed pin visible on its screen and hides it after navigation", () => {
+    const qa = overlay();
+    try {
+      qa.emit(snapshot("trendsScreen", 100, "_TtUnnamed"));
+      qa.pin(195, 150);
+      expect(qa.dom.window.document.querySelectorAll(".pin")).toHaveLength(1);
+      qa.emit(snapshot("trendsScreen", 90, "_TtUnnamed"));
+      expect(qa.dom.window.document.querySelectorAll(".pin")).toHaveLength(1);
+      qa.emit(snapshot("trackScreen", 100, "_TtUnnamed"));
+      expect(qa.dom.window.document.querySelectorAll(".pin")).toHaveLength(0);
+      qa.emit(snapshot("trendsScreen", 100, "_TtUnnamed"));
+      expect(qa.dom.window.document.querySelectorAll(".pin")).toHaveLength(0);
+    } finally { qa.dom.window.close(); }
+  });
+
   it("does not create an unsendable pin before the image stream is ready", () => {
     const qa = overlay(null);
     try {
