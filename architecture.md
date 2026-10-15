@@ -1640,6 +1640,8 @@ The overlay runs in a supervised child process because native macOS accessibilit
 Node process. One unexpected exit restarts the overlay in screenshot-pin mode without stopping
 the simulator stream; `--no-ax` selects that mode explicitly. A second exit requires a deliberate
 restart rather than an unbounded retry.
+An open overlay tab detects the changed health mode and reloads, restoring unsent pins from local
+browser storage so a crash recovery does not require manual intervention.
 
 This works today with the standard Xcode toolchain and no special infrastructure — `xcodebuild` to
 build, `xcrun simctl` to boot/install/launch, **XCUITest** to drive the UI (the tests double as the

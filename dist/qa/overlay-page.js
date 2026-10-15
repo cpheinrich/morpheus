@@ -243,6 +243,7 @@ export function pageHtml(opts) {
   }
   if (axPath) {
     const axStream = new EventSource(axPath);
+    let recoveryTimer = null;
     const clearAx = () => {
       latestAx = null;
       currentScreenId = null;
@@ -252,6 +253,22 @@ export function pageHtml(opts) {
       }
       renderPins();
     };
+    const checkRecovery = async () => {
+      recoveryTimer = null;
+      if (axStream.readyState === EventSource.OPEN) return;
+      try {
+        const response = await fetch('/health', { cache: 'no-store' });
+        if (response.ok && (await response.json()).axEnabled === false) {
+          // Drafts and captured pin frames survive the reload in sessionStorage/IndexedDB.
+          persist();
+          axStream.close();
+          window.location.reload();
+          return;
+        }
+      } catch (_) { /* the overlay may still be restarting */ }
+      if (axStream.readyState !== EventSource.OPEN) recoveryTimer = setTimeout(checkRecovery, 750);
+    };
+    axStream.onopen = () => { if (recoveryTimer) clearTimeout(recoveryTimer); recoveryTimer = null; };
     axStream.onmessage = (event) => {
       try {
         const snapshot = JSON.parse(event.data);
@@ -264,7 +281,10 @@ export function pageHtml(opts) {
         updatePinPositions();
       } catch (_) { clearAx(); }
     };
-    axStream.onerror = clearAx;
+    axStream.onerror = () => {
+      clearAx();
+      if (!recoveryTimer) recoveryTimer = setTimeout(checkRecovery, 750);
+    };
   }
   let focusedId = null;
   let escArmedAt = 0;

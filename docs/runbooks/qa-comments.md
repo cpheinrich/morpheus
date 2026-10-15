@@ -235,7 +235,8 @@ If macOS accessibility crashes the overlay, use `--no-ax` to pin comments from t
 without native accessibility reads. A managed iOS preview runs the overlay in a separate process:
 if that process exits, the supervisor keeps the simulator stream alive and restarts the overlay
 once with accessibility disabled. A second overlay failure is logged and requires a deliberate
-preview restart.
+preview restart. An open AX tab reloads into screenshot-pin mode when the fallback becomes healthy;
+its unsent comments and captured frames are restored.
 
 Exit non-zero when a named batch is missing. `pending` with an empty inbox
 prints nothing and exits 0 — agents can poll safely. Resolving an already-resolved
