@@ -1916,6 +1916,8 @@ reviewable in a PR, diffable. The generated HQ session route reconciles a verifi
 account's claim on first sign-in against the deployed manifest. `morpheus access sync` applies
 bulk changes promptly, including revocations for accounts that do not sign in again. The
 refreshed ID token and session cookie retain the same claim that Firestore rules read.
+The consumer-auth session route keeps this reconciliation while allowing ordinary consumers
+to sign in without an HQ role.
 
 Keep Zero Trust only for defence-in-depth on genuinely sensitive infrastructure such as the
 Chatwoot admin panel; it is redundant in front of `/hq`.

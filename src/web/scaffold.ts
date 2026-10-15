@@ -244,9 +244,9 @@ export async function scaffoldWeb(opts: ScaffoldOptions): Promise<ScaffoldResult
       }
 
       notes.push(
-        "Grant the team their roles with `morpheus access sync`. Until that runs, a " +
-          "signed-in account has no `role` claim and /hq refuses it — which is the gate " +
-          "working, not a broken sign-in.",
+        "A verified Google account on the deployed HQ allowlist receives its role on first " +
+          "sign-in. Run `morpheus access sync` after allowlist changes to update existing " +
+          "accounts promptly, including users who have not signed in again.",
       );
     }
   }

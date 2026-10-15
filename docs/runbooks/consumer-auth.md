@@ -128,7 +128,10 @@ silently does not go out.
 
 ## 8. Afterwards
 
-- `morpheus access sync` — unchanged by any of this; consumer accounts hold no role at all.
+- A verified Google account on the deployed HQ allowlist receives its role on first sign-in,
+  including after this scaffold replaces the HQ-only session route. Ordinary consumer accounts
+  receive no HQ role. Run `morpheus access sync` after allowlist changes to update existing users
+  promptly, including those who do not sign in again.
 - Walk the golden path against the real staging project once, then delete the test accounts:
   sign-up → automatic mail → verify link → display name saves; password reset end to end (old
   password dies, new one works); `/hq` as a consumer answers 404 — never a sign-in wall, so the

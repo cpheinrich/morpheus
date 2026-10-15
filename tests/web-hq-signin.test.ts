@@ -1,11 +1,14 @@
 import ts from "typescript";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiAuthSession, authRoles, hqAllowlist, signInForm, type TemplateContext } from "../src/web/templates.js";
+import { apiAuthSessionRoute } from "../src/web/consumer-auth/templates-app.js";
+import { libAuthSessionClient } from "../src/web/consumer-auth/templates-lib.js";
+import type { ConsumerAuthContext } from "../src/web/consumer-auth/context.js";
 
 // Execute the generated route itself with its external services supplied as fakes.
 // This catches a template that renders plausible text but makes the wrong auth decision.
 function runnable(source: string): string {
-  const noImports = source.replace(/^import .*;\n/gm, "").replaceAll("export ", "");
+  const noImports = source.replace(/^import\s+[^;]*;\n/gm, "").replaceAll("export ", "");
   return ts.transpileModule(noImports, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None, jsx: ts.JsxEmit.React } }).outputText;
 }
 
@@ -34,6 +37,12 @@ const POST = new Function(
   "NextResponse", "isRole", "roleForEmail", "adminAuth", "SESSION_COOKIE_NAME", "SESSION_MAX_AGE_MS",
   `${runnable(apiAuthSession(context, "Acme"))}\nreturn POST;`,
 )(NextResponse, roles, roleForEmail, () => auth, "session", 1000) as (request: Request) => Promise<{ status: number; body: unknown }>;
+const consumerPost = new Function(
+  "NextResponse", "isSameOrigin", "isRole", "roleForEmail", "adminAuth",
+  "SESSION_COOKIE_NAME", "SESSION_MAX_AGE_MS", "SIGNED_IN_HINT_COOKIE_NAME",
+  `${runnable(apiAuthSessionRoute({ name: "Acme" } as ConsumerAuthContext))}\nreturn POST;`,
+)(NextResponse, () => true, roles, roleForEmail, () => auth, "session", 1000, "hint") as
+  (request: Request) => Promise<{ status: number; body: unknown }>;
 
 function post(): Promise<{ status: number; body: unknown }> {
   return POST(new Request("https://example.com/api/auth/session", {
@@ -41,14 +50,64 @@ function post(): Promise<{ status: number; body: unknown }> {
   }));
 }
 
+function postConsumer(): Promise<{ status: number; body: unknown }> {
+  return consumerPost(new Request("https://example.com/api/auth/session", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: "verified-token" }),
+  }));
+}
+
 function signedIn(email: string, role?: string, provider = "google.com", verified = true): void {
-  auth.verifyIdToken.mockResolvedValue({ uid: "uid-1", email, email_verified: verified, role, firebase: { sign_in_provider: provider } });
+  auth.verifyIdToken.mockResolvedValue({ uid: "uid-1", sub: "uid-1", auth_time: Math.floor(Date.now() / 1000), email, email_verified: verified, role, firebase: { sign_in_provider: provider } });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   auth.getUser.mockResolvedValue({ customClaims: { existing: "kept" } });
   auth.createSessionCookie.mockResolvedValue("session-cookie");
+});
+
+describe("generated consumer-auth route with HQ", () => {
+  it("grants a listed Google account before minting a session", async () => {
+    signedIn("staff@example.com");
+    expect(await postConsumer()).toMatchObject({ status: 409, body: { refreshToken: true } });
+    expect(auth.setCustomUserClaims).toHaveBeenCalledWith("uid-1", { existing: "kept", role: "employee" });
+    expect(auth.createSessionCookie).not.toHaveBeenCalled();
+    signedIn("staff@example.com", "employee");
+    expect(await postConsumer()).toMatchObject({ status: 200, body: { ok: true, role: "employee" } });
+    expect(auth.createSessionCookie).toHaveBeenCalledWith("verified-token", { expiresIn: 1000 });
+  });
+
+  it("still creates a consumer session without an HQ role", async () => {
+    signedIn("consumer@example.com", undefined, "password", false);
+    expect(await postConsumer()).toMatchObject({ status: 200, body: { ok: true, role: null } });
+    expect(auth.setCustomUserClaims).not.toHaveBeenCalled();
+  });
+
+  it("revokes a stale HQ role before a consumer session can be minted", async () => {
+    signedIn("removed@example.com", "employee");
+    auth.getUser.mockResolvedValue({ customClaims: { existing: "kept", role: "employee" } });
+    expect((await postConsumer()).status).toBe(401);
+    expect(auth.setCustomUserClaims).toHaveBeenCalledWith("uid-1", { existing: "kept" });
+    expect(auth.revokeRefreshTokens).toHaveBeenCalledWith("uid-1");
+    expect(auth.createSessionCookie).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the consumer client token once after a new grant", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ status: 409, ok: false, json: async () => ({ refreshToken: true }) })
+      .mockResolvedValueOnce({ status: 200, ok: true });
+    const clientAuth = { signOut: vi.fn() };
+    const establishSession = new Function("fetch", "getClientAuth", "sessionErrorMessage",
+      `${runnable(libAuthSessionClient({ name: "Acme" } as ConsumerAuthContext))}\nreturn establishSession;`,
+    )(fetchMock, () => clientAuth, () => "error") as
+      (user: { getIdToken: (force?: boolean) => Promise<string> }) => Promise<unknown>;
+    const getIdToken = vi.fn().mockResolvedValueOnce("first").mockResolvedValueOnce("fresh");
+    expect(await establishSession({ getIdToken })).toBeNull();
+    expect(getIdToken.mock.calls).toEqual([[false], [true]]);
+    expect(fetchMock).toHaveBeenCalledTimes(3); // two session requests, then profile provisioning
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({ idToken: "fresh" });
+    expect(clientAuth.signOut).not.toHaveBeenCalled();
+  });
 });
 
 describe("generated HQ first sign-in", () => {

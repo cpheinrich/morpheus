@@ -2,7 +2,7 @@ import { accessible as exists } from "../../file-io.js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 import type { WebSurvey } from "../survey.js";
-import { firestoreValue, waitlistThrottle } from "../templates.js";
+import { firestoreValue, hqAllowlist, waitlistThrottle } from "../templates.js";
 import { addJwksJoseOverride, CATCH_ALL, mergeDependencies } from "../scaffold.js";
 import type { ConsumerAuthContext } from "./context.js";
 import * as libs from "./templates-lib.js";
@@ -134,6 +134,7 @@ export function plannedFiles(survey: WebSurvey, ctx: ConsumerAuthContext): Plann
   const web = (rel: string): string =>
     survey.webRoot === "." ? rel : posix.join(survey.webRoot, rel);
   const rulesDir = survey.firestoreRulesPath ? posix.dirname(survey.firestoreRulesPath) : "infra/firebase";
+  const manifestImport = posix.relative(posix.dirname(web("lib/auth/hq-allowlist.ts")), "morpheus.json");
 
   const plumbing: Array<[string, string]> = [
     [web("lib/firebase/config.ts"), libs.libFirebaseConfig(ctx)],
@@ -141,6 +142,7 @@ export function plannedFiles(survey: WebSurvey, ctx: ConsumerAuthContext): Plann
     [web("lib/firebase/client.ts"), libs.libFirebaseClient(ctx)],
     [web("lib/firebase/emulator.ts"), libs.libFirebaseEmulator(ctx)],
     [web("lib/auth/roles.ts"), libs.libAuthRoles(ctx)],
+    [web("lib/auth/hq-allowlist.ts"), hqAllowlist(manifestImport.startsWith(".") ? manifestImport : `./${manifestImport}`)],
     [web("lib/auth/session-cookie.ts"), libs.libAuthSessionCookie(ctx)],
     [web("lib/auth/current-user.ts"), libs.libAuthCurrentUser(ctx)],
     [web("lib/auth/writing-user.ts"), libs.libAuthWritingUser(ctx)],

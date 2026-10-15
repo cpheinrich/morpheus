@@ -1376,7 +1376,7 @@ export function isRole(value: unknown): value is Role {
  * supplier terms.
  *
  * This list and the vocabulary above must match Morpheus's \`access/schema.ts\`
- * exactly — \`morpheus access sync\` writes those strings, and a role this file
+ * exactly — sign-in and \`morpheus access sync\` write those strings, and a role this file
  * does not recognise is treated as no role at all. \`employee\`, not \`member\`.
  */
 const HQ_ROLES: readonly Role[] = ["admin", "employee"];
@@ -2312,8 +2312,9 @@ export const readmeSection = (name: string, hasHq: boolean, hasWaitlist: boolean
 |---|---|
 ${rows.join("\n")}
 
-Access to \`/hq\` is the allowlist in \`morpheus.json\`, applied with
-\`morpheus access sync\`. The same claim gates the route and the Firestore data —
+Access to \`/hq\` is the allowlist in \`morpheus.json\`. A verified Google account
+receives its role claim on first sign-in; run \`morpheus access sync\` after list
+changes to update existing accounts promptly. The same claim gates the route and the Firestore data —
 see [Morpheus §11](https://github.com/cpheinrich/morpheus/blob/main/architecture.md).
 `;
 };

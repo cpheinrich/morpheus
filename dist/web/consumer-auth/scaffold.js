@@ -1,7 +1,7 @@
 import { accessible as exists } from "../../file-io.js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
-import { firestoreValue, waitlistThrottle } from "../templates.js";
+import { firestoreValue, hqAllowlist, waitlistThrottle } from "../templates.js";
 import { addJwksJoseOverride, CATCH_ALL, mergeDependencies } from "../scaffold.js";
 import * as libs from "./templates-lib.js";
 import * as app from "./templates-app.js";
@@ -63,12 +63,14 @@ const UNIT_TEST_BASES = ["auth-config", "action-link", "request-safety", "user-p
 export function plannedFiles(survey, ctx) {
     const web = (rel) => survey.webRoot === "." ? rel : posix.join(survey.webRoot, rel);
     const rulesDir = survey.firestoreRulesPath ? posix.dirname(survey.firestoreRulesPath) : "infra/firebase";
+    const manifestImport = posix.relative(posix.dirname(web("lib/auth/hq-allowlist.ts")), "morpheus.json");
     const plumbing = [
         [web("lib/firebase/config.ts"), libs.libFirebaseConfig(ctx)],
         [web("lib/firebase/admin.ts"), libs.libFirebaseAdmin(ctx)],
         [web("lib/firebase/client.ts"), libs.libFirebaseClient(ctx)],
         [web("lib/firebase/emulator.ts"), libs.libFirebaseEmulator(ctx)],
         [web("lib/auth/roles.ts"), libs.libAuthRoles(ctx)],
+        [web("lib/auth/hq-allowlist.ts"), hqAllowlist(manifestImport.startsWith(".") ? manifestImport : `./${manifestImport}`)],
         [web("lib/auth/session-cookie.ts"), libs.libAuthSessionCookie(ctx)],
         [web("lib/auth/current-user.ts"), libs.libAuthCurrentUser(ctx)],
         [web("lib/auth/writing-user.ts"), libs.libAuthWritingUser(ctx)],
