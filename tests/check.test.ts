@@ -111,7 +111,7 @@ describe("hasSection", () => {
 });
 
 describe("closesIssue", () => {
-  it.each(["Closes #70", "fix #70", "FIXED #70", "Resolves #70"])(
+  it.each(["Closes #70", "fix #70", "FIXED #70", "Resolves #70", "Closes: #70", "FIXES: #70"])(
     "recognises GitHub closing syntax: %s",
     (body) => expect(closesIssue(body, 70)).toBe(true),
   );
@@ -308,13 +308,29 @@ describe("checkPr", () => {
     expect(missing.find((finding) => finding.rule === "issue-reference")?.message).toContain("Refs #493");
 
     for (const closing of ["Closes", "Fixes", "Resolves"]) {
-      const premature = await checkPr(goodPr({ body: `${base}\nCloses #70.\nRefs #493.\n${closing} #493.\n` }));
-      expect(premature.find((finding) => finding.rule === "issue-kept-open")?.level).toBe("error");
-      expect(premature.find((finding) => finding.rule === "issue-closure")).toBeUndefined();
+      for (const separator of [" ", ": "]) {
+        const premature = await checkPr(goodPr({ body: `${base}\nCloses #70.\nRefs #493.\n${closing}${separator}#493.\n` }));
+        expect(premature.find((finding) => finding.rule === "issue-kept-open")?.level).toBe("error");
+        expect(premature.find((finding) => finding.rule === "issue-closure")).toBeUndefined();
+      }
     }
 
     const admitted = await checkPr(goodPr({ body: `${base}\nCloses #70.\nRefs #493.\n` }));
     expect(admitted.filter((finding) => finding.level === "error")).toEqual([]);
+  });
+
+  it("rejects closing keywords in the title and commit messages for a held incident", async () => {
+    await seedRoadmap("EV-014", "review", [493], [493]);
+    const body = `${goodPr().body}\nRefs #493.\n`;
+    for (const override of [
+      { title: "Fixes #493" },
+      { commitMessages: ["Repair the picker\n\nResolves: #493"] },
+    ]) {
+      const findings = await checkPr(goodPr({ body, ...override }));
+      expect(findings.find((finding) => finding.rule === "issue-kept-open")?.level).toBe("error");
+    }
+    const unreadable = await checkPr(goodPr({ body, commitMessages: null }));
+    expect(unreadable.find((finding) => finding.rule === "issue-history-unreadable")?.level).toBe("error");
   });
 
   it("blocks a branch referencing an item that does not exist", async () => {

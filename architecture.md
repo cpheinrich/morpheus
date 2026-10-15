@@ -527,7 +527,8 @@ roadmap; `check pr` requires `Closes #123` (or another GitHub closing keyword) i
 The structured field distinguishes completion from a merely related issue mention, while GitHub's
 native merge behaviour performs the actual close.
 For controller-owned recovery incidents, the roadmap item also lists the number in
-`issuesToKeepOpen:`. In that case `check pr` requires `Refs #123` and rejects closing keywords;
+`issuesToKeepOpen:`. In that case `check pr` requires `Refs #123` and rejects closing keywords in
+the PR body, title, and branch commit messages, including GitHub's colon syntax;
 the release controller alone closes the incident after exact delivery verification. Evo #493
 showed why: its repair PR's `Closes` line closed the blocker between merge and recovery release
 admission, so the reserved release failed before upload.

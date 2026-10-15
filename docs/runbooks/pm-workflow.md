@@ -150,7 +150,9 @@ For a recovery incident whose release controller must verify the exact delivery 
 it, add the issue normally with `pm new --issue` or `pm link-issue`, then list its number in
 `issuesToKeepOpen: [493]` on the roadmap item. Name the owner of final closure in the item's
 body. The PR body must say `Refs #493`; `check pr` rejects `Closes`, `Fixes`, or `Resolves` for
-that issue, including when another linked issue still needs `Closes`. The controller closes the
+that issue in the PR description, title, or branch commit messages, including colon forms and
+when another linked issue still needs `Closes`. An unreadable commit history fails the check.
+The controller closes the
 incident only after its release verification. Remove the exception when later work really owns
 closure. This keeps the issue linked without allowing GitHub to close it at repair merge.
 

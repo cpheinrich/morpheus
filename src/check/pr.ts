@@ -25,6 +25,10 @@ export interface PrContext {
   agentReview?: Finding[];
   /** PR body markdown. */
   body: string;
+  /** PR title, which may become the squash commit subject. */
+  title?: string;
+  /** Messages on the PR branch. Null means history could not be read. */
+  commitMessages?: string[] | null;
   /** Pull-request author login. Absent outside GitHub unless explicitly supplied. */
   author?: string;
   /**
@@ -125,18 +129,21 @@ function stripCode(body: string): string {
   return stripFences(body).replace(/`[^`\r\n]*`/g, "");
 }
 
-/** Whether the PR body uses one of GitHub's same-repository closing keywords. */
-export function closesIssue(body: string, issue: number): boolean {
+/** GitHub's same-repository closing keywords, including its colon form. */
+function closingKeywordInText(text: string, issue: number): boolean {
   const keyword = String.raw`(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)`;
+  // GitHub accepts "Closes: #N" as well as "Closes #N". For held issues,
+  // inspect raw text conservatively, including commit messages and PR titles.
+  return new RegExp(String.raw`(?:^|[^A-Za-z0-9])${keyword}(?:\s*:\s*|\s+)#${issue}(?!\d)`, "im").test(text);
+}
+
+/** Whether visible PR prose uses one of GitHub's closing keywords. */
+export function closesIssue(body: string, issue: number): boolean {
   // The pull-request template carries an example inside an HTML comment.
   // GitHub does not treat hidden template guidance as closure intent, so the
   // verifier must not let that example satisfy the rule either.
   const visible = visibleProse(body);
-  // `_` is a regex word character but also Markdown emphasis, so `\b` would
-  // reject `_Resolves #70_`. Exclude letters and digits explicitly instead.
-  return new RegExp(String.raw`(?:^|[^A-Za-z0-9])${keyword}\s+#${issue}(?!\d)`, "im").test(
-    visible,
-  );
+  return closingKeywordInText(visible, issue);
 }
 
 /** Require an explicit non-closing link for an issue owned by a later verifier. */
@@ -414,7 +421,15 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
       }
 
       for (const issue of held) {
-        if (closesIssue(body, issue)) {
+        const sources = [body, ctx.title ?? "", ...(ctx.commitMessages ?? [])];
+        if (ctx.commitMessages === null) {
+          findings.push({
+            level: "error",
+            rule: "issue-history-unreadable",
+            message: `${id} keeps #${issue} open, but PR commit messages could not be read. Check the PR head history before merging.`,
+          });
+        }
+        if (sources.some((text) => closingKeywordInText(text, issue))) {
           findings.push({
             level: "error",
             rule: "issue-kept-open",

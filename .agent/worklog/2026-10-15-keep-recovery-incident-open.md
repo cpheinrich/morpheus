@@ -24,6 +24,16 @@ and rejects visible GitHub closing keywords. Other linked issues still require
 explain the controller handoff. This is domain-specific policy, so no generic
 library was needed.
 
+The first independent review found two substantive bypasses. GitHub accepts
+`Closes: #493` and its peers with a colon, but the previous detector missed
+them. GitHub also closes issues from merged commit messages; a clean PR body
+can carry a closing keyword in the title or branch history that becomes the
+squash message. The correction recognizes colon syntax and checks the raw PR
+body, title, and head-only commit messages for a held issue. It fails closed
+when commit history cannot be read. These rules follow GitHub's published
+[linking syntax](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)
+and [squash-message behavior](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/configuring-commit-squashing-for-pull-requests).
+
 The regression exercises a mixed item with an ordinary issue and the live
 incident: missing `Refs` is refused; `Closes`, `Fixes`, and `Resolves` are each
 refused; `Closes #70` with `Refs #493` passes. Schema tests reject a held issue
@@ -32,6 +42,9 @@ before the final closing-keyword expansion; the single full local suite then
 passed 2178 tests across 80 files. `pnpm typecheck`, `pnpm lint`,
 `pnpm compile`, and `pnpm morpheus pm index` passed. CI will check the final
 head. No live Evo release was dispatched for this Morpheus policy change.
+After the reviewer correction, focused `check`, CLI check, `pm`, and `init`
+tests passed 238 tests. Typecheck and lint passed. The local full suite already
+ran once; CI will run the corrected head.
 
 The codebase-memory installer could not activate in this session because
 active sessions could not be stopped safely. Targeted source, tests, the Evo
