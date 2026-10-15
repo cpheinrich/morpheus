@@ -275,7 +275,11 @@ lifecycle. A project declares only what Morpheus cannot know, in `morpheus.json`
     "demo": { "flags": ["--demo"], "args": ["-ui-testing"], "summary": "Mode: demo. …" },
     "live": { "flags": ["--live"], "args": ["--qa-live"],
               "prepare": { "command": ["node", "apps/ios/scripts/qa-account.mjs", "{key}"], "credentials": true },
-              "summary": "Mode: live. …" }
+              "summary": "Mode: live. …" },
+    "production": { "flags": ["--production"], "args": [],
+                    "build": ["bash", "apps/ios/scripts/dev.sh", "build", "--configuration", "ProductionDebug"],
+                    "product": "Build/Products/ProductionDebug-iphonesimulator/App.app",
+                    "bundleId": "com.example.app.production" }
   }
 } }
 ```
@@ -284,6 +288,10 @@ lifecycle. A project declares only what Morpheus cannot know, in `morpheus.json`
   and `{root}` the project root; both expand in commands, paths and launch arguments.
 - The build command receives `DERIVED_DATA_PATH`, `SIMULATOR_NAME`, `SIMULATOR_OS` and
   `SIMULATOR_UDID` for the simulator the preview booted.
+- A mode that builds a different app overrides `build`, `product` and `bundleId` together.
+  The command can select its Xcode configuration. The preview checks the built app's
+  `CFBundleIdentifier` before installing it, including with `--no-build`; a stale product
+  cannot quietly launch another mode's bundle. `status` and `stop` name the started mode.
 - A mode's `prepare` command prints `{"env": {"NAME": "value"}}`; each entry reaches the app as a
   launch environment variable. With `credentials: true` it runs under
   `morpheus credentials run --`. Its stdout stays in memory: never in arguments, state files or

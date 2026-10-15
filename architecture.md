@@ -1620,6 +1620,11 @@ selected. Continue adding or updating tests and performing relevant simulator/vi
 
 The project scaffold includes this rule in `AGENTS.md` so future iOS projects inherit it.
 
+The shared `morpheus qa preview ios` lifecycle accepts mode-specific build identity. A mode
+that selects a different app declares its build command, product path and bundle identifier
+together; the built product's embedded identifier must match before install. One checkout still
+owns one simulator, lease and comment overlay, and status/stop identify the mode that started it.
+
 This works today with the standard Xcode toolchain and no special infrastructure — `xcodebuild` to
 build, `xcrun simctl` to boot/install/launch, **XCUITest** to drive the UI (the tests double as the
 QA script), `simctl io` to screenshot and record video, and Firebase App Distribution or TestFlight
