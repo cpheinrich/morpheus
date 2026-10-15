@@ -30,6 +30,8 @@ export function parsePreviewArgs(argv, modes) {
         const flag = args.shift();
         if (flag === "--no-build")
             options.build = false;
+        else if (flag === "--no-ax")
+            options.axEnabled = false;
         else if (byFlag.has(flag))
             options.mode = byFlag.get(flag);
         else if (["--port", "--ssh-host", "--ttl-minutes", "--mode"].includes(flag)) {
@@ -431,7 +433,7 @@ export async function runPreview(ctx, options) {
                 throw new Error(`No build at ${app}. Run start without --no-build.`);
             verifyBuiltBundle(app, identity.bundleId, run);
             // Record ownership before boot so a failed install/launch/readiness can clean up.
-            const pending = { udid: device.udid, name: ctx.deviceName, port, overlayPort, root: ctx.root, mode: mode.name, bundleId: identity.bundleId, expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000 };
+            const pending = { udid: device.udid, name: ctx.deviceName, port, overlayPort, root: ctx.root, mode: mode.name, bundleId: identity.bundleId, axEnabled: options.axEnabled !== false, expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000 };
             writeState(ctx, pending);
             try {
                 sim("boot", device.udid);

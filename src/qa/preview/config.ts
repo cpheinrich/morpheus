@@ -161,7 +161,7 @@ export function modeBuildIdentity(config: IosPreviewConfig, mode: PreviewMode): 
 }
 
 /** Flags the preview command owns, plus every flag the morpheus parser consumes first. */
-export const PREVIEW_FLAGS = ["--port", "--ttl-minutes", "--no-build", "--ssh-host", "--root", "--mode"];
+export const PREVIEW_FLAGS = ["--port", "--ttl-minutes", "--no-build", "--no-ax", "--ssh-host", "--root", "--mode"];
 export const RESERVED_FLAGS = new Set([...PREVIEW_FLAGS, ...globalFlags()]);
 
 export async function loadIosPreviewConfig(root: string): Promise<ConfigResult> {

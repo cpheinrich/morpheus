@@ -9,7 +9,7 @@ import {
   repairSimulatorInput, report, requireFreePort, selectRuntime, serveSimCli, shutdownPreview, tunnelCommand, verifyBuiltBundle,
   withPreviewCancellation, type Runtime,
 } from "../src/qa/preview/ios.js";
-import { supervise } from "../src/qa/preview/supervisor.js";
+import { supervise, superviseOverlay } from "../src/qa/preview/supervisor.js";
 import { QA_GUIDE } from "../src/qa/guide.js";
 import { commentQaSkill } from "../src/init/templates.js";
 
@@ -144,6 +144,8 @@ describe("preview arguments", () => {
     expect(parsePreviewArgs([], modes)).toEqual({ command: "start", build: true });
     expect(parsePreviewArgs(["start", "--no-build", "--port", "3210"], modes)).toEqual({ command: "start", build: false, port: 3210 });
     expect(parsePreviewArgs(["status", "--ssh-host", "user@mac.tailnet.ts.net"], modes).sshHost).toBe("user@mac.tailnet.ts.net");
+    expect(parsePreviewArgs(["start", "--no-ax"], modes).axEnabled).toBe(false);
+    expect(RESERVED_FLAGS.has("--no-ax")).toBe(true);
   });
 
   it("selects a mode by its declared flag, by --mode, or not at all", () => {
@@ -277,6 +279,43 @@ describe("cancellation and supervision", () => {
 });
 
 describe("serve-sim and the guide", () => {
+  it("keeps serve-sim alive after an overlay crash and retries once without AX", () => {
+    const children: Array<EventEmitter & { kill: (signal: string) => void }> = [];
+    const modes: boolean[] = [];
+    const kills: string[] = [];
+    const logs: string[] = [];
+    const overlay = superviseOverlay((enabled) => {
+      modes.push(enabled);
+      const child = Object.assign(new EventEmitter(), { kill: (signal: string) => { kills.push(signal); } });
+      children.push(child);
+      return child as never;
+    }, true, (message) => logs.push(message));
+    children[0]!.emit("exit", null, "SIGSEGV");
+    expect(modes).toEqual([true, false]);
+    expect(logs[0]).toContain("SIGSEGV");
+    overlay.stop();
+    children[1]!.emit("exit", null, "SIGTERM");
+    expect(kills).toEqual(["SIGTERM"]);
+    expect(modes).toEqual([true, false]);
+    expect(logs).toHaveLength(1);
+  });
+
+  it("does not loop if screenshot fallback exits", () => {
+    const children: EventEmitter[] = [];
+    const modes: boolean[] = [];
+    const logs: string[] = [];
+    superviseOverlay((enabled) => {
+      modes.push(enabled);
+      const child = Object.assign(new EventEmitter(), { kill: () => true });
+      children.push(child);
+      return child as never;
+    }, true, (message) => logs.push(message));
+    children[0]!.emit("exit", null, "SIGSEGV");
+    children[1]!.emit("exit", 1, null);
+    expect(modes).toEqual([true, false]);
+    expect(logs[1]).toContain("screenshot fallback also failed");
+  });
+
   it("ships the pinned serve-sim with the CLI", () => {
     const cli = serveSimCli();
     expect(cli.version).toBe("0.1.47");
