@@ -1301,3 +1301,17 @@ rendered pixels or relevant recording frames; a URL alone is insufficient. Missi
 evidence still escalates. The Manager may recover a missing `agent-reviewed` label only after its
 apply step validates the author's committed review against the live head, avoiding the mechanical
 failure seen on Morpheus #353. No package added: the existing review checker is reused.
+
+## QA pin evidence is the frame visible at the click — 2026-10-15
+
+MO-26-10-15-13.04.47 supersedes the October 9 native placement capture requirement above.
+The three accessibility reads and later native screenshot could describe different moments
+around a normal scroll or navigation. Each iOS right-click now freezes the displayed MJPEG
+frame synchronously in the browser. A missing frame refuses the click; accessibility is only
+optional marker and screen context, never a condition for Send. The native placement route was
+removed. Keep the original click image per pin across reload and batch submission.
+Browser tests run the actual iOS and web overlays in Chromium and WebKit through multi-pin,
+navigation or scroll, reload (iOS), and Send. The maintained `@playwright/test` package at
+1.63.0 adds Playwright and its browser core to dev dependencies only; browser engines are
+installed in the dedicated CI job. This is the smallest credible real-browser test harness
+for two distinct overlay architectures and catches failures DOM-level tests missed.
