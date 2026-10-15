@@ -45,3 +45,59 @@ was an author commit. The two exact regression cases now fail under the
 original implementation and pass with the correction. The focused review
 suites pass 213 tests, and typecheck passes. The single full local suite
 was already run before this correction; CI will run it on the final commit.
+
+The same reviewer checked the correction at `3fd9c84bc737177b8663adc54e1d0e0fd0d07487`, independently ran the two targeted regressions, and cleared both original findings with no new actionable findings. Final-head CI remains the release check.
+
+The initial review found two substantive authorization bypasses; the same-reviewer follow-up cleared both after the correction. Final-head CI remains to be verified.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "dcf08f370c48a9f62a638998633e85e4a29d253c",
+  "reviewed": "7864bf3109a50f016730554f71261d714db857ed",
+  "covered": "3fd9c84bc737177b8663adc54e1d0e0fd0d07487",
+  "authorSession": "01a13e64-2d9b-7730-abce-2287983ca7aa",
+  "reviewerSession": "/root/deferred_ticket_review",
+  "risk": "high",
+  "elapsedMinutes": 2.1166666666666667,
+  "timing": {
+    "source": "clock",
+    "durationMs": 127000,
+    "evidence": "clock__curr_time: initial review dispatched 2026-10-15 07:25:57 UTC; completion observed 07:28:04 UTC"
+  },
+  "outcome": "complete",
+  "summary": "The initial review found two substantive authorization bypasses; the same-reviewer follow-up cleared both after the correction. Final-head CI remains to be verified.",
+  "findings": [
+    {
+      "id": "nested-ticket-path",
+      "severity": "substantive",
+      "description": "An ID-prefixed nested Markdown file could masquerade as a roadmap ticket even though the parser ignored it.",
+      "paths": ["src/review/local.ts"],
+      "disposition": "fixed",
+      "response": "Require a direct regular Markdown roadmap file with valid RoadmapItem frontmatter and matching id; added the nested-path regression test."
+    },
+    {
+      "id": "trunk-introduced-ticket",
+      "severity": "substantive",
+      "description": "A ticket introduced by a trunk merge after reviewed could be edited by the author and classified as newly filed.",
+      "paths": ["src/review/local.ts"],
+      "disposition": "fixed",
+      "response": "Walk first-parent history and require the ticket's first appearance in an author commit; added the trunk-merge regression test."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/deferred_ticket_review",
+      "commit": "3fd9c84bc737177b8663adc54e1d0e0fd0d07487",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.45,
+      "timing": {
+        "source": "clock",
+        "durationMs": 87000,
+        "evidence": "clock__curr_time: same-reviewer follow-up dispatched 2026-10-15 07:31:44 UTC; completion observed 07:33:11 UTC"
+      },
+      "summary": "Both original findings are fixed; the two targeted regressions passed and no actionable findings remain."
+    }
+  ]
+}
+```
