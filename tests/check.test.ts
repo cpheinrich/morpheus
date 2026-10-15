@@ -7,6 +7,7 @@ import {
   formatFindings,
   hasSection,
   closesIssue,
+  referencesIssue,
   roadmapIdFromBranch,
   waiverReason,
   type PrContext,
@@ -20,19 +21,19 @@ import {
 
 let product: string;
 
-const RM = (id: string, status: string, issues: number[] = []) => `id: ${id}
+const RM = (id: string, status: string, issues: number[] = [], issuesToKeepOpen: number[] = []) => `id: ${id}
 title: An item that exists
 status: ${status}
 priority: P1
 owner: agent
 prs: []
-${issues.length ? `issues: [${issues.join(", ")}]\n` : ""}created: 2026-07-01
+${issues.length ? `issues: [${issues.join(", ")}]\n` : ""}${issuesToKeepOpen.length ? `issuesToKeepOpen: [${issuesToKeepOpen.join(", ")}]\n` : ""}created: 2026-07-01
 updated: 2026-07-28`;
 
-async function seedRoadmap(id: string, status: string, issues: number[] = []) {
+async function seedRoadmap(id: string, status: string, issues: number[] = [], issuesToKeepOpen: number[] = []) {
   const dir = join(product, "roadmap");
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, `${id}.md`), `---\n${RM(id, status, issues)}\n---\n\nBody.\n`);
+  await writeFile(join(dir, `${id}.md`), `---\n${RM(id, status, issues, issuesToKeepOpen)}\n---\n\nBody.\n`);
 }
 
 /** A PR that satisfies every rule, so each test can break exactly one thing. */
@@ -110,7 +111,7 @@ describe("hasSection", () => {
 });
 
 describe("closesIssue", () => {
-  it.each(["Closes #70", "fix #70", "FIXED #70", "Resolves #70"])(
+  it.each(["Closes #70", "fix #70", "FIXED #70", "Resolves #70", "Closes: #70", "FIXES: #70"])(
     "recognises GitHub closing syntax: %s",
     (body) => expect(closesIssue(body, 70)).toBe(true),
   );
@@ -132,6 +133,15 @@ describe("closesIssue", () => {
     "ignores closing syntax presented as code: %s",
     (body) => expect(closesIssue(body, 70)).toBe(false),
   );
+});
+
+describe("referencesIssue", () => {
+  it("recognizes only visible exact Refs links", () => {
+    expect(referencesIssue("Refs #493", 493)).toBe(true);
+    expect(referencesIssue("Refs #4930", 493)).toBe(false);
+    expect(referencesIssue("<!-- Refs #493 -->", 493)).toBe(false);
+    expect(referencesIssue("`Refs #493`", 493)).toBe(false);
+  });
 });
 
 describe("checkPr", () => {
@@ -288,6 +298,39 @@ describe("checkPr", () => {
     );
 
     expect(findings.find((f) => f.rule === "issue-closure")).toBeUndefined();
+  });
+
+  it("requires a recovery incident reference while forbidding early closure", async () => {
+    await seedRoadmap("EV-014", "review", [70, 493], [493]);
+    const base = goodPr().body;
+
+    const missing = await checkPr(goodPr({ body: `${base}\nCloses #70.\n` }));
+    expect(missing.find((finding) => finding.rule === "issue-reference")?.message).toContain("Refs #493");
+
+    for (const closing of ["Closes", "Fixes", "Resolves"]) {
+      for (const separator of [" ", ": "]) {
+        const premature = await checkPr(goodPr({ body: `${base}\nCloses #70.\nRefs #493.\n${closing}${separator}#493.\n` }));
+        expect(premature.find((finding) => finding.rule === "issue-kept-open")?.level).toBe("error");
+        expect(premature.find((finding) => finding.rule === "issue-closure")).toBeUndefined();
+      }
+    }
+
+    const admitted = await checkPr(goodPr({ body: `${base}\nCloses #70.\nRefs #493.\n` }));
+    expect(admitted.filter((finding) => finding.level === "error")).toEqual([]);
+  });
+
+  it("rejects closing keywords in the title and commit messages for a held incident", async () => {
+    await seedRoadmap("EV-014", "review", [493], [493]);
+    const body = `${goodPr().body}\nRefs #493.\n`;
+    for (const override of [
+      { title: "Fixes #493" },
+      { commitMessages: ["Repair the picker\n\nResolves: #493"] },
+    ]) {
+      const findings = await checkPr(goodPr({ body, ...override }));
+      expect(findings.find((finding) => finding.rule === "issue-kept-open")?.level).toBe("error");
+    }
+    const unreadable = await checkPr(goodPr({ body, commitMessages: null }));
+    expect(unreadable.find((finding) => finding.rule === "issue-history-unreadable")?.level).toBe("error");
   });
 
   it("blocks a branch referencing an item that does not exist", async () => {

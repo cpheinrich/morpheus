@@ -11,4 +11,6 @@
  * `HEAD` on a normal checkout or a local run.
  */
 export declare function trunkChanges(base: string): string[];
+/** Read only commits contributed by the PR head, excluding integrated trunk commits. */
+export declare function prCommitMessages(base: string, head: string, cwd?: string): string[] | null;
 export declare function pr(productDir: string, base: string): Promise<number>;

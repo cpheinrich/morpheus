@@ -177,7 +177,8 @@ than rebase after review.
 
 **Every PR carries** tests for anything testable (or an explicit reason), a documentation update
 when behaviour changes, a test plan with the commands actually run, open questions stated plainly,
-the roadmap item moved to `review`, `Closes #N` for each issue in the item's `issues:`, and visual
+the roadmap item moved to `review`, `Closes #N` for each issue in the item's `issues:` unless it is
+also in `issuesToKeepOpen:` (use `Refs #N` while a later verifier owns closure), and visual
 evidence for paths under `review.visualEvidence`. A records-only change (`hq/team/`, `.agent/`)
 goes on an `inbox-<YYYY-MM-DD>` branch; meeting notes go in isolated PRs; **never borrow an
 unrelated item's branch**. Waivers (`skip-tests:`, `records-only:`) need a real reason. All of it:

@@ -65,6 +65,31 @@ function prBody() {
     }
     return process.env["MORPHEUS_PR_BODY"] ?? "";
 }
+function prTitle() {
+    const eventPath = process.env["GITHUB_EVENT_PATH"];
+    if (eventPath) {
+        try {
+            const payload = JSON.parse(readFileSync(eventPath, "utf8"));
+            return payload.pull_request?.title ?? "";
+        }
+        catch {
+            /* fall through to the env override */
+        }
+    }
+    return process.env["MORPHEUS_PR_TITLE"] ?? "";
+}
+/** Read only commits contributed by the PR head, excluding integrated trunk commits. */
+export function prCommitMessages(base, head, cwd = process.cwd()) {
+    try {
+        const output = execFileSync("git", ["log", "--format=%B%x00", "--right-only", `${base}...${head}`], {
+            cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+        });
+        return output.split("\0").map((message) => message.trim()).filter(Boolean);
+    }
+    catch {
+        return null;
+    }
+}
 function prAuthor() {
     const eventPath = process.env["GITHUB_EVENT_PATH"];
     if (eventPath) {
@@ -105,6 +130,8 @@ export async function pr(productDir, base) {
     const findings = await checkPr({
         agentReview: usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor, clearedHead }) : checkLocalReview(review),
         body: prBody(),
+        title: prTitle(),
+        commitMessages: prCommitMessages(base, head),
         author: prAuthor(),
         branch: currentBranch(),
         changedFiles: changedFiles(base),

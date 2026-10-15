@@ -126,7 +126,8 @@ answer of changing the item to `review`.
 - A test plan: what you verified and how
 - Any open questions you could not resolve, stated plainly rather than guessed at
 - The roadmap item moved to `review`
-- `Closes #<number>` for every GitHub issue declared in the roadmap item's `issues:` field
+- `Closes #<number>` for every GitHub issue declared in the roadmap item's `issues:` field, except
+  an issue also listed under `issuesToKeepOpen:`; use `Refs #<number>` for that issue
 - For changed paths declared by `review.visualEvidence` in `morpheus.json`, a screen recording
   attached under `## Visual evidence` when practical, otherwise screenshots
 
@@ -144,6 +145,16 @@ For an existing item, use `morpheus pm link-issue <ID> 123`. Both write structur
 into the item. `check pr` then requires GitHub's closing keyword in the PR body, so merging the
 fix cannot leave the issue open as a second, stale backlog.
 An issue merely mentioned as related is not declared and is not closed.
+
+For a recovery incident whose release controller must verify the exact delivery before closing
+it, add the issue normally with `pm new --issue` or `pm link-issue`, then list its number in
+`issuesToKeepOpen: [493]` on the roadmap item. Name the owner of final closure in the item's
+body. The PR body must say `Refs #493`; `check pr` rejects `Closes`, `Fixes`, or `Resolves` for
+that issue in the PR description, title, or branch commit messages, including colon forms and
+when another linked issue still needs `Closes`. An unreadable commit history fails the check.
+The controller closes the
+incident only after its release verification. Remove the exception when later work really owns
+closure. This keeps the issue linked without allowing GitHub to close it at repair merge.
 
 **Except a PR that only touches records** — `hq/team/` and `.agent/`. An inbox cycle belongs to
 no feature and has no item to move. Branch it as `inbox-<YYYY-MM-DD>`, staking no id, and
