@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { gitSubprocessEnv } from "../git-env.js";
 import { branchPrefix, FETCH_PRUNE, findClaims } from "./claim.js";
 import { hasNoSubstantiveChange } from "../paths.js";
 import { parseArtifact } from "./parse.js";
@@ -25,7 +26,7 @@ const exec = promisify(execFile);
  * and refuses to guess when it cannot: see `reconcile`.
  */
 async function git(args, cwd) {
-    const { stdout } = await exec("git", args, { cwd });
+    const { stdout } = await exec("git", args, { cwd, env: gitSubprocessEnv() });
     return stdout.trim();
 }
 /**
@@ -251,5 +252,34 @@ export function formatReconcile(r) {
     if (!lines.length)
         return "\x1b[32m✓ Nothing in review.\x1b[0m";
     return lines.join("\n");
+}
+/** Stronger than board reconciliation: exact branch/repository and complete immutable PR evidence. */
+export async function cleanupPr(cwd, branch, trunkRemote) {
+    const repository = async (remote) => {
+        const url = await git(["remote", "get-url", remote], cwd);
+        const { stdout } = await exec("gh", ["repo", "view", url, "--json", "nameWithOwner,url"], { cwd, timeout: 30_000 });
+        const result = JSON.parse(stdout);
+        if (!result.nameWithOwner || !result.url)
+            throw new Error(`Cannot identify GitHub repository for ${remote}.`);
+        return result;
+    };
+    const base = await repository(trunkRemote);
+    const head = trunkRemote === "origin" ? base : await repository("origin");
+    const { stdout } = await exec("gh", ["pr", "list", "--repo", base.url, "--head", branch, "--state", "all", "--limit", "2",
+        "--json", "number,headRefName,headRefOid,baseRefName,state,mergeCommit,headRepository"], { cwd, timeout: 30_000 });
+    const prs = JSON.parse(stdout);
+    // Saturation is ambiguity too; never pick the first merged PR on a reused branch name.
+    if (!Array.isArray(prs) || prs.length !== 1)
+        throw new Error(`Expected exactly one PR for ${branch}; found ${Array.isArray(prs) ? prs.length : "invalid data"}.`);
+    const pr = prs[0];
+    if (!pr || pr.headRefName !== branch || pr.headRepository?.nameWithOwner !== head.nameWithOwner ||
+        !Number.isInteger(pr.number) || pr.number <= 0 || typeof pr.headRefOid !== "string" || typeof pr.baseRefName !== "string" || typeof pr.state !== "string") {
+        throw new Error("Incomplete or mismatched GitHub PR evidence; retain the worktree.");
+    }
+    if (pr.state !== "MERGED")
+        throw new Error(`PR #${pr.number} is ${pr.state}, not MERGED; retain the worktree.`);
+    if (typeof pr.mergeCommit?.oid !== "string")
+        throw new Error("Missing PR merge commit; retain the worktree.");
+    return pr;
 }
 //# sourceMappingURL=ship.js.map

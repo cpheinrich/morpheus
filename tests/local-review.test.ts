@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, reviewRequired, trivialDiff, type LocalReviewRecord } from "../src/review/local.js";
 import { checkPr } from "../src/check/pr.js";
 import { prepareReview, validateReview } from "../src/cli/review.js";
+import { authorRecordProblem } from "../src/gh-manager/verify.js";
 
 let root: string;
 let base: string;
@@ -110,7 +111,9 @@ describe("independent review lifecycle", () => {
   });
   it("reports explicit project opt-out as waived, not reviewed", () => {
     writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
-    expect(check(commit(), "", [])[0]?.level).toBe("waived");
+    const head = commit();
+    expect(check(head, "", [])[0]?.level).toBe("waived");
+    expect(authorRecordProblem(root, "", head, base)).toContain("no author record was validated");
   });
   it("wires missing evidence into PR conventions while preserving records-only work", async () => {
     const ctx = { body: "## Test plan\nRan tests", branch: "inbox-2026-09-10", changedFiles: ["code.ts"], productDir: join(root, "hq/product") };

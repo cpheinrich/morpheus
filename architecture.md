@@ -964,7 +964,7 @@ same-branch resets cannot reuse certification. Startup itself never issues a rec
 
 **One worktree per implementation task, not per conversation.** Startup without a task performs
 no worktree allocation. `pm claim` from a shared or unrelated checkout prepares a detached worktree
-at freshly fetched trunk, moving only a newly filed untracked roadmap item. The agent must read the
+under the operating system's temporary directory at freshly fetched trunk, moving only a newly filed untracked roadmap item. The agent must read the
 worktree's records, refresh there, and repeat the claim to create and push its derived branch.
 An already isolated detached worktree can claim directly. Read-only investigation needs no worktree.
 Existing task worktrees are identified by their claimed roadmap branch. `pm resume <ID>` resolves
@@ -984,8 +984,13 @@ absolute `WORK IN` directory and the required record paths; the agent must use t
 subsequent operations. Updated standard hooks inherit the behavior from the copied global CLI,
 without changes to each project's hook JSON. Hook trust remains provider-controlled; projects
 without the standard hook need `context install` and provider trust. Updating the runtime git
-dependency alone does not update the global CLI. Task directories persist for explicit Git cleanup;
-startup does not delete them automatically.
+dependency alone does not update the global CLI. After a task PR merges, `pm cleanup <ID>`
+uses the exact PR, current remote trunk, and clean linked checkout as evidence before removing
+the worktree and obsolete refs. A validated receipt at the exact generated session path is
+safe to remove after those checks; unrelated ignored files remain protected. An active,
+dirty, locked, or ambiguous checkout remains intact.
+Older sibling worktrees remain usable; `pm worktrees` inventories them. Startup does not delete
+worktrees automatically because a session can be reading or editing one while startup runs.
 
 The reporting half discards the selected worktree's prior receipt before naming records to read.
 Resumption and compaction preserve task association but require re-reading. The separate CLI-version
@@ -1339,6 +1344,10 @@ reviews on record, conducts one more if needed, and fixes its own findings; a se
 deterministic step checks each session's decision against live state and policy before anything is
 labelled, merged or closed. The session's token can write contents and nothing else: it cannot
 label, comment, close, or change a workflow file.
+If the author finished a valid independent review but missed its label, the deterministic apply
+step validates the committed review at the current head and applies `agent-reviewed`; an absent
+or invalid record still cannot merge. Front-end reviews inspect actual screenshot pixels and
+recording frames, including evidence already attached to the PR.
 Drafts, `wip/` branches, and `[WIP]` or `WIP:` titles remain with their authors; the manager
 cancels queued auto-merge on them. A ready pull request waits 24 hours after its latest head
 commit or opening, whichever is later, before the manager acts.
@@ -1591,7 +1600,9 @@ PR under `## Visual evidence`; `check pr` verifies either a stable GitHub attach
 HTTPS URL under a repository-approved `allowedUrlPrefixes` location. External locations are exact
 path prefixes, so approving one bucket on a shared provider does not approve every bucket there.
 The check does not fetch the URL, classify its pixels, or claim it meaningfully demonstrates the
-UI. Recording is a warning-level preference so a screenshot-only change is never blocked merely
+UI. The author captures the final build and the independent reviewer opens and inspects the
+evidence; missing or inaccessible required captures leave review incomplete. Recording is a
+warning-level preference so a screenshot-only change is never blocked merely
 because video was impractical. Web feedback returns as Vercel comments anchored to page elements
 and synced into the PR (§10.2).
 
@@ -3090,6 +3101,19 @@ Improving CI for every project becomes one commit in Morpheus. **Projects pin `@
 with one operator and a handful of repos, instant propagation is worth more than staged rollout,
 and a broken workflow is noticed and fixed in minutes.
 
+**The caller chooses the runner.** `node-ci`, `web-ci` and `python-ci` take a `runner` input, a single
+label defaulting to `ubuntu-latest`, as `ios-ci` already does. A private project may pass an isolated
+self-hosted label (`with: runner: linux-vm`), under the isolation rules for repo-scoped self-hosted
+runners in the iOS CI section above (never the operator's account, never a public repository). Three
+consequences stay with the caller:
+
+- A reusable workflow cannot retry a job on another runner, so any fallback to a hosted image is the
+  caller's.
+- An offline self-hosted label leaves the job queued for up to GitHub's 24-hour limit rather than
+  failing, so a fallback needs a probe job whose result feeds `runner`.
+- `web-ci`'s optional Playwright step runs `playwright install --with-deps`, which needs root or
+  passwordless sudo, so `run-e2e` on a self-hosted runner needs that or a prepared image.
+
 Deployment follows the same boundary as validation. `vercel-deploy.yml` owns the Vercel CLI
 sequence, fork guard, environment receipt and pull-request preview comment. Each project owns only
 its triggers, application directory and encrypted `VERCEL_TOKEN`, `VERCEL_ORG_ID` and
@@ -3230,7 +3254,9 @@ Only boolean presence flags enter this diagnostic; credential values remain conf
 final upload step. A blank P12 password and absent optional Firebase/Sentry credentials are valid.
 The workflow forwards the complete secret-free test contract — including
 parallel-test policy and optional maximum simulator-worker count, Firebase Emulator Suite
-configuration, and the pre-test fixture script — to `ios-ci`. Release builds default to the
+configuration, the pre-test fixture script, and any `only-testing` or `skip-testing` identifiers
+the caller names (both empty by default, so a release runs everything its scheme selects) — to
+`ios-ci`. Release builds default to the
 five-core M2 Pro `macos-26-xlarge` runner with parallel testing enabled and at most six simulator
 workers; callers may dial those inputs down after observing resource pressure. An app that needs
 an ignored Google service plist for its signed archive may keep its

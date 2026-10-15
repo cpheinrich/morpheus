@@ -758,8 +758,7 @@ claim an app launch date.
 `;
 export const agents = (s) => `# ${s.name} — agent instructions
 
-Read this before doing anything. \`CLAUDE.md\` is a symlink to this file so Claude and Codex
-read the same instructions.
+Read this first. \`CLAUDE.md\` links here.
 
 ${morpheusCalloutForAgents()}
 
@@ -863,6 +862,7 @@ and fail when a stated invariant is broken; coverage alone is not evidence of qu
 **Front-end changes must carry visual evidence.** When a changed path matches
 \`review.visualEvidence.include\` in \`morpheus.json\` (minus \`exclude\`), attach a screen recording
 to the PR when practical, otherwise screenshots, and list them under \`## Visual evidence\`.
+Capture final-build screens/states; author and reviewer inspect pixels. Refresh after fixes.
 \`morpheus check pr\` accepts GitHub attachments and exact public HTTPS prefixes declared in
 \`allowedUrlPrefixes\`, without fetching them. The path and media-location contracts are
 deterministic; they do not claim to infer whether rendered pixels changed. A repository may disable
@@ -895,6 +895,8 @@ yourself once checks pass.
 \`\`\`sh
 gh pr merge <n> --squash --auto --delete-branch
 \`\`\`
+
+After merge: \`morpheus pm cleanup <ID>\` from the primary checkout removes its worktree.
 
 ## Style
 

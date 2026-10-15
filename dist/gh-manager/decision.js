@@ -179,8 +179,11 @@ export function planDecision(decision, live, ctx) {
             return refuse(`the manager review record does not validate: ${live.recordProblem}`);
     }
     else {
-        if (!live.labels.includes("agent-reviewed"))
-            return refuse("the session proposed merging without a manager review, and no completed independent review is on record");
+        if (!live.labels.includes("agent-reviewed") && !live.authorRecordValid) {
+            return refuse(live.authorRecordProblem
+                ? `the author's independent review record does not validate: ${live.authorRecordProblem}`
+                : "the session proposed merging without a manager review, and no completed independent review is on record");
+        }
         // Merging on the author's review means the session may have added nothing of its own. A
         // session holds push access, so "I only merged trunk" is verified, not taken on its word:
         // anything else is unreviewed authoring that the author's record would otherwise carry.
@@ -202,6 +205,7 @@ export function planDecision(decision, live, ctx) {
             // Removed and re-applied on every clearance, never left in place: whoever applied it
             // before, the newest `labeled` event must be the App's and must follow the comment above.
             ...(decision.usedManagerReview ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label", label: MANAGER_REVIEWED_LABEL }] : []),
+            ...(!decision.usedManagerReview && !live.labels.includes("agent-reviewed") ? [{ kind: "add-label", label: "agent-reviewed" }] : []),
             ...(live.cancelledRunIds.length ? [{ kind: "rerun", runIds: live.cancelledRunIds }] : []),
             ...(live.autoMerge ? [] : [{ kind: "auto-merge" }]),
             ...updateIfBehind(live),

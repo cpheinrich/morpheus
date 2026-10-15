@@ -3,7 +3,12 @@
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
 their actual results before the initial review. Send the whole review packet, not fragments; a
 missing packet caused one reviewer to find a basic issue only in a later turn. For UI work,
-provide available simulator evidence at the start and replace it after fixes. If a test cannot
+provide available simulator evidence at the start and replace it after fixes. The reviewer must
+open each relevant image, inspect the rendered pixels and materially changed
+states for visual defects, and inspect relevant recording frames when present. A link alone does
+not establish a visual review. Missing, stale, or inaccessible required captures leave the review
+incomplete until the author supplies final-build evidence.
+If a test cannot
 run, record the exact limitation and keep the PR draft until validation finishes. CI can run in
 parallel, but an avoidable late test correction consumes a review turn. Aim for an initial review
 and one focused response; three ordinary turns are a ceiling, not a plan. Commit implementation

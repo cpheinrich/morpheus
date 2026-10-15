@@ -11,3 +11,5 @@ export declare function sessionPushed(root: string, before: string, after: strin
  * what is tested is the record and the diff, which is everything the session controls.
  */
 export declare function managerRecordProblem(root: string, body: string, head: string, trunk: string): string | undefined;
+/** Validate an author's committed review independently of the label that may have been missed. */
+export declare function authorRecordProblem(root: string, body: string, head: string, trunk: string): string | undefined;

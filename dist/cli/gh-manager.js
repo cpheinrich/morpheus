@@ -8,7 +8,7 @@ import { GH_MANAGER_POLICY_PATH, GhManagerPolicy } from "../gh-manager/policy.js
 import { resolvePreview } from "../gh-manager/preview.js";
 import { OVERLAY_PATH, sessionPrompt } from "../gh-manager/prompt.js";
 import { isWorkInProgress, SAFE_REF, sweep } from "../gh-manager/sweep.js";
-import { managerRecordProblem, sessionPushed } from "../gh-manager/verify.js";
+import { authorRecordProblem, managerRecordProblem, sessionPushed } from "../gh-manager/verify.js";
 import { execFileSync } from "node:child_process";
 function write(path, text) {
     if (!path) {
@@ -212,9 +212,16 @@ export function ghManagerApply(repoArg, prArg, sweepPath, decisionPath, out, dry
                 live.sessionPushed = sessionPushed(checkout, routed.headSha, live.headSha, trunk);
                 if (decision.usedManagerReview)
                     live.recordProblem = managerRecordProblem(checkout, decision.body ?? live.body, live.headSha, trunk);
+                else if (!live.labels.includes("agent-reviewed")) {
+                    live.authorRecordProblem = authorRecordProblem(checkout, decision.body ?? live.body, live.headSha, trunk);
+                    live.authorRecordValid = live.authorRecordProblem === undefined;
+                }
             }
             else if (decision?.usedManagerReview) {
                 live.recordProblem = "no checkout was available to validate it";
+            }
+            else if (decision && !live.labels.includes("agent-reviewed")) {
+                live.authorRecordProblem = "no checkout was available to validate it";
             }
             // No decision and no result means no session ran. A started session without a decision
             // counts as an attempt. Both cases are reached only for a ready pull request.

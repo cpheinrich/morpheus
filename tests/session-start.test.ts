@@ -1,8 +1,8 @@
 import * as leaseStore from "../src/session/store.js";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prepareRepository, parseSessionInput, assertCurrentSource } from "../src/session/start.js";
@@ -40,7 +40,16 @@ beforeEach(async () => {
   await git(dir, "clone", "--branch", "main", remote, local);
   await git(local, "config", "user.email", "test@example.com"); await git(local, "config", "user.name", "Test");
 });
-afterEach(async () => { vi.restoreAllMocks(); await rm(dir, { recursive: true, force: true }); });
+afterEach(async () => {
+  vi.restoreAllMocks();
+  const listing = await git(local, "worktree", "list", "--porcelain");
+  for (const path of listing.split("\n").filter(line => line.startsWith("worktree ")).map(line => line.slice(9))) {
+    if (path === await realpath(local)) continue;
+    await git(local, "worktree", "remove", "--force", "--", path);
+    await rmdir(dirname(path)).catch(() => undefined);
+  }
+  await rm(dir, { recursive: true, force: true });
+});
 async function advance() {
   await writeFile(join(source, "code.txt"), "latest\n");
   await git(source, "commit", "-am", "remote advance"); await git(source, "push", "origin", "main");
@@ -150,6 +159,7 @@ describe("one worktree per implementation task", () => {
     await writeFile(join(local, "code.txt"), "unrelated\n");
     const latest = await advance();
     const target = (await prepareTask(local, join(local, "hq/product"), id))!;
+    expect(target.startsWith(join(await realpath(tmpdir()), "morpheus-worktrees"))).toBe(true);
     expect(await git(target, "rev-parse", "HEAD")).toBe(latest);
     expect(await git(target, "status", "--porcelain")).toBe("");
     expect(await prepareTask(target, join(target, "hq/product"), id)).toBeNull();
