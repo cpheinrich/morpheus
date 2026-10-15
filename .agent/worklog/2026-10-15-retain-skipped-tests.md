@@ -24,11 +24,7 @@ Codebase-memory installation reported active sessions it could not safely stop,
 and no exact-checkout index was available. Source inspection was scoped to the
 workflow, its test, and the originating worklog.
 
-The fresh independent reviewer inspected the workflow's test invocation,
-evidence export and upload paths, its nightly forwarding, the ticket and
-the focused assertions. The review cleared the change at small risk with
-no findings. The reviewer did not rerun the author's passing checks; CI
-still needs to execute.
+The fresh independent reviewer inspected the workflow's test invocation, evidence export and upload paths, its nightly forwarding, the ticket and the focused assertions. The review cleared the change at small risk with no findings. The reviewer did not rerun the author's passing checks; CI still needs to execute.
 
 ```morpheus-review
 {
