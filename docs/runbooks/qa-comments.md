@@ -3,6 +3,11 @@
 How an operator leaves visual QA comments for any Morpheus agent, without
 Codex's right-panel tool.
 
+In Safari, scroll the iOS app by dragging on the simulator picture. The picture
+is display-only; the overlay forwards gestures from its frame to the simulator
+and suppresses browser text selection, including Live Text recognized in the
+stream. Right-click the frame to place a comment pin.
+
 Batches are **local-only** (`local/` is gitignored). Shared evidence remains
 screenshots pasted in chat, the worklog, and the PR — never a committed PNG.
 

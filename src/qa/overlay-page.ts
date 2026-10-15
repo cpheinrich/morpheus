@@ -30,8 +30,8 @@ export function pageHtml(opts: {
   main { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
   .stage-wrap { position: relative; background: #12151a; min-height: 0; height: 100%; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 16px; }
   /* Pixel size is set in JS so the hit box matches the contained picture. */
-  .stage { position: relative; touch-action: none; flex: 0 0 auto; width: 390px; height: 844px; outline: none; }
-  .stage img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; background: #12151a; user-select: none; }
+  .stage { position: relative; touch-action: none; -webkit-user-select: none; user-select: none; flex: 0 0 auto; width: 390px; height: 844px; outline: none; }
+  .stage img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; background: #12151a; pointer-events: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
   .pins { position: absolute; inset: 0; pointer-events: none; }
   .pin { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: #fdd663; color: #0b0d10; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #0b0d10; cursor: pointer; z-index: 2; pointer-events: auto; }
   .pin.focused { outline: 2px solid #8ab4f8; outline-offset: 2px; }
@@ -592,6 +592,9 @@ export function pageHtml(opts: {
     if (ev.target && ev.target.classList && ev.target.classList.contains('pin')) return;
     const c = coordsFromEvent(ev);
     if (!c) return;
+    // Safari can select Live Text inside the MJPEG image during a simulated swipe.
+    // The image is display-only; this stage owns the gesture and forwards it to iOS.
+    ev.preventDefault();
     dragging = true;
     dragged = false;
     pointerSent = true;
