@@ -348,6 +348,23 @@ export function changedPaths(root: string, older: string, newer: string): string
   return git(root, ["diff", "--name-only", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean);
 }
 
+/**
+ * A reviewer can discover an incidental defect after `reviewed` was committed. Filing its
+ * deferred/open ticket is record keeping, provided the ticket is new in this uncovered range.
+ * Existing roadmap edits and unrelated tickets still need review coverage.
+ */
+function newlyFiledDeferralPaths(root: string, record: LocalReviewRecord, from: string, to: string): string[] {
+  const ids = new Set(record.findings.filter(f => f.disposition === "deferred" || f.disposition === "open").map(f => f.roadmap));
+  if (!ids.size) return [];
+  const tickets = changedPaths(root, from, to).filter(path => {
+    if (!path.startsWith("hq/product/roadmap/") || !path.endsWith(".md") || path.endsWith("/README.md")) return false;
+    const name = path.slice("hq/product/roadmap/".length);
+    if (![...ids].some(id => id && (name === `${id}.md` || name.startsWith(`${id}-`)))) return false;
+    return !git(root, ["ls-tree", from, "--", path]) && git(root, ["ls-tree", to, "--", path]).startsWith("100644 ");
+  });
+  return tickets;
+}
+
 /** True when Git's own merge of the two parents reproduces this commit's tree exactly: nothing was hand-edited. */
 function exactMerge(root: string, commit: string, parents: string[]): boolean {
   let expected = "";
@@ -467,14 +484,14 @@ export function verifyReviewRecord(opts: { root: string; path: string; head: str
   const turns = followUpTurns(record);
   const conditional = conditionallyCleared(record);
   if (!turns.length && record.reviewed !== record.covered) {
-    const allowed = new Set([path, ...conditional, ...record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths)]);
+    const allowed = new Set([path, ...conditional, ...newlyFiledDeferralPaths(opts.root, record, record.reviewed, record.covered), ...record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths)]);
     for (const commit of verifyUncoveredCommits(opts.root, record, record.reviewed, record.covered, opts.base, allowed, "author-only fixes exceed the minor finding paths and reviewer conditions; review coverage must be renewed explicitly")) merges.add(commit);
   }
   const last = turns[turns.length - 1];
   if (last && last.commit !== record.covered) {
     // Only a conditional clearance lets `covered` run past the final turn, and only within its paths.
     if (!isAncestor(opts.root, last.commit, record.covered)) throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
-    for (const commit of verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional]), "author fixes after the final follow-up exceed the reviewer's recorded conditions")) merges.add(commit);
+    for (const commit of verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional, ...newlyFiledDeferralPaths(opts.root, record, last.commit, record.covered)]), "author fixes after the final follow-up exceed the reviewer's recorded conditions")) merges.add(commit);
   }
   // The attestation is checked against the diff it claims to cover, so an automatic turn cannot
   // clear implementation by naming a documentation path.

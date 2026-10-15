@@ -552,6 +552,70 @@ describe("conditional clearance", () => {
     writeFileSync(join(root, "other.ts"), "outside the condition"); r.covered = commit();
     expect(check(save(r))[0]?.message).toContain("exceed the reviewer's recorded conditions");
   });
+
+  it("allows a newly filed deferred finding ticket alongside conditioned fixes", () => {
+    const ticket = "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md";
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, ticket), "---\nid: MO-26-09-22-08.00.00\n---\n");
+    writeFileSync(join(root, "code.ts"), "guarded operator path");
+    const covered = commit();
+    const r: LocalReviewRecord = { ...record(), covered, findings: [
+      met,
+      { id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Filed a separate roadmap ticket.", roadmap: "MO-26-09-22-08.00.00" },
+    ] };
+    expect(check(save(r))).toEqual([]);
+  });
+
+  it("does not treat an existing roadmap edit as deferred ticket filing", () => {
+    const ticket = "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md";
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, ticket), "---\nid: MO-26-09-22-08.00.00\n---\n");
+    reviewed = commit();
+    writeFileSync(join(root, ticket), "Modified an existing roadmap item");
+    const covered = commit();
+    const deferred = { id: "INC-1", severity: "incidental" as const, description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred" as const, response: "Tracked by the existing ticket.", roadmap: "MO-26-09-22-08.00.00" };
+    const r: LocalReviewRecord = { ...record(), covered, findings: [deferred] };
+    expect(check(save(r))[0]?.message).toContain("author-only fixes exceed");
+  });
+
+  it("does not allow an unrelated new roadmap item alongside a deferred ticket", () => {
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md"), "Deferred ticket");
+    const unrelated = "hq/product/roadmap/MO-26-09-22-09.00.00-unrelated.md";
+    writeFileSync(join(root, unrelated), "Unrelated ticket");
+    const covered = commit();
+    const r: LocalReviewRecord = { ...record(), covered, findings: [{ id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Filed a separate roadmap ticket.", roadmap: "MO-26-09-22-08.00.00" }] };
+    expect(check(save(r))[0]?.message).toContain("author-only fixes exceed");
+  });
+
+  it("does not allow edits to the static roadmap README with a deferred ticket", () => {
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md"), "Deferred ticket");
+    writeFileSync(join(root, "hq/product/roadmap/README.md"), "Unreviewed prose");
+    const covered = commit();
+    const r: LocalReviewRecord = { ...record(), covered, findings: [{ id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Filed a separate roadmap ticket.", roadmap: "MO-26-09-22-08.00.00" }] };
+    expect(check(save(r))[0]?.message).toContain("author-only fixes exceed");
+  });
+
+  it("allows the deferred ticket after a conditional follow-up and before covered", () => {
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md"), "Deferred ticket");
+    writeFileSync(join(root, "code.ts"), "guarded operator path");
+    const covered = commit();
+    const r: LocalReviewRecord = { ...record(), covered, findings: [
+      met,
+      { id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Filed a separate roadmap ticket.", roadmap: "MO-26-09-22-08.00.00" },
+    ], followUps: [{ reviewerSession: "a1b2c3d4e5f6a7b8c", commit: reviewed, outcome: "cleared", elapsedMinutes: 2, summary: "Cleared on condition that TE-7 is fixed within code.ts." }] };
+    expect(check(save(r))).toEqual([]);
+  });
+
+  it("still rejects a deferred ticket added after the covered commit", () => {
+    const r: LocalReviewRecord = { ...record(), findings: [{ id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Filed a separate roadmap ticket.", roadmap: "MO-26-09-22-08.00.00" }] };
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md"), "Deferred ticket");
+    commit();
+    expect(check(save(r))[0]?.message).toContain("changes after covered commit invalidate");
+  });
 });
 
 
