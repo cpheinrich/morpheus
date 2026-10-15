@@ -102,8 +102,8 @@ export declare const ReviewRecord: z.ZodObject<{
         description: z.ZodString;
         paths: z.ZodArray<z.ZodString>;
         disposition: z.ZodEnum<{
-            fixed: "fixed";
             open: "open";
+            fixed: "fixed";
             deferred: "deferred";
             disputed: "disputed";
         }>;
