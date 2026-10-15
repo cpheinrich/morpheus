@@ -92,8 +92,11 @@ export interface PreviewState {
     root: string;
     expiresAt: number;
     mode?: string;
+    bundleId?: string;
     build?: string;
 }
+/** Refuse a stale product whose embedded identity differs from the selected mode. */
+export declare function verifyBuiltBundle(app: string, expected: string, run: Run): void;
 export interface PreviewContext {
     root: string;
     config: IosPreviewConfig;

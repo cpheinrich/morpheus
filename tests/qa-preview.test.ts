@@ -3,10 +3,10 @@ import { readFile } from "node:fs/promises";
 import { EventEmitter } from "node:events";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseIosPreviewConfig, expand, RESERVED_FLAGS } from "../src/qa/preview/config.js";
+import { parseIosPreviewConfig, expand, modeBuildIdentity, RESERVED_FLAGS } from "../src/qa/preview/config.js";
 import {
   checkoutKey, defaultPort, launchEnvironment, launchPlist, OVERLAY_PORT_OFFSET, parsePreviewArgs, prepareLaunchEnvironment,
-  repairSimulatorInput, requireFreePort, selectRuntime, serveSimCli, shutdownPreview, tunnelCommand,
+  repairSimulatorInput, report, requireFreePort, selectRuntime, serveSimCli, shutdownPreview, tunnelCommand, verifyBuiltBundle,
   withPreviewCancellation, type Runtime,
 } from "../src/qa/preview/ios.js";
 import { supervise } from "../src/qa/preview/supervisor.js";
@@ -55,6 +55,62 @@ describe("qa.ios configuration", () => {
       namespace: "morpheus.qa.lakina", device: { name: "Lakina QA", type: "iPhone 17 Pro" },
       derivedData: "/private/tmp/LakinaDerivedData-{key}", defaultMode: "demo", minimumXcode: "26.0",
     });
+  });
+
+  it("selects the production build, product and bundle as one identity", () => {
+    const parsed = parseIosPreviewConfig({ ios: {
+      ...EVO.ios,
+      modes: {
+        ...EVO.ios.modes,
+        production: {
+          build: ["bash", "apps/ios/scripts/dev.sh", "build", "--configuration", "EvoDebug"],
+          product: "Build/Products/ProductionDebug-iphonesimulator/Evo.app",
+          bundleId: "evo.med",
+        },
+      },
+    } }, "Evo");
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(modeBuildIdentity(parsed.config, parsed.config.modes.production!)).toEqual({
+      build: ["bash", "apps/ios/scripts/dev.sh", "build", "--configuration", "EvoDebug"],
+      product: "Build/Products/ProductionDebug-iphonesimulator/Evo.app",
+      bundleId: "evo.med",
+    });
+    expect(modeBuildIdentity(parsed.config, parsed.config.modes.demo!)).toEqual({
+      build: EVO.ios.build, product: EVO.ios.product, bundleId: EVO.ios.bundleId,
+    });
+  });
+
+  it("rejects a partial production identity that could launch the staging app", () => {
+    for (const override of [
+      { bundleId: "evo.med" },
+      { product: "Build/Products/ProductionDebug-iphonesimulator/Evo.app" },
+      { build: ["bash", "build-production.sh"], bundleId: "evo.med" },
+    ]) {
+      const parsed = parseIosPreviewConfig({ ios: { ...EVO.ios, modes: { production: override } } }, "Evo");
+      expect(parsed.ok).toBe(false);
+      if (!parsed.ok) expect(parsed.issues).toContain("qa.ios.modes.production must override build, product and bundleId together to select a different app.");
+    }
+  });
+
+  it("checks the built app's actual bundle before it can be installed", () => {
+    const calls: Array<[string, string[]]> = [];
+    const inspect = (command: string, args: string[]) => { calls.push([command, args]); return "evo.med.staging"; };
+    expect(() => verifyBuiltBundle("/derived/Evo.app", "evo.med", inspect)).toThrow(/has bundle identifier evo.med.staging.*requires evo.med/);
+    expect(calls).toEqual([["/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", "/derived/Evo.app/Info.plist"]]]);
+    expect(() => verifyBuiltBundle("/derived/Evo.app", "evo.med.staging", inspect)).not.toThrow();
+  });
+
+  it("reports the started mode and bundle from saved state even if config changes", () => {
+    const lines: string[] = [];
+    report({
+      root: "/repo", config: evo(), key: "abc", stateDir: "/state", stateFile: "/state/session.json",
+      label: "qa.abc", target: "gui/1/qa.abc", deviceName: "Evo QA abc", run: () => "", log: (line) => lines.push(line),
+    }, {
+      udid: "sim", name: "Evo QA abc", port: 3200, overlayPort: 3456,
+      root: "/repo", expiresAt: Date.now() + 60000, mode: "production", bundleId: "evo.med",
+    }, {});
+    expect(lines.join("\n")).toContain("Mode: production\nBundle ID: evo.med");
   });
 
   it("reports every problem at once, and refuses flags the CLI or the preview already owns", () => {
