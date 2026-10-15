@@ -1912,8 +1912,10 @@ network-layer gate — it can stop someone loading `/hq`, but it cannot stop a F
 would still need a second rule system underneath.
 
 **Access as code.** The allowlist in `morpheus.json` is the declarative source of truth — in git,
-reviewable in a PR, diffable. `morpheus access sync` reads it and applies the claims, so granting
-access is a pull request rather than a console click, and so is revoking it.
+reviewable in a PR, diffable. The generated HQ session route reconciles a verified Google
+account's claim on first sign-in against the deployed manifest. `morpheus access sync` applies
+bulk changes promptly, including revocations for accounts that do not sign in again. The
+refreshed ID token and session cookie retain the same claim that Firestore rules read.
 
 Keep Zero Trust only for defence-in-depth on genuinely sensitive infrastructure such as the
 Chatwoot admin panel; it is redundant in front of `/hq`.
@@ -1925,7 +1927,7 @@ derived from one exported list rather than restated:
 
 | Reader | Consumes | Kept honest by |
 |---|---|---|
-| The claim **writer** — `morpheus access sync` | `Role` zod enum, built from `ROLES` | typecheck |
+| The claim **writers** — `morpheus access sync` and generated Google sign-in route | `Role` zod enum, built from `ROLES`; deployed `morpheus.json` | typecheck and generated-route tests |
 | The **route** gate — a project's `proxy.ts` | `canAccessHq()` from `morpheus-kit/hq` | typecheck |
 | The **data** gate — `firestore.rules` | generated helpers | `morpheus hq rules --rules-path <deployed path> --check` |
 

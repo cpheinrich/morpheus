@@ -1357,8 +1357,8 @@ export const authRoles = (): string => `/**
  * Auth.js.
  *
  * The allowlists themselves live in \`morpheus.json\` and are applied to Firebase
- * custom claims by \`morpheus access sync\`. Nothing here reads that file at
- * runtime: the claim on the token is the authority, and this module only
+ * custom claims by first Google sign-in and \`morpheus access sync\`. Nothing
+ * here reads that file at runtime: the claim on the token is the authority, and this module only
  * describes what the claim is allowed to say.
  */
 export const ROLES = ["admin", "employee", "investor"] as const;
@@ -1387,6 +1387,24 @@ export function canAccessHq(role: Role | null): boolean {
 
 export function isAdmin(role: Role | null): boolean {
   return role === "admin";
+}
+`;
+
+/** Server-only role lookup from the reviewed, deployed project manifest. */
+export const hqAllowlist = (manifestImport: string): string => `import manifest from "${manifestImport}";
+
+import type { Role } from "./roles";
+
+const hq = (manifest as unknown as { hq?: { investorAllowlist?: string[]; allowlist?: string[]; admins?: string[] } }).hq;
+const roles = new Map<string, Role>();
+
+for (const email of hq?.investorAllowlist ?? []) roles.set(email.toLowerCase(), "investor");
+for (const email of hq?.allowlist ?? []) roles.set(email.toLowerCase(), "employee");
+for (const email of hq?.admins ?? []) roles.set(email.toLowerCase(), "admin");
+
+/** Admin takes precedence when an address appears on more than one list. */
+export function roleForEmail(email: string | undefined): Role | null {
+  return email ? roles.get(email.toLowerCase()) ?? null : null;
 }
 `;
 
@@ -1579,6 +1597,7 @@ export const apiAuthSession = (ctx: TemplateContext, name: string): string => {
   return `import { NextResponse } from "next/server";
 
 import { isRole } from "${ctx.imp(self, "lib/auth/roles")}";
+import { roleForEmail } from "${ctx.imp(self, "lib/auth/hq-allowlist")}";
 import { adminAuth } from "${ctx.imp(self, "lib/firebase/admin")}";
 import { SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } from "${ctx.imp(self, "lib/firebase/config")}";
 
@@ -1601,11 +1620,10 @@ function sessionCookieOptions(maxAgeSeconds: number) {
 /**
  * Exchange a Firebase ID token for a session cookie.
  *
- * The role is not assigned here. It is a custom claim written by
- * \`morpheus access sync\` from the allowlists in \`morpheus.json\`, and this route
- * only refuses to mint a session for a user who has not been granted one. That
- * ordering matters: if this route could grant a role, the role would no longer
- * be the same fact that Firestore rules see.
+ * A first Google sign-in creates the Firebase user. Reconcile its custom role
+ * claim against the deployed manifest here, then require a refreshed ID token
+ * before minting a cookie so the route and Firestore rules see the same role.
+ * Bulk \`morpheus access sync\` still applies removals promptly to absent users.
  */
 export async function POST(request: Request) {
   let idToken: string;
@@ -1631,13 +1649,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid or expired sign-in." }, { status: 401 });
   }
 
-  if (!isRole(decoded.role)) {
-    // Authenticated with Google, but not on any allowlist. Deliberately not
-    // "account not found" — they exist, they just have no role here.
+  const desiredRole = roleForEmail(decoded.email);
+  if (!desiredRole) {
+    // Remove a stale claim on the next sign-in; bulk sync handles absent users.
+    const user = await auth.getUser(decoded.uid);
+    if (isRole(user.customClaims?.role)) {
+      const remainingClaims = { ...user.customClaims };
+      delete remainingClaims.role;
+      await auth.setCustomUserClaims(decoded.uid, remainingClaims);
+      await auth.revokeRefreshTokens(decoded.uid);
+    }
     return NextResponse.json(
       { error: "This account is not authorised for ${name} HQ." },
       { status: 403 },
     );
+  }
+
+  if (decoded.email_verified !== true || decoded.firebase?.sign_in_provider !== "google.com") {
+    return NextResponse.json(
+      { error: "This account is not authorised for ${name} HQ." },
+      { status: 403 },
+    );
+  }
+
+  if (!isRole(decoded.role) || decoded.role !== desiredRole) {
+    const user = await auth.getUser(decoded.uid);
+    await auth.setCustomUserClaims(decoded.uid, { ...user.customClaims, role: desiredRole });
+    return NextResponse.json({ refreshToken: true }, { status: 409 });
   }
 
   const expiresIn = SESSION_MAX_AGE_MS;
@@ -1755,6 +1793,24 @@ const SIGN_IN_ERRORS: Record<string, string> = {
   "auth/network-request-failed": "Could not reach Google. Check your connection.",
 };
 
+/** A new claim is visible only after Firebase issues a fresh ID token. */
+export async function createHqSession(user: { getIdToken: (forceRefresh?: boolean) => Promise<string> }): Promise<Response> {
+  async function post(forceRefresh = false) {
+    const idToken = await user.getIdToken(forceRefresh);
+    return fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+  }
+
+  let response = await post();
+  if (response.status === 409 && (await response.json()).refreshToken === true) {
+    response = await post(true);
+  }
+  return response;
+}
+
 export function SignInForm({ next }: { next: string }) {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("idle");
@@ -1766,13 +1822,7 @@ export function SignInForm({ next }: { next: string }) {
 
     try {
       const credential = await signInWithPopup(getClientAuth(), googleProvider());
-      const idToken = await credential.user.getIdToken();
-
-      const response = await fetch("/api/auth/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken }),
-      });
+      const response = await createHqSession(credential.user);
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -1930,7 +1980,7 @@ const documents = [
     href: "/hq",
     path: "hq/README.md",
     source:
-      "${name} HQ is the private operating workspace. Access is granted by the allowlist in morpheus.json and applied with morpheus access sync.",
+      "${name} HQ is the private operating workspace. Access is granted by the allowlist in morpheus.json, reconciled at Google sign-in, and synced for prompt bulk changes.",
   }),
 ];
 
@@ -2054,8 +2104,8 @@ export default async function HqPage() {
       </div>
 
       <p className="max-w-prose text-sm leading-6 opacity-80">
-        Access is granted by the allowlist in <code>morpheus.json</code> and applied with{" "}
-        <code>morpheus access sync</code>, which writes the same <code>role</code> custom claim that
+        Access is granted by the allowlist in <code>morpheus.json</code> at Google sign-in;{" "}
+        <code>morpheus access sync</code> applies prompt bulk changes to the same <code>role</code> custom claim that
         Firestore rules read. Add pages under <code>app/hq/</code>; the route gate in{" "}
         <code>proxy.ts</code> already covers them.
       </p>
@@ -2082,7 +2132,7 @@ export default function NoAccessPage() {
       <h1 className="text-2xl font-medium tracking-tight">No access to HQ</h1>
       <p className="text-sm leading-6 opacity-80">
         Your account is signed in but is not on the HQ allowlist. If that is wrong, the allowlist
-        lives in <code>morpheus.json</code> and is applied with <code>morpheus access sync</code>.
+        lives in <code>morpheus.json</code>. Ask an admin to check that list.
       </p>
     </div>
   );

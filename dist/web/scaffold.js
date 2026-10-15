@@ -1,6 +1,6 @@
 import { scaffoldWriter } from "../file-io.js";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import * as t from "./templates.js";
 import { importPath, waitlistSchemaLocation } from "./survey.js";
 /** Dependencies the generated code imports, by what it is generated for. */
@@ -139,6 +139,8 @@ export async function scaffoldWeb(opts) {
             await app("lib/firebase/client.ts", t.firebaseClient(ctx));
             await app("lib/firebase/admin.ts", t.firebaseAdmin(ctx, opts.firebase));
             await app("lib/auth/roles.ts", t.authRoles());
+            const manifestImport = relative(dirname(join(survey.webRoot, "lib/auth/hq-allowlist.ts")), "morpheus.json").replaceAll("\\", "/");
+            await app("lib/auth/hq-allowlist.ts", t.hqAllowlist(manifestImport.startsWith(".") ? manifestImport : `./${manifestImport}`));
             await app("lib/auth/session-cookie.ts", t.authSessionCookie(ctx));
             await app("lib/auth/current-user.ts", t.authCurrentUser(ctx));
             await app("app/api/auth/session/route.ts", t.apiAuthSession(ctx, name));
