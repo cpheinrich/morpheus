@@ -49,3 +49,57 @@ ran once; CI will run the corrected head.
 The codebase-memory installer could not activate in this session because
 active sessions could not be stopped safely. Targeted source, tests, the Evo
 worklogs, and the incident description were used as the fallback.
+
+The initial high-risk independent review found two substantive closure bypasses: GitHub's colon keyword syntax and closing keywords in commit messages. Both were fixed, and the same reviewer cleared the correction at `2c8a43812c3abcf50282d897558958dcac8c6ed9` with no remaining findings. Final-head CI remains the release check.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "a55b8d550e9d8088e73ac67f2d594fd8adcbc8e8",
+  "reviewed": "265f90d9a7c8e9e6d59d2abd604f158df2d7eaf5",
+  "covered": "2c8a43812c3abcf50282d897558958dcac8c6ed9",
+  "authorSession": "01a13e64-2d9b-7730-abce-2287983ca7aa",
+  "reviewerSession": "/root/recovery_incident_review",
+  "risk": "high",
+  "elapsedMinutes": 2.3,
+  "timing": {
+    "source": "clock",
+    "durationMs": 138000,
+    "evidence": "clock__curr_time: initial review dispatched 2026-10-15 08:12:48 UTC; completion observed 08:15:06 UTC"
+  },
+  "outcome": "complete",
+  "summary": "The initial high-risk independent review found two substantive closure bypasses: GitHub's colon keyword syntax and closing keywords in commit messages. Both were fixed, and the same reviewer cleared the correction at `2c8a43812c3abcf50282d897558958dcac8c6ed9` with no remaining findings. Final-head CI remains the release check.",
+  "findings": [
+    {
+      "id": "IR-1",
+      "severity": "substantive",
+      "description": "GitHub accepts closing keywords followed by a colon, but the held-issue gate missed Closes: #493, Fixes: #493, and Resolves: #493.",
+      "paths": ["src/check/pr.ts"],
+      "disposition": "fixed",
+      "response": "Recognize optional colon syntax in closingKeywordInText. Regression tests reject each colon form for a held issue. The same reviewer cleared the correction."
+    },
+    {
+      "id": "IR-2",
+      "severity": "substantive",
+      "description": "A closing keyword in a PR commit message could close a held issue even when the PR body used Refs.",
+      "paths": ["src/check/pr.ts", "src/cli/check.ts"],
+      "disposition": "fixed",
+      "response": "Inspect raw PR body, live title, and branch-only commit messages for held issues, and fail when history cannot be read. Tests cover title, commit message, unreadable history, and base/branch separation; the same reviewer cleared the correction."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/recovery_incident_review",
+      "commit": "2c8a43812c3abcf50282d897558958dcac8c6ed9",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.1,
+      "timing": {
+        "source": "clock",
+        "durationMs": 66000,
+        "evidence": "clock__curr_time: same-reviewer follow-up dispatched 2026-10-15 08:18:10 UTC; completion observed 08:19:16 UTC"
+      },
+      "summary": "IR-1 and IR-2 resolved; the reviewer verified colon syntax, raw body/title/commit checks, fail-closed history, workflow wiring, and the focused regressions with no remaining findings."
+    }
+  ]
+}
+```
