@@ -14,19 +14,20 @@ fixed its Xcode file format, but the rescue needed to recognize recurrence
 for any project. The existing rescue was lossless; its gap was repeated
 publishing and human escalation.
 
-The new check compares exact Git diffs against locally visible pushed
+The new check compares exact Git diffs against locally visible
 `wip/trunk-*` branches. It uses old/new blob IDs, paths and modes; Git's
 whitespace-insensitive `patch-id` was considered but rejected because
-different edits could collide. A duplicate retains the existing proof,
+different edits could collide. A duplicate requires the branch to still exist
+at the same SHA on the push remote and have a GitHub PR. A duplicate retains the existing proof,
 rechecks the working tree immediately before reset, skips a new branch,
-push and PR, and prints the earlier branch plus a generator-loop hint.
-Local-only branches and failed comparisons use the ordinary rescue.
+push and PR, and prints the earlier PR plus a generator-loop hint.
+Local-only branches, failed PR creation and failed lookups use the ordinary rescue.
 
 Focused validation: `pnpm exec vitest run tests/trunk-rescue.test.ts
 tests/session-start.test.ts` passed 51 tests. They cover recurrence,
 distinct whitespace edits, a previous push failure, and session startup.
 The one permitted local `pnpm test` run for shared session code passed
-2172 tests across 80 files. `pnpm typecheck`, `pnpm lint`,
+2172 tests across 80 files before the reviewer correction. `pnpm typecheck`, `pnpm lint`,
 `pnpm compile`, and `pnpm morpheus pm index` passed. An unrelated
 generated Zod enum order flip in `dist/pm/schema.d.ts` was restored after
 compile; the session output remains committed.
@@ -34,3 +35,12 @@ compile; the session output remains committed.
 Codebase-memory could not activate because active sessions could not be
 stopped safely. I used targeted source, tests, specification and the Evo
 incident description as the fallback.
+
+The initial high-risk independent review found two substantive gaps. A stale
+remote-tracking ref could survive remote branch deletion and suppress a new
+rescue. A successful push followed by failed PR creation could also suppress
+future PR creation. Both are addressed by a live remote SHA check and a
+GitHub PR lookup before the working-tree content proof. The focused suites
+pass 54 tests after this correction, including a fork with a distinct
+push URL and head owner. The local full suite already ran once;
+CI will run it on the final head.

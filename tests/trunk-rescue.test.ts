@@ -157,7 +157,13 @@ describe("rescuing a dirty trunk checkout", () => {
     await git(source, "remote", "add", "origin", remote); await git(source, "push", "origin", "main");
     await git(dir, "clone", "--branch", "main", remote, local);
     await git(local, "config", "user.email", "test@example.com"); await git(local, "config", "user.name", "Test");
-    gh = vi.fn<CommandRunner>(async () => ({ code: 0, stdout: "https://github.com/o/r/pull/42\n", stderr: "" }));
+    gh = vi.fn<CommandRunner>(async (_command, args) => {
+      if (args[1] === "list") {
+        const head = args[args.indexOf("--head") + 1]!.split(":").pop()!;
+        return { code: 0, stdout: JSON.stringify([{ url: "https://github.com/o/r/pull/42", headRefName: head }]), stderr: "" };
+      }
+      return { code: 0, stdout: "https://github.com/o/r/pull/42\n", stderr: "" };
+    });
   });
   afterEach(async () => { vi.restoreAllMocks(); await rm(dir, { recursive: true, force: true }); });
 
@@ -276,6 +282,24 @@ describe("rescuing a dirty trunk checkout", () => {
     expect(args.slice(0, 9)).toEqual(["pr", "create", "--draft", "--repo", "up-owner/project", "--base", "main", "--head", `fork-owner:${branchBase}`]);
   });
 
+  it("on a fork, only dedupes a PR from the push remote's owner", async () => {
+    await git(local, "remote", "set-url", "origin", "https://github.com/fork-owner/project.git");
+    await git(local, "remote", "set-url", "--push", "origin", remote);
+    await git(local, "remote", "add", "upstream", "git@github.com:up-owner/project.git");
+    gh.mockImplementation(async (_command, args) => args[1] === "list"
+      ? { code: 0, stdout: JSON.stringify([{ url: "https://github.com/up-owner/project/pull/42", headRefName: branchBase, headRepositoryOwner: { login: "fork-owner" } }]), stderr: "" }
+      : { code: 0, stdout: "https://github.com/up-owner/project/pull/42\n", stderr: "" });
+    await writeFile(join(local, "project.pbxproj"), "same edit\n");
+    const sha = await git(local, "rev-parse", "HEAD");
+    await rescueDirtyTrunk(local, { trunk: "upstream/main", branch: "main", sha }, deps());
+    await writeFile(join(local, "project.pbxproj"), "same edit\n");
+    const second = await rescueDirtyTrunk(local, { trunk: "upstream/main", branch: "main", sha }, deps());
+    expect(second).toMatchObject({ outcome: "duplicate", prUrl: "https://github.com/up-owner/project/pull/42" });
+    const listArgs = gh.mock.calls[1]![1];
+    expect(listArgs).toContain("up-owner/project");
+    expect(listArgs[listArgs.indexOf("--head") + 1]).toBe(`fork-owner:${branchBase}`);
+  });
+
   it("is idempotent within a day: a second rescue takes the next suffix", async () => {
     await writeFile(join(local, "project.pbxproj"), "first\n");
     await prepareRepository(local, false, deps());
@@ -294,12 +318,40 @@ describe("rescuing a dirty trunk checkout", () => {
 
     await writeFile(join(local, "project.pbxproj"), "xcode canonical form\n");
     const repeated = await prepareRepository(local, false, deps());
-    expect(repeated.rescue).toMatchObject({ outcome: "duplicate", existingBranch: branchBase });
+    expect(repeated.rescue).toMatchObject({ outcome: "duplicate", existingBranch: branchBase, prUrl: "https://github.com/o/r/pull/42" });
     expect(repeated.advanced).toBe(false);
     expect(await readFile(join(local, "project.pbxproj"), "utf8")).toBe("generated v1\n");
     expect(await git(local, "status", "--porcelain")).toBe("");
     expect(await git(local, "for-each-ref", "--format=%(refname:short)", "refs/heads/wip/trunk-*")).toBe(branchBase);
-    expect(gh).toHaveBeenCalledTimes(1);
+    expect(gh.mock.calls.map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"], ["pr", "list"]]);
+  });
+
+  it("does not trust a stale remote-tracking ref after the branch is deleted remotely", async () => {
+    await writeFile(join(local, "project.pbxproj"), "same edit\n");
+    await prepareRepository(local, false, deps());
+    await git(remote, "update-ref", "-d", `refs/heads/${branchBase}`);
+    // The cached ref remains, but is not evidence of a current remote branch.
+    expect(await git(local, "rev-parse", `refs/remotes/origin/${branchBase}`)).toBe(await git(local, "rev-parse", `refs/heads/${branchBase}`));
+    await writeFile(join(local, "project.pbxproj"), "same edit\n");
+    const second = (await prepareRepository(local, false, deps())).rescue!;
+    expect(second.outcome === "rescued" && second.wipBranch).toBe(`${branchBase}-2`);
+    expect(gh.mock.calls.map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"], ["pr", "create"]]);
+  });
+
+  it("retries a draft PR when an earlier push succeeded but PR creation failed", async () => {
+    gh.mockImplementation(async (_command, args) => args[1] === "list"
+      ? { code: 0, stdout: "[]", stderr: "" }
+      : gh.mock.calls.length === 1
+        ? { code: 1, stdout: "", stderr: "GitHub unavailable" }
+        : { code: 0, stdout: "https://github.com/o/r/pull/43\n", stderr: "" });
+    await writeFile(join(local, "project.pbxproj"), "same edit\n");
+    const first = (await prepareRepository(local, false, deps())).rescue!;
+    expect(first.outcome === "rescued" && first.pushed).toBe(true);
+    if (first.outcome === "rescued") expect(first.prError).toBe("GitHub unavailable");
+    await writeFile(join(local, "project.pbxproj"), "same edit\n");
+    const second = (await prepareRepository(local, false, deps())).rescue!;
+    expect(second.outcome === "rescued" && second.wipBranch).toBe(`${branchBase}-2`);
+    expect(gh.mock.calls.map((call) => call[1].slice(0, 2))).toEqual([["pr", "create"], ["pr", "list"], ["pr", "create"]]);
   });
 
   it("does not dedupe against a rescue that was never pushed", async () => {
