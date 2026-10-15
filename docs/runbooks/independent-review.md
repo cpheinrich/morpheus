@@ -118,8 +118,10 @@ Reviewer retractions may clear a disputed finding, but author disagreement alone
 item that tracks it in `roadmap`, and `check pr` requires that item to exist on the branch. File
 it with `pm new` before recording the deferral. If the reviewer discovered the finding after the
 `reviewed` commit, the new item may be committed before
-`covered` without spending a follow-up turn. The exception applies only to a new item named by
-a deferred or open finding; editing an existing item or changing code still needs review coverage.
+`covered` without spending a follow-up turn. The exception applies only to a valid direct-child
+item named by a deferred or open finding and first added by an author commit in that range.
+Editing an existing item, including one brought in by a trunk merge, or changing code still
+needs review coverage.
 After `covered`, only the review worklog may change. In the first two weeks a cron with no year field
 was deferred on one day and still firing a week later, an "operator's Owner login stays active"
 finding was deferred to an inbox note, and one gap was deferred three separate times; none had

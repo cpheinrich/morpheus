@@ -1570,8 +1570,8 @@ This is an auditable attestation, not proof against a dishonest author. Records/
 exact dependency-only Dependabot changes and marked dependency-only Morpheus Security App changes
 retain narrow authoring/review exceptions; neither bot exception bypasses repository checks.
 When a reviewer discovers an incidental finding after the reviewed commit, a new roadmap item
-named by the deferred or open finding may land before covered; existing
-item edits and unrelated paths remain subject to review coverage.
+named by the deferred or open finding may land before covered when an author commit first
+added a valid item file; existing item edits and unrelated paths remain subject to review coverage.
 
 **GitHub validates; it does not schedule the model.** The authoring agent owns dispatch,
 responses, evidence and merge; no standing agent monitors PRs to supply this review.
