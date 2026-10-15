@@ -218,7 +218,7 @@ morpheus qa comments release <batchId> --agent <session-id>  # return failed wor
 morpheus qa comments release <batchId> --force  # recover an abandoned claim
 morpheus qa comments responder start|status|stop --root <checkout>
 morpheus qa comments responder recover --confirm-no-agent-process --root <checkout>
-morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
+morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>] [--no-ax]
 ```
 
 `serve` binds **only** to `127.0.0.1`. `--root` is the project checkout that
@@ -230,6 +230,12 @@ consumes it before `qa`) and is what `batch.project` records. POSTs must be
 `http://localhost:<port>` at the bound overlay port; a cross-site
 page cannot inject a batch or drive the simulator. `frame.path` is recorded
 only when a PNG was actually written.
+
+If macOS accessibility crashes the overlay, use `--no-ax` to pin comments from the MJPEG frame
+without native accessibility reads. A managed iOS preview runs the overlay in a separate process:
+if that process exits, the supervisor keeps the simulator stream alive and restarts the overlay
+once with accessibility disabled. A second overlay failure is logged and requires a deliberate
+preview restart.
 
 Exit non-zero when a named batch is missing. `pending` with an empty inbox
 prints nothing and exits 0 — agents can poll safely. Resolving an already-resolved

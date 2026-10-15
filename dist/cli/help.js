@@ -143,7 +143,7 @@ Usage
                             separate serial queue consumer using local responder.json
   morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
                             local overlay: tap → multi-comment → Send into local/qa-comments/
-  morpheus qa preview ios [start|status|stop|doctor|help] [--mode <name>] [--port <n>] [--no-build] [--root <project>]
+  morpheus qa preview ios [start|status|stop|doctor|help] [--mode <name>] [--port <n>] [--no-build] [--no-ax] [--root <project>]
                          One simulator preview per checkout with the comment overlay; app declared in morpheus.json qa.ios
   morpheus qa preview web [start|status|stop|help] [--path </page>] [--port <n>] [--root <project>]
                          The local website behind the comment overlay; dev server declared in morpheus.json qa.web

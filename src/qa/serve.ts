@@ -20,6 +20,8 @@ export interface ServeOptions {
   project?: string;
   /** Optional explicit MJPEG URL; otherwise discovered. */
   streamUrl?: string;
+  /** Disable native accessibility reads and use MJPEG frames for comment pins. */
+  axEnabled?: boolean;
   /** Called once listening. */
   onListen?: (info: { url: string; port: number; streamUrl: string | null }) => void;
 }
@@ -290,7 +292,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
     options.streamUrl ?? (await discoverStreamUrl(previewOrigin));
   const streamPath = discovered ? "/proxy/stream.mjpeg" : null;
   const udid = udidFromStreamUrl(discovered);
-  const axPath = udid ? "/api/ax" : null;
+  const axPath = udid && options.axEnabled !== false ? "/api/ax" : null;
   const hid = udid ? await openHidBridge(previewOrigin, udid) : null;
   const screenIdentity = new QaScreenIdentity();
 
@@ -310,6 +312,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
           ok: true,
           previewUrl,
           streamUrl: discovered,
+          axEnabled: axPath !== null,
           project,
           root: options.root,
         });
@@ -324,7 +327,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
         return;
       }
       if (req.method === "GET" && url.pathname === "/proxy/ax") {
-        if (!udid) {
+        if (!axPath || !udid) {
           sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
           return;
         }
@@ -332,7 +335,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
         return;
       }
       if (req.method === "GET" && url.pathname === "/api/ax") {
-        if (!udid) {
+        if (!axPath || !udid) {
           sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
           return;
         }
@@ -362,7 +365,7 @@ export async function startQaCommentServer(options: ServeOptions): Promise<{
         return;
       }
       if (req.method === "POST" && url.pathname === "/api/placement") {
-        if (!udid) {
+        if (!axPath || !udid) {
           sendJson(res, 404, { error: "No simulator discovered for placement capture" });
           return;
         }

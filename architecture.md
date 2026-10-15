@@ -1636,6 +1636,10 @@ The shared `morpheus qa preview ios` lifecycle accepts mode-specific build ident
 that selects a different app declares its build command, product path and bundle identifier
 together; the built product's embedded identifier must match before install. One checkout still
 owns one simulator, lease and comment overlay, and status/stop identify the mode that started it.
+The overlay runs in a supervised child process because native macOS accessibility can crash its
+Node process. One unexpected exit restarts the overlay in screenshot-pin mode without stopping
+the simulator stream; `--no-ax` selects that mode explicitly. A second exit requires a deliberate
+restart rather than an unbounded retry.
 
 This works today with the standard Xcode toolchain and no special infrastructure — `xcodebuild` to
 build, `xcrun simctl` to boot/install/launch, **XCUITest** to drive the UI (the tests double as the
