@@ -16,6 +16,7 @@ export const apiAuthSessionRoute = (ctx: Ctx): string => `import { NextResponse 
 
 import { isSameOrigin } from "@/lib/auth/request-origin.ts";
 import { isRole } from "@/lib/auth/roles";
+import { roleForEmail } from "@/lib/auth/hq-allowlist";
 import { adminAuth } from "@/lib/firebase/admin";
 import {
   SESSION_COOKIE_NAME,
@@ -83,10 +84,10 @@ function signedInHintOptions(maxAgeSeconds: number) {
 /**
  * Exchange a Firebase ID token for a session cookie.
  *
- * This route authenticates and does not authorise. Any Firebase user with a
- * valid, unrevoked ID token gets a session; what that session can reach is
- * decided elsewhere, by the \`role\` claim, in \`proxy.ts\` and in the Firestore
- * rules.
+ * Any Firebase user with a valid, unrevoked ID token gets a session; what that
+ * session can reach is decided by the \`role\` claim in \`proxy.ts\` and the
+ * Firestore rules. A verified Google account on the deployed HQ allowlist gets
+ * that claim here, including on its first sign-in.
  *
  * It used to refuse anyone without a role, because the only signed-in users
  * were the internal team and \`/hq\` was the only destination. Consumer accounts
@@ -99,10 +100,8 @@ function signedInHintOptions(maxAgeSeconds: number) {
  * account with no role reaches nothing it could not reach before. There is a
  * test asserting exactly that, and it should be treated as load-bearing.
  *
- * The role is still never assigned here. It is a custom claim written by
- * \`morpheus access sync\` from the allowlists in \`morpheus.json\`. That ordering
- * matters: if this route could grant a role, the role would stop being the
- * same fact the Firestore rules see.
+ * The deployed manifest is the source of truth for the claim. Bulk
+ * \`morpheus access sync\` still revokes absent users promptly after list edits.
  */
 export async function POST(request: Request) {
   // Login CSRF, and it is not theoretical. Without this another site can
@@ -166,6 +165,29 @@ export async function POST(request: Request) {
     }
   }
 
+  const eligibleForHq = decoded.email_verified === true &&
+    decoded.firebase?.sign_in_provider === "google.com";
+  const desiredRole = eligibleForHq ? roleForEmail(decoded.email) : null;
+  const tokenRole = isRole(decoded.role) ? decoded.role : null;
+  // The token may predate an access-sync grant. Compare the stored claim too:
+  // otherwise an unlisted consumer can force-refresh later and regain /hq.
+  const user = await auth.getUser(decoded.uid);
+  const storedRole = isRole(user.customClaims?.role) ? user.customClaims.role : null;
+  if (tokenRole !== desiredRole || storedRole !== desiredRole) {
+    const claims = { ...user.customClaims };
+    if (desiredRole) claims.role = desiredRole;
+    else delete claims.role;
+    if (storedRole !== desiredRole) await auth.setCustomUserClaims(decoded.uid, claims);
+
+    // A removed or demoted role may already exist in a session cookie.
+    // Invalidate it and require a new sign-in before issuing another cookie.
+    if (tokenRole || (storedRole && !desiredRole)) {
+      await auth.revokeRefreshTokens(decoded.uid);
+      return NextResponse.json({ error: "Sign in again to update your access." }, { status: 401 });
+    }
+    return NextResponse.json({ refreshToken: true }, { status: 409 });
+  }
+
   const expiresIn = SESSION_MAX_AGE_MS;
 
   // Guarded like the verify above it: an unhandled throw here is a 500 with no
@@ -185,7 +207,7 @@ export async function POST(request: Request) {
   // \`role\` is null for a consumer account, which is not an error and must not
   // be reported as one. The client uses it only to choose a destination —
   // never to decide access, which is the gate's job.
-  const role = isRole(decoded.role) ? decoded.role : null;
+  const role = tokenRole;
 
   const response = NextResponse.json({
     ok: true,

@@ -258,6 +258,29 @@ describe("scaffoldWeb", () => {
     expect(page).toContain("morpheus.json");
   });
 
+  it("generates a server-only allowlist lookup from the repository manifest", async () => {
+    const root = await establishedProject();
+    const result = await scaffoldWeb(options(root, await surveyWeb(root)));
+    expect(result.written).toContain("apps/web/lib/auth/hq-allowlist.ts");
+    const lookup = await readFile(join(root, "apps/web/lib/auth/hq-allowlist.ts"), "utf8");
+    const route = await readFile(join(root, "apps/web/app/api/auth/session/route.ts"), "utf8");
+    expect(lookup).toContain('from "../../../../morpheus.json"');
+    expect(lookup).toContain('roles.set(email.toLowerCase(), "admin")');
+    expect(route).toContain('from "@/lib/auth/hq-allowlist"');
+    expect(route).toContain("decoded.firebase?.sign_in_provider !== \"google.com\"");
+  });
+
+  it("uses the correct manifest path in a root-level Next app", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-root-web-"));
+    roots.push(root);
+    await write(root, "morpheus.json", JSON.stringify({ name: "acme", hq: { allowlist: [], admins: [], investorAllowlist: [] } }));
+    await write(root, "package.json", JSON.stringify({ dependencies: { next: "16.2.9", react: "19.2.4" } }));
+    await write(root, "app/page.tsx", "export default function Home() { return null; }\n");
+    await scaffoldWeb(options(root, await surveyWeb(root)));
+    const lookup = await readFile(join(root, "lib/auth/hq-allowlist.ts"), "utf8");
+    expect(lookup).toContain('from "../../morpheus.json"');
+  });
+
   it("keeps an existing route gate rather than shipping a second one", async () => {
     const root = await establishedProject();
     await write(root, "apps/web/middleware.ts", "export default function middleware() {}\n");

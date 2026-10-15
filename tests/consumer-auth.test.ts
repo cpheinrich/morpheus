@@ -170,6 +170,14 @@ describe("context derivation", () => {
 });
 
 describe("template invariants", () => {
+  it("carries the HQ allowlist into both monorepo and root-level consumer scaffolds", () => {
+    const nested = plannedFiles(survey, ctx).find((file) => file.path === "apps/web/lib/auth/hq-allowlist.ts");
+    expect(nested?.content).toContain('from "../../../../morpheus.json"');
+    const rootSurvey = { ...survey, webRoot: "." };
+    const root = plannedFiles(rootSurvey, ctx).find((file) => file.path === "lib/auth/hq-allowlist.ts");
+    expect(root?.content).toContain('from "../../morpheus.json"');
+  });
+
   it("keeps the emulator branch dead without the env var", () => {
     // The alg:none acceptance path must be keyed on FIREBASE_AUTH_EMULATOR_HOST
     // read at call time — an attacker-crafted unsigned cookie must never
