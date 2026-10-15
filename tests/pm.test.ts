@@ -64,6 +64,7 @@ describe("schema", () => {
     expect(parsed.owner).toBe("agent");
     expect(parsed.prs).toEqual([]);
     expect(parsed.issues).toEqual([]);
+    expect(parsed.issuesToKeepOpen).toEqual([]);
   });
 
   it("accepts only positive GitHub issue numbers", () => {
@@ -78,6 +79,8 @@ describe("schema", () => {
     expect(RoadmapItem.safeParse({ ...item, issues: [70, 76] }).success).toBe(true);
     expect(RoadmapItem.safeParse({ ...item, issues: [0] }).success).toBe(false);
     expect(RoadmapItem.safeParse({ ...item, issues: ["70"] }).success).toBe(false);
+    expect(RoadmapItem.safeParse({ ...item, issues: [493], issuesToKeepOpen: [493] }).success).toBe(true);
+    expect(RoadmapItem.safeParse({ ...item, issues: [70], issuesToKeepOpen: [493] }).success).toBe(false);
   });
 
   it("rejects a malformed id", () => {

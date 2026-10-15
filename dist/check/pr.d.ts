@@ -77,6 +77,8 @@ export declare function visibleProse(body: string): string;
 export declare function visibleText(body: string): string;
 /** Whether the PR body uses one of GitHub's same-repository closing keywords. */
 export declare function closesIssue(body: string, issue: number): boolean;
+/** Require an explicit non-closing link for an issue owned by a later verifier. */
+export declare function referencesIssue(body: string, issue: number): boolean;
 export { roadmapIdFromBranch };
 /**
  * True when the PR body has a heading matching `heading` with non-empty

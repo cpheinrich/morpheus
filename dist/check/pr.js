@@ -72,6 +72,10 @@ export function closesIssue(body, issue) {
     // reject `_Resolves #70_`. Exclude letters and digits explicitly instead.
     return new RegExp(String.raw `(?:^|[^A-Za-z0-9])${keyword}\s+#${issue}(?!\d)`, "im").test(visible);
 }
+/** Require an explicit non-closing link for an issue owned by a later verifier. */
+export function referencesIssue(body, issue) {
+    return new RegExp(String.raw `(?:^|[^A-Za-z0-9])Refs\s+#${issue}(?!\d)`, "im").test(visibleProse(body));
+}
 const SOURCE = /^src\/.*\.(ts|tsx)$/;
 const TEST = /(^tests\/|\.test\.tsx?$)/;
 const DOCS = /^(docs\/|architecture\.md$|AGENTS\.md$)|(^|\/)README\.md$/;
@@ -299,7 +303,8 @@ export async function checkPr(ctx) {
             });
         }
         else {
-            const missingClosures = item.data.issues.filter((issue) => !closesIssue(body, issue));
+            const held = new Set(item.data.issuesToKeepOpen);
+            const missingClosures = item.data.issues.filter((issue) => !held.has(issue) && !closesIssue(body, issue));
             if (missingClosures.length) {
                 findings.push({
                     level: "error",
@@ -310,6 +315,22 @@ export async function checkPr(ctx) {
                         missingClosures.map((issue) => `\"Closes #${issue}.\"`).join(" ") +
                         " so GitHub closes the issue when this PR merges.",
                 });
+            }
+            for (const issue of held) {
+                if (closesIssue(body, issue)) {
+                    findings.push({
+                        level: "error",
+                        rule: "issue-kept-open",
+                        message: `${id} keeps #${issue} open for a later verifier. Remove the closing keyword and use "Refs #${issue}" so the PR merge cannot close it early.`,
+                    });
+                }
+                else if (!referencesIssue(body, issue)) {
+                    findings.push({
+                        level: "error",
+                        rule: "issue-reference",
+                        message: `${id} keeps #${issue} open for a later verifier. Add "Refs #${issue}" to the PR body without a closing keyword.`,
+                    });
+                }
             }
             if (!["review", "shipped"].includes(item.data.status)) {
                 findings.push({
