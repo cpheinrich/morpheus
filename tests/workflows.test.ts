@@ -2231,6 +2231,7 @@ describe("ios-ci.yml", () => {
     const steps = wf.jobs?.test?.steps ?? [];
     const buildForTesting = steps.find((step) => step.name === "Build for testing");
     const test = steps.find((step) => step.name === "Run unit and UI tests");
+    const exportEvidence = steps.find((step) => step.name === "Export complete test evidence");
 
     // build-for-testing compiles the whole scheme regardless of which subset
     // will execute — only the run step needs to know what to exclude.
@@ -2240,6 +2241,18 @@ describe("ios-ci.yml", () => {
     );
     expect(String(test?.run)).toContain("-skip-testing:");
     expect(String(test?.run)).toContain('while IFS= read -r identifier');
+    expect((exportEvidence?.env as Record<string, unknown>)?.ONLY_TESTING).toBe(
+      "${{ inputs.only-testing }}",
+    );
+    expect((exportEvidence?.env as Record<string, unknown>)?.SKIP_TESTING).toBe(
+      "${{ inputs.skip-testing }}",
+    );
+    expect(String(exportEvidence?.run)).toContain(
+      'printf \'%s\\n\' "$ONLY_TESTING" > "$RESULTS/only-testing.txt"',
+    );
+    expect(String(exportEvidence?.run)).toContain(
+      'printf \'%s\\n\' "$SKIP_TESTING" > "$RESULTS/skip-testing.txt"',
+    );
   });
 
   it("does not expose the checkout credential to caller-controlled test code", async () => {
