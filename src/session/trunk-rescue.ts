@@ -355,8 +355,10 @@ async function duplicateRescueBranch(root: string, target: TrunkTarget, remote: 
     if (!localSha || live.get(branch) !== localSha) continue;
     const parent = (await git(root, ["rev-parse", "-q", "--verify", `${local}^`]).catch(() => "")).trim();
     if (!parent || await rescueDiffDigest(root, parent, localSha).catch(() => "") !== digest) continue;
-    const { repoArgs, prHead, headOwner } = await pullRequestTarget(root, target, remote, branch);
-    const listed = await runner("gh", ["pr", "list", ...repoArgs, "--state", "all", "--head", prHead, "--json", "url,headRefName,headRepositoryOwner", "--limit", "100"], root);
+    const { repoArgs, headOwner } = await pullRequestTarget(root, target, remote, branch);
+    // Unlike `pr create`, `pr list --head` rejects owner:branch. Filter
+    // the owner from the returned JSON after selecting the plain branch.
+    const listed = await runner("gh", ["pr", "list", ...repoArgs, "--state", "open", "--head", branch, "--json", "url,headRefName,headRepositoryOwner", "--limit", "100"], root);
     if (listed.code !== 0) continue;
     const prs = JSON.parse(listed.stdout) as Array<{ url?: string; headRefName?: string; headRepositoryOwner?: { login?: string } }>;
     const found = prs.find((pr) => pr.headRefName === branch && (!headOwner || pr.headRepositoryOwner?.login === headOwner) && /^https:\/\/github\.com\//.test(pr.url ?? ""));
@@ -539,7 +541,7 @@ export function formatRescue(result: RescueResult, trunk: string): string[] {
     if (!result.pushed) lines.push(`  ! Push failed (${result.pushError ?? "unknown"}). The edits are safe on local branch ${result.wipBranch}; push it with: git push ${result.remote} ${result.wipBranch}`);
     else if (!result.prUrl) lines.push(`  ! Pushed ${result.wipBranch}, but the draft PR was not opened (${result.prError ?? "unknown"}). Open it with: gh pr create --draft --head ${result.wipBranch}`);
   } else if (result.outcome === "duplicate") {
-    lines.push(`Same tracked edits were already rescued in draft PR ${result.prUrl} (${result.existingBranch}); trunk reset without another PR.`);
+    lines.push(`Same tracked edits were already rescued in open PR ${result.prUrl} (${result.existingBranch}); trunk reset without another PR.`);
     lines.push("  ! Repeated generator edits: commit the form the tool writes, or stop opening this trunk checkout in that tool.");
   } else if (result.outcome === "skipped") {
     lines.push(`!!! TRUNK CHECKOUT IS DIRTY AND WAS NOT RESCUED: ${result.reason}.`);

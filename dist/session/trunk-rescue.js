@@ -295,8 +295,10 @@ async function duplicateRescueBranch(root, target, remote, head, commit, runner)
         const parent = (await git(root, ["rev-parse", "-q", "--verify", `${local}^`]).catch(() => "")).trim();
         if (!parent || await rescueDiffDigest(root, parent, localSha).catch(() => "") !== digest)
             continue;
-        const { repoArgs, prHead, headOwner } = await pullRequestTarget(root, target, remote, branch);
-        const listed = await runner("gh", ["pr", "list", ...repoArgs, "--state", "all", "--head", prHead, "--json", "url,headRefName,headRepositoryOwner", "--limit", "100"], root);
+        const { repoArgs, headOwner } = await pullRequestTarget(root, target, remote, branch);
+        // Unlike `pr create`, `pr list --head` rejects owner:branch. Filter
+        // the owner from the returned JSON after selecting the plain branch.
+        const listed = await runner("gh", ["pr", "list", ...repoArgs, "--state", "open", "--head", branch, "--json", "url,headRefName,headRepositoryOwner", "--limit", "100"], root);
         if (listed.code !== 0)
             continue;
         const prs = JSON.parse(listed.stdout);
@@ -485,7 +487,7 @@ export function formatRescue(result, trunk) {
             lines.push(`  ! Pushed ${result.wipBranch}, but the draft PR was not opened (${result.prError ?? "unknown"}). Open it with: gh pr create --draft --head ${result.wipBranch}`);
     }
     else if (result.outcome === "duplicate") {
-        lines.push(`Same tracked edits were already rescued in draft PR ${result.prUrl} (${result.existingBranch}); trunk reset without another PR.`);
+        lines.push(`Same tracked edits were already rescued in open PR ${result.prUrl} (${result.existingBranch}); trunk reset without another PR.`);
         lines.push("  ! Repeated generator edits: commit the form the tool writes, or stop opening this trunk checkout in that tool.");
     }
     else if (result.outcome === "skipped") {
