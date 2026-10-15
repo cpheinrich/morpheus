@@ -25,6 +25,7 @@ export interface PreviewOptions {
     port?: number;
     ttlMinutes?: number;
     build: boolean;
+    axEnabled?: boolean;
     sshHost?: string;
 }
 /** Overlay port follows the preview port, so two checkouts' overlays differ. */
@@ -94,6 +95,7 @@ export interface PreviewState {
     mode?: string;
     bundleId?: string;
     build?: string;
+    axEnabled?: boolean;
 }
 /** Refuse a stale product whose embedded identity differs from the selected mode. */
 export declare function verifyBuiltBundle(app: string, expected: string, run: Run): void;

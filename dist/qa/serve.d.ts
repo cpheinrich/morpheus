@@ -9,6 +9,8 @@ export interface ServeOptions {
     project?: string;
     /** Optional explicit MJPEG URL; otherwise discovered. */
     streamUrl?: string;
+    /** Disable native accessibility reads and use MJPEG frames for comment pins. */
+    axEnabled?: boolean;
     /** Called once listening. */
     onListen?: (info: {
         url: string;

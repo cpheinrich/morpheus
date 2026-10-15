@@ -37,6 +37,7 @@ export interface PreviewOptions {
   port?: number;
   ttlMinutes?: number;
   build: boolean;
+  axEnabled?: boolean;
   sshHost?: string;
 }
 
@@ -54,6 +55,7 @@ export function parsePreviewArgs(argv: string[], modes: Record<string, PreviewMo
   while (args.length) {
     const flag = args.shift()!;
     if (flag === "--no-build") options.build = false;
+    else if (flag === "--no-ax") options.axEnabled = false;
     else if (byFlag.has(flag)) options.mode = byFlag.get(flag);
     else if (["--port", "--ssh-host", "--ttl-minutes", "--mode"].includes(flag)) {
       const value = args.shift();
@@ -228,6 +230,7 @@ export function serveSimCli(): { path: string; version: string } {
 export interface PreviewState {
   udid: string; name: string; port: number; overlayPort: number; root: string;
   expiresAt: number; mode?: string; bundleId?: string; build?: string;
+  axEnabled?: boolean;
 }
 
 /** Refuse a stale product whose embedded identity differs from the selected mode. */
@@ -425,7 +428,7 @@ export async function runPreview(ctx: PreviewContext, options: PreviewOptions): 
       if (!existsSync(app)) throw new Error(`No build at ${app}. Run start without --no-build.`);
       verifyBuiltBundle(app, identity.bundleId, run);
       // Record ownership before boot so a failed install/launch/readiness can clean up.
-      const pending: PreviewState = { udid: device.udid, name: ctx.deviceName, port, overlayPort, root: ctx.root, mode: mode.name, bundleId: identity.bundleId, expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000 };
+      const pending: PreviewState = { udid: device.udid, name: ctx.deviceName, port, overlayPort, root: ctx.root, mode: mode.name, bundleId: identity.bundleId, axEnabled: options.axEnabled !== false, expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000 };
       writeState(ctx, pending);
       try {
         sim("boot", device.udid);

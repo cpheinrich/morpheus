@@ -250,7 +250,7 @@ export async function startQaCommentServer(options) {
     const discovered = options.streamUrl ?? (await discoverStreamUrl(previewOrigin));
     const streamPath = discovered ? "/proxy/stream.mjpeg" : null;
     const udid = udidFromStreamUrl(discovered);
-    const axPath = udid ? "/api/ax" : null;
+    const axPath = udid && options.axEnabled !== false ? "/api/ax" : null;
     const hid = udid ? await openHidBridge(previewOrigin, udid) : null;
     const screenIdentity = new QaScreenIdentity();
     const server = createServer(async (req, res) => {
@@ -270,6 +270,7 @@ export async function startQaCommentServer(options) {
                     ok: true,
                     previewUrl,
                     streamUrl: discovered,
+                    axEnabled: axPath !== null,
                     project,
                     root: options.root,
                 });
@@ -284,7 +285,7 @@ export async function startQaCommentServer(options) {
                 return;
             }
             if (req.method === "GET" && url.pathname === "/proxy/ax") {
-                if (!udid) {
+                if (!axPath || !udid) {
                     sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
                     return;
                 }
@@ -292,7 +293,7 @@ export async function startQaCommentServer(options) {
                 return;
             }
             if (req.method === "GET" && url.pathname === "/api/ax") {
-                if (!udid) {
+                if (!axPath || !udid) {
                     sendJson(res, 404, { error: "No simulator discovered for accessibility data" });
                     return;
                 }
@@ -329,7 +330,7 @@ export async function startQaCommentServer(options) {
                 return;
             }
             if (req.method === "POST" && url.pathname === "/api/placement") {
-                if (!udid) {
+                if (!axPath || !udid) {
                     sendJson(res, 404, { error: "No simulator discovered for placement capture" });
                     return;
                 }

@@ -117,7 +117,7 @@ export function modeBuildIdentity(config, mode) {
     return { build: mode.build ?? config.build, product: mode.product ?? config.product, bundleId: mode.bundleId ?? config.bundleId };
 }
 /** Flags the preview command owns, plus every flag the morpheus parser consumes first. */
-export const PREVIEW_FLAGS = ["--port", "--ttl-minutes", "--no-build", "--ssh-host", "--root", "--mode"];
+export const PREVIEW_FLAGS = ["--port", "--ttl-minutes", "--no-build", "--no-ax", "--ssh-host", "--root", "--mode"];
 export const RESERVED_FLAGS = new Set([...PREVIEW_FLAGS, ...globalFlags()]);
 export async function loadIosPreviewConfig(root) {
     let manifest;
