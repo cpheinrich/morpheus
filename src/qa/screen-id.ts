@@ -1,12 +1,6 @@
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { tmpdir } from "node:os";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
 
 interface AxNode {
   AXUniqueId?: string | null;
@@ -140,40 +134,4 @@ function nativeAxTree(udid: string): Promise<AxNode[]> {
 
 export async function currentQaAxSnapshot(udid: string): Promise<QaAxSnapshot> {
   return qaAxSnapshotFromTree(await nativeAxTree(udid));
-}
-
-/** Capture the image between matching native screen identities, so the saved PNG and ID agree. */
-export async function captureQaPlacement(udid: string, identify: (snapshot: QaAxSnapshot) => QaAxSnapshot = (snapshot) => snapshot): Promise<{
-  screenId: string;
-  beforeSnapshot: QaAxSnapshot;
-  snapshot: QaAxSnapshot;
-  frame: { dataUrl: string; width: number; height: number; capturedAt: string };
-}> {
-  const before = identify(await currentQaAxSnapshot(udid));
-  if (!before.screenId) throw new Error("Simulator screen ID unavailable");
-  const dir = await mkdtemp(join(tmpdir(), "morpheus-qa-placement-"));
-  const path = join(dir, "frame.png");
-  try {
-    await execFileAsync("xcrun", ["simctl", "io", udid, "screenshot", "--type=png", path], { timeout: 5000 });
-    const capturedAt = new Date().toISOString();
-    const [bytes, rawAfter] = await Promise.all([readFile(path), currentQaAxSnapshot(udid)]);
-    const after = identify(rawAfter);
-    if (after.screenId !== before.screenId) throw new Error("Screen changed during placement capture");
-    if (bytes.length < 24 || bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
-      throw new Error("Simulator placement screenshot is invalid");
-    }
-    return {
-      screenId: before.screenId,
-      beforeSnapshot: before,
-      snapshot: after,
-      frame: {
-        dataUrl: `data:image/png;base64,${bytes.toString("base64")}`,
-        width: bytes.readUInt32BE(16),
-        height: bytes.readUInt32BE(20),
-        capturedAt,
-      },
-    };
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
 }

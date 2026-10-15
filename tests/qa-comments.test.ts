@@ -507,7 +507,7 @@ describe("qa comments serve", () => {
     closers.push(server.close);
     const html = await (await fetch(server.url)).text();
     expect(html).toContain("const axPath = null;");
-    expect(html).toContain("const frame = axPath ? null : captureFrame();");
+    expect(html).toContain("const frame = captureFrame();");
     expect(((await (await fetch(`${server.url}health`)).json()) as { axEnabled: boolean }).axEnabled).toBe(false);
     expect((await fetch(`${server.url}api/ax`)).status).toBe(404);
     expect((await fetch(`${server.url}proxy/ax`)).status).toBe(404);
