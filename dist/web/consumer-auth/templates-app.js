@@ -166,16 +166,19 @@ export async function POST(request: Request) {
     decoded.firebase?.sign_in_provider === "google.com";
   const desiredRole = eligibleForHq ? roleForEmail(decoded.email) : null;
   const tokenRole = isRole(decoded.role) ? decoded.role : null;
-  if (tokenRole !== desiredRole) {
-    const user = await auth.getUser(decoded.uid);
+  // The token may predate an access-sync grant. Compare the stored claim too:
+  // otherwise an unlisted consumer can force-refresh later and regain /hq.
+  const user = await auth.getUser(decoded.uid);
+  const storedRole = isRole(user.customClaims?.role) ? user.customClaims.role : null;
+  if (tokenRole !== desiredRole || storedRole !== desiredRole) {
     const claims = { ...user.customClaims };
     if (desiredRole) claims.role = desiredRole;
     else delete claims.role;
-    await auth.setCustomUserClaims(decoded.uid, claims);
+    if (storedRole !== desiredRole) await auth.setCustomUserClaims(decoded.uid, claims);
 
     // A removed or demoted role may already exist in a session cookie.
     // Invalidate it and require a new sign-in before issuing another cookie.
-    if (tokenRole) {
+    if (tokenRole || (storedRole && !desiredRole)) {
       await auth.revokeRefreshTokens(decoded.uid);
       return NextResponse.json({ error: "Sign in again to update your access." }, { status: 401 });
     }

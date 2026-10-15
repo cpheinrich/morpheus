@@ -73,6 +73,7 @@ describe("generated consumer-auth route with HQ", () => {
     expect(auth.setCustomUserClaims).toHaveBeenCalledWith("uid-1", { existing: "kept", role: "employee" });
     expect(auth.createSessionCookie).not.toHaveBeenCalled();
     signedIn("staff@example.com", "employee");
+    auth.getUser.mockResolvedValue({ customClaims: { existing: "kept", role: "employee" } });
     expect(await postConsumer()).toMatchObject({ status: 200, body: { ok: true, role: "employee" } });
     expect(auth.createSessionCookie).toHaveBeenCalledWith("verified-token", { expiresIn: 1000 });
   });
@@ -85,6 +86,15 @@ describe("generated consumer-auth route with HQ", () => {
 
   it("revokes a stale HQ role before a consumer session can be minted", async () => {
     signedIn("removed@example.com", "employee");
+    auth.getUser.mockResolvedValue({ customClaims: { existing: "kept", role: "employee" } });
+    expect((await postConsumer()).status).toBe(401);
+    expect(auth.setCustomUserClaims).toHaveBeenCalledWith("uid-1", { existing: "kept" });
+    expect(auth.revokeRefreshTokens).toHaveBeenCalledWith("uid-1");
+    expect(auth.createSessionCookie).not.toHaveBeenCalled();
+  });
+
+  it("removes a stored grant even when an older token has no role", async () => {
+    signedIn("removed@example.com");
     auth.getUser.mockResolvedValue({ customClaims: { existing: "kept", role: "employee" } });
     expect((await postConsumer()).status).toBe(401);
     expect(auth.setCustomUserClaims).toHaveBeenCalledWith("uid-1", { existing: "kept" });
