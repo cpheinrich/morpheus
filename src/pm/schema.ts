@@ -102,8 +102,10 @@ export const RoadmapItem = z
     goal: z.string().regex(GOAL_ID).optional(),
     owner: z.enum(["agent", "human"]).default("agent"),
     prs: z.array(z.number().int().positive()).default([]),
-    /** GitHub issues this item fully resolves. A merged PR must close each one. */
+    /** Linked GitHub issues; close each unless a later verifier owns its closure. */
     issues: z.array(z.number().int().positive()).default([]),
+    /** Linked issues whose closure belongs to a later verifier, such as release admission. */
+    issuesToKeepOpen: z.array(z.number().int().positive()).default([]),
     acceptance: z.string().optional(),
     /** What would unblock this. Required when `status` is `blocked`. */
     needs: z.string().optional(),
@@ -121,6 +123,10 @@ export const RoadmapItem = z
   .refine((item) => item.status !== "blocked" || (item.needs?.trim().length ?? 0) > 0, {
     error: 'status "blocked" requires a non-empty "needs" — say what would unblock it',
     path: ["needs"],
+  })
+  .refine((item) => item.issuesToKeepOpen.every((issue) => item.issues.includes(issue)), {
+    error: "issuesToKeepOpen must be a subset of issues",
+    path: ["issuesToKeepOpen"],
   });
 
 export const Goal = z

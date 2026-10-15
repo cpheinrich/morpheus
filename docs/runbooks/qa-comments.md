@@ -218,7 +218,7 @@ morpheus qa comments release <batchId> --agent <session-id>  # return failed wor
 morpheus qa comments release <batchId> --force  # recover an abandoned claim
 morpheus qa comments responder start|status|stop --root <checkout>
 morpheus qa comments responder recover --confirm-no-agent-process --root <checkout>
-morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
+morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>] [--no-ax]
 ```
 
 `serve` binds **only** to `127.0.0.1`. `--root` is the project checkout that
@@ -230,6 +230,13 @@ consumes it before `qa`) and is what `batch.project` records. POSTs must be
 `http://localhost:<port>` at the bound overlay port; a cross-site
 page cannot inject a batch or drive the simulator. `frame.path` is recorded
 only when a PNG was actually written.
+
+If macOS accessibility crashes the overlay, use `--no-ax` to pin comments from the MJPEG frame
+without native accessibility reads. A managed iOS preview runs the overlay in a separate process:
+if that process exits, the supervisor keeps the simulator stream alive and restarts the overlay
+once with accessibility disabled. A second overlay failure is logged and requires a deliberate
+preview restart. An open AX tab reloads into screenshot-pin mode when the fallback becomes healthy;
+its unsent comments and captured frames are restored.
 
 Exit non-zero when a named batch is missing. `pending` with an empty inbox
 prints nothing and exits 0 — agents can poll safely. Resolving an already-resolved
@@ -275,7 +282,11 @@ lifecycle. A project declares only what Morpheus cannot know, in `morpheus.json`
     "demo": { "flags": ["--demo"], "args": ["-ui-testing"], "summary": "Mode: demo. …" },
     "live": { "flags": ["--live"], "args": ["--qa-live"],
               "prepare": { "command": ["node", "apps/ios/scripts/qa-account.mjs", "{key}"], "credentials": true },
-              "summary": "Mode: live. …" }
+              "summary": "Mode: live. …" },
+    "production": { "flags": ["--production"], "args": [],
+                    "build": ["bash", "apps/ios/scripts/dev.sh", "build", "--configuration", "ProductionDebug"],
+                    "product": "Build/Products/ProductionDebug-iphonesimulator/App.app",
+                    "bundleId": "com.example.app.production" }
   }
 } }
 ```
@@ -284,6 +295,10 @@ lifecycle. A project declares only what Morpheus cannot know, in `morpheus.json`
   and `{root}` the project root; both expand in commands, paths and launch arguments.
 - The build command receives `DERIVED_DATA_PATH`, `SIMULATOR_NAME`, `SIMULATOR_OS` and
   `SIMULATOR_UDID` for the simulator the preview booted.
+- A mode that builds a different app overrides `build`, `product` and `bundleId` together.
+  The command can select its Xcode configuration. The preview checks the built app's
+  `CFBundleIdentifier` before installing it, including with `--no-build`; a stale product
+  cannot quietly launch another mode's bundle. `status` and `stop` name the started mode.
 - A mode's `prepare` command prints `{"env": {"NAME": "value"}}`; each entry reaches the app as a
   launch environment variable. With `credentials: true` it runs under
   `morpheus credentials run --`. Its stdout stays in memory: never in arguments, state files or

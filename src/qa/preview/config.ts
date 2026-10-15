@@ -17,6 +17,10 @@ import { globalFlags } from "../../cli/args.js";
 
 export interface PreviewMode {
   name: string;
+  /** A different app identity must override all three fields together. */
+  build?: string[];
+  product?: string;
+  bundleId?: string;
   /** Launch arguments passed to the app. */
   args: string[];
   /** Command-line flags that select this mode, e.g. `--demo`. `--mode <name>` always works. */
@@ -121,7 +125,22 @@ export function parseIosPreviewConfig(raw: unknown, projectName = "Project"): Co
         if (!p || !isStrings(p.command)) issues.push(`qa.ios.modes.${name}.prepare.command must be an array of strings.`);
         else prepare = { command: p.command, credentials: p.credentials === true };
       }
-      modes[name] = { name, args: (Array.isArray(args) ? args : []) as string[], flags: (Array.isArray(flags) ? flags : []) as string[], summary, ...(prepare ? { prepare } : {}) };
+      const identity = ["build", "product", "bundleId"] as const;
+      const overridden = identity.filter((key) => m[key] !== undefined);
+      if (overridden.length && overridden.length !== identity.length) {
+        issues.push(`qa.ios.modes.${name} must override build, product and bundleId together to select a different app.`);
+      }
+      if (m.build !== undefined && !isStrings(m.build)) issues.push(`qa.ios.modes.${name}.build must be a non-empty array of strings.`);
+      for (const key of ["product", "bundleId"] as const) {
+        if (m[key] !== undefined && (typeof m[key] !== "string" || !m[key])) issues.push(`qa.ios.modes.${name}.${key} must be a non-empty string.`);
+      }
+      modes[name] = {
+        name, args: (Array.isArray(args) ? args : []) as string[], flags: (Array.isArray(flags) ? flags : []) as string[], summary,
+        ...(prepare ? { prepare } : {}),
+        ...(isStrings(m.build) ? { build: m.build } : {}),
+        ...(typeof m.product === "string" && m.product ? { product: m.product } : {}),
+        ...(typeof m.bundleId === "string" && m.bundleId ? { bundleId: m.bundleId } : {}),
+      };
     }
   }
   const defaultMode = typeof ios.defaultMode === "string" ? ios.defaultMode : Object.keys(modes)[0] ?? "";
@@ -137,8 +156,12 @@ export function parseIosPreviewConfig(raw: unknown, projectName = "Project"): Co
   };
 }
 
+export function modeBuildIdentity(config: IosPreviewConfig, mode: PreviewMode): Pick<IosPreviewConfig, "build" | "product" | "bundleId"> {
+  return { build: mode.build ?? config.build, product: mode.product ?? config.product, bundleId: mode.bundleId ?? config.bundleId };
+}
+
 /** Flags the preview command owns, plus every flag the morpheus parser consumes first. */
-export const PREVIEW_FLAGS = ["--port", "--ttl-minutes", "--no-build", "--ssh-host", "--root", "--mode"];
+export const PREVIEW_FLAGS = ["--port", "--ttl-minutes", "--no-build", "--no-ax", "--ssh-host", "--root", "--mode"];
 export const RESERVED_FLAGS = new Set([...PREVIEW_FLAGS, ...globalFlags()]);
 
 export async function loadIosPreviewConfig(root: string): Promise<ConfigResult> {

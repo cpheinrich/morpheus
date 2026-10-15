@@ -1303,13 +1303,19 @@ import { sessionErrorMessage } from "@/lib/auth/errors";
  * On failure it signs out of Firebase too, for exactly that reason.
  */
 export async function establishSession(user: User): Promise<{ error: string } | null> {
-  const idToken = await user.getIdToken();
+  async function post(forceRefresh = false) {
+    const idToken = await user.getIdToken(forceRefresh);
+    return fetch("/api/auth/session/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+  }
 
-  const response = await fetch("/api/auth/session/", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ idToken }),
-  });
+  let response = await post();
+  if (response.status === 409 && (await response.json()).refreshToken === true) {
+    response = await post(true);
+  }
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));

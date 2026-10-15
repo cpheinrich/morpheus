@@ -1317,7 +1317,7 @@ export const pullRequestTemplate = () => `## Summary
 
 <!-- What changed, and why? -->
 
-<!-- If the roadmap item declares GitHub issues, close each explicitly: Closes #123. -->
+<!-- Close issues declared by the roadmap item: Closes #123. If a later verifier owns closure, add the number to issuesToKeepOpen and use Refs #123 instead. Keep closing keywords for that issue out of the title and commits too. -->
 
 ## Visual evidence
 

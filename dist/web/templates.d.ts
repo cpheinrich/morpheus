@@ -91,6 +91,8 @@ export declare const firebaseConfigFile: (facts: FirebaseFacts) => string;
 export declare const firebaseClient: (ctx: TemplateContext) => string;
 export declare const firebaseAdmin: (ctx: TemplateContext, facts: FirebaseFacts) => string;
 export declare const authRoles: () => string;
+/** Server-only role lookup from the reviewed, deployed project manifest. */
+export declare const hqAllowlist: (manifestImport: string) => string;
 export declare const authSessionCookie: (ctx: TemplateContext) => string;
 export declare const authCurrentUser: (ctx: TemplateContext) => string;
 export declare const routeGate: (ctx: TemplateContext) => string;

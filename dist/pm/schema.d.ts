@@ -98,6 +98,7 @@ export declare const RoadmapItem: z.ZodObject<{
     }>>;
     prs: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
     issues: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
+    issuesToKeepOpen: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
     acceptance: z.ZodOptional<z.ZodString>;
     needs: z.ZodOptional<z.ZodString>;
     created: z.ZodPreprocess<z.ZodISODate>;
@@ -132,11 +133,11 @@ export declare const Request: z.ZodObject<{
         founder: "founder";
     }>;
     status: z.ZodEnum<{
+        duplicate: "duplicate";
         new: "new";
         triaged: "triaged";
         accepted: "accepted";
         declined: "declined";
-        duplicate: "duplicate";
     }>;
     roadmap: z.ZodOptional<z.ZodString>;
     created: z.ZodPreprocess<z.ZodISODate>;
@@ -190,6 +191,7 @@ export declare const ARTIFACTS: {
             }>>;
             prs: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
             issues: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
+            issuesToKeepOpen: z.ZodDefault<z.ZodArray<z.ZodNumber>>;
             acceptance: z.ZodOptional<z.ZodString>;
             needs: z.ZodOptional<z.ZodString>;
             created: z.ZodPreprocess<z.ZodISODate>;
@@ -232,11 +234,11 @@ export declare const ARTIFACTS: {
                 founder: "founder";
             }>;
             status: z.ZodEnum<{
+                duplicate: "duplicate";
                 new: "new";
                 triaged: "triaged";
                 accepted: "accepted";
                 declined: "declined";
-                duplicate: "duplicate";
             }>;
             roadmap: z.ZodOptional<z.ZodString>;
             created: z.ZodPreprocess<z.ZodISODate>;

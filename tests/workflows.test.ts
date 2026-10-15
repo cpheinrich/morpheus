@@ -1448,6 +1448,12 @@ describe("ios-nightly-build.yml", () => {
     expect(call?.inputs?.["firebase-project"]?.default).toBe("demo-ios-ci");
     expect(call?.inputs?.["firebase-only"]?.default).toBe("auth,firestore");
     expect(call?.inputs?.["pre-test-script"]?.default).toBe("");
+    // Optional and empty by default: a release runs everything its scheme selects unless the
+    // caller narrows the selection or names identifiers to leave out (cpheinrich/morpheus#401).
+    for (const selection of ["only-testing", "skip-testing"]) {
+      expect(call?.inputs?.[selection]?.required, `${selection} is optional`).toBeUndefined();
+      expect(call?.inputs?.[selection]?.default, `${selection} defaults to empty`).toBe("");
+    }
     expect(call?.inputs?.["run-upload"]?.default).toBe(true);
     expect(call?.outputs?.build?.value).toBe("${{ jobs.changes.outputs.build }}");
     expect(call?.outputs?.sha?.value).toBe("${{ jobs.preflight.outputs.sha }}");
@@ -1600,6 +1606,9 @@ describe("ios-nightly-build.yml", () => {
     expect(test?.with?.["firebase-project"]).toBe("${{ inputs.firebase-project }}");
     expect(test?.with?.["firebase-only"]).toBe("${{ inputs.firebase-only }}");
     expect(test?.with?.["pre-test-script"]).toBe("${{ inputs.pre-test-script }}");
+    expect(test?.with?.["test-iterations"]).toBe("${{ inputs.test-iterations }}");
+    expect(test?.with?.["only-testing"]).toBe("${{ inputs.only-testing }}");
+    expect(test?.with?.["skip-testing"]).toBe("${{ inputs.skip-testing }}");
     expect(upload?.needs).toEqual(["changes", "preflight", "test"]);
     expect(upload?.if).toContain("inputs.run-upload");
     expect(upload?.environment).toBe("${{ inputs.environment }}");
@@ -2222,6 +2231,7 @@ describe("ios-ci.yml", () => {
     const steps = wf.jobs?.test?.steps ?? [];
     const buildForTesting = steps.find((step) => step.name === "Build for testing");
     const test = steps.find((step) => step.name === "Run unit and UI tests");
+    const exportEvidence = steps.find((step) => step.name === "Export complete test evidence");
 
     // build-for-testing compiles the whole scheme regardless of which subset
     // will execute — only the run step needs to know what to exclude.
@@ -2231,6 +2241,18 @@ describe("ios-ci.yml", () => {
     );
     expect(String(test?.run)).toContain("-skip-testing:");
     expect(String(test?.run)).toContain('while IFS= read -r identifier');
+    expect((exportEvidence?.env as Record<string, unknown>)?.ONLY_TESTING).toBe(
+      "${{ inputs.only-testing }}",
+    );
+    expect((exportEvidence?.env as Record<string, unknown>)?.SKIP_TESTING).toBe(
+      "${{ inputs.skip-testing }}",
+    );
+    expect(String(exportEvidence?.run)).toContain(
+      'printf \'%s\\n\' "$ONLY_TESTING" > "$RESULTS/only-testing.txt"',
+    );
+    expect(String(exportEvidence?.run)).toContain(
+      'printf \'%s\\n\' "$SKIP_TESTING" > "$RESULTS/skip-testing.txt"',
+    );
   });
 
   it("does not expose the checkout credential to caller-controlled test code", async () => {

@@ -37,8 +37,11 @@ four times over.
 
 Afterwards: `pnpm install`, render `<WaitlistForm source="hero" />` on the page, add a
 `waitlist_joined` event to the project's analytics contract and pass it to the form's `onJoined`
-prop, then `morpheus access sync` so the allowlist becomes the `role` claim. Until that sync runs,
-a signed-in account has no role and `/hq` refuses it — the gate working, not a broken sign-in.
+prop. A verified Google account on the deployed allowlist receives its `role` claim on first
+sign-in; the client refreshes its ID token before the session cookie is created. Run
+`morpheus access sync` for prompt bulk grants or revocations when the allowlist changes,
+including users who will not sign in again. A removed account's stale claim is also cleared
+on its next sign-in.
 
 **When a project wants people to sign themselves up, run `morpheus web add-consumer-auth`** — do
 not hand-build Firebase auth. It extends `web init` with what Evo shipped and hardened

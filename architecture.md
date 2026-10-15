@@ -526,6 +526,12 @@ item created with `pm new roadmap --issue 123`, or updated with
 roadmap; `check pr` requires `Closes #123` (or another GitHub closing keyword) in the PR body.
 The structured field distinguishes completion from a merely related issue mention, while GitHub's
 native merge behaviour performs the actual close.
+For controller-owned recovery incidents, the roadmap item also lists the number in
+`issuesToKeepOpen:`. In that case `check pr` requires `Refs #123` and rejects closing keywords in
+the PR body, title, and branch commit messages, including GitHub's colon syntax;
+the release controller alone closes the incident after exact delivery verification. Evo #493
+showed why: its repair PR's `Closes` line closed the blocker between merge and recovery release
+admission, so the reserved release failed before upload.
 
 Instructions get ignored eventually. A failing check does not.
 
@@ -956,6 +962,12 @@ exchange `FETCH_HEAD`. A local trunk behind that exact commit fast-forwards; fea
 divergent trunks remain intact and report missing commits. Tracked edits on the trunk branch are
 first committed to a pushed `wip/trunk-*` draft PR and the trunk reset only once that commit is
 proven to hold them — a dirty trunk otherwise never advances, and one did not for three weeks.
+When an exact old/new blob, path and mode diff has a live pushed `wip/trunk-*`
+branch and an open PR, the checkout resets after the same content proof without
+creating another draft PR. Live remote and PR checks run before the proof/reset window;
+cached tracking refs alone do not count. The brief names the earlier PR and likely generator
+loop. A failed comparison or lookup falls back to the ordinary rescue, so a branch with a
+failed push, failed PR creation or closed PR never suppresses a new attempt.
 Untracked files are never committed; `doctor --all` reports stuck trunk checkouts fleet-wide. Offline or fetch
 failure is explicitly unverified, never a successful current-source report. A receipt is refused
 when the checkout does not contain the observed trunk. Checks repeat local source containment
@@ -1569,6 +1581,9 @@ anything but trunk, invalidates coverage. Author-only minor fixes are constraine
 This is an auditable attestation, not proof against a dishonest author. Records/board-only PRs and
 exact dependency-only Dependabot changes and marked dependency-only Morpheus Security App changes
 retain narrow authoring/review exceptions; neither bot exception bypasses repository checks.
+When a reviewer discovers an incidental finding after the reviewed commit, a new roadmap item
+named by the deferred or open finding may land before covered when an author commit first
+added a valid item file; existing item edits and unrelated paths remain subject to review coverage.
 
 **GitHub validates; it does not schedule the model.** The authoring agent owns dispatch,
 responses, evidence and merge; no standing agent monitors PRs to supply this review.
@@ -1616,6 +1631,17 @@ In the PR test plan and worklog, record the actual focused commands and why that
 selected. Continue adding or updating tests and performing relevant simulator/visual QA.
 
 The project scaffold includes this rule in `AGENTS.md` so future iOS projects inherit it.
+
+The shared `morpheus qa preview ios` lifecycle accepts mode-specific build identity. A mode
+that selects a different app declares its build command, product path and bundle identifier
+together; the built product's embedded identifier must match before install. One checkout still
+owns one simulator, lease and comment overlay, and status/stop identify the mode that started it.
+The overlay runs in a supervised child process because native macOS accessibility can crash its
+Node process. One unexpected exit restarts the overlay in screenshot-pin mode without stopping
+the simulator stream; `--no-ax` selects that mode explicitly. A second exit requires a deliberate
+restart rather than an unbounded retry.
+An open overlay tab detects the changed health mode and reloads, restoring unsent pins from local
+browser storage so a crash recovery does not require manual intervention.
 
 This works today with the standard Xcode toolchain and no special infrastructure — `xcodebuild` to
 build, `xcrun simctl` to boot/install/launch, **XCUITest** to drive the UI (the tests double as the
@@ -1886,8 +1912,12 @@ network-layer gate — it can stop someone loading `/hq`, but it cannot stop a F
 would still need a second rule system underneath.
 
 **Access as code.** The allowlist in `morpheus.json` is the declarative source of truth — in git,
-reviewable in a PR, diffable. `morpheus access sync` reads it and applies the claims, so granting
-access is a pull request rather than a console click, and so is revoking it.
+reviewable in a PR, diffable. The generated HQ session route reconciles a verified Google
+account's claim on first sign-in against the deployed manifest. `morpheus access sync` applies
+bulk changes promptly, including revocations for accounts that do not sign in again. The
+refreshed ID token and session cookie retain the same claim that Firestore rules read.
+The consumer-auth session route keeps this reconciliation while allowing ordinary consumers
+to sign in without an HQ role.
 
 Keep Zero Trust only for defence-in-depth on genuinely sensitive infrastructure such as the
 Chatwoot admin panel; it is redundant in front of `/hq`.
@@ -1899,7 +1929,7 @@ derived from one exported list rather than restated:
 
 | Reader | Consumes | Kept honest by |
 |---|---|---|
-| The claim **writer** — `morpheus access sync` | `Role` zod enum, built from `ROLES` | typecheck |
+| The claim **writers** — `morpheus access sync` and generated Google sign-in route | `Role` zod enum, built from `ROLES`; deployed `morpheus.json` | typecheck and generated-route tests |
 | The **route** gate — a project's `proxy.ts` | `canAccessHq()` from `morpheus-kit/hq` | typecheck |
 | The **data** gate — `firestore.rules` | generated helpers | `morpheus hq rules --rules-path <deployed path> --check` |
 
@@ -3254,7 +3284,9 @@ Only boolean presence flags enter this diagnostic; credential values remain conf
 final upload step. A blank P12 password and absent optional Firebase/Sentry credentials are valid.
 The workflow forwards the complete secret-free test contract — including
 parallel-test policy and optional maximum simulator-worker count, Firebase Emulator Suite
-configuration, and the pre-test fixture script — to `ios-ci`. Release builds default to the
+configuration, the pre-test fixture script, and any `only-testing` or `skip-testing` identifiers
+the caller names (both empty by default, so a release runs everything its scheme selects) — to
+`ios-ci`. Release builds default to the
 five-core M2 Pro `macos-26-xlarge` runner with parallel testing enabled and at most six simulator
 workers; callers may dial those inputs down after observing resource pressure. An app that needs
 an ignored Google service plist for its signed archive may keep its

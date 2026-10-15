@@ -37,7 +37,7 @@ stop ends the overlay and only a dev server this preview started.
 For the iOS app:
 
     morpheus qa preview ios doctor
-    morpheus qa preview ios start [--mode <name>] [--no-build] [--ttl-minutes N]
+    morpheus qa preview ios start [--mode <name>] [--no-build] [--no-ax] [--ttl-minutes N]
 
 Run them from the project checkout (or pass --root). The project declares its app and launch
 modes in morpheus.json (qa.ios); the default mode and every mode's flags are listed by
