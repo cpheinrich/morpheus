@@ -84,6 +84,12 @@ export type RescueResult = {
     dirt: TrunkDirt;
     orphans: string[];
 } | {
+    outcome: "duplicate";
+    dirt: TrunkDirt;
+    orphans: string[];
+    existingBranch: string;
+    remote: string;
+} | {
     outcome: "rescued";
     dirt: TrunkDirt;
     orphans: string[];

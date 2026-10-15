@@ -286,6 +286,43 @@ describe("rescuing a dirty trunk checkout", () => {
     expect(await git(remote, "show", `refs/heads/${branchBase}-2:project.pbxproj`)).toBe("second");
   });
 
+  it("resets exact recurring Xcode churn without opening another rescue PR", async () => {
+    await writeFile(join(local, "project.pbxproj"), "xcode canonical form\n");
+    const first = (await prepareRepository(local, false, deps())).rescue!;
+    expect(first.outcome).toBe("rescued");
+    expect(await git(local, "rev-parse", `refs/remotes/origin/${branchBase}`)).toBe(await git(local, "rev-parse", `refs/heads/${branchBase}`));
+
+    await writeFile(join(local, "project.pbxproj"), "xcode canonical form\n");
+    const repeated = await prepareRepository(local, false, deps());
+    expect(repeated.rescue).toMatchObject({ outcome: "duplicate", existingBranch: branchBase });
+    expect(repeated.advanced).toBe(false);
+    expect(await readFile(join(local, "project.pbxproj"), "utf8")).toBe("generated v1\n");
+    expect(await git(local, "status", "--porcelain")).toBe("");
+    expect(await git(local, "for-each-ref", "--format=%(refname:short)", "refs/heads/wip/trunk-*")).toBe(branchBase);
+    expect(gh).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not dedupe against a rescue that was never pushed", async () => {
+    await writeFile(join(local, "project.pbxproj"), "same edit\n");
+    await git(local, "remote", "set-url", "--push", "origin", join(dir, "missing.git"));
+    const first = (await prepareRepository(local, false, deps())).rescue!;
+    expect(first.outcome === "rescued" && first.pushed).toBe(false);
+    await git(local, "remote", "set-url", "--push", "origin", remote);
+    await writeFile(join(local, "project.pbxproj"), "same edit\n");
+    const second = (await prepareRepository(local, false, deps())).rescue!;
+    expect(second.outcome === "rescued" && second.wipBranch).toBe(`${branchBase}-2`);
+    expect(gh).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves a distinct whitespace edit instead of using Git's whitespace-insensitive patch-id", async () => {
+    await writeFile(join(local, "project.pbxproj"), "setting = one space\n");
+    await prepareRepository(local, false, deps());
+    await writeFile(join(local, "project.pbxproj"), "setting  = one space\n");
+    const second = (await prepareRepository(local, false, deps())).rescue!;
+    expect(second.outcome === "rescued" && second.wipBranch).toBe(`${branchBase}-2`);
+    expect(await git(remote, "show", `refs/heads/${branchBase}-2:project.pbxproj`)).toBe("setting  = one space");
+  });
+
   it("keeps the edits on a local branch when the push fails, still resetting and fast-forwarding", async () => {
     await writeFile(join(local, "project.pbxproj"), "mine\n");
     const latest = await advance(1);

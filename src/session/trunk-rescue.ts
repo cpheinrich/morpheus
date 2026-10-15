@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { access, copyFile, rm } from "node:fs/promises";
 import { hostname as osHostname } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -246,6 +246,7 @@ export interface TrunkTarget {
 export type RescueResult =
   | { outcome: "clean"; dirt: TrunkDirt; orphans: string[] }
   | { outcome: "skipped"; reason: string; dirt: TrunkDirt; orphans: string[] }
+  | { outcome: "duplicate"; dirt: TrunkDirt; orphans: string[]; existingBranch: string; remote: string }
   | {
       outcome: "rescued";
       dirt: TrunkDirt;
@@ -315,6 +316,29 @@ async function takenBranches(root: string, remote: string, base: string): Promis
     else if (ref.startsWith(`refs/remotes/${remote}/`)) taken.add(ref.slice(`refs/remotes/${remote}/`.length));
   }
   return taken;
+}
+
+/** Exact patch bytes include old/new blob ids, modes and paths; Git's patch-id drops whitespace. */
+async function rescueDiffDigest(root: string, parent: string, commit: string): Promise<string> {
+  const diff = await git(root, ["diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv", "--no-renames", "--no-color", parent, commit, "--"]);
+  return createHash("sha256").update(diff).digest("hex");
+}
+
+/** Only a locally visible pushed WIP branch can stand in for a new rescue. */
+async function duplicateRescueBranch(root: string, remote: string, head: string, commit: string): Promise<string | null> {
+  const digest = await rescueDiffDigest(root, head, commit);
+  const refs = (await git(root, ["for-each-ref", "--format=%(refname:short)", "refs/heads/wip/trunk-*"])).split("\n").filter(Boolean);
+  for (const branch of refs) {
+    const local = `refs/heads/${branch}`;
+    const remoteRef = `refs/remotes/${remote}/${branch}`;
+    const localSha = (await git(root, ["rev-parse", local]).catch(() => "")).trim();
+    if (!localSha) continue;
+    const pushedSha = (await git(root, ["rev-parse", "-q", "--verify", remoteRef]).catch(() => "")).trim();
+    if (localSha !== pushedSha) continue;
+    const parent = (await git(root, ["rev-parse", "-q", "--verify", `${local}^`]).catch(() => "")).trim();
+    if (parent && await rescueDiffDigest(root, parent, localSha).catch(() => "") === digest) return branch;
+  }
+  return null;
 }
 
 /**
@@ -414,6 +438,16 @@ export async function rescueDirtyTrunk(root: string, target: TrunkTarget, deps: 
   if (!(await gitOk(root, ["diff", "--quiet", commit, "--"]))) {
     return skip("the working tree did not match the rescue commit; left untouched");
   }
+  // Dedupe is opportunistic: a malformed or oversized old branch must never
+  // stop the ordinary rescue path.
+  const duplicate = await duplicateRescueBranch(root, remote, head, commit).catch(() => null);
+  if (duplicate) {
+    if (!(await gitOk(root, ["diff", "--quiet", commit, "--"]))) {
+      return skip("the working tree changed while checking a prior rescue; nothing was reset");
+    }
+    await git(root, ["reset", "--hard", "--quiet", "HEAD"]);
+    return { outcome: "duplicate", dirt, orphans, existingBranch: duplicate, remote };
+  }
   try {
     // Empty old-value: create only, never move an existing branch.
     await git(root, ["update-ref", `refs/heads/${wipBranch}`, commit, ""]);
@@ -487,6 +521,9 @@ export function formatRescue(result: RescueResult, trunk: string): string[] {
     lines.push(`Moved ${n} uncommitted tracked file(s) from dirty trunk to ${where}; trunk reset to its last commit.`);
     if (!result.pushed) lines.push(`  ! Push failed (${result.pushError ?? "unknown"}). The edits are safe on local branch ${result.wipBranch}; push it with: git push ${result.remote} ${result.wipBranch}`);
     else if (!result.prUrl) lines.push(`  ! Pushed ${result.wipBranch}, but the draft PR was not opened (${result.prError ?? "unknown"}). Open it with: gh pr create --draft --head ${result.wipBranch}`);
+  } else if (result.outcome === "duplicate") {
+    lines.push(`Same tracked edits were already rescued on pushed branch ${result.existingBranch}; trunk reset without another draft PR.`);
+    lines.push("  ! Repeated generator edits: commit the form the tool writes, or stop opening this trunk checkout in that tool.");
   } else if (result.outcome === "skipped") {
     lines.push(`!!! TRUNK CHECKOUT IS DIRTY AND WAS NOT RESCUED: ${result.reason}.`);
     lines.push(`    ${result.dirt.tracked.length} tracked edit(s) block fast-forwarding ${trunk}:`);
