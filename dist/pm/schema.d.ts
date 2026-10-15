@@ -132,11 +132,11 @@ export declare const Request: z.ZodObject<{
         founder: "founder";
     }>;
     status: z.ZodEnum<{
+        duplicate: "duplicate";
         new: "new";
         triaged: "triaged";
         accepted: "accepted";
         declined: "declined";
-        duplicate: "duplicate";
     }>;
     roadmap: z.ZodOptional<z.ZodString>;
     created: z.ZodPreprocess<z.ZodISODate>;
@@ -232,11 +232,11 @@ export declare const ARTIFACTS: {
                 founder: "founder";
             }>;
             status: z.ZodEnum<{
+                duplicate: "duplicate";
                 new: "new";
                 triaged: "triaged";
                 accepted: "accepted";
                 declined: "declined";
-                duplicate: "duplicate";
             }>;
             roadmap: z.ZodOptional<z.ZodString>;
             created: z.ZodPreprocess<z.ZodISODate>;

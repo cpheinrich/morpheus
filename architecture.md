@@ -956,6 +956,12 @@ exchange `FETCH_HEAD`. A local trunk behind that exact commit fast-forwards; fea
 divergent trunks remain intact and report missing commits. Tracked edits on the trunk branch are
 first committed to a pushed `wip/trunk-*` draft PR and the trunk reset only once that commit is
 proven to hold them — a dirty trunk otherwise never advances, and one did not for three weeks.
+When an exact old/new blob, path and mode diff has a live pushed `wip/trunk-*`
+branch and an open PR, the checkout resets after the same content proof without
+creating another draft PR. Live remote and PR checks run before the proof/reset window;
+cached tracking refs alone do not count. The brief names the earlier PR and likely generator
+loop. A failed comparison or lookup falls back to the ordinary rescue, so a branch with a
+failed push, failed PR creation or closed PR never suppresses a new attempt.
 Untracked files are never committed; `doctor --all` reports stuck trunk checkouts fleet-wide. Offline or fetch
 failure is explicitly unverified, never a successful current-source report. A receipt is refused
 when the checkout does not contain the observed trunk. Checks repeat local source containment

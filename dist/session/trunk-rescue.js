@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { access, copyFile, rm } from "node:fs/promises";
 import { hostname as osHostname } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -256,6 +256,58 @@ async function takenBranches(root, remote, base) {
     }
     return taken;
 }
+/** Exact patch bytes include old/new blob ids, modes and paths; Git's patch-id drops whitespace. */
+async function rescueDiffDigest(root, parent, commit) {
+    const diff = await git(root, ["diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv", "--no-renames", "--no-color", parent, commit, "--"]);
+    return createHash("sha256").update(diff).digest("hex");
+}
+async function pullRequestTarget(root, target, remote, branch) {
+    const trunkRemote = target.trunk.endsWith(`/${target.branch}`) ? target.trunk.slice(0, -target.branch.length - 1) : remote;
+    const fork = await git(root, ["remote", "get-url", remote]).then(githubRepo, () => null);
+    const headOwner = fork?.split("/")[0];
+    if (trunkRemote === remote)
+        return { repoArgs: [], prHead: branch, ...(headOwner ? { headOwner } : {}) };
+    const base = await git(root, ["remote", "get-url", trunkRemote]).then(githubRepo, () => null);
+    return base && fork
+        ? { repoArgs: ["--repo", base], prHead: `${headOwner}:${branch}`, headOwner }
+        : { repoArgs: [], prHead: branch, ...(headOwner ? { headOwner } : {}) };
+}
+/** A live pushed branch and an existing PR must both stand behind a duplicate. */
+async function duplicateRescueBranch(root, target, remote, head, commit, runner) {
+    const digest = await rescueDiffDigest(root, head, commit);
+    const refs = (await git(root, ["for-each-ref", "--format=%(refname:short)", "refs/heads/wip/trunk-*"])).split("\n").filter(Boolean);
+    if (!refs.length)
+        return null;
+    // This network lookup precedes the content proof/reset window. Cached
+    // remote-tracking refs survive remote branch deletion and cannot authorize
+    // discarding another rescue attempt.
+    const pushUrl = (await git(root, ["remote", "get-url", "--push", remote])).trim();
+    const live = new Map((await git(root, ["ls-remote", "--heads", pushUrl, "refs/heads/wip/trunk-*"]))
+        .split("\n").filter(Boolean).map((line) => {
+        const [sha, ref] = line.split("\t");
+        return [ref?.slice("refs/heads/".length), sha];
+    }));
+    for (const branch of refs) {
+        const local = `refs/heads/${branch}`;
+        const localSha = (await git(root, ["rev-parse", local]).catch(() => "")).trim();
+        if (!localSha || live.get(branch) !== localSha)
+            continue;
+        const parent = (await git(root, ["rev-parse", "-q", "--verify", `${local}^`]).catch(() => "")).trim();
+        if (!parent || await rescueDiffDigest(root, parent, localSha).catch(() => "") !== digest)
+            continue;
+        const { repoArgs, headOwner } = await pullRequestTarget(root, target, remote, branch);
+        // Unlike `pr create`, `pr list --head` rejects owner:branch. Filter
+        // the owner from the returned JSON after selecting the plain branch.
+        const listed = await runner("gh", ["pr", "list", ...repoArgs, "--state", "open", "--head", branch, "--json", "url,headRefName,headRepositoryOwner", "--limit", "100"], root);
+        if (listed.code !== 0)
+            continue;
+        const prs = JSON.parse(listed.stdout);
+        const found = prs.find((pr) => pr.headRefName === branch && (!headOwner || pr.headRepositoryOwner?.login === headOwner) && /^https:\/\/github\.com\//.test(pr.url ?? ""));
+        if (found?.url)
+            return { branch, prUrl: found.url };
+    }
+    return null;
+}
 /**
  * Paths whose staged content differs from both HEAD and the working tree
  * (`MM`, `AM`, `AD`, `RM`…). Committing the working tree would drop the
@@ -320,6 +372,7 @@ export async function rescueDirtyTrunk(root, target, deps = {}) {
     const host = shortHost(deps.hostname ?? osHostname());
     const date = pacificDate(now);
     const remote = deps.pushRemote ?? "origin";
+    const runner = deps.runner ?? runCommand;
     const head = (await git(root, ["rev-parse", "HEAD"])).trim();
     const lag = await measureLag(root, target.sha).catch(() => ({ behind: 0, oldest: null }));
     const ahead = Number((await git(root, ["rev-list", "--count", `${target.sha}..HEAD`]).catch(() => "0")).trim()) || 0;
@@ -350,11 +403,23 @@ export async function rescueDirtyTrunk(root, target, deps = {}) {
     finally {
         await rm(tempIndex, { force: true });
     }
+    // Lookup runs before the proof/reset window; it never places a network call
+    // between a successful proof and the destructive reset.
+    const duplicate = await duplicateRescueBranch(root, target, remote, head, commit, runner).catch(() => null);
     // The proof that makes the reset safe: every tracked path's working-tree
     // content equals the rescue commit. Anything else — a filter, a submodule,
     // a write racing this — stops here with nothing changed.
     if (!(await gitOk(root, ["diff", "--quiet", commit, "--"]))) {
         return skip("the working tree did not match the rescue commit; left untouched");
+    }
+    // Dedupe is opportunistic: a malformed or oversized old branch must never
+    // stop the ordinary rescue path.
+    if (duplicate) {
+        if (!(await gitOk(root, ["diff", "--quiet", commit, "--"]))) {
+            return skip("the working tree changed while checking a prior rescue; nothing was reset");
+        }
+        await git(root, ["reset", "--hard", "--quiet", "HEAD"]);
+        return { outcome: "duplicate", dirt, orphans, existingBranch: duplicate.branch, prUrl: duplicate.prUrl };
     }
     try {
         // Empty old-value: create only, never move an existing branch.
@@ -382,25 +447,12 @@ export async function rescueDirtyTrunk(root, target, deps = {}) {
     let prUrl;
     let prError;
     if (pushed) {
-        const runner = deps.runner ?? runCommand;
         const body = rescuePrBody({ root, host, date, trunk: target.trunk, lag, ahead, diffstat, tracked: dirt.tracked, untracked: dirt.untracked, orphans, now });
         const repoName = root.split(/[\\/]/).filter(Boolean).pop() ?? "repository";
         // On a fork the trunk remote (upstream) is not the push remote (origin):
         // name the base repository and qualify the head with the fork's owner, or
         // gh looks for the branch where it was never pushed.
-        const trunkRemote = target.trunk.endsWith(`/${target.branch}`) ? target.trunk.slice(0, -target.branch.length - 1) : remote;
-        let repoArgs = [];
-        let prHead = wipBranch;
-        if (trunkRemote !== remote) {
-            const [base, fork] = await Promise.all([
-                git(root, ["remote", "get-url", trunkRemote]).then(githubRepo, () => null),
-                git(root, ["remote", "get-url", remote]).then(githubRepo, () => null),
-            ]);
-            if (base && fork) {
-                repoArgs = ["--repo", base];
-                prHead = `${fork.split("/")[0]}:${wipBranch}`;
-            }
-        }
+        const { repoArgs, prHead } = await pullRequestTarget(root, target, remote, wipBranch);
         const created = await runner("gh", [
             "pr", "create", "--draft", ...repoArgs, "--base", target.branch, "--head", prHead,
             "--title", `WIP: uncommitted changes rescued from ${repoName} ${target.branch} (${date})`,
@@ -433,6 +485,10 @@ export function formatRescue(result, trunk) {
             lines.push(`  ! Push failed (${result.pushError ?? "unknown"}). The edits are safe on local branch ${result.wipBranch}; push it with: git push ${result.remote} ${result.wipBranch}`);
         else if (!result.prUrl)
             lines.push(`  ! Pushed ${result.wipBranch}, but the draft PR was not opened (${result.prError ?? "unknown"}). Open it with: gh pr create --draft --head ${result.wipBranch}`);
+    }
+    else if (result.outcome === "duplicate") {
+        lines.push(`Same tracked edits were already rescued in open PR ${result.prUrl} (${result.existingBranch}); trunk reset without another PR.`);
+        lines.push("  ! Repeated generator edits: commit the form the tool writes, or stop opening this trunk checkout in that tool.");
     }
     else if (result.outcome === "skipped") {
         lines.push(`!!! TRUNK CHECKOUT IS DIRTY AND WAS NOT RESCUED: ${result.reason}.`);
