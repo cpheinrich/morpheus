@@ -102,7 +102,8 @@ on:
           from this run — for example a caller keeping an expensive
           XCTMeasureOptions performance test out of the per-PR job while a
           separate nightly caller runs the full scheme. Empty runs everything
-          the scheme or test plan already selects.
+          the scheme or test plan already selects. The input is retained in
+          skip-testing.txt beside the result bundle.
         type: string
         default: ""
       parallel-testing:
@@ -759,12 +760,14 @@ jobs:
         env:
           TEST_SELECTION: ${{ inputs.test-selection }}
           ONLY_TESTING: ${{ inputs.only-testing }}
+          SKIP_TESTING: ${{ inputs.skip-testing }}
           TEST_EVIDENCE_SCRIPT: ${{ inputs.test-evidence-script }}
         run: |
           set -euo pipefail
           git rev-parse HEAD > "$RESULTS/tested-sha.txt"
           printf '%s\n' "$TEST_SELECTION" > "$RESULTS/selection.json"
           printf '%s\n' "$ONLY_TESTING" > "$RESULTS/only-testing.txt"
+          printf '%s\n' "$SKIP_TESTING" > "$RESULTS/skip-testing.txt"
           result_bundle="$RESULTS/Tests.xcresult"
           if [ -d "$result_bundle" ]; then
             xcrun xcresulttool get test-results tests --path "$result_bundle" > "$RESULTS/tests.json"
