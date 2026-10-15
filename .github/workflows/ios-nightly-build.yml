@@ -104,6 +104,21 @@ on:
         description: Forwarded to ios-ci.yml; see its input of the same name.
         type: number
         default: 0
+      only-testing:
+        description: >
+          Forwarded to ios-ci.yml: newline-separated xcodebuild -only-testing identifiers
+          (TestTarget[/TestClass[/testMethod]]) that narrow the release's test stage. Empty,
+          the default, keeps the complete scheme. The caller decides what a release may narrow
+          and when; a caller that exposes this should keep it off its production path.
+        type: string
+        default: ""
+      skip-testing:
+        description: >
+          Forwarded to ios-ci.yml: newline-separated xcodebuild -skip-testing identifiers
+          left out of the release's test stage. Empty, the default, skips nothing. Same
+          caveat as only-testing.
+        type: string
+        default: ""
       test-evidence-script:
         description: Optional caller-repository result validator; full nightly selection is unchanged.
         type: string
@@ -364,6 +379,8 @@ jobs:
       maximum-parallel-testing-workers: ${{ inputs.parallel-testing && inputs.maximum-parallel-testing-workers || 0 }}
       optimize-test-build: ${{ inputs.optimize-test-build }}
       test-iterations: ${{ inputs.test-iterations }}
+      only-testing: ${{ inputs.only-testing }}
+      skip-testing: ${{ inputs.skip-testing }}
       firebase-emulators: ${{ inputs.firebase-emulators }}
       firebase-cli-version: ${{ inputs.firebase-cli-version }}
       firebase-config: ${{ inputs.firebase-config }}
