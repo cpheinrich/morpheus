@@ -52,6 +52,15 @@ cleared those two findings with these exact paths and checks; no further review
 turn was required. The local full suite already ran once; CI will run it on the
 final head.
 
+CI on PR #407 found that the current compiler regenerates three declaration
+files with a different enum member order. The earlier local build produced the
+same diff, which I had mistakenly treated as unrelated and restored. Commit
+`b725fd80a30179d7ae3056995da0e02c87f8cfca` commits exactly those
+declarations. In the third, late-correction turn, the same reviewer built to a
+fresh temporary directory and confirmed that each declaration matches the
+committed file byte for byte. The reviewer cleared that correction with no
+findings.
+
 The independent review found four substantive gaps across two turns. The first two were fixed and confirmed by the same reviewer. The reviewer conditionally cleared the last two after the targeted code, test, generated output, and documentation corrections, all within the listed paths, and the required checks passed. No finding remains open. Final-head CI is still the release check.
 
 ```morpheus-review
@@ -59,7 +68,7 @@ The independent review found four substantive gaps across two turns. The first t
   "version": 2,
   "base": "bbc790585807c15d5e0d43ef9fb756a85b9cb01f",
   "reviewed": "bb12937461158ceb1239126cfab2c7a8fbe3cf38",
-  "covered": "dbfe8fff8f455b46954c4b78511195ad095667ea",
+  "covered": "b725fd80a30179d7ae3056995da0e02c87f8cfca",
   "authorSession": "01a13e64-2d9b-7730-abce-2287983ca7aa",
   "reviewerSession": "/root/trunk_rescue_review",
   "risk": "high",
@@ -127,6 +136,19 @@ The independent review found four substantive gaps across two turns. The first t
         "evidence": "clock__curr_time: same-reviewer follow-up dispatched 2026-10-15 07:56:49 UTC; verdict was visible by 07:59:17 UTC when the next focused tests began. This is a conservative upper bound on that turn."
       },
       "summary": "TR-1 and TR-2 were fixed. The reviewer conditionally cleared TR-3 and TR-4 after the specified correction paths and evidence; those conditions were met in dbfe8fff8f455b46954c4b78511195ad095667ea."
+    },
+    {
+      "reviewerSession": "/root/trunk_rescue_review",
+      "commit": "b725fd80a30179d7ae3056995da0e02c87f8cfca",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.75,
+      "timing": {
+        "source": "clock",
+        "durationMs": 45000,
+        "evidence": "clock__curr_time: late-correction follow-up dispatched 2026-10-15 08:03:38 UTC; completion observed 08:04:23 UTC"
+      },
+      "scopeReason": "Late CI correction: commit three generated declarations whose enum member order changed during compile; CI rejected their omission.",
+      "summary": "The reviewer confirmed a fresh TypeScript build reproduces all three committed declarations byte for byte and cleared the late correction with no findings."
     }
   ]
 }
