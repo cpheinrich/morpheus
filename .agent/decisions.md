@@ -1320,9 +1320,9 @@ for two distinct overlay architectures and catches failures DOM-level tests miss
 
 Chris approved issue #248's human-requested override. An authenticated PR comment by a GitHub
 login in protected trunk's `review.humanOverrideApprovers` names the exact current head, the
-review limit, and why that risk is accepted; the `review-override` label selects that path. The worklog keeps the truthful
+measured budget overrun in an exact `budget-overrun` marker, and why that risk is accepted; the `review-override` label selects that path. The worklog keeps the truthful
 `incomplete` outcome, and the check reports a human exception rather than agent clearance.
-It relaxes the incomplete verdict and time limits only. Every turn still needs positive measured
+It relaxes the incomplete verdict and time limits only when a turn exceeded its measured ceiling. Every turn still needs positive measured
 timing, and a disputed substantive finding remains blocked. Reviewer identity, findings, tracked
 deferrals, ancestry, coverage, CI and branch protection remain checked. A PR cannot add its own
 approver because authority is read from the base branch. The list defaults to empty; Morpheus

@@ -6,7 +6,8 @@ Chris accepts its limits. Chris approved a documented human-requested override a
 GitHub marker.
 
 The implementation uses a `review-override` label and a comment authored by a configured human.
-The comment names the full current PR head and a specific reason. Approver authority comes from
+The comment names the full current PR head, the exact measured budget overrun and a specific
+reason for accepting it. Approver authority comes from
 protected trunk's committed `morpheus.json`, so a PR cannot add its own approver. The same base
 check prevents a PR setting `review.required=false` to waive itself. The reviewer record retains
 its incomplete verdict, measured duration, provenance, findings and code coverage. The exception
@@ -29,6 +30,13 @@ human could remove their comment after a green check; comment edit/delete events
 existing PR-head conventions job, which reads the current comments. F05: a generic comment could
 pass the length check; the comment now has separate review-limit and accepted-risk lines, and
 generic approvals are refused. Focused regression tests cover each case.
+
+The second review cleared F01–F04 but found that F05's first correction still accepted generic
+review-limit and accepted-risk prose. The override now requires a real measured budget overrun
+and the exact duration-versus-ceiling marker derived from the committed review record. A comment
+cannot invent or vaguely describe the exception. The accepted-risk line must include a concrete
+reason after `because`; focused tests cover an unchanged budget boundary and the first millisecond
+over it.
 
 The comment revocation workflow selects the existing metadata run by current PR head SHA and
 branch. GitHub's Actions run API returned an empty `pull_requests` array for older metadata runs,

@@ -50,8 +50,8 @@ waiving legacy delivery only and says so in the same line.
 
 ### Human override of an incomplete review
 
-An incomplete independent review may be merged only when a named human accepts that exact PR
-head. Configure `review.humanOverrideApprovers` in `morpheus.json` on the protected base branch
+An incomplete independent review with a measured budget overrun may be merged only when a named
+human accepts that exact PR head. Configure `review.humanOverrideApprovers` in `morpheus.json` on the protected base branch
 with GitHub logins of people allowed to make that decision. The list defaults to empty. A change
 to the list in the PR being approved has no effect on that PR. The PR cannot opt itself out by
 setting `review.required=false` either; the base branch must already have opted out.
@@ -59,11 +59,18 @@ setting `review.required=false` either; the base branch must already have opted 
 Keep the worklog's `outcome: "incomplete"`, positive measured timing for every turn (including
 historical version 1 records), findings and visible summary intact. Keep the PR body's visible
 `review-record:` line. The approving human posts an ordinary PR comment with these three visible
-lines, replacing the SHA and explaining the actual limit and decision:
+lines, replacing the SHA and explaining the decision:
 
     review-override: <full current PR head SHA>
-    review-limit: <what the reviewer could not complete or which time ceiling was exceeded>
-    accepted-risk: <why the human accepts that specific limit for this change>
+    review-limit: budget-overrun initial 1080000ms>900000ms
+    accepted-risk: I accept this overrun because <specific evidence and why it is sufficient>
+
+The example limit means the initial turn lasted 1,080,000 ms against a 900,000 ms ceiling.
+Use the exact `budget-overrun` value for the record: `initial` or `follow-up-N`, followed by
+the measured duration and applicable ceiling in milliseconds. If multiple turns exceed their
+ceilings, list each in turn order, separated by `, `. The checker derives this line from the
+committed record; a vague description or altered number does not match. The accepted-risk line
+must explain the decision with a concrete reason after `because`.
 
 After that comment exists, apply the `review-override` GitHub label. The label triggers the
 conventions check, which reads GitHub's authenticated comment author and the approver list from
@@ -74,8 +81,10 @@ The check reports the human, reason and comment URL as an override, never as a c
 Editing or deleting the comment reruns the PR-head conventions job, so a withdrawn or emptied
 approval cannot leave a green result on the same commit.
 
-This exception relaxes the final incomplete verdict, review time ceilings and the initial time
-floor. It does not accept `blocked`, self-review, an unresolved or disputed substantive finding, a missing
+This exception relaxes the final incomplete verdict, measured review time ceilings and the initial
+time floor only when at least one turn exceeded its ceiling. Other incomplete reviews remain open
+until the reviewer completes them or a human explicitly authorizes another same-reviewer turn.
+It does not accept `blocked`, self-review, an unresolved or disputed substantive finding, a missing
 review record, untracked deferrals, a different reviewer on follow-up, unreviewed code after
 coverage, or a stale base. CI and branch protection still apply. `morpheus review validate` checks
 the ordinary completion path; an incomplete record will fail there until GitHub can supply the

@@ -504,8 +504,20 @@ export function humanOverrideApprovers(config) {
     const parsed = z.object({ review: z.object({ humanOverrideApprovers: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/)).optional() }).passthrough().optional() }).passthrough().parse(config);
     return parsed.review?.humanOverrideApprovers ?? [];
 }
+/** The objective review limit a human can accept under this contract. */
+export function overrideBudgetLimit(record) {
+    const initialCeiling = REVIEW_BUDGET_MINUTES[record.risk] * (record.extensionReason ? 1.5 : 1);
+    const followUpCeiling = REVIEW_BUDGET_MINUTES[record.risk] / 2;
+    const exceeded = [record, ...followUpTurns(record)].flatMap((turn, index) => {
+        const ceilingMs = Math.round((index === 0 ? initialCeiling : followUpCeiling) * 60_000);
+        if (!turn.timing || turn.timing.durationMs <= ceilingMs)
+            return [];
+        return [`${index === 0 ? "initial" : `follow-up-${index}`} ${turn.timing.durationMs}ms>${ceilingMs}ms`];
+    });
+    return exceeded.length ? `budget-overrun ${exceeded.join(", ")}` : null;
+}
 /** A GitHub-authored comment names both the review limit and the human decision for one head. */
-export function humanOverrideForHead(comments, approvers, head) {
+export function humanOverrideForHead(comments, approvers, head, expectedLimit) {
     const allowed = new Set(approvers.map(login => login.toLowerCase()));
     for (const comment of [...comments].reverse()) {
         if (!allowed.has(comment.author.toLowerCase()))
@@ -518,11 +530,9 @@ export function humanOverrideForHead(comments, approvers, head) {
             continue;
         const limit = limits[0][1].trim();
         const decision = decisions[0][1].trim();
-        if (limit.length < 20 || decision.length < 20 || !isRealReason(limit) || !isRealReason(decision))
+        if (limit !== expectedLimit || decision.length < 40 || !isRealReason(decision))
             continue;
-        if (/^(?:this )?looks? good(?: to me)?(?:,? thanks)?[.!]?$/i.test(limit) || /^(?:the )?(?:review is incomplete|incomplete review)[.!]?$/i.test(limit))
-            continue;
-        if (/^(?:i )?(?:accept this incomplete review|approve this|looks? good(?: to me)?(?:,? thanks)?)\.?$/i.test(decision))
+        if (!/\bbecause\b/i.test(decision) || decision.split(/\bbecause\b/i)[1].trim().length < 20)
             continue;
         const reason = `review limit: ${limit}; accepted risk: ${decision}`;
         return { author: comment.author, reason, ...(comment.url ? { url: comment.url } : {}) };
@@ -539,13 +549,16 @@ export function checkLocalReview(opts) {
         if (opts.labels.includes("review-override")) {
             if (opts.labels.includes("agent-reviewed"))
                 throw new Error("review-override and agent-reviewed cannot both label the same PR");
-            // Authority comes from protected trunk, never from a proposed edit to this PR.
-            const approval = humanOverrideForHead(opts.overrideComments ?? [], humanOverrideApprovers(committedConfig(opts.root, opts.base)), opts.head);
-            if (!approval)
-                throw new Error(`review-override requires a visible PR comment from a configured humanOverrideApprovers principal with review-override: ${opts.head}, review-limit: <specific gap>, and accepted-risk: <specific decision>`);
             const record = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base, humanOverride: true });
             if (record.outcome !== "incomplete")
                 throw new Error("review-override applies only to an honestly recorded incomplete review");
+            const expectedLimit = overrideBudgetLimit(record);
+            if (!expectedLimit)
+                throw new Error("review-override currently requires a measured review budget overrun; this incomplete record has none");
+            // Authority comes from protected trunk, never from a proposed edit to this PR.
+            const approval = humanOverrideForHead(opts.overrideComments ?? [], humanOverrideApprovers(committedConfig(opts.root, opts.base)), opts.head, expectedLimit);
+            if (!approval)
+                throw new Error(`review-override requires a visible PR comment from a configured humanOverrideApprovers principal with review-override: ${opts.head}, review-limit: ${expectedLimit}, and accepted-risk: <why the overrun is acceptable because of concrete evidence>`);
             return [{ level: "waived", rule: "agent-review", message: `incomplete independent review explicitly overridden by @${approval.author}: ${approval.reason}${approval.url ? ` (${approval.url})` : ""}` }];
         }
         if (!opts.labels.includes("agent-reviewed"))

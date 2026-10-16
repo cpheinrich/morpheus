@@ -267,8 +267,10 @@ export interface HumanOverrideComment {
 }
 /** A committed allowlist makes the human authority explicit for each project. */
 export declare function humanOverrideApprovers(config: unknown): string[];
+/** The objective review limit a human can accept under this contract. */
+export declare function overrideBudgetLimit(record: LocalReviewRecord): string | null;
 /** A GitHub-authored comment names both the review limit and the human decision for one head. */
-export declare function humanOverrideForHead(comments: HumanOverrideComment[], approvers: string[], head: string): {
+export declare function humanOverrideForHead(comments: HumanOverrideComment[], approvers: string[], head: string, expectedLimit: string): {
     author: string;
     reason: string;
     url?: string;

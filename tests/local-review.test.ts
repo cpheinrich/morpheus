@@ -137,7 +137,7 @@ describe("independent review lifecycle", () => {
 });
 
 describe("human override of incomplete review", () => {
-  const limit = "The 18-minute initial review exceeded the 15-minute normal-risk ceiling.";
+  const limit = "budget-overrun initial 1080000ms>900000ms";
   const decision = "I accept that time overrun because the reviewer inspected the exact change and focused tests passed.";
   const timed = (): LocalReviewRecord => ({ ...record(), version: 2, outcome: "incomplete", elapsedMinutes: 18,
     timing: { source: "runner", durationMs: 18 * 60_000, evidence: "Runner measured this exact review turn." } });
@@ -155,6 +155,7 @@ describe("human override of incomplete review", () => {
     expect(override(head, "cpheinrich", "looks good")[0]?.message).toContain("configured humanOverrideApprovers");
     expect(override(head, "cpheinrich", "For the prior commit only.", reviewed)[0]?.message).toContain("configured humanOverrideApprovers");
     expect(override(head, "cpheinrich", decision, head, "This looks good to me, thanks.")[0]?.message).toContain("configured humanOverrideApprovers");
+    expect(override(head, "cpheinrich", "I accept this risk for this change.")[0]?.message).toContain("configured humanOverrideApprovers");
     expect(checkLocalReview({ root, body: `review-record: ${path}`, labels: ["review-override"], head, base,
       overrideComments: [{ author: "cpheinrich", body: `review-override: ${head} I accept this incomplete review.` }] })[0]?.message).toContain("review-limit:");
   });
@@ -164,6 +165,18 @@ describe("human override of incomplete review", () => {
     expect(override(save(zero))[0]?.message).toContain("positive measured timing");
     const legacy = { ...record(), outcome: "incomplete" as const, elapsedMinutes: 18 };
     expect(override(save(legacy))[0]?.message).toContain("positive measured timing");
+  });
+
+  it("requires an actual budget overrun and its exact measured boundary", () => {
+    const within = timed();
+    within.elapsedMinutes = 15;
+    within.timing = { source: "runner", durationMs: 900_000, evidence: "Measured by the runner." };
+    expect(override(save(within))[0]?.message).toContain("this incomplete record has none");
+    within.elapsedMinutes = 900_001 / 60_000;
+    within.timing.durationMs = 900_001;
+    const head = save(within);
+    expect(override(head)[0]?.message).toContain("review-limit: budget-overrun initial 900001ms>900000ms");
+    expect(override(head, "cpheinrich", decision, head, "budget-overrun initial 900001ms>900000ms")[0]?.level).toBe("waived");
   });
 
   it("does not settle a substantive dispute with an incomplete final follow-up", () => {
@@ -177,7 +190,7 @@ describe("human override of incomplete review", () => {
   it("refuses a label without a human comment and an author-granted approver", () => {
     writeFileSync(join(root, "morpheus.json"), '{"review":{"humanOverrideApprovers":["cpheinrich","agent"]}}');
     reviewed = commit();
-    const head = save({ ...record(), outcome: "incomplete" });
+    const head = save(timed());
     expect(checkLocalReview({ root, body: `review-record: ${path}`, labels: ["review-override"], head, base })[0]?.message).toContain("configured humanOverrideApprovers");
     expect(override(head, "agent")[0]?.message).toContain("configured humanOverrideApprovers");
   });
@@ -197,7 +210,7 @@ describe("human override of incomplete review", () => {
     const head = save(r);
     writeFileSync(join(root, "code.ts"), "unreviewed code");
     const newer = commit();
-    expect(override(newer, "cpheinrich", "I approved only the former head.", head)[0]?.message).toContain("configured humanOverrideApprovers");
+    expect(override(newer, "cpheinrich", "I approved only the former head.", head)[0]?.message).toContain("invalidate");
     expect(override(newer, "cpheinrich", "I accept the incomplete review for this exact head.")[0]?.message).toContain("invalidate");
     r.findings = [{ id: "F01", severity: "substantive", description: "Authorization check is missing", paths: ["code.ts"], disposition: "open", response: "The fix has not been implemented" }];
     expect(override(save(r))[0]?.message).toContain("unresolved finding");
