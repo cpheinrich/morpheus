@@ -68,7 +68,8 @@ lines, replacing the SHA and explaining the actual limit and decision:
 After that comment exists, apply the `review-override` GitHub label. The label triggers the
 conventions check, which reads GitHub's authenticated comment author and the approver list from
 protected trunk. `agent-reviewed` must be absent: the review did not finish. If the branch head
-changes, obtain a new comment naming the new head. Removing the label withdraws the override.
+changes, obtain a new comment naming the new head, then remove and reapply the label to trigger
+the new check. Removing the label withdraws the override.
 The check reports the human, reason and comment URL as an override, never as a completed review.
 Editing or deleting the comment reruns the PR-head conventions job, so a withdrawn or emptied
 approval cannot leave a green result on the same commit.
