@@ -75,6 +75,13 @@ describe("the GitHub Manager's review record", () => {
     expect(check(head, { labelActor: "morpheus-gh-manager" })[0]?.level).toBe("error");
   });
 
+  it("does not let a PR disable its own manager review", () => {
+    put("morpheus.json", '{"review":{"required":false}}');
+    const head = commit("attempted self opt-out");
+    expect(message(head, { labelActor: "author" })).toContain("must be applied by");
+    expect(check(save(record()))[0]?.message).toContain("cannot clear a change to policy");
+  });
+
   it("needs one visible record line naming a worklog", () => {
     const head = save(record());
     expect(message(head, { body: "## Test plan\nran it" })).toContain("manager-review-record:");
@@ -202,8 +209,11 @@ describe("the GitHub Manager's review record", () => {
   });
 
   it("is waived outright when the project opted out of review", () => {
+    git(root, ["checkout", "-q", "main"]);
     put("morpheus.json", JSON.stringify({ review: { required: false } }));
-    expect(check(commit("opt out"), { labelActor: "anyone" })).toEqual([{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }]);
+    base = commit("protected project opt out");
+    git(root, ["checkout", "-q", "-b", "opted-out-feature"]);
+    expect(check(commit("work on opted-out project"), { labelActor: "anyone" })).toEqual([{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }]);
   });
 });
 

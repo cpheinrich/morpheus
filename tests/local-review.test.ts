@@ -137,19 +137,41 @@ describe("independent review lifecycle", () => {
 });
 
 describe("human override of incomplete review", () => {
-  function override(head: string, author = "cpheinrich", reason = "I accept the measured review budget overrun for this exact commit.", markerHead = head) {
+  const limit = "The 18-minute initial review exceeded the 15-minute normal-risk ceiling.";
+  const decision = "I accept that time overrun because the reviewer inspected the exact change and focused tests passed.";
+  const timed = (): LocalReviewRecord => ({ ...record(), version: 2, outcome: "incomplete", elapsedMinutes: 18,
+    timing: { source: "runner", durationMs: 18 * 60_000, evidence: "Runner measured this exact review turn." } });
+  function override(head: string, author = "cpheinrich", reason = decision, markerHead = head, gap = limit) {
     return checkLocalReview({ root, body: `review-record: ${path}`, labels: ["review-override"], head, base,
-      overrideComments: [{ author, body: `review-override: ${markerHead} ${reason}`, url: "https://github.com/example/repo/pull/1#issuecomment-1" }] });
+      overrideComments: [{ author, body: `review-override: ${markerHead}\nreview-limit: ${gap}\naccepted-risk: ${reason}`, url: "https://github.com/example/repo/pull/1#issuecomment-1" }] });
   }
 
   it("accepts a measured overrun only with a configured human's comment for the exact head", () => {
-    const head = save({ ...record(), outcome: "incomplete", elapsedMinutes: 18 });
+    const head = save(timed());
     expect(check(head)[0]?.message).toContain("incomplete");
-    expect(override(head)).toEqual([{ level: "waived", rule: "agent-review", message: "incomplete independent review explicitly overridden by @cpheinrich: I accept the measured review budget overrun for this exact commit. (https://github.com/example/repo/pull/1#issuecomment-1)" }]);
+    expect(override(head)).toEqual([{ level: "waived", rule: "agent-review", message: `incomplete independent review explicitly overridden by @cpheinrich: review limit: ${limit}; accepted risk: ${decision} (https://github.com/example/repo/pull/1#issuecomment-1)` }]);
     expect(override(head, "other-human")[0]?.message).toContain("configured humanOverrideApprovers");
     expect(override(head, "cpheinrich", "yes")[0]?.message).toContain("configured humanOverrideApprovers");
     expect(override(head, "cpheinrich", "looks good")[0]?.message).toContain("configured humanOverrideApprovers");
     expect(override(head, "cpheinrich", "For the prior commit only.", reviewed)[0]?.message).toContain("configured humanOverrideApprovers");
+    expect(override(head, "cpheinrich", decision, head, "This looks good to me, thanks.")[0]?.message).toContain("configured humanOverrideApprovers");
+    expect(checkLocalReview({ root, body: `review-record: ${path}`, labels: ["review-override"], head, base,
+      overrideComments: [{ author: "cpheinrich", body: `review-override: ${head} I accept this incomplete review.` }] })[0]?.message).toContain("review-limit:");
+  });
+
+  it("requires positive measured timing on every overridden turn, even in version 1", () => {
+    const zero = timed(); zero.elapsedMinutes = 0; zero.timing = { source: "runner", durationMs: 0, evidence: "This is the template placeholder, not a measured run." };
+    expect(override(save(zero))[0]?.message).toContain("positive measured timing");
+    const legacy = { ...record(), outcome: "incomplete" as const, elapsedMinutes: 18 };
+    expect(override(save(legacy))[0]?.message).toContain("positive measured timing");
+  });
+
+  it("does not settle a substantive dispute with an incomplete final follow-up", () => {
+    const r = timed();
+    r.findings = [{ id: "F01", severity: "substantive", description: "Authorization guard might be bypassed", paths: ["code.ts"], disposition: "disputed", response: "Author disagreed but reviewer did not clear the concern." }];
+    r.followUp = { reviewerSession: r.reviewerSession, commit: reviewed, outcome: "incomplete", elapsedMinutes: 2,
+      timing: { source: "runner", durationMs: 120_000, evidence: "Runner measured the follow-up review turn." }, summary: "The reviewer did not settle the authorization dispute." };
+    expect(override(save(r))[0]?.message).toContain("disputed substantive finding");
   });
 
   it("refuses a label without a human comment and an author-granted approver", () => {
@@ -171,7 +193,7 @@ describe("human override of incomplete review", () => {
   });
 
   it("keeps coverage and substantive finding checks when a human overrides", () => {
-    const r = { ...record(), outcome: "incomplete" as const };
+    const r = timed();
     const head = save(r);
     writeFileSync(join(root, "code.ts"), "unreviewed code");
     const newer = commit();

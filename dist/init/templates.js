@@ -1654,6 +1654,8 @@ export const reviewMetadata = () => `name: Review metadata
 on:
   pull_request:
     types: [edited, labeled, unlabeled]
+  issue_comment:
+    types: [edited, deleted]
 
 jobs:
   pr:
@@ -1665,6 +1667,34 @@ jobs:
       contents: read
       pull-requests: read
     uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
+
+  override-comment:
+    # issue_comment runs on default branch; re-run the required PR-head check.
+    if: \${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.issue.labels.*.name, 'review-override') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Recheck the current approval comment on the PR head
+        env:
+          GH_TOKEN: \${{ github.token }}
+          REPOSITORY: \${{ github.repository }}
+          PR_NUMBER: \${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/override-pr.json"
+          HEAD="$(jq -r '.head.sha' "$RUNNER_TEMP/override-pr.json")"
+          BRANCH="$(jq -r '.head.ref' "$RUNNER_TEMP/override-pr.json")"
+          gh api "repos/$REPOSITORY/actions/workflows/review-metadata.yml/runs?event=pull_request&head_sha=$HEAD&per_page=100" > "$RUNNER_TEMP/override-runs.json"
+          RUN_ID="$(jq -r --arg branch "$BRANCH" '[.workflow_runs[] | select(.head_branch == $branch) | .id] | first // empty' "$RUNNER_TEMP/override-runs.json")"
+          if [ -z "$RUN_ID" ]; then echo "No PR review-metadata run exists for $HEAD" >&2; exit 1; fi
+          gh run watch "$RUN_ID" --repo "$REPOSITORY" --exit-status > /dev/null || true
+          gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/jobs?filter=latest&per_page=100" > "$RUNNER_TEMP/override-jobs.json"
+          JOB_ID="$(jq -r '[.jobs[] | select(.name == "pr / conventions") | .id] | first // empty' "$RUNNER_TEMP/override-jobs.json")"
+          if [ -z "$JOB_ID" ]; then echo "No PR conventions job exists for $HEAD" >&2; exit 1; fi
+          gh api -X POST "repos/$REPOSITORY/actions/jobs/$JOB_ID/rerun" > /dev/null
 `;
 /**
  * The comment-QA skill (MO-26-10-06-15.17.01). A pointer to `morpheus qa guide`, so the steps ship

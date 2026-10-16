@@ -260,6 +260,8 @@ export function validateReviewRecord(record, opts = {}) {
         throw new Error("finding IDs must be unique");
     if (record.findings.some(f => f.severity !== "incidental" && f.disposition === "open"))
         throw new Error("unresolved finding");
+    if (overridden && record.findings.some(f => f.severity === "substantive" && f.disposition === "disputed"))
+        throw new Error("human override cannot settle a disputed substantive finding without reviewer clearance");
     for (const f of record.findings) {
         if ((f.disposition === "deferred" || f.disposition === "open") && !f.roadmap)
             throw new Error(`finding ${f.id} is left ${f.disposition} without a roadmap item to track it`);
@@ -274,6 +276,8 @@ export function validateReviewRecord(record, opts = {}) {
     const unconditional = record.findings.some(f => f.severity === "substantive" && !(f.condition && f.disposition === "fixed" && f.conditionMet));
     const turns = followUpTurns(record);
     for (const turn of [record, ...turns]) {
+        if (overridden && (!turn.timing || turn.timing.durationMs === 0))
+            throw new Error("human override requires positive measured timing for every review turn, including historical version 1 records");
         if (!turn.timing && record.version === 2)
             throw new Error("version 2 requires measured timing for the initial review and every follow-up");
         if (turn.timing && Math.abs(turn.elapsedMinutes - turn.timing.durationMs / 60000) > 1e-9) {
@@ -500,18 +504,28 @@ export function humanOverrideApprovers(config) {
     const parsed = z.object({ review: z.object({ humanOverrideApprovers: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/)).optional() }).passthrough().optional() }).passthrough().parse(config);
     return parsed.review?.humanOverrideApprovers ?? [];
 }
-/** A GitHub-authored comment binds the human's reason to one exact PR head. */
+/** A GitHub-authored comment names both the review limit and the human decision for one head. */
 export function humanOverrideForHead(comments, approvers, head) {
     const allowed = new Set(approvers.map(login => login.toLowerCase()));
     for (const comment of [...comments].reverse()) {
         if (!allowed.has(comment.author.toLowerCase()))
             continue;
-        const lines = [...visibleProse(comment.body).matchAll(/^review-override:[ \t]*([a-f0-9]{40})[ \t]+([^\r\n]+)$/gm)];
-        if (lines.length !== 1 || lines[0][1] !== head)
+        const prose = visibleProse(comment.body);
+        const markers = [...prose.matchAll(/^review-override:[ \t]*([a-f0-9]{40})[ \t]*$/gm)];
+        const limits = [...prose.matchAll(/^review-limit:[ \t]*([^\r\n]+)$/gm)];
+        const decisions = [...prose.matchAll(/^accepted-risk:[ \t]*([^\r\n]+)$/gm)];
+        if (markers.length !== 1 || markers[0][1] !== head || limits.length !== 1 || decisions.length !== 1)
             continue;
-        const reason = lines[0][2].trim();
-        if (reason.length >= 20 && isRealReason(reason))
-            return { author: comment.author, reason, ...(comment.url ? { url: comment.url } : {}) };
+        const limit = limits[0][1].trim();
+        const decision = decisions[0][1].trim();
+        if (limit.length < 20 || decision.length < 20 || !isRealReason(limit) || !isRealReason(decision))
+            continue;
+        if (/^(?:this )?looks? good(?: to me)?(?:,? thanks)?[.!]?$/i.test(limit) || /^(?:the )?(?:review is incomplete|incomplete review)[.!]?$/i.test(limit))
+            continue;
+        if (/^(?:i )?(?:accept this incomplete review|approve this|looks? good(?: to me)?(?:,? thanks)?)\.?$/i.test(decision))
+            continue;
+        const reason = `review limit: ${limit}; accepted risk: ${decision}`;
+        return { author: comment.author, reason, ...(comment.url ? { url: comment.url } : {}) };
     }
     return null;
 }
@@ -528,7 +542,7 @@ export function checkLocalReview(opts) {
             // Authority comes from protected trunk, never from a proposed edit to this PR.
             const approval = humanOverrideForHead(opts.overrideComments ?? [], humanOverrideApprovers(committedConfig(opts.root, opts.base)), opts.head);
             if (!approval)
-                throw new Error(`review-override requires a visible PR comment from a configured humanOverrideApprovers principal: review-override: ${opts.head} <specific reason>`);
+                throw new Error(`review-override requires a visible PR comment from a configured humanOverrideApprovers principal with review-override: ${opts.head}, review-limit: <specific gap>, and accepted-risk: <specific decision>`);
             const record = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base, humanOverride: true });
             if (record.outcome !== "incomplete")
                 throw new Error("review-override applies only to an honestly recorded incomplete review");

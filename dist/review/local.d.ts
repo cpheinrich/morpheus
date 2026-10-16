@@ -267,7 +267,7 @@ export interface HumanOverrideComment {
 }
 /** A committed allowlist makes the human authority explicit for each project. */
 export declare function humanOverrideApprovers(config: unknown): string[];
-/** A GitHub-authored comment binds the human's reason to one exact PR head. */
+/** A GitHub-authored comment names both the review limit and the human decision for one head. */
 export declare function humanOverrideForHead(comments: HumanOverrideComment[], approvers: string[], head: string): {
     author: string;
     reason: string;

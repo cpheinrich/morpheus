@@ -56,20 +56,25 @@ with GitHub logins of people allowed to make that decision. The list defaults to
 to the list in the PR being approved has no effect on that PR. The PR cannot opt itself out by
 setting `review.required=false` either; the base branch must already have opted out.
 
-Keep the worklog's `outcome: "incomplete"`, measured timing, findings and visible summary intact.
-Keep the PR body's visible `review-record:` line. The approving human posts an ordinary PR comment
-with one visible line in this exact form, replacing the SHA and reason:
+Keep the worklog's `outcome: "incomplete"`, positive measured timing for every turn (including
+historical version 1 records), findings and visible summary intact. Keep the PR body's visible
+`review-record:` line. The approving human posts an ordinary PR comment with these three visible
+lines, replacing the SHA and explaining the actual limit and decision:
 
-    review-override: <full current PR head SHA> <specific reason for accepting the incomplete review>
+    review-override: <full current PR head SHA>
+    review-limit: <what the reviewer could not complete or which time ceiling was exceeded>
+    accepted-risk: <why the human accepts that specific limit for this change>
 
 After that comment exists, apply the `review-override` GitHub label. The label triggers the
 conventions check, which reads GitHub's authenticated comment author and the approver list from
 protected trunk. `agent-reviewed` must be absent: the review did not finish. If the branch head
 changes, obtain a new comment naming the new head. Removing the label withdraws the override.
 The check reports the human, reason and comment URL as an override, never as a completed review.
+Editing or deleting the comment reruns the PR-head conventions job, so a withdrawn or emptied
+approval cannot leave a green result on the same commit.
 
 This exception relaxes the final incomplete verdict, review time ceilings and the initial time
-floor. It does not accept `blocked`, self-review, an unresolved substantive finding, a missing
+floor. It does not accept `blocked`, self-review, an unresolved or disputed substantive finding, a missing
 review record, untracked deferrals, a different reviewer on follow-up, unreviewed code after
 coverage, or a stale base. CI and branch protection still apply. `morpheus review validate` checks
 the ordinary completion path; an incomplete record will fail there until GitHub can supply the
@@ -404,6 +409,10 @@ calling `pr-check.yml` under the same `pr` job name. The scaffold writes
 `.github/workflows/review-metadata.yml`; re-running `morpheus init` adds it without overwriting
 existing files. Do not add skipped build/test jobs there: skipped statuses can satisfy required
 checks and must not replace a still-running build. The ordinary CI retains its normal triggers.
+Existing projects using human overrides must also update that metadata workflow to handle
+`issue_comment` edits and deletions with `actions: write`, rerunning the existing PR-head
+conventions job. GitHub runs comment events against the default branch, so a check on the comment
+event itself would not replace the required PR-head result.
 For an unreviewed draft to wait rather than fail, each caller's `pr` job also needs
 `if: ${{ <PR_CHECK_CALLER_IF> }}`, the expression exported from `src/init/templates.ts`, and must
 trigger on `ready_for_review`. This is a caller edit, so `@main` does not deliver it; a caller

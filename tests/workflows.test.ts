@@ -2686,8 +2686,23 @@ describe("local review metadata", () => {
   it("reruns only conventions without replacing build/test statuses", async () => {
     const wf = await read("review-metadata.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses: string }> };
     expect(wf.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
-    expect(Object.keys(wf.jobs)).toEqual(["pr"]);
+    expect(Object.keys(wf.jobs)).toEqual(["pr", "override-comment"]);
     expect(wf.jobs.pr?.uses).toContain("pr-check.yml");
+  });
+  it("rechecks a PR head when an override comment is edited or deleted", async () => {
+    type Metadata = { on: { issue_comment: { types: string[] } }; jobs: { "override-comment": { if: string; permissions: { actions: string }; steps: { run: string }[] } } };
+    for (const wf of [await read("review-metadata.yml") as Metadata, load(reviewMetadata()) as Metadata]) {
+      expect(wf.on.issue_comment.types).toEqual(["edited", "deleted"]);
+      const job = wf.jobs["override-comment"];
+      expect(job.if).toContain("github.event.issue.pull_request");
+      expect(job.if).toContain("review-override");
+      expect(job.permissions.actions).toBe("write");
+      const script = job.steps[0]!.run;
+      expect(script).toContain("head_sha=$HEAD");
+      expect(script).toContain(".head_branch == $branch");
+      expect(script).toContain('.name == "pr / conventions"');
+      expect(script).toContain("actions/jobs/$JOB_ID/rerun");
+    }
   });
   it("puts the draft skip on every pr-check caller job, never inside the reusable workflow", async () => {
     const want = `\${{ ${PR_CHECK_CALLER_IF} }}`;

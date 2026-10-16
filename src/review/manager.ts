@@ -107,7 +107,7 @@ export function usesManagerReview(labels: string[]): boolean {
 export function checkManagerReview(opts: ManagerReviewInput): Finding[] {
   try {
     const config = committedConfig(opts.root, opts.head);
-    if (!reviewRequired(config)) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
+    if (!reviewRequired(config) && !reviewRequired(committedConfig(opts.root, opts.base))) return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
     // An unreadable actor is not the App. Refusing here is what stops an author
     // applying the label to their own record.
     if (opts.labelActor !== GH_MANAGER_LOGIN) {

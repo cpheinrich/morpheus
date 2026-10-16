@@ -1571,10 +1571,13 @@ version 1 records stay compatible. Provider evidence remains a human-auditable a
 responses and any original-reviewer follow-up. The PR links it with `review-record:` and carries
 `agent-reviewed` only on completion. `check pr` validates those facts, unresolved findings, budgets,
 ancestry and coverage; `review validate` runs the same record check locally before a push. The
-separate `review-override` label requires a visible comment naming the exact head and reason from
+separate `review-override` label requires a visible comment naming the exact head, review limit,
+and reason for accepting that risk from
 a GitHub login listed in protected trunk's `review.humanOverrideApprovers`. It accepts only an
 incomplete verdict, retains independent-review provenance and coverage checks, and reports the
-human exception rather than completion. A PR cannot grant its own approver authority. The
+human exception rather than completion. Every overridden turn needs positive measured timing;
+unresolved substantive disputes remain blocked. A PR cannot grant its own approver authority or
+disable its own review. Comment edits and deletions rerun the existing PR-head conventions job. The
 caller skips an unlabelled draft, leaving the required check unreported, which blocks merge without
 reporting a failure; the check itself never passes a PR without the label. A follow-up that inspected a trunk integration records its new base and
 scope reason with the original base/reviewed SHA retained. Only the named worklog may change after
