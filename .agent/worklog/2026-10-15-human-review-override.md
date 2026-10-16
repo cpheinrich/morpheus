@@ -48,11 +48,7 @@ After the correction, `pnpm exec vitest run tests/local-review.test.ts` passed 1
 `pnpm typecheck` and `pnpm compile` passed. The local full-suite allowance was already spent;
 CI will run the complete suite on the corrected commit.
 
-The independent high-risk reviewer initially blocked five substantive gaps: disputed findings,
-missing timing, branch-local review opt-out, comment revocation, and vague human reasons. The
-author corrected them across two commits. The same reviewer cleared F01–F04 in the second turn,
-then verified the exact measured budget marker and boundary in the third turn, clearing F05 and
-the final diff. No substantive finding remains open. Final-head CI remains the release check.
+The independent high-risk reviewer initially blocked five substantive gaps: disputed findings, missing timing, branch-local review opt-out, comment revocation, and vague human reasons. The author corrected them across two commits. The same reviewer cleared F01–F04 in the second turn, then verified the exact measured budget marker and boundary in the third turn, clearing F05 and the final diff. No substantive finding remains open. Final-head CI remains the release check.
 
 ```morpheus-review
 {
