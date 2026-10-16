@@ -48,6 +48,13 @@ After the correction, `pnpm exec vitest run tests/local-review.test.ts` passed 1
 `pnpm typecheck` and `pnpm compile` passed. The local full-suite allowance was already spent;
 CI will run the complete suite on the corrected commit.
 
+Final-head CI later found one stale scaffold test: it expected the metadata workflow to contain
+only the original `pr` job, while the comment-revocation fix intentionally added
+`override-comment`. The other 2,208 tests passed. I corrected the expectation to assert both
+jobs, the comment events and the new job's permissions; focused `tests/init.test.ts` passed 74/74.
+The source implementation did not change. This correction occurred after the third review turn,
+so it needs an explicitly authorized same-reviewer turn before the PR can be merged.
+
 The independent high-risk reviewer initially blocked five substantive gaps: disputed findings, missing timing, branch-local review opt-out, comment revocation, and vague human reasons. The author corrected them across two commits. The same reviewer cleared F01–F04 in the second turn, then verified the exact measured budget marker and boundary in the third turn, clearing F05 and the final diff. No substantive finding remains open. Final-head CI remains the release check.
 
 ```morpheus-review

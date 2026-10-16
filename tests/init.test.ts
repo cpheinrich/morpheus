@@ -88,9 +88,11 @@ describe("morpheus init", () => {
   it("scaffolds default-on local review and a conventions-only metadata workflow", async () => {
     await scaffold(dir, SEED);
     expect(JSON.parse(await read("morpheus.json")).review.required).toBe(true);
-    const workflow = load(await read(".github/workflows/review-metadata.yml")) as { on: { pull_request: { types: string[] } }; jobs: Record<string, unknown> };
+    const workflow = load(await read(".github/workflows/review-metadata.yml")) as { on: { pull_request: { types: string[] }; issue_comment: { types: string[] } }; jobs: Record<string, unknown> };
     expect(workflow.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
-    expect(Object.keys(workflow.jobs)).toEqual(["pr"]);
+    expect(workflow.on.issue_comment.types).toEqual(["edited", "deleted"]);
+    expect(Object.keys(workflow.jobs)).toEqual(["pr", "override-comment"]);
+    expect((workflow.jobs["override-comment"] as { permissions: unknown }).permissions).toEqual({ actions: "write", "pull-requests": "read" });
     // The check reads the live pull request through the job token. A repository
     // whose default token is contents/packages read only answers that with 403
     // unless the caller grants pull-requests: read, and a called workflow can
