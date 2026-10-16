@@ -42,7 +42,7 @@ beforeEach(() => {
   execFileSync("git", ["init", "-q", root]);
   git(root, ["config", "user.name", "Test"]); git(root, ["config", "user.email", "test@example.com"]);
   mkdirSync(join(root, ".agent/worklog"), { recursive: true });
-  writeFileSync(join(root, "morpheus.json"), '{}');
+  writeFileSync(join(root, "morpheus.json"), '{"review":{"humanOverrideApprovers":["cpheinrich"]}}');
   writeFileSync(join(root, "code.ts"), 'export const answer = 1;'); base = commit();
   writeFileSync(join(root, "code.ts"), 'export const answer = 2;'); reviewed = commit();
 });
@@ -120,14 +120,100 @@ describe("independent review lifecycle", () => {
   });
   it("reports explicit project opt-out as waived, not reviewed", () => {
     writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
+    base = commit();
     const head = commit();
     expect(check(head, "", [])[0]?.level).toBe("waived");
     expect(authorRecordProblem(root, "", head, base)).toContain("no author record was validated");
+  });
+  it("does not let a PR opt itself out of review", () => {
+    writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
+    expect(check(commit(), "", [])[0]?.message).toBe(MISSING_LABEL);
   });
   it("wires missing evidence into PR conventions while preserving records-only work", async () => {
     const ctx = { body: "## Test plan\nRan tests", branch: "inbox-2026-09-10", changedFiles: ["code.ts"], productDir: join(root, "hq/product") };
     expect((await checkPr(ctx)).some(f => f.rule === "agent-review" && f.level === "error")).toBe(true);
     expect((await checkPr({ ...ctx, changedFiles: [path] })).some(f => f.rule === "agent-review")).toBe(false);
+  });
+});
+
+describe("human override of incomplete review", () => {
+  const limit = "budget-overrun initial 1080000ms>900000ms";
+  const decision = "I accept that time overrun because the reviewer inspected the exact change and focused tests passed.";
+  const timed = (): LocalReviewRecord => ({ ...record(), version: 2, outcome: "incomplete", elapsedMinutes: 18,
+    timing: { source: "runner", durationMs: 18 * 60_000, evidence: "Runner measured this exact review turn." } });
+  function override(head: string, author = "cpheinrich", reason = decision, markerHead = head, gap = limit) {
+    return checkLocalReview({ root, body: `review-record: ${path}`, labels: ["review-override"], head, base,
+      overrideComments: [{ author, body: `review-override: ${markerHead}\nreview-limit: ${gap}\naccepted-risk: ${reason}`, url: "https://github.com/example/repo/pull/1#issuecomment-1" }] });
+  }
+
+  it("accepts a measured overrun only with a configured human's comment for the exact head", () => {
+    const head = save(timed());
+    expect(check(head)[0]?.message).toContain("incomplete");
+    expect(override(head)).toEqual([{ level: "waived", rule: "agent-review", message: `incomplete independent review explicitly overridden by @cpheinrich: review limit: ${limit}; accepted risk: ${decision} (https://github.com/example/repo/pull/1#issuecomment-1)` }]);
+    expect(override(head, "other-human")[0]?.message).toContain("configured humanOverrideApprovers");
+    expect(override(head, "cpheinrich", "yes")[0]?.message).toContain("configured humanOverrideApprovers");
+    expect(override(head, "cpheinrich", "looks good")[0]?.message).toContain("configured humanOverrideApprovers");
+    expect(override(head, "cpheinrich", "For the prior commit only.", reviewed)[0]?.message).toContain("configured humanOverrideApprovers");
+    expect(override(head, "cpheinrich", decision, head, "This looks good to me, thanks.")[0]?.message).toContain("configured humanOverrideApprovers");
+    expect(override(head, "cpheinrich", "I accept this risk for this change.")[0]?.message).toContain("configured humanOverrideApprovers");
+    expect(checkLocalReview({ root, body: `review-record: ${path}`, labels: ["review-override"], head, base,
+      overrideComments: [{ author: "cpheinrich", body: `review-override: ${head} I accept this incomplete review.` }] })[0]?.message).toContain("review-limit:");
+  });
+
+  it("requires positive measured timing on every overridden turn, even in version 1", () => {
+    const zero = timed(); zero.elapsedMinutes = 0; zero.timing = { source: "runner", durationMs: 0, evidence: "This is the template placeholder, not a measured run." };
+    expect(override(save(zero))[0]?.message).toContain("positive measured timing");
+    const legacy = { ...record(), outcome: "incomplete" as const, elapsedMinutes: 18 };
+    expect(override(save(legacy))[0]?.message).toContain("positive measured timing");
+  });
+
+  it("requires an actual budget overrun and its exact measured boundary", () => {
+    const within = timed();
+    within.elapsedMinutes = 15;
+    within.timing = { source: "runner", durationMs: 900_000, evidence: "Measured by the runner." };
+    expect(override(save(within))[0]?.message).toContain("this incomplete record has none");
+    within.elapsedMinutes = 900_001 / 60_000;
+    within.timing.durationMs = 900_001;
+    const head = save(within);
+    expect(override(head)[0]?.message).toContain("review-limit: budget-overrun initial 900001ms>900000ms");
+    expect(override(head, "cpheinrich", decision, head, "budget-overrun initial 900001ms>900000ms")[0]?.level).toBe("waived");
+  });
+
+  it("does not settle a substantive dispute with an incomplete final follow-up", () => {
+    const r = timed();
+    r.findings = [{ id: "F01", severity: "substantive", description: "Authorization guard might be bypassed", paths: ["code.ts"], disposition: "disputed", response: "Author disagreed but reviewer did not clear the concern." }];
+    r.followUp = { reviewerSession: r.reviewerSession, commit: reviewed, outcome: "incomplete", elapsedMinutes: 2,
+      timing: { source: "runner", durationMs: 120_000, evidence: "Runner measured the follow-up review turn." }, summary: "The reviewer did not settle the authorization dispute." };
+    expect(override(save(r))[0]?.message).toContain("disputed substantive finding");
+  });
+
+  it("refuses a label without a human comment and an author-granted approver", () => {
+    writeFileSync(join(root, "morpheus.json"), '{"review":{"humanOverrideApprovers":["cpheinrich","agent"]}}');
+    reviewed = commit();
+    const head = save(timed());
+    expect(checkLocalReview({ root, body: `review-record: ${path}`, labels: ["review-override"], head, base })[0]?.message).toContain("configured humanOverrideApprovers");
+    expect(override(head, "agent")[0]?.message).toContain("configured humanOverrideApprovers");
+  });
+
+  it("does not turn a blocked or complete review into an override", () => {
+    expect(override(save({ ...record(), outcome: "blocked" }))[0]?.message).toContain("blocked");
+    expect(override(save(record()))[0]?.message).toContain("only to an honestly recorded incomplete review");
+  });
+
+  it("refuses a PR marked both complete and overridden", () => {
+    const head = save({ ...record(), outcome: "incomplete" });
+    expect(checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed", "review-override"], head, base })[0]?.message).toContain("cannot both");
+  });
+
+  it("keeps coverage and substantive finding checks when a human overrides", () => {
+    const r = timed();
+    const head = save(r);
+    writeFileSync(join(root, "code.ts"), "unreviewed code");
+    const newer = commit();
+    expect(override(newer, "cpheinrich", "I approved only the former head.", head)[0]?.message).toContain("invalidate");
+    expect(override(newer, "cpheinrich", "I accept the incomplete review for this exact head.")[0]?.message).toContain("invalidate");
+    r.findings = [{ id: "F01", severity: "substantive", description: "Authorization check is missing", paths: ["code.ts"], disposition: "open", response: "The fix has not been implemented" }];
+    expect(override(save(r))[0]?.message).toContain("unresolved finding");
   });
 });
 

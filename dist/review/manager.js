@@ -86,7 +86,7 @@ export function usesManagerReview(labels) {
 export function checkManagerReview(opts) {
     try {
         const config = committedConfig(opts.root, opts.head);
-        if (!reviewRequired(config))
+        if (!reviewRequired(config) && !reviewRequired(committedConfig(opts.root, opts.base)))
             return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
         // An unreadable actor is not the App. Refusing here is what stops an author
         // applying the label to their own record.

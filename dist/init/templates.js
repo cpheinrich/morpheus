@@ -1131,7 +1131,8 @@ shape, and CI runs it too.
  */
 export const PR_CHECK_CALLER_IF = "github.event_name != 'pull_request' || !github.event.pull_request.draft || " +
     "contains(github.event.pull_request.labels.*.name, 'agent-reviewed') || " +
-    "contains(github.event.pull_request.labels.*.name, 'manager-reviewed')";
+    "contains(github.event.pull_request.labels.*.name, 'manager-reviewed') || " +
+    "contains(github.event.pull_request.labels.*.name, 'review-override')";
 /**
  * CI for the project, matched to what the project actually is.
  *
@@ -1338,8 +1339,9 @@ recording; screenshots are accepted otherwise.
 
 <!-- The authoring agent must launch a fresh reviewer session; review prepare only prints the packet.
 CI validates evidence and does not start a reviewer.
-After review, run morpheus review validate, then add agent-reviewed and a visible
+After a completed review, run morpheus review validate, then add agent-reviewed and a visible
 review-record: .agent/worklog/<task>.md line. Open the PR as a draft until then.
+For an incomplete review, follow the human override contract in docs/runbooks/independent-review.md.
 Include a short outcome and a link to the worklog. Run morpheus review prepare for the contract. -->
 
 ## Open questions
@@ -1652,6 +1654,8 @@ export const reviewMetadata = () => `name: Review metadata
 on:
   pull_request:
     types: [edited, labeled, unlabeled]
+  issue_comment:
+    types: [edited, deleted]
 
 jobs:
   pr:
@@ -1663,6 +1667,34 @@ jobs:
       contents: read
       pull-requests: read
     uses: cpheinrich/morpheus/.github/workflows/pr-check.yml@main
+
+  override-comment:
+    # issue_comment runs on default branch; re-run the required PR-head check.
+    if: \${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.issue.labels.*.name, 'review-override') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Recheck the current approval comment on the PR head
+        env:
+          GH_TOKEN: \${{ github.token }}
+          REPOSITORY: \${{ github.repository }}
+          PR_NUMBER: \${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/override-pr.json"
+          HEAD="$(jq -r '.head.sha' "$RUNNER_TEMP/override-pr.json")"
+          BRANCH="$(jq -r '.head.ref' "$RUNNER_TEMP/override-pr.json")"
+          gh api "repos/$REPOSITORY/actions/workflows/review-metadata.yml/runs?event=pull_request&head_sha=$HEAD&per_page=100" > "$RUNNER_TEMP/override-runs.json"
+          RUN_ID="$(jq -r --arg branch "$BRANCH" '[.workflow_runs[] | select(.head_branch == $branch) | .id] | first // empty' "$RUNNER_TEMP/override-runs.json")"
+          if [ -z "$RUN_ID" ]; then echo "No PR review-metadata run exists for $HEAD" >&2; exit 1; fi
+          gh run watch "$RUN_ID" --repo "$REPOSITORY" --exit-status > /dev/null || true
+          gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/jobs?filter=latest&per_page=100" > "$RUNNER_TEMP/override-jobs.json"
+          JOB_ID="$(jq -r '[.jobs[] | select(.name == "pr / conventions") | .id] | first // empty' "$RUNNER_TEMP/override-jobs.json")"
+          if [ -z "$JOB_ID" ]; then echo "No PR conventions job exists for $HEAD" >&2; exit 1; fi
+          gh api -X POST "repos/$REPOSITORY/actions/jobs/$JOB_ID/rerun" > /dev/null
 `;
 /**
  * The comment-QA skill (MO-26-10-06-15.17.01). A pointer to `morpheus qa guide`, so the steps ship

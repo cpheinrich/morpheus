@@ -1315,3 +1315,20 @@ navigation or scroll, reload (iOS), and Send. The maintained `@playwright/test` 
 1.63.0 adds Playwright and its browser core to dev dependencies only; browser engines are
 installed in the dedicated CI job. This is the smallest credible real-browser test harness
 for two distinct overlay architectures and catches failures DOM-level tests missed.
+
+## A human can explicitly accept an incomplete independent review — 2026-10-15
+
+Chris approved issue #248's human-requested override. An authenticated PR comment by a GitHub
+login in protected trunk's `review.humanOverrideApprovers` names the exact current head, the
+measured budget overrun in an exact `budget-overrun` marker, and why that risk is accepted; the `review-override` label selects that path. The worklog keeps the truthful
+`incomplete` outcome, and the check reports a human exception rather than agent clearance.
+It relaxes the incomplete verdict and time limits only when a turn exceeded its measured ceiling. Every turn still needs positive measured
+timing, and a disputed substantive finding remains blocked. Reviewer identity, findings, tracked
+deferrals, ancestry, coverage, CI and branch protection remain checked. A PR cannot add its own
+approver because authority is read from the base branch. The list defaults to empty; Morpheus
+names `cpheinrich`. This supersedes the blanket "incomplete stays open" portions of earlier
+review decisions; `humanAuthorization` still governs another reviewer turn and does not itself
+waive a budget overrun. A PR also cannot set `review.required=false` to waive its own review;
+that policy must already be on the base branch. No dependency was needed: the existing GitHub
+comment read is reused. Comment edits and deletions rerun the existing PR-head conventions job;
+their own event runs on the default branch and cannot replace that required check.

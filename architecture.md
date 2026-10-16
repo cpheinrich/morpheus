@@ -1543,7 +1543,8 @@ if substantive findings were raised. Minor-only findings need no second pass. A 
 at three turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
 correction after clearance, named by its scope reason. Unresolved substantive disagreements,
 incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
-open and flagged, with auto-merge disabled. No automatic fourth substantive turn; one automatic
+open and flagged, with auto-merge disabled unless an authorized human explicitly overrides an
+honestly recorded incomplete review for the exact PR head. No automatic fourth substantive turn; one automatic
 finalization-only turn per PR is allowed, at five minutes, recorded as `finalization` with the
 reviewer's attested paths, evidence and scope. It must be the last automatic turn and cleared; every later same-reviewer turn requires explicit
 `humanAuthorization`. Its original scope and predecessor stay checked. It cannot resolve a
@@ -1570,6 +1571,14 @@ version 1 records stay compatible. Provider evidence remains a human-auditable a
 responses and any original-reviewer follow-up. The PR links it with `review-record:` and carries
 `agent-reviewed` only on completion. `check pr` validates those facts, unresolved findings, budgets,
 ancestry and coverage; `review validate` runs the same record check locally before a push. The
+separate `review-override` label requires a visible comment naming the exact head, the measured
+budget overrun in an exact `budget-overrun` marker derived from the committed record, and a
+concrete reason for accepting that risk from
+a GitHub login listed in protected trunk's `review.humanOverrideApprovers`. It accepts only an
+incomplete verdict with at least one measured turn exceeding its budget, retains independent-review provenance and coverage checks, and reports the
+human exception rather than completion. Every overridden turn needs positive measured timing;
+unresolved substantive disputes remain blocked. A PR cannot grant its own approver authority or
+disable its own review. Comment edits and deletions rerun the existing PR-head conventions job. The
 caller skips an unlabelled draft, leaving the required check unreported, which blocks merge without
 reporting a failure; the check itself never passes a PR without the label. A follow-up that inspected a trunk integration records its new base and
 scope reason with the original base/reviewed SHA retained. Only the named worklog may change after

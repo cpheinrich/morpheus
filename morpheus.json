@@ -23,7 +23,8 @@
       "enabled": false,
       "reason": "Morpheus is a CLI and reusable-workflow repository with no rendered web or iOS product surface."
     },
-    "required": true
+    "required": true,
+    "humanOverrideApprovers": ["cpheinrich"]
   },
   "hq": {
     "route": "/hq",

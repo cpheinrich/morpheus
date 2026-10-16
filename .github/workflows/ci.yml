@@ -70,7 +70,7 @@ jobs:
     # skipped, which satisfies protection. Labelling the draft or marking it
     # ready runs the full check. Kept equal to PR_CHECK_CALLER_IF in
     # src/init/templates.ts by tests/workflows.test.ts.
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'agent-reviewed') || contains(github.event.pull_request.labels.*.name, 'manager-reviewed') }}
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'agent-reviewed') || contains(github.event.pull_request.labels.*.name, 'manager-reviewed') || contains(github.event.pull_request.labels.*.name, 'review-override') }}
     # The reusable check reads the live pull request through the job token;
     # a called workflow can only narrow what its caller grants.
     permissions:

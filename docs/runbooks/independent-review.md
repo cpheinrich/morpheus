@@ -48,6 +48,48 @@ head succeeds. Every `CI` and `Review metadata` run must finish, including burst
 The legacy `review-waived:` line does not waive independent review; `check pr` reports it as
 waiving legacy delivery only and says so in the same line.
 
+### Human override of an incomplete review
+
+An incomplete independent review with a measured budget overrun may be merged only when a named
+human accepts that exact PR head. Configure `review.humanOverrideApprovers` in `morpheus.json` on the protected base branch
+with GitHub logins of people allowed to make that decision. The list defaults to empty. A change
+to the list in the PR being approved has no effect on that PR. The PR cannot opt itself out by
+setting `review.required=false` either; the base branch must already have opted out.
+
+Keep the worklog's `outcome: "incomplete"`, positive measured timing for every turn (including
+historical version 1 records), findings and visible summary intact. Keep the PR body's visible
+`review-record:` line. The approving human posts an ordinary PR comment with these three visible
+lines, replacing the SHA and explaining the decision:
+
+    review-override: <full current PR head SHA>
+    review-limit: budget-overrun initial 1080000ms>900000ms
+    accepted-risk: I accept this overrun because <specific evidence and why it is sufficient>
+
+The example limit means the initial turn lasted 1,080,000 ms against a 900,000 ms ceiling.
+Use the exact `budget-overrun` value for the record: `initial` or `follow-up-N`, followed by
+the measured duration and applicable ceiling in milliseconds. If multiple turns exceed their
+ceilings, list each in turn order, separated by `, `. The checker derives this line from the
+committed record; a vague description or altered number does not match. The accepted-risk line
+must explain the decision with a concrete reason after `because`.
+
+After that comment exists, apply the `review-override` GitHub label. The label triggers the
+conventions check, which reads GitHub's authenticated comment author and the approver list from
+protected trunk. `agent-reviewed` must be absent: the review did not finish. If the branch head
+changes, obtain a new comment naming the new head, then remove and reapply the label to trigger
+the new check. Removing the label withdraws the override.
+The check reports the human, reason and comment URL as an override, never as a completed review.
+Editing or deleting the comment reruns the PR-head conventions job, so a withdrawn or emptied
+approval cannot leave a green result on the same commit.
+
+This exception relaxes the final incomplete verdict, measured review time ceilings and the initial
+time floor only when at least one turn exceeded its ceiling. Other incomplete reviews remain open
+until the reviewer completes them or a human explicitly authorizes another same-reviewer turn.
+It does not accept `blocked`, self-review, an unresolved or disputed substantive finding, a missing
+review record, untracked deferrals, a different reviewer on follow-up, unreviewed code after
+coverage, or a stale base. CI and branch protection still apply. `morpheus review validate` checks
+the ordinary completion path; an incomplete record will fail there until GitHub can supply the
+human comment and label to `check pr`.
+
 Review scope follows consequences, not changed lines. Bugs caused, exposed or worsened by the PR,
 and problems preventing acceptance criteria, are in scope. Other pre-existing bugs are incidental
 follow-ups. Flag independently discovered critical risks for human judgment; do not silently widen
@@ -76,7 +118,8 @@ nothing binary, and every turn measured above zero — below that size the floor
 not the reviewer. The author must enforce deadlines and, where available, runner token/cost ceilings. Morpheus
 validates reported durations; it cannot interrupt a provider's session or measure its billing.
 No reviewer subagents, full-suite reruns by default, or automatic repeated sessions. On timeout,
-budget exhaustion or missing evidence, record incomplete and keep the PR open.
+budget exhaustion or missing evidence, record incomplete and keep the PR open unless a configured
+human explicitly accepts that exact head through the override contract above.
 
 ### Measure each turn; do not ask the reviewer to estimate it
 
@@ -267,15 +310,17 @@ These fields attest provenance; their syntax cannot prove a session was launched
 For follow-up turns, add `followUps`, an array of at most two entries in order, each with the
 same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
 and `summary`. Every entry but the last must be `blocked`, or `cleared` when the entry after it
-carries a `scopeReason` for the late correction it covers; the last must be `cleared`. A
+carries a `scopeReason` for the late correction it covers; the last must be `cleared` unless the
+final verdict is truthfully `incomplete` and a human authorizes the override above. A
 follow-up that comes directly after an initial review with no substantive findings is that same
-shape and needs a `scopeReason` too. An `incomplete` entry can be followed only with explicit `humanAuthorization` on the next turn and with all per-turn budgets satisfied. A single
+shape and needs a `scopeReason` too. An `incomplete` entry can be followed only with explicit `humanAuthorization` on the next turn; time ceilings are enforced unless the final incomplete verdict receives the human override above. A single
 `followUp` object, the shape from the two-turn contract, still validates as one turn. Each turn's
 `commit` must descend from the previous one. `elapsedMinutes` at the top level measures the
 initial review only; each follow-up's is checked against the follow-up ceiling on its own.
 
 `base` is the merge base; `reviewed` is the initial code commit; `covered` is the final commit
-covered by reviewer clearance or the author's minor fixes. All are full 40-character SHAs and
+the reviewer assessed, or the author's bounded minor fixes. An overridden incomplete record
+does not imply clearance. All are full 40-character SHAs and
 must form an ancestor chain. The final follow-up must cover `covered`. Without a follow-up, changed
 paths between `reviewed` and `covered` must belong to fixed minor findings (plus this worklog).
 This is path-level verification: the reviewer/author remain responsible for ensuring those edits
@@ -324,8 +369,9 @@ Records written under the 2026-09-16 documentation-only rule may still carry
 `documentationIntegrations`; the field is parsed and no longer enforced, because the merge proof
 above covers those merges too.
 
-Unresolved substantive findings, incomplete reviews and code commits after coverage remain
-blocked; exhausting the three turns never means automatic merge regardless of findings.
+Unresolved substantive findings and code commits after coverage remain blocked. An incomplete
+review remains blocked without the explicit human override above; exhausting the three turns
+never means automatic merge regardless of findings.
 
 Put a visible line in the PR body (not inside a comment or code fence):
 
@@ -347,7 +393,7 @@ auto-merge until review and CI are complete.
 
 **Open the PR as a draft if it has to exist before review is recorded** (`gh pr create --draft`,
 or `gh pr ready --undo`). The caller's `pr` job skips a draft that carries neither `agent-reviewed`
-nor `manager-reviewed`, so `pr / conventions` is not reported at all: GitHub shows the required
+nor `manager-reviewed` nor `review-override`, so `pr / conventions` is not reported at all: GitHub shows the required
 check as expected and waiting, and merge stays blocked, but nothing is red. The skip has to be on
 the caller job. A skip inside the reusable workflow would report `pr / conventions` as skipped, and
 a skipped required check satisfies branch protection, as a pass would. The check itself never passes
@@ -373,6 +419,10 @@ calling `pr-check.yml` under the same `pr` job name. The scaffold writes
 `.github/workflows/review-metadata.yml`; re-running `morpheus init` adds it without overwriting
 existing files. Do not add skipped build/test jobs there: skipped statuses can satisfy required
 checks and must not replace a still-running build. The ordinary CI retains its normal triggers.
+Existing projects using human overrides must also update that metadata workflow to handle
+`issue_comment` edits and deletions with `actions: write`, rerunning the existing PR-head
+conventions job. GitHub runs comment events against the default branch, so a check on the comment
+event itself would not replace the required PR-head result.
 For an unreviewed draft to wait rather than fail, each caller's `pr` job also needs
 `if: ${{ <PR_CHECK_CALLER_IF> }}`, the expression exported from `src/init/templates.ts`, and must
 trigger on `ready_for_review`. This is a caller edit, so `@main` does not deliver it; a caller
