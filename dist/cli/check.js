@@ -126,9 +126,12 @@ export async function pr(productDir, base) {
     // inside it names the commit, and that is what binds the label to something the App reviewed.
     const clearance = reviewEvent.pull_request?.manager_clearance ?? process.env["MORPHEUS_MANAGER_CLEARANCE"] ?? "";
     const clearedHead = parseMarker(clearance)?.cleared;
-    const review = { root: process.cwd(), body: prBody(), labels, head, base };
+    const review = { root: process.cwd(), body: prBody(), labels, head, base, overrideComments: reviewEvent.pull_request?.review_override_comments ?? [] };
+    const reviewFindings = usesManagerReview(labels) && labels.includes("review-override")
+        ? [{ level: "error", rule: "agent-review", message: "manager-reviewed and review-override cannot both label the same PR" }]
+        : usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor, clearedHead }) : checkLocalReview(review);
     const findings = await checkPr({
-        agentReview: usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor, clearedHead }) : checkLocalReview(review),
+        agentReview: reviewFindings,
         body: prBody(),
         title: prTitle(),
         commitMessages: prCommitMessages(base, head),

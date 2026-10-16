@@ -149,10 +149,14 @@ jobs:
           jq -r '[.[][] | select(.user.login == "morpheus-gh-manager[bot]") | .body // ""
                   | select(test("<!-- morpheus-gh-manager \\{[^\n]*\"cleared\""))] | last // ""' \
             "$RUNNER_TEMP/comments.json" > "$RUNNER_TEMP/manager-clearance.md"
+          jq '[.[][] | {author: .user.login, body: (.body // ""), url: .html_url}]' \
+            "$RUNNER_TEMP/comments.json" > "$RUNNER_TEMP/review-override-comments.json"
           jq --arg actor "$MANAGER_LABEL_ACTOR" --rawfile clearance "$RUNNER_TEMP/manager-clearance.md" \
+            --slurpfile overrideComments "$RUNNER_TEMP/review-override-comments.json" \
             '{pull_request: (. + {
                manager_label_actor: (if $actor == "" then null else $actor end),
-               manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)})}' \
+               manager_clearance: (if ($clearance | length) == 0 then null else $clearance end),
+               review_override_comments: $overrideComments[0]})}' \
             "$RUNNER_TEMP/live-pr.json" > "$RUNNER_TEMP/review-event.json"
           GITHUB_EVENT_PATH="$RUNNER_TEMP/review-event.json" node .morpheus/dist/cli/index.js check pr \
             --dir "$PRODUCT_DIR" --base "origin/$BASE_REF"

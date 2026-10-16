@@ -1131,7 +1131,8 @@ shape, and CI runs it too.
  */
 export const PR_CHECK_CALLER_IF = "github.event_name != 'pull_request' || !github.event.pull_request.draft || " +
     "contains(github.event.pull_request.labels.*.name, 'agent-reviewed') || " +
-    "contains(github.event.pull_request.labels.*.name, 'manager-reviewed')";
+    "contains(github.event.pull_request.labels.*.name, 'manager-reviewed') || " +
+    "contains(github.event.pull_request.labels.*.name, 'review-override')";
 /**
  * CI for the project, matched to what the project actually is.
  *
@@ -1338,8 +1339,9 @@ recording; screenshots are accepted otherwise.
 
 <!-- The authoring agent must launch a fresh reviewer session; review prepare only prints the packet.
 CI validates evidence and does not start a reviewer.
-After review, run morpheus review validate, then add agent-reviewed and a visible
+After a completed review, run morpheus review validate, then add agent-reviewed and a visible
 review-record: .agent/worklog/<task>.md line. Open the PR as a draft until then.
+For an incomplete review, follow the human override contract in docs/runbooks/independent-review.md.
 Include a short outcome and a link to the worklog. Run morpheus review prepare for the contract. -->
 
 ## Open questions

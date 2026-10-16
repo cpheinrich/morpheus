@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import matter from "gray-matter";
 import { z } from "zod";
-import { visibleProse, visibleText } from "../check/pr.js";
+import { isRealReason, visibleProse, visibleText } from "../check/pr.js";
 import { ROADMAP_ID } from "../pm/id.js";
 import { RoadmapItem } from "../pm/schema.js";
 const Sha = z.string().regex(/^[a-f0-9]{40}$/);
@@ -251,9 +251,10 @@ export function parseReviewRecord(markdown) {
  * supplies it, from Git; without it the floor applies.
  */
 export function validateReviewRecord(record, opts = {}) {
+    const overridden = opts.humanOverride === true && record.outcome === "incomplete";
     if (bareSession(record.authorSession) === bareSession(record.reviewerSession))
         throw new Error("reviewer must be a fresh independent session");
-    if (record.outcome !== "complete")
+    if (record.outcome !== "complete" && !overridden)
         throw new Error(`review is ${record.outcome}; leave the PR open and disable auto-merge`);
     if (new Set(record.findings.map(f => f.id)).size !== record.findings.length)
         throw new Error("finding IDs must be unique");
@@ -285,7 +286,7 @@ export function validateReviewRecord(record, opts = {}) {
         throw new Error("substantive findings cannot be deferred");
     const budget = REVIEW_BUDGET_MINUTES[record.risk];
     const multiplier = record.extensionReason ? 1.5 : 1;
-    if (record.elapsedMinutes > budget * multiplier)
+    if (!overridden && record.elapsedMinutes > budget * multiplier)
         throw new Error("review exceeded its budget; record incomplete and escalate instead of claiming completion");
     // An incomplete initial turn resumes only on explicit human authorization, exactly as an
     // incomplete follow-up does; it is not a clearance, so it needs no late-correction scope reason.
@@ -301,7 +302,7 @@ export function validateReviewRecord(record, opts = {}) {
     // The waiver relaxes the 30 seconds, not the measurement: a zero duration is the template's
     // placeholder, so a record with any zero-length turn never qualifies.
     const rescuedByTurn = turns.some(turn => turn.humanAuthorization && !turn.finalization && turn.outcome === "cleared" && turn.elapsedMinutes >= 0.5);
-    if (record.risk !== "small" && record.elapsedMinutes < 0.5 && !(resumed && rescuedByTurn)) {
+    if (!overridden && record.risk !== "small" && record.elapsedMinutes < 0.5 && !(resumed && rescuedByTurn)) {
         const measured = [record, ...turns].every(turn => turn.elapsedMinutes > 0);
         const size = measured ? opts.trivialChange?.() : undefined;
         if (!size?.trivial) {
@@ -351,20 +352,22 @@ export function validateReviewRecord(record, opts = {}) {
     turns.forEach((turn, index) => {
         if (turn.reviewerSession !== record.reviewerSession)
             throw new Error("every follow-up must use the original reviewer session");
-        if (turn.elapsedMinutes > budget / 2)
+        if (!overridden && turn.elapsedMinutes > budget / 2)
             throw new Error("follow-up exceeded its budget; record incomplete and escalate instead of claiming completion");
         const next = turns[index + 1];
         if (!next) {
             // With a conditional clearance the author's fix may land after the final turn; the commit
             // check then happens in checkLocalReview, which can see the paths.
             const coversLast = turn.commit === record.covered || conditionallyCleared(record).length > 0;
-            if (turn.outcome !== "cleared" || !coversLast)
+            if ((turn.outcome !== "cleared" && !(overridden && turn.outcome === "incomplete")) || !coversLast)
                 throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
         }
         else if ((turn.outcome === "incomplete" && !next.humanAuthorization) || (turn.outcome === "cleared" && !next.scopeReason)) {
             throw new Error("a third turn is allowed only after the second turn returned blocked, after a cleared turn as a late correction with an explicit scope reason, or after an incomplete turn with explicit humanAuthorization");
         }
     });
+    if (overridden && turns.length && turns[turns.length - 1].outcome !== "incomplete")
+        throw new Error("the final review outcome is incomplete but the final follow-up has a different outcome");
 }
 export function changedPaths(root, older, newer) {
     return git(root, ["diff", "--name-only", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean);
@@ -492,12 +495,45 @@ export function committedConfig(root, commit) {
  * and an unreported required check blocks merge where a passing or skipped one would not.
  */
 export const MISSING_LABEL = "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is under way, keep the PR a draft (gh pr ready --undo): conventions then wait, unreported, until it is labelled or marked ready.";
+/** A committed allowlist makes the human authority explicit for each project. */
+export function humanOverrideApprovers(config) {
+    const parsed = z.object({ review: z.object({ humanOverrideApprovers: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/)).optional() }).passthrough().optional() }).passthrough().parse(config);
+    return parsed.review?.humanOverrideApprovers ?? [];
+}
+/** A GitHub-authored comment binds the human's reason to one exact PR head. */
+export function humanOverrideForHead(comments, approvers, head) {
+    const allowed = new Set(approvers.map(login => login.toLowerCase()));
+    for (const comment of [...comments].reverse()) {
+        if (!allowed.has(comment.author.toLowerCase()))
+            continue;
+        const lines = [...visibleProse(comment.body).matchAll(/^review-override:[ \t]*([a-f0-9]{40})[ \t]+([^\r\n]+)$/gm)];
+        if (lines.length !== 1 || lines[0][1] !== head)
+            continue;
+        const reason = lines[0][2].trim();
+        if (reason.length >= 20 && isRealReason(reason))
+            return { author: comment.author, reason, ...(comment.url ? { url: comment.url } : {}) };
+    }
+    return null;
+}
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export function checkLocalReview(opts) {
     try {
         const config = committedConfig(opts.root, opts.head);
-        if (!reviewRequired(config))
+        // A PR cannot waive its own review by changing the project policy on its branch.
+        if (!reviewRequired(config) && !reviewRequired(committedConfig(opts.root, opts.base)))
             return [{ level: "waived", rule: "agent-review", message: "independent review disabled by project review.required=false" }];
+        if (opts.labels.includes("review-override")) {
+            if (opts.labels.includes("agent-reviewed"))
+                throw new Error("review-override and agent-reviewed cannot both label the same PR");
+            // Authority comes from protected trunk, never from a proposed edit to this PR.
+            const approval = humanOverrideForHead(opts.overrideComments ?? [], humanOverrideApprovers(committedConfig(opts.root, opts.base)), opts.head);
+            if (!approval)
+                throw new Error(`review-override requires a visible PR comment from a configured humanOverrideApprovers principal: review-override: ${opts.head} <specific reason>`);
+            const record = verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base, humanOverride: true });
+            if (record.outcome !== "incomplete")
+                throw new Error("review-override applies only to an honestly recorded incomplete review");
+            return [{ level: "waived", rule: "agent-review", message: `incomplete independent review explicitly overridden by @${approval.author}: ${approval.reason}${approval.url ? ` (${approval.url})` : ""}` }];
+        }
         if (!opts.labels.includes("agent-reviewed"))
             throw new Error(MISSING_LABEL);
         verifyReviewRecord({ root: opts.root, path: reviewRecordLine(opts.body), head: opts.head, base: opts.base });
@@ -529,7 +565,7 @@ export function verifyReviewRecord(opts) {
     const record = parseReviewRecord(git(opts.root, ["show", `${opts.head}:${path}`]));
     // The whole reviewed change, base to covered. A trunk merge inside it only adds lines, which errs
     // toward keeping the floor; a range that cannot be measured keeps it too.
-    validateReviewRecord(record, { trivialChange: () => {
+    validateReviewRecord(record, { humanOverride: opts.humanOverride, trivialChange: () => {
             try {
                 return trivialDiff(opts.root, record.base, record.covered);
             }

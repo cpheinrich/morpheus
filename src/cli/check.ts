@@ -129,7 +129,7 @@ function projectVisualEvidencePolicy(): VisualEvidencePolicy {
 }
 
 export async function pr(productDir: string, base: string): Promise<number> {
-  let reviewEvent: { pull_request?: { head?: { sha?: string }; labels?: { name: string }[]; manager_label_actor?: string | null; manager_clearance?: string | null } } = {};
+  let reviewEvent: { pull_request?: { head?: { sha?: string }; labels?: { name: string }[]; manager_label_actor?: string | null; manager_clearance?: string | null; review_override_comments?: { author: string; body: string; url?: string }[] } } = {};
   try { reviewEvent = JSON.parse(readFileSync(process.env["GITHUB_EVENT_PATH"] ?? "", "utf8")); } catch { /* local overrides below */ }
   const head = reviewEvent.pull_request?.head?.sha ?? gitOutput(["rev-parse", "HEAD"]);
   const labels = reviewEvent.pull_request?.labels?.map(l => l.name) ?? (process.env["MORPHEUS_PR_LABELS"] ?? "").split(",").map(s => s.trim());
@@ -140,9 +140,12 @@ export async function pr(productDir: string, base: string): Promise<number> {
   // inside it names the commit, and that is what binds the label to something the App reviewed.
   const clearance = reviewEvent.pull_request?.manager_clearance ?? process.env["MORPHEUS_MANAGER_CLEARANCE"] ?? "";
   const clearedHead = parseMarker(clearance)?.cleared;
-  const review = { root: process.cwd(), body: prBody(), labels, head, base };
+  const review = { root: process.cwd(), body: prBody(), labels, head, base, overrideComments: reviewEvent.pull_request?.review_override_comments ?? [] };
+  const reviewFindings = usesManagerReview(labels) && labels.includes("review-override")
+    ? [{ level: "error" as const, rule: "agent-review", message: "manager-reviewed and review-override cannot both label the same PR" }]
+    : usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor, clearedHead }) : checkLocalReview(review);
   const findings = await checkPr({
-    agentReview: usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor, clearedHead }) : checkLocalReview(review),
+    agentReview: reviewFindings,
     body: prBody(),
     title: prTitle(),
     commitMessages: prCommitMessages(base, head),

@@ -230,6 +230,7 @@ export declare function validateReviewRecord(record: LocalReviewRecord, opts?: {
         trivial: boolean;
         reason: string;
     };
+    humanOverride?: boolean;
 }): void;
 export declare function changedPaths(root: string, older: string, newer: string): string[];
 /**
@@ -259,6 +260,19 @@ export declare function committedConfig(root: string, commit: string): unknown;
  * and an unreported required check blocks merge where a passing or skipped one would not.
  */
 export declare const MISSING_LABEL = "agent-reviewed label is not applied, so the PR is not marked merge-ready. Review record validation was not run. Apply the label once independent review covers the current head; leave it absent while a correction or follow-up is pending. While review is under way, keep the PR a draft (gh pr ready --undo): conventions then wait, unreported, until it is labelled or marked ready.";
+export interface HumanOverrideComment {
+    author: string;
+    body: string;
+    url?: string;
+}
+/** A committed allowlist makes the human authority explicit for each project. */
+export declare function humanOverrideApprovers(config: unknown): string[];
+/** A GitHub-authored comment binds the human's reason to one exact PR head. */
+export declare function humanOverrideForHead(comments: HumanOverrideComment[], approvers: string[], head: string): {
+    author: string;
+    reason: string;
+    url?: string;
+} | null;
 /** Read only committed evidence; paths and refs are data, never shell text. */
 export declare function checkLocalReview(opts: {
     root: string;
@@ -266,6 +280,7 @@ export declare function checkLocalReview(opts: {
     labels: string[];
     head: string;
     base: string;
+    overrideComments?: HumanOverrideComment[];
 }): Finding[];
 /** The worklog path a PR body's single visible `review-record:` line names; throws CI's message otherwise. */
 export declare function reviewRecordLine(body: string): string;
@@ -279,5 +294,6 @@ export declare function verifyReviewRecord(opts: {
     path: string;
     head: string;
     base: string;
+    humanOverride?: boolean;
 }): LocalReviewRecord;
 export {};

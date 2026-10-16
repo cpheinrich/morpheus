@@ -2719,6 +2719,7 @@ describe("local review metadata", () => {
     expect(runs("pull_request", true, ["bug"])).toBe(false);
     expect(runs("pull_request", true, ["agent-reviewed"])).toBe(true);
     expect(runs("pull_request", true, ["manager-reviewed"])).toBe(true);
+    expect(runs("pull_request", true, ["review-override"])).toBe(true);
     expect(runs("pull_request", false, [])).toBe(true);
     expect(runs("push", false, [])).toBe(true);
   });
@@ -3080,6 +3081,12 @@ describe("pr-check.yml and the GitHub Manager label", () => {
     expect(raw).toContain("manager_clearance: (if ($clearance | length) == 0 then null else $clearance end)");
     // A failed read of the comments leaves no clearance, which the check refuses.
     expect(raw).toContain("|| echo '[]' > \"$RUNNER_TEMP/comments.json\"");
+  });
+
+  it("passes GitHub-authenticated comment authors and bodies to the human override check", async () => {
+    const raw = await readFile(join(DIR, "pr-check.yml"), "utf8");
+    expect(raw).toContain('jq \u0027[.[][] | {author: .user.login, body: (.body // ""), url: .html_url}]\u0027');
+    expect(raw).toContain("review_override_comments: $overrideComments[0]");
   });
 });
 
