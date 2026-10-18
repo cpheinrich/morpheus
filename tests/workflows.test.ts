@@ -1899,7 +1899,7 @@ describe("ios-testflight-upload action", () => {
     expect(raw).toContain("unset IOS_DISTRIBUTION_P12_PASSWORD");
     expect(raw).toContain("unset SIGNING_KEYCHAIN_PASSWORD");
     expect(raw).toContain('chmod 600 "$AUTHENTICATION_KEY_PATH"');
-    expect(raw).toContain("Refusing to upload a TestFlight build outside main.");
+    expect(raw).toContain("Refusing to upload a TestFlight build outside main or a verified CD control tag.");
     expect(raw).toContain('security find-certificate -a -Z "$SIGNING_KEYCHAIN_PATH"');
     expect(raw).toContain('security find-key -t private -s "$SIGNING_KEYCHAIN_PATH"');
     expect(raw).toContain('SIGNING_IDENTITY_SHA1="$PROFILE_CERTIFICATE_SHA1"');

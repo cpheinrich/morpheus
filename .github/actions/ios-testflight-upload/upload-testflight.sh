@@ -49,11 +49,27 @@ PROCESSING_TIMEOUT_SECONDS="${PROCESSING_TIMEOUT_SECONDS:-1200}"
 PROCESSING_POLL_SECONDS="${PROCESSING_POLL_SECONDS:-30}"
 OPENSSL_BINARY="${OPENSSL_BINARY:-}"
 
-# A TestFlight build is a release. It may only ever be cut from main: a run on
-# any other ref has not passed the reviewed-source preflight.
+# Legacy releases run on main. CD V2 dispatches an immutable control tag because
+# GitHub workflow_dispatch rejects a raw commit SHA as its ref. Bind that narrow
+# exception to the actual workflow revision and the complete fenced CD contract.
 if [[ "${GITHUB_REF:-}" != "refs/heads/main" ]]; then
-  echo "Refusing to upload a TestFlight build outside main." >&2
-  exit 1
+  control_sha="${MORPHEUS_CD_CONTROL_SHA:-}"
+  if [[ ! "$control_sha" =~ ^[0-9a-f]{40}$ ||
+        "${GITHUB_REF:-}" != "refs/tags/morpheus-cd-control-$control_sha" ||
+        "${GITHUB_SHA:-}" != "$control_sha" ||
+        ! "${MORPHEUS_CD_SOURCE_SHA:-}" =~ ^[0-9a-f]{40}$ ||
+        ! "$RESERVED_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ||
+        -z "$BEFORE_UPLOAD_SCRIPT" || -z "$AFTER_UPLOAD_SCRIPT" ||
+        "$DISTRIBUTION_ENABLED" != false ]]; then
+    echo "Refusing to upload a TestFlight build outside main or a verified CD control tag." >&2
+    exit 1
+  fi
+  for cd_identity in MORPHEUS_CD_INTENT_ID MORPHEUS_CD_ATTEMPT_ID MORPHEUS_CD_DISPATCH_EFFECT_ID; do
+    if [[ ! "${!cd_identity:-}" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$ ]]; then
+      echo "A CD control tag requires complete durable upload identity." >&2
+      exit 1
+    fi
+  done
 fi
 
 required_variables=(

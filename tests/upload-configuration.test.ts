@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -117,5 +117,52 @@ plutil() {
   await shell(script, env);
   for (const mismatch of [{ACTUAL_BUNDLE:"com.other.app"}, {ACTUAL_VERSION:"1.2.4"}, {ACTUAL_BUILD:"43"}]) {
     await expect(shell(script, {...env, ...mismatch})).rejects.toMatchObject({code:1});
+  }
+});
+
+
+it("admits only main or exact CD control tags before any signing or Apple work", async () => {
+  const bin = join(root, "bin"), project = join(root, "App.xcodeproj"), reached = join(root, "reached");
+  await mkdir(bin); await mkdir(project);
+  await writeFile(join(project, "project.pbxproj"), "fixture");
+  const hook = join(root, "hook.sh");
+  await writeFile(hook, "#!/bin/bash\nexit 0\n"); await chmod(hook, 0o755);
+  const xcode = join(bin, "xcodebuild");
+  await writeFile(xcode, '#!/bin/bash\nprintf "%s" "$1" > "$REACHED"\nexit 73\n'); await chmod(xcode, 0o755);
+  const control = 'a'.repeat(40);
+  const base = {
+    PATH: `${bin}:${process.env.PATH}`, REACHED: reached, SCRIPT: new URL("upload-testflight.sh", actionRoot).pathname,
+    GITHUB_REF: "refs/heads/main", GITHUB_WORKSPACE: root, RUNNER_TEMP: root,
+    PROJECT_PATH: project, SCHEME_NAME: "App", APPLE_TEAM_ID: "TEAM", IOS_BUNDLE_ID: "com.example.app",
+    ASC_APP_ID: "123", TESTFLIGHT_BETA_GROUP_IDS: "12345678-1234-1234-1234-123456789abc",
+    ASC_API_KEY_ID: "key", ASC_API_KEY_ISSUER_ID: "issuer", ASC_API_KEY_P8_BASE64: "unused",
+    IOS_DISTRIBUTION_P12_BASE64: "unused", IOS_DISTRIBUTION_P12_PASSWORD: "unused", IOS_DISTRIBUTION_PROFILE_BASE64: "unused",
+    OPENSSL_BINARY: "/usr/bin/true", ASC_CLI: "/usr/bin/true",
+    // Explicitly clear ambient CD variables for the legacy path.
+    MORPHEUS_CD_CONTROL_SHA: "", MORPHEUS_CD_SOURCE_SHA: "", MORPHEUS_CD_INTENT_ID: "", MORPHEUS_CD_ATTEMPT_ID: "", MORPHEUS_CD_DISPATCH_EFFECT_ID: "",
+    RESERVED_BUILD_NUMBER: "", BEFORE_UPLOAD_SCRIPT: "", AFTER_UPLOAD_SCRIPT: "", BUILD_NUMBER: "", DISTRIBUTION_ENABLED: "true",
+  };
+  const cd = { ...base, GITHUB_REF: `refs/tags/morpheus-cd-control-${control}`, GITHUB_SHA: control,
+    MORPHEUS_CD_CONTROL_SHA: control, MORPHEUS_CD_SOURCE_SHA: 'b'.repeat(40), MORPHEUS_CD_INTENT_ID: 'intent-1',
+    MORPHEUS_CD_ATTEMPT_ID: 'attempt-1', MORPHEUS_CD_DISPATCH_EFFECT_ID: 'dispatch-1', RESERVED_BUILD_NUMBER: "42",
+    BEFORE_UPLOAD_SCRIPT: "hook.sh", AFTER_UPLOAD_SCRIPT: "hook.sh", DISTRIBUTION_ENABLED: "false" };
+  for (const env of [base, cd]) {
+    await expect(shell('bash "$SCRIPT"', env)).rejects.toMatchObject({code:73});
+    expect(await readFile(reached, 'utf8')).toBe('-resolvePackageDependencies');
+    await rm(reached);
+  }
+  const rejected: NodeJS.ProcessEnv[] = [
+    {...base, GITHUB_REF: "refs/heads/feature"}, {...base, GITHUB_REF: "refs/tags/v1.2.3"},
+    {...base, GITHUB_REF: cd.GITHUB_REF}, {...cd, GITHUB_REF: `refs/tags/morpheus-cd-control-${'c'.repeat(40)}`},
+    {...cd, GITHUB_REF: `${cd.GITHUB_REF}-suffix`}, {...cd, GITHUB_SHA: 'c'.repeat(40)},
+    {...cd, MORPHEUS_CD_CONTROL_SHA: 'A'.repeat(40)}, {...cd, MORPHEUS_CD_CONTROL_SHA: 'a'.repeat(39)},
+    {...cd, MORPHEUS_CD_SOURCE_SHA: 'b'.repeat(39)}, {...cd, RESERVED_BUILD_NUMBER: '0'},
+    {...cd, BEFORE_UPLOAD_SCRIPT: ''}, {...cd, AFTER_UPLOAD_SCRIPT: ''}, {...cd, DISTRIBUTION_ENABLED: 'true'},
+    ...['MORPHEUS_CD_INTENT_ID', 'MORPHEUS_CD_ATTEMPT_ID', 'MORPHEUS_CD_DISPATCH_EFFECT_ID'].map(key => ({...cd, [key]: ''})),
+    {...cd, MORPHEUS_CD_ATTEMPT_ID: 'unsafe\nidentity'},
+  ];
+  for (const env of rejected) {
+    await expect(shell('bash "$SCRIPT"', env)).rejects.toMatchObject({code:1});
+    await expect(readFile(reached)).rejects.toMatchObject({code:'ENOENT'});
   }
 });
