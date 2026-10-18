@@ -49,3 +49,61 @@ service configuration mutation, or operational acceptance was attempted.
 Full suite is left to CI per repository policy (this PR changes no shared TypeScript core).
 No Xcode archive was run: existing archive guards are retained, and fake asccli/hooks cover
 the real upload boundary without consuming the campaign's native runner or uploading.
+
+## Independent review and CD-ADAPTER-001 response
+
+The fresh high-risk reviewer `/root/cd_adapters_review` reviewed 2dc7659 and independently
+passed the 204 focused tests. Its only finding was substantive: a synchronous resource-hook
+failure after Apple returned PROCESSING/COMPLETE exited before accepted.json and its output
+were written, hiding known acceptance from artifact persistence. The initial verdict is
+blocked; this correction still requires the same reviewer's follow-up.
+
+The adapter now atomically publishes known acceptance and outputs before invoking the
+resource hook, on both the initial response and the acceptance poll. The original hook
+exit status still fails the job. Provisional resource publication also exposes resource-path,
+and the always() artifact includes only the two explicit allowlisted receipt paths, so
+awaiting/failed/invalid uploads survive a ledger outage without fabricated acceptance.
+The exact-resource-id check occurs before replacing a provisional receipt.
+
+Added actual-boundary cases for resource hook exit 11 on initial and polled PROCESSING/COMPLETE
+responses, and for resource-only AWAITING_UPLOAD/FAILED/INVALID responses. The hooks themselves
+assert acceptance and the output already exist when called with an accepted resource. An
+initial fixture used a shell-quoted state pattern incorrectly; corrected it to compare the
+parsed JSON state. All 17 Python behavioral tests then passed. Final aggregate and required
+checks passed: the same six-file focused command passed 204/204; pnpm typecheck,
+pnpm compile, compiled CLI pm index (unchanged indexes), bash -n and git diff --check
+passed. No full suite or live upload was run. The actual initial blocked verdict and
+96000 ms clock measurement are retained below.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "2ac0173ed5b346ca76c8abe977135b6a32b37ffb",
+  "reviewed": "2dc7659dd3af42e096289ac0072bc9bbe222cf57",
+  "covered": "2dc7659dd3af42e096289ac0072bc9bbe222cf57",
+  "authorSession": "01a14e59-b8cf-75f3-98a4-742b7927c7f0",
+  "reviewerSession": "/root/cd_adapters_review",
+  "risk": "high",
+  "elapsedMinutes": 1.6,
+  "timing": {
+    "source": "clock",
+    "durationMs": 96000,
+    "evidence": "Parent clock observations around the initial reviewer invocation: 2026-10-18T14:22:14Z to 2026-10-18T14:23:50Z, including tools and waiting for the returned result."
+  },
+  "outcome": "blocked",
+  "summary": "Fresh high-risk review blocked on CD-ADAPTER-001: a resource-hook failure could hide known Apple acceptance. The author corrected receipt publication and resource artifact persistence and added behavioral cases; same-reviewer follow-up is pending.",
+  "findings": [
+    {
+      "id": "CD-ADAPTER-001",
+      "severity": "substantive",
+      "description": "upload-effects.sh resource hook at line 36 ran synchronously before acceptance publication at line 66. After an Apple PROCESSING/COMPLETE response, hook exit 11 under errexit skipped accepted.json and receipt-path, so the always artifact also skipped known acceptance.",
+      "paths": [
+        ".github/actions/ios-testflight-upload/upload-effects.sh",
+        ".github/actions/ios-testflight-upload/action.yml"
+      ],
+      "disposition": "fixed",
+      "response": "Publish accepted.json and step outputs before any resource hook on both initial and polled acceptance; retain hook failure status. Publish resource-path and allowlist both receipt files in the always artifact for provisional/terminal hook outages. Behavioral tests cover initial/polled accepted states and awaiting/failed/invalid resource-only states. Awaiting same-reviewer verification."
+    }
+  ]
+}
+```

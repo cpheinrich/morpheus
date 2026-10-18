@@ -122,7 +122,7 @@ run_asccli() {
             self.assertEqual(result.returncode == 0, accepted, result.stderr)
             self.assertEqual((directory / "accepted.json").exists(), accepted)
 
-    def boundary(self, before=0, after=0, response=None, mutation=False):
+    def boundary(self, before=0, after=0, response=None, mutation=False, resource=0, poll_response=None, fail_resource_state=""):
         directory = self.prepare()
         self.calls = self.root / "boundary-calls"
         self.calls.write_text("")
@@ -134,7 +134,15 @@ if [[ "$1" == before ]]; then
   if [[ "$MUTATE_IPA" == true ]]; then echo changed >> "$IPA_PATH"; fi
   exit "$BEFORE_STATUS"
 fi
-if [[ "$1" == resource ]]; then cp "$UPLOAD_RECEIPT_PATH" "$RESOURCE_COPY"; fi
+if [[ "$1" == resource ]]; then
+  cp "$UPLOAD_RECEIPT_PATH" "$RESOURCE_COPY"
+  # Acceptance and its output must already exist at the resource hook boundary.
+  if grep -qE '\"state\": \"(PROCESSING|COMPLETE)\"' "$UPLOAD_RECEIPT_PATH"; then
+    test -s "$UPLOAD_RECEIPT_DIRECTORY/accepted.json" || exit 91
+    grep -q '^receipt-path=' "$GITHUB_OUTPUT" || exit 92
+  fi
+  if [[ -z "$FAIL_RESOURCE_STATE" ]] || python3 -c 'import json,os,sys; sys.exit(json.load(open(os.environ["UPLOAD_RECEIPT_PATH"]))["state"] != os.environ["FAIL_RESOURCE_STATE"])'; then exit "$RESOURCE_STATUS"; fi
+fi
 if [[ "$1" == after ]]; then test -f "$UPLOAD_RECEIPT_PATH" || exit 90; exit "$AFTER_STATUS"; fi
 """)
         hook.chmod(0o755)
@@ -142,11 +150,11 @@ if [[ "$1" == after ]]; then test -f "$UPLOAD_RECEIPT_PATH" || exit 90; exit "$A
                    REPOSITORY_ROOT=str(self.root), SCHEME_NAME="App", CALL_LOG=str(self.calls),
                    DIGEST_LOG=str(self.root / "digest"), RESOURCE_COPY=str(self.root / "resource-copy.json"),
                    BEFORE_UPLOAD_SCRIPT=str(hook), AFTER_UPLOAD_SCRIPT=str(hook), BEFORE_STATUS=str(before),
-                   AFTER_STATUS=str(after), MUTATE_IPA=str(mutation).lower(), PROCESSING_TIMEOUT_SECONDS="1", PROCESSING_POLL_SECONDS="0",
+                   AFTER_STATUS=str(after), RESOURCE_STATUS=str(resource), FAIL_RESOURCE_STATE=fail_resource_state, MUTATE_IPA=str(mutation).lower(), PROCESSING_TIMEOUT_SECONDS="1", PROCESSING_POLL_SECONDS="0",
                    MORPHEUS_CD_INTENT_ID="intent-1", MORPHEUS_CD_ATTEMPT_ID="attempt-1",
                    MORPHEUS_CD_DISPATCH_EFFECT_ID="dispatch-1", MORPHEUS_CD_SOURCE_SHA=self.sha, MORPHEUS_CD_CONTROL_SHA="b"*40,
-                   FAKE_RESPONSE=json.dumps(response or {"data": {"id": "upload-1", "state": "PROCESSING"}}))
-        prefix = 'set -euo pipefail\nrun_asccli() { echo apple-upload >> "$CALL_LOG"; printf %s "$FAKE_RESPONSE"; }\n'
+                   FAKE_RESPONSE=json.dumps(response or {"data": {"id": "upload-1", "state": "PROCESSING"}}), POLL_RESPONSE=json.dumps(poll_response))
+        prefix = 'set -euo pipefail\nrun_asccli() { if [[ "$2" == upload ]]; then echo apple-upload >> "$CALL_LOG"; printf %s "$FAKE_RESPONSE"; else echo apple-poll >> "$CALL_LOG"; printf %s "$POLL_RESPONSE"; fi; }\n'
         result = subprocess.run(["bash", "-c", prefix + 'source "$GITHUB_ACTION_PATH/upload-effects.sh"'], env=env, capture_output=True, text=True)
         return result, directory
 
@@ -169,6 +177,39 @@ if [[ "$1" == after ]]; then test -f "$UPLOAD_RECEIPT_PATH" || exit 90; exit "$A
         self.assertEqual({k: receipt[k] for k in ["intentId", "attemptId", "dispatchEffectId", "controlSha", "sourceSha", "runId", "runAttempt"]},
                          dict(intentId="intent-1", attemptId="attempt-1", dispatchEffectId="dispatch-1", controlSha="b"*40, sourceSha=self.sha, runId="123", runAttempt="1"))
         self.assertNotIn("SECRET", (directory / "accepted.json").read_text())
+
+    def test_known_acceptance_survives_initial_resource_hook_failure(self):
+        for state in ["PROCESSING", "COMPLETE"]:
+            with self.subTest(state=state):
+                result, directory = self.boundary(resource=11, response={"data": {"id": "upload-1", "state": state}})
+                self.assertEqual(result.returncode, 11, result.stderr)
+                self.assertEqual(self.calls.read_text().splitlines(), ["before", "apple-upload", "resource"])
+                self.assertEqual(self.outputs()["receipt-path"], str(directory / "accepted.json"))
+                self.assertEqual(json.loads((directory / "accepted.json").read_text())["state"], "accepted")
+                self.assertEqual(json.loads(Path(self.outputs()["resource-path"]).read_text())["state"], state)
+
+    def test_known_acceptance_survives_polled_resource_hook_failure(self):
+        for state in ["PROCESSING", "COMPLETE"]:
+            with self.subTest(state=state):
+                result, directory = self.boundary(resource=11, fail_resource_state=state,
+                    response={"data": {"id": "upload-1", "state": "AWAITING_UPLOAD"}},
+                    poll_response={"data": {"id": "upload-1", "state": state}})
+                self.assertEqual(result.returncode, 11, result.stderr)
+                self.assertEqual(self.calls.read_text().splitlines(), ["before", "apple-upload", "resource", "apple-poll", "resource"])
+                self.assertEqual(self.outputs()["receipt-path"], str(directory / "accepted.json"))
+                self.assertEqual(json.loads((directory / "accepted.json").read_text())["uploadId"], "upload-1")
+
+    def test_unaccepted_resource_survives_resource_hook_failure_without_false_acceptance(self):
+        for state in ["AWAITING_UPLOAD", "FAILED", "INVALID"]:
+            with self.subTest(state=state):
+                result, directory = self.boundary(resource=11, response={"data": {"id": "upload-1", "state": state}})
+                self.assertEqual(result.returncode, 11, result.stderr)
+                self.assertEqual(self.calls.read_text().splitlines(), ["before", "apple-upload", "resource"])
+                self.assertEqual(self.outputs()["resource-path"], str(directory / "resource.json"))
+                data = json.loads((directory / "resource.json").read_text())
+                self.assertEqual((data["state"], data["uploadId"]), (state, "upload-1"))
+                self.assertFalse((directory / "accepted.json").exists())
+                self.assertNotIn("receipt-path", self.outputs())
 
     def test_terminal_resource_is_persisted_before_failure_without_build_poll(self):
         result, directory = self.boundary(response={"data": {"id": "upload-1", "state": "FAILED", "errors": [{"code": "INVALID_BINARY", "detail": "SECRET_RESPONSE"}]}})

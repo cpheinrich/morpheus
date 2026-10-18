@@ -115,6 +115,9 @@ def publish(receipt, target, create_only):
 
 def resource():
     data = upload_data(allow_unknown=True)
+    expected_id = os.environ.get("EXPECTED_UPLOAD_ID", "")
+    if expected_id and data["id"] != expected_id:
+        raise ValueError("Upload confirmation id changed")
     state = data.get("state")
     if state not in {"AWAITING_UPLOAD", "PROCESSING", "COMPLETE", "FAILED", "INVALID"}:
         state = "UNKNOWN"
@@ -134,6 +137,7 @@ def resource():
         receipt["diagnosticCodes"] = diagnostics[:20]
     target = Path(os.environ["UPLOAD_RECEIPT_DIRECTORY"]) / "resource.json"
     publish(receipt, target, False)
+    outputs({"resource-path": target})
     print(target)
 
 

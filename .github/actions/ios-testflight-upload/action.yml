@@ -147,8 +147,11 @@ inputs:
 
 outputs:
   acceptance-artifact-name:
-    description: Per-invocation immutable artifact containing accepted.json; absence never proves no upload.
+    description: Immutable artifact with accepted.json when known and resource.json when observed; absence never proves no upload.
     value: ${{ steps.receipt-context.outputs.artifact-name }}
+  resource-path:
+    description: Local path of allowlisted resource.json; available before any resource hook.
+    value: ${{ steps.upload.outputs.resource-path }}
   acceptance-path:
     description: Local path of accepted.json; remains available if the after hook fails.
     value: ${{ steps.upload.outputs.receipt-path }}
@@ -334,11 +337,13 @@ runs:
 
     - name: Persist upload acceptance before distribution
       id: acceptance
-      if: ${{ always() && steps.upload.outputs.receipt-path != '' }}
+      if: ${{ always() && (steps.upload.outputs.receipt-path != '' || steps.upload.outputs.resource-path != '') }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: ${{ steps.receipt-context.outputs.artifact-name }}
-        path: ${{ steps.upload.outputs.receipt-path }}
+        path: |
+          ${{ steps.upload.outputs.receipt-path }}
+          ${{ steps.upload.outputs.resource-path }}
         if-no-files-found: error
         retention-days: 90
         overwrite: false

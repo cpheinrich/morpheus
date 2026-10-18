@@ -39,7 +39,7 @@ are unchanged. `archive-build-settings` still supplies explicit per-setting over
 
 After Apple returns a successful upload response with one upload id, the action writes
 `accepted.json` and uploads it **before** polling processing, assigning groups or submitting
-beta review. `acceptance-artifact-name` names the artifact; it contains only repository,
+beta review. `acceptance-artifact-name` names the artifact; its allowlisted receipts contain only repository,
 checked-out source SHA, run id/attempt/job, bundle/app ids, version/build number, upload id,
 acceptance timestamp and schema/state fields. No raw API response, keys or signing files enter it.
 The artifact name includes the run and attempt plus a unique invocation suffix for matrix jobs
@@ -107,9 +107,13 @@ A second digest check refuses an IPA changed by a hook.
 As soon as Apple returns an upload resource, `resource` receives `UPLOAD_RECEIPT_PATH`
 pointing to allowlisted `resource.json`, before acceptance polling. It contains the exact
 identity, IPA digest, upload id and provider state; terminal failures retain bounded
-machine diagnostic codes. Unknown states remain uncertain. The `after` hook receives
-`accepted.json` only after atomic publication and step outputs, so its failure still permits
-the `always()` artifact step to persist acceptance. No raw provider response is published.
+machine diagnostic codes. Unknown states remain uncertain. The adapter publishes `accepted.json` and step outputs immediately when either the initial
+response or acceptance poll reports `PROCESSING`/`COMPLETE`, before calling the `resource`
+hook. The `after` hook then receives `accepted.json`. Either hook may fail the job without
+hiding known acceptance from the `always()` artifact step. That artifact includes only
+`accepted.json` and `resource.json`, never the surrounding context or raw responses.
+If only an awaiting/failed/unknown resource was observed, `resource-path` still enables
+artifact publication when a ledger hook is unavailable, without inventing acceptance. No raw provider response is published.
 `acceptance-path`, `version`, `build-number`, `upload-id` and `acceptance-artifact-name`
 expose the resulting evidence. A skipped claim produces no accepted receipt or upload id.
 
