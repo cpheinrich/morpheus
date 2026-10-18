@@ -204,7 +204,22 @@ export class Controller {
             const observations = (await this.store.read()).state.intents[intentId].attempts.find(item => item.id === attempt.id).uploadObservations ?? [];
             const observationStart = Math.max(Date.parse(observations[0]?.at ?? now), Date.parse(attempt.quiescence?.observedAt ?? now));
             if (attempt.quiescence && run.status === "completed" && !attempt.upload.acceptedAt && observations.length >= 2 && Date.parse(now) - observationStart >= this.config.deadlines.appleObservationMinutes * 60_000) {
-                await this.store.transact(`retire-${attempt.id}`, "retire-uncertain-upload", now, next => { const current = attemptAt(next, intentId, attempt.id); invariant(current.attempt.quiescence, "Quiescence evidence disappeared"); current.attempt.status = "retired-uncertain"; current.intent.state = "pending"; current.intent.nextAction = "dispatch-full-tests"; current.intent.nextCheckAt = now; return { burnedBuild: attempt.buildNumber, monitorLateAppearance: true }; });
+                await this.store.transact(`retire-${attempt.id}`, "retire-uncertain-upload", now, next => {
+                    const current = attemptAt(next, intentId, attempt.id), upload = current.attempt.upload;
+                    // Acceptance/resource hooks can commit after the absence read above. Only
+                    // this CAS transition's current state can release an uncertain reservation.
+                    if (current.attempt.status !== "active" || current.intent.attempts.at(-1)?.id !== attempt.id || current.intent.state === "delivered" || !upload || upload.acceptedAt || ["accepted", "rejected"].includes(upload.outcome))
+                        return { retired: false };
+                    const observations = current.attempt.uploadObservations ?? [], quiescence = current.attempt.quiescence;
+                    const start = Math.max(Date.parse(observations[0]?.at ?? now), Date.parse(quiescence?.observedAt ?? now));
+                    if (!quiescence || !current.attempt.workflowTerminalAt || observations.length < 2 || Date.parse(now) - start < this.config.deadlines.appleObservationMinutes * 60_000)
+                        return { retired: false };
+                    current.attempt.status = "retired-uncertain";
+                    current.intent.state = "pending";
+                    current.intent.nextAction = "dispatch-full-tests";
+                    current.intent.nextCheckAt = now;
+                    return { retired: true, burnedBuild: attempt.buildNumber, monitorLateAppearance: true };
+                });
             }
             else
                 await this.processingDiagnosis(intentId, attempt, now, `Upload/build absent after bounded observation; executor ${run.id} requires confirmed host/provider quiescence before replacement`);

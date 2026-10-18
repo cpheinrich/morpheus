@@ -63,3 +63,14 @@ model recovery, or internal TestFlight availability. Those remain the parent-led
 consumer acceptance campaign. No model invocation or Apple mutation occurred in
 this implementation worktree. The initial blocked review is retained and requires
 an independent follow-up on the fixed head before merge.
+
+The same-reviewer follow-up identified a retirement interleaving: an acceptance
+hook could commit between an absent-provider snapshot and the retirement CAS.
+The retirement transition now rechecks its current active/latest identity,
+accepted timestamp/outcome, terminal workflow, host quiescence and observation
+window atomically. An actual Controller/GitHubStore interleaving regression
+injects acceptance immediately before retirement, checks the next tick burns no
+new build, then completes the original exact receipt. A positive control still
+replaces a genuinely absent uncertain upload after all required evidence.
+The focused controller/state/store run passed 49/49; typecheck, lint, compile
+and diff check passed. The initial blocked review remains unchanged.

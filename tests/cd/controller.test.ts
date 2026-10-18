@@ -48,6 +48,25 @@ describe("controller failure sequences", () => {
     await h.controller.tick(after(now, 40)); const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
     expect(intent.attempts).toHaveLength(1); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.upload!.outcome).toBe("uncertain"); expect(intent.nextAction).toBe("run-repair-agent"); expect(Object.values(state.agents)).toHaveLength(1); expect(h.dispatch).not.toHaveBeenCalled();
   });
+  it("keeps accepted bytes reserved when the hook wins after absence but before retirement", async () => {
+    const h = await harness(true); h.run.status = "completed"; h.run.conclusion = "failure";
+    await h.store.transact("host-stopped", "fixture", now, state => { const attempt = state.intents[h.intentId]!.attempts[0]!; attempt.quiescence = { kind: "host-terminated", ref: "Owned VM terminated", observedAt: now }; attempt.uploadObservations = [{ at: after(now, 5) }]; return null; });
+    const transact = h.store.transact.bind(h.store); let injected = false;
+    vi.spyOn(h.store, "transact").mockImplementation(async (id, kind, at, transition) => {
+      if (id.startsWith("retire-") && !injected) { injected = true; await transact("late-acceptance-hook", "record-upload-result", at, state => { recordUpload(state, { ...h.upload, outcome: "accepted", providerUploadId: "resource" }, at); return null; }); }
+      return transact(id, kind, at, transition);
+    });
+    await h.controller.tick(after(now, 40)); let intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(injected).toBe(true); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.upload!.acceptedAt).toBe(after(now, 40)); expect(intent.state).toBe("processing");
+    await h.controller.tick(after(now, 45)); intent = (await h.store.read()).state.intents[h.intentId]!; expect(intent.attempts).toHaveLength(1); expect(intent.attempts[0]!.buildNumber).toBe("8"); expect(h.dispatch).not.toHaveBeenCalled();
+    h.observe.mockResolvedValue({ observation: observation() }); await h.controller.tick(after(now, 50)); expect((await h.store.read()).state.intents[h.intentId]!.receipt!.attemptId).toBe(h.attemptId);
+  });
+  it("replaces a still-absent uncertain upload after proven quiescence and observation", async () => {
+    const h = await harness(true); h.run.status = "completed"; h.run.conclusion = "failure";
+    await h.store.transact("host-stopped", "fixture", now, state => { const attempt = state.intents[h.intentId]!.attempts[0]!; attempt.quiescence = { kind: "host-terminated", ref: "Owned VM terminated", observedAt: now }; attempt.uploadObservations = [{ at: after(now, 5) }]; return null; });
+    await h.controller.tick(after(now, 40)); expect((await h.store.read()).state.intents[h.intentId]!.attempts[0]!.status).toBe("retired-uncertain");
+    await h.controller.tick(after(now, 45)); const intent = (await h.store.read()).state.intents[h.intentId]!; expect(intent.attempts).toHaveLength(2); expect(intent.attempts[1]!.buildNumber).toBe("9"); expect(h.dispatch).toHaveBeenCalledTimes(1);
+  });
   it("diagnoses terminal upload rejection when no matching build exists", async () => {
     const h = await harness(true); h.observe.mockResolvedValue({ uploadState: "FAILED", diagnostics: "90683" }); await h.controller.tick(after(now, 5)); const state = (await h.store.read()).state;
     expect(state.intents[h.intentId]!.attempts[0]!.status).toBe("failed"); expect(state.intents[h.intentId]!.state).toBe("repairing"); expect(Object.values(state.agents)[0]!.task).toContain("90683"); expect(h.dispatch).not.toHaveBeenCalled();
