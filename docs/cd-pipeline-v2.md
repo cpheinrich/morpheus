@@ -1,6 +1,6 @@
 # Morpheus CD pipeline V2
 
-Status: WIP design, 2026-10-18. Owner: Morpheus. First consumer: Evo.
+Status: design under independent review, 2026-10-18. Owner: Morpheus. First consumer: Evo.
 Roadmap: MO-26-10-18-06.52.29. Implementation and operational acceptance follow
 this design; approving this document does not assert that delivery works.
 
@@ -14,7 +14,7 @@ review is not part of CD success.
 
 | Requirement | Observable result |
 | --- | --- |
-| Staging every six hours when iOS inputs change | At each UTC six-hour boundary, select eligible main and eventually deliver it; record a no-change decision otherwise. |
+| Staging every six hours when iOS inputs change | At each UTC six-hour boundary, select eligible main and deliver before the next boundary; record a no-change decision otherwise. |
 | Production daily from source at least 24 hours old | Select the newest eligible first-parent main revision at the daily boundary. Record when the source reached main, not its author date. Publish daily even without new app changes. |
 | Recovery owns completion | An intent stays outstanding through test failures, repair, review, merge, upload and Apple processing until internal availability is verified. |
 | Missed schedule recovers | Reconciliation discovers overdue work from durable state. A new merge cannot reset the age of an older undelivered relevant change. |
@@ -22,9 +22,15 @@ review is not part of CD success.
 | Evidence, not green icons | A validated exact-build receipt proves app, source, build number, processing and internal distribution. |
 | Budget | Preserve at least 10% of subscription quota. Together.ai expenditure is capped at $250 for this task, with reservations before requests. Report actual usage and limitations. |
 
-Staging slots are 00:00/06:00/12:00/18:00 UTC; production defaults to 09:00 UTC
-unless existing project operations require a different explicit configuration.
-Six hours is a selection cadence, not permission to lose unserved changes.
+Staging slots are 00:00/06:00/12:00/18:00 UTC; production uses one explicitly
+configured UTC daily boundary (Evo starts at 18:00 UTC).
+Scheduled work must dispatch within 15 minutes of its boundary and become internally
+available before the following six-hour staging boundary (production within six
+hours of its daily boundary). These are outcome deadlines, measured from the
+original obligation; selecting a source does not satisfy them. An overdue intent
+remains overdue while recovery works. Phase deadlines trigger reconciliation,
+alternate execution or repair rather than resetting its clock. Six hours never
+permits losing unserved changes.
 A selected intent has immutable original source and slot. A repair may add
 descendant app commits, recorded as a source lineage. A newer scheduled source
 may coalesce unstarted staging work, but never erase its debt or a failed
@@ -37,40 +43,23 @@ internal group, with the relevant beta testing state permitting installation.
 External tester group assignment and Beta App Review are separate optional
 operations. They cannot revoke an internal delivery.
 
-## Why the current system stalls
+## Design motivation and private evidence
 
-The incident is not explained by missing credentials. GitHub repository admin,
-App Store Connect reads, signing material, both app records and both runner slots
-were verified during preflight. A capability test is evidence at that time, not
-a permanent promise of credential validity.
+The operational RCA, including repository logs and private conversation provenance,
+is retained in Evo's private engineering records. It is not published in this
+public repository. The independent reviewer can inspect that evidence in the
+private task workspace; the public design states reusable requirements and
+validation, without incident narratives or private operational details.
 
-Evidence so far, with a complete sanitized RCA appendix to follow:
+A delivery controller must distinguish source selection, test qualification,
+upload acceptance, provider processing and actual internal availability. A PR,
+issue state, agent response or process heartbeat cannot substitute for the final
+receipt. Outstanding work must remain durable across each of those boundaries.
 
-* A repair PR merged, while its originating recovery incident remained stopped.
-  The controller recognized PR readiness as progress but had no reliable owner
-  driving the merged source back through deployment.
-* An automated assistant issued an operator stop using a human GitHub identity.
-  Later status messages repeated obsolete PR state. The stored stop was not
-  evidence of a hard technical blocker.
-* A newer iOS merge reset the watchdog freshness calculation and closed an
-  overdue-delivery issue without a newer delivered build. Continuous changes
-  can therefore conceal an indefinitely stalled pipeline.
-* Admission depends on GitHub incident state. One run was refused because its
-  incident had already closed; generic PR issue closure and delivery ownership
-  disagree over when work is done.
-* The scheduler and recovery services reported healthy heartbeats while useful
-  delivery was halted. Restarting a live process cannot fix missing ownership.
-* Real earlier failures included UI assertions, missing backend indexes,
-  storage exhaustion, signing/runtime changes and Apple processing rejection.
-  These require different recovery actions; none justify a global permanent
-  incident gate or declaring success after upload alone.
-* Four-hour staging policy, manual production and an alert-only watchdog differ
-  from the requested six-hour staging and daily aged production contract.
-
-Retain proven low-level work: full-test integrity evidence, isolated VM runners,
-unsigned archive then explicit profile/identity export, entitlement/IPA checks,
-and upload acceptance persisted before distribution. Replace orchestration and
-success accounting, not those safeguards.
+Retain low-level safeguards: full-test integrity evidence, isolated runners,
+unsigned archive followed by explicit profile/identity export, entitlement/IPA
+checks, and upload acceptance persisted before distribution. Replace admission,
+recovery ownership and success accounting with the contract below.
 
 ## Architecture
 
@@ -105,14 +94,19 @@ authoritative. Neither tick owns a separate retry policy.
 
 The Mac executes the existing two VM slots. Work waits in the ledger, not a
 GitHub concurrency pending slot. A bounded runner admission timeout routes
-eligible work to the existing GitHub-hosted macOS execution path. If GitHub
+eligible work to a GitHub-hosted macOS execution path. Legacy callers configure
+that path, but V2 must demonstrate it before claiming host-loss recovery. If GitHub
 itself is unavailable, preserve intent and reconcile on restoration; do not
 invent a successful deployment. Local and off-host execution must use the same
 identities, receipt validation and global build reservations.
 
 The primary agent executor uses the existing local subscription runtime.
-An off-host adapter can use a configured API runtime and GitHub App credentials
-when the Mac is absent. This capability must be demonstrated, not assumed.
+An off-host adapter can use an existing authorized subscription/API runtime and
+GitHub App credentials when the Mac is absent. Credential-name inventory and
+deterministic status sweeps do not establish a working hosted repair session.
+Acceptance must demonstrate
+diagnosis, patching, independent review and continuation while the local worker
+is stopped. The hosted build lane separately demonstrates native execution.
 Individual agent sessions have time/token limits and checkpoints; their expiry
 yields durable work for a resumed or independent agent. GitHub Manager may help
 review/merge, but delivery cannot depend on its eventually noticing a PR.
@@ -122,8 +116,16 @@ review/merge, but delivery cannot depend on its eventually noticing a PR.
 A dedicated branch (for example `morpheus-cd-state`) contains versioned JSON
 state and an append-only event history. Store adapters read a head, compute a
 transition, create a commit with that exact parent, and update the ref without
-force. A concurrent update rejects the loser; it reloads and re-evaluates.
-No side effect is allowed inside a retried pure transition.
+force. The new commit has exactly one parent, the observed head; no merge,
+implicit fetch/rebase or history rewrite is permitted. Under that constraint a
+concurrent sibling update rejects the loser; it reloads and re-evaluates. Nonforce
+alone is only a fast-forward check, not a general expected-value API. Unknown
+write acknowledgment is reconciled by transition/effect ID in current state and
+history, even after another writer advances the head. No side effect is allowed
+inside a retried pure transition. A missing previously initialized state branch
+is an incident, never permission to create an empty queue. Protect it against
+force/deletion and retain a recoverable secondary copy without promoting it as
+a concurrent authority.
 
 The state contains configuration digest, migration epoch, last evaluated slots,
 per-channel delivered source cursors, delivery intents, attempts, leases,
@@ -136,8 +138,10 @@ A lease includes owner, expiry and monotonically increasing fence. Before each
 irreversible operation the executor must atomically claim that operation in the
 ledger. Expired owners cannot authorize new work. Upload is not transactional
 with GitHub: expiration while Apple is receiving bytes creates uncertainty,
-not permission for another uploader. The operation remains reserved until
-provider reconciliation resolves it. No claim of general exactly-once external
+not permission for another uploader. Worker leases and operation reservations
+are separate. An operation claim means the effect may already have started;
+expiry transfers observation ownership, not permission to repeat it. The recovery
+table below defines how it resolves. No claim of general exactly-once external
 execution is made.
 
 ### Delivery state
@@ -164,7 +168,29 @@ unserved relevant changes. After a failure, newer changes may supersede the
 candidate only by an explicit recorded lineage transition that preserves the
 oldest debt. Old-source successful builds cannot move the cursor past changes
 they do not include. Production selects by first appearance on main, verified
-from merge/history evidence. Missing age evidence is ineligible, not guessed.
+from merge/history evidence. Neither author nor committer time proves main entry.
+Missing age evidence uses conservative durable first observation, requiring a
+real 24-hour wait; rewritten main history requires a new explicit epoch.
+
+Only one ordinary delivery intent per channel is active. After a multi-day outage,
+never-started production slots coalesce into one catch-up intent for the latest
+due boundary, with eligibility evaluated at that boundary. Older missed slots
+remain recorded as missed/covered by that catch-up; they are not backdated
+successes. A started or failed intent retains its identity and takes priority.
+A source known to fail is quarantined with its repair lineage; later daily slots
+attach to that work instead of repeatedly selecting the same bad SHA. When an
+app fix is too young, persist its eligible-at time and resume then. Deadlines
+remain breached during the wait; no age exception or fresh overdue clock exists.
+
+Historical validation never rolls back the operational cursor or promotes an
+older binary over a newer ordinary delivery. Prefer ascending sources at or
+after the channel's delivered baseline, and adopt already-reviewed descendant
+fixes with explicit lineage evidence when appropriate. A truly older-binary drill
+uses an explicit internal validation group with intended authorized testers;
+verify automatic distribution cannot expose it to ordinary groups. Otherwise
+do not upload that historical binary. Final promotion is rechecked against the
+live cursor, so out-of-order completions cannot regress it. No validation cursor
+change is inferred from merely allocating a higher Apple build number.
 
 ### Execution and side effects
 
@@ -176,8 +202,9 @@ archive. Test evidence includes complete runtime inventory and actual results.
 A passing unit-only run cannot satisfy full CD.
 
 Before workflow dispatch, persist a unique effect ID. Put it in dispatch inputs,
-run name and all artifacts. On lost response, enumerate matching runs before
-retrying; a duplicate run must acquire the same operation claim and exit
+run name and all artifacts. On lost response, enumerate all relevant pages of
+matching runs and account for visibility delay before retrying; a duplicate run
+must acquire the same operation claim and exit
 without repeated upload. Every Actions artifact is downloaded and validated;
 an artifact name alone proves nothing.
 
@@ -185,17 +212,41 @@ Reserve build numbers globally per app/version in the GitHub ledger, reconcile
 with the provider maximum at allocation, and never reuse a reservation after an
 uncertain upload. The upload adapter returns accepted, rejected or uncertain,
 binding source, delivery, effect, app, version, build, IPA hash and run attempt.
-Persist acceptance as soon as Apple accepts. If the job dies before persisting,
-query that exact build identity; resume processing/distribution when found.
+Persist IPA hash and upload intent before contacting Apple, and persist the upload
+resource ID as soon as it exists. Persist acceptance as soon as Apple accepts.
+If the job dies before persisting, observe both the upload resource and exact
+app/version/build identity; resume processing/distribution when found.
 Do not archive/upload again merely because distribution or external review
 failed. A bounded observation deadline produces a documented recovery decision,
 not an unbounded silent wait or a blind retry.
 
+| Uncertain operation observation | Required recovery decision |
+| --- | --- |
+| Claim persisted, worker might still be paused before its call | Retain operation reservation. Cancel the exact workflow/process group and verify terminal/quiescent state; a lease timeout alone is insufficient. |
+| Owned executor proven dead before call, no request can remain in flight | Close that attempt as not started and create a fresh fenced attempt; retain its burned build reservation. |
+| Upload resource says FAILED/INVALID, no build exists | Persist terminal provider diagnostics and start targeted repair; do not wait for a build that will never exist. |
+| Upload accepted or matching build visible | Continue processing and group distribution on that identity, without archive/upload replay. |
+| Upload/build absent or not yet visible | Bounded repeated provider observations (default 30 minutes), retaining ownership uncertainty and build allocation. Quiesce the old executor before any replacement authorization. |
+| Still absent after quiescence and observation window | Record a retired-uncertain attempt, preserve/burn its identity and monitor for late appearance; authorize a new attempt/build under the same lineage. A late old build is never promoted or counted. This may leave an unused duplicate provider binary, not duplicate delivery credit. |
+| Accepted build terminally rejected in processing | Record rejection and diagnostics, repair, then allocate another build within the same lineage. |
+
+Only the current attempt may receive group promotion. Managed group automatic
+distribution must not bypass that check. A terminal GitHub job or confirmed
+termination of the owned process group is required quiescence evidence; an
+unreachable host with a possibly live uploader requires infrastructure diagnosis
+and continued observation, not an unsafe duplicate authorization. Provider outage
+or missing observation access remains explicit waiting/repair work.
+
 Internal completion reads the exact app/version/build, processing status,
 internal group ownership/type/membership and beta testing state. Wrong-source,
 wrong-app, stale artifact or sibling-build receipts fail validation. Receipt
-validation is shared across staging and production. Store the final receipt
-before advancing the delivered cursor or closing a delivery issue.
+validation is shared across staging and production. Apple does not attest Git
+SHA or IPA hash: join its exact build identity to trusted workflow/artifact
+evidence, verified against the selected control revision and run attempt. Store
+the immutable final receipt and covered-source cursor advance in one transition;
+later provider observations append without rewriting it. Persist slot decisions
+and debt before advancing the evaluated-slot watermark. Issue closure follows
+that committed evidence.
 
 ### Automated remediation
 
@@ -226,6 +277,25 @@ A blocker record names the missing capability, evidence, attempts, what will
 unblock it and a periodic recheck. Quota/cost exhaustion is a visible resumable
 budget pause, not success. New capacity resumes work automatically.
 
+Reserve paid requests before invocation using immutable request/configuration
+identity and an enforceable maximum output/retry cost. Unknown outcomes retain
+maximum liability; settled tombstones make charging/releasing replay-safe.
+Reservations and spend are global across executors and quota windows. Subscription
+usage is observed from actual runtime telemetry, not token-count guesses. Stop
+admitting new subscription work by 80% used to leave room for in-flight work and
+the required 10% reserve; checkpoint/stop owned sessions before reaching 90%.
+Missing telemetry prevents a claim that quota is protected and routes work to a
+measured authorized alternative or a durable budget wait. No paid-provider
+fallback may bypass the $250 Together ceiling.
+
+Initial operational deadlines are explicit configuration: controller wakeup
+15 minutes, unassigned native job 15 minutes before alternate-lane recovery,
+native tests 180 minutes, archive/upload 90 minutes, agent invocation 45 minutes.
+Apple processing is observed every five minutes; a 30-minute wait triggers
+provider diagnosis without re-uploading an accepted binary. These phase limits
+are subordinate to the delivery deadline. A worker that times out checkpoints
+and resumes; repeated identical evidence triggers an independent strategy.
+
 An explicit operator pause has actor provenance, scope, reason and resume
 condition. An agent must not impersonate a human stop because it is confused.
 This task authorizes clearing legacy accidental stops during cutover.
@@ -234,8 +304,8 @@ arbitrary command execution or prove human provenance.
 
 ## Borrowing and alternatives
 
-Research is in progress; primary-source references will accompany the final
-decision. GitHub Actions remains the executor and event source. GitHub's
+[Primary-source research and package comparisons](cd-pipeline-v2-research.md)
+support this decision. GitHub Actions remains the executor and event source. GitHub's
 documented scheduled-event delays/drops mean Actions cron alone is insufficient.
 Temporal provides durable execution but adds a service and does not eliminate
 idempotency for external effects. GitHub Agentic Workflows offers useful repair
@@ -267,7 +337,9 @@ dependency. Record measured dependencies and selected alternatives before merge.
 
 ## Validation and acceptance
 
-Design prototypes must challenge the risky boundaries before implementation:
+[Design prototypes](cd-pipeline-v2-validation.md) challenge the risky boundaries
+before implementation; 45 executable cases and two live GitHub contention probes
+have run. Their modeled versus real-provider scope is explicit. Required cases:
 concurrent CAS writers; crash before/after intent persistence; main age versus
 author time; missed slots/new merges; receipt substitution; ambiguous upload;
 lease expiry while an effect is still active; quota reservation and retry.
@@ -302,6 +374,13 @@ deliveries remain valid evidence.
 | No relevant staging change | Explicit no-change decision; not counted as a delivery |
 | Receipt identity mismatch | Rejected without advancing cursor or closing issue |
 | Off-host recovery | Demonstrated control and repair fallback, not just an alert |
+
+Observe at least one real normal scheduled staging boundary with relevant
+changes, one real scheduled no-change decision and one normal daily production
+boundary, in addition to the accelerated campaign. Record scheduled due,
+dispatch and internal-availability timestamps, including any missed deadline.
+Exercise both wakeup sources and show that dropping one still discovers due
+work. Manual requests and simulated clocks cannot substitute for this proof.
 
 Two VM slots may run independent source tests in parallel. Signing and Apple
 identities remain serialized by global reservation/operation ownership where

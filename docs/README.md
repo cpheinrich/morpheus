@@ -7,7 +7,8 @@ here is canonical; anything rendered elsewhere is a view.
 ## Designs
 
 - [CD pipeline V2](cd-pipeline-v2.md) — delivery ownership, automatic recovery and
-  internal TestFlight acceptance; [research](cd-pipeline-v2-research.md).
+  internal TestFlight acceptance; [RCA](cd-pipeline-v2-rca.md),
+  [research](cd-pipeline-v2-research.md), [design probes](cd-pipeline-v2-validation.md).
 
 Keep runbooks about *doing*: decisions and their reasons belong in `architecture.md` and
 `.agent/decisions.md`, and a runbook that restates them will drift from both.

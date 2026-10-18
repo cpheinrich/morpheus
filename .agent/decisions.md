@@ -1315,3 +1315,19 @@ navigation or scroll, reload (iOS), and Send. The maintained `@playwright/test` 
 1.63.0 adds Playwright and its browser core to dev dependencies only; browser engines are
 installed in the dedicated CI job. This is the smallest credible real-browser test harness
 for two distinct overlay architectures and catches failures DOM-level tests missed.
+
+## CD V2 owns delivery through internal availability — 2026-10-18
+
+Christopher authorized a requirements-first redesign, implementation and eight consecutive
+real deliveries across staging and production. [The design](../docs/cd-pipeline-v2.md)
+replaces Evo's incident-gated admission with a GitHub-authoritative lineage ledger and
+one reconciler; issues and PRs are progress projections. Staging runs every six hours
+when relevant inputs change; production runs daily from source on main at least 24 hours.
+The exact build being internally testable is success; external review is separate.
+
+Considered Temporal, GitHub Agentic Workflows, SQLite/Litestream and existing CI-repair
+actions. Keep existing GitHub/Mac executors and a small first-party reducer: the alternatives
+add a service or do not own the complete delivery lifecycle. Provider wrappers remain
+reusable Morpheus code, with Evo identities/hooks/configuration. Live Git contention and
+process-failure probes support the design; they do not prove deployment. See the research,
+private RCA and public validation appendix. Legacy consumers remain unchanged until explicit migration.

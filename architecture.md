@@ -3312,6 +3312,14 @@ sources still build, failed runs retry, and manual forced builds always run. An 
 screenshots is distinguishable from one that failed to capture them. This is bounded recovery,
 not an independent scheduler.
 
+**CD V2 design:** [Morpheus CD pipeline V2](docs/cd-pipeline-v2.md) defines the
+replacement delivery contract and migration for Evo: six-hour staging, daily aged
+production, durable recovery ownership and exact internal TestFlight receipts.
+The design is separate from rollout acceptance; existing consumers retain the
+legacy behavior below until explicitly migrated and verified. Shared controller,
+provider and agent code belongs in Morpheus; consumer repositories supply policy,
+identities and app/backend hooks. See the linked RCA, research and design probes.
+
 Apps whose nightly release is dispatched from the Mac mini share one admission core,
 `src/ios/nightly-core.ts`, extracted from Evo's controller (darwin-health/evo #307, #309). It
 admits at most one automated release per local calendar day in a configured window, whatever
