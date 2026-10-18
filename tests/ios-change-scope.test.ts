@@ -135,8 +135,8 @@ describe('single native check change scope', () => {
     expect(wf.on.workflow_call.inputs['watch-paths']!.default).toBe('');
     const steps = wf.jobs.test.steps;
     const scope = steps.findIndex(s => s.id === 'scope');
-    expect(scope).toBe(1);
-    expect(steps[0]!.with!['fetch-depth']).toBe("${{ github.event_name == 'pull_request' && inputs.watch-paths != '' && '0' || '2' }}");
+    expect(scope).toBe(3);
+    expect(steps[1]!.with!['fetch-depth']).toBe("${{ github.event_name == 'pull_request' && inputs.watch-paths != '' && '0' || '2' }}");
     expect(steps[scope]!['working-directory']).toBe('.');
     for (const step of steps.slice(scope + 1)) expect(step.if, step.name).toContain("steps.scope.outputs.run == 'true'");
   });

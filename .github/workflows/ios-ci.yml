@@ -17,6 +17,14 @@ name: iOS CI
 on:
   workflow_call:
     inputs:
+      source-sha:
+        description: Optional exact 40-character source commit to test; required for CD execution.
+        type: string
+        default: ""
+      execution-id:
+        description: Durable CD dispatch effect id; isolates concurrency and disables cancellation.
+        type: string
+        default: ""
       actions-ref:
         description: >
           The commit, tag or branch of cpheinrich/morpheus whose composite actions this run uses
@@ -175,19 +183,49 @@ jobs:
     # refs/heads/main. Without it both land in one group and the release's
     # tests can be cancelled by an unrelated push — or cancel it.
     concurrency:
-      group: ios-ci-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-${{ inputs.scheme }}
-      cancel-in-progress: true
+      group: ios-ci-${{ github.repository }}-${{ github.workflow }}-${{ inputs.execution-id || github.ref }}-${{ inputs.scheme }}
+      cancel-in-progress: ${{ inputs.execution-id == '' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
 
     steps:
+      - name: Validate execution identity
+        working-directory: .
+        env:
+          SOURCE_SHA: ${{ inputs.source-sha }}
+          EXECUTION_ID: ${{ inputs.execution-id }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$SOURCE_SHA" && ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source-sha must be an exact lowercase 40-character commit hash" >&2
+            exit 1
+          fi
+          if [[ -n "$EXECUTION_ID" ]]; then
+            if [[ ! "$EXECUTION_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ || -z "$SOURCE_SHA" ]]; then
+              echo "execution-id must be a safe CD effect id with an exact source-sha" >&2
+              exit 1
+            fi
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ inputs.source-sha || github.sha }}
           # Scoped PRs need ancestry to verify a merge regenerated after the event.
           # Other callers only need the first parent for the style gate.
           fetch-depth: ${{ github.event_name == 'pull_request' && inputs.watch-paths != '' && '0' || '2' }}
           persist-credentials: false
+
+      - name: Assert checked-out source
+        working-directory: .
+        env:
+          SOURCE_SHA: ${{ inputs.source-sha }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$SOURCE_SHA" && "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]]; then
+            echo "Checked-out source does not match source-sha" >&2
+            exit 1
+          fi
 
       - name: Check native change scope
         id: scope
@@ -758,6 +796,7 @@ jobs:
       - name: Export complete test evidence
         if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         env:
+          EXECUTION_ID: ${{ inputs.execution-id }}
           TEST_SELECTION: ${{ inputs.test-selection }}
           ONLY_TESTING: ${{ inputs.only-testing }}
           SKIP_TESTING: ${{ inputs.skip-testing }}
@@ -765,6 +804,16 @@ jobs:
         run: |
           set -euo pipefail
           git rev-parse HEAD > "$RESULTS/tested-sha.txt"
+          if [[ -n "${EXECUTION_ID:-}" ]]; then
+            python3 - <<'PYTHON'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ["RESULTS"])
+          data = dict(schemaVersion=1, sourceSha=(root / "tested-sha.txt").read_text().strip(),
+                      executionId=os.environ["EXECUTION_ID"], runId=os.environ["GITHUB_RUN_ID"],
+                      runAttempt=os.environ["GITHUB_RUN_ATTEMPT"])
+          (root / "execution.json").write_text(json.dumps(data) + "\n")
+          PYTHON
+          fi
           printf '%s\n' "$TEST_SELECTION" > "$RESULTS/selection.json"
           printf '%s\n' "$ONLY_TESTING" > "$RESULTS/only-testing.txt"
           printf '%s\n' "$SKIP_TESTING" > "$RESULTS/skip-testing.txt"
@@ -822,7 +871,7 @@ jobs:
         if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ${{ steps.ios_paths.outputs.evidence-name }}
+          name: ${{ inputs.execution-id != '' && format('ios-test-evidence-{0}', inputs.execution-id) || steps.ios_paths.outputs.evidence-name }}
           path: |
             ${{ steps.ios_paths.outputs.results }}/*.json
             ${{ steps.ios_paths.outputs.results }}/*.txt
