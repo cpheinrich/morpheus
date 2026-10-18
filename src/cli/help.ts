@@ -108,6 +108,8 @@ Usage
                             asks; with it, what the branch changed since that ref
   morpheus ios nightly-core write|check <file>
                             vendor the shared nightly TestFlight admission core into an app
+  morpheus cd config|init|tick|request|status|worker [--config .morpheus/cd.json]
+                            durable native delivery and repair; cd --help for evidence/hooks
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
   morpheus gh-manager sweep <owner/repo> [--out file]

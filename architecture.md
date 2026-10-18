@@ -3320,6 +3320,17 @@ legacy behavior below until explicitly migrated and verified. Shared controller,
 provider and agent code belongs in Morpheus; consumer repositories supply policy,
 identities and app/backend hooks. See the linked RCA, research and design probes.
 
+The implementation is `src/cd/`, exported as `morpheus-kit/cd` and `morpheus cd`;
+its [operator contract](docs/cd-v2-controller.md) documents config, evidence and
+workflow inputs. GitHub Git commits store the authoritative state and events with
+single-parent nonforce updates and per-invocation ownership. Compact verified
+test proofs reference hashed native artifacts. Upload and group operations have
+durable claims; actual provider receipts complete the original obligation.
+Bounded subscription workers retain immutable tasks, session checkpoints and
+actual quota telemetry. App-only repairs reset production age; unchanged input
+digests retain their first lineage age through controller repairs. These are
+implementation properties, distinct from real consumer rollout acceptance.
+
 Apps whose nightly release is dispatched from the Mac mini share one admission core,
 `src/ios/nightly-core.ts`, extracted from Evo's controller (darwin-health/evo #307, #309). It
 admits at most one automated release per local calendar day in a configured window, whatever

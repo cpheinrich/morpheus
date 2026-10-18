@@ -47,7 +47,9 @@ export const Members = z.object({
     members: z.array(Member).min(1),
 });
 /** Where a meeting note came from. `session` is an agent in the meeting. */
-export const NoteSource = z.enum(["session", "granola", "manual", "otter", "zoom"]);
+// Object keys preserve declaration order; tuple-to-union mapped keys depend on
+// which string literals TypeScript encountered first elsewhere in the program.
+export const NoteSource = z.enum({ session: "session", granola: "granola", manual: "manual", otter: "otter", zoom: "zoom" });
 /**
  * A meeting note — a **summary**, never a transcript.
  *
