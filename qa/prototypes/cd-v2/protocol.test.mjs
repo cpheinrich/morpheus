@@ -313,7 +313,7 @@ function launchPausedWorker(authPath,providerPath){
   });
   return {child,exited,nextMessage,async stop(){if(child.exitCode===null&&child.signalCode===null)child.kill('SIGTERM');await exited;}};
 }
-function effectFixture(){const root=mkdtempSync('/private/tmp/cd-v2-prototypes/worker-');return {root,auth:join(root,'authorization.json'),provider:join(root,'provider-effects.jsonl')};}
+function effectFixture(){const root=mkdtempSync(join(tmpdir(),'cd-v2-worker-'));return {root,auth:join(root,'authorization.json'),provider:join(root,'provider-effects.jsonl')};}
 
 test('REAL PROCESS: paused authorized worker can still mutate after durable lease expiry and replacement authorization',{timeout:5000},async()=>{
   const f=effectFixture();let worker;
@@ -321,7 +321,9 @@ test('REAL PROCESS: paused authorized worker can still mutate after durable leas
     const initialExpiration=Date.now()+250;durableJSON(f.auth,{owner:'old',operation:'upload/201',fence:1,expires:initialExpiration});
     worker=launchPausedWorker(f.auth,f.provider);assert.equal((await worker.nextMessage()).type,'authorized-and-paused');
     assert.ok(Date.now()<initialExpiration);await new Promise(resolve=>setTimeout(resolve,Math.max(0,initialExpiration-Date.now()+5)));assert.ok(Date.now()>initialExpiration);
-    durableJSON(f.auth,{owner:'new',operation:'upload/201',fence:2,expires:Date.now()+60000,previousLeaseExpiredAt:initialExpiration});
+    durableJSON(f.auth,{owner:'new',operation:'upload/201',fence:2,expires:Date.now()+60000,previousLeaseExpiredAt:initialExpiration,githubJobStatus:'completed',githubJobConclusion:'cancelled'});
+    assert.equal(JSON.parse(readFileSync(f.auth,'utf8')).githubJobStatus,'completed');
+    assert.equal(worker.child.exitCode,null); // Server-side terminal status did not terminate this runner's process.
     // This replacement authorization is deliberately UNSAFE: expiry did not stop old code.
     appendFileSync(f.provider,JSON.stringify({owner:'replacement',operation:'upload/201'})+'\n');
     worker.child.send('invoke');assert.equal((await worker.nextMessage()).type,'mutated');

@@ -231,11 +231,15 @@ not an unbounded silent wait or a blind retry.
 | Accepted build terminally rejected in processing | Record rejection and diagnostics, repair, then allocate another build within the same lineage. |
 
 Only the current attempt may receive group promotion. Managed group automatic
-distribution must not bypass that check. A terminal GitHub job or confirmed
-termination of the owned process group is required quiescence evidence; an
-unreachable host with a possibly live uploader requires infrastructure diagnosis
-and continued observation, not an unsafe duplicate authorization. Provider outage
-or missing observation access remains explicit waiting/repair work.
+distribution must not bypass that check. Self-hosted execution requires verified
+termination of the owned process tree or VM on the host; a terminal/cancelled
+GitHub job status alone does not prove that a partitioned runner stopped. For
+disposable hosted execution require the provider's executor-termination guarantee,
+not merely a cancellation request or terminal API status. Requests already in
+flight still require provider reconciliation. An unreachable host with a possibly
+live uploader requires infrastructure diagnosis and continued observation, not an
+unsafe duplicate authorization. Provider outage or missing observation access
+remains explicit waiting/repair work.
 
 Internal completion reads the exact app/version/build, processing status,
 internal group ownership/type/membership and beta testing state. Wrong-source,

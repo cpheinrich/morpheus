@@ -47,6 +47,13 @@ the actual process/Git experiments and remain non-production evidence. Killing
 a paused pre-call worker does not prove cancellation of an already in-flight
 provider request; that still requires provider reconciliation.
 
+Final review tightened the quiescence requirement: the paused-child experiment
+also records a terminal/cancelled GitHub job while the child remains alive and
+then mutates. Self-hosted cleanup must prove host-side process/VM termination.
+The worker fixture now uses the platform temporary directory and needs no
+pre-existing author scratch directory. The complete suite was rerun with a
+fresh temporary root; all 45 tests passed.
+
 Limits: model tests do not validate the future implementation, Apple eventual
 consistency, Actions pagination, signing, hosted credentials, source evidence or
 actual usage telemetry. Implementation adapter tests and the eight real delivery
