@@ -150,7 +150,7 @@ export class Controller {
           if (current.attempt.status !== "active" || current.intent.attempts.at(-1)?.id !== attempt.id || current.intent.state === "delivered" || !upload || upload.acceptedAt || ["accepted", "rejected"].includes(upload.outcome)) return { retired: false };
           const observations = current.attempt.uploadObservations ?? [], quiescence = current.attempt.quiescence;
           const start = Math.max(Date.parse(observations[0]?.at ?? now), Date.parse(quiescence?.observedAt ?? now));
-          if (!quiescence || !current.attempt.workflowTerminalAt || observations.length < 2 || Date.parse(now) - start < this.config.deadlines.appleObservationMinutes * 60_000) return { retired: false };
+          if (!quiescence || !current.attempt.workflowTerminalAt || observations.some(item => item.buildId) || observations.length < 2 || Date.parse(now) - start < this.config.deadlines.appleObservationMinutes * 60_000) return { retired: false };
           current.attempt.status = "retired-uncertain"; current.intent.state = "pending"; current.intent.nextAction = "dispatch-full-tests"; current.intent.nextCheckAt = now;
           return { retired: true, burnedBuild: attempt.buildNumber, monitorLateAppearance: true };
         });

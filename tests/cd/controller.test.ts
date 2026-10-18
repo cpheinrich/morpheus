@@ -67,6 +67,19 @@ describe("controller failure sequences", () => {
     await h.controller.tick(after(now, 40)); expect((await h.store.read()).state.intents[h.intentId]!.attempts[0]!.status).toBe("retired-uncertain");
     await h.controller.tick(after(now, 45)); const intent = (await h.store.read()).state.intents[h.intentId]!; expect(intent.attempts).toHaveLength(2); expect(intent.attempts[1]!.buildNumber).toBe("9"); expect(h.dispatch).toHaveBeenCalledTimes(1);
   });
+  it("retains a build observed by another poller before its acceptance transaction", async () => {
+    const h = await harness(true); h.run.status = "completed"; h.run.conclusion = "failure";
+    await h.store.transact("host-stopped", "fixture", now, state => { const attempt = state.intents[h.intentId]!.attempts[0]!; attempt.quiescence = { kind: "host-terminated", ref: "Owned VM terminated", observedAt: now }; attempt.uploadObservations = [{ at: after(now, 5) }]; return null; });
+    const transact = h.store.transact.bind(h.store); let visiblePaused!: () => void, releaseVisible!: () => void;
+    const paused = new Promise<void>(resolve => { visiblePaused = resolve; }), blocked = new Promise<void>(resolve => { releaseVisible = resolve; });
+    vi.spyOn(h.store, "transact").mockImplementation(async (id, kind, at, transition) => { if (kind === "exact-build-observation") { visiblePaused(); await blocked; } return transact(id, kind, at, transition); });
+    h.observe.mockResolvedValueOnce({ observation: observation() }).mockResolvedValue({}); const visible = h.controller.tick(after(now, 40)); await paused;
+    try {
+      await h.controller.tick(after(now, 40)); await h.controller.tick(after(now, 45)); const intent = (await h.store.read()).state.intents[h.intentId]!;
+      expect(intent.attempts).toHaveLength(1); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.uploadObservations!.some(item => item.buildId === "apple-build")).toBe(true); expect(h.dispatch).not.toHaveBeenCalled();
+    } finally { releaseVisible(); await visible; }
+    expect((await h.store.read()).state.intents[h.intentId]!.receipt!.attemptId).toBe(h.attemptId);
+  });
   it("diagnoses terminal upload rejection when no matching build exists", async () => {
     const h = await harness(true); h.observe.mockResolvedValue({ uploadState: "FAILED", diagnostics: "90683" }); await h.controller.tick(after(now, 5)); const state = (await h.store.read()).state;
     expect(state.intents[h.intentId]!.attempts[0]!.status).toBe("failed"); expect(state.intents[h.intentId]!.state).toBe("repairing"); expect(Object.values(state.agents)[0]!.task).toContain("90683"); expect(h.dispatch).not.toHaveBeenCalled();

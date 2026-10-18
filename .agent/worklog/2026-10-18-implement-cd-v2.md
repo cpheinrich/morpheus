@@ -74,3 +74,32 @@ new build, then completes the original exact receipt. A positive control still
 replaces a genuinely absent uncertain upload after all required evidence.
 The focused controller/state/store run passed 49/49; typecheck, lint, compile
 and diff check passed. The initial blocked review remains unchanged.
+
+The next same-reviewer turn kept CDCORE-009 blocked: a second poller could persist
+an exact build observation, pause before acceptance, and lose to an absent poller.
+Retirement now also refuses any current persisted matching build ID. The regression
+runs two actual controller ticks, pauses the visible poller before acceptance,
+and proves the absent poller cannot retire or replace it before original delivery.
+
+Both b2 and a16 CI completed the tests but failed the committed-declaration check:
+Zod's tuple enum maps a string union whose declaration order depends on TypeScript
+literal interning elsewhere in the program. The new CD import graph exposed this.
+My earlier restoration of the unrelated-looking generated order was incorrect.
+Changed NoteSource to Zod's enum-object overload, preserving values and runtime
+option order while stabilizing its declaration. The new regression emits the actual
+team schema with an unrelated manual literal checked first and last; both outputs
+match. Repeating it with the original tuple via an in-memory compiler-host mutant
+produced different declarations, proving the regression detects the original defect.
+CD, CLI, team and declaration tests passed **263/263**; typecheck, lint and compile
+passed. No full local suite was run.
+
+Review history retained: initial f2 review blocked CDCORE-001 through 008 during
+the observed UTC clock interval 14:35:04–14:41:04 (360000 ms, 6 minutes; the first
+0.236-second source read preceded the first captured clock). Follow-up b2 blocked
+CDCORE-009 during 14:47:33–14:49:42 (129000 ms, 2.15 minutes). Follow-up a16 retained
+CDCORE-009 during 14:52:10–14:52:58 (48000 ms, 0.8 minutes). The parent reports
+Christopher explicitly authorized continued same-reviewer turns beyond the cap
+as part of the CTO campaign and reaffirmed implementation through the agreed
+budget limits and success criteria at 2026-10-18T13:50:22.909Z. The next review
+must cover both the visibility interleaving and declaration fix; no clearance
+is inferred from the earlier turns.

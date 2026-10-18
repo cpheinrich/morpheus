@@ -212,7 +212,7 @@ export class Controller {
                         return { retired: false };
                     const observations = current.attempt.uploadObservations ?? [], quiescence = current.attempt.quiescence;
                     const start = Math.max(Date.parse(observations[0]?.at ?? now), Date.parse(quiescence?.observedAt ?? now));
-                    if (!quiescence || !current.attempt.workflowTerminalAt || observations.length < 2 || Date.parse(now) - start < this.config.deadlines.appleObservationMinutes * 60_000)
+                    if (!quiescence || !current.attempt.workflowTerminalAt || observations.some(item => item.buildId) || observations.length < 2 || Date.parse(now) - start < this.config.deadlines.appleObservationMinutes * 60_000)
                         return { retired: false };
                     current.attempt.status = "retired-uncertain";
                     current.intent.state = "pending";
