@@ -31,3 +31,28 @@ No new library was considered necessary for this narrow existing domain guard.
 - pnpm typecheck; pnpm compile; compiled CLI pm index; bash -n; git diff --check.
 - Full suite remains CI's responsibility under repository policy; no shared core changed.
 - Fresh independent review and merge are owned by the parent campaign. Draft only until clear.
+
+## Independent review
+
+Fresh independent high-risk review cleared the exact control-tag guard correction with no findings. The reviewer verified the dispatcher/tag, signing-lock entrypoint, receipt identity and durable upload claim boundaries, and independently passed all 13 upload-configuration tests, including the real script with seventeen rejected variants, plus shell syntax and diff checks. No Apple request occurred.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "a14aeffed5a4cfda8ddd9f3d02b066f9602e1a3a",
+  "reviewed": "14cb4f65c7e8d83a6402caa9573d38bbdef2c68d",
+  "covered": "14cb4f65c7e8d83a6402caa9573d38bbdef2c68d",
+  "authorSession": "01a14e59-b8cf-75f3-98a4-742b7927c7f0",
+  "reviewerSession": "/root/cd_tag_adapter_review",
+  "risk": "high",
+  "elapsedMinutes": 0.5333333333333333,
+  "timing": {
+    "source": "clock",
+    "durationMs": 32000,
+    "evidence": "Parent clock observations around the fresh reviewer invocation: 2026-10-18T15:10:54Z to 2026-10-18T15:11:26Z, including tools and waiting for the returned result."
+  },
+  "outcome": "complete",
+  "summary": "Fresh independent high-risk review cleared the exact control-tag guard correction with no findings. The reviewer verified the dispatcher/tag, signing-lock entrypoint, receipt identity and durable upload claim boundaries, and independently passed all 13 upload-configuration tests, including the real script with seventeen rejected variants, plus shell syntax and diff checks. No Apple request occurred.",
+  "findings": []
+}
+```
