@@ -126,16 +126,18 @@ publish and rejects non-main release sources; this proves dispatch identity,
 not deployment. The first CD/CLI run passed 228/228; final adapter/controller
 checks passed 28/28, followed by typecheck, lint, compile and diff check.
 
-Independent high-risk review blocked eight findings initially, then retained a ninth retirement-race finding across two follow-ups. The author fixed all nine and CI declaration drift. The explicitly authorized fourth same-reviewer turn cleared exact commit 9366b52617bc17981687fb95cb273be33ad16a50 with no remaining findings; full CI passed.
+Independent high-risk review blocked eight findings initially, then retained a ninth retirement-race finding across two follow-ups. All nine were fixed and the authorized fourth turn cleared 9366b52617bc17981687fb95cb273be33ad16a50. A later immutable-control dispatch correction was cleared by the same reviewer at bf207fdb61769b6d3c422da1dcb51a7d5f533cbf, with no remaining findings.
 
 The final same-reviewer turn independently ran 87 focused tests, typecheck and fresh declaration emits. It verified the two-poller interleaving preserves build 8 and the original receipt, refuses replacement, and preserves enum values and runtime option order. Full CI run 39138088790 passed. Earlier blocked outcomes and measured intervals remain below; the fourth turn carries Christopher's explicit continuation authorization.
+
+Final late-correction review cleared exact bf207fdb61769b6d3c422da1dcb51a7d5f533cbf during 15:01:29–15:02:02 UTC (33000 ms, 0.55 minutes). The same reviewer independently passed 28 adapter/controller tests, verified retry/readback/conflict refusal, and checked generated source and explanatory documentation. The additional explicitly authorized turn follows; no implementation changed after its clearance.
 
 ```morpheus-review
 {
   "version": 2,
   "base": "fe381bbf4382ece7f252731bebddd411aa0eaf6f",
   "reviewed": "f2e3adba8cc0911900cb34188b0aa5fc25c04ec5",
-  "covered": "9366b52617bc17981687fb95cb273be33ad16a50",
+  "covered": "bf207fdb61769b6d3c422da1dcb51a7d5f533cbf",
   "authorSession": "01a14e59-b8cf-75f3-98a4-742b7927c7f0",
   "reviewerSession": "/root/cd_core_review",
   "risk": "high",
@@ -146,7 +148,7 @@ The final same-reviewer turn independently ran 87 focused tests, typecheck and f
     "evidence": "Parent-captured observed UTC clock interval for initial reviewer turn: 2026-10-18T14:35:04Z to 2026-10-18T14:41:04Z. The first 0.236-second source read preceded the first captured reading; this is the observed clock interval, not an invented full-run duration."
   },
   "outcome": "complete",
-  "summary": "Independent high-risk review blocked eight findings initially, then retained a ninth retirement-race finding across two follow-ups. The author fixed all nine and CI declaration drift. The explicitly authorized fourth same-reviewer turn cleared exact commit 9366b52617bc17981687fb95cb273be33ad16a50 with no remaining findings; full CI passed.",
+  "summary": "Independent high-risk review blocked eight findings initially, then retained a ninth retirement-race finding across two follow-ups. All nine were fixed and the authorized fourth turn cleared 9366b52617bc17981687fb95cb273be33ad16a50. A later immutable-control dispatch correction was cleared by the same reviewer at bf207fdb61769b6d3c422da1dcb51a7d5f533cbf, with no remaining findings.",
   "findings": [
     {
       "id": "CDCORE-001",
@@ -298,6 +300,24 @@ The final same-reviewer turn independently ran 87 focused tests, typecheck and f
         "reason": "Christopher explicitly authorized the CTO campaign to continue beyond the three-review-turn cap through the agreed budget limits and success criteria, reaffirmed by the instruction to implement the plan as guided above."
       },
       "summary": "Cleared exact head with no remaining findings. Two-poller reproduction preserves build 8 and the original receipt and refuses replacement; enum accepted values and runtime order are unchanged. Independently passed 87 focused tests, typecheck and fresh declaration emits."
+    },
+    {
+      "reviewerSession": "/root/cd_core_review",
+      "commit": "bf207fdb61769b6d3c422da1dcb51a7d5f533cbf",
+      "outcome": "cleared",
+      "scopeReason": "Late integration correction after clearance: replace mutable control-branch workflow dispatch with create-only, exact-readback control tags; cover source, generated output, regression tests and explanatory documentation.",
+      "humanAuthorization": {
+        "approvedBy": "Christopher",
+        "approvedAt": "2026-10-18T13:50:22.909Z",
+        "reason": "Christopher explicitly authorized continued same-reviewer correction turns beyond the default cap through the CTO campaign budget limits and success criteria."
+      },
+      "elapsedMinutes": 0.55,
+      "timing": {
+        "source": "clock",
+        "durationMs": 33000,
+        "evidence": "Parent-captured UTC same-reviewer correction interval 2026-10-18T15:01:29Z to 2026-10-18T15:02:02Z at exact bf207fdb61769b6d3c422da1dcb51a7d5f533cbf."
+      },
+      "summary": "Cleared with no findings. Verified immutable tag dispatch, retry, exact readback and conflict refusal; independently passed 28 adapter/controller tests and checked source, generated output and documentation in a clean checkout."
     }
   ]
 }
