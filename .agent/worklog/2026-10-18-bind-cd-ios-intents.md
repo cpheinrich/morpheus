@@ -56,7 +56,9 @@ The fresh high-risk reviewer `/root/cd_adapters_review` reviewed 2dc7659 and ind
 passed the 204 focused tests. Its only finding was substantive: a synchronous resource-hook
 failure after Apple returned PROCESSING/COMPLETE exited before accepted.json and its output
 were written, hiding known acceptance from artifact persistence. The initial verdict is
-blocked; this correction still requires the same reviewer's follow-up.
+blocked. The same reviewer subsequently cleared e203b54 with no remaining or new findings,
+independently passing 177 tests across three focused files, including all 17 Python cases,
+plus shell syntax and diff checks. No live Apple or Xcode execution was performed.
 
 The adapter now atomically publishes known acceptance and outputs before invoking the
 resource hook, on both the initial response and the acceptance poll. The original hook
@@ -75,12 +77,14 @@ pnpm compile, compiled CLI pm index (unchanged indexes), bash -n and git diff --
 passed. No full suite or live upload was run. The actual initial blocked verdict and
 96000 ms clock measurement are retained below.
 
+The initial high-risk review blocked on substantive CD-ADAPTER-001: a resource-hook failure could hide known Apple acceptance. The same reviewer cleared correction e203b54 after verifying acceptance and provisional resource evidence survive hook failure while the job retains its failure result. No remaining or new findings.
+
 ```morpheus-review
 {
   "version": 2,
   "base": "2ac0173ed5b346ca76c8abe977135b6a32b37ffb",
   "reviewed": "2dc7659dd3af42e096289ac0072bc9bbe222cf57",
-  "covered": "2dc7659dd3af42e096289ac0072bc9bbe222cf57",
+  "covered": "e203b547d6468edfc5e4f1fe8a9f0a54e31fb79f",
   "authorSession": "01a14e59-b8cf-75f3-98a4-742b7927c7f0",
   "reviewerSession": "/root/cd_adapters_review",
   "risk": "high",
@@ -90,8 +94,8 @@ passed. No full suite or live upload was run. The actual initial blocked verdict
     "durationMs": 96000,
     "evidence": "Parent clock observations around the initial reviewer invocation: 2026-10-18T14:22:14Z to 2026-10-18T14:23:50Z, including tools and waiting for the returned result."
   },
-  "outcome": "blocked",
-  "summary": "Fresh high-risk review blocked on CD-ADAPTER-001: a resource-hook failure could hide known Apple acceptance. The author corrected receipt publication and resource artifact persistence and added behavioral cases; same-reviewer follow-up is pending.",
+  "outcome": "complete",
+  "summary": "The initial high-risk review blocked on substantive CD-ADAPTER-001: a resource-hook failure could hide known Apple acceptance. The same reviewer cleared correction e203b54 after verifying acceptance and provisional resource evidence survive hook failure while the job retains its failure result. No remaining or new findings.",
   "findings": [
     {
       "id": "CD-ADAPTER-001",
@@ -102,7 +106,27 @@ passed. No full suite or live upload was run. The actual initial blocked verdict
         ".github/actions/ios-testflight-upload/action.yml"
       ],
       "disposition": "fixed",
-      "response": "Publish accepted.json and step outputs before any resource hook on both initial and polled acceptance; retain hook failure status. Publish resource-path and allowlist both receipt files in the always artifact for provisional/terminal hook outages. Behavioral tests cover initial/polled accepted states and awaiting/failed/invalid resource-only states. Awaiting same-reviewer verification."
+      "response": "Publish accepted.json and step outputs before any resource hook on both initial and polled acceptance; retain hook failure status. Publish resource-path and allowlist both receipt files in the always artifact for provisional/terminal hook outages. Behavioral tests cover initial/polled accepted states and awaiting/failed/invalid resource-only states. The same reviewer verified the correction at e203b54, ran 177 focused tests across three files including all 17 Python cases, and returned cleared with no remaining or new findings."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/cd_adapters_review",
+      "commit": "e203b547d6468edfc5e4f1fe8a9f0a54e31fb79f",
+      "scopeReason": "Verify the CD-ADAPTER-001 receipt-publication correction and its regression tests against the initially reviewed commit.",
+      "humanAuthorization": {
+        "approvedBy": "Christopher Heinrich",
+        "approvedAt": "2026-10-18T13:50:22.909Z",
+        "reason": "Christopher explicitly authorized the CD implementation and repository merges and the review rounds needed for this task, including an exception to the three-round limit. This is the first same-reviewer follow-up and preserves the initial blocked verdict."
+      },
+      "outcome": "cleared",
+      "elapsedMinutes": 0.45,
+      "timing": {
+        "source": "clock",
+        "durationMs": 27000,
+        "evidence": "Parent clock observations around the same-reviewer follow-up invocation: 2026-10-18T14:26:51Z to 2026-10-18T14:27:18Z, including tools and waiting for the returned result."
+      },
+      "summary": "Compared 2dc7659 to e203b54; CD-ADAPTER-001 is resolved. Known acceptance and its outputs are published before resource hooks on initial and polled responses; resource-only evidence remains available after hook failure. Independently passed 177 tests in three focused files, including all 17 Python cases, plus shell syntax and diff checks. No remaining or new findings; no live Apple or Xcode execution."
     }
   ]
 }
