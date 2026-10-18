@@ -103,3 +103,182 @@ as part of the CTO campaign and reaffirmed implementation through the agreed
 budget limits and success criteria at 2026-10-18T13:50:22.909Z. The next review
 must cover both the visibility interleaving and declaration fix; no clearance
 is inferred from the earlier turns.
+
+## Independent review record
+
+Independent high-risk review blocked eight findings initially, then retained a ninth retirement-race finding across two follow-ups. The author fixed all nine and CI declaration drift. The explicitly authorized fourth same-reviewer turn cleared exact commit 9366b52617bc17981687fb95cb273be33ad16a50 with no remaining findings; full CI passed.
+
+The final same-reviewer turn independently ran 87 focused tests, typecheck and fresh declaration emits. It verified the two-poller interleaving preserves build 8 and the original receipt, refuses replacement, and preserves enum values and runtime option order. Full CI run 39138088790 passed. Earlier blocked outcomes and measured intervals remain below; the fourth turn carries Christopher's explicit continuation authorization.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "fe381bbf4382ece7f252731bebddd411aa0eaf6f",
+  "reviewed": "f2e3adba8cc0911900cb34188b0aa5fc25c04ec5",
+  "covered": "9366b52617bc17981687fb95cb273be33ad16a50",
+  "authorSession": "01a14e59-b8cf-75f3-98a4-742b7927c7f0",
+  "reviewerSession": "/root/cd_core_review",
+  "risk": "high",
+  "elapsedMinutes": 6,
+  "timing": {
+    "source": "clock",
+    "durationMs": 360000,
+    "evidence": "Parent-captured observed UTC clock interval for initial reviewer turn: 2026-10-18T14:35:04Z to 2026-10-18T14:41:04Z. The first 0.236-second source read preceded the first captured reading; this is the observed clock interval, not an invented full-run duration."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review blocked eight findings initially, then retained a ninth retirement-race finding across two follow-ups. The author fixed all nine and CI declaration drift. The explicitly authorized fourth same-reviewer turn cleared exact commit 9366b52617bc17981687fb95cb273be33ad16a50 with no remaining findings; full CI passed.",
+  "findings": [
+    {
+      "id": "CDCORE-001",
+      "severity": "substantive",
+      "description": "Concurrent identical transition IDs could authorize two irreversible effects.",
+      "paths": [
+        "src/cd/store.ts",
+        "src/cd/cli.ts",
+        "tests/cd/store.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Persisted a random invocation owner; only the committed owner receives non-replayed authorization. Same-ID contention and lost-acknowledgment regressions pass."
+    },
+    {
+      "id": "CDCORE-002",
+      "severity": "substantive",
+      "description": "Hosted dispatch could strand after a lost POST acknowledgment or completed workflow that never claimed work.",
+      "paths": [
+        "src/cd/worker.ts",
+        "tests/cd/worker.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Visibility sweeps precede bounded ordinal redispatch; completed waiting invocations close and a new invocation can resume."
+    },
+    {
+      "id": "CDCORE-003",
+      "severity": "substantive",
+      "description": "Contents API encoding:none above 1 MiB made a growing ledger unreadable.",
+      "paths": [
+        "src/cd/store.ts",
+        "src/cd/schema.ts",
+        "src/cd/state.ts",
+        "tests/cd/store.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Read the exact Git blob through its commit tree and retain compact verified test proofs. An actual state JSON larger than 1 MiB reads and updates."
+    },
+    {
+      "id": "CDCORE-004",
+      "severity": "substantive",
+      "description": "Ordinary native capacity exhaustion became permanent repairing state without an attempt.",
+      "paths": [
+        "src/cd/controller.ts",
+        "src/cd/errors.ts",
+        "src/cd/apple.ts",
+        "src/cd/store.ts",
+        "tests/cd/controller.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Capacity, provider outages and rate limits produce durable retryable waits; future ticks admit work after capacity returns without manufacturing a repair."
+    },
+    {
+      "id": "CDCORE-005",
+      "severity": "substantive",
+      "description": "A failed pre-upload self-hosted attempt never consumed later quiescence, while repair completion required a fake code PR.",
+      "paths": [
+        "src/cd/controller.ts",
+        "src/cd/state.ts",
+        "src/cd/worker.ts",
+        "tests/cd/controller.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Failure reconciliation identities include later quiescence. Operational repair can complete from direct evidence; terminal workflow and host quiescence precede retry, preserving source/build debt."
+    },
+    {
+      "id": "CDCORE-006",
+      "severity": "substantive",
+      "description": "Controller artifact ingestion accepted payload hashes without checking the pinned validator bytes.",
+      "paths": [
+        "src/cd/controller.ts",
+        "src/cd/source.ts",
+        "tests/cd/controller.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Downloaded evidence now passes the same exact control/source validator check as CLI ingestion before artifactsVerifiedAt can commit."
+    },
+    {
+      "id": "CDCORE-007",
+      "severity": "substantive",
+      "description": "Source verification ignored untracked native files injected after selecting immutable inputs.",
+      "paths": [
+        "src/cd/source.ts",
+        "tests/cd/adapters.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Exact source verification checks all untracked files under configured inputs. The real Git injection regression refuses an added Swift file."
+    },
+    {
+      "id": "CDCORE-008",
+      "severity": "substantive",
+      "description": "Repeated controller-only repairs reset production source age despite unchanged app input digest.",
+      "paths": [
+        "src/cd/state.ts",
+        "tests/cd/state.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Use the earliest matching input digest in immutable intent lineage; repeated unchanged-input repairs retain eligibility while app changes reset age."
+    },
+    {
+      "id": "CDCORE-009",
+      "severity": "substantive",
+      "description": "An absent provider poll could retire an upload after a concurrent accepted hook or exact-build observation committed.",
+      "paths": [
+        "src/cd/controller.ts",
+        "tests/cd/controller.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Retirement atomically rechecks current active/latest identity, accepted timestamp/outcome, every persisted build observation, terminal workflow, quiescence and window. Interleaving tests retain original bytes; a positive control still replaces true absence. The final exact-head same-reviewer turn cleared both interleavings and the original-receipt regression."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/cd_core_review",
+      "commit": "b2f67180e15cfd21c6778f5470b430a7338f6d82",
+      "outcome": "blocked",
+      "elapsedMinutes": 2.15,
+      "timing": {
+        "source": "clock",
+        "durationMs": 129000,
+        "evidence": "Parent-captured UTC reviewer interval 2026-10-18T14:47:33Z to 2026-10-18T14:49:42Z."
+      },
+      "summary": "The original eight findings were addressed; new substantive CDCORE-009 reproduced acceptance committing after absence observation but before retirement."
+    },
+    {
+      "reviewerSession": "/root/cd_core_review",
+      "commit": "a16cabf10a345097e1119a709b480871b9e9738a",
+      "outcome": "blocked",
+      "elapsedMinutes": 0.8,
+      "timing": {
+        "source": "clock",
+        "durationMs": 48000,
+        "evidence": "Parent-captured UTC reviewer interval 2026-10-18T14:52:10Z to 2026-10-18T14:52:58Z."
+      },
+      "summary": "Acceptance race fixed, but CDCORE-009 remained blocked: persisted exact build visibility before the acceptance transaction could still lose to an absent poller."
+    },
+    {
+      "reviewerSession": "/root/cd_core_review",
+      "commit": "9366b52617bc17981687fb95cb273be33ad16a50",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.8333333333333334,
+      "timing": {
+        "source": "clock",
+        "durationMs": 50000,
+        "evidence": "Parent-captured UTC reviewer interval 2026-10-18T14:56:13Z to 2026-10-18T14:57:03Z for the exact 9366b52617bc17981687fb95cb273be33ad16a50 follow-up."
+      },
+      "humanAuthorization": {
+        "approvedBy": "Christopher",
+        "approvedAt": "2026-10-18T13:50:22.909Z",
+        "reason": "Christopher explicitly authorized the CTO campaign to continue beyond the three-review-turn cap through the agreed budget limits and success criteria, reaffirmed by the instruction to implement the plan as guided above."
+      },
+      "summary": "Cleared exact head with no remaining findings. Two-poller reproduction preserves build 8 and the original receipt and refuses replacement; enum accepted values and runtime order are unchanged. Independently passed 87 focused tests, typecheck and fresh declaration emits."
+    }
+  ]
+}
+```
