@@ -106,6 +106,26 @@ is inferred from the earlier turns.
 
 ## Independent review record
 
+After the recorded clearance, integration found a new availability race: dispatch
+still posted mutable controlRef even though the attempt stored a resolved SHA.
+Main advancing before POST or retry would produce a run the exact-head verifier
+must refuse. Held merge and removed reviewed/readiness metadata. An actual GitHub
+POST of the read-only Release Preflight workflow at raw SHA fe381bbf4382ece7f252731bebddd411aa0eaf6f
+returned HTTP422, No ref found. The adapter now creates or reads an owned
+morpheus-cd-control-SHA lightweight tag and verifies its exact commit target;
+it never overwrites a tag and dispatches/retries through that immutable identity.
+Tests advance main during tag creation, challenge an existing conflicting target
+and lose creation acknowledgment. This correction requires another explicitly
+authorized exact-head same-reviewer turn; earlier clearance remains historical.
+The compiled adapter's actual GitHub probe created that exact lightweight tag,
+dispatched read-only Release Preflight run 39138533931, and read back event
+workflow_dispatch, headBranch morpheus-cd-control-fe381bbf4382ece7f252731bebddd411aa0eaf6f
+and exact headSha fe381bbf4382ece7f252731bebddd411aa0eaf6f. It deleted only the
+newly created probe tag and verified HTTP404. The workflow intentionally cannot
+publish and rejects non-main release sources; this proves dispatch identity,
+not deployment. The first CD/CLI run passed 228/228; final adapter/controller
+checks passed 28/28, followed by typecheck, lint, compile and diff check.
+
 Independent high-risk review blocked eight findings initially, then retained a ninth retirement-race finding across two follow-ups. The author fixed all nine and CI declaration drift. The explicitly authorized fourth same-reviewer turn cleared exact commit 9366b52617bc17981687fb95cb273be33ad16a50 with no remaining findings; full CI passed.
 
 The final same-reviewer turn independently ran 87 focused tests, typecheck and fresh declaration emits. It verified the two-poller interleaving preserves build 8 and the original receipt, refuses replacement, and preserves enum values and runtime option order. Full CI run 39138088790 passed. Earlier blocked outcomes and measured intervals remain below; the fourth turn carries Christopher's explicit continuation authorization.

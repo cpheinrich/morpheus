@@ -8,7 +8,7 @@ export class FakeGitHub implements GitHubApi {
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     this.calls.push({ method, path, body }); const route = path.replace(/^repos\/[^/]+\/[^/]+\//, ""), data = body as Record<string, unknown>;
     if (method === "GET" && route.startsWith("git/ref/")) {
-      const ref = route.slice("git/ref/".length), value = this.refs.get(ref); if (!value) throw new Error("HTTP 404"); return { object: { sha: value } } as T;
+      const ref = route.slice("git/ref/".length), value = this.refs.get(ref); if (!value) throw new Error("HTTP 404"); return { object: { sha: value, type: "commit" } } as T;
     }
     if (method === "POST" && route === "git/refs") {
       const ref = String(data.ref).replace(/^refs\//, ""); if (this.refs.has(ref)) throw new Error("HTTP 422 reference exists"); this.refs.set(ref, String(data.sha)); return { ref } as T;

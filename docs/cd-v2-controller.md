@@ -85,6 +85,13 @@ The CLI reads identity from `MORPHEUS_CD_INTENT_ID`, `ATTEMPT_ID`,
 `GITHUB_RUN_ID`/`GITHUB_RUN_ATTEMPT`. Optional dispatched digest environment
 variables use `MORPHEUS_CD_APP_INPUT_DIGEST` and `CONFIGURATION_DIGEST`.
 
+GitHub's dispatch API rejects a raw commit SHA as its `ref`. The adapter creates
+or reads `morpheus-cd-control-<controlSha>` as a lightweight tag, verifies its exact
+commit target, and dispatches that tag. It never overwrites an existing tag or
+retargets a retry when the configured control branch advances. Keep this owned
+tag namespace intact for durable execution and audit; conflicting targets fail
+closed before dispatch. The run still must report the recorded control SHA.
+
 `cd record --kind tests --evidence FILE` validates full native evidence. Common
 identity is joined to `scope: "full"`, both digests, `inventory: {ids, sha256}`,
 one actual result per inventory ID, payload artifacts and a pinned validator.

@@ -20,6 +20,7 @@ export declare class ActionsAdapter {
     runs(effectId: string, workflow?: string): Promise<WorkflowRun[]>;
     run(id: string): Promise<WorkflowRun>;
     runAttempt(id: string, attempt: string): Promise<WorkflowRun>;
+    executionRef(controlSha: string): Promise<string>;
     dispatch(attempt: Attempt, intentId: string, channel: string): Promise<void>;
     cancel(id: string): Promise<void>;
     verifyRun(run: WorkflowRun, attempt: Attempt): void;

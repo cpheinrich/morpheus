@@ -12,6 +12,7 @@ import { validatePayloadFiles } from "../../src/cd/evidence.js";
 import { hash } from "../../src/cd/schema.js";
 import { type GitHubApi } from "../../src/cd/store.js";
 import { config, now, prepared } from "./fixtures.js";
+import { FakeGitHub } from "./fake-github.js";
 
 const directories: string[] = [];
 async function temp() { const path = await mkdtemp(join(tmpdir(), "morpheus-cd-test-")); directories.push(path); return path; }
@@ -51,6 +52,22 @@ describe("Apple transport and exact identity readback", () => {
 });
 
 describe("Actions and actual evidence bytes", () => {
+  it("dispatches the recorded control after main advances, and never retargets its tag", async () => {
+    const api = new FakeGitHub(), original = api.request.bind(api), { state, intentId } = prepared(), attempt = state.intents[intentId]!.attempts[0]!, adapter = new ActionsAdapter(api, config());
+    api.refs.set("heads/main", attempt.controlSha); const dispatched: string[] = [];
+    api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+      if (method === "POST" && path.endsWith("/git/refs")) api.refs.set("heads/main", "d".repeat(40));
+      if (method === "POST" && path.endsWith("/dispatches")) { const ref = (body as { ref: string }).ref; dispatched.push(api.refs.get(`tags/${ref}`)!); return undefined as T; }
+      return original<T>(method, path, body);
+    };
+    await adapter.dispatch(attempt, intentId, "staging"); await adapter.dispatch(attempt, intentId, "staging"); expect(dispatched).toEqual([attempt.controlSha, attempt.controlSha]); expect(api.refs.get("heads/main")).toBe("d".repeat(40));
+    api.refs.set(`tags/morpheus-cd-control-${attempt.controlSha}`, "d".repeat(40)); await expect(adapter.dispatch(attempt, intentId, "staging")).rejects.toThrow("never overwrite"); expect(dispatched).toHaveLength(2);
+  });
+  it("recovers lost execution-tag creation acknowledgment by exact ref readback", async () => {
+    const api = new FakeGitHub(), original = api.request.bind(api), adapter = new ActionsAdapter(api, config()), sha = "c".repeat(40);
+    api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => { const value = await original<T>(method, path, body); if (method === "POST" && path.endsWith("/git/refs")) throw new Error("lost acknowledgment"); return value; };
+    expect(await adapter.executionRef(sha)).toBe(`morpheus-cd-control-${sha}`); expect(api.refs.get(`tags/morpheus-cd-control-${sha}`)).toBe(sha);
+  });
   it("matches the exact dispatch token, never a sibling prefix", () => { expect(matchesEffect("CD · dispatch-a1", "dispatch-a1")).toBe(true); expect(matchesEffect("CD · dispatch-a10", "dispatch-a1")).toBe(false); });
   it("sweeps past the first page and binds only matching effect runs", async () => {
     const api: GitHubApi = { async request<T>(_method: string, path: string): Promise<T> { return { workflow_runs: path.endsWith("page=1") ? Array.from({ length: 100 }, (_, id) => ({ id, display_title: "other" })) : [{ id: 101, display_title: "CD · dispatch-a1" }] } as T; } };

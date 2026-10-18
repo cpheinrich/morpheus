@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { type Attempt, type CdConfig, type TestEvidence, type UploadEvidence } from "./schema.js";
 import { invariant } from "./state.js";
-import { pages, type GitHubApi } from "./store.js";
+import { isMissing, pages, type GitHubApi } from "./store.js";
 import { validatePayloadFiles } from "./evidence.js";
 
 const exec = promisify(execFile);
@@ -20,8 +20,26 @@ export class ActionsAdapter {
   }
   async run(id: string): Promise<WorkflowRun> { return this.api.request("GET", `repos/${this.config.repository}/actions/runs/${id}`); }
   async runAttempt(id: string, attempt: string): Promise<WorkflowRun> { return this.api.request("GET", `repos/${this.config.repository}/actions/runs/${id}/attempts/${attempt}`); }
+  async executionRef(controlSha: string): Promise<string> {
+    invariant(/^[a-f0-9]{40}$/.test(controlSha), "Execution control requires an exact SHA");
+    const tag = `morpheus-cd-control-${controlSha}`, path = `repos/${this.config.repository}/git/ref/tags/${tag}`;
+    type Ref = { object: { type: string; sha: string } };
+    let ref: Ref;
+    try { ref = await this.api.request<Ref>("GET", path); }
+    catch (error) {
+      if (!isMissing(error)) throw error;
+      let creationError: unknown;
+      try { await this.api.request("POST", `repos/${this.config.repository}/git/refs`, { ref: `refs/tags/${tag}`, sha: controlSha }); }
+      catch (error) { creationError = error; } // Concurrent create/lost ack still needs readback.
+      try { ref = await this.api.request<Ref>("GET", path); }
+      catch (error) { throw creationError ?? error; }
+    }
+    invariant(ref.object.type === "commit" && ref.object.sha === controlSha, "Owned execution tag differs from immutable control SHA; never overwrite it");
+    return tag;
+  }
   async dispatch(attempt: Attempt, intentId: string, channel: string): Promise<void> {
-    await this.api.request("POST", `repos/${this.config.repository}/actions/workflows/${encodeURIComponent(this.config.deliveryWorkflow)}/dispatches`, { ref: this.config.controlRef, inputs: { "intent-id": intentId, "attempt-id": attempt.id, "dispatch-effect-id": attempt.dispatchEffectId, "source-sha": attempt.sourceSha, "control-sha": attempt.controlSha, channel, "runner-lane": attempt.lane, "reserved-build-number": attempt.buildNumber, "app-input-digest": attempt.appInputDigest, "configuration-digest": attempt.configurationDigest } });
+    const ref = await this.executionRef(attempt.controlSha);
+    await this.api.request("POST", `repos/${this.config.repository}/actions/workflows/${encodeURIComponent(this.config.deliveryWorkflow)}/dispatches`, { ref, inputs: { "intent-id": intentId, "attempt-id": attempt.id, "dispatch-effect-id": attempt.dispatchEffectId, "source-sha": attempt.sourceSha, "control-sha": attempt.controlSha, channel, "runner-lane": attempt.lane, "reserved-build-number": attempt.buildNumber, "app-input-digest": attempt.appInputDigest, "configuration-digest": attempt.configurationDigest } });
   }
   async cancel(id: string): Promise<void> { await this.api.request("POST", `repos/${this.config.repository}/actions/runs/${id}/cancel`); }
   verifyRun(run: WorkflowRun, attempt: Attempt): void {
