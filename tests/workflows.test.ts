@@ -1689,7 +1689,7 @@ describe("ios-testflight-upload action", () => {
   const action = async (): Promise<CompositeAction> =>
     load(await readFile(join(ACTION_DIR, "action.yml"), "utf8")) as CompositeAction;
   const script = async (): Promise<string> =>
-    readFile(join(ACTION_DIR, "upload-testflight.sh"), "utf8");
+    Promise.all(["upload-testflight.sh", "upload-effects.sh"].map(file => readFile(join(ACTION_DIR, file), "utf8"))).then(parts => parts.join("\n"));
 
   it("is a composite action taking every credential as an input", async () => {
     const wf = await action();
@@ -2011,7 +2011,7 @@ describe("ios-ci.yml", () => {
     jobs?: Record<string, {
       "runs-on"?: string;
       "timeout-minutes"?: number | string;
-      concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+      concurrency?: { group?: string; "cancel-in-progress"?: boolean | string };
       env?: Record<string, string>;
       steps?: Array<Record<string, unknown>>;
     }>;
@@ -2165,13 +2165,13 @@ describe("ios-ci.yml", () => {
   it("bounds and cancels superseded simulator runs", async () => {
     const job = ((await read("ios-ci.yml")) as IosCi).jobs?.test;
     expect(job?.["timeout-minutes"]).toBe("${{ inputs.timeout-minutes }}");
-    expect(job?.concurrency?.["cancel-in-progress"]).toBe(true);
+    expect(job?.concurrency?.["cancel-in-progress"]).toBe("${{ inputs.execution-id == '' }}");
     expect(job?.concurrency?.group).toContain("${{ github.repository }}");
     // A release workflow calls this same job on refs/heads/main, where a
     // push-to-main CI run is already using it. Without the caller in the
     // group the two cancel each other.
     expect(job?.concurrency?.group).toContain("${{ github.workflow }}");
-    expect(job?.concurrency?.group).toContain("${{ github.ref }}");
+    expect(job?.concurrency?.group).toContain("${{ inputs.execution-id || github.ref }}");
     expect(job?.concurrency?.group).toContain("${{ inputs.scheme }}");
   });
 
@@ -2623,8 +2623,8 @@ describe("every reusable job", () => {
         // firebase-tests.yml keys on the caller's ref unless the caller names its own key, so a
         // release's backend tests are not cancelled by an unrelated merge (#393).
         const cancel = job.concurrency?.["cancel-in-progress"];
-        expect(cancel === true || cancel === "${{ inputs.concurrency-key == '' }}", `${file} job ${name}: ${String(cancel)}`).toBe(true);
-        expect(job.concurrency?.group, `${file} job ${name}`).toMatch(/\$\{\{ (inputs\.concurrency-key \|\| )?github\.ref \}\}/);
+        expect(cancel === true || cancel === "${{ inputs.concurrency-key == '' }}" || cancel === "${{ inputs.execution-id == '' }}", `${file} job ${name}: ${String(cancel)}`).toBe(true);
+        expect(job.concurrency?.group, `${file} job ${name}`).toMatch(/\$\{\{ (inputs\.(concurrency-key|execution-id) \|\| )?github\.ref \}\}/);
       }
     }
   });

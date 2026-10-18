@@ -42,15 +42,19 @@ def prepare():
              "artifact-name": f"ios-upload-acceptance-{context['runId']}-{context['runAttempt']}-{directory.name.rsplit('-', 1)[-1]}"})
 
 
-def upload_data():
+def upload_data(allow_unknown=False):
     response = json.load(sys.stdin)
-    if not isinstance(response, dict) or response.get("errors"):
+    if not isinstance(response, dict) or (response.get("errors") and not allow_unknown):
         raise ValueError("Upload response does not confirm acceptance")
     data = response.get("data")
     if isinstance(data, list) and len(data) == 1:
         data = data[0]
-    if not isinstance(data, dict) or data.get("errors") or data.get("state") not in {"AWAITING_UPLOAD", "PROCESSING", "COMPLETE"}:
+    if not isinstance(data, dict):
+        raise ValueError("Upload response has no resource")
+    if not allow_unknown and data.get("state") not in {"AWAITING_UPLOAD", "PROCESSING", "COMPLETE", "FAILED", "INVALID"}:
         raise ValueError("Upload response does not confirm acceptance")
+    if not allow_unknown and data.get("errors") and data["state"] not in {"FAILED", "INVALID"}:
+        raise ValueError("Upload response contains errors")
     upload_id = data.get("id")
     if not isinstance(upload_id, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,128}", upload_id):
         raise ValueError("Upload response has no unambiguous upload id")
@@ -62,39 +66,93 @@ def describe():
     print(data["id"], data["state"])
 
 
-def accept():
-    data = upload_data()
-    if data["state"] not in {"PROCESSING", "COMPLETE"}:
-        raise ValueError("Upload transport acceptance is still uncertain")
-    upload_id = data["id"]
+def identity():
     directory = Path(os.environ["UPLOAD_RECEIPT_DIRECTORY"])
     raw_context = json.loads((directory / "context.json").read_text())
     context = {key: raw_context[key] for key in ("repository", "sourceSha", "runId", "runAttempt", "job")}
-    receipt = dict(context, schemaVersion=1, state="accepted",
+    receipt = dict(context, schemaVersion=1,
                    bundleId=checked("IOS_BUNDLE_ID", r"[A-Za-z0-9.-]+"),
                    appId=checked("ASC_APP_ID", r"[1-9][0-9]*"),
                    version=checked("MARKETING_VERSION", r"[0-9]+(?:\.[0-9]+){1,2}"),
-                   buildNumber=checked("BUILD_NUMBER", r"[1-9][0-9]*"), uploadId=upload_id,
-                   acceptedAt=datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"))
-    target = directory / "accepted.json"
-    # fsync and link give atomic create-only publication; a retry cannot replace evidence.
-    fd, temporary = tempfile.mkstemp(dir=directory)
+                   buildNumber=checked("BUILD_NUMBER", r"[1-9][0-9]*"))
+    if os.environ.get("IPA_SHA256"):
+        receipt["ipaSha256"] = checked("IPA_SHA256", r"[0-9a-f]{64}")
+    fields = dict(intentId="MORPHEUS_CD_INTENT_ID", attemptId="MORPHEUS_CD_ATTEMPT_ID",
+                  dispatchEffectId="MORPHEUS_CD_DISPATCH_EFFECT_ID", controlSha="MORPHEUS_CD_CONTROL_SHA")
+    if any(os.environ.get(name) for name in [*fields.values(), "MORPHEUS_CD_SOURCE_SHA"]):
+        for key, name in fields.items():
+            receipt[key] = checked(name, r"[0-9a-f]{40}" if key == "controlSha" else r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}")
+        source = checked("MORPHEUS_CD_SOURCE_SHA", r"[0-9a-f]{40}")
+        actual = subprocess.check_output(["git", "-C", os.environ["GITHUB_WORKSPACE"], "rev-parse", "HEAD"], text=True).strip()
+        if source != context["sourceSha"] or source != actual:
+            raise ValueError("CD source does not match checked-out source")
+        receipt["ipaSha256"] = checked("IPA_SHA256", r"[0-9a-f]{64}")
+        if context["runId"] != checked("GITHUB_RUN_ID", r"[1-9][0-9]*") or context["runAttempt"] != checked("GITHUB_RUN_ATTEMPT", r"[1-9][0-9]*"):
+            raise ValueError("CD run does not match prepared context")
+    return receipt
+
+
+def validate():
+    identity()
+
+
+def publish(receipt, target, create_only):
+    fd, temporary = tempfile.mkstemp(dir=target.parent)
     try:
         with os.fdopen(fd, "w") as stream:
             json.dump(receipt, stream, sort_keys=True, indent=2)
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.link(temporary, target)
+        if create_only:
+            os.link(temporary, target)
+        else:
+            os.replace(temporary, target)
     finally:
-        os.unlink(temporary)
-    outputs({"receipt-path": target, "upload-id": upload_id,
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def resource():
+    data = upload_data(allow_unknown=True)
+    state = data.get("state")
+    if state not in {"AWAITING_UPLOAD", "PROCESSING", "COMPLETE", "FAILED", "INVALID"}:
+        state = "UNKNOWN"
+    receipt = dict(identity(), uploadId=data["id"], state=state)
+    # Codes are useful terminal diagnostics; raw provider prose may contain
+    # arbitrary data. Preserve only bounded machine codes from known fields.
+    diagnostics = []
+    errors = data.get("errors", [])
+    if not isinstance(errors, list):
+        errors = []
+    for error in errors:
+        if isinstance(error, dict):
+            code = error.get("code")
+            if isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", code):
+                diagnostics.append(code)
+    if diagnostics:
+        receipt["diagnosticCodes"] = diagnostics[:20]
+    target = Path(os.environ["UPLOAD_RECEIPT_DIRECTORY"]) / "resource.json"
+    publish(receipt, target, False)
+    print(target)
+
+
+def accept():
+    data = upload_data()
+    if data["state"] not in {"PROCESSING", "COMPLETE"}:
+        raise ValueError("Upload transport acceptance is still uncertain")
+    receipt = dict(identity(), state="accepted", uploadId=data["id"],
+                   acceptedAt=datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"))
+    target = Path(os.environ["UPLOAD_RECEIPT_DIRECTORY"]) / "accepted.json"
+    # Atomic create-only publication: a retry cannot replace accepted evidence.
+    publish(receipt, target, True)
+    outputs({"receipt-path": target, "upload-id": receipt["uploadId"],
              "version": receipt["version"], "build-number": receipt["buildNumber"]})
 
 
 if __name__ == "__main__":
     try:
-        {"prepare": prepare, "describe": describe, "accept": accept}[sys.argv[1]]()
+        {"prepare": prepare, "describe": describe, "accept": accept, "resource": resource, "validate": validate}[sys.argv[1]]()
     except (ValueError, KeyError, OSError) as error:
         # Parser errors can contain API response fragments; keep them out of public logs.
         print("Could not record upload acceptance (" + type(error).__name__ + "); outcome remains uncertain.", file=sys.stderr)

@@ -80,3 +80,42 @@ archive_build_settings=()
     expect(args[args.indexOf("-scheme") + 1]).toBe("Evo Production");
   }
 });
+
+it("refuses malformed reservations and escaping trusted hooks before archive or upload", async () => {
+  const source = new URL("upload-testflight.sh", actionRoot).pathname;
+  const env = {
+    GITHUB_REF: "refs/heads/main", GITHUB_WORKSPACE: root, RUNNER_TEMP: root,
+    PROJECT_PATH: "App.xcodeproj", SCHEME_NAME: "App", APPLE_TEAM_ID: "TEAM", IOS_BUNDLE_ID: "com.example.app",
+    ASC_APP_ID: "123", TESTFLIGHT_BETA_GROUP_IDS: "12345678-1234-1234-1234-123456789abc",
+    ASC_API_KEY_ID: "key", ASC_API_KEY_ISSUER_ID: "issuer", ASC_API_KEY_P8_BASE64: "secret",
+    IOS_DISTRIBUTION_P12_BASE64: "secret", IOS_DISTRIBUTION_P12_PASSWORD: "secret", IOS_DISTRIBUTION_PROFILE_BASE64: "secret",
+    OPENSSL_BINARY: "/usr/bin/true", GITHUB_ACTION_PATH: new URL(".", actionRoot).pathname,
+  };
+  for (const overrides of [
+    { RESERVED_BUILD_NUMBER: "0" }, { RESERVED_BUILD_NUMBER: "42" },
+    { BEFORE_UPLOAD_SCRIPT: "../escape" }, { AFTER_UPLOAD_SCRIPT: "/tmp/escape" },
+    { DISTRIBUTION_ENABLED: "yes" },
+  ]) {
+    await expect(shell('bash "$SCRIPT"', { ...env, ...overrides, SCRIPT: source })).rejects.toMatchObject({code:1});
+  }
+});
+
+
+it("checks the exported IPA identity before the upload boundary", async () => {
+  const source = await readFile(new URL("upload-testflight.sh", actionRoot), "utf8");
+  const check = source.slice(source.indexOf("# Bind the receipt's version/build"), source.indexOf("# The signed IPA has passed every check above."));
+  const script = `set -euo pipefail
+plutil() {
+  case "$2" in
+    CFBundleIdentifier) echo "$ACTUAL_BUNDLE" ;;
+    CFBundleShortVersionString) echo "$ACTUAL_VERSION" ;;
+    CFBundleVersion) echo "$ACTUAL_BUILD" ;;
+  esac
+}
+` + check;
+  const env = { EXPORTED_APPLICATION_PATH: "App.app", IOS_BUNDLE_ID: "com.example.app", MARKETING_VERSION: "1.2.3", BUILD_NUMBER: "42", ACTUAL_BUNDLE: "com.example.app", ACTUAL_VERSION: "1.2.3", ACTUAL_BUILD: "42" };
+  await shell(script, env);
+  for (const mismatch of [{ACTUAL_BUNDLE:"com.other.app"}, {ACTUAL_VERSION:"1.2.4"}, {ACTUAL_BUILD:"43"}]) {
+    await expect(shell(script, {...env, ...mismatch})).rejects.toMatchObject({code:1});
+  }
+});

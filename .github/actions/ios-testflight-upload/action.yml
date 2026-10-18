@@ -44,6 +44,19 @@ inputs:
     description: Maximum wait for another TestFlight release under this macOS account, from 1 to 3600 seconds. The wait counts against the caller job timeout.
     default: "600"
 
+  reserved-build-number:
+    description: Globally reserved CD build number; never changed by the host-local allocator.
+    default: ""
+  before-upload-script:
+    description: Trusted repository-relative executable; before atomically claims upload, resource persists its id. Exit 3 before upload skips an already claimed operation.
+    default: ""
+  after-upload-script:
+    description: Trusted repository-relative executable invoked after accepted.json is written and outputs are available.
+    default: ""
+  distribution-enabled:
+    description: Set false when the durable controller owns processing and internal promotion.
+    default: "true"
+
   # ---- Release identity ----------------------------------------------------
   apple-team-id:
     description: Apple Developer team id that owns the distribution certificate.
@@ -136,6 +149,15 @@ outputs:
   acceptance-artifact-name:
     description: Per-invocation immutable artifact containing accepted.json; absence never proves no upload.
     value: ${{ steps.receipt-context.outputs.artifact-name }}
+  acceptance-path:
+    description: Local path of accepted.json; remains available if the after hook fails.
+    value: ${{ steps.upload.outputs.receipt-path }}
+  version:
+    description: Marketing version of the uploaded IPA.
+    value: ${{ steps.upload.outputs.version }}
+  build-number:
+    description: Exact build number of the uploaded IPA.
+    value: ${{ steps.upload.outputs.build-number }}
   upload-id:
     description: Upload id returned by Apple, independent of later processing and distribution.
     value: ${{ steps.upload.outputs.upload-id }}
@@ -284,6 +306,10 @@ runs:
       shell: bash
       env:
         UPLOAD_RECEIPT_DIRECTORY: ${{ steps.receipt-context.outputs.directory }}
+        RESERVED_BUILD_NUMBER: ${{ inputs.reserved-build-number }}
+        BEFORE_UPLOAD_SCRIPT: ${{ inputs.before-upload-script }}
+        AFTER_UPLOAD_SCRIPT: ${{ inputs.after-upload-script }}
+        DISTRIBUTION_ENABLED: ${{ inputs.distribution-enabled }}
         SIGNING_LOCK_TIMEOUT_SECONDS: ${{ inputs.signing-lock-timeout-seconds }}
         APPLE_TEAM_ID: ${{ inputs.apple-team-id }}
         IOS_BUNDLE_ID: ${{ inputs.ios-bundle-id }}
@@ -318,6 +344,7 @@ runs:
         overwrite: false
 
     - name: Wait for processing and distribute to TestFlight groups
+      if: ${{ success() && inputs.distribution-enabled == 'true' && steps.upload.outputs.upload-id != '' }}
       shell: bash
       env:
         UPLOAD_ID: ${{ steps.upload.outputs.upload-id }}

@@ -66,3 +66,55 @@ caller build numbers retain their meaning and raise the automatic floor. Do not 
 state while releases are active or accepted uploads remain absent from Apple's builds list.
 The lock and reservation cover one macOS account; callers spanning machines still need their
 own release concurrency boundary.
+
+## Durable CD execution
+
+The reusable `ios-ci.yml` accepts `source-sha` (an exact lowercase 40-character commit)
+and `execution-id` (the durable dispatch effect id). A CD execution requires both; the
+workflow checks out and asserts that source, isolates its concurrency by execution id,
+and disables cancellation. Legacy PR callers retain cancellation by ref. Complete test
+artifacts for CD are named `ios-test-evidence-<execution-id>` and contain
+`Results/execution.json` with the actual checked-out `sourceSha`, `executionId`, string
+`runId` and `runAttempt`. This metadata accompanies real xcresult exports and the caller's
+inventory/validation evidence; it does not assert that the tests passed.
+
+The upload action accepts `reserved-build-number`, `before-upload-script`,
+`after-upload-script`, and `distribution-enabled` (default `true`). A globally reserved
+number requires both hooks and cannot be combined with `BUILD_NUMBER`. It stays exact
+while raising the legacy account-local automatic floor; the durable controller owns
+cross-host reservation and provider reconciliation.
+
+Hooks are trusted executable repository-relative paths, resolved inside `GITHUB_WORKSPACE`
+(including through symlinks). A separate trusted `control/` checkout can supply the hook
+while app source remains at the workspace root. Hooks run there, inheriting the calling
+job's CD identity and ledger credentials. The before executable receives `before`, then
+`resource`; the after executable receives `after`. A thin wrapper can call:
+
+```sh
+node "$GITHUB_WORKSPACE/tooling/dist/cli/index.js" cd upload-hook \
+  --phase "$1" --config "$GITHUB_WORKSPACE/control/.morpheus/cd.json"
+```
+
+After every existing IPA verification, the adapter exports `IPA_SHA256`, `MARKETING_VERSION`,
+`BUILD_NUMBER`, and `ASC_APP_ID`, then calls `before` to atomically claim upload. The caller
+supplies `MORPHEUS_CD_INTENT_ID`, `MORPHEUS_CD_ATTEMPT_ID`,
+`MORPHEUS_CD_DISPATCH_EFFECT_ID`, `MORPHEUS_CD_SOURCE_SHA`, and
+`MORPHEUS_CD_CONTROL_SHA`; source and run identity are checked against the actual checkout
+and prepared context. Exit 0 authorizes the new upload, 3 safely skips an already claimed,
+accepted or uncertain operation without inventing acceptance, and other statuses fail.
+A second digest check refuses an IPA changed by a hook.
+
+As soon as Apple returns an upload resource, `resource` receives `UPLOAD_RECEIPT_PATH`
+pointing to allowlisted `resource.json`, before acceptance polling. It contains the exact
+identity, IPA digest, upload id and provider state; terminal failures retain bounded
+machine diagnostic codes. Unknown states remain uncertain. The `after` hook receives
+`accepted.json` only after atomic publication and step outputs, so its failure still permits
+the `always()` artifact step to persist acceptance. No raw provider response is published.
+`acceptance-path`, `version`, `build-number`, `upload-id` and `acceptance-artifact-name`
+expose the resulting evidence. A skipped claim produces no accepted receipt or upload id.
+
+Set `distribution-enabled: "false"` for the durable controller to own processing and
+internal promotion. This skips all action-side distribution and external beta review;
+acceptance remains distinct from delivery. The protected caller job still owns all signing
+secrets, and its workflow ref must remain main. An explicit app source SHA does not relax
+that trusted-workflow boundary.

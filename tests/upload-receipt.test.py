@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 import os
@@ -25,6 +26,7 @@ class ReceiptTests(unittest.TestCase):
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         subprocess.run(["git", "-C", str(self.root), "-c", "user.name=T", "-c", "user.email=t@example.com",
                         "commit", "--allow-empty", "-qm", "fixture"], check=True)
+        (self.root / "app.ipa").write_bytes(b"verified signed IPA")
         self.sha = subprocess.check_output(["git", "-C", str(self.root), "rev-parse", "HEAD"], text=True).strip()
 
     def tool(self, mode, response=None, check=True):
@@ -91,20 +93,18 @@ class ReceiptTests(unittest.TestCase):
         self.assertEqual(first.read_bytes(), before)
 
     def test_actual_upload_boundary_failure_and_success(self):
-        raw = (ACTION / "upload-testflight.sh").read_text()
-        boundary = raw[raw.index('echo "Uploading $SCHEME_NAME'):]
+        boundary = (ACTION / "upload-effects.sh").read_text()
         self.prepare()
         for code, response in [(1, '{"data":{"id":"id","state":"PROCESSING"}}'), (0, '{}'), (0, '{"data":{"id":"id","state":"PROCESSING"}}')]:
             directory = self.prepare()
             prefix = "set -euo pipefail\nrun_asccli() { printf '%s' \"$FAKE_RESPONSE\"; return \"$FAKE_EXIT\"; }\n"
-            env = dict(self.env, FAKE_RESPONSE=response, FAKE_EXIT=str(code), PROCESSING_TIMEOUT_SECONDS="1", PROCESSING_POLL_SECONDS="0", SCHEME_NAME="App", IPA_PATH="app.ipa", GITHUB_ACTION_PATH=str(ACTION))
+            env = dict(self.env, FAKE_RESPONSE=response, FAKE_EXIT=str(code), PROCESSING_TIMEOUT_SECONDS="1", PROCESSING_POLL_SECONDS="0", SCHEME_NAME="App", IPA_PATH=str(self.root / "app.ipa"), REPOSITORY_ROOT=str(self.root), GITHUB_ACTION_PATH=str(ACTION))
             result = subprocess.run(["bash", "-c", prefix + boundary], env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode == 0, code == 0 and response != '{}', result.stderr)
             self.assertEqual((directory / "accepted.json").exists(), code == 0 and response != '{}')
 
     def test_awaiting_upload_must_confirm_same_resource(self):
-        raw = (ACTION / "upload-testflight.sh").read_text()
-        boundary = raw[raw.index('echo "Uploading $SCHEME_NAME'):]
+        boundary = (ACTION / "upload-effects.sh").read_text()
         prefix = """set -euo pipefail
 run_asccli() {
   if [[ "$2" == upload ]]; then printf '%s' '{"data":{"id":"first","state":"AWAITING_UPLOAD"}}';
@@ -117,10 +117,81 @@ run_asccli() {
                                    ({"data": {"id": "first", "state": "UNKNOWN"}}, False)]:
             directory = self.prepare()
             env = dict(self.env, CONFIRM_RESPONSE=json.dumps(response), PROCESSING_TIMEOUT_SECONDS="1", PROCESSING_POLL_SECONDS="0",
-                       SCHEME_NAME="App", IPA_PATH="app.ipa", GITHUB_ACTION_PATH=str(ACTION))
+                       SCHEME_NAME="App", IPA_PATH=str(self.root / "app.ipa"), REPOSITORY_ROOT=str(self.root), GITHUB_ACTION_PATH=str(ACTION))
             result = subprocess.run(["bash", "-c", prefix + boundary], env=env, capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode == 0, accepted, result.stderr)
             self.assertEqual((directory / "accepted.json").exists(), accepted)
+
+    def boundary(self, before=0, after=0, response=None, mutation=False):
+        directory = self.prepare()
+        self.calls = self.root / "boundary-calls"
+        self.calls.write_text("")
+        hook = self.root / "hook.sh"
+        hook.write_text("""#!/bin/bash
+printf '%s\\n' "$1" >> "$CALL_LOG"
+if [[ "$1" == before ]]; then
+  printf '%s' "$IPA_SHA256" > "$DIGEST_LOG"
+  if [[ "$MUTATE_IPA" == true ]]; then echo changed >> "$IPA_PATH"; fi
+  exit "$BEFORE_STATUS"
+fi
+if [[ "$1" == resource ]]; then cp "$UPLOAD_RECEIPT_PATH" "$RESOURCE_COPY"; fi
+if [[ "$1" == after ]]; then test -f "$UPLOAD_RECEIPT_PATH" || exit 90; exit "$AFTER_STATUS"; fi
+""")
+        hook.chmod(0o755)
+        env = dict(self.env, GITHUB_ACTION_PATH=str(ACTION), IPA_PATH=str(self.root / "app.ipa"),
+                   REPOSITORY_ROOT=str(self.root), SCHEME_NAME="App", CALL_LOG=str(self.calls),
+                   DIGEST_LOG=str(self.root / "digest"), RESOURCE_COPY=str(self.root / "resource-copy.json"),
+                   BEFORE_UPLOAD_SCRIPT=str(hook), AFTER_UPLOAD_SCRIPT=str(hook), BEFORE_STATUS=str(before),
+                   AFTER_STATUS=str(after), MUTATE_IPA=str(mutation).lower(), PROCESSING_TIMEOUT_SECONDS="1", PROCESSING_POLL_SECONDS="0",
+                   MORPHEUS_CD_INTENT_ID="intent-1", MORPHEUS_CD_ATTEMPT_ID="attempt-1",
+                   MORPHEUS_CD_DISPATCH_EFFECT_ID="dispatch-1", MORPHEUS_CD_SOURCE_SHA=self.sha, MORPHEUS_CD_CONTROL_SHA="b"*40,
+                   FAKE_RESPONSE=json.dumps(response or {"data": {"id": "upload-1", "state": "PROCESSING"}}))
+        prefix = 'set -euo pipefail\nrun_asccli() { echo apple-upload >> "$CALL_LOG"; printf %s "$FAKE_RESPONSE"; }\n'
+        result = subprocess.run(["bash", "-c", prefix + 'source "$GITHUB_ACTION_PATH/upload-effects.sh"'], env=env, capture_output=True, text=True)
+        return result, directory
+
+    def test_failed_claim_and_duplicate_claim_do_not_upload(self):
+        for status, expected in [(1, 1), (3, 0)]:
+            result, directory = self.boundary(before=status)
+            self.assertEqual(result.returncode, expected, result.stderr)
+            self.assertEqual(self.calls.read_text().splitlines(), ["before"])
+            self.assertFalse((directory / "accepted.json").exists())
+            self.assertNotIn("receipt-path", self.outputs())
+
+    def test_acceptance_survives_after_hook_failure_with_exact_digest_and_identity(self):
+        result, directory = self.boundary(after=9)
+        self.assertEqual(result.returncode, 9, result.stderr)
+        self.assertEqual(self.calls.read_text().splitlines(), ["before", "apple-upload", "resource", "after"])
+        receipt = json.loads((directory / "accepted.json").read_text())
+        self.assertEqual(self.outputs()["receipt-path"], str(directory / "accepted.json"))
+        self.assertEqual(receipt["ipaSha256"], hashlib.sha256(b"verified signed IPA").hexdigest())
+        self.assertEqual((self.root / "digest").read_text(), receipt["ipaSha256"])
+        self.assertEqual({k: receipt[k] for k in ["intentId", "attemptId", "dispatchEffectId", "controlSha", "sourceSha", "runId", "runAttempt"]},
+                         dict(intentId="intent-1", attemptId="attempt-1", dispatchEffectId="dispatch-1", controlSha="b"*40, sourceSha=self.sha, runId="123", runAttempt="1"))
+        self.assertNotIn("SECRET", (directory / "accepted.json").read_text())
+
+    def test_terminal_resource_is_persisted_before_failure_without_build_poll(self):
+        result, directory = self.boundary(response={"data": {"id": "upload-1", "state": "FAILED", "errors": [{"code": "INVALID_BINARY", "detail": "SECRET_RESPONSE"}]}})
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(self.calls.read_text().splitlines(), ["before", "apple-upload", "resource"])
+        receipt = json.loads((self.root / "resource-copy.json").read_text())
+        self.assertEqual(receipt["state"], "FAILED")
+        self.assertEqual(receipt["diagnosticCodes"], ["INVALID_BINARY"])
+        self.assertNotIn("SECRET", json.dumps(receipt))
+        self.assertFalse((directory / "accepted.json").exists())
+
+    def test_changed_ipa_after_claim_cannot_upload(self):
+        result, directory = self.boundary(mutation=True)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(self.calls.read_text().splitlines(), ["before"])
+        self.assertFalse((directory / "accepted.json").exists())
+
+    def test_wrong_source_fails_before_claim(self):
+        self.sha = "a" * 40
+        result, directory = self.boundary()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(self.calls.read_text(), "")
+        self.assertFalse((directory / "accepted.json").exists())
 
     def test_delayed_build_visibility_cannot_reuse_reserved_number(self):
         spec = importlib.util.spec_from_file_location("build_number", ACTION / "build-number.py")
@@ -135,6 +206,7 @@ run_asccli() {
         self.assertEqual(module.reserve(directory, "456", "1.2.3", 1, True), 1)
         self.assertEqual(module.reserve(directory, "123", "2.0.0", 1, True), 1)
         self.assertEqual(module.reserve(directory, "123", "1.2.3", 60, False), 60)
+        self.assertEqual(module.reserve(directory, "123", "1.2.3", 42, False), 42)
         self.assertEqual(module.reserve(directory, "123", "1.2.3", 51, True), 61)
         # Corruption fails closed rather than allocating an already reserved number.
         for path in directory.glob("*.json"): path.write_text('"invalid"')

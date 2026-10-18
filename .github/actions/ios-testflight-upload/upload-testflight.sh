@@ -33,6 +33,10 @@ SOURCE_PACKAGES_PATH="${SOURCE_PACKAGES_PATH:-$BUILD_CACHE_ROOT/TestFlightSource
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$BUILD_CACHE_ROOT/TestFlightDerivedData-archive}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-${RUNNER_TEMP:-/private/tmp}/TestFlight.xcarchive}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
+RESERVED_BUILD_NUMBER="${RESERVED_BUILD_NUMBER:-}"
+BEFORE_UPLOAD_SCRIPT="${BEFORE_UPLOAD_SCRIPT:-}"
+AFTER_UPLOAD_SCRIPT="${AFTER_UPLOAD_SCRIPT:-}"
+DISTRIBUTION_ENABLED="${DISTRIBUTION_ENABLED:-true}"
 MARKETING_VERSION="${MARKETING_VERSION:-}"
 ASC_APP_ID="${ASC_APP_ID:-}"
 TESTFLIGHT_BETA_GROUP_IDS="${TESTFLIGHT_BETA_GROUP_IDS:-}"
@@ -76,6 +80,17 @@ for variable_name in "${required_variables[@]}"; do
   fi
 done
 
+if [[ "$DISTRIBUTION_ENABLED" != true && "$DISTRIBUTION_ENABLED" != false ]]; then
+  echo "distribution-enabled must be true or false." >&2
+  exit 1
+fi
+if [[ -n "$RESERVED_BUILD_NUMBER" ]]; then
+  if [[ ! "$RESERVED_BUILD_NUMBER" =~ ^[1-9][0-9]*$ || -z "$BEFORE_UPLOAD_SCRIPT" || -z "$AFTER_UPLOAD_SCRIPT" || -n "$BUILD_NUMBER" ]]; then
+    echo "reserved-build-number requires trusted upload hooks and no BUILD_NUMBER override." >&2
+    exit 1
+  fi
+  BUILD_NUMBER="$RESERVED_BUILD_NUMBER"
+fi
 if [[ -n "$BUILD_NUMBER" && ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
   echo "BUILD_NUMBER must be a positive integer." >&2
   exit 1
@@ -113,6 +128,20 @@ resolve_repository_path() {
   esac
   printf '%s' "$REPOSITORY_ROOT/$relative_path"
 }
+
+# Trusted control hooks may live in a separate checked-out control/tooling directory.
+# Resolve and validate them before any archive or Apple side effect.
+for hook_variable in BEFORE_UPLOAD_SCRIPT AFTER_UPLOAD_SCRIPT; do
+  if [[ -n "${!hook_variable}" ]]; then
+    hook_path="$(resolve_repository_path "${!hook_variable}" "$hook_variable")"
+    hook_path="$(python3 -c 'from pathlib import Path; import sys; root=Path(sys.argv[1]).resolve(); path=Path(sys.argv[2]).resolve(); path.relative_to(root); print(path)' "$REPOSITORY_ROOT" "$hook_path")"
+    if [[ ! -x "$hook_path" ]]; then
+      echo "$hook_variable is missing or not executable" >&2
+      exit 1
+    fi
+    printf -v "$hook_variable" '%s' "$hook_path"
+  fi
+done
 
 if [[ -n "$GOOGLE_SERVICE_PLIST_PATH" ]]; then
   if [[ -z "${IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]]; then
@@ -741,36 +770,14 @@ if [[ "$exported_application_identifier" != "$APPLE_TEAM_ID.$IOS_BUNDLE_ID" ]] |
   exit 1
 fi
 
-echo "Uploading $SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER) to App Store Connect."
-upload_json="$(
-  run_asccli builds upload \
-    --app-id "$ASC_APP_ID" \
-    --file "$IPA_PATH" \
-    --version "$MARKETING_VERSION" \
-    --build-number "$BUILD_NUMBER" \
-    --platform ios \
-    --output json
-)"
-# Publish only an allowlisted receipt, never the raw API response or credentials.
-# The next composite step persists this before any processing/distribution work.
-# A created upload resource is not yet proof that Apple accepted the binary.
-# Poll only the known awaiting state, keeping ambiguous/error responses uncertain.
-upload_description="$(printf '%s' "$upload_json" | python3 "$GITHUB_ACTION_PATH/upload-receipt.py" describe)"
-read -r upload_id upload_state <<< "$upload_description"
-acceptance_deadline=$(($(date '+%s') + PROCESSING_TIMEOUT_SECONDS))
-while [[ "$upload_state" == AWAITING_UPLOAD ]]; do
-  if [[ "$(date '+%s')" -ge "$acceptance_deadline" ]]; then
-    echo "Timed out confirming upload acceptance; outcome remains uncertain." >&2
-    exit 1
-  fi
-  sleep "$PROCESSING_POLL_SECONDS"
-  upload_json="$(run_asccli builds uploads get --upload-id "$upload_id" --output json)"
-  upload_description="$(printf '%s' "$upload_json" | python3 "$GITHUB_ACTION_PATH/upload-receipt.py" describe)"
-  read -r confirmed_id upload_state <<< "$upload_description"
-  if [[ "$confirmed_id" != "$upload_id" ]]; then
-    echo "Upload confirmation id changed; outcome remains uncertain." >&2
-    exit 1
-  fi
-done
-printf '%s' "$upload_json" | MARKETING_VERSION="$MARKETING_VERSION" BUILD_NUMBER="$BUILD_NUMBER" \
-  python3 "$GITHUB_ACTION_PATH/upload-receipt.py" accept
+# Bind the receipt's version/build to the actual exported binary, including
+# projects with build phases or caller build-setting overrides.
+if [[ "$(plutil -extract CFBundleIdentifier raw -o - "$EXPORTED_APPLICATION_PATH/Info.plist")" != "$IOS_BUNDLE_ID" ||
+      "$(plutil -extract CFBundleShortVersionString raw -o - "$EXPORTED_APPLICATION_PATH/Info.plist")" != "$MARKETING_VERSION" ||
+      "$(plutil -extract CFBundleVersion raw -o - "$EXPORTED_APPLICATION_PATH/Info.plist")" != "$BUILD_NUMBER" ]]; then
+  echo "Exported IPA identity does not match the reserved app/version/build." >&2
+  exit 1
+fi
+
+# The signed IPA has passed every check above. Only this boundary may claim/upload.
+source "$GITHUB_ACTION_PATH/upload-effects.sh"
