@@ -15,7 +15,7 @@ export function verifySource(root: string, config: CdConfig, sourceSha: string, 
   invariant(git(root, ["rev-parse", "HEAD"]) === sourceSha, "Source checkout differs from immutable selected SHA");
   git(root, ["merge-base", "--is-ancestor", sourceSha, `origin/${config.mainBranch}`]);
   invariant(inputDigest(root, sourceSha, config.inputs) === expectedDigest, "App inputs differ from selected source digest");
-  invariant(git(root, ["status", "--porcelain", "--untracked-files=no", "--", ...config.inputs]) === "", "App inputs were modified after source selection");
+  invariant(git(root, ["status", "--porcelain", "--untracked-files=all", "--", ...config.inputs]) === "", "App inputs were modified or injected after source selection");
 }
 export function verifyValidator(root: string, evidence: TestEvidence): void {
   invariant(!evidence.validator.path.startsWith("/") && !evidence.validator.path.split("/").includes(".."), "Validator path must be repository relative");

@@ -46,6 +46,7 @@ export interface Lease { owner: string; expiresAt: string; fence: number }
 export interface Identity { schemaVersion: 1; intentId: string; attemptId: string; dispatchEffectId: string; sourceSha: string; controlSha: string; runId: string; runAttempt: string }
 export interface Artifact { name: string; sha256: string; id?: string; path?: string }
 export interface TestEvidence extends Identity { scope: "full"; appInputDigest: string; configurationDigest: string; inventory: { ids: string[]; sha256: string }; results: { id: string; status: "passed" | "failed" | "skipped" }[]; artifacts: Artifact[]; validator: { path: string; sha256: string; revision?: "control" | "source" } }
+export interface TestProof extends Identity { scope: "full"; appInputDigest: string; configurationDigest: string; evidenceHash: string; inventoryHash: string; executedCount: number; skippedIds: string[]; artifacts: Artifact[]; validator: TestEvidence["validator"] }
 export interface UploadEvidence extends Identity { appId: string; version: string; buildNumber: string; ipaSha256: string; uploadOperationId?: string; outcome?: "accepted" | "rejected" | "uncertain"; providerUploadId?: string; acceptedAt?: string; diagnostics?: string; acceptanceArtifact?: Artifact }
 export interface InternalObservation { appId: string; version: string; buildNumber: string; buildId: string; processingState: string; betaState: string; group: { id: string; appId: string; internal: boolean; automaticDistribution: boolean; buildIds: string[]; testerIds: string[] }; observedAt: string; uploadState?: string; diagnostics?: string }
 export interface Receipt extends Identity { appInputDigest: string; configurationDigest: string; ipaSha256: string; uploadOperationId: string; providerUploadId?: string; testEvidenceHash: string; observation: InternalObservation; deliveredAt: string }
@@ -53,8 +54,9 @@ export interface Attempt {
   id: string; dispatchEffectId: string; sourceSha: string; controlSha: string; appInputDigest: string; configurationDigest: string;
   appId: string; version: string; buildNumber: string; lane: "local" | "hosted"; createdAt: string;
   dispatch: { state: "intended" | "sent" | "uncertain"; sentAt?: string; runIds: string[] }; runId?: string; runAttempt?: string;
-  lease?: Lease; tests?: TestEvidence; upload?: { id: string; claimedAt: string; fence: number; identity: UploadEvidence; outcome: "claimed" | "accepted" | "rejected" | "uncertain"; providerUploadId?: string; acceptedAt?: string; diagnostics?: string };
+  lease?: Lease; tests?: TestProof; upload?: { id: string; claimedAt: string; fence: number; identity: UploadEvidence; outcome: "claimed" | "accepted" | "rejected" | "uncertain"; providerUploadId?: string; acceptedAt?: string; diagnostics?: string };
   artifactsVerifiedAt?: string;
+  workflowTerminalAt?: string;
   uploadObservations?: { at: string; uploadState?: string; buildId?: string; processingState?: string; diagnostics?: string }[];
   status: "active" | "failed" | "retired-uncertain" | "delivered";
   observation?: InternalObservation; quiescence?: { kind: "host-terminated" | "hosted-terminated"; ref: string; observedAt: string };
@@ -62,33 +64,34 @@ export interface Attempt {
 export interface DeliveryIntent {
   id: string; channel: Channel; slot: string; originalSource: string; source: string; selectedMainEnteredAt: string; oldestDebtAt: string;
   lineage: { source: string; inputDigest: string; mainEnteredAt: string; reason: string; evidence: string }[];
-  coveredSources: string[]; coveredSlots: string[]; validation: boolean; groupId: string; createdAt: string; deadlineAt: string;
+  coveredSources: string[]; coveredSlots: string[]; validation: boolean; isolatedValidation: boolean; groupId: string; createdAt: string; deadlineAt: string;
   state: "pending" | "testing" | "uploading" | "processing" | "delivered" | "repairing" | "waiting" | "paused";
   nextAction: string; nextCheckAt: string; blocker?: string; attempts: Attempt[]; receipt?: Receipt; eligibleAt?: string;
 }
 export interface AgentWork {
   id: string; intentId: string; taskDigest: string; task: string; evidence: string[]; strategy: number; state: "pending" | "running" | "waiting" | "complete";
-  createdAt: string; nextCheckAt: string; lease?: Lease; invocations: { id: string; executor: "local" | "hosted"; startedAt: string; endedAt?: string; session?: string; result?: AgentResult; usage?: unknown[]; runIds?: string[]; dispatchState?: "intended" | "sent" | "uncertain" }[];
+  createdAt: string; nextCheckAt: string; lease?: Lease; invocations: { id: string; executor: "local" | "hosted"; startedAt: string; endedAt?: string; session?: string; result?: AgentResult; usage?: unknown[]; runIds?: string[]; dispatchState?: "intended" | "sent" | "uncertain"; dispatchCount?: number; lastDispatchAt?: string }[];
 }
 export interface AgentResult { outcome: "repaired" | "checkpoint" | "blocked"; summary: string; pullRequest?: string; sourceSha?: string; reviewHead?: string; evidence: string[]; missingCapability?: string }
 export interface CdState {
   schemaVersion: 1; epoch: string; repository: string; configurationDigest: string; initializedAt: string;
-  transitions: Record<string, { at: string; result: unknown }>; sources: SourceRevision[]; lastMain?: string;
+  transitions: Record<string, { at: string; result: unknown; owner?: string }>; sources: SourceRevision[]; lastMain?: string;
   evaluatedSlots: Partial<Record<Channel, string>>; cursors: Partial<Record<Channel, { sourceSha: string; order: number; receiptId: string }>>;
   slots: { channel: Channel; slot: string; decision: "intent" | "no-change" | "covered" | "missed"; intentId?: string }[];
   intents: Record<string, DeliveryIntent>; builds: Record<string, { maximum: string; reservations: Record<string, { buildNumber: string; at: string; burned: boolean }> }>;
   agents: Record<string, AgentWork>; fences: Record<string, number>;
   groupOperations: Record<string, { attemptId: string; claimedAt: string; completedAt?: string }>;
+  groupCursors: Record<string, { sourceSha: string; order: number; receiptId: string }>;
   pauses: { scope: string; actor: string; reason: string; resumeCondition: string; createdAt: string; human: boolean }[];
   budget: { spentMicros: number; reservations: Record<string, { digest: string; maximumMicros: number; status: "reserved" | "settled"; actualMicros?: number }>; telemetry: Record<string, QuotaSnapshot> };
 }
 export interface QuotaSnapshot { observedAt: string; windows: { id: string; usedPercent: number; resetsAt: string }[]; source: string }
-export interface CdEvent { id: string; at: string; kind: string; data: unknown }
+export interface CdEvent { id: string; at: string; kind: string; data: unknown; owner?: string }
 
 export function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value !== null && typeof value === "object") return `{${Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? "null";
 }
 export function hash(value: unknown): string { return createHash("sha256").update(typeof value === "string" ? value : canonical(value)).digest("hex"); }
 export function configurationDigest(config: CdConfig): string { const { mode: _mode, ...identity } = config; return hash(identity); }

@@ -6,4 +6,8 @@ export * from "./actions.js";
 export * from "./apple.js";
 export * from "./controller.js";
 export * from "./worker.js";
+export * from "./errors.js";
+export * from "./invariants.js";
+export * from "./evidence.js";
+export * from "./github-token.js";
 export { cd } from "./cli.js";

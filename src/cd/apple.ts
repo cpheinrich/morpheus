@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { importPKCS8, SignJWT } from "jose";
 import { type Attempt, type CdConfig, type InternalObservation } from "./schema.js";
 import { invariant } from "./state.js";
+import { CdWait } from "./errors.js";
 
 export interface AppleApi { request<T>(method: string, path: string, body?: unknown): Promise<T> }
 interface Resource { id: string; type: string; attributes?: Record<string, unknown>; relationships?: Record<string, { data: { id: string; type: string } | { id: string; type: string }[] | null }> }
@@ -20,8 +21,12 @@ export class AppleHttp implements AppleApi {
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const url = new URL(path, "https://api.appstoreconnect.apple.com");
     invariant(url.origin === "https://api.appstoreconnect.apple.com", "Apple pagination cannot redirect credentials to another host");
-    const response = await this.fetcher(url, { method, headers: { Authorization: `Bearer ${await this.authorization()}`, Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(30_000), redirect: "error" });
+    let response: Response;
+    const authorization = await this.authorization();
+    try { response = await this.fetcher(url, { method, headers: { Authorization: `Bearer ${authorization}`, Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(30_000), redirect: "error" }); }
+    catch { throw new CdWait(`Apple ${method} ${url.pathname} observation/network outcome unavailable`, "apple-network"); }
     const text = await response.text();
+    if (response.status === 429 || response.status >= 500) throw new CdWait(`Apple ${method} ${url.pathname} HTTP ${response.status}`, "apple-provider");
     if (!response.ok) throw new Error(`Apple ${method} ${url.pathname} HTTP ${response.status}: ${text.slice(0, 2000)}`);
     return (text.trim() ? JSON.parse(text) : undefined) as T;
   }
@@ -38,6 +43,13 @@ export async function applePages(api: AppleApi, path: string): Promise<{ data: R
 const filter = (values: Record<string, string>) => new URLSearchParams(values).toString();
 export class AppleAdapter {
   constructor(readonly api: AppleApi) {}
+  async group(groupId: string): Promise<InternalObservation["group"]> {
+    const group = (await this.api.request<Document>("GET", `/v1/betaGroups/${encodeURIComponent(groupId)}?include=app`)).data as Resource;
+    const groupApp = group.relationships?.app?.data;
+    const members = await applePages(this.api, `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/betaTesters?limit=200`);
+    const assigned = await applePages(this.api, `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds?limit=200`);
+    return { id: group.id, appId: groupApp && !Array.isArray(groupApp) ? groupApp.id : "UNKNOWN", internal: group.attributes?.isInternalGroup === true, automaticDistribution: group.attributes?.hasAccessToAllBuilds !== false, buildIds: assigned.data.map(item => item.id), testerIds: members.data.map(item => item.id) };
+  }
   async maximum(appId: string, version: string): Promise<string> {
     const builds = await applePages(this.api, `/v1/builds?${filter({ "filter[app]": appId, "filter[preReleaseVersion.version]": version, "fields[builds]": "version", limit: "200" })}`);
     return String(builds.data.reduce((maximum, build) => { const value = String(build.attributes?.version); invariant(/^[0-9]+$/.test(value), "Provider build number is not a decimal identity"); return BigInt(value) > maximum ? BigInt(value) : maximum; }, 0n));
@@ -55,11 +67,7 @@ export class AppleAdapter {
     const build = builds.data[0]; if (!build) return { uploadState, diagnostics };
     const related = (name: string) => { const relation = build.relationships?.[name]?.data; return relation && !Array.isArray(relation) ? builds.included.find(item => item.id === relation.id && item.type === relation.type) : undefined; };
     invariant(related("preReleaseVersion")?.attributes?.version === attempt.version && related("app")?.id === attempt.appId, "Apple exact build relationships do not match selected app/version");
-    const group = (await this.api.request<Document>("GET", `/v1/betaGroups/${encodeURIComponent(groupId)}?include=app`)).data as Resource;
-    const groupApp = group.relationships?.app?.data;
-    const members = await applePages(this.api, `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/betaTesters?limit=200`);
-    const assigned = await applePages(this.api, `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds?limit=200`);
-    const observation: InternalObservation = { appId: attempt.appId, version: attempt.version, buildNumber: String(build.attributes?.version), buildId: build.id, processingState: String(build.attributes?.processingState ?? "UNKNOWN"), betaState: String(related("buildBetaDetail")?.attributes?.internalBuildState ?? "UNKNOWN"), group: { id: group.id, appId: groupApp && !Array.isArray(groupApp) ? groupApp.id : "UNKNOWN", internal: group.attributes?.isInternalGroup === true, automaticDistribution: group.attributes?.hasAccessToAllBuilds !== false, buildIds: assigned.data.map(item => item.id), testerIds: members.data.map(item => item.id) }, observedAt: now, uploadState, diagnostics };
+    const observation: InternalObservation = { appId: attempt.appId, version: attempt.version, buildNumber: String(build.attributes?.version), buildId: build.id, processingState: String(build.attributes?.processingState ?? "UNKNOWN"), betaState: String(related("buildBetaDetail")?.attributes?.internalBuildState ?? "UNKNOWN"), group: await this.group(groupId), observedAt: now, uploadState, diagnostics };
     return { uploadState, diagnostics, observation };
   }
   async assign(buildId: string, groupId: string): Promise<void> {

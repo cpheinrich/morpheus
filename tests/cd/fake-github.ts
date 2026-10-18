@@ -23,6 +23,8 @@ export class FakeGitHub implements GitHubApi {
       return { ref } as T;
     }
     if (method === "GET" && route.startsWith("git/commits/")) return this.commits.get(route.slice("git/commits/".length)) as T;
+    if (method === "GET" && route.startsWith("git/trees/")) return { tree: Object.entries(this.trees.get(route.slice("git/trees/".length))!).map(([path, sha]) => ({ path, sha, type: "blob" })), truncated: false } as T;
+    if (method === "GET" && route.startsWith("git/blobs/")) return { encoding: "base64", content: Buffer.from(this.blobs.get(route.slice("git/blobs/".length))!).toString("base64") } as T;
     if (method === "POST" && route === "git/blobs") { const id = this.id(data.content); this.blobs.set(id, String(data.content)); return { sha: id } as T; }
     if (method === "POST" && route === "git/trees") {
       const tree = { ...(data.base_tree ? this.trees.get(String(data.base_tree)) : {}) };

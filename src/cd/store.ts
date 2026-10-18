@@ -3,6 +3,8 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { parseState, type CdConfig, type CdEvent, type CdState } from "./schema.js";
 import { newState, invariant } from "./state.js";
+import { assertTransition } from "./invariants.js";
+import { CdWait } from "./errors.js";
 
 export interface GitHubApi { request<T>(method: string, path: string, body?: unknown): Promise<T> }
 const exec = promisify(execFile);
@@ -11,7 +13,8 @@ export class GhApi implements GitHubApi {
     const args = ["api", "--method", method, path, "-H", "Accept: application/vnd.github+json"];
     const child = exec("gh", body === undefined ? args : [...args, "--input", "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 120_000 });
     if (body !== undefined) { child.child.stdin?.on("error", () => {}); child.child.stdin?.end(JSON.stringify(body)); }
-    const { stdout } = await child; return (stdout.trim() ? JSON.parse(stdout) : undefined) as T;
+    try { const { stdout } = await child; return (stdout.trim() ? JSON.parse(stdout) : undefined) as T; }
+    catch (error) { if (/HTTP (429|5[0-9]{2})|rate limit|timed out|ECONNRESET|ENETUNREACH|ETIMEDOUT/i.test(errorText(error))) throw new CdWait(`GitHub ${method} ${path} temporarily unavailable`, "github-provider"); throw error; }
   }
 }
 export function errorText(error: unknown): string { const value = error as { stderr?: unknown; message?: string }; return String(value.stderr ?? value.message ?? error); }
@@ -35,7 +38,12 @@ export class GitHubStore {
     try { ref = await this.api.request("GET", `${this.root}/git/ref/heads/${this.config.stateBranch}`); }
     catch (error) { if (isMissing(error)) throw new Error("CD state branch is missing; do not recreate an initialized ledger. Diagnose and recover its backup."); throw error; }
     const commit = await this.api.request<{ tree: { sha: string } }>("GET", `${this.root}/git/commits/${ref.object.sha}`);
-    const contents = await this.api.request<{ content: string; encoding: string }>("GET", `${this.root}/contents/state.json?ref=${ref.object.sha}`);
+    const tree = await this.api.request<{ truncated?: boolean; tree: { path: string; type: string; sha: string }[] }>("GET", `${this.root}/git/trees/${commit.tree.sha}`);
+    const stateBlob = tree.tree.find(entry => entry.path === "state.json" && entry.type === "blob");
+    invariant(stateBlob, "State commit has no exact root state.json blob");
+    // Contents API deliberately returns encoding:none for files over 1 MiB.
+    // Git blobs preserve the exact observed-commit identity and support larger ledgers.
+    const contents = await this.api.request<{ content: string; encoding: string }>("GET", `${this.root}/git/blobs/${stateBlob.sha}`);
     invariant(contents.encoding === "base64", "Unsupported state content encoding");
     const state = parseState(JSON.parse(Buffer.from(contents.content, "base64").toString("utf8")));
     invariant(state.repository === this.config.repository, "State belongs to another repository");
@@ -71,13 +79,18 @@ export class GitHubStore {
   }
   async transact<T>(id: string, kind: string, now: string, transition: (state: CdState) => T): Promise<Transaction<T>> {
     invariant(/^[A-Za-z0-9_.:-]+$/.test(id), "Transition id cannot contain path separators");
+    // An effect ID is shared by retries; ownership belongs to this invocation alone.
+    // Without this nonce identical sibling commits can share a SHA, and observing
+    // someone else's same-ID transition after rejection can authorize both callers.
+    const owner = randomUUID();
     for (let conflict = 0; conflict < 8; conflict++) {
       const snapshot = await this.read(), previous = snapshot.state.transitions[id];
       if (previous) return { state: snapshot.state, head: snapshot.head, result: previous.result as T, replayed: true };
       const state = structuredClone(snapshot.state), result = transition(state);
-      state.transitions[id] = { at: now, result: result ?? null };
+      assertTransition(snapshot.state, state);
+      state.transitions[id] = { at: now, result: result ?? null, owner };
       try {
-        const head = await this.write(snapshot, state, { id, at: now, kind, data: result ?? null });
+        const head = await this.write(snapshot, state, { id, at: now, kind, data: result ?? null, owner });
         // Backup is a secondary recoverable pointer, never read for admission. A concurrent
         // newer backup can reject this nonforce update without losing authoritative work.
         try { await this.api.request("PATCH", `${this.root}/git/refs/heads/${this.config.stateBranch}-backup`, { sha: head, force: false }); } catch { /* next tick retries backup explicitly */ }
@@ -86,7 +99,7 @@ export class GitHubStore {
         // A lost write response is not proof of rejection. Later writers preserve every
         // transition identity, so head equality is neither required nor sufficient here.
         const observed = await this.read();
-        if (observed.state.transitions[id]) return { state: observed.state, head: observed.head, result: observed.state.transitions[id]!.result as T, replayed: false };
+        if (observed.state.transitions[id]) return { state: observed.state, head: observed.head, result: observed.state.transitions[id]!.result as T, replayed: observed.state.transitions[id]!.owner !== owner };
         if (observed.head === snapshot.head) throw error;
       }
     }

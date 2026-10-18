@@ -2,13 +2,13 @@ import { parseArgs } from "node:util";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve, basename } from "node:path";
 import { randomUUID } from "node:crypto";
-import { configSchema, configurationDigest, hash, type CdConfig, type Identity, type TestEvidence, type UploadEvidence, type AgentResult } from "./schema.js";
+import { configSchema, configurationDigest, hash, type CdConfig, type Identity, type TestEvidence, type UploadEvidence } from "./schema.js";
 import { GhApi, GitHubStore } from "./store.js";
 import { ActionsAdapter, uploadEvidence } from "./actions.js";
 import { AppleAdapter, AppleHttp } from "./apple.js";
 import { Controller, status } from "./controller.js";
-import { checkIdentity, claimUpload, createIntent, intentAt, invariant, recordTests, recordUpload, repairWork, sourceAt, reservePaid, settlePaid } from "./state.js";
-import { git, verifyConfiguration, verifySource, verifyValidator } from "./source.js";
+import { checkIdentity, claimUpload, createIntent, invariant, recordTests, recordUpload, repairWork, sourceAt, reservePaid, settlePaid } from "./state.js";
+import { verifyConfiguration, verifySource, verifyValidator } from "./source.js";
 import { runWorker, scheduleHosted, QuotaReader } from "./worker.js";
 import { githubToken, probeGitHubToken } from "./github-token.js";
 import { validatePayloadFiles } from "./evidence.js";
@@ -43,6 +43,11 @@ export async function verifyExecution(config: CdConfig, store: GitHubStore, acti
   invariant(!snapshot.state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is paused");
   await store.transact(`verify-${attempt.id}-${identity.runId}-${identity.runAttempt}`, "verify-execution", new Date().toISOString(), state => { checkIdentity(state, identity); return { runId: identity.runId }; });
   return { authorized: true, intentId: intent.id, attemptId: attempt.id, channel: intent.channel, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, appInputDigest: attempt.appInputDigest, configurationDigest: attempt.configurationDigest, buildNumber: attempt.buildNumber, app: config.channels[intent.channel] };
+}
+async function uploadGroupPreflight(config: CdConfig, store: GitHubStore, identity: Identity, environment: NodeJS.ProcessEnv): Promise<void> {
+  const { intent, attempt } = checkIdentity((await store.read()).state, identity);
+  const group = await new AppleAdapter(new AppleHttp(config, environment)).group(intent.groupId);
+  invariant(group.id === intent.groupId && group.appId === attempt.appId && group.internal && !group.automaticDistribution && group.testerIds.length > 0, "Upload requires the configured internal group, actual members, and disabled automatic all-build distribution");
 }
 /** Separate parsing preserves every CD-owned flag without changing the established global grammar. */
 export async function cd(argv: string[], environment: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -85,6 +90,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
       invariant(config.mode === "active", "Observe mode cannot authorize uploads");
       const evidence = await jsonInput(required(values.evidence, "--evidence")) as UploadEvidence;
       await verifyExecution(config, store, actions, sourceDir, evidence, environment);
+      await uploadGroupPreflight(config, store, evidence, environment);
       try {
         const claim = await store.transact(`upload-claim-${evidence.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, evidence, now) }));
         console.log(JSON.stringify({ authorized: !claim.replayed, ...claim.result, reason: claim.replayed ? "already-claimed-reconcile-existing-operation" : "new-upload-claim" })); return claim.replayed ? 3 : 0;
@@ -101,6 +107,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
         invariant(config.mode === "active", "Observe mode cannot authorize uploads");
         try {
           await verifyExecution(config, store, actions, sourceDir, identity, environment);
+          await uploadGroupPreflight(config, store, identity, environment);
           const claim = await store.transact(`upload-claim-${identity.attemptId}`, "claim-upload", now, state => ({ uploadOperationId: claimUpload(state, config, common, now) }));
           console.log(JSON.stringify({ authorized: !claim.replayed, ...claim.result })); return claim.replayed ? 3 : 0;
         } catch (error) { if (/already claimed|no longer current|Sibling workflow|rerun cannot reuse/.test(String(error))) { console.log(JSON.stringify({ authorized: false, reason: String(error) })); return 3; } throw error; }

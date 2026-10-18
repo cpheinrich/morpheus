@@ -32,7 +32,7 @@ export class ActionsAdapter {
     this.verifyRun(run, attempt);
     const artifacts = await pages<{ id: number; name: string; expired: boolean }>(this.api, `repos/${this.config.repository}/actions/runs/${run.id}/artifacts`, "artifacts");
     const found: { tests: TestEvidence[]; uploads: UploadEvidence[]; failures: unknown[] } = { tests: [], uploads: [], failures: [] };
-    const relevant = artifacts.filter(artifact => !artifact.expired && (artifact.name.startsWith("cd-v2-") || artifact.name.includes(attempt.dispatchEffectId) || artifact.name.startsWith("testflight-upload-")));
+    const relevant = artifacts.filter(artifact => !artifact.expired && (artifact.name.startsWith("cd-v2-") || artifact.name.includes(attempt.dispatchEffectId) || artifact.name.startsWith("testflight-upload-") || artifact.name.startsWith("ios-upload-acceptance-")));
     for (const artifact of relevant) {
       const directory = await mkdtemp(join(tmpdir(), "morpheus-cd-artifact-"));
       try {
@@ -55,5 +55,5 @@ export class ActionsAdapter {
 export function uploadEvidence(raw: Record<string, unknown>): UploadEvidence {
   const state = String(raw.state ?? raw.outcome ?? "uncertain");
   const outcome = state === "accepted" ? "accepted" : ["FAILED", "INVALID", "rejected"].includes(state) ? "rejected" : "uncertain";
-  return { ...raw, runId: String(raw.runId), runAttempt: String(raw.runAttempt), buildNumber: String(raw.buildNumber), outcome, providerUploadId: raw.providerUploadId ?? raw.uploadId } as UploadEvidence;
+  return { ...raw, runId: String(raw.runId), runAttempt: String(raw.runAttempt), buildNumber: String(raw.buildNumber), outcome, providerUploadId: raw.providerUploadId ?? raw.uploadId, diagnostics: raw.diagnostics ?? (Array.isArray(raw.diagnosticCodes) ? raw.diagnosticCodes.join(", ") : undefined) } as UploadEvidence;
 }

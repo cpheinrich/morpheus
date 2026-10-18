@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { type Attempt, type CdConfig, type CdState, configurationDigest, type DeliveryIntent, hash, type InternalObservation } from "./schema.js";
+import { type Attempt, type CdConfig, type CdState, configurationDigest, type DeliveryIntent, hash } from "./schema.js";
 import { ActionsAdapter, type WorkflowRun } from "./actions.js";
 import { AppleAdapter } from "./apple.js";
 import { GitHubStore, pages } from "./store.js";
-import { loadSources } from "./source.js";
-import { adoptSources, after, attemptAt, claimGroup, deliver, evaluateSlots, invariant, planAttempt, recordTests, recordUpload, repairWork, sourceAt, validateObservation } from "./state.js";
+import { loadSources, verifyValidator } from "./source.js";
+import { CdWait } from "./errors.js";
+import { adoptSources, after, attemptAt, claimGroup, deliver, evaluateSlots, invariant, planAttempt, recordTests, recordUpload, repairWork, validateObservation } from "./state.js";
 
 export interface TickResult { mode: "observe" | "active"; stateHead: string; intents: unknown[]; decisions: unknown[]; errors: { intentId: string; message: string }[] }
 export function status(state: CdState, now: string): unknown[] {
@@ -35,7 +36,7 @@ export class Controller {
       try { await this.reconcileIntent(intent, now); }
       catch (error) {
         const message = error instanceof Error ? error.message : String(error); errors.push({ intentId: intent.id, message });
-        await this.store.transact(`wait-${randomUUID()}`, "reconcile-wait", now, state => { const current = state.intents[intent.id]!; if (current.state === "delivered") return null; current.blocker = message; current.nextCheckAt = after(now, this.config.deadlines.pollMinutes); current.nextAction = "diagnose-reconcile-failure"; repairWork(state, current.id, [message], now); return { intentId: current.id, message }; });
+        await this.store.transact(`wait-${randomUUID()}`, "reconcile-wait", now, state => { const current = state.intents[intent.id]!; if (current.state === "delivered") return null; current.blocker = message; current.nextCheckAt = after(now, this.config.deadlines.pollMinutes); if (error instanceof CdWait) { current.state = "waiting"; current.nextAction = `wait-${error.code}`; } else { current.nextAction = "diagnose-reconcile-failure"; repairWork(state, current.id, [message], now); } return { intentId: current.id, message }; });
       }
     }
     const final = await this.store.read(); return { mode: "active", stateHead: final.head, intents: status(final.state, now), decisions: final.state.slots, errors };
@@ -71,10 +72,12 @@ export class Controller {
     const run = attempt.runId ? runs.find(item => String(item.id) === attempt.runId) : runs[0]; invariant(run, "Bound workflow is absent from complete effect sweep");
     for (const duplicate of runs.filter(item => item.id !== run.id && item.status !== "completed")) await this.actions.cancel(String(duplicate.id));
     const evidence = await this.actions.evidence(run, attempt);
+    for (const tests of evidence.tests) verifyValidator(this.sourceDir, tests);
     await this.store.transact(`observe-run-${attempt.id}-${hash({ run, evidence }).slice(0, 24)}`, "observe-workflow", now, state => {
       const found = attemptAt(state, current.id, attempt.id); if (found.attempt.status !== "active") return null;
       found.attempt.dispatch.runIds = runs.map(item => String(item.id));
       found.attempt.runId ??= String(run.id); found.attempt.runAttempt ??= String(run.run_attempt);
+      if (run.status === "completed") found.attempt.workflowTerminalAt ??= now;
       for (const tests of evidence.tests) { recordTests(state, this.config, tests); found.attempt.artifactsVerifiedAt = now; }
       for (const upload of evidence.uploads) if (found.attempt.upload) recordUpload(state, upload, now);
       return { runId: String(run.id), artifacts: evidence.tests.length + evidence.uploads.length };
@@ -98,10 +101,10 @@ export class Controller {
     const jobs = await pages<{ id: number; status: string; started_at: string | null; labels: string[] }>(this.store.api, `repos/${this.config.repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`, "jobs");
     const localJobs = jobs.filter(job => job.labels.includes(this.config.execution?.localRunner ?? "self-hosted") || job.labels.includes("self-hosted"));
     const neverStarted = localJobs.every(job => job.started_at === null), hostedEnded = attempt.lane === "hosted" && jobs.every(job => job.status === "completed" && !job.labels.includes("self-hosted"));
-    await this.store.transact(`failure-${attempt.id}-${run.run_attempt}`, "native-failure", now, state => {
+    await this.store.transact(`failure-${attempt.id}-${run.run_attempt}-${hash(attempt.quiescence ?? "not-quiescent").slice(0, 12)}`, "native-failure", now, state => {
       const current = attemptAt(state, intentId, attempt.id);
-      if (neverStarted || hostedEnded) {
-        current.attempt.quiescence = { kind: hostedEnded ? "hosted-terminated" : "host-terminated", ref: hostedEnded ? `GitHub hosted ephemeral VM job completion: ${jobs.map(job => job.id).join(",")}` : `GitHub complete job census: no native job was assigned/started, run ${run.id}`, observedAt: now };
+      if (current.attempt.quiescence || neverStarted || hostedEnded) {
+        current.attempt.quiescence ??= { kind: hostedEnded ? "hosted-terminated" : "host-terminated", ref: hostedEnded ? `GitHub hosted ephemeral VM job completion: ${jobs.map(job => job.id).join(",")}` : `GitHub complete job census: no native job was assigned/started, run ${run.id}`, observedAt: now };
         current.attempt.status = "failed";
       }
       const admissionFailure = neverStarted && attempt.lane === "local";
@@ -116,10 +119,11 @@ export class Controller {
     const observation = provider.observation;
     await this.store.transact(`upload-observation-${attempt.id}-${Math.floor(Date.parse(now) / 300_000)}`, "observe-upload-and-build", now, next => { const current = attemptAt(next, intentId, attempt.id); current.attempt.uploadObservations ??= []; current.attempt.uploadObservations.push({ at: now, uploadState: provider.uploadState, buildId: observation?.buildId, processingState: observation?.processingState, diagnostics: provider.diagnostics }); current.intent.nextCheckAt = after(now, this.config.deadlines.pollMinutes); return { buildId: observation?.buildId, uploadState: provider.uploadState }; });
     if (["FAILED", "INVALID"].includes(provider.uploadState ?? "") || observation && ["FAILED", "INVALID"].includes(observation.processingState)) {
-      await this.store.transact(`provider-rejected-${attempt.id}`, "provider-rejection", now, next => { const current = attemptAt(next, intentId, attempt.id); current.attempt.upload!.outcome = "rejected"; current.attempt.upload!.diagnostics = provider.diagnostics; current.attempt.status = "failed"; repairWork(next, intentId, [`Apple rejected ${attempt.appId}/${attempt.version}/${attempt.buildNumber}`, provider.diagnostics ?? "No additional diagnostics"], now); return { uploadState: provider.uploadState, processingState: observation?.processingState }; }); return;
+      await this.store.transact(`provider-rejected-${attempt.id}`, "provider-rejection", now, next => { const current = attemptAt(next, intentId, attempt.id); current.attempt.upload!.diagnostics = provider.diagnostics; if (current.attempt.status !== "active" || current.intent.attempts.at(-1)?.id !== attempt.id || current.intent.state === "delivered") return { late: true }; if (!current.attempt.upload!.acceptedAt) current.attempt.upload!.outcome = "rejected"; current.attempt.status = "failed"; if (next.groupOperations[current.intent.groupId]?.attemptId === attempt.id) next.groupOperations[current.intent.groupId]!.completedAt = now; repairWork(next, intentId, [`Apple rejected ${attempt.appId}/${attempt.version}/${attempt.buildNumber}`, provider.diagnostics ?? "No additional diagnostics"], now); return { uploadState: provider.uploadState, processingState: observation?.processingState }; }); return;
     }
     if (observation) {
-      await this.store.transact(`provider-visible-${attempt.id}-${hash(observation).slice(0, 20)}`, "exact-build-observation", now, next => { const current = attemptAt(next, intentId, attempt.id); current.attempt.observation = observation; current.attempt.upload!.acceptedAt ??= now; current.attempt.upload!.outcome = "accepted"; current.intent.state = "processing"; current.intent.nextAction = "verify-internal-distribution"; current.intent.nextCheckAt = after(now, this.config.deadlines.pollMinutes); return { buildId: observation.buildId, processingState: observation.processingState }; });
+      const recorded = await this.store.transact(`provider-visible-${attempt.id}-${hash(observation).slice(0, 20)}`, "exact-build-observation", now, next => { const current = attemptAt(next, intentId, attempt.id); current.attempt.observation = observation; current.attempt.upload!.acceptedAt ??= now; current.attempt.upload!.outcome = "accepted"; if (current.attempt.status !== "active" || current.intent.attempts.at(-1)?.id !== attempt.id || current.intent.state === "delivered") return { late: true, buildId: observation.buildId }; current.intent.state = "processing"; current.intent.nextAction = "verify-internal-distribution"; current.intent.nextCheckAt = after(now, this.config.deadlines.pollMinutes); return { late: false, buildId: observation.buildId, processingState: observation.processingState }; });
+      if (recorded.result.late) return;
       if (observation.processingState !== "VALID") { await this.processingDiagnosis(intentId, attempt, now, "Apple processing has not reached VALID"); return; }
       invariant(observation.group.internal && observation.group.appId === attempt.appId && !observation.group.automaticDistribution, "Configured internal group must disable automatic all-build distribution");
       if (!observation.group.buildIds.includes(observation.buildId)) {
@@ -145,6 +149,6 @@ export class Controller {
   }
   private async processingDiagnosis(intentId: string, attempt: Attempt, now: string, reason: string): Promise<void> {
     if (Date.parse(now) - Date.parse(attempt.upload!.acceptedAt ?? attempt.upload!.claimedAt) < this.config.deadlines.appleObservationMinutes * 60_000) return;
-    await this.store.transact(`apple-diagnosis-${attempt.id}`, "processing-diagnosis", now, state => { repairWork(state, intentId, [reason, `Exact identity ${attempt.appId}/${attempt.version}/${attempt.buildNumber}, upload ${attempt.upload!.providerUploadId ?? "unknown"}. Do not reupload accepted or uncertain bytes.`], now); return { reason }; });
+    await this.store.transact(`apple-diagnosis-${attempt.id}-${randomUUID()}`, "processing-diagnosis", now, state => { repairWork(state, intentId, [reason, `Exact identity ${attempt.appId}/${attempt.version}/${attempt.buildNumber}, upload ${attempt.upload!.providerUploadId ?? "unknown"}. Do not reupload accepted or uncertain bytes.`], now); return { reason }; });
   }
 }

@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { generateKeyPair, exportPKCS8, jwtVerify } from "jose";
 import { AppleAdapter, AppleHttp, applePages, type AppleApi } from "../../src/cd/apple.js";
 import { ActionsAdapter, matchesEffect, uploadEvidence } from "../../src/cd/actions.js";
@@ -63,6 +65,23 @@ describe("Actions and actual evidence bytes", () => {
     const { state, intentId } = prepared(), attempt = state.intents[intentId]!.attempts[0]!, adapter = new ActionsAdapter({ request: vi.fn() }, config());
     expect(() => adapter.verifyRun({ id: 100, head_sha: "d".repeat(40), event: "workflow_dispatch", path: ".github/workflows/cd-v2-delivery.yml", display_title: `CD ${attempt.dispatchEffectId}`, run_attempt: 1, status: "completed", conclusion: "success", created_at: now, updated_at: now }, attempt)).toThrow("trusted exact");
   });
+  it("imports the real producer's resource-only acceptance artifact after a hook failure", async () => {
+    const directory = await temp(), root = join(directory, "source"), bin = join(directory, "bin"); await mkdir(root); await mkdir(bin);
+    git(root, ["init", "-b", "main"]); git(root, ["config", "user.name", "CD Test"]); git(root, ["config", "user.email", "test@example.invalid"]); await writeFile(join(root, "file"), "source"); git(root, ["add", "file"]); git(root, ["commit", "-m", "source"]);
+    const sourceSha = git(root, ["rev-parse", "HEAD"]), { state, intentId, upload } = prepared(), attempt = state.intents[intentId]!.attempts[0]!; attempt.sourceSha = sourceSha;
+    const output = join(directory, "outputs"), producer = fileURLToPath(new URL("../../.github/actions/ios-testflight-upload/upload-receipt.py", import.meta.url));
+    const env = { ...process.env, GITHUB_REPOSITORY: "example/app", GITHUB_RUN_ID: "100", GITHUB_RUN_ATTEMPT: "1", GITHUB_JOB: "upload", GITHUB_WORKSPACE: root, GITHUB_OUTPUT: output, RUNNER_TEMP: directory, ASC_APP_ID: "123", IOS_BUNDLE_ID: "example.staging", MARKETING_VERSION: "1.0", BUILD_NUMBER: "8", IPA_SHA256: upload.ipaSha256, MORPHEUS_CD_INTENT_ID: intentId, MORPHEUS_CD_ATTEMPT_ID: attempt.id, MORPHEUS_CD_DISPATCH_EFFECT_ID: attempt.dispatchEffectId, MORPHEUS_CD_CONTROL_SHA: attempt.controlSha, MORPHEUS_CD_SOURCE_SHA: sourceSha };
+    execFileSync("/usr/bin/python3", [producer, "prepare"], { env });
+    const lines = (await import("node:fs/promises")).readFile(output, "utf8"), values = Object.fromEntries((await lines).trim().split("\n").map(line => { const index = line.indexOf("="); return [line.slice(0, index), line.slice(index + 1)]; }));
+    execFileSync("/usr/bin/python3", [producer, "resource"], { env: { ...env, UPLOAD_RECEIPT_DIRECTORY: values.directory }, input: JSON.stringify({ data: { id: "resource-1", state: "AWAITING_UPLOAD" } }) });
+    await writeFile(join(bin, "gh"), '#!/usr/bin/env node\nconst fs=require("node:fs"); const args=process.argv; fs.cpSync(process.env.CD_TEST_PAYLOAD,args[args.indexOf("--dir")+1],{recursive:true});\n', { mode: 0o755 });
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`); vi.stubEnv("CD_TEST_PAYLOAD", values.directory!);
+    try {
+      const api: GitHubApi = { async request<T>(): Promise<T> { return { artifacts: [{ id: 9, name: values["artifact-name"], expired: false }] } as T; } };
+      const found = await new ActionsAdapter(api, config()).evidence({ id: 100, run_attempt: 1, status: "completed", conclusion: "failure", display_title: `CD ${attempt.dispatchEffectId}`, head_sha: attempt.controlSha, event: "workflow_dispatch", path: ".github/workflows/cd-v2-delivery.yml", created_at: now, updated_at: now }, attempt);
+      expect(values["artifact-name"]).toMatch(/^ios-upload-acceptance-100-1-/); expect(found.uploads).toHaveLength(1); expect(found.uploads[0]).toMatchObject({ sourceSha, providerUploadId: "resource-1", outcome: "uncertain", ipaSha256: upload.ipaSha256 });
+    } finally { vi.unstubAllEnvs(); }
+  });
 });
 
 describe("real Git source evidence", () => {
@@ -73,6 +92,8 @@ describe("real Git source evidence", () => {
     git(root, ["remote", "add", "origin", bare]); git(root, ["push", "origin", "main"]);
     const api: GitHubApi = { async request<T>(): Promise<T> { return [{ number: 1, merged_at: "2026-10-18T17:00:00.000Z", merge_commit_sha: revision, base: { ref: "main" } }] as T; } };
     const sources = await loadSources(root, config(), api, now); expect(sources).toHaveLength(1); expect(sources[0]!.mainEnteredAt).toBe("2026-10-18T17:00:00.000Z"); expect(sources[0]!.evidence.kind).toBe("merged-pr"); expect(sources[0]!.inputDigest).toBe(inputDigest(root, revision, ["app"]));
-    verifySource(root, config(), revision, sources[0]!.inputDigest); await writeFile(join(root, "app", "source"), "changed after tests"); expect(() => verifySource(root, config(), revision, sources[0]!.inputDigest)).toThrow("modified");
+    verifySource(root, config(), revision, sources[0]!.inputDigest);
+    await writeFile(join(root, "app", "Injected.swift"), "injected untracked app source"); expect(inputDigest(root, revision, ["app"])).toBe(sources[0]!.inputDigest); expect(() => verifySource(root, config(), revision, sources[0]!.inputDigest)).toThrow("injected"); await rm(join(root, "app", "Injected.swift"));
+    await writeFile(join(root, "app", "source"), "changed after tests"); expect(() => verifySource(root, config(), revision, sources[0]!.inputDigest)).toThrow("modified");
   });
 });

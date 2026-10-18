@@ -1331,3 +1331,13 @@ add a service or do not own the complete delivery lifecycle. Provider wrappers r
 reusable Morpheus code, with Evo identities/hooks/configuration. Live Git contention and
 process-failure probes support the design; they do not prove deployment. See the research,
 private RCA and public validation appendix. Legacy consumers remain unchanged until explicit migration.
+
+Implementation reuses the existing `gh` boundary and installed `jose` ES256 signer;
+it adds no workflow framework or runtime dependency. A quick registry comparison
+of XState and Octokit confirmed that state ownership/effect fencing remain
+domain code, while the existing gh adapter already supplies authenticated REST.
+The UTC slot arithmetic is small and specific to this design. Reused Evo's
+owned-process guardian and native JSON execution mechanics rather than vendoring
+its app identities or PR-only recovery lifecycle. Git blob reads and compact test
+proofs avoid the Contents API's 1 MiB response behavior and repeated full native
+inventories in hot state.
