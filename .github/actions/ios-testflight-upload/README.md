@@ -120,5 +120,9 @@ expose the resulting evidence. A skipped claim produces no accepted receipt or u
 Set `distribution-enabled: "false"` for the durable controller to own processing and
 internal promotion. This skips all action-side distribution and external beta review;
 acceptance remains distinct from delivery. The protected caller job still owns all signing
-secrets, and its workflow ref must remain main. An explicit app source SHA does not relax
-that trusted-workflow boundary.
+secrets. Legacy releases require workflow ref `refs/heads/main`. CD V2 may instead use only
+`refs/tags/morpheus-cd-control-<control-sha>` where `MORPHEUS_CD_CONTROL_SHA` is an exact
+lowercase 40-character SHA and equals `GITHUB_SHA`. The exception also requires exact source
+SHA, complete intent/attempt/dispatch identity, both trusted hooks, a reserved build number,
+and disabled action-side distribution. Arbitrary tags and branch refs remain refused.
+The existing hook/source/claim checks still run before upload; the tag alone grants nothing.
