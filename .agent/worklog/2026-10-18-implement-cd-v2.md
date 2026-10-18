@@ -25,3 +25,13 @@ The existing Evo recovery worker supplies useful Codex JSON execution and owned
 process-guardian mechanics. Its Evo-specific authority and PR-only completion
 prompt cannot transfer as the generic repair lifecycle. No model invocation or
 Apple operation occurred during preparation.
+
+Implementation began only after design PR #415 merged. Integrated reviewed native
+adapters from PR #416. Added the controller, exact single-parent GitHub store,
+source/Actions/Apple adapters, evidence and upload hooks, bounded repair worker,
+actual subscription usage readers and scoped GitHub OIDC capability helpers.
+The first source typecheck and compile passed; 39 focused domain/store/provider
+cases passed, including real local Git and ES256 signing. Additional controller,
+worker and actual receipt-producer integration cases are being completed. The
+early draft deliberately precedes final generated output and independent review;
+it is not ready to merge or evidence of real TestFlight delivery.
