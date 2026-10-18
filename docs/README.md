@@ -4,6 +4,11 @@ Structure per [`architecture.md` §15](../architecture.md): `runbooks/` holds ho
 operational things — the steps a human performs in consoles the CLI cannot reach. The markdown
 here is canonical; anything rendered elsewhere is a view.
 
+## Designs
+
+- [CD pipeline V2](cd-pipeline-v2.md) — delivery ownership, automatic recovery and
+  internal TestFlight acceptance; [research](cd-pipeline-v2-research.md).
+
 Keep runbooks about *doing*: decisions and their reasons belong in `architecture.md` and
 `.agent/decisions.md`, and a runbook that restates them will drift from both.
 
