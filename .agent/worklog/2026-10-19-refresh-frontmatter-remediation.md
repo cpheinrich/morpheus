@@ -17,9 +17,7 @@ PM, inbox, team, local-review, and cleanup tests pass; compile and PM index pass
 
 ## Independent review
 
-Independent review cleared the normal-risk remediation with no substantive findings. It verified
-all six source consumers and generated mirrors, the clean production graph, focused evidence, and
-the hand-resolved decisions merge. One minor stale consumer count in the ticket was corrected.
+Independent review cleared the normal-risk remediation with no substantive findings. It verified all six source consumers and generated mirrors, the clean production graph, focused evidence, and the hand-resolved decisions merge. One minor stale consumer count in the ticket was corrected.
 
 ```morpheus-review
 {
