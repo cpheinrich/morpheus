@@ -7,7 +7,7 @@ import { homedir, hostname, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { expand } from "./config.js";
+import { expand, modeBuildIdentity } from "./config.js";
 export const defaultRun = (command, args, options = {}) => {
     const stdio = options.stdio === "inherit" ? "inherit" : ["ignore", "pipe", "pipe"];
     return (execFileSync(command, args, { encoding: "utf8", cwd: options.cwd, env: options.env, stdio: stdio }) ?? "").toString().trim();
@@ -30,6 +30,8 @@ export function parsePreviewArgs(argv, modes) {
         const flag = args.shift();
         if (flag === "--no-build")
             options.build = false;
+        else if (flag === "--no-ax")
+            options.axEnabled = false;
         else if (byFlag.has(flag))
             options.mode = byFlag.get(flag);
         else if (["--port", "--ssh-host", "--ttl-minutes", "--mode"].includes(flag)) {
@@ -214,6 +216,18 @@ export function serveSimCli() {
     const version = JSON.parse(readFileSync(join(dist, "..", "package.json"), "utf8")).version;
     return { path: join(dist, "serve-sim.js"), version };
 }
+/** Refuse a stale product whose embedded identity differs from the selected mode. */
+export function verifyBuiltBundle(app, expected, run) {
+    let actual;
+    try {
+        actual = run("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", join(app, "Info.plist")]);
+    }
+    catch {
+        throw new Error(`Cannot read the built app's bundle identifier at ${app}; rebuild the selected QA mode.`);
+    }
+    if (actual !== expected)
+        throw new Error(`Built app at ${app} has bundle identifier ${actual}, but the selected QA mode requires ${expected}. Rebuild that mode before launching.`);
+}
 export function previewContext(root, config, run = defaultRun, log = console.log) {
     const key = checkoutKey(root, config);
     const stateDir = join(homedir(), "Library", "Caches", config.namespace, key);
@@ -276,7 +290,7 @@ export async function healthy(ctx, state) {
 export function report(ctx, state, options) {
     const { log, config } = ctx;
     const overlay = state.overlayPort ? `http://127.0.0.1:${state.overlayPort}/` : undefined;
-    log(`Simulator host: ${hostname()}\nCheckout: ${ctx.root}\nSimulator: ${state.name} (${state.udid})\nBuild: ${state.build ?? "unknown"}`);
+    log(`Simulator host: ${hostname()}\nCheckout: ${ctx.root}\nSimulator: ${state.name} (${state.udid})\nMode: ${state.mode ?? "unknown"}\nBundle ID: ${state.bundleId ?? "unknown"}\nBuild: ${state.build ?? "unknown"}`);
     log(`Preview expires: ${new Date(state.expiresAt).toISOString()}. Run start to renew, or stop when finished.`);
     const mode = state.mode ? config.modes[state.mode] : undefined;
     if (mode)
@@ -377,7 +391,7 @@ export async function runPreview(ctx, options) {
         await withPreviewCancellation(async (checkCancelled) => {
             if (options.command === "stop") {
                 await stop();
-                log("Stopped this checkout's preview and its overlay. The simulator is shut down; its data is retained.");
+                log(`Stopped ${previous?.mode ?? "unknown"} mode (${previous?.bundleId ?? "unknown bundle"}) for this checkout. The simulator and overlay are shut down; simulator data is retained.`);
                 return;
             }
             const port = options.port ?? previous?.port ?? defaultPort(ctx.key);
@@ -386,6 +400,7 @@ export async function runPreview(ctx, options) {
                 throw new Error("Stop the current preview before changing its port.");
             const modeName = options.mode ?? config.defaultMode;
             const mode = config.modes[modeName];
+            const identity = modeBuildIdentity(config, mode);
             // start deliberately relaunches the app; stop the old supervisor before renewing.
             await stop();
             checkCancelled();
@@ -408,16 +423,17 @@ export async function runPreview(ctx, options) {
             // Recover a prior interrupted start that booted before writing state.
             shutdownPreview({ udid: device.udid, name: ctx.deviceName }, ctx.deviceName, sim);
             const derived = process.env.DERIVED_DATA_PATH ?? expand(config.derivedData, vars);
-            const app = join(derived, config.product);
+            const app = join(derived, identity.product);
             if (options.build) {
                 log(`Building this checkout for ${ctx.deviceName}, iOS ${runtime.version}…`);
-                const [c, ...a] = cmd(config.build);
+                const [c, ...a] = cmd(identity.build);
                 run(c, a, { cwd: ctx.root, stdio: "inherit", env: { ...process.env, DERIVED_DATA_PATH: derived, SIMULATOR_NAME: ctx.deviceName, SIMULATOR_OS: runtime.version, SIMULATOR_UDID: device.udid } });
             }
             if (!existsSync(app))
                 throw new Error(`No build at ${app}. Run start without --no-build.`);
+            verifyBuiltBundle(app, identity.bundleId, run);
             // Record ownership before boot so a failed install/launch/readiness can clean up.
-            const pending = { udid: device.udid, name: ctx.deviceName, port, overlayPort, root: ctx.root, expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000 };
+            const pending = { udid: device.udid, name: ctx.deviceName, port, overlayPort, root: ctx.root, mode: mode.name, bundleId: identity.bundleId, axEnabled: options.axEnabled !== false, expiresAt: Date.now() + (options.ttlMinutes ?? DEFAULT_TTL_MINUTES) * 60000 };
             writeState(ctx, pending);
             try {
                 sim("boot", device.udid);
@@ -427,7 +443,7 @@ export async function runPreview(ctx, options) {
                 sim("install", device.udid, app);
                 // The prepared environment goes to simctl launch only: never to state, the plist or a log.
                 const launchEnv = { ...process.env, ...prepareLaunchEnvironment(mode, vars, run) };
-                run("xcrun", ["simctl", "launch", "--terminate-running-process", device.udid, config.bundleId, ...cmd(mode.args)], { env: launchEnv });
+                run("xcrun", ["simctl", "launch", "--terminate-running-process", device.udid, identity.bundleId, ...cmd(mode.args)], { env: launchEnv });
                 const revision = run("git", ["rev-parse", "--short", "HEAD"], { cwd: ctx.root });
                 const dirty = run("git", ["status", "--porcelain"], { cwd: ctx.root }) ? " (working tree changes)" : "";
                 const state = {

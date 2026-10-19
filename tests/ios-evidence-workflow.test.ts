@@ -33,6 +33,37 @@ describe('native selection and result evidence', () => {
       with: { 'node-version': '24', 'package-manager-cache': false },
     });
   });
+  it('validates explicit CD identities and asserts the actual checkout', async () => {
+    const f = await fixture();
+    try {
+      Object.assign(f.env, { SOURCE_SHA: 'a'.repeat(40), EXECUTION_ID: 'dispatch-1' });
+      await f.run('Validate execution identity');
+      await f.run('Assert checked-out source');
+      for (const value of ['main', 'a'.repeat(39), 'A'.repeat(40), 'a'.repeat(41)]) {
+        Object.assign(f.env, { SOURCE_SHA: value });
+        await expect(f.run('Validate execution identity')).rejects.toMatchObject({code:1});
+      }
+      Object.assign(f.env, { SOURCE_SHA: 'b'.repeat(40) });
+      await expect(f.run('Assert checked-out source')).rejects.toMatchObject({code:1});
+      Object.assign(f.env, { SOURCE_SHA: '', EXECUTION_ID: 'dispatch-1' });
+      await expect(f.run('Validate execution identity')).rejects.toMatchObject({code:1});
+      Object.assign(f.env, { SOURCE_SHA: 'a'.repeat(40), EXECUTION_ID: '../unsafe' });
+      await expect(f.run('Validate execution identity')).rejects.toMatchObject({code:1});
+      Object.assign(f.env, { SOURCE_SHA: '', EXECUTION_ID: '' });
+      await f.run('Validate execution identity');
+      const checkout = f.steps.find(step => step.uses?.startsWith('actions/checkout'))!;
+      expect(checkout.with?.ref).toBe('${{ inputs.source-sha || github.sha }}');
+    } finally { await rm(f.dir,{recursive:true,force:true}); }
+  });
+  it('writes CD identity from actual checked-out source before caller evidence validation', async () => {
+    const f = await fixture();
+    try {
+      Object.assign(f.env, { EXECUTION_ID: 'dispatch-1', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '2', TEST_EVIDENCE_SCRIPT: 'fail.sh' });
+      await writeFile(join(f.dir, 'fail.sh'), 'test -f "$RESULTS/execution.json" || exit 99\nexit 19\n');
+      await expect(f.run('Export complete test evidence')).rejects.toMatchObject({code:19});
+      expect(JSON.parse(await readFile(join(f.env.RESULTS, 'execution.json'), 'utf8'))).toEqual({schemaVersion:1, sourceSha:'a'.repeat(40), executionId:'dispatch-1', runId:'123', runAttempt:'2'});
+    } finally { await rm(f.dir,{recursive:true,force:true}); }
+  });
   it('passes selected identifiers literally as separate arguments and preserves full defaults', async () => {
     const f = await fixture();
     try {
@@ -101,7 +132,7 @@ describe('native selection and result evidence', () => {
       expect(names).toHaveLength(2);
       expect(new Set(names).size).toBe(2);
       expect(names.every(n => n.startsWith('evidence-name=ios-test-evidence-run-42-1.'))).toBe(true);
-      expect(f.steps[index('Upload complete test evidence')]!.with?.name).toBe('${{ steps.ios_paths.outputs.evidence-name }}');
+      expect(f.steps[index('Upload complete test evidence')]!.with?.name).toBe("${{ inputs.execution-id != '' && format('ios-test-evidence-{0}', inputs.execution-id) || steps.ios_paths.outputs.evidence-name }}");
     } finally { await rm(f.dir, { recursive: true, force: true }); }
   });
   it('fails closed when structured result export fails', async () => {

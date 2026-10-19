@@ -3,7 +3,12 @@
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests and inspect
 their actual results before the initial review. Send the whole review packet, not fragments; a
 missing packet caused one reviewer to find a basic issue only in a later turn. For UI work,
-provide available simulator evidence at the start and replace it after fixes. If a test cannot
+provide available simulator evidence at the start and replace it after fixes. The reviewer must
+open each relevant image, inspect the rendered pixels and materially changed
+states for visual defects, and inspect relevant recording frames when present. A link alone does
+not establish a visual review. Missing, stale, or inaccessible required captures leave the review
+incomplete until the author supplies final-build evidence.
+If a test cannot
 run, record the exact limitation and keep the PR draft until validation finishes. CI can run in
 parallel, but an avoidable late test correction consumes a review turn. Aim for an initial review
 and one focused response; three ordinary turns are a ceiling, not a plan. Commit implementation
@@ -111,7 +116,13 @@ Reviewer retractions may clear a disputed finding, but author disagreement alone
 
 **A deferral is a ticket, not a sentence.** A finding left `deferred` or `open` names the roadmap
 item that tracks it in `roadmap`, and `check pr` requires that item to exist on the branch. File
-it with `pm new` before recording the deferral. In the first two weeks a cron with no year field
+it with `pm new` before recording the deferral. If the reviewer discovered the finding after the
+`reviewed` commit, the new item may be committed before
+`covered` without spending a follow-up turn. The exception applies only to a valid direct-child
+item named by a deferred or open finding and first added by an author commit in that range.
+Editing an existing item, including one brought in by a trunk merge, or changing code still
+needs review coverage.
+After `covered`, only the review worklog may change. In the first two weeks a cron with no year field
 was deferred on one day and still firing a week later, an "operator's Owner login stays active"
 finding was deferred to an inbox note, and one gap was deferred three separate times; none had
 anywhere to be picked up from. This applies to incidental findings too, because those are the
@@ -123,7 +134,8 @@ sets the finding's `condition` with exact `paths` and the `evidence` to run. The
 within those paths, records `conditionMet` with what was run and its result, and marks it
 `fixed`. A substantive finding cleared this way needs no follow-up turn, and a final follow-up
 may clear on condition with `covered` moving to the fix commit. `check pr` verifies that every
-commit between the reviewer's commit and `covered` touches only condition paths and the worklog;
+commit between the reviewer's commit and `covered` touches only condition paths, the worklog,
+and a newly filed deferred/open finding ticket;
 minor fixes belong before the reviewer's final turn, and join the allowed set only when there is
 no follow-up at all. A condition on a source file in a repository that commits generated output
 must name the generated counterparts too, or the regenerated files fall outside it. Name the

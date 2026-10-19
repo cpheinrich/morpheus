@@ -7,6 +7,12 @@ canonical trunk and fast-forwards the local trunk. It never rebases an active ta
 task branch. Follow its absolute `WORK IN` path when a session has a saved task association.
 A behind checkout cannot issue a fresh receipt: integrate trunk explicitly, then re-read records.
 
+Session Git commands have a 30-second deadline. If Morpheus stops one at that deadline, the
+error explicitly names the timeout and SIGTERM, followed by the original command/error.
+For a remote command such as fetch, check network access to the configured remote before
+retrying. Ordinary Git failures retain their own stderr; a timeout does not certify freshness.
+
+
 ### A dirty trunk checkout is rescued, not left behind
 
 A trunk checkout with uncommitted edits cannot fast-forward, and a one-line "behind" notice is

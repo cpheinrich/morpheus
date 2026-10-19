@@ -65,6 +65,8 @@ pnpm morpheus pm index             # refresh goal/request indexes
 pnpm morpheus pm new roadmap "Title" --slug verb-noun --priority P1 [--issue 123]
 pnpm morpheus pm claim <ID>        # stake the branch; prints WORK IN for a fresh worktree
 pnpm morpheus pm resume <ID>       # continue a claimed or blocked task
+pnpm morpheus pm cleanup <ID>      # after merge, remove the clean task worktree
+pnpm morpheus pm worktrees         # inventory linked checkouts
 pnpm morpheus pm block <ID> --needs "what would unblock this"
 pnpm morpheus review prepare --base origin/main   # the reviewer packet
 pnpm morpheus review validate      # CI's review-record check, run before pushing
@@ -109,6 +111,11 @@ checkout `pm claim` prints a fresh worktree; read its records, refresh there, an
 there. Do not run concurrent authors on one task worktree. **Name slugs like branches**
 (`--slug update-roadmap-ids`, verb-noun, ≤ 32 characters). Ids, worktrees and resume:
 [`pm-workflow.md`](docs/runbooks/pm-workflow.md).
+New task worktrees live in the system temporary directory. After the PR merges, run
+`morpheus pm cleanup <ID>` from the primary checkout. It proves the exact PR merged and
+preserves dirty, locked, active, or ambiguous worktrees. Use `pm worktrees` to inspect
+older sibling checkouts before cleaning them. Its generated session receipt is safe to
+remove after these checks; other ignored local data remains protected.
 
 **A request arriving in a conversation is intake, not a release path.** Messages, Slack, email,
 voice and browser chat enter the same lifecycle: create or link the roadmap item, claim it, work
@@ -148,7 +155,9 @@ domain-specific, or every candidate is unmaintained. Record the outcome in `.age
 
 **The authoring agent owns the entire review loop.** Finish the relevant focused tests, inspect
 their actual results, and give the reviewer the complete packet before its first turn. For UI work,
-include the available simulator evidence. If a test cannot run, state the exact limitation and
+include final-build simulator captures of each materially changed screen and state. Open the
+captures yourself; the independent reviewer must inspect their pixels. Replace them after visual
+fixes. If a test cannot run, state the exact limitation and
 keep the PR draft until validation finishes; a later code correction spends a remaining review
 turn. Aim to finish in an initial review and one focused response. The third turn is a ceiling for
 a genuine late correction or unresolved substantive finding, not a planned step. Commit the
@@ -168,7 +177,8 @@ than rebase after review.
 
 **Every PR carries** tests for anything testable (or an explicit reason), a documentation update
 when behaviour changes, a test plan with the commands actually run, open questions stated plainly,
-the roadmap item moved to `review`, `Closes #N` for each issue in the item's `issues:`, and visual
+the roadmap item moved to `review`, `Closes #N` for each issue in the item's `issues:` unless it is
+also in `issuesToKeepOpen:` (use `Refs #N` while a later verifier owns closure), and visual
 evidence for paths under `review.visualEvidence`. A records-only change (`hq/team/`, `.agent/`)
 goes on an `inbox-<YYYY-MM-DD>` branch; meeting notes go in isolated PRs; **never borrow an
 unrelated item's branch**. Waivers (`skip-tests:`, `records-only:`) need a real reason. All of it:

@@ -4,16 +4,47 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { startQaCommentServer } from "../serve.js";
 import { shutdownPreview, type PreviewState } from "./ios.js";
 
 /**
  * The launchd job for one preview: serve-sim, then the comment overlay on top of it.
  *
- * A preview survives its launching terminal but never owns a booted device past its lease. The
- * overlay lives in this process rather than beside it, so the lease, `stop` and an expiry end both
- * together — before this, the overlay was a second process the agent had to remember to stop.
+ * A preview survives its launching terminal but never owns a booted device past its lease.
+ * The overlay is a child so a native accessibility crash cannot kill the supervisor and stream.
+ * The supervisor still owns its lifetime, including lease expiry and explicit stop.
  */
+
+/** Retry one crashed overlay with native accessibility disabled. A second failure stays failed. */
+export function superviseOverlay(
+  launch: (axEnabled: boolean) => ChildProcess,
+  axEnabled: boolean,
+  log: (message: string) => void = console.error,
+): { stop: () => void } {
+  let stopping = false;
+  let retried = false;
+  let current: ChildProcess;
+  const start = (enabled: boolean) => {
+    const child = launch(enabled);
+    current = child;
+    let finished = false;
+    const finish = (reason: string) => {
+      if (finished) return;
+      finished = true;
+      if (stopping) return;
+      if (enabled && !retried) {
+        retried = true;
+        log(`QA overlay exited (${reason}); restarting with accessibility disabled.`);
+        start(false);
+      } else {
+        log(`QA overlay exited (${reason}); screenshot fallback also failed. Restart the preview after checking its log.`);
+      }
+    };
+    child.once("error", (error: Error) => finish(error.message));
+    child.once("exit", (code, signal) => finish(signal ?? String(code)));
+  };
+  start(axEnabled);
+  return { stop: () => { stopping = true; current.kill("SIGTERM"); } };
+}
 
 export function supervise(
   child: ChildProcess,
@@ -77,18 +108,14 @@ async function main([stateFile, cli]: string[]): Promise<void> {
   }
   const sim = (...args: string[]) => execFileSync("xcrun", ["simctl", ...args], { encoding: "utf8", timeout: 120000 });
   const child = spawn(process.execPath, [cli, state.udid, "--port", String(state.port), "--host", "127.0.0.1", "--fit", "--panes", "none"], { stdio: "inherit" });
-  let overlay: Awaited<ReturnType<typeof startQaCommentServer>> | undefined;
+  let overlay: ReturnType<typeof superviseOverlay> | undefined;
   let stopping = false;
   const ready = waitForStream(state, () => stopping).then(async (ok) => {
     if (!ok) { console.error("serve-sim did not come up; the overlay was not started."); return; }
-    try {
-      overlay = await startQaCommentServer({
-        root: state.root, previewUrl: `http://127.0.0.1:${state.port}/`, port: state.overlayPort,
-        onListen: (info) => console.log(`QA comments overlay: ${info.url} (stream ${info.streamUrl ?? "undiscovered"})`),
-      });
-    } catch (error) {
-      console.error(`QA comments overlay failed to start: ${(error as Error).message}`);
-    }
+    overlay = superviseOverlay(
+      (axEnabled) => spawn(process.execPath, [fileURLToPath(new URL("./overlay-child.js", import.meta.url)), stateFile, axEnabled ? "ax" : "screenshot"], { stdio: "inherit" }),
+      state.axEnabled !== false,
+    );
   });
   process.exitCode = await supervise(child, {
     expired: () => {
@@ -98,7 +125,7 @@ async function main([stateFile, cli]: string[]): Promise<void> {
     cleanup: async () => {
       stopping = true;
       await ready.catch(() => undefined);
-      await overlay?.close().catch(() => undefined);
+      overlay?.stop();
       shutdownPreview(state, state.name, sim);
     },
   });

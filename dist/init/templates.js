@@ -758,8 +758,7 @@ claim an app launch date.
 `;
 export const agents = (s) => `# ${s.name} — agent instructions
 
-Read this before doing anything. \`CLAUDE.md\` is a symlink to this file so Claude and Codex
-read the same instructions.
+Read this first. \`CLAUDE.md\` links here.
 
 ${morpheusCalloutForAgents()}
 
@@ -863,6 +862,7 @@ and fail when a stated invariant is broken; coverage alone is not evidence of qu
 **Front-end changes must carry visual evidence.** When a changed path matches
 \`review.visualEvidence.include\` in \`morpheus.json\` (minus \`exclude\`), attach a screen recording
 to the PR when practical, otherwise screenshots, and list them under \`## Visual evidence\`.
+Capture final-build screens/states; author and reviewer inspect pixels. Refresh after fixes.
 \`morpheus check pr\` accepts GitHub attachments and exact public HTTPS prefixes declared in
 \`allowedUrlPrefixes\`, without fetching them. The path and media-location contracts are
 deterministic; they do not claim to infer whether rendered pixels changed. A repository may disable
@@ -895,6 +895,8 @@ yourself once checks pass.
 \`\`\`sh
 gh pr merge <n> --squash --auto --delete-branch
 \`\`\`
+
+After merge: \`morpheus pm cleanup <ID>\` from the primary checkout removes its worktree.
 
 ## Style
 
@@ -1315,7 +1317,7 @@ export const pullRequestTemplate = () => `## Summary
 
 <!-- What changed, and why? -->
 
-<!-- If the roadmap item declares GitHub issues, close each explicitly: Closes #123. -->
+<!-- Close issues declared by the roadmap item: Closes #123. If a later verifier owns closure, add the number to issuesToKeepOpen and use Refs #123 instead. Keep closing keywords for that issue out of the title and commits too. -->
 
 ## Visual evidence
 
@@ -1678,6 +1680,12 @@ Run \`morpheus qa guide\` and follow it. It prints the instructions that ship wi
 CLI, so they always match the commands you will run.
 
 The short form:
+
+**One branch until the person ends the session.** Commit each batch's changes locally on the
+one claimed branch for this QA session. Do not push, open a PR, start independent review or run
+CI per batch: even a draft PR push starts CI. Ship the changes together only when the person
+says the session is done. Tell them before rebuilding or relaunching the preview, or reloading
+or navigating their overlay tab.
 
 1. From this checkout: \`morpheus qa preview web start\` for the website, or
    \`morpheus qa preview ios start\` for the iOS app. Each starts the comment overlay with it.

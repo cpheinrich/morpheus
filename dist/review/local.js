@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
+import matter from "gray-matter";
 import { z } from "zod";
 import { visibleProse, visibleText } from "../check/pr.js";
 import { ROADMAP_ID } from "../pm/id.js";
+import { RoadmapItem } from "../pm/schema.js";
 const Sha = z.string().regex(/^[a-f0-9]{40}$/);
 const Text = z.string().trim().min(8);
 const Session = z.string().trim().min(3);
@@ -367,6 +369,51 @@ export function validateReviewRecord(record, opts = {}) {
 export function changedPaths(root, older, newer) {
     return git(root, ["diff", "--name-only", "-z", "--no-renames", older, newer, "--"]).split("\0").filter(Boolean);
 }
+const ROADMAP_DIR = "hq/product/roadmap/";
+/** The committed item must be a direct, regular Markdown file that the roadmap parser accepts. */
+function committedRoadmapPath(root, commit, id) {
+    const entries = git(root, ["ls-tree", "-r", "-z", commit, "--", ROADMAP_DIR]).split("\0").filter(Boolean);
+    for (const entry of entries) {
+        const match = /^100644 blob [a-f0-9]{40}\t(.+)$/.exec(entry);
+        if (!match)
+            continue;
+        const path = match[1];
+        const name = path.startsWith(ROADMAP_DIR) ? path.slice(ROADMAP_DIR.length) : "";
+        if (!name || name.includes("/") || !(name === `${id}.md` || (name.startsWith(`${id}-`) && name.endsWith(".md"))))
+            continue;
+        try {
+            const parsed = RoadmapItem.safeParse(matter(git(root, ["show", `${commit}:${path}`])).data);
+            if (parsed.success && parsed.data.id === id)
+                return path;
+        }
+        catch { /* Invalid YAML is not a filed ticket. */ }
+    }
+    return null;
+}
+/** A trunk merge can introduce an item, but it is not an author-filed ticket in this range. */
+function addedByAuthor(root, from, to, path) {
+    let previous = from;
+    for (const commit of git(root, ["rev-list", "--first-parent", "--reverse", `${from}..${to}`]).split("\n").filter(Boolean)) {
+        const had = git(root, ["ls-tree", previous, "--", path]);
+        const has = git(root, ["ls-tree", commit, "--", path]);
+        if (!had && has)
+            return git(root, ["show", "-s", "--format=%P", commit]).split(" ").length === 1;
+        previous = commit;
+    }
+    return false;
+}
+/**
+ * A reviewer can discover an incidental defect after `reviewed` was committed. Filing its
+ * deferred/open ticket is record keeping only when an author commit added a valid item here.
+ * Existing roadmap edits and unrelated tickets still need review coverage.
+ */
+function newlyFiledDeferralPaths(root, record, from, to) {
+    const ids = new Set(record.findings.filter(f => f.disposition === "deferred" || f.disposition === "open").map(f => f.roadmap).filter((id) => Boolean(id)));
+    return [...ids].flatMap(id => {
+        const path = committedRoadmapPath(root, to, id);
+        return path && !git(root, ["ls-tree", from, "--", path]) && addedByAuthor(root, from, to, path) ? [path] : [];
+    });
+}
 /** True when Git's own merge of the two parents reproduces this commit's tree exactly: nothing was hand-edited. */
 function exactMerge(root, commit, parents) {
     let expected = "";
@@ -506,7 +553,7 @@ export function verifyReviewRecord(opts) {
     const turns = followUpTurns(record);
     const conditional = conditionallyCleared(record);
     if (!turns.length && record.reviewed !== record.covered) {
-        const allowed = new Set([path, ...conditional, ...record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths)]);
+        const allowed = new Set([path, ...conditional, ...newlyFiledDeferralPaths(opts.root, record, record.reviewed, record.covered), ...record.findings.filter(f => f.severity === "minor" && f.disposition === "fixed").flatMap(f => f.paths)]);
         for (const commit of verifyUncoveredCommits(opts.root, record, record.reviewed, record.covered, opts.base, allowed, "author-only fixes exceed the minor finding paths and reviewer conditions; review coverage must be renewed explicitly"))
             merges.add(commit);
     }
@@ -515,7 +562,7 @@ export function verifyReviewRecord(opts) {
         // Only a conditional clearance lets `covered` run past the final turn, and only within its paths.
         if (!isAncestor(opts.root, last.commit, record.covered))
             throw new Error("the final follow-up must clear the covered commit using the original reviewer session");
-        for (const commit of verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional]), "author fixes after the final follow-up exceed the reviewer's recorded conditions"))
+        for (const commit of verifyUncoveredCommits(opts.root, record, last.commit, record.covered, opts.base, new Set([path, ...conditional, ...newlyFiledDeferralPaths(opts.root, record, last.commit, record.covered)]), "author fixes after the final follow-up exceed the reviewer's recorded conditions"))
             merges.add(commit);
     }
     // The attestation is checked against the diff it claims to cover, so an automatic turn cannot
@@ -586,9 +633,8 @@ function checkTrackedDeferrals(root, record, head) {
     const ids = [...new Set(record.findings.map(f => f.roadmap).filter((id) => Boolean(id)))];
     if (!ids.length)
         return;
-    const items = git(root, ["ls-tree", "--name-only", head, "--", "hq/product/roadmap/"]).split("\n").map(p => p.replace(/^hq\/product\/roadmap\//, ""));
     for (const id of ids) {
-        if (!items.some(name => name === `${id}.md` || name.startsWith(`${id}-`)))
+        if (!committedRoadmapPath(root, head, id))
             throw new Error(`finding tracked by ${id}, but no such roadmap item exists on this branch; file it with pm new`);
     }
 }

@@ -80,7 +80,24 @@ export function parseIosPreviewConfig(raw, projectName = "Project") {
                 else
                     prepare = { command: p.command, credentials: p.credentials === true };
             }
-            modes[name] = { name, args: (Array.isArray(args) ? args : []), flags: (Array.isArray(flags) ? flags : []), summary, ...(prepare ? { prepare } : {}) };
+            const identity = ["build", "product", "bundleId"];
+            const overridden = identity.filter((key) => m[key] !== undefined);
+            if (overridden.length && overridden.length !== identity.length) {
+                issues.push(`qa.ios.modes.${name} must override build, product and bundleId together to select a different app.`);
+            }
+            if (m.build !== undefined && !isStrings(m.build))
+                issues.push(`qa.ios.modes.${name}.build must be a non-empty array of strings.`);
+            for (const key of ["product", "bundleId"]) {
+                if (m[key] !== undefined && (typeof m[key] !== "string" || !m[key]))
+                    issues.push(`qa.ios.modes.${name}.${key} must be a non-empty string.`);
+            }
+            modes[name] = {
+                name, args: (Array.isArray(args) ? args : []), flags: (Array.isArray(flags) ? flags : []), summary,
+                ...(prepare ? { prepare } : {}),
+                ...(isStrings(m.build) ? { build: m.build } : {}),
+                ...(typeof m.product === "string" && m.product ? { product: m.product } : {}),
+                ...(typeof m.bundleId === "string" && m.bundleId ? { bundleId: m.bundleId } : {}),
+            };
         }
     }
     const defaultMode = typeof ios.defaultMode === "string" ? ios.defaultMode : Object.keys(modes)[0] ?? "";
@@ -96,8 +113,11 @@ export function parseIosPreviewConfig(raw, projectName = "Project") {
         },
     };
 }
+export function modeBuildIdentity(config, mode) {
+    return { build: mode.build ?? config.build, product: mode.product ?? config.product, bundleId: mode.bundleId ?? config.bundleId };
+}
 /** Flags the preview command owns, plus every flag the morpheus parser consumes first. */
-export const PREVIEW_FLAGS = ["--port", "--ttl-minutes", "--no-build", "--ssh-host", "--root", "--mode"];
+export const PREVIEW_FLAGS = ["--port", "--ttl-minutes", "--no-build", "--no-ax", "--ssh-host", "--root", "--mode"];
 export const RESERVED_FLAGS = new Set([...PREVIEW_FLAGS, ...globalFlags()]);
 export async function loadIosPreviewConfig(root) {
     let manifest;

@@ -3,13 +3,13 @@ import { readFile } from "node:fs/promises";
 import { EventEmitter } from "node:events";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseIosPreviewConfig, expand, RESERVED_FLAGS } from "../src/qa/preview/config.js";
+import { parseIosPreviewConfig, expand, modeBuildIdentity, RESERVED_FLAGS } from "../src/qa/preview/config.js";
 import {
   checkoutKey, defaultPort, launchEnvironment, launchPlist, OVERLAY_PORT_OFFSET, parsePreviewArgs, prepareLaunchEnvironment,
-  repairSimulatorInput, requireFreePort, selectRuntime, serveSimCli, shutdownPreview, tunnelCommand,
+  repairSimulatorInput, report, requireFreePort, selectRuntime, serveSimCli, shutdownPreview, tunnelCommand, verifyBuiltBundle,
   withPreviewCancellation, type Runtime,
 } from "../src/qa/preview/ios.js";
-import { supervise } from "../src/qa/preview/supervisor.js";
+import { supervise, superviseOverlay } from "../src/qa/preview/supervisor.js";
 import { QA_GUIDE } from "../src/qa/guide.js";
 import { commentQaSkill } from "../src/init/templates.js";
 
@@ -57,6 +57,62 @@ describe("qa.ios configuration", () => {
     });
   });
 
+  it("selects the production build, product and bundle as one identity", () => {
+    const parsed = parseIosPreviewConfig({ ios: {
+      ...EVO.ios,
+      modes: {
+        ...EVO.ios.modes,
+        production: {
+          build: ["bash", "apps/ios/scripts/dev.sh", "build", "--configuration", "EvoDebug"],
+          product: "Build/Products/ProductionDebug-iphonesimulator/Evo.app",
+          bundleId: "evo.med",
+        },
+      },
+    } }, "Evo");
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(modeBuildIdentity(parsed.config, parsed.config.modes.production!)).toEqual({
+      build: ["bash", "apps/ios/scripts/dev.sh", "build", "--configuration", "EvoDebug"],
+      product: "Build/Products/ProductionDebug-iphonesimulator/Evo.app",
+      bundleId: "evo.med",
+    });
+    expect(modeBuildIdentity(parsed.config, parsed.config.modes.demo!)).toEqual({
+      build: EVO.ios.build, product: EVO.ios.product, bundleId: EVO.ios.bundleId,
+    });
+  });
+
+  it("rejects a partial production identity that could launch the staging app", () => {
+    for (const override of [
+      { bundleId: "evo.med" },
+      { product: "Build/Products/ProductionDebug-iphonesimulator/Evo.app" },
+      { build: ["bash", "build-production.sh"], bundleId: "evo.med" },
+    ]) {
+      const parsed = parseIosPreviewConfig({ ios: { ...EVO.ios, modes: { production: override } } }, "Evo");
+      expect(parsed.ok).toBe(false);
+      if (!parsed.ok) expect(parsed.issues).toContain("qa.ios.modes.production must override build, product and bundleId together to select a different app.");
+    }
+  });
+
+  it("checks the built app's actual bundle before it can be installed", () => {
+    const calls: Array<[string, string[]]> = [];
+    const inspect = (command: string, args: string[]) => { calls.push([command, args]); return "evo.med.staging"; };
+    expect(() => verifyBuiltBundle("/derived/Evo.app", "evo.med", inspect)).toThrow(/has bundle identifier evo.med.staging.*requires evo.med/);
+    expect(calls).toEqual([["/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", "/derived/Evo.app/Info.plist"]]]);
+    expect(() => verifyBuiltBundle("/derived/Evo.app", "evo.med.staging", inspect)).not.toThrow();
+  });
+
+  it("reports the started mode and bundle from saved state even if config changes", () => {
+    const lines: string[] = [];
+    report({
+      root: "/repo", config: evo(), key: "abc", stateDir: "/state", stateFile: "/state/session.json",
+      label: "qa.abc", target: "gui/1/qa.abc", deviceName: "Evo QA abc", run: () => "", log: (line) => lines.push(line),
+    }, {
+      udid: "sim", name: "Evo QA abc", port: 3200, overlayPort: 3456,
+      root: "/repo", expiresAt: Date.now() + 60000, mode: "production", bundleId: "evo.med",
+    }, {});
+    expect(lines.join("\n")).toContain("Mode: production\nBundle ID: evo.med");
+  });
+
   it("reports every problem at once, and refuses flags the CLI or the preview already owns", () => {
     const parsed = parseIosPreviewConfig({ ios: {
       build: "dev.sh", product: "", bundleId: "x", namespace: "bad space", defaultMode: "nope",
@@ -88,6 +144,8 @@ describe("preview arguments", () => {
     expect(parsePreviewArgs([], modes)).toEqual({ command: "start", build: true });
     expect(parsePreviewArgs(["start", "--no-build", "--port", "3210"], modes)).toEqual({ command: "start", build: false, port: 3210 });
     expect(parsePreviewArgs(["status", "--ssh-host", "user@mac.tailnet.ts.net"], modes).sshHost).toBe("user@mac.tailnet.ts.net");
+    expect(parsePreviewArgs(["start", "--no-ax"], modes).axEnabled).toBe(false);
+    expect(RESERVED_FLAGS.has("--no-ax")).toBe(true);
   });
 
   it("selects a mode by its declared flag, by --mode, or not at all", () => {
@@ -221,6 +279,43 @@ describe("cancellation and supervision", () => {
 });
 
 describe("serve-sim and the guide", () => {
+  it("keeps serve-sim alive after an overlay crash and retries once without AX", () => {
+    const children: Array<EventEmitter & { kill: (signal: string) => void }> = [];
+    const modes: boolean[] = [];
+    const kills: string[] = [];
+    const logs: string[] = [];
+    const overlay = superviseOverlay((enabled) => {
+      modes.push(enabled);
+      const child = Object.assign(new EventEmitter(), { kill: (signal: string) => { kills.push(signal); } });
+      children.push(child);
+      return child as never;
+    }, true, (message) => logs.push(message));
+    children[0]!.emit("exit", null, "SIGSEGV");
+    expect(modes).toEqual([true, false]);
+    expect(logs[0]).toContain("SIGSEGV");
+    overlay.stop();
+    children[1]!.emit("exit", null, "SIGTERM");
+    expect(kills).toEqual(["SIGTERM"]);
+    expect(modes).toEqual([true, false]);
+    expect(logs).toHaveLength(1);
+  });
+
+  it("does not loop if screenshot fallback exits", () => {
+    const children: EventEmitter[] = [];
+    const modes: boolean[] = [];
+    const logs: string[] = [];
+    superviseOverlay((enabled) => {
+      modes.push(enabled);
+      const child = Object.assign(new EventEmitter(), { kill: () => true });
+      children.push(child);
+      return child as never;
+    }, true, (message) => logs.push(message));
+    children[0]!.emit("exit", null, "SIGSEGV");
+    children[1]!.emit("exit", 1, null);
+    expect(modes).toEqual([true, false]);
+    expect(logs[1]).toContain("screenshot fallback also failed");
+  });
+
   it("ships the pinned serve-sim with the CLI", () => {
     const cli = serveSimCli();
     expect(cli.version).toBe("0.1.47");

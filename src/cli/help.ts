@@ -14,6 +14,9 @@ Usage
                             — name the slug like a branch; derived otherwise
   morpheus pm claim <RM-014>
   morpheus pm resume <ID>   reuse an existing task worktree or its remote branch
+  morpheus pm cleanup <ID> [--dry-run|--check] [--release-stale-sessions]
+                                            prove a merge, then remove its idle task worktree
+  morpheus pm worktrees [prune] [--dry-run]    inventory / prune only missing registrations
   morpheus pm claims
   morpheus pm link-issue <RM-014> <123>
   morpheus pm block <MO-051> --needs "<what would unblock this>" [--owner <handle>]
@@ -105,6 +108,8 @@ Usage
                             asks; with it, what the branch changed since that ref
   morpheus ios nightly-core write|check <file>
                             vendor the shared nightly TestFlight admission core into an app
+  morpheus cd config|init|tick|request|status|worker [--config .morpheus/cd.json]
+                            durable native delivery and repair; cd --help for evidence/hooks
   morpheus heartbeat        [--ceiling N] [--json] [--dispatch]
                             what should happen next, and whether anything should
   morpheus gh-manager sweep <owner/repo> [--out file]
@@ -140,7 +145,7 @@ Usage
                             separate serial queue consumer using local responder.json
   morpheus qa comments serve --preview <url> [--port 3456] [--root <project>]
                             local overlay: tap → multi-comment → Send into local/qa-comments/
-  morpheus qa preview ios [start|status|stop|doctor|help] [--mode <name>] [--port <n>] [--no-build] [--root <project>]
+  morpheus qa preview ios [start|status|stop|doctor|help] [--mode <name>] [--port <n>] [--no-build] [--no-ax] [--root <project>]
                          One simulator preview per checkout with the comment overlay; app declared in morpheus.json qa.ios
   morpheus qa preview web [start|status|stop|help] [--path </page>] [--port <n>] [--root <project>]
                          The local website behind the comment overlay; dev server declared in morpheus.json qa.web
@@ -169,4 +174,3 @@ Options
                  "doctor" and "context refresh|check|status" that it would answer
   -h, --help     Show this message
 `;
-

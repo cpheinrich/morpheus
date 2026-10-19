@@ -61,16 +61,24 @@ function stripHtmlComments(body) {
 function stripCode(body) {
     return stripFences(body).replace(/`[^`\r\n]*`/g, "");
 }
-/** Whether the PR body uses one of GitHub's same-repository closing keywords. */
-export function closesIssue(body, issue) {
+/** GitHub's same-repository closing keywords, including its colon form. */
+function closingKeywordInText(text, issue) {
     const keyword = String.raw `(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)`;
+    // GitHub accepts "Closes: #N" as well as "Closes #N". For held issues,
+    // inspect raw text conservatively, including commit messages and PR titles.
+    return new RegExp(String.raw `(?:^|[^A-Za-z0-9])${keyword}(?:\s*:\s*|\s+)#${issue}(?!\d)`, "im").test(text);
+}
+/** Whether visible PR prose uses one of GitHub's closing keywords. */
+export function closesIssue(body, issue) {
     // The pull-request template carries an example inside an HTML comment.
     // GitHub does not treat hidden template guidance as closure intent, so the
     // verifier must not let that example satisfy the rule either.
     const visible = visibleProse(body);
-    // `_` is a regex word character but also Markdown emphasis, so `\b` would
-    // reject `_Resolves #70_`. Exclude letters and digits explicitly instead.
-    return new RegExp(String.raw `(?:^|[^A-Za-z0-9])${keyword}\s+#${issue}(?!\d)`, "im").test(visible);
+    return closingKeywordInText(visible, issue);
+}
+/** Require an explicit non-closing link for an issue owned by a later verifier. */
+export function referencesIssue(body, issue) {
+    return new RegExp(String.raw `(?:^|[^A-Za-z0-9])Refs\s+#${issue}(?!\d)`, "im").test(visibleProse(body));
 }
 const SOURCE = /^src\/.*\.(ts|tsx)$/;
 const TEST = /(^tests\/|\.test\.tsx?$)/;
@@ -299,7 +307,8 @@ export async function checkPr(ctx) {
             });
         }
         else {
-            const missingClosures = item.data.issues.filter((issue) => !closesIssue(body, issue));
+            const held = new Set(item.data.issuesToKeepOpen);
+            const missingClosures = item.data.issues.filter((issue) => !held.has(issue) && !closesIssue(body, issue));
             if (missingClosures.length) {
                 findings.push({
                     level: "error",
@@ -310,6 +319,30 @@ export async function checkPr(ctx) {
                         missingClosures.map((issue) => `\"Closes #${issue}.\"`).join(" ") +
                         " so GitHub closes the issue when this PR merges.",
                 });
+            }
+            for (const issue of held) {
+                const sources = [body, ctx.title ?? "", ...(ctx.commitMessages ?? [])];
+                if (ctx.commitMessages === null) {
+                    findings.push({
+                        level: "error",
+                        rule: "issue-history-unreadable",
+                        message: `${id} keeps #${issue} open, but PR commit messages could not be read. Check the PR head history before merging.`,
+                    });
+                }
+                if (sources.some((text) => closingKeywordInText(text, issue))) {
+                    findings.push({
+                        level: "error",
+                        rule: "issue-kept-open",
+                        message: `${id} keeps #${issue} open for a later verifier. Remove the closing keyword and use "Refs #${issue}" so the PR merge cannot close it early.`,
+                    });
+                }
+                else if (!referencesIssue(body, issue)) {
+                    findings.push({
+                        level: "error",
+                        rule: "issue-reference",
+                        message: `${id} keeps #${issue} open for a later verifier. Add "Refs #${issue}" to the PR body without a closing keyword.`,
+                    });
+                }
             }
             if (!["review", "shipped"].includes(item.data.status)) {
                 findings.push({

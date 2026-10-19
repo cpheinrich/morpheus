@@ -42,11 +42,11 @@ export declare const Members: z.ZodObject<{
 export type Members = z.infer<typeof Members>;
 /** Where a meeting note came from. `session` is an agent in the meeting. */
 export declare const NoteSource: z.ZodEnum<{
-    session: "session";
-    granola: "granola";
-    manual: "manual";
-    otter: "otter";
-    zoom: "zoom";
+    readonly session: "session";
+    readonly granola: "granola";
+    readonly manual: "manual";
+    readonly otter: "otter";
+    readonly zoom: "zoom";
 }>;
 /**
  * A meeting note — a **summary**, never a transcript.
@@ -63,11 +63,11 @@ export declare const MeetingNote: z.ZodObject<{
     attendees: z.ZodArray<z.ZodString>;
     recorded_by: z.ZodString;
     source: z.ZodEnum<{
-        session: "session";
-        granola: "granola";
-        manual: "manual";
-        otter: "otter";
-        zoom: "zoom";
+        readonly session: "session";
+        readonly granola: "granola";
+        readonly manual: "manual";
+        readonly otter: "otter";
+        readonly zoom: "zoom";
     }>;
     source_ref: z.ZodOptional<z.ZodString>;
     duration_minutes: z.ZodOptional<z.ZodNumber>;

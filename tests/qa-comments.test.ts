@@ -491,6 +491,57 @@ describe("qa comments serve", () => {
     }
   });
 
+  it("keeps screenshot pins and batch submission available with AX disabled", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-qa-screenshot-"));
+    closers.push(async () => rm(root, { recursive: true, force: true }));
+    const upstream = createServer((_req, res) => { res.writeHead(200); res.end("stream"); });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    closers.push(() => new Promise<void>((resolve) => upstream.close(() => resolve())));
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("no upstream port");
+    const origin = `http://127.0.0.1:${address.port}`;
+    const server = await startQaCommentServer({
+      root, previewUrl: origin, port: 0, project: "evo", axEnabled: false,
+      streamUrl: `${origin}/helper/test-device/stream.mjpeg`,
+    });
+    closers.push(server.close);
+    const html = await (await fetch(server.url)).text();
+    expect(html).toContain("const axPath = null;");
+    expect(html).toContain("const frame = captureFrame();");
+    expect(((await (await fetch(`${server.url}health`)).json()) as { axEnabled: boolean }).axEnabled).toBe(false);
+    expect((await fetch(`${server.url}api/ax`)).status).toBe(404);
+    expect((await fetch(`${server.url}proxy/ax`)).status).toBe(404);
+    expect((await fetch(`${server.url}api/placement`, { method: "POST", headers: { "Content-Type": "application/json", Origin: new URL(server.url).origin, "Sec-Fetch-Site": "same-origin" } })).status).toBe(404);
+    const batch = await fetch(`${server.url}api/batches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: new URL(server.url).origin, "Sec-Fetch-Site": "same-origin" },
+      body: JSON.stringify({ preview: { url: origin, kind: "serve-sim" }, comments: [{
+        id: "screenshot-pin", text: "Check this", createdAt: "2026-10-15T01:00:00Z",
+        anchor: { normX: 0.5, normY: 0.5 }, frame: { width: 100, height: 200, capturedAt: "2026-10-15T01:00:00Z", dataUrl: "data:image/png;base64,Zmlyc3Q=" },
+      }] }),
+    });
+    expect(batch.status).toBe(201);
+    expect(await listPending(root)).toHaveLength(1);
+  });
+
+  it("renders automatic tab recovery when a live AX overlay switches to screenshot mode", async () => {
+    const root = await mkdtemp(join(tmpdir(), "morpheus-qa-ax-recovery-"));
+    closers.push(async () => rm(root, { recursive: true, force: true }));
+    const upstream = createServer((_req, res) => { res.writeHead(200); res.end("stream"); });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    closers.push(() => new Promise<void>((resolve) => upstream.close(() => resolve())));
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("no upstream port");
+    const origin = `http://127.0.0.1:${address.port}`;
+    const server = await startQaCommentServer({ root, previewUrl: origin, port: 0, project: "evo", streamUrl: `${origin}/helper/test-device/stream.mjpeg` });
+    closers.push(server.close);
+    const html = await (await fetch(server.url)).text();
+    expect(html).toContain('const axPath = "/api/ax";');
+    expect(html).toContain("(await response.json()).axEnabled === false");
+    expect(html).toContain("persist();\n          axStream.close();\n          window.location.reload();");
+    expect(html).toContain("axStream.onerror = () => {");
+  });
+
   it("serves the overlay and writes a batch via POST /api/batches", async () => {
     const root = await mkdtemp(join(tmpdir(), "morpheus-qa-serve-"));
     closers.push(async () => rm(root, { recursive: true, force: true }));

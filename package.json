@@ -14,6 +14,7 @@
   },
   "exports": {
     ".": "./dist/index.js",
+    "./cd": "./dist/cd/index.js",
     "./pm": "./dist/pm/index.js",
     "./inbox": "./dist/inbox/index.js",
     "./heartbeat": "./dist/heartbeat/index.js",
@@ -41,10 +42,11 @@
     "scripts/swift-changed-files.sh"
   ],
   "scripts": {
-    "compile": "tsc -p tsconfig.build.json && cp src/research-library/*.py dist/research-library/ && chmod +x dist/cli/index.js dist/research-library/library.py dist/research-library/docling_html.py",
+    "compile": "tsc -p tsconfig.build.json && cp src/research-library/*.py dist/research-library/ && cp src/cd/*.py dist/cd/ && chmod +x dist/cli/index.js dist/research-library/library.py dist/research-library/docling_html.py",
     "dev": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:qa-browser": "playwright test tests/browser/qa-comments.spec.ts",
     "test:watch": "vitest",
     "test:rules": "pnpm compile && firebase emulators:exec --only firestore --project morpheus-rules-test 'node --test tests/firestore-rules.test.mjs'",
     "lint": "eslint src",
@@ -77,6 +79,7 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
+    "@playwright/test": "1.63.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/js-yaml": "^4.0.9",

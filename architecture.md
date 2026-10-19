@@ -526,6 +526,12 @@ item created with `pm new roadmap --issue 123`, or updated with
 roadmap; `check pr` requires `Closes #123` (or another GitHub closing keyword) in the PR body.
 The structured field distinguishes completion from a merely related issue mention, while GitHub's
 native merge behaviour performs the actual close.
+For controller-owned recovery incidents, the roadmap item also lists the number in
+`issuesToKeepOpen:`. In that case `check pr` requires `Refs #123` and rejects closing keywords in
+the PR body, title, and branch commit messages, including GitHub's colon syntax;
+the release controller alone closes the incident after exact delivery verification. Evo #493
+showed why: its repair PR's `Closes` line closed the blocker between merge and recovery release
+admission, so the reserved release failed before upload.
 
 Instructions get ignored eventually. A failing check does not.
 
@@ -956,6 +962,12 @@ exchange `FETCH_HEAD`. A local trunk behind that exact commit fast-forwards; fea
 divergent trunks remain intact and report missing commits. Tracked edits on the trunk branch are
 first committed to a pushed `wip/trunk-*` draft PR and the trunk reset only once that commit is
 proven to hold them — a dirty trunk otherwise never advances, and one did not for three weeks.
+When an exact old/new blob, path and mode diff has a live pushed `wip/trunk-*`
+branch and an open PR, the checkout resets after the same content proof without
+creating another draft PR. Live remote and PR checks run before the proof/reset window;
+cached tracking refs alone do not count. The brief names the earlier PR and likely generator
+loop. A failed comparison or lookup falls back to the ordinary rescue, so a branch with a
+failed push, failed PR creation or closed PR never suppresses a new attempt.
 Untracked files are never committed; `doctor --all` reports stuck trunk checkouts fleet-wide. Offline or fetch
 failure is explicitly unverified, never a successful current-source report. A receipt is refused
 when the checkout does not contain the observed trunk. Checks repeat local source containment
@@ -964,7 +976,7 @@ same-branch resets cannot reuse certification. Startup itself never issues a rec
 
 **One worktree per implementation task, not per conversation.** Startup without a task performs
 no worktree allocation. `pm claim` from a shared or unrelated checkout prepares a detached worktree
-at freshly fetched trunk, moving only a newly filed untracked roadmap item. The agent must read the
+under the operating system's temporary directory at freshly fetched trunk, moving only a newly filed untracked roadmap item. The agent must read the
 worktree's records, refresh there, and repeat the claim to create and push its derived branch.
 An already isolated detached worktree can claim directly. Read-only investigation needs no worktree.
 Existing task worktrees are identified by their claimed roadmap branch. `pm resume <ID>` resolves
@@ -984,8 +996,13 @@ absolute `WORK IN` directory and the required record paths; the agent must use t
 subsequent operations. Updated standard hooks inherit the behavior from the copied global CLI,
 without changes to each project's hook JSON. Hook trust remains provider-controlled; projects
 without the standard hook need `context install` and provider trust. Updating the runtime git
-dependency alone does not update the global CLI. Task directories persist for explicit Git cleanup;
-startup does not delete them automatically.
+dependency alone does not update the global CLI. After a task PR merges, `pm cleanup <ID>`
+uses the exact PR, current remote trunk, and clean linked checkout as evidence before removing
+the worktree and obsolete refs. A validated receipt at the exact generated session path is
+safe to remove after those checks; unrelated ignored files remain protected. An active,
+dirty, locked, or ambiguous checkout remains intact.
+Older sibling worktrees remain usable; `pm worktrees` inventories them. Startup does not delete
+worktrees automatically because a session can be reading or editing one while startup runs.
 
 The reporting half discards the selected worktree's prior receipt before naming records to read.
 Resumption and compaction preserve task association but require re-reading. The separate CLI-version
@@ -1339,6 +1356,13 @@ reviews on record, conducts one more if needed, and fixes its own findings; a se
 deterministic step checks each session's decision against live state and policy before anything is
 labelled, merged or closed. The session's token can write contents and nothing else: it cannot
 label, comment, close, or change a workflow file.
+If the author finished a valid independent review but missed its label, the deterministic apply
+step validates the committed review at the current head and applies `agent-reviewed`; an absent
+or invalid record still cannot merge. Front-end reviews inspect actual screenshot pixels and
+recording frames, including evidence already attached to the PR.
+Drafts, `wip/` branches, and `[WIP]` or `WIP:` titles remain with their authors; the manager
+cancels queued auto-merge on them. A ready pull request waits 24 hours after its latest head
+commit or opening, whichever is later, before the manager acts.
 
 It follows the Morpheus Security shape (§18): a public reviewed engine in this repository, a
 private operations repository holding the App key, the subscription token and the schedule, and a
@@ -1558,6 +1582,9 @@ anything but trunk, invalidates coverage. Author-only minor fixes are constraine
 This is an auditable attestation, not proof against a dishonest author. Records/board-only PRs and
 exact dependency-only Dependabot changes and marked dependency-only Morpheus Security App changes
 retain narrow authoring/review exceptions; neither bot exception bypasses repository checks.
+When a reviewer discovers an incidental finding after the reviewed commit, a new roadmap item
+named by the deferred or open finding may land before covered when an author commit first
+added a valid item file; existing item edits and unrelated paths remain subject to review coverage.
 
 **GitHub validates; it does not schedule the model.** The authoring agent owns dispatch,
 responses, evidence and merge; no standing agent monitors PRs to supply this review.
@@ -1589,7 +1616,9 @@ PR under `## Visual evidence`; `check pr` verifies either a stable GitHub attach
 HTTPS URL under a repository-approved `allowedUrlPrefixes` location. External locations are exact
 path prefixes, so approving one bucket on a shared provider does not approve every bucket there.
 The check does not fetch the URL, classify its pixels, or claim it meaningfully demonstrates the
-UI. Recording is a warning-level preference so a screenshot-only change is never blocked merely
+UI. The author captures the final build and the independent reviewer opens and inspects the
+evidence; missing or inaccessible required captures leave review incomplete. Recording is a
+warning-level preference so a screenshot-only change is never blocked merely
 because video was impractical. Web feedback returns as Vercel comments anchored to page elements
 and synced into the PR (§10.2).
 
@@ -1603,6 +1632,17 @@ In the PR test plan and worklog, record the actual focused commands and why that
 selected. Continue adding or updating tests and performing relevant simulator/visual QA.
 
 The project scaffold includes this rule in `AGENTS.md` so future iOS projects inherit it.
+
+The shared `morpheus qa preview ios` lifecycle accepts mode-specific build identity. A mode
+that selects a different app declares its build command, product path and bundle identifier
+together; the built product's embedded identifier must match before install. One checkout still
+owns one simulator, lease and comment overlay, and status/stop identify the mode that started it.
+The overlay runs in a supervised child process because native macOS accessibility can crash its
+Node process. One unexpected exit restarts the overlay in screenshot-pin mode without stopping
+the simulator stream; `--no-ax` selects that mode explicitly. A second exit requires a deliberate
+restart rather than an unbounded retry.
+An open overlay tab detects the changed health mode and reloads, restoring unsent pins from local
+browser storage so a crash recovery does not require manual intervention.
 
 This works today with the standard Xcode toolchain and no special infrastructure — `xcodebuild` to
 build, `xcrun simctl` to boot/install/launch, **XCUITest** to drive the UI (the tests double as the
@@ -1873,8 +1913,12 @@ network-layer gate — it can stop someone loading `/hq`, but it cannot stop a F
 would still need a second rule system underneath.
 
 **Access as code.** The allowlist in `morpheus.json` is the declarative source of truth — in git,
-reviewable in a PR, diffable. `morpheus access sync` reads it and applies the claims, so granting
-access is a pull request rather than a console click, and so is revoking it.
+reviewable in a PR, diffable. The generated HQ session route reconciles a verified Google
+account's claim on first sign-in against the deployed manifest. `morpheus access sync` applies
+bulk changes promptly, including revocations for accounts that do not sign in again. The
+refreshed ID token and session cookie retain the same claim that Firestore rules read.
+The consumer-auth session route keeps this reconciliation while allowing ordinary consumers
+to sign in without an HQ role.
 
 Keep Zero Trust only for defence-in-depth on genuinely sensitive infrastructure such as the
 Chatwoot admin panel; it is redundant in front of `/hq`.
@@ -1886,7 +1930,7 @@ derived from one exported list rather than restated:
 
 | Reader | Consumes | Kept honest by |
 |---|---|---|
-| The claim **writer** — `morpheus access sync` | `Role` zod enum, built from `ROLES` | typecheck |
+| The claim **writers** — `morpheus access sync` and generated Google sign-in route | `Role` zod enum, built from `ROLES`; deployed `morpheus.json` | typecheck and generated-route tests |
 | The **route** gate — a project's `proxy.ts` | `canAccessHq()` from `morpheus-kit/hq` | typecheck |
 | The **data** gate — `firestore.rules` | generated helpers | `morpheus hq rules --rules-path <deployed path> --check` |
 
@@ -3088,6 +3132,19 @@ Improving CI for every project becomes one commit in Morpheus. **Projects pin `@
 with one operator and a handful of repos, instant propagation is worth more than staged rollout,
 and a broken workflow is noticed and fixed in minutes.
 
+**The caller chooses the runner.** `node-ci`, `web-ci` and `python-ci` take a `runner` input, a single
+label defaulting to `ubuntu-latest`, as `ios-ci` already does. A private project may pass an isolated
+self-hosted label (`with: runner: linux-vm`), under the isolation rules for repo-scoped self-hosted
+runners in the iOS CI section above (never the operator's account, never a public repository). Three
+consequences stay with the caller:
+
+- A reusable workflow cannot retry a job on another runner, so any fallback to a hosted image is the
+  caller's.
+- An offline self-hosted label leaves the job queued for up to GitHub's 24-hour limit rather than
+  failing, so a fallback needs a probe job whose result feeds `runner`.
+- `web-ci`'s optional Playwright step runs `playwright install --with-deps`, which needs root or
+  passwordless sudo, so `run-e2e` on a self-hosted runner needs that or a prepared image.
+
 Deployment follows the same boundary as validation. `vercel-deploy.yml` owns the Vercel CLI
 sequence, fork guard, environment receipt and pull-request preview comment. Each project owns only
 its triggers, application directory and encrypted `VERCEL_TOKEN`, `VERCEL_ORG_ID` and
@@ -3228,7 +3285,9 @@ Only boolean presence flags enter this diagnostic; credential values remain conf
 final upload step. A blank P12 password and absent optional Firebase/Sentry credentials are valid.
 The workflow forwards the complete secret-free test contract — including
 parallel-test policy and optional maximum simulator-worker count, Firebase Emulator Suite
-configuration, and the pre-test fixture script — to `ios-ci`. Release builds default to the
+configuration, the pre-test fixture script, and any `only-testing` or `skip-testing` identifiers
+the caller names (both empty by default, so a release runs everything its scheme selects) — to
+`ios-ci`. Release builds default to the
 five-core M2 Pro `macos-26-xlarge` runner with parallel testing enabled and at most six simulator
 workers; callers may dial those inputs down after observing resource pressure. An app that needs
 an ignored Google service plist for its signed archive may keep its
@@ -3253,6 +3312,25 @@ sources still build, failed runs retry, and manual forced builds always run. An 
 `ios-nightly-noop-<run>-<attempt>` artifact records an intentional skip, so a run with no
 screenshots is distinguishable from one that failed to capture them. This is bounded recovery,
 not an independent scheduler.
+
+**CD V2 design:** [Morpheus CD pipeline V2](docs/cd-pipeline-v2.md) defines the
+replacement delivery contract and migration for Evo: six-hour staging, daily aged
+production, durable recovery ownership and exact internal TestFlight receipts.
+The design is separate from rollout acceptance; existing consumers retain the
+legacy behavior below until explicitly migrated and verified. Shared controller,
+provider and agent code belongs in Morpheus; consumer repositories supply policy,
+identities and app/backend hooks. See the linked RCA, research and design probes.
+
+The implementation is `src/cd/`, exported as `morpheus-kit/cd` and `morpheus cd`;
+its [operator contract](docs/cd-v2-controller.md) documents config, evidence and
+workflow inputs. GitHub Git commits store the authoritative state and events with
+single-parent nonforce updates and per-invocation ownership. Compact verified
+test proofs reference hashed native artifacts. Upload and group operations have
+durable claims; actual provider receipts complete the original obligation.
+Bounded subscription workers retain immutable tasks, session checkpoints and
+actual quota telemetry. App-only repairs reset production age; unchanged input
+digests retain their first lineage age through controller repairs. These are
+implementation properties, distinct from real consumer rollout acceptance.
 
 Apps whose nightly release is dispatched from the Mac mini share one admission core,
 `src/ios/nightly-core.ts`, extracted from Evo's controller (darwin-health/evo #307, #309). It
@@ -3296,7 +3374,23 @@ as inputs — which is what makes the *implementation* shareable even though the
 selects the exact Xcode, downloads the Metal toolchain on request, restores the SwiftPM cache,
 installs `openssl@3`, `asccli` and optionally `sentry-cli`, then archives, exports, verifies and
 uploads. A caller is reduced to a checkout of the verified SHA and one `uses:` block of
-identifiers.
+identifiers. The optional `configuration` input defaults to `Release` and is used consistently
+for both build-settings queries and archive; scheme/configuration names may contain spaces but
+not CR/LF, and remain single argv values.
+
+Binary acceptance and distribution are separate action steps. Acceptance requires the pinned
+asccli upload state PROCESSING or COMPLETE with a valid id and no errors; AWAITING_UPLOAD is
+confirmed within the existing processing timeout, while absent/unknown states stay uncertain.
+Automatic build numbers take the greater of Apple's next number and the account's persistent
+per-app/version reservation plus one, under the signing lock, so the phase split cannot reuse
+an accepted number before Apple exposes it in builds. Failed attempts may leave number gaps. A sanitized, create-only
+`accepted.json` records the exact checked-out SHA, run/attempt/job, app/bundle identity,
+version/build number, upload id and acceptance time. The pinned artifact action persists it
+under a unique per-invocation name before processing, group assignment or beta review; later
+failure cannot overwrite a prior attempt. Retention is 90 days subject to repository limits.
+Missing evidence remains uncertain (including interruption before artifact persistence), never
+proof of no upload. This exposes a receipt contract for consumer adoption without changing
+nightly admission policy or activating a release. See the action README.
 
 Its contract is deliberately narrow: typed inputs for the project shape, the Apple identifiers, the
 beta-group policy (`any`, or `one-internal-one-external` for a project whose every release must

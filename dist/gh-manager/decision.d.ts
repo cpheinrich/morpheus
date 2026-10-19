@@ -75,6 +75,8 @@ export type Operation = {
 /** Live facts the plan is checked against, read after the session ended. */
 export interface LiveState {
     headSha: string;
+    title: string;
+    headRefName: string;
     isDraft: boolean;
     labels: string[];
     autoMerge: boolean;
@@ -98,6 +100,9 @@ export interface LiveState {
      * decision rests on one. Undefined means it validates, or that no record was claimed.
      */
     recordProblem?: string | undefined;
+    /** The author's record was checked against this head even if its label is missing. */
+    authorRecordValid?: boolean | undefined;
+    authorRecordProblem?: string | undefined;
 }
 export interface Plan {
     verdict: ManagerMarker["verdict"];

@@ -22,6 +22,7 @@ PLIST_BUDDY=/usr/libexec/PlistBuddy
 REPOSITORY_ROOT="${GITHUB_WORKSPACE:-$PWD}"
 PROJECT_PATH="${PROJECT_PATH:-}"
 SCHEME_NAME="${SCHEME_NAME:-}"
+BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-Release}"
 # A runner that keeps a build cache between jobs names it in MORPHEUS_IOS_CI_CACHE
 # (see ios-ci.yml); the archive's DerivedData and checkouts then persist there.
 BUILD_CACHE_ROOT="${RUNNER_TEMP:-/private/tmp}"
@@ -32,6 +33,10 @@ SOURCE_PACKAGES_PATH="${SOURCE_PACKAGES_PATH:-$BUILD_CACHE_ROOT/TestFlightSource
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$BUILD_CACHE_ROOT/TestFlightDerivedData-archive}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-${RUNNER_TEMP:-/private/tmp}/TestFlight.xcarchive}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
+RESERVED_BUILD_NUMBER="${RESERVED_BUILD_NUMBER:-}"
+BEFORE_UPLOAD_SCRIPT="${BEFORE_UPLOAD_SCRIPT:-}"
+AFTER_UPLOAD_SCRIPT="${AFTER_UPLOAD_SCRIPT:-}"
+DISTRIBUTION_ENABLED="${DISTRIBUTION_ENABLED:-true}"
 MARKETING_VERSION="${MARKETING_VERSION:-}"
 ASC_APP_ID="${ASC_APP_ID:-}"
 TESTFLIGHT_BETA_GROUP_IDS="${TESTFLIGHT_BETA_GROUP_IDS:-}"
@@ -44,11 +49,27 @@ PROCESSING_TIMEOUT_SECONDS="${PROCESSING_TIMEOUT_SECONDS:-1200}"
 PROCESSING_POLL_SECONDS="${PROCESSING_POLL_SECONDS:-30}"
 OPENSSL_BINARY="${OPENSSL_BINARY:-}"
 
-# A TestFlight build is a release. It may only ever be cut from main: a run on
-# any other ref has not passed the reviewed-source preflight.
+# Legacy releases run on main. CD V2 dispatches an immutable control tag because
+# GitHub workflow_dispatch rejects a raw commit SHA as its ref. Bind that narrow
+# exception to the actual workflow revision and the complete fenced CD contract.
 if [[ "${GITHUB_REF:-}" != "refs/heads/main" ]]; then
-  echo "Refusing to upload a TestFlight build outside main." >&2
-  exit 1
+  control_sha="${MORPHEUS_CD_CONTROL_SHA:-}"
+  if [[ ! "$control_sha" =~ ^[0-9a-f]{40}$ ||
+        "${GITHUB_REF:-}" != "refs/tags/morpheus-cd-control-$control_sha" ||
+        "${GITHUB_SHA:-}" != "$control_sha" ||
+        ! "${MORPHEUS_CD_SOURCE_SHA:-}" =~ ^[0-9a-f]{40}$ ||
+        ! "$RESERVED_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ||
+        -z "$BEFORE_UPLOAD_SCRIPT" || -z "$AFTER_UPLOAD_SCRIPT" ||
+        "$DISTRIBUTION_ENABLED" != false ]]; then
+    echo "Refusing to upload a TestFlight build outside main or a verified CD control tag." >&2
+    exit 1
+  fi
+  for cd_identity in MORPHEUS_CD_INTENT_ID MORPHEUS_CD_ATTEMPT_ID MORPHEUS_CD_DISPATCH_EFFECT_ID; do
+    if [[ ! "${!cd_identity:-}" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$ ]]; then
+      echo "A CD control tag requires complete durable upload identity." >&2
+      exit 1
+    fi
+  done
 fi
 
 required_variables=(
@@ -75,6 +96,17 @@ for variable_name in "${required_variables[@]}"; do
   fi
 done
 
+if [[ "$DISTRIBUTION_ENABLED" != true && "$DISTRIBUTION_ENABLED" != false ]]; then
+  echo "distribution-enabled must be true or false." >&2
+  exit 1
+fi
+if [[ -n "$RESERVED_BUILD_NUMBER" ]]; then
+  if [[ ! "$RESERVED_BUILD_NUMBER" =~ ^[1-9][0-9]*$ || -z "$BEFORE_UPLOAD_SCRIPT" || -z "$AFTER_UPLOAD_SCRIPT" || -n "$BUILD_NUMBER" ]]; then
+    echo "reserved-build-number requires trusted upload hooks and no BUILD_NUMBER override." >&2
+    exit 1
+  fi
+  BUILD_NUMBER="$RESERVED_BUILD_NUMBER"
+fi
 if [[ -n "$BUILD_NUMBER" && ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
   echo "BUILD_NUMBER must be a positive integer." >&2
   exit 1
@@ -112,6 +144,20 @@ resolve_repository_path() {
   esac
   printf '%s' "$REPOSITORY_ROOT/$relative_path"
 }
+
+# Trusted control hooks may live in a separate checked-out control/tooling directory.
+# Resolve and validate them before any archive or Apple side effect.
+for hook_variable in BEFORE_UPLOAD_SCRIPT AFTER_UPLOAD_SCRIPT; do
+  if [[ -n "${!hook_variable}" ]]; then
+    hook_path="$(resolve_repository_path "${!hook_variable}" "$hook_variable")"
+    hook_path="$(python3 -c 'from pathlib import Path; import sys; root=Path(sys.argv[1]).resolve(); path=Path(sys.argv[2]).resolve(); path.relative_to(root); print(path)' "$REPOSITORY_ROOT" "$hook_path")"
+    if [[ ! -x "$hook_path" ]]; then
+      echo "$hook_variable is missing or not executable" >&2
+      exit 1
+    fi
+    printf -v "$hook_variable" '%s' "$hook_path"
+  fi
+done
 
 if [[ -n "$GOOGLE_SERVICE_PLIST_PATH" ]]; then
   if [[ -z "${IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]]; then
@@ -218,7 +264,7 @@ if [[ -z "$MARKETING_VERSION" ]]; then
     run_without_release_secrets xcodebuild -showBuildSettings \
       -project "$PROJECT_PATH" \
       -scheme "$SCHEME_NAME" \
-      -configuration Release \
+      -configuration "$BUILD_CONFIGURATION" \
       -destination "generic/platform=iOS" \
       -clonedSourcePackagesDirPath "$SOURCE_PACKAGES_PATH" \
       -disableAutomaticPackageResolution \
@@ -361,18 +407,7 @@ export ASC_KEY_ID="$ASC_API_KEY_ID"
 export ASC_ISSUER_ID="$ASC_API_KEY_ISSUER_ID"
 export ASC_PRIVATE_KEY_PATH="$AUTHENTICATION_KEY_PATH"
 
-run_asccli() (
-  unset IOS_DISTRIBUTION_P12_BASE64
-  unset IOS_DISTRIBUTION_P12_PASSWORD
-  unset IOS_DISTRIBUTION_PROFILE_BASE64
-  unset IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64
-  unset SENTRY_AUTH_TOKEN
-  "$ASC_CLI" "$@"
-)
-
-json_value() {
-  printf '%s' "$1" | plutil -extract "$2" raw -o - - 2>/dev/null
-}
+source "$GITHUB_ACTION_PATH/asc-helpers.sh"
 
 # The release keychain is created before the profile is read because
 # `security cms -D` imports the profile's signer certificates into a keychain
@@ -552,7 +587,9 @@ if [[ "$BETA_GROUP_POLICY" == one-internal-one-external ]] &&
   exit 1
 fi
 
+automatic_build_number=false
 if [[ -z "$BUILD_NUMBER" ]]; then
+  automatic_build_number=true
   BUILD_NUMBER="$(
     run_asccli builds next-number \
       --app-id "$ASC_APP_ID" \
@@ -566,6 +603,11 @@ if [[ ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
   echo "App Store Connect did not return a positive build number." >&2
   exit 1
 fi
+
+# Apple may not expose an accepted upload in builds yet. Reserve under the account
+# signing lock before archiving so later automatic allocations cannot reuse it.
+BUILD_NUMBER="$(ASC_APP_ID="$ASC_APP_ID" MARKETING_VERSION="$MARKETING_VERSION" \
+  python3 "$GITHUB_ACTION_PATH/build-number.py" "$BUILD_NUMBER" "$automatic_build_number")"
 
 echo "Preparing $SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER) for TestFlight."
 
@@ -605,7 +647,7 @@ plutil -insert uploadSymbols -bool true "$EXPORT_OPTIONS_PATH"
 archive_arguments=(
   -project "$PROJECT_PATH"
   -scheme "$SCHEME_NAME"
-  -configuration Release
+  -configuration "$BUILD_CONFIGURATION"
   -destination "generic/platform=iOS"
   -archivePath "$ARCHIVE_PATH"
   -derivedDataPath "$DERIVED_DATA_PATH"
@@ -725,7 +767,7 @@ fi
 # they are escaped below so the lookup addresses one key rather than four.
 codesign -d --entitlements :- "$EXPORTED_APPLICATION_PATH" > "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null
 python3 "$ENTITLEMENTS_TOOL" verify "$EXPECTED_ENTITLEMENTS_PATH" "$EXPORTED_ENTITLEMENTS_PATH"
-echo "Exported app preserves every declared Release entitlement."
+echo "Exported app preserves every declared $BUILD_CONFIGURATION entitlement."
 exported_application_identifier="$(plutil -extract application-identifier raw -o - "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null || true)"
 exported_team_identifier="$(plutil -extract 'com\.apple\.developer\.team-identifier' raw -o - "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null || true)"
 exported_get_task_allow="$(plutil -extract get-task-allow raw -o - "$EXPORTED_ENTITLEMENTS_PATH" 2>/dev/null || true)"
@@ -744,187 +786,14 @@ if [[ "$exported_application_identifier" != "$APPLE_TEAM_ID.$IOS_BUNDLE_ID" ]] |
   exit 1
 fi
 
-echo "Uploading $SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER) to App Store Connect."
-upload_json="$(
-  run_asccli builds upload \
-    --app-id "$ASC_APP_ID" \
-    --file "$IPA_PATH" \
-    --version "$MARKETING_VERSION" \
-    --build-number "$BUILD_NUMBER" \
-    --platform ios \
-    --output json
-)"
-printf '%s\n' "$upload_json"
-upload_id="$(json_value "$upload_json" "data.0.id" || json_value "$upload_json" "data.id" || true)"
-if [[ -z "$upload_id" ]]; then
-  echo "App Store Connect accepted the upload command without returning an upload id." >&2
+# Bind the receipt's version/build to the actual exported binary, including
+# projects with build phases or caller build-setting overrides.
+if [[ "$(plutil -extract CFBundleIdentifier raw -o - "$EXPORTED_APPLICATION_PATH/Info.plist")" != "$IOS_BUNDLE_ID" ||
+      "$(plutil -extract CFBundleShortVersionString raw -o - "$EXPORTED_APPLICATION_PATH/Info.plist")" != "$MARKETING_VERSION" ||
+      "$(plutil -extract CFBundleVersion raw -o - "$EXPORTED_APPLICATION_PATH/Info.plist")" != "$BUILD_NUMBER" ]]; then
+  echo "Exported IPA identity does not match the reserved app/version/build." >&2
   exit 1
 fi
 
-processing_deadline=$(($(date '+%s') + PROCESSING_TIMEOUT_SECONDS))
-processed_build_id=""
-while [[ -z "$processed_build_id" ]]; do
-  upload_status_json=""
-  if upload_status_json="$(
-    run_asccli builds uploads get \
-      --upload-id "$upload_id" \
-      --output json
-  )"; then
-    upload_state="$(json_value "$upload_status_json" "data.0.state" || json_value "$upload_status_json" "data.state" || true)"
-    if [[ "$upload_state" == "FAILED" ]]; then
-      upload_error_code="$(json_value "$upload_status_json" "data.0.errors.0.code" || json_value "$upload_status_json" "data.errors.0.code" || true)"
-      upload_error_description="$(json_value "$upload_status_json" "data.0.errors.0.description" || json_value "$upload_status_json" "data.errors.0.description" || true)"
-      echo "App Store Connect failed processing $SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER): ${upload_error_code:-unknown error}: ${upload_error_description:-No description returned.}" >&2
-      exit 1
-    fi
-  else
-    echo "App Store Connect upload-status lookup failed; retrying until the processing deadline." >&2
-  fi
-
-  builds_json=""
-  if builds_json="$(
-    run_asccli builds list \
-      --app-id "$ASC_APP_ID" \
-      --platform ios \
-      --version "$MARKETING_VERSION" \
-      --limit 200 \
-      --output json
-  )"; then
-    build_index=0
-    while candidate_id="$(json_value "$builds_json" "data.$build_index.id")"; do
-      candidate_number="$(json_value "$builds_json" "data.$build_index.buildNumber")"
-      if [[ "$candidate_number" == "$BUILD_NUMBER" ]]; then
-        processing_state="$(json_value "$builds_json" "data.$build_index.processingState")"
-        case "$processing_state" in
-          VALID) processed_build_id="$candidate_id" ;;
-          PROCESSING) echo "$SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER) is still processing." ;;
-          *)
-            echo "$SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER) entered terminal state $processing_state." >&2
-            exit 1
-            ;;
-        esac
-        break
-      fi
-      build_index=$((build_index + 1))
-    done
-  else
-    echo "App Store Connect build lookup failed; retrying until the processing deadline." >&2
-  fi
-
-  [[ -n "$processed_build_id" ]] && break
-  if [[ "$(date '+%s')" -ge "$processing_deadline" ]]; then
-    echo "Timed out waiting for $SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER) to finish processing." >&2
-    exit 1
-  fi
-  sleep "$PROCESSING_POLL_SECONDS"
-done
-
-for beta_group_id in "${beta_group_ids[@]}"; do
-  run_asccli builds add-beta-group \
-    --build-id "$processed_build_id" \
-    --beta-group-id "$beta_group_id" \
-    --output json
-  echo "Assigned $SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER) to beta group $beta_group_id."
-done
-
-# Apple requires a Beta App Review approval before external testers can install
-# a build. asccli has no command for it, so this speaks to the REST API using
-# the same App Store Connect key already on disk.
-#
-# "Another build in the same train is already in beta review" is a success, not
-# a failure. Apple refuses a second submission while one is pending, and a
-# nightly cadence hits that most nights. Cancelling the pending one to push the
-# newer build would be worse than useless: review takes about a day, so a
-# nightly build would restart the clock every night and nothing would ever be
-# approved. Once a version's first build is approved, later builds of the same
-# version are approved automatically, so the freshest build does reach testers.
-if [[ "${SUBMIT_FOR_BETA_REVIEW:-false}" == "true" ]]; then
-  submit_status="$(
-    ASC_SUBMIT_BUILD_ID="$processed_build_id" \
-    ASC_SUBMIT_KEY_ID="$ASC_API_KEY_ID" \
-    ASC_SUBMIT_ISSUER_ID="$ASC_API_KEY_ISSUER_ID" \
-    ASC_SUBMIT_KEY_PATH="$AUTHENTICATION_KEY_PATH" \
-    /usr/bin/python3 - <<'PYTHON'
-import base64, json, os, subprocess, sys, time, urllib.error, urllib.request
-
-def b64u(raw):
-    return base64.urlsafe_b64encode(raw).rstrip(b"=")
-
-def der_to_raw(signature):
-    assert signature[0] == 0x30
-    index = 2 if signature[1] < 0x80 else 2 + (signature[1] & 0x7F)
-    parts = []
-    for _ in range(2):
-        assert signature[index] == 0x02
-        length = signature[index + 1]
-        value = signature[index + 2:index + 2 + length]
-        index += 2 + length
-        parts.append(value.lstrip(b"\x00").rjust(32, b"\x00"))
-    return b"".join(parts)
-
-now = int(time.time())
-header = b64u(json.dumps({"alg": "ES256", "kid": os.environ["ASC_SUBMIT_KEY_ID"], "typ": "JWT"}, separators=(",", ":")).encode())
-payload = b64u(json.dumps({"iss": os.environ["ASC_SUBMIT_ISSUER_ID"], "iat": now, "exp": now + 600, "aud": "appstoreconnect-v1"}, separators=(",", ":")).encode())
-signing_input = header + b"." + payload
-der = subprocess.run(
-    ["openssl", "dgst", "-sha256", "-sign", os.environ["ASC_SUBMIT_KEY_PATH"]],
-    input=signing_input, capture_output=True, check=True,
-).stdout
-token = (signing_input + b"." + b64u(der_to_raw(der))).decode()
-
-request = urllib.request.Request(
-    "https://api.appstoreconnect.apple.com/v1/betaAppReviewSubmissions",
-    data=json.dumps({
-        "data": {
-            "type": "betaAppReviewSubmissions",
-            "relationships": {"build": {"data": {"type": "builds", "id": os.environ["ASC_SUBMIT_BUILD_ID"]}}},
-        }
-    }).encode(),
-    method="POST",
-    headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
-)
-def review_state():
-    # Ask Apple for the current state rather than inferring it from an error code.
-    lookup = urllib.request.Request(
-        "https://api.appstoreconnect.apple.com/v1/builds/%s/betaAppReviewSubmission" % os.environ["ASC_SUBMIT_BUILD_ID"],
-        headers={"Authorization": "Bearer " + token},
-    )
-    try:
-        with urllib.request.urlopen(lookup) as response:
-            data = json.load(response).get("data")
-            return data["attributes"].get("betaReviewState") if data else None
-    except urllib.error.HTTPError:
-        return None
-
-try:
-    with urllib.request.urlopen(request) as response:
-        print("submitted:" + str(json.load(response)["data"]["attributes"].get("betaReviewState")))
-except urllib.error.HTTPError as error:
-    body = error.read().decode()
-    # A rejection here is only acceptable if a submission genuinely exists —
-    # either one for this build, or a sibling in the same version train holding
-    # the single review slot. Ask, rather than trusting the error code to mean
-    # what it appears to mean.
-    existing = review_state()
-    if existing:
-        print("pending:this-build-" + str(existing))
-    elif "ANOTHER_BUILD_IN_REVIEW" in body:
-        print("pending:sibling-build-in-review")
-    else:
-        sys.stderr.write(body[:800] + "\n")
-        sys.exit(1)
-PYTHON
-  )"
-  case "$submit_status" in
-    submitted:*)
-      echo "Submitted $SCHEME_NAME $MARKETING_VERSION ($BUILD_NUMBER) for Beta App Review (${submit_status#submitted:})."
-      ;;
-    pending:*)
-      echo "Beta App Review not newly submitted (${submit_status#pending:}); an earlier build of this version holds the review slot, and later builds are approved with it."
-      ;;
-    *)
-      echo "Beta App Review submission failed." >&2
-      exit 1
-      ;;
-  esac
-fi
+# The signed IPA has passed every check above. Only this boundary may claim/upload.
+source "$GITHUB_ACTION_PATH/upload-effects.sh"

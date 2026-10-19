@@ -125,7 +125,6 @@ export function pageHtml(opts) {
   /** @type {{id:string, n:number, normX:number, normY:number, text:string, createdAt:string, screenId?:string, axAnchor?:object, frame?:object, displayX?:number, displayY?:number}[]} */
   let pins = [];
   const frameMemory = new Map();
-  const pinScreenReads = new Map();
   const placementPreview = document.getElementById('placementPreview');
   const placementImage = document.getElementById('placementImage');
   const placementLabel = document.getElementById('placementLabel');
@@ -195,25 +194,6 @@ export function pageHtml(opts) {
     }
     return best ? { id: best.id, path: best.path, label: best.label, dx: best.dx, dy: best.dy } : null;
   }
-  function stablePlacementAnchor(atClick, before, after, normX, normY) {
-    if (!atClick?.screen || !before?.screen || !after?.screen ||
-        Math.abs(atClick.screen.width - before.screen.width) > 1 ||
-        Math.abs(atClick.screen.height - before.screen.height) > 1 ||
-        Math.abs(before.screen.width - after.screen.width) > 1 ||
-        Math.abs(before.screen.height - after.screen.height) > 1) {
-      throw new Error('Screen size changed during placement');
-    }
-    const clicked = nearestAxAnchor(atClick, normX, normY);
-    const first = nearestAxAnchor(before, normX, normY);
-    const last = nearestAxAnchor(after, normX, normY);
-    const same = (a, b) => (!a && !b) || (a && b && a.id === b.id && a.label === b.label &&
-      Math.abs(a.dx - b.dx) <= 2 && Math.abs(a.dy - b.dy) <= 2);
-    if (!same(clicked, first) || !same(first, last)) {
-      throw new Error('Content moved during placement capture');
-    }
-    if (!first) throw new Error('No stable native element near this pin');
-    return first;
-  }
   function updatePinPositions() {
     if (!latestAx || !latestAx.screen) return;
     const w = latestAx.screen.width;
@@ -222,11 +202,14 @@ export function pageHtml(opts) {
       if (p.screenId && p.screenId !== currentScreenId) {
         p.displayX = -1;
         p.displayY = -1;
+        if (!p.axAnchor) p.unanchoredHidden = true;
         continue;
       }
       if (!p.axAnchor) {
-        p.displayX = p.normX;
-        p.displayY = p.normY;
+        // Keep an unnamed point visible on its original screen until a scroll
+        // or navigation makes the stationary marker misleading.
+        p.displayX = p.unanchoredHidden ? -1 : p.normX;
+        p.displayY = p.unanchoredHidden ? -1 : p.normY;
         continue;
       }
       const e = latestAx.elements.find((item) => item.id === p.axAnchor.id && item.path === p.axAnchor.path)
@@ -243,6 +226,7 @@ export function pageHtml(opts) {
   }
   if (axPath) {
     const axStream = new EventSource(axPath);
+    let recoveryTimer = null;
     const clearAx = () => {
       latestAx = null;
       currentScreenId = null;
@@ -252,6 +236,22 @@ export function pageHtml(opts) {
       }
       renderPins();
     };
+    const checkRecovery = async () => {
+      recoveryTimer = null;
+      if (axStream.readyState === EventSource.OPEN) return;
+      try {
+        const response = await fetch('/health', { cache: 'no-store' });
+        if (response.ok && (await response.json()).axEnabled === false) {
+          // Drafts and captured pin frames survive the reload in sessionStorage/IndexedDB.
+          persist();
+          axStream.close();
+          window.location.reload();
+          return;
+        }
+      } catch (_) { /* the overlay may still be restarting */ }
+      if (axStream.readyState !== EventSource.OPEN) recoveryTimer = setTimeout(checkRecovery, 750);
+    };
+    axStream.onopen = () => { if (recoveryTimer) clearTimeout(recoveryTimer); recoveryTimer = null; };
     axStream.onmessage = (event) => {
       try {
         const snapshot = JSON.parse(event.data);
@@ -264,7 +264,10 @@ export function pageHtml(opts) {
         updatePinPositions();
       } catch (_) { clearAx(); }
     };
-    axStream.onerror = clearAx;
+    axStream.onerror = () => {
+      clearAx();
+      if (!recoveryTimer) recoveryTimer = setTimeout(checkRecovery, 750);
+    };
   }
   let focusedId = null;
   let escArmedAt = 0;
@@ -426,9 +429,13 @@ export function pageHtml(opts) {
   }
 
   function placePin(normX, normY) {
-    const frame = axPath ? null : captureFrame();
-    const screenIdAtClick = currentScreenId;
-    const axAtClick = latestAx;
+    // The browser paints the stream frame that the person clicked. Freeze that
+    // frame now; a later native screenshot can describe a different screen.
+    const frame = captureFrame();
+    if (!frame) {
+      setStatus('Placement image unavailable. Wait for the stream, then try again.', 'err');
+      return;
+    }
     const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const pin = {
       id,
@@ -437,51 +444,25 @@ export function pageHtml(opts) {
       normY,
       text: '',
       createdAt: new Date().toISOString(),
-      frame: frame ? { width: frame.width, height: frame.height, capturedAt: frame.capturedAt } : undefined,
+      frame: { width: frame.width, height: frame.height, capturedAt: frame.capturedAt },
     };
-    if (frame) {
-      frameMemory.set(id, frame);
-      void storedFrame(id, frame);
+    if (axPath && latestAx && currentScreenId) {
+      pin.screenId = currentScreenId;
+      pin.axAnchor = nearestAxAnchor(latestAx, normX, normY);
     }
+    frameMemory.set(id, frame);
+    void storedFrame(id, frame);
     pins.push(pin);
     focusedId = id;
     textEl.disabled = false;
     textEl.value = '';
     textEl.focus();
     showPlacement(pin);
-    setStatus(axPath ? 'Capturing pin ' + pin.n + ' from the simulator…'
-      : frame ? 'Pin ' + pin.n + ' placed — type a comment, Enter to save'
-        : 'Placement image unavailable. Wait for the stream, then replace this pin.', axPath || frame ? undefined : 'err');
+    setStatus('Pin ' + pin.n + ' placed — type a comment, Enter to save');
     renderList();
     renderPins();
     persist();
-    if (axPath) {
-      const read = fetch('/api/placement', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
-      }).then(async (response) => {
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Placement capture unavailable');
-        if (!pins.includes(pin)) return;
-        if (!screenIdAtClick || result.screenId !== screenIdAtClick) {
-          throw new Error('Screen changed during placement');
-        }
-        const anchor = stablePlacementAnchor(axAtClick, result.beforeSnapshot, result.snapshot, normX, normY);
-        pin.screenId = result.screenId;
-        pin.axAnchor = anchor;
-        pin.frame = { width: result.frame.width, height: result.frame.height, capturedAt: result.frame.capturedAt };
-        frameMemory.set(id, result.frame);
-        void storedFrame(id, result.frame);
-        if (focusedId === id) {
-          showPlacement(pin);
-          setStatus('Pin ' + pin.n + ' captured · review its snapshot, then type your comment');
-        }
-        updatePinPositions();
-        persist();
-      }).catch((error) => {
-        if (focusedId === id && pins.includes(pin)) setStatus(String(error.message || error) + '. Delete and replace this pin.', 'err');
-      }).finally(() => pinScreenReads.delete(id));
-      pinScreenReads.set(id, read);
-    }
+    if (axPath) updatePinPositions();
   }
 
   // Picture rect inside the stage after object-fit: contain (no letterbox when aspects match).
@@ -553,6 +534,10 @@ export function pageHtml(opts) {
   // parallel fetches do not promise that.
   let touchChain = Promise.resolve();
   function sendTouch(type, normX, normY) {
+    if (type === 'move') {
+      for (const pin of pins) if (!pin.axAnchor) pin.unanchoredHidden = true;
+      updatePinPositions();
+    }
     touchChain = touchChain
       .then(() =>
         fetch('/api/touch', {
@@ -689,7 +674,6 @@ export function pageHtml(opts) {
     if (ready.length === 0) return;
     sendBtn.disabled = true;
     setStatus('Sending…');
-    await Promise.all(ready.map((pin) => pinScreenReads.get(pin.id)));
     const frameInfo = await captureFrame();
     const comments = await Promise.all(ready.map(async (p) => {
       const savedFrame = frameMemory.get(p.id) || await storedFrame(p.id);
@@ -704,11 +688,6 @@ export function pageHtml(opts) {
     }));
     if (comments.some((comment) => !comment.frame?.dataUrl)) {
       setStatus('A pin lost its placement image. Delete and place that pin again before sending.', 'err');
-      sendBtn.disabled = false;
-      return;
-    }
-    if (axPath && comments.some((comment) => !comment.screenId)) {
-      setStatus('A pin has no screen ID. Wait for the simulator, then replace that pin before sending.', 'err');
       sendBtn.disabled = false;
       return;
     }

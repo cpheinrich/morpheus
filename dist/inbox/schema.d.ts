@@ -21,8 +21,8 @@ export declare const Inbox: z.ZodObject<{
 export type Inbox = z.infer<typeof Inbox>;
 /** Open needs a reply and carries a trailing slot; done does not. */
 export declare const ItemState: z.ZodEnum<{
-    done: "done";
     open: "open";
+    done: "done";
 }>;
 export type ItemState = z.infer<typeof ItemState>;
 export declare const STATE_MARK: Record<ItemState, string>;
@@ -30,8 +30,8 @@ export declare const MARK_STATE: Record<string, ItemState>;
 export declare const InboxItem: z.ZodObject<{
     n: z.ZodNumber;
     state: z.ZodEnum<{
-        done: "done";
         open: "open";
+        done: "done";
     }>;
     title: z.ZodString;
     agent: z.ZodEnum<{

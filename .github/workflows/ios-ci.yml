@@ -17,6 +17,25 @@ name: iOS CI
 on:
   workflow_call:
     inputs:
+      source-sha:
+        description: Optional exact 40-character source commit to test; required for CD execution.
+        type: string
+        default: ""
+      execution-id:
+        description: Durable CD dispatch effect id; isolates concurrency and disables cancellation.
+        type: string
+        default: ""
+      actions-ref:
+        description: >
+          The commit, tag or branch of cpheinrich/morpheus whose composite actions this run uses
+          (ios-simulator, swift-changed-files). A `uses:` line cannot take an expression and
+          github.job_workflow_sha is empty inside a called workflow's steps (verified 2026-10-14),
+          so a consumer that pins this workflow to a commit passes the same commit here and its
+          actions stop floating on main (cpheinrich/morpheus#393). The default keeps today's
+          behaviour for callers on @main.
+        type: string
+        required: false
+        default: main
       watch-paths:
         description: Optional newline-separated Git pathspecs. Unrelated pull requests report success without native work; other events always run.
         type: string
@@ -91,7 +110,8 @@ on:
           from this run — for example a caller keeping an expensive
           XCTMeasureOptions performance test out of the per-PR job while a
           separate nightly caller runs the full scheme. Empty runs everything
-          the scheme or test plan already selects.
+          the scheme or test plan already selects. The input is retained in
+          skip-testing.txt beside the result bundle.
         type: string
         default: ""
       parallel-testing:
@@ -163,19 +183,49 @@ jobs:
     # refs/heads/main. Without it both land in one group and the release's
     # tests can be cancelled by an unrelated push — or cancel it.
     concurrency:
-      group: ios-ci-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-${{ inputs.scheme }}
-      cancel-in-progress: true
+      group: ios-ci-${{ github.repository }}-${{ github.workflow }}-${{ inputs.execution-id || github.ref }}-${{ inputs.scheme }}
+      cancel-in-progress: ${{ inputs.execution-id == '' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
 
     steps:
+      - name: Validate execution identity
+        working-directory: .
+        env:
+          SOURCE_SHA: ${{ inputs.source-sha }}
+          EXECUTION_ID: ${{ inputs.execution-id }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$SOURCE_SHA" && ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source-sha must be an exact lowercase 40-character commit hash" >&2
+            exit 1
+          fi
+          if [[ -n "$EXECUTION_ID" ]]; then
+            if [[ ! "$EXECUTION_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ || -z "$SOURCE_SHA" ]]; then
+              echo "execution-id must be a safe CD effect id with an exact source-sha" >&2
+              exit 1
+            fi
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ inputs.source-sha || github.sha }}
           # Scoped PRs need ancestry to verify a merge regenerated after the event.
           # Other callers only need the first parent for the style gate.
           fetch-depth: ${{ github.event_name == 'pull_request' && inputs.watch-paths != '' && '0' || '2' }}
           persist-credentials: false
+
+      - name: Assert checked-out source
+        working-directory: .
+        env:
+          SOURCE_SHA: ${{ inputs.source-sha }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$SOURCE_SHA" && "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]]; then
+            echo "Checked-out source does not match source-sha" >&2
+            exit 1
+          fi
 
       - name: Check native change scope
         id: scope
@@ -274,9 +324,27 @@ jobs:
       # owns its test device and uniquely named XCTest clones, even on a shared Mac.
       # Persistent runners keep one shut-down, dedicated warmed template; tests
       # run only on job-owned clones. Ephemeral hosted runners create a clean device.
+      # This workflow's own composite actions, at the revision the caller names. A `uses:` line
+      # cannot take an expression, so an action reference inside a reusable workflow is either a
+      # branch name, which floats under a consumer's pin (cpheinrich/morpheus#393), or a checkout
+      # of the repository at `inputs.actions-ref` used by local path. The checkout is read-only,
+      # credential-free (the repository is public), sparse, and lives in its own directory inside
+      # the workspace; nothing else in this job reads that directory.
+      - name: Check out this workflow's actions
+        if: ${{ steps.scope.outputs.run == 'true' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: cpheinrich/morpheus
+          ref: ${{ inputs.actions-ref }}
+          path: .morpheus-ci
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions
+            scripts
+
       - name: Create isolated test simulator
         if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests && inputs.platform == 'iOS Simulator' }}
-        uses: cpheinrich/morpheus/.github/actions/ios-simulator@main
+        uses: ./.morpheus-ci/.github/actions/ios-simulator
         with:
           destination: ${{ inputs.destination }}
           persistent: ${{ runner.environment == 'self-hosted' }}
@@ -409,6 +477,20 @@ jobs:
             echo "cached=false" >> "$GITHUB_OUTPUT"
           fi
           mkdir -p "$cache_root/SourcePackages" "$cache_root/DerivedData" "$ios_ci_root"
+          # A job cancelled mid-build (the PR group's cancel-in-progress, a VM torn down)
+          # leaves the build service's SQLite database half-written on the shared disk, and
+          # every later job on that slot then fails before compiling ("no more rows
+          # available", "database disk image is malformed", darwin-health/evo 2026-10-13,
+          # cpheinrich/morpheus#394). Check it before building and discard only the build
+          # products; package checkouts and the module cache are unaffected by it.
+          build_db="$cache_root/DerivedData/Build/Intermediates.noindex/XCBuildData/build.db"
+          if [ -f "$build_db" ]; then
+            integrity=$(sqlite3 -readonly "$build_db" 'PRAGMA quick_check;' 2>&1 | head -n 1 || true)
+            if [ "$integrity" != "ok" ]; then
+              echo "::warning::Discarding the cached DerivedData build directory: build database check returned '${integrity:-no result}' (a cancelled job on this cache slot); this build starts cold."
+              rm -rf "$cache_root/DerivedData/Build"
+            fi
+          fi
           # Cancellation can leave a child writing after the next job starts.
           # Never reuse or clear its evidence path. The random suffix also
           # separates multiple calls/jobs within the same run and attempt.
@@ -436,7 +518,7 @@ jobs:
       - name: Select changed Swift sources
         id: swift-changed-files
         if: ${{ steps.scope.outputs.run == 'true' && inputs.swift-format-lint }}
-        uses: cpheinrich/morpheus/.github/actions/swift-changed-files@main
+        uses: ./.morpheus-ci/.github/actions/swift-changed-files
         with:
           working-directory: ${{ inputs.working-directory }}
 
@@ -559,7 +641,24 @@ jobs:
             # developer's own Debug build in Xcode never passes these.
             args+=(SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule GCC_OPTIMIZATION_LEVEL=s)
           fi
-          xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log"
+          # One cold retry when the build service itself fails on a damaged shared cache:
+          # discard the build directory and build again. A second failure is a real one.
+          # `|| status=$?` keeps xcodebuild's own exit status under pipefail and errexit alike.
+          status=0
+          xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log" || status=$?
+          if [ "$status" -ne 0 ]; then
+            if grep -qE 'accessing build database|internal inconsistency error' "$LOGS/build.log"; then
+              echo "::warning::Build service failure on the cached DerivedData; discarding its build directory and building once more cold."
+              rm -rf "$DERIVED_DATA/Build"
+              # Keep the failed attempt's evidence under other names: xcodebuild refuses an
+              # existing -resultBundlePath, so the retry needs its path free.
+              mv "$LOGS/build.log" "$LOGS/build-damaged-cache.log"
+              if [ -e "$RESULTS/Build.xcresult" ]; then mv "$RESULTS/Build.xcresult" "$RESULTS/Build-damaged-cache.xcresult"; fi
+              xcodebuild build-for-testing "${args[@]}" 2>&1 | tee "$LOGS/build.log"
+            else
+              exit "$status"
+            fi
+          fi
 
       - name: Build
         if: ${{ steps.scope.outputs.run == 'true' && !inputs.run-tests }}
@@ -589,7 +688,22 @@ jobs:
           if [ "$OPTIMIZE_TEST_BUILD" = "true" ]; then
             args+=(SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule GCC_OPTIMIZATION_LEVEL=s)
           fi
-          xcodebuild build "${args[@]}" 2>&1 | tee "$LOGS/build.log"
+          # `|| status=$?` keeps xcodebuild's own exit status under pipefail and errexit alike.
+          status=0
+          xcodebuild build "${args[@]}" 2>&1 | tee "$LOGS/build.log" || status=$?
+          if [ "$status" -ne 0 ]; then
+            if grep -qE 'accessing build database|internal inconsistency error' "$LOGS/build.log"; then
+              echo "::warning::Build service failure on the cached DerivedData; discarding its build directory and building once more cold."
+              rm -rf "$DERIVED_DATA/Build"
+              # Keep the failed attempt's evidence under other names: xcodebuild refuses an
+              # existing -resultBundlePath, so the retry needs its path free.
+              mv "$LOGS/build.log" "$LOGS/build-damaged-cache.log"
+              if [ -e "$RESULTS/Build.xcresult" ]; then mv "$RESULTS/Build.xcresult" "$RESULTS/Build-damaged-cache.xcresult"; fi
+              xcodebuild build "${args[@]}" 2>&1 | tee "$LOGS/build.log"
+            else
+              exit "$status"
+            fi
+          fi
 
       - name: Run unit and UI tests
         if: ${{ steps.scope.outputs.run == 'true' && inputs.run-tests }}
@@ -682,14 +796,27 @@ jobs:
       - name: Export complete test evidence
         if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         env:
+          EXECUTION_ID: ${{ inputs.execution-id }}
           TEST_SELECTION: ${{ inputs.test-selection }}
           ONLY_TESTING: ${{ inputs.only-testing }}
+          SKIP_TESTING: ${{ inputs.skip-testing }}
           TEST_EVIDENCE_SCRIPT: ${{ inputs.test-evidence-script }}
         run: |
           set -euo pipefail
           git rev-parse HEAD > "$RESULTS/tested-sha.txt"
+          if [[ -n "${EXECUTION_ID:-}" ]]; then
+            python3 - <<'PYTHON'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ["RESULTS"])
+          data = dict(schemaVersion=1, sourceSha=(root / "tested-sha.txt").read_text().strip(),
+                      executionId=os.environ["EXECUTION_ID"], runId=os.environ["GITHUB_RUN_ID"],
+                      runAttempt=os.environ["GITHUB_RUN_ATTEMPT"])
+          (root / "execution.json").write_text(json.dumps(data) + "\n")
+          PYTHON
+          fi
           printf '%s\n' "$TEST_SELECTION" > "$RESULTS/selection.json"
           printf '%s\n' "$ONLY_TESTING" > "$RESULTS/only-testing.txt"
+          printf '%s\n' "$SKIP_TESTING" > "$RESULTS/skip-testing.txt"
           result_bundle="$RESULTS/Tests.xcresult"
           if [ -d "$result_bundle" ]; then
             xcrun xcresulttool get test-results tests --path "$result_bundle" > "$RESULTS/tests.json"
@@ -744,7 +871,7 @@ jobs:
         if: ${{ steps.scope.outputs.run == 'true' && always() && inputs.run-tests && steps.ios_paths.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ${{ steps.ios_paths.outputs.evidence-name }}
+          name: ${{ inputs.execution-id != '' && format('ios-test-evidence-{0}', inputs.execution-id) || steps.ios_paths.outputs.evidence-name }}
           path: |
             ${{ steps.ios_paths.outputs.results }}/*.json
             ${{ steps.ios_paths.outputs.results }}/*.txt

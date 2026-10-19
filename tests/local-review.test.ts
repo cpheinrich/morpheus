@@ -1,16 +1,27 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkLocalReview, committedConfig, git, MISSING_LABEL, parseReviewRecord, reviewRequired, trivialDiff, type LocalReviewRecord } from "../src/review/local.js";
 import { checkPr } from "../src/check/pr.js";
 import { prepareReview, validateReview } from "../src/cli/review.js";
+import { authorRecordProblem } from "../src/gh-manager/verify.js";
 
 let root: string;
 let base: string;
 let reviewed: string;
 const path = ".agent/worklog/2026-09-10-task.md";
+const TICKET_ID = "MO-26-09-22-08.00.00";
+const ticketBody = (id = TICKET_ID) => `---
+id: ${id}
+title: "Fix deferred finding"
+status: backlog
+created: 2026-09-22
+updated: 2026-09-22
+---
+`;
 function commit() {
   git(root, ["add", "."]);
   git(root, ["commit", "-qm", "fixture", "--allow-empty"]);
@@ -35,7 +46,9 @@ beforeEach(() => {
   writeFileSync(join(root, "code.ts"), 'export const answer = 1;'); base = commit();
   writeFileSync(join(root, "code.ts"), 'export const answer = 2;'); reviewed = commit();
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+// Git can leave a late object after directory traversal. Node 22 rmSync retries only rmdir
+// without rescanning children; async rm retries traversal and Vitest awaits its promise.
+afterEach(() => rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }));
 
 describe("independent review lifecycle", () => {
   it("defaults on and refuses malformed configuration", () => {
@@ -89,7 +102,7 @@ describe("independent review lifecycle", () => {
   });
   it("keeps incidental pre-existing defects nonblocking once tracked", () => {
     mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
-    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-other.md"), "---\nid: MO-26-09-22-08.00.00\n---\n"); reviewed = commit();
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-other.md"), ticketBody()); reviewed = commit();
     const r = record(); r.findings = [{ id: "F01", severity: "incidental", description: "Unrelated pre-existing defect", paths: ["other.ts"], disposition: "deferred", response: "Recorded for a separate follow-up ticket", roadmap: "MO-26-09-22-08.00.00" }];
     expect(check(save(r))).toEqual([]);
   });
@@ -107,7 +120,9 @@ describe("independent review lifecycle", () => {
   });
   it("reports explicit project opt-out as waived, not reviewed", () => {
     writeFileSync(join(root, "morpheus.json"), '{"review":{"required":false}}');
-    expect(check(commit(), "", [])[0]?.level).toBe("waived");
+    const head = commit();
+    expect(check(head, "", [])[0]?.level).toBe("waived");
+    expect(authorRecordProblem(root, "", head, base)).toContain("no author record was validated");
   });
   it("wires missing evidence into PR conventions while preserving records-only work", async () => {
     const ctx = { body: "## Test plan\nRan tests", branch: "inbox-2026-09-10", changedFiles: ["code.ts"], productDir: join(root, "hq/product") };
@@ -505,7 +520,7 @@ describe("tracked deferrals", () => {
     expect(check(save({ ...record(), findings: [{ ...incidental, disposition: "open" }] }))[0]?.message).toContain("without a roadmap item");
     expect(check(save({ ...record(), findings: [{ ...incidental, roadmap: "MO-26-09-22-08.00.00" }] }))[0]?.message).toContain("no such roadmap item");
     mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
-    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md"), "---\nid: MO-26-09-22-08.00.00\n---\n");
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md"), ticketBody());
     reviewed = commit();
     expect(check(save({ ...record(), findings: [{ ...incidental, roadmap: "MO-26-09-22-08.00.00" }] }))).toEqual([]);
     expect(check(save({ ...record(), findings: [{ ...incidental, disposition: "open", roadmap: "MO-26-09-22-08.00.00" }] }))).toEqual([]);
@@ -545,6 +560,95 @@ describe("conditional clearance", () => {
     expect(check(save({ ...r, findings: [{ ...substantive, id: "TE-9" }] }))[0]?.message).toContain("final follow-up must clear the covered commit");
     writeFileSync(join(root, "other.ts"), "outside the condition"); r.covered = commit();
     expect(check(save(r))[0]?.message).toContain("exceed the reviewer's recorded conditions");
+  });
+
+  it("allows a newly filed deferred finding ticket alongside conditioned fixes", () => {
+    const ticket = "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md";
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, ticket), ticketBody());
+    writeFileSync(join(root, "code.ts"), "guarded operator path");
+    const covered = commit();
+    const r: LocalReviewRecord = { ...record(), covered, findings: [
+      met,
+      { id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Filed a separate roadmap ticket.", roadmap: "MO-26-09-22-08.00.00" },
+    ] };
+    expect(check(save(r))).toEqual([]);
+  });
+
+  it("does not treat an existing roadmap edit as deferred ticket filing", () => {
+    const ticket = "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md";
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, ticket), ticketBody());
+    reviewed = commit();
+    writeFileSync(join(root, ticket), `${ticketBody()}\nModified an existing roadmap item`);
+    const covered = commit();
+    const deferred = { id: "INC-1", severity: "incidental" as const, description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred" as const, response: "Tracked by the existing ticket.", roadmap: "MO-26-09-22-08.00.00" };
+    const r: LocalReviewRecord = { ...record(), covered, findings: [deferred] };
+    expect(check(save(r))[0]?.message).toContain("author-only fixes exceed");
+  });
+
+  it("does not allow an unrelated new roadmap item alongside a deferred ticket", () => {
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md"), ticketBody());
+    const unrelated = "hq/product/roadmap/MO-26-09-22-09.00.00-unrelated.md";
+    writeFileSync(join(root, unrelated), "Unrelated ticket");
+    const covered = commit();
+    const r: LocalReviewRecord = { ...record(), covered, findings: [{ id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Filed a separate roadmap ticket.", roadmap: "MO-26-09-22-08.00.00" }] };
+    expect(check(save(r))[0]?.message).toContain("author-only fixes exceed");
+  });
+
+  it("does not allow edits to the static roadmap README with a deferred ticket", () => {
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md"), ticketBody());
+    writeFileSync(join(root, "hq/product/roadmap/README.md"), "Unreviewed prose");
+    const covered = commit();
+    const r: LocalReviewRecord = { ...record(), covered, findings: [{ id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Filed a separate roadmap ticket.", roadmap: "MO-26-09-22-08.00.00" }] };
+    expect(check(save(r))[0]?.message).toContain("author-only fixes exceed");
+  });
+
+  it("rejects an ID-prefixed directory containing a nested Markdown file", () => {
+    const nested = "hq/product/roadmap/MO-26-09-22-08.00.00-notes";
+    mkdirSync(join(root, nested), { recursive: true });
+    writeFileSync(join(root, nested, "policy.md"), ticketBody());
+    const covered = commit();
+    const r: LocalReviewRecord = { ...record(), covered, findings: [{ id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Filed a separate roadmap ticket.", roadmap: TICKET_ID }] };
+    expect(check(save(r))[0]?.message).toContain("no such roadmap item");
+  });
+
+  it("rejects edits to a ticket introduced by a trunk merge after reviewed", () => {
+    const branch = git(root, ["branch", "--show-current"]);
+    const ticket = "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md";
+    git(root, ["checkout", "-q", "-b", "trunk", reviewed]);
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, ticket), ticketBody());
+    const trunk = commit();
+    git(root, ["checkout", "-q", branch]);
+    git(root, ["merge", "-q", "--no-ff", "-m", "Integrate trunk", "trunk"]);
+    writeFileSync(join(root, ticket), `${ticketBody()}\nAuthor edit after trunk introduced the item.`);
+    const covered = commit();
+    const r: LocalReviewRecord = { ...record(), covered, findings: [{ id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Trunk had filed the ticket.", roadmap: TICKET_ID }] };
+    const head = save(r);
+    expect(checkLocalReview({ root, body: `review-record: ${path}`, labels: ["agent-reviewed"], head, base: trunk })[0]?.message).toContain("author-only fixes exceed");
+  });
+
+  it("allows the deferred ticket after a conditional follow-up and before covered", () => {
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md"), ticketBody());
+    writeFileSync(join(root, "code.ts"), "guarded operator path");
+    const covered = commit();
+    const r: LocalReviewRecord = { ...record(), covered, findings: [
+      met,
+      { id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Filed a separate roadmap ticket.", roadmap: "MO-26-09-22-08.00.00" },
+    ], followUps: [{ reviewerSession: "a1b2c3d4e5f6a7b8c", commit: reviewed, outcome: "cleared", elapsedMinutes: 2, summary: "Cleared on condition that TE-7 is fixed within code.ts." }] };
+    expect(check(save(r))).toEqual([]);
+  });
+
+  it("still rejects a deferred ticket added after the covered commit", () => {
+    const r: LocalReviewRecord = { ...record(), findings: [{ id: "INC-1", severity: "incidental", description: "Pre-existing cron omission", paths: ["ops/cron.yaml"], disposition: "deferred", response: "Filed a separate roadmap ticket.", roadmap: "MO-26-09-22-08.00.00" }] };
+    mkdirSync(join(root, "hq/product/roadmap"), { recursive: true });
+    writeFileSync(join(root, "hq/product/roadmap/MO-26-09-22-08.00.00-fix-cron-year.md"), ticketBody());
+    commit();
+    expect(check(save(r))[0]?.message).toContain("changes after covered commit invalidate");
   });
 });
 

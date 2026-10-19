@@ -159,12 +159,11 @@ finger down until the next tap, which made switches flip late or flip two contro
 Pins stay for the session until deleted or cleared after a successful **Send**. They and the
 draft being typed are mirrored into the tab's `sessionStorage`, so a page reload, an overlay
 server restart or a simulator relaunch brings them back; closing the tab forgets them.
-Each iOS pin gets a native screenshot when placed, with the native screen ID checked both
-before and after capture. The captured image is shown beside the editor and stored in the
-browser's IndexedDB until Send succeeds. Review that image while writing the comment; if the
-app navigated or the element under the click moved before or during capture, delete and place
-the pin again. The batch also
-retains the Send-time frame for older agents. The pin's original
+Each iOS pin freezes the simulator stream frame displayed at the right-click. The captured
+image is shown beside the editor and stored in the browser's IndexedDB until Send succeeds.
+If the stream has no frame yet, the overlay asks you to wait and does not create a pin.
+Review the image while writing the comment. The batch also retains the Send-time frame for
+older agents. The pin's original
 coordinates refer to its own screenshot, even after the app scrolls. The overlay reads the
 simulator accessibility stream to follow the nearby native element while it scrolls; a marker
 outside the visible frame or on another screen is hidden, while its comment stays in the list.
@@ -174,11 +173,10 @@ from the first two app-specific landmarks. During a vertical drag the overlay se
 that fallback ID even if a lazy list recycles those landmarks; a subsequent tap permits a new
 screen candidate. The overlay's accessibility stream derives the screen ID and element positions from
 the same native tree, so animations cannot make a later screen-ID response mislabel a pin.
-The pin keeps the ID from its native placement capture and hides when a later snapshot has
-a different or unavailable ID. Send waits for pending captures and blocks if the placement
-PNG or screen ID is missing. A pin needs a nearby native element with a stable accessibility
-identifier. Anonymous tree paths can be reused for different rows, so the overlay rejects
-those placements and asks you to place the pin near named content.
+When a screen ID and nearby named element are available at the click, the pin uses them to
+follow scrolling and hide on other screens. If accessibility is unavailable or there is no
+stable nearby element, the captured image and comment remain valid; marker tracking is best
+effort. Send requires each pin's placement PNG, but does not require accessibility data.
 
 Header hint: *Right click to add comment. Press Esc twice to Delete*.
 
@@ -218,7 +216,7 @@ morpheus qa comments release <batchId> --agent <session-id>  # return failed wor
 morpheus qa comments release <batchId> --force  # recover an abandoned claim
 morpheus qa comments responder start|status|stop --root <checkout>
 morpheus qa comments responder recover --confirm-no-agent-process --root <checkout>
-morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>]
+morpheus qa comments serve --preview <url> [--port 3456] [--root <project>] [--stream-url <url>] [--no-ax]
 ```
 
 `serve` binds **only** to `127.0.0.1`. `--root` is the project checkout that
@@ -230,6 +228,13 @@ consumes it before `qa`) and is what `batch.project` records. POSTs must be
 `http://localhost:<port>` at the bound overlay port; a cross-site
 page cannot inject a batch or drive the simulator. `frame.path` is recorded
 only when a PNG was actually written.
+
+If macOS accessibility crashes the overlay, use `--no-ax` to pin comments from the MJPEG frame
+without native accessibility reads. A managed iOS preview runs the overlay in a separate process:
+if that process exits, the supervisor keeps the simulator stream alive and restarts the overlay
+once with accessibility disabled. A second overlay failure is logged and requires a deliberate
+preview restart. An open AX tab reloads into screenshot-pin mode when the fallback becomes healthy;
+its unsent comments and captured frames are restored.
 
 Exit non-zero when a named batch is missing. `pending` with an empty inbox
 prints nothing and exits 0 — agents can poll safely. Resolving an already-resolved
@@ -275,7 +280,11 @@ lifecycle. A project declares only what Morpheus cannot know, in `morpheus.json`
     "demo": { "flags": ["--demo"], "args": ["-ui-testing"], "summary": "Mode: demo. …" },
     "live": { "flags": ["--live"], "args": ["--qa-live"],
               "prepare": { "command": ["node", "apps/ios/scripts/qa-account.mjs", "{key}"], "credentials": true },
-              "summary": "Mode: live. …" }
+              "summary": "Mode: live. …" },
+    "production": { "flags": ["--production"], "args": [],
+                    "build": ["bash", "apps/ios/scripts/dev.sh", "build", "--configuration", "ProductionDebug"],
+                    "product": "Build/Products/ProductionDebug-iphonesimulator/App.app",
+                    "bundleId": "com.example.app.production" }
   }
 } }
 ```
@@ -284,6 +293,10 @@ lifecycle. A project declares only what Morpheus cannot know, in `morpheus.json`
   and `{root}` the project root; both expand in commands, paths and launch arguments.
 - The build command receives `DERIVED_DATA_PATH`, `SIMULATOR_NAME`, `SIMULATOR_OS` and
   `SIMULATOR_UDID` for the simulator the preview booted.
+- A mode that builds a different app overrides `build`, `product` and `bundleId` together.
+  The command can select its Xcode configuration. The preview checks the built app's
+  `CFBundleIdentifier` before installing it, including with `--no-build`; a stale product
+  cannot quietly launch another mode's bundle. `status` and `stop` name the started mode.
 - A mode's `prepare` command prints `{"env": {"NAME": "value"}}`; each entry reaches the app as a
   launch environment variable. With `credentials: true` it runs under
   `morpheus credentials run --`. Its stdout stays in memory: never in arguments, state files or
@@ -323,6 +336,9 @@ local dev server. The project declares it in `morpheus.json`:
 "qa": { "web": { "url": "http://localhost:5173", "command": ["npx", "next", "dev", "--port", "{port}"], "cwd": "apps/web", "path": "/" } }
 ```
 
+- **Startup failures.** Start checks the launchd supervisor during readiness. If the job exits or
+  disappears, it fails promptly with the last20 log lines (at most8KiB) and the `preview.log`
+  path. A pending first launch or running compile keeps the normal bounded readiness wait.
 - **Attach or start.** If something already answers at `url`, the preview attaches and `stop` leaves
   it running. Otherwise it runs `command` in `cwd` under the launchd supervisor, in its own process
   group, and `stop` (or the lease, or the dev server exiting) ends the whole group.

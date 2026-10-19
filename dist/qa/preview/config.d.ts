@@ -12,6 +12,10 @@
  */
 export interface PreviewMode {
     name: string;
+    /** A different app identity must override all three fields together. */
+    build?: string[];
+    product?: string;
+    bundleId?: string;
     /** Launch arguments passed to the app. */
     args: string[];
     /** Command-line flags that select this mode, e.g. `--demo`. `--mode <name>` always works. */
@@ -58,6 +62,7 @@ export type ConfigResult = {
 };
 /** Validates `qa.ios`, reporting every problem rather than the first. */
 export declare function parseIosPreviewConfig(raw: unknown, projectName?: string): ConfigResult;
+export declare function modeBuildIdentity(config: IosPreviewConfig, mode: PreviewMode): Pick<IosPreviewConfig, "build" | "product" | "bundleId">;
 /** Flags the preview command owns, plus every flag the morpheus parser consumes first. */
 export declare const PREVIEW_FLAGS: string[];
 export declare const RESERVED_FLAGS: Set<string>;

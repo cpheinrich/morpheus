@@ -26,8 +26,11 @@ inputs:
     description: Xcode project filename, relative to working-directory.
     required: true
   scheme:
-    description: Shared scheme archived for release.
+    description: Shared scheme archived for release; spaces are supported.
     required: true
+  configuration:
+    description: Xcode build configuration used for build-settings queries and archive.
+    default: Release
   source-packages-directory:
     description: Runner-temp directory name holding the resolved SwiftPM checkout.
     default: TestFlightSourcePackages
@@ -40,6 +43,19 @@ inputs:
   signing-lock-timeout-seconds:
     description: Maximum wait for another TestFlight release under this macOS account, from 1 to 3600 seconds. The wait counts against the caller job timeout.
     default: "600"
+
+  reserved-build-number:
+    description: Globally reserved CD build number; never changed by the host-local allocator.
+    default: ""
+  before-upload-script:
+    description: Trusted repository-relative executable; before atomically claims upload, resource persists its id. Exit 3 before upload skips an already claimed operation.
+    default: ""
+  after-upload-script:
+    description: Trusted repository-relative executable invoked after accepted.json is written and outputs are available.
+    default: ""
+  distribution-enabled:
+    description: Set false when the durable controller owns processing and internal promotion.
+    default: "true"
 
   # ---- Release identity ----------------------------------------------------
   apple-team-id:
@@ -129,9 +145,34 @@ inputs:
     description: Sentry token used only by the archive's debug-symbol build phase.
     default: ""
 
+outputs:
+  acceptance-artifact-name:
+    description: Immutable artifact with accepted.json when known and resource.json when observed; absence never proves no upload.
+    value: ${{ steps.receipt-context.outputs.artifact-name }}
+  resource-path:
+    description: Local path of allowlisted resource.json; available before any resource hook.
+    value: ${{ steps.upload.outputs.resource-path }}
+  acceptance-path:
+    description: Local path of accepted.json; remains available if the after hook fails.
+    value: ${{ steps.upload.outputs.receipt-path }}
+  version:
+    description: Marketing version of the uploaded IPA.
+    value: ${{ steps.upload.outputs.version }}
+  build-number:
+    description: Exact build number of the uploaded IPA.
+    value: ${{ steps.upload.outputs.build-number }}
+  upload-id:
+    description: Upload id returned by Apple, independent of later processing and distribution.
+    value: ${{ steps.upload.outputs.upload-id }}
+
 runs:
   using: composite
   steps:
+    - name: Prepare upload evidence context
+      id: receipt-context
+      shell: bash
+      run: 'python3 "$GITHUB_ACTION_PATH/upload-receipt.py" prepare'
+
     - name: Validate release inputs and select Xcode
       shell: bash
       env:
@@ -139,6 +180,7 @@ runs:
         WORKING_DIRECTORY: ${{ inputs.working-directory }}
         PROJECT: ${{ inputs.project }}
         SCHEME: ${{ inputs.scheme }}
+        CONFIGURATION: ${{ inputs.configuration }}
         SOURCE_PACKAGES_DIRECTORY: ${{ inputs.source-packages-directory }}
         DOWNLOAD_METAL_TOOLCHAIN: ${{ inputs.download-metal-toolchain }}
       run: |
@@ -162,16 +204,21 @@ runs:
             exit 1
             ;;
         esac
-        # These three are written into GITHUB_ENV, whose format is one
-        # KEY=VALUE per line. A value carrying a newline would append an
-        # arbitrary variable to the job; nothing legitimate needs one.
-        for caller_value in "$WORKING_DIRECTORY" "$PROJECT" "$SCHEME"; do
+        for caller_value in "$WORKING_DIRECTORY" "$PROJECT"; do
           case "$caller_value" in
             "" | *[[:space:]]*)
-              echo "working-directory, project and scheme must be non-empty and contain no whitespace" >&2
+              echo "working-directory and project must be non-empty and contain no whitespace" >&2
               exit 1
               ;;
           esac
+        done
+        # Xcode names can contain spaces. GITHUB_ENV still requires one value per
+        # line, so reject CR/LF and names consisting only of whitespace.
+        for caller_value in "$SCHEME" "$CONFIGURATION"; do
+          if [[ -z "${caller_value//[[:space:]]/}" || "$caller_value" == *$'\n'* || "$caller_value" == *$'\r'* ]]; then
+            echo "scheme and configuration must be non-blank single-line names" >&2
+            exit 1
+          fi
         done
 
         project_path="$GITHUB_WORKSPACE/$WORKING_DIRECTORY/$PROJECT"
@@ -183,6 +230,7 @@ runs:
         {
           echo "PROJECT_PATH=$project_path"
           echo "SCHEME_NAME=$SCHEME"
+          echo "BUILD_CONFIGURATION=$CONFIGURATION"
           echo "SOURCE_PACKAGES_PATH=$RUNNER_TEMP/$SOURCE_PACKAGES_DIRECTORY"
           echo "DERIVED_DATA_PATH=$RUNNER_TEMP/$SCHEME-DerivedData-archive"
           echo "ARCHIVE_PATH=$RUNNER_TEMP/$SCHEME.xcarchive"
@@ -257,8 +305,14 @@ runs:
     # The protected environment's credentials first enter a process here, after
     # the toolchain and the project layout have already been proven good.
     - name: Archive, sign, verify, and upload to TestFlight
+      id: upload
       shell: bash
       env:
+        UPLOAD_RECEIPT_DIRECTORY: ${{ steps.receipt-context.outputs.directory }}
+        RESERVED_BUILD_NUMBER: ${{ inputs.reserved-build-number }}
+        BEFORE_UPLOAD_SCRIPT: ${{ inputs.before-upload-script }}
+        AFTER_UPLOAD_SCRIPT: ${{ inputs.after-upload-script }}
+        DISTRIBUTION_ENABLED: ${{ inputs.distribution-enabled }}
         SIGNING_LOCK_TIMEOUT_SECONDS: ${{ inputs.signing-lock-timeout-seconds }}
         APPLE_TEAM_ID: ${{ inputs.apple-team-id }}
         IOS_BUNDLE_ID: ${{ inputs.ios-bundle-id }}
@@ -280,3 +334,31 @@ runs:
         IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ inputs.google-service-info-plist-base64 }}
         SENTRY_AUTH_TOKEN: ${{ inputs.sentry-auth-token }}
       run: 'python3 "$GITHUB_ACTION_PATH/signing-lock.py" "$GITHUB_ACTION_PATH/upload-testflight.sh"'
+
+    - name: Persist upload acceptance before distribution
+      id: acceptance
+      if: ${{ always() && (steps.upload.outputs.receipt-path != '' || steps.upload.outputs.resource-path != '') }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: ${{ steps.receipt-context.outputs.artifact-name }}
+        path: |
+          ${{ steps.upload.outputs.receipt-path }}
+          ${{ steps.upload.outputs.resource-path }}
+        if-no-files-found: error
+        retention-days: 90
+        overwrite: false
+
+    - name: Wait for processing and distribute to TestFlight groups
+      if: ${{ success() && inputs.distribution-enabled == 'true' && steps.upload.outputs.upload-id != '' }}
+      shell: bash
+      env:
+        UPLOAD_ID: ${{ steps.upload.outputs.upload-id }}
+        MARKETING_VERSION: ${{ steps.upload.outputs.version }}
+        BUILD_NUMBER: ${{ steps.upload.outputs.build-number }}
+        ASC_APP_ID: ${{ inputs.app-store-connect-app-id }}
+        TESTFLIGHT_BETA_GROUP_IDS: ${{ inputs.testflight-beta-group-ids }}
+        SUBMIT_FOR_BETA_REVIEW: ${{ inputs.submit-for-beta-review }}
+        ASC_API_KEY_ID: ${{ inputs.asc-api-key-id }}
+        ASC_API_KEY_ISSUER_ID: ${{ inputs.asc-api-key-issuer-id }}
+        ASC_API_KEY_P8_BASE64: ${{ inputs.asc-api-key-p8-base64 }}
+      run: 'bash "$GITHUB_ACTION_PATH/distribute-testflight.sh"'

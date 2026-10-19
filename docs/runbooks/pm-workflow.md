@@ -52,6 +52,8 @@ worktree at freshly fetched trunk and prints its absolute path. It moves only th
 untracked intake file; existing items come from trunk. Read the destination's records, refresh
 context there, then repeat `pm claim` there to stake the branch. No receipt is copied automatically.
 An already isolated detached worktree can claim directly after reading and refreshing.
+New worktrees are allocated under the operating system's temporary directory, outside `~/code`.
+Existing task worktrees remain usable at their original paths until they are safely removed.
 
 Use `morpheus pm resume <ID>` to continue an explicitly named existing task. It reuses the
 worktree holding its claimed branch, or checks out that branch in a worktree when needed.
@@ -60,6 +62,25 @@ must not silently attach an unrelated request to its old task. Provider session 
 sessions with tasks; `--session-id` on claim/resume supplies one explicitly (Codex defaults to
 `CODEX_THREAD_ID`). Without an ID, the currently checked-out claimed branch identifies the task.
 Do not run concurrent authors on the same task worktree.
+
+After the task PR has merged, return to the primary checkout and run
+`morpheus pm cleanup <ID>`. The command verifies the exact merged PR and current trunk,
+then removes only that task's clean, unlocked linked worktree and its obsolete local and
+remote branch refs. `--dry-run` shows whether it can do so. An open PR, local edits,
+another session binding, an open process in the checkout, an ambiguous claim, or missing
+evidence leaves the worktree in place. If process activity cannot be checked with `lsof`,
+cleanup refuses removal. For an unclaimed
+prepared checkout, it requires Morpheus's preparation marker and proof that its HEAD
+is on current trunk. Ignored local files are preserved except reproducible `node_modules`
+install caches and a single validated Morpheus receipt at
+`local/sessions/<worktree-hash>.json`. Any other file or symlink under `local/` keeps the
+worktree in place. Session bindings persist after a session exits. If cleanup finds one from
+another session, confirm that session has ended before using `--release-stale-sessions`;
+the command still checks for open processes and preserves all other safety proofs.
+`morpheus pm worktrees` inventories legacy sibling worktrees;
+`morpheus pm worktrees prune` clears only Git registrations whose directories are
+already missing. Do not delete directories directly: Git registration and branches
+must be reconciled together.
 
 ## Blocking
 
@@ -105,7 +126,8 @@ answer of changing the item to `review`.
 - A test plan: what you verified and how
 - Any open questions you could not resolve, stated plainly rather than guessed at
 - The roadmap item moved to `review`
-- `Closes #<number>` for every GitHub issue declared in the roadmap item's `issues:` field
+- `Closes #<number>` for every GitHub issue declared in the roadmap item's `issues:` field, except
+  an issue also listed under `issuesToKeepOpen:`; use `Refs #<number>` for that issue
 - For changed paths declared by `review.visualEvidence` in `morpheus.json`, a screen recording
   attached under `## Visual evidence` when practical, otherwise screenshots
 
@@ -123,6 +145,16 @@ For an existing item, use `morpheus pm link-issue <ID> 123`. Both write structur
 into the item. `check pr` then requires GitHub's closing keyword in the PR body, so merging the
 fix cannot leave the issue open as a second, stale backlog.
 An issue merely mentioned as related is not declared and is not closed.
+
+For a recovery incident whose release controller must verify the exact delivery before closing
+it, add the issue normally with `pm new --issue` or `pm link-issue`, then list its number in
+`issuesToKeepOpen: [493]` on the roadmap item. Name the owner of final closure in the item's
+body. The PR body must say `Refs #493`; `check pr` rejects `Closes`, `Fixes`, or `Resolves` for
+that issue in the PR description, title, or branch commit messages, including colon forms and
+when another linked issue still needs `Closes`. An unreadable commit history fails the check.
+The controller closes the
+incident only after its release verification. Remove the exception when later work really owns
+closure. This keeps the issue linked without allowing GitHub to close it at repair merge.
 
 **Except a PR that only touches records** — `hq/team/` and `.agent/`. An inbox cycle belongs to
 no feature and has no item to move. Branch it as `inbox-<YYYY-MM-DD>`, staking no id, and
@@ -158,6 +190,7 @@ Do not wait on checks by polling. Two better options:
 ```sh
 gh pr merge <n> --squash --auto --delete-branch   # merges itself when checks go green
 morpheus wait-ci <n>                              # blocks once, then a digest of what failed
+morpheus pm cleanup <ID>                           # from primary checkout, after merge
 ```
 
 Prefer `--auto` — it hands the merge to GitHub so the session is not held open waiting, and a
