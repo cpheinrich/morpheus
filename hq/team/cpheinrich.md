@@ -1,26 +1,28 @@
 ---
 owner: cpheinrich
-date: 2026-10-15
+date: 2026-10-19
 agents:
   - codex
-previous: .agent/inbox-archive/2026-10-15-0203-cpheinrich.md
+previous: .agent/inbox-archive/2026-10-19-1239-cpheinrich.md
 ---
-# Inbox — 2026-10-15
+# Inbox — 2026-10-19
 
-I reviewed all ten open Morpheus issues against the Evo, Lakina and Darwin worklogs that led to them. Seven fixes shipped in separate PRs with focused tests, independent review and green CI: [#403](https://github.com/cpheinrich/morpheus/pull/404), [#400](https://github.com/cpheinrich/morpheus/pull/405), [#388](https://github.com/cpheinrich/morpheus/pull/406), [#399](https://github.com/cpheinrich/morpheus/pull/407), [#398](https://github.com/cpheinrich/morpheus/pull/408), [#397](https://github.com/cpheinrich/morpheus/pull/409), and [#386](https://github.com/cpheinrich/morpheus/pull/410). Two issues need your decision or evidence; the GitHub Manager log remains open by design. Zoe texted you the brief action list. No production release was dispatched.
+The issue-maintenance automation reconciled all open issues and the issues closed since its October 12 run. GitHub confirms **38 of 41 tracked issues closed**. Thirteen fixes landed in other sessions; their merge commits are on current main and their remote branches are deleted. Three issues remain open. The material change is that #248 now has implementation PR #414 and needs an additional review turn, so the older policy-choice prompt has been replaced. This run made no production release or credential changes.
 
-## ✅ 1. Seven issue fixes delivered · `codex`
+## ✅ 1. Thirteen intervening issue fixes verified · `codex`
 
-The seven issue PRs above are merged. They cover omitted iOS test exclusions, deferred review tickets, iOS QA mode identity, repeated Xcode trunk rescue PRs, premature closure of a recovery incident, accessibility crashes in QA preview, and first HQ sign-in role grants. The last fix also preserves first sign-in through the consumer-auth scaffold and checks stored claims before issuing a session.
+Verified merged PRs [#390](https://github.com/cpheinrich/morpheus/pull/390), [#392](https://github.com/cpheinrich/morpheus/pull/392), [#395](https://github.com/cpheinrich/morpheus/pull/395), [#396](https://github.com/cpheinrich/morpheus/pull/396), [#402](https://github.com/cpheinrich/morpheus/pull/402), [#404](https://github.com/cpheinrich/morpheus/pull/404), [#405](https://github.com/cpheinrich/morpheus/pull/405), [#406](https://github.com/cpheinrich/morpheus/pull/406), [#407](https://github.com/cpheinrich/morpheus/pull/407), [#408](https://github.com/cpheinrich/morpheus/pull/408), [#409](https://github.com/cpheinrich/morpheus/pull/409), [#410](https://github.com/cpheinrich/morpheus/pull/410), and [#413](https://github.com/cpheinrich/morpheus/pull/413). They cover worktree cleanup, iOS workflow isolation and evidence, QA capture and recovery, review deferral bookkeeping, incident closure, and first HQ sign-in. The automation ledger preserves each issue's PR, review coverage SHA, final check snapshot and closure evidence.
 
-## ❗ 2. Incomplete-review override policy · `codex`
+## ❗ 2. One further review turn for PR #414 · `codex`
 
-[#248](https://github.com/cpheinrich/morpheus/issues/248) remains open. PR #255 already corrected the misleading waiver message. Current policy still refuses a genuinely incomplete review unless the existing same-reviewer paths resolve it. An override would change the settled review contract.
+[#248](https://github.com/cpheinrich/morpheus/issues/248) now has draft [PR #414](https://github.com/cpheinrich/morpheus/pull/414). Its worklog records approval of the human-override policy and three independent review turns clearing the implementation through `249285c`. The final test-only correction `74290f6` updates the scaffold expectation for the already-reviewed comment-revocation workflow. Its build/test jobs pass, but that correction is outside review coverage. Current-main `verifyReviewRecord` reproduces the coverage refusal. GitHub also reports a conflict with current main; the existing author must integrate trunk before final validation. The PR remains draft with auto-merge off.
 
-- **A — explicit per-PR human override (recommended).** Require approval from an attributable listed human principal and preserve the incomplete review record visibly.
-- **B — retain refusal.** Keep the current rule and close the issue after documenting the decision.
-- **C — revise future review budgets.** Change prospective limits through reviewed policy; this does not resolve the historical override request.
-- **Other —** a different policy.
+The [independent-review runbook](../../docs/runbooks/independent-review.md) requires explicit authorization for each extra same-reviewer turn and says: “Never infer approval from a merge request or manufacture it.” This is the existing PR request, consolidated here; it is not a request to decide the policy again.
+
+- **A — authorize one additional same-reviewer turn (recommended).** Resume the original author and reviewer for the test correction, then merge only after review validation and required final-head checks pass.
+- **B — keep the PR draft.** Preserve the implementation and defer the additional review.
+- **C — decline the override feature.** Record that maintainer decision before closing the draft and issue.
+- **Other —** a different disposition.
 
 ~
 
@@ -30,9 +32,14 @@ The seven issue PRs above are merged. They cover omitted iOS test exclusions, de
 
 ~
 
-## ❗ 4. Two older claim branches · `codex`
+## ❗ 4. One older claim remains · `codex`
 
-The remote branches for MO-055 and MO-26-09-16-00.36.07 still exist. No response to the earlier disposition request was found, so neither was changed or taken over. The original context is in [the archived exchange](../../.agent/inbox-archive/2026-10-12-1945-cpheinrich.md). Please say whether to resume, keep, or retire each claim.
+`MO-26-09-16-00.36.07` shipped in [PR #390](https://github.com/cpheinrich/morpheus/pull/390), and its remote branch is deleted. That previous disposition request is resolved. `MO-055` still holds remote branch `mo-055-a-new-contributor-gets-an-inbox-in-one-c`; this automation did not take it over. The original context is in [the archived exchange](../../.agent/inbox-archive/2026-10-12-1945-cpheinrich.md).
+
+- **A — release the MO-055 claim (recommended).** Preserve its committed work, then retire the inactive remote claim so future work can claim it.
+- **B — resume MO-055.** Continue its existing branch and partial work.
+- **C — keep it reserved.** Leave ownership unchanged for a returning author.
+- **Other —** a different disposition.
 
 ~
 
