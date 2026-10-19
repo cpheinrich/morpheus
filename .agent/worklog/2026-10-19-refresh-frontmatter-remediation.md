@@ -47,12 +47,6 @@ Independent review cleared the normal-risk remediation with no substantive findi
       "disposition": "fixed",
       "response": "Replaced the stale count with all current frontmatter consumers."
     }
-  ],
-  "trunkIntegrations": [
-    {
-      "commit": "4e74473fabfa2df755835c8bfee9463f75431d30",
-      "reason": "The origin/main merge conflicted only in the append-only decisions log; the resolution retained both the dependency decision and all current-main decisions."
-    }
   ]
 }
 ```
