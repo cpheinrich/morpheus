@@ -46,3 +46,16 @@ The [independent-review runbook](../../docs/runbooks/independent-review.md) requ
 ## ✅ 5. GitHub Manager log stays open · `codex`
 
 [#335](https://github.com/cpheinrich/morpheus/issues/335) is the persistent manager audit log, not a defect to close.
+
+## ❗ 6. Blocked: Prove live hosted provider admission · `claude` · [MO-26-10-19-21.10.52](../product/roadmap/MO-26-10-19-21.10.52-prove-hosted-provider-admission.md)
+
+**MO-26-10-19-21.10.52 — Prove live hosted provider admission** is stopped and holding its branch.
+
+**What I need:**
+
+An Anthropic-supported Max subscription credential or quota export that returns fresh shared and matching Opus utilization/reset windows in the hosted runner; the current setup-token receives HTTP 403 requiring user:profile. Preserve fail-closed admission and prohibit auth-store copying or paid fallback.
+
+I stopped rather than guessing — a plausible guess here costs more to find later than this
+question costs to answer.
+
+~
