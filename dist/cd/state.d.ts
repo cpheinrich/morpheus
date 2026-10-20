@@ -3,6 +3,13 @@ export declare const milliseconds: (minutes: number) => number;
 export declare const after: (at: string, minutes: number) => string;
 export declare function invariant(condition: unknown, message: string): asserts condition;
 export declare function newState(config: CdConfig, epoch: string, now: string): CdState;
+export declare function externalReviewKey(appId: string, buildId: string): string;
+/** A committed claim authorizes one call; uncertainty never authorizes another. */
+export declare function claimExternalReview(state: CdState, intentId: string, now: string): {
+    key: string;
+    index: number;
+    claimed: boolean;
+};
 export declare function currentSlot(config: CdConfig, channel: Channel, now: string): string;
 export declare function dueSlots(config: CdConfig, channel: Channel, last: string | undefined, now: string): string[];
 export declare function eligible(source: SourceRevision, config: CdConfig, channel: Channel, cutoff: string): boolean;

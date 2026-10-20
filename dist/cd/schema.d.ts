@@ -38,6 +38,7 @@ export declare const configSchema: z.ZodObject<{
             scheme: z.ZodOptional<z.ZodString>;
             configuration: z.ZodOptional<z.ZodString>;
             validationGroupId: z.ZodOptional<z.ZodString>;
+            externalGroupIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
         }, z.core.$strict>;
         production: z.ZodObject<{
             appId: z.ZodString;
@@ -56,6 +57,7 @@ export declare const configSchema: z.ZodObject<{
             scheme: z.ZodOptional<z.ZodString>;
             configuration: z.ZodOptional<z.ZodString>;
             validationGroupId: z.ZodOptional<z.ZodString>;
+            externalGroupIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
         }, z.core.$strict>;
     }, z.core.$strict>;
     tests: z.ZodDefault<z.ZodObject<{
@@ -216,6 +218,40 @@ export interface Receipt extends Identity {
     observation: InternalObservation;
     deliveredAt: string;
 }
+export interface ExternalObservation {
+    appId: string;
+    version: string;
+    buildNumber: string;
+    buildId: string;
+    processingState: string;
+    betaState: string;
+    detailId: string;
+    autoNotifyEnabled: boolean;
+    groups: InternalObservation["group"][];
+    review?: {
+        id: string;
+        state: string;
+    };
+    observedAt: string;
+}
+export interface ExternalStatus {
+    status: "pending" | "waiting-review" | "blocked" | "uncertain" | "available";
+    nextAction: string;
+    nextCheckAt: string;
+    blocker?: string;
+    observation?: ExternalObservation;
+    terminal?: boolean;
+}
+export interface ExternalReview {
+    appId: string;
+    buildId: string;
+    attempts: {
+        claimedAt: string;
+        outcome: "claimed" | "confirmed" | "conflict" | "rejected";
+        submissionId?: string;
+        completedAt?: string;
+    }[];
+}
 export interface Attempt {
     id: string;
     dispatchEffectId: string;
@@ -294,6 +330,7 @@ export interface DeliveryIntent {
     attempts: Attempt[];
     receipt?: Receipt;
     eligibleAt?: string;
+    external?: ExternalStatus;
 }
 export interface AgentWork {
     id: string;
@@ -375,6 +412,7 @@ export interface CdState {
         order: number;
         receiptId: string;
     }>;
+    externalReviews?: Record<string, ExternalReview>;
     pauses: {
         scope: string;
         actor: string;

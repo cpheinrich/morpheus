@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { type Attempt, type CdConfig, type CdState, configurationDigest, type DeliveryIntent, hash } from "./schema.js";
 import { ActionsAdapter, type WorkflowRun } from "./actions.js";
-import { AppleAdapter } from "./apple.js";
+import { AppleAdapter, AppleRequestError } from "./apple.js";
 import { GitHubStore, pages } from "./store.js";
 import { loadSources, verifyValidator } from "./source.js";
 import { CdWait } from "./errors.js";
-import { adoptSources, after, attemptAt, claimGroup, deliver, evaluateSlots, invariant, planAttempt, recordTests, recordUpload, repairWork, validateObservation } from "./state.js";
+import { adoptSources, after, attemptAt, claimExternalReview, claimGroup, deliver, evaluateSlots, externalReviewKey, invariant, planAttempt, recordTests, recordUpload, repairWork, validateObservation } from "./state.js";
 
 export interface TickResult { mode: "observe" | "active"; stateHead: string; intents: unknown[]; decisions: unknown[]; errors: { intentId: string; message: string }[] }
 export function status(state: CdState, now: string): unknown[] {
-  return Object.values(state.intents).map(intent => ({ id: intent.id, channel: intent.channel, validation: intent.validation, sourceAgeWaiver: intent.sourceAgeWaiver, state: intent.state, originalSource: intent.originalSource, source: intent.source, slot: intent.slot, oldestDebtAt: intent.oldestDebtAt, deadlineAt: intent.deadlineAt, overdue: intent.state !== "delivered" && Date.parse(now) > Date.parse(intent.deadlineAt), nextAction: intent.nextAction, nextCheckAt: intent.nextCheckAt, blocker: intent.blocker, attempts: intent.attempts.map(attempt => ({ id: attempt.id, buildNumber: attempt.buildNumber, lane: attempt.lane, runId: attempt.runId, status: attempt.status, upload: attempt.upload?.outcome })), receipt: intent.receipt }));
+  return Object.values(state.intents).map(intent => ({ id: intent.id, channel: intent.channel, validation: intent.validation, sourceAgeWaiver: intent.sourceAgeWaiver, state: intent.state, originalSource: intent.originalSource, source: intent.source, slot: intent.slot, oldestDebtAt: intent.oldestDebtAt, deadlineAt: intent.deadlineAt, overdue: intent.state !== "delivered" && Date.parse(now) > Date.parse(intent.deadlineAt), nextAction: intent.nextAction, nextCheckAt: intent.nextCheckAt, blocker: intent.blocker, attempts: intent.attempts.map(attempt => ({ id: attempt.id, buildNumber: attempt.buildNumber, lane: attempt.lane, runId: attempt.runId, status: attempt.status, upload: attempt.upload?.outcome })), receipt: intent.receipt, ...(intent.external ? { external: intent.external } : {}) }));
 }
 export class Controller {
   constructor(readonly config: CdConfig, readonly store: GitHubStore, readonly actions: ActionsAdapter, readonly apple: AppleAdapter, readonly sourceDir: string) {}
@@ -24,15 +24,36 @@ export class Controller {
     }
     await this.store.repairBackup();
     const evaluated = await this.store.transact(`tick-${randomUUID()}`, "evaluate-slots", now, pure), errors: TickResult["errors"] = [];
-    for (const intent of Object.values(evaluated.state.intents)) {
+    // Internal obligations run first. Bound optional external work so a backlog
+    // cannot consume this invocation before current deliveries are reconciled.
+    let externalRemaining = 2;
+    const intents = Object.values(evaluated.state.intents).sort((a, b) => Number(a.state === "delivered") - Number(b.state === "delivered") || Date.parse(a.external?.nextCheckAt ?? a.nextCheckAt) - Date.parse(b.external?.nextCheckAt ?? b.nextCheckAt));
+    for (const intent of intents) {
       for (const retired of intent.attempts.filter(attempt => attempt.status === "retired-uncertain")) {
         try {
           const late = await this.apple.observe(retired, intent.groupId, now);
           await this.store.transact(`late-observation-${retired.id}-${Math.floor(Date.parse(now) / 300_000)}`, "monitor-retired-upload", now, state => { const old = attemptAt(state, intent.id, retired.id).attempt; old.uploadObservations ??= []; old.uploadObservations.push({ at: now, uploadState: late.uploadState, buildId: late.observation?.buildId, processingState: late.observation?.processingState, diagnostics: late.diagnostics }); return { attemptId: old.id, lateBuildId: late.observation?.buildId, promoted: false }; });
         } catch (error) { errors.push({ intentId: intent.id, message: `Retired identity observation unavailable: ${String(error)}` }); }
       }
-      if (intent.state === "delivered" || Date.parse(intent.nextCheckAt) > Date.parse(now)) continue;
       if (evaluated.state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope))) continue;
+      if (intent.state === "delivered") {
+        if (externalRemaining > 0 && this.config.channels[intent.channel].externalGroupIds && intent.receipt?.configurationDigest === configurationDigest(this.config) && !intent.isolatedValidation && !intent.external?.terminal && intent.external?.status !== "available" && Date.parse(intent.external?.nextCheckAt ?? now) <= Date.parse(now)) {
+          externalRemaining--;
+          try { await this.reconcileExternal(intent.id, now); }
+          catch (error) {
+            const message = error instanceof Error ? error.message : String(error); errors.push({ intentId: intent.id, message });
+            await this.store.transact(`external-wait-${randomUUID()}`, "external-distribution-wait", now, state => {
+              const current = state.intents[intent.id]!, identity = current.receipt!.observation;
+              if (current.external?.status === "available" || current.external?.terminal) return null;
+              const claim = state.externalReviews?.[externalReviewKey(identity.appId, identity.buildId)]?.attempts.at(-1);
+              const transient = error instanceof CdWait && error.code !== "apple-review-limit";
+              current.external = { ...current.external, status: claim?.outcome === "claimed" ? "uncertain" : transient ? "pending" : "blocked", nextAction: "observe-exact-external-build", nextCheckAt: after(now, claim?.outcome === "claimed" ? 60 : transient ? this.config.deadlines.pollMinutes : 1440), blocker: message }; return { intentId: intent.id, message };
+            });
+          }
+        }
+        continue;
+      }
+      if (Date.parse(intent.nextCheckAt) > Date.parse(now)) continue;
       try { await this.reconcileIntent(intent, now); }
       catch (error) {
         const message = error instanceof Error ? error.message : String(error); errors.push({ intentId: intent.id, message });
@@ -40,6 +61,76 @@ export class Controller {
       }
     }
     const final = await this.store.read(); return { mode: "active", stateHead: final.head, intents: status(final.state, now), decisions: final.state.slots, errors };
+  }
+  private async reconcileExternal(intentId: string, now: string): Promise<void> {
+    const snapshot = await this.store.read(), intent = snapshot.state.intents[intentId]!, receipt = intent.receipt;
+    const groups = this.config.channels[intent.channel].externalGroupIds;
+    invariant(receipt && intent.state === "delivered" && receipt.configurationDigest === configurationDigest(this.config) && !intent.isolatedValidation && groups, "External follow-up requires a delivery qualified under the opted-in configuration");
+    if (snapshot.state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope))) return;
+    const observation = await this.apple.external(receipt, groups, now), key = externalReviewKey(observation.appId, observation.buildId);
+    invariant(observation.appId === receipt.observation.appId && observation.version === receipt.observation.version && observation.buildNumber === receipt.observation.buildNumber && observation.buildId === receipt.observation.buildId, "External provider observation substituted another receipt identity");
+    invariant(observation.groups.length === groups.length && new Set(observation.groups.map(group => group.id)).size === groups.length && observation.groups.every(group => groups.includes(group.id) && group.appId === observation.appId && !group.internal && !group.automaticDistribution && group.testerIds.length > 0), "Configured external group must belong to the exact app, contain testers, and disable automatic all-build distribution");
+    const record = async (status: NonNullable<DeliveryIntent["external"]>["status"], nextAction: string, blocker?: string, terminal = false) => {
+      await this.store.transact(`external-observe-${randomUUID()}`, "exact-external-build-observation", now, state => {
+        const current = state.intents[intentId]!;
+        if (current.external?.status === "available" || current.external?.terminal) return { intentId, status: current.external.status };
+        current.external = { status, nextAction, nextCheckAt: after(now, status === "blocked" ? 1440 : status === "uncertain" ? 60 : this.config.deadlines.pollMinutes), observation, ...(blocker ? { blocker } : {}), ...(terminal ? { terminal: true } : {}) };
+        const operation = state.externalReviews?.[key]?.attempts.at(-1);
+        if (operation?.outcome === "claimed" && (observation.review || status === "available")) { operation.outcome = "confirmed"; operation.completedAt = now; if (observation.review) operation.submissionId = observation.review.id; }
+        return { intentId, buildId: observation.buildId, status, nextAction };
+      });
+    };
+    if (observation.processingState !== "VALID" || ["BETA_REJECTED", "EXPIRED", "PROCESSING_EXCEPTION", "MISSING_EXPORT_COMPLIANCE", "NOT_APPLICABLE"].includes(observation.betaState) || observation.review?.state === "REJECTED") {
+      await record("blocked", "diagnose-external-build", `Exact external build state ${observation.processingState}/${observation.betaState}, review ${observation.review?.state ?? "absent"}`, observation.betaState === "EXPIRED"); return;
+    }
+    if (!["READY_FOR_BETA_SUBMISSION", "READY_FOR_BETA_TESTING", "IN_BETA_TESTING", "BETA_APPROVED", "WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW"].includes(observation.betaState)) {
+      await record("blocked", "observe-exact-external-build", `External state ${observation.betaState} does not authorize distribution or review`); return;
+    }
+    const missing = observation.groups.find(group => !group.buildIds.includes(observation.buildId));
+    if (!missing && observation.betaState === "IN_BETA_TESTING") { await record("available", "complete"); return; }
+    await record("pending", "reconcile-external-distribution");
+    const mutationAllowed = (state: CdState) => {
+      const current = state.intents[intentId]!;
+      invariant(current.receipt?.observation.buildId === observation.buildId && !current.isolatedValidation, "External mutation must retain its exact delivered identity");
+      return !current.external?.terminal && current.external?.status !== "available" && !state.pauses.some(pause => ["all", current.channel, current.id].includes(pause.scope));
+    };
+    if (!observation.autoNotifyEnabled || missing) {
+      // These are idempotent settings/set membership. Every invocation first reads
+      // provider state, then claims a bounded call; a lost reply cannot reupload.
+      const effect = !observation.autoNotifyEnabled ? { action: "notify", id: observation.detailId } : { action: "group", id: missing!.id };
+      const claim = await this.store.transact(`external-setting-${hash({ key, effect, poll: Math.floor(Date.parse(now) / (this.config.deadlines.pollMinutes * 60_000)) })}`, "claim-external-setting", now, mutationAllowed);
+      if (claim.replayed || !claim.result) return;
+      if (effect.action === "notify") await this.apple.notifyExternal(effect.id);
+      else await this.apple.assign(observation.buildId, effect.id);
+      return;
+    }
+    if (observation.review && ["WAITING_FOR_REVIEW", "IN_REVIEW"].includes(observation.review.state) || ["WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW"].includes(observation.betaState)) {
+      await record("waiting-review", "observe-exact-external-review"); return;
+    }
+    if (observation.betaState !== "READY_FOR_BETA_SUBMISSION" || observation.review) {
+      await record("pending", "observe-exact-external-build", `Awaiting exact-build external availability: ${observation.betaState}, review ${observation.review?.state ?? "absent"}`); return;
+    }
+    const claim = await this.store.transact(`external-review-${randomUUID()}`, "claim-external-review", now, state => claimExternalReview(state, intentId, now));
+    if (claim.replayed || !claim.result.claimed) {
+      const operation = claim.state.externalReviews![key]!.attempts.at(-1)!;
+      await record(operation.outcome === "claimed" ? "uncertain" : operation.outcome === "rejected" ? "blocked" : "waiting-review", "observe-exact-external-review", operation.outcome === "claimed" ? "A prior submission may have started; exact-build readback is required, never blind resubmission" : operation.outcome === "rejected" ? "Apple rejected the submission; repair metadata/authority and explicitly resolve it without replaying an unchanged request" : "Awaiting exact submission visibility or bounded conflict retry"); return;
+    }
+    const finish = async (outcome: "confirmed" | "conflict" | "rejected", submissionId?: string) => {
+      await this.store.transact(`external-review-result-${key}-${claim.result.index}`, "external-review-result", now, state => {
+        const operation = state.externalReviews![key]!.attempts[claim.result.index]!;
+        operation.outcome = outcome; operation.completedAt = now; if (submissionId) operation.submissionId = submissionId;
+        return { key, outcome, submissionId };
+      });
+    };
+    try { await finish("confirmed", await this.apple.submitReview(observation.buildId)); }
+    catch (error) {
+      if (error instanceof AppleRequestError && error.status >= 400 && error.status < 500 && error.status !== 409) { await finish("rejected"); throw error; }
+      if (!(error instanceof AppleRequestError && error.status === 409)) throw error;
+      // An explicit conflict rejected this request. Wait at least an hour and
+      // re-read this exact build before another claim, including sibling review.
+      await finish("conflict");
+    }
+    await record("waiting-review", "observe-exact-external-review");
   }
   private async reconcileIntent(intent: DeliveryIntent, now: string): Promise<void> {
     const latest = await this.store.read(), current = latest.state.intents[intent.id]!;

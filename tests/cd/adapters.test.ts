@@ -5,13 +5,15 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { generateKeyPair, exportPKCS8, jwtVerify } from "jose";
-import { AppleAdapter, AppleHttp, applePages, type AppleApi } from "../../src/cd/apple.js";
+import { AppleAdapter, AppleHttp, AppleRequestError, applePages, type AppleApi } from "../../src/cd/apple.js";
 import { ActionsAdapter, matchesEffect, uploadEvidence } from "../../src/cd/actions.js";
 import { git, inputDigest, loadSources, verifySource } from "../../src/cd/source.js";
 import { validatePayloadFiles } from "../../src/cd/evidence.js";
 import { hash } from "../../src/cd/schema.js";
 import { type GitHubApi } from "../../src/cd/store.js";
 import { config, now, prepared } from "./fixtures.js";
+import { claimUpload, deliver, recordUpload } from "../../src/cd/state.js";
+import { observation } from "./fixtures.js";
 import { FakeGitHub } from "./fake-github.js";
 
 const directories: string[] = [];
@@ -48,6 +50,48 @@ describe("Apple transport and exact identity readback", () => {
   it("refuses cyclic provider pagination and treats unknown upload state as uncertainty", async () => {
     await expect(applePages(apple(() => ({ data: [], links: { next: "/same" } })), "/same")).rejects.toThrow("cyclic");
     expect(uploadEvidence({ state: "FUTURE_STATE", runId: "1", runAttempt: "1", buildNumber: "8", uploadId: "resource" })).toMatchObject({ outcome: "uncertain", providerUploadId: "resource" });
+  });
+  it("reads external state and review through the immutable exact-build routes", async () => {
+    const fixture = prepared(), cfg = config(); claimUpload(fixture.state, cfg, fixture.upload, now); recordUpload(fixture.state, { ...fixture.upload, outcome: "accepted" }, now); fixture.state.intents[fixture.intentId]!.attempts[0]!.artifactsVerifiedAt = now;
+    const receipt = deliver(fixture.state, fixture.intentId, fixture.attemptId, observation(), now), calls: { method: string; path: string; body?: unknown }[] = [];
+    const adapter = new AppleAdapter(apple((method, path, body) => {
+      calls.push({ method, path, body });
+      if (method === "POST" && path === "/v1/betaAppReviewSubmissions") return { data: { id: "review", type: "betaAppReviewSubmissions" } };
+      if (method === "PATCH" || method === "POST") return undefined;
+      if (path === "/v1/builds/apple-build/betaAppReviewSubmission") return { data: { id: "review", type: "betaAppReviewSubmissions", attributes: { betaReviewState: "APPROVED" } } };
+      if (path.startsWith("/v1/builds/apple-build?")) return { data: { id: "apple-build", type: "builds", attributes: { version: "8", processingState: "VALID" }, relationships: { app: { data: { id: "123", type: "apps" } }, preReleaseVersion: { data: { id: "version", type: "preReleaseVersions" } }, buildBetaDetail: { data: { id: "detail", type: "buildBetaDetails" } } } }, included: [{ id: "123", type: "apps" }, { id: "version", type: "preReleaseVersions", attributes: { version: "1.0" } }, { id: "detail", type: "buildBetaDetails", attributes: { externalBuildState: "IN_BETA_TESTING", autoNotifyEnabled: true } }] };
+      if (path.includes("relationships/betaTesters")) return { data: [{ id: "tester" }] };
+      if (path.includes("relationships/builds")) return { data: [{ id: "apple-build" }, { id: "newer-build" }] };
+      return { data: { id: "external", attributes: { isInternalGroup: false, hasAccessToAllBuilds: false }, relationships: { app: { data: { id: "123", type: "apps" } } } } };
+    }));
+    expect(await adapter.external(receipt, ["external"], now)).toMatchObject({ appId: "123", buildId: "apple-build", betaState: "IN_BETA_TESTING", autoNotifyEnabled: true, review: { id: "review", state: "APPROVED" }, groups: [{ id: "external", internal: false, buildIds: ["apple-build", "newer-build"], testerIds: ["tester"] }] });
+    await adapter.notifyExternal("detail"); await adapter.assign("apple-build", "external"); expect(await adapter.submitReview("apple-build")).toBe("review");
+    expect(calls.filter(call => call.method !== "GET")).toEqual([
+      { method: "PATCH", path: "/v1/buildBetaDetails/detail", body: { data: { type: "buildBetaDetails", id: "detail", attributes: { autoNotifyEnabled: true } } } },
+      { method: "POST", path: "/v1/betaGroups/external/relationships/builds", body: { data: [{ type: "builds", id: "apple-build" }] } },
+      { method: "POST", path: "/v1/betaAppReviewSubmissions", body: { data: { type: "betaAppReviewSubmissions", relationships: { build: { data: { type: "builds", id: "apple-build" } } } } } },
+    ]);
+  });
+  it("treats only an exact review 404 as absence and refuses unknown external group type", async () => {
+    const receipt = { observation: observation() } as Parameters<AppleAdapter["external"]>[0];
+    const build = { data: { id: "apple-build", attributes: { version: "8" }, relationships: { app: { data: { id: "123", type: "apps" } }, preReleaseVersion: { data: { id: "version", type: "preReleaseVersions" } }, buildBetaDetail: { data: { id: "detail", type: "buildBetaDetails" } } } }, included: [{ id: "123", type: "apps" }, { id: "version", type: "preReleaseVersions", attributes: { version: "1.0" } }, { id: "detail", type: "buildBetaDetails" }] };
+    let failure = 404;
+    const adapter = new AppleAdapter(apple((_method, path) => { if (path.includes("betaAppReviewSubmission")) throw new AppleRequestError(failure, "unavailable"); return build; }));
+    expect((await adapter.external(receipt, [], now)).review).toBeUndefined(); failure = 403; await expect(adapter.external(receipt, [], now)).rejects.toThrow("unavailable");
+    await expect(new AppleAdapter(apple(() => ({ data: { id: "external", attributes: {} } }))).group("external")).rejects.toThrow("identity/type");
+  });
+  it.each([
+    { internal: false, value: null, expected: false },
+    { internal: false, value: undefined, expected: false },
+    { internal: false, value: false, expected: false },
+    { internal: false, value: true, expected: true },
+    { internal: true, value: null, expected: true },
+    { internal: true, value: undefined, expected: true },
+    { internal: true, value: false, expected: false },
+    { internal: true, value: true, expected: true },
+  ])("interprets optional all-build access for internal=$internal value=$value", async ({ internal, value, expected }) => {
+    const adapter = new AppleAdapter(apple((_method, path) => path.includes("relationships/") ? { data: [] } : { data: { id: "group", attributes: { isInternalGroup: internal, ...(value === undefined ? {} : { hasAccessToAllBuilds: value }) }, relationships: { app: { data: { id: "123", type: "apps" } } } } }));
+    expect(await adapter.group("group")).toEqual({ id: "group", appId: "123", internal, automaticDistribution: expected, buildIds: [], testerIds: [] });
   });
 });
 

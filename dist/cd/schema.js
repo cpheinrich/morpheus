@@ -16,6 +16,7 @@ const channel = z.object({
     appEnvironment: z.string().optional(), schedule, minimumAgeHours: z.number().min(0).default(0),
     scheme: z.string().optional(), configuration: z.string().optional(),
     validationGroupId: z.string().optional(),
+    externalGroupIds: z.array(z.string().min(1)).min(1).optional(),
 }).strict();
 const relativeScript = z.string().refine(value => !value.startsWith("/") && !value.split("/").includes(".."), "must be repository relative");
 export const configSchema = z.object({
@@ -40,6 +41,11 @@ export const configSchema = z.object({
         context.addIssue({ code: "custom", path: ["channels", "staging"], message: "staging uses six-hour UTC slots" });
     if (config.channels.production.schedule.kind !== "daily" || config.channels.production.minimumAgeHours < 24)
         context.addIssue({ code: "custom", path: ["channels", "production"], message: "production requires daily UTC slots and at least 24 hours on main" });
+    for (const name of ["staging", "production"]) {
+        const app = config.channels[name], groups = app.externalGroupIds;
+        if (groups && (new Set(groups).size !== groups.length || groups.includes(app.internalGroupId) || groups.includes(app.validationGroupId ?? "")))
+            context.addIssue({ code: "custom", path: ["channels", name, "externalGroupIds"], message: "external groups must be unique and separate from internal/validation groups" });
+    }
 });
 export function canonical(value) {
     if (Array.isArray(value))
