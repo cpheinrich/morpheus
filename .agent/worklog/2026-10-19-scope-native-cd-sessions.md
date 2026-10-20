@@ -115,3 +115,57 @@ failures, not deadline failures, establish the mutant kill. The source was
 restored byte-for-byte in finally and compiled again after restoration so no
 mutated generated output is retained. The broader focused rerun follows a real
 source correction, not an unchanged retry.
+
+
+## Independent review
+
+The collaboration runner refused a fresh reviewer because its thread limit was
+reached; no review was launched or credited by that attempt. The explicitly
+authorized direct subscription Opus fallback used a fresh read-only reviewer
+session in this exact task checkout, with existing Max auth, no API/paid fallback,
+no subagents and actual bounded invocation timing. The bridge was inspected and
+had no active Claude writer; no binding, model default or billing setting changed.
+Initial review took runner186672ms and independently passed42 focused tests. Its
+clean result is preserved. The first same-session focused response took
+runner69222ms and independently passed51 focused tests. Both were within their
+high-risk ceilings; no finalization turn was used. Informational notes about the
+operator-pinned host ID and a pre-existing manually colliding hosted invocation ID
+were explicitly not findings; the latter was relayed to root for judgment.
+
+Independent high-risk review cleared host-scoped native recovery, optional hosted scheduling and ownership fencing with no findings; the same reviewer cleared the late actual-provider ordinary-subscription eligibility guard with no findings and passed 51 focused tests. Author validation passed 165 CD tests; live two-host readiness and failover remain separate operator acceptance.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "cc0e0e77516674c511daa7c6cdb72b0a6ce8ec8a",
+  "reviewed": "f192a854674de76e8514e01ae6ca3812129d84e8",
+  "covered": "d50617de5f4a67c83c5b7537aaf1f2f7ef3b9e93",
+  "authorSession": "01a15730-1bdc-7aa1-889a-f3bfbd5e977a",
+  "reviewerSession": "3747c78c-5960-4f03-b3b1-4050e4020d7a",
+  "risk": "high",
+  "elapsedMinutes": 3.1112,
+  "timing": {
+    "source": "runner",
+    "durationMs": 186672,
+    "evidence": "Claude Opus Max runner result session3747c78c-5960-4f03-b3b1-4050e4020d7a initial invocation2026-10-20T06:56:53.802633Z: duration_ms=186672; /tmp/morpheus-native-workers-opus-review-result.json. Process interval06:56:53.802633\u201307:00:04.184316Z is preserved separately and is not substituted for runner duration."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review cleared host-scoped native recovery, optional hosted scheduling and ownership fencing with no findings; the same reviewer cleared the late actual-provider ordinary-subscription eligibility guard with no findings and passed 51 focused tests. Author validation passed 165 CD tests; live two-host readiness and failover remain separate operator acceptance.",
+  "findings": [],
+  "followUps": [
+    {
+      "reviewerSession": "3747c78c-5960-4f03-b3b1-4050e4020d7a",
+      "commit": "d50617de5f4a67c83c5b7537aaf1f2f7ef3b9e93",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.1537,
+      "timing": {
+        "source": "runner",
+        "durationMs": 69222,
+        "evidence": "Same Claude Opus Max session first follow-up invocation2026-10-20T07:08:10.031523Z, runner duration_ms=69222; /tmp/morpheus-native-workers-opus-followup-result.json. Actual process ended07:09:22.839492Z; no author time is counted."
+      },
+      "scopeReason": "Late actual-provider probe correction within original no-paid-fallback acceptance: account/rateLimits/read can expose available prepaid credits alongside low windows; explicitly require ordinaryUsageAllowed===true at native admission and every meter read, with synthetic parser/process tests and matching docs/generated output. The initial clean result remains unchanged.",
+      "summary": "Cleared the exact corrected candidate with no findings. Independently passed 51 native/worker tests; verified false, absent and invalid allowance refuses admission and false/absent renewal stops the owned synthetic process. Hosted/config identity unchanged; explicit operator telemetry-file attestations remain unchanged."
+    }
+  ]
+}
+```
