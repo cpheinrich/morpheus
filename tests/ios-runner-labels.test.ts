@@ -89,6 +89,7 @@ describe("opt-in iOS runner label conjunction", () => {
   it.each([
     "", " ", "{", '["macos-vm",]', '"macos-vm"', "{}", "null", "true", "1", "[]",
     '[""]', '[" "]', '[" macos-vm"]', '["macos-vm "]', '["line\\nbreak"]', '["tab\\tlabel"]', '["nul\\u0000"]',
+    '["label\\u0080suffix"]', '["label\\u0085suffix"]', '["label\\u009bsuffix"]', '["label\\u009fsuffix"]',
     '[null]', '[false]', '[1]', '[["macos-vm"]]', '[{}]', '["macos-vm",null]',
     '["macos-vm","macos-vm"]', '["macos-vm","MACOS-VM"]',
   ])("refuses %s without emitting a usable selector", async input => {
