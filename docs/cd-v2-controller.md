@@ -273,6 +273,29 @@ an arbitrary command-execution surface.
 `cd quota --executor local|hosted` makes a no-model telemetry probe. Codex uses
 `account/rateLimits/read`. A configured `MORPHEUS_CD_QUOTA_FILE` or executor
 `quotaFile` supplies actual `{observedAt, source, windows:[{id,usedPercent,resetsAt}]}`.
+The native account reader gives the configured shim up to 60 seconds total,
+including initialization and its config checks; the final rate-limit RPC gets
+at most 10 seconds within that remaining total. Stderr is drained without
+retaining provider text. Failures report only a fixed phase and elapsed time.
+Every call still reads fresh telemetry and requires explicit ordinary allowance;
+there is no retry, cached-value or file fallback. Snapshot age and window expiry
+are checked at actual completion, after cleanup, against the existing five-minute
+freshness limit. The 30-second worker meter skips overlapping reads; missing
+telemetry checkpoints the owned invocation immediately at the read bound.
+
+Only the no-model reader uses `quota-reader.py`. It creates a private foreground
+session with a live group leader retained unreaped through the final group
+signal, so an exited shim cannot release that PGID for reuse. Reader cleanup has
+a separate two-second bound and a three-second parent fuse. Failure does not
+wait for this cleanup before checkpointing; success is withheld until the
+supervisor confirms termination and exits successfully. Unknown group identity,
+cleanup timeout or missing confirmation never grants quota. No process-name
+census or model-guardian change is involved. The trusted configured command and
+its children must stay in this foreground session; detached children are outside
+this bounded contract and require diagnosis, not broad signalling. Adopting the
+source in a pinned native worker runtime is a separate reviewed quiet-host
+operation; source tests do not establish actual host quiescence or quota readiness.
+
 Hosted Claude can read its authorized OAuth usage endpoint with five-minute cache
 and 429 backoff. Failed reads report the HTTP status, an allowlisted provider error
 category and a fixed hint when the response names the `user:profile` scope. They

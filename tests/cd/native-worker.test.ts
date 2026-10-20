@@ -36,7 +36,12 @@ if (args[0] === 'app-server') {
   for await (const line of createInterface({ input: process.stdin })) {
     const message = JSON.parse(line);
     if (message.method === 'initialize') console.log(JSON.stringify({ id: message.id, result: {} }));
-    if (message.method === 'account/rateLimits/read') console.log(JSON.stringify({ id: message.id, result: JSON.parse(await readFile(calls + '.native-quota', 'utf8')) }));
+    if (message.method === 'account/rateLimits/read') {
+      await appendFile(calls + '.quota-count', 'read\\n');
+      const delay = Number(await readFile(calls + '.quota-delay', 'utf8').catch(() => '0'));
+      await new Promise(resolve => setTimeout(resolve, delay));
+      console.log(JSON.stringify({ id: message.id, result: JSON.parse(await readFile(calls + '.native-quota', 'utf8')) }));
+    }
   }
   process.exit(0);
 }
@@ -183,6 +188,27 @@ const ordinaryQuota = (at: string, ordinaryUsageAllowed: unknown = true) => ({
 });
 
 describe("native ordinary subscription eligibility", () => {
+  it("does not overlap slow meter reads and still checkpoints on fresh unknown eligibility", async () => {
+    const f = await nativeFixture(); delete f.cfg.agents!.local.quotaFile;
+    await writeFile(f.nativeQuotaPath, JSON.stringify(ordinaryQuota(new Date().toISOString())));
+    await writeFile(f.callsPath + ".hold", "hold");
+    let meter: (() => void) | undefined; const original = globalThis.setInterval;
+    vi.spyOn(globalThis, "setInterval").mockImplementation((callback, delay, ...args) => {
+      if (delay === 30_000) meter = () => callback(...args);
+      return original(callback, 60_000, ...args);
+    });
+    const running = runWorker(f.cfg, f.store, f.directory, { executor: "local", hostId: "mac-a" });
+    await vi.waitFor(async () => { expect(await f.calls()).toHaveLength(1); expect(meter).toBeTypeOf("function"); });
+    await writeFile(f.callsPath + ".quota-delay", "250");
+    await writeFile(f.nativeQuotaPath, JSON.stringify(ordinaryQuota(new Date().toISOString(), false)));
+    meter!(); meter!();
+    expect(await running).toMatchObject({ outcome: "checkpoint" });
+    expect((await readFile(f.callsPath + ".quota-count", "utf8")).trim().split("\n")).toEqual(["read", "read"]);
+    const work = (await f.store.read()).state.agents[f.workId]!;
+    expect(work.invocations).toHaveLength(1); expect(work.lease).toBeUndefined();
+    expect(work.invocations[0]!.result!.summary).toContain("ordinary subscription usage is unavailable or unknown");
+  });
+
   it.each([false, undefined, null, "true"])("refuses non-true ordinary allowance %s despite zero usage and prepaid credits", async value => {
     const f = await nativeFixture(), at = new Date().toISOString();
     await writeFile(f.nativeQuotaPath, JSON.stringify({ ...ordinaryQuota(at), ordinaryUsageAllowed: value }));

@@ -11,6 +11,7 @@ import { after, adoptRepair, completeOperationalRepair, invariant, quotaUsed, re
 import { GitHubStore, pages } from "./store.js";
 import { ActionsAdapter } from "./actions.js";
 import { git, loadSources } from "./source.js";
+import { nativeQuota } from "./quota-reader.js";
 
 const exec = promisify(execFile);
 function paused(state: CdState, intentId: string): boolean { return state.pauses.some(pause => ["all", intentId, state.intents[intentId]!.channel].includes(pause.scope)); }
@@ -30,34 +31,7 @@ export function normalizeClaudeQuota(value: unknown, now: string, model?: string
 }
 /** No model request: read the same actual account limits exposed by the runtime. */
 export async function codexQuota(command: string[], cwd: string, now: string): Promise<QuotaSnapshot> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command[0]!, [...command.slice(1), "app-server"], { cwd, stdio: ["pipe", "pipe", "pipe"] });
-    let buffer = "", settled = false;
-    const finish = (error?: Error, value?: QuotaSnapshot) => { if (settled) return; settled = true; clearTimeout(timer); child.kill("SIGTERM"); if (error) reject(error); else resolve(value!); };
-    const timer = setTimeout(() => finish(new Error("Codex account quota read timed out")), 10_000);
-    child.on("error", error => finish(error)); child.stdin.on("error", error => finish(error));
-    child.stdout.on("data", bytes => {
-      buffer += String(bytes);
-      while (buffer.includes("\n")) {
-        const end = buffer.indexOf("\n"), line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
-        let message: { id?: number; error?: { message: string }; result?: unknown }; try { message = JSON.parse(line); } catch { continue; }
-        if (message.error) { finish(new Error(message.error.message)); return; }
-        if (message.id === 1) { child.stdin.write(JSON.stringify({ method: "initialized", params: {} }) + "\n"); child.stdin.write(JSON.stringify({ id: 2, method: "account/rateLimits/read", params: {} }) + "\n"); }
-        if (message.id === 2) {
-          const value = message.result as { ordinaryUsageAllowed?: unknown; rateLimitsByLimitId?: { codex?: { primary?: Record<string, number>; secondary?: Record<string, number> } }; rateLimits?: { primary?: Record<string, number>; secondary?: Record<string, number> } };
-          // Low usage windows can coexist with prepaid credit availability. Only
-          // explicit ordinary subscription eligibility permits admission or renewal.
-          if (value?.ordinaryUsageAllowed !== true) { finish(new Error("Codex ordinary subscription usage is unavailable or unknown; retain budget wait")); return; }
-          const bucket = value.rateLimitsByLimitId?.codex ?? value.rateLimits;
-          const windows = (["primary", "secondary"] as const).flatMap(id => bucket?.[id] ? [{ id, usedPercent: bucket[id]!.usedPercent!, resetsAt: new Date(bucket[id]!.resetsAt! * 1000).toISOString() }] : []);
-          const snapshot = { observedAt: now, source: "Codex account/rateLimits/read", windows };
-          if (quotaUsed(snapshot, now) === undefined) finish(new Error("Codex returned unknown/expired quota telemetry")); else finish(undefined, snapshot);
-        }
-      }
-    });
-    child.on("close", () => { if (!settled) finish(new Error("Codex account quota reader exited without telemetry")); });
-    child.stdin.write(JSON.stringify({ id: 1, method: "initialize", params: { clientInfo: { name: "morpheus-cd", version: "1" }, capabilities: { experimentalApi: true } } }) + "\n");
-  });
+  return nativeQuota(command, cwd, now);
 }
 export class QuotaReader {
   private cached?: QuotaSnapshot;
