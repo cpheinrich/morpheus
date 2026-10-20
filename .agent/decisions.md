@@ -891,6 +891,14 @@ time; `morpheus init` adds the default block without replacing authored review s
 repository may disable the gate only with a substantive reason, so an opt-out is durable and
 reviewable rather than an environment toggle.
 
+**Google Storage evidence retains the required email account selector** — 2026-10-19.
+The Google-link policy and visual evidence policy apply together: an already approved
+`storage.googleapis.com` media path may carry exactly one `authuser=<email>`.
+The selector does not sign or expire the public object. Keep origin/path checks and reject
+numeric indexes, duplicate selectors, other queries, credentials and fragments. Other providers
+retain query-free evidence URLs. Reuse native URL parsing and the existing Zod email validator;
+this is a small provider-specific policy correction, with no new generic module or dependency.
+
 **A first research-library publish commits its catalog pointer last** — 2026-09-02. Babel remains
 the independent acquisition and canonical-conversion package. Morpheus reads one completed local
 directory, deterministically derives the ZIP and embedded HTML identities, creates missing remote
