@@ -372,3 +372,12 @@ percent signs in the GitHub masking command, and write the exact token only to
 `GITHUB_OUTPUT`; summaries/errors never include its value. Capability proof still
 requires the real scoped workflow-write/readback/cleanup probe, followed by
 revocation. Parser tests do not establish actual authority or model capacity.
+
+### Internal beta readiness
+
+Apple `VALID` processing alone does not make a build assignable to a beta group.
+The controller waits for `READY_FOR_BETA_TESTING` or `IN_BETA_TESTING` before
+claiming internal group promotion. Missing or other beta states retain the accepted
+upload and use the existing bounded processing diagnosis. Successful assignment
+still requires exact group membership readback and unchanged receipt validation;
+a readiness delay never authorizes another upload.

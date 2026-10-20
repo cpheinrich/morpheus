@@ -278,6 +278,11 @@ export class Controller {
       const recorded = await this.store.transact(`provider-visible-${attempt.id}-${hash(observation).slice(0, 20)}`, "exact-build-observation", now, next => { const current = attemptAt(next, intentId, attempt.id); current.attempt.observation = observation; current.attempt.upload!.acceptedAt ??= now; current.attempt.upload!.outcome = "accepted"; if (current.attempt.status !== "active" || current.intent.attempts.at(-1)?.id !== attempt.id || current.intent.state === "delivered") return { late: true, buildId: observation.buildId }; current.intent.state = "processing"; current.intent.nextAction = "verify-internal-distribution"; current.intent.nextCheckAt = after(now, this.config.deadlines.pollMinutes); return { late: false, buildId: observation.buildId, processingState: observation.processingState }; });
       if (recorded.result.late) return;
       if (observation.processingState !== "VALID") { await this.processingDiagnosis(intentId, attempt, now, "Apple processing has not reached VALID"); return; }
+      // Processing can be VALID before TestFlight exposes an assignable beta build.
+      // Keep the accepted upload and observe readiness; never replace its bytes.
+      if (!["READY_FOR_BETA_TESTING", "IN_BETA_TESTING"].includes(observation.betaState)) {
+        await this.processingDiagnosis(intentId, attempt, now, "Apple internal beta readiness has not reached READY_FOR_BETA_TESTING or IN_BETA_TESTING"); return;
+      }
       invariant(observation.group.internal && observation.group.appId === attempt.appId && !observation.group.automaticDistribution, "Configured internal group must disable automatic all-build distribution");
       if (!observation.group.buildIds.includes(observation.buildId)) {
         const groupClaim = await this.store.transact(`group-${attempt.id}-${randomUUID()}`, "claim-internal-group-promotion", now, next => { claimGroup(next, intentId, attempt.id, now); return { buildId: observation.buildId, groupId: intent.groupId }; });

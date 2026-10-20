@@ -377,6 +377,12 @@ export class Controller {
                 await this.processingDiagnosis(intentId, attempt, now, "Apple processing has not reached VALID");
                 return;
             }
+            // Processing can be VALID before TestFlight exposes an assignable beta build.
+            // Keep the accepted upload and observe readiness; never replace its bytes.
+            if (!["READY_FOR_BETA_TESTING", "IN_BETA_TESTING"].includes(observation.betaState)) {
+                await this.processingDiagnosis(intentId, attempt, now, "Apple internal beta readiness has not reached READY_FOR_BETA_TESTING or IN_BETA_TESTING");
+                return;
+            }
             invariant(observation.group.internal && observation.group.appId === attempt.appId && !observation.group.automaticDistribution, "Configured internal group must disable automatic all-build distribution");
             if (!observation.group.buildIds.includes(observation.buildId)) {
                 const groupClaim = await this.store.transact(`group-${attempt.id}-${randomUUID()}`, "claim-internal-group-promotion", now, next => { claimGroup(next, intentId, attempt.id, now); return { buildId: observation.buildId, groupId: intent.groupId }; });
