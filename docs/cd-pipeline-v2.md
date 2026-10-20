@@ -100,6 +100,27 @@ itself is unavailable, preserve intent and reconcile on restoration; do not
 invent a successful deployment. Local and off-host execution must use the same
 identities, receipt validation and global build reservations.
 
+Admission uses the complete job census for the exact workflow run attempt, not
+the overall run status: a Linux preflight can make a workflow `in_progress`
+while its native tests are still queued. Recognized queued, unassigned native
+work uses `admissionMinutes` (default 15); assigned, started or unknown work keeps
+`testMinutes` (default 180). Both retain the existing strict elapsed-time boundary
+from attempt creation, so equality does not cancel and the next wake after it can.
+Local native jobs carry the configured local label or `self-hosted`; hosted
+native jobs carry a `macos-` label. Only hosted `ubuntu-` labelled companion jobs
+or explicitly skipped, unassigned downstream jobs qualify as non-native evidence;
+there is no consumer-specific job-name assumption. Automatic local-to-hosted
+fallback requires a terminal run, at least one recognized cancelled native job,
+every native job explicitly unassigned and never started, and successful hosted
+Linux companion work (or skipped/unassigned downstream work). Missing fields,
+steps that ran, partial/failed pagination, empty or preflight-only results cannot
+establish no-start quiescence. A preflight failure instead retains ownership and
+creates durable repair work; verified owned process/VM termination and the
+existing operational-repair transition can release it for a normal retry.
+The hosted successor keeps the same intent, source, slot and oldest debt, while
+the old build stays burned and a new monotonic number is reserved. An upload
+claim that wins before failure classification retains ownership.
+
 The primary agent executor uses the existing local subscription runtime.
 An off-host adapter can use an existing authorized subscription/API runtime and
 GitHub App credentials when the Mac is absent. Credential-name inventory and
@@ -403,4 +424,3 @@ active, and write the reusable Agentic CTO skill in Morpheus. Its contract takes
 a brief specification, concrete success criteria and budget; it requires
 requirements-first design, independent review, empirical prototypes, delegated
 implementation, outcome-based validation, durable ownership and honest closure.
-

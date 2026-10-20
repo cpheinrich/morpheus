@@ -23,6 +23,7 @@ export declare class Controller {
     tick(now: string, observe?: boolean): Promise<TickResult>;
     private reconcileExternal;
     private reconcileIntent;
+    private jobs;
     private dispatch;
     private failedRun;
     private reconcileUpload;
