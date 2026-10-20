@@ -22,31 +22,35 @@ checkfile() { if grep -qFs -- "$2" "$3" 2>/dev/null; then bad "$1"; else ok "$1"
 RT="$T/Morpheus runtime"; SRC="$T/Consumer source"; CREDS="$T/My creds"
 CAP="$T/capture"; mkdir -p "$CAP" "$RT/dist/cli" "$SRC/.morpheus" "$CREDS" "$T/logs"
 CFG="$SRC/.morpheus/cd.json"
+TOOLS="$T/Reviewed tools"; mkdir -p "$TOOLS"
+NODE_DIR="$(dirname "$(node -p 'process.execPath')")"
+EXEC_PATH="$TOOLS:$NODE_DIR:/usr/bin:/bin:/usr/sbin:/sbin"
+cat > "$TOOLS/gh" <<'EOF'
+#!/bin/bash
+printf 'synthetic-gh\n'
+EOF
+chmod +x "$TOOLS/gh"
 printf '{"mode":"observe","synthetic":true}\n' > "$CFG"
 printf 'source file\n' > "$SRC/app.txt"
 
 # Fake controller CLI AT THE REAL PATH dist/cli/index.js. Records exact argv,
 # refuses anything lacking an explicit --source-dir/--config, never prints the secret.
-cat > "$RT/dist/cli/index.js" <<EOF
-#!/bin/bash
-out="\${CD_V2_TEST_CAPTURE_DIR:?capture dir missing}"
-: > "\$out/argv.txt"; : > "\$out/env.txt"
-printf '%s\n' "\$@" > "\$out/argv.txt"
-[ "\${1:-}" = "cd" ] || { printf 'cli: expected cd subcommand, got [%s]\n' "\${1:-}" >&2; exit 96; }
-cmd="\${2:-}"
-[ "\$cmd" = "tick" ] || [ "\$cmd" = "worker" ] || { printf 'cli: unknown command [%s]\n' "\$cmd" >&2; exit 96; }
-sd=""; cfg=""; prev=""
-for a in "\$@"; do
-  [ "\$prev" = "--source-dir" ] && sd="\$a"
-  [ "\$prev" = "--config" ] && cfg="\$a"; prev="\$a"
-done
-[ -n "\$sd" ] && [ -n "\$cfg" ] || { printf 'cli: REFUSING %s without explicit --source-dir and --config\n' "\$cmd" >&2; exit 97; }
-[ -d "\$sd" ] || { printf 'cli: source dir not a directory: [%s]\n' "\$sd" >&2; exit 95; }
-[ -f "\$cfg" ] || { printf 'cli: config not a file: [%s]\n' "\$cfg" >&2; exit 95; }
-if [ -n "\${CD_V2_TEST_SECRET:-}" ]; then printf 'secret=present\n' > "\$out/env.txt"
-else printf 'secret=absent\n' > "\$out/env.txt"; fi
-printf '{"ok":true,"command":"%s"}\n' "\$cmd"
-exit 0
+cat > "$RT/dist/cli/index.js" <<'EOF'
+#!/usr/bin/env node
+const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
+const out = process.env.CD_V2_TEST_CAPTURE_DIR;
+const args = process.argv.slice(2), cmd = args[1];
+const fail = (message, code) => { console.error(message); process.exit(code); };
+fs.writeFileSync(`${out}/argv.txt`, `${args.join("\n")}\n`);
+if (args[0] !== "cd" || !["tick", "worker"].includes(cmd)) fail("cli: expected cd tick|worker", 96);
+const value = name => args.includes(name) ? args[args.indexOf(name) + 1] : "";
+const sd = value("--source-dir"), cfg = value("--config");
+if (!sd || !cfg) fail("cli: REFUSING without explicit --source-dir and --config", 97);
+if (!fs.statSync(sd).isDirectory() || !fs.statSync(cfg).isFile()) fail("cli: invalid source/config", 95);
+fs.writeFileSync(`${out}/env.txt`, process.env.CD_V2_TEST_SECRET ? "secret=present\n" : "secret=absent\n");
+fs.writeFileSync(`${out}/gh.txt`, execFileSync("gh", ["--version"], { encoding: "utf8" }));
+console.log(JSON.stringify({ ok: true, command: cmd }));
 EOF
 chmod +x "$RT/dist/cli/index.js"
 
@@ -55,6 +59,7 @@ cat > "$CREDS/credential exec wrapper.sh" <<EOF
 #!/bin/bash
 set -euo pipefail
 export CD_V2_TEST_SECRET="$SECRET"
+: > "\${CD_V2_TEST_CAPTURE_DIR:?capture dir missing}/credential-wrapper.txt"
 exec "\$@"
 EOF
 chmod +x "$CREDS/credential exec wrapper.sh"
@@ -73,6 +78,7 @@ render() { # render <dest> <configDigest> <runtimeDigest> <tick|worker...>
     -e "s|^CD_V2_RUNTIME_DIGEST=.*|CD_V2_RUNTIME_DIGEST='$rtd'|" \
     -e "s|^CD_V2_CONFIG_DIGEST=.*|CD_V2_CONFIG_DIGEST='$cfgd'|" \
     -e "s|^CD_V2_CRED_WRAPPER=.*|CD_V2_CRED_WRAPPER='$WRAP'|" \
+    -e "s|^CD_V2_EXEC_PATH=.*|CD_V2_EXEC_PATH='$EXEC_PATH'|" \
     "$ROOT/cd-v2-common.sh.template" > "$dest/cd-v2-common.sh"
   for s in "$@"; do
     sed "s|cd-v2-common.sh.template|cd-v2-common.sh|" "$ROOT/cd-v2-$s.sh.template" > "$dest/$s.sh"
@@ -80,7 +86,7 @@ render() { # render <dest> <configDigest> <runtimeDigest> <tick|worker...>
   done
 }
 runwrap() { # runwrap <wrapper-path> <cap> <stdout> <stderr>; echoes rc
-  ( CD_V2_TEST_CAPTURE_DIR="$2" "$1" >"$3" 2>"$4" ); echo $?
+  ( PATH=/usr/bin:/bin:/usr/sbin:/sbin CD_V2_TEST_CAPTURE_DIR="$2" "$1" >"$3" 2>"$4" ); echo $?
 }
 expect_argv() { # expect_argv <file> <args...>
   local file="$1"; shift
@@ -110,6 +116,7 @@ if expect_argv "$CAP/argv.txt" "$expected"; then
 else bad "tick argv (got: $(cat "$CAP/argv.txt"))"; fi
 grep -q '"command":"tick"' "$T/logs/t.out" && ok "tick controller returned JSON" || bad "tick controller output"
 check "credential secret available inside controller child only" "$(cat "$CAP/env.txt")" "secret=present"
+check "reviewed PATH resolves gh subprocess with sparse inherited PATH" "$(cat "$CAP/gh.txt")" "synthetic-gh"
 grep -q 'cd-v2-common:' "$T/logs/t.err" && bad "unexpected tick stderr" || ok "tick clean stderr"
 
 # ---------- 2. observe=1 rendered constant adds --observe ---------------------
@@ -191,6 +198,27 @@ rewrite "s|^CD_V2_SOURCE_DIR=.*|CD_V2_SOURCE_DIR='$RT'|" "$B/cd-v2-common.sh"
 rc="$(runwrap "$B/tick.sh" "$T/cap-same" "$T/logs/sd.out" "$T/logs/sd.err")"
 check "source==runtime checkout refused, exit 2" "$rc" "2"
 grep -qs 'distinct' "$T/logs/sd.err" && ok "distinct checkout error reported" || bad "distinct checkout error reported"
+
+# Physical identity must reject alternate spellings before credentials are loaded.
+ln -s "$RT" "$T/Runtime alias"
+for alias in "$RT/." "$RT/" "$T/Runtime alias"; do
+  B="$T/Alias Bin"; render "$B" "$CFGD" "$RTD" tick
+  rewrite "s|^CD_V2_SOURCE_DIR=.*|CD_V2_SOURCE_DIR='$alias'|" "$B/cd-v2-common.sh"
+  capa="$T/cap-alias"; rm -rf "$capa"; mkdir -p "$capa"
+  rc="$(runwrap "$B/tick.sh" "$capa" "$T/logs/alias.out" "$T/logs/alias.err")"
+  check "source alias $alias refused" "$rc" "2"
+  [ ! -e "$capa/credential-wrapper.txt" ] && ok "alias refused before credential wrapper" || bad "alias loaded credentials"
+  [ ! -e "$capa/argv.txt" ] && ok "alias refused before controller" || bad "alias invoked controller"
+done
+
+for path in "" ".:/usr/bin" "/usr/bin:" "____:/usr/bin"; do
+  B="$T/Path Bin"; render "$B" "$CFGD" "$RTD" tick
+  rewrite "s|^CD_V2_EXEC_PATH=.*|CD_V2_EXEC_PATH='$path'|" "$B/cd-v2-common.sh"
+  capp="$T/cap-path"; rm -rf "$capp"; mkdir -p "$capp"
+  rc="$(runwrap "$B/tick.sh" "$capp" "$T/logs/path.out" "$T/logs/path.err")"
+  check "unsafe executable PATH [$path] refused" "$rc" "2"
+  [ ! -e "$capp/credential-wrapper.txt" ] && ok "unsafe PATH refused before credentials" || bad "unsafe PATH loaded credentials"
+done
 
 # ---------- 11. launchd templates: both auto-wake every 300 s ----------------
 pl() {

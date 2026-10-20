@@ -14,6 +14,8 @@
 #   CD_V2_CRED_WRAPPER  EXEC wrapper: it loads credential VALUES into its own
 #                       environment and execs "$@" as a child. Sourcing or
 #                       exporting names only is insufficient.
+#   CD_V2_EXEC_PATH    reviewed absolute directories for Node, gh, git and the
+#                      consumer's repair executor; launchd has no login-shell PATH
 #
 # The controller CLI lives at dist/cli/index.js in the Morpheus repository root
 # (package.json "bin": "./dist/cli/index.js") — NOT tooling/dist/cli/index.js.
@@ -27,6 +29,7 @@ CD_V2_RUNTIME_DIR="____/public-runtime-checkout"
 CD_V2_RUNTIME_DIGEST="sha256:____"
 CD_V2_CONFIG_DIGEST="sha256:____"
 CD_V2_CRED_WRAPPER="____/credential-exec-wrapper.sh"
+CD_V2_EXEC_PATH="____/reviewed-tools:/usr/bin:/bin:/usr/sbin:/sbin"
 CD_V2_TICK_OBSERVE="0" # rendered to "0" or "1" by the operator; not an env override
 
 fail() { printf 'cd-v2-common: %s\n' "$1" >&2; exit 2; }
@@ -39,6 +42,20 @@ for name in CD_V2_CONFIG_PATH CD_V2_SOURCE_DIR CD_V2_RUNTIME_DIR CD_V2_CRED_WRAP
     /*) ;;
     *) fail "$name must be an absolute path: $value" ;;
   esac
+done
+
+# Both the CLI's env shebang and its subprocesses need this reviewed search path.
+case "$CD_V2_EXEC_PATH" in
+  ""|*____*|:*|*:|*::*) fail "CD_V2_EXEC_PATH has empty or unresolved entries" ;;
+esac
+IFS=: read -r -a executable_dirs <<< "$CD_V2_EXEC_PATH"
+for directory in "${executable_dirs[@]}"; do
+  case "$directory" in /*) ;; *) fail "CD_V2_EXEC_PATH entries must be absolute" ;; esac
+  [ -d "$directory" ] || fail "CD_V2_EXEC_PATH directory not found: $directory"
+done
+export PATH="$CD_V2_EXEC_PATH"
+for executable in node gh git; do
+  command -v "$executable" >/dev/null || fail "$executable not found in CD_V2_EXEC_PATH"
 done
 
 for name in CD_V2_RUNTIME_DIGEST CD_V2_CONFIG_DIGEST; do
@@ -57,7 +74,9 @@ done
 CLI="$CD_V2_RUNTIME_DIR/dist/cli/index.js"
 [ -f "$CLI" ] || fail "runtime CLI missing at dist/cli/index.js: $CD_V2_RUNTIME_DIR (Morpheus has no tooling/dist/cli/index.js)"
 
-[ "$CD_V2_SOURCE_DIR" != "$CD_V2_RUNTIME_DIR" ] \
+source_directory="$(cd -P "$CD_V2_SOURCE_DIR" && pwd -P)"
+runtime_directory="$(cd -P "$CD_V2_RUNTIME_DIR" && pwd -P)"
+[ "$source_directory" != "$runtime_directory" ] \
   || fail "source and runtime checkouts must be distinct directories"
 
 file_digest() { printf 'sha256:%s' "$(shasum -a 256 "$1" | cut -d' ' -f1)"; }
