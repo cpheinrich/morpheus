@@ -3329,7 +3329,10 @@ durable claims; actual provider receipts complete the original obligation.
 Bounded subscription workers retain immutable tasks, session checkpoints and
 actual quota telemetry. Hosted Claude admission joins shared and explicitly
 configured model-family windows; missing capacity remains a budget wait rather
-than silently treating an exhausted or unavailable model as healthy. App-only
+than silently treating an exhausted or unavailable model as healthy. Failed usage
+reads expose only fixed recognized diagnostics, never arbitrary provider text or
+credentials; actual scoped workflow authority and quota remain rollout proofs.
+App-only
 repairs reset production age; unchanged input
 digests retain their first lineage age through controller repairs. These are
 implementation properties, distinct from real consumer rollout acceptance.

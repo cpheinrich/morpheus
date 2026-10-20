@@ -183,7 +183,11 @@ an arbitrary command-execution surface.
 `account/rateLimits/read`. A configured `MORPHEUS_CD_QUOTA_FILE` or executor
 `quotaFile` supplies actual `{observedAt, source, windows:[{id,usedPercent,resetsAt}]}`.
 Hosted Claude can read its authorized OAuth usage endpoint with five-minute cache
-and 429 backoff. Configure the intended model explicitly (for example
+and 429 backoff. Failed reads report the HTTP status, an allowlisted provider error
+category and a fixed hint when the response names the `user:profile` scope. They
+never print arbitrary provider error text, which can echo credentials. A failure
+retains the budget wait; diagnose the actual credential authority before retrying.
+Configure the intended model explicitly (for example
 `agents.hosted.model: "opus"`). Its snapshot joins shared five-hour/week windows with the matching
 model-family week window, including an exact `model` attestation. Every required
 window must be present, valid and nonexpired; null or absent model capacity is
@@ -204,6 +208,8 @@ owned disposable workflow-only branch without dispatching it. `--revoke` revokes
 that installation token. Requested permissions and actual provider grants are
 reported separately. These probes require actual hosted acceptance; local fake
 responses do not establish working credentials.
+The initial repository metadata read uses GitHub's exact `/repos/{owner}/{repo}`
+route; a trailing slash can return 404 even when the token can read the repository.
 
 `cd budget --operation reserve|settle` exposes replay-safe paid request reservations
 in integer microdollars. Request identity and maximum liability are immutable;
