@@ -5,6 +5,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { nativeQuota } from "../../src/cd/quota-reader.js";
 
 vi.mock("node:child_process", async original => {
@@ -132,6 +133,7 @@ async function fixture(options: Record<string, unknown>) {
   await writeFile(settings, JSON.stringify(options));
   await writeFile(script, `import {readFile,writeFile} from "node:fs/promises";import{spawn}from"node:child_process";import{createInterface}from"node:readline";import{once}from"node:events";
 const settings=JSON.parse(await readFile(process.argv[2],"utf8"));
+if(settings.orphan){await writeFile(process.argv[3],JSON.stringify({pid:process.pid,pgid:process.ppid}));setInterval(()=>{},1000);await new Promise(()=>{});}
 if(settings.descendant){const child=spawn(process.execPath,["-e","setInterval(()=>{},1000)"],{stdio:"ignore"});await writeFile(process.argv[3],JSON.stringify({pid:child.pid,modelOwner:process.env.MORPHEUS_CD_AGENT_OWNER??null,quotaOwner:process.env.MORPHEUS_CD_QUOTA_READER_OWNER}));}
 if(settings.stderr){for(let i=0;i<32;i++)if(!process.stderr.write("X".repeat(65536)))await once(process.stderr,"drain");}
 await new Promise(r=>setTimeout(r,settings.startup??0));
@@ -143,6 +145,33 @@ if(m.method==="account/rateLimits/read"){console.log(JSON.stringify({id:2,result
 }
 
 describe("real offline quota reader processes", () => {
+  it("removes its private group within one second if the supervisor is killed", async () => {
+    const f = await fixture({ orphan: true });
+    const helper = fileURLToPath(new URL("../../src/cd/quota-reader.py", import.meta.url));
+    const supervisor = real.spawn("/usr/bin/python3", [helper, "60000", ...f.command], { stdio: ["pipe", "pipe", "pipe", "pipe"] });
+    supervisor.stdout!.resume(); supervisor.stderr!.resume();
+    let groupId: number | undefined;
+    try {
+      await vi.waitFor(async () => { groupId = JSON.parse(await readFile(f.pidFile, "utf8")).pgid; });
+      supervisor.kill("SIGKILL");
+      await vi.waitFor(() => {
+        let code: string | undefined;
+        try { process.kill(-groupId!, 0); } catch (error) { code = (error as NodeJS.ErrnoException).code; }
+        expect(code).toBe("ESRCH");
+      }, { timeout: 1_000, interval: 20 });
+    } finally {
+      supervisor.kill("SIGKILL");
+      if (groupId) {
+        // Only clean this fixture's still-live private root when a guard mutant
+        // deliberately leaves it behind; refuse a mismatched/reused identity.
+        try {
+          const row = real.execFileSync("ps", ["-p", String(groupId), "-o", "pgid=,command="], { encoding: "utf8" }).trim();
+          if (Number(row.split(/\s+/)[0]) === groupId && row.includes(helper + " --group ") && row.includes(f.pidFile)) process.kill(-groupId, "SIGKILL");
+        } catch { /* Absent or uncertain groups receive no signal. */ }
+      }
+    }
+  });
+
   it("handles an actual synthetic startup longer than the old ten-second deadline", async () => {
     const f = await fixture({ startup: 10_200 });
     expect((await nativeQuota(f.command, f.directory, new Date().toISOString())).windows[0]!.usedPercent).toBe(23);

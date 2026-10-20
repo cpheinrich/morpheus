@@ -63,3 +63,44 @@ The source PR remains draft with auto-merge off pending its fresh independent
 review, final CI and the separately held root source merge gate. Source clearance
 will not establish native-binary foreground behavior or authorize adoption in
 the frozen worker runtime; that requires later quiet-host operational review.
+
+The collaboration runner refused a fresh reviewer because its session capacity
+was full. A fresh native read-only Codex CLI session then failed at startup with
+an unsupported configured model, before any reviewer source/tool turn. The
+explicitly authorized fresh Opus subscription fallback used the existing
+codex-claude bridge: run `729eabd8-6883-48bb-b813-58e5f4674bc2`, fresh reviewer
+session `55b0730d-841b-4834-8e84-fa136b89ddf9`. No billing/auth/config was changed.
+The reviewer performed one high-risk initial source review, including isolated
+synthetic Darwin process experiments, and returned conditional clearance C1.
+Its runner result reports `duration_ms: 605201`; there was no follow-up turn.
+
+Fresh Opus subscription review conditionally cleared the quota reader. F2's
+substantive supervisor-death orphan and F1's minor Darwin permission polling were
+fixed under C1 with a real process regression and two additional killed mutants;
+F3's minor lease-anchor margin is deferred to MO-26-10-20-07.44.41. Final focused
+checks pass; native foreground behavior and runtime adoption remain separate
+operational gates.
+
+F2 was a real source defect: two private roots from this author's interrupted or
+mutated offline fixtures had survived their supervisors. Fresh PID, parent,
+group, birth and exact task/fixture argv checks confirmed each was the sole
+member of its own synthetic group; only those two roots were removed. No live
+worker/model guardian/service was signalled. The corrected private leader checks
+its supervisor before launching and while polling, then kills its own live
+group if orphaned. The required real test kills only its new synthetic supervisor
+and confirms group absence within one second. Restoring the infinite loop
+causes that test to fail. F1 now polls post-reap EPERM until the existing two-second
+bound, with unit cases for eventual absence and persistent permission response.
+
+C1 evidence: typecheck passed; the same four focused files passed 75 tests
+(seven Python syscall cases inside the process fixture); compile and PM index
+passed. Source/dist reader helpers compare equal. Both model guardian copies
+retain SHA-256 `f140e2a4d022e24de4d6df6a743e19ae0df918e3979957f074adfbcfe1104d77`.
+`pgrep -f 'quota-reader.py --group'` returned exit 1 with no output after the
+focused run. The two additional killed mutants are retained privately at
+`/tmp/quota-reader-review-mutants-01a1591a.json`, SHA-256
+`f8599f281db6092ed653c78baf7e2db026b0950f1749e559ae82216a1d8648b9`.
+Changes follow C1's exact source/generated/test/documentation paths, plus the
+new deferred-finding roadmap item permitted by the review runbook. The TypeScript
+deadlines, model guardian, policy TTL, existing leases and live runtime stay as
+reviewed.

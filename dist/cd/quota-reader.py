@@ -49,6 +49,10 @@ def cleanup(root, clock=time.monotonic, pause=time.sleep):
                     os.killpg(root.pid, 0)
                 except ProcessLookupError:
                     return True
+                except PermissionError:
+                    # Darwin also returns EPERM for a zombie-only group.
+                    # After the final signal, keep observing within the bound.
+                    pass
             pause(min(0.02, max(0, deadline - clock())))
     except (OSError, ChildProcessError):
         return False
@@ -95,15 +99,21 @@ def group(command):
     # that exits early may still have live foreground config-reader children.
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    supervisor = os.getppid()
     def reader_signals():
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         signal.signal(signal.SIGINT, signal.SIG_DFL)
     try:
-        subprocess.Popen(command, preexec_fn=reader_signals, close_fds=True).wait()
+        reader = subprocess.Popen(command, preexec_fn=reader_signals, close_fds=True) if supervisor != 1 else None
     except OSError:
-        pass
-    while True:
+        reader = None
+    while supervisor != 1 and os.getppid() == supervisor:
+        if reader is not None:
+            reader.poll()
         time.sleep(0.05)
+    # The live session leader reserves its own PGID even if the supervisor was
+    # killed before cleanup. Never leave this private foreground group behind.
+    os.killpg(0, signal.SIGKILL)
 
 
 if __name__ == "__main__":

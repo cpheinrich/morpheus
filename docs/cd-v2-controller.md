@@ -292,9 +292,13 @@ supervisor confirms termination and exits successfully. Unknown group identity,
 cleanup timeout or missing confirmation never grants quota. No process-name
 census or model-guardian change is involved. The trusted configured command and
 its children must stay in this foreground session; detached children are outside
-this bounded contract and require diagnosis, not broad signalling. Adopting the
-source in a pinned native worker runtime is a separate reviewed quiet-host
-operation; source tests do not establish actual host quiescence or quota readiness.
+this bounded contract and require diagnosis, not broad signalling.
+When its supervisor disappears, the still-live private leader kills its own
+group; it cannot leave an immortal reader group after the parent fuse fires.
+Post-reap Darwin permission responses are observed until the same cleanup bound.
+Adopting the source in a pinned native worker runtime is a separate reviewed
+quiet-host operation; source tests do not establish actual host quiescence or
+quota readiness.
 
 Hosted Claude can read its authorized OAuth usage endpoint with five-minute cache
 and 429 backoff. Failed reads report the HTTP status, an allowlisted provider error

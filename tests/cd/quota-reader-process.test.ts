@@ -43,9 +43,28 @@ class Cases(unittest.TestCase):
    self.assertFalse(q.cleanup(types.SimpleNamespace(pid=1234),clock.now,clock.sleep))
    self.assertEqual(clock.at,2.0)
    self.assertEqual([call.args[1] for call in kill.call_args_list if call.args[1]!=0],[signal.SIGTERM,signal.SIGKILL])
+ def test_post_reap_permission_then_absence_is_confirmed(self):
+  clock=Clock();probes=[]
+  def kill(pid,sig):
+   if sig==0:
+    probes.append(sig)
+    if len(probes)==1:raise PermissionError()
+    raise ProcessLookupError()
+  with patch.object(q.os,"getpgid",return_value=1234),patch.object(q.os,"killpg",side_effect=kill),patch.object(q.os,"waitpid",return_value=(1234,0)):
+   self.assertTrue(q.cleanup(types.SimpleNamespace(pid=1234),clock.now,clock.sleep))
+   self.assertEqual(probes,[0,0]);self.assertAlmostEqual(clock.at,0.07)
+ def test_persistent_post_reap_permission_stops_at_bound(self):
+  clock=Clock();signals=[]
+  def kill(pid,sig):
+   signals.append(sig)
+   if sig==0:raise PermissionError()
+  with patch.object(q.os,"getpgid",return_value=1234),patch.object(q.os,"killpg",side_effect=kill),patch.object(q.os,"waitpid",return_value=(1234,0)):
+   self.assertFalse(q.cleanup(types.SimpleNamespace(pid=1234),clock.now,clock.sleep))
+   self.assertEqual(clock.at,2.0)
+   self.assertEqual([sig for sig in signals if sig!=0],[signal.SIGTERM,signal.SIGKILL])
 suite=unittest.defaultTestLoader.loadTestsFromTestCase(Cases);result=unittest.TextTestRunner(stream=sys.stderr).run(suite)
 if not result.wasSuccessful():sys.exit(1)
-print("5 cleanup identity/boundary cases passed")
+print("7 cleanup identity/boundary cases passed")
 `, helper], { encoding: "utf8", timeout: 5_000 });
-  expect(output.trim()).toBe("5 cleanup identity/boundary cases passed");
+  expect(output.trim()).toBe("7 cleanup identity/boundary cases passed");
 });

@@ -3348,6 +3348,8 @@ immediately, and success waits for confirmed cleanup and completion-time quota
 validation. This does not change the model guardian or the five-minute telemetry
 TTL. Frozen consumer workers adopt the source only through a separate reviewed
 quiet-host operation.
+If its supervisor disappears, the private reader leader kills its own live group;
+post-reap Darwin permission responses stay within the same cleanup polling bound.
 Native invocation identity names the host/user/session store; only its latest
 same-host local session can resume. Foreign or unidentified sessions restart from
 the immutable task and durable checkpoint evidence without copying native sessions
