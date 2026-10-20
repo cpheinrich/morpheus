@@ -560,3 +560,115 @@ fault or that the later cron change caused it. The fresh 13:58:14 ledger shows
 normal MacBook invocation i3 running under fence 3 from 13:57:45.522, resuming
 the SAME work 2 local session. Root attached its actual draft repair PR #575;
 app source, tests and review remain owned by that worker. There is no new receipt.
+
+## App repair adopted; second full attempt exposed backend drift
+
+Normal native work 2 resumed its same local session through invocation i4 and
+completed at 14:48:49.290 UTC. The pinned parent verifier adopted reviewed Evo
+#575, actual merge `b842d0ee419245b53495b04666aa1c499558c936`. Both failing UI
+regressions passed focused checks with no skips; the numeric case additionally
+passed three fresh-launch repetitions. Those repetitions are not three clean
+full-suite runs. The original diagnostic, debt, slot and deadline remain intact.
+
+The next normal attempt a2 reserved build 20 and ran workflow 39443481948 at that
+actual source/control SHA. It failed preflight at 14:54:58: deployed Firestore
+rules differed from client source. Native tests, qualification and upload were
+skipped. Build 20 remains burned alongside build 19; there is no delivery credit.
+The failure/budget-attribution archive manifest SHA-256 is
+`5ff2ad4aece0d9da580625e413654eb9a2a3aa7956c4768820f3f865827427e2`.
+
+The existing native worker claimed work 3; root did not create a competing
+writer. Its current-main staging Firebase deployment 39445649848 succeeded at
+15:22:31, using source b842. Root independently read the actual run and all three
+jobs: emulator tests, E2E tests and deployment succeeded. The worker reports 36
+focused checks, 234 emulator tests, 70 E2E tests and strict live compatibility
+readback. Reviewed repair #576 merged as
+`e623439e94db17b7fb40037c4c50b8a02c5bb113` at 15:30:23. Its check runs passed or
+legitimately skipped; the optional Vercel status context remained failed, so
+"every context green" would be inaccurate. The frozen pinned verifier accepted
+the actual merge and work 3 completed at 15:31:16.707. Its supported host
+quiescence record is retained; an ended worker alone is not the earlier strict
+three-birth termination proof.
+
+The independent provider-read manifest SHA-256 is
+`795c07522c7f90f117dd88ccca137f38b56161e73ed564563a4099df0f99dc23`.
+The 15:33:16 ledger read, head `7f0cb9424c3b1fda2b281be15e6713b9a19c7982`,
+shows that exact e623 source normally adopted, work 1/2/3 complete, a1/a2 failed,
+and the SAME first intent pending `dispatch-full-tests`. No a3 existed in that
+snapshot. Readback SHA-256:
+`e3e51eafacc806d4c6b3f60dcbe568cb2fba0463fb04b633387947376b3c47e7`.
+Epoch, configuration and both complete ordinary holds are unchanged. The original
+deadline remains 16:03:44.839 UTC; recovery must retain it even if overdue.
+
+The apparent budget change was a legitimate new reserved ceiling, not a charge:
+`evo-staging-backend-s3-20261020`, 5,000,000 micros, request digest
+`ac55af158023b29cd5973564b7cb6908c5162b7e7a695592667837d1b79c7468`.
+Root reproduced its digest and joined the 15:07:30.190 reservation to the sole
+work-3 session before deployment. Both old Together liabilities remain unchanged;
+settled spending is still 1,982,828 micros. Retain this reservation until actual
+settlement evidence; never reuse it for production or infer an API-agent fallback.
+
+## Quota source merged; worker rollout remains separate
+
+Morpheus #435 actually merged as
+`24ba8b1a909bbe994d46b3d8a1b5abdf96f53276` at 15:20:40. Root released its exact
+source gate after reading the fresh independent Opus Max review, conditional
+clearance and covered corrections. Its actual review took 605,201 ms. An earlier
+unsupported native-model startup failed before reviewer tool turns; no review
+finding or exhausted reviewer was discarded. Final validation: 75 Vitest cases
+across four files, one embedding seven Python cleanup fixtures, and 13 killed
+guard mutants; typecheck, compile, index and review validation passed. Do not
+double-count embedded Python cases as additional Vitest cases.
+
+Marking ready caused new checks; root waited once for that new phase, verified
+all final 17 rollups were accepted, and used the normal matching-head protected
+squash merge. No admin merge, waiver or direct main push was used. The exact
+source/payload proof SHA-256 is
+`89a6cc847842a0e280bc5ad9a1a9f1b978bcf4aff6ab4e2199b1cb3581336657`.
+The review/private-candidate archive manifest SHA-256 is
+`6b83eeffdc4ef0925bff5bd1f9e4b6ee1a85e98cc22629fc53c2eae197c1f91f`.
+The reader supports the trusted foreground launcher contract; it does not prove
+universal absence of detached children. Live foreground ABI and worker adoption
+still need their own exact operational review and quiet boundary.
+
+The source author now owns separate claimed follow-up MO-26-10-20-07.44.41:
+anchor worker leases at the fresh post-admission CAS attempt clock, recheck quota
+after claim ACK, and refuse a delayed launch that cannot fit the unchanged agent
+duration. Source review, CI and root release remain pending. No host or model
+probe, runtime activation, lease mutation, guardian change or deadline reset is
+authorized by that source task.
+
+Root normally merged actual reviewed D into its own task branch. The existing
+consented post-merge updater installed global CLI D; this does not alter the
+separately pinned live CD/native/controller runtime F65. Root read the changed
+decision record and refreshed context after integration. No tests were rerun
+for this worklog-only update.
+
+## Remaining preparation and honest delivery frontier
+
+The private controller-only v2 candidate is complete offline: 32 new plus 19
+original fixtures and nine new killed guard mutants. Actual E/runtime/install
+and fresh operational review remain unbound; production refuses. No host census,
+service action or worker-family change occurred. The original three preparation
+artifacts and all four spent lifecycle phases remain untouched. Before real use,
+review the exclusive journal's deliberate refusal/retry semantics; no uncertain
+effect may be retried by inventing a new nonce.
+
+Production backend compatibility remains UNKNOWN. An authorized read-only GET
+for `cph-evo/releases/cloud.firestore` returned HTTP 403; no rule or user data was
+retrieved, and Storage/indexes were not read. Existing supported GitHub production
+environment credentials are present, which does not establish their permissions.
+A private conditional current-main deployment/verification plan is retained,
+with a proposed separate $5 ceiling and no reservation, dispatch, IAM or auth
+change. Its archive manifest SHA-256 is
+`f317fb87ba4e1c6655efb17f639aa9ef7b9fa4a7e31b85d83637a145706f834d`.
+This unknown is preparation, not a new delivery acceptance requirement.
+
+Campaign acceptance remains **0/8**. Urgent build 18 remains outside the campaign.
+#566 stays draft/off until an actual full internal receipt, then must integrate
+actual main and merge strictly after delivery before production request 2. #574
+and #573 retain their coherent source/runtime and fresh operational gates. All
+remaining actual fault, hosted-native and hold-reconciliation proofs are still
+required. No new Apple upload, tester change, lifecycle replay or 24-hour wait
+was introduced. Root account allowance at 15:31 was ordinary-allowed with 72%
+remaining; the user's below-30% Opus routing and 10% reserve remain in force.
