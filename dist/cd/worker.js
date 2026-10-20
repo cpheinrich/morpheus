@@ -11,6 +11,7 @@ import { after, adoptRepair, completeOperationalRepair, invariant, quotaUsed, re
 import { pages } from "./store.js";
 import { ActionsAdapter } from "./actions.js";
 import { git, loadSources } from "./source.js";
+import { nativeQuota } from "./quota-reader.js";
 const exec = promisify(execFile);
 function paused(state, intentId) { return state.pauses.some(pause => ["all", intentId, state.intents[intentId].channel].includes(pause.scope)); }
 export const agentResultSchema = { type: "object", additionalProperties: false, properties: { outcome: { type: "string", enum: ["repaired", "checkpoint", "blocked"] }, summary: { type: "string" }, pullRequest: { type: "string" }, sourceSha: { type: "string" }, reviewHead: { type: "string" }, evidence: { type: "array", items: { type: "string" } }, missingCapability: { type: "string" } }, required: ["outcome", "summary", "pullRequest", "sourceSha", "reviewHead", "evidence", "missingCapability"] };
@@ -31,59 +32,7 @@ export function normalizeClaudeQuota(value, now, model) {
 }
 /** No model request: read the same actual account limits exposed by the runtime. */
 export async function codexQuota(command, cwd, now) {
-    return new Promise((resolve, reject) => {
-        const child = spawn(command[0], [...command.slice(1), "app-server"], { cwd, stdio: ["pipe", "pipe", "pipe"] });
-        let buffer = "", settled = false;
-        const finish = (error, value) => { if (settled)
-            return; settled = true; clearTimeout(timer); child.kill("SIGTERM"); if (error)
-            reject(error);
-        else
-            resolve(value); };
-        const timer = setTimeout(() => finish(new Error("Codex account quota read timed out")), 10_000);
-        child.on("error", error => finish(error));
-        child.stdin.on("error", error => finish(error));
-        child.stdout.on("data", bytes => {
-            buffer += String(bytes);
-            while (buffer.includes("\n")) {
-                const end = buffer.indexOf("\n"), line = buffer.slice(0, end);
-                buffer = buffer.slice(end + 1);
-                let message;
-                try {
-                    message = JSON.parse(line);
-                }
-                catch {
-                    continue;
-                }
-                if (message.error) {
-                    finish(new Error(message.error.message));
-                    return;
-                }
-                if (message.id === 1) {
-                    child.stdin.write(JSON.stringify({ method: "initialized", params: {} }) + "\n");
-                    child.stdin.write(JSON.stringify({ id: 2, method: "account/rateLimits/read", params: {} }) + "\n");
-                }
-                if (message.id === 2) {
-                    const value = message.result;
-                    // Low usage windows can coexist with prepaid credit availability. Only
-                    // explicit ordinary subscription eligibility permits admission or renewal.
-                    if (value?.ordinaryUsageAllowed !== true) {
-                        finish(new Error("Codex ordinary subscription usage is unavailable or unknown; retain budget wait"));
-                        return;
-                    }
-                    const bucket = value.rateLimitsByLimitId?.codex ?? value.rateLimits;
-                    const windows = ["primary", "secondary"].flatMap(id => bucket?.[id] ? [{ id, usedPercent: bucket[id].usedPercent, resetsAt: new Date(bucket[id].resetsAt * 1000).toISOString() }] : []);
-                    const snapshot = { observedAt: now, source: "Codex account/rateLimits/read", windows };
-                    if (quotaUsed(snapshot, now) === undefined)
-                        finish(new Error("Codex returned unknown/expired quota telemetry"));
-                    else
-                        finish(undefined, snapshot);
-                }
-            }
-        });
-        child.on("close", () => { if (!settled)
-            finish(new Error("Codex account quota reader exited without telemetry")); });
-        child.stdin.write(JSON.stringify({ id: 1, method: "initialize", params: { clientInfo: { name: "morpheus-cd", version: "1" }, capabilities: { experimentalApi: true } } }) + "\n");
-    });
+    return nativeQuota(command, cwd, now);
 }
 export class QuotaReader {
     config;

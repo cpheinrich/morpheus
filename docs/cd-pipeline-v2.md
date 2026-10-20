@@ -315,6 +315,15 @@ Missing telemetry prevents a claim that quota is protected and routes work to a
 measured authorized alternative or a durable budget wait. No paid-provider
 fallback may bypass the $250 Together ceiling.
 
+Native account reads allow 60 seconds for the configured shim and handshake,
+with at most 10 seconds for the final quota RPC within that total. Each read is
+fresh and explicitly ordinary-subscription eligible; no prior result substitutes
+for a failed read. A separate reader-only supervisor bounds foreground-group
+cleanup to two seconds, with a three-second parent fuse, without changing the
+model guardian. A failed read checkpoints immediately; a successful read is
+accepted only after confirmed cleanup and completion-time freshness/expiry
+validation. Unknown cleanup is a refusal, never capacity or host-termination proof.
+
 Initial operational deadlines are explicit configuration: controller wakeup
 15 minutes, unassigned native job 15 minutes before alternate-lane recovery,
 native tests 180 minutes, archive/upload 90 minutes, agent invocation 45 minutes.
