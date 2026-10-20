@@ -880,3 +880,51 @@ There is no full receipt or campaign credit. The existing native watcher remains
 the sole monitor. The hourly heartbeat now references its current checkpoint
 instead of a completed historical watcher; cadence and target chat were verified
 unchanged. No repeated product test suite was warranted for this records update.
+
+
+### 2026-10-20 18:00 UTC — truthful login evidence and own-process Darwin ABI
+
+The new worker readiness preparation is frozen at driver `319665f5`, Node
+`005e95d8`, and unchanged metadata reader `554a427b`. Root read the complete
+prior source and the exact v2 diff/interface/packet. A normal short login can
+finish between kernel sweeps: v2 retains the pinned successful execFile/status
+invocation as source-path evidence and records its image as `OBSERVED` or
+`UNOBSERVED`. It invents no login PID or birth. Actual quota ancestry and fresh
+observed private-group closure remain mandatory; surviving children/groups refuse.
+The author inspected 33 Python and 13 Node passing fake tests and 43 assertion-killed
+mutants. These are source checks, with no actual quota, login or native probe.
+
+Root verified all 58 supplied artifacts, then archived them plus the final manifest
+as 59 private regular 0600 files. Archive manifest: `abc51e4efe8145d7ba052b4f4687cd2bc5d820c5f9f07b244a76a2369bef53bb`.
+The package remains production-unbound and independently unreviewed.
+
+Root separately authorized and executed an **own-process-only** read of the exact
+metadata adapter on each Mac, at 18:00:01 UTC. Both returned code 0 with empty
+stderr. The 136-byte BSD layout and own PID/PPID/UID/PGID/session agreed with
+independent Python own-process calls; birth identity was stable and the actual
+image was the Xcode Python binary captured earlier. MacBook proof `d2c17fa1`,
+Mini proof `bd0e7c46`, own-only release `1fa0f2f5`, runner `6215d43d`.
+There was no ALL-PID enumeration, named-worker read, quota/login/native/model,
+service/signal, provider or ledger action. This proves only that the adapter can
+read its own process on the installed hosts; global census, causal cleanup,
+worker readiness, quiet state and operational clearance remain unproved.
+
+Root caught another practical boundary before any rollout: eight repeated full
+collectors can exhaust the unchanged 180-second release even without a provider
+error, potentially after bootout. The original candidate and its explicit timing
+assumptions are preserved. The existing author is preparing a new source-only
+version that keeps fresh dynamic guards and reuses only verified immutable Git
+objects and clearly labelled metadata-equivalent local byte proofs. No TTL,
+no-replay rule, normal 80/90 quota policy or paid-liability guard was weakened.
+The sole permitted protected-state exclusion is `budget.telemetry`; spending,
+reservations, other budget keys, holds, invocations and append-only history stay
+protected. This proposal has no operational review or activation clearance.
+
+The original a1 receipt-method document contains historical identities. A new
+private verification binding, `9a49a6a2`, derives the actual a3/build21/run39450437095
+identities from the retained 17:29 commit-pinned ledger and explicitly requires
+fresh reconciliation at outcome. It retrieves or changes nothing and grants no
+receipt credit. The same single native watcher remains in place; its 17:55 local
+completion check was absent. Campaign credit remains 0/8. The first actual full
+internal receipt still gates #566's reviewed main merge, followed promptly by the
+ordinary production2 request. Optional rollout preparation cannot delay it.
