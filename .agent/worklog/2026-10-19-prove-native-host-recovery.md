@@ -545,3 +545,18 @@ Build 18 remains the previously confirmed internal/external update, outside the
 campaign. Accepted campaign deliveries remain **0/8**. Live CD remains f65 with
 configuration 7301 and epoch d585. Held #574 and #573 retain their separate
 source and operational gates. No tests were rerun for this worklog-only update.
+
+
+The completed read-only schedule join now proves actual reconcile job
+118657089539 ran its durable-obligation step successfully, logging active mode
+with no controller errors at exact ledger a2b44f5b. Its prelude honestly remained
+`diagnosing`. The exact Git ledger blob was verified and joined to the 13:53 and
+13:58 snapshots: same sole a1, debt, deadline, build 19 reservation, configuration,
+complete holds and paid spent/reservations. The whole budget hash differs only
+in legitimate local quota telemetry. The manifest SHA-256 is
+`e9a18fe5a8c82ea1a793b5bb1a7f521b2711de2d16cdff96da2d19b6e26cc866`.
+This satisfies actual GitHub scheduled execution, without claiming a lost-wake
+fault or that the later cron change caused it. The fresh 13:58:14 ledger shows
+normal MacBook invocation i3 running under fence 3 from 13:57:45.522, resuming
+the SAME work 2 local session. Root attached its actual draft repair PR #575;
+app source, tests and review remain owned by that worker. There is no new receipt.
