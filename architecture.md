@@ -3202,9 +3202,20 @@ a called workflow's top-level `concurrency` does not govern the caller's run.
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
 Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination.
+The optional `runner-labels-json` string selects a conjunction of runner labels,
+for example `["self-hosted","macos-vm","validation-specific-label"]`. Empty keeps
+the existing `runner` string. A small hosted Ubuntu job runs only for a nonempty
+selector, parses it with Node's built-in JSON support, and rejects nonarrays,
+empty arrays, nonstring or blank labels, surrounding whitespace, control characters,
+and case-insensitive duplicates before the native job can queue. Its canonical JSON
+output reaches `runs-on` through Actions' `fromJSON`; every label must match.
+Invalid input fails validation and skips native work, with no ordinary-runner fallback.
+Ordinary callers see a skipped validation check and retain their native job, concurrency,
+test selection and evidence requirements. A selector changes placement only; it does
+not establish runner absence, authorize cancellation, or prove hosted delivery.
 An optional `watch-paths` list uses Git pathspecs to compare the verified pull-request merge
 checkout to its first parent. When nothing matches, the same job reports success after checkout
-without Xcode, simulator, package, build or test work; there is no separate selector or aggregate
+without Xcode, simulator, package, build or test work; there is no separate change-scope or aggregate
 check. Scoped PR checkouts fetch full history to verify that the merge's base descends from the
 event base, allowing GitHub to regenerate the merge after trunk advances. Its head must still match
 the event exactly. The diff uses the actual first parent, so changes already on trunk do not count
