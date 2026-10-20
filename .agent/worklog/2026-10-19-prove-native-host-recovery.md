@@ -1040,3 +1040,56 @@ Reviewed566 is held at77318f1e03b92dda680724a06d35908f1befab5f after mechanical
 actual4ff2 integration; all nine original reviewed blobs remain unchanged.29focused
 checks and7/7CI pass, DRAFT/automergeOFF. Root will release only after the immutable
 receipt and merge strictly later before the existing production2 request.
+
+
+## First immutable full delivery and ordinary production request — October20 19:27UTC
+
+Actual normal delivery committed at18:53:53.612Z for staging1.0(21), not merely
+workflow success or Apple transport acceptance. Root joined the immutable event
+at ledger a100c7faf19077e03ff578b6d8c21570903a2941 to source/control e623, run39450437095
+attempt1, exact IPA d07e7e8a, all1071 final passing tests/no skips, and independently
+fresh19:04 Apple VALID/unexpired/IN_BETA_TESTING with exact internal group and3testers.
+One UI test recovered on its second attempt; no three-clean-suite requirement was
+invented. Receipt canonical SHA256 is82007097f1229d02639875a6cf7d1db1c68ff0ae3d18c5895e015142e185c84f.
+Campaign credit is now1/8, staging1/4 and production0/4. Urgent18 stays outside the
+campaign. Exact unmodified receiptA is retained for the later distinct active-B
+rejection exercise. External follow-up at19:25 records a confirmed beta-review
+submission at19:13:04; this is not a claim of external availability or review approval.
+
+After the real receipt, reviewed566 merged normally as c4a705f7dd61ba026f42dff6b204d5e4ad41e92e
+at19:04:58Z, strictly later. All nine originally reviewed blobs were unchanged,
+29focused checks and the original7CI checks passed. Readiness queued new same-head
+metadata CI; no admin/bypass/fault arm/provider upload occurred. Root used the
+existing campaign plan/apply once: operation evo-request-885ed88fdf609bee76d9126558990aa6dc3b0e28a8fb93e361cbb3e2abc7fded,
+applied19:08:45.926Z/replayed=false, for the existing sequence2 production intent.
+Protected join4434a4810a7e retains epoch/config, both full ordinary holds, prior
+receipt/group cursor, all paid liabilities, oldest debt and the new planned slot.
+No campaign begin, known-baseline, repeated request or source/lease/cursor edit occurred.
+
+Normal production dispatch reserved build6 for app6819097334/source-control c4a,
+then actual run39481912187 attempt1 failed strict production backend preflight
+at19:16:30. The legitimate CI verifier positively reported deployed Firestore rules
+differ from client source, replacing the historical native403 UNKNOWN diagnosis.
+All native test, qualify and upload jobs were skipped: there was no native build,
+IPA or Apple upload. Full terminal census/log manifest d21b785e19e6808e7d3c035aff6d3fbfb69f79374ca1b4d48daa582be2233e28
+is retained. A fresh19:25 ledger aad36b415db6a49aaa049f7b5390990b8d6e9b21 registered
+the exact run but had not yet created a repair owner. Root leaves the normal owned
+repair path in charge, preserves burned6, and has not rerun/re-requested or dispatched
+a duplicate production Firebase deployment. No P2 watcher was started for an already
+terminal run. Spent1.982828USD plus reserved10.515115USD remains12.497943USD maximum
+known liability; no new production reservation or settlement was invented.
+
+Optional consumer577 is source-ready at9a877add45dd8bfc51a0e5b1b82892ba1bbf72b3 after
+actual566 integration.42Node,31Python and29fault/runtime checks passed; one fresh
+read-only independent reviewer spent82886ms, no findings, with immutable report
+099aae0b096f0d3be47ab979015648dcd11ee117e04ae14a2064b45e7c972573.
+Final CI97154 completed successfully with the expected unlabelled-draft conventions
+skip; that skip is not conventions clearance.577 stays DRAFT/unlabelled/automergeOFF:
+its main merge activates a new GitHub controller runtime, so root requires the
+separate concrete quiet post-P2 coherent Mini/controller-T operation and fresh
+operational review before releasing it. Live runtime remainsF65/config7301/epochd585;
+inert R installations and all four spent353b phases are unchanged. New T helper and
+installer preparation remain source-only, not actual installation/adoption proof.
+Root explicitly integrated current Morpheus4a664c5 into this task branch and refreshed
+context after reading its new decision. No source tests were repeated for this
+records continuation; existing reviewed checks and actual provider evidence are cited.
