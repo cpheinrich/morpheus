@@ -18,6 +18,7 @@ const channel = z.object({
   appEnvironment: z.string().optional(), schedule, minimumAgeHours: z.number().min(0).default(0),
   scheme: z.string().optional(), configuration: z.string().optional(),
   validationGroupId: z.string().optional(),
+  externalGroupIds: z.array(z.string().min(1)).min(1).optional(),
 }).strict();
 const relativeScript = z.string().refine(value => !value.startsWith("/") && !value.split("/").includes(".."), "must be repository relative");
 export const configSchema = z.object({
@@ -40,6 +41,10 @@ export const configSchema = z.object({
 }).strict().superRefine((config, context) => {
   if (config.channels.staging.schedule.kind !== "six-hour") context.addIssue({ code: "custom", path: ["channels", "staging"], message: "staging uses six-hour UTC slots" });
   if (config.channels.production.schedule.kind !== "daily" || config.channels.production.minimumAgeHours < 24) context.addIssue({ code: "custom", path: ["channels", "production"], message: "production requires daily UTC slots and at least 24 hours on main" });
+  for (const name of ["staging", "production"] as const) {
+    const app = config.channels[name], groups = app.externalGroupIds;
+    if (groups && (new Set(groups).size !== groups.length || groups.includes(app.internalGroupId) || groups.includes(app.validationGroupId ?? ""))) context.addIssue({ code: "custom", path: ["channels", name, "externalGroupIds"], message: "external groups must be unique and separate from internal/validation groups" });
+  }
 });
 export type CdConfig = z.infer<typeof configSchema>;
 export type Channel = "staging" | "production";
@@ -52,6 +57,19 @@ export interface TestProof extends Identity { scope: "full"; appInputDigest: str
 export interface UploadEvidence extends Identity { appId: string; version: string; buildNumber: string; ipaSha256: string; uploadOperationId?: string; outcome?: "accepted" | "rejected" | "uncertain"; providerUploadId?: string; acceptedAt?: string; diagnostics?: string; acceptanceArtifact?: Artifact }
 export interface InternalObservation { appId: string; version: string; buildNumber: string; buildId: string; processingState: string; betaState: string; group: { id: string; appId: string; internal: boolean; automaticDistribution: boolean; buildIds: string[]; testerIds: string[] }; observedAt: string; uploadState?: string; diagnostics?: string }
 export interface Receipt extends Identity { appInputDigest: string; configurationDigest: string; ipaSha256: string; uploadOperationId: string; providerUploadId?: string; testEvidenceHash: string; observation: InternalObservation; deliveredAt: string }
+export interface ExternalObservation {
+  appId: string; version: string; buildNumber: string; buildId: string; processingState: string; betaState: string;
+  detailId: string; autoNotifyEnabled: boolean; groups: InternalObservation["group"][];
+  review?: { id: string; state: string }; observedAt: string;
+}
+export interface ExternalStatus {
+  status: "pending" | "waiting-review" | "blocked" | "uncertain" | "available";
+  nextAction: string; nextCheckAt: string; blocker?: string; observation?: ExternalObservation;
+}
+export interface ExternalReview {
+  appId: string; buildId: string;
+  attempts: { claimedAt: string; outcome: "claimed" | "confirmed" | "conflict" | "rejected"; submissionId?: string; completedAt?: string }[];
+}
 export interface Attempt {
   id: string; dispatchEffectId: string; sourceSha: string; controlSha: string; appInputDigest: string; configurationDigest: string;
   appId: string; version: string; buildNumber: string; lane: "local" | "hosted"; createdAt: string;
@@ -69,7 +87,7 @@ export interface DeliveryIntent {
   coveredSources: string[]; coveredSlots: string[]; validation: boolean; isolatedValidation: boolean; groupId: string; createdAt: string; deadlineAt: string;
   sourceAgeWaiver?: SourceAgeWaiver;
   state: "pending" | "testing" | "uploading" | "processing" | "delivered" | "repairing" | "waiting" | "paused";
-  nextAction: string; nextCheckAt: string; blocker?: string; attempts: Attempt[]; receipt?: Receipt; eligibleAt?: string;
+  nextAction: string; nextCheckAt: string; blocker?: string; attempts: Attempt[]; receipt?: Receipt; eligibleAt?: string; external?: ExternalStatus;
 }
 export interface AgentWork {
   id: string; intentId: string; taskDigest: string; task: string; evidence: string[]; strategy: number; state: "pending" | "running" | "waiting" | "complete";
@@ -85,6 +103,7 @@ export interface CdState {
   agents: Record<string, AgentWork>; fences: Record<string, number>;
   groupOperations: Record<string, { attemptId: string; claimedAt: string; completedAt?: string }>;
   groupCursors: Record<string, { sourceSha: string; order: number; receiptId: string }>;
+  externalReviews?: Record<string, ExternalReview>;
   pauses: { scope: string; actor: string; reason: string; resumeCondition: string; createdAt: string; human: boolean }[];
   budget: { spentMicros: number; reservations: Record<string, { digest: string; maximumMicros: number; status: "reserved" | "settled"; actualMicros?: number }>; telemetry: Record<string, QuotaSnapshot> };
 }

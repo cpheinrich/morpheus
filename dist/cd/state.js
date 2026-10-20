@@ -7,6 +7,25 @@ export function invariant(condition, message) { if (!condition)
 export function newState(config, epoch, now) {
     return { schemaVersion: 1, epoch, repository: config.repository, configurationDigest: configurationDigest(config), initializedAt: now, transitions: {}, sources: [], evaluatedSlots: {}, cursors: {}, slots: [], intents: {}, builds: {}, agents: {}, fences: {}, groupOperations: {}, groupCursors: {}, pauses: [], budget: { spentMicros: 0, reservations: {}, telemetry: {} } };
 }
+export function externalReviewKey(appId, buildId) { return hash({ appId, buildId }); }
+/** A committed claim authorizes one call; uncertainty never authorizes another. */
+export function claimExternalReview(state, intentId, now) {
+    const intent = intentAt(state, intentId), receipt = intent.receipt;
+    invariant(intent.state === "delivered" && receipt && !intent.isolatedValidation, "External review requires its ordinary immutable internal receipt");
+    invariant(!state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is explicitly paused");
+    const { appId, buildId } = receipt.observation, key = externalReviewKey(appId, buildId);
+    state.externalReviews ??= {};
+    const operation = state.externalReviews[key] ??= { appId, buildId, attempts: [] }, last = operation.attempts.at(-1);
+    if (last && (last.outcome !== "conflict" || Date.parse(now) < Date.parse(last.completedAt) + 3_600_000))
+        return { key, index: operation.attempts.length - 1, claimed: false };
+    // Apple's six-per-day limit is shared by all builds of the app. Count claims
+    // conservatively, including explicit conflicts and unknown outcomes.
+    const recent = Object.values(state.externalReviews).filter(item => item.appId === appId).flatMap(item => item.attempts).filter(item => Date.parse(item.claimedAt) > Date.parse(now) - 86_400_000);
+    if (recent.length >= 6)
+        throw new CdWait("External review submission admission reached six claims in 24 hours", "apple-review-limit");
+    operation.attempts.push({ claimedAt: now, outcome: "claimed" });
+    return { key, index: operation.attempts.length - 1, claimed: true };
+}
 export function currentSlot(config, channel, now) {
     const time = new Date(now), schedule = config.channels[channel].schedule;
     if (schedule.kind === "six-hour")

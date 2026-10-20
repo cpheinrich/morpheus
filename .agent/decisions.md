@@ -11,6 +11,19 @@ behave. This file holds judgment calls, which could have gone the other way.
 
 ---
 
+## External TestFlight follows internal acceptance — 2026-10-19
+
+Chris explicitly requested internal and external distribution for future Evo
+builds while keeping internal availability as delivery acceptance. The reusable
+controller therefore makes external groups an optional channel declaration and
+reconciles them after its immutable internal receipt. Exact external build state
+and every group's membership establish external availability; a sibling review
+does not. Claims precede submission, unknown outcomes observe instead of repost,
+and external failures cannot rewrite internal history or reopen native work.
+Consumer configuration migration and runtime adoption remain separately reviewed.
+This uses existing provider adapters and Git CAS for domain-specific state/effect
+rules; no generic scheduler, retry package or new dependency is needed.
+
 ## Structure
 
 **`hq/`, not `company/`** — not every project is a company, and it makes the three layers

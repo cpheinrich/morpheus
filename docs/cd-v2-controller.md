@@ -159,6 +159,48 @@ trusted host/provider evidence: common identity, `kind: host-terminated` or
 It is an evidence boundary, not a command that terminates a machine. Never supply
 those booleans from terminal GitHub status or lease expiry alone.
 
+## Optional external TestFlight distribution
+
+Declare `channels.<channel>.externalGroupIds` as a nonempty list of unique existing
+external groups, separate from internal and historical validation groups. Omitting
+it preserves previous configuration bytes, digest and internal-only behavior.
+Adding it changes configuration identity and requires the consumer's explicit
+lossless ledger migration. Keep upload-action distribution disabled when V2 owns
+these groups; do not introduce a second distribution writer.
+
+After the immutable internal receipt commits, subsequent ticks reconcile external
+distribution separately. `cd status` exposes `intent.external` with its own
+`status`, `nextAction`, `nextCheckAt`, blocker and exact provider observation.
+External errors, rejection and review delays never reopen internal work, change
+its receipt/cursors, rebuild, reupload or prevent the next internal delivery.
+Separate historical validation groups never enter this external path.
+
+Each observation joins the receipt's exact app/version/build ID to its beta detail,
+exact review submission and every declared external group's ownership, type,
+testers and build membership. Groups must disable automatic all-build access.
+Availability requires `externalBuildState: IN_BETA_TESTING` and exact membership
+in every group; approval or another build's pending review is insufficient.
+Membership is added without removing existing builds. Auto-notify is enabled on
+that exact build detail, and both settings are claimed before their safe updates
+and read back before retrying. Committed availability evidence is immutable.
+
+Review submission has a shared exact app/build operation under `externalReviews`,
+persisted before the POST. All groups share one submission. A lost response retains
+the claim and only observes the exact submission; it never blindly reposts. An
+explicit HTTP 409 conflict may obtain another claim only after an hour and fresh
+exact-build readback. Admission conservatively limits the app to six claimed
+submissions per rolling 24 hours. Other explicit request rejections remain blocked
+for metadata/authority repair and explicit resolution, rather than repeating an
+unchanged request. An exact submission or availability readback resolves unknown
+outcomes. Existing claims, timestamps and completed operation history are retained.
+
+Apple may require review metadata or export-compliance action. The core reports
+that blocker and does not invent metadata, testers or groups. See Apple's
+[external testing rules](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers),
+[submission endpoint](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-betaappreviewsubmissions),
+[external state values](https://developer.apple.com/documentation/appstoreconnectapi/externalbetastate)
+and [auto-notify update](https://developer.apple.com/documentation/appstoreconnectapi/buildbetadetailupdaterequest/data-data.dictionary/attributes-data.dictionary).
+
 ## Repair execution and capacity
 
 `cd worker --executor local|hosted --config ABS --source-dir ABS` owns a due repair

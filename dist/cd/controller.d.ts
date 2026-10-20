@@ -21,6 +21,7 @@ export declare class Controller {
     readonly sourceDir: string;
     constructor(config: CdConfig, store: GitHubStore, actions: ActionsAdapter, apple: AppleAdapter, sourceDir: string);
     tick(now: string, observe?: boolean): Promise<TickResult>;
+    private reconcileExternal;
     private reconcileIntent;
     private dispatch;
     private failedRun;
