@@ -104,3 +104,62 @@ A fresh authoritative readback at 10:10:33.982 UTC found the same pending work, 
 A separate stage-isolated no-inference check through the installed helper and GitHub-only boundary passed all pre-exec stages at 10:11:21.663 UTC: the version check, exact f65 configuration scope, both config readers, inventory of five transports and disabled-map construction. Final exec was intercepted; no valid repair command or model ran. The proof is `1177f66d8184f5c72d92d26d93ddc82b6b8892946ad51d39f30185dd04deb923`. It does not reproduce or explain the historical failure. A changed diagnostic is being prepared under the actual worker PATH and unchanged guardian context. No source fix or blind native retry has been made.
 
 GitHub's actual push wakeup for the exact reviewed 4d41 source succeeded: run 39404157184, created 09:54:59 UTC, completed 09:55:50 UTC. This proves the GitHub control path woke successfully after the migration; it is not a scheduled-boundary proof. The 10:14:54 UTC read-only query still returned zero scheduled runs for that workflow. No manual dispatch was performed. Campaign remains **0/8**.
+
+
+## Actual owned interruption and first cross-host takeover
+
+The single ordinary checkpoint retry started real Mini invocation i2 at
+10:20:59.430 UTC, on the same immutable work and task digest, with ownership
+fence 2 and native session `01a158d4-9bf3-7a83-974b-7cf9225b7bb9`. The reviewed
+read-only capture bound the live lease to Node 15146, guardian 15427 and native
+15428, including all three strict microsecond kernel birth identities. Capture
+SHA-256 is `87f9ae07af5fe7b67a2434fe3f1cf5cccec7da45d51f1df562d47046d0cf4d17`.
+
+After a separate fresh lease/fence/task/config/source and all-three-birth
+recheck, the exact reviewed operation sent **one SIGTERM to guardian 15427**.
+Node 15146 was left alive to commit the normal checkpoint. The signal journal
+is `a2f9f60ee0d96282da0dbb2b6cd1cad557042429afa4356646b939575dfff3c2`.
+No second planned interruption signal is authorized by this test.
+
+The worker ended i2 normally as a checkpoint at 10:23:47.772 UTC, exit 124,
+cleared its lease and scheduled the same work for 10:28:47.772 UTC. A fresh
+strict census at 10:24:32 UTC established that all three original process
+births were gone, no tracked process remained, and the guarded owner count
+was zero. Quiescence proof is
+`4fb6d0ad3180c994c836439db6eefa36c3f8f0ff1cd4deba8b1109885a21970b`.
+The reviewed `hold-mini-checkpoint` phase then unloaded both Mini CD services
+once. Mini SSH, physical host and unrelated CI services remained available.
+This is an owned-process interruption, not a physical power-off proof. The
+13-file archive manifest is
+`fbb6d13fa96cf675fa2fb1aa69d5bb4f496b198b7337f38ba867ae1232939940`.
+
+The interrupted native session left one untracked 272-byte backlog roadmap
+draft in its operational checkout. Read-only inspection found SHA-256
+`25d108363b2c01772d071462133dbd94aabd46b9ad806541c2c31a956df00d89`,
+with no matching remote claim. Its bytes and metadata are preserved privately.
+It must be preserved outside the checkout before a later clean-source Mini
+restoration; no reset, discard or cleanup has occurred.
+
+After the real retry time passed, fresh exact-source readiness, ordinary
+subscription quota (14% used), paid-liability/hold comparison, Mini service
+hold and strict quiescence checks passed. The reviewed `resume-macbook` phase
+applied once. At 10:33:31.977 UTC, independent ledger readback established
+actual i3 on host `evo-macbook-chrisheinrich-codex`, **same work and task digest**,
+fence 3, started 10:32:06.680 UTC, with fresh host-local native session
+`01a158de-82ac-7f62-865e-dd9cfee2725b`. The foreign Mini session was not resumed
+or copied. Readback proof is
+`1663b7420759a89d0928159a8e8bccd43587dbaf0926268f5306a254e985e1f0`.
+
+This proves takeover started. Normal parent repair verification/adoption,
+full native validation and exact internal TestFlight delivery remain pending.
+The original i1 startup failure remains unexplained and unchanged; neither
+interruption nor takeover erases it. Full campaign credit remains **0/8**.
+
+Concurrent main PR #570 advanced Evo to
+`0159d1f1a05c2a41ffac7a8c3911434627842c9c`; actual GET confirmed it at
+10:30:08.935 UTC. Preserve that work. The immutable host-launch source remains
+4d41 and is distinct from any final app-source adoption. Separate task
+EV-26-10-20-03.28.42 prepared draft #571 to move the unchanged quarter-hour
+cron away from busy minute boundaries. Its cause diagnosis is unknown and
+its real schedule-event proof is still required. Like reviewed draft #566,
+it stays unmerged until root releases the campaign's source-change gate.
