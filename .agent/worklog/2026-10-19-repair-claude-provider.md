@@ -77,3 +77,79 @@ R3: actual App exchange shape and Opus quota semantics remain unproven. Deferred
 to direct-child roadmap MO-26-10-19-20.37.25 with explicit capability, revocation,
 actual model-window and fail-closed acceptance. It is part of the ongoing consumer
 rollout and is required before active repair admission.
+
+
+Independent high-risk Opus review cleared the provider correction and its same-session follow-up. The reviewer accepted intentional conservative no-model admission, verified matching model filtering in telemetry files and OAuth, and independently passed22 worker tests in each turn. Live App authority and Opus capacity remain unproven and tracked in MO-26-10-19-20.37.25 before activation.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "1e8a87733fe19baac4f5a27bbca37c4fa163447c",
+  "reviewed": "0f86a8b17ab159f46c937f780a819f4327374897",
+  "covered": "c258b5fc744ae9273fd832ce40504ece9800af4a",
+  "authorSession": "01a1572f-2ae1-77f2-be54-4265b3baca43",
+  "reviewerSession": "c4d332a8-890c-42f4-a800-e2ff7b9c5ebe",
+  "risk": "high",
+  "elapsedMinutes": 2.62235,
+  "timing": {
+    "source": "runner",
+    "durationMs": 157341,
+    "evidence": "Claude stream-json result for actual session c4d332a8-890c-42f4-a800-e2ff7b9c5ebe, initial invocation: duration_ms=157341. Private /tmp/morpheus-provider-opus-review-result.json. Process clock03:32:44.891631\u201303:35:26.916074Z includes launcher overhead; runner duration is used."
+  },
+  "outcome": "complete",
+  "initialOutcome": "cleared",
+  "summary": "Independent high-risk Opus review cleared the provider correction and its same-session follow-up. The reviewer accepted intentional conservative no-model admission, verified matching model filtering in telemetry files and OAuth, and independently passed22 worker tests in each turn. Live App authority and Opus capacity remain unproven and tracked in MO-26-10-19-20.37.25 before activation.",
+  "findings": [
+    {
+      "id": "R1-minor",
+      "severity": "minor",
+      "description": "No-model telemetry conservatively retains present unusable runtime buckets and can remain waiting.",
+      "paths": [
+        "src/cd/worker.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Resolved by explanation, with no source change: this intentional fail-closed policy is already documented; explicit model selection excludes unrelated buckets. Same reviewer accepted the explanation with no remaining concern."
+    },
+    {
+      "id": "R2-minor",
+      "severity": "minor",
+      "description": "Model-attested telemetry files included unrelated windows unlike model-specific OAuth readback.",
+      "paths": [
+        "src/cd/worker.ts",
+        "tests/cd/worker.test.ts",
+        "dist/cd/worker.js",
+        "dist/cd/worker.js.map"
+      ],
+      "disposition": "fixed",
+      "response": "After exact model/completeness checks, filter file telemetry to the same three required shared/model IDs. Regression asserts unrelated Fable100 leaves Opus35 while Opus100 remains exhausted; removed-filter mutant failed. Same reviewer inspected the fix and independently passed22 worker tests."
+    },
+    {
+      "id": "R3-live-proof",
+      "severity": "incidental",
+      "description": "Actual App response shape and actual Opus window/reset semantics require the reviewed consumer probe; null capacity must remain unknown.",
+      "paths": [
+        "src/cd/github-token.ts",
+        "src/cd/worker.ts"
+      ],
+      "disposition": "deferred",
+      "roadmap": "MO-26-10-19-20.37.25",
+      "response": "Filed direct-child follow-up with exact existing-App workflow write/readback/delete/revoke and actual shared/Opus quota acceptance before active repair admission. No live capacity, token response shape or TestFlight credit is claimed."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "c4d332a8-890c-42f4-a800-e2ff7b9c5ebe",
+      "commit": "c258b5fc744ae9273fd832ce40504ece9800af4a",
+      "scopeReason": "Focused minor R2 correction after initial clearance, R1 explanation and tracked R3 incidental probe requirement.",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.5723166666666667,
+      "timing": {
+        "source": "runner",
+        "durationMs": 34339,
+        "evidence": "Same actual Claude session c4d332a8-890c-42f4-a800-e2ff7b9c5ebe resumed once; stream-json result duration_ms=34339 in /tmp/morpheus-provider-opus-followup-result.json. Process clock03:38:43.656657\u201303:39:21.169208Z."
+      },
+      "summary": "Cleared exact c258b5fc744ae9273fd832ce40504ece9800af4a with all three finding dispositions resolved; independently passed22 worker tests. No full suite or live provider calls."
+    }
+  ]
+}
+```
