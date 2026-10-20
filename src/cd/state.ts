@@ -1,4 +1,4 @@
-import { configurationDigest, hash, type Attempt, type CdConfig, type CdState, type Channel, type DeliveryIntent, type Identity, type InternalObservation, type QuotaSnapshot, type Receipt, type SourceRevision, type TestEvidence, type UploadEvidence } from "./schema.js";
+import { configurationDigest, hash, sourceAgeWaiverSchema, type SourceAgeWaiver, type Attempt, type CdConfig, type CdState, type Channel, type DeliveryIntent, type Identity, type InternalObservation, type QuotaSnapshot, type Receipt, type SourceRevision, type TestEvidence, type UploadEvidence } from "./schema.js";
 import { CdWait } from "./errors.js";
 
 export const milliseconds = (minutes: number) => minutes * 60_000;
@@ -32,7 +32,9 @@ export function adoptSources(state: CdState, sources: SourceRevision[], now: str
   state.sources = sources.map(source => known.get(source.sha) ?? { ...source, mainEnteredAt: source.evidence.kind === "observed" ? now : source.mainEnteredAt });
   if (sources.length) state.lastMain = sources.at(-1)!.sha;
 }
-export function createIntent(state: CdState, config: CdConfig, channel: Channel, source: SourceRevision, slot: string, now: string, validation = false, group?: string, requestId?: string): DeliveryIntent {
+export function createIntent(state: CdState, config: CdConfig, channel: Channel, source: SourceRevision, slot: string, now: string, validation = false, group?: string, requestId?: string, sourceAgeWaiver?: SourceAgeWaiver): DeliveryIntent {
+  invariant(!sourceAgeWaiver || validation, "Source-age waiver requires a validation intent");
+  const waiver = sourceAgeWaiver && sourceAgeWaiverSchema.parse(sourceAgeWaiver);
   const cursor = state.cursors[channel], historical = cursor && source.order < cursor.order;
   invariant(!group || group === config.channels[channel].internalGroupId || validation && group === config.channels[channel].validationGroupId, "Delivery group must be explicitly declared for this channel");
   const isolatedValidation = Boolean(validation && group && group === config.channels[channel].validationGroupId && group !== config.channels[channel].internalGroupId);
@@ -41,7 +43,8 @@ export function createIntent(state: CdState, config: CdConfig, channel: Channel,
   invariant(!state.intents[id], `Delivery ${id} already exists`);
   const debt = state.sources.filter((item, index) => item.order > (cursor?.order ?? -1) && item.order <= source.order && item.inputDigest !== state.sources[index - 1]?.inputDigest);
   const intent: DeliveryIntent = { id, channel, slot, originalSource: source.sha, source: source.sha, selectedMainEnteredAt: source.mainEnteredAt, oldestDebtAt: debt[0]?.mainEnteredAt ?? source.mainEnteredAt, lineage: [{ source: source.sha, inputDigest: source.inputDigest, mainEnteredAt: source.mainEnteredAt, reason: "selected", evidence: source.evidence.ref }], coveredSources: debt.map(item => item.sha), coveredSlots: [slot], validation, isolatedValidation, groupId: group ?? config.channels[channel].internalGroupId, createdAt: now, deadlineAt: after(slot, config.deadlines.deliveryHours * 60), state: "pending", nextAction: "dispatch-full-tests", nextCheckAt: now, attempts: [] };
-  if (!eligible(source, config, channel, now)) { intent.state = "waiting"; intent.eligibleAt = after(source.mainEnteredAt, config.channels[channel].minimumAgeHours * 60); intent.nextCheckAt = intent.eligibleAt; intent.nextAction = "wait-source-age"; }
+  if (waiver) intent.sourceAgeWaiver = waiver;
+  if (!waiver && !eligible(source, config, channel, now)) { intent.state = "waiting"; intent.eligibleAt = after(source.mainEnteredAt, config.channels[channel].minimumAgeHours * 60); intent.nextCheckAt = intent.eligibleAt; intent.nextAction = "wait-source-age"; }
   state.intents[id] = intent; return intent;
 }
 /** Slot decisions and watermark mutate together inside one ledger transaction. */
@@ -106,7 +109,7 @@ export function planAttempt(state: CdState, config: CdConfig, intentId: string, 
   const intent = intentAt(state, intentId), source = sourceAt(state, intent.source);
   invariant(intent.state !== "delivered" && !intent.attempts.some(attempt => attempt.status === "active"), "Intent already has an active or delivered attempt");
   const lineageAge = intent.lineage.find(item => item.inputDigest === source.inputDigest)?.mainEnteredAt ?? source.mainEnteredAt;
-  invariant(Date.parse(lineageAge) + config.channels[intent.channel].minimumAgeHours * 3_600_000 <= Date.parse(now), "Production source is not old enough");
+  invariant(intent.validation && intent.sourceAgeWaiver || Date.parse(lineageAge) + config.channels[intent.channel].minimumAgeHours * 3_600_000 <= Date.parse(now), "Production source is not old enough");
   const occupied = Object.values(state.intents).flatMap(item => item.attempts).filter(item => item.status === "active" && !item.upload?.acceptedAt).length;
   if (occupied >= (config.execution?.maxNativeJobs ?? 2)) throw new CdWait("Native execution capacity is reserved", "native-capacity");
   const id = `${intent.id}-a${intent.attempts.length + 1}`, app = config.channels[intent.channel];
@@ -215,7 +218,7 @@ export function adoptRepair(state: CdState, config: CdConfig, intentId: string, 
   for (const attempt of intent.attempts) invariant(attempt.status !== "active" || !attempt.upload || attempt.upload.outcome === "rejected" || !attempt.upload.acceptedAt && attempt.quiescence, "Unresolved or accepted upload must finish/reject before replacement");
   for (const attempt of intent.attempts) if (attempt.status === "active") attempt.status = "failed";
   const appAge = intent.lineage.find(item => item.inputDigest === source.inputDigest)?.mainEnteredAt ?? source.mainEnteredAt;
-  intent.eligibleAt = after(appAge, config.channels[intent.channel].minimumAgeHours * 60);
+  intent.eligibleAt = intent.validation && intent.sourceAgeWaiver ? now : after(appAge, config.channels[intent.channel].minimumAgeHours * 60);
   intent.state = Date.parse(intent.eligibleAt) > Date.parse(now) ? "waiting" : "pending"; intent.nextAction = intent.state === "waiting" ? "wait-source-age" : "dispatch-full-tests"; intent.nextCheckAt = intent.state === "waiting" ? intent.eligibleAt : now;
   intent.coveredSources = state.sources.filter(item => item.order <= source.order && item.order > (state.cursors[intent.channel]?.order ?? -1)).map(item => item.sha);
 }

@@ -1,4 +1,4 @@
-import { hash } from "./schema.js";
+import { hash, sourceAgeWaiverSchema } from "./schema.js";
 import { invariant } from "./state.js";
 /** Runs before every commit, including transitions introduced by later controller versions. */
 export function assertTransition(previous, next) {
@@ -10,6 +10,7 @@ export function assertTransition(previous, next) {
         invariant(current, "Delivery obligations and receipts cannot be deleted");
         for (const key of ["id", "channel", "slot", "originalSource", "selectedMainEnteredAt", "validation", "isolatedValidation", "groupId", "createdAt"])
             invariant(current[key] === old[key], `Original delivery ${key} is immutable`);
+        invariant(hash(current.sourceAgeWaiver ?? null) === hash(old.sourceAgeWaiver ?? null), "Original source-age waiver is immutable");
         invariant(Date.parse(current.oldestDebtAt) <= Date.parse(old.oldestDebtAt) && Date.parse(current.deadlineAt) <= Date.parse(old.deadlineAt), "New work cannot reset the oldest debt or overdue clock");
         invariant(current.attempts.length >= old.attempts.length && current.lineage.length >= old.lineage.length, "Attempts and source lineage are append-only");
         invariant(hash(current.lineage.slice(0, old.lineage.length)) === hash(old.lineage), "Existing source lineage cannot be rewritten");
@@ -45,6 +46,9 @@ export function assertTransition(previous, next) {
             invariant(hash(after) === hash(before), "Paid settlement tombstones are immutable");
     }
     for (const intent of Object.values(next.intents)) {
+        invariant(!intent.sourceAgeWaiver || intent.validation, "Source-age waiver requires a validation intent");
+        if (intent.sourceAgeWaiver)
+            sourceAgeWaiverSchema.parse(intent.sourceAgeWaiver);
         invariant(Number.isFinite(Date.parse(intent.nextCheckAt)) && Number.isFinite(Date.parse(intent.deadlineAt)), "Every delivery needs an explicit next check and original deadline");
         if (intent.state === "repairing")
             invariant(Object.values(next.agents).some(work => work.intentId === intent.id && work.state !== "complete"), "Repairing state must atomically own durable agent work");

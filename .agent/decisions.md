@@ -28,6 +28,8 @@ file anyway, so it was removed; low-churn goal and request indexes remain genera
 
 ## Tooling
 
+**Human-authorized CD validation may waive source age per immutable intent** — 2026-10-19. Chris explicitly waived staging and production waits for the eight-delivery Evo validation campaign. Use a manual validation request with an exact verified main source and the actual authorization reference. Persist the waiver on that lineage, including reviewed repairs; never change global cadence, normal production age, configuration identity or completion evidence. This is domain-specific policy using existing state/CLI validation, so no generic package is needed. Each future waiver still requires its own actual human authority.
+
 **The macOS CD V2 host supervisor ships as reviewed source templates** — 2026-10-19. Morpheus owns generic launchd labels, tick/worker wrappers and digest/credential guards; each consumer copies them from an exact reviewed Morpheus commit, renders its own paths, and owns installation and cutover. Do not make the reusable controller initialize state, load services, or infer consumer provider/host facts. Keep the first integration as a small source asset and runbook rather than a configurable installer until a second consumer needs shared rendering.
 
 **Dependabot automation separates policy, model judgment, and write authority.** Projects own

@@ -1,4 +1,4 @@
-import { configurationDigest, hash } from "./schema.js";
+import { configurationDigest, hash, sourceAgeWaiverSchema } from "./schema.js";
 import { CdWait } from "./errors.js";
 export const milliseconds = (minutes) => minutes * 60_000;
 export const after = (at, minutes) => new Date(Date.parse(at) + milliseconds(minutes)).toISOString();
@@ -43,7 +43,9 @@ export function adoptSources(state, sources, now) {
     if (sources.length)
         state.lastMain = sources.at(-1).sha;
 }
-export function createIntent(state, config, channel, source, slot, now, validation = false, group, requestId) {
+export function createIntent(state, config, channel, source, slot, now, validation = false, group, requestId, sourceAgeWaiver) {
+    invariant(!sourceAgeWaiver || validation, "Source-age waiver requires a validation intent");
+    const waiver = sourceAgeWaiver && sourceAgeWaiverSchema.parse(sourceAgeWaiver);
     const cursor = state.cursors[channel], historical = cursor && source.order < cursor.order;
     invariant(!group || group === config.channels[channel].internalGroupId || validation && group === config.channels[channel].validationGroupId, "Delivery group must be explicitly declared for this channel");
     const isolatedValidation = Boolean(validation && group && group === config.channels[channel].validationGroupId && group !== config.channels[channel].internalGroupId);
@@ -53,7 +55,9 @@ export function createIntent(state, config, channel, source, slot, now, validati
     invariant(!state.intents[id], `Delivery ${id} already exists`);
     const debt = state.sources.filter((item, index) => item.order > (cursor?.order ?? -1) && item.order <= source.order && item.inputDigest !== state.sources[index - 1]?.inputDigest);
     const intent = { id, channel, slot, originalSource: source.sha, source: source.sha, selectedMainEnteredAt: source.mainEnteredAt, oldestDebtAt: debt[0]?.mainEnteredAt ?? source.mainEnteredAt, lineage: [{ source: source.sha, inputDigest: source.inputDigest, mainEnteredAt: source.mainEnteredAt, reason: "selected", evidence: source.evidence.ref }], coveredSources: debt.map(item => item.sha), coveredSlots: [slot], validation, isolatedValidation, groupId: group ?? config.channels[channel].internalGroupId, createdAt: now, deadlineAt: after(slot, config.deadlines.deliveryHours * 60), state: "pending", nextAction: "dispatch-full-tests", nextCheckAt: now, attempts: [] };
-    if (!eligible(source, config, channel, now)) {
+    if (waiver)
+        intent.sourceAgeWaiver = waiver;
+    if (!waiver && !eligible(source, config, channel, now)) {
         intent.state = "waiting";
         intent.eligibleAt = after(source.mainEnteredAt, config.channels[channel].minimumAgeHours * 60);
         intent.nextCheckAt = intent.eligibleAt;
@@ -143,7 +147,7 @@ export function planAttempt(state, config, intentId, controlSha, providerMaximum
     const intent = intentAt(state, intentId), source = sourceAt(state, intent.source);
     invariant(intent.state !== "delivered" && !intent.attempts.some(attempt => attempt.status === "active"), "Intent already has an active or delivered attempt");
     const lineageAge = intent.lineage.find(item => item.inputDigest === source.inputDigest)?.mainEnteredAt ?? source.mainEnteredAt;
-    invariant(Date.parse(lineageAge) + config.channels[intent.channel].minimumAgeHours * 3_600_000 <= Date.parse(now), "Production source is not old enough");
+    invariant(intent.validation && intent.sourceAgeWaiver || Date.parse(lineageAge) + config.channels[intent.channel].minimumAgeHours * 3_600_000 <= Date.parse(now), "Production source is not old enough");
     const occupied = Object.values(state.intents).flatMap(item => item.attempts).filter(item => item.status === "active" && !item.upload?.acceptedAt).length;
     if (occupied >= (config.execution?.maxNativeJobs ?? 2))
         throw new CdWait("Native execution capacity is reserved", "native-capacity");
@@ -312,7 +316,7 @@ export function adoptRepair(state, config, intentId, source, evidence, now) {
         if (attempt.status === "active")
             attempt.status = "failed";
     const appAge = intent.lineage.find(item => item.inputDigest === source.inputDigest)?.mainEnteredAt ?? source.mainEnteredAt;
-    intent.eligibleAt = after(appAge, config.channels[intent.channel].minimumAgeHours * 60);
+    intent.eligibleAt = intent.validation && intent.sourceAgeWaiver ? now : after(appAge, config.channels[intent.channel].minimumAgeHours * 60);
     intent.state = Date.parse(intent.eligibleAt) > Date.parse(now) ? "waiting" : "pending";
     intent.nextAction = intent.state === "waiting" ? "wait-source-age" : "dispatch-full-tests";
     intent.nextCheckAt = intent.state === "waiting" ? intent.eligibleAt : now;
