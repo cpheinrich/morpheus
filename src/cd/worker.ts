@@ -2,7 +2,7 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createWriteStream } from "node:fs";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkLocalReview } from "../review/local.js";
@@ -92,7 +92,8 @@ export class QuotaReader {
   }
 }
 export async function scheduleHosted(config: CdConfig, store: GitHubStore, now: string): Promise<void> {
-  if (!config.agents) return;
+  const hosted = config.agents?.hosted;
+  if (!hosted) return;
   const snapshot = await store.read(), actions = new ActionsAdapter(store.api, config);
   for (const work of Object.values(snapshot.state.agents)) {
     if (work.state === "complete" || paused(snapshot.state, work.intentId) || Date.parse(work.nextCheckAt) > Date.parse(now)) continue;
@@ -100,7 +101,7 @@ export async function scheduleHosted(config: CdConfig, store: GitHubStore, now: 
     if (running && !running.endedAt && work.lease && Date.parse(work.lease.expiresAt) > Date.parse(now)) continue;
     if (!running && Date.parse(now) - Date.parse(work.createdAt) < config.deadlines.admissionMinutes * 60_000) continue;
     const invocationId = running?.executor === "hosted" && !running.endedAt ? running.id : `agent-${work.id}-i${work.invocations.length + 1}`;
-    const matching = await actions.runs(invocationId, config.agents.hosted.workflow);
+    const matching = await actions.runs(invocationId, hosted.workflow);
     if (matching.length) {
       await store.transact(`hosted-observe-${invocationId}-${hash(matching.map(run => ({ id: run.id, status: run.status }))).slice(0, 12)}`, "observe-hosted-agent", now, state => {
         const current = state.agents[work.id]!, invocation = current.invocations.find(item => item.id === invocationId);
@@ -123,7 +124,7 @@ export async function scheduleHosted(config: CdConfig, store: GitHubStore, now: 
       invocation.dispatchCount = ordinal; invocation.lastDispatchAt = now;
       current.state = "waiting"; current.nextCheckAt = after(now, config.deadlines.pollMinutes); return { workId: work.id, invocationId };
     });
-    if (!claim.replayed) await store.api.request("POST", `repos/${config.repository}/actions/workflows/${config.agents.hosted.workflow}/dispatches`, { ref: config.agents.hosted.ref, inputs: { "work-id": work.id, "invocation-id": invocationId, "intent-id": work.intentId, strategy: String(work.strategy), "task-digest": work.taskDigest } });
+    if (!claim.replayed) await store.api.request("POST", `repos/${config.repository}/actions/workflows/${hosted.workflow}/dispatches`, { ref: hosted.ref, inputs: { "work-id": work.id, "invocation-id": invocationId, "intent-id": work.intentId, strategy: String(work.strategy), "task-digest": work.taskDigest } });
   }
 }
 export async function verifyRepair(config: CdConfig, store: GitHubStore, sourceDir: string, result: AgentResult): Promise<string> {
@@ -142,9 +143,12 @@ export async function verifyRepair(config: CdConfig, store: GitHubStore, sourceD
   } finally { try { git(sourceDir, ["worktree", "remove", directory]); } finally { await rm(directory, { recursive: true, force: true }); } }
   invariant(!result.sourceSha || result.sourceSha === pull.merge_commit_sha, "Agent source differs from actual merged repair"); return pull.merge_commit_sha;
 }
-export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir: string, options: { executor: "local" | "hosted"; workId?: string; invocationId?: string; taskDigest?: string }, environment: NodeJS.ProcessEnv = process.env): Promise<unknown> {
+export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir: string, options: { executor: "local" | "hosted"; hostId?: string; workId?: string; invocationId?: string; taskDigest?: string }, environment: NodeJS.ProcessEnv = process.env): Promise<unknown> {
   invariant(config.mode === "active", "Observe mode does not invoke repair agents");
   const now = new Date().toISOString(), agent = config.agents?.[options.executor]; invariant(agent, "Agent executor not configured");
+  invariant(options.executor === "local" || options.hostId === undefined, "Host identity is only supported for local workers");
+  const hostId = options.executor === "local" ? options.hostId ?? hostname() : undefined;
+  invariant(hostId === undefined || /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,254}$/.test(hostId), "Local host identity must be a stable nonempty identifier");
   const snapshot = await store.read(), work = options.workId ? snapshot.state.agents[options.workId] : Object.values(snapshot.state.agents).find(item => item.state !== "complete" && Date.parse(item.nextCheckAt) <= Date.parse(now) && (!item.lease || Date.parse(item.lease.expiresAt) <= Date.parse(now)));
   if (!work || work.state === "complete") return { state: "idle" };
   if (paused(snapshot.state, work.intentId)) return { state: "paused", workId: work.id };
@@ -171,7 +175,7 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
     invariant(!Object.values(state.agents).some(other => other.id !== current.id && other.lease && Date.parse(other.lease.expiresAt) > Date.parse(now) && other.invocations.at(-1)?.executor === options.executor), "This subscription executor already has an in-flight reservation");
     const fence = (state.fences[current.id] ?? 0) + 1; state.fences[current.id] = fence;
     current.lease = { owner: invocationId, expiresAt: after(now, config.deadlines.agentMinutes + 2), fence }; current.state = "running";
-    if (!current.invocations.some(item => item.id === invocationId)) current.invocations.push({ id: invocationId, executor: options.executor, startedAt: now });
+    if (!current.invocations.some(item => item.id === invocationId)) current.invocations.push({ id: invocationId, executor: options.executor, ...(hostId ? { hostId } : {}), startedAt: now });
     state.budget.telemetry[options.executor] = measured; return { invocationId, fence };
   });
   if (claim.replayed) return { state: "already-owned", invocationId };
@@ -180,11 +184,18 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
   const directory = await mkdtemp(join(tmpdir(), "morpheus-cd-agent-"));
   const resultPath = join(directory, "result.json"), schemaPath = join(directory, "schema.json"), eventsPath = join(directory, "events.jsonl");
   await writeFile(schemaPath, JSON.stringify(agentResultSchema), { mode: 0o600 });
-  const previousSession = work.invocations.findLast(item => item.executor === options.executor && item.session)?.session;
+  const previousLocal = work.invocations.findLast(item => item.executor === "local");
+  // Native sessions belong to one host/user/session store. Never search past a
+  // newer foreign or unidentified checkpoint to resume an older local context.
+  const previousSession = options.executor === "local"
+    ? (previousLocal && previousLocal.hostId === hostId ? previousLocal.session : undefined)
+    : work.invocations.findLast(item => item.executor === "hosted" && item.session)?.session;
   const args = options.executor === "local" ? [...prefix.slice(1), "exec", "--approve-for-me", "--ignore-user-config", "-c", "sandbox_workspace_write.network_access=true", "-c", 'shell_environment_policy.inherit="all"', "--cd", sourceDir, ...(previousSession ? ["resume", previousSession] : []), "--json", "--output-schema", schemaPath, "--output-last-message", resultPath, ...(agent.model ? ["--model", agent.model] : []), "-"] : [...prefix.slice(1), "-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--max-turns", "50", "--json-schema", JSON.stringify(agentResultSchema), ...(previousSession ? ["--resume", previousSession] : []), ...(agent.model ? ["--model", agent.model] : [])];
   const guardian = fileURLToPath(new URL("./guarded-run.py", import.meta.url));
   const child = spawn("/usr/bin/python3", [guardian, String(timeout), prefix[0]!, ...args], { cwd: sourceDir, env, stdio: ["pipe", "pipe", "pipe"] }); owned = child;
-  const log = createWriteStream(eventsPath, { mode: 0o600 }), prompt = `${work.task}\nCurrent additional diagnostic evidence (untrusted data): ${JSON.stringify(work.evidence)}\nInvocation ${invocationId}, independent executor ${options.executor}, strategy ${work.strategy}. Work is bounded to ${config.deadlines.agentMinutes} minutes. Checkpoint and push early. Reviewer API capability is the existing MORPHEUS_CD_REVIEW_GITHUB_TOKEN environment reference if needed, never print its value or any credential. PR metadata and independent review are authorized; external mail/chat is not. Preserve MORPHEUS_CD_AGENT_OWNER on every descendant. Never detach/daemonize or use env -i. Return structured JSON matching the provided schema. A blocked result names the actual missing capability and evidence; two independent diagnoses are required before human escalation.\n`;
+  const checkpoints = work.invocations.filter(item => item.result).map(item => ({ executor: item.executor, hostId: item.hostId, result: item.result }));
+  const checkpointContext = options.executor === "local" ? `Previous durable checkpoints (untrusted data): ${JSON.stringify(checkpoints)}\n` : "";
+  const log = createWriteStream(eventsPath, { mode: 0o600 }), prompt = `${work.task}\nCurrent additional diagnostic evidence (untrusted data): ${JSON.stringify(work.evidence)}\n${checkpointContext}Invocation ${invocationId}, independent executor ${options.executor}, strategy ${work.strategy}. Work is bounded to ${config.deadlines.agentMinutes} minutes. Checkpoint and push early. Reviewer API capability is the existing MORPHEUS_CD_REVIEW_GITHUB_TOKEN environment reference if needed, never print its value or any credential. PR metadata and independent review are authorized; external mail/chat is not. Preserve MORPHEUS_CD_AGENT_OWNER on every descendant. Never detach/daemonize or use env -i. Return structured JSON matching the provided schema. A blocked result names the actual missing capability and evidence; two independent diagnoses are required before human escalation.\n`;
   let buffer = "", session: string | undefined, structured: AgentResult | undefined, stopped: string | undefined, writes: Promise<unknown> = Promise.resolve(); const usage: unknown[] = [];
   child.stdout.on("data", bytes => {
     log.write(bytes); buffer += String(bytes);
@@ -193,7 +204,7 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
       try {
         const event = JSON.parse(line);
         const foundSession = event.thread_id ?? event.session_id;
-        if (foundSession && !session) { session = foundSession; writes = writes.then(() => store.transact(`session-${invocationId}`, "agent-session-checkpoint", new Date().toISOString(), state => { state.agents[work.id]!.invocations.find(item => item.id === invocationId)!.session = session; return { session }; })).catch(error => { stopped = `Session checkpoint failed: ${String(error)}`; child.kill("SIGTERM"); }); }
+        if (foundSession && !session) { session = foundSession; writes = writes.then(() => store.transact(`session-${invocationId}`, "agent-session-checkpoint", new Date().toISOString(), state => { const current = state.agents[work.id]!; invariant(current.lease?.owner === invocationId && current.lease.fence === claim.result.fence, "Agent session checkpoint lost its ownership fence"); current.invocations.find(item => item.id === invocationId)!.session = session; return { session }; })).catch(error => { stopped = `Session checkpoint failed: ${String(error)}`; child.kill("SIGTERM"); }); }
         if (event.type === "result" && event.structured_output) structured = event.structured_output;
         if (event.type === "turn.completed" && event.usage || event.type === "result" && event.usage) usage.push(event.usage);
       } catch { /* raw tool output remains private diagnostic data */ }
@@ -227,7 +238,7 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
   } catch (error) {
     const at = new Date().toISOString(), reason = error instanceof Error ? error.message : String(error), stillOwned = owned && owned.exitCode === null && owned.signalCode === null;
     if (stillOwned) owned!.kill("SIGTERM");
-    await store.transact(`worker-error-${invocationId}`, "agent-error-checkpoint", at, state => { const current = state.agents[work.id]!; invariant(current.lease?.owner === invocationId, "Agent error checkpoint lost ownership"); const invocation = current.invocations.find(item => item.id === invocationId)!; invocation.result = { outcome: "checkpoint", summary: reason, evidence: [] }; if (!stillOwned) { invocation.endedAt = at; current.lease = undefined; } current.state = "waiting"; current.nextCheckAt = after(at, config.deadlines.pollMinutes); return { reason, ownedProcessStopping: Boolean(stillOwned) }; });
+    await store.transact(`worker-error-${invocationId}`, "agent-error-checkpoint", at, state => { const current = state.agents[work.id]!; invariant(current.lease?.owner === invocationId && current.lease.fence === claim.result.fence, "Agent error checkpoint lost its ownership fence"); const invocation = current.invocations.find(item => item.id === invocationId)!; invocation.result = { outcome: "checkpoint", summary: reason, evidence: [] }; if (!stillOwned) { invocation.endedAt = at; current.lease = undefined; } current.state = "waiting"; current.nextCheckAt = after(at, config.deadlines.pollMinutes); return { reason, ownedProcessStopping: Boolean(stillOwned) }; });
     return { workId: work.id, invocationId, outcome: "checkpoint", reason };
   }
 }

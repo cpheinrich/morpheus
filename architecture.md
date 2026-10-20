@@ -3335,6 +3335,15 @@ configured model-family windows; missing capacity remains a budget wait rather
 than silently treating an exhausted or unavailable model as healthy. Failed usage
 reads expose only fixed recognized diagnostics, never arbitrary provider text or
 credentials; actual scoped workflow authority and quota remain rollout proofs.
+The hosted repair route is optional: registered native Codex workers can share
+the same GitHub queue while preserving one global local-subscription reservation.
+Native invocation identity names the host/user/session store; only its latest
+same-host local session can resume. Foreign or unidentified sessions restart from
+the immutable task and durable checkpoint evidence without copying native sessions
+or credentials. Owner and fence guard session, completion and error checkpoints.
+Existing configured hosted normalization is unchanged; removing that route is an
+explicit consumer configuration migration, not a silent ledger reset. Source-level
+tests do not establish actual two-Mac readiness or failover acceptance.
 App-only
 repairs reset production age; unchanged input
 digests retain their first lineage age through controller repairs. These are

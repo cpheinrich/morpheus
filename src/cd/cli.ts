@@ -20,7 +20,7 @@ const HELP = `morpheus cd config|init|tick|request|status|verify-execution|claim
   request --channel CHANNEL [--source SHA] [--validation] [--group ID] [--source-age-waiver REF]
   record --kind tests|failure|quiescence --evidence FILE (or - for stdin)
   upload-hook --phase before|resource|after
-  worker --executor local|hosted [--work-id ID --invocation-id ID --task-digest SHA256]
+  worker --executor local|hosted [--host-id ID] [--work-id ID --invocation-id ID --task-digest SHA256]
   budget --operation reserve|settle --id ID [--request FILE --maximum-micros N|--actual-micros N]
 All results are JSON. Upload claim exit 3 means skip safely; never retry bytes.
 `;
@@ -55,7 +55,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
     config: { type: "string" }, "source-dir": { type: "string" }, evidence: { type: "string" }, kind: { type: "string" }, phase: { type: "string" },
     channel: { type: "string" }, source: { type: "string" }, group: { type: "string" }, validation: { type: "boolean" }, observe: { type: "boolean" },
     "source-age-waiver": { type: "string" },
-    executor: { type: "string" }, "work-id": { type: "string" }, "invocation-id": { type: "string" }, "task-digest": { type: "string" },
+    executor: { type: "string" }, "host-id": { type: "string" }, "work-id": { type: "string" }, "invocation-id": { type: "string" }, "task-digest": { type: "string" },
     operation: { type: "string" }, id: { type: "string" }, request: { type: "string" }, "maximum-micros": { type: "string" }, "actual-micros": { type: "string" },
     help: { type: "boolean", short: "h" }, json: { type: "boolean" }, revoke: { type: "boolean" }, probe: { type: "boolean" },
   } });
@@ -143,7 +143,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
     }
     case "worker": {
       invariant(values.executor === undefined || values.executor === "local" || values.executor === "hosted", "Unknown agent executor");
-      result = await runWorker(config, store, sourceDir, { executor: values.executor ?? "local", workId: values["work-id"], invocationId: values["invocation-id"], taskDigest: values["task-digest"] }, environment); break;
+      result = await runWorker(config, store, sourceDir, { executor: values.executor ?? "local", hostId: values["host-id"], workId: values["work-id"], invocationId: values["invocation-id"], taskDigest: values["task-digest"] }, environment); break;
     }
     case "budget": {
       const id = required(values.id, "--id");

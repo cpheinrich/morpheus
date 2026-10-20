@@ -11,6 +11,19 @@ behave. This file holds judgment calls, which could have gone the other way.
 
 ---
 
+## Native CD repair sessions are local to a registered host — 2026-10-19
+
+Chris rejected requiring Anthropic support for Evo recovery and authorized native
+Codex workers on both Macs with the GitHub queue. Make the hosted repair route
+optional while preserving configured hosted behavior and its existing digest.
+Local invocations carry a stable host/user/session-store identity; resume only the
+latest local checkpoint from that same identity. Foreign and legacy unidentified
+sessions start fresh from durable task/checkpoint evidence, without auth/session
+copying. Keep the shared local reservation, measured subscription admission and
+owner/fence checks. Consumer migration, host readiness and empirical failover are
+separate acceptance work. This is a small domain boundary using existing Node
+hostname, CLI parsing and Git CAS; no generic package or new dependency is needed.
+
 ## External TestFlight follows internal acceptance — 2026-10-19
 
 Chris explicitly requested internal and external distribution for future Evo

@@ -11,6 +11,19 @@ Morpheus provides the durable controller and local worker. The templates in `src
 
 The wrappers pass both `--config` and `--source-dir` explicitly. Before invoking Morpheus, they verify the exact runtime and configuration digests, require distinct source/runtime directories, and refuse unresolved paths. Tests run generated wrappers with spaces in their paths and synthetic credentials.
 
+For several native workers sharing one GitHub queue, declare `agents.local` and
+omit `agents.hosted` if no hosted repair is wanted. In each reviewed rendered
+worker command, append `--host-id MAC_USER_SESSION_STORE_ID`, assigning a unique
+stable nonsecret ID to each Mac/user/Codex session store. The unmodified template
+defaults to the native hostname; do not rely on that default when hostnames can
+collide. Keep IDs stable across restarts and change them when a session store is
+replaced. A different or unidentified host starts fresh from the durable task and
+checkpoint evidence; it never copies native session or authentication files.
+The shared local reservation still serializes repair work across these hosts.
+See [repair execution](cd-v2-controller.md#repair-execution-and-capacity) for the
+resume boundary. Each host needs its own reviewed credential/CLI readiness proof;
+source tests do not establish real failover, and this does not activate a worker.
+
 Before loading jobs, run a no-network runtime check with the reviewed executable search path and installed dependencies:
 
 ```sh
