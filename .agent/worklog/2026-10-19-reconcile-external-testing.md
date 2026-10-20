@@ -39,3 +39,18 @@ state tests cover zero/one-hour/24-hour boundaries and uncertainty/concurrency.
 
 Pending fresh independent review; auto-merge remains disabled until cleared and CI
 passes. No live runtime, service, Apple provider or ledger mutation was performed.
+
+The fresh independent Opus reviewer inspected `5b86ae7` and found two substantive
+issues before merge: old configuration receipts would be backfilled, and terminal
+external work would poll indefinitely at the normal cadence. Corrected eligibility
+to the receipt's exact current configuration digest, retained old receipts without
+external fields, stopped expired builds, and bounded blocked/rejected work to daily
+readback. Internal reconciliation runs first and optional external work is limited
+to two deliveries per tick. Unknown review claims read hourly; safe transient
+provider observations retain the configured poll cadence.
+
+Also clarified the minor rejected-submission recovery documentation: the core does
+not erase or retry a completed rejection; subsequent builds proceed, and separately
+owned provider resolution is observed without rewriting claims. Removed the dead
+transport-specific 429 rejection check. Same-session independent follow-up is
+required before clearance; full initial findings/timing will be retained below.

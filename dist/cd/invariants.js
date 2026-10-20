@@ -18,6 +18,8 @@ export function assertTransition(previous, next) {
             invariant(current.state === "delivered" && hash(current.receipt) === hash(old.receipt), "The committed final receipt is immutable");
         if (old.external?.status === "available")
             invariant(hash(current.external) === hash(old.external), "Committed external availability evidence is immutable");
+        if (old.external?.terminal)
+            invariant(hash(current.external) === hash(old.external), "Terminal external evidence is immutable");
         for (let index = 0; index < old.attempts.length; index++) {
             const before = old.attempts[index], after = current.attempts[index];
             for (const key of ["id", "dispatchEffectId", "sourceSha", "controlSha", "appInputDigest", "configurationDigest", "appId", "version", "buildNumber", "lane", "createdAt"])

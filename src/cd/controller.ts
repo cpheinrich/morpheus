@@ -24,7 +24,11 @@ export class Controller {
     }
     await this.store.repairBackup();
     const evaluated = await this.store.transact(`tick-${randomUUID()}`, "evaluate-slots", now, pure), errors: TickResult["errors"] = [];
-    for (const intent of Object.values(evaluated.state.intents)) {
+    // Internal obligations run first. Bound optional external work so a backlog
+    // cannot consume this invocation before current deliveries are reconciled.
+    let externalRemaining = 2;
+    const intents = Object.values(evaluated.state.intents).sort((a, b) => Number(a.state === "delivered") - Number(b.state === "delivered") || Date.parse(a.external?.nextCheckAt ?? a.nextCheckAt) - Date.parse(b.external?.nextCheckAt ?? b.nextCheckAt));
+    for (const intent of intents) {
       for (const retired of intent.attempts.filter(attempt => attempt.status === "retired-uncertain")) {
         try {
           const late = await this.apple.observe(retired, intent.groupId, now);
@@ -33,15 +37,17 @@ export class Controller {
       }
       if (evaluated.state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope))) continue;
       if (intent.state === "delivered") {
-        if (this.config.channels[intent.channel].externalGroupIds && !intent.isolatedValidation && intent.external?.status !== "available" && Date.parse(intent.external?.nextCheckAt ?? now) <= Date.parse(now)) {
+        if (externalRemaining > 0 && this.config.channels[intent.channel].externalGroupIds && intent.receipt?.configurationDigest === configurationDigest(this.config) && !intent.isolatedValidation && !intent.external?.terminal && intent.external?.status !== "available" && Date.parse(intent.external?.nextCheckAt ?? now) <= Date.parse(now)) {
+          externalRemaining--;
           try { await this.reconcileExternal(intent.id, now); }
           catch (error) {
             const message = error instanceof Error ? error.message : String(error); errors.push({ intentId: intent.id, message });
             await this.store.transact(`external-wait-${randomUUID()}`, "external-distribution-wait", now, state => {
               const current = state.intents[intent.id]!, identity = current.receipt!.observation;
-              if (current.external?.status === "available") return null;
+              if (current.external?.status === "available" || current.external?.terminal) return null;
               const claim = state.externalReviews?.[externalReviewKey(identity.appId, identity.buildId)]?.attempts.at(-1);
-              current.external = { ...current.external, status: claim?.outcome === "claimed" ? "uncertain" : "blocked", nextAction: "observe-exact-external-build", nextCheckAt: after(now, this.config.deadlines.pollMinutes), blocker: message }; return { intentId: intent.id, message };
+              const transient = error instanceof CdWait && error.code !== "apple-review-limit";
+              current.external = { ...current.external, status: claim?.outcome === "claimed" ? "uncertain" : transient ? "pending" : "blocked", nextAction: "observe-exact-external-build", nextCheckAt: after(now, claim?.outcome === "claimed" ? 60 : transient ? this.config.deadlines.pollMinutes : 1440), blocker: message }; return { intentId: intent.id, message };
             });
           }
         }
@@ -59,23 +65,23 @@ export class Controller {
   private async reconcileExternal(intentId: string, now: string): Promise<void> {
     const snapshot = await this.store.read(), intent = snapshot.state.intents[intentId]!, receipt = intent.receipt;
     const groups = this.config.channels[intent.channel].externalGroupIds;
-    invariant(receipt && intent.state === "delivered" && !intent.isolatedValidation && groups, "External follow-up requires an opted-in internal delivery");
+    invariant(receipt && intent.state === "delivered" && receipt.configurationDigest === configurationDigest(this.config) && !intent.isolatedValidation && groups, "External follow-up requires a delivery qualified under the opted-in configuration");
     if (snapshot.state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope))) return;
     const observation = await this.apple.external(receipt, groups, now), key = externalReviewKey(observation.appId, observation.buildId);
     invariant(observation.appId === receipt.observation.appId && observation.version === receipt.observation.version && observation.buildNumber === receipt.observation.buildNumber && observation.buildId === receipt.observation.buildId, "External provider observation substituted another receipt identity");
     invariant(observation.groups.length === groups.length && new Set(observation.groups.map(group => group.id)).size === groups.length && observation.groups.every(group => groups.includes(group.id) && group.appId === observation.appId && !group.internal && !group.automaticDistribution && group.testerIds.length > 0), "Configured external group must belong to the exact app, contain testers, and disable automatic all-build distribution");
-    const record = async (status: NonNullable<DeliveryIntent["external"]>["status"], nextAction: string, blocker?: string) => {
+    const record = async (status: NonNullable<DeliveryIntent["external"]>["status"], nextAction: string, blocker?: string, terminal = false) => {
       await this.store.transact(`external-observe-${randomUUID()}`, "exact-external-build-observation", now, state => {
         const current = state.intents[intentId]!;
-        if (current.external?.status === "available") return { intentId, status: "available" };
-        current.external = { status, nextAction, nextCheckAt: after(now, this.config.deadlines.pollMinutes), observation, ...(blocker ? { blocker } : {}) };
+        if (current.external?.status === "available" || current.external?.terminal) return { intentId, status: current.external.status };
+        current.external = { status, nextAction, nextCheckAt: after(now, status === "blocked" ? 1440 : status === "uncertain" ? 60 : this.config.deadlines.pollMinutes), observation, ...(blocker ? { blocker } : {}), ...(terminal ? { terminal: true } : {}) };
         const operation = state.externalReviews?.[key]?.attempts.at(-1);
         if (operation?.outcome === "claimed" && (observation.review || status === "available")) { operation.outcome = "confirmed"; operation.completedAt = now; if (observation.review) operation.submissionId = observation.review.id; }
         return { intentId, buildId: observation.buildId, status, nextAction };
       });
     };
     if (observation.processingState !== "VALID" || ["BETA_REJECTED", "EXPIRED", "PROCESSING_EXCEPTION", "MISSING_EXPORT_COMPLIANCE", "NOT_APPLICABLE"].includes(observation.betaState) || observation.review?.state === "REJECTED") {
-      await record("blocked", "diagnose-external-build", `Exact external build state ${observation.processingState}/${observation.betaState}, review ${observation.review?.state ?? "absent"}`); return;
+      await record("blocked", "diagnose-external-build", `Exact external build state ${observation.processingState}/${observation.betaState}, review ${observation.review?.state ?? "absent"}`, observation.betaState === "EXPIRED"); return;
     }
     if (!["READY_FOR_BETA_SUBMISSION", "READY_FOR_BETA_TESTING", "IN_BETA_TESTING", "BETA_APPROVED", "WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW"].includes(observation.betaState)) {
       await record("blocked", "observe-exact-external-build", `External state ${observation.betaState} does not authorize distribution or review`); return;
@@ -86,7 +92,7 @@ export class Controller {
     const mutationAllowed = (state: CdState) => {
       const current = state.intents[intentId]!;
       invariant(current.receipt?.observation.buildId === observation.buildId && !current.isolatedValidation, "External mutation must retain its exact delivered identity");
-      return !state.pauses.some(pause => ["all", current.channel, current.id].includes(pause.scope));
+      return !current.external?.terminal && current.external?.status !== "available" && !state.pauses.some(pause => ["all", current.channel, current.id].includes(pause.scope));
     };
     if (!observation.autoNotifyEnabled || missing) {
       // These are idempotent settings/set membership. Every invocation first reads
@@ -118,7 +124,7 @@ export class Controller {
     };
     try { await finish("confirmed", await this.apple.submitReview(observation.buildId)); }
     catch (error) {
-      if (error instanceof AppleRequestError && error.status >= 400 && error.status < 500 && error.status !== 409 && error.status !== 429) { await finish("rejected"); throw error; }
+      if (error instanceof AppleRequestError && error.status >= 400 && error.status < 500 && error.status !== 409) { await finish("rejected"); throw error; }
       if (!(error instanceof AppleRequestError && error.status === 409)) throw error;
       // An explicit conflict rejected this request. Wait at least an hour and
       // re-read this exact build before another claim, including sibling review.

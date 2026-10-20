@@ -12,6 +12,8 @@ export function externalReviewKey(appId, buildId) { return hash({ appId, buildId
 export function claimExternalReview(state, intentId, now) {
     const intent = intentAt(state, intentId), receipt = intent.receipt;
     invariant(intent.state === "delivered" && receipt && !intent.isolatedValidation, "External review requires its ordinary immutable internal receipt");
+    invariant(receipt.configurationDigest === state.configurationDigest, "Historical receipts cannot acquire review under a later configuration");
+    invariant(!intent.external?.terminal && intent.external?.status !== "available", "Completed external follow-up cannot submit review");
     invariant(!state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is explicitly paused");
     const { appId, buildId } = receipt.observation, key = externalReviewKey(appId, buildId);
     state.externalReviews ??= {};

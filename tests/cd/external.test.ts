@@ -4,8 +4,9 @@ import { ActionsAdapter } from "../../src/cd/actions.js";
 import { AppleAdapter, AppleRequestError } from "../../src/cd/apple.js";
 import { GitHubStore } from "../../src/cd/store.js";
 import { loadSources } from "../../src/cd/source.js";
-import { after, claimExternalReview, claimUpload, deliver, externalReviewKey, recordUpload } from "../../src/cd/state.js";
+import { after, claimExternalReview, claimUpload, createIntent, deliver, externalReviewKey, planAttempt, recordTests, recordUpload } from "../../src/cd/state.js";
 import { assertTransition } from "../../src/cd/invariants.js";
+import { CdWait } from "../../src/cd/errors.js";
 import { configSchema, configurationDigest, type CdState } from "../../src/cd/schema.js";
 import { FakeGitHub } from "./fake-github.js";
 import { config, externalObservation, now, observation, prepared, source } from "./fixtures.js";
@@ -13,13 +14,15 @@ import { config, externalObservation, now, observation, prepared, source } from 
 vi.mock("../../src/cd/source.js", async original => ({ ...await original<typeof import("../../src/cd/source.js")>(), loadSources: vi.fn(), verifyValidator: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(loadSources).mockResolvedValue([source()]); });
 
-async function harness(optIn = true, internallyDelivered = true, isolated = false, groups = ["external"]) {
+async function harness(optIn = true, internallyDelivered = true, isolated = false, groups = ["external"], previousConfiguration = false) {
   const cfg = config(); if (optIn) cfg.channels.staging.externalGroupIds = groups;
-  const fixture = prepared("staging", cfg), intent = fixture.state.intents[fixture.intentId]!, attempt = intent.attempts[0]!;
-  claimUpload(fixture.state, cfg, fixture.upload, now); recordUpload(fixture.state, { ...fixture.upload, outcome: "accepted" }, now);
+  const qualifiedConfig = previousConfiguration ? config() : cfg;
+  const fixture = prepared("staging", qualifiedConfig), intent = fixture.state.intents[fixture.intentId]!, attempt = intent.attempts[0]!;
+  claimUpload(fixture.state, qualifiedConfig, fixture.upload, now); recordUpload(fixture.state, { ...fixture.upload, outcome: "accepted" }, now);
   attempt.artifactsVerifiedAt = now; fixture.state.evaluatedSlots = { staging: now, production: now };
   if (isolated) { intent.validation = true; intent.isolatedValidation = true; intent.groupId = "historical"; }
   if (internallyDelivered) deliver(fixture.state, fixture.intentId, fixture.attemptId, observation("123", isolated ? "historical" : "staging"), now);
+  fixture.state.configurationDigest = configurationDigest(cfg);
   const api = new FakeGitHub(), store = new GitHubStore(api, cfg);
   await store.initialize(now, "epoch"); await store.transact("seed", "fixture", now, state => { Object.assign(state, { ...fixture.state, transitions: state.transitions }); return null; });
   const apple = new AppleAdapter({ request: vi.fn() }), external = vi.spyOn(apple, "external").mockResolvedValue(externalObservation()), assign = vi.spyOn(apple, "assign").mockResolvedValue(), notify = vi.spyOn(apple, "notifyExternal").mockResolvedValue(), submit = vi.spyOn(apple, "submitReview").mockResolvedValue("submission");
@@ -42,6 +45,12 @@ describe("optional external distribution after immutable internal delivery", () 
   it("does not contact external providers before internal delivery", async () => {
     const h = await harness(true, false); await h.controller.tick(after(now, 5));
     expect(h.external).not.toHaveBeenCalled(); expect((await h.store.read()).state.intents[h.intentId]!.receipt).toBeUndefined();
+  });
+  it("does not backfill receipts from before the explicit external opt-in", async () => {
+    const h = await harness(true, true, false, ["external"], true), before = (await h.store.read()).state;
+    expect(before.intents[h.intentId]!.receipt!.configurationDigest).not.toBe(configurationDigest(h.cfg));
+    await h.controller.tick(after(now, 5)); await h.controller.tick(after(now, 10)); const state = (await h.store.read()).state;
+    expect(h.external).not.toHaveBeenCalled(); expect(h.notify).not.toHaveBeenCalled(); expect(h.assign).not.toHaveBeenCalled(); expect(h.submit).not.toHaveBeenCalled(); expect(state.intents[h.intentId]!.external).toBeUndefined(); expect(internal(state)).toEqual(internal(before));
   });
   it("never exposes isolated historical validation binaries to ordinary external testers", async () => {
     const h = await harness(true, true, true); await h.controller.tick(after(now, 5));
@@ -79,8 +88,8 @@ describe("optional external distribution after immutable internal delivery", () 
     await h.controller.tick(after(now, 5)); await h.controller.tick(after(now, 10));
     expect(h.submit).toHaveBeenCalledTimes(1); expect((await h.store.read()).state.intents[h.intentId]!.external!.status).toBe("uncertain");
     h.external.mockResolvedValue({ ...externalObservation(), betaState: "WAITING_FOR_BETA_REVIEW", review: { id: "exact-submission", state: "WAITING_FOR_REVIEW" } });
-    await h.controller.tick(after(now, 15)); const state = (await h.store.read()).state;
-    expect(state.externalReviews![externalReviewKey("123", "apple-build")]!.attempts[0]).toEqual({ claimedAt: after(now, 5), outcome: "confirmed", completedAt: after(now, 15), submissionId: "exact-submission" }); expect(internal(state)).toEqual(internal(before)); expect(h.submit).toHaveBeenCalledTimes(1);
+    await h.controller.tick(after(now, 65)); const state = (await h.store.read()).state;
+    expect(state.externalReviews![externalReviewKey("123", "apple-build")]!.attempts[0]).toEqual({ claimedAt: after(now, 5), outcome: "confirmed", completedAt: after(now, 65), submissionId: "exact-submission" }); expect(internal(state)).toEqual(internal(before)); expect(h.submit).toHaveBeenCalledTimes(1);
   });
   it("does not count a pending sibling review as this build's external availability", async () => {
     const h = await harness(); h.submit.mockRejectedValue(new AppleRequestError(409, "another build is in review"));
@@ -96,7 +105,7 @@ describe("optional external distribution after immutable internal delivery", () 
   });
   it("adds missing membership to the same binary and preserves a newer group build", async () => {
     const h = await harness(), observed = externalObservation(); observed.groups[0]!.buildIds = ["newer-build"]; h.external.mockResolvedValue(observed);
-    h.assign.mockRejectedValueOnce(new Error("lost group reply")); await h.controller.tick(after(now, 5));
+    h.assign.mockRejectedValueOnce(new CdWait("lost group reply", "apple-network")); await h.controller.tick(after(now, 5));
     h.external.mockResolvedValue({ ...externalObservation(), betaState: "IN_BETA_TESTING", groups: [{ ...observed.groups[0]!, buildIds: ["newer-build", "apple-build"] }] });
     await h.controller.tick(after(now, 10)); expect(h.assign).toHaveBeenCalledExactlyOnceWith("apple-build", "external"); expect(h.submit).not.toHaveBeenCalled(); expect((await h.store.read()).state.intents[h.intentId]!.external!.status).toBe("available"); expect(h.dispatch).not.toHaveBeenCalled();
   });
@@ -120,6 +129,33 @@ describe("optional external distribution after immutable internal delivery", () 
   it("keeps rejection external and never reopens internal repair or build work", async () => {
     const h = await harness(), before = (await h.store.read()).state; h.external.mockResolvedValue({ ...externalObservation(), betaState: "BETA_REJECTED", review: { id: "submission", state: "REJECTED" } });
     await h.controller.tick(after(now, 5)); const state = (await h.store.read()).state; expect(state.intents[h.intentId]!.external!.status).toBe("blocked"); expect(internal(state)).toEqual(internal(before)); expect(h.submit).not.toHaveBeenCalled();
+  });
+  it("stops observing expired builds and bounds rejected submissions to daily readback", async () => {
+    const expired = await harness(); expired.external.mockResolvedValue({ ...externalObservation(), betaState: "EXPIRED" });
+    await expired.controller.tick(after(now, 5)); await expired.controller.tick(after(now, 65)); await expired.controller.tick(after(now, 1445));
+    expect(expired.external).toHaveBeenCalledTimes(1); expect((await expired.store.read()).state.intents[expired.intentId]!.external).toMatchObject({ status: "blocked", terminal: true });
+    const rejected = await harness(); rejected.submit.mockRejectedValue(new AppleRequestError(400, "metadata missing"));
+    await rejected.controller.tick(after(now, 5)); await rejected.controller.tick(after(now, 65)); await rejected.controller.tick(after(now, 1444));
+    expect(rejected.external).toHaveBeenCalledTimes(1); expect((await rejected.store.read()).state.intents[rejected.intentId]!.external!.nextCheckAt).toBe(after(now, 1445));
+    await rejected.controller.tick(after(now, 1445)); expect(rejected.external).toHaveBeenCalledTimes(2); expect(rejected.submit).toHaveBeenCalledTimes(1); expect((await rejected.store.read()).state.intents[rejected.intentId]!.state).toBe("delivered");
+  });
+  it("reconciles internal work first and bounds external backlog per invocation", async () => {
+    const h = await harness(), events: string[] = [];
+    await h.store.transact("more-deliveries", "fixture", now, state => {
+      for (let index = 0; index < 2; index++) {
+        const intent = createIntent(state, h.cfg, "staging", state.sources[0]!, now, now, true, undefined, `extra-${index}`), attempt = planAttempt(state, h.cfg, intent.id, "c".repeat(40), "8", now);
+        const identity = { intentId: intent.id, attemptId: attempt.id, dispatchEffectId: attempt.dispatchEffectId, runId: String(101 + index), runAttempt: "1" };
+        recordTests(state, h.cfg, { ...h.tests, ...identity });
+        const upload = { ...h.upload, ...identity, buildNumber: attempt.buildNumber };
+        claimUpload(state, h.cfg, upload, now); recordUpload(state, { ...upload, outcome: "accepted" }, now); attempt.artifactsVerifiedAt = now;
+        const observed = { ...observation(), buildNumber: attempt.buildNumber, buildId: `build-${index}`, group: { ...observation().group, buildIds: [`build-${index}`] } }; deliver(state, intent.id, attempt.id, observed, now);
+      }
+      createIntent(state, h.cfg, "production", state.sources[0]!, now, now); return null;
+    });
+    vi.spyOn(h.apple, "maximum").mockImplementation(async () => { events.push("internal"); return "42"; });
+    h.external.mockImplementation(async receipt => { events.push("external"); const identity = receipt.observation; return { ...externalObservation(), ...identity, betaState: "IN_BETA_TESTING", groups: [{ ...externalObservation().groups[0]!, buildIds: [identity.buildId] }] }; });
+    await h.controller.tick(after(now, 5)); expect(events).toEqual(["internal", "external", "external"]); expect(h.external).toHaveBeenCalledTimes(2);
+    await h.controller.tick(after(now, 5)); expect(h.external).toHaveBeenCalledTimes(3);
   });
   it("does not mutate providers on an unknown external state", async () => {
     const h = await harness(); h.external.mockResolvedValue({ ...externalObservation(), betaState: "NEW_UNKNOWN_STATE", autoNotifyEnabled: false });
@@ -148,7 +184,7 @@ describe("durable exact-build review operation invariants", () => {
   it("keeps completed operation history and committed external availability immutable", async () => {
     const h = await harness(); h.external.mockResolvedValue({ ...externalObservation(), betaState: "IN_BETA_TESTING" }); await h.controller.tick(after(now, 5));
     const state = (await h.store.read()).state, changed = structuredClone(state); changed.intents[h.intentId]!.external!.status = "pending"; expect(() => assertTransition(state, changed)).toThrow("availability evidence is immutable");
-    const claimState = structuredClone(state); claimExternalReview(claimState, h.intentId, now); const operation = claimState.externalReviews![externalReviewKey("123", "apple-build")]!.attempts[0]!; operation.outcome = "confirmed"; operation.submissionId = "review"; operation.completedAt = now;
+    const claimState = (await (await harness()).store.read()).state; claimExternalReview(claimState, h.intentId, now); const operation = claimState.externalReviews![externalReviewKey("123", "apple-build")]!.attempts[0]!; operation.outcome = "confirmed"; operation.submissionId = "review"; operation.completedAt = now;
     const rewritten = structuredClone(claimState); rewritten.externalReviews![externalReviewKey("123", "apple-build")]!.attempts[0]!.outcome = "conflict"; expect(() => assertTransition(claimState, rewritten)).toThrow("Completed external review operation is immutable");
   });
   it("limits all app review claims and tests the exact 24-hour boundary", async () => {

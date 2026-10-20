@@ -14,6 +14,7 @@ export function assertTransition(previous: CdState, next: CdState): void {
     invariant(hash(current.lineage.slice(0, old.lineage.length)) === hash(old.lineage), "Existing source lineage cannot be rewritten");
     if (old.receipt) invariant(current.state === "delivered" && hash(current.receipt) === hash(old.receipt), "The committed final receipt is immutable");
     if (old.external?.status === "available") invariant(hash(current.external) === hash(old.external), "Committed external availability evidence is immutable");
+    if (old.external?.terminal) invariant(hash(current.external) === hash(old.external), "Terminal external evidence is immutable");
     for (let index = 0; index < old.attempts.length; index++) {
       const before = old.attempts[index]!, after = current.attempts[index]!;
       for (const key of ["id", "dispatchEffectId", "sourceSha", "controlSha", "appInputDigest", "configurationDigest", "appId", "version", "buildNumber", "lane", "createdAt"] as const) invariant(before[key] === after[key], `Attempt ${key} is immutable`);

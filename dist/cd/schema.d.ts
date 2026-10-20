@@ -240,6 +240,7 @@ export interface ExternalStatus {
     nextCheckAt: string;
     blocker?: string;
     observation?: ExternalObservation;
+    terminal?: boolean;
 }
 export interface ExternalReview {
     appId: string;

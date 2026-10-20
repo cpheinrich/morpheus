@@ -64,7 +64,7 @@ export interface ExternalObservation {
 }
 export interface ExternalStatus {
   status: "pending" | "waiting-review" | "blocked" | "uncertain" | "available";
-  nextAction: string; nextCheckAt: string; blocker?: string; observation?: ExternalObservation;
+  nextAction: string; nextCheckAt: string; blocker?: string; observation?: ExternalObservation; terminal?: boolean;
 }
 export interface ExternalReview {
   appId: string; buildId: string;

@@ -168,8 +168,12 @@ Adding it changes configuration identity and requires the consumer's explicit
 lossless ledger migration. Keep upload-action distribution disabled when V2 owns
 these groups; do not introduce a second distribution writer.
 
-After the immutable internal receipt commits, subsequent ticks reconcile external
-distribution separately. `cd status` exposes `intent.external` with its own
+Only receipts qualified under the opted-in configuration digest enter external
+follow-up. Migration never backfills older delivered builds, notifies their testers
+or spends review admission on historical receipts. After a matching immutable
+internal receipt commits, subsequent ticks reconcile external distribution
+separately. Internal obligations run first, followed by at most two external
+deliveries per invocation. `cd status` exposes `intent.external` with its own
 `status`, `nextAction`, `nextCheckAt`, blocker and exact provider observation.
 External errors, rejection and review delays never reopen internal work, change
 its receipt/cursors, rebuild, reupload or prevent the next internal delivery.
@@ -190,9 +194,18 @@ the claim and only observes the exact submission; it never blindly reposts. An
 explicit HTTP 409 conflict may obtain another claim only after an hour and fresh
 exact-build readback. Admission conservatively limits the app to six claimed
 submissions per rolling 24 hours. Other explicit request rejections remain blocked
-for metadata/authority repair and explicit resolution, rather than repeating an
-unchanged request. An exact submission or availability readback resolves unknown
-outcomes. Existing claims, timestamps and completed operation history are retained.
+without automatic resubmission; metadata/authority repair can qualify subsequent
+builds while this build remains blocked. Consumer-owned provider tooling can
+resolve an exact rejected build separately, and daily readback can then record its
+availability. The core provides no command to erase or retry a rejected claim.
+An exact submission or availability readback resolves unknown outcomes. Existing
+claims, timestamps and completed operation history are retained.
+
+Expired builds record immutable terminal evidence and stop polling. Rejected or
+otherwise blocked work is read at most daily, and uncertain review claims at most
+hourly. Transient provider/network observations retain the configured poll cadence;
+the per-invocation external bound still applies. None of these waits makes an
+internal receipt incomplete or prevents another internal build.
 
 Apple may require review metadata or export-compliance action. The core reports
 that blocker and does not invent metadata, testers or groups. See Apple's
