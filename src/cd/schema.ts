@@ -88,7 +88,7 @@ export interface CdState {
   pauses: { scope: string; actor: string; reason: string; resumeCondition: string; createdAt: string; human: boolean }[];
   budget: { spentMicros: number; reservations: Record<string, { digest: string; maximumMicros: number; status: "reserved" | "settled"; actualMicros?: number }>; telemetry: Record<string, QuotaSnapshot> };
 }
-export interface QuotaSnapshot { observedAt: string; windows: { id: string; usedPercent: number; resetsAt: string }[]; source: string }
+export interface QuotaSnapshot { observedAt: string; windows: { id: string; usedPercent: number; resetsAt: string }[]; source: string; model?: string }
 export interface CdEvent { id: string; at: string; kind: string; data: unknown; owner?: string }
 
 export function canonical(value: unknown): string {

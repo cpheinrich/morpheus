@@ -15,10 +15,17 @@ import { git, loadSources } from "./source.js";
 const exec = promisify(execFile);
 function paused(state: CdState, intentId: string): boolean { return state.pauses.some(pause => ["all", intentId, state.intents[intentId]!.channel].includes(pause.scope)); }
 export const agentResultSchema = { type: "object", additionalProperties: false, properties: { outcome: { type: "string", enum: ["repaired", "checkpoint", "blocked"] }, summary: { type: "string" }, pullRequest: { type: "string" }, sourceSha: { type: "string" }, reviewHead: { type: "string" }, evidence: { type: "array", items: { type: "string" } }, missingCapability: { type: "string" } }, required: ["outcome", "summary", "pullRequest", "sourceSha", "reviewHead", "evidence", "missingCapability"] };
-export function normalizeClaudeQuota(value: unknown, now: string): QuotaSnapshot {
+function claudeModelWindows(model: string): string[] {
+  const family = model.toLowerCase().match(/^(?:claude-)?(opus|fable|sonnet|haiku)(?:$|[-\[])/)?.[1];
+  invariant(family, "Configured Claude model has no known quota family; retain budget wait");
+  return ["five_hour", "seven_day", `seven_day_${family}`];
+}
+export function normalizeClaudeQuota(value: unknown, now: string, model?: string): QuotaSnapshot {
   const raw = value as Record<string, { utilization?: number; resets_at?: string }>;
-  const windows = ["five_hour", "seven_day"].flatMap(id => raw?.[id] ? [{ id, usedPercent: raw[id]!.utilization as number, resetsAt: raw[id]!.resets_at as string }] : []);
-  const snapshot = { observedAt: now, source: "Claude OAuth account usage readback", windows };
+  const ids = model ? claudeModelWindows(model) : Object.keys(raw ?? {}).filter(id => /^(five_hour|seven_day)(_[a-z0-9_]+)?$/.test(id));
+  if (model) invariant(ids.every(id => raw?.[id]), "Claude model usage response omitted a required runtime window; retain budget wait");
+  const windows = ids.flatMap(id => raw?.[id] ? [{ id, usedPercent: raw[id]!.utilization as number, resetsAt: raw[id]!.resets_at as string }] : []);
+  const snapshot = { observedAt: now, source: "Claude OAuth account usage readback", windows, ...(model ? { model } : {}) };
   invariant(quotaUsed(snapshot, now) !== undefined, "Claude usage response has no valid nonexpired runtime windows"); return snapshot;
 }
 /** No model request: read the same actual account limits exposed by the runtime. */
@@ -58,16 +65,22 @@ export class QuotaReader {
     const path = this.environment.MORPHEUS_CD_QUOTA_FILE ?? agent.quotaFile;
     if (path) {
       const value = JSON.parse(await readFile(path, "utf8")) as QuotaSnapshot;
+      invariant(this.executor !== "hosted" || !agent.model || value.model === agent.model, "Subscription telemetry file does not attest the configured Claude model");
+      if (this.executor === "hosted" && agent.model) {
+        const ids = claudeModelWindows(agent.model);
+        invariant(ids.every(id => value.windows?.some(window => window.id === id)), "Subscription telemetry file omitted a required Claude runtime window");
+        value.windows = value.windows.filter(window => ids.includes(window.id));
+      }
       invariant(quotaUsed(value, now) !== undefined, "Subscription telemetry file is stale, missing or invalid"); return value;
     }
     if (this.executor === "local") return codexQuota(agent.command, this.sourceDir, now);
-    if (this.cached && quotaUsed(this.cached, now) !== undefined) return this.cached;
+    if (this.cached && this.cached.model === agent.model && quotaUsed(this.cached, now) !== undefined) return this.cached;
     invariant(Date.parse(now) >= this.retryAt, "Claude usage endpoint backoff; retain budget wait");
     const token = this.environment.CLAUDE_CODE_OAUTH_TOKEN; invariant(token, "Hosted subscription usage requires actual runtime telemetry or authorized OAuth usage readback");
     this.retryAt = Date.parse(now) + 5 * 60_000;
     const response = await this.fetcher("https://api.anthropic.com/api/oauth/usage", { headers: { Authorization: `Bearer ${token}`, "anthropic-beta": "oauth-2025-04-20" }, signal: AbortSignal.timeout(15_000), redirect: "error" });
     invariant(response.ok, `Claude usage readback HTTP ${response.status}; retain budget wait`);
-    this.cached = normalizeClaudeQuota(await response.json(), now); return this.cached;
+    this.cached = normalizeClaudeQuota(await response.json(), now, agent.model); return this.cached;
   }
 }
 export async function scheduleHosted(config: CdConfig, store: GitHubStore, now: string): Promise<void> {

@@ -183,7 +183,16 @@ an arbitrary command-execution surface.
 `account/rateLimits/read`. A configured `MORPHEUS_CD_QUOTA_FILE` or executor
 `quotaFile` supplies actual `{observedAt, source, windows:[{id,usedPercent,resetsAt}]}`.
 Hosted Claude can read its authorized OAuth usage endpoint with five-minute cache
-and 429 backoff. Unknown/stale metrics retain a budget wait. New subscription work
+and 429 backoff. Configure the intended model explicitly (for example
+`agents.hosted.model: "opus"`). Its snapshot joins shared five-hour/week windows with the matching
+model-family week window, including an exact `model` attestation. Every required
+window must be present, valid and nonexpired; null or absent model capacity is
+unknown, never zero usage. Other model-family exhaustion is excluded only when
+the executor names its model. Without a model, normalization conservatively
+retains all available runtime windows. A telemetry file for an explicit hosted
+model must attest that configured model and include its shared and model windows;
+an old aggregate-only file cannot grant admission. Unknown/stale metrics retain
+a budget wait. New subscription work
 requires usage below 80%; owned invocations are monitored and stopped at the
 90% threshold or lost telemetry. Sampling does not control other simultaneous
 account sessions; actual campaign usage must verify the user's reserve.
@@ -207,3 +216,16 @@ Focused tests cover protocol counterexamples and actual local Git, ES256 signing
 receipt producer and artifact bytes. They do not count
 as TestFlight deliveries. The eight real deliveries and normal scheduled-path
 proof remain consumer acceptance work under the approved design.
+
+
+### Hosted GitHub App credential transport
+
+The Claude App OIDC exchange remains bound to an authorized Actions run and its
+reviewed default-branch workflow. Treat its `token` or fallback `app_token` as an
+opaque printable single-line credential: JWT-style punctuation or future token
+formats do not justify rejecting a successful response. Reject nonstrings, empty
+values, whitespace and control characters before any mask/output write. Escape
+percent signs in the GitHub masking command, and write the exact token only to
+`GITHUB_OUTPUT`; summaries/errors never include its value. Capability proof still
+requires the real scoped workflow-write/readback/cleanup probe, followed by
+revocation. Parser tests do not establish actual authority or model capacity.
