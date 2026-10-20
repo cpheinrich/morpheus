@@ -820,3 +820,63 @@ verification above checks actual files; source tests remain the already inspecte
 #435/#436 results. Live CD stays F65/config7301/epochd585, #566 waits for the
 first full internal receipt, and #577's first fresh review waits for actual #566
 integration. Optional rollout work must not delay the next ordinary request.
+
+## Exact worker files prepared on both hosts; operational review still absent
+
+The historical actual-facts validator passed 32 focused methods and 24 targeted
+mutants. It validates both retained installations and directory/static supplements
+without following their referenced host paths or promoting local refs to fresh
+main authority. Its 35-file archive manifest is
+`6982ccb88f6bc63b9c2fc82c75ea3ffd48477c31f267df5c2a4a1771c12672a3`.
+The separate actual-aware preparation constructor passed 30 methods and 25
+targeted mutants. It preserves the actual worker bytes, stable host IDs, retained
+B/H credential chain, config identity and same-label launchd schedules. Its
+36-file constructor/plan archive is
+`fc2d81812b6c2e538846bfee18bf49412e6f37466f32c46ae723ea290daf51a2`.
+These are source/data fixtures, not host readiness or review clearance.
+
+Root separately materialized the exact four-file worker preparations in new
+unreferenced namespaces with nonce `d2c027c20626b2687b8fab2629036c0c`:
+MacBook at 17:22:49 UTC and Mini at 17:23:22. Fresh complete installed-runtime,
+dependency, directory, retained-static and clean-source captures matched the
+historical inventories first. Canonical parent/ownership checks, exclusive
+directory-relative no-follow creation and independent readback verified the four
+files and three private directories. Both shell files were parsed separately,
+and each plist passed lint. No script/common was executed or service loaded.
+Preparation manifests remain UNREVIEWED, NOT_FRESH and operationalClearance=false.
+
+MacBook's actual preparation manifest is
+`00760a9a764e81a3b778230b13d95e065601a1084ae677bf860df1228c30cc58`;
+its 25-file materialization journal is
+`633e6975a0342ac773141075063834c24c9c10b7c44aa9f01f9b03cffa30a30c`.
+Mini's actual preparation manifest is
+`d638a781fb5d13fab2be5e17d22415e255e1e963f7965bd65e4729a94efb171f`;
+its retrieved 25-file journal is
+`690e99d9256d70ef9eee2a0f4e6f48e20dd938de675d6c997628110ff7794ccf`.
+Independent caller readbacks of all four new files and twelve retained assets
+match on each host, with proof hashes `f4ef6620ba6cf18126e7937cd8a6d316db43210efde6265a2341fb9d4edeffcf`
+and `0e5d80f7fbbf69e1487c906179c3dd7a349d184ce3fbebd6ff311e12fd0aafca`.
+The namespaces now exist: do not rerender them, reset the nonce or repeat an old
+353b phase. No quota/login/native/model, provider/ledger, source, controller,
+shared-VM or existing worker service effect occurred.
+
+The first worker rollout plan incorrectly described strict usage below 70 as
+Chris's campaign policy. Its preserved original was replaced by a new v2 plan,
+hash `41d65a45f0cde6e196163e0338039c5e6933d43b72e9b013fe87dda2cf047fd7`:
+normal admission remains below 80 and stop at 90; below 30% remaining selects
+Opus for substantive coordination work, exactly 30 is not below, and 10% remains
+reserved for Codex. The first real readiness probe belongs only after positive
+worker hold/removal, separate model and quota-reader closure, fresh quiet guards
+and a new exact operational review/root release. The operator introduces no raw
+argv/environment inspection. Metadata/probe and lifecycle source preparation is
+in progress with distinct owners, no host actions, and production unbound.
+
+The actual 17:29:25.748 ledger snapshot still has only a3/build 21/run39450437095
+testing and all three repair works complete without a lease. All 24 protected
+comparisons pass against 16:30, including the entire attempt history, original
+debt/deadline and full holds/paid liabilities. Join hash:
+`3f42b27848651344c7f87a6261be5b3b0b0c79fcd67434b45bd76ae5631488dd`.
+There is no full receipt or campaign credit. The existing native watcher remains
+the sole monitor. The hourly heartbeat now references its current checkpoint
+instead of a completed historical watcher; cadence and target chat were verified
+unchanged. No repeated product test suite was warranted for this records update.
