@@ -57,11 +57,11 @@ The reviewer also observed that an empty trailing query separator is ignored by 
   "authorSession": "01a15749-6c98-79d1-a8f9-9adf2f14deb9",
   "reviewerSession": "0899197a-dc37-4b08-a23a-fdfdcbc4c609",
   "risk": "high",
-  "elapsedMinutes": 1.5312014159666432,
+  "elapsedMinutes": 1.5312,
   "timing": {
     "source": "runner",
-    "durationMs": 91872.0849579986,
-    "evidence": "Native Opus reviewer session 0899197a-dc37-4b08-a23a-fdfdcbc4c609; /tmp/morpheus-evidence-authuser-review-timing.json measured the invocation from 2026-10-20T05:15:04.256810+00:00 through 2026-10-20T05:16:36.129545+00:00 (PID32995, exit0)."
+    "durationMs": 91872,
+    "evidence": "Native Opus reviewer session 0899197a-dc37-4b08-a23a-fdfdcbc4c609; /tmp/morpheus-evidence-authuser-review-timing.json measured the invocation from 2026-10-20T05:15:04.256810+00:00 through 2026-10-20T05:16:36.129545+00:00 (PID32995, exit0). Raw monotonic measurement 91872.0849579986ms; recorded at integer-millisecond precision required by the schema."
   },
   "outcome": "complete",
   "summary": "Independent Opus review cleared the Google Storage account-selector fix at 86bb327ca813ca81930922ccbf73f5eb81622596 with no substantive findings. Its 44 focused visual-evidence tests passed. The reviewer noted a nonblocking bare-URL punctuation limitation, deferred to MO-26-10-19-22.17.10; the actual 18 Markdown screenshot links pass under the unchanged approved prefix. No native build, pixel review or TestFlight completion is claimed by this validation.",
