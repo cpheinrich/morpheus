@@ -64,3 +64,22 @@ predicate (12), and removal of the racing-upload CAS guard (1). Each was killed
 by assertion failures, not compilation or fixture errors. Logs and the summary
 are local `/tmp/native-admission-mutant-*.log` and
 `/tmp/native-admission-mutations.json`; they are not deployment evidence.
+
+Initial independent review of fa75e210696fceb48ce9b6ae6159b8b2df8fadc4
+(`/root/native_admission/admission_review`, high risk) completed blocked with two
+substantive findings. NA-1 reproduced a failed/incomplete census bypassing the
+180-minute cancellation bound; classification now retains the read failure as a
+visible wait but enforces that cancellation bound first, keeping ownership.
+NA-2 reproduced a contradictory queued/null-start step with a completion time
+being accepted as no-start; completion evidence now refuses both admission and
+terminal fallback. Focused exact-boundary and contradiction regressions cover
+both corrections. The same reviewer will inspect the correction commit; no
+replacement reviewer or conditional clearance is used.
+
+Correction validation passed 116 focused tests across the same four files,
+typecheck, compile, pm index and diff-check. Two further temporary mutations
+were killed and restored: throwing the census error before enforcing the bound
+(3 assertion failures at just-after, with all 3 equality cases passing), and
+ignoring step completion evidence (1 assertion failure). Summary:
+`/tmp/native-admission-followup-mutations.json`. The corrected source and generated
+counterparts are committed together for the same-reviewer follow-up.

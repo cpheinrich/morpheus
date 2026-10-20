@@ -68,6 +68,7 @@ describe("exact-attempt native admission", () => {
   it.each([
     ["runner id", { runner_id: 3 }], ["runner name", { runner_name: "assigned-vm" }], ["started job", { started_at: now }],
     ["started step", { steps: [{ status: "in_progress", conclusion: null, started_at: now }] }],
+    ["completed step with contradictory queued status", { steps: [{ status: "queued", conclusion: null, started_at: null, completed_at: now }] }],
     ["missing assignment", { runner_id: undefined }], ["missing name", { runner_name: undefined }], ["missing start", { started_at: undefined }], ["missing steps", { steps: undefined }],
     ["unknown status", { status: "waiting" }], ["unknown labels", { labels: ["unrecognized-native"] }],
   ])("retains the test bound and ownership for %s evidence", async (_label, overrides) => {
@@ -127,6 +128,16 @@ describe("exact-attempt native admission", () => {
     await h.store.transact("later-owned-termination", "record-executor-quiescence", after(now, 187), state => { state.intents[h.intentId]!.attempts[0]!.quiescence = { kind: "host-terminated", ref: "Owned VM terminated after cancellation", observedAt: after(now, 187) }; return null; });
     await h.controller.tick(after(now, 191)); intent = (await h.store.read()).state.intents[h.intentId]!;
     expect(intent.attempts[0]!.status).toBe("failed"); expect(intent.nextAction).toBe("run-repair-agent"); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["missing total at equality", "missing", 180], ["missing total just after", "missing", 180 + 1 / 60_000],
+    ["incomplete page at equality", "partial", 180], ["incomplete page just after", "partial", 180 + 1 / 60_000],
+    ["provider error at equality", "error", 180], ["provider error just after", "error", 180 + 1 / 60_000],
+  ])("preserves the running cancellation bound for %s", async (_label, failure, elapsed) => {
+    const h = await admissionHarness(); h.jobPages.read = () => { if (failure === "error") throw new CdWait("Job page temporarily unavailable", "github-provider"); return { total_count: failure === "missing" ? undefined : 3, jobs: h.jobs }; };
+    const result = await h.controller.tick(after(now, Number(elapsed))), intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(result.errors).toHaveLength(1); expect(h.cancel.mock.calls).toEqual(Number(elapsed) === 180 ? [] : [["100"]]);
+    expect(intent.state).toBe("waiting"); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(h.dispatch).not.toHaveBeenCalled();
   });
   it.each(["short", "error", "duplicate", "changing", "over-count", "wrong-run", "wrong-attempt", "wrong-sha", "missing-total"])("cannot authorize fallback from %s census", async kind => {
     const h = await admissionHarness(); finishUnassigned(h);

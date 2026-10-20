@@ -11,7 +11,7 @@ interface WorkflowJob {
   id: number; run_id: number; run_attempt?: number; head_sha: string;
   status: string; conclusion: string | null; started_at: string | null; completed_at: string | null;
   labels: string[]; runner_id: number | null; runner_name: string | null;
-  steps: { status: string; conclusion: string | null; started_at?: string | null }[];
+  steps: { status: string; conclusion: string | null; started_at?: string | null; completed_at?: string | null }[];
 }
 function knownJob(value: unknown): value is WorkflowJob {
   const job = value as WorkflowJob | null;
@@ -27,7 +27,7 @@ function unassigned(job: WorkflowJob): boolean {
   // Null/zero runner identity and null/empty name are insufficient on their own:
   // a start timestamp or any executed step contradicts a no-start claim.
   return job.started_at === null && (job.runner_id === null || job.runner_id === 0) && (job.runner_name === null || job.runner_name === "")
-    && job.steps.every(step => step.status === "queued" && step.conclusion === null && step.started_at == null);
+    && job.steps.every(step => step.status === "queued" && step.conclusion === null && step.started_at == null && step.completed_at == null);
 }
 function jobAdmission(jobs: unknown[], config: CdConfig, lane: Attempt["lane"]): { waiting: boolean; neverStarted: boolean; hostedEnded: boolean } {
   if (!jobs.length || !jobs.every(knownJob)) return { waiting: false, neverStarted: false, hostedEnded: false };
@@ -216,13 +216,18 @@ export class Controller {
     });
     const observedAttempt = (await this.store.read()).state.intents[current.id]!.attempts.find(item => item.id === attempt.id)!;
     if (observedAttempt.upload) { await this.reconcileUpload(current.id, observedAttempt, run, now); return; }
-    const jobs = await this.jobs(run), admission = jobAdmission(jobs, this.config, attempt.lane);
     const elapsed = Date.parse(now) - Date.parse(attempt.createdAt);
+    let jobs: unknown[] | undefined, censusError: unknown;
+    try { jobs = await this.jobs(run); } catch (error) { censusError = error; }
+    // A failed census cannot establish admission or no-start quiescence, but
+    // must not remove the existing running-work cancellation bound either.
+    const admission = jobAdmission(jobs ?? [], this.config, attempt.lane);
     if (run.status !== "completed" && elapsed > (admission.waiting && !observedAttempt.tests ? this.config.deadlines.admissionMinutes : this.config.deadlines.testMinutes) * 60_000) {
       await this.actions.cancel(String(run.id));
       await this.store.transact(`cancel-${attempt.id}`, "cancel-expired-native-job", now, state => { const item = attemptAt(state, current.id, attempt.id); item.intent.nextAction = "verify-executor-quiescence"; item.intent.nextCheckAt = after(now, this.config.deadlines.pollMinutes); return { runId: String(run.id) }; });
-    } else if (run.status === "completed" && run.conclusion !== "success") await this.failedRun(current.id, observedAttempt, run, jobs, now);
-    else if (run.status === "completed" && !observedAttempt.upload) await this.failedRun(current.id, observedAttempt, run, jobs, now, "Workflow completed without the durable upload claim/acceptance");
+    } else if (jobs && run.status === "completed" && run.conclusion !== "success") await this.failedRun(current.id, observedAttempt, run, jobs, now);
+    else if (jobs && run.status === "completed" && !observedAttempt.upload) await this.failedRun(current.id, observedAttempt, run, jobs, now, "Workflow completed without the durable upload claim/acceptance");
+    if (jobs === undefined) throw censusError;
   }
   private async jobs(run: WorkflowRun): Promise<unknown[]> {
     let total: number | undefined, received = 0;

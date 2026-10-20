@@ -106,6 +106,8 @@ while its native tests are still queued. Recognized queued, unassigned native
 work uses `admissionMinutes` (default 15); assigned, started or unknown work keeps
 `testMinutes` (default 180). Both retain the existing strict elapsed-time boundary
 from attempt creation, so equality does not cancel and the next wake after it can.
+Failed or incomplete census reads remain visible waits and still enforce the
+180-minute cancellation bound without releasing executor ownership.
 Local native jobs carry the configured local label or `self-hosted`; hosted
 native jobs carry a `macos-` label. Only hosted `ubuntu-` labelled companion jobs
 or explicitly skipped, unassigned downstream jobs qualify as non-native evidence;
@@ -113,7 +115,7 @@ there is no consumer-specific job-name assumption. Automatic local-to-hosted
 fallback requires a terminal run, at least one recognized cancelled native job,
 every native job explicitly unassigned and never started, and successful hosted
 Linux companion work (or skipped/unassigned downstream work). Missing fields,
-steps that ran, partial/failed pagination, empty or preflight-only results cannot
+steps with start/completion evidence, partial/failed pagination, empty or preflight-only results cannot
 establish no-start quiescence. A preflight failure instead retains ownership and
 creates durable repair work; verified owned process/VM termination and the
 existing operational-repair transition can release it for a normal retry.
