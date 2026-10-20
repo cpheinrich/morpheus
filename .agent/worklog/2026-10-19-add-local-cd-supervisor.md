@@ -47,3 +47,69 @@ The fresh reviewer `/root/morpheus_host/review_host` reviewed `7dfdbeb02755f9a3b
 - CDH-003: string comparison allowed `runtime/.`, trailing-slash and symlink aliases to pass the distinct-checkout guard. Compare physical directory identities and assert all three alias shapes fail before the credential wrapper or controller runs.
 
 Verification after these fixes: `pnpm exec vitest run tests/cd/host.test.ts` passed 2 tests, including 59 generated-wrapper checks and the real-runtime smoke test. `pnpm typecheck`, `pnpm compile`, `pnpm morpheus pm index` and `git diff --check` passed; generated outputs and indexes were unchanged. Scope remains isolated host integration, so the focused host suite is appropriate and the full suite remains CI-owned. No launchd job, provider state or consumer credential was changed.
+
+## Resumed review clearance
+
+The fresh measured review found CDH-002 (unattended executable discovery) and CDH-003 (source/runtime directory aliases). Both substantive findings were fixed and the same reviewer cleared d9d2fbbc0e827925161e1af29b53d8b3e520b6c4 after independently passing the two focused tests, including 59 generated-wrapper checks. The original session's incomplete timing audit remains preserved; no consumer activation or delivery was assessed.
+
+The focused follow-up was measured with UTC clock readings 2026-10-20T02:46:52Z–2026-10-20T02:47:24Z (32,000 ms). Both findings retain their original substantive severity. The reviewed implementation commit is unchanged after clearance; only this audit worklog is finalized afterward.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "38c507d2790bc8a278b8134872f3a3cc7844d0e1",
+  "reviewed": "7dfdbeb02755f9a3be410a006c242579fda6db68",
+  "covered": "d9d2fbbc0e827925161e1af29b53d8b3e520b6c4",
+  "authorSession": "01a15730-01ee-7f52-a39c-6c4bd5e9812d",
+  "reviewerSession": "/root/morpheus_host/review_host",
+  "risk": "normal",
+  "elapsedMinutes": 1.85,
+  "timing": {
+    "source": "clock",
+    "durationMs": 111000,
+    "evidence": "Author clock readings around spawn_agent /root/morpheus_host/review_host initial invocation: 2026-10-20T02:43:42Z to final-answer receipt 2026-10-20T02:45:33Z."
+  },
+  "outcome": "complete",
+  "summary": "The fresh measured review found CDH-002 (unattended executable discovery) and CDH-003 (source/runtime directory aliases). Both substantive findings were fixed and the same reviewer cleared d9d2fbbc0e827925161e1af29b53d8b3e520b6c4 after independently passing the two focused tests, including 59 generated-wrapper checks. The original session's incomplete timing audit remains preserved; no consumer activation or delivery was assessed.",
+  "findings": [
+    {
+      "id": "CDH-002",
+      "severity": "substantive",
+      "description": "The wrappers inherited launchd's sparse PATH, so the real env-node CLI exited 127 and gh subprocess discovery was not established; the Bash fixture masked the failure.",
+      "paths": [
+        "src/cd/host/macos/cd-v2-common.sh.template",
+        "docs/cd-v2-host-macos.md",
+        "tests/cd/host-integration.sh",
+        "tests/cd/host.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Rendered and guarded a reviewed absolute executable search path, tested actual Node and gh subprocess discovery from sparse inherited PATH, added a real built-CLI config/package-load smoke test and documented runtime/executor prerequisites. Same reviewer verified and cleared the fix at d9d2fbbc0e827925161e1af29b53d8b3e520b6c4."
+    },
+    {
+      "id": "CDH-003",
+      "severity": "substantive",
+      "description": "String comparison let source paths alias the supposedly distinct trusted runtime directory through /., a trailing slash or a symlink.",
+      "paths": [
+        "src/cd/host/macos/cd-v2-common.sh.template",
+        "tests/cd/host-integration.sh"
+      ],
+      "disposition": "fixed",
+      "response": "Compare physical directory identities using cd -P and pwd -P; regressions reject all three alias shapes before credential-wrapper or controller invocation while distinct spaced paths succeed. Same reviewer verified and cleared the fix at d9d2fbbc0e827925161e1af29b53d8b3e520b6c4."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/morpheus_host/review_host",
+      "commit": "d9d2fbbc0e827925161e1af29b53d8b3e520b6c4",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.5333333333333333,
+      "timing": {
+        "source": "clock",
+        "durationMs": 32000,
+        "evidence": "Author clock readings around followup_task /root/morpheus_host/review_host: 2026-10-20T02:46:52Z to final-answer receipt 2026-10-20T02:47:24Z."
+      },
+      "summary": "Verified CDH-002 and CDH-003 resolved; independently passed both host tests (59 generated-wrapper checks and real-runtime smoke), diff checks clean, no new findings or outstanding conditions."
+    }
+  ]
+}
+```
