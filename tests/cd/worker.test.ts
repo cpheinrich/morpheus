@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { QuotaReader, normalizeClaudeQuota, runWorker, scheduleHosted } from "../../src/cd/worker.js";
 import { after, quotaUsed, repairWork } from "../../src/cd/state.js";
 import { GitHubStore } from "../../src/cd/store.js";
-import { githubToken } from "../../src/cd/github-token.js";
+import { githubToken, probeGitHubToken } from "../../src/cd/github-token.js";
 import { config, now, prepared } from "./fixtures.js";
 import { FakeGitHub } from "./fake-github.js";
 
@@ -61,6 +61,23 @@ describe("actual quota telemetry", () => {
     expect((await reader.read(now)).windows[0]!.usedPercent).toBe(20); await reader.read(after(now, 4)); expect(fetcher).toHaveBeenCalledTimes(1);
     await expect(reader.read(after(now, 6))).rejects.toThrow("HTTP 429"); await expect(reader.read(after(now, 7))).rejects.toThrow("backoff"); expect(fetcher).toHaveBeenCalledTimes(2);
   });
+  it("distinguishes a recognized usage scope failure without leaking provider text", async () => {
+    const cfg = config(); cfg.agents = { local: { command: ["codex"] }, hosted: { command: ["claude"], model: "opus", workflow: "repair.yml", ref: "main" } };
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { type: "permission_error", message: "OAuth token does not meet scope requirement user:profile; fake-secret\nINJECTED=value" } }), { status: 403 }));
+    const reader = new QuotaReader(cfg, "hosted", "/unused", { CLAUDE_CODE_OAUTH_TOKEN: "fake-secret" }, fetcher);
+    await expect(reader.read(now)).rejects.toThrow(/^Claude usage readback HTTP 403; permission_error; required OAuth scope user:profile; retain budget wait$/);
+    const other = new QuotaReader(cfg, "hosted", "/unused", { CLAUDE_CODE_OAUTH_TOKEN: "fake-secret" }, vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { type: "fake-secret", message: "fake-secret\nINJECTED=value" } }), { status: 403 })));
+    await expect(other.read(now)).rejects.toThrow(/^Claude usage readback HTTP 403; retain budget wait$/);
+  });
+  it.each([
+    { status: 401, body: "<html>fake-secret</html>", diagnostic: "Claude usage readback HTTP 401; retain budget wait" },
+    { status: 403, body: "null", diagnostic: "Claude usage readback HTTP 403; retain budget wait" },
+    { status: 429, body: JSON.stringify({ error: { type: "rate_limit_error", message: "fake-secret" } }), diagnostic: "Claude usage readback HTTP 429; rate_limit_error; retain budget wait" },
+  ])("retains a safe quota refusal for HTTP$status without assuming a JSON error shape", async ({ status, body, diagnostic }) => {
+    const cfg = config(); cfg.agents = { local: { command: ["codex"] }, hosted: { command: ["claude"], model: "opus", workflow: "repair.yml", ref: "main" } };
+    const reader = new QuotaReader(cfg, "hosted", "/unused", { CLAUDE_CODE_OAUTH_TOKEN: "fake-secret" }, vi.fn().mockResolvedValue(new Response(body, { status })));
+    await expect(reader.read(now)).rejects.toHaveProperty("message", diagnostic);
+  });
   it("persists a budget wait without fabricating work completion when telemetry is missing", async () => {
     const cfg = config(); cfg.agents = { local: { command: ["codex"] }, hosted: { command: ["claude"], workflow: "repair.yml", ref: "main" } }; const api = new FakeGitHub(), store = new GitHubStore(api, cfg); await store.initialize(now, "e");
     const fixture = prepared(); await store.transact("seed", "fixture", now, state => { Object.assign(state, { ...fixture.state, epoch: state.epoch, configurationDigest: state.configurationDigest, transitions: state.transitions }); repairWork(state, fixture.intentId, ["failure"], now); return null; });
@@ -76,6 +93,28 @@ describe("actual quota telemetry", () => {
 });
 
 describe("scoped GitHub OIDC token boundary", () => {
+  it("uses the exact repository URL and proves workflow write, readback and cleanup", async () => {
+    const base = "https://api.github.com/repos/owner/project", ref = "morpheus-cd-credential-probe-123-2", calls: string[] = []; let content = "", created = false;
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input), method = init?.method; calls.push(`${method} ${url}`);
+      expect(init?.redirect).toBe("error"); expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer fake-probe-token");
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      if (url === base && method === "GET") return Response.json({ default_branch: "main" });
+      if (url === `${base}/git/ref/heads/main`) return Response.json({ object: { sha: "a".repeat(40) } });
+      if (url === `${base}/git/commits/${"a".repeat(40)}`) return Response.json({ tree: { sha: "b".repeat(40) } });
+      if (url === `${base}/git/blobs`) { content = body.content; return Response.json({ sha: "c".repeat(40) }); }
+      if (url === `${base}/git/trees`) return Response.json({ sha: "d".repeat(40) });
+      if (url === `${base}/git/commits`) return Response.json({ sha: "e".repeat(40) });
+      if (url === `${base}/git/refs`) { expect(body).toEqual({ ref: `refs/heads/${ref}`, sha: "e".repeat(40) }); created = true; return Response.json({}); }
+      if (url === `${base}/contents/.github/workflows/morpheus-cd-credential-probe.yml?ref=${ref}`) { expect(created).toBe(true); return Response.json({ content: Buffer.from(content).toString("base64") }); }
+      if (url === `${base}/git/ref/heads/${ref}`) return Response.json({ object: { sha: "e".repeat(40) } });
+      if (url === `${base}/git/refs/heads/${ref}` && method === "DELETE") { created = false; return new Response(null, { status: 204 }); }
+      return new Response(null, { status: 404 });
+    });
+    const result = await probeGitHubToken({ GITHUB_REPOSITORY: "owner/project", GH_TOKEN: "fake-probe-token", GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "2" }, fetcher);
+    expect(calls).toEqual([`GET ${base}`, `GET ${base}/git/ref/heads/main`, `GET ${base}/git/commits/${"a".repeat(40)}`, `POST ${base}/git/blobs`, `POST ${base}/git/trees`, `POST ${base}/git/commits`, `POST ${base}/git/refs`, `GET ${base}/contents/.github/workflows/morpheus-cd-credential-probe.yml?ref=${ref}`, `GET ${base}/git/ref/heads/${ref}`, `DELETE ${base}/git/refs/heads/${ref}`]);
+    expect(created).toBe(false); expect(result).toMatchObject({ workflowWriteVerified: true, workflowDispatched: false, commit: "e".repeat(40), temporaryRef: ref }); expect(JSON.stringify(result)).not.toContain("fake-probe-token");
+  });
   it.each(["v1.JWT-shaped.opaque-token+/=", "opaque%0Acredential"])("transports opaque single-line provider credentials safely: %s", async token => {
     const directory = await temp(), output = join(directory, "outputs"), logger = vi.spyOn(console, "log").mockImplementation(() => {});
     const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ value: "oidc-test" }))).mockResolvedValueOnce(new Response(JSON.stringify({ token: "", app_token: token })));

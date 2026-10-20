@@ -118,7 +118,18 @@ export class QuotaReader {
         invariant(token, "Hosted subscription usage requires actual runtime telemetry or authorized OAuth usage readback");
         this.retryAt = Date.parse(now) + 5 * 60_000;
         const response = await this.fetcher("https://api.anthropic.com/api/oauth/usage", { headers: { Authorization: `Bearer ${token}`, "anthropic-beta": "oauth-2025-04-20" }, signal: AbortSignal.timeout(15_000), redirect: "error" });
-        invariant(response.ok, `Claude usage readback HTTP ${response.status}; retain budget wait`);
+        if (!response.ok) {
+            let failure;
+            try {
+                failure = await response.json();
+            }
+            catch { /* HTTP status remains useful without JSON. */ }
+            const error = failure?.error;
+            const category = typeof error?.type === "string" && ["permission_error", "authentication_error", "invalid_request_error", "rate_limit_error"].includes(error.type) ? error.type : undefined;
+            const scope = typeof error?.message === "string" && /scope requirement [`'"]?user:profile\b/.test(error.message) ? "required OAuth scope user:profile" : undefined;
+            // Provider messages can echo credentials. Emit only fixed recognized diagnostics.
+            invariant(false, `Claude usage readback HTTP ${response.status}${category ? `; ${category}` : ""}${scope ? `; ${scope}` : ""}; retain budget wait`);
+        }
         this.cached = normalizeClaudeQuota(await response.json(), now, agent.model);
         return this.cached;
     }

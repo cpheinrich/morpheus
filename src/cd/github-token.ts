@@ -7,7 +7,7 @@ export async function probeGitHubToken(environment: NodeJS.ProcessEnv, fetcher: 
   const repository = environment.GITHUB_REPOSITORY, token = environment.GH_TOKEN, run = environment.GITHUB_RUN_ID, attempt = environment.GITHUB_RUN_ATTEMPT;
   invariant(repository && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) && token && run && /^[0-9]+$/.test(run) && attempt && /^[0-9]+$/.test(attempt), "Capability probe requires exact Actions repository/run and scoped GH_TOKEN");
   const api = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
-    const response = await fetcher(`https://api.github.com/repos/${repository}/${path}`, { method, headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15_000), redirect: "error" });
+    const response = await fetcher(`https://api.github.com/repos/${repository}${path ? `/${path}` : ""}`, { method, headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15_000), redirect: "error" });
     invariant(response.ok, `GitHub capability probe ${method} ${path} HTTP ${response.status}`); return (response.status === 204 ? undefined : await response.json()) as T;
   };
   const repo = await api<{ default_branch: string }>("GET", ""), main = await api<{ object: { sha: string } }>("GET", `git/ref/heads/${repo.default_branch}`);
