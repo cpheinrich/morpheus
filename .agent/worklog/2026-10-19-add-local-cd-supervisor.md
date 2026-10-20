@@ -20,4 +20,13 @@ The templates intentionally remain reviewed source assets copied from an exact M
 
 ## Verification
 
-Pending focused host integration test, typecheck, compile, docs links and PR CI. The source test harness is based on the previously executed 41-check synthetic suite; the result will be rerun from the Morpheus task branch.
+- `node_modules/.bin/vitest run tests/cd/host.test.ts --configLoader runner` — 1 test passed. The runner mode avoids Vite's config-temp write into the shared node_modules symlink.
+- `bash tests/cd/host-integration.sh` — PASS=41 FAIL=0, covering generated wrappers, command arguments, credential isolation, digest/path refusals, launchd intervals and shell syntax.
+- `node_modules/.bin/tsc --noEmit` — passed.
+- `node_modules/.bin/tsc -p tsconfig.build.json` — passed.
+- `bash -n src/cd/host/macos/*.sh.template` and `plutil -lint src/cd/host/macos/*.plist.template` — passed.
+- `node dist/cli/index.js pm index --dir hq/product` — indexes unchanged after generation.
+- `git diff --check` — passed.
+- `morpheus check pr` — code conventions passed; it correctly reported that the PR body, `review` roadmap status and independent review label are pending PR creation/review. Focused commands were selected because this adds isolated host templates and docs; the CD host test covers generated execution and the TypeScript check/build validate repository integration.
+
+GitHub push and PR creation are the remaining publication steps. No consumer host has loaded these templates; installation and delivery cutover remain consumer-owned.
