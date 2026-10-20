@@ -463,3 +463,85 @@ or receipt is inferred. The approved hourly continuation remains active with an
 updated pointer-based prompt, the same cadence and meaningful-change-only
 updates. It preserves held source gates and the distinction between preparation
 and acceptance. The campaign remains **0/8**.
+
+
+## First full native attempt failed; same delivery retained for repair
+
+Run 39413736198 attempt 1 completed failure at 13:25:44 UTC. Native evidence
+contains all 1,023 expected results: 1,021 passed, two failed and none skipped.
+The failures were `testIngredientNumericDraftSurvivesNoticeExpiryAndDecimalEditing`
+and `testMealNotesSaveReopenAndDiscard`; each failed all three actual attempts.
+The retained retry telemetry reports zero recovered-after-retry tests. The native
+verifier correctly rejected the failures. Qualification and upload were skipped,
+so there is no build 19 internal receipt and no campaign credit. The earlier
+focused pass is preserved with its narrower scope. The native watch exited 1;
+its parent wrapper's exit 0 is not a passing workflow result. The watch is closed
+and will not be restarted. Failure evidence manifest SHA-256:
+`a092d91b1c79a6d76e5b6f8685cbd4fd1a0e5d2f97d4b3e6786c0b2c549c7a3d`.
+
+The normal controller created repair work 2 under the SAME first staging intent.
+MacBook invocation i1 claimed it at 13:29:32.359, then i2 resumed the same local
+session `01a15980-ef29-7d81-b833-9703349e0ba3`. Both checkpointed when the real
+Codex quota read timed out, at 13:41:13.568 and 13:52:37.055 respectively. This is
+new actual evidence, distinct from the older historical blocker string. The
+13:53:38 GET-only ledger snapshot has work 2 waiting without a live lease; its
+normal next check is 13:57:37.055. Root did not start another app writer, alter
+ownership or session history, rerun a1, cancel work, repeat a spent lifecycle
+phase, reset debt or reuse build 19. The exact original lineage, debt, source,
+control and sole reservation remain. Epoch, configuration, both complete ordinary
+holds and paid budget fields excluding legitimate telemetry match the 13:30
+snapshot. Readback SHA-256:
+`724ced1241cb8183ef859d27781b5d1c759e263fa59406cd16061cdda380b620`.
+
+Root assigned a separate read-only diagnosis of these repeated quota timeouts.
+The unchanged frozen worker starts a new quota app-server for every read and
+uses one ten-second deadline for startup plus quota RPC; every thirty-second
+meter read fails closed on timeout and checkpoints its invocation. The timeout
+mechanism is established from exact source; the cause of either live delay is
+not yet established. The fresh account read reports ordinary usage allowed and
+77% remaining. No quota probe, authentication change, stale quota substitution,
+API/credit fallback or new runtime activation followed this diagnosis.
+
+## Cron source merged; post-receipt source remains held
+
+Root deliberately landed reviewed Evo #571 during the first delivery interval
+to start observing scheduled wakeups sooner. This is not a merge between
+successful receipts. Exact final head d9a2c396 retained its cleared review after
+a reproducible main merge; twelve focused checks and the final seven CI checks
+passed. Marking ready triggered new required checks. The first protected merge
+refused four queued checks; root retained that outcome and waited once for the
+new seven checks to pass before the normal matching-head squash auto-merge.
+No admin merge or review waiver was used. Actual merge
+`cd6692b01cafa392151a52f36549d05c71097e24` landed at 13:38:52 UTC. Final
+provider readback SHA-256:
+`984227fa4c06ec99f13092c11913518fd728f3756abec209b34612151abbd8bc`.
+
+The matching push wakeup 39432211612 completed successfully at 13:39:33. Source
+merge and push success alone do not prove scheduling. A later complete retained
+schedule inventory independently found run 39431403353, created 13:33:20 and
+completed successfully at 13:34:05, at pre-571 source f0ab98e3. It predates the
+cron change: do not claim #571 caused this event or that the earlier zero-event
+read at 13:25 was false. Its controller log/identity join is being collected
+separately. No manual dispatch was needed.
+
+Evo #566 is prepared through actual #571 main at final
+`b5368e1f02a37edf430d58faedbc67408048fbff`. Its reproducible mechanical merge
+preserves all nine reviewed fault/documentation blobs and the original review
+history. Twenty-four consumer/fault/map checks plus five exact-f65 runtime checks
+passed with no skips; web typecheck, syntax, lint, index, diff and review
+validation passed. The one final-head CI wait returned seven successes. It stays
+DRAFT with auto-merge off and unmerged until the first actual full internally
+installable receipt, whichever repaired attempt supplies it. Only then can its
+strictly later main merge precede production request 2. Readiness SHA-256:
+`5a10287c4ee2d6ccdbf1158faebd254f4e04033bd157be1121b19aa437f3e4c4`.
+
+The #571 author verified and removed only its generated ignored TypeScript
+build cache. One guarded cleanup retry refused another session binding, and the
+worktree was retained. No forced session release or further cleanup followed.
+The combined private readiness/checkpoint/cleanup archive manifest SHA-256 is
+`f8a667c39b026dd07fd478f716b96f9470b05442a4d82e626be9c6caec1f242a`.
+
+Build 18 remains the previously confirmed internal/external update, outside the
+campaign. Accepted campaign deliveries remain **0/8**. Live CD remains f65 with
+configuration 7301 and epoch d585. Held #574 and #573 retain their separate
+source and operational gates. No tests were rerun for this worklog-only update.
