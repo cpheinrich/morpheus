@@ -1424,3 +1424,94 @@ A local no-auth receipt-A-under-actual-B negative-probe caller is prepared only;
 it refuses before execution without fresh active archived B and actual IPA
 identity. No fabricated IPA, live fault, provider call or hook execution occurred.
 Actual allowance remains53% Codex remaining; no reset or Claude run was started.
+
+
+## Real receipt boundary and automatic internal assignment — October20 22:54UTC
+
+Production7's actual IPA24e5330a claimed at22:25:02 and upload1c527b77 accepted
+22:25:28 join the exact source/control719, run39489032255/1 and all1071 final
+passes. Every final workflow job passed; existing watch21551 completed naturally
+22:26:44/exit0 and was reconciled, never restarted. Root retrieved every observed
+acceptance artifact (one actual artifact containing both PROCESSINGresource and
+acceptedreceipt); fde9fdbb binds each identity, native evidence and AppleVALID.
+It preserves that a claimed/native digest is not an independent later IPA rehash.
+
+Caught the actual active/archived P2B window and invoked the unchanged normal
+F65 resource hook exactly once at22:29:57 with the exact unchanged real S21Afile
+and B's actual source/control/run/app/build/claimedIPA identity. The isolated
+empty-home/config, explicit no-auth environment and fail-closed gh shim produced
+exit1/UploadhookintentIdmismatch/zero provider commands. Before22:29:24.430 and
+after22:29:58.846 immutable ledger head2e37d274 and the ENTIRE state/cursors stayed
+identical, B remained active/processing/archived, and realA7028c8ff plus runtime,
+hook and config bytes stayed unchanged. Proofa4d3265a retains the actual window
+and every limit: no separate issue-body before/after API capture; zero gh calls
+means no issue/provider write by this probe. This supplies an actual real A-under-B
+boundary observation, not a synthetic harness, fault, reupload or delivery.
+
+Retained two background controller GitHub credential lookup failures. Normal
+supported native lookup succeeded both absolute and with the reviewed common PATH;
+no credential/session/config/login/scope/service change was made. Existing Mini
+process70550 proceeded into its unmodified controller, then its22:44:52 normal
+output/head32ee/errors[] moved P2 to verify-internal-distribution. Its captured
+birth was naturally gone at22:47:35; no new exit0 claim is inferred from that alone.
+Apple22:48:30 shows exact production1.0(7)/provider1c527 VALID/unexpired,
+IN_BETA_TESTING, assigned to the configured internal group with three testers,
+externally eligible READY_FOR_BETA_SUBMISSION. Root performed no manual tick or
+group write. The normal immutable receipt is still pending; campaign stays1of8
+until it commits. A single bounded native log event wait42689 (not GitHub polling)
+awaits that normal result; no duplicate watcher or build exists.
+
+Source573 integrated actual main719/#566, and fixed approved installer provenance
+versus strictly imported reviewed core-runtime binding. Headf88b2a93 is clean,
+pushed, draft/unlabelled/off. ActualF65 tests45+docs6 passed,3semantic mutants were
+killed, provisional heldT33 passed, finalCI25393 exited0 (6effectivepasses/1draft
+skip;8rawentries include two skippedprcontexts, retained honestly). First fresh
+review remains held for actual577/main and final runtime integration. The author
+mistakenly used the operational fixed-cwd wrapper for one contextbrief23090;
+root reconciled actual evo-worker719/trackedclean in10a2fc04, without rewind or
+claims about all ignored/context/refetch side effects. No refresh/repeat occurred;
+subsequent source commands used native auth in the owned573 checkout. All actual
+proofs and source limits are retained in the private source archiveff520914.
+
+
+## Second real delivery and next staging request — October20 23:11UTC
+
+The normal controller committed production1.0(7)'s immutable internal receipt at
+22:52:16.899, canonical9aa451c22e9bdd39/raw5477d6e9, observed in ledger44f96df8.
+Root's independent identity/native/Apple join127b2c1a verifies exact source/control
+71986163/run39489032255/1/IPA24e5330a/provider1c527b77,1071 finalPASS/0fail/0skip,
+VALID/unexpired/IN_BETA_TESTING, exact internal group and three existing testers.
+Original debt/slot/deadline/lineage, a1/build6 preflight failure and burned number,
+paid liabilities and both full ordinary holds are preserved. Current campaign is
+2of8 (one staging, one production); urgent18 remains outside it. No manual tick,
+auth mutation, group write, duplicate upload or erased failure was used. The single
+normal-log event wait42689 finished22:55:00/exit0 and was reconciled, never restarted.
+Production's external group retains zero testers by Chris's explicit instruction.
+The normal external wait reports its nonempty-group requirement; no invitations,
+reupload or withholding internal delivery credit follows from that limitation.
+
+After the actual receipt, reviewed source580 passed fresh ready-event conventions
+and normal protected match-head merge at23:01:56, commit7b69f79f, strictly later
+than22:52:16.899. The operational source checkout normally fast-forwarded to that
+clean main. A first S3 plan was rejected by an extra caller expected-head assertion
+BEFORE any operation journal or apply invocation: normal controller activity had
+advanced the ledger from983cc419 to f5e05867. Old operation/next intent were absent,
+all four expected effect/result files absent. Refusal evidence remains; it was not
+bypassed or replayed. Fresh normal planning and immediate standard CLI apply
+succeeded ONCE at23:09:58.738, op48918674/headb810e43b, no replay. Proofac0d06f4
+binds exact source7b69, prior receipt and strictly later main merge, epoch/config,
+full holds/paid excluding telemetry/prior receipts/all burned builds unchanged.
+Sequence3/staging intent is pending dispatch-full-tests with no attempts in that
+readback; only the existing normal controller may dispatch it. No delivery3 or
+running-job claim is made before actual provider evidence.
+
+Held577 mechanically integrated actual580/7b69 in ee4024cf, reproducing its merge
+tree and preserving all ten reviewed b259 runtime/policy/fault/test/own-record
+payload blobs. Final899d4dca is clean/pushed; original82886ms review and raw timing
+remain unchanged, record validates before push,12 focused checks and finalCI65320
+passed (six effective successes/one expected draft skip). It remains draft,
+unlabelled, auto-merge off and unmerged: source readiness does not authorize the
+Mini/GitHub controller runtime cutover. That requires its separate exact manifest,
+fresh independent operational review and quiet gate after the next receipt.
+Six full deliveries, remaining actual recovery observations and the later reusable
+CTO skill are still outstanding. No new source tests were run for this worklog.
