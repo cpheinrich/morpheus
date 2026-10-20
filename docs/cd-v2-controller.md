@@ -183,8 +183,8 @@ an arbitrary command-execution surface.
 `account/rateLimits/read`. A configured `MORPHEUS_CD_QUOTA_FILE` or executor
 `quotaFile` supplies actual `{observedAt, source, windows:[{id,usedPercent,resetsAt}]}`.
 Hosted Claude can read its authorized OAuth usage endpoint with five-minute cache
-and 429 backoff. Configure the intended model explicitly (for example `model:
-"opus"`). Its snapshot joins shared five-hour/week windows with the matching
+and 429 backoff. Configure the intended model explicitly (for example
+`agents.hosted.model: "opus"`). Its snapshot joins shared five-hour/week windows with the matching
 model-family week window, including an exact `model` attestation. Every required
 window must be present, valid and nonexpired; null or absent model capacity is
 unknown, never zero usage. Other model-family exhaustion is excluded only when

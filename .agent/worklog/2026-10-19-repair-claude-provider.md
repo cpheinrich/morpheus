@@ -12,9 +12,9 @@ used nullish rather than empty-primary fallback. Current official action source
 accepts token-or-app_token without that alphabet assumption:
 https://github.com/anthropics/claude-code-action/blob/0a08a8678026bf8bad8cbf35bb2727fdd9d5f273/src/github/token.ts
 
-The existing quota normalizer also discarded model-specific windows. Chris said
-Fable capacity was saturated and explicitly requested Opus delegation below30%
-Codex remaining; shared windows alone cannot establish Opus-specific capacity.
+The existing quota normalizer also discarded model-specific windows. An explicit
+Opus executor needs shared and matching model capacity; shared windows alone
+cannot establish Opus-specific capacity or distinguish unrelated model limits.
 
 Implementation stays in the existing domain adapters: opaque printable ASCII
 single-line tokens, percent-safe GitHub masking, exact protected output, no raw
