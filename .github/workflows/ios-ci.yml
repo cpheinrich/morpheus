@@ -44,6 +44,10 @@ on:
         description: GitHub-hosted image or self-hosted runner label with the requested Xcode and simulator runtime.
         type: string
         default: "macos-26"
+      runner-labels-json:
+        description: Optional JSON array of distinct nonblank runner labels; all labels must match. Empty preserves runner.
+        type: string
+        default: ""
       timeout-minutes:
         description: Maximum hosted job duration, including package resolution and artifact export.
         type: number
@@ -175,8 +179,42 @@ permissions:
   contents: read
 
 jobs:
+  validate-runner:
+    if: ${{ inputs.runner-labels-json != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    concurrency:
+      group: ios-ci-runner-labels-${{ github.repository }}-${{ github.workflow }}-${{ inputs.execution-id || github.ref }}-${{ inputs.scheme }}
+      cancel-in-progress: ${{ inputs.execution-id == '' }}
+    outputs:
+      labels: ${{ steps.labels.outputs.labels }}
+    steps:
+      - name: Validate runner label conjunction
+        id: labels
+        env:
+          RUNNER_LABELS_JSON: ${{ inputs.runner-labels-json }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          const fail = () => {
+            console.error('runner-labels-json must be a nonempty JSON array of distinct, nonblank string labels without surrounding whitespace or control characters');
+            process.exit(1);
+          };
+          let labels;
+          try { labels = JSON.parse(process.env.RUNNER_LABELS_JSON); }
+          catch { fail(); }
+          if (!Array.isArray(labels) || labels.length === 0) fail();
+          if (!labels.every(label => typeof label === 'string' && label.trim().length > 0 && label === label.trim() && !/[\x00-\x1f\x7f]/.test(label))) fail();
+          // GitHub runner labels are case-insensitive; do not hide duplicates.
+          if (new Set(labels.map(label => label.toLowerCase())).size !== labels.length) fail();
+          appendFileSync(process.env.GITHUB_OUTPUT, `labels=${JSON.stringify(labels)}\n`);
+          NODE
   test:
-    runs-on: ${{ inputs.runner }}
+    needs: validate-runner
+    # A skipped opt-in validator must not skip ordinary callers. A failed or
+    # cancelled validator must never select the ordinary runner as a fallback.
+    if: ${{ !cancelled() && (inputs.runner-labels-json == '' || needs.validate-runner.result == 'success') }}
+    runs-on: ${{ inputs.runner-labels-json == '' && inputs.runner || fromJSON(needs.validate-runner.outputs.labels) }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     # `github.workflow` names the *caller*, which is what separates a pull
     # request's CI run from a release workflow that calls this same job on

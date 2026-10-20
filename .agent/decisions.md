@@ -68,6 +68,15 @@ file anyway, so it was removed; low-churn goal and request indexes remain genera
 
 ## Tooling
 
+**iOS runner conjunctions are explicit and validated before native assignment — 2026-10-20.**
+An optional `runner-labels-json` input carries the complete label array; an empty
+value keeps the established single `runner` string. Use a bounded opt-in Ubuntu
+validation job, Node's built-in JSON parser and Actions' `fromJSON`, rather than
+another action or parsing dependency. This small runner-specific boundary rejects
+malformed, empty, blank, nonstring and duplicate labels without falling back.
+The native test/evidence contract stays intact. A validation-only no-admission
+drill still requires its own consumer source, review and operational authority.
+
 **Live provider failures require exact routes and fixed diagnostics** — 2026-10-19. The hosted capability probe must use the exact GitHub repository metadata route before testing workflow write/readback/cleanup. Failed Claude usage reads retain their budget wait and may name only an allowlisted error category and fixed recognized scope hint; arbitrary provider text can echo credentials. These are small provider-specific corrections in existing adapters, so no generic package is needed. A merged correction is a prerequisite for the next live probe, not evidence of working quota or delivery.
 
 **Hosted repair honors opaque credentials and explicit model quota** — 2026-10-19. The official Claude App exchange returns an opaque token; validate safe single-line transport instead of guessing its alphabet. Record requested/granted authority separately and prove actual workflow-writing capability. Subscription admission for a named Claude model uses shared plus matching model-family windows; unknown/null capacity waits, and an aggregate-only telemetry file cannot attest Opus. Keep the change in existing domain adapters and validators; no generic dependency is needed. A successful parser or model launch does not substitute for actual quota/provider proof.
