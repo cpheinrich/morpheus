@@ -928,3 +928,70 @@ receipt credit. The same single native watcher remains in place; its 17:55 local
 completion check was absent. Campaign credit remains 0/8. The first actual full
 internal receipt still gates #566's reviewed main merge, followed promptly by the
 ordinary production2 request. Optional rollout preparation cannot delay it.
+
+
+## Actual first full qualification and accepted build21; delivery still outstanding — October20 18:31UTC
+
+Actual full run39450437095/attempt1 completed all four jobs successfully. Pinned F65
+artifact/validator verification independently found1071 expected and actual tests,
+1071 final passes,0 failures and0 skips.1070 passed first attempt; the remaining
+DatasetCollector submission UI test failed once (74.324568s) and passed its retry
+(52.661083s). The existing three-iteration setting remains a maximum retry policy,
+not three clean whole-suite passes. No test was rerun by root. The original
+16:03:44.839 deadline miss remains recorded.
+
+The exact a3/source/control e623439e94db17b7fb40037c4c50b8a02c5bb113 produced staging
+1.0(21), IPA SHA256 d07e7e8aa9339acfb279281b5ff8a7d2629665767fafd949fab8e719519f822d.
+Apple accepted transport at17:58:38.448850Z. Actual read-only Apple18:10:53.877
+showed build21 VALID, unexpired, READY_FOR_BETA_TESTING and
+READY_FOR_BETA_SUBMISSION, but absent from the exact internal group. Provider
+upload UUID and actual build UUID both equal f35a0e03-3408-40de-9cfd-ff9735a5fcab;
+the earlier assignment404 cannot be diagnosed as a wrong UUID. The controller
+had attempted the exact existing internal-group membership POST18:08:09 and
+received404. No immutable internal delivery receipt exists: campaign remains0/8.
+No reupload, replacement build, synthetic receipt or tester-list change occurred.
+
+Positive source diagnosis found the frozen consumer first-final-source guard
+returns diagnosing for every repairing intent before checking source eligibility.
+Its campaign reconciliation exit3 makes tick.mjs skip the shared controller, so
+later service exit0/active status snapshots are not normal upload reconciliation.
+Root changed approach instead of polling an unchanged ledger. Existing native
+work4/i1 is an ACTIVE ordinary source writer (session01a15a89-e633-7bd0-80bc-df0dd4d7f1ac),
+not a disposable stalled startup: local event records show Morpheus task
+MO-26-10-20-11.22.50 and Evo taskEV-26-10-20-11.19.50, focused regressions and
+independent review in progress. No duplicate author, reviewer, model, session,
+signal, manual lease/state write or broad direct tick was started. A proposed
+private recovery assessor was stopped uninvoked/untested and must not be used.
+A normal operational repair result without a replacement-source PR can preserve
+an accepted attempt; a PR adoption result must not inadvertently replace it.
+Existing ownership and actual normal completion must be reconciled first.
+
+The single read-only native watcher68204 completed17:59:13.601520/exit0 and was
+closed; no replacement watcher was started. The42-file downloaded outcome
+manifest is1e580e161535b8bbaae29ddbbe9581cf26829ff3b37eac00966263137cb6469f.
+Independent qualification proof803bcc7b62ebb6470c9189cc2030ba568ac850b71d3153b21f7ea4c08b296d91,
+actual Apple readback14f10262a0655a4a467aaa79ed2371fe9069b3c41a77667f9742a62a2b15f4d8,
+and ledger18:21 aa0a578001da73c2cd7c28f25543ea12be87d6da33460e03a608838eff293957
+are retained privately; no credential values or raw process arguments are recorded.
+The final payload/IPA identity join does not claim an independent later IPA byte
+rehash because IPA bytes were not retained locally.
+
+Reviewed #566 was mechanically integrated with actual main5762d867 (records-only
+#557, merged BEFORE the pending receipt), preserving all nine reviewed blobs.
+Head71519695c23b30a44bb98bcba59648414c5d683b has29 focused checks and all seven CI
+checks passing. It remains DRAFT/automergeOFF pending the first actual full internal
+receipt; only a subsequent protected reviewed main merge strictly after deliveredAt
+can precede production2. No optional runtime bells and whistles gate an otherwise
+ready ordinary next request. Existing external eligibility and both existing group
+targets are preserved; production tester list remains unchanged.
+
+Optional worker-R operator/probe preparation is frozen source only. Final49 fake
+lifecycle cases/31 assertion-killed mutants and46 probe cases/43 killed mutants
+are not real readiness or production adoption. Historical process records lack
+PGID/session/boot and complete startup/quota capture; no ownership pack was fabricated.
+Static tool/symlink gaps and the new work4 invalidate an old readiness join. The
+final source/gap manifest5cdccf638a68c0b9fafa1603c920d216c6d3eea8a55deab06fe928cbaa01ad96
+preserves these limits. All original four lifecycle phases remain spent; live
+F65/config7301/epochd585 remain unchanged. Actual Codex account allowance65% remaining;
+ordinary usage allowed, no reset/API/extra-usage fallback. Below30% delegate
+substantive work to Claude Opus and preserve10% Codex reserve.
