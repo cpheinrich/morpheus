@@ -86,6 +86,13 @@ expect_argv() { # expect_argv <file> <args...>
   local file="$1"; shift
   [ "$(cat "$file")" = "$(printf '%s\n' "$@")" ]
 }
+rewrite() { # rewrite <sed-expression> <file> — portable replacement without BSD/GNU sed -i differences
+  local expression="$1" file="$2" tmp="$2.tmp" was_executable=0
+  [ -x "$file" ] && was_executable=1
+  sed "$expression" "$file" > "$tmp" || return 1
+  [ "$was_executable" -eq 0 ] || chmod +x "$tmp"
+  mv "$tmp" "$file"
+}
 
 GOOD="$T/Host Bin"; render "$GOOD" "$CFGD" "$RTD" tick worker
 
@@ -107,7 +114,7 @@ grep -q 'cd-v2-common:' "$T/logs/t.err" && bad "unexpected tick stderr" || ok "t
 
 # ---------- 2. observe=1 rendered constant adds --observe ---------------------
 OBS="$T/Obs Bin"; render "$OBS" "$CFGD" "$RTD" tick
-sed -i '' 's|^CD_V2_TICK_OBSERVE=.*|CD_V2_TICK_OBSERVE="1"|' "$OBS/cd-v2-common.sh"
+rewrite 's|^CD_V2_TICK_OBSERVE=.*|CD_V2_TICK_OBSERVE="1"|' "$OBS/cd-v2-common.sh"
 rm -f "$CAP/argv.txt"; runwrap "$OBS/tick.sh" "$CAP" "/dev/null" "/dev/null" >/dev/null
 grep -qx -- '--observe' "$CAP/argv.txt" && ok "observe=1 rendered constant adds --observe" || bad "observe=1 rendered constant adds --observe"
 
@@ -164,7 +171,7 @@ done
 
 # ---------- 8. NEGATIVE: original wrong path tooling/dist must fail closed ----
 B="$T/Tooling Bug"; render "$B" "$CFGD" "$RTD" tick
-sed -i '' 's|dist/cli/index.js|tooling/dist/cli/index.js|' "$B/cd-v2-common.sh"
+rewrite 's|dist/cli/index.js|tooling/dist/cli/index.js|' "$B/cd-v2-common.sh"
 rc="$(runwrap "$B/tick.sh" "$CAP" "$T/logs/tool.out" "$T/logs/tool.err")"
 [ "$rc" -ne 0 ] && ok "tooling/dist/cli/index.js path fails closed (exit $rc)" || bad "tooling/dist path unexpectedly worked"
 grep -qs 'tooling/dist/cli/index.js' "$T/logs/tool.err" && ok "error names the tooling/dist path" || bad "error names the tooling/dist path"
@@ -172,7 +179,7 @@ grep -qs 'cd-v2-common:' "$T/logs/tool.err" && ok "tooling/dist refusal happens 
 
 # ---------- 9. NEGATIVE: omitted --source-dir is refused by the runtime -------
 B="$T/No Source"; render "$B" "$CFGD" "$RTD" tick
-sed -i '' 's| --source-dir "\$CD_V2_SOURCE_DIR"||g' "$B/tick.sh"
+rewrite 's| --source-dir "\$CD_V2_SOURCE_DIR"||g' "$B/tick.sh"
 capn="$T/cap-nosrc"; mkdir -p "$capn"
 rc="$(runwrap "$B/tick.sh" "$capn" "$T/logs/ns.out" "$T/logs/ns.err")"
 check "runtime refuses tick without --source-dir (exit 97)" "$rc" "97"
@@ -180,13 +187,16 @@ grep -qs 'REFUSING' "$T/logs/ns.err" && ok "refusal is explicit (REFUSING withou
 
 # ---------- 10. source and runtime checkouts must be distinct -----------------
 B="$T/Same Dir"; render "$B" "$CFGD" "$RTD" tick
-sed -i '' "s|^CD_V2_SOURCE_DIR=.*|CD_V2_SOURCE_DIR='$RT'|" "$B/cd-v2-common.sh"
+rewrite "s|^CD_V2_SOURCE_DIR=.*|CD_V2_SOURCE_DIR='$RT'|" "$B/cd-v2-common.sh"
 rc="$(runwrap "$B/tick.sh" "$T/cap-same" "$T/logs/sd.out" "$T/logs/sd.err")"
 check "source==runtime checkout refused, exit 2" "$rc" "2"
 grep -qs 'distinct' "$T/logs/sd.err" && ok "distinct checkout error reported" || bad "distinct checkout error reported"
 
 # ---------- 11. launchd templates: both auto-wake every 300 s ----------------
-pl() { plutil -lint "$1" >/dev/null 2>&1 && echo ok || echo bad; }
+pl() {
+  python3 -c 'import plistlib, sys; plistlib.load(open(sys.argv[1], "rb"))' "$1" >/dev/null 2>&1 \
+    && echo ok || echo bad
+}
 check "tick plist lints" "$(pl "$ROOT/com.consumer.cd-v2-tick.plist.template")" "ok"
 check "worker plist lints" "$(pl "$ROOT/com.consumer.cd-v2-worker.plist.template")" "ok"
 grep -A1 'StartInterval' "$ROOT/com.consumer.cd-v2-tick.plist.template" | grep -q '300' \

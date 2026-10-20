@@ -29,4 +29,8 @@ The templates intentionally remain reviewed source assets copied from an exact M
 - `git diff --check` — passed.
 - `morpheus check pr` — code conventions passed; it correctly reported that the PR body, `review` roadmap status and independent review label are pending PR creation/review. Focused commands were selected because this adds isolated host templates and docs; the CD host test covers generated execution and the TypeScript check/build validate repository integration.
 
-GitHub push and PR creation are the remaining publication steps. No consumer host has loaded these templates; installation and delivery cutover remain consumer-owned.
+## Independent review
+
+Initial independent review of `8a2486efabe54deb17bb0bab1f43e8c78c286309` found substantive issue CDH-001: `tests/cd/host-integration.sh` used BSD-only `sed -i ''` and Apple `plutil`, while Morpheus Node CI runs the test on Ubuntu. That made the suite fail on CI. The test harness now uses portable POSIX `sed` plus an atomic temp-file replacement that preserves executable mode, and Python's standard-library `plistlib` for plist syntax validation. Focused Vitest and all 41 synthetic checks pass after this correction. Same-reviewer follow-up is pending; this WIP remains draft and unmergeable.
+
+No consumer host has loaded these templates; installation and delivery cutover remain consumer-owned.
