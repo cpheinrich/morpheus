@@ -97,7 +97,6 @@ Independent high-risk Opus review cleared the provider correction and its same-s
     "evidence": "Claude stream-json result for actual session c4d332a8-890c-42f4-a800-e2ff7b9c5ebe, initial invocation: duration_ms=157341. Private /tmp/morpheus-provider-opus-review-result.json. Process clock03:32:44.891631\u201303:35:26.916074Z includes launcher overhead; runner duration is used."
   },
   "outcome": "complete",
-  "initialOutcome": "cleared",
   "summary": "Independent high-risk Opus review cleared the provider correction and its same-session follow-up. The reviewer accepted intentional conservative no-model admission, verified matching model filtering in telemetry files and OAuth, and independently passed22 worker tests in each turn. Live App authority and Opus capacity remain unproven and tracked in MO-26-10-19-20.37.25 before activation.",
   "findings": [
     {
