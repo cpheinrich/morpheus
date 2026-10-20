@@ -49,6 +49,10 @@ describe("actual quota telemetry", () => {
     await writeFile(path, JSON.stringify({ ...snapshot, model: "fable" })); await expect(reader.read(now)).rejects.toThrow("configured Claude model");
     await writeFile(path, JSON.stringify({ ...snapshot, model: "opus", windows: snapshot.windows.slice(2) })); await expect(reader.read(now)).rejects.toThrow("required Claude runtime window");
     await writeFile(path, JSON.stringify({ ...snapshot, model: "opus" })); expect(quotaUsed(await reader.read(now), now)).toBe(35);
+    await writeFile(path, JSON.stringify({ ...snapshot, model: "opus", windows: [...snapshot.windows, { id: "seven_day_fable", usedPercent: 100, resetsAt: after(now, 200) }] }));
+    const filtered = await reader.read(now); expect(filtered.windows.map(window => window.id)).toEqual(["five_hour", "seven_day", "seven_day_opus"]); expect(quotaUsed(filtered, now)).toBe(35);
+    await writeFile(path, JSON.stringify({ ...snapshot, model: "opus", windows: snapshot.windows.map(window => ({ ...window, usedPercent: window.id === "seven_day_opus" ? 100 : 35 })) }));
+    expect(quotaUsed(await reader.read(now), now)).toBe(100);
   });
   it("caches actual OAuth observations for five minutes and backs off 429 without model calls", async () => {
     const cfg = config(); cfg.agents = { local: { command: ["codex"] }, hosted: { command: ["claude"], workflow: "repair.yml", ref: "main" } };

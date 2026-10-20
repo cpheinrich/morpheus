@@ -101,8 +101,11 @@ export class QuotaReader {
         if (path) {
             const value = JSON.parse(await readFile(path, "utf8"));
             invariant(this.executor !== "hosted" || !agent.model || value.model === agent.model, "Subscription telemetry file does not attest the configured Claude model");
-            if (this.executor === "hosted" && agent.model)
-                invariant(claudeModelWindows(agent.model).every(id => value.windows?.some(window => window.id === id)), "Subscription telemetry file omitted a required Claude runtime window");
+            if (this.executor === "hosted" && agent.model) {
+                const ids = claudeModelWindows(agent.model);
+                invariant(ids.every(id => value.windows?.some(window => window.id === id)), "Subscription telemetry file omitted a required Claude runtime window");
+                value.windows = value.windows.filter(window => ids.includes(window.id));
+            }
             invariant(quotaUsed(value, now) !== undefined, "Subscription telemetry file is stale, missing or invalid");
             return value;
         }

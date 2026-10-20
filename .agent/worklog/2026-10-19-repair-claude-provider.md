@@ -53,3 +53,27 @@ Independent review is pending. The team runner reached its session limit and a
 fresh Codex CLI default-model launch is unsupported for this CLI account. A fresh
 persistent Claude Opus subscription session is the established fallback, with
 read-only tools, full packet, actual timing/session ID and no account/API switch.
+
+
+Initial fresh Opus review c4d332a8-890c-42f4-a800-e2ff7b9c5ebe cleared
+0f86a8b17ab159f46c937f780a819f4327374897 with two minor observations and one
+incidental verification requirement. Runner duration157341ms (process observed
+03:32:44.891631–03:35:26.916074Z). Reviewer independently ran22 worker tests.
+No provider calls were made; its upstream-source fetch was unavailable, so the
+provided official source citation remains author evidence.
+
+R1: retain the documented conservative no-model behavior. A present unusable
+runtime window is unknown capacity, so it intentionally waits rather than being
+silently discarded. Explicit consumer Opus selection is the supported way to
+exclude unrelated model buckets.
+
+R2: filter model-attested telemetry files to the same required shared/model IDs
+as OAuth readback. Added regression assertions that unrelated Fable exhaustion
+leaves Opus at35 percent, while Opus exhaustion itself remains100 percent. The
+removed-filter mutant failed this test; restored source before final validation.
+The35 focused worker/adapter tests, typecheck, compile and index passed again.
+
+R3: actual App exchange shape and Opus quota semantics remain unproven. Deferred
+to direct-child roadmap MO-26-10-19-20.37.25 with explicit capability, revocation,
+actual model-window and fail-closed acceptance. It is part of the ongoing consumer
+rollout and is required before active repair admission.
