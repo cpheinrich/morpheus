@@ -222,3 +222,69 @@ auto-merge off and is not a real scheduled-wake proof. Source #566 remains
 held until first delivery; its remote upload-ack-loss exercise still needs
 trusted remote caller/process wiring. Local uploader environment overrides
 cannot affect an already dispatched remote workflow.
+
+## Normal repair completion, Mini restoration and first full attempt
+
+The existing MacBook worker automatically resumed the same local native session
+at 10:50:45.930 UTC as i4/fence 4. No manual bootstrap or forced admission was
+used. Native `thread.started` confirms session
+`01a158de-82ac-7f62-865e-dd9cfee2725b`, preserving the i3 checkpoint without
+resuming the foreign Mini session. The worker returned `repaired` normally at
+11:06:56.810 UTC. The parent verifier adopted merged PR #568 source
+`4d41b41ca5a13897e842230a805b7cc3c0b98954`, with independent review head
+`1ff8d9225b329d26f510251e2d7b958c2f817107` and passing CI. Original f6 source,
+run 39134197552 attempt 1, #558 repair provenance, debt and slot remain intact.
+The parent readback SHA-256 is
+`825657a2cb9555081ec0f408b6a391798bca8665caccb2bbc61a3d425001f1ad`.
+
+The completed native checks report 13 domain tests, three UI regressions with
+their StoreKit prerequisites, 31 launcher tests and six documentation checks,
+with no failures or skips. Root independently read the domain and all three
+actual UI result bundles and checked the expected test identities/counts,
+including linked nutrition/undo and numeric draft persistence. The 15-file
+native completion archive plus remaining actual UI trees has manifest SHA-256
+`4482ce96fd0acb2742f94374875cae1f0417a133e9647e402f357404d56a9162`.
+These focused checks earn no full delivery credit. The native agent's own
+EV-26-10-20-03.33.25 evidence branch remains an unmerged follow-up, preserved at
+commit `290608a8f529f845875fa48d35ed5be15dea19df`.
+
+Strict completion census confirmed the three captured i4 process births gone
+and zero owned descendants; fresh restoration-admission proof SHA-256 is
+`98bad4a597e21f77499245c9d88bd166bf18f03a52e336edf8b0337494a7952d`.
+The final `restore-mini` phase of reviewed operator 353b65f6 applied once after
+fresh exact-source/file checks, ordinary ChatGPT quota at 0% used, all old i2
+births gone, no active invocation, unchanged paid liabilities and both complete
+hold objects, and all legacy GitHub/launchd fences. Journal SHA-256 is
+`d268690563d6b917a5118838c560891746f6eb32654bf388ee483248d2f81f06`;
+prerequisites SHA-256 is
+`5bf6d5d1bf8a8d75c2a952e8b188109a86c681a9aa19c04773be233a54a68e45`.
+All four one-shot lifecycle phases are now spent; do not invoke any again.
+
+Preparation failures happened before that effect: a diagnostic used `id`
+instead of the actual hold `scope`; an inline collector incorrectly escaped
+a regex word boundary; a later collector compared unsorted hold scopes to
+sorted manifest IDs. Each stopped before creating restoration prerequisites
+or a journal. Actual values were read, complete hold objects stayed equal,
+only the ID comparison was sorted, all time-bound proofs were refreshed, and
+only then did the final preflight and one restoration succeed. No guard was
+bypassed and no source, configuration or ledger was manually rewritten.
+
+Actual restored Mini worker wake exited idle with code 0. Its first controller
+process also ended with code 0 and normally dispatched the first full attempt.
+At 11:18:51.303 UTC, independent GET-only ledger readback established attempt
+`evo-evo-real8-01a1572f-20261020-1-staging-a1`, build 19, app 6819097182,
+source 4d41, control `0159d1f1a05c2a41ffac7a8c3911434627842c9c`, unchanged
+configuration 7301b9aa and local lane. Proof SHA-256 is
+`01693e2d76085b271ef094cc9f1a4dda1b244385c84ff0ec82e65926bec7a127`.
+
+GitHub independently confirms real run
+[39413736198](https://github.com/darwin-health/evo/actions/runs/39413736198),
+attempt 1, created 11:16:08 UTC on the exact reviewed control tag. Preflight
+passed. The `tests / test` job is actually running on the MacBook's macOS VM;
+at 11:19:04 UTC it was building for testing after source identity and locked
+input checks passed. GitHub start proof SHA-256 is
+`84e2c0db4ff1d45871c2f240b195e33551b06fc102c5939c48d8bb5d2041508c`.
+The old quota-timeout blocker string remains historical on the pending intent;
+it does not override the actual testing state or authorize a manual cleanup.
+Full native qualification, upload, exact internal receipt and separately
+external distribution remain pending: campaign **0/8**.
