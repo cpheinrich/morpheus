@@ -1171,3 +1171,76 @@ preinventory completed20:10:06 with no unknown noncode paths or regular hardlink
 no file contents or credential stores were read. All four original353b phases stay
 spent. Source packets and current facts are archived in the private campaign checkpoint.
 No source tests were repeated for this records-only continuation.
+
+## Retained controller facts and later hosted drill source work — October20 21:00UTC
+
+Production build7/run39489032255 passed build-for-testing and is running the full
+unit/UI inventory. The one native watch21551 remains its owner; a local completion
+file read20:56 found no completion. No second receipt, workflow conclusion or hosted
+delivery is claimed. Staging21 remains the sole campaign credit,1/8.
+
+Root read only the retained Mini F code/dependency tree20:30:24–20:30:30. The actual
+5.653655-second census contains18598 regular files,863 internal file/directory links,
+5226 directories and376334547 regular bytes. Raw7634e81b6a7b3e74519ed0c54437f98c0366f1fc4514088fc1a606775be46622
+and independent04de959a50b5acb43d93991cc918bcf8f23a0ee867cd1331bfd26a4cfa73842d
+join all1705 tracked blobs to exact F65. Dependency bytes are observed installed
+bytes; this is not fresh registry verification, immutability or full controller
+closure. Two local verifier assumptions failed before correction: the contract
+omitted CLAUDE.md's symlink target and then suspected ordering. The unchanged raw
+capture was verified using its actual Git symlink target; failures are retained,
+and no remote replay or evidence edit occurred.
+
+Pure imports of exact F/T schema modules independently normalized actual raw
+configc242 to digest7301 under both runtimes; proof162d1a8843baade24984da3b08457dc183cb2d9ca7e7e67ec7c383a8cbc303d0.
+This exercised no CLI, provider, model or controller. Current old-controller/tool
+readback5d73933bd3197a1d3a7b6aa532c61c86ebd1b98727380c963245523d215cc705
+captures12 public controller assets,12 tool alias/canonical rows and35 parents.
+The active common remains reviewed666f, rather than the initial observe08b2 bytes.
+Actual controller checkout HEAD is still frozenB151 and tracked clean, proven by
+245fb6eef5013681a846563d9b51ccec477692415f7faefef6f48f58a47975b0. Worker/root719
+is a different directory. Neither checkout nor common was changed to fit metadata.
+
+Python's complete20-parent chain3619d035 includes exact Xcode interpreter and own
+kernel image. Named group-writable Homebrew parents and /Applications, plus the full
+wrapper's nlink78 /usr/bin/python3 proxy, remain explicit trust/review boundaries.
+The existing Git-only hardlink exception does not authorize the interpreter role.
+New unbound read-only benchmark source has18 focused cases and28 killed guards;
+it still needs actual full static inputs, literal authority, fresh independent
+review and a quiet window. No benchmark, cache transfer, foreground probe, controller
+adoption or fixed-context timing clearance occurred. Static facts/blueprints are
+retained under private source archive771bda4a and continuation archiveb64601fc.
+
+The next ordinary Evo change580 is prepared atcd7f7dca675d35a32449e606b70dfab3d50ad87b.
+It only clarifies the existing maximum-three-total-attempts failing-test retry
+policy. Twelve focused checks passed. One fresh source reviewer cleared it without
+findings, measured153515.46ms by actual clock; integer record153515ms preserves the
+raw fractional measurement in evidence. Review record validates. One final head CI
+wait11270 passed five effective checks plus the expected draft conventions skip.
+It stays unlabelled DRAFT with auto-merge off until an actual production internal
+receipt; root must then obtain required conventions and merge strictly after that
+receipt before requesting ordinary staging3. Optional wiring must not delay it.
+
+The hosted fallback still needs a reliable real never-assigned native attempt;
+old prose/templates do not provide that. Two separately claimed source authors now
+prepare the smallest explicit validation route in parallel: Morpheus task
+MO-26-10-20-13.52.43 owns optional JSON runner-label-array validation in reusable
+ios-ci, and Evo taskEV-26-10-20-13.50.34 owns an exact future staging-only durable
+root plan/apply arm and preflight claim. Ordinary callers retain their string route.
+The intended labels are conjunctive actual localRunner plus a unique unregistered
+root-bound label; this preserves a positive native-job census without stopping shared
+runners. Root-only full real runner inventory and bounded no-registration/no-demand
+attestation must be explicit; workflow token admin-read is not assumed. Evo will
+use a narrow immutable shared-ios-workflow-only dependency pin, leaving core runtime
+and action pins unchanged. Actual reviewed Morpheus merge is prerequisite to the
+first fresh Evo source review; fixtures before that are provisional. Each author
+owns only its new task, draft PR and normal CI, with no live effects.
+
+This source preparation grants no arm, cancellation, fallback or delivery credit.
+Root still needs a separate exact fresh operational review, budget reservation and
+arm before the later campaign request plan; the live attempt must be positively
+never assigned before one cancellation and the normal hosted successor must deliver
+its full tested distinct build. Current production7 is never a drill target. No
+shared VM/service/dispatcher/runner change, private credential/session-store read,
+new provider action, paid settlement or spent phase repetition occurred. All250USD
+liabilities, holds, epoch/config and legacy fences remain. No source suite was rerun
+for this root records-only continuation; cited source checks belong to their owners.
