@@ -1304,3 +1304,57 @@ held until that actual receipt, then a later protected main merge must precedeS3
 Optional controller/hosted wiring cannot delay the next ready ordinary request.
 No source suite was repeated for this root records continuation. All holds, burned
 reservations, paid liabilities, epoch/config, legacy fences and spent phases remain.
+
+## Actual static data copies, first581review and live native progress — October20 21:49UTC
+
+The earlier optional580 first-review hold is superseded for581 only: actual
+current719 and actual merged439 are integrated. The independent ten-line580
+documentation change may later integrate under the normal trunk contract.
+Its own release remains held until the actual production receipt;581 remains
+unlabelled draft/off under root's later source/runtime/operational gate.
+
+Source581 froze012151c7c7d8687c6dbcfe93122f0bce89ad3963 after55focused passes,
+zero failures/skips and22assertion-killed mutants; final exact-head CI44913
+exited0 with6passes and the expected draft skip. Core/runtime/actions remainF;
+only the immutable shared workflow dependency uses actual439. One fresh high-risk
+reviewer /root/native_admission_review581 conditionally cleared substantiveNAD-1:
+a clock captured before asynchronous ledger/CAS work could emit routing after
+its attestation expired. Root retained the exact reviewer-set eight-path condition
+and required boundary tests/mutants. Same author owns the correction/record/CI;
+no extra reviewer turn is needed only if the exact condition is actually met.
+Measured predispatch21:36:13.834981 to final receipt21:45:01.021498 is527186.517ms,
+including compaction/read/dispatch delay, with raw measurement preserved. No live
+arm, cancellation, runtime adoption, operational clearance or delivery follows.
+Raw review/timing are under source581-independent-review-2140; timing3714fd1b.
+
+Static closuredc5a8621 and original candidate5f8b5d9b were completed locally with
+25consistency checks over19475file rows and5226retainedFdirectories. They preserve
+bounded public route/Python/tool/parent trust and all authority fields unbound.
+Root then copied ONLY the two exact public F inventory/verification DATA files
+to new canonical private Mini paths, once, exec15416/exit0. Actual readback
+b1d7886793ea621917e9c2b86eecebae4838cff847a069eab8152d9296f2a28d proves
+UID501/0600/nlink1/source hashes7634e81b and04de959a under0700. Fixed targets now
+exist: never overwrite/remove/recreate/repeat. This is no helper code copy,
+runtime change, credential-store access, controller phase or benchmark. Existing
+candidate false-copy placeholders remain historical; a NEW actual-copy candidate
+a0731cc8 and join9fee466e change only the two file rows, preserving19473others,
+directories/tree/closure/authority. Its19checks and31authenticated original hashes
+are local consistency evidence; fresh review/trust/binding remain unbound.
+Archive066a181e retains original closure/candidate/assembly and final581packet.
+
+The original production watcher21551 remains the only GitHub watcher. Root also
+made one bounded read-only guest diagnostic against its exact dispatcher slot,
+VMvm-christopher-s-macbook-pro-0-mvh44hd3/runner1042/run39489032255/attempt1.
+Guest checkout is exact719; test log was freshly written21:44:54 and a UI test
+passed21:44:30 before the next started. Native processes remain active. Partial
+text counters include one failed test attempt; final retry outcome and complete
+inventory remain unknown. This establishes current progress, not all-pass, upload
+or receipt. Proofd58bcf1e2ed5ec2df6bd023d2ea598a84362a17d02184474ff1fe5a957136712
+uses the dispatcher's existing ephemeral-guest SSH policy, with no host policy,
+VM/service, runner or configuration change. Both host clocks are retained.
+
+User status was answered candidly:1of8full receipts, staging21availableinternal
+andexternal; production7currentlytests, nextordinaryS3prioritized; CTOskillstill
+unfinished. No reliable upload completion time is claimed. No source suite was
+repeated for this root worklog continuation. All liabilities/holds/epoch/config,
+legacy fences, burns, one-shot phases and currently running job remain preserved.
