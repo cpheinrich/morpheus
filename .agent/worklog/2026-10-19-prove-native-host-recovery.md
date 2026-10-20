@@ -314,3 +314,58 @@ Full outcome, exact internal receipt and all eight campaign deliveries are
 still outstanding. Reviewed drafts #566 and #571 stay held. New source draft
 #573 has only provisional combined-fixture verification; its first fresh
 source review waits for #566's actual main merge and integrated checks.
+
+## Admission correctness source merged; live adoption remains separate
+
+Readonly fallback planning identified a concrete recovery gap: overall workflow
+`in_progress` after Linux preflight could apply the 180-minute test timeout to
+a native job still waiting for a runner, instead of the configured 15-minute
+admission bound. The existing no-start predicate also accepted an empty local
+job set. Separate task MO-26-10-20-04.38.59 implemented the correction in
+[Morpheus #434](https://github.com/cpheinrich/morpheus/pull/434).
+
+The author completed 116 focused controller/adapter/state/store tests, killed
+eight targeted guard mutations, and passed typecheck, compile and index checks.
+One fresh high-risk reviewer found two substantive boundaries; both were fixed
+and cleared by that same reviewer. The review record preserves the findings
+and actual 171-second initial and 54-second follow-up clock measurements. The
+final source is eea0d861, with only its named worklog in record commit a79cf3f1.
+Both final-head and ready-state required checks passed. No waiver or admin
+merge was used.
+
+Root released only this source PR's gate. It merged normally at
+2026-10-20T12:37:47Z as
+`c90de86caffefc47857388e92b8441ad216edd96`; guarded task cleanup succeeded.
+Root independently checked unchanged dependency declarations, schema, state,
+CLI, iOS workflow and upload action/effect blobs. The CLI entry digest remains
+`3a20498076fc69d1524f152923158e8517cd35a1d643093be6d5aa9de5abd969`.
+Private merge/compatibility archive manifest SHA-256 is
+`d1f28a7d3adcca1ed34554254fbb396b5b9347979b14c1ff3e995758c3f2f640`.
+An initial archive collector guessed an extra `scripts/` path component and
+stopped after two byte-exact private copies, before a manifest. The actual
+action-root path was read, existing copies verified, and all comparisons were
+rerun successfully before the manifest was created. No runtime effect occurred.
+
+The root task branch mechanically merged the reviewed trunk without rebasing.
+The consented normal Git hook installed current CLI c90de86. Frozen CD runtime
+f65 and both existing controller/worker families remain untouched; a global CLI
+update is not live CD runtime adoption.
+
+Evo main independently advanced through PR #572 at 11:42:52 UTC to
+`f0ab98e3611636aa0c3a5840a9cb6a58911b7349`, adding the background task
+manager. Preserve this concurrent work and its true main-entry time; it arrived
+before the first receipt and cannot count as the next between-delivery merge.
+New separate Evo task EV-26-10-20-05.37.05 prepares coherent reviewed runtime
+pins. Its fresh checks establish identical raw config c24294f6 and normalized
+configuration 7301b9aa across old/new runtime, plus unchanged shared signing,
+simulator, workflow and worker/guardian blobs. The source PR and private
+controller-only rollout plan remain held preparation; no activation, migration,
+fault arm, cancellation, service change or hosted native proof is claimed.
+
+At 12:31:48 UTC, first full run 39413736198 was still running unit/UI tests
+since 11:21:09, with no failed steps. The independent ledger read at 12:31:49
+retains the same sole active a1/build 19/source 4d41/control 0159, original f6
+lineage and debt. Proofs are respectively
+`c219792b942dce49b57428cec45399cd38b72d211456d428271f3d7356db96f3`
+and `0110a456ac7513ac368e17bf33f82d6dd0d919866a573729427e1285fb1124a1`.
+Native completion, upload and internal receipt remain outstanding: **0/8**.
