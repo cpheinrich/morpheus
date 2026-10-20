@@ -672,3 +672,84 @@ remaining actual fault, hosted-native and hold-reconciliation proofs are still
 required. No new Apple upload, tester change, lifecycle replay or 24-hour wait
 was introduced. Root account allowance at 15:31 was ordinary-allowed with 72%
 remaining; the user's below-30% Opus routing and 10% reserve remain in force.
+
+## Third full attempt started through the normal controller
+
+A single bounded, read-only native Mini log observer saw the normal controller
+plan a3/build 21, but timed out before a run ID appeared in that log. It closed
+without any service action or replacement. That timeout is not dispatch absence.
+The later 15:45:05.977 ledger snapshot independently binds a3 to run 39450437095,
+attempt 1, exact source/control
+`e623439e94db17b7fb40037c4c50b8a02c5bb113`, staging app 6819097182/version 1.0.
+Readback SHA-256:
+`2588ae65a62a602fab0e63cb13cb4b6dc17648af11b3e393a6523e0eab82f146`.
+The protected-state join proves original source, lineage, debt, slot, deadline,
+both full holds, configuration, epoch, paid liabilities and both failed attempts
+unchanged from 15:33. Its SHA-256 is
+`381a6492c2bad9428e055b6c98cdec70d78c79ba4dbefb38713189bbeeb6d2df`.
+
+Root's actual GitHub GET verifies workflow-dispatch/control/effect/run identity:
+created 15:39:27, strict backend preflight job 118723510355 succeeded, native job
+118723891861 began at 15:40:56 on the MacBook VM and is executing unit/UI tests.
+The provider identity manifest SHA-256 is
+`8fe8166c485769aaa958ff97a16cb152216c88c38a97810e21754822382e19e5`.
+One new bounded native read-only GitHub watcher started at 15:46:23 for this
+exact run. The old a1 watcher and Mini log observer are closed. The new watcher
+never cancels, reruns or dispatches; workflow success alone cannot supply receipt
+credit. Full actual inventory, final all-pass/no-skip results, exact IPA and Apple
+internal installability remain pending. Campaign acceptance is still **0/8**.
+
+The existing #566 author integrated actual #576 main in reproducible mechanical
+merge `ebaee72df2967023b9b10ea21f6ea0ce26c4bb22`, final head
+`2c75968814ad9d412df98c20d4692f3b8a190c41`. All nine reviewed fault/runbook/QA
+blobs and the original review JSON remain unchanged. Focused 24 consumer checks
+plus five exact-F65 synthetic checks passed with zero skips; typecheck, syntax,
+lint, index, review validation and the one new CI wait passed. Seven effective
+checks comprise six successful check runs and a successful Vercel status, not
+seven raw check runs. It remains draft/off/unmerged until root's exact source
+gate strictly AFTER the first real full internal receipt. The new readiness
+archive manifest SHA-256 is
+`00014bd2c771b9edbd218c0ca129e5ea96bd213d13144c1dba94d2e95778c6d7`.
+
+## Lease correction merged; final consumer adoption gets its own review
+
+Morpheus #436 actually merged normally at 15:53:58 as
+`7264abeef43d91dc3f974cf0c15df308de4fdf91`, parent D24ba and tree identical to
+final reviewed-record head `21c5b3f989ad1016b62f0f3dbf744c7e0f79a473`.
+Fresh native read-only reviewer `01a159fc-ece2-73b2-a2af-fd43feeb38a8` cleared
+source `4aaac171d3819c78bc50c48ed11dee97998391f2` with no findings in one
+measured 101,071 ms turn. Root read its actual report/timing and committed record;
+the reviewer could not reach GitHub, so both author and root separately verified
+actual final metadata. Seventy-two focused worker tests and ten meaningful
+guard mutants passed, with typecheck/compile/index and review validation. No
+local full-suite rerun was needed. Quota reader, model guardian, schema, entry
+point, dependencies and controller match D byte-for-byte.
+
+Root released only this exact source gate, marked ready once, waited once for
+the new CI phase, verified every final rollup accepted, then used the normal
+matching-head protected squash merge. No admin, waiver or direct main push.
+Actual final provider readback SHA-256:
+`1ec7dada9a89a82a789a29c3920a8a931b79e3f836b03c5d5f4259272ee53a74`.
+The complete source/review/merge journal manifest SHA-256 is
+`98306f305d5cc3cac95579bc553b051fcf0636ac0de5562b6d77191387f71263`.
+Post-check setup and guardian teardown still consume the unchanged lease margin;
+neither virtual-clock tests nor source merge prove real native quiescence or a
+universal execution bound. Live CD remains F65.
+
+The consumer scope check found #574 expressly covers C90/#434 and claims worker
+code unchanged. Quota/lease fixes intentionally change that worker behavior, so
+retargeting the cleared PR would widen its accepted scope. Root selected a NEW
+consumer task/PR for actual runtime 7264, with a fresh independent review; #574
+stays held as historical C90 preparation. Source plan SHA-256:
+`9852a8ea141662cb79d758ae9ccd1df533774445b8a144f922d411adc221a19c`.
+The new author may prepare source now, but its first review waits for actual
+#566 integration and relevant checks. This optional wiring must not delay the
+next ordinary campaign request after the first receipt.
+
+A separate private read-only worker-adoption plan is being prepared for the new
+quota-reader process family and actual 7264 dependencies. It starts no probe,
+model, host census, install, service action, signal, provider call or reviewer.
+An actual consumer merge, complete real runtime/installation/foreground proof,
+quiet protected-state boundary and fresh exact operational review remain needed.
+The controller-only candidate does not authorize worker adoption. No spent
+lifecycle phase, original deadline, hold, tester list or live state was changed.
