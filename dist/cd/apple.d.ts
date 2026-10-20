@@ -1,4 +1,4 @@
-import { type Attempt, type CdConfig, type InternalObservation } from "./schema.js";
+import { type Attempt, type CdConfig, type ExternalObservation, type InternalObservation, type Receipt } from "./schema.js";
 export interface AppleApi {
     request<T>(method: string, path: string, body?: unknown): Promise<T>;
 }
@@ -15,6 +15,10 @@ interface Resource {
             type: string;
         }[] | null;
     }>;
+}
+export declare class AppleRequestError extends Error {
+    readonly status: number;
+    constructor(status: number, message: string);
 }
 export declare class AppleHttp implements AppleApi {
     readonly config: CdConfig;
@@ -40,5 +44,8 @@ export declare class AppleAdapter {
         observation?: InternalObservation;
     }>;
     assign(buildId: string, groupId: string): Promise<void>;
+    external(receipt: Receipt, groupIds: string[], now: string): Promise<ExternalObservation>;
+    notifyExternal(detailId: string): Promise<void>;
+    submitReview(buildId: string): Promise<string>;
 }
 export {};

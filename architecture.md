@@ -3345,6 +3345,13 @@ request time, requires an exact verified main source, and retains full native,
 upload and internal-group evidence. This exception never changes automatic slot
 selection, ordinary production age, configuration identity or operational cursors.
 
+Channels may explicitly opt into post-delivery external TestFlight distribution
+with `externalGroupIds`. Internal acceptance and its receipt remain independent;
+external status requires exact-build testing state and all external memberships.
+Review claims are shared by app/build, durable before the provider call, and
+uncertain outcomes reconcile without blind resubmission. Consumers own explicit
+configuration migration and runtime adoption; absence of the opt-in is unchanged.
+
 Apps whose nightly release is dispatched from the Mac mini share one admission core,
 `src/ios/nightly-core.ts`, extracted from Evo's controller (darwin-health/evo #307, #309). It
 admits at most one automated release per local calendar day in a configured window, whatever
