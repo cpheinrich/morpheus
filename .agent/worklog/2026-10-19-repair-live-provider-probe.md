@@ -70,7 +70,7 @@ runner duration was43959ms; the separate process clock included launcher overhea
     "durationMs": 43959,
     "evidence": "Claude CLI stream-json result session b134910a-d7a8-4d46-9220-0fdb33063983 initial turn duration_ms=43959; retained private result and timing files."
   },
-  "outcome": "cleared",
+  "outcome": "complete",
   "summary": "Fresh independent Claude Opus review cleared the exact candidate with no findings; 27 worker tests passed independently. Actual provider authority and quota remain tracked in the direct child before activation.",
   "findings": []
 }
