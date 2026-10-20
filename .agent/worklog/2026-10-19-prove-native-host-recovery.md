@@ -753,3 +753,70 @@ An actual consumer merge, complete real runtime/installation/foreground proof,
 quiet protected-state boundary and fresh exact operational review remain needed.
 The controller-only candidate does not authorize worker adoption. No spent
 lifecycle phase, original deadline, hold, tester list or live state was changed.
+
+## Reviewed runtime installed inertly on both hosts; no rollout
+
+On October 20 root installed actual `7264abee` in a new commit-named runtime
+directory on each Mac. Neither existing worker nor controller was changed or
+activated. Each installation independently matches all 1,719 tracked Git blobs,
+181 compiled imports, package/lock declarations and 1,483 resolved dependency
+entries. Two stable file inventories and separate directory captures record
+385 directories per host, including 237 dependency directories. Production
+dependencies used locked pnpm 11.9.0, scripts disabled and copied package files.
+Only the new runtime's 3,152 regular files were made read-only after verifying
+ownership, content and link count one; all 50 actual Darwin symlinks retain
+mode 0755. The fixture's assumed symlink mode 0777 is a source-preparation gap,
+not permission to fabricate matching installation facts.
+
+The first local clone failed because the source is a partial/promisor checkout
+whose upload-pack could not supply an object. It exited 128 and left the exact
+target absent. Root preserved that journal, then used the canonical public
+GitHub shallow checkout and verified main was still exactly R and its tree.
+A precondition-only lock attempt also refused on the tracked `CLAUDE.md`
+symlink before any mode change. The journal discloses that the intermediate
+`actual-locked-readback.json` filename is misleading: it is a second pre-lock
+inventory. Authoritative locked readbacks are `actual-final-readback.json`.
+No target was overwritten, removed, activated or repurposed after uncertainty.
+
+Actual MacBook readback SHA-256 is
+`3911b54dbc142755208365001dc73af4f4344686c8817cbfe6577f29be67f285`;
+its 33-file operation manifest is
+`00d644f934351773088f981035f20020ac2c9029540cb70f101d4886edd5a31d`.
+Mini readback is
+`c4904405b4130e8042402d8714d9c938a5e8fe691f0399669bb294b94c78459b`;
+its independently retrieved 40-file manifest is
+`6036453e89ca094166ef0587f7a31b95e302349f4964161e10014675724f9d39`.
+No credentials or session stores were copied. Static facts match the existing
+family manifests, credential adapter, connector helper, raw config, native
+executables and Node images. Worker source checkouts were left at their honest
+clean heads: MacBook b842 and Mini 4d41. Local origin refs are explicitly not a
+fresh GitHub-main assertion.
+
+The worker-only source route invokes R's CLI directly and need not wait for
+the consumer runtime import used by controller/remote callers. It can retain
+the actual B credential adapter and actual 4d41 helper. This narrows the earlier
+blanket consumer-merge statement; it does not authorize a worker cutover. The
+new frozen offline constructor passed 23 system-Python fixture methods and
+13 assertion-killed guard mutants, with production unbound and no host-read or
+apply backend. Its archived preparation/gap manifest is
+`826250ae7e04d1f6545f8cbce08ff823926291221adea953909f0dd21ecdfee7`.
+A separate pure actual-installation validator is being prepared; actual family,
+foreground/quota/login, interval race, quiet-state and fresh operational review
+gates still remain. No old renderer, lifecycle phase or guardian signal was reused.
+
+The immutable ledger GET at 16:30:39.512 UTC still shows only a3/build 21/run
+39450437095 testing, with all three repair works complete and no agent lease.
+Twenty-four protected comparisons passed: full ordinary holds, paid liabilities
+excluding legitimate telemetry, epoch/config, original source/lineage, debt,
+slot, deadline and both failed attempts remain unchanged. The sole normal a3
+delta filled `dispatch.runIds` with the already proven run ID. Join SHA-256:
+`a10ecfbfff45ad3cd71fd566196d250ad4c5c933d5421387c5833edc8568e71d`.
+The original deadline miss remains; there is no full receipt and no campaign
+credit. One existing native GitHub watcher continues. Actual Codex allowance
+was 69% remaining, ordinary usage allowed; no reset or paid-agent fallback.
+
+No new local product tests were warranted for this records update. Installation
+verification above checks actual files; source tests remain the already inspected
+#435/#436 results. Live CD stays F65/config7301/epochd585, #566 waits for the
+first full internal receipt, and #577's first fresh review waits for actual #566
+integration. Optional rollout work must not delay the next ordinary request.
