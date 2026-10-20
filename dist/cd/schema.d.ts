@@ -90,13 +90,13 @@ export declare const configSchema: z.ZodObject<{
             model: z.ZodOptional<z.ZodString>;
             quotaFile: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>;
-        hosted: z.ZodObject<{
+        hosted: z.ZodOptional<z.ZodObject<{
             workflow: z.ZodString;
             ref: z.ZodDefault<z.ZodString>;
             command: z.ZodDefault<z.ZodArray<z.ZodString>>;
             model: z.ZodOptional<z.ZodString>;
             quotaFile: z.ZodOptional<z.ZodString>;
-        }, z.core.$strip>;
+        }, z.core.$strip>>;
     }, z.core.$strip>>;
     budget: z.ZodDefault<z.ZodObject<{
         togetherLimitUsd: z.ZodDefault<z.ZodNumber>;
@@ -346,6 +346,7 @@ export interface AgentWork {
     invocations: {
         id: string;
         executor: "local" | "hosted";
+        hostId?: string;
         startedAt: string;
         endedAt?: string;
         session?: string;

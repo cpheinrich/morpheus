@@ -27,9 +27,21 @@ Required configuration declares:
 Optional declarations include channel schemes/configurations, `native` settings,
 `execution.localRunner`, `execution.hostedRunner`, at most two native reservations,
 repository-relative backend `hooks`, `tests.allowedSkips`, and agent executors.
-The local agent command prefix defaults to `['codex']`; the hosted prefix defaults
-to `['claude']` and declares its consumer workflow/ref. Morpheus supplies invocation
-arguments and prompts. Deadline and budget defaults follow the approved design.
+The local agent command prefix defaults to `['codex']`. `agents.hosted` is optional:
+native workers can own repair without a hosted model route. When configured, the
+hosted prefix defaults to `['claude']` and declares its consumer workflow/ref.
+Omitting hosted performs no hosted ledger read, dispatch sweep or write; explicitly
+requesting an unconfigured hosted worker fails before ledger access. Existing
+configured hosted defaults, normalized bytes and digest are unchanged. Removing
+a previously configured hosted route changes configuration identity and requires
+an explicit lossless consumer migration. Morpheus supplies invocation
+arguments and prompts. Native account quota reads require the actual
+`account/rateLimits/read` result to say `ordinaryUsageAllowed: true` both before
+admission and during metering. False, absent or nonboolean allowance retains
+budget wait or stops the owned process even with low usage windows or prepaid
+credits available; credit availability is never admission evidence. Explicit
+operator telemetry files retain their existing attestation contract. Deadline and
+budget defaults follow the approved design.
 
 `cd init --config PATH` explicitly initializes the state branch, its secondary
 backup branch and an initialization tag. It protects both branches against force
@@ -234,6 +246,23 @@ passes Morpheus's independent review validator and live checks. Infrastructure
 repairs may complete from direct evidence without inventing a code PR; pre-upload
 retry still requires executor quiescence. Accepted/uncertain binaries continue
 provider reconciliation under their original identity.
+
+For multiple native workers, pass `--host-id ID` to `cd worker --executor local`.
+Assign a distinct, stable nonsecret ID to each Mac/user/Codex session store; reuse
+it across restarts of that same store, and change it after replacing or moving the
+store. Existing callers default to the native operating-system hostname, which
+must be unique across those workers. Pin explicit IDs when hostnames can collide.
+The invocation records this identity without changing configuration or its digest.
+Only the latest local invocation can supply a resume session, and only when its
+recorded host matches. A foreign, legacy unidentified or sessionless latest local
+invocation starts a fresh native session, even if an older same-host session exists.
+Immutable task, diagnostics and prior durable checkpoint summaries/evidence remain
+in the prompt; native session files and authentication stores are never copied.
+The global local-subscription reservation and Git CAS lease still allow one local
+repair invocation at a time across hosts. Session, completion and error checkpoints
+must retain the invocation owner and fence; a stale process cannot finish through
+an error fallback. This supports recovery after quiescence, not concurrent unfenced
+work or proof of actual two-host failover.
 
 Native capacity, provider outages and rate limits are durable retryable waits.
 They do not manufacture a repair defect. Real/unknown failures own durable agent
