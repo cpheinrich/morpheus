@@ -50,6 +50,7 @@ export declare function scheduleHosted(config: CdConfig, store: GitHubStore, now
 export declare function verifyRepair(config: CdConfig, store: GitHubStore, sourceDir: string, result: AgentResult): Promise<string>;
 export declare function runWorker(config: CdConfig, store: GitHubStore, sourceDir: string, options: {
     executor: "local" | "hosted";
+    hostId?: string;
     workId?: string;
     invocationId?: string;
     taskDigest?: string;
