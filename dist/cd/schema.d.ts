@@ -3,6 +3,11 @@ export declare const sha: z.ZodString;
 export declare const digest: z.ZodString;
 export declare const decimal: z.ZodString;
 export declare const timestamp: z.ZodISODateTime;
+export declare const sourceAgeWaiverSchema: z.ZodObject<{
+    authorizationRef: z.ZodString;
+    grantedAt: z.ZodISODateTime;
+}, z.core.$strict>;
+export type SourceAgeWaiver = z.infer<typeof sourceAgeWaiverSchema>;
 export declare const configSchema: z.ZodObject<{
     schemaVersion: z.ZodLiteral<1>;
     repository: z.ZodString;
@@ -281,6 +286,7 @@ export interface DeliveryIntent {
     groupId: string;
     createdAt: string;
     deadlineAt: string;
+    sourceAgeWaiver?: SourceAgeWaiver;
     state: "pending" | "testing" | "uploading" | "processing" | "delivered" | "repairing" | "waiting" | "paused";
     nextAction: string;
     nextCheckAt: string;
