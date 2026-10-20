@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.consumer.cd-v2-worker.plist.template — TEMPLATE, do not install as-is.
+
+  SEPARATE local agent worker service. It DOES wake automatically every 300 s:
+  self-healing repair depends on it. runWorker itself enforces leases, pauses,
+  quota and idles when nothing is due, so a scheduled wake-up is safe.
+
+  Required substitutions:
+    ____/cd-v2-worker.sh      rendered copy of bin/cd-v2-worker.sh.template
+    ____/logs/cd-v2-worker.log
+    ____/logs/cd-v2-worker.err.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.consumer.cd-v2-worker</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>____/cd-v2-worker.sh</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>____/logs/cd-v2-worker.log</string>
+    <key>StandardErrorPath</key>
+    <string>____/logs/cd-v2-worker.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Adaptive</string>
+    <key>ThrottleInterval</key>
+    <integer>290</integer>
+</dict>
+</plist>

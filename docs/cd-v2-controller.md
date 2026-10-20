@@ -52,6 +52,8 @@ hashed Actions artifacts; the hot state holds their verified compact proof.
 observes Actions and Apple, and schedules durable repair work. `--observe`, or
 configuration `mode: "observe"`, computes decisions without writes or effects.
 Initialize before observing. Both GitHub and host wakeups use this command.
+For a consumer's macOS host, Morpheus provides separate launchd tick and local
+worker templates; see [the host integration runbook](cd-v2-host-macos.md).
 `cd status` reports outstanding deadlines, oldest debt, next action, receipts,
 repair work, pauses and actual budget records.
 

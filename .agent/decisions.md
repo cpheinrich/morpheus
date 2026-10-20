@@ -28,6 +28,8 @@ file anyway, so it was removed; low-churn goal and request indexes remain genera
 
 ## Tooling
 
+**The macOS CD V2 host supervisor ships as reviewed source templates** — 2026-10-19. Morpheus owns generic launchd labels, tick/worker wrappers and digest/credential guards; each consumer copies them from an exact reviewed Morpheus commit, renders its own paths, and owns installation and cutover. Do not make the reusable controller initialize state, load services, or infer consumer provider/host facts. Keep the first integration as a small source asset and runbook rather than a configurable installer until a second consumer needs shared rendering.
+
 **Dependabot automation separates policy, model judgment, and write authority.** Projects own
 exact dependency/update-type allowlists and holds. The shared workflow sends only unmatched,
 dependency-only changes to a low-cost read-only model, then a separate credential-free delivery
