@@ -163,3 +163,62 @@ EV-26-10-20-03.28.42 prepared draft #571 to move the unchanged quarter-hour
 cron away from busy minute boundaries. Its cause diagnosis is unknown and
 its real schedule-event proof is still required. Like reviewed draft #566,
 it stays unmerged until root releases the campaign's source-change gate.
+
+
+## Preserved draft and fail-closed MacBook checkpoint
+
+The Mini's unclaimed 272-byte backlog draft was preserved outside its
+operational checkout with its exact SHA-256 `25d108363b2c01772d071462133dbd94aabd46b9ad806541c2c31a956df00d89`.
+Fresh strict i2 quiescence, held service identities, clean tracked 4d41 source,
+only this untracked file, absent remote claim and original file identity/hash
+were checked before preservation. The resulting checkout is clean at 4d41.
+Journal SHA-256 is `dbf7d8208b7da42cb5a29c33e1090237a05a91a4d17d5d66f571fcd7f24f464f`.
+The first preparation stopped before copying or removing anything because
+the private archive parent was absent. Original source and absent journal/
+destination were independently reconciled, the 0700 parent was created,
+and all fresh preflights preceded the successful preservation. Both Mini CD
+services remain held; restoration has not been attempted.
+
+A read-only capture of root i3 at 10:44:31 UTC bound its actual three process
+births and 15 owned descendants. The root operational checkout had normally
+synchronized to clean concurrent main 0159. A first caller incorrectly retained
+activation source 4d41 and stopped before producing an owned capture; its
+caller proof remains, and original child stderr was not retained. Corrected
+identity-only metadata bound actual 0159 through the unchanged reviewed
+ownership helper. No source was rewound and no additional signal was sent.
+Successful capture SHA-256 is
+`961adeaff5fdf23d0bc400688111b96d584ae329e809dc583a16b08ae7a24fd9`.
+
+I3 then stopped with a normal checkpoint at 10:45:35.331 UTC because its
+periodic native account quota read timed out. It did not return a verified
+repair. Its lease cleared, the same work became waiting, and actual retry
+was scheduled for 10:50:35.331 UTC. The native focus-build log also reported
+an Xcode build-service crash; causality relative to the quota-triggered stop
+is unestablished. No focused native pass is claimed. A later host-only read
+showed 62% free memory and zero swap, which does not establish the crash's cause.
+
+At 10:48:06 UTC the strict complete census proved all three captured i3 process
+births gone and zero owned descendants; proof SHA-256 is
+`5a8006d35310aef5863dccd2682da02889e6f119cb0ec7a17af2de30fb233601`.
+At 10:49:48 UTC, one read-only same-f65/same-shim account probe completed in
+766 ms, confirming ChatGPT ordinary subscription eligibility and 16% used,
+without inference or ledger mutation. The existing loaded root worker may
+resume this same host-local native session at the actual normal retry time.
+If the same timeout recurs, diagnose before further blind attempts. The
+first campaign still has no native delivery attempt, adoption or receipt:
+**0/8**. The single planned Mini interruption signal remains the only root
+test signal; automatic guard cleanup for quota failure is separate.
+
+Fresh Apple GET at 10:42:46 UTC confirms urgent staging 18 remains VALID,
+unexpired and available internally and externally; production's maximum
+remains 5. Tester counts are unchanged: three internal per app, six staging
+external, zero production external. Subsequent reservations must exceed both
+fresh Apple maxima and all burned ledger numbers.
+
+Draft #571 is now independently reviewed and final-CI green at
+`68e6ad37a50dd5bc97c9318bdce46f1c945951d6`, with its substantive direct-test
+dependency fixed under the reviewer's exact condition. It stays draft with
+auto-merge off and is not a real scheduled-wake proof. Source #566 remains
+held until first delivery; its remote upload-ack-loss exercise still needs
+trusted remote caller/process wiring. Local uploader environment overrides
+cannot affect an already dispatched remote workflow.
