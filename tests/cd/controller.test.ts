@@ -172,6 +172,35 @@ describe("controller failure sequences", () => {
     const h = await harness(true); h.observe.mockResolvedValue({ observation: observation() }); await h.controller.tick(after(now, 5)); const intent = (await h.store.read()).state.intents[h.intentId]!;
     expect(intent.state).toBe("delivered"); expect(intent.receipt!.observation.buildId).toBe("apple-build"); expect(intent.receipt!.providerUploadId).toBe("resource"); expect(intent.attempts).toHaveLength(1); expect(h.dispatch).not.toHaveBeenCalled(); expect(h.assign).not.toHaveBeenCalled();
   });
+  it.each(["UNKNOWN", "PROCESSING", "MISSING_EXPORT_COMPLIANCE"])("waits for internal readiness (%s), then promotes and verifies the same accepted build", async betaState => {
+    const h = await harness(true), unassigned = { ...observation(), betaState, group: { ...observation().group, buildIds: [] } };
+    h.observe.mockResolvedValue({ observation: unassigned });
+    await h.controller.tick(after(now, 5));
+    let state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(h.assign).not.toHaveBeenCalled(); expect(state.groupOperations).toEqual({});
+    expect(intent.state).toBe("processing"); expect(intent.receipt).toBeUndefined();
+    expect(intent.attempts[0]!.upload!.outcome).toBe("accepted");
+    h.observe.mockResolvedValue({ observation: { ...unassigned, betaState: "READY_FOR_BETA_TESTING" } });
+    await h.controller.tick(after(now, 10));
+    expect(h.assign).toHaveBeenCalledExactlyOnceWith("apple-build", "staging");
+    expect((await h.store.read()).state.intents[h.intentId]!.receipt).toBeUndefined();
+    h.observe.mockResolvedValue({ observation: observation() });
+    await h.controller.tick(after(now, 15));
+    state = (await h.store.read()).state; intent = state.intents[h.intentId]!;
+    expect(intent.state).toBe("delivered"); expect(intent.receipt!.observation.buildId).toBe("apple-build");
+    expect(intent.receipt!.providerUploadId).toBe("resource"); expect(intent.attempts).toHaveLength(1);
+    expect(h.dispatch).not.toHaveBeenCalled(); expect(h.assign).toHaveBeenCalledTimes(1);
+  });
+  it("retains accepted bytes and requests bounded diagnosis when internal readiness never arrives", async () => {
+    const h = await harness(true);
+    h.observe.mockResolvedValue({ observation: { ...observation(), betaState: "UNKNOWN", group: { ...observation().group, buildIds: [] } } });
+    await h.controller.tick(after(now, 5)); await h.controller.tick(after(now, 40));
+    const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(intent.state).toBe("repairing"); expect(intent.attempts).toHaveLength(1);
+    expect(intent.attempts[0]!.upload!.outcome).toBe("accepted"); expect(intent.receipt).toBeUndefined();
+    expect(Object.values(state.agents)[0]!.evidence[0]).toContain("internal beta readiness");
+    expect(h.assign).not.toHaveBeenCalled(); expect(h.dispatch).not.toHaveBeenCalled();
+  });
   it("retries group distribution on the accepted identity after a transient provider failure", async () => {
     const h = await harness(true); h.observe.mockResolvedValue({ observation: { ...observation(), group: { ...observation().group, buildIds: [] } } }); h.assign.mockRejectedValueOnce(new Error("provider transient"));
     const first = await h.controller.tick(after(now, 5)); expect(first.errors[0]!.message).toBe("provider transient");
