@@ -64,6 +64,12 @@ export async function codexQuota(command, cwd, now) {
                 }
                 if (message.id === 2) {
                     const value = message.result;
+                    // Low usage windows can coexist with prepaid credit availability. Only
+                    // explicit ordinary subscription eligibility permits admission or renewal.
+                    if (value?.ordinaryUsageAllowed !== true) {
+                        finish(new Error("Codex ordinary subscription usage is unavailable or unknown; retain budget wait"));
+                        return;
+                    }
                     const bucket = value.rateLimitsByLimitId?.codex ?? value.rateLimits;
                     const windows = ["primary", "secondary"].flatMap(id => bucket?.[id] ? [{ id, usedPercent: bucket[id].usedPercent, resetsAt: new Date(bucket[id].resetsAt * 1000).toISOString() }] : []);
                     const snapshot = { observedAt: now, source: "Codex account/rateLimits/read", windows };

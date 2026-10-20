@@ -81,3 +81,37 @@ The original host supervisor/template source is unchanged; consumers can append
 an explicit host ID in their separately reviewed rendered worker command. This
 PR does not prove either Mac's real ABI or real interrupted-host recovery, and
 no activation or live state migration is authorized by its test results.
+
+
+## Late actual-provider admission correction
+
+The initial independent review cleared f192a854674de76e8514e01ae6ca3812129d84e8
+with no findings. After that turn, a separate read-only operator probe exposed an
+acceptance risk the reviewer had not tested: native rate-limit windows can be
+low while prepaid credits are available, and the parser ignored the actual
+ordinaryUsageAllowed boolean. Both actual installed CLI versions 0.154 and 0.163
+returned that field. This does not establish live worker acceptance; it supplies
+the missing provider contract for our existing no-paid-fallback requirement.
+
+As a focused late correction within that original requirement, native codexQuota
+now rejects anything except explicit boolean true before producing a snapshot.
+Admission and every native meter read share that function. False, absent, null
+and string values reject even with zero usage and prepaid credits; actual worker
+tests prove false/absent cannot claim work and stop an already owned synthetic
+process when allowance changes. Existing explicit telemetry-file attestations,
+configured hosted behavior, normalized config and digest remain unchanged. No
+provider/account/auth-store or live host/ledger mutation was performed. The same
+independent reviewer receives this fix as its first ordinary follow-up, preserving
+the initial clean result and actual invocation timing.
+
+
+After this correction, focused `pnpm exec vitest run tests/cd` passed 165 tests
+across 9 files (24 native-worker tests); the native/worker pair passed 51. Typecheck,
+compile, PM index and diff whitespace checks passed. Removing the new ordinary
+allowance guard made all four parser rejection assertions and both actual
+admission assertions fail for the expected incorrectly admitted result; the two
+process-stop mutants additionally reached the test deadline. Only assertion
+failures, not deadline failures, establish the mutant kill. The source was
+restored byte-for-byte in finally and compiled again after restoration so no
+mutated generated output is retained. The broader focused rerun follows a real
+source correction, not an unchanged retry.

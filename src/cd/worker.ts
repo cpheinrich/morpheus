@@ -44,7 +44,10 @@ export async function codexQuota(command: string[], cwd: string, now: string): P
         if (message.error) { finish(new Error(message.error.message)); return; }
         if (message.id === 1) { child.stdin.write(JSON.stringify({ method: "initialized", params: {} }) + "\n"); child.stdin.write(JSON.stringify({ id: 2, method: "account/rateLimits/read", params: {} }) + "\n"); }
         if (message.id === 2) {
-          const value = message.result as { rateLimitsByLimitId?: { codex?: { primary?: Record<string, number>; secondary?: Record<string, number> } }; rateLimits?: { primary?: Record<string, number>; secondary?: Record<string, number> } };
+          const value = message.result as { ordinaryUsageAllowed?: unknown; rateLimitsByLimitId?: { codex?: { primary?: Record<string, number>; secondary?: Record<string, number> } }; rateLimits?: { primary?: Record<string, number>; secondary?: Record<string, number> } };
+          // Low usage windows can coexist with prepaid credit availability. Only
+          // explicit ordinary subscription eligibility permits admission or renewal.
+          if (value?.ordinaryUsageAllowed !== true) { finish(new Error("Codex ordinary subscription usage is unavailable or unknown; retain budget wait")); return; }
           const bucket = value.rateLimitsByLimitId?.codex ?? value.rateLimits;
           const windows = (["primary", "secondary"] as const).flatMap(id => bucket?.[id] ? [{ id, usedPercent: bucket[id]!.usedPercent!, resetsAt: new Date(bucket[id]!.resetsAt! * 1000).toISOString() }] : []);
           const snapshot = { observedAt: now, source: "Codex account/rateLimits/read", windows };

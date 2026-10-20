@@ -6,7 +6,7 @@ import { configSchema, configurationDigest, hash, type AgentWork, type CdState }
 import { GhApi, GitHubStore, type Transaction } from "../../src/cd/store.js";
 import { cd } from "../../src/cd/cli.js";
 import { after, repairWork } from "../../src/cd/state.js";
-import { runWorker, scheduleHosted } from "../../src/cd/worker.js";
+import { codexQuota, runWorker, scheduleHosted } from "../../src/cd/worker.js";
 import { FakeGitHub } from "./fake-github.js";
 import { config, now, prepared } from "./fixtures.js";
 
@@ -27,12 +27,22 @@ async function nativeFixture(history: AgentWork["invocations"] = [], executor: "
   const directory = await mkdtemp(join(tmpdir(), "cd-native-worker-")); directories.push(directory);
   const script = join(directory, "synthetic-agent.mjs"), callsPath = join(directory, "calls.jsonl"), quotaPath = join(directory, "quota.json");
   // Real child/guardian and JSON output ABI; this executable never contacts a model.
-  await writeFile(script, `import { appendFile, writeFile } from 'node:fs/promises';
+  await writeFile(script, `import { appendFile, readFile, writeFile } from 'node:fs/promises';
+import { createInterface } from 'node:readline';
 const [calls, ...args] = process.argv.slice(2);
 if (args[0] === 'login') { console.log('Logged in using ChatGPT'); process.exit(0); }
 if (args[0] === 'auth') { console.log(JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' })); process.exit(0); }
+if (args[0] === 'app-server') {
+  for await (const line of createInterface({ input: process.stdin })) {
+    const message = JSON.parse(line);
+    if (message.method === 'initialize') console.log(JSON.stringify({ id: message.id, result: {} }));
+    if (message.method === 'account/rateLimits/read') console.log(JSON.stringify({ id: message.id, result: JSON.parse(await readFile(calls + '.native-quota', 'utf8')) }));
+  }
+  process.exit(0);
+}
 let prompt = ''; for await (const chunk of process.stdin) prompt += chunk;
 await appendFile(calls, JSON.stringify({ args, prompt }) + '\\n');
+if (await readFile(calls + '.hold', 'utf8').catch(() => '') === 'hold') await new Promise(resolve => setTimeout(resolve, 60_000));
 const result = { outcome: 'checkpoint', summary: 'Synthetic current checkpoint', evidence: ['synthetic evidence'], pullRequest: '', sourceSha: '', reviewHead: '', missingCapability: '' };
 if (args.includes('--output-last-message')) await writeFile(args[args.indexOf('--output-last-message') + 1], JSON.stringify(result));
 console.log(JSON.stringify({ type: 'thread.started', thread_id: 'new-native-session' }));
@@ -52,7 +62,7 @@ if (args[0] === '-p') console.log(JSON.stringify({ type: 'result', structured_ou
     return id;
   });
   const calls = async () => (await readFile(callsPath, "utf8")).trim().split("\n").map(line => JSON.parse(line) as { args: string[]; prompt: string });
-  return { cfg, api, store, directory, callsPath, calls, workId: seeded.result };
+  return { cfg, api, store, directory, callsPath, calls, workId: seeded.result, nativeQuotaPath: callsPath + ".native-quota" };
 }
 
 describe("optional hosted repair", () => {
@@ -163,5 +173,58 @@ describe("host-local native sessions", () => {
     expect(invocation.endedAt).toBeUndefined(); expect(invocation.result).toBeUndefined();
     if (kind === "agent-session-checkpoint") expect(invocation.session).toBeUndefined();
     expect(Object.keys(after.state.transitions).some(id => id.startsWith("worker-ended-") || id.startsWith("worker-error-"))).toBe(false);
+  });
+});
+
+
+const ordinaryQuota = (at: string, ordinaryUsageAllowed: unknown = true) => ({
+  ordinaryUsageAllowed, credits: { hasCredits: true },
+  rateLimitsByLimitId: { codex: { primary: { usedPercent: 0, resetsAt: Date.parse(after(at, 60)) / 1000 } } },
+});
+
+describe("native ordinary subscription eligibility", () => {
+  it.each([false, undefined, null, "true"])("refuses non-true ordinary allowance %s despite zero usage and prepaid credits", async value => {
+    const f = await nativeFixture(), at = new Date().toISOString();
+    await writeFile(f.nativeQuotaPath, JSON.stringify({ ...ordinaryQuota(at), ordinaryUsageAllowed: value }));
+    await expect(codexQuota(f.cfg.agents!.local.command, f.directory, at)).rejects.toThrow("ordinary subscription usage is unavailable or unknown");
+    await expect(readFile(f.callsPath)).rejects.toHaveProperty("code", "ENOENT");
+  });
+
+  it("retains exact live windows only when ordinary allowance is explicitly true", async () => {
+    const f = await nativeFixture(), at = new Date().toISOString();
+    await writeFile(f.nativeQuotaPath, JSON.stringify(ordinaryQuota(at)));
+    expect(await codexQuota(f.cfg.agents!.local.command, f.directory, at)).toEqual({
+      observedAt: at, source: "Codex account/rateLimits/read",
+      windows: [{ id: "primary", usedPercent: 0, resetsAt: after(at, 60) }],
+    });
+  });
+
+  it.each([false, undefined])("does not claim or invoke repair when native ordinary allowance is %s", async value => {
+    const f = await nativeFixture(); delete f.cfg.agents!.local.quotaFile;
+    await writeFile(f.nativeQuotaPath, JSON.stringify({ ...ordinaryQuota(new Date().toISOString()), ordinaryUsageAllowed: value }));
+    expect(await runWorker(f.cfg, f.store, f.directory, { executor: "local", hostId: "mac-a" })).toMatchObject({ state: "budget-wait", reason: expect.stringContaining("ordinary subscription usage") });
+    const work = (await f.store.read()).state.agents[f.workId]!;
+    expect(work.invocations).toEqual([]); expect(work.lease).toBeUndefined();
+    await expect(readFile(f.callsPath)).rejects.toHaveProperty("code", "ENOENT");
+  });
+
+  it.each([false, undefined])("stops an admitted native process when ordinary allowance becomes %s during metering", async value => {
+    const f = await nativeFixture(); delete f.cfg.agents!.local.quotaFile;
+    await writeFile(f.nativeQuotaPath, JSON.stringify(ordinaryQuota(new Date().toISOString())));
+    await writeFile(f.callsPath + ".hold", "hold");
+    let meter: (() => void) | undefined; const original = globalThis.setInterval;
+    vi.spyOn(globalThis, "setInterval").mockImplementation((callback, delay, ...args) => {
+      if (delay === 30_000) meter = () => callback(...args);
+      return original(callback, 60_000, ...args);
+    });
+    const running = runWorker(f.cfg, f.store, f.directory, { executor: "local", hostId: "mac-a" });
+    await vi.waitFor(async () => { expect(await f.calls()).toHaveLength(1); expect(meter).toBeTypeOf("function"); });
+    await writeFile(f.nativeQuotaPath, JSON.stringify({ ...ordinaryQuota(new Date().toISOString()), ordinaryUsageAllowed: value }));
+    meter!();
+    expect(await running).toMatchObject({ outcome: "checkpoint" });
+    const state = (await f.store.read()).state, work = state.agents[f.workId]!;
+    expect(work.invocations).toHaveLength(1); expect(work.lease).toBeUndefined();
+    expect(work.invocations[0]!.result!.summary).toContain("ordinary subscription usage is unavailable or unknown");
+    expect(state.intents[work.intentId]!.nextAction).toBe("wait-measured-subscription-capacity");
   });
 });

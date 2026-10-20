@@ -35,7 +35,13 @@ requesting an unconfigured hosted worker fails before ledger access. Existing
 configured hosted defaults, normalized bytes and digest are unchanged. Removing
 a previously configured hosted route changes configuration identity and requires
 an explicit lossless consumer migration. Morpheus supplies invocation
-arguments and prompts. Deadline and budget defaults follow the approved design.
+arguments and prompts. Native account quota reads require the actual
+`account/rateLimits/read` result to say `ordinaryUsageAllowed: true` both before
+admission and during metering. False, absent or nonboolean allowance retains
+budget wait or stops the owned process even with low usage windows or prepaid
+credits available; credit availability is never admission evidence. Explicit
+operator telemetry files retain their existing attestation contract. Deadline and
+budget defaults follow the approved design.
 
 `cd init --config PATH` explicitly initializes the state branch, its secondary
 backup branch and an initialization tag. It protects both branches against force

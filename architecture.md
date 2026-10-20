@@ -3337,6 +3337,9 @@ reads expose only fixed recognized diagnostics, never arbitrary provider text or
 credentials; actual scoped workflow authority and quota remain rollout proofs.
 The hosted repair route is optional: registered native Codex workers can share
 the same GitHub queue while preserving one global local-subscription reservation.
+Native account reads require explicit ordinary subscription eligibility before
+admission and during metering; missing or false allowance never admits prepaid
+credit fallback even when the reported usage windows are low.
 Native invocation identity names the host/user/session store; only its latest
 same-host local session can resume. Foreign or unidentified sessions restart from
 the immutable task and durable checkpoint evidence without copying native sessions

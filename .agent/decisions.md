@@ -20,7 +20,9 @@ Local invocations carry a stable host/user/session-store identity; resume only t
 latest local checkpoint from that same identity. Foreign and legacy unidentified
 sessions start fresh from durable task/checkpoint evidence, without auth/session
 copying. Keep the shared local reservation, measured subscription admission and
-owner/fence checks. Consumer migration, host readiness and empirical failover are
+owner/fence checks. Native account reads must explicitly allow ordinary subscription
+usage at admission and during metering; prepaid credits never establish eligibility.
+Consumer migration, host readiness and empirical failover are
 separate acceptance work. This is a small domain boundary using existing Node
 hostname, CLI parsing and Git CAS; no generic package or new dependency is needed.
 
