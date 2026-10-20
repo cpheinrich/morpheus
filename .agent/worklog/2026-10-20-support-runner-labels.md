@@ -75,7 +75,78 @@ checkouts retain their generated reconciliation edits for guarded later cleanup.
 
 ## Independent review and release
 
-Not started. Root coordinates one fresh independent source reviewer after the
-complete packet and CI. PR remains unlabelled draft, auto-merge off, with the root
-source merge gate held. No prior reviewer/session or old operational clearance
-is reused.
+Independent source review conditionally cleared RL439-001; the author extended
+the control-character guard through C1 and proved the four new actual-script
+regressions fail on the old guard. All required focused and source-fix CI checks
+pass. This is source clearance only, with no runner, cancellation or delivery credit.
+
+Root launched one fresh no-history reviewer `/root/runner_labels_review439`.
+Its full raw report is retained under campaign private evidence
+`source439-independent-review-2108/raw-report.md`, SHA256
+`e445e9c24ebe78475b647a302611bde8753771dbf5afd94d0d56be112a06596b`;
+sibling `timing.json` retains actual root clocks21:05:55.825889→21:08:55.523363Z.
+The raw179697.474ms is recorded as integer179697ms, exactly2.99495minutes.
+No prior reviewer/session or old operational clearance was reused.
+
+The sole substantive finding accepted C1 controls U+0080–U+009F. Under its exact
+two-path condition, fix `51a2851f12db5fcb0860c411a88050b4dabbc3fa` extends the
+regex to `[\x00-\x1f\x7f-\x9f]` and adds U+0080/U+0085/U+009B/U+009F cases.
+The new actual-script assertions first failed four times on the old regex
+(actual exit0 versus expected1), then all225 tests in the original five-file
+scope passed. Each rejected selector asserts exit1, exact fixed diagnostic,
+empty stdout and empty output. Targeted actionlint, typecheck, compile, PM index
+and diff checks pass; no dist change. Only the two reviewer-permitted source/test
+paths changed in the fix; only this worklog changes after coverage.
+
+Before-proof `/tmp/morpheus-runner-labels-c1-before-135243.log` SHA256
+`dc423e3e74e6657abaa8a60ab2d22f6c0482e38ab01c98a0d44b6de88f2ad846`;
+fixed focused output `/tmp/morpheus-runner-labels-c1-focused-135243.log` SHA256
+`bd234c249fa75fb1f649f97a1febc0a6cd2c2ffe14f4f84bf7969297b08c19f3`.
+The first post-push wait returned previous-head726e8af CI during provider lag;
+that stale result is explicitly excluded. A fresh read established actual fix
+head51a2851, then one wait for it returned CI green after1m31s (4SUCCESS,
+3expectedSKIPPED). Exact raw readback is
+`/tmp/morpheus-runner-labels-c1-ci-135243.json`. Final record-head CI is separately
+required before root releases the draft/source gate; no future CI result is asserted.
+
+Evo confirmed it will pin only this shared workflow and retain F65 actions/runtime.
+The exact F65 and T4a workflow base blobs are identical
+`ad07014ddc69061e37cd540c3db8eba8f4b5bcba`. The validator is wholly inline Node,
+with no checkout/action or new-file dependency; existing native steps/actions-ref
+remain unchanged. Full F→fix diff is retained privately. Actual consumer pin and
+operational no-admission drill remain separate; PR is still draft/unlabelled/off.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "4a664c5be4e82b103ced3e4c85d7f2a433fa4c07",
+  "reviewed": "726e8af4491a17eb53a407669c4052a6ba45d194",
+  "covered": "51a2851f12db5fcb0860c411a88050b4dabbc3fa",
+  "authorSession": "01a1572f-2ae1-77f2-be54-4265b3baca43",
+  "reviewerSession": "/root/runner_labels_review439",
+  "risk": "high",
+  "elapsedMinutes": 2.99495,
+  "timing": {
+    "source": "clock",
+    "durationMs": 179697,
+    "evidence": "Root clock before fresh reviewer spawn2026-10-20T21:05:55.825889Z through final report receipt2026-10-20T21:08:55.523363Z. Raw179697.474ms retained in source439-independent-review-2108/timing.json; integer record179697ms includes tools/waits, with no estimated duration or floor delay."
+  },
+  "outcome": "complete",
+  "summary": "Independent source review conditionally cleared RL439-001; the author extended the control-character guard through C1 and proved the four new actual-script regressions fail on the old guard. All required focused and source-fix CI checks pass. This is source clearance only, with no runner, cancellation or delivery credit.",
+  "findings": [
+    {
+      "id": "RL439-001",
+      "severity": "substantive",
+      "description": "The C0+DEL regex accepted C1 control characters U+0080–U+009F, allowing forbidden invisible characters into native scheduling. Actual-script cases U+0080, U+0085, U+009B and U+009F returned exit0 and emitted selectors; expected exit1, established diagnostic and empty output.",
+      "paths": [".github/workflows/ios-ci.yml", "tests/ios-runner-labels.test.ts"],
+      "disposition": "fixed",
+      "response": "Exact fix51a2851f12db5fcb0860c411a88050b4dabbc3fa changes only the reviewer-permitted YAML regex and actual-script regression cases. All four new cases fail the old guard and pass the complete C1 guard. Existing ordinary/optional routing, diagnostics and no-fallback behavior are retained.",
+      "condition": {
+        "paths": [".github/workflows/ios-ci.yml", "tests/ios-runner-labels.test.ts"],
+        "evidence": "Extend rejection to the complete C1 range, preserving existing behavior; [\\x00-\\x1f\\x7f-\\x9f] is sufficient. Add actual-script U+0080, U+0085, U+009B and U+009F regressions asserting exit1, exact diagnostic and empty output; demonstrate assertions fail old regex. Run the original five-file focused command, targeted actionlint, typecheck, compile, PM index and final-head CI; record exact fix SHA/results. No further reviewer turn required if met exactly."
+      },
+      "conditionMet": "Fix51a2851f12db5fcb0860c411a88050b4dabbc3fa only changes the two allowed paths. Four actual-script assertions fail on old regex, retained before-proof SHAdc423e3e74e6657abaa8a60ab2d22f6c0482e38ab01c98a0d44b6de88f2ad846. Original five-file focused suite225PASS, fixed-output SHAbd234c249fa75fb1f649f97a1febc0a6cd2c2ffe14f4f84bf7969297b08c19f3. actionlint/typecheck/compile/PM index/diffcheck pass; dist unchanged. Verified exact fix-head51a2851 CI green after1m31s, 4SUCCESS+3expectedSKIPPED; raw /tmp/morpheus-runner-labels-c1-ci-135243.json. Stale previous-head wait excluded. Only review worklog follows covered; final record-head CI must pass before root releases source gate."
+    }
+  ]
+}
+```
