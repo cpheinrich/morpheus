@@ -83,3 +83,71 @@ were killed and restored: throwing the census error before enforcing the bound
 ignoring step completion evidence (1 assertion failure). Summary:
 `/tmp/native-admission-followup-mutations.json`. The corrected source and generated
 counterparts are committed together for the same-reviewer follow-up.
+
+The high-risk independent review found two substantive boundaries: failed job-census reads bypassed the 180-minute cancellation bound, and contradictory step completion could authorize no-start fallback. Both were fixed with focused boundary regressions and generated-output reproductions. The same reviewer cleared eea0d8619bc113239018f8378c8a483869cc9862 with no remaining findings or conditions. Live queued-job timestamp behavior and actual hosted delivery remain unverified; the draft/unmerged release hold remains.
+
+The initial review used 171000 ms (2.85 minutes) and its same-reviewer follow-up
+used 54000 ms (0.9 minutes), measured from actual author invocation-start and
+reviewer final clock observations. These are measured turn boundaries, not
+workload estimates. Reviewer session provenance is the exact canonical path
+returned by the collaboration runner plus this author session's global ID.
+Author focused validation: 116 passed across four files. The reviewer additionally
+ran a focused 27-test selection and both original generated-output reproductions.
+Only this worklog follows the cleared correction commit; final-head CI and
+retained draft/auto-merge-off state are verified on the PR before reporting ready.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "f65b7b4a7d9ae4e945a1a192ab8f0b6c6be46c78",
+  "reviewed": "fa75e210696fceb48ce9b6ae6159b8b2df8fadc4",
+  "covered": "eea0d8619bc113239018f8378c8a483869cc9862",
+  "authorSession": "01a1591a-d9b3-7890-b35a-93c8ae2a15d7",
+  "reviewerSession": "/root/native_admission/admission_review",
+  "risk": "high",
+  "elapsedMinutes": 2.85,
+  "timing": {
+    "source": "clock",
+    "durationMs": 171000,
+    "evidence": "Author clock__curr_time before spawning canonical reviewer /root/native_admission/admission_review: 2026-10-20 11:47:46 UTC. Reviewer's actual final clock observation returned with blocked verdict: 2026-10-20 11:50:37 UTC. Initial turn only; source reviewed fa75e210696fceb48ce9b6ae6159b8b2df8fadc4."
+  },
+  "outcome": "complete",
+  "summary": "The high-risk independent review found two substantive boundaries: failed job-census reads bypassed the 180-minute cancellation bound, and contradictory step completion could authorize no-start fallback. Both were fixed with focused boundary regressions and generated-output reproductions. The same reviewer cleared eea0d8619bc113239018f8378c8a483869cc9862 with no remaining findings or conditions. Live queued-job timestamp behavior and actual hosted delivery remain unverified; the draft/unmerged release hold remains.",
+  "findings": [
+    {
+      "id": "NA-1",
+      "severity": "substantive",
+      "description": "Awaiting a failed/incomplete job census before timeout enforcement removed the strict 180-minute cancellation bound for nonterminal runs.",
+      "paths": [
+        "src/cd/controller.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Capture census failures, enforce the existing running-work bound while retaining active ownership, then preserve the error as a visible wait. Six exact-equality/just-after Controller/CAS cases cover missing totals, short pages and provider errors; an early-throw mutation fails all three just-after cases. Same reviewer verified committed generated-output reproduction and cleared."
+    },
+    {
+      "id": "NA-2",
+      "severity": "substantive",
+      "description": "Ignoring step completed_at allowed a contradictory queued/null-start step with a completion timestamp to synthesize no-start quiescence and hosted fallback.",
+      "paths": [
+        "src/cd/controller.ts"
+      ],
+      "disposition": "fixed",
+      "response": "No-start classification now requires absent/null step completion as well as no assignment, no job/step start and queued steps. The regression exercises admission and terminal fallback; ignoring completion again produces an assertion failure. Same reviewer verified the committed generated-output reproduction and cleared."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/native_admission/admission_review",
+      "commit": "eea0d8619bc113239018f8378c8a483869cc9862",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.9,
+      "timing": {
+        "source": "clock",
+        "durationMs": 54000,
+        "evidence": "Author clock__curr_time before same-reviewer followup_task: 2026-10-20 11:52:33 UTC. Reviewer's actual final clock observation returned with cleared verdict: 2026-10-20 11:53:27 UTC. Same canonical reviewer /root/native_admission/admission_review; follow-up1 only."
+      },
+      "summary": "NA-1 and NA-2 resolved; strict cancellation, visible census failures and ownership retained, contradictory completion rejected. Both committed generated-output reproductions passed. Focused reviewer regression selection: 27 passed, 29 skipped. No remaining/new findings or conditions."
+    }
+  ]
+}
+```
