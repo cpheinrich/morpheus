@@ -16,11 +16,11 @@ contains actual merged PR431, cc0e0e77516674c511daa7c6cdb72b0a6ce8ec8a; the
 first unclaimed checkout was preserved. Read the changed external-distribution
 decision, refreshed and claimed in the new checkout before implementation. The
 intake baseSha remains its actual historical d8ab2ee source. All new optional
-external fields from431 are retained.
+external fields from 431 are retained.
 
 Tier2 graph evidence: project Users-chrisheinrich-code-morpheus, ready generation
-2026-10-20T06:23:43Z. Found configSchema23–43, AgentWork74–77,
-scheduleHosted94–128 and runWorker145–233; inbound runWorker points to cd CLI.
+2026-10-20T06:23:43Z. Found configSchema 23–43, AgentWork 74–77,
+scheduleHosted 94–128 and runWorker 145–233; inbound runWorker points to cd CLI.
 Relevant schema/worker/CLI/controller/worker-template and worker-test paths had
 metadata_match/no recorded issue (best effort). A guessed config-test path was
 missing, so existing fixture/state tests and exact source were inspected instead.
@@ -30,7 +30,7 @@ Shell/config/private evidence used direct source reads. No exhaustive graph clai
 before reading the ledger or touching provider APIs when absent; an explicitly
 requested unconfigured executor still fails before ledger access. A pinned test
 compares configured-hosted canonical digest and normalized JSON bytes against
-actual pre-change431 dist. Existing hosted prompt/resume behavior is preserved.
+actual pre-change 431 dist. Existing hosted prompt/resume behavior is preserved.
 
 Local invocations record hostId. CLI `--host-id` lets operators pin a distinct
 stable Mac/user/session-store identifier; old callers use native hostname(). Only
@@ -50,7 +50,7 @@ stands in for those failure paths. No actual model or paid fallback is invoked.
 
 Reused the existing schema, Node hostname, CLI parser and Git CAS; no generic
 module or new dependency was introduced. Frozen-lockfile installation disabled
-lifecycle scripts. The first focused run passed40 tests but typecheck caught an
+lifecycle scripts. The first focused run passed 40 tests but typecheck caught an
 optional-reference narrowing issue; corrected the explicit guard before further
 validation. Later focused runs include CLI forwarding and unchanged configured
 hosted resume. Final focused scope, mutation evidence and review are appended
@@ -59,7 +59,7 @@ after actual completion; no full-repository suite is claimed locally.
 
 ## Completed author validation
 
-Final `pnpm exec vitest run tests/cd` passed156 tests across9 files, including15
+Final `pnpm exec vitest run tests/cd` passed 156 tests across 9 files, including 15
 new native-worker tests. `pnpm typecheck`, `pnpm compile`,
 `pnpm morpheus pm index` and `git diff --check` passed. This is the focused CD
 subsystem and direct dependents, not the full repository suite. Existing hosted
