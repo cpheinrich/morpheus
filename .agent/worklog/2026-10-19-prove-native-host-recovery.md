@@ -1244,3 +1244,63 @@ shared VM/service/dispatcher/runner change, private credential/session-store rea
 new provider action, paid settlement or spent phase repetition occurred. All250USD
 liabilities, holds, epoch/config and legacy fences remain. No source suite was rerun
 for this root records-only continuation; cited source checks belong to their owners.
+
+
+## Reviewed runner selector source and actual schedule evidence — October20 21:28UTC
+
+Morpheus439 merged normally as78f905dbc22875eb8d56cd5a439d032e18e243e0 at21:21:29.
+Root independently verified its treef72822c5 exactly equals final reviewed4e78d84d;
+workflow blob5c47ba10 contains only the optional runner conjunction seam relative
+to liveF's identical base workflow. Source proofc7d7065afa64fa3c345f7371a5eba641e741ce0f819f4014949552577fedc916
+is retained. No runtime, controller, worker or campaign adoption occurred.
+
+One fresh independent high-risk reviewer /root/runner_labels_review439 spent
+179697.474 actual-clock milliseconds. It conditionally cleared substantiveRL439-001:
+the initial validator accepted C1 control characters. The exact two-path fix51a2851
+rejects the full C1 range; four actual-script cases failed the old guard, then225
+focused tests plus typecheck/compile/index/actionlint passed. The record preserved
+original severity, exact reviewer condition, conditionMet and raw timing. Only its
+own worklog follows covered51a2851. Record validation preceded push; source and
+record CI passed. The first source-fix wait saw the old provider head and is
+explicitly excluded. Root verified final4e78, labelled and marked ready once, then
+one ready-state wait32945 passed9checks,5success/4expectedlegacy-draft skips,
+including actual required conventions. Exact-head protected squash/auto/delete
+used no admin/bypass. Root integrated actual78f905 into this task mechanically.
+
+Evo581 remains an unlabelled draft with auto-merge off. Its separate author owns
+EV13.50.34 only: exact future validation no-admission helper/CLI plus direct CI
+qualification. Provisional10unit/3realStore-CLI/15caller/6docs and14killed mutants
+are source checks. Initial CI22702's handle expired; one exact-head GET reconciled
+all6 checks completed,5success/1draftskip, without another waiter. Root supplied
+actual439 for the narrow immutable workflow-only pin and source-only cross-version
+contract checkout. Core runtime/actions remainF. First fresh source review still
+requires actual580/current-main integration and coherent final policy; no arm,
+runner mutation, cancellation, hosted build or delivery credit is supplied.
+
+Actual retained schedule inventory21:04 contains two runs. New post571 schedule
+39472027938/attempt1 ran18:07:36 onUbuntu/source5762; immutable compare proves it
+is11commits after actual571cd669. Its workflow succeeded, but actual CLI18:08:58
+still reported the first staging repair's Apple404, preserved with accepted21.
+This is actual post-merge schedule execution, not proof571 caused recovery or a
+receipt. Mini stdout captured21:10 contains88JSON outputs; later documents show
+P2a2/build7/run39489032255, preserving original debt/slot/deadline and burned failed6.
+The matching immutable9de commit is the20:05:44 dispatch ACK. Read-only bounded
+analysis2dc8bfd2 retains log custody, missing PID/emission-time and provider-history
+limits. Missing nominal cron records do not prove an event was physically dropped;
+that stronger acceptance remains partial. Archivee71e432f retains exact evidence.
+
+Known public credential-pointer metadata00afce67 was hashed without returning
+values or opening referenced stores. A separate own-process read-only system
+Python proxy invocation under an explicit sparse no-auth environment selected
+Xcode3.9.6/its expected image; proof46b3ce7b retains24parent facts. This observes
+the named nlink78 proxy role, not a general hardlink exception or future injected
+environment guarantee. Existing external credential injection remains an explicit
+trusted boundary. Controller static closure/benchmark preparation remains unbound;
+no code was copied to Mini, no benchmark or controller operation was performed.
+
+Only1/8 actual full internal receipts is credited. Production7's original native
+watch remains the sole watcher; no second receipt is inferred. Reviewed580 stays
+held until that actual receipt, then a later protected main merge must precedeS3.
+Optional controller/hosted wiring cannot delay the next ready ordinary request.
+No source suite was repeated for this root records continuation. All holds, burned
+reservations, paid liabilities, epoch/config, legacy fences and spent phases remain.
