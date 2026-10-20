@@ -26,6 +26,18 @@ Consumer migration, host readiness and empirical failover are
 separate acceptance work. This is a small domain boundary using existing Node
 hostname, CLI parsing and Git CAS; no generic package or new dependency is needed.
 
+**Native quota startup and cleanup have separate bounds — 2026-10-20.** A
+configured policy shim can perform a version check and two configuration-reader
+lifecycles before the actual quota handshake. Give one fresh account read 60
+seconds total and the final RPC at most 10 seconds within it; never bypass shim
+validation or reuse old quota after failure. A reader-only Python supervisor
+keeps a private foreground group leader unreaped through final group signals,
+then verifies termination within two seconds (three-second parent fuse).
+Unknown cleanup refuses admission; model-guardian defaults stay unchanged.
+This is a fixed account-protocol/foreground-launcher boundary using built-in
+Node/Python facilities, not a generic ownership framework or new dependency.
+Source review and actual quiet-host worker adoption remain separate.
+
 ## External TestFlight follows internal acceptance — 2026-10-19
 
 Chris explicitly requested internal and external distribution for future Evo
