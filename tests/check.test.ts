@@ -767,6 +767,72 @@ describe("visual evidence", () => {
     expect(findings.filter((finding) => finding.rule.startsWith("visual-evidence"))).toEqual([]);
   });
 
+  it.each([
+    [`${bucketScreenshot}?authuser=reviewer@example.com`, bucketPrefix],
+    [`${bucketScreenshot}?authuser=reviewer%2Bqa%40example.com`, bucketPrefix],
+    [
+      "https://storage.googleapis.com/cph-evo-staging-pr-evidence/pr-evidence/EV-26-10-19-19.51.16/ce5f0e3d78b8eb74c51aa1ab49bbd9fffa1f14cf128657090eaa4a7dd423180f-ingredient-protein-applied.png?authuser=cpheinrich@gmail.com",
+      "https://storage.googleapis.com/cph-evo-staging-pr-evidence/",
+    ],
+  ])("accepts one email account selector on approved Google Storage evidence: %s", async (url, prefix) => {
+    const findings = await checkPr(
+      goodPr({
+        body: `${goodPr().body}\n## Visual evidence\n\nScreenshot: ![Final build](${url})\n`,
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(undefined, undefined, [prefix]),
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence")).toBeUndefined();
+    expect(findings.find((finding) => finding.rule === "visual-evidence-recording")?.level).toBe(
+      "warning",
+    );
+  });
+
+  it.each([
+    `${bucketScreenshot}?authuser=`,
+    `${bucketScreenshot}?authuser=0`,
+    `${bucketScreenshot}?authuser=reviewer`,
+    `${bucketScreenshot}?authuser=reviewer@@example.com`,
+    `${bucketScreenshot}?authuser=%20reviewer%40example.com`,
+    `${bucketScreenshot}?AuthUser=reviewer@example.com`,
+    `${bucketScreenshot}?authuser=reviewer@example.com&authuser=reviewer@example.com`,
+    `${bucketScreenshot}?authuser=reviewer@example.com&authuser=other@example.com`,
+    `${bucketScreenshot}?authuser=reviewer@example.com&X-Goog-Signature=temporary`,
+    `${bucketScreenshot}?X-Goog-Signature=temporary&authuser=reviewer@example.com`,
+    `${bucketScreenshot}?authuser=reviewer@example.com&download=1`,
+    `${bucketScreenshot}?account=reviewer@example.com`,
+    `${bucketScreenshot}?authuser=reviewer@example.com#local-only`,
+    `${bucketPrefix}?authuser=reviewer@example.com`,
+    "https://storage.googleapis.com/another-bucket/home.png?authuser=reviewer@example.com",
+    "https://storage.googleapis.com/evo-staging-pr-evidence-sibling/home.png?authuser=reviewer@example.com",
+    "https://storage.googleapis.com.evil.example/evo-staging-pr-evidence/home.png?authuser=reviewer@example.com",
+    "https://user:password@storage.googleapis.com/evo-staging-pr-evidence/home.png?authuser=reviewer@example.com",
+  ])("rejects invalid account selectors and preserves approved-location guards: %s", async (url) => {
+    const findings = await checkPr(
+      goodPr({
+        body: `${goodPr().body}\n## Visual evidence\n\nScreenshot: ${url}\n`,
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(undefined, undefined, [bucketPrefix]),
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence")?.level).toBe("error");
+  });
+
+  it("does not allow account selectors on other approved providers", async () => {
+    const prefix = "https://github.com/darwin-health/evo/raw/gh-manager-evidence/";
+    const findings = await checkPr(
+      goodPr({
+        body: `${goodPr().body}\n## Visual evidence\n\nScreenshot: ${prefix}pr-558/home.png?authuser=reviewer@example.com\n`,
+        changedFiles: ["apps/web/app/page.tsx"],
+        visualEvidence: enabled(undefined, undefined, [prefix]),
+      }),
+    );
+
+    expect(findings.find((finding) => finding.rule === "visual-evidence")?.level).toBe("error");
+  });
+
   it("does not trust a sibling bucket on the same provider host", async () => {
     const findings = await checkPr(
       goodPr({
