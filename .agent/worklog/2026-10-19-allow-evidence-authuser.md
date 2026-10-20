@@ -40,4 +40,43 @@ Validation:
 
 No UI or native behavior changed. The URL acceptance probe does not claim image
 content review, live CI acceptance or a TestFlight delivery. CI owns the full
-repository suite; it was not rerun locally. Independent review is pending.
+repository suite; it was not rerun locally.
+
+## Independent review
+
+Independent Opus review cleared the Google Storage account-selector fix at 86bb327ca813ca81930922ccbf73f5eb81622596 with no substantive findings. Its 44 focused visual-evidence tests passed. The reviewer noted a nonblocking bare-URL punctuation limitation, deferred to MO-26-10-19-22.17.10; the actual 18 Markdown screenshot links pass under the unchanged approved prefix. No native build, pixel review or TestFlight completion is claimed by this validation.
+
+The reviewer also observed that an empty trailing query separator is ignored by native URL parsing and is harmless; exactly one decoded account-selector entry is still required. Review had no permission denials. The only post-review addition before coverage is the newly filed incidental follow-up item; no code changed.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "e5b9747512b2df90624bc7cf87878548f84da088",
+  "reviewed": "86bb327ca813ca81930922ccbf73f5eb81622596",
+  "covered": "15c2e23268722549ac6b2334eaea50e771e909a2",
+  "authorSession": "01a15749-6c98-79d1-a8f9-9adf2f14deb9",
+  "reviewerSession": "0899197a-dc37-4b08-a23a-fdfdcbc4c609",
+  "risk": "high",
+  "elapsedMinutes": 1.5312014159666432,
+  "timing": {
+    "source": "runner",
+    "durationMs": 91872.0849579986,
+    "evidence": "Native Opus reviewer session 0899197a-dc37-4b08-a23a-fdfdcbc4c609; /tmp/morpheus-evidence-authuser-review-timing.json measured the invocation from 2026-10-20T05:15:04.256810+00:00 through 2026-10-20T05:16:36.129545+00:00 (PID32995, exit0)."
+  },
+  "outcome": "complete",
+  "summary": "Independent Opus review cleared the Google Storage account-selector fix at 86bb327ca813ca81930922ccbf73f5eb81622596 with no substantive findings. Its 44 focused visual-evidence tests passed. The reviewer noted a nonblocking bare-URL punctuation limitation, deferred to MO-26-10-19-22.17.10; the actual 18 Markdown screenshot links pass under the unchanged approved prefix. No native build, pixel review or TestFlight completion is claimed by this validation.",
+  "findings": [
+    {
+      "id": "VE-001",
+      "severity": "incidental",
+      "description": "At src/check/visual-evidence.ts:149, HTTPS_URL captures immediately trailing prose punctuation as part of a bare URL. A final period after an email account selector then fails email validation. The reviewer explicitly classified this as a nonblocking usability edge; Markdown-linked screenshots are unaffected.",
+      "paths": [
+        "src/check/visual-evidence.ts"
+      ],
+      "disposition": "deferred",
+      "roadmap": "MO-26-10-19-22.17.10",
+      "response": "Preserved existing extraction behavior and the narrow provider/query guards. Filed the dedicated backlog item for intentional punctuation handling without changing legitimate object names or query admission; all 18 actual Markdown image links pass. No implementation was added after the reviewed commit."
+    }
+  ]
+}
+```
