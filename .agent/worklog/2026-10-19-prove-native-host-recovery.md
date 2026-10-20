@@ -1093,3 +1093,81 @@ installer preparation remain source-only, not actual installation/adoption proof
 Root explicitly integrated current Morpheus4a664c5 into this task branch and refreshed
 context after reading its new decision. No source tests were repeated for this
 records continuation; existing reviewed checks and actual provider evidence are cited.
+
+
+## Production backend repair, build7 and inert controller preparation — October20 20:18UTC
+
+Staging1.0(21) is now externally available as well as internally installable.
+Independent Apple GET19:29:25 reports both states IN_BETA_TESTING; proof
+45db8240217ce7cc3218851ad1adce6583d6c6d171797f8a4cf78919816a7fa4.
+Normal ledger19:36:36 records external available for the existing six-testers group.
+No invitations, production tester-list change or duplicate upload occurred. Campaign
+credit remains1/8, based on the original immutable internal receipt18:53:53.612.
+
+Production2's strict Firestore mismatch created one normal native repair owner:
+repair-evo-evo-real8-01a1572f-20261020-2-production-1/i1/fence1, local session
+01a15aca-609d-7bd0-9247-2f25e0f2d84d. It owned the sole guarded production backend
+run39484355837 at actual c4a705f7. All three jobs succeeded. Strict readback at
+19:46:23.982 found current production rules, four ready capture indexes, no lag or
+pending indexes, after603.464794 seconds of release propagation. Root independently
+downloaded the exact artifact12294105767 and joined its receipt/source hashes;
+verification9b05836e782b67e0766ba0c0a783ce3abd40d6b01448c826e8ac14e068a17f2c.
+This backend receipt is not TestFlight delivery credit. The new5USD reservation
+remains retained; settled spend1.982828 plus reservations15.515115 gives maximum
+known liability17.497943USD under250USD, without invented settlement.
+
+The owner completed36 focused checks and a fresh independent760323ms review with
+no findings, then merged579 normally as719861630727fd9b1e04229311f7057e39f8c976 at
+19:55:55. All final check runs passed; earlier canceled runs were superseded.
+Native work completed19:56:37.131, unleased, and the normal parent adopted719.
+Root preserved the original c4a/source lineage, July29 oldest debt,19:06:30.962 slot,
+01:06:30.962 deadline and burned build6. Captured19:32 process births were all
+ESRCH and four known PGIDs twice empty20:02:56; proofb42a1624. This is bounded
+known-process closure, not historical/quota/private-session/arbitrary-detach proof.
+The read-only local result watcher19430 exited1 on a created-but-empty JSON file;
+its failure is preserved. A stable exact result was read and hashed independently
+0bc4eabd8b0dcb7df35dd20c5e24441befdf524699a25fb011ade0b754230bb5.
+No replacement watcher or duplicate repair/deployment was started.
+
+The existing controller reserved fresh production build7/a2 at20:03:30.507 and
+submitted exact run39489032255/attempt1 at20:05:39, source=control719. Preflight
+118856916927 passed. Native test job118857282586 is building for the full inventory
+on the MacBook VM/runner1042; this is local execution, not hosted-fallback credit.
+One bounded read-only native Actions watch21551/Python99225/GH99235 started20:07:54,
+with its exact start record under production2-a2-native-run-watch. Reconcile that
+watch before any replacement; workflow success alone cannot establish receipt2.
+No new campaign request, rerun, manual source/lease/cursor write or reused build occurred.
+
+Separately, a fresh225808ms independent reviewer cleared the concrete Mini INERT
+T4a installation only. Root fulfilled its six mechanical conditions and invoked
+once19:55:42 to19:56:03; exec79308 exited0 with empty stderr. Exact installed
+readback SHA is c1eaa35e920ba7b14c9ace3d0fa375748ec6f45cc2ea4e19933ba1b51948cabb:
+1721 tracked blobs,181 imports,3154 locked regular files,50 safe internal links and
+385 directories. Independent verificationa028228717c86468441c80fe347f6d7dc7a8fc05a86faca52356f94dab9593b8
+joins the full source/dependency/directory inventory and all13 successful commands.
+The fixed target/stage/journal now exist and must never be rematerialized/reinvoked.
+This did not activate T, run a T CLI or change workers/controller/config/epoch.
+Live runtime remainsF65. Root's first readback classifier mistakenly expected a
+subprocess completion for Python chmod phase07; corrected read-only classification
+used the unchanged source and final locked manifest, without remote replay or edits.
+
+Consumer577 integrated actual719 mechanically to8eac594d1ef3397ac91a689b7b9e310d44bf39e4.
+Ten reviewed payload files are unchanged; the original82886ms independent review
+validates without another turn. Twelve focused delta checks passed; final single
+CI wait14348 passed six checks plus the expected draft conventions skip. It remains
+DRAFT, unlabelled and auto-merge off. Its actual main merge activates GitHub's T
+controller, so the concrete coherent Mini/GitHub operation still requires quiet
+post-production-receipt guards and fresh operational review before release.
+
+The final unbound normal-proof/caller packet1eab9b78 has21 focused passing cases,
+38 assertion-killed guards and one classified redundant fail-closed survivor.
+It preserves exact nanosecond log timing and explicitly unknown Mini process start,
+using only a bounded activation-to-observed-idle attribution interval. The fixed
+context must stay under60 seconds before every effect;180-second expiry is not an
+execution allowance. An actual read-only timing benchmark or separately reviewed
+immutable-cache derivative remains necessary. No controller operational review,
+family activation or normal-proof clearance is claimed. Name/stat-only retained-F
+preinventory completed20:10:06 with no unknown noncode paths or regular hardlinks;
+no file contents or credential stores were read. All four original353b phases stay
+spent. Source packets and current facts are archived in the private campaign checkpoint.
+No source tests were repeated for this records-only continuation.
