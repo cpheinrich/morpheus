@@ -1397,3 +1397,9 @@ owned-process guardian and native JSON execution mechanics rather than vendoring
 its app identities or PR-only recovery lifecycle. Git blob reads and compact test
 proofs avoid the Contents API's 1 MiB response behavior and repeated full native
 inventories in hot state.
+
+**Wait for explicit internal beta readiness before promotion — 2026-10-20.**
+VALID processing may precede TestFlight beta readiness. Preserve the accepted
+upload while waiting and use the existing bounded diagnosis. Reuse the current
+controller state machine and Apple state vocabulary; this domain-specific guard
+needs no generic retry package or dependency.
