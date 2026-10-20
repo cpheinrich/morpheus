@@ -27,7 +27,7 @@ wall-clock bound and does not repair pre-existing guardian cleanup behavior.
 Source landing does not authorize adoption in the frozen consumer runtime; that
 requires a separate quiet-host operational review.
 
-The new tests use real Controller-prepared repair state, GitHubStore CAS,
+The new tests use repair state prepared through real domain transitions, GitHubStore CAS,
 nonforce single-parent FakeGitHub writes, the synthetic native login/model ABI
 and the unchanged real Python guardian. Only Date is virtual. Quota latency is
 modeled in the fake reader; additional login/admission elapsed time is injected
@@ -50,7 +50,8 @@ All ten targeted mutations were killed by relevant assertion failures, not
 transform errors: original early anchor, cached CAS clock, claim quota guard,
 self/other expiry equality, post-ACK quota guard, execution-headroom equality,
 returned owner/fence guard, fenced error cleanup and lease margin. Private
-results: `/tmp/worker-lease-mutants-01a1591a.json`; individual failure logs are
+results: `/tmp/worker-lease-mutants-01a1591a.json`, SHA-256
+`83d841e7659d1629b1d64007eaf32455fcf725413b89f879364c80c375b3a0e1`; failure logs are
 retained beside it. The source was restored before final checks. Quota-reader
 TS/Python, model guardian, schema, package/lock and configuration are unchanged.
 Both model guardian copies retain SHA-256
