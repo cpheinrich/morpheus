@@ -288,3 +288,29 @@ The old quota-timeout blocker string remains historical on the pending intent;
 it does not override the actual testing state or authorize a manual cleanup.
 Full native qualification, upload, exact internal receipt and separately
 external distribution remain pending: campaign **0/8**.
+
+## Fresh controller process continues the same full run
+
+After initial controller PID 33443 exited successfully, the real five-minute
+timer started distinct PID 38922 as launchd run 2. At 11:25:27 UTC its actual
+tick output found the existing staging a1/build 19/run 39413736198. A separate
+GET-only ledger read at 11:25:59 UTC confirmed exactly one attempt and the
+same dispatch effect, run attempt, reservation, source/control/configuration,
+epoch, original f6 lineage, slot, debt and deadline. Both complete holds and
+all paid fields except legitimate local telemetry remained equal. The joined
+proof SHA-256 is
+`6fd2f78d6d5945f1958e0b0aca136f7168758308f12decd30fdd0f3095292887`;
+the new ledger read is
+`82f997d3ca9a8107fd17a9cd491987ed4e54b07ef88a9e47b6aa3d676327bddd`.
+This proves ordinary fresh-process continuation after dispatch without
+duplicate allocation. No controller crash signal or physical power-off was
+performed or claimed.
+
+GitHub GET at 11:27:22 UTC confirms build-for-testing passed and the actual
+full unit/UI test step has been running since 11:21:09 UTC, with no failed
+steps at that read. Proof SHA-256 is
+`d6a27999cd63ffa6916483fb1e3c7bc9a0341698d983623e0c777d10f89a9942`.
+Full outcome, exact internal receipt and all eight campaign deliveries are
+still outstanding. Reviewed drafts #566 and #571 stay held. New source draft
+#573 has only provisional combined-fixture verification; its first fresh
+source review waits for #566's actual main merge and integrated checks.
