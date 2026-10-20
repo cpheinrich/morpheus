@@ -1614,6 +1614,9 @@ practical (screenshots otherwise), and a "what to test" list. The author attache
 PR under `## Visual evidence`; `check pr` verifies either a stable GitHub attachment reference or an
 HTTPS URL under a repository-approved `allowedUrlPrefixes` location. External locations are exact
 path prefixes, so approving one bucket on a shared provider does not approve every bucket there.
+Approved `storage.googleapis.com` media may include one `authuser=<email>` selector to
+honor the Google-link account policy. Other queries, including signed URLs and duplicate or
+numeric account selectors, remain refused; other providers still require query-free URLs.
 The check does not fetch the URL, classify its pixels, or claim it meaningfully demonstrates the
 UI. The author captures the final build and the independent reviewer opens and inspects the
 evidence; missing or inaccessible required captures leave review incomplete. Recording is a

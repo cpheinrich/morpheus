@@ -114,12 +114,18 @@ const HTTPS_URL = /https:\/\/[^\s)<>"']+/gi;
 function matchesAllowedPrefix(value, prefixes) {
     try {
         const candidate = new URL(value);
+        const query = [...candidate.searchParams];
+        // Google links pin an account by email; this selector does not sign or expire the media.
+        const accountSelector = candidate.hostname === "storage.googleapis.com"
+            && query.length === 1
+            && query[0][0] === "authuser"
+            && z.email().safeParse(query[0][1]).success;
         return prefixes.some((prefix) => {
             const allowed = new URL(prefix);
             return candidate.protocol === "https:"
                 && !candidate.username
                 && !candidate.password
-                && !candidate.search
+                && (!candidate.search || accountSelector)
                 && !candidate.hash
                 && candidate.origin === allowed.origin
                 && candidate.pathname.startsWith(allowed.pathname)
