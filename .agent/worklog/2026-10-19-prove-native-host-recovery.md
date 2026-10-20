@@ -995,3 +995,48 @@ preserves these limits. All original four lifecycle phases remain spent; live
 F65/config7301/epochd585 remain unchanged. Actual Codex account allowance65% remaining;
 ordinary usage allowed, no reset/API/extra-usage fallback. Below30% delegate
 substantive work to Claude Opus and preserve10% Codex reserve.
+
+
+## Normal owned completion and actual internal availability — October20 18:47UTC
+
+Existing work4/i1 returned repaired without a source-adoption PR and ended through
+its own normal fenced worker-ended transaction at18:38:38.972, complete/unleased.
+It preserved sourcee623/a3/build21/full tests/accepted bytes. Actual ledger
+82c5a869 at18:39 proves that handoff; stale quota blocker text is historical,
+while the current action is observe-exact-apple-build. No raw tick/hold bypass,
+manual state transition, runtime replacement, interruption or reupload occurred.
+Morpheus438 merged4a664c5b at18:31:10 after independent review/CI, and Evo578
+merged4ff2e8d2 at18:34:52 after its independent operational review and final CI
+reruns. Both merges predate the first receipt and cannot be between-build credit.
+The optional Vercel status on578 failed; all final check runs passed/legitimately
+skipped. Source repair is distinct from deployed runtime, which remainsF65.
+
+Four actual18:31 captured process births were ESRCH and their three known PGIDs
+were twice empty at18:40:45. This is captured-birth/group evidence, not universal
+historical startup/quota/privateSID/arbitrary-detach closure. A preliminary header
+check refused nonexistent PROC_SESSION_ONLY before kernel reads; SDK type3 is
+TTY, and was never queried as a session. Corrected PGID-only proofc359bba8d12c
+retains that limitation. The single filesystem-event result watcher83796 completed;
+its actual result and events archive2640bc4af199 preserves the supported handoff.
+
+Normal controller observation18:43:56 reached READY_FOR_BETA_TESTING and resumed
+promotion without another reported error. Root's independent GET18:47:29 confirms
+staging1.0(21) VALID/unexpired/IN_BETA_TESTING, exact internal group membership and
+three testers; Apple proofb19159c84500e5e82c7e7a9775b767aaa117fb0e16bba727c68a7a173c93ac87.
+External state is READY_FOR_BETA_SUBMISSION, so existing external follow-up remains
+pending. Actual availability is now established, but campaign credit remains0/8
+until the normal immutable receipt is committed and independently joined.
+
+The new native repair reservation is actually retained:5USD under
+evo-apple-readiness-s4-20261020, alongside prior uncertainty and staging5USD.
+Spent1.982828USD plus reserved10.515115USD gives maximum known liability12.497943USD,
+within250USD; no reservation was falsely settled. Production compatibility stays
+UNKNOWN after the earlier native403. Existing production CD preflight has a strict
+GET-only verifier with legitimate CI credentials, so no blind production deployment
+or invented readiness gate was added. A source-only conditional fallback plan is
+retained for an actual preflight defect.
+
+Reviewed566 is held at77318f1e03b92dda680724a06d35908f1befab5f after mechanical
+actual4ff2 integration; all nine original reviewed blobs remain unchanged.29focused
+checks and7/7CI pass, DRAFT/automergeOFF. Root will release only after the immutable
+receipt and merge strictly later before the existing production2 request.
