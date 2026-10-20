@@ -3327,7 +3327,10 @@ single-parent nonforce updates and per-invocation ownership. Compact verified
 test proofs reference hashed native artifacts. Upload and group operations have
 durable claims; actual provider receipts complete the original obligation.
 Bounded subscription workers retain immutable tasks, session checkpoints and
-actual quota telemetry. App-only repairs reset production age; unchanged input
+actual quota telemetry. Hosted Claude admission joins shared and explicitly
+configured model-family windows; missing capacity remains a budget wait rather
+than silently treating an exhausted or unavailable model as healthy. App-only
+repairs reset production age; unchanged input
 digests retain their first lineage age through controller repairs. These are
 implementation properties, distinct from real consumer rollout acceptance.
 An explicitly human-authorized manual validation request may waive source age

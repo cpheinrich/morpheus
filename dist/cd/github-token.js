@@ -51,9 +51,11 @@ export async function githubToken(environment, revoke = false, fetcher = fetch) 
     // The workflow must already exist on default branch. Do not bypass the provider's check.
     invariant(exchange.ok, `Claude GitHub App exchange HTTP ${exchange.status}; verify installed App and reviewed default-branch workflow`);
     const result = await exchange.json();
-    const token = result.token ?? result.app_token;
-    invariant(token && /^[A-Za-z0-9_]+$/.test(token), "App exchange omitted a valid token");
-    console.log(`::add-mask::${token}`);
+    const token = result.token || result.app_token;
+    invariant(typeof token === "string" && token.length > 0, "App exchange omitted a token");
+    // Provider credentials are opaque; reject output/header injection, not new token formats.
+    invariant(/^[\x21-\x7e]+$/.test(token), "App exchange token is not a single-line printable credential");
+    console.log(`::add-mask::${token.replaceAll("%", "%25")}`);
     await appendFile(environment.GITHUB_OUTPUT, `token=${token}\n`, { mode: 0o600 });
     return { created: true, expiresAt: result.expires_at, requestedPermissions: repairTokenPermissions, ...(result.permissions ? { grantedPermissions: result.permissions } : {}) };
 }

@@ -402,6 +402,7 @@ export interface QuotaSnapshot {
         resetsAt: string;
     }[];
     source: string;
+    model?: string;
 }
 export interface CdEvent {
     id: string;
