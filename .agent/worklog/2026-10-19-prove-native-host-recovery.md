@@ -1545,3 +1545,47 @@ parents and spent operations; it grants no live authority. New docs taskEV16.17.
 has draft582 for the two internal groups/empty production external tester list.
 Its review/CI and root merge AFTER actual S3 receipt remain pending; it is an
 ordinary next-source option while optional runtime rollout remains held.
+
+
+## Prepared next source and preserved observation failures — October20 23:50UTC
+
+Docs582/sourceb91, basec61, received one fresh independent small-risk review
+/root/empty_external_group_review582, under root-global author provenance. It
+cleared without findings in actual133659.411125ms (schema whole133659ms,
+2.22765minutes); raw timing and report remain private. A first failed spawn hit
+thread capacity before any reviewer started; the author completed normally to
+free a slot, and that attempt is not fabricated as a review. Finald06abed0 changes
+only its worklog after coveredb91, preserves all five payload blobs, validates the
+record before push and passes final CI69629 (5effectivePASS/1expecteddraftskip;
+raw6check-runs retain two duplicate prSKIPs plus one Vercel statusSUCCESS).
+Archive56cadec0 retains the packet/raw CI/record. It stays unlabelled draft/off;
+root must wait for the actual S3 receipt, then run fresh ready conventions and
+protected merge STRICTLY later before the ordinary P4 request. No optional
+runtime rollout is a reason to delay that ready ordinary path.
+
+Two bounded MacBook GitHub observers,52975 then20234, exited on network/TLS
+errors rather than a workflow conclusion. Both exact handles are reconciled and
+never restarted. A fresh recovered read23:37 confirmed the same owned S3run still
+in progress. Changed approach to Mini: native-profile GET returned404 before any
+watch started; the existing credential wrapper then refused GitHub lookup before
+the remote Python program started. These are retained failed observations, not
+missing-build proof or authorization to copy tokens/stores or modify access.
+Current ONLYobserver8716 is native credential-free filesystem events on normal
+Mini output, bounded3h, no GitHub/provider polling or CD invocation. Initial
+23:45:42/headb271/errors[] still reports S3testing. It exits on an actual normal
+intent-state change; a projection does not earn native or internal delivery credit.
+
+New private dispatch-guard derivatives close the static post-read/pre-dispatch
+freshness seam on the same sealed phase context, with exact remaining timeout and
+no resealing/spent-claim reuse. Actual offline25tests pass;29of30mutants are
+assertion-killed, one classified redundant fail-closed survivor, none unclassified.
+Five default entrypoints refuse UNBOUND;28parent artifacts remain unchanged.
+Root authenticated44references and archived212new-prefix artifacts in fe04d345,
+including the initial wrong-fixture graph/startup timeout/v3 without credit. This
+is source preparation only: actual timing, full operational manifest/installation,
+Python/ancestor/credential trust, actual post-S3 quiet receipt and independent
+operational review remain unbound; no cutover or helper operation occurred.
+The existing hourly heartbeat remains ACTIVE on this chat, same cadence/name;
+its prompt now follows the current observer kind and says the real A-under-B
+probe is already proved and must not be repeated. Still2of8, six real deliveries
+and remaining actual recovery observations before the later CTO skill.
