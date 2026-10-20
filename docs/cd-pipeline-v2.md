@@ -388,8 +388,15 @@ work. Manual requests and simulated clocks cannot substitute for this proof.
 
 Two VM slots may run independent source tests in parallel. Signing and Apple
 identities remain serialized by global reservation/operation ownership where
-required. Production validation uses genuinely aged sources, not backdated
-commits. Monitor disk capacity, quota, API rate limits and task spend throughout.
+required. Production validation normally uses genuinely aged sources, never
+backdated commits. A human may explicitly waive waiting for an accelerated
+campaign: each manual validation request records the actual authorization and
+exact verified main source using the [per-intent source-age waiver](cd-v2-controller.md).
+Chris authorized this exception for Evo's eight-delivery campaign on 2026-10-19,
+with real internal TestFlight delivery and main changes between successive builds.
+Automatic cadence, production age and all completion/fault evidence remain the
+normal policy; the waiver does not manufacture scheduled-boundary evidence.
+Monitor disk capacity, quota, API rate limits and task spend throughout.
 
 After acceptance, document remaining limitations honestly, leave the schedules
 active, and write the reusable Agentic CTO skill in Morpheus. Its contract takes
