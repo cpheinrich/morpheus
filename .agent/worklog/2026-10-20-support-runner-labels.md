@@ -75,10 +75,7 @@ checkouts retain their generated reconciliation edits for guarded later cleanup.
 
 ## Independent review and release
 
-Independent source review conditionally cleared RL439-001; the author extended
-the control-character guard through C1 and proved the four new actual-script
-regressions fail on the old guard. All required focused and source-fix CI checks
-pass. This is source clearance only, with no runner, cancellation or delivery credit.
+Independent source review conditionally cleared RL439-001; the author extended the control-character guard through C1 and proved the four new actual-script regressions fail on the old guard. All required focused and source-fix CI checks pass. This is source clearance only, with no runner, cancellation or delivery credit.
 
 Root launched one fresh no-history reviewer `/root/runner_labels_review439`.
 Its full raw report is retained under campaign private evidence
