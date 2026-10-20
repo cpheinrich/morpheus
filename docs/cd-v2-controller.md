@@ -300,6 +300,25 @@ Adopting the source in a pinned native worker runtime is a separate reviewed
 quiet-host operation; source tests do not establish actual host quiescence or
 quota readiness.
 
+Worker claim clocks start after quota and login admission, inside each CAS
+transition attempt rather than at worker entry. An accepted attempt uses that
+clock for ownership/competing-reservation expiry checks, `invocations.startedAt`
+and the unchanged `agentMinutes + 2` lease duration. A CAS conflict recomputes
+the clock and validates the same measured quota again; transaction event `at`
+continues to identify when the transaction was requested. No source, slot, debt,
+deadline policy or operational cursor is reset by claiming work.
+
+After acknowledgment, quota age/window expiry is checked once more before
+launch, without another account read or any cached fallback. A failed check
+uses the existing fenced error checkpoint to release only this unstarted
+invocation's lease; a changed owner/fence is preserved. The returned claim must
+also still name this owner/fence and have strictly more time remaining than the
+configured agent duration; equality is refused without extending or renewing it.
+Claim write/acknowledgment and post-check process setup still consume lease margin,
+and unchanged guardian teardown can exceed that margin under load. The correction
+gives no universal completion/quiescence bound and does not extend the 45-minute default execution
+budget, the five-minute quota TTL or the 30-second nonoverlapping meter.
+
 Hosted Claude can read its authorized OAuth usage endpoint with five-minute cache
 and 429 backoff. Failed reads report the HTTP status, an allowlisted provider error
 category and a fixed hint when the response names the `user:profile` scope. They
