@@ -1515,3 +1515,33 @@ Mini/GitHub controller runtime cutover. That requires its separate exact manifes
 fresh independent operational review and quiet gate after the next receipt.
 Six full deliveries, remaining actual recovery observations and the later reusable
 CTO skill are still outstanding. No new source tests were run for this worklog.
+
+
+## Third delivery's normal full run — October20 23:23UTC
+
+Existing controller dispatched S3a1 at23:12:03.302, reserving/burning staging22
+once. Immutable ledgerc7dda64e/23:16:11 binds run39513637421/1, source/control7b69,
+app6819097182/version1.0, inpute4173ebd/config7301. Exact tagged control ref, owned
+effect/run title, workflow390093510 and complete unique initial jobs census are
+read back: preflight passed; full native job118940668472 began23:15:15 on local
+runner1058. This is not hosted fallback or delivery3. Preservation proof8b8d9506
+retains both immutable receipts, all five earlier burned reservations, both full
+ordinary holds and paid/epoch/config. Its first pure comparison wrongly required
+an entire app reservation scope to stay unchanged across the normal new22
+allocation; the failed assertion and corrected exact-one-reservation delta are
+retained, with no production effect. Normal file event watch39463 completed once
+23:14:10/exit0, never restarted. The ONE new bounded native GitHub watch52975
+(supervisor48240/gh48270) follows this exact run, and must be reconciled before any
+replacement. Current main normally advanced to c61/#556 after selected7b69; no
+source flip, cancellation or duplicate request follows from that newer main.
+
+Separate source tracing confirmed pre-fence and first post-source contexts have
+independent clocks, so intervening actual merge/conditional review need not fit a
+single minute. It also identified a real static guard gap: frozen helper effects
+could follow blocking reads without a final fixed-context freshness check at
+transport dispatch. No cutover was attempted. A new private offline derivative
+is being prepared to enforce the existing strict bounds, preserving all frozen
+parents and spent operations; it grants no live authority. New docs taskEV16.17.27
+has draft582 for the two internal groups/empty production external tester list.
+Its review/CI and root merge AFTER actual S3 receipt remain pending; it is an
+ordinary next-source option while optional runtime rollout remains held.
