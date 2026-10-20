@@ -433,3 +433,33 @@ pre-compaction full reads; the current receipt was renewed after checking them.
 Actual account allowance is ordinary-eligible with 80% remaining. No prepaid
 credits, reset, external message, live service effect or acceptance claim was
 made by these preparations. No tests were rerun for this worklog-only update.
+
+The separate controller preparation stopped with 19 offline fixture checks and
+nine killed guard mutants. Its production apply path intentionally refuses:
+actual consumer merge E, installation/dependency proof, a usable controller
+quiescence gate and fresh operational review are still missing. The packet
+SHA-256 is `cf578df844e33ee457a3dbea1e3c2ce457571e310f9bff50dbb2859c0ce2f973`.
+A GET-only Mini process-image diagnostic at 13:03 found permanent unrelated
+Node/Python/Bash/CI services; those cannot be stopped or treated as controller
+children to satisfy an all-candidate-zero fixture guard. Local primary help
+documents a suspended-start option, but its exact raced-process behavior and
+the later controller-only operation remain unproved. No service action followed.
+
+Receipt-verification preparation also corrected an ambiguous shorthand:
+`test-iterations: 3` in the existing shared workflow means up to three attempts
+for failing tests, not three complete clean full-suite passes. The canonical
+design preserves full inventory and actual results; it does not impose the
+latter new requirement. Exact source has no skip exceptions and the active
+config allows no skips. Acceptance requires every discovered test's final pass,
+preserving actual retries and recovered-after-retry telemetry. Neither a retry
+setting nor condensed results can prove three clean runs. No test policy was
+changed and the current run was not restarted. The verification plan uses small
+existing qualification/acceptance artifacts and existing local verifiers; root
+corrected its draft collector name/interface against the actual GET-only code.
+No recording or tick command is an independent verification probe.
+
+The native watch's actual 13:11 update still shows unit/UI testing; no full result
+or receipt is inferred. The approved hourly continuation remains active with an
+updated pointer-based prompt, the same cadence and meaningful-change-only
+updates. It preserves held source gates and the distinction between preparation
+and acceptance. The campaign remains **0/8**.
