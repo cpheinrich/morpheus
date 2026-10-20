@@ -80,6 +80,19 @@ describe("Apple transport and exact identity readback", () => {
     expect((await adapter.external(receipt, [], now)).review).toBeUndefined(); failure = 403; await expect(adapter.external(receipt, [], now)).rejects.toThrow("unavailable");
     await expect(new AppleAdapter(apple(() => ({ data: { id: "external", attributes: {} } }))).group("external")).rejects.toThrow("identity/type");
   });
+  it.each([
+    { internal: false, value: null, expected: false },
+    { internal: false, value: undefined, expected: false },
+    { internal: false, value: false, expected: false },
+    { internal: false, value: true, expected: true },
+    { internal: true, value: null, expected: true },
+    { internal: true, value: undefined, expected: true },
+    { internal: true, value: false, expected: false },
+    { internal: true, value: true, expected: true },
+  ])("interprets optional all-build access for internal=$internal value=$value", async ({ internal, value, expected }) => {
+    const adapter = new AppleAdapter(apple((_method, path) => path.includes("relationships/") ? { data: [] } : { data: { id: "group", attributes: { isInternalGroup: internal, ...(value === undefined ? {} : { hasAccessToAllBuilds: value }) }, relationships: { app: { data: { id: "123", type: "apps" } } } } }));
+    expect(await adapter.group("group")).toEqual({ id: "group", appId: "123", internal, automaticDistribution: expected, buildIds: [], testerIds: [] });
+  });
 });
 
 describe("Actions and actual evidence bytes", () => {

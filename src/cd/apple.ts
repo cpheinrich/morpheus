@@ -52,7 +52,12 @@ export class AppleAdapter {
     invariant(group.id === groupId && typeof group.attributes?.isInternalGroup === "boolean", "Beta group identity/type is missing or mismatched");
     const members = await applePages(this.api, `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/betaTesters?limit=200`);
     const assigned = await applePages(this.api, `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds?limit=200`);
-    return { id: group.id, appId: groupApp && !Array.isArray(groupApp) ? groupApp.id : "UNKNOWN", internal: group.attributes?.isInternalGroup === true, automaticDistribution: group.attributes?.hasAccessToAllBuilds !== false, buildIds: assigned.data.map(item => item.id), testerIds: members.data.map(item => item.id) };
+    const internal = group.attributes?.isInternalGroup === true;
+    // Apple documents this attribute as optional and real external groups return
+    // null. Internal promotion still requires explicit false; external groups
+    // reject affirmative all-build access without inventing it from absence.
+    const automaticDistribution = internal ? group.attributes?.hasAccessToAllBuilds !== false : group.attributes?.hasAccessToAllBuilds === true;
+    return { id: group.id, appId: groupApp && !Array.isArray(groupApp) ? groupApp.id : "UNKNOWN", internal, automaticDistribution, buildIds: assigned.data.map(item => item.id), testerIds: members.data.map(item => item.id) };
   }
   async maximum(appId: string, version: string): Promise<string> {
     const builds = await applePages(this.api, `/v1/builds?${filter({ "filter[app]": appId, "filter[preReleaseVersion.version]": version, "fields[builds]": "version", limit: "200" })}`);

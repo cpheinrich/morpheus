@@ -54,3 +54,14 @@ not erase or retry a completed rejection; subsequent builds proceed, and separat
 owned provider resolution is observed without rewriting claims. Removed the dead
 transport-specific 429 rejection check. Same-session independent follow-up is
 required before clearance; full initial findings/timing will be retained below.
+
+
+The same reviewer cleared F1–F4 on `31e5697` after running all 133 CD tests.
+During that invocation, actual consumer evidence arrived showing an external
+beta group's optional `hasAccessToAllBuilds` is null despite successful exact-build
+external availability. Apple's BetaGroup attribute documentation marks it optional
+and does not promise a false value for external groups. Corrected external handling
+to reject only affirmative all-build access while preserving internal explicit-false
+promotion requirements. Added all eight internal/external true/false/null/absent
+cases. This acceptance correction receives the remaining same-reviewer turn; no
+provider group was patched to satisfy a guessed contract.

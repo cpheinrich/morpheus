@@ -165,7 +165,10 @@ Declare `channels.<channel>.externalGroupIds` as a nonempty list of unique exist
 external groups, separate from internal and historical validation groups. Omitting
 it preserves previous configuration bytes, digest and internal-only behavior.
 Adding it changes configuration identity and requires the consumer's explicit
-lossless ledger migration. Keep upload-action distribution disabled when V2 owns
+lossless ledger migration. A later configuration migration also changes eligibility
+for pending external follow-ups; consumers must explicitly reconcile them first,
+including unresolved review claims, rather than silently abandon their observation.
+Keep upload-action distribution disabled when V2 owns
 these groups; do not introduce a second distribution writer.
 
 Only receipts qualified under the opted-in configuration digest enter external
@@ -181,7 +184,11 @@ Separate historical validation groups never enter this external path.
 
 Each observation joins the receipt's exact app/version/build ID to its beta detail,
 exact review submission and every declared external group's ownership, type,
-testers and build membership. Groups must disable automatic all-build access.
+testers and build membership. Explicit external all-build access is refused.
+Apple's optional `hasAccessToAllBuilds` can be null or absent for external groups;
+that does not assert automatic access. Internal groups retain the stronger explicit
+`false` requirement before upload and promotion. The core never patches a group
+to manufacture a value for this optional attribute.
 Availability requires `externalBuildState: IN_BETA_TESTING` and exact membership
 in every group; approval or another build's pending review is insufficient.
 Membership is added without removing existing builds. Auto-notify is enabled on
