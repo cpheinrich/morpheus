@@ -3330,6 +3330,11 @@ Bounded subscription workers retain immutable tasks, session checkpoints and
 actual quota telemetry. App-only repairs reset production age; unchanged input
 digests retain their first lineage age through controller repairs. These are
 implementation properties, distinct from real consumer rollout acceptance.
+An explicitly human-authorized manual validation request may waive source age
+for its one immutable delivery lineage. It records the approval reference and
+request time, requires an exact verified main source, and retains full native,
+upload and internal-group evidence. This exception never changes automatic slot
+selection, ordinary production age, configuration identity or operational cursors.
 
 Apps whose nightly release is dispatched from the Mac mini share one admission core,
 `src/ios/nightly-core.ts`, extracted from Evo's controller (darwin-health/evo #307, #309). It

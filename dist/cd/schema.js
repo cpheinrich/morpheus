@@ -4,6 +4,7 @@ export const sha = z.string().regex(/^[a-f0-9]{40}$/);
 export const digest = z.string().regex(/^[a-f0-9]{64}$/);
 export const decimal = z.string().regex(/^[0-9]+$/);
 export const timestamp = z.iso.datetime();
+export const sourceAgeWaiverSchema = z.object({ authorizationRef: z.string().trim().min(10), grantedAt: timestamp }).strict();
 const command = z.array(z.string().min(1)).min(1);
 const schedule = z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("six-hour") }).strict(),
@@ -59,6 +60,11 @@ export function parseState(value) {
             throw new Error("Incomplete durable delivery intent");
         if (intent.state === "delivered" && !intent.receipt)
             throw new Error("Delivered intent is missing immutable receipt");
+        if (intent.sourceAgeWaiver) {
+            if (!intent.validation)
+                throw new Error("Source-age waiver requires a validation intent");
+            sourceAgeWaiverSchema.parse(intent.sourceAgeWaiver);
+        }
     }
     return state;
 }

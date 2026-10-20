@@ -71,6 +71,23 @@ An older binary requires `--group` matching the channel's separate configured
 cursor, including later completions. Manual validation never advances the
 operational delivery cursor.
 
+When a human explicitly authorizes a validation campaign to bypass source age,
+request each delivery with `--validation --source EXACT_MAIN_SHA
+--source-age-waiver AUTHORIZATION_REF`. The reference identifies that actual
+approval; the flag does not grant authority itself. The exact source must already
+have verified main-history evidence. The intent permanently records the reference
+and request time, and only that validation lineage (including its reviewed
+repairs) bypasses source age. Status exposes the waiver for audit. It cannot be
+added, removed or rewritten after intent creation. Request the configured live
+internal group to deliver to real testers; a separate historical group remains
+necessary for a source older than the live cursor.
+
+This does not change configuration, scheduled source selection, production's
+24-hour default, full-test/upload/group gates or ordinary delivery cursors. Without
+the explicit flag, validation still observes source age. Cadence already permits
+successive manual validation requests; wait for the prior delivery's exact Apple
+receipt and merge the next intended main change before requesting another.
+
 The consumer delivery workflow accepts these dispatch inputs:
 
 ```
