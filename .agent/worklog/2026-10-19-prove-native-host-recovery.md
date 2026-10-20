@@ -369,3 +369,67 @@ lineage and debt. Proofs are respectively
 `c219792b942dce49b57428cec45399cd38b72d211456d428271f3d7356db96f3`
 and `0110a456ac7513ac368e17bf33f82d6dd0d919866a573729427e1285fb1124a1`.
 Native completion, upload and internal receipt remain outstanding: **0/8**.
+
+## Consumer admission pin reviewed; rollout preparation stays inert
+
+[Evo #574](https://github.com/darwin-health/evo/pull/574), separate task
+EV-26-10-20-05.37.05, coherently pins the consumer and nine workflow references
+to actual reviewed Morpheus merge c90de86. Its author ran 41 consumer checks
+with no skips, 31 Python checks and web typecheck. A fresh independent Opus
+session `3e653792-66e3-4937-8faf-67d24669133a` cleared source
+`9e420695cbdcac5b2b156300a654a948c0b19a92` without findings; the actual runner
+duration was 109469 ms, and independent execution confirmed all 41 consumer
+checks. Final record head `b2bda369cb7254967f29b68bac88f99e68942d2a` changes
+only its worklog after clearance. Local review validation passed. Its one
+final CI wait accepted six successful checks and one skipped check; the fresh
+raw readback contains eight accepted entries. Required conventions remain
+intentionally unreported for the unlabelled draft, so this is not a claim of
+mergeability. Draft status and auto-merge off were verified.
+
+Root read and archived the readiness, compatibility, independent report and
+actual timing/result evidence. The private archive manifest SHA-256 is
+`811988c0c4d6e62e908423fe6317fc3a07fd40d46147fe8d3cd247eb188773d1`.
+Raw config c24294f6, normalized configuration 7301b9aa and all eight compared
+shared signing/test/schema/worker/dependency scopes remain unchanged. Neither
+this review nor the existing unchanged CLI/tick entry hashes prove that a host
+has adopted the changed imported controller. Both live runtimes remain f65.
+
+Root keeps #574 held for a later quiet gap after a real receipt. Merging it
+changes the GitHub controller immediately; coherent Mini adoption and drainage
+of old GitHub controller runs must precede another request or hosted-fallback
+credit. A separate private controller-only renderer/operator is being prepared
+with no live effects. The old lifecycle's four phases are spent. No phase,
+worker interruption, migration or old-family edit is authorized by this new
+preparation. The local launchctl documentation does not establish that disabling
+an already loaded interval service prevents another start. An idle read alone
+cannot prove the changeover atomic; exact one-label interruption, foreground
+process-group semantics and positive post-stop quiescence need their own fresh
+operational review. Preparation must retain that boundary honestly.
+
+The upload-loss source draft #573 currently binds its selector to f65. Blindly
+combining it with #574 would refuse upload preparation. Its first fresh source
+review therefore waits for actual #566 and #574 main integration, a coherent
+c90 selector, and relevant checks. The intended serial order is first receipt,
+then post-receipt #566 merge and production request promptly; the pin rollout
+can occupy the next quiet receipt gap, with #573 completed during a later
+in-flight build. Optional wiring must not hold an otherwise ready next request.
+The production tester list remains unchanged and every build targets both
+configured internal and external groups.
+
+After three unchanged workflow-phase reads, root changed to one bounded native
+read-only GitHub watcher at 12:47:36 UTC for run 39413736198. Its private start
+record identifies PID 70766, tool session 41727 and a four-hour ceiling. It
+cannot cancel or rerun the workflow. Its eventual success means only workflow
+completion, until actual full qualification and exact internal receipt are
+joined. No duplicate watcher or build was started. The last provider read
+remains the 12:31 testing observation; **0/8** remains the accepted count.
+
+The compact resume file was rebuilt at 12:58:50 UTC to point to current named
+checkpoint sections and immutable proofs rather than repeat historical state.
+MCP transport is closed again, and its previous f65 graph generation predates
+the c90 trunk merge; exact source, Git blobs and independent reviews provide
+the disclosed fallback. Required context records are byte-identical to their
+pre-compaction full reads; the current receipt was renewed after checking them.
+Actual account allowance is ordinary-eligible with 80% remaining. No prepaid
+credits, reset, external message, live service effect or acceptance claim was
+made by these preparations. No tests were rerun for this worklog-only update.
