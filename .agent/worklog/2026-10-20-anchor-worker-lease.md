@@ -65,4 +65,41 @@ source. Exact D/task source is authoritative; the new worktree has no own index.
 No reindex, global CLI/config or device change was performed for this task.
 
 The PR stays draft, auto-merge off and unmerged until the root source gate.
-Fresh independent review and final CI are pending.
+Fresh independent source review cleared the exact source head; final CI is pending.
+
+
+The collaboration runner had no free session slot (including a pending host
+session). The existing delegation bridge was inspected: its old completed quota
+review belongs to another worktree and was not resumed. Codex had 71% allowance,
+above the user's 30% routing threshold. One fresh native Codex CLI read-only
+session used `--ignore-user-config`; actual new thread
+`01a159fc-ece2-73b2-a2af-fd43feeb38a8` reviewed only this task. The reviewer did not
+spawn subagents, rerun unchanged tests, edit files or perform live effects. MCP
+startup warnings did not prevent the review. GitHub was inaccessible inside its
+read-only sandbox, so it inspected the saved PR body/metadata and source packet;
+the author performs the final actual GitHub readback. There was one high-risk
+initial turn, no findings or follow-ups, with 30-minute ceiling and measured
+101,071 ms including startup/tools/completion (not the reviewer's estimate).
+
+Fresh native Codex source review cleared the worker lease correction with no findings. The reviewer inspected CAS retries/replay, quota expiry, returned lease headroom, fenced cleanup, generated output and all ten mutation logs. Final CI and quiet-host runtime adoption remain separate gates.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "24ba8b1a909bbe994d46b3d8a1b5abdf96f53276",
+  "reviewed": "4aaac171d3819c78bc50c48ed11dee97998391f2",
+  "covered": "4aaac171d3819c78bc50c48ed11dee97998391f2",
+  "authorSession": "01a1591a-d9b3-7890-b35a-93c8ae2a15d7",
+  "reviewerSession": "01a159fc-ece2-73b2-a2af-fd43feeb38a8",
+  "risk": "high",
+  "elapsedMinutes": 1.6845166666666667,
+  "timing": {
+    "source": "clock",
+    "durationMs": 101071,
+    "evidence": "Fresh native Codex CLI invocation, thread 01a159fc-ece2-73b2-a2af-fd43feeb38a8, captured startedAt 2026-10-20T15:45:09.691810Z and endedAt 2026-10-20T15:46:50.762898Z; measured 101071 ms including startup, tools and completion. Private timing /tmp/worker-lease-review-native-01a1591a.timing.json; exit 0."
+  },
+  "outcome": "complete",
+  "summary": "Fresh native Codex source review cleared the worker lease correction with no findings. The reviewer inspected CAS retries/replay, quota expiry, returned lease headroom, fenced cleanup, generated output and all ten mutation logs. Final CI and quiet-host runtime adoption remain separate gates.",
+  "findings": []
+}
+```
