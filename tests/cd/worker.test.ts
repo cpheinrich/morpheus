@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { QuotaReader, normalizeClaudeQuota, runWorker, scheduleHosted } from "../../src/cd/worker.js";
-import { after, repairWork } from "../../src/cd/state.js";
+import { after, quotaUsed, repairWork } from "../../src/cd/state.js";
 import { GitHubStore } from "../../src/cd/store.js";
 import { githubToken } from "../../src/cd/github-token.js";
 import { config, now, prepared } from "./fixtures.js";
@@ -16,6 +16,39 @@ describe("actual quota telemetry", () => {
   it("normalizes actual utilization and rejects unknown/expired usage", () => {
     expect(normalizeClaudeQuota({ five_hour: { utilization: 42, resets_at: after(now, 30) }, seven_day: { utilization: 61, resets_at: after(now, 200) } }, now).windows.map(window => window.usedPercent)).toEqual([42, 61]);
     expect(() => normalizeClaudeQuota({}, now)).toThrow("no valid"); expect(() => normalizeClaudeQuota({ five_hour: { utilization: 0, resets_at: now } }, now)).toThrow("no valid");
+  });
+  it("joins shared limits to the configured Opus bucket without unrelated model exhaustion", () => {
+    const raw = { five_hour: { utilization: 42, resets_at: after(now, 30) }, seven_day: { utilization: 61, resets_at: after(now, 200) }, seven_day_opus: { utilization: 79, resets_at: after(now, 200) }, seven_day_fable: { utilization: 100, resets_at: after(now, 200) } };
+    const snapshot = normalizeClaudeQuota(raw, now, "opus");
+    expect(snapshot.model).toBe("opus"); expect(snapshot.windows.map(window => window.id)).toEqual(["five_hour", "seven_day", "seven_day_opus"]); expect(quotaUsed(snapshot, now)).toBe(79);
+    expect(quotaUsed(normalizeClaudeQuota(raw, now), now)).toBe(100);
+    expect(quotaUsed(normalizeClaudeQuota({ ...raw, seven_day_opus: { ...raw.seven_day_opus, utilization: 100 } }, now, "claude-opus-4-6"), now)).toBe(100);
+    expect(quotaUsed(normalizeClaudeQuota({ ...raw, five_hour: { ...raw.five_hour, utilization: 100 } }, now, "opus"), now)).toBe(100);
+  });
+  it("does not turn absent, null, invalid or expired model limits into zero usage", () => {
+    const shared = { five_hour: { utilization: 20, resets_at: after(now, 30) }, seven_day: { utilization: 30, resets_at: after(now, 200) } };
+    for (const bucket of [undefined, null, { utilization: null, resets_at: after(now, 20) }, { utilization: 0, resets_at: now }]) {
+      expect(() => normalizeClaudeQuota({ ...shared, seven_day_opus: bucket }, now, "opus")).toThrow();
+    }
+    expect(() => normalizeClaudeQuota({ seven_day_opus: { utilization: 0, resets_at: after(now, 20) } }, now, "opus")).toThrow("required");
+    expect(() => normalizeClaudeQuota(shared, now, "unknown-model")).toThrow("known quota family");
+  });
+  it("reads and caches telemetry for the explicit configured model", async () => {
+    const cfg = config(); cfg.agents = { local: { command: ["codex"] }, hosted: { command: ["claude"], model: "opus", workflow: "repair.yml", ref: "main" } };
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ five_hour: { utilization: 20, resets_at: after(now, 60) }, seven_day: { utilization: 30, resets_at: after(now, 200) }, seven_day_opus: { utilization: 40, resets_at: after(now, 200) }, seven_day_fable: { utilization: 100, resets_at: after(now, 200) } })));
+    const reader = new QuotaReader(cfg, "hosted", "/unused", { CLAUDE_CODE_OAUTH_TOKEN: "fake-test-token" }, fetcher);
+    const snapshot = await reader.read(now); expect(snapshot.model).toBe("opus"); expect(quotaUsed(snapshot, now)).toBe(40);
+    expect(await reader.read(after(now, 4))).toBe(snapshot); expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it("requires a telemetry file to attest the configured model", async () => {
+    const directory = await temp(), path = join(directory, "usage.json"), cfg = config();
+    cfg.agents = { local: { command: ["codex"] }, hosted: { command: ["claude"], model: "opus", workflow: "repair.yml", ref: "main", quotaFile: path } };
+    const snapshot = { observedAt: now, source: "actual runtime", windows: ["five_hour", "seven_day", "seven_day_opus"].map(id => ({ id, usedPercent: 35, resetsAt: after(now, 200) })) };
+    await writeFile(path, JSON.stringify(snapshot)); const reader = new QuotaReader(cfg, "hosted", "/unused", {});
+    await expect(reader.read(now)).rejects.toThrow("configured Claude model");
+    await writeFile(path, JSON.stringify({ ...snapshot, model: "fable" })); await expect(reader.read(now)).rejects.toThrow("configured Claude model");
+    await writeFile(path, JSON.stringify({ ...snapshot, model: "opus", windows: snapshot.windows.slice(2) })); await expect(reader.read(now)).rejects.toThrow("required Claude runtime window");
+    await writeFile(path, JSON.stringify({ ...snapshot, model: "opus" })); expect(quotaUsed(await reader.read(now), now)).toBe(35);
   });
   it("caches actual OAuth observations for five minutes and backs off 429 without model calls", async () => {
     const cfg = config(); cfg.agents = { local: { command: ["codex"] }, hosted: { command: ["claude"], workflow: "repair.yml", ref: "main" } };
@@ -39,6 +72,19 @@ describe("actual quota telemetry", () => {
 });
 
 describe("scoped GitHub OIDC token boundary", () => {
+  it.each(["v1.JWT-shaped.opaque-token+/=", "opaque%0Acredential"])("transports opaque single-line provider credentials safely: %s", async token => {
+    const directory = await temp(), output = join(directory, "outputs"), logger = vi.spyOn(console, "log").mockImplementation(() => {});
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ value: "oidc-test" }))).mockResolvedValueOnce(new Response(JSON.stringify({ token: "", app_token: token })));
+    const result = await githubToken({ GITHUB_ACTIONS: "true", ACTIONS_ID_TOKEN_REQUEST_URL: "https://pipelines.actions.githubusercontent.com/oidc", ACTIONS_ID_TOKEN_REQUEST_TOKEN: "request-test", GITHUB_OUTPUT: output }, false, fetcher);
+    expect(await readFile(output, "utf8")).toBe(`token=${token}\n`); expect(logger).toHaveBeenCalledExactlyOnceWith(`::add-mask::${token.replaceAll("%", "%25")}`); expect(JSON.stringify(result)).not.toContain(token);
+  });
+  it.each(["", null, 12, {}, "secret\nINJECTED=value", "secret\rvalue", "secret\u0000value", "secret value", "secret\u007fvalue"])("refuses malformed credentials before mask or output: %j", async token => {
+    const directory = await temp(), output = join(directory, "outputs"), logger = vi.spyOn(console, "log").mockImplementation(() => {});
+    await writeFile(output, "existing=value\n");
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ value: "oidc-test" }))).mockResolvedValueOnce(new Response(JSON.stringify({ token })));
+    await expect(githubToken({ GITHUB_ACTIONS: "true", ACTIONS_ID_TOKEN_REQUEST_URL: "https://pipelines.actions.githubusercontent.com/oidc", ACTIONS_ID_TOKEN_REQUEST_TOKEN: "request-test", GITHUB_OUTPUT: output }, false, fetcher)).rejects.toThrow(/omitted a token|single-line/);
+    expect(logger).not.toHaveBeenCalled(); expect(await readFile(output, "utf8")).toBe("existing=value\n");
+  });
   it("writes only masked token output and reports requested/granted authority separately", async () => {
     const directory = await temp(), output = join(directory, "outputs"), logger = vi.spyOn(console, "log").mockImplementation(() => {});
     const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ value: "oidc-test" }))).mockResolvedValueOnce(new Response(JSON.stringify({ app_token: "ghs_TEST", permissions: { contents: "write" }, expires_at: after(now, 60) })));

@@ -43,9 +43,12 @@ export async function githubToken(environment: NodeJS.ProcessEnv, revoke = false
   const exchange = await fetcher("https://api.anthropic.com/api/github/github-app-token-exchange", { method: "POST", headers: { Authorization: `Bearer ${identity.value}`, "Content-Type": "application/json" }, body: JSON.stringify({ permissions: repairTokenPermissions }), signal: AbortSignal.timeout(15_000), redirect: "error" });
   // The workflow must already exist on default branch. Do not bypass the provider's check.
   invariant(exchange.ok, `Claude GitHub App exchange HTTP ${exchange.status}; verify installed App and reviewed default-branch workflow`);
-  const result = await exchange.json() as { token?: string; app_token?: string; expires_at?: string; permissions?: Record<string, string> };
-  const token = result.token ?? result.app_token; invariant(token && /^[A-Za-z0-9_]+$/.test(token), "App exchange omitted a valid token");
-  console.log(`::add-mask::${token}`);
+  const result = await exchange.json() as { token?: unknown; app_token?: unknown; expires_at?: string; permissions?: Record<string, string> };
+  const token = result.token || result.app_token;
+  invariant(typeof token === "string" && token.length > 0, "App exchange omitted a token");
+  // Provider credentials are opaque; reject output/header injection, not new token formats.
+  invariant(/^[\x21-\x7e]+$/.test(token), "App exchange token is not a single-line printable credential");
+  console.log(`::add-mask::${token.replaceAll("%", "%25")}`);
   await appendFile(environment.GITHUB_OUTPUT, `token=${token}\n`, { mode: 0o600 });
   return { created: true, expiresAt: result.expires_at, requestedPermissions: repairTokenPermissions, ...(result.permissions ? { grantedPermissions: result.permissions } : {}) };
 }
