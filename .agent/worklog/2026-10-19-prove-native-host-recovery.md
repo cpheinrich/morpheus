@@ -1358,3 +1358,23 @@ andexternal; production7currentlytests, nextordinaryS3prioritized; CTOskillstill
 unfinished. No reliable upload completion time is claimed. No source suite was
 repeated for this root worklog continuation. All liabilities/holds/epoch/config,
 legacy fences, burns, one-shot phases and currently running job remain preserved.
+
+
+## Source581 conditional closure; production still testing — October20 22:03UTC
+
+Same author fixed NAD-1 within the exact reviewer condition atadb0c92b;64focused
+checks passed with no skips, and five clock/position guard mutants were killed.
+SourceCI82148 exited0, then the worklog-only conditional recorde1bea4d0 validated
+before push. Final record-head CI67444 exited0:6passes/1expected draft skip. Root
+independently checked the full review fields/timing/allowed source paths and only
+own-worklog post-covered delta. Final readiness606f4c2d retains actual CI and PR
+proof:581 remains draft/unlabelled/off/unmerged under the later root source and
+operational gate. No extra reviewer turn or live effect occurred.
+
+Production7 remains the only active P2a2/run39489032255. A fresh read-only ledger
+at21:49:44.952/head45aa290f records testing/no tests-upload-receipt yet; preservation
+proofd991693c confirms exact epoch/config/burns/slots/fullholds/paid excluding
+telemetry and lineage/debt unchanged from20:06. The sole earlier failed UI test
+attempt passed its second attempt, proof8c084464; this remains partial telemetry.
+The existing watcher21551 was still running full tests at21:59:11. Receipt count
+remains1of8. Ordinary580-after-P2/S3 stays ahead of optional recovery rollout.
