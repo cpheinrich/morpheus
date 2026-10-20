@@ -3350,6 +3350,15 @@ TTL. Frozen consumer workers adopt the source only through a separate reviewed
 quiet-host operation.
 If its supervisor disappears, the private reader leader kills its own live group;
 post-reap Darwin permission responses stay within the same cleanup polling bound.
+Worker leases and invocation start timestamps use a fresh clock after quota and
+login admission, recomputed inside each CAS claim attempt. Quota is revalidated
+at that attempt and after its acknowledgment before model launch; stale/reset
+telemetry never authorizes a launch or clears another owner's fence. The returned
+owned lease must still cover strictly more than the configured execution duration
+before launch, or the existing fenced unstarted cleanup refuses it. The lease
+duration remains `agentMinutes + 2`, and the guardian execution limit is unchanged.
+Transaction event timestamps remain request times; later write/acknowledgment,
+launch setup and guardian teardown still consume the existing margin.
 Native invocation identity names the host/user/session store; only its latest
 same-host local session can resume. Foreign or unidentified sessions restart from
 the immutable task and durable checkpoint evidence without copying native sessions

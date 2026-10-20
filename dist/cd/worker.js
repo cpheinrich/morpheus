@@ -207,17 +207,21 @@ export async function runWorker(config, store, sourceDir, options, environment =
         return { state: "budget-wait", reason };
     }
     const invocationId = options.invocationId ?? `agent-${work.id}-i${work.invocations.length + 1}`, timeout = config.deadlines.agentMinutes * 60_000;
-    const claim = await store.transact(`worker-start-${invocationId}`, "claim-agent-invocation", now, state => {
+    const claim = await store.transact(`worker-start-${invocationId}`, "claim-agent-invocation", new Date().toISOString(), state => {
+        // Admission and each CAS reload may be slow; only the accepted claim attempt
+        // starts the lease clock. Its quota must still be valid at that same time.
+        const claimedAt = new Date().toISOString(), used = quotaUsed(measured, claimedAt);
+        invariant(used !== undefined && used < config.budget.subscriptionAdmitBelowPercent, "Subscription admission telemetry expired or threshold reached before claim");
         const current = state.agents[work.id];
-        invariant(current.state !== "complete" && (!current.lease || Date.parse(current.lease.expiresAt) <= Date.parse(now)), "Agent work already owned");
+        invariant(current.state !== "complete" && (!current.lease || Date.parse(current.lease.expiresAt) <= Date.parse(claimedAt)), "Agent work already owned");
         invariant(!paused(state, current.intentId), "Repair is explicitly paused");
-        invariant(!Object.values(state.agents).some(other => other.id !== current.id && other.lease && Date.parse(other.lease.expiresAt) > Date.parse(now) && other.invocations.at(-1)?.executor === options.executor), "This subscription executor already has an in-flight reservation");
+        invariant(!Object.values(state.agents).some(other => other.id !== current.id && other.lease && Date.parse(other.lease.expiresAt) > Date.parse(claimedAt) && other.invocations.at(-1)?.executor === options.executor), "This subscription executor already has an in-flight reservation");
         const fence = (state.fences[current.id] ?? 0) + 1;
         state.fences[current.id] = fence;
-        current.lease = { owner: invocationId, expiresAt: after(now, config.deadlines.agentMinutes + 2), fence };
+        current.lease = { owner: invocationId, expiresAt: after(claimedAt, config.deadlines.agentMinutes + 2), fence };
         current.state = "running";
         if (!current.invocations.some(item => item.id === invocationId))
-            current.invocations.push({ id: invocationId, executor: options.executor, ...(hostId ? { hostId } : {}), startedAt: now });
+            current.invocations.push({ id: invocationId, executor: options.executor, ...(hostId ? { hostId } : {}), startedAt: claimedAt });
         state.budget.telemetry[options.executor] = measured;
         return { invocationId, fence };
     });
@@ -236,6 +240,9 @@ export async function runWorker(config, store, sourceDir, options, environment =
             : work.invocations.findLast(item => item.executor === "hosted" && item.session)?.session;
         const args = options.executor === "local" ? [...prefix.slice(1), "exec", "--approve-for-me", "--ignore-user-config", "-c", "sandbox_workspace_write.network_access=true", "-c", 'shell_environment_policy.inherit="all"', "--cd", sourceDir, ...(previousSession ? ["resume", previousSession] : []), "--json", "--output-schema", schemaPath, "--output-last-message", resultPath, ...(agent.model ? ["--model", agent.model] : []), "-"] : [...prefix.slice(1), "-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--max-turns", "50", "--json-schema", JSON.stringify(agentResultSchema), ...(previousSession ? ["--resume", previousSession] : []), ...(agent.model ? ["--model", agent.model] : [])];
         const guardian = fileURLToPath(new URL("./guarded-run.py", import.meta.url));
+        const launchAt = new Date().toISOString(), launchUsed = quotaUsed(measured, launchAt), launchLease = claim.state.agents[work.id].lease;
+        invariant(launchUsed !== undefined && launchUsed < config.budget.subscriptionAdmitBelowPercent, "Subscription admission telemetry expired or threshold reached before invocation");
+        invariant(launchLease?.owner === invocationId && launchLease.fence === claim.result.fence && Date.parse(launchLease.expiresAt) > Date.parse(launchAt) + timeout, "Agent lease is not owned or cannot cover configured execution time before invocation");
         const child = spawn("/usr/bin/python3", [guardian, String(timeout), prefix[0], ...args], { cwd: sourceDir, env, stdio: ["pipe", "pipe", "pipe"] });
         owned = child;
         const checkpoints = work.invocations.filter(item => item.result).map(item => ({ executor: item.executor, hostId: item.hostId, result: item.result }));
