@@ -1378,3 +1378,49 @@ telemetry and lineage/debt unchanged from20:06. The sole earlier failed UI test
 attempt passed its second attempt, proof8c084464; this remains partial telemetry.
 The existing watcher21551 was still running full tests at21:59:11. Receipt count
 remains1of8. Ordinary580-after-P2/S3 stays ahead of optional recovery rollout.
+
+
+## Production full qualification and future registration scope — October20 22:28UTC
+
+P2a2/production1.0(7), run39489032255/attempt1, source/control71986163,
+completed native testing at22:16:43 and qualification at22:17:24. Root downloaded
+the two exact small evidence artifacts once, independently checked all eight
+sibling hashes and the control validator Git object, rebuilt the complete source
+and runtime inventory with that immutable control adapter, and reconciled actual
+native verification including raw-log retry telemetry. Proof f141dda9338f60057ebf4716fbeb033ec3bd53b2b5a5efb126a28b0ec063dab3
+records1071 distinct final passes, zero failures/skips,1070 first-attempt passes
+and one UI test recovered on attempt2. This is not three clean whole-suite passes.
+The acquisition manifest retains complete job/artifact pages; no huge screenshot
+or xcresult download, source suite rerun, state-record or provider mutation was
+used. Native job2h10m17 and qualify38s succeeded. Upload runner1050 began22:18:19.
+The22:23:01 immutable ledgerb46a1a9c is uploading/await-upload-claim with trusted
+artifactsVerifiedAt22:17:00.203, but no IPA claim/upload/internal receipt2 yet.
+Preservation proofabff4617 confirms exact epoch/config/burns/slots/full ordinary
+holds/paid excluding telemetry/lineage/debt/deadline unchanged. Count remains1of8;
+only existing watcher21551 is active. After the actual P2 receipt,580's required
+conventions/protected main merge strictly later than deliveredAt and the ordinary
+S3 campaign request remain the priority.
+
+Prepared future S5/S7 hosted-fallback registration scope without changing access
+or a running job. Complete repository runner GET found only1042, online/busy,
+withmacos-vm+xcode-26.6; org runner/group API403 is retained as UNKNOWN. Credential
+manager discovery followed the Evo pointer, read companion instructions, synced
+and listed names only; values remained hidden. Native active-account metadata
+confirmed noadmin:org. The already signed-in cpheinrich owner browser could read
+current org settings: only Standard GitHub-hosted in the visible org runners
+view; Default group1, all private repositories/all workflows,0configuredrunners.
+These are bounded historical rendered observations transcribed by root, not raw
+API inventory or global/future namespace absence, and no new token, scope, login,
+role, invitation or account change was needed. Exact retained dispatcher source
+87c79fff registers configured labels rather than arbitrary queued-job labels;
+its own incomplete pagination cannot establish complete no-demand. Root read
+and archived the completed author's registration plan266aafb0; archive manifest
+e9643bb8 binds the actual observations/source and limits. All future namespace,
+exclusive-registration/no-demand, source/control, hosted budget, arm, cancellation,
+review/release and delivery bindings remain UNBOUND. No current P2 cancellation,
+activation, registration or operational clearance follows from this preparation.
+
+A local no-auth receipt-A-under-actual-B negative-probe caller is prepared only;
+it refuses before execution without fresh active archived B and actual IPA
+identity. No fabricated IPA, live fault, provider call or hook execution occurred.
+Actual allowance remains53% Codex remaining; no reset or Claude run was started.
