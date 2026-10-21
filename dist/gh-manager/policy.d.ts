@@ -15,6 +15,11 @@ export declare const MANAGER_REVIEWED_LABEL = "manager-reviewed";
 export declare const NEEDS_HUMAN_LABEL = "manager:needs-human";
 /** A draft that has not finished the work its roadmap item defines. Cleared by a new push. */
 export declare const INCOMPLETE_LABEL = "manager:incomplete";
+/**
+ * A draft triaged as underspecified, redundant or low value. Ignored until a new push, or until
+ * someone removes the label to ask for another look. Never a reason to close it.
+ */
+export declare const DORMANT_LABEL = "manager:dormant";
 /** The manager believes the pull request is obsolete and will close it after the grace period. */
 export declare const STALE_LABEL = "manager:stale";
 /** The rolling per-repository audit issue. */
@@ -52,6 +57,7 @@ export declare const GhManagerPolicy: z.ZodObject<{
         repair: z.ZodDefault<z.ZodBoolean>;
         review: z.ZodDefault<z.ZodBoolean>;
         undraft: z.ZodDefault<z.ZodBoolean>;
+        triage: z.ZodDefault<z.ZodBoolean>;
         close: z.ZodDefault<z.ZodBoolean>;
     }, z.core.$strict>>;
 }, z.core.$strict>;
