@@ -19,6 +19,11 @@ export const MANAGER_REVIEWED_LABEL = "manager-reviewed";
 export const NEEDS_HUMAN_LABEL = "manager:needs-human";
 /** A draft that has not finished the work its roadmap item defines. Cleared by a new push. */
 export const INCOMPLETE_LABEL = "manager:incomplete";
+/**
+ * A draft triaged as underspecified, redundant or low value. Ignored until a new push, or until
+ * someone removes the label to ask for another look. Never a reason to close it.
+ */
+export const DORMANT_LABEL = "manager:dormant";
 /** The manager believes the pull request is obsolete and will close it after the grace period. */
 export const STALE_LABEL = "manager:stale";
 /** The rolling per-repository audit issue. */
@@ -55,6 +60,11 @@ const Actions = z.object({
   review: z.boolean().default(true),
   /** Mark a draft ready when the work reads as complete. */
   undraft: z.boolean().default(true),
+  /**
+   * Give a quiet draft or WIP pull request one read-only session that classifies it as ready,
+   * incomplete (a handoff for another agent) or dormant. Off restores the plain skip.
+   */
+  triage: z.boolean().default(true),
   /** Close a pull request other work made obsolete. */
   close: z.boolean().default(true),
 }).strict();
@@ -69,8 +79,9 @@ export const GhManagerPolicy = z.object({
    */
   quietHours: z.number().min(0).max(24 * 14).default(24),
   /**
-   * Legacy wait used only to escalate a rescued `wip/trunk-*` draft to a human.
-   * Drafts are never reviewed, undrafted or merged by the manager.
+   * Hours a draft or WIP pull request must have sat untouched before it is triaged, and before a
+   * rescued `wip/trunk-*` draft is escalated to a human. Triage never merges a draft: at most it
+   * marks a plain draft ready, and the ordinary path then decides.
    */
   draftQuietHours: z.number().min(0).max(24 * 30).default(48),
   /** Model sessions per run. Each one spends subscription usage and runner minutes. */

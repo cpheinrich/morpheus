@@ -1,13 +1,13 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Decision, type LiveState, type Plan, planDecision, planNoDecision, planRoute } from "../gh-manager/decision.js";
+import { Decision, type LiveState, type Plan, planDecision, planNoDecision, planRoute, planTriage, planTriageNoDecision } from "../gh-manager/decision.js";
 import { type Outcome, renderDigest } from "../gh-manager/digest.js";
 import { applyEvidence, evidenceUrl } from "../gh-manager/evidence.js";
 import { assertRepository, execute, publishEvidence, fetchLiveState, fetchPreviewSources, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
 import { GH_MANAGER_POLICY_PATH, GhManagerPolicy } from "../gh-manager/policy.js";
 import { resolvePreview } from "../gh-manager/preview.js";
 import { OVERLAY_PATH, sessionPrompt } from "../gh-manager/prompt.js";
-import { isWorkInProgress, type Routed, SAFE_REF, sweep } from "../gh-manager/sweep.js";
+import { isWorkInProgress, type Routed, SAFE_REF, sweep, TRIAGE_REASON } from "../gh-manager/sweep.js";
 import { authorRecordProblem, managerRecordProblem, sessionPushed } from "../gh-manager/verify.js";
 import { execFileSync } from "node:child_process";
 
@@ -173,6 +173,7 @@ export function ghManagerPrompt(repoArg: string | undefined, prArg: string | und
     cli: process.env["MORPHEUS_CLI"] ?? "morpheus",
     policy: file.policy,
     overlay: overlay(repo),
+    ...(routed.reason === TRIAGE_REASON ? { mode: "triage" as const } : {}),
   }));
   output("branch", live.branch);
   output("head", live.headSha);
@@ -202,7 +203,9 @@ export function ghManagerApply(repoArg: string | undefined, prArg: string | unde
   const live = fetchLiveState(repo, number, decision?.supersededBy);
   const plan: Plan = !live.open
     ? { verdict: "wait", overridden: "the pull request closed or merged during the session", operations: [] }
-    : planWithLiveWipGuard(live, routed, ctx, () => {
+    : routed.reason === TRIAGE_REASON
+      ? planTriageApply(live, routed, ctx, decision, problem, decisionPath, number)
+      : planWithLiveWipGuard(live, routed, ctx, () => {
       // This callback is never entered for WIP, so a late WIP signal cannot publish evidence.
       if (decision && decisionPath) {
         decision = applyEvidence(decision, {
@@ -238,6 +241,19 @@ export function ghManagerApply(repoArg: string | undefined, prArg: string | unde
   console.error(`#${number} ${outcome.verdict}: ${outcome.did.join(", ") || "nothing to do"}${outcome.overridden ? ` (overridden: ${outcome.overridden})` : ""}${outcome.error ? ` — FAILED ${outcome.error}` : ""}`);
   write(out, JSON.stringify(outcome, null, 2));
   return outcome.error ? 1 : 0;
+}
+
+/**
+ * A triage session's decision. No evidence is published and no review record is read: triage
+ * changes nothing on the branch, and that is verified here with Git before anything is planned.
+ */
+export function planTriageApply(live: LiveState & { base: string }, routed: Routed, ctx: Parameters<typeof planTriage>[2], decision: Decision | undefined, problem: string, decisionPath: string | undefined, number: number): Plan {
+  if (!decision && !sessionStarted(decisionPath, number)) return { verdict: "wait", overridden: "no session ran for this pull request", operations: [] };
+  // Read whether the branch changed whether or not a decision was written: a session that pushed
+  // and then wrote nothing must not slip past as a quiet no-decision.
+  const checkout = process.env["GH_MANAGER_CHECKOUT"];
+  if (checkout) live.sessionPushed = sessionPushed(checkout, routed.headSha, live.headSha, `origin/${live.base}`);
+  return decision ? planTriage(decision, live, ctx) : planTriageNoDecision(problem, live, ctx);
 }
 
 /** Check the live WIP signal before any evidence publication or session fallback. */
