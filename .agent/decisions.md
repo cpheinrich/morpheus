@@ -1291,12 +1291,14 @@ repository than the one it works on. No new package dependency: Zod, native Git 
 specified with incomplete implementation that another agent could pick up, and some are
 underspecified, redundant or not useful and should be ignored until someone resumes them. This
 supersedes the plain skip in the 2026-10-12 entry above; its rule that the manager never merges WIP
-work stands. After `draftQuietHours`, one read-only session decides `ready`, `incomplete` or
-`dormant` (or escalates a genuine human decision). Only a plain draft can be marked ready, and then
+work stands. After `draftQuietHours`, one session instructed to be read-only decides `ready`,
+`incomplete` or `dormant` (or escalates a genuine human decision). Only a plain draft can be marked ready, and then
 the ordinary routes decide with their review, CI and merge rules unchanged; a WIP title or branch is
-only reported. Apply verifies with Git that triage pushed nothing and refuses merge or close. The
-verdict lives in the existing comment marker against the head, so an unchanged draft costs nothing
-after its first classification; a push or removing the label asks again. Triage ranks after ready
+only reported. Apply reads from Git whether the branch changed during triage, escalating any change,
+and refuses merge or close; the session token can still write, as every session's can. The verdict
+lives in the existing comment marker against the head, flagged as triage's so the two attempt
+budgets stay separate, and an unchanged draft costs nothing after its first classification; a push
+or removing the label asks again. Triage ranks after ready
 work in the session budget, and `actions.triage: false` restores the skip. Rescued trunk drafts keep
 their escalation. No dependency: the existing sweep, marker, Zod schema and Git verification.
 

@@ -18,11 +18,11 @@ Every run starts with a sweep that uses no model. Each open pull request gets on
 | `merge` | Reviewed, checks green, auto-merge never enabled | Auto-merge is switched on; cancelled checks are rerun. No session. |
 | `merge` (update) | Auto-merge is on but strict protection holds the branch behind its base | The base is merged in with GitHub's `update-branch`, guarded on the current head. No session. If GitHub refuses (most likely because the merge from trunk carries a workflow change and the App has no Workflows permission), the next run escalates once with `manager:needs-human` and leaves auto-merge and any `manager-reviewed` clearance in place, so the pull request lands once a person merges the base in. |
 | `session` | A ready pull request needs judgment: no completed review, failing checks or conflicts | One fresh Claude session (below). |
-| `session` (triage) | A draft or WIP pull request has been quiet for `draftQuietHours` and has no verdict at this head | One read-only Claude session that classifies it ([below](#triaging-drafts-and-wip-pull-requests)). It never merges, repairs or closes. |
+| `session` (triage) | A draft or WIP pull request has been quiet for `draftQuietHours` and has no verdict at this head | One Claude session, instructed to be read-only, that classifies it ([below](#triaging-drafts-and-wip-pull-requests)). It never merges, repairs or closes. |
 | `hold` | A WIP pull request already has auto-merge queued | The manager cancels auto-merge and leaves the pull request open. |
 | `close` | A stale warning's grace period ran out | Closed with a comment. The branch is left in place. |
 | `escalate` | The attempt budget is spent | Labelled `manager:needs-human`. |
-| `skip` | WIP inside its quiet period, recently active, already queued, a bot lane, an untrusted author, already escalated, or already triaged at this head (incomplete, dormant, or ready but still titled WIP) | Reported in the digest, not touched. |
+| `skip` | WIP inside its quiet period, recently active, already queued, a bot lane, an untrusted author, already escalated, already triaged at this head (`incomplete`, `dormant`, or `triaged-ready` when a WIP branch or title, or disabled undraft, kept it as it was), or its triage attempts on this head are spent (`triage-attempts-spent`) | Reported in the digest, not touched. |
 
 A session ends in one of five decisions:
 
@@ -49,7 +49,7 @@ human after `draftQuietHours`, without a review or merge.
 
 Drafts pile up for three different reasons, and a plain skip treated them alike. Chris's direction
 (2026-10-20, issue #442): review and triage them. A quiet draft or WIP pull request gets **one
-read-only session** that decides exactly one of:
+session, instructed to be read-only**, that decides exactly one of:
 
 | Decision | Means | What the apply step does |
 |---|---|---|
@@ -62,14 +62,20 @@ read-only session** that decides exactly one of:
 The rules that keep it bounded:
 
 - **Draft state neither blocks triage nor authorizes anything.** Triage never merges, closes,
-  implements or repairs. The apply step refuses a triage decision of `merge` or `close`, and verifies
-  with Git that the session pushed nothing to the branch, not even a merge of trunk; if it did, the
-  decision is refused and a human is asked to look. If that cannot be verified, nothing is applied.
+  implements or repairs. The apply step refuses a triage decision of `merge` or `close`, and reads
+  from Git whether the branch changed between the sweep's head and now, whatever head the session
+  reports. Any change, even a merge of trunk, is refused and escalated to a human; if it cannot be
+  read, nothing is applied. The session's token can still write, as for every session (see the
+  security model), so this is a check after the fact, and it covers this branch only.
 - **One classification per head.** The verdict is kept in the manager's comment marker against the
   head commit, so an unchanged draft is not reclassified, or paid for, every run. A new push, or
-  removing `manager:incomplete`, `manager:dormant` or `manager:needs-human`, asks for another look.
-  Sessions that reach no classification count against `maxAttemptsPerPullRequest` per head; when
-  they run out the draft is skipped, not escalated, until it gets a push.
+  removing `manager:incomplete`, `manager:dormant` or `manager:needs-human`, asks for another look;
+  a label is honoured only while it agrees with the verdict recorded for this head. Every triage
+  session on a head counts against `maxAttemptsPerPullRequest`; when they run out the draft is
+  skipped, not escalated, until it gets a push.
+- **Separate budgets.** Triage marks its markers as its own. A draft's triage sessions never count
+  against the ordinary path once it is ready, whoever marked it ready, and an ordinary session's
+  attempts never count against triage if the pull request goes back to draft.
 - **Ready work goes first.** Triage sessions rank after every ready pull request within
   `maxSessionsPerRun`, so they spend only budget the ready queue left.
 - Queued auto-merge on a WIP pull request is still cancelled (`hold`) before anything else.

@@ -228,25 +228,26 @@ export function planDecision(decision, live, ctx) {
  * authorizes a merge, a close or an implementation.
  */
 export function planTriage(decision, live, ctx) {
-    const marker = { head: live.headSha, verdict: "wait", attempts: ctx.attempts + 1, at: ctx.now.toISOString() };
+    const marker = triageMarker(live, ctx);
     const run = `Run: ${ctx.runUrl}`;
     const sections = [inert(decision.summary), `**Why:** ${inert(decision.reasoning)}`, run];
     const wait = (why, say) => ({ verdict: "wait", overridden: why, operations: say ? [comment("wait", [`Nothing was applied: ${why}.`, ...sections], marker)] : [] });
     // Queued auto-merge on WIP is cancelled before anything else, exactly as the sweep's hold does.
     if (live.autoMerge && isWorkInProgress(live))
         return holdWorkInProgress(live, marker, run);
+    // Triage may not touch the branch at all, not even with a clean merge of trunk. What was pushed
+    // is read from Git between the sweep's head and the live head, never taken from the decision,
+    // so a session that pushed and then reported the old head is still caught here.
+    const pushed = branchChanged(live, sections, marker);
+    if (pushed)
+        return pushed;
     // A person promoted it while the session ran: the ordinary path takes it from here.
     if (!isWorkInProgress(live))
         return wait("it is no longer a draft or WIP, so the ordinary path takes it next run", false);
-    if (decision.head !== live.headSha)
-        return wait("the branch moved while this run was working; the next run starts from the new head", true);
-    // Triage may not touch the author's branch at all, not even with a clean merge of trunk. What
-    // the session pushed is read from Git by the apply step, never taken from the decision.
     if (live.sessionPushed === "unverified")
         return wait("what the triage session pushed could not be verified", true);
-    if (live.sessionPushed !== "nothing") {
-        return escalate(live, "the triage session changed this branch, which triage may not do. Check the commits it pushed and revert them if unwanted.", sections, marker, "the triage session pushed to the branch");
-    }
+    if (decision.head !== live.headSha)
+        return wait("the decision names a head other than the branch's, which did not move", true);
     switch (decision.action) {
         case "ready": {
             const ready = { ...marker, verdict: "ready" };
@@ -285,6 +286,30 @@ export function planTriage(decision, live, ctx) {
         default:
             return wait(`a triage session may not ${decision.action} a pull request; at most it marks a plain draft ready`, true);
     }
+}
+/** Every marker triage writes says so, which keeps its attempt budget apart from the ordinary path's. */
+function triageMarker(live, ctx) {
+    return { head: live.headSha, verdict: "wait", attempts: ctx.attempts + 1, at: ctx.now.toISOString(), triage: true };
+}
+/** The branch changed between the sweep and now, which triage may not do: a person has to look. */
+function branchChanged(live, sections, marker) {
+    if (live.sessionPushed !== "other" && live.sessionPushed !== "trunk-merges")
+        return undefined;
+    return escalate(live, "this branch changed while the triage session ran, and triage may not change a branch. Check who pushed the new commits and revert them if they are not the author's.", sections, marker, "the branch changed during the triage session");
+}
+/**
+ * A triage session that wrote no usable decision. It still spent a triage attempt, a queued
+ * auto-merge on WIP is still cancelled, and a branch it changed is still escalated.
+ */
+export function planTriageNoDecision(problem, live, ctx) {
+    const marker = triageMarker(live, ctx);
+    const run = `Run: ${ctx.runUrl}`;
+    if (live.autoMerge && isWorkInProgress(live))
+        return holdWorkInProgress(live, marker, run);
+    const pushed = branchChanged(live, [`The session ended without a usable decision: ${problem}`, run], marker);
+    if (pushed)
+        return pushed;
+    return { verdict: "wait", overridden: problem, operations: [comment("wait", [`The session ended without a usable decision, so nothing was applied: ${problem}`, run], marker)] };
 }
 /** Last, after auto-merge is queued: the update starts a fresh CI run that the queue then follows. */
 function updateIfBehind(live) {

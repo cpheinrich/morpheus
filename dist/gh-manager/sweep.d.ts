@@ -29,6 +29,11 @@ export interface ManagerMarker {
      * instead of retrying every run.
      */
     updated?: string | undefined;
+    /**
+     * Written by triage. Triage and the ordinary path keep separate attempt budgets: a draft's
+     * triage sessions never count against the ordinary path once it is ready, nor the reverse.
+     */
+    triage?: boolean | undefined;
 }
 export interface PullRequestFacts {
     number: number;

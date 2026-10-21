@@ -42,6 +42,11 @@ export interface ManagerMarker {
    * instead of retrying every run.
    */
   updated?: string | undefined;
+  /**
+   * Written by triage. Triage and the ordinary path keep separate attempt budgets: a draft's
+   * triage sessions never count against the ordinary path once it is ready, nor the reverse.
+   */
+  triage?: boolean | undefined;
 }
 
 export interface PullRequestFacts {
@@ -159,7 +164,8 @@ export function parseMarker(body: string): ManagerMarker | undefined {
     if (!VERDICTS.includes(raw.verdict)) return undefined;
     if (raw.cleared !== undefined && typeof raw.cleared !== "string") return undefined;
     if (raw.updated !== undefined && typeof raw.updated !== "string") return undefined;
-    return { head: raw.head, verdict: raw.verdict, attempts: raw.attempts, at: raw.at, ...(raw.cleared ? { cleared: raw.cleared } : {}), ...(raw.updated ? { updated: raw.updated } : {}) };
+    if (raw.triage !== undefined && typeof raw.triage !== "boolean") return undefined;
+    return { head: raw.head, verdict: raw.verdict, attempts: raw.attempts, at: raw.at, ...(raw.cleared ? { cleared: raw.cleared } : {}), ...(raw.updated ? { updated: raw.updated } : {}), ...(raw.triage ? { triage: true } : {}) };
   } catch {
     return undefined;
   }
@@ -181,9 +187,9 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
   // A human answering an escalation — by pushing, or by removing the label to say "try again" —
   // is a new situation; the budget starts again.
   const reopened = marker?.verdict === "escalate" && (marker.head !== pr.headSha || !pr.labels.includes(NEEDS_HUMAN_LABEL));
-  // A triage verdict was about a draft. Once a person (or triage itself) marks it ready, the
-  // ordinary path starts with its own full budget rather than inheriting the triage session.
-  const triaged = marker?.verdict === "ready" || marker?.verdict === "dormant";
+  // A triage marker was about a draft. Whoever marks it ready, a person or triage itself, the
+  // ordinary path starts with its own full budget rather than inheriting triage's sessions.
+  const triaged = marker?.triage === true || marker?.verdict === "ready" || marker?.verdict === "dormant";
   const attempts = marker && !reopened && !triaged ? marker.attempts : 0;
   const routed = (route: Route, reason: string, detail: string): Routed => ({ number: pr.number, title: pr.title, headSha: pr.headSha, route, reason, detail, attempts });
 
@@ -286,17 +292,21 @@ export function routePullRequest(pr: PullRequestFacts, policy: GhManagerPolicy, 
 function routeWorkInProgress(pr: PullRequestFacts, policy: GhManagerPolicy, now: Date): Routed {
   const marker = pr.marker;
   const sameHead = marker?.head === pr.headSha;
-  // Attempts are per head here: each push is a new piece of work to classify.
-  const attempts = marker && sameHead ? marker.attempts : 0;
+  // Attempts are per head and triage's own: each push is a new piece of work to classify, and an
+  // ordinary session's marker (from before the pull request became a draft) spends nothing here.
+  const attempts = marker && sameHead && marker.triage ? marker.attempts : 0;
   const routed = (route: Route, reason: string, detail: string): Routed => ({ number: pr.number, title: pr.title, headSha: pr.headSha, route, reason, detail, attempts });
   const waiting = "draft, WIP branch or WIP title; awaiting a human to mark it ready";
   // A rescued trunk draft is uncommitted edits, not a proposal. It has its own escalation above.
   if (pr.headRefName.startsWith(RESCUED_TRUNK_PREFIX)) return routed("skip", "work-in-progress", waiting);
   if (!policy.actions.triage) return routed("skip", "work-in-progress", waiting);
-  if (sameHead && pr.labels.includes(NEEDS_HUMAN_LABEL)) return routed("skip", "escalated", "waiting on a human since the last run; a new push reopens it");
-  if (sameHead && pr.labels.includes(INCOMPLETE_LABEL)) return routed("skip", "incomplete", "triaged as incomplete; the handoff is on the pull request. A new push or removing the label re-triages it");
-  if (sameHead && pr.labels.includes(DORMANT_LABEL)) return routed("skip", "dormant", "triaged as dormant; a new push or removing the label re-triages it");
-  if (sameHead && marker?.verdict === "ready") return routed("skip", "triaged-ready", "triaged as complete; a person has to take it out of WIP. A new push re-triages it");
+  // Each skip needs the label and the marker's verdict for this head to agree: a label left over
+  // from an earlier head, or from a different verdict, must not stop the next classification.
+  const verdict = sameHead ? marker?.verdict : undefined;
+  if (verdict === "escalate" && pr.labels.includes(NEEDS_HUMAN_LABEL)) return routed("skip", "escalated", "waiting on a human since the last run; a new push reopens it");
+  if (verdict === "incomplete" && pr.labels.includes(INCOMPLETE_LABEL)) return routed("skip", "incomplete", "triaged as incomplete; the handoff is on the pull request. A new push or removing the label re-triages it");
+  if (verdict === "dormant" && pr.labels.includes(DORMANT_LABEL)) return routed("skip", "dormant", "triaged as dormant; a new push or removing the label re-triages it");
+  if (verdict === "ready") return routed("skip", "triaged-ready", "triaged as complete but left as it is (WIP name, or undraft disabled); a new push re-triages it");
 
   const age = now.getTime() - Math.max(Date.parse(pr.headCommittedAt), Date.parse(pr.createdAt));
   if (!Number.isFinite(age) || age < policy.draftQuietHours * HOUR) {
@@ -304,7 +314,7 @@ function routeWorkInProgress(pr: PullRequestFacts, policy: GhManagerPolicy, now:
   }
   if (attempts >= policy.maxAttemptsPerPullRequest) {
     // Not an escalation: nobody asked the manager for anything, and a label would only add noise.
-    return routed("skip", "triage-attempts-spent", `${attempts} triage session(s) on this head reached no classification; a new push starts again`);
+    return routed("skip", "triage-attempts-spent", `${attempts} triage session(s) already spent on this head; a new push starts again`);
   }
   const kind = pr.isDraft ? "draft" : "WIP branch or title";
   return routed("session", TRIAGE_REASON, `${kind} quiet for ${policy.draftQuietHours}h or more; triage only: ready, incomplete or dormant`);

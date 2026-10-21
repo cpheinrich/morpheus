@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Decision, type LiveState, type Plan, planDecision, planNoDecision, planRoute, planTriage } from "../gh-manager/decision.js";
+import { Decision, type LiveState, type Plan, planDecision, planNoDecision, planRoute, planTriage, planTriageNoDecision } from "../gh-manager/decision.js";
 import { type Outcome, renderDigest } from "../gh-manager/digest.js";
 import { applyEvidence, evidenceUrl } from "../gh-manager/evidence.js";
 import { assertRepository, execute, publishEvidence, fetchLiveState, fetchPreviewSources, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
@@ -248,12 +248,12 @@ export function ghManagerApply(repoArg: string | undefined, prArg: string | unde
  * changes nothing on the branch, and that is verified here with Git before anything is planned.
  */
 export function planTriageApply(live: LiveState & { base: string }, routed: Routed, ctx: Parameters<typeof planTriage>[2], decision: Decision | undefined, problem: string, decisionPath: string | undefined, number: number): Plan {
-  const checkout = process.env["GH_MANAGER_CHECKOUT"];
-  if (checkout && decision) live.sessionPushed = sessionPushed(checkout, routed.headSha, live.headSha, `origin/${live.base}`);
   if (!decision && !sessionStarted(decisionPath, number)) return { verdict: "wait", overridden: "no session ran for this pull request", operations: [] };
-  // A session that wrote nothing still spent an attempt; queued auto-merge on WIP is still cancelled.
-  if (!decision) return live.autoMerge && isWorkInProgress(live) ? planRoute({ ...routed, route: "hold" }, live, ctx) : planNoDecision(problem, live, ctx);
-  return planTriage(decision, live, ctx);
+  // Read whether the branch changed whether or not a decision was written: a session that pushed
+  // and then wrote nothing must not slip past as a quiet no-decision.
+  const checkout = process.env["GH_MANAGER_CHECKOUT"];
+  if (checkout) live.sessionPushed = sessionPushed(checkout, routed.headSha, live.headSha, `origin/${live.base}`);
+  return decision ? planTriage(decision, live, ctx) : planTriageNoDecision(problem, live, ctx);
 }
 
 /** Check the live WIP signal before any evidence publication or session fallback. */

@@ -1362,7 +1362,8 @@ or invalid record still cannot merge. Front-end reviews inspect actual screensho
 recording frames, including evidence already attached to the PR.
 Drafts, `wip/` branches, and `[WIP]` or `WIP:` titles are never reviewed, repaired or merged in
 place, and queued auto-merge on them is cancelled. Once quiet for `draftQuietHours` they are
-triaged by one read-only session as ready (a plain draft is marked ready for the ordinary path),
+triaged by one session, instructed to be read-only and checked afterwards with Git, as ready (a
+plain draft is marked ready for the ordinary path),
 incomplete (a handoff another agent can pick up) or dormant, with the verdict kept against the head
 so an unchanged draft is not reclassified. A ready pull request waits 24 hours after its latest head
 commit or opening, whichever is later, before the manager acts.

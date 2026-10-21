@@ -136,6 +136,11 @@ export declare function planDecision(decision: Decision, live: LiveState, ctx: C
  * authorizes a merge, a close or an implementation.
  */
 export declare function planTriage(decision: Decision, live: LiveState, ctx: Context): Plan;
+/**
+ * A triage session that wrote no usable decision. It still spent a triage attempt, a queued
+ * auto-merge on WIP is still cancelled, and a branch it changed is still escalated.
+ */
+export declare function planTriageNoDecision(problem: string, live: LiveState, ctx: Context): Plan;
 /** Operations for a route the sweep decided without a session. */
 export declare function planRoute(routed: Routed, live: LiveState, ctx: Context): Plan;
 /**

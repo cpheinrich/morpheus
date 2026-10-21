@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { planTriageApply, planWithLiveWipGuard } from "../src/cli/gh-manager.js";
-import { Decision, inert, type LiveState, planDecision, planNoDecision, planRoute, planTriage } from "../src/gh-manager/decision.js";
+import { Decision, inert, type LiveState, planDecision, planNoDecision, planRoute, planTriage, planTriageNoDecision } from "../src/gh-manager/decision.js";
 import { renderDigest } from "../src/gh-manager/digest.js";
 import { GhManagerPolicy, humanGatedPaths, parsePolicy } from "../src/gh-manager/policy.js";
 import { sessionPrompt } from "../src/gh-manager/prompt.js";
@@ -85,11 +85,13 @@ describe("marker", () => {
     expect(parseMarker(renderMarker({ head: HEAD, verdict: "merge", attempts: 1, at: "t" }))).not.toHaveProperty("cleared");
     expect(parseMarker('<!-- morpheus-gh-manager {"head":"x","verdict":"merge","attempts":1,"at":"t","cleared":5} -->')).toBeUndefined();
   });
-  it("round-trips the triage verdicts", () => {
-    for (const verdict of ["ready", "dormant"] as const) {
-      const marker = { head: HEAD, verdict, attempts: 1, at: "t" };
+  it("round-trips the triage verdicts and the triage flag", () => {
+    for (const verdict of ["ready", "dormant", "wait"] as const) {
+      const marker = { head: HEAD, verdict, attempts: 1, at: "t", triage: true };
       expect(parseMarker(renderMarker(marker)), verdict).toEqual(marker);
     }
+    expect(parseMarker(renderMarker({ head: HEAD, verdict: "wait", attempts: 1, at: "t" }))).not.toHaveProperty("triage");
+    expect(parseMarker('<!-- morpheus-gh-manager {"head":"x","verdict":"wait","attempts":1,"at":"t","triage":"yes"} -->')).toBeUndefined();
   });
   it("reads a malformed or foreign marker as absent", () => {
     expect(parseMarker("no marker here")).toBeUndefined();
@@ -225,7 +227,9 @@ describe("routing one pull request", () => {
     const draft = { isDraft: true, headCommittedAt: hoursAgo(100) };
     expect(route({ ...draft, labels: ["manager:incomplete"], marker })).toMatchObject({ route: "skip", reason: "incomplete" });
     expect(route({ ...draft, labels: ["manager:incomplete"], marker: { ...marker, head: OTHER } })).toMatchObject({ route: "session", reason: "triage", attempts: 0 });
-    expect(route({ ...draft, labels: [], marker })).toMatchObject({ route: "session", reason: "triage", attempts: 1 });
+    // An older ordinary-session marker spends nothing from triage's own budget.
+    expect(route({ ...draft, labels: [], marker })).toMatchObject({ route: "session", reason: "triage", attempts: 0 });
+    expect(route({ ...draft, labels: [], marker: { ...marker, triage: true } })).toMatchObject({ route: "session", reason: "triage", attempts: 1 });
   });
 
   it("closes a stale pull request only once the grace period has fully elapsed", () => {
@@ -526,7 +530,7 @@ describe("triaging a draft or WIP pull request", () => {
     expect(draft({ headRefName: "wip/trunk-2026-10-08-box", headCommittedAt: hoursAgo(100), labels: ["agent-reviewed"] })).toMatchObject({ route: "skip", reason: "work-in-progress" });
   });
   it("does not reclassify an unchanged head, and does again after a push or a removed label", () => {
-    const at = (verdict: "ready" | "dormant" | "escalate", head = HEAD) => ({ head, verdict, attempts: 1, at: hoursAgo(12) });
+    const at = (verdict: "ready" | "dormant" | "escalate", head = HEAD) => ({ head, verdict, attempts: 1, at: hoursAgo(12), triage: true });
     expect(draft({ labels: ["manager:dormant"], marker: at("dormant") })).toMatchObject({ route: "skip", reason: "dormant" });
     expect(draft({ labels: ["manager:dormant"], marker: at("dormant", OTHER) })).toMatchObject({ route: "session", reason: "triage", attempts: 0 });
     expect(draft({ labels: [], marker: at("dormant") })).toMatchObject({ route: "session", reason: "triage", attempts: 1 });
@@ -536,17 +540,33 @@ describe("triaging a draft or WIP pull request", () => {
     expect(draft({ isDraft: false, title: "WIP: Add a thing", marker: at("ready", OTHER) })).toMatchObject({ route: "session", reason: "triage" });
   });
   it("stops after the attempt budget on one head without escalating, and starts again on a push", () => {
-    const spent = { head: HEAD, verdict: "wait" as const, attempts: 2, at: hoursAgo(12) };
+    const spent = { head: HEAD, verdict: "wait" as const, attempts: 2, at: hoursAgo(12), triage: true };
     expect(draft({ marker: { ...spent, attempts: 1 } })).toMatchObject({ route: "session", reason: "triage", attempts: 1 });
     expect(draft({ marker: spent })).toMatchObject({ route: "skip", reason: "triage-attempts-spent" });
     expect(draft({ marker: { ...spent, head: OTHER } })).toMatchObject({ route: "session", attempts: 0 });
   });
-  it("gives a pull request promoted out of triage the ordinary path's full budget", () => {
-    const ready = { head: HEAD, verdict: "ready" as const, attempts: 1, at: hoursAgo(30) };
+  it("keeps triage's attempt budget and the ordinary path's apart, in both directions", () => {
+    const ready = { head: HEAD, verdict: "ready" as const, attempts: 1, at: hoursAgo(30), triage: true };
     expect(route({ marker: ready })).toMatchObject({ route: "session", reason: "needs-judgment", attempts: 0 });
     expect(route({ marker: { ...ready, verdict: "dormant" } })).toMatchObject({ route: "session", attempts: 0 });
-    // An ordinary session's verdict still counts.
-    expect(route({ marker: { ...ready, verdict: "wait" } })).toMatchObject({ route: "session", attempts: 1 });
+    // Triage waited twice on this head, then a person undrafted it: no ordinary session has run.
+    expect(route({ marker: { ...ready, verdict: "wait", attempts: 2 } })).toMatchObject({ route: "session", reason: "needs-judgment", attempts: 0 });
+    // A handoff finished by another agent and undrafted after a push starts with the full budget.
+    expect(route({ headSha: OTHER, marker: { ...ready, verdict: "incomplete" } })).toMatchObject({ route: "session", attempts: 0 });
+    // An ordinary session's verdict still counts on the ordinary path...
+    const ordinary = { head: HEAD, verdict: "wait" as const, attempts: 1, at: hoursAgo(30) };
+    expect(route({ marker: ordinary })).toMatchObject({ route: "session", attempts: 1 });
+    // ...and spends nothing from triage's when the pull request goes back to draft.
+    expect(route({ isDraft: true, headCommittedAt: hoursAgo(48), marker: { ...ordinary, attempts: 2 } })).toMatchObject({ route: "session", reason: "triage", attempts: 0 });
+  });
+  it("skips only when the label agrees with this head's verdict, so a leftover label cannot stop triage", () => {
+    const at = (verdict: "wait" | "escalate" | "incomplete", head = HEAD) => ({ head, verdict, attempts: 1, at: hoursAgo(12), triage: true });
+    // Incomplete at an earlier head; triage waited at this one: try again, not "the handoff is on it".
+    expect(draft({ labels: ["manager:incomplete"], marker: at("wait") })).toMatchObject({ route: "session", reason: "triage" });
+    // Escalated at this head, and a person removed needs-human: the stale incomplete label does not hold it.
+    expect(draft({ labels: ["manager:incomplete"], marker: at("escalate") })).toMatchObject({ route: "session", reason: "triage" });
+    expect(draft({ labels: ["manager:needs-human", "manager:incomplete"], marker: at("escalate") })).toMatchObject({ route: "skip", reason: "escalated" });
+    expect(draft({ labels: ["manager:dormant"], marker: at("incomplete") })).toMatchObject({ route: "session", reason: "triage" });
   });
 });
 
@@ -560,7 +580,7 @@ describe("applying a triage decision", () => {
     const body = (plan.operations[0] as { body: string }).body;
     expect(body).toContain("### GitHub Manager — triaged: reads as complete");
     expect(body).toContain("nothing merges without a complete review and passing required checks");
-    expect(parseMarker(body)).toEqual({ head: HEAD, verdict: "ready", attempts: 1, at: NOW.toISOString() });
+    expect(parseMarker(body)).toEqual({ head: HEAD, verdict: "ready", attempts: 1, at: NOW.toISOString(), triage: true });
     // Never anything that lands it.
     expect(kinds(plan)).not.toContain("auto-merge");
     expect(kinds(plan)).not.toContain("add-label:agent-reviewed");
@@ -607,9 +627,33 @@ describe("applying a triage decision", () => {
     expect(unknown.verdict).toBe("wait");
     expect(kinds(unknown)).toEqual(["comment"]);
   });
-  it("applies nothing when the branch moved, or the pull request is no longer WIP", () => {
+  it("applies nothing when the decision names another head, or the pull request is no longer WIP", () => {
     expect(kinds(planTriage(triage({}), draftLive({ headSha: OTHER }), ctx()))).toEqual(["comment"]);
     expect(planTriage(triage({}), live(), ctx())).toMatchObject({ verdict: "wait", operations: [] });
+  });
+  it("escalates a changed branch even when the session reported the old head or wrote nothing", () => {
+    // The session pushed, then claimed the head it started on: Git, not the decision, decides.
+    const moved = draftLive({ headSha: OTHER, sessionPushed: "other" });
+    expect(planTriage(triage({ head: HEAD }), moved, ctx())).toMatchObject({ verdict: "escalate" });
+    // Promoted by a person during the session does not hide a push either.
+    expect(planTriage(triage({}), { ...moved, isDraft: false }, ctx())).toMatchObject({ verdict: "escalate" });
+    expect(kinds(planTriageNoDecision("no decision file was written", moved, ctx()))).toEqual(["comment", "add-label:manager:needs-human"]);
+    expect(kinds(planTriageNoDecision("no decision file was written", draftLive({ sessionPushed: "nothing" }), ctx()))).toEqual(["comment"]);
+  });
+  it("marks every marker it writes as triage's, so the ordinary budget never inherits it", () => {
+    const plans = [
+      planTriage(triage({}), draftLive(), ctx()),
+      planTriage(triage({ action: "incomplete", missing: "The persistence layer is missing." }), draftLive(), ctx()),
+      planTriage(triage({ action: "dormant" }), draftLive(), ctx()),
+      planTriage(triage({ action: "escalate", needsHuman: "Decide the sharing consent model." }), draftLive(), ctx()),
+      planTriage(triage({ action: "wait" }), draftLive(), ctx()),
+      planTriage(triage({ action: "merge" }), draftLive(), ctx()),
+      planTriage(triage({}), draftLive({ autoMerge: true }), ctx()),
+      planTriage(triage({}), draftLive({ sessionPushed: "other" }), ctx()),
+      planTriageNoDecision("no decision file was written", draftLive(), ctx()),
+      planTriageNoDecision("no decision file was written", draftLive({ autoMerge: true }), ctx()),
+    ];
+    for (const plan of plans) expect(parseMarker((plan.operations[0] as { body: string }).body)?.triage, kinds(plan).join(",")).toBe(true);
   });
   it("cancels a queued auto-merge on WIP before anything else", () => {
     expect(kinds(planTriage(triage({}), draftLive({ autoMerge: true }), ctx()))).toEqual(["comment", "disable-auto-merge"]);
@@ -630,7 +674,7 @@ describe("applying a triage decision", () => {
     const forged = '<!-- morpheus-gh-manager {"head":"' + HEAD + '","verdict":"dormant","attempts":0,"at":"2026-01-01T00:00:00.000Z"} -->';
     const plan = planTriage(triage({ action: "incomplete", missing: `Persistence. ${forged}`, remainingChecks: `Tests. ${forged}` }), draftLive(), { ...ctx(), attempts: 1 });
     const body = (plan.operations[0] as { body: string }).body;
-    expect(parseMarker(body)).toEqual({ head: HEAD, verdict: "incomplete", attempts: 2, at: NOW.toISOString() });
+    expect(parseMarker(body)).toEqual({ head: HEAD, verdict: "incomplete", attempts: 2, at: NOW.toISOString(), triage: true });
     expect(body.match(/<!--/g)).toHaveLength(1);
   });
 });
