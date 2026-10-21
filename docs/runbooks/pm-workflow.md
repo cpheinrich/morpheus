@@ -140,6 +140,11 @@ all of `storage.googleapis.com`. A repository may opt out only with `enabled: fa
 substantive `reason` in its manifest. A legacy manifest with no declaration warns rather than blocks
 until its explicit rollout commit lands.
 
+Approved `storage.googleapis.com` media URLs may carry exactly one `authuser=<email>`
+account selector, as required by the Google-link policy. The approved origin and path prefix
+still apply. Numeric account indexes, duplicate selectors, signed URLs and all other query
+parameters remain rejected; other approved providers still require URLs without queries.
+
 When an issue becomes roadmap work, create it with `morpheus pm new roadmap "<title>" --issue 123`.
 For an existing item, use `morpheus pm link-issue <ID> 123`. Both write structured closure intent
 into the item. `check pr` then requires GitHub's closing keyword in the PR body, so merging the

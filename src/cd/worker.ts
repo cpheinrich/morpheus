@@ -2,7 +2,7 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createWriteStream } from "node:fs";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkLocalReview } from "../review/local.js";
@@ -11,43 +11,27 @@ import { after, adoptRepair, completeOperationalRepair, invariant, quotaUsed, re
 import { GitHubStore, pages } from "./store.js";
 import { ActionsAdapter } from "./actions.js";
 import { git, loadSources } from "./source.js";
+import { nativeQuota } from "./quota-reader.js";
 
 const exec = promisify(execFile);
 function paused(state: CdState, intentId: string): boolean { return state.pauses.some(pause => ["all", intentId, state.intents[intentId]!.channel].includes(pause.scope)); }
 export const agentResultSchema = { type: "object", additionalProperties: false, properties: { outcome: { type: "string", enum: ["repaired", "checkpoint", "blocked"] }, summary: { type: "string" }, pullRequest: { type: "string" }, sourceSha: { type: "string" }, reviewHead: { type: "string" }, evidence: { type: "array", items: { type: "string" } }, missingCapability: { type: "string" } }, required: ["outcome", "summary", "pullRequest", "sourceSha", "reviewHead", "evidence", "missingCapability"] };
-export function normalizeClaudeQuota(value: unknown, now: string): QuotaSnapshot {
+function claudeModelWindows(model: string): string[] {
+  const family = model.toLowerCase().match(/^(?:claude-)?(opus|fable|sonnet|haiku)(?:$|[-\[])/)?.[1];
+  invariant(family, "Configured Claude model has no known quota family; retain budget wait");
+  return ["five_hour", "seven_day", `seven_day_${family}`];
+}
+export function normalizeClaudeQuota(value: unknown, now: string, model?: string): QuotaSnapshot {
   const raw = value as Record<string, { utilization?: number; resets_at?: string }>;
-  const windows = ["five_hour", "seven_day"].flatMap(id => raw?.[id] ? [{ id, usedPercent: raw[id]!.utilization as number, resetsAt: raw[id]!.resets_at as string }] : []);
-  const snapshot = { observedAt: now, source: "Claude OAuth account usage readback", windows };
+  const ids = model ? claudeModelWindows(model) : Object.keys(raw ?? {}).filter(id => /^(five_hour|seven_day)(_[a-z0-9_]+)?$/.test(id));
+  if (model) invariant(ids.every(id => raw?.[id]), "Claude model usage response omitted a required runtime window; retain budget wait");
+  const windows = ids.flatMap(id => raw?.[id] ? [{ id, usedPercent: raw[id]!.utilization as number, resetsAt: raw[id]!.resets_at as string }] : []);
+  const snapshot = { observedAt: now, source: "Claude OAuth account usage readback", windows, ...(model ? { model } : {}) };
   invariant(quotaUsed(snapshot, now) !== undefined, "Claude usage response has no valid nonexpired runtime windows"); return snapshot;
 }
 /** No model request: read the same actual account limits exposed by the runtime. */
 export async function codexQuota(command: string[], cwd: string, now: string): Promise<QuotaSnapshot> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command[0]!, [...command.slice(1), "app-server"], { cwd, stdio: ["pipe", "pipe", "pipe"] });
-    let buffer = "", settled = false;
-    const finish = (error?: Error, value?: QuotaSnapshot) => { if (settled) return; settled = true; clearTimeout(timer); child.kill("SIGTERM"); if (error) reject(error); else resolve(value!); };
-    const timer = setTimeout(() => finish(new Error("Codex account quota read timed out")), 10_000);
-    child.on("error", error => finish(error)); child.stdin.on("error", error => finish(error));
-    child.stdout.on("data", bytes => {
-      buffer += String(bytes);
-      while (buffer.includes("\n")) {
-        const end = buffer.indexOf("\n"), line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
-        let message: { id?: number; error?: { message: string }; result?: unknown }; try { message = JSON.parse(line); } catch { continue; }
-        if (message.error) { finish(new Error(message.error.message)); return; }
-        if (message.id === 1) { child.stdin.write(JSON.stringify({ method: "initialized", params: {} }) + "\n"); child.stdin.write(JSON.stringify({ id: 2, method: "account/rateLimits/read", params: {} }) + "\n"); }
-        if (message.id === 2) {
-          const value = message.result as { rateLimitsByLimitId?: { codex?: { primary?: Record<string, number>; secondary?: Record<string, number> } }; rateLimits?: { primary?: Record<string, number>; secondary?: Record<string, number> } };
-          const bucket = value.rateLimitsByLimitId?.codex ?? value.rateLimits;
-          const windows = (["primary", "secondary"] as const).flatMap(id => bucket?.[id] ? [{ id, usedPercent: bucket[id]!.usedPercent!, resetsAt: new Date(bucket[id]!.resetsAt! * 1000).toISOString() }] : []);
-          const snapshot = { observedAt: now, source: "Codex account/rateLimits/read", windows };
-          if (quotaUsed(snapshot, now) === undefined) finish(new Error("Codex returned unknown/expired quota telemetry")); else finish(undefined, snapshot);
-        }
-      }
-    });
-    child.on("close", () => { if (!settled) finish(new Error("Codex account quota reader exited without telemetry")); });
-    child.stdin.write(JSON.stringify({ id: 1, method: "initialize", params: { clientInfo: { name: "morpheus-cd", version: "1" }, capabilities: { experimentalApi: true } } }) + "\n");
-  });
+  return nativeQuota(command, cwd, now);
 }
 export class QuotaReader {
   private cached?: QuotaSnapshot;
@@ -58,20 +42,35 @@ export class QuotaReader {
     const path = this.environment.MORPHEUS_CD_QUOTA_FILE ?? agent.quotaFile;
     if (path) {
       const value = JSON.parse(await readFile(path, "utf8")) as QuotaSnapshot;
+      invariant(this.executor !== "hosted" || !agent.model || value.model === agent.model, "Subscription telemetry file does not attest the configured Claude model");
+      if (this.executor === "hosted" && agent.model) {
+        const ids = claudeModelWindows(agent.model);
+        invariant(ids.every(id => value.windows?.some(window => window.id === id)), "Subscription telemetry file omitted a required Claude runtime window");
+        value.windows = value.windows.filter(window => ids.includes(window.id));
+      }
       invariant(quotaUsed(value, now) !== undefined, "Subscription telemetry file is stale, missing or invalid"); return value;
     }
     if (this.executor === "local") return codexQuota(agent.command, this.sourceDir, now);
-    if (this.cached && quotaUsed(this.cached, now) !== undefined) return this.cached;
+    if (this.cached && this.cached.model === agent.model && quotaUsed(this.cached, now) !== undefined) return this.cached;
     invariant(Date.parse(now) >= this.retryAt, "Claude usage endpoint backoff; retain budget wait");
     const token = this.environment.CLAUDE_CODE_OAUTH_TOKEN; invariant(token, "Hosted subscription usage requires actual runtime telemetry or authorized OAuth usage readback");
     this.retryAt = Date.parse(now) + 5 * 60_000;
     const response = await this.fetcher("https://api.anthropic.com/api/oauth/usage", { headers: { Authorization: `Bearer ${token}`, "anthropic-beta": "oauth-2025-04-20" }, signal: AbortSignal.timeout(15_000), redirect: "error" });
-    invariant(response.ok, `Claude usage readback HTTP ${response.status}; retain budget wait`);
-    this.cached = normalizeClaudeQuota(await response.json(), now); return this.cached;
+    if (!response.ok) {
+      let failure: { error?: { type?: unknown; message?: unknown } } | undefined;
+      try { failure = await response.json() as typeof failure; } catch { /* HTTP status remains useful without JSON. */ }
+      const error = failure?.error;
+      const category = typeof error?.type === "string" && ["permission_error", "authentication_error", "invalid_request_error", "rate_limit_error"].includes(error.type) ? error.type : undefined;
+      const scope = typeof error?.message === "string" && /scope requirement [`'"]?user:profile\b/.test(error.message) ? "required OAuth scope user:profile" : undefined;
+      // Provider messages can echo credentials. Emit only fixed recognized diagnostics.
+      invariant(false, `Claude usage readback HTTP ${response.status}${category ? `; ${category}` : ""}${scope ? `; ${scope}` : ""}; retain budget wait`);
+    }
+    this.cached = normalizeClaudeQuota(await response.json(), now, agent.model); return this.cached;
   }
 }
 export async function scheduleHosted(config: CdConfig, store: GitHubStore, now: string): Promise<void> {
-  if (!config.agents) return;
+  const hosted = config.agents?.hosted;
+  if (!hosted) return;
   const snapshot = await store.read(), actions = new ActionsAdapter(store.api, config);
   for (const work of Object.values(snapshot.state.agents)) {
     if (work.state === "complete" || paused(snapshot.state, work.intentId) || Date.parse(work.nextCheckAt) > Date.parse(now)) continue;
@@ -79,7 +78,7 @@ export async function scheduleHosted(config: CdConfig, store: GitHubStore, now: 
     if (running && !running.endedAt && work.lease && Date.parse(work.lease.expiresAt) > Date.parse(now)) continue;
     if (!running && Date.parse(now) - Date.parse(work.createdAt) < config.deadlines.admissionMinutes * 60_000) continue;
     const invocationId = running?.executor === "hosted" && !running.endedAt ? running.id : `agent-${work.id}-i${work.invocations.length + 1}`;
-    const matching = await actions.runs(invocationId, config.agents.hosted.workflow);
+    const matching = await actions.runs(invocationId, hosted.workflow);
     if (matching.length) {
       await store.transact(`hosted-observe-${invocationId}-${hash(matching.map(run => ({ id: run.id, status: run.status }))).slice(0, 12)}`, "observe-hosted-agent", now, state => {
         const current = state.agents[work.id]!, invocation = current.invocations.find(item => item.id === invocationId);
@@ -102,7 +101,7 @@ export async function scheduleHosted(config: CdConfig, store: GitHubStore, now: 
       invocation.dispatchCount = ordinal; invocation.lastDispatchAt = now;
       current.state = "waiting"; current.nextCheckAt = after(now, config.deadlines.pollMinutes); return { workId: work.id, invocationId };
     });
-    if (!claim.replayed) await store.api.request("POST", `repos/${config.repository}/actions/workflows/${config.agents.hosted.workflow}/dispatches`, { ref: config.agents.hosted.ref, inputs: { "work-id": work.id, "invocation-id": invocationId, "intent-id": work.intentId, strategy: String(work.strategy), "task-digest": work.taskDigest } });
+    if (!claim.replayed) await store.api.request("POST", `repos/${config.repository}/actions/workflows/${hosted.workflow}/dispatches`, { ref: hosted.ref, inputs: { "work-id": work.id, "invocation-id": invocationId, "intent-id": work.intentId, strategy: String(work.strategy), "task-digest": work.taskDigest } });
   }
 }
 export async function verifyRepair(config: CdConfig, store: GitHubStore, sourceDir: string, result: AgentResult): Promise<string> {
@@ -121,9 +120,12 @@ export async function verifyRepair(config: CdConfig, store: GitHubStore, sourceD
   } finally { try { git(sourceDir, ["worktree", "remove", directory]); } finally { await rm(directory, { recursive: true, force: true }); } }
   invariant(!result.sourceSha || result.sourceSha === pull.merge_commit_sha, "Agent source differs from actual merged repair"); return pull.merge_commit_sha;
 }
-export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir: string, options: { executor: "local" | "hosted"; workId?: string; invocationId?: string; taskDigest?: string }, environment: NodeJS.ProcessEnv = process.env): Promise<unknown> {
+export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir: string, options: { executor: "local" | "hosted"; hostId?: string; workId?: string; invocationId?: string; taskDigest?: string }, environment: NodeJS.ProcessEnv = process.env): Promise<unknown> {
   invariant(config.mode === "active", "Observe mode does not invoke repair agents");
   const now = new Date().toISOString(), agent = config.agents?.[options.executor]; invariant(agent, "Agent executor not configured");
+  invariant(options.executor === "local" || options.hostId === undefined, "Host identity is only supported for local workers");
+  const hostId = options.executor === "local" ? options.hostId ?? hostname() : undefined;
+  invariant(hostId === undefined || /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,254}$/.test(hostId), "Local host identity must be a stable nonempty identifier");
   const snapshot = await store.read(), work = options.workId ? snapshot.state.agents[options.workId] : Object.values(snapshot.state.agents).find(item => item.state !== "complete" && Date.parse(item.nextCheckAt) <= Date.parse(now) && (!item.lease || Date.parse(item.lease.expiresAt) <= Date.parse(now)));
   if (!work || work.state === "complete") return { state: "idle" };
   if (paused(snapshot.state, work.intentId)) return { state: "paused", workId: work.id };
@@ -144,13 +146,17 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
     await store.transact(`budget-wait-${work.id}-${Math.floor(Date.parse(now) / 300_000)}`, "agent-budget-wait", now, state => { const current = state.agents[work.id]!; current.state = "waiting"; current.nextCheckAt = after(now, 5); const intent = state.intents[current.intentId]!; intent.blocker = reason; intent.nextAction = "wait-measured-subscription-capacity"; return { reason }; }); return { state: "budget-wait", reason };
   }
   const invocationId = options.invocationId ?? `agent-${work.id}-i${work.invocations.length + 1}`, timeout = config.deadlines.agentMinutes * 60_000;
-  const claim = await store.transact(`worker-start-${invocationId}`, "claim-agent-invocation", now, state => {
-    const current = state.agents[work.id]!; invariant(current.state !== "complete" && (!current.lease || Date.parse(current.lease.expiresAt) <= Date.parse(now)), "Agent work already owned");
+  const claim = await store.transact(`worker-start-${invocationId}`, "claim-agent-invocation", new Date().toISOString(), state => {
+    // Admission and each CAS reload may be slow; only the accepted claim attempt
+    // starts the lease clock. Its quota must still be valid at that same time.
+    const claimedAt = new Date().toISOString(), used = quotaUsed(measured, claimedAt);
+    invariant(used !== undefined && used < config.budget.subscriptionAdmitBelowPercent, "Subscription admission telemetry expired or threshold reached before claim");
+    const current = state.agents[work.id]!; invariant(current.state !== "complete" && (!current.lease || Date.parse(current.lease.expiresAt) <= Date.parse(claimedAt)), "Agent work already owned");
     invariant(!paused(state, current.intentId), "Repair is explicitly paused");
-    invariant(!Object.values(state.agents).some(other => other.id !== current.id && other.lease && Date.parse(other.lease.expiresAt) > Date.parse(now) && other.invocations.at(-1)?.executor === options.executor), "This subscription executor already has an in-flight reservation");
+    invariant(!Object.values(state.agents).some(other => other.id !== current.id && other.lease && Date.parse(other.lease.expiresAt) > Date.parse(claimedAt) && other.invocations.at(-1)?.executor === options.executor), "This subscription executor already has an in-flight reservation");
     const fence = (state.fences[current.id] ?? 0) + 1; state.fences[current.id] = fence;
-    current.lease = { owner: invocationId, expiresAt: after(now, config.deadlines.agentMinutes + 2), fence }; current.state = "running";
-    if (!current.invocations.some(item => item.id === invocationId)) current.invocations.push({ id: invocationId, executor: options.executor, startedAt: now });
+    current.lease = { owner: invocationId, expiresAt: after(claimedAt, config.deadlines.agentMinutes + 2), fence }; current.state = "running";
+    if (!current.invocations.some(item => item.id === invocationId)) current.invocations.push({ id: invocationId, executor: options.executor, ...(hostId ? { hostId } : {}), startedAt: claimedAt });
     state.budget.telemetry[options.executor] = measured; return { invocationId, fence };
   });
   if (claim.replayed) return { state: "already-owned", invocationId };
@@ -159,11 +165,21 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
   const directory = await mkdtemp(join(tmpdir(), "morpheus-cd-agent-"));
   const resultPath = join(directory, "result.json"), schemaPath = join(directory, "schema.json"), eventsPath = join(directory, "events.jsonl");
   await writeFile(schemaPath, JSON.stringify(agentResultSchema), { mode: 0o600 });
-  const previousSession = work.invocations.findLast(item => item.executor === options.executor && item.session)?.session;
+  const previousLocal = work.invocations.findLast(item => item.executor === "local");
+  // Native sessions belong to one host/user/session store. Never search past a
+  // newer foreign or unidentified checkpoint to resume an older local context.
+  const previousSession = options.executor === "local"
+    ? (previousLocal && previousLocal.hostId === hostId ? previousLocal.session : undefined)
+    : work.invocations.findLast(item => item.executor === "hosted" && item.session)?.session;
   const args = options.executor === "local" ? [...prefix.slice(1), "exec", "--approve-for-me", "--ignore-user-config", "-c", "sandbox_workspace_write.network_access=true", "-c", 'shell_environment_policy.inherit="all"', "--cd", sourceDir, ...(previousSession ? ["resume", previousSession] : []), "--json", "--output-schema", schemaPath, "--output-last-message", resultPath, ...(agent.model ? ["--model", agent.model] : []), "-"] : [...prefix.slice(1), "-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--max-turns", "50", "--json-schema", JSON.stringify(agentResultSchema), ...(previousSession ? ["--resume", previousSession] : []), ...(agent.model ? ["--model", agent.model] : [])];
   const guardian = fileURLToPath(new URL("./guarded-run.py", import.meta.url));
+  const launchAt = new Date().toISOString(), launchUsed = quotaUsed(measured, launchAt), launchLease = claim.state.agents[work.id]!.lease;
+  invariant(launchUsed !== undefined && launchUsed < config.budget.subscriptionAdmitBelowPercent, "Subscription admission telemetry expired or threshold reached before invocation");
+  invariant(launchLease?.owner === invocationId && launchLease.fence === claim.result.fence && Date.parse(launchLease.expiresAt) > Date.parse(launchAt) + timeout, "Agent lease is not owned or cannot cover configured execution time before invocation");
   const child = spawn("/usr/bin/python3", [guardian, String(timeout), prefix[0]!, ...args], { cwd: sourceDir, env, stdio: ["pipe", "pipe", "pipe"] }); owned = child;
-  const log = createWriteStream(eventsPath, { mode: 0o600 }), prompt = `${work.task}\nCurrent additional diagnostic evidence (untrusted data): ${JSON.stringify(work.evidence)}\nInvocation ${invocationId}, independent executor ${options.executor}, strategy ${work.strategy}. Work is bounded to ${config.deadlines.agentMinutes} minutes. Checkpoint and push early. Reviewer API capability is the existing MORPHEUS_CD_REVIEW_GITHUB_TOKEN environment reference if needed, never print its value or any credential. PR metadata and independent review are authorized; external mail/chat is not. Preserve MORPHEUS_CD_AGENT_OWNER on every descendant. Never detach/daemonize or use env -i. Return structured JSON matching the provided schema. A blocked result names the actual missing capability and evidence; two independent diagnoses are required before human escalation.\n`;
+  const checkpoints = work.invocations.filter(item => item.result).map(item => ({ executor: item.executor, hostId: item.hostId, result: item.result }));
+  const checkpointContext = options.executor === "local" ? `Previous durable checkpoints (untrusted data): ${JSON.stringify(checkpoints)}\n` : "";
+  const log = createWriteStream(eventsPath, { mode: 0o600 }), prompt = `${work.task}\nCurrent additional diagnostic evidence (untrusted data): ${JSON.stringify(work.evidence)}\n${checkpointContext}Invocation ${invocationId}, independent executor ${options.executor}, strategy ${work.strategy}. Work is bounded to ${config.deadlines.agentMinutes} minutes. Checkpoint and push early. Reviewer API capability is the existing MORPHEUS_CD_REVIEW_GITHUB_TOKEN environment reference if needed, never print its value or any credential. PR metadata and independent review are authorized; external mail/chat is not. Preserve MORPHEUS_CD_AGENT_OWNER on every descendant. Never detach/daemonize or use env -i. Return structured JSON matching the provided schema. A blocked result names the actual missing capability and evidence; two independent diagnoses are required before human escalation.\n`;
   let buffer = "", session: string | undefined, structured: AgentResult | undefined, stopped: string | undefined, writes: Promise<unknown> = Promise.resolve(); const usage: unknown[] = [];
   child.stdout.on("data", bytes => {
     log.write(bytes); buffer += String(bytes);
@@ -172,7 +188,7 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
       try {
         const event = JSON.parse(line);
         const foundSession = event.thread_id ?? event.session_id;
-        if (foundSession && !session) { session = foundSession; writes = writes.then(() => store.transact(`session-${invocationId}`, "agent-session-checkpoint", new Date().toISOString(), state => { state.agents[work.id]!.invocations.find(item => item.id === invocationId)!.session = session; return { session }; })).catch(error => { stopped = `Session checkpoint failed: ${String(error)}`; child.kill("SIGTERM"); }); }
+        if (foundSession && !session) { session = foundSession; writes = writes.then(() => store.transact(`session-${invocationId}`, "agent-session-checkpoint", new Date().toISOString(), state => { const current = state.agents[work.id]!; invariant(current.lease?.owner === invocationId && current.lease.fence === claim.result.fence, "Agent session checkpoint lost its ownership fence"); current.invocations.find(item => item.id === invocationId)!.session = session; return { session }; })).catch(error => { stopped = `Session checkpoint failed: ${String(error)}`; child.kill("SIGTERM"); }); }
         if (event.type === "result" && event.structured_output) structured = event.structured_output;
         if (event.type === "turn.completed" && event.usage || event.type === "result" && event.usage) usage.push(event.usage);
       } catch { /* raw tool output remains private diagnostic data */ }
@@ -206,7 +222,7 @@ export async function runWorker(config: CdConfig, store: GitHubStore, sourceDir:
   } catch (error) {
     const at = new Date().toISOString(), reason = error instanceof Error ? error.message : String(error), stillOwned = owned && owned.exitCode === null && owned.signalCode === null;
     if (stillOwned) owned!.kill("SIGTERM");
-    await store.transact(`worker-error-${invocationId}`, "agent-error-checkpoint", at, state => { const current = state.agents[work.id]!; invariant(current.lease?.owner === invocationId, "Agent error checkpoint lost ownership"); const invocation = current.invocations.find(item => item.id === invocationId)!; invocation.result = { outcome: "checkpoint", summary: reason, evidence: [] }; if (!stillOwned) { invocation.endedAt = at; current.lease = undefined; } current.state = "waiting"; current.nextCheckAt = after(at, config.deadlines.pollMinutes); return { reason, ownedProcessStopping: Boolean(stillOwned) }; });
+    await store.transact(`worker-error-${invocationId}`, "agent-error-checkpoint", at, state => { const current = state.agents[work.id]!; invariant(current.lease?.owner === invocationId && current.lease.fence === claim.result.fence, "Agent error checkpoint lost its ownership fence"); const invocation = current.invocations.find(item => item.id === invocationId)!; invocation.result = { outcome: "checkpoint", summary: reason, evidence: [] }; if (!stillOwned) { invocation.endedAt = at; current.lease = undefined; } current.state = "waiting"; current.nextCheckAt = after(at, config.deadlines.pollMinutes); return { reason, ownedProcessStopping: Boolean(stillOwned) }; });
     return { workId: work.id, invocationId, outcome: "checkpoint", reason };
   }
 }

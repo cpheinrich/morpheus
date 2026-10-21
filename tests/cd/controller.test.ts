@@ -12,22 +12,157 @@ import { config, now, observation, prepared, source } from "./fixtures.js";
 
 vi.mock("../../src/cd/source.js", async original => ({ ...await original<typeof import("../../src/cd/source.js")>(), loadSources: vi.fn(), verifyValidator: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(loadSources).mockResolvedValue([source()]); vi.mocked(verifyValidator).mockImplementation(() => {}); });
-async function harness(upload = false, maximumNativeJobs = 2) {
+function nativeJob(overrides: Record<string, unknown> = {}) {
+  return { id: 1, node_id: "job-1", run_id: 100, run_attempt: 1, run_url: "https://api.github.com/repos/example/app/actions/runs/100", head_sha: "c".repeat(40), workflow_name: "CD", head_branch: "main", name: "tests / test", url: "https://api.github.com/repos/example/app/actions/jobs/1", html_url: "https://github.com/example/app/actions/runs/100/job/1", check_run_url: "https://api.github.com/repos/example/app/check-runs/1", created_at: now, status: "queued", conclusion: null, started_at: null, completed_at: null, labels: ["macos-vm"], runner_id: null, runner_name: null, runner_group_id: null, runner_group_name: null, steps: [], ...overrides };
+}
+const preflightJob = (overrides: Record<string, unknown> = {}) => nativeJob({ id: 2, name: "preflight", labels: ["ubuntu-24.04"], status: "completed", conclusion: "success", started_at: now, completed_at: after(now, 1), runner_id: 20, runner_name: "GitHub Actions 20", steps: [{ name: "Verify source", number: 1, status: "completed", conclusion: "success", started_at: now, completed_at: after(now, 1) }], ...overrides });
+async function harness(upload = false, maximumNativeJobs = 2, lane: "local" | "hosted" = "local") {
   const cfg = config(); cfg.execution = { localRunner: "macos-vm", hostedRunner: "macos-26", maxNativeJobs: maximumNativeJobs };
+  const jobs: unknown[] = [nativeJob({ status: "completed", conclusion: "success", started_at: now, completed_at: after(now, 1), runner_id: 3, runner_name: "owned-vm", labels: ["self-hosted", "macos-vm"] })];
+  const jobPages = { read: (page: number): unknown => ({ total_count: jobs.length, jobs: jobs.slice((page - 1) * 100, page * 100) }) };
   const api = new FakeGitHub(), original = api.request.bind(api);
   api.request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
     if (path.endsWith("/commits/main")) return { sha: "c".repeat(40) } as T;
-    if (path.includes("/jobs?")) return { jobs: [{ id: 1, status: "completed", started_at: now, labels: ["self-hosted", "macos-vm"] }] } as T;
+    if (path.includes("/jobs?")) return await jobPages.read(Number(new URL(path, "https://api.github.com/").searchParams.get("page"))) as T;
     return original<T>(method, path, body);
   };
   const store = new GitHubStore(api, cfg), fixture = prepared(); fixture.state.configurationDigest = configurationDigest(cfg); fixture.tests.configurationDigest = configurationDigest(cfg); fixture.state.intents[fixture.intentId]!.attempts[0]!.configurationDigest = configurationDigest(cfg); fixture.state.intents[fixture.intentId]!.attempts[0]!.tests = undefined; fixture.state.evaluatedSlots = { staging: now, production: now };
+  fixture.state.intents[fixture.intentId]!.attempts[0]!.lane = lane;
   if (upload) { recordTests(fixture.state, cfg, fixture.tests); claimUpload(fixture.state, cfg, fixture.upload, now); recordUpload(fixture.state, { ...fixture.upload, outcome: "uncertain", providerUploadId: "resource" }, now); }
   await store.initialize(now, "epoch"); await store.transact("seed", "fixture", now, state => { Object.assign(state, { ...fixture.state, transitions: state.transitions }); return null; });
   const attempt = fixture.state.intents[fixture.intentId]!.attempts[0]!, run: WorkflowRun = { id: 100, run_attempt: 1, status: "in_progress", conclusion: null, head_sha: attempt.controlSha, event: "workflow_dispatch", path: ".github/workflows/cd-v2-delivery.yml", display_title: `CD ${attempt.dispatchEffectId}`, created_at: now, updated_at: now };
-  const actions = new ActionsAdapter(api, cfg), runs = vi.spyOn(actions, "runs").mockResolvedValue([run]), dispatch = vi.spyOn(actions, "dispatch").mockResolvedValue(), cancel = vi.spyOn(actions, "cancel").mockResolvedValue(); vi.spyOn(actions, "evidence").mockResolvedValue({ tests: [fixture.tests], uploads: [], failures: [] });
+  const actions = new ActionsAdapter(api, cfg), runs = vi.spyOn(actions, "runs").mockResolvedValue([run]), dispatch = vi.spyOn(actions, "dispatch").mockResolvedValue(), cancel = vi.spyOn(actions, "cancel").mockResolvedValue(), evidence = vi.spyOn(actions, "evidence").mockResolvedValue({ tests: [fixture.tests], uploads: [], failures: [] });
   const apple = new AppleAdapter({ request: vi.fn() }), observe = vi.spyOn(apple, "observe").mockResolvedValue({}), assign = vi.spyOn(apple, "assign").mockResolvedValue(); vi.spyOn(apple, "maximum").mockResolvedValue("8");
-  return { ...fixture, cfg, api, store, actions, apple, run, runs, dispatch, cancel, observe, assign, controller: new Controller(cfg, store, actions, apple, "/unused-source") };
+  return { ...fixture, cfg, api, store, actions, apple, run, runs, dispatch, cancel, evidence, jobs, jobPages, observe, assign, controller: new Controller(cfg, store, actions, apple, "/unused-source") };
 }
+async function admissionHarness(lane: "local" | "hosted" = "local") {
+  const h = await harness(false, 2, lane); h.evidence.mockResolvedValue({ tests: [], uploads: [], failures: [] });
+  h.jobs.splice(0, h.jobs.length, nativeJob(), preflightJob());
+  h.runs.mockImplementation(async effect => effect === h.state.intents[h.intentId]!.attempts[0]!.dispatchEffectId ? [h.run] : []);
+  return h;
+}
+function finishUnassigned(h: Awaited<ReturnType<typeof admissionHarness>>) {
+  h.run.status = "completed"; h.run.conclusion = "cancelled";
+  h.jobs[0] = nativeJob({ status: "completed", conclusion: "cancelled", completed_at: after(now, 16) });
+}
+describe("exact-attempt native admission", () => {
+  it("uses 15 minutes for queued native work despite in-progress Linux preflight, then makes one ordinary hosted successor", async () => {
+    const h = await admissionHarness(), before = (await h.store.read()).state.intents[h.intentId]!;
+    h.jobs[1] = preflightJob({ status: "in_progress", conclusion: null, completed_at: null });
+    await h.controller.tick(after(now, 15)); expect(h.cancel).not.toHaveBeenCalled();
+    const expired = after(now, 15 + 1 / 60_000); await h.controller.tick(expired);
+    expect(h.cancel).toHaveBeenCalledExactlyOnceWith("100");
+    let intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(intent.nextAction).toBe("verify-executor-quiescence"); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined();
+    finishUnassigned(h); h.jobs[1] = preflightJob(); await h.controller.tick(after(now, 21));
+    intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(intent.nextAction).toBe("dispatch-hosted"); expect(intent.attempts[0]!.status).toBe("failed"); expect(intent.attempts[0]!.quiescence!.ref).toContain("100/1");
+    await h.controller.tick(after(now, 22)); await h.controller.tick(after(now, 27));
+    const state = (await h.store.read()).state; intent = state.intents[h.intentId]!;
+    expect(intent.attempts.map(attempt => ({ build: attempt.buildNumber, lane: attempt.lane, source: attempt.sourceSha, status: attempt.status }))).toEqual([{ build: "8", lane: "local", source: before.source, status: "failed" }, { build: "9", lane: "hosted", source: before.source, status: "active" }]);
+    expect(h.dispatch).toHaveBeenCalledTimes(1); expect(h.dispatch.mock.calls[0]![0].id).toBe(`${h.intentId}-a2`);
+    for (const key of ["id", "source", "originalSource", "slot", "oldestDebtAt", "deadlineAt"] as const) expect(intent[key]).toEqual(before[key]);
+    expect(state.builds["123/1.0"]!.reservations).toEqual({ [h.attemptId]: { buildNumber: "8", at: now, burned: true }, [`${h.intentId}-a2`]: { buildNumber: "9", at: after(now, 22), burned: true } });
+    expect(state.builds["123/1.0"]!.maximum).toBe("9"); expect(intent.receipt).toBeUndefined(); expect(state.agents).toEqual({});
+  });
+  it.each([
+    ["runner id", { runner_id: 3 }], ["runner name", { runner_name: "assigned-vm" }], ["started job", { started_at: now }],
+    ["started step", { steps: [{ status: "in_progress", conclusion: null, started_at: now }] }],
+    ["completed step with contradictory queued status", { steps: [{ status: "queued", conclusion: null, started_at: null, completed_at: now }] }],
+    ["missing assignment", { runner_id: undefined }], ["missing name", { runner_name: undefined }], ["missing start", { started_at: undefined }], ["missing steps", { steps: undefined }],
+    ["unknown status", { status: "waiting" }], ["unknown labels", { labels: ["unrecognized-native"] }],
+  ])("retains the test bound and ownership for %s evidence", async (_label, overrides) => {
+    const h = await admissionHarness(); h.jobs[0] = nativeJob(overrides);
+    await h.controller.tick(after(now, 16)); expect(h.cancel).not.toHaveBeenCalled();
+    finishUnassigned(h); h.jobs[0] = nativeJob({ status: "completed", conclusion: "cancelled", completed_at: after(now, 16), ...overrides });
+    await h.controller.tick(after(now, 21)); const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.nextAction).toBe("run-repair-agent"); expect(Object.values(state.agents)).toHaveLength(1); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+  it.each(["empty", "preflight-only", "failed-preflight", "unknown-companion"])("does not call %s evidence a safe native admission failure", async kind => {
+    const h = await admissionHarness(); finishUnassigned(h);
+    if (kind === "empty") h.jobs.splice(0);
+    else if (kind === "preflight-only") h.jobs.splice(0, h.jobs.length, preflightJob({ conclusion: "failure" }));
+    else if (kind === "failed-preflight") h.jobs[1] = preflightJob({ conclusion: "failure" });
+    else h.jobs.push(preflightJob({ id: 3, labels: ["unknown-executor"] }));
+    await h.controller.tick(after(now, 20)); const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.state).toBe("repairing"); expect(Object.values(state.agents)[0]!.evidence).toContain("Native admission absence is not proved; host-side owned process/VM termination evidence is required before replacement"); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+  it("recovers preflight-only failure only through verified owned quiescence and operational repair", async () => {
+    const h = await admissionHarness(); finishUnassigned(h); h.jobs.splice(0, h.jobs.length, preflightJob({ conclusion: "failure" }));
+    await h.controller.tick(after(now, 20));
+    await expect(h.store.transact("unsafe-repair", "agent-checkpoint", after(now, 21), state => completeOperationalRepair(state, h.intentId, ["Preflight fixed"], after(now, 21)))).rejects.toThrow("Pre-upload retry requires host/provider quiescence");
+    await h.store.transact("verified-owned-termination", "record-executor-quiescence", after(now, 22), state => { state.intents[h.intentId]!.attempts[0]!.quiescence = { kind: "host-terminated", ref: "Owned process group absent and exact VM terminated", observedAt: after(now, 22) }; completeOperationalRepair(state, h.intentId, ["Owned executor terminated; preflight repaired"], after(now, 22)); for (const work of Object.values(state.agents)) work.state = "complete"; return null; });
+    await h.controller.tick(after(now, 23)); const intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(intent.attempts.map(attempt => [attempt.buildNumber, attempt.lane, attempt.status])).toEqual([["8", "local", "failed"], ["9", "local", "active"]]); expect(h.dispatch).toHaveBeenCalledTimes(1); expect(intent.oldestDebtAt).toBe(h.state.intents[h.intentId]!.oldestDebtAt); expect(intent.source).toBe(source().sha);
+  });
+  it("allows explicitly skipped unassigned downstream jobs without treating skip-only native work as admission", async () => {
+    const h = await admissionHarness(); h.jobs.push(nativeJob({ id: 3, name: "upload", status: "completed", conclusion: "skipped", completed_at: after(now, 1) }), nativeJob({ id: 4, name: "qualify", labels: [], status: "completed", conclusion: "skipped", completed_at: after(now, 1) }));
+    await h.controller.tick(after(now, 16)); expect(h.cancel).toHaveBeenCalledExactlyOnceWith("100");
+    finishUnassigned(h); await h.controller.tick(after(now, 22)); expect((await h.store.read()).state.intents[h.intentId]!.nextAction).toBe("dispatch-hosted");
+    const skipped = await admissionHarness(); finishUnassigned(skipped); skipped.jobs[0] = nativeJob({ status: "completed", conclusion: "skipped", completed_at: after(now, 1) });
+    await skipped.controller.tick(after(now, 20)); expect((await skipped.store.read()).state.intents[skipped.intentId]!.attempts[0]!.quiescence).toBeUndefined(); expect((await skipped.store.read()).state.intents[skipped.intentId]!.nextAction).toBe("run-repair-agent");
+  });
+  it("reads a bound original attempt when a later rerun is visible", async () => {
+    const h = await admissionHarness(); finishUnassigned(h); h.runs.mockResolvedValue([{ ...h.run, run_attempt: 2 }]); const original = vi.spyOn(h.actions, "runAttempt").mockResolvedValue(h.run), read = vi.spyOn(h.jobPages, "read");
+    await h.controller.tick(after(now, 20));
+    expect(original).toHaveBeenCalledExactlyOnceWith("100", "1"); expect(read).toHaveBeenCalledExactlyOnceWith(1); expect((await h.store.read()).state.intents[h.intentId]!.nextAction).toBe("dispatch-hosted");
+  });
+  it("accepts explicit zero/empty unassigned fields and an omitted optional job run-attempt on the exact endpoint", async () => {
+    const h = await admissionHarness(); finishUnassigned(h); h.jobs[0] = nativeJob({ status: "completed", conclusion: "cancelled", completed_at: after(now, 16), runner_id: 0, runner_name: "", run_attempt: undefined });
+    await h.controller.tick(after(now, 20)); expect((await h.store.read()).state.intents[h.intentId]!.nextAction).toBe("dispatch-hosted");
+  });
+  it.each(["hosted", "self-hosted", "empty"])("never treats terminal %s evidence as self-hosted VM termination", async kind => {
+    const h = await admissionHarness("hosted"); finishUnassigned(h);
+    if (kind === "empty") h.jobs.splice(0);
+    else h.jobs[0] = nativeJob({ status: "completed", conclusion: "failure", started_at: now, completed_at: after(now, 16), runner_id: 3, runner_name: "executor", labels: kind === "hosted" ? ["macos-26-xlarge"] : ["self-hosted", "macos-vm"] });
+    await h.controller.tick(after(now, 20)); const intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(intent.attempts[0]!.status).toBe(kind === "hosted" ? "failed" : "active"); expect(intent.attempts[0]!.quiescence?.kind).toBe(kind === "hosted" ? "hosted-terminated" : undefined); expect(intent.nextAction).toBe("run-repair-agent"); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+  it("preserves the exact 180-minute running bound and requires later host termination even after cancellation", async () => {
+    const h = await admissionHarness(); h.jobs[0] = nativeJob({ status: "in_progress", started_at: now, runner_id: 3, runner_name: "owned-vm" });
+    await h.controller.tick(after(now, 180)); expect(h.cancel).not.toHaveBeenCalled();
+    await h.controller.tick(after(now, 180 + 1 / 60_000)); expect(h.cancel).toHaveBeenCalledExactlyOnceWith("100");
+    h.run.status = "completed"; h.run.conclusion = "cancelled"; h.jobs[0] = nativeJob({ status: "completed", conclusion: "cancelled", started_at: now, completed_at: after(now, 181), runner_id: 3, runner_name: "owned-vm" });
+    await h.controller.tick(after(now, 186)); let intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(h.dispatch).not.toHaveBeenCalled();
+    await h.store.transact("later-owned-termination", "record-executor-quiescence", after(now, 187), state => { state.intents[h.intentId]!.attempts[0]!.quiescence = { kind: "host-terminated", ref: "Owned VM terminated after cancellation", observedAt: after(now, 187) }; return null; });
+    await h.controller.tick(after(now, 191)); intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(intent.attempts[0]!.status).toBe("failed"); expect(intent.nextAction).toBe("run-repair-agent"); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["missing total at equality", "missing", 180], ["missing total just after", "missing", 180 + 1 / 60_000],
+    ["incomplete page at equality", "partial", 180], ["incomplete page just after", "partial", 180 + 1 / 60_000],
+    ["provider error at equality", "error", 180], ["provider error just after", "error", 180 + 1 / 60_000],
+  ])("preserves the running cancellation bound for %s", async (_label, failure, elapsed) => {
+    const h = await admissionHarness(); h.jobPages.read = () => { if (failure === "error") throw new CdWait("Job page temporarily unavailable", "github-provider"); return { total_count: failure === "missing" ? undefined : 3, jobs: h.jobs }; };
+    const result = await h.controller.tick(after(now, Number(elapsed))), intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(result.errors).toHaveLength(1); expect(h.cancel.mock.calls).toEqual(Number(elapsed) === 180 ? [] : [["100"]]);
+    expect(intent.state).toBe("waiting"); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+  it.each(["short", "error", "duplicate", "changing", "over-count", "wrong-run", "wrong-attempt", "wrong-sha", "missing-total"])("cannot authorize fallback from %s census", async kind => {
+    const h = await admissionHarness(); finishUnassigned(h);
+    if (["error", "duplicate", "changing"].includes(kind)) h.jobs.splice(0, h.jobs.length, ...Array.from({ length: 101 }, (_, index) => nativeJob({ id: index + 1, status: "completed", conclusion: "cancelled", completed_at: after(now, 16) })));
+    if (kind === "duplicate") h.jobs[100] = h.jobs[0];
+    else if (kind === "wrong-run") h.jobs[0] = nativeJob({ run_id: 999 });
+    else if (kind === "wrong-attempt") h.jobs[0] = nativeJob({ run_attempt: 2 });
+    else if (kind === "wrong-sha") h.jobs[0] = nativeJob({ head_sha: "d".repeat(40) });
+    else { const read = h.jobPages.read; h.jobPages.read = page => { if (kind === "error" && page === 2) throw new CdWait("Job page temporarily unavailable", "github-provider"); const value = read(page) as { total_count: number; jobs: unknown[] }; return { ...value, total_count: kind === "missing-total" ? undefined : kind === "over-count" ? 1 : kind === "short" || kind === "changing" && page === 2 ? value.total_count + 1 : value.total_count }; }; }
+    const result = await h.controller.tick(after(now, 20)); const intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(result.errors).toHaveLength(1); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.state).toBe("waiting"); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+  it("reads the final job page before deciding that native work never started", async () => {
+    const h = await admissionHarness(); finishUnassigned(h); h.jobs.splice(0, h.jobs.length, ...Array.from({ length: 101 }, (_, index) => nativeJob({ id: index + 1, status: "completed", conclusion: "cancelled", completed_at: after(now, 16), ...(index === 100 ? { runner_id: 42, runner_name: "assigned-last-page" } : {}) })));
+    const read = vi.spyOn(h.jobPages, "read"); await h.controller.tick(after(now, 20));
+    expect(read.mock.calls.map(call => call[0])).toEqual([1, 2]); const intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.nextAction).toBe("run-repair-agent");
+  });
+  it("keeps an upload claim committed after the no-start census reserved", async () => {
+    const h = await admissionHarness(); finishUnassigned(h); const transact = h.store.transact.bind(h.store); let injected = false;
+    vi.spyOn(h.store, "transact").mockImplementation(async (id, kind, at, transition) => { if (kind === "native-failure" && !injected) { injected = true; await transact("racing-upload-hook", "record-upload-result", at, state => { recordTests(state, h.cfg, h.tests); claimUpload(state, h.cfg, h.upload, at); recordUpload(state, { ...h.upload, outcome: "accepted", providerUploadId: "resource" }, at); return null; }); } return transact(id, kind, at, transition); });
+    await h.controller.tick(after(now, 20)); const intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(injected).toBe(true); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.upload!.acceptedAt).toBe(after(now, 20)); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.state).toBe("processing"); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+});
 describe("controller failure sequences", () => {
   it("finds an existing dispatch after restart without another request or build reservation", async () => {
     const h = await harness(); await h.controller.tick(after(now, 5)); const state = (await h.store.read()).state;
@@ -36,6 +171,35 @@ describe("controller failure sequences", () => {
   it("resolves ambiguous upload to the same exact accepted build without dispatch/upload replay", async () => {
     const h = await harness(true); h.observe.mockResolvedValue({ observation: observation() }); await h.controller.tick(after(now, 5)); const intent = (await h.store.read()).state.intents[h.intentId]!;
     expect(intent.state).toBe("delivered"); expect(intent.receipt!.observation.buildId).toBe("apple-build"); expect(intent.receipt!.providerUploadId).toBe("resource"); expect(intent.attempts).toHaveLength(1); expect(h.dispatch).not.toHaveBeenCalled(); expect(h.assign).not.toHaveBeenCalled();
+  });
+  it.each(["UNKNOWN", "PROCESSING", "MISSING_EXPORT_COMPLIANCE"])("waits for internal readiness (%s), then promotes and verifies the same accepted build", async betaState => {
+    const h = await harness(true), unassigned = { ...observation(), betaState, group: { ...observation().group, buildIds: [] } };
+    h.observe.mockResolvedValue({ observation: unassigned });
+    await h.controller.tick(after(now, 5));
+    let state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(h.assign).not.toHaveBeenCalled(); expect(state.groupOperations).toEqual({});
+    expect(intent.state).toBe("processing"); expect(intent.receipt).toBeUndefined();
+    expect(intent.attempts[0]!.upload!.outcome).toBe("accepted");
+    h.observe.mockResolvedValue({ observation: { ...unassigned, betaState: "READY_FOR_BETA_TESTING" } });
+    await h.controller.tick(after(now, 10));
+    expect(h.assign).toHaveBeenCalledExactlyOnceWith("apple-build", "staging");
+    expect((await h.store.read()).state.intents[h.intentId]!.receipt).toBeUndefined();
+    h.observe.mockResolvedValue({ observation: observation() });
+    await h.controller.tick(after(now, 15));
+    state = (await h.store.read()).state; intent = state.intents[h.intentId]!;
+    expect(intent.state).toBe("delivered"); expect(intent.receipt!.observation.buildId).toBe("apple-build");
+    expect(intent.receipt!.providerUploadId).toBe("resource"); expect(intent.attempts).toHaveLength(1);
+    expect(h.dispatch).not.toHaveBeenCalled(); expect(h.assign).toHaveBeenCalledTimes(1);
+  });
+  it("retains accepted bytes and requests bounded diagnosis when internal readiness never arrives", async () => {
+    const h = await harness(true);
+    h.observe.mockResolvedValue({ observation: { ...observation(), betaState: "UNKNOWN", group: { ...observation().group, buildIds: [] } } });
+    await h.controller.tick(after(now, 5)); await h.controller.tick(after(now, 40));
+    const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(intent.state).toBe("repairing"); expect(intent.attempts).toHaveLength(1);
+    expect(intent.attempts[0]!.upload!.outcome).toBe("accepted"); expect(intent.receipt).toBeUndefined();
+    expect(Object.values(state.agents)[0]!.evidence[0]).toContain("internal beta readiness");
+    expect(h.assign).not.toHaveBeenCalled(); expect(h.dispatch).not.toHaveBeenCalled();
   });
   it("retries group distribution on the accepted identity after a transient provider failure", async () => {
     const h = await harness(true); h.observe.mockResolvedValue({ observation: { ...observation(), group: { ...observation().group, buildIds: [] } } }); h.assign.mockRejectedValueOnce(new Error("provider transient"));

@@ -1,0 +1,154 @@
+---
+roadmap: MO-26-10-19-20.22.07
+---
+
+# Hosted Claude provider contract repair
+
+The first actual Evo main capability run39363087252 installed Claude2.1.287 but
+failed the shared App exchange parser before quota or model invocation. The
+response itself was not logged, so its exact shape remains unknown. The shared
+parser incorrectly restricted opaque tokens to letters/digits/underscore and
+used nullish rather than empty-primary fallback. Current official action source
+accepts token-or-app_token without that alphabet assumption:
+https://github.com/anthropics/claude-code-action/blob/0a08a8678026bf8bad8cbf35bb2727fdd9d5f273/src/github/token.ts
+
+The existing quota normalizer also discarded model-specific windows. An explicit
+Opus executor needs shared and matching model capacity; shared windows alone
+cannot establish Opus-specific capacity or distinguish unrelated model limits.
+
+Implementation stays in the existing domain adapters: opaque printable ASCII
+single-line tokens, percent-safe GitHub masking, exact protected output, no raw
+credential values in summaries/errors. OIDC authority/default-branch checks,
+requested/granted permission distinction, capability probe and revocation remain.
+Explicit Claude models join shared five-hour/week and relevant model-family week
+windows. Unknown/null/invalid/expired capacity waits. Telemetry files must attest
+the configured model and every required window. Without a model, all available
+runtime windows are retained conservatively. No new generic dependency is needed.
+
+Tier2 graph evidence used Morpheus generation2026-10-20T03:04:37Z. Token/worker and
+focused test paths metadata-matched without recorded gaps at discovery. The task
+worktree is not separately indexed; read exact source/diff for all changes. The
+quotaUsed reducer and both parser call paths were checked directly. These signals
+are best effort, not completeness proof.
+
+Validation actually run:
+
+- `pnpm exec vitest run tests/cd/worker.test.ts tests/cd/adapters.test.ts`:35 passed.
+- `pnpm typecheck`: passed before and after automatic trunk integration.
+- Six mutants (nullish empty-token fallback, old token alphabet, omitted percent
+  masking escape, ignored model window, wrong model file, incomplete model file)
+  each failed focused worker tests. Restored sources before final verification.
+- Merged current trunk1e8a877 before final tests; Git reproduced the merge without
+  manual resolution. The already-reviewed validation waiver remains separate.
+- `pnpm exec vitest run tests/cd/`:94 tests passed across7 files.
+- `pnpm compile`, `pnpm morpheus pm index`, `git diff --check`: passed.
+
+No full local repository suite: shared PM/check/session/review/template core was
+not changed. No live provider health, model capacity, native execution or real
+TestFlight delivery is credited. Reviewed consumer pin and actual no-model
+capability/quota probe remain required before active rollout. No PAT was copied
+to Actions, and no provider account/billing setting was changed.
+
+Independent review is pending. The team runner reached its session limit and a
+fresh Codex CLI default-model launch is unsupported for this CLI account. A fresh
+persistent Claude Opus subscription session is the established fallback, with
+read-only tools, full packet, actual timing/session ID and no account/API switch.
+
+
+Initial fresh Opus review c4d332a8-890c-42f4-a800-e2ff7b9c5ebe cleared
+0f86a8b17ab159f46c937f780a819f4327374897 with two minor observations and one
+incidental verification requirement. Runner duration157341ms (process observed
+03:32:44.891631–03:35:26.916074Z). Reviewer independently ran22 worker tests.
+No provider calls were made; its upstream-source fetch was unavailable, so the
+provided official source citation remains author evidence.
+
+R1: retain the documented conservative no-model behavior. A present unusable
+runtime window is unknown capacity, so it intentionally waits rather than being
+silently discarded. Explicit consumer Opus selection is the supported way to
+exclude unrelated model buckets.
+
+R2: filter model-attested telemetry files to the same required shared/model IDs
+as OAuth readback. Added regression assertions that unrelated Fable exhaustion
+leaves Opus at35 percent, while Opus exhaustion itself remains100 percent. The
+removed-filter mutant failed this test; restored source before final validation.
+The35 focused worker/adapter tests, typecheck, compile and index passed again.
+
+R3: actual App exchange shape and Opus quota semantics remain unproven. Deferred
+to direct-child roadmap MO-26-10-19-20.37.25 with explicit capability, revocation,
+actual model-window and fail-closed acceptance. It is part of the ongoing consumer
+rollout and is required before active repair admission.
+
+
+Independent high-risk Opus review cleared the provider correction and its same-session follow-up. The reviewer accepted intentional conservative no-model admission, verified matching model filtering in telemetry files and OAuth, and independently passed22 worker tests in each turn. Live App authority and Opus capacity remain unproven and tracked in MO-26-10-19-20.37.25 before activation.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "1e8a87733fe19baac4f5a27bbca37c4fa163447c",
+  "reviewed": "0f86a8b17ab159f46c937f780a819f4327374897",
+  "covered": "c258b5fc744ae9273fd832ce40504ece9800af4a",
+  "authorSession": "01a1572f-2ae1-77f2-be54-4265b3baca43",
+  "reviewerSession": "c4d332a8-890c-42f4-a800-e2ff7b9c5ebe",
+  "risk": "high",
+  "elapsedMinutes": 2.62235,
+  "timing": {
+    "source": "runner",
+    "durationMs": 157341,
+    "evidence": "Claude stream-json result for actual session c4d332a8-890c-42f4-a800-e2ff7b9c5ebe, initial invocation: duration_ms=157341. Private /tmp/morpheus-provider-opus-review-result.json. Process clock03:32:44.891631\u201303:35:26.916074Z includes launcher overhead; runner duration is used."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk Opus review cleared the provider correction and its same-session follow-up. The reviewer accepted intentional conservative no-model admission, verified matching model filtering in telemetry files and OAuth, and independently passed22 worker tests in each turn. Live App authority and Opus capacity remain unproven and tracked in MO-26-10-19-20.37.25 before activation.",
+  "findings": [
+    {
+      "id": "R1-minor",
+      "severity": "minor",
+      "description": "No-model telemetry conservatively retains present unusable runtime buckets and can remain waiting.",
+      "paths": [
+        "src/cd/worker.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Resolved by explanation, with no source change: this intentional fail-closed policy is already documented; explicit model selection excludes unrelated buckets. Same reviewer accepted the explanation with no remaining concern."
+    },
+    {
+      "id": "R2-minor",
+      "severity": "minor",
+      "description": "Model-attested telemetry files included unrelated windows unlike model-specific OAuth readback.",
+      "paths": [
+        "src/cd/worker.ts",
+        "tests/cd/worker.test.ts",
+        "dist/cd/worker.js",
+        "dist/cd/worker.js.map"
+      ],
+      "disposition": "fixed",
+      "response": "After exact model/completeness checks, filter file telemetry to the same three required shared/model IDs. Regression asserts unrelated Fable100 leaves Opus35 while Opus100 remains exhausted; removed-filter mutant failed. Same reviewer inspected the fix and independently passed22 worker tests."
+    },
+    {
+      "id": "R3-live-proof",
+      "severity": "incidental",
+      "description": "Actual App response shape and actual Opus window/reset semantics require the reviewed consumer probe; null capacity must remain unknown.",
+      "paths": [
+        "src/cd/github-token.ts",
+        "src/cd/worker.ts"
+      ],
+      "disposition": "deferred",
+      "roadmap": "MO-26-10-19-20.37.25",
+      "response": "Filed direct-child follow-up with exact existing-App workflow write/readback/delete/revoke and actual shared/Opus quota acceptance before active repair admission. No live capacity, token response shape or TestFlight credit is claimed."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "c4d332a8-890c-42f4-a800-e2ff7b9c5ebe",
+      "commit": "c258b5fc744ae9273fd832ce40504ece9800af4a",
+      "scopeReason": "Focused minor R2 correction after initial clearance, R1 explanation and tracked R3 incidental probe requirement.",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.5723166666666667,
+      "timing": {
+        "source": "runner",
+        "durationMs": 34339,
+        "evidence": "Same actual Claude session c4d332a8-890c-42f4-a800-e2ff7b9c5ebe resumed once; stream-json result duration_ms=34339 in /tmp/morpheus-provider-opus-followup-result.json. Process clock03:38:43.656657\u201303:39:21.169208Z."
+      },
+      "summary": "Cleared exact c258b5fc744ae9273fd832ce40504ece9800af4a with all three finding dispositions resolved; independently passed22 worker tests. No full suite or live provider calls."
+    }
+  ]
+}
+```

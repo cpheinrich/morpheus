@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { configurationDigest, hash, parseState } from "../../src/cd/schema.js";
 import { adoptRepair, adoptSources, after, claimGroup, claimUpload, completeOperationalRepair, createIntent, currentSlot, deliver, dueSlots, eligible, evaluateSlots, newState, planAttempt, quotaUsed, recordTests, recordUpload, repairWork, reserveBuild, reservePaid, settlePaid } from "../../src/cd/state.js";
 import { config, now, observation, prepared, source } from "./fixtures.js";
+import { assertTransition } from "../../src/cd/invariants.js";
 
 describe("durable slot/source obligations", () => {
   it("selects UTC boundaries and discovers every dropped staging tick", () => {
@@ -12,6 +13,38 @@ describe("durable slot/source obligations", () => {
   it("rejects production at 23:59:59.999 and admits exactly 24 hours", () => {
     const candidate = source("a", 0, "2026-10-17T18:00:00.000Z");
     expect(eligible(candidate, config(), "production", "2026-10-18T17:59:59.999Z")).toBe(false); expect(eligible(candidate, config(), "production", now)).toBe(true);
+  });
+  it("waives age only for the explicitly authorized validation lineage, including app repairs", () => {
+    const cfg = config(), state = newState(cfg, "e", now), fresh = source("a", 0, now);
+    state.sources = [fresh];
+    const waiver = { authorizationRef: "https://example.com/approval/8-deliveries", grantedAt: now };
+    const intent = createIntent(state, cfg, "production", fresh, now, now, true, undefined, "campaign-one", waiver);
+    expect(intent.state).toBe("pending"); expect(intent.groupId).toBe("production"); expect(intent.sourceAgeWaiver).toEqual(waiver);
+    const first = planAttempt(state, cfg, intent.id, "c".repeat(40), "7", now); expect(first.sourceSha).toBe(fresh.sha); first.status = "failed";
+    const fix = source("b", 1, after(now, 1)); state.sources.push(fix); adoptRepair(state, cfg, intent.id, fix, "reviewed app repair", after(now, 1));
+    expect(intent.eligibleAt).toBe(after(now, 1)); expect(intent.state).toBe("pending"); expect(intent.sourceAgeWaiver).toEqual(waiver);
+    expect(planAttempt(state, cfg, intent.id, "d".repeat(40), "8", after(now, 1)).sourceSha).toBe(fix.sha);
+    const ordinary = createIntent(state, cfg, "production", fix, now, after(now, 1), false, undefined, "ordinary");
+    expect(ordinary.state).toBe("waiting"); expect(ordinary.eligibleAt).toBe(after(now, 24 * 60 + 1));
+    expect(() => planAttempt(state, cfg, ordinary.id, "c".repeat(40), "9", after(now, 1))).toThrow("old enough");
+    expect(cfg.channels.production.minimumAgeHours).toBe(24); expect(state.cursors.production).toBeUndefined();
+  });
+  it("rejects ordinary or malformed waivers and preserves their immutable authorization", () => {
+    const cfg = config(), state = newState(cfg, "e", now); state.sources = [source("a", 0, now)];
+    const waiver = { authorizationRef: "https://example.com/approval", grantedAt: now };
+    expect(() => createIntent(state, cfg, "production", state.sources[0]!, now, now, false, undefined, "ordinary", waiver)).toThrow("validation");
+    expect(() => createIntent(state, cfg, "production", state.sources[0]!, now, now, true, undefined, "bad", { ...waiver, authorizationRef: " " })).toThrow();
+    const intent = createIntent(state, cfg, "production", state.sources[0]!, now, now, true, undefined, "campaign", waiver);
+    for (const changed of [undefined, { ...waiver, authorizationRef: "https://example.com/different" }, { ...waiver, grantedAt: after(now, 1) }]) {
+      const next = structuredClone(state); next.intents[intent.id]!.sourceAgeWaiver = changed;
+      expect(() => assertTransition(state, next)).toThrow("waiver is immutable");
+    }
+    const ordinaryState = structuredClone(state); ordinaryState.intents[intent.id]!.validation = false;
+    expect(() => parseState(ordinaryState)).toThrow("validation");
+    const malformed = structuredClone(state); malformed.intents[intent.id]!.sourceAgeWaiver!.grantedAt = "not a date";
+    expect(() => parseState(malformed)).toThrow();
+    const noWaiver = structuredClone(state); delete noWaiver.intents[intent.id]!.sourceAgeWaiver;
+    expect(() => assertTransition(noWaiver, state)).toThrow("waiver is immutable");
   });
   it("uses conservative first observation, never old author timestamps", () => {
     const state = newState(config(), "e", now), candidate = source(); candidate.evidence = { kind: "observed", ref: "unknown history" };

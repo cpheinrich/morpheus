@@ -1,8 +1,15 @@
-import { type Attempt, type CdConfig, type CdState, type Channel, type DeliveryIntent, type Identity, type InternalObservation, type QuotaSnapshot, type Receipt, type SourceRevision, type TestEvidence, type UploadEvidence } from "./schema.js";
+import { type SourceAgeWaiver, type Attempt, type CdConfig, type CdState, type Channel, type DeliveryIntent, type Identity, type InternalObservation, type QuotaSnapshot, type Receipt, type SourceRevision, type TestEvidence, type UploadEvidence } from "./schema.js";
 export declare const milliseconds: (minutes: number) => number;
 export declare const after: (at: string, minutes: number) => string;
 export declare function invariant(condition: unknown, message: string): asserts condition;
 export declare function newState(config: CdConfig, epoch: string, now: string): CdState;
+export declare function externalReviewKey(appId: string, buildId: string): string;
+/** A committed claim authorizes one call; uncertainty never authorizes another. */
+export declare function claimExternalReview(state: CdState, intentId: string, now: string): {
+    key: string;
+    index: number;
+    claimed: boolean;
+};
 export declare function currentSlot(config: CdConfig, channel: Channel, now: string): string;
 export declare function dueSlots(config: CdConfig, channel: Channel, last: string | undefined, now: string): string[];
 export declare function eligible(source: SourceRevision, config: CdConfig, channel: Channel, cutoff: string): boolean;
@@ -14,7 +21,7 @@ export declare function attemptAt(state: CdState, intentId: string, attemptId: s
 };
 export declare function activeIntent(state: CdState, channel: Channel): DeliveryIntent | undefined;
 export declare function adoptSources(state: CdState, sources: SourceRevision[], now: string): void;
-export declare function createIntent(state: CdState, config: CdConfig, channel: Channel, source: SourceRevision, slot: string, now: string, validation?: boolean, group?: string, requestId?: string): DeliveryIntent;
+export declare function createIntent(state: CdState, config: CdConfig, channel: Channel, source: SourceRevision, slot: string, now: string, validation?: boolean, group?: string, requestId?: string, sourceAgeWaiver?: SourceAgeWaiver): DeliveryIntent;
 /** Slot decisions and watermark mutate together inside one ledger transaction. */
 export declare function evaluateSlots(state: CdState, config: CdConfig, now: string): void;
 export declare function reserveBuild(state: CdState, appId: string, version: string, attemptId: string, providerMaximum: string, now: string): string;

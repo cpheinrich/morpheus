@@ -27,9 +27,21 @@ Required configuration declares:
 Optional declarations include channel schemes/configurations, `native` settings,
 `execution.localRunner`, `execution.hostedRunner`, at most two native reservations,
 repository-relative backend `hooks`, `tests.allowedSkips`, and agent executors.
-The local agent command prefix defaults to `['codex']`; the hosted prefix defaults
-to `['claude']` and declares its consumer workflow/ref. Morpheus supplies invocation
-arguments and prompts. Deadline and budget defaults follow the approved design.
+The local agent command prefix defaults to `['codex']`. `agents.hosted` is optional:
+native workers can own repair without a hosted model route. When configured, the
+hosted prefix defaults to `['claude']` and declares its consumer workflow/ref.
+Omitting hosted performs no hosted ledger read, dispatch sweep or write; explicitly
+requesting an unconfigured hosted worker fails before ledger access. Existing
+configured hosted defaults, normalized bytes and digest are unchanged. Removing
+a previously configured hosted route changes configuration identity and requires
+an explicit lossless consumer migration. Morpheus supplies invocation
+arguments and prompts. Native account quota reads require the actual
+`account/rateLimits/read` result to say `ordinaryUsageAllowed: true` both before
+admission and during metering. False, absent or nonboolean allowance retains
+budget wait or stops the owned process even with low usage windows or prepaid
+credits available; credit availability is never admission evidence. Explicit
+operator telemetry files retain their existing attestation contract. Deadline and
+budget defaults follow the approved design.
 
 `cd init --config PATH` explicitly initializes the state branch, its secondary
 backup branch and an initialization tag. It protects both branches against force
@@ -52,6 +64,8 @@ hashed Actions artifacts; the hot state holds their verified compact proof.
 observes Actions and Apple, and schedules durable repair work. `--observe`, or
 configuration `mode: "observe"`, computes decisions without writes or effects.
 Initialize before observing. Both GitHub and host wakeups use this command.
+For a consumer's macOS host, Morpheus provides separate launchd tick and local
+worker templates; see [the host integration runbook](cd-v2-host-macos.md).
 `cd status` reports outstanding deadlines, oldest debt, next action, receipts,
 repair work, pauses and actual budget records.
 
@@ -68,6 +82,23 @@ An older binary requires `--group` matching the channel's separate configured
 `validationGroupId`. Ordinary group promotion is checked against the live source
 cursor, including later completions. Manual validation never advances the
 operational delivery cursor.
+
+When a human explicitly authorizes a validation campaign to bypass source age,
+request each delivery with `--validation --source EXACT_MAIN_SHA
+--source-age-waiver AUTHORIZATION_REF`. The reference identifies that actual
+approval; the flag does not grant authority itself. The exact source must already
+have verified main-history evidence. The intent permanently records the reference
+and request time, and only that validation lineage (including its reviewed
+repairs) bypasses source age. Status exposes the waiver for audit. It cannot be
+added, removed or rewritten after intent creation. Request the configured live
+internal group to deliver to real testers; a separate historical group remains
+necessary for a source older than the live cursor.
+
+This does not change configuration, scheduled source selection, production's
+24-hour default, full-test/upload/group gates or ordinary delivery cursors. Without
+the explicit flag, validation still observes source age. Cadence already permits
+successive manual validation requests; wait for the prior delivery's exact Apple
+receipt and merge the next intended main change before requesting another.
 
 The consumer delivery workflow accepts these dispatch inputs:
 
@@ -140,6 +171,68 @@ trusted host/provider evidence: common identity, `kind: host-terminated` or
 It is an evidence boundary, not a command that terminates a machine. Never supply
 those booleans from terminal GitHub status or lease expiry alone.
 
+## Optional external TestFlight distribution
+
+Declare `channels.<channel>.externalGroupIds` as a nonempty list of unique existing
+external groups, separate from internal and historical validation groups. Omitting
+it preserves previous configuration bytes, digest and internal-only behavior.
+Adding it changes configuration identity and requires the consumer's explicit
+lossless ledger migration. A later configuration migration also changes eligibility
+for pending external follow-ups; consumers must explicitly reconcile them first,
+including unresolved review claims, rather than silently abandon their observation.
+Keep upload-action distribution disabled when V2 owns
+these groups; do not introduce a second distribution writer.
+
+Only receipts qualified under the opted-in configuration digest enter external
+follow-up. Migration never backfills older delivered builds, notifies their testers
+or spends review admission on historical receipts. After a matching immutable
+internal receipt commits, subsequent ticks reconcile external distribution
+separately. Internal obligations run first, followed by at most two external
+deliveries per invocation. `cd status` exposes `intent.external` with its own
+`status`, `nextAction`, `nextCheckAt`, blocker and exact provider observation.
+External errors, rejection and review delays never reopen internal work, change
+its receipt/cursors, rebuild, reupload or prevent the next internal delivery.
+Separate historical validation groups never enter this external path.
+
+Each observation joins the receipt's exact app/version/build ID to its beta detail,
+exact review submission and every declared external group's ownership, type,
+testers and build membership. Explicit external all-build access is refused.
+Apple's optional `hasAccessToAllBuilds` can be null or absent for external groups;
+that does not assert automatic access. Internal groups retain the stronger explicit
+`false` requirement before upload and promotion. The core never patches a group
+to manufacture a value for this optional attribute.
+Availability requires `externalBuildState: IN_BETA_TESTING` and exact membership
+in every group; approval or another build's pending review is insufficient.
+Membership is added without removing existing builds. Auto-notify is enabled on
+that exact build detail, and both settings are claimed before their safe updates
+and read back before retrying. Committed availability evidence is immutable.
+
+Review submission has a shared exact app/build operation under `externalReviews`,
+persisted before the POST. All groups share one submission. A lost response retains
+the claim and only observes the exact submission; it never blindly reposts. An
+explicit HTTP 409 conflict may obtain another claim only after an hour and fresh
+exact-build readback. Admission conservatively limits the app to six claimed
+submissions per rolling 24 hours. Other explicit request rejections remain blocked
+without automatic resubmission; metadata/authority repair can qualify subsequent
+builds while this build remains blocked. Consumer-owned provider tooling can
+resolve an exact rejected build separately, and daily readback can then record its
+availability. The core provides no command to erase or retry a rejected claim.
+An exact submission or availability readback resolves unknown outcomes. Existing
+claims, timestamps and completed operation history are retained.
+
+Expired builds record immutable terminal evidence and stop polling. Rejected or
+otherwise blocked work is read at most daily, and uncertain review claims at most
+hourly. Transient provider/network observations retain the configured poll cadence;
+the per-invocation external bound still applies. None of these waits makes an
+internal receipt incomplete or prevents another internal build.
+
+Apple may require review metadata or export-compliance action. The core reports
+that blocker and does not invent metadata, testers or groups. See Apple's
+[external testing rules](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers),
+[submission endpoint](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-betaappreviewsubmissions),
+[external state values](https://developer.apple.com/documentation/appstoreconnectapi/externalbetastate)
+and [auto-notify update](https://developer.apple.com/documentation/appstoreconnectapi/buildbetadetailupdaterequest/data-data.dictionary/attributes-data.dictionary).
+
 ## Repair execution and capacity
 
 `cd worker --executor local|hosted --config ABS --source-dir ABS` owns a due repair
@@ -154,6 +247,23 @@ repairs may complete from direct evidence without inventing a code PR; pre-uploa
 retry still requires executor quiescence. Accepted/uncertain binaries continue
 provider reconciliation under their original identity.
 
+For multiple native workers, pass `--host-id ID` to `cd worker --executor local`.
+Assign a distinct, stable nonsecret ID to each Mac/user/Codex session store; reuse
+it across restarts of that same store, and change it after replacing or moving the
+store. Existing callers default to the native operating-system hostname, which
+must be unique across those workers. Pin explicit IDs when hostnames can collide.
+The invocation records this identity without changing configuration or its digest.
+Only the latest local invocation can supply a resume session, and only when its
+recorded host matches. A foreign, legacy unidentified or sessionless latest local
+invocation starts a fresh native session, even if an older same-host session exists.
+Immutable task, diagnostics and prior durable checkpoint summaries/evidence remain
+in the prompt; native session files and authentication stores are never copied.
+The global local-subscription reservation and Git CAS lease still allow one local
+repair invocation at a time across hosts. Session, completion and error checkpoints
+must retain the invocation owner and fence; a stale process cannot finish through
+an error fallback. This supports recovery after quiescence, not concurrent unfenced
+work or proof of actual two-host failover.
+
 Native capacity, provider outages and rate limits are durable retryable waits.
 They do not manufacture a repair defect. Real/unknown failures own durable agent
 work, and two independent strategies precede technical human escalation. Explicit
@@ -163,8 +273,67 @@ an arbitrary command-execution surface.
 `cd quota --executor local|hosted` makes a no-model telemetry probe. Codex uses
 `account/rateLimits/read`. A configured `MORPHEUS_CD_QUOTA_FILE` or executor
 `quotaFile` supplies actual `{observedAt, source, windows:[{id,usedPercent,resetsAt}]}`.
+The native account reader gives the configured shim up to 60 seconds total,
+including initialization and its config checks; the final rate-limit RPC gets
+at most 10 seconds within that remaining total. Stderr is drained without
+retaining provider text. Failures report only a fixed phase and elapsed time.
+Every call still reads fresh telemetry and requires explicit ordinary allowance;
+there is no retry, cached-value or file fallback. Snapshot age and window expiry
+are checked at actual completion, after cleanup, against the existing five-minute
+freshness limit. The 30-second worker meter skips overlapping reads; missing
+telemetry checkpoints the owned invocation immediately at the read bound.
+
+Only the no-model reader uses `quota-reader.py`. It creates a private foreground
+session with a live group leader retained unreaped through the final group
+signal, so an exited shim cannot release that PGID for reuse. Reader cleanup has
+a separate two-second bound and a three-second parent fuse. Failure does not
+wait for this cleanup before checkpointing; success is withheld until the
+supervisor confirms termination and exits successfully. Unknown group identity,
+cleanup timeout or missing confirmation never grants quota. No process-name
+census or model-guardian change is involved. The trusted configured command and
+its children must stay in this foreground session; detached children are outside
+this bounded contract and require diagnosis, not broad signalling.
+When its supervisor disappears, the still-live private leader kills its own
+group; it cannot leave an immortal reader group after the parent fuse fires.
+Post-reap Darwin permission responses are observed until the same cleanup bound.
+Adopting the source in a pinned native worker runtime is a separate reviewed
+quiet-host operation; source tests do not establish actual host quiescence or
+quota readiness.
+
+Worker claim clocks start after quota and login admission, inside each CAS
+transition attempt rather than at worker entry. An accepted attempt uses that
+clock for ownership/competing-reservation expiry checks, `invocations.startedAt`
+and the unchanged `agentMinutes + 2` lease duration. A CAS conflict recomputes
+the clock and validates the same measured quota again; transaction event `at`
+continues to identify when the transaction was requested. No source, slot, debt,
+deadline policy or operational cursor is reset by claiming work.
+
+After acknowledgment, quota age/window expiry is checked once more before
+launch, without another account read or any cached fallback. A failed check
+uses the existing fenced error checkpoint to release only this unstarted
+invocation's lease; a changed owner/fence is preserved. The returned claim must
+also still name this owner/fence and have strictly more time remaining than the
+configured agent duration; equality is refused without extending or renewing it.
+Claim write/acknowledgment and post-check process setup still consume lease margin,
+and unchanged guardian teardown can exceed that margin under load. The correction
+gives no universal completion/quiescence bound and does not extend the 45-minute default execution
+budget, the five-minute quota TTL or the 30-second nonoverlapping meter.
+
 Hosted Claude can read its authorized OAuth usage endpoint with five-minute cache
-and 429 backoff. Unknown/stale metrics retain a budget wait. New subscription work
+and 429 backoff. Failed reads report the HTTP status, an allowlisted provider error
+category and a fixed hint when the response names the `user:profile` scope. They
+never print arbitrary provider error text, which can echo credentials. A failure
+retains the budget wait; diagnose the actual credential authority before retrying.
+Configure the intended model explicitly (for example
+`agents.hosted.model: "opus"`). Its snapshot joins shared five-hour/week windows with the matching
+model-family week window, including an exact `model` attestation. Every required
+window must be present, valid and nonexpired; null or absent model capacity is
+unknown, never zero usage. Other model-family exhaustion is excluded only when
+the executor names its model. Without a model, normalization conservatively
+retains all available runtime windows. A telemetry file for an explicit hosted
+model must attest that configured model and include its shared and model windows;
+an old aggregate-only file cannot grant admission. Unknown/stale metrics retain
+a budget wait. New subscription work
 requires usage below 80%; owned invocations are monitored and stopped at the
 90% threshold or lost telemetry. Sampling does not control other simultaneous
 account sessions; actual campaign usage must verify the user's reserve.
@@ -176,6 +345,8 @@ owned disposable workflow-only branch without dispatching it. `--revoke` revokes
 that installation token. Requested permissions and actual provider grants are
 reported separately. These probes require actual hosted acceptance; local fake
 responses do not establish working credentials.
+The initial repository metadata read uses GitHub's exact `/repos/{owner}/{repo}`
+route; a trailing slash can return 404 even when the token can read the repository.
 
 `cd budget --operation reserve|settle` exposes replay-safe paid request reservations
 in integer microdollars. Request identity and maximum liability are immutable;
@@ -188,3 +359,25 @@ Focused tests cover protocol counterexamples and actual local Git, ES256 signing
 receipt producer and artifact bytes. They do not count
 as TestFlight deliveries. The eight real deliveries and normal scheduled-path
 proof remain consumer acceptance work under the approved design.
+
+
+### Hosted GitHub App credential transport
+
+The Claude App OIDC exchange remains bound to an authorized Actions run and its
+reviewed default-branch workflow. Treat its `token` or fallback `app_token` as an
+opaque printable single-line credential: JWT-style punctuation or future token
+formats do not justify rejecting a successful response. Reject nonstrings, empty
+values, whitespace and control characters before any mask/output write. Escape
+percent signs in the GitHub masking command, and write the exact token only to
+`GITHUB_OUTPUT`; summaries/errors never include its value. Capability proof still
+requires the real scoped workflow-write/readback/cleanup probe, followed by
+revocation. Parser tests do not establish actual authority or model capacity.
+
+### Internal beta readiness
+
+Apple `VALID` processing alone does not make a build assignable to a beta group.
+The controller waits for `READY_FOR_BETA_TESTING` or `IN_BETA_TESTING` before
+claiming internal group promotion. Missing or other beta states retain the accepted
+upload and use the existing bounded processing diagnosis. Successful assignment
+still requires exact group membership readback and unchanged receipt validation;
+a readiness delay never authorizes another upload.

@@ -6,7 +6,7 @@ export async function probeGitHubToken(environment, fetcher = fetch) {
     const repository = environment.GITHUB_REPOSITORY, token = environment.GH_TOKEN, run = environment.GITHUB_RUN_ID, attempt = environment.GITHUB_RUN_ATTEMPT;
     invariant(repository && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) && token && run && /^[0-9]+$/.test(run) && attempt && /^[0-9]+$/.test(attempt), "Capability probe requires exact Actions repository/run and scoped GH_TOKEN");
     const api = async (method, path, body) => {
-        const response = await fetcher(`https://api.github.com/repos/${repository}/${path}`, { method, headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15_000), redirect: "error" });
+        const response = await fetcher(`https://api.github.com/repos/${repository}${path ? `/${path}` : ""}`, { method, headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15_000), redirect: "error" });
         invariant(response.ok, `GitHub capability probe ${method} ${path} HTTP ${response.status}`);
         return (response.status === 204 ? undefined : await response.json());
     };
@@ -51,9 +51,11 @@ export async function githubToken(environment, revoke = false, fetcher = fetch) 
     // The workflow must already exist on default branch. Do not bypass the provider's check.
     invariant(exchange.ok, `Claude GitHub App exchange HTTP ${exchange.status}; verify installed App and reviewed default-branch workflow`);
     const result = await exchange.json();
-    const token = result.token ?? result.app_token;
-    invariant(token && /^[A-Za-z0-9_]+$/.test(token), "App exchange omitted a valid token");
-    console.log(`::add-mask::${token}`);
+    const token = result.token || result.app_token;
+    invariant(typeof token === "string" && token.length > 0, "App exchange omitted a token");
+    // Provider credentials are opaque; reject output/header injection, not new token formats.
+    invariant(/^[\x21-\x7e]+$/.test(token), "App exchange token is not a single-line printable credential");
+    console.log(`::add-mask::${token.replaceAll("%", "%25")}`);
     await appendFile(environment.GITHUB_OUTPUT, `token=${token}\n`, { mode: 0o600 });
     return { created: true, expiresAt: result.expires_at, requestedPermissions: repairTokenPermissions, ...(result.permissions ? { grantedPermissions: result.permissions } : {}) };
 }

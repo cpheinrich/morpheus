@@ -1,4 +1,4 @@
-import { configurationDigest, hash } from "./schema.js";
+import { configurationDigest, hash, sourceAgeWaiverSchema } from "./schema.js";
 import { CdWait } from "./errors.js";
 export const milliseconds = (minutes) => minutes * 60_000;
 export const after = (at, minutes) => new Date(Date.parse(at) + milliseconds(minutes)).toISOString();
@@ -6,6 +6,27 @@ export function invariant(condition, message) { if (!condition)
     throw new Error(message); }
 export function newState(config, epoch, now) {
     return { schemaVersion: 1, epoch, repository: config.repository, configurationDigest: configurationDigest(config), initializedAt: now, transitions: {}, sources: [], evaluatedSlots: {}, cursors: {}, slots: [], intents: {}, builds: {}, agents: {}, fences: {}, groupOperations: {}, groupCursors: {}, pauses: [], budget: { spentMicros: 0, reservations: {}, telemetry: {} } };
+}
+export function externalReviewKey(appId, buildId) { return hash({ appId, buildId }); }
+/** A committed claim authorizes one call; uncertainty never authorizes another. */
+export function claimExternalReview(state, intentId, now) {
+    const intent = intentAt(state, intentId), receipt = intent.receipt;
+    invariant(intent.state === "delivered" && receipt && !intent.isolatedValidation, "External review requires its ordinary immutable internal receipt");
+    invariant(receipt.configurationDigest === state.configurationDigest, "Historical receipts cannot acquire review under a later configuration");
+    invariant(!intent.external?.terminal && intent.external?.status !== "available", "Completed external follow-up cannot submit review");
+    invariant(!state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope)), "Delivery is explicitly paused");
+    const { appId, buildId } = receipt.observation, key = externalReviewKey(appId, buildId);
+    state.externalReviews ??= {};
+    const operation = state.externalReviews[key] ??= { appId, buildId, attempts: [] }, last = operation.attempts.at(-1);
+    if (last && (last.outcome !== "conflict" || Date.parse(now) < Date.parse(last.completedAt) + 3_600_000))
+        return { key, index: operation.attempts.length - 1, claimed: false };
+    // Apple's six-per-day limit is shared by all builds of the app. Count claims
+    // conservatively, including explicit conflicts and unknown outcomes.
+    const recent = Object.values(state.externalReviews).filter(item => item.appId === appId).flatMap(item => item.attempts).filter(item => Date.parse(item.claimedAt) > Date.parse(now) - 86_400_000);
+    if (recent.length >= 6)
+        throw new CdWait("External review submission admission reached six claims in 24 hours", "apple-review-limit");
+    operation.attempts.push({ claimedAt: now, outcome: "claimed" });
+    return { key, index: operation.attempts.length - 1, claimed: true };
 }
 export function currentSlot(config, channel, now) {
     const time = new Date(now), schedule = config.channels[channel].schedule;
@@ -43,7 +64,9 @@ export function adoptSources(state, sources, now) {
     if (sources.length)
         state.lastMain = sources.at(-1).sha;
 }
-export function createIntent(state, config, channel, source, slot, now, validation = false, group, requestId) {
+export function createIntent(state, config, channel, source, slot, now, validation = false, group, requestId, sourceAgeWaiver) {
+    invariant(!sourceAgeWaiver || validation, "Source-age waiver requires a validation intent");
+    const waiver = sourceAgeWaiver && sourceAgeWaiverSchema.parse(sourceAgeWaiver);
     const cursor = state.cursors[channel], historical = cursor && source.order < cursor.order;
     invariant(!group || group === config.channels[channel].internalGroupId || validation && group === config.channels[channel].validationGroupId, "Delivery group must be explicitly declared for this channel");
     const isolatedValidation = Boolean(validation && group && group === config.channels[channel].validationGroupId && group !== config.channels[channel].internalGroupId);
@@ -53,7 +76,9 @@ export function createIntent(state, config, channel, source, slot, now, validati
     invariant(!state.intents[id], `Delivery ${id} already exists`);
     const debt = state.sources.filter((item, index) => item.order > (cursor?.order ?? -1) && item.order <= source.order && item.inputDigest !== state.sources[index - 1]?.inputDigest);
     const intent = { id, channel, slot, originalSource: source.sha, source: source.sha, selectedMainEnteredAt: source.mainEnteredAt, oldestDebtAt: debt[0]?.mainEnteredAt ?? source.mainEnteredAt, lineage: [{ source: source.sha, inputDigest: source.inputDigest, mainEnteredAt: source.mainEnteredAt, reason: "selected", evidence: source.evidence.ref }], coveredSources: debt.map(item => item.sha), coveredSlots: [slot], validation, isolatedValidation, groupId: group ?? config.channels[channel].internalGroupId, createdAt: now, deadlineAt: after(slot, config.deadlines.deliveryHours * 60), state: "pending", nextAction: "dispatch-full-tests", nextCheckAt: now, attempts: [] };
-    if (!eligible(source, config, channel, now)) {
+    if (waiver)
+        intent.sourceAgeWaiver = waiver;
+    if (!waiver && !eligible(source, config, channel, now)) {
         intent.state = "waiting";
         intent.eligibleAt = after(source.mainEnteredAt, config.channels[channel].minimumAgeHours * 60);
         intent.nextCheckAt = intent.eligibleAt;
@@ -143,7 +168,7 @@ export function planAttempt(state, config, intentId, controlSha, providerMaximum
     const intent = intentAt(state, intentId), source = sourceAt(state, intent.source);
     invariant(intent.state !== "delivered" && !intent.attempts.some(attempt => attempt.status === "active"), "Intent already has an active or delivered attempt");
     const lineageAge = intent.lineage.find(item => item.inputDigest === source.inputDigest)?.mainEnteredAt ?? source.mainEnteredAt;
-    invariant(Date.parse(lineageAge) + config.channels[intent.channel].minimumAgeHours * 3_600_000 <= Date.parse(now), "Production source is not old enough");
+    invariant(intent.validation && intent.sourceAgeWaiver || Date.parse(lineageAge) + config.channels[intent.channel].minimumAgeHours * 3_600_000 <= Date.parse(now), "Production source is not old enough");
     const occupied = Object.values(state.intents).flatMap(item => item.attempts).filter(item => item.status === "active" && !item.upload?.acceptedAt).length;
     if (occupied >= (config.execution?.maxNativeJobs ?? 2))
         throw new CdWait("Native execution capacity is reserved", "native-capacity");
@@ -312,7 +337,7 @@ export function adoptRepair(state, config, intentId, source, evidence, now) {
         if (attempt.status === "active")
             attempt.status = "failed";
     const appAge = intent.lineage.find(item => item.inputDigest === source.inputDigest)?.mainEnteredAt ?? source.mainEnteredAt;
-    intent.eligibleAt = after(appAge, config.channels[intent.channel].minimumAgeHours * 60);
+    intent.eligibleAt = intent.validation && intent.sourceAgeWaiver ? now : after(appAge, config.channels[intent.channel].minimumAgeHours * 60);
     intent.state = Date.parse(intent.eligibleAt) > Date.parse(now) ? "waiting" : "pending";
     intent.nextAction = intent.state === "waiting" ? "wait-source-age" : "dispatch-full-tests";
     intent.nextCheckAt = intent.state === "waiting" ? intent.eligibleAt : now;

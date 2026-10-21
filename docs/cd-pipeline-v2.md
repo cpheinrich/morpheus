@@ -100,6 +100,29 @@ itself is unavailable, preserve intent and reconcile on restoration; do not
 invent a successful deployment. Local and off-host execution must use the same
 identities, receipt validation and global build reservations.
 
+Admission uses the complete job census for the exact workflow run attempt, not
+the overall run status: a Linux preflight can make a workflow `in_progress`
+while its native tests are still queued. Recognized queued, unassigned native
+work uses `admissionMinutes` (default 15); assigned, started or unknown work keeps
+`testMinutes` (default 180). Both retain the existing strict elapsed-time boundary
+from attempt creation, so equality does not cancel and the next wake after it can.
+Failed or incomplete census reads remain visible waits and still enforce the
+180-minute cancellation bound without releasing executor ownership.
+Local native jobs carry the configured local label or `self-hosted`; hosted
+native jobs carry a `macos-` label. Only hosted `ubuntu-` labelled companion jobs
+or explicitly skipped, unassigned downstream jobs qualify as non-native evidence;
+there is no consumer-specific job-name assumption. Automatic local-to-hosted
+fallback requires a terminal run, at least one recognized cancelled native job,
+every native job explicitly unassigned and never started, and successful hosted
+Linux companion work (or skipped/unassigned downstream work). Missing fields,
+steps with start/completion evidence, partial/failed pagination, empty or preflight-only results cannot
+establish no-start quiescence. A preflight failure instead retains ownership and
+creates durable repair work; verified owned process/VM termination and the
+existing operational-repair transition can release it for a normal retry.
+The hosted successor keeps the same intent, source, slot and oldest debt, while
+the old build stays burned and a new monotonic number is reserved. An upload
+claim that wins before failure classification retains ownership.
+
 The primary agent executor uses the existing local subscription runtime.
 An off-host adapter can use an existing authorized subscription/API runtime and
 GitHub App credentials when the Mac is absent. Credential-name inventory and
@@ -292,6 +315,15 @@ Missing telemetry prevents a claim that quota is protected and routes work to a
 measured authorized alternative or a durable budget wait. No paid-provider
 fallback may bypass the $250 Together ceiling.
 
+Native account reads allow 60 seconds for the configured shim and handshake,
+with at most 10 seconds for the final quota RPC within that total. Each read is
+fresh and explicitly ordinary-subscription eligible; no prior result substitutes
+for a failed read. A separate reader-only supervisor bounds foreground-group
+cleanup to two seconds, with a three-second parent fuse, without changing the
+model guardian. A failed read checkpoints immediately; a successful read is
+accepted only after confirmed cleanup and completion-time freshness/expiry
+validation. Unknown cleanup is a refusal, never capacity or host-termination proof.
+
 Initial operational deadlines are explicit configuration: controller wakeup
 15 minutes, unassigned native job 15 minutes before alternate-lane recovery,
 native tests 180 minutes, archive/upload 90 minutes, agent invocation 45 minutes.
@@ -388,12 +420,18 @@ work. Manual requests and simulated clocks cannot substitute for this proof.
 
 Two VM slots may run independent source tests in parallel. Signing and Apple
 identities remain serialized by global reservation/operation ownership where
-required. Production validation uses genuinely aged sources, not backdated
-commits. Monitor disk capacity, quota, API rate limits and task spend throughout.
+required. Production validation normally uses genuinely aged sources, never
+backdated commits. A human may explicitly waive waiting for an accelerated
+campaign: each manual validation request records the actual authorization and
+exact verified main source using the [per-intent source-age waiver](cd-v2-controller.md).
+Chris authorized this exception for Evo's eight-delivery campaign on 2026-10-19,
+with real internal TestFlight delivery and main changes between successive builds.
+Automatic cadence, production age and all completion/fault evidence remain the
+normal policy; the waiver does not manufacture scheduled-boundary evidence.
+Monitor disk capacity, quota, API rate limits and task spend throughout.
 
 After acceptance, document remaining limitations honestly, leave the schedules
 active, and write the reusable Agentic CTO skill in Morpheus. Its contract takes
 a brief specification, concrete success criteria and budget; it requires
 requirements-first design, independent review, empirical prototypes, delegated
 implementation, outcome-based validation, durable ownership and honest closure.
-

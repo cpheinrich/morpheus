@@ -1,12 +1,15 @@
 import { readFile } from "node:fs/promises";
 import { importPKCS8, SignJWT } from "jose";
-import { type Attempt, type CdConfig, type InternalObservation } from "./schema.js";
+import { type Attempt, type CdConfig, type ExternalObservation, type InternalObservation, type Receipt } from "./schema.js";
 import { invariant } from "./state.js";
 import { CdWait } from "./errors.js";
 
 export interface AppleApi { request<T>(method: string, path: string, body?: unknown): Promise<T> }
 interface Resource { id: string; type: string; attributes?: Record<string, unknown>; relationships?: Record<string, { data: { id: string; type: string } | { id: string; type: string }[] | null }> }
-interface Document { data: Resource | Resource[]; included?: Resource[]; links?: { next?: string | null } }
+interface Document { data: Resource | Resource[] | null; included?: Resource[]; links?: { next?: string | null } }
+export class AppleRequestError extends Error {
+  constructor(readonly status: number, message: string) { super(message); }
+}
 export class AppleHttp implements AppleApi {
   private token?: { value: string; expiresAt: number };
   constructor(readonly config: CdConfig, readonly environment: NodeJS.ProcessEnv = process.env, readonly fetcher: typeof fetch = fetch) {}
@@ -27,7 +30,7 @@ export class AppleHttp implements AppleApi {
     catch { throw new CdWait(`Apple ${method} ${url.pathname} observation/network outcome unavailable`, "apple-network"); }
     const text = await response.text();
     if (response.status === 429 || response.status >= 500) throw new CdWait(`Apple ${method} ${url.pathname} HTTP ${response.status}`, "apple-provider");
-    if (!response.ok) throw new Error(`Apple ${method} ${url.pathname} HTTP ${response.status}: ${text.slice(0, 2000)}`);
+    if (!response.ok) throw new AppleRequestError(response.status, `Apple ${method} ${url.pathname} HTTP ${response.status}: ${text.slice(0, 2000)}`);
     return (text.trim() ? JSON.parse(text) : undefined) as T;
   }
 }
@@ -46,9 +49,15 @@ export class AppleAdapter {
   async group(groupId: string): Promise<InternalObservation["group"]> {
     const group = (await this.api.request<Document>("GET", `/v1/betaGroups/${encodeURIComponent(groupId)}?include=app`)).data as Resource;
     const groupApp = group.relationships?.app?.data;
+    invariant(group.id === groupId && typeof group.attributes?.isInternalGroup === "boolean", "Beta group identity/type is missing or mismatched");
     const members = await applePages(this.api, `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/betaTesters?limit=200`);
     const assigned = await applePages(this.api, `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds?limit=200`);
-    return { id: group.id, appId: groupApp && !Array.isArray(groupApp) ? groupApp.id : "UNKNOWN", internal: group.attributes?.isInternalGroup === true, automaticDistribution: group.attributes?.hasAccessToAllBuilds !== false, buildIds: assigned.data.map(item => item.id), testerIds: members.data.map(item => item.id) };
+    const internal = group.attributes?.isInternalGroup === true;
+    // Apple documents this attribute as optional and real external groups return
+    // null. Internal promotion still requires explicit false; external groups
+    // reject affirmative all-build access without inventing it from absence.
+    const automaticDistribution = internal ? group.attributes?.hasAccessToAllBuilds !== false : group.attributes?.hasAccessToAllBuilds === true;
+    return { id: group.id, appId: groupApp && !Array.isArray(groupApp) ? groupApp.id : "UNKNOWN", internal, automaticDistribution, buildIds: assigned.data.map(item => item.id), testerIds: members.data.map(item => item.id) };
   }
   async maximum(appId: string, version: string): Promise<string> {
     const builds = await applePages(this.api, `/v1/builds?${filter({ "filter[app]": appId, "filter[preReleaseVersion.version]": version, "fields[builds]": "version", limit: "200" })}`);
@@ -72,5 +81,30 @@ export class AppleAdapter {
   }
   async assign(buildId: string, groupId: string): Promise<void> {
     await this.api.request("POST", `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds`, { data: [{ type: "builds", id: buildId }] });
+  }
+  async external(receipt: Receipt, groupIds: string[], now: string): Promise<ExternalObservation> {
+    const identity = receipt.observation;
+    const document = await this.api.request<Document>("GET", `/v1/builds/${encodeURIComponent(identity.buildId)}?include=app,preReleaseVersion,buildBetaDetail`);
+    const build = document.data as Resource;
+    const related = (name: string) => { const relation = build.relationships?.[name]?.data; return relation && !Array.isArray(relation) ? document.included?.find(item => item.id === relation.id && item.type === relation.type) : undefined; };
+    invariant(build.id === identity.buildId && related("app")?.id === identity.appId && related("preReleaseVersion")?.attributes?.version === identity.version && build.attributes?.version === identity.buildNumber, "External observation does not match the immutable internal receipt app/version/build");
+    const detail = related("buildBetaDetail"); invariant(detail, "Exact build beta detail is missing");
+    let review: ExternalObservation["review"];
+    try {
+      const submission = (await this.api.request<Document>("GET", `/v1/builds/${encodeURIComponent(build.id)}/betaAppReviewSubmission`)).data as Resource | null;
+      if (submission) {
+        invariant(submission.id && submission.type === "betaAppReviewSubmissions", "Unexpected exact-build review resource");
+        review = { id: submission.id, state: String(submission.attributes?.betaReviewState ?? "UNKNOWN") };
+      }
+    } catch (error) { if (!(error instanceof AppleRequestError && error.status === 404)) throw error; }
+    return { appId: identity.appId, version: identity.version, buildNumber: identity.buildNumber, buildId: build.id, processingState: String(build.attributes?.processingState ?? "UNKNOWN"), betaState: String(detail.attributes?.externalBuildState ?? "UNKNOWN"), detailId: detail.id, autoNotifyEnabled: detail.attributes?.autoNotifyEnabled === true, groups: await Promise.all(groupIds.map(id => this.group(id))), ...(review ? { review } : {}), observedAt: now };
+  }
+  async notifyExternal(detailId: string): Promise<void> {
+    await this.api.request("PATCH", `/v1/buildBetaDetails/${encodeURIComponent(detailId)}`, { data: { type: "buildBetaDetails", id: detailId, attributes: { autoNotifyEnabled: true } } });
+  }
+  async submitReview(buildId: string): Promise<string> {
+    const submission = (await this.api.request<Document>("POST", "/v1/betaAppReviewSubmissions", { data: { type: "betaAppReviewSubmissions", relationships: { build: { data: { type: "builds", id: buildId } } } } })).data as Resource;
+    invariant(submission?.id && submission.type === "betaAppReviewSubmissions", "Apple review acknowledgment has no submission identity");
+    return submission.id;
   }
 }

@@ -11,6 +11,46 @@ behave. This file holds judgment calls, which could have gone the other way.
 
 ---
 
+## Native CD repair sessions are local to a registered host — 2026-10-19
+
+Chris rejected requiring Anthropic support for Evo recovery and authorized native
+Codex workers on both Macs with the GitHub queue. Make the hosted repair route
+optional while preserving configured hosted behavior and its existing digest.
+Local invocations carry a stable host/user/session-store identity; resume only the
+latest local checkpoint from that same identity. Foreign and legacy unidentified
+sessions start fresh from durable task/checkpoint evidence, without auth/session
+copying. Keep the shared local reservation, measured subscription admission and
+owner/fence checks. Native account reads must explicitly allow ordinary subscription
+usage at admission and during metering; prepaid credits never establish eligibility.
+Consumer migration, host readiness and empirical failover are
+separate acceptance work. This is a small domain boundary using existing Node
+hostname, CLI parsing and Git CAS; no generic package or new dependency is needed.
+
+**Native quota startup and cleanup have separate bounds — 2026-10-20.** A
+configured policy shim can perform a version check and two configuration-reader
+lifecycles before the actual quota handshake. Give one fresh account read 60
+seconds total and the final RPC at most 10 seconds within it; never bypass shim
+validation or reuse old quota after failure. A reader-only Python supervisor
+keeps a private foreground group leader unreaped through final group signals,
+then verifies termination within two seconds (three-second parent fuse).
+Unknown cleanup refuses admission; model-guardian defaults stay unchanged.
+This is a fixed account-protocol/foreground-launcher boundary using built-in
+Node/Python facilities, not a generic ownership framework or new dependency.
+Source review and actual quiet-host worker adoption remain separate.
+
+## External TestFlight follows internal acceptance — 2026-10-19
+
+Chris explicitly requested internal and external distribution for future Evo
+builds while keeping internal availability as delivery acceptance. The reusable
+controller therefore makes external groups an optional channel declaration and
+reconciles them after its immutable internal receipt. Exact external build state
+and every group's membership establish external availability; a sibling review
+does not. Claims precede submission, unknown outcomes observe instead of repost,
+and external failures cannot rewrite internal history or reopen native work.
+Consumer configuration migration and runtime adoption remain separately reviewed.
+This uses existing provider adapters and Git CAS for domain-specific state/effect
+rules; no generic scheduler, retry package or new dependency is needed.
+
 ## Structure
 
 **`hq/`, not `company/`** — not every project is a company, and it makes the three layers
@@ -27,6 +67,23 @@ item files directly. A generated README table made those independent edits conve
 file anyway, so it was removed; low-churn goal and request indexes remain generated.
 
 ## Tooling
+
+**iOS runner conjunctions are explicit and validated before native assignment — 2026-10-20.**
+An optional `runner-labels-json` input carries the complete label array; an empty
+value keeps the established single `runner` string. Use a bounded opt-in Ubuntu
+validation job, Node's built-in JSON parser and Actions' `fromJSON`, rather than
+another action or parsing dependency. This small runner-specific boundary rejects
+malformed, empty, blank, nonstring and duplicate labels without falling back.
+The native test/evidence contract stays intact. A validation-only no-admission
+drill still requires its own consumer source, review and operational authority.
+
+**Live provider failures require exact routes and fixed diagnostics** — 2026-10-19. The hosted capability probe must use the exact GitHub repository metadata route before testing workflow write/readback/cleanup. Failed Claude usage reads retain their budget wait and may name only an allowlisted error category and fixed recognized scope hint; arbitrary provider text can echo credentials. These are small provider-specific corrections in existing adapters, so no generic package is needed. A merged correction is a prerequisite for the next live probe, not evidence of working quota or delivery.
+
+**Hosted repair honors opaque credentials and explicit model quota** — 2026-10-19. The official Claude App exchange returns an opaque token; validate safe single-line transport instead of guessing its alphabet. Record requested/granted authority separately and prove actual workflow-writing capability. Subscription admission for a named Claude model uses shared plus matching model-family windows; unknown/null capacity waits, and an aggregate-only telemetry file cannot attest Opus. Keep the change in existing domain adapters and validators; no generic dependency is needed. A successful parser or model launch does not substitute for actual quota/provider proof.
+
+**Human-authorized CD validation may waive source age per immutable intent** — 2026-10-19. Chris explicitly waived staging and production waits for the eight-delivery Evo validation campaign. Use a manual validation request with an exact verified main source and the actual authorization reference. Persist the waiver on that lineage, including reviewed repairs; never change global cadence, normal production age, configuration identity or completion evidence. This is domain-specific policy using existing state/CLI validation, so no generic package is needed. Each future waiver still requires its own actual human authority.
+
+**The macOS CD V2 host supervisor ships as reviewed source templates** — 2026-10-19. Morpheus owns generic launchd labels, tick/worker wrappers and digest/credential guards; each consumer copies them from an exact reviewed Morpheus commit, renders its own paths, and owns installation and cutover. Do not make the reusable controller initialize state, load services, or infer consumer provider/host facts. Keep the first integration as a small source asset and runbook rather than a configurable installer until a second consumer needs shared rendering.
 
 **Dependabot automation separates policy, model judgment, and write authority.** Projects own
 exact dependency/update-type allowlists and holds. The shared workflow sends only unmatched,
@@ -883,6 +940,14 @@ time; `morpheus init` adds the default block without replacing authored review s
 repository may disable the gate only with a substantive reason, so an opt-out is durable and
 reviewable rather than an environment toggle.
 
+**Google Storage evidence retains the required email account selector** — 2026-10-19.
+The Google-link policy and visual evidence policy apply together: an already approved
+`storage.googleapis.com` media path may carry exactly one `authuser=<email>`.
+The selector does not sign or expire the public object. Keep origin/path checks and reject
+numeric indexes, duplicate selectors, other queries, credentials and fragments. Other providers
+retain query-free evidence URLs. Reuse native URL parsing and the existing Zod email validator;
+this is a small provider-specific policy correction, with no new generic module or dependency.
+
 **A first research-library publish commits its catalog pointer last** — 2026-09-02. Babel remains
 the independent acquisition and canonical-conversion package. Morpheus reads one completed local
 directory, deterministically derives the ZIP and embedded HTML identities, creates missing remote
@@ -1221,6 +1286,22 @@ was considered for the session step and the pinned Claude Code CLI used instead,
 action couples to the calling repository's event context and this run is called from a different
 repository than the one it works on. No new package dependency: Zod, native Git and `gh`.
 
+**Quiet drafts and WIP pull requests are triaged, not skipped** — 2026-10-20 (MO-26-10-20-17.24.49,
+#442). Chris: some WIP pull requests are basically good to go but left as drafts, some are well
+specified with incomplete implementation that another agent could pick up, and some are
+underspecified, redundant or not useful and should be ignored until someone resumes them. This
+supersedes the plain skip in the 2026-10-12 entry above; its rule that the manager never merges WIP
+work stands. After `draftQuietHours`, one session instructed to be read-only decides `ready`,
+`incomplete` or `dormant` (or escalates a genuine human decision). Only a plain draft can be marked ready, and then
+the ordinary routes decide with their review, CI and merge rules unchanged; a WIP title or branch is
+only reported. Apply reads from Git whether the branch changed during triage, escalating any change,
+and refuses merge or close; the session token can still write, as every session's can. The verdict
+lives in the existing comment marker against the head, flagged as triage's so the two attempt
+budgets stay separate, and an unchanged draft costs nothing after its first classification; a push
+or removing the label asks again. Triage ranks after ready
+work in the session budget, and `actions.triage: false` restores the skip. Rescued trunk drafts keep
+their escalation. No dependency: the existing sweep, marker, Zod schema and Git verification.
+
 ## Agent profiling reads local transcripts, never self-reports — 2026-10-07
 
 `morpheus profile` measures where agent time and tokens go from the transcripts Claude Code and
@@ -1341,3 +1422,9 @@ owned-process guardian and native JSON execution mechanics rather than vendoring
 its app identities or PR-only recovery lifecycle. Git blob reads and compact test
 proofs avoid the Contents API's 1 MiB response behavior and repeated full native
 inventories in hot state.
+
+**Wait for explicit internal beta readiness before promotion — 2026-10-20.**
+VALID processing may precede TestFlight beta readiness. Preserve the accepted
+upload while waiting and use the existing bounded diagnosis. Reuse the current
+controller state machine and Apple state vocabulary; this domain-specific guard
+needs no generic retry package or dependency.

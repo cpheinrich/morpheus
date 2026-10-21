@@ -1,0 +1,18 @@
+#!/bin/bash
+# cd-v2-worker.sh.template — separate local agent worker invocation (public Morpheus CD V2).
+#
+# Runs the public worker against the consumer configuration with the exact
+# source checkout, exactly like the tick:
+#   dist/cli/index.js cd worker --executor local --config ABS --source-dir ABS
+#
+# This is a SEPARATE path from the host tick: the tick never starts the worker.
+# It is scheduled by its own launchd service every 300 s (self-healing wake-up);
+# runWorker itself claims due, unleased, unpaused repair work and idles otherwise.
+#
+# TEMPLATE. Render placeholders via bin/cd-v2-common.sh.template before use.
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/cd-v2-common.sh"
+
+cd_v2 worker --executor local --config "$CD_V2_CONFIG_PATH" --source-dir "$CD_V2_SOURCE_DIR"

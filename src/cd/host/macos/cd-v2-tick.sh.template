@@ -1,0 +1,22 @@
+#!/bin/bash
+# cd-v2-tick.sh.template — deterministic host tick for public Morpheus CD V2.
+#
+# Runs the public reconcile command, explicitly passing BOTH the config and the
+# exact source checkout — exactly like the worker; the CLI would otherwise
+# silently infer the source dir from the config path.
+#
+# launchd invokes this every 300 s (see launchd/com.consumer.cd-v2-tick.plist.template).
+# It never starts the local worker; the worker has its own scheduled service.
+#
+# TEMPLATE. Render placeholders via bin/cd-v2-common.sh.template before use.
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=cd-v2-common.sh
+. "$SCRIPT_DIR/cd-v2-common.sh"
+
+if [ "$CD_V2_TICK_OBSERVE" = "1" ]; then
+  cd_v2 tick --config "$CD_V2_CONFIG_PATH" --source-dir "$CD_V2_SOURCE_DIR" --observe
+else
+  cd_v2 tick --config "$CD_V2_CONFIG_PATH" --source-dir "$CD_V2_SOURCE_DIR"
+fi

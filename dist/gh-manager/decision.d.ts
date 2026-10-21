@@ -7,9 +7,11 @@ export declare const Decision: z.ZodObject<{
     head: z.ZodString;
     action: z.ZodEnum<{
         merge: "merge";
+        ready: "ready";
         incomplete: "incomplete";
         close: "close";
         escalate: "escalate";
+        dormant: "dormant";
         wait: "wait";
     }>;
     summary: z.ZodString;
@@ -23,6 +25,7 @@ export declare const Decision: z.ZodObject<{
     markReady: z.ZodDefault<z.ZodBoolean>;
     supersededBy: z.ZodOptional<z.ZodNumber>;
     missing: z.ZodOptional<z.ZodString>;
+    remainingChecks: z.ZodOptional<z.ZodString>;
     needsHuman: z.ZodOptional<z.ZodString>;
     findings: z.ZodDefault<z.ZodArray<z.ZodObject<{
         id: z.ZodString;
@@ -126,6 +129,18 @@ interface Context {
 export declare function inert(text: string): string;
 /** Turn a session's decision into operations, or into an escalation when it does not hold up. */
 export declare function planDecision(decision: Decision, live: LiveState, ctx: Context): Plan;
+/**
+ * Turn a triage session's decision into operations. Triage is read-only and never lands anything:
+ * the most it does is mark a plain draft ready for review, after which the ordinary path decides,
+ * with its review, check and merge rules unchanged. Draft state alone neither blocks this nor
+ * authorizes a merge, a close or an implementation.
+ */
+export declare function planTriage(decision: Decision, live: LiveState, ctx: Context): Plan;
+/**
+ * A triage session that wrote no usable decision. It still spent a triage attempt, a queued
+ * auto-merge on WIP is still cancelled, and a branch it changed is still escalated.
+ */
+export declare function planTriageNoDecision(problem: string, live: LiveState, ctx: Context): Plan;
 /** Operations for a route the sweep decided without a session. */
 export declare function planRoute(routed: Routed, live: LiveState, ctx: Context): Plan;
 /**

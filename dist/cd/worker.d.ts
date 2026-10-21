@@ -32,7 +32,7 @@ export declare const agentResultSchema: {
     };
     required: string[];
 };
-export declare function normalizeClaudeQuota(value: unknown, now: string): QuotaSnapshot;
+export declare function normalizeClaudeQuota(value: unknown, now: string, model?: string): QuotaSnapshot;
 /** No model request: read the same actual account limits exposed by the runtime. */
 export declare function codexQuota(command: string[], cwd: string, now: string): Promise<QuotaSnapshot>;
 export declare class QuotaReader {
@@ -50,6 +50,7 @@ export declare function scheduleHosted(config: CdConfig, store: GitHubStore, now
 export declare function verifyRepair(config: CdConfig, store: GitHubStore, sourceDir: string, result: AgentResult): Promise<string>;
 export declare function runWorker(config: CdConfig, store: GitHubStore, sourceDir: string, options: {
     executor: "local" | "hosted";
+    hostId?: string;
     workId?: string;
     invocationId?: string;
     taskDigest?: string;

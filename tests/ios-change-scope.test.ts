@@ -129,9 +129,9 @@ describe('single native check change scope', () => {
       expect(await f.run({}, shallow)).toBe('run=false\n');
     } finally { await rm(f.dir, { recursive: true, force: true }); }
   });
-  it('keeps one job and gates every native step, including always/failure evidence', async () => {
+  it('keeps one native job and gates every native step, including always/failure evidence', async () => {
     const wf = await workflow();
-    expect(Object.keys(wf.jobs)).toEqual(['test']);
+    expect(Object.keys(wf.jobs)).toEqual(['validate-runner', 'test']);
     expect(wf.on.workflow_call.inputs['watch-paths']!.default).toBe('');
     const steps = wf.jobs.test.steps;
     const scope = steps.findIndex(s => s.id === 'scope');

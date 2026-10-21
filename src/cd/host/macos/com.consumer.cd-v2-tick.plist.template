@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.consumer.cd-v2-tick.plist.template — TEMPLATE, do not install as-is.
+
+  Deterministic generic CD tick: wakes automatically every 300 s.
+  Replace every ____ path with concrete reviewed absolute paths.
+
+  Required substitutions:
+    ____/cd-v2-tick.sh        rendered copy of bin/cd-v2-tick.sh.template
+    ____/logs/cd-v2-tick.log
+    ____/logs/cd-v2-tick.err.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.consumer.cd-v2-tick</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>____/cd-v2-tick.sh</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>____/logs/cd-v2-tick.log</string>
+    <key>StandardErrorPath</key>
+    <string>____/logs/cd-v2-tick.err.log</string>
+
+    <!-- Fail closed: no credential values or tunables here. All parameters are
+         rendered constants inside the shell scripts; the local credential EXEC
+         wrapper loads values only into the controller child environment. -->
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>ThrottleInterval</key>
+    <integer>290</integer>
+</dict>
+</plist>

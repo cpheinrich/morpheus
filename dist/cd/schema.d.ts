@@ -3,6 +3,11 @@ export declare const sha: z.ZodString;
 export declare const digest: z.ZodString;
 export declare const decimal: z.ZodString;
 export declare const timestamp: z.ZodISODateTime;
+export declare const sourceAgeWaiverSchema: z.ZodObject<{
+    authorizationRef: z.ZodString;
+    grantedAt: z.ZodISODateTime;
+}, z.core.$strict>;
+export type SourceAgeWaiver = z.infer<typeof sourceAgeWaiverSchema>;
 export declare const configSchema: z.ZodObject<{
     schemaVersion: z.ZodLiteral<1>;
     repository: z.ZodString;
@@ -33,6 +38,7 @@ export declare const configSchema: z.ZodObject<{
             scheme: z.ZodOptional<z.ZodString>;
             configuration: z.ZodOptional<z.ZodString>;
             validationGroupId: z.ZodOptional<z.ZodString>;
+            externalGroupIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
         }, z.core.$strict>;
         production: z.ZodObject<{
             appId: z.ZodString;
@@ -51,6 +57,7 @@ export declare const configSchema: z.ZodObject<{
             scheme: z.ZodOptional<z.ZodString>;
             configuration: z.ZodOptional<z.ZodString>;
             validationGroupId: z.ZodOptional<z.ZodString>;
+            externalGroupIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
         }, z.core.$strict>;
     }, z.core.$strict>;
     tests: z.ZodDefault<z.ZodObject<{
@@ -83,13 +90,13 @@ export declare const configSchema: z.ZodObject<{
             model: z.ZodOptional<z.ZodString>;
             quotaFile: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>;
-        hosted: z.ZodObject<{
+        hosted: z.ZodOptional<z.ZodObject<{
             workflow: z.ZodString;
             ref: z.ZodDefault<z.ZodString>;
             command: z.ZodDefault<z.ZodArray<z.ZodString>>;
             model: z.ZodOptional<z.ZodString>;
             quotaFile: z.ZodOptional<z.ZodString>;
-        }, z.core.$strip>;
+        }, z.core.$strip>>;
     }, z.core.$strip>>;
     budget: z.ZodDefault<z.ZodObject<{
         togetherLimitUsd: z.ZodDefault<z.ZodNumber>;
@@ -211,6 +218,40 @@ export interface Receipt extends Identity {
     observation: InternalObservation;
     deliveredAt: string;
 }
+export interface ExternalObservation {
+    appId: string;
+    version: string;
+    buildNumber: string;
+    buildId: string;
+    processingState: string;
+    betaState: string;
+    detailId: string;
+    autoNotifyEnabled: boolean;
+    groups: InternalObservation["group"][];
+    review?: {
+        id: string;
+        state: string;
+    };
+    observedAt: string;
+}
+export interface ExternalStatus {
+    status: "pending" | "waiting-review" | "blocked" | "uncertain" | "available";
+    nextAction: string;
+    nextCheckAt: string;
+    blocker?: string;
+    observation?: ExternalObservation;
+    terminal?: boolean;
+}
+export interface ExternalReview {
+    appId: string;
+    buildId: string;
+    attempts: {
+        claimedAt: string;
+        outcome: "claimed" | "confirmed" | "conflict" | "rejected";
+        submissionId?: string;
+        completedAt?: string;
+    }[];
+}
 export interface Attempt {
     id: string;
     dispatchEffectId: string;
@@ -281,6 +322,7 @@ export interface DeliveryIntent {
     groupId: string;
     createdAt: string;
     deadlineAt: string;
+    sourceAgeWaiver?: SourceAgeWaiver;
     state: "pending" | "testing" | "uploading" | "processing" | "delivered" | "repairing" | "waiting" | "paused";
     nextAction: string;
     nextCheckAt: string;
@@ -288,6 +330,7 @@ export interface DeliveryIntent {
     attempts: Attempt[];
     receipt?: Receipt;
     eligibleAt?: string;
+    external?: ExternalStatus;
 }
 export interface AgentWork {
     id: string;
@@ -303,6 +346,7 @@ export interface AgentWork {
     invocations: {
         id: string;
         executor: "local" | "hosted";
+        hostId?: string;
         startedAt: string;
         endedAt?: string;
         session?: string;
@@ -369,6 +413,7 @@ export interface CdState {
         order: number;
         receiptId: string;
     }>;
+    externalReviews?: Record<string, ExternalReview>;
     pauses: {
         scope: string;
         actor: string;
@@ -396,6 +441,7 @@ export interface QuotaSnapshot {
         resetsAt: string;
     }[];
     source: string;
+    model?: string;
 }
 export interface CdEvent {
     id: string;

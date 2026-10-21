@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { visibleProse } from "../check/pr.js";
-import { humanGatedPaths, INCOMPLETE_LABEL, MANAGER_REVIEWED_LABEL, NEEDS_HUMAN_LABEL, STALE_LABEL, } from "./policy.js";
-import { isWorkInProgress, renderMarker } from "./sweep.js";
+import { DORMANT_LABEL, humanGatedPaths, INCOMPLETE_LABEL, MANAGER_REVIEWED_LABEL, NEEDS_HUMAN_LABEL, STALE_LABEL, } from "./policy.js";
+import { hasWipName, isWorkInProgress, renderMarker } from "./sweep.js";
 /**
  * What a session asks for, and what is actually done about it.
  *
@@ -26,7 +26,8 @@ export const Decision = z.object({
     pr: z.number().int().positive(),
     /** The branch head when the session finished, after anything it pushed. */
     head: Sha,
-    action: z.enum(["merge", "escalate", "close", "incomplete", "wait"]),
+    /** `ready` and `dormant` are triage decisions, accepted only from a triage session. */
+    action: z.enum(["merge", "escalate", "close", "incomplete", "ready", "dormant", "wait"]),
     /** One paragraph: what the session found and did. */
     summary: Text,
     /** Why this action and not another. */
@@ -46,6 +47,8 @@ export const Decision = z.object({
     supersededBy: z.number().int().positive().optional(),
     /** For `incomplete`: what the roadmap item asks for that the branch does not yet do. */
     missing: Text.optional(),
+    /** For a triage `incomplete`: the tests, evidence or benchmarks whoever finishes it must run. */
+    remainingChecks: Text.optional(),
     /** For `escalate`: the decision a human has to make. */
     needsHuman: Text.optional(),
     findings: z.array(z.object({
@@ -61,6 +64,8 @@ const HEADLINE = {
     close: "closed as obsolete",
     "warn-stale": "looks obsolete — will close after the grace period",
     incomplete: "incomplete against its roadmap item",
+    ready: "triaged: reads as complete",
+    dormant: "triaged: dormant until someone resumes it",
     wait: "no action",
 };
 function comment(verdict, sections, marker) {
@@ -126,6 +131,10 @@ export function planDecision(decision, live, ctx) {
     }
     if (decision.action === "wait") {
         return { verdict: "wait", operations: [comment("wait", sections, { ...marker, verdict: "wait" })] };
+    }
+    if (decision.action === "ready" || decision.action === "dormant") {
+        const why = `\`${decision.action}\` is a triage decision, and this pull request was not sent to triage`;
+        return { verdict: "wait", overridden: why, operations: [comment("wait", [`Nothing was applied: ${why}.`, ...sections], { ...marker, verdict: "wait" })] };
     }
     if (decision.action === "escalate") {
         return escalate(live, inert(decision.needsHuman ?? decision.reasoning), sections, marker);
@@ -201,7 +210,7 @@ export function planDecision(decision, live, ctx) {
             comment("merge", [`Auto-merge is being enabled; GitHub merges this once the required checks pass.${live.behind ? " The branch is behind its base, so the base is being merged in." : ""}`, ...sections], { ...marker, ...(decision.usedManagerReview ? { cleared: live.headSha } : {}), ...(live.behind ? { updated: live.headSha } : {}) }),
             ...(decision.body !== undefined && decision.body !== live.body ? [{ kind: "set-body", body: decision.body }] : []),
             ...(live.isDraft ? [{ kind: "ready" }] : []),
-            ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL, INCOMPLETE_LABEL),
+            ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL, INCOMPLETE_LABEL, DORMANT_LABEL),
             // Removed and re-applied on every clearance, never left in place: whoever applied it
             // before, the newest `labeled` event must be the App's and must follow the comment above.
             ...(decision.usedManagerReview ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label", label: MANAGER_REVIEWED_LABEL }] : []),
@@ -211,6 +220,96 @@ export function planDecision(decision, live, ctx) {
             ...updateIfBehind(live),
         ],
     };
+}
+/**
+ * Turn a triage session's decision into operations. Triage is read-only and never lands anything:
+ * the most it does is mark a plain draft ready for review, after which the ordinary path decides,
+ * with its review, check and merge rules unchanged. Draft state alone neither blocks this nor
+ * authorizes a merge, a close or an implementation.
+ */
+export function planTriage(decision, live, ctx) {
+    const marker = triageMarker(live, ctx);
+    const run = `Run: ${ctx.runUrl}`;
+    const sections = [inert(decision.summary), `**Why:** ${inert(decision.reasoning)}`, run];
+    const wait = (why, say) => ({ verdict: "wait", overridden: why, operations: say ? [comment("wait", [`Nothing was applied: ${why}.`, ...sections], marker)] : [] });
+    // Queued auto-merge on WIP is cancelled before anything else, exactly as the sweep's hold does.
+    if (live.autoMerge && isWorkInProgress(live))
+        return holdWorkInProgress(live, marker, run);
+    // Triage may not touch the branch at all, not even with a clean merge of trunk. What was pushed
+    // is read from Git between the sweep's head and the live head, never taken from the decision,
+    // so a session that pushed and then reported the old head is still caught here.
+    const pushed = branchChanged(live, sections, marker);
+    if (pushed)
+        return pushed;
+    // A person promoted it while the session ran: the ordinary path takes it from here.
+    if (!isWorkInProgress(live))
+        return wait("it is no longer a draft or WIP, so the ordinary path takes it next run", false);
+    if (live.sessionPushed === "unverified")
+        return wait("what the triage session pushed could not be verified", true);
+    if (decision.head !== live.headSha)
+        return wait("the decision names a head other than the branch's, which did not move", true);
+    switch (decision.action) {
+        case "ready": {
+            const ready = { ...marker, verdict: "ready" };
+            const cleared = removeLabels(live, INCOMPLETE_LABEL, DORMANT_LABEL, NEEDS_HUMAN_LABEL);
+            if (live.isDraft && !hasWipName(live) && ctx.policy.actions.undraft) {
+                return { verdict: "ready", operations: [
+                        comment("ready", ["Marked ready for review. From here the ordinary path applies: nothing merges without a complete review and passing required checks, and the usual quiet period still holds.", ...sections], ready),
+                        ...cleared,
+                        { kind: "ready" },
+                    ] };
+            }
+            const why = !ctx.policy.actions.undraft ? "marking drafts ready is disabled by policy" : "its WIP branch or title says a person must take it out of WIP";
+            return { verdict: "ready", operations: [comment("ready", [`This reads as complete, but it was left as it is: ${why}.`, ...sections], ready), ...cleared] };
+        }
+        case "incomplete":
+            return { verdict: "incomplete", operations: [
+                    comment("incomplete", [
+                        `**Still missing:** ${inert(decision.missing ?? decision.reasoning)}`,
+                        decision.remainingChecks ? `**Checks to run before review:** ${inert(decision.remainingChecks)}` : "",
+                        "Another agent can pick this up on its branch; the manager does not implement it. It leaves this alone until it gets a new push or someone removes the `manager:incomplete` label.",
+                        ...sections,
+                    ], { ...marker, verdict: "incomplete" }),
+                    ...removeLabels(live, DORMANT_LABEL),
+                    ...(live.labels.includes(INCOMPLETE_LABEL) ? [] : [{ kind: "add-label", label: INCOMPLETE_LABEL }]),
+                ] };
+        case "dormant":
+            return { verdict: "dormant", operations: [
+                    comment("dormant", ["Nothing is closed. The manager will not look at this again until it gets a new push or someone removes the `manager:dormant` label.", ...sections], { ...marker, verdict: "dormant" }),
+                    ...removeLabels(live, INCOMPLETE_LABEL),
+                    ...(live.labels.includes(DORMANT_LABEL) ? [] : [{ kind: "add-label", label: DORMANT_LABEL }]),
+                ] };
+        case "escalate":
+            return escalate(live, inert(decision.needsHuman ?? decision.reasoning), sections, marker);
+        case "wait":
+            return { verdict: "wait", operations: [comment("wait", sections, marker)] };
+        default:
+            return wait(`a triage session may not ${decision.action} a pull request; at most it marks a plain draft ready`, true);
+    }
+}
+/** Every marker triage writes says so, which keeps its attempt budget apart from the ordinary path's. */
+function triageMarker(live, ctx) {
+    return { head: live.headSha, verdict: "wait", attempts: ctx.attempts + 1, at: ctx.now.toISOString(), triage: true };
+}
+/** The branch changed between the sweep and now, which triage may not do: a person has to look. */
+function branchChanged(live, sections, marker) {
+    if (live.sessionPushed !== "other" && live.sessionPushed !== "trunk-merges")
+        return undefined;
+    return escalate(live, "this branch changed while the triage session ran, and triage may not change a branch. Check who pushed the new commits and revert them if they are not the author's.", sections, marker, "the branch changed during the triage session");
+}
+/**
+ * A triage session that wrote no usable decision. It still spent a triage attempt, a queued
+ * auto-merge on WIP is still cancelled, and a branch it changed is still escalated.
+ */
+export function planTriageNoDecision(problem, live, ctx) {
+    const marker = triageMarker(live, ctx);
+    const run = `Run: ${ctx.runUrl}`;
+    if (live.autoMerge && isWorkInProgress(live))
+        return holdWorkInProgress(live, marker, run);
+    const pushed = branchChanged(live, [`The session ended without a usable decision: ${problem}`, run], marker);
+    if (pushed)
+        return pushed;
+    return { verdict: "wait", overridden: problem, operations: [comment("wait", [`The session ended without a usable decision, so nothing was applied: ${problem}`, run], marker)] };
 }
 /** Last, after auto-merge is queued: the update starts a fresh CI run that the queue then follows. */
 function updateIfBehind(live) {

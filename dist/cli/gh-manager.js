@@ -1,13 +1,13 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Decision, planDecision, planNoDecision, planRoute } from "../gh-manager/decision.js";
+import { Decision, planDecision, planNoDecision, planRoute, planTriage, planTriageNoDecision } from "../gh-manager/decision.js";
 import { renderDigest } from "../gh-manager/digest.js";
 import { applyEvidence, evidenceUrl } from "../gh-manager/evidence.js";
 import { assertRepository, execute, publishEvidence, fetchLiveState, fetchPreviewSources, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
 import { GH_MANAGER_POLICY_PATH, GhManagerPolicy } from "../gh-manager/policy.js";
 import { resolvePreview } from "../gh-manager/preview.js";
 import { OVERLAY_PATH, sessionPrompt } from "../gh-manager/prompt.js";
-import { isWorkInProgress, SAFE_REF, sweep } from "../gh-manager/sweep.js";
+import { isWorkInProgress, SAFE_REF, sweep, TRIAGE_REASON } from "../gh-manager/sweep.js";
 import { authorRecordProblem, managerRecordProblem, sessionPushed } from "../gh-manager/verify.js";
 import { execFileSync } from "node:child_process";
 function write(path, text) {
@@ -161,6 +161,7 @@ export function ghManagerPrompt(repoArg, prArg, sweepPath, out) {
         cli: process.env["MORPHEUS_CLI"] ?? "morpheus",
         policy: file.policy,
         overlay: overlay(repo),
+        ...(routed.reason === TRIAGE_REASON ? { mode: "triage" } : {}),
     }));
     output("branch", live.branch);
     output("head", live.headSha);
@@ -193,46 +194,62 @@ export function ghManagerApply(repoArg, prArg, sweepPath, decisionPath, out, dry
     const live = fetchLiveState(repo, number, decision?.supersededBy);
     const plan = !live.open
         ? { verdict: "wait", overridden: "the pull request closed or merged during the session", operations: [] }
-        : planWithLiveWipGuard(live, routed, ctx, () => {
-            // This callback is never entered for WIP, so a late WIP signal cannot publish evidence.
-            if (decision && decisionPath) {
-                decision = applyEvidence(decision, {
-                    dir: join(dirname(decisionPath), `evidence-${number}`),
-                    liveHead: live.headSha,
-                    open: live.open,
-                    dryRun,
-                    publish: items => publishEvidence(repo, number, items),
-                    preview: items => items.map(item => ({ file: item.file, caption: item.caption, url: evidenceUrl(repo, "0".repeat(40), number, item) })),
-                });
-            }
-            // A checkout of the target verifies the session's commits and review record with Git.
-            const checkout = process.env["GH_MANAGER_CHECKOUT"];
-            if (checkout && decision) {
-                const trunk = `origin/${live.base}`;
-                live.sessionPushed = sessionPushed(checkout, routed.headSha, live.headSha, trunk);
-                if (decision.usedManagerReview)
-                    live.recordProblem = managerRecordProblem(checkout, decision.body ?? live.body, live.headSha, trunk);
-                else if (!live.labels.includes("agent-reviewed")) {
-                    live.authorRecordProblem = authorRecordProblem(checkout, decision.body ?? live.body, live.headSha, trunk);
-                    live.authorRecordValid = live.authorRecordProblem === undefined;
+        : routed.reason === TRIAGE_REASON
+            ? planTriageApply(live, routed, ctx, decision, problem, decisionPath, number)
+            : planWithLiveWipGuard(live, routed, ctx, () => {
+                // This callback is never entered for WIP, so a late WIP signal cannot publish evidence.
+                if (decision && decisionPath) {
+                    decision = applyEvidence(decision, {
+                        dir: join(dirname(decisionPath), `evidence-${number}`),
+                        liveHead: live.headSha,
+                        open: live.open,
+                        dryRun,
+                        publish: items => publishEvidence(repo, number, items),
+                        preview: items => items.map(item => ({ file: item.file, caption: item.caption, url: evidenceUrl(repo, "0".repeat(40), number, item) })),
+                    });
                 }
-            }
-            else if (decision?.usedManagerReview) {
-                live.recordProblem = "no checkout was available to validate it";
-            }
-            else if (decision && !live.labels.includes("agent-reviewed")) {
-                live.authorRecordProblem = "no checkout was available to validate it";
-            }
-            // No decision and no result means no session ran. A started session without a decision
-            // counts as an attempt. Both cases are reached only for a ready pull request.
-            if (!decision && !sessionStarted(decisionPath, number))
-                return { verdict: "wait", overridden: "no session ran for this pull request", operations: [] };
-            return decision ? planDecision(decision, live, ctx) : planNoDecision(problem, live, ctx);
-        });
+                // A checkout of the target verifies the session's commits and review record with Git.
+                const checkout = process.env["GH_MANAGER_CHECKOUT"];
+                if (checkout && decision) {
+                    const trunk = `origin/${live.base}`;
+                    live.sessionPushed = sessionPushed(checkout, routed.headSha, live.headSha, trunk);
+                    if (decision.usedManagerReview)
+                        live.recordProblem = managerRecordProblem(checkout, decision.body ?? live.body, live.headSha, trunk);
+                    else if (!live.labels.includes("agent-reviewed")) {
+                        live.authorRecordProblem = authorRecordProblem(checkout, decision.body ?? live.body, live.headSha, trunk);
+                        live.authorRecordValid = live.authorRecordProblem === undefined;
+                    }
+                }
+                else if (decision?.usedManagerReview) {
+                    live.recordProblem = "no checkout was available to validate it";
+                }
+                else if (decision && !live.labels.includes("agent-reviewed")) {
+                    live.authorRecordProblem = "no checkout was available to validate it";
+                }
+                // No decision and no result means no session ran. A started session without a decision
+                // counts as an attempt. Both cases are reached only for a ready pull request.
+                if (!decision && !sessionStarted(decisionPath, number))
+                    return { verdict: "wait", overridden: "no session ran for this pull request", operations: [] };
+                return decision ? planDecision(decision, live, ctx) : planNoDecision(problem, live, ctx);
+            });
     const outcome = carryOut(repo, number, plan, dryRun);
     console.error(`#${number} ${outcome.verdict}: ${outcome.did.join(", ") || "nothing to do"}${outcome.overridden ? ` (overridden: ${outcome.overridden})` : ""}${outcome.error ? ` — FAILED ${outcome.error}` : ""}`);
     write(out, JSON.stringify(outcome, null, 2));
     return outcome.error ? 1 : 0;
+}
+/**
+ * A triage session's decision. No evidence is published and no review record is read: triage
+ * changes nothing on the branch, and that is verified here with Git before anything is planned.
+ */
+export function planTriageApply(live, routed, ctx, decision, problem, decisionPath, number) {
+    if (!decision && !sessionStarted(decisionPath, number))
+        return { verdict: "wait", overridden: "no session ran for this pull request", operations: [] };
+    // Read whether the branch changed whether or not a decision was written: a session that pushed
+    // and then wrote nothing must not slip past as a quiet no-decision.
+    const checkout = process.env["GH_MANAGER_CHECKOUT"];
+    if (checkout)
+        live.sessionPushed = sessionPushed(checkout, routed.headSha, live.headSha, `origin/${live.base}`);
+    return decision ? planTriage(decision, live, ctx) : planTriageNoDecision(problem, live, ctx);
 }
 /** Check the live WIP signal before any evidence publication or session fallback. */
 export function planWithLiveWipGuard(live, routed, ctx, proceed) {

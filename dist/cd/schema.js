@@ -4,6 +4,7 @@ export const sha = z.string().regex(/^[a-f0-9]{40}$/);
 export const digest = z.string().regex(/^[a-f0-9]{64}$/);
 export const decimal = z.string().regex(/^[0-9]+$/);
 export const timestamp = z.iso.datetime();
+export const sourceAgeWaiverSchema = z.object({ authorizationRef: z.string().trim().min(10), grantedAt: timestamp }).strict();
 const command = z.array(z.string().min(1)).min(1);
 const schedule = z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("six-hour") }).strict(),
@@ -15,6 +16,7 @@ const channel = z.object({
     appEnvironment: z.string().optional(), schedule, minimumAgeHours: z.number().min(0).default(0),
     scheme: z.string().optional(), configuration: z.string().optional(),
     validationGroupId: z.string().optional(),
+    externalGroupIds: z.array(z.string().min(1)).min(1).optional(),
 }).strict();
 const relativeScript = z.string().refine(value => !value.startsWith("/") && !value.split("/").includes(".."), "must be repository relative");
 export const configSchema = z.object({
@@ -30,7 +32,7 @@ export const configSchema = z.object({
     apple: z.object({ issuerIdEnv: z.string(), keyIdEnv: z.string(), privateKeyPathEnv: z.string() }).strict(),
     agents: z.object({
         local: z.object({ command: command.default(["codex"]), model: z.string().optional(), quotaFile: z.string().optional() }),
-        hosted: z.object({ workflow: z.string(), ref: z.string().default("main"), command: command.default(["claude"]), model: z.string().optional(), quotaFile: z.string().optional() }),
+        hosted: z.object({ workflow: z.string(), ref: z.string().default("main"), command: command.default(["claude"]), model: z.string().optional(), quotaFile: z.string().optional() }).optional(),
     }).optional(),
     budget: z.object({ togetherLimitUsd: z.number().min(0).max(250).default(250), subscriptionAdmitBelowPercent: z.number().min(0).max(80).default(80), subscriptionStopAtPercent: z.number().min(0).max(90).default(90) }).default({ togetherLimitUsd: 250, subscriptionAdmitBelowPercent: 80, subscriptionStopAtPercent: 90 }),
     deadlines: z.object({ wakeMinutes: z.number().positive().default(15), admissionMinutes: z.number().positive().default(15), testMinutes: z.number().positive().default(180), uploadMinutes: z.number().positive().default(90), agentMinutes: z.number().positive().max(45).default(45), appleObservationMinutes: z.number().positive().default(30), pollMinutes: z.number().positive().default(5), deliveryHours: z.number().positive().max(6).default(6) }).default({ wakeMinutes: 15, admissionMinutes: 15, testMinutes: 180, uploadMinutes: 90, agentMinutes: 45, appleObservationMinutes: 30, pollMinutes: 5, deliveryHours: 6 }),
@@ -39,6 +41,11 @@ export const configSchema = z.object({
         context.addIssue({ code: "custom", path: ["channels", "staging"], message: "staging uses six-hour UTC slots" });
     if (config.channels.production.schedule.kind !== "daily" || config.channels.production.minimumAgeHours < 24)
         context.addIssue({ code: "custom", path: ["channels", "production"], message: "production requires daily UTC slots and at least 24 hours on main" });
+    for (const name of ["staging", "production"]) {
+        const app = config.channels[name], groups = app.externalGroupIds;
+        if (groups && (new Set(groups).size !== groups.length || groups.includes(app.internalGroupId) || groups.includes(app.validationGroupId ?? "")))
+            context.addIssue({ code: "custom", path: ["channels", name, "externalGroupIds"], message: "external groups must be unique and separate from internal/validation groups" });
+    }
 });
 export function canonical(value) {
     if (Array.isArray(value))
@@ -59,6 +66,11 @@ export function parseState(value) {
             throw new Error("Incomplete durable delivery intent");
         if (intent.state === "delivered" && !intent.receipt)
             throw new Error("Delivered intent is missing immutable receipt");
+        if (intent.sourceAgeWaiver) {
+            if (!intent.validation)
+                throw new Error("Source-age waiver requires a validation intent");
+            sourceAgeWaiverSchema.parse(intent.sourceAgeWaiver);
+        }
     }
     return state;
 }

@@ -12,7 +12,8 @@ export type CheckState = "success" | "failure" | "pending" | "skipped" | "neutra
 /** What the manager wrote on a pull request last time, read back from its own comment. */
 export interface ManagerMarker {
     head: string;
-    verdict: "merge" | "escalate" | "close" | "warn-stale" | "incomplete" | "wait";
+    /** `ready` and `dormant` come only from triage of a draft or WIP pull request. */
+    verdict: "merge" | "escalate" | "close" | "warn-stale" | "incomplete" | "ready" | "dormant" | "wait";
     attempts: number;
     /** ISO timestamp of that run. */
     at: string;
@@ -28,6 +29,11 @@ export interface ManagerMarker {
      * instead of retrying every run.
      */
     updated?: string | undefined;
+    /**
+     * Written by triage. Triage and the ordinary path keep separate attempt budgets: a draft's
+     * triage sessions never count against the ordinary path once it is ready, nor the reverse.
+     */
+    triage?: boolean | undefined;
 }
 export interface PullRequestFacts {
     number: number;
@@ -95,12 +101,19 @@ export interface Routed {
     /** Sessions already spent on this pull request, carried into the next marker. */
     attempts: number;
 }
+/** The session reason that marks a read-only triage of a draft or WIP pull request. */
+export declare const TRIAGE_REASON = "triage";
 /** A branch name the brief can carry verbatim. Git allows `;`, `$`, backticks and more in a ref. */
 export declare const SAFE_REF: RegExp;
 /** Branches `context brief` creates for tracked edits rescued from a dirty trunk checkout. */
 export declare const RESCUED_TRUNK_PREFIX = "wip/trunk-";
-/** An explicit WIP signal is a human request to leave this pull request alone. */
+/**
+ * An explicit WIP signal. The manager never merges or repairs such a pull request; once it has
+ * been quiet for `draftQuietHours` it is only triaged, read-only (see `routeWorkInProgress`).
+ */
 export declare function isWorkInProgress(pr: Pick<PullRequestFacts, "isDraft" | "headRefName" | "title">): boolean;
+/** A WIP branch or title, which only a person can take back; a plain draft is just `isDraft`. */
+export declare function hasWipName(pr: Pick<PullRequestFacts, "headRefName" | "title">): boolean;
 export declare function renderMarker(marker: ManagerMarker): string;
 /**
  * The marker in a comment body, or undefined.

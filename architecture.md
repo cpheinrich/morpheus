@@ -1360,8 +1360,12 @@ If the author finished a valid independent review but missed its label, the dete
 step validates the committed review at the current head and applies `agent-reviewed`; an absent
 or invalid record still cannot merge. Front-end reviews inspect actual screenshot pixels and
 recording frames, including evidence already attached to the PR.
-Drafts, `wip/` branches, and `[WIP]` or `WIP:` titles remain with their authors; the manager
-cancels queued auto-merge on them. A ready pull request waits 24 hours after its latest head
+Drafts, `wip/` branches, and `[WIP]` or `WIP:` titles are never reviewed, repaired or merged in
+place, and queued auto-merge on them is cancelled. Once quiet for `draftQuietHours` they are
+triaged by one session, instructed to be read-only and checked afterwards with Git, as ready (a
+plain draft is marked ready for the ordinary path),
+incomplete (a handoff another agent can pick up) or dormant, with the verdict kept against the head
+so an unchanged draft is not reclassified. A ready pull request waits 24 hours after its latest head
 commit or opening, whichever is later, before the manager acts.
 
 It follows the Morpheus Security shape (§18): a public reviewed engine in this repository, a
@@ -1614,6 +1618,9 @@ practical (screenshots otherwise), and a "what to test" list. The author attache
 PR under `## Visual evidence`; `check pr` verifies either a stable GitHub attachment reference or an
 HTTPS URL under a repository-approved `allowedUrlPrefixes` location. External locations are exact
 path prefixes, so approving one bucket on a shared provider does not approve every bucket there.
+Approved `storage.googleapis.com` media may include one `authuser=<email>` selector to
+honor the Google-link account policy. Other queries, including signed URLs and duplicate or
+numeric account selectors, remain refused; other providers still require query-free URLs.
 The check does not fetch the URL, classify its pixels, or claim it meaningfully demonstrates the
 UI. The author captures the final build and the independent reviewer opens and inspects the
 evidence; missing or inaccessible required captures leave review incomplete. Recording is a
@@ -3199,9 +3206,20 @@ a called workflow's top-level `concurrency` does not govern the caller's run.
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
 Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination.
+The optional `runner-labels-json` string selects a conjunction of runner labels,
+for example `["self-hosted","macos-vm","validation-specific-label"]`. Empty keeps
+the existing `runner` string. A small hosted Ubuntu job runs only for a nonempty
+selector, parses it with Node's built-in JSON support, and rejects nonarrays,
+empty arrays, nonstring or blank labels, surrounding whitespace, control characters,
+and case-insensitive duplicates before the native job can queue. Its canonical JSON
+output reaches `runs-on` through Actions' `fromJSON`; every label must match.
+Invalid input fails validation and skips native work, with no ordinary-runner fallback.
+Ordinary callers see a skipped validation check and retain their native job, concurrency,
+test selection and evidence requirements. A selector changes placement only; it does
+not establish runner absence, authorize cancellation, or prove hosted delivery.
 An optional `watch-paths` list uses Git pathspecs to compare the verified pull-request merge
 checkout to its first parent. When nothing matches, the same job reports success after checkout
-without Xcode, simulator, package, build or test work; there is no separate selector or aggregate
+without Xcode, simulator, package, build or test work; there is no separate change-scope or aggregate
 check. Scoped PR checkouts fetch full history to verify that the merge's base descends from the
 event base, allowing GitHub to regenerate the merge after trunk advances. Its head must still match
 the event exactly. The diff uses the actual first parent, so changes already on trunk do not count
@@ -3327,9 +3345,58 @@ single-parent nonforce updates and per-invocation ownership. Compact verified
 test proofs reference hashed native artifacts. Upload and group operations have
 durable claims; actual provider receipts complete the original obligation.
 Bounded subscription workers retain immutable tasks, session checkpoints and
-actual quota telemetry. App-only repairs reset production age; unchanged input
+actual quota telemetry. Hosted Claude admission joins shared and explicitly
+configured model-family windows; missing capacity remains a budget wait rather
+than silently treating an exhausted or unavailable model as healthy. Failed usage
+reads expose only fixed recognized diagnostics, never arbitrary provider text or
+credentials; actual scoped workflow authority and quota remain rollout proofs.
+The hosted repair route is optional: registered native Codex workers can share
+the same GitHub queue while preserving one global local-subscription reservation.
+Native account reads require explicit ordinary subscription eligibility before
+admission and during metering; missing or false allowance never admits prepaid
+credit fallback even when the reported usage windows are low.
+The native no-model quota reader has a 60-second total startup/read budget and
+a final RPC ceiling of 10 seconds within it. Its separate foreground-session
+supervisor retains a private group leader through cleanup, with a two-second
+cleanup bound and three-second parent fuse; failure remains fail-closed
+immediately, and success waits for confirmed cleanup and completion-time quota
+validation. This does not change the model guardian or the five-minute telemetry
+TTL. Frozen consumer workers adopt the source only through a separate reviewed
+quiet-host operation.
+If its supervisor disappears, the private reader leader kills its own live group;
+post-reap Darwin permission responses stay within the same cleanup polling bound.
+Worker leases and invocation start timestamps use a fresh clock after quota and
+login admission, recomputed inside each CAS claim attempt. Quota is revalidated
+at that attempt and after its acknowledgment before model launch; stale/reset
+telemetry never authorizes a launch or clears another owner's fence. The returned
+owned lease must still cover strictly more than the configured execution duration
+before launch, or the existing fenced unstarted cleanup refuses it. The lease
+duration remains `agentMinutes + 2`, and the guardian execution limit is unchanged.
+Transaction event timestamps remain request times; later write/acknowledgment,
+launch setup and guardian teardown still consume the existing margin.
+Native invocation identity names the host/user/session store; only its latest
+same-host local session can resume. Foreign or unidentified sessions restart from
+the immutable task and durable checkpoint evidence without copying native sessions
+or credentials. Owner and fence guard session, completion and error checkpoints.
+Existing configured hosted normalization is unchanged; removing that route is an
+explicit consumer configuration migration, not a silent ledger reset. Source-level
+tests do not establish actual two-Mac readiness or failover acceptance.
+App-only
+repairs reset production age; unchanged input
 digests retain their first lineage age through controller repairs. These are
 implementation properties, distinct from real consumer rollout acceptance.
+An explicitly human-authorized manual validation request may waive source age
+for its one immutable delivery lineage. It records the approval reference and
+request time, requires an exact verified main source, and retains full native,
+upload and internal-group evidence. This exception never changes automatic slot
+selection, ordinary production age, configuration identity or operational cursors.
+
+Channels may explicitly opt into post-delivery external TestFlight distribution
+with `externalGroupIds`. Internal acceptance and its receipt remain independent;
+external status requires exact-build testing state and all external memberships.
+Review claims are shared by app/build, durable before the provider call, and
+uncertain outcomes reconcile without blind resubmission. Consumers own explicit
+configuration migration and runtime adoption; absence of the opt-in is unchanged.
 
 Apps whose nightly release is dispatched from the Mac mini share one admission core,
 `src/ios/nightly-core.ts`, extracted from Evo's controller (darwin-health/evo #307, #309). It

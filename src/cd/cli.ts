@@ -17,10 +17,10 @@ const HELP = `morpheus cd config|init|tick|request|status|verify-execution|claim
   --config PATH                 Consumer configuration (default .morpheus/cd.json)
   --source-dir PATH             Exact app checkout, separate from trusted control/config
   tick [--observe]               Reconcile slots, workflows, Apple and durable repairs
-  request --channel CHANNEL [--source SHA] [--validation] [--group ID]
+  request --channel CHANNEL [--source SHA] [--validation] [--group ID] [--source-age-waiver REF]
   record --kind tests|failure|quiescence --evidence FILE (or - for stdin)
   upload-hook --phase before|resource|after
-  worker --executor local|hosted [--work-id ID --invocation-id ID --task-digest SHA256]
+  worker --executor local|hosted [--host-id ID] [--work-id ID --invocation-id ID --task-digest SHA256]
   budget --operation reserve|settle --id ID [--request FILE --maximum-micros N|--actual-micros N]
 All results are JSON. Upload claim exit 3 means skip safely; never retry bytes.
 `;
@@ -54,7 +54,8 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
   const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, strict: true, options: {
     config: { type: "string" }, "source-dir": { type: "string" }, evidence: { type: "string" }, kind: { type: "string" }, phase: { type: "string" },
     channel: { type: "string" }, source: { type: "string" }, group: { type: "string" }, validation: { type: "boolean" }, observe: { type: "boolean" },
-    executor: { type: "string" }, "work-id": { type: "string" }, "invocation-id": { type: "string" }, "task-digest": { type: "string" },
+    "source-age-waiver": { type: "string" },
+    executor: { type: "string" }, "host-id": { type: "string" }, "work-id": { type: "string" }, "invocation-id": { type: "string" }, "task-digest": { type: "string" },
     operation: { type: "string" }, id: { type: "string" }, request: { type: "string" }, "maximum-micros": { type: "string" }, "actual-micros": { type: "string" },
     help: { type: "boolean", short: "h" }, json: { type: "boolean" }, revoke: { type: "boolean" }, probe: { type: "boolean" },
   } });
@@ -76,13 +77,15 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
     }
     case "request": {
       invariant(values.channel === "staging" || values.channel === "production", "Request requires staging or production channel");
+      invariant(values["source-age-waiver"] === undefined || values.validation && values.source, "Source-age waiver requires --validation and explicit --source SHA");
       const channel = values.channel;
       result = await store.transact(`request-${randomUUID()}`, "manual-delivery-request", now, state => {
         const selected = values.source ? sourceAt(state, values.source) : state.sources.filter(source => channel === "staging" || Date.parse(source.mainEnteredAt) + config.channels.production.minimumAgeHours * 3_600_000 <= Date.parse(now)).at(-1);
         invariant(selected, "No source with verified main-entry evidence is eligible");
         invariant(values.validation || !Object.values(state.intents).some(intent => intent.channel === channel && !intent.validation && intent.state !== "delivered"), "Ordinary channel intent is already outstanding");
         const id = `${channel}-${values.validation ? "validation" : "request"}-${randomUUID()}`;
-        return { intentId: createIntent(state, config, channel, selected, now, now, values.validation, values.group, id).id };
+        const waiver = values["source-age-waiver"] === undefined ? undefined : { authorizationRef: values["source-age-waiver"], grantedAt: now };
+        return { intentId: createIntent(state, config, channel, selected, now, now, values.validation, values.group, id, waiver).id };
       }); break;
     }
     case "verify-execution": result = await verifyExecution(config, store, actions, sourceDir, environmentIdentity(environment), environment); break;
@@ -140,7 +143,7 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
     }
     case "worker": {
       invariant(values.executor === undefined || values.executor === "local" || values.executor === "hosted", "Unknown agent executor");
-      result = await runWorker(config, store, sourceDir, { executor: values.executor ?? "local", workId: values["work-id"], invocationId: values["invocation-id"], taskDigest: values["task-digest"] }, environment); break;
+      result = await runWorker(config, store, sourceDir, { executor: values.executor ?? "local", hostId: values["host-id"], workId: values["work-id"], invocationId: values["invocation-id"], taskDigest: values["task-digest"] }, environment); break;
     }
     case "budget": {
       const id = required(values.id, "--id");
