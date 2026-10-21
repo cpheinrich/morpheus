@@ -219,7 +219,7 @@ export function fetchLiveState(repo: string, number: number, supersededBy?: numb
   };
 }
 
-const LABEL_COLORS: Record<string, string> = { "agent-reviewed": "0e8a16", "manager-reviewed": "0e8a16", "manager:needs-human": "d93f0b", "manager:stale": "c5def5", "manager:incomplete": "fbca04", [LOG_LABEL]: "ededed" };
+const LABEL_COLORS: Record<string, string> = { "agent-reviewed": "0e8a16", "manager-reviewed": "0e8a16", "manager:needs-human": "d93f0b", "manager:stale": "c5def5", "manager:incomplete": "fbca04", "manager:dormant": "bfdadc", [LOG_LABEL]: "ededed" };
 
 function withBodyFile<T>(body: string, run: (path: string) => T): T {
   const dir = mkdtempSync(join(tmpdir(), "gh-manager-"));

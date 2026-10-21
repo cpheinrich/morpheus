@@ -1360,8 +1360,11 @@ If the author finished a valid independent review but missed its label, the dete
 step validates the committed review at the current head and applies `agent-reviewed`; an absent
 or invalid record still cannot merge. Front-end reviews inspect actual screenshot pixels and
 recording frames, including evidence already attached to the PR.
-Drafts, `wip/` branches, and `[WIP]` or `WIP:` titles remain with their authors; the manager
-cancels queued auto-merge on them. A ready pull request waits 24 hours after its latest head
+Drafts, `wip/` branches, and `[WIP]` or `WIP:` titles are never reviewed, repaired or merged in
+place, and queued auto-merge on them is cancelled. Once quiet for `draftQuietHours` they are
+triaged by one read-only session as ready (a plain draft is marked ready for the ordinary path),
+incomplete (a handoff another agent can pick up) or dormant, with the verdict kept against the head
+so an unchanged draft is not reclassified. A ready pull request waits 24 hours after its latest head
 commit or opening, whichever is later, before the manager acts.
 
 It follows the Morpheus Security shape (§18): a public reviewed engine in this repository, a

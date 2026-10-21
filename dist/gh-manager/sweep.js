@@ -1,14 +1,24 @@
-import { BOT_LANES, INCOMPLETE_LABEL, MANAGER_REVIEWED_LABEL, NEEDS_HUMAN_LABEL, STALE_LABEL, TRUSTED_ASSOCIATIONS, TRUSTED_PERMISSIONS, } from "./policy.js";
+import { BOT_LANES, DORMANT_LABEL, INCOMPLETE_LABEL, MANAGER_REVIEWED_LABEL, NEEDS_HUMAN_LABEL, STALE_LABEL, TRUSTED_ASSOCIATIONS, TRUSTED_PERMISSIONS, } from "./policy.js";
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const MARKER = /<!-- morpheus-gh-manager (\{[^\n]*\}) -->/g;
+const VERDICTS = ["merge", "escalate", "close", "warn-stale", "incomplete", "ready", "dormant", "wait"];
+/** The session reason that marks a read-only triage of a draft or WIP pull request. */
+export const TRIAGE_REASON = "triage";
 /** A branch name the brief can carry verbatim. Git allows `;`, `$`, backticks and more in a ref. */
 export const SAFE_REF = /^[A-Za-z0-9._/-]+$/;
 /** Branches `context brief` creates for tracked edits rescued from a dirty trunk checkout. */
 export const RESCUED_TRUNK_PREFIX = "wip/trunk-";
-/** An explicit WIP signal is a human request to leave this pull request alone. */
+/**
+ * An explicit WIP signal. The manager never merges or repairs such a pull request; once it has
+ * been quiet for `draftQuietHours` it is only triaged, read-only (see `routeWorkInProgress`).
+ */
 export function isWorkInProgress(pr) {
-    return pr.isDraft || /^wip\//i.test(pr.headRefName) || /^\s*(?:\[wip\]|wip:)/i.test(pr.title);
+    return pr.isDraft || hasWipName(pr);
+}
+/** A WIP branch or title, which only a person can take back; a plain draft is just `isDraft`. */
+export function hasWipName(pr) {
+    return /^wip\//i.test(pr.headRefName) || /^\s*(?:\[wip\]|wip:)/i.test(pr.title);
 }
 export function renderMarker(marker) {
     return `<!-- morpheus-gh-manager ${JSON.stringify(marker)} -->`;
@@ -29,7 +39,7 @@ export function parseMarker(body) {
         const raw = JSON.parse(match[1]);
         if (typeof raw.head !== "string" || typeof raw.verdict !== "string" || typeof raw.attempts !== "number" || typeof raw.at !== "string")
             return undefined;
-        if (!["merge", "escalate", "close", "warn-stale", "incomplete", "wait"].includes(raw.verdict))
+        if (!VERDICTS.includes(raw.verdict))
             return undefined;
         if (raw.cleared !== undefined && typeof raw.cleared !== "string")
             return undefined;
@@ -56,7 +66,10 @@ export function routePullRequest(pr, policy, now) {
     // A human answering an escalation — by pushing, or by removing the label to say "try again" —
     // is a new situation; the budget starts again.
     const reopened = marker?.verdict === "escalate" && (marker.head !== pr.headSha || !pr.labels.includes(NEEDS_HUMAN_LABEL));
-    const attempts = marker && !reopened ? marker.attempts : 0;
+    // A triage verdict was about a draft. Once a person (or triage itself) marks it ready, the
+    // ordinary path starts with its own full budget rather than inheriting the triage session.
+    const triaged = marker?.verdict === "ready" || marker?.verdict === "dormant";
+    const attempts = marker && !reopened && !triaged ? marker.attempts : 0;
     const routed = (route, reason, detail) => ({ number: pr.number, title: pr.title, headSha: pr.headSha, route, reason, detail, attempts });
     if (BOT_LANES.has(pr.author))
         return routed("skip", "bot-lane", `${pr.author} has its own maintainer`);
@@ -79,7 +92,7 @@ export function routePullRequest(pr, policy, now) {
     if (isWorkInProgress(pr))
         return pr.autoMerge
             ? routed("hold", "wip-auto-merge", "work in progress; cancelling queued auto-merge")
-            : routed("skip", "work-in-progress", "draft, WIP branch or WIP title; awaiting a human to mark it ready");
+            : routeWorkInProgress(pr, policy, now);
     if (pr.labels.includes(NEEDS_HUMAN_LABEL) && marker?.head === pr.headSha) {
         return routed("skip", "escalated", "waiting on a human since the last run; a new push reopens it");
     }
@@ -147,9 +160,50 @@ export function routePullRequest(pr, policy, now) {
     ].filter(Boolean).join("; ");
     return routed("session", "needs-judgment", why || "not mergeable as it stands");
 }
-/** Closest to merging first: ready before draft, reviewed before not, then the longest-waiting. */
+/**
+ * A draft or WIP pull request with nothing queued. It is never merged or repaired here. Once quiet
+ * for `draftQuietHours` it gets one read-only triage session, which classifies it as ready,
+ * incomplete (a handoff another agent can pick up) or dormant. The verdict is kept against the
+ * head in the manager's marker, so an unchanged draft is not reclassified every run: a new push,
+ * or a person removing the label, is what asks for another look.
+ */
+function routeWorkInProgress(pr, policy, now) {
+    const marker = pr.marker;
+    const sameHead = marker?.head === pr.headSha;
+    // Attempts are per head here: each push is a new piece of work to classify.
+    const attempts = marker && sameHead ? marker.attempts : 0;
+    const routed = (route, reason, detail) => ({ number: pr.number, title: pr.title, headSha: pr.headSha, route, reason, detail, attempts });
+    const waiting = "draft, WIP branch or WIP title; awaiting a human to mark it ready";
+    // A rescued trunk draft is uncommitted edits, not a proposal. It has its own escalation above.
+    if (pr.headRefName.startsWith(RESCUED_TRUNK_PREFIX))
+        return routed("skip", "work-in-progress", waiting);
+    if (!policy.actions.triage)
+        return routed("skip", "work-in-progress", waiting);
+    if (sameHead && pr.labels.includes(NEEDS_HUMAN_LABEL))
+        return routed("skip", "escalated", "waiting on a human since the last run; a new push reopens it");
+    if (sameHead && pr.labels.includes(INCOMPLETE_LABEL))
+        return routed("skip", "incomplete", "triaged as incomplete; the handoff is on the pull request. A new push or removing the label re-triages it");
+    if (sameHead && pr.labels.includes(DORMANT_LABEL))
+        return routed("skip", "dormant", "triaged as dormant; a new push or removing the label re-triages it");
+    if (sameHead && marker?.verdict === "ready")
+        return routed("skip", "triaged-ready", "triaged as complete; a person has to take it out of WIP. A new push re-triages it");
+    const age = now.getTime() - Math.max(Date.parse(pr.headCommittedAt), Date.parse(pr.createdAt));
+    if (!Number.isFinite(age) || age < policy.draftQuietHours * HOUR) {
+        return routed("skip", "work-in-progress", `${waiting}; triaged once quiet for ${policy.draftQuietHours}h`);
+    }
+    if (attempts >= policy.maxAttemptsPerPullRequest) {
+        // Not an escalation: nobody asked the manager for anything, and a label would only add noise.
+        return routed("skip", "triage-attempts-spent", `${attempts} triage session(s) on this head reached no classification; a new push starts again`);
+    }
+    const kind = pr.isDraft ? "draft" : "WIP branch or title";
+    return routed("session", TRIAGE_REASON, `${kind} quiet for ${policy.draftQuietHours}h or more; triage only: ready, incomplete or dormant`);
+}
+/**
+ * Closest to merging first: ready before draft or WIP, reviewed before not, then the
+ * longest-waiting. Triage therefore spends only budget that ready pull requests left over.
+ */
 function sessionOrder(a, b) {
-    const rank = (pr) => (pr.isDraft ? 2 : 0) + (pr.labels.includes("agent-reviewed") || pr.labels.includes(MANAGER_REVIEWED_LABEL) ? 0 : 1);
+    const rank = (pr) => (isWorkInProgress(pr) ? 2 : 0) + (pr.labels.includes("agent-reviewed") || pr.labels.includes(MANAGER_REVIEWED_LABEL) ? 0 : 1);
     return rank(a) - rank(b) || Date.parse(a.headCommittedAt) - Date.parse(b.headCommittedAt) || a.number - b.number;
 }
 /** Route every pull request, then hold sessions to the per-run budget. */

@@ -28,6 +28,13 @@ export interface SessionBrief {
     policy: GhManagerPolicy;
     /** The project's own additions, from `.github/gh-manager-prompt.md` on its default branch. */
     overlay?: string | undefined;
+    /** `triage`: a read-only classification of a draft or WIP pull request, never a repair. */
+    mode?: "triage" | undefined;
 }
 export declare const OVERLAY_PATH = ".github/gh-manager-prompt.md";
 export declare function sessionPrompt(brief: SessionBrief): string;
+/**
+ * The brief for triaging a draft or WIP pull request. It reads and classifies; it does not
+ * repair, review-and-fix or merge, and the apply step verifies with Git that it pushed nothing.
+ */
+export declare function triagePrompt(brief: SessionBrief): string;

@@ -18,10 +18,11 @@ Every run starts with a sweep that uses no model. Each open pull request gets on
 | `merge` | Reviewed, checks green, auto-merge never enabled | Auto-merge is switched on; cancelled checks are rerun. No session. |
 | `merge` (update) | Auto-merge is on but strict protection holds the branch behind its base | The base is merged in with GitHub's `update-branch`, guarded on the current head. No session. If GitHub refuses (most likely because the merge from trunk carries a workflow change and the App has no Workflows permission), the next run escalates once with `manager:needs-human` and leaves auto-merge and any `manager-reviewed` clearance in place, so the pull request lands once a person merges the base in. |
 | `session` | A ready pull request needs judgment: no completed review, failing checks or conflicts | One fresh Claude session (below). |
+| `session` (triage) | A draft or WIP pull request has been quiet for `draftQuietHours` and has no verdict at this head | One read-only Claude session that classifies it ([below](#triaging-drafts-and-wip-pull-requests)). It never merges, repairs or closes. |
 | `hold` | A WIP pull request already has auto-merge queued | The manager cancels auto-merge and leaves the pull request open. |
 | `close` | A stale warning's grace period ran out | Closed with a comment. The branch is left in place. |
 | `escalate` | The attempt budget is spent | Labelled `manager:needs-human`. |
-| `skip` | WIP, recently active, already queued, a bot lane, an untrusted author, already escalated or marked incomplete | Reported in the digest, not touched. |
+| `skip` | WIP inside its quiet period, recently active, already queued, a bot lane, an untrusted author, already escalated, or already triaged at this head (incomplete, dormant, or ready but still titled WIP) | Reported in the digest, not touched. |
 
 A session ends in one of five decisions:
 
@@ -39,9 +40,40 @@ A session ends in one of five decisions:
 
 The manager does not touch a branch its author may still be driving. A ready pull request is left
 alone until `quietHours` (default 24) after the later of its head commit and the time it was opened.
-A draft, a `wip/` branch, or a title beginning `[WIP]` or `WIP:` is held regardless of age or review.
-The manager never marks a draft ready. A rescued `wip/trunk-*` draft still escalates to a human after
-`draftQuietHours` (default 48), without a review or merge.
+A draft, a `wip/` branch, or a title beginning `[WIP]` or `WIP:` is never reviewed, repaired or
+merged in place. Once it has been quiet for `draftQuietHours` (default 48), measured the same way,
+it is triaged (next section). A rescued `wip/trunk-*` draft is not triaged: it still escalates to a
+human after `draftQuietHours`, without a review or merge.
+
+## Triaging drafts and WIP pull requests
+
+Drafts pile up for three different reasons, and a plain skip treated them alike. Chris's direction
+(2026-10-20, issue #442): review and triage them. A quiet draft or WIP pull request gets **one
+read-only session** that decides exactly one of:
+
+| Decision | Means | What the apply step does |
+|---|---|---|
+| `ready` | It does what its roadmap item asks; only validation is left (review, CI, evidence, a clean trunk merge) | A plain draft is marked ready for review (when `actions.undraft` allows). From then on the ordinary routes apply unchanged: nothing merges without a complete review and passing required checks, and the ordinary path starts with its full attempt budget. A WIP title or `wip/` branch is reported only, because only a person can take it out of WIP. |
+| `incomplete` | Well specified but unfinished | Labelled `manager:incomplete`, with a comment listing the remaining implementation and the checks whoever finishes it must run, so another agent can pick it up. |
+| `dormant` | Underspecified, redundant with merged work, or low value | Labelled `manager:dormant` with the reason. Nothing is closed. |
+| `escalate` | Waiting on a genuine human decision | Labelled `manager:needs-human`, quoting the decision. |
+| `wait` | Cannot be classified yet | A comment saying what would let the next run decide. |
+
+The rules that keep it bounded:
+
+- **Draft state neither blocks triage nor authorizes anything.** Triage never merges, closes,
+  implements or repairs. The apply step refuses a triage decision of `merge` or `close`, and verifies
+  with Git that the session pushed nothing to the branch, not even a merge of trunk; if it did, the
+  decision is refused and a human is asked to look. If that cannot be verified, nothing is applied.
+- **One classification per head.** The verdict is kept in the manager's comment marker against the
+  head commit, so an unchanged draft is not reclassified, or paid for, every run. A new push, or
+  removing `manager:incomplete`, `manager:dormant` or `manager:needs-human`, asks for another look.
+  Sessions that reach no classification count against `maxAttemptsPerPullRequest` per head; when
+  they run out the draft is skipped, not escalated, until it gets a push.
+- **Ready work goes first.** Triage sessions rank after every ready pull request within
+  `maxSessionsPerRun`, so they spend only budget the ready queue left.
+- Queued auto-merge on a WIP pull request is still cancelled (`hold`) before anything else.
+- `actions.triage: false` restores the plain skip.
 
 ## The manager review
 
@@ -167,12 +199,13 @@ that repository; invalid is an error, not "off".
   "closeGraceDays": 7,
   "protectedPaths": [],
   "model": "claude-opus-5-5",
-  "actions": { "merge": true, "repair": true, "review": true, "undraft": true, "close": true }
+  "actions": { "merge": true, "repair": true, "review": true, "undraft": true, "triage": true, "close": true }
 }
 ```
 
-Everything but `version` is optional and shown at its default. `draftQuietHours` only controls the
-rescued trunk escalation; it does not make drafts eligible for merge. `sessionBeforeMerge` is for a
+Everything but `version` is optional and shown at its default. `draftQuietHours` is when a quiet
+draft is triaged and when a rescued trunk draft is escalated; it never makes a draft eligible for
+merge. `sessionBeforeMerge` is for a
 project whose authors deliberately leave finished work open for a human to merge or redirect: a
 reviewed, green pull request then goes through a session, which reads it, instead of having
 auto-merge enabled from the sweep. `protectedPaths` are plain repository-relative prefixes; globs
@@ -288,8 +321,9 @@ repositories included (verified 2026-10-08).
 A scheduled agent, `morpheus-gh-manager[bot]`, sweeps open pull requests in repositories that opt
 in with `.github/morpheus-gh-manager.json`. It enables auto-merge on reviewed, green pull requests;
 for ones that stalled it reads the reviews on record, conducts one more if needed, fixes its own
-findings in the same session and lands the result; it marks abandoned drafts incomplete, closes
-obsolete work, and escalates what needs a human with `manager:needs-human`.
+findings in the same session and lands the result; it triages quiet drafts and WIP pull requests as
+ready, incomplete (a handoff) or dormant without changing their branches, closes obsolete ready work,
+and escalates what needs a human with `manager:needs-human`.
 
 **Morpheus is opted in too**, with its policy in `.github/morpheus-gh-manager.json` and its
 additions to the session brief in `.github/gh-manager-prompt.md`. Because this repository is the
@@ -302,9 +336,10 @@ open for Chris to decide, say so plainly in `## Open questions` so the manager e
 of treating it as a stall.
 
 **It is a backstop, not a plan.** The authoring agent still owns its review loop, CI and merge, and
-must not leave a pull request for the manager to finish. The manager waits 8 hours after a ready
-pull request's last commit and 48 after a draft's before touching it, and what it lands carries a
-visible `~ [agent-review] cleared by the GitHub Manager` waiver.
+must not leave a pull request for the manager to finish. The manager waits `quietHours` (24 by
+default) after a ready pull request's last commit and `draftQuietHours` (48) after a draft's before
+touching it; a draft is only ever triaged, and what it lands carries a visible
+`~ [agent-review] cleared by the GitHub Manager` waiver.
 
 **Leave its labels and records alone.** `manager-reviewed` counts only when the App applied it and
 only for the head the App's comment names; a push after that needs the manager, or the ordinary
