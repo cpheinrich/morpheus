@@ -9,6 +9,18 @@ import unittest
 
 ACTION = Path(__file__).resolve().parents[1] / ".github/actions/ios-testflight-upload"
 TOOL = ACTION / "upload-receipt.py"
+# upload-effects.sh measures its acceptance deadline in whole seconds of `date +%s`. On the
+# real clock a one-second timeout lasts anywhere from 0 to 1 s, so a second boundary between
+# the deadline read and the first check timed out before any poll (CI run 39724029142). The
+# boundary runs on a controlled clock instead: `date +%s` is harness time and `sleep N`
+# advances it by N without waiting; other date formats use the real command. The script and
+# its deadline arithmetic are unchanged.
+CLOCK = """FAKE_NOW=1700000000
+date() { if [[ $# == 1 && $1 == +%s ]]; then printf '%s\\n' "$FAKE_NOW"; else command date "$@"; fi; }
+sleep() { [[ $# == 1 && $1 =~ ^[0-9]+$ ]] || { echo "controlled sleep needs whole seconds: $*" >&2; return 97; }; FAKE_NOW=$((FAKE_NOW + $1)); }
+"""
+# A boundary that stops advancing the clock fails here instead of hanging the suite.
+BOUNDARY_TIMEOUT = 10
 
 
 class ReceiptTests(unittest.TestCase):
@@ -97,16 +109,15 @@ class ReceiptTests(unittest.TestCase):
         self.prepare()
         for code, response in [(1, '{"data":{"id":"id","state":"PROCESSING"}}'), (0, '{}'), (0, '{"data":{"id":"id","state":"PROCESSING"}}')]:
             directory = self.prepare()
-            prefix = "set -euo pipefail\nrun_asccli() { printf '%s' \"$FAKE_RESPONSE\"; return \"$FAKE_EXIT\"; }\n"
-            env = dict(self.env, FAKE_RESPONSE=response, FAKE_EXIT=str(code), PROCESSING_TIMEOUT_SECONDS="1", PROCESSING_POLL_SECONDS="0", SCHEME_NAME="App", IPA_PATH=str(self.root / "app.ipa"), REPOSITORY_ROOT=str(self.root), GITHUB_ACTION_PATH=str(ACTION))
-            result = subprocess.run(["bash", "-c", prefix + boundary], env=env, capture_output=True, text=True)
+            prefix = "set -euo pipefail\n" + CLOCK + "run_asccli() { printf '%s' \"$FAKE_RESPONSE\"; return \"$FAKE_EXIT\"; }\n"
+            env = dict(self.env, FAKE_RESPONSE=response, FAKE_EXIT=str(code), PROCESSING_TIMEOUT_SECONDS="1", PROCESSING_POLL_SECONDS="1", SCHEME_NAME="App", IPA_PATH=str(self.root / "app.ipa"), REPOSITORY_ROOT=str(self.root), GITHUB_ACTION_PATH=str(ACTION))
+            result = subprocess.run(["bash", "-c", prefix + boundary], env=env, capture_output=True, text=True, timeout=BOUNDARY_TIMEOUT)
             self.assertEqual(result.returncode == 0, code == 0 and response != '{}', result.stderr)
             self.assertEqual((directory / "accepted.json").exists(), code == 0 and response != '{}')
 
     def test_awaiting_upload_must_confirm_same_resource(self):
         boundary = (ACTION / "upload-effects.sh").read_text()
-        prefix = """set -euo pipefail
-run_asccli() {
+        prefix = "set -euo pipefail\n" + CLOCK + """run_asccli() {
   if [[ "$2" == upload ]]; then printf '%s' '{"data":{"id":"first","state":"AWAITING_UPLOAD"}}';
   else printf '%s' "$CONFIRM_RESPONSE"; fi
 }
@@ -116,13 +127,13 @@ run_asccli() {
                                    ({"data": {"id": "first", "state": "AWAITING_UPLOAD"}}, False),
                                    ({"data": {"id": "first", "state": "UNKNOWN"}}, False)]:
             directory = self.prepare()
-            env = dict(self.env, CONFIRM_RESPONSE=json.dumps(response), PROCESSING_TIMEOUT_SECONDS="1", PROCESSING_POLL_SECONDS="0",
+            env = dict(self.env, CONFIRM_RESPONSE=json.dumps(response), PROCESSING_TIMEOUT_SECONDS="1", PROCESSING_POLL_SECONDS="1",
                        SCHEME_NAME="App", IPA_PATH=str(self.root / "app.ipa"), REPOSITORY_ROOT=str(self.root), GITHUB_ACTION_PATH=str(ACTION))
-            result = subprocess.run(["bash", "-c", prefix + boundary], env=env, capture_output=True, text=True, timeout=5)
+            result = subprocess.run(["bash", "-c", prefix + boundary], env=env, capture_output=True, text=True, timeout=BOUNDARY_TIMEOUT)
             self.assertEqual(result.returncode == 0, accepted, result.stderr)
             self.assertEqual((directory / "accepted.json").exists(), accepted)
 
-    def boundary(self, before=0, after=0, response=None, mutation=False, resource=0, poll_response=None, fail_resource_state=""):
+    def boundary(self, before=0, after=0, response=None, mutation=False, resource=0, poll_response=None, fail_resource_state="", timeout_seconds=1):
         directory = self.prepare()
         self.calls = self.root / "boundary-calls"
         self.calls.write_text("")
@@ -150,12 +161,12 @@ if [[ "$1" == after ]]; then test -f "$UPLOAD_RECEIPT_PATH" || exit 90; exit "$A
                    REPOSITORY_ROOT=str(self.root), SCHEME_NAME="App", CALL_LOG=str(self.calls),
                    DIGEST_LOG=str(self.root / "digest"), RESOURCE_COPY=str(self.root / "resource-copy.json"),
                    BEFORE_UPLOAD_SCRIPT=str(hook), AFTER_UPLOAD_SCRIPT=str(hook), BEFORE_STATUS=str(before),
-                   AFTER_STATUS=str(after), RESOURCE_STATUS=str(resource), FAIL_RESOURCE_STATE=fail_resource_state, MUTATE_IPA=str(mutation).lower(), PROCESSING_TIMEOUT_SECONDS="1", PROCESSING_POLL_SECONDS="0",
+                   AFTER_STATUS=str(after), RESOURCE_STATUS=str(resource), FAIL_RESOURCE_STATE=fail_resource_state, MUTATE_IPA=str(mutation).lower(), PROCESSING_TIMEOUT_SECONDS=str(timeout_seconds), PROCESSING_POLL_SECONDS="1",
                    MORPHEUS_CD_INTENT_ID="intent-1", MORPHEUS_CD_ATTEMPT_ID="attempt-1",
                    MORPHEUS_CD_DISPATCH_EFFECT_ID="dispatch-1", MORPHEUS_CD_SOURCE_SHA=self.sha, MORPHEUS_CD_CONTROL_SHA="b"*40,
                    FAKE_RESPONSE=json.dumps(response or {"data": {"id": "upload-1", "state": "PROCESSING"}}), POLL_RESPONSE=json.dumps(poll_response))
-        prefix = 'set -euo pipefail\nrun_asccli() { if [[ "$2" == upload ]]; then echo apple-upload >> "$CALL_LOG"; printf %s "$FAKE_RESPONSE"; else echo apple-poll >> "$CALL_LOG"; printf %s "$POLL_RESPONSE"; fi; }\n'
-        result = subprocess.run(["bash", "-c", prefix + 'source "$GITHUB_ACTION_PATH/upload-effects.sh"'], env=env, capture_output=True, text=True)
+        prefix = 'set -euo pipefail\n' + CLOCK + 'run_asccli() { if [[ "$2" == upload ]]; then echo apple-upload >> "$CALL_LOG"; printf %s "$FAKE_RESPONSE"; else echo apple-poll >> "$CALL_LOG"; printf %s "$POLL_RESPONSE"; fi; }\n'
+        result = subprocess.run(["bash", "-c", prefix + 'source "$GITHUB_ACTION_PATH/upload-effects.sh"'], env=env, capture_output=True, text=True, timeout=BOUNDARY_TIMEOUT)
         return result, directory
 
     def test_failed_claim_and_duplicate_claim_do_not_upload(self):
@@ -198,6 +209,18 @@ if [[ "$1" == after ]]; then test -f "$UPLOAD_RECEIPT_PATH" || exit 90; exit "$A
                 self.assertEqual(self.calls.read_text().splitlines(), ["before", "apple-upload", "resource", "apple-poll", "resource"])
                 self.assertEqual(self.outputs()["receipt-path"], str(directory / "accepted.json"))
                 self.assertEqual(json.loads((directory / "accepted.json").read_text())["uploadId"], "upload-1")
+
+    def test_unconfirmed_upload_times_out_exactly_at_the_deadline(self):
+        # Timeout 3 s, poll 1 s on the controlled clock: the checks at +0, +1 and +2 each poll;
+        # the check at +3 equals the deadline and stops. Three polls, never a fourth.
+        awaiting = {"data": {"id": "upload-1", "state": "AWAITING_UPLOAD"}}
+        result, directory = self.boundary(response=awaiting, poll_response=awaiting, timeout_seconds=3)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.stderr.splitlines()[-1], "Timed out confirming upload acceptance; outcome remains uncertain.")
+        self.assertEqual(self.calls.read_text().splitlines(), ["before", "apple-upload", "resource"] + ["apple-poll", "resource"] * 3)
+        self.assertEqual(json.loads((directory / "resource.json").read_text())["state"], "AWAITING_UPLOAD")
+        self.assertFalse((directory / "accepted.json").exists())
+        self.assertNotIn("receipt-path", self.outputs())
 
     def test_unaccepted_resource_survives_resource_hook_failure_without_false_acceptance(self):
         for state in ["AWAITING_UPLOAD", "FAILED", "INVALID"]:
