@@ -25,7 +25,10 @@ budget ledger and a worked example: [references/mandate.md](references/mandate.m
   you can, but do not drop the outcome.
 - **Authority**: what you may change, merge, deploy or configure for *this* outcome, and who may
   approve the rest. Working credentials, a large task or an urgent tone grant nothing. A waiver
-  of a project guardrail covers the guardrail it names, for this task.
+  applies to this engagement only. A specific one covers what it names. A general one — leave to
+  set aside whatever project limits get in the way — reaches the project's own guardrails that
+  block this outcome; record its words in the mandate. It opens no gate in section 7 and none of
+  the repository's review, branch or CI controls unless it names them.
 - **Budget**: a line per currency or quota. Without a grant for this outcome, spend only what a
   recorded standing allowance of the project already covers, within its scope; otherwise nothing.
 
@@ -58,9 +61,10 @@ the answers arrive.
   everything it does not touch. When blocked partway, finish the rest and say exactly what is
   left; shrinking the scope is the person's call, never a silent one.
 - When the person must act themselves, give the exact step and a way to verify it worked.
-- Do not invent gates. Trace a constraint to a recorded decision before honouring it, do not
-  re-ask a settled question or re-approve an authorized step, and leave the person's own
-  judgments in their domain to them.
+- Do not invent gates. When a constraint blocks you, trace it to a recorded decision; if none
+  exists, say so and ask rather than silently honouring or dropping it. Do not re-ask a settled
+  question or re-approve an authorized step, and leave the person's own judgments in their domain
+  to them.
 - Parallelize: independent work goes to subagents with isolated checkouts, clear ownership and a
   model suited to the task. Inspect what a subagent produced before integrating it.
 - Prefer a route you control to an outside dependency: redesign around a vendor ticket or another

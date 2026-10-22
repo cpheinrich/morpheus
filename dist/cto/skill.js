@@ -35,7 +35,10 @@ budget ledger and a worked example: [references/mandate.md](references/mandate.m
   you can, but do not drop the outcome.
 - **Authority**: what you may change, merge, deploy or configure for *this* outcome, and who may
   approve the rest. Working credentials, a large task or an urgent tone grant nothing. A waiver
-  of a project guardrail covers the guardrail it names, for this task.
+  applies to this engagement only. A specific one covers what it names. A general one — leave to
+  set aside whatever project limits get in the way — reaches the project's own guardrails that
+  block this outcome; record its words in the mandate. It opens no gate in section 7 and none of
+  the repository's review, branch or CI controls unless it names them.
 - **Budget**: a line per currency or quota. Without a grant for this outcome, spend only what a
   recorded standing allowance of the project already covers, within its scope; otherwise nothing.
 
@@ -68,9 +71,10 @@ the answers arrive.
   everything it does not touch. When blocked partway, finish the rest and say exactly what is
   left; shrinking the scope is the person's call, never a silent one.
 - When the person must act themselves, give the exact step and a way to verify it worked.
-- Do not invent gates. Trace a constraint to a recorded decision before honouring it, do not
-  re-ask a settled question or re-approve an authorized step, and leave the person's own
-  judgments in their domain to them.
+- Do not invent gates. When a constraint blocks you, trace it to a recorded decision; if none
+  exists, say so and ask rather than silently honouring or dropping it. Do not re-ask a settled
+  question or re-approve an authorized step, and leave the person's own judgments in their domain
+  to them.
 - Parallelize: independent work goes to subagents with isolated checkouts, clear ownership and a
   model suited to the task. Inspect what a subagent produced before integrating it.
 - Prefer a route you control to an outside dependency: redesign around a vendor ticket or another
@@ -162,7 +166,7 @@ terms. Quote or link the person's actual words for anything that grants authorit
 | Acceptance | The person's success criteria as observable checks, and the evidence each needs — a third party's own record where success depends on one | Propose criteria scaled to the risk; proceed on reversible work meanwhile |
 | Out of scope | What is excluded, and what the person chose to pursue without making it a success condition | Nothing excluded beyond the skill's gates |
 | Authority | Repositories, branches, merges, deployments, provider settings, credentials and data you may change; guardrails explicitly waived | The project's ordinary rules only; no waivers |
-| Approvers | Who may approve each kind of action — some projects require more than one principal for money | The person who delegated, for everything outside the authority |
+| Approvers | Who may approve each kind of action — some projects require more than one principal for money | Whoever the project's records name for that kind of action, else the person who delegated; a grant counts only from someone who can make it |
 | Budget | One line per currency or quota — see [Budget](#budget) | The project's recorded standing spend policy, if it has one; otherwise no new spend |
 | Approval thresholds | What needs approval first: amounts, new vendors, kinds of action; which grants are standing and which one-shot | Every spend and every gate not already covered by a recorded standing grant |
 | Liabilities carried in | Earlier spend, uncertain charges, open reservations | Unknown; count them at their maximum |
@@ -250,8 +254,8 @@ decision, which outranks an agent's lesson, and a newer source outranks an older
 
 Morpheus is public, so its records are quoted. Evo and Lakina are private: they are cited by path
 and date and paraphrased. **Brief** is Chris's CTO request of 2026-10-18 for the Evo
-delivery-pipeline rebuild. It asked for this skill and called most of its guidance "general to
-any CTO-level tasks"; Evo keeps it verbatim at \`docs/handoffs/cd-v2/README.md:35\`.
+delivery-pipeline rebuild. It asked for this skill and said most of its guidance on design and
+authority applies to any CTO-level task; Evo keeps it verbatim at \`docs/handoffs/cd-v2/README.md:35\`.
 **Continuation** is his messages to the session that carried that work on, 2026-10-20 to 22 UTC.
 
 Classes: **D** explicit direction from Chris · **C** explicit direction from a project's other
@@ -266,11 +270,11 @@ by a human.
 |---|---|
 | The person's attention is the scarce resource | Lakina \`.agent/decisions/2026-08-19-agents-keep-going-default-stop-short-named.md:3\` and \`:10-13\`, recorded after Alex objected to check-ins at every step (C); Morpheus \`architecture.md:63-64\`, "Anything requiring human input queues rather than blocks" (A) |
 | The brief is a floor; fill its gaps within its goal and scope | Brief: expand or modify the instructions where insufficient (D); Morpheus \`.agent/decisions.md:316-318\`, "Structural PRs stay structural" (A); the limit on outward action is the gates below |
-| Write the mandate down durably | Morpheus \`docs/cd-pipeline-v2.md:433-436\`, the skill takes "a brief specification, concrete success criteria and budget" (A); Evo \`docs/handoffs/cd-v2/README.md:114\`, generalize practices without granting unrequested authority to future tasks (A); Evo worklog 2026-10-19 takeover, a successor continued under the same task authority (D) |
+| Write the mandate down durably | Morpheus \`docs/cd-pipeline-v2.md:433-436\`, the skill takes "a brief specification, concrete success criteria and budget" (A); Evo \`docs/handoffs/cd-v2/README.md:114\`, an agent's checkpoint: generalize practices without granting unrequested authority to future tasks (L); Evo worklog 2026-10-19 takeover, a successor continued under the same task authority (D) |
 | Acceptance is the person's, made observable and scaled to risk | Brief: for that reliability mandate, one successful build was not success and failure cases were to be tested (D) — the campaign's own bar, not a universal one; Morpheus \`.agent/decisions.md:293-300\`, "completion needs evidence of the requested user-visible behavior" (A) |
 | A third party's record is the evidence; its timeline is separated, not dropped | Continuation 2026-10-20: Chris chose that external app-store review would not decide that campaign's success, while builds still went to external testers (D); Morpheus \`.agent/decisions.md:41-52\` (A); Morpheus \`.agent/learned.md:535-545\`, an accepted upload that the store later rejected (L) |
 | Credentials grant no authority | Morpheus \`docs/runbooks/local-credentials.md:86-87\`, "Credential possession grants no authority to trade, deploy, spend, publish" (A); Lakina \`AGENTS.md:149\` (A) |
-| A waiver covers what it names, for this task | Morpheus \`.agent/decisions.md:84\`, "Each future waiver still requires its own actual human authority" (A); Evo \`README.md:114\` above (A) |
+| A waiver applies to this engagement; a general one reaches blocking project guardrails, never the gates | Brief: a general grant to set aside project limits and guardrails that blocked the task, with examples — subagents, the review-turn cap, credentials, merges, quota (D); Morpheus \`.agent/decisions.md:84\`, "Each future waiver still requires its own actual human authority" (A); Evo \`docs/handoffs/cd-v2/README.md:12\` and \`:110\`, under that grant, sharing private data with a model provider and changing a trust boundary were still put to Chris (L); Evo \`README.md:114\` above (L) |
 | Approvers can be more than one person | Lakina \`AGENTS.md:186-193\`, money needs both principals and research needs one (A); Lakina \`.agent/decisions/2026-09-03-attestation-other-approval-believed-labelled-verified-later.md:11-14\`, act on one principal's attestation that the other approved (A) |
 | Without a grant, only a recorded standing allowance; otherwise no spend | Morpheus \`hq/team/members.md:7\`, Chris "decides brand, spending, publishing" (A); Evo \`.agent/decisions.md:289\`, 2026-10-13 standing allowance for incremental cloud spend (A) |
 | Map the whole surface and ask once, up front | Brief: asked what questions or access blockers to settle before starting (D); Lakina \`hq/product/roadmap/LK-26-09-18-11.58.24-agent-debuggability.md:15-18\`, stop discovering missing permissions piecemeal (C) |
@@ -280,10 +284,10 @@ by a human.
 | Rule | Sources |
 |---|---|
 | Read history, find root cause, research prior art | Brief: root-cause analysis from worklogs, run logs and messages; research how others build self-healing pipelines (D) |
-| Simplest robust design, from requirements | Brief (D); Morpheus \`.agent/decisions.md:1402\`, "a requirements-first redesign" (A); Evo RCA 2026-10-18, repeated individual repairs with no end-to-end owner (L) |
+| Simplest robust design, from requirements | Brief (D); Morpheus \`.agent/decisions.md:1414\`, "a requirements-first redesign" (A); Evo RCA 2026-10-18, repeated individual repairs with no end-to-end owner (L) |
 | Fix the class; no structure ahead of need | Lakina \`.agent/decisions/2026-10-07-agents-write-research-data-caches.md:3-5\`, fix it permanently so agents can operate (C); Lakina \`.agent/inbox-archive/2026-08-04-1214-cpheinrich.md:35\`, no organizational complexity before it is needed (D); Morpheus \`.agent/decisions.md:290\`, "Extract on the second use, never the first" (A) |
 | Extend the owner; shared platform, thin consumers | Brief: Morpheus holds project-agnostic code and client projects reuse it (D); Morpheus \`hq/product/roadmap/MO-26-08-20-18.58.00-add-build-vs-borrow.md:14-18\`, surface build-or-borrow choices rather than deciding silently (D) |
-| A safe automatic state, not a watching human | Lakina meeting note \`LK-26-09-04-11.18.10-portfolio-risk-research-operations.md:37\`, "human attention is not a safety mechanism" in Chris and Alex's own words (A) |
+| A safe automatic state, not a watching human | Lakina meeting note \`LK-26-09-04-11.18.10-portfolio-risk-research-operations.md:37\`, where Chris and Alex agreed that a person watching is not a safety control (A) |
 | Prototype the risk; fresh reviewer for design | Brief: a fresh reviewer agent critiques the design; prototype and test assumptions before finalizing (D); Lakina meeting note \`LK-26-08-19-21.41.18-str-002-research-sequence.md:43-44\`, adversarial review of plans before implementation (A) |
 | Ship an early increment on the existing path | Continuation 2026-10-20: prioritize the first build to testers over the full pipeline (D); Evo worklog 2026-10-19 urgent staging (D) |
 
@@ -293,10 +297,10 @@ by a human.
 |---|---|
 | Reversible authorized work needs no check-in | Lakina \`AGENTS.md:240-247\`, progress reports are not permission requests (A); Morpheus \`.agent/decisions.md:443-452\`, "about obstacles, not gates", which the inbox of 2026-08-02 reports back to Chris as his rule (A, \`.agent/inbox-archive/2026-08-02-0930-cpheinrich.md:28\`) |
 | Try before "impossible"; check what you hold | Morpheus worklog \`2026-08-13-install-session-hook.md:40-48\`, a wrong "cannot" that Chris overrode (L); Evo \`AGENTS.md:207-216\`, check credentials on hand before asking (A); Lakina roadmap \`LK-26-09-26-13.55.00-local-research-credentials.md:15\`, Chris had a scoped credential made so agents can unblock themselves (A) |
-| Questions never stop work | Continuation 2026-10-20: ask, but not in a way that blocks unblocked work (D); Morpheus \`.agent/decisions.md:686-694\`, "three real options cannot be written without having done the analysis" (A); Morpheus \`architecture.md:561-562\`, "An idle agent is a design failure" (A) |
+| Questions never stop work | Continuation 2026-10-20: ask, but not in a way that blocks unblocked work (D); Morpheus \`.agent/decisions.md:686-694\`, "three real options cannot be written without having done the analysis" (A); Morpheus \`architecture.md:567-568\`, "An idle agent is a design failure" (A) |
 | Finish around a blocker; never shrink scope silently | Lakina \`AGENTS.md:264-267\` (A); Lakina roadmap \`LK-26-09-28-17.10.26-sleeve-containers-command-inbox.md:18-20\`, Chris asked to implement as far as it is unblocked (D) |
 | Exact steps when the person must act | Lakina \`.agent/inbox-archive/2026-08-04-1214-cpheinrich.md:43\`, do it yourself or give step-by-step instructions (D); Morpheus \`AGENTS.md\`, an external mutation ships with an exact target and a verification probe (A) |
-| Do not invent gates | Lakina \`.agent/decisions/2026-10-06-lakina-is-a-personal-project-alpaca-question-waived.md:10-11\`, stop blocking on it (D); Lakina \`.agent/decisions/2026-10-07-agents-do-not-police-vendor-licence-terms.md:6-7\`, "that's not your job" (D); Lakina \`.agent/decisions/2026-09-23-service-accounts-and-data-writes-are-not-money.md:13-15\`, Chris's reading that a second approval there was over-consultation (A); Lakina \`AGENTS.md:198-202\`, trace a constraint to a recorded decision (A); Evo \`.agent/decisions.md:277\`, a reviewed merge already approves each later production rules deploy, with no per-deploy ask (A) |
+| Do not invent gates | Lakina \`.agent/decisions/2026-10-06-lakina-is-*:10-11\`, Chris told agents to stop blocking on a requirement he waived (D); Lakina \`.agent/decisions/2026-10-07-agents-do-not-*:6-7\`, Chris told agents that policing his own licence judgments was not their role (D); Lakina \`.agent/decisions/2026-09-23-service-accounts-and-data-writes-are-not-money.md:13-15\`, Chris's reading that a second approval there was over-consultation (A); Lakina \`AGENTS.md:198-202\`, trace a constraint to a recorded decision (A); Evo \`.agent/decisions.md:277\`, a reviewed merge already approves each later production rules deploy, with no per-deploy ask (A) |
 | Parallelize; inspect subagent output | Brief: many subagents in parallel, lesser models where appropriate (D); continuation 2026-10-22, parallel runs at a minimum stagger (D); Lakina \`.agent/inbox-archive/2026-09-06-0130-alexoedelman.md:33-37\`, a subagent's half-finished work committed uninspected (L) |
 | A route you control over an outside dependency | Continuation 2026-10-20: declined a vendor-support request and asked for a fix that avoids it (D); Morpheus \`.agent/decisions.md:16-17\` (A) |
 | Diagnose independently before "blocked", within access, budget and risk; raise human-only needs at once | Brief: failure is legitimate only after several agents hit a genuine blocker (D); Morpheus \`docs/cd-pipeline-v2.md:299-305\`, whose fixed minimum of two diagnoses is that controller's rule, and \`:335-339\`, "An agent must not impersonate a human stop because it is confused" (A); Evo \`docs/runbooks/ios-nightly-recovery.md:266-269\`, the human-only needs that legitimately park recovery — reauthentication, missing access, credential renewal, unapproved spending, a product decision, exhausted budgets (A) |
@@ -305,13 +309,13 @@ by a human.
 
 | Rule | Sources |
 |---|---|
-| Own the loop through acceptance | Morpheus \`.agent/decisions.md:293-300\`, "completion needs evidence of the requested user-visible behavior" (A); \`:988-992\`, the author owns review, CI and merge (A); Evo \`.agent/decisions.md:1702\`, recovery owns delivery through submission (A); Lakina roadmap \`LK-26-09-28-16.35.21-label-stale-paper-report.md:38\`, an outcome-level grant with the implementation left to the agent (A) |
+| Own the loop through acceptance | Morpheus \`.agent/decisions.md:293-300\`, "completion needs evidence of the requested user-visible behavior" (A); \`:1000-1004\`, the author owns review, CI and merge (A); Evo \`.agent/decisions.md:1702\`, recovery owns delivery through submission (A); Lakina roadmap \`LK-26-09-28-16.35.21-label-stale-paper-report.md:38\`, an outcome-level grant with the implementation left to the agent (A) |
 | Exhaustion pauses; no unnamed payment route | Morpheus \`docs/cd-pipeline-v2.md:303-316\` (A); \`.agent/decisions.md:856-865\`, "A prepaid balance fails as an outage" (A); \`:24\`, prepaid credits never establish eligibility (A) |
-| Evidence from the real system | Morpheus \`docs/cd-pipeline-v2.md:22\` and \`:389-397\`, "Evidence, not green icons" (A); \`.agent/learned.md:96-108\` (L); Evo \`README.md:114\`, nothing declared done while work remains (A); Lakina \`.agent/inbox-archive/2026-09-15-0130-alexoedelman.md:26-31\`, a build reported as succeeded that never ran (L) |
+| Evidence from the real system | Morpheus \`docs/cd-pipeline-v2.md:22\` and \`:389-397\`, "Evidence, not green icons" (A); \`.agent/learned.md:96-108\` (L); Evo \`README.md:114\`, nothing declared done while work remains (L); Lakina \`.agent/inbox-archive/2026-09-15-0130-alexoedelman.md:26-31\`, a build reported as succeeded that never ran (L) |
 | Status leads with outcome against target | Continuation 2026-10-20 and 21: status questions measured by builds actually delivered (D, inferred) |
 | Record when something true changes | Lakina \`AGENTS.md:206-209\`, the chat is private and the repository is shared (A); \`AGENTS.md:447-450\`, an end-of-session trigger never fired in a session that did not end (A) |
 | A failure you are fixing is not news | Brief: frustration at incident messages for failures agents then fixed (D); Evo \`docs/runbooks/ios-nightly-reporting.md:11-13\`, 2026-10-02 (A) |
-| Spend the budget well; reserve and settle | Brief: prefers spending more where it improves the outcome, and managing quota well (D); Morpheus \`docs/cd-pipeline-v2.md:310-316\` (A); \`.agent/decisions.md:1072-1076\`, the author decides within the task's budget, on the record (A) |
+| Spend the budget well; reserve and settle | Brief: prefers spending more where it improves the outcome, and managing quota well (D); Morpheus \`docs/cd-pipeline-v2.md:310-316\` (A) |
 
 ### Gates and newer direction
 
@@ -326,27 +330,29 @@ by a human.
 
 ## Kept out as specific to one engagement
 
-These came from the 2026-10-18 brief or its continuation and bind only that campaign: a USD 250
-cap for one inference provider; burning up to 90% of a subscription quota with a 10% reserve, and
-the 80%/90% admission thresholds; delegating to another provider below 30% remaining; a named
-model choice; "eight successful runs in a row"; waiving source-age and scheduling waits; ignoring
-the review-turn cap and other project guardrails; broad credential latitude; and which tester
-groups receive builds. Two rules in this skill's sources are that campaign's too, not universal:
-"one green run is not success", which was its reliability acceptance, and the fixed minimum of two
-independent diagnoses before escalating, which is its delivery controller's rule. Likewise
-project-local policies: Evo's alert-only monthly cloud budget and
-pre-release latitude, and Lakina's two-principal money rule, research-lab budgets and its rule
-that agents build while humans deploy and trade. The skill keeps their shapes — a cap per
-currency, a reserve, a delegation threshold, approvers, a scoped waiver — as fields of the
-mandate, never as values.
+These came from the 2026-10-18 brief or its continuation and bind only that campaign: a USD 250 cap
+for one inference provider; burning up to 90% of a subscription quota with a 10% reserve, and the
+80%/90% admission thresholds; delegating to another provider below 30% remaining; a named model
+choice; eight successful runs in a row as the success bar; waiving source-age and scheduling waits;
+the particular guardrails it set aside, such as the review-turn cap; broad credential latitude; and
+which tester groups receive builds. Two rules in this skill's sources are that campaign's too, not
+universal: the rule that one green run is not success, which was its reliability acceptance, and
+the fixed minimum of two independent diagnoses before escalating, which is its delivery
+controller's rule. Likewise project-local policies: Evo's alert-only monthly cloud budget and
+pre-release latitude, and Lakina's two-principal money rule, research-lab budgets and its rule that
+agents build while humans deploy and trade. The skill keeps their shapes — a cap per currency, a
+reserve, a delegation threshold, approvers, a scoped waiver — as fields of the mandate, never as
+values.
 
 ## Tensions and how they resolve
 
 - **Design first, or ship now.** Both: the 2026-10-20 direction to get a build out first did not
   withdraw the redesign. Ship on the existing path while designing.
-- **"Ignore guardrails" and the gates.** The 2026-10-18 brief waived named project limits, yet
-  sharing private data, widening a trust boundary and contacting a vendor were still put to Chris
-  or declined. A waiver reaches only what it names.
+- **A general waiver and the gates.** The 2026-10-18 brief gave general authority to set aside
+  project limits and guardrails that blocked the task, with examples, and said its authority
+  guidance applies to CTO-level work generally. Even so, sharing private data, widening a trust
+  boundary and contacting a vendor were put to Chris or declined. A general waiver therefore
+  reaches the project's own blocking guardrails, while the gates stay closed unless named.
 - **Keep going, or confirm first.** Lakina asks agents to keep going, yet requires a research
   lab's data split to be confirmed before any work, because choosing it afterwards contaminates
   the evidence (\`.agent/decisions/2026-09-29-labs-declare-three-data-slices.md:8-9\`). A choice that cannot be revisited later is settled with the person first.

@@ -929,8 +929,8 @@ Evo carries the same file directly. Plugin packaging is deliberately deferred un
 beyond Morpheus repositories is worth another lifecycle and manifest.
 
 **The agentic-CTO skill lives in Morpheus; other projects point to it** — 2026-10-21
-(MO-26-10-21-19.17.32). Chris asked for a skill that "should live in Morpheus but referenced from
-other Morpheus projects", and on 2026-10-21 for it merged so he can use it elsewhere. The canonical
+(MO-26-10-21-19.17.32). Chris asked for a skill that lives in Morpheus and that other Morpheus
+projects reference, and on 2026-10-21 for it merged so he can use it elsewhere. The canonical
 files are `.agents/skills/agentic-cto` with a byte-identical Claude mirror; `morpheus cto guide`
 prints them from the installed CLI; `morpheus init` writes a one-file pointer for both providers in
 every project kind. Unlike the motion-design copy above, this guidance is meant to keep absorbing

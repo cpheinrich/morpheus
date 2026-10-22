@@ -16,7 +16,7 @@ terms. Quote or link the person's actual words for anything that grants authorit
 | Acceptance | The person's success criteria as observable checks, and the evidence each needs — a third party's own record where success depends on one | Propose criteria scaled to the risk; proceed on reversible work meanwhile |
 | Out of scope | What is excluded, and what the person chose to pursue without making it a success condition | Nothing excluded beyond the skill's gates |
 | Authority | Repositories, branches, merges, deployments, provider settings, credentials and data you may change; guardrails explicitly waived | The project's ordinary rules only; no waivers |
-| Approvers | Who may approve each kind of action — some projects require more than one principal for money | The person who delegated, for everything outside the authority |
+| Approvers | Who may approve each kind of action — some projects require more than one principal for money | Whoever the project's records name for that kind of action, else the person who delegated; a grant counts only from someone who can make it |
 | Budget | One line per currency or quota — see [Budget](#budget) | The project's recorded standing spend policy, if it has one; otherwise no new spend |
 | Approval thresholds | What needs approval first: amounts, new vendors, kinds of action; which grants are standing and which one-shot | Every spend and every gate not already covered by a recorded standing grant |
 | Liabilities carried in | Earlier spend, uncertain charges, open reservations | Unknown; count them at their maximum |

@@ -8,9 +8,9 @@ agent: claude
 
 ## Why
 
-Chris's CTO brief of 2026-10-18 (the Evo delivery-pipeline rebuild) asked for an "Agentic CTO
-Skill" whose inputs are a brief specification, clear success criteria and budget guidance, that
-"should live in Morpheus but referenced from other Morpheus projects as needed". On 2026-10-21 he
+Chris's CTO brief of 2026-10-18 (the Evo delivery-pipeline rebuild) asked for an agentic CTO
+skill whose inputs are a brief specification, clear success criteria and budget guidance, kept in
+Morpheus and referenced from other Morpheus projects when they need it. On 2026-10-21 he
 asked for it now, in parallel with the delivery campaign, consolidated with the guidance he has
 given agents across Morpheus, Evo and Lakina about autonomy, initiative and upfront design, and
 merged so he can use it on other projects. This Claude session is the author, delegated by the
@@ -38,13 +38,13 @@ fix rather than report recoverable failures, design from requirements after a ro
 of history, prototype and get a fresh reviewer, ship an early increment, and keep spending,
 publishing, sending, access and legal matters as his decisions. Lakina's standing autonomy rules
 (keep going, finish around blockers, trace constraints, record in the repository) came mostly
-from its other principal. Gaps: no standing numeric spend allowance exists anywhere; "act as CTO"
+from its other principal. Gaps: no standing numeric spend allowance exists anywhere; acting as CTO
 appears only in the 2026-10-18 campaign; there is no general instruction to use subagents beyond
 that campaign and the review rule.
 
 The campaign's own grants are deliberately not in the skill: the USD 250 provider cap, quota
-thresholds, delegation below 30%, the model choice, "eight in a row", the source-age waiver, the
-review-cap waiver, "ignore guardrails" and credential latitude. The mandate reference keeps their
+thresholds, delegation below 30%, the model choice, eight runs in a row, the source-age waiver,
+the review-cap waiver, the general guardrail waiver and credential latitude. The mandate reference keeps their
 shapes as fields.
 
 ## Design
@@ -69,8 +69,8 @@ shapes as fields.
 
 ## Dead ends and corrections
 
-- The first draft copied the full skill into every project. Reading the brief's "referenced from
-  other Morpheus projects" (and the Evo checkpoint's "reference from consumers") changed it to the
+- The first draft copied the full skill into every project. Re-reading the brief, which asked for
+  the skill to be referenced from other projects (as did the Evo checkpoint), changed it to the
   pointer before any commit.
 - The first `description` contained `: `, which YAML rejects — the repository's known "colon
   breaks YAML" lesson. The frontmatter test caught it on its first run; the description uses a dash.

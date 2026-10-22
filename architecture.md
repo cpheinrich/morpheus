@@ -504,12 +504,12 @@ needed.
   of discoverable procedure. `launch-company` owns the cross-provider greenfield path from an
   optional domain purchase through a verified public site and role-gated `/hq`; provider
   commands remain the deterministic implementation beneath it.
-- **`agentic-cto`**, in both skill directories, is how an agent runs an outcome delegated with
-  authority and a budget: a written, parameterized mandate; design before building; parallel
-  delegation; spend only from a reserved ledger; evidence before claims; and the gates a mandate
-  never opens. `morpheus init` writes it into every project kind, and an existing project adopts
-  it by re-running `init`, which adds only missing files. Its `references/provenance.md` traces
-  each rule to the human direction or accepted decision it came from.
+- **`agentic-cto`** is how an agent runs an outcome delegated with authority and a budget: a
+  written mandate, design before building, parallel delegation, a reserved spend ledger, evidence
+  before claims, and the gates a mandate never opens. Its canonical files live only in Morpheus's
+  two skill directories and `morpheus cto guide` prints them; `morpheus init` gives every project
+  kind a one-file pointer to that command, added to an existing project by re-running `init`.
+  Morpheus's `references/provenance.md` traces each rule to the direction it came from.
 
 ### 7.2 Conventions and how they are enforced
 
