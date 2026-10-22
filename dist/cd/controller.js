@@ -21,6 +21,17 @@ function unassigned(job) {
     return job.started_at === null && (job.runner_id === null || job.runner_id === 0) && (job.runner_name === null || job.runner_name === "")
         && job.steps.every(step => step.status === "queued" && step.conclusion === null && step.started_at == null && step.completed_at == null);
 }
+function neverRan(job, conclusions) {
+    if (job.status !== "completed" || !conclusions.includes(job.conclusion ?? ""))
+        return false;
+    // GitHub does not leave started_at null on every terminal job that never ran: retained
+    // skipped rows (null runner fields) and a job cancelled while queued (0/"") copy created_at
+    // into started_at, with no runner group and no step. Only that exact copy on a completed row
+    // qualifies; queued rows, any other start time and any listed step keep the strict rule.
+    return unassigned(job) || job.completed_at !== null && job.started_at === job.created_at
+        && (job.runner_id === null || job.runner_id === 0) && (job.runner_name === null || job.runner_name === "")
+        && (job.runner_group_id === null || job.runner_group_id === 0) && (job.runner_group_name === null || job.runner_group_name === "") && job.steps.length === 0;
+}
 function jobAdmission(jobs, config, lane) {
     if (!jobs.length || !jobs.every(knownJob))
         return { waiting: false, neverStarted: false, hostedEnded: false };
@@ -30,12 +41,12 @@ function jobAdmission(jobs, config, lane) {
     // Only known hosted Linux preflight work or explicitly skipped/unassigned
     // downstream jobs may accompany the native census. Unknown executors need repair.
     const other = jobs.filter(job => !native.includes(job));
-    const skipped = (job) => job.status === "completed" && job.conclusion === "skipped" && unassigned(job);
+    const skipped = (job) => neverRan(job, ["skipped"]);
     const preflight = (job) => !local(job) && job.labels.some(label => /^ubuntu-/.test(label));
     const recognized = native.length > 0 && other.every(job => preflight(job) || skipped(job));
     return {
         waiting: recognized && native.some(job => job.status === "queued") && native.every(job => skipped(job) || job.status === "queued" && job.conclusion === null && job.completed_at === null && unassigned(job)),
-        neverStarted: recognized && native.some(job => job.conclusion === "cancelled") && native.every(job => job.status === "completed" && ["cancelled", "skipped"].includes(job.conclusion ?? "") && unassigned(job))
+        neverStarted: recognized && native.some(job => job.conclusion === "cancelled") && native.every(job => neverRan(job, ["cancelled", "skipped"]))
             && other.every(job => skipped(job) || preflight(job) && job.status === "completed" && job.conclusion === "success"),
         hostedEnded: lane === "hosted" && recognized && jobs.every(job => job.status === "completed" && !local(job)),
     };

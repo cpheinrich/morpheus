@@ -76,7 +76,7 @@ describe("exact-attempt native admission", () => {
     expect(state.builds["123/1.0"]!.maximum).toBe("9"); expect(intent.receipt).toBeUndefined(); expect(state.agents).toEqual({});
   });
   it.each([
-    ["runner id", { runner_id: 3 }], ["runner name", { runner_name: "assigned-vm" }], ["started job", { started_at: now }],
+    ["runner id", { runner_id: 3 }], ["runner name", { runner_name: "assigned-vm" }], ["started job", { started_at: after(now, 1) }],
     ["started step", { steps: [{ status: "in_progress", conclusion: null, started_at: now }] }],
     ["completed step with contradictory queued status", { steps: [{ status: "queued", conclusion: null, started_at: null, completed_at: now }] }],
     ["missing assignment", { runner_id: undefined }], ["missing name", { runner_name: undefined }], ["missing start", { started_at: undefined }], ["missing steps", { steps: undefined }],
