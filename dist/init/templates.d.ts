@@ -199,3 +199,10 @@ export declare const reviewMetadata: () => string;
  * (Claude) from this one function.
  */
 export declare const commentQaSkill: () => string;
+/**
+ * The agentic-CTO skill as every other project carries it (MO-26-10-21-19.17.32): a pointer to
+ * `morpheus cto guide`, written to `.agents/skills` and `.claude/skills`. Morpheus holds the one
+ * canonical copy, and this borrows its description so both route the same requests. The short form
+ * keeps the spending and gate boundaries in force even before the guide has been read.
+ */
+export declare const agenticCtoPointerSkill: () => string;

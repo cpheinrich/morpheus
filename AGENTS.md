@@ -26,8 +26,8 @@ marketing, finance, or support, because Morpheus is a tool, not a company.
 | `.github/workflows/` | Reusable workflows called by every project |
 | `docs/runbooks/` | Procedures, for humans and agents — read on demand (index below) |
 | `.github/agent-review-prompt.md` | The rung-2 reviewer persona — versioned, so it is reviewable |
-| `.claude/skills/` | Named, repeatable procedures — `voice-handoff`, `voice-import` |
-| `.agents/skills/` | Repository-owned Codex skills, copied into every scaffold — `motion-design-exploration` |
+| `.claude/skills/` | Named, repeatable procedures — `voice-handoff`, `voice-import`, `agentic-cto` |
+| `.agents/skills/` | Repository-owned Codex skills, copied into every scaffold — `motion-design-exploration`, `agentic-cto` |
 | `local/handoffs/` | Handoff docs, both directions. Gitignored — never committed |
 | `qa/acceptance/` | Acceptance criteria per item, named by `RoadmapItem.acceptance` |
 | `tests/` | Vitest, mirroring `src/` |

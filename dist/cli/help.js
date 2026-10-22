@@ -150,6 +150,8 @@ Usage
   morpheus qa preview web [start|status|stop|help] [--path </page>] [--port <n>] [--root <project>]
                          The local website behind the comment overlay; dev server declared in morpheus.json qa.web
   morpheus qa guide       The comment-QA instructions every agent follows
+  morpheus cto guide [<topic>]  How an agent runs a delegated outcome under a written
+                         mandate and budget; topics print its references (mandate, provenance)
 
 Options
   --dir <path>   Product directory (default: hq/product)

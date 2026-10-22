@@ -1,0 +1,91 @@
+# The mandate
+
+Read this when starting a delegated outcome, when the person changes its scope or budget, and
+before any spend.
+
+The mandate is the working agreement for one engagement. Write it into the durable record the
+project already uses for the work — the roadmap item body, the task worklog, or a campaign
+checkpoint — not only into a conversation, so a resumed or successor session acts on the same
+terms. Quote or link the person's actual words for anything that grants authority or money.
+
+## Fields
+
+| Field | Record | When the person did not say |
+|---|---|---|
+| Outcome | The result in their words, and why it matters | Restate it; confirm with a non-blocking question |
+| Acceptance | Observable, repeatable checks within the team's control, and the evidence each needs | Propose criteria; proceed on reversible work meanwhile |
+| Out of scope | What is pursued but does not decide success, and what is excluded | Nothing excluded beyond the skill's gates |
+| Authority | Repositories, branches, merges, deployments, provider settings, credentials and data you may change; guardrails explicitly waived | The project's ordinary rules only; no waivers |
+| Approvers | Who may approve each kind of action — some projects require more than one principal for money | The person who delegated, for everything outside the authority |
+| Budget | One line per currency or quota — see [Budget](#budget) | The project's recorded standing spend policy, if it has one; otherwise no new spend |
+| Approval thresholds | What needs approval first: amounts, new vendors, kinds of action | Every spend and every gate |
+| Liabilities carried in | Earlier spend, uncertain charges, open reservations | Unknown; count them at their maximum |
+| Delegation | Which agents, models and providers may run work, and limits for each | Your own session and its ordinary subagents |
+| Reporting | Channel, cadence, and what counts as meaningful | Milestones, decisions needed, blockers, completion |
+| Stop | When the engagement ends or pauses, and any expiry on its grants | At acceptance, at budget exhaustion, or when told |
+
+Authority and budget are never inferred. A large outcome, an urgent tone, an earlier engagement's
+cap, or credentials that happen to work do not grant spending or access. "Use plenty of budget" is
+a direction about how freely to use what was granted, not a grant of an unnamed amount: if no
+amount was given for a currency, ask for one while doing the unpaid work.
+
+A successor session inherits the mandate it finds recorded, for the same engagement only. A new
+engagement starts a new mandate, even when the work looks similar.
+
+## Budget
+
+Keep one ledger per currency or quota — a provider's dollars, a subscription allowance, prepaid
+credits, metered CI minutes. Each line records its cap, what it may buy, the reserve to keep and
+its approval threshold.
+
+**Headroom = cap − settled spend − open reservations − unsettled outcomes at their maximum −
+liabilities carried in.** Missing telemetry or an unreadable bill is not headroom: until you can
+measure, act as if none remains.
+
+- **Reserve before spending.** Record the request, its identity and its maximum cost including
+  retries, before the call. A maximum above the line's approval threshold needs that approval
+  recorded first; one found afterwards without it is reported, not quietly absorbed. Concurrent
+  executors share one ledger.
+- **Settle from the provider's record**, not an estimate: release the unused part of a
+  reservation, charge the actual amount.
+- **An outcome you cannot confirm keeps its maximum liability** — a timed-out call, a crashed
+  worker, a provider that did not answer. Settle it from evidence; never by assuming zero.
+- **Stop admitting new paid work before the cap**, leaving room for what is in flight and the
+  reserve. For a subscription quota, read actual usage; never estimate it from token counts.
+- **Exhaustion is a pause.** Record what is paused and what will resume it. Never route around a
+  cap through a payment path the mandate did not name — an API key, prepaid credits, "extra
+  usage", a personal card, another vendor.
+- **Report** actual spend, open reservations, unknowns and remaining headroom per line at each
+  milestone and at the end.
+
+## Example
+
+An illustrative engagement. Its values are placeholders for the shape, not defaults: a mandate
+grants only what its own person wrote.
+
+```markdown
+## Mandate — 2026-11-03, from <person>'s request "<quoted request>"
+
+Outcome: nightly builds reach internal testers again; the last good build is 9 days old.
+Acceptance: five consecutive scheduled builds, including at least one recovered from an injected
+  failure, each verified installable from the store's own build record (not the upload log).
+  External review timing is pursued, not counted.
+Authority: change and merge pipeline code in this repository and the shared workflows it calls;
+  edit CI runner configuration; re-run release jobs. Waived: none. Not: signing environments,
+  tester lists, production data.
+Approvers: <person> for everything outside this authority.
+Budget:
+  - Inference provider X: cap USD 40 for this engagement; reserve before each call; approval
+    above USD 5 per call.
+  - Coding-agent subscription: keep 20% of the weekly allowance in reserve; below 40% remaining,
+    hand work to the second provider's subscription. No API key, prepaid credit or extra usage.
+  - Hosted CI: ordinary included minutes only.
+Liabilities carried in: one provider X batch from the previous attempt, outcome unknown,
+  maximum USD 6 — counted until settled.
+Delegation: up to four parallel subagents, each in its own checkout.
+Reporting: message on milestone, decision needed or completion; nothing when nothing changed.
+Stop: at acceptance, or when any budget line reaches its reserve.
+```
+
+When the person later says "skip the waiting period for this run", add it under the mandate with
+the date and their words, scope it to the named run, and leave the project's default unchanged.
