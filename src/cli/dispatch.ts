@@ -66,6 +66,7 @@ import {
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
 import { profileExtract, profileReport } from "./profile.js";
 import { waitCiCommand } from "./wait-ci.js";
+import { ctoGuide } from "../cto/guide.js";
 import { HELP } from "./help.js";
 import type { Flags } from "./args.js";
 
@@ -460,6 +461,21 @@ async function dispatchQa({ flags, command, rest }: Invocation): Promise<number>
   
 }
 
+async function dispatchCto({ command, rest }: Invocation): Promise<number> {
+    if (command === "guide") {
+      const guide = ctoGuide(rest[0]);
+      if (!guide.ok) {
+        console.error(guide.message);
+        return 1;
+      }
+      // console.log ends the line itself, so stdout carries the file exactly.
+      console.log(guide.text.replace(/\n$/, ""));
+      return 0;
+    }
+    console.error(`Unknown cto command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+}
+
 async function dispatchCheck({ flags, command, dir }: Invocation): Promise<number> {
     if (command === "pr") return pr(dir, flags.base);
     console.error(`Unknown check command "${command ?? ""}".\n\n${HELP}`);
@@ -585,6 +601,7 @@ const groups: Record<string, (invocation: Invocation) => Promise<number>> = {
   "context": dispatchContext,
   "check": dispatchCheck,
   "qa": dispatchQa,
+  "cto": dispatchCto,
   "profile": dispatchProfile,
   "wait-ci": dispatchWaitCi,
   pm: dispatchPm,

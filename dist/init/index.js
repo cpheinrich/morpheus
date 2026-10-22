@@ -8,6 +8,7 @@ import { EXPECTED } from "../doctor/index.js";
 import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
 import { installContext } from "../session/install.js";
 import * as t from "./templates.js";
+import { AGENTIC_CTO_SKILL } from "../cto/skill.js";
 import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
 import { ANALYTICS_SCHEMA_DIRECTORY, ANALYTICS_SCHEMA_PATH, findAnalyticsContracts, } from "../analytics/contract.js";
 async function readOptional(path) {
@@ -171,6 +172,11 @@ export async function scaffold(root, seed) {
     // .claude/skills and Codex and Grok read .agents/skills. One template, so the copies cannot drift.
     await put(".agents/skills/comment-qa/SKILL.md", t.commentQaSkill());
     await put(".claude/skills/comment-qa/SKILL.md", t.commentQaSkill());
+    // The agentic-CTO skill is a pointer to `morpheus cto guide` in every project kind, for both
+    // providers: Morpheus keeps the one canonical copy so a revision reaches every project through
+    // the CLI rather than drifting in N copies. Re-running init adds it to an older project.
+    await put(`.agents/skills/${AGENTIC_CTO_SKILL}/SKILL.md`, t.agenticCtoPointerSkill());
+    await put(`.claude/skills/${AGENTIC_CTO_SKILL}/SKILL.md`, t.agenticCtoPointerSkill());
     // The generated exploration prompt is the session-specific handoff. This
     // small skill is the durable discovery point for any agent that returns once
     // the first review is complete, and makes visual-first review the default

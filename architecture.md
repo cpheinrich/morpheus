@@ -504,6 +504,12 @@ needed.
   of discoverable procedure. `launch-company` owns the cross-provider greenfield path from an
   optional domain purchase through a verified public site and role-gated `/hq`; provider
   commands remain the deterministic implementation beneath it.
+- **`agentic-cto`** is how an agent runs an outcome delegated with authority and a budget: a
+  written mandate, design before building, parallel delegation, a reserved spend ledger, evidence
+  before claims, and the gates a mandate never opens. Its canonical files live only in Morpheus's
+  two skill directories and `morpheus cto guide` prints them; `morpheus init` gives every project
+  kind a one-file pointer to that command, added to an existing project by re-running `init`.
+  Morpheus's `references/provenance.md` traces each rule to the direction it came from.
 
 ### 7.2 Conventions and how they are enforced
 
@@ -2431,7 +2437,7 @@ billing account.
 ### 12.11 `init` scaffolds the repository and nothing else
 
 `morpheus init` writes the manifest, `README.md`, `AGENTS.md` with `CLAUDE.md` symlinked to it,
-the `.agent/` records, the repository-level motion-design skill, the `hq/` tree for the project's
+the `.agent/` records, the repository-level motion-design and agentic-CTO skills, the `hq/` tree for the project's
 kind, an inbox, a CI workflow delegating to the reusable ones, and `.gitignore` entries. When the
 repository has an Xcode project under `apps/ios`, it also writes the nightly TestFlight caller
 (§18.2's `ios-nightly-build` upload job as a checkout of the verified SHA plus one `ios-testflight-upload` step, the
