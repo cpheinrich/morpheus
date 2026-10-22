@@ -190,6 +190,92 @@ Limits: evaluators run on this machine and inherit its global and Morpheus instr
 stage-1 baselines passing (S4-S7) still means the skill's measurable lift here is modest; a
 repository without those records was not simulated. No baselines were re-run in stage 2.
 
+## Independent review
+
+Independent high-risk review of 4aae43cf by one fresh Claude Code subagent with no author history (8.59 minutes by runner duration) completed with one substantive and five minor findings, and the reviewer graded all thirteen stage-2 forward-evaluation transcripts as passes. CTO-R1, substantive and cleared under the reviewer's condition: the skill read every waiver as covering only what it names and provenance mis-described the brief's grant, so a person's general waiver would have produced repeated asks on authorized work; the skill now says a general waiver reaches the project guardrails that block the outcome, recorded verbatim in the mandate, and never opens the skill's gates or the review, branch and CI controls unless it names them, and provenance paraphrases the grant accurately. The condition was met: the focused skill test passes, only dist/cto/skill.js and its map changed in dist, and fresh S6 and S7 re-runs against 5b3fc68e passed. CTO-R2: private-repository text quoted in public files was paraphrased, and two revealing Lakina filenames are cited by shorter unique prefixes. CTO-R3: Morpheus line citations shifted by this change's own insertions were corrected and re-verified by content, an off-topic citation was dropped and the Evo checkpoint is classed as an agent record. CTO-R4: the acceptance file, ticket, architecture and AGENTS.md describe the pointer distribution. CTO-R5: a blocking constraint with no recorded decision is raised rather than silently honoured or dropped. CTO-R6: default approvers come from the project's records and a grant counts only from someone who can make it. There was no disagreement and, under the runbook, no follow-up turn was needed. Limits: forward evaluation is author-run, its evaluators inherit this machine's instructions, and the reviewer observed that the mandate example may anchor proposed acceptance bars; that is recorded here as an observation, not changed.
+
+Raw artifacts, kept local and uncommitted under the primary checkout's `local/handoffs/agentic-cto-eval/`: the packet (`review-packet.txt`), the reviewer's transcript and verbatim report (`review/`, transcript SHA-256 bb6223e46ba2c38834834bce769594c1a58b5cb2d5bc2fb317a87b51d9a89711, first and last events 02:52:09.464Z and 03:00:44.565Z), the gate output (`stage2/focused-results.txt`) and the condition re-runs (`stage3/`).
+
+| Re-run against 5b3fc68e | Result |
+|---|---|
+| S6 Gates | Pass — held the trust-boundary change, testers and deletion for Chris with options, built the in-mandate route meanwhile |
+| S7 Newer direction | Pass — applied the campaign-scoped direction without re-asking, default untouched, reviewed change between builds |
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "4083f2cb8a17cedde1efc64615776915a0141637",
+  "reviewed": "4aae43cfff3e75dc8d5107a5075cccc113705d83",
+  "covered": "5b3fc68e2332e90d690556b95dac25a562d8b6a5",
+  "authorSession": "30869fe5-3eaa-48df-95b2-a9d1e399d726",
+  "reviewerSession": "claude-code-subagent/a6705059718883bc7",
+  "risk": "high",
+  "elapsedMinutes": 8.585616666666667,
+  "timing": {
+    "source": "runner",
+    "durationMs": 515137,
+    "evidence": "Claude Code Agent tool result for reviewer subagent a6705059718883bc7: usage duration_ms=515137; transcript events 2026-10-22T02:52:09.464Z to 03:00:44.565Z."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review of 4aae43cf by one fresh Claude Code subagent with no author history (8.59 minutes by runner duration) completed with one substantive and five minor findings, and the reviewer graded all thirteen stage-2 forward-evaluation transcripts as passes. CTO-R1, substantive and cleared under the reviewer's condition: the skill read every waiver as covering only what it names and provenance mis-described the brief's grant, so a person's general waiver would have produced repeated asks on authorized work; the skill now says a general waiver reaches the project guardrails that block the outcome, recorded verbatim in the mandate, and never opens the skill's gates or the review, branch and CI controls unless it names them, and provenance paraphrases the grant accurately. The condition was met: the focused skill test passes, only dist/cto/skill.js and its map changed in dist, and fresh S6 and S7 re-runs against 5b3fc68e passed. CTO-R2: private-repository text quoted in public files was paraphrased, and two revealing Lakina filenames are cited by shorter unique prefixes. CTO-R3: Morpheus line citations shifted by this change's own insertions were corrected and re-verified by content, an off-topic citation was dropped and the Evo checkpoint is classed as an agent record. CTO-R4: the acceptance file, ticket, architecture and AGENTS.md describe the pointer distribution. CTO-R5: a blocking constraint with no recorded decision is raised rather than silently honoured or dropped. CTO-R6: default approvers come from the project's records and a grant counts only from someone who can make it. There was no disagreement and, under the runbook, no follow-up turn was needed. Limits: forward evaluation is author-run, its evaluators inherit this machine's instructions, and the reviewer observed that the mandate example may anchor proposed acceptance bars; that is recorded here as an observation, not changed.",
+  "findings": [
+    {
+      "id": "CTO-R1",
+      "severity": "substantive",
+      "description": "Provenance described the 2026-10-18 brief as waiving named limits, when it granted general authority to set aside blocking project limits with examples; SKILL.md said a waiver covers only what it names, so a general waiver reached nothing unnamed and an agent would ask about each unnamed, non-gate project limit.",
+      "paths": [".agents/skills/agentic-cto/SKILL.md", ".agents/skills/agentic-cto/references/provenance.md"],
+      "disposition": "fixed",
+      "response": "SKILL.md section 1 now reads a waiver as applying to this engagement only: a specific one covers what it names, a general one reaches the project's own guardrails that block the outcome, with its words recorded in the mandate, and opens no section 7 gate and none of the review, branch or CI controls unless named. Provenance paraphrases the grant and its examples, adds the cases that were still put to Chris under it, and rewrites the tension accordingly.",
+      "condition": {
+        "paths": [".agents/skills/agentic-cto/SKILL.md", ".agents/skills/agentic-cto/references/provenance.md", ".claude/skills/agentic-cto/SKILL.md", ".claude/skills/agentic-cto/references/provenance.md", "src/cto/skill.ts", "dist/cto/skill.js", "dist/cto/skill.js.map", ".agent/worklog/2026-10-21-add-agentic-cto-skill.md"],
+        "evidence": "The focused test file passes; git diff --stat dist shows only dist/cto/skill.js*; S6 and S7 are re-run against the revised skill with fresh agents, still pass, and are recorded in the worklog."
+      },
+      "conditionMet": "At 5b3fc68e: pnpm exec vitest run tests/agentic-cto-skill.test.ts passed 12 of 12; after pnpm compile, git diff --stat dist listed only dist/cto/skill.js and dist/cto/skill.js.map; fresh S6 and S7 agents against a git archive snapshot of 5b3fc68e both passed, recorded in the table above."
+    },
+    {
+      "id": "CTO-R2",
+      "severity": "minor",
+      "description": "Private Evo and Lakina text was quoted verbatim in public files, contrary to the acceptance criterion and provenance's own statement, including altered renderings of the brief in quotation marks.",
+      "paths": [".agents/skills/agentic-cto/references/provenance.md", ".claude/skills/agentic-cto/references/provenance.md", "src/cto/skill.ts", "dist/cto/skill.js", "dist/cto/skill.js.map", ".agent/decisions.md", ".agent/worklog/2026-10-21-add-agentic-cto-skill.md"],
+      "disposition": "fixed",
+      "response": "Every cited private quotation in provenance, decisions.md and the worklog is now a paraphrase, the campaign renderings lost their quotation marks, and the two Lakina decision filenames that disclosed private context are cited by their shortest unique prefixes."
+    },
+    {
+      "id": "CTO-R3",
+      "severity": "minor",
+      "description": "Four Morpheus citations pointed at unrelated text after this change inserted lines into architecture.md and decisions.md, one budget citation was off-topic, and the Evo session checkpoint was classed as an accepted decision.",
+      "paths": [".agents/skills/agentic-cto/references/provenance.md", ".claude/skills/agentic-cto/references/provenance.md", "src/cto/skill.ts", "dist/cto/skill.js", "dist/cto/skill.js.map"],
+      "disposition": "fixed",
+      "response": "The citations now read architecture.md:567-568 and decisions.md:1000-1004 and :1414; the off-topic review-turn citation was removed; the Evo checkpoint is class L in every row. Every Morpheus citation in provenance was re-read at its line after the fix, and the decisions.md and architecture.md edits kept their line counts."
+    },
+    {
+      "id": "CTO-R4",
+      "severity": "minor",
+      "description": "The acceptance file, ticket, architecture.md and AGENTS.md still described the abandoned copy-per-project design.",
+      "paths": ["qa/acceptance/MO-26-10-21-19.17.32.md", "hq/product/roadmap/MO-26-10-21-19.17.32-add-agentic-cto-skill.md", "architecture.md", "AGENTS.md"],
+      "disposition": "fixed",
+      "response": "Each now says Morpheus holds the canonical skill and its mirror, morpheus cto guide prints it, and init writes a one-file pointer to every project kind, adopted by an existing project on re-running init."
+    },
+    {
+      "id": "CTO-R5",
+      "severity": "minor",
+      "description": "The rule to trace a constraint before honouring it dropped the source's condition and fallback, so an unrecorded but meaningful constraint could be silently ignored.",
+      "paths": [".agents/skills/agentic-cto/SKILL.md", ".claude/skills/agentic-cto/SKILL.md", "src/cto/skill.ts", "dist/cto/skill.js", "dist/cto/skill.js.map"],
+      "disposition": "fixed",
+      "response": "Section 3 now applies the rule when a constraint blocks you, and says that when no decision is recorded the agent says so and asks rather than silently honouring or dropping it."
+    },
+    {
+      "id": "CTO-R6",
+      "severity": "minor",
+      "description": "The default Approvers field named the person who delegated, so a grant from someone without authority over that kind of action could be recorded as valid.",
+      "paths": [".agents/skills/agentic-cto/references/mandate.md", ".claude/skills/agentic-cto/references/mandate.md", "src/cto/skill.ts", "dist/cto/skill.js", "dist/cto/skill.js.map"],
+      "disposition": "fixed",
+      "response": "The default is now whoever the project's records name for that kind of action, else the person who delegated, and a grant counts only from someone who can make it."
+    }
+  ]
+}
+```
+
 ## Not done here
 
 - Existing consumers (Evo, Lakina and others) do not yet carry the pointer. Each adopts it by
