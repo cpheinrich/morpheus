@@ -152,3 +152,55 @@ A fresh high-risk independent reviewer (claude-code-subagent/add7f3079364dc160) 
   ]
 }
 ```
+
+## Late CI correction: a controlled clock for the upload boundary
+
+### What failed
+
+The ready-for-review run 39724029142 on `24e2e58d` failed `node / check` in one test. The
+test is `tests/upload-receipt.test.py` `test_known_acceptance_survives_polled_resource_hook_failure`,
+in its `COMPLETE` case, which expected return code 11 and got 1 ("Timed out confirming upload
+acceptance"). The synchronize run on the same head passed.
+
+Here is the mechanism:
+
+- `upload-effects.sh:51` sets `acceptance_deadline` from `date +%s` plus
+  `PROCESSING_TIMEOUT_SECONDS`.
+- `upload-effects.sh:53` checks `date +%s -ge deadline` before every poll.
+- The harness runs that boundary on the real clock, with a 1-second timeout and a 0-second poll.
+  A whole-second deadline then leaves a window of anywhere between almost nothing and one second.
+- If a second boundary falls between the two `date` reads, the loop times out before it polls
+  even once.
+
+Three cases enter that loop expecting a poll. They are the two polled-resource subtests and the
+awaiting-upload `PROCESSING` case.
+
+### Requirements
+
+1. **Production unchanged.** No production file changes, including anything under `.github/`.
+   The deadline arithmetic, the `-ge` guard, the exit status and the message are the reviewed
+   behaviour, and the tests keep executing those exact lines.
+2. **Controlled clock in the harness only.** The harness gives the boundary a controlled clock:
+   - `date +%s` returns harness time.
+   - `sleep N` advances harness time by N whole seconds without waiting.
+   - Any other `date` call uses the real command.
+   - A non-integer sleep fails loudly.
+
+   The functions live only in the test's `bash -c` prefix. Production sources
+   `upload-effects.sh` from `upload-testflight.sh`, which defines neither function.
+3. **Assertions preserved.** Every existing assertion stays: exit codes, call order, receipts,
+   identity and digests.
+4. **Production-valid poll interval.** The poll interval becomes 1. `upload-testflight.sh:120-121`
+   rejects anything that is not a positive integer, so the old `0` was an input production never
+   runs with. The timeout stays 1.
+5. **Exact boundary coverage.** With a 3-second timeout and a 1-second poll, a resource that is
+   never accepted is polled exactly three times. It then exits 1 with the exact message, no
+   acceptance and the persisted `AWAITING_UPLOAD` resource. The checks at +0, +1 and +2 each
+   poll; the check at +3 equals the deadline and stops.
+6. **Bounded process guard.** Every boundary process gets a timeout. A regression that stops
+   advancing the clock then fails instead of hanging.
+7. **Proof of the fix.** The evidence must show four things:
+   - The unchanged old harness fails on a forced second crossing, reproducing the CI failure.
+   - The new harness passes under the same forced clock.
+   - Mutants of the production deadline are detected.
+   - Repeated runs are stable.
