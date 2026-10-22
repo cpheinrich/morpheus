@@ -45,6 +45,16 @@ function finishUnassigned(h: Awaited<ReturnType<typeof admissionHarness>>) {
   h.run.status = "completed"; h.run.conclusion = "cancelled";
   h.jobs[0] = nativeJob({ status: "completed", conclusion: "cancelled", completed_at: after(now, 16) });
 }
+// Exact-field projections of retained GitHub rows (hashes in qa/acceptance/MO-26-10-21-20.30.42.md).
+// Status, conclusion, labels, runner and runner-group values, step count and the start/completion
+// relations to created_at are the provider's; identity is rebound to this run and times to its clock.
+const placed = after(now, 1), skippedAt = after(now, 16);
+const cancelledWhileQueued = (overrides: Record<string, unknown> = {}) => nativeJob({ status: "completed", conclusion: "cancelled", created_at: placed, started_at: placed, completed_at: after(placed, 24 + 8 / 60), runner_id: 0, runner_name: "", runner_group_id: 0, runner_group_name: "", steps: [], ...overrides });
+const skippedPlaceholder = (overrides: Record<string, unknown> = {}) => nativeJob({ id: 3, name: "upload", status: "completed", conclusion: "skipped", created_at: skippedAt, started_at: skippedAt, completed_at: after(skippedAt, -1 / 60), steps: [], ...overrides });
+function finishPlaceholders(h: Awaited<ReturnType<typeof admissionHarness>>, target: Record<string, unknown> = {}, upload: Record<string, unknown> = {}, qualify: Record<string, unknown> = {}, ...extra: unknown[]) {
+  h.run.status = "completed"; h.run.conclusion = "cancelled";
+  h.jobs.splice(0, h.jobs.length, cancelledWhileQueued(target), preflightJob(), skippedPlaceholder(upload), skippedPlaceholder({ id: 4, name: "qualify", labels: ["ubuntu-24.04"], ...qualify }), ...extra);
+}
 describe("exact-attempt native admission", () => {
   it("uses 15 minutes for queued native work despite in-progress Linux preflight, then makes one ordinary hosted successor", async () => {
     const h = await admissionHarness(), before = (await h.store.read()).state.intents[h.intentId]!;
@@ -66,7 +76,7 @@ describe("exact-attempt native admission", () => {
     expect(state.builds["123/1.0"]!.maximum).toBe("9"); expect(intent.receipt).toBeUndefined(); expect(state.agents).toEqual({});
   });
   it.each([
-    ["runner id", { runner_id: 3 }], ["runner name", { runner_name: "assigned-vm" }], ["started job", { started_at: now }],
+    ["runner id", { runner_id: 3 }], ["runner name", { runner_name: "assigned-vm" }], ["started job", { started_at: after(now, 1) }],
     ["started step", { steps: [{ status: "in_progress", conclusion: null, started_at: now }] }],
     ["completed step with contradictory queued status", { steps: [{ status: "queued", conclusion: null, started_at: null, completed_at: now }] }],
     ["missing assignment", { runner_id: undefined }], ["missing name", { runner_name: undefined }], ["missing start", { started_at: undefined }], ["missing steps", { steps: undefined }],
@@ -156,11 +166,88 @@ describe("exact-attempt native admission", () => {
     expect(read.mock.calls.map(call => call[0])).toEqual([1, 2]); const intent = (await h.store.read()).state.intents[h.intentId]!;
     expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.nextAction).toBe("run-repair-agent");
   });
-  it("keeps an upload claim committed after the no-start census reserved", async () => {
-    const h = await admissionHarness(); finishUnassigned(h); const transact = h.store.transact.bind(h.store); let injected = false;
+  it.each([["null-start", finishUnassigned], ["terminal placeholder", (h: Awaited<ReturnType<typeof admissionHarness>>) => finishPlaceholders(h)]])("keeps an upload claim committed after the %s no-start census reserved", async (_label, finish) => {
+    const h = await admissionHarness(); finish(h); const transact = h.store.transact.bind(h.store); let injected = false;
     vi.spyOn(h.store, "transact").mockImplementation(async (id, kind, at, transition) => { if (kind === "native-failure" && !injected) { injected = true; await transact("racing-upload-hook", "record-upload-result", at, state => { recordTests(state, h.cfg, h.tests); claimUpload(state, h.cfg, h.upload, at); recordUpload(state, { ...h.upload, outcome: "accepted", providerUploadId: "resource" }, at); return null; }); } return transact(id, kind, at, transition); });
     await h.controller.tick(after(now, 20)); const intent = (await h.store.read()).state.intents[h.intentId]!;
     expect(injected).toBe(true); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.upload!.acceptedAt).toBe(after(now, 20)); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.state).toBe("processing"); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+});
+describe("terminal job placeholders", () => {
+  async function expectRepair(h: Awaited<ReturnType<typeof admissionHarness>>) {
+    const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.state).toBe("repairing"); expect(intent.nextAction).toBe("run-repair-agent");
+    expect(Object.values(state.agents)).toHaveLength(1); expect(Object.values(state.agents)[0]!.evidence).toContain("Native admission absence is not proved; host-side owned process/VM termination evidence is required before replacement"); expect(h.dispatch).not.toHaveBeenCalled();
+  }
+  it("classifies a real-shape cancelled-while-queued census as no-start and makes one hosted successor", async () => {
+    const h = await admissionHarness(), before = (await h.store.read()).state.intents[h.intentId]!;
+    await h.controller.tick(after(now, 15 + 1 / 60_000)); expect(h.cancel).toHaveBeenCalledExactlyOnceWith("100");
+    finishPlaceholders(h); await h.controller.tick(after(now, 26));
+    let state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(intent.nextAction).toBe("dispatch-hosted"); expect(intent.state).toBe("pending"); expect(intent.attempts[0]!.status).toBe("failed");
+    expect(intent.attempts[0]!.quiescence).toEqual({ kind: "host-terminated", ref: "GitHub complete exact-attempt job census: no native job assigned/started, run 100/1", observedAt: after(now, 26) }); expect(state.agents).toEqual({});
+    await h.controller.tick(after(now, 27)); await h.controller.tick(after(now, 32));
+    state = (await h.store.read()).state; intent = state.intents[h.intentId]!;
+    expect(intent.attempts.map(attempt => [attempt.buildNumber, attempt.lane, attempt.status])).toEqual([["8", "local", "failed"], ["9", "hosted", "active"]]);
+    expect(h.dispatch).toHaveBeenCalledTimes(1); expect(h.dispatch.mock.calls[0]![0].id).toBe(`${h.intentId}-a2`); expect(h.cancel).toHaveBeenCalledTimes(1);
+    expect(state.builds["123/1.0"]!.reservations).toEqual({ [h.attemptId]: { buildNumber: "8", at: now, burned: true }, [`${h.intentId}-a2`]: { buildNumber: "9", at: after(now, 27), burned: true } });
+    for (const key of ["source", "originalSource", "slot", "oldestDebtAt", "deadlineAt"] as const) expect(intent[key]).toEqual(before[key]);
+    expect(state.agents).toEqual({});
+  });
+  it("keeps the null-start control of the same census on the hosted fallback", async () => {
+    const h = await admissionHarness(); finishPlaceholders(h, { started_at: null }, { started_at: null }, { started_at: null });
+    await h.controller.tick(after(now, 26)); expect((await h.store.read()).state.intents[h.intentId]!.nextAction).toBe("dispatch-hosted");
+  });
+  it("does not turn a failed preflight with real skipped placeholders into an admission failure", async () => {
+    const h = await admissionHarness(); h.run.status = "completed"; h.run.conclusion = "failure";
+    h.jobs.splice(0, h.jobs.length, preflightJob({ conclusion: "failure" }), skippedPlaceholder({ id: 5, name: "tests", labels: [], completed_at: skippedAt }), skippedPlaceholder({ id: 4, name: "qualify", labels: ["ubuntu-24.04"], completed_at: skippedAt }), skippedPlaceholder({ completed_at: skippedAt }));
+    await h.controller.tick(after(now, 26)); await expectRepair(h);
+  });
+  it.each([
+    ["target started one second after creation", { started_at: after(placed, 1 / 60) }, {}, {}],
+    ["target started one second before creation", { started_at: after(placed, -1 / 60) }, {}, {}],
+    ["target start spelled differently for the same instant", { started_at: placed.replace(".000Z", "Z") }, {}, {}],
+    ["target creation absent", { created_at: undefined }, {}, {}], ["target creation null", { created_at: null }, {}, {}],
+    ["target runner id", { runner_id: 1153 }, {}, {}], ["target runner name", { runner_name: "assigned-vm" }, {}, {}],
+    ["target runner group id", { runner_group_id: 1 }, {}, {}], ["target runner group name", { runner_group_name: "Default" }, {}, {}],
+    ["target runner group id absent", { runner_group_id: undefined }, {}, {}], ["target runner group name absent", { runner_group_name: undefined }, {}, {}],
+    ["target completed step", { steps: [{ name: "Set up job", number: 1, status: "completed", conclusion: "success", started_at: placed, completed_at: placed }] }, {}, {}],
+    ["target queued step", { steps: [{ name: "Set up job", number: 1, status: "queued", conclusion: null, started_at: null, completed_at: null }] }, {}, {}],
+    ["target still in progress", { status: "in_progress" }, {}, {}], ["target completion absent", { completed_at: null }, {}, {}],
+    ["native companion failed", {}, { conclusion: "failure" }, {}], ["native companion started after creation", {}, { started_at: after(skippedAt, 1 / 60) }, {}],
+    ["Ubuntu companion cancelled", {}, {}, { conclusion: "cancelled" }], ["Ubuntu companion assigned", {}, {}, { runner_id: 20, runner_name: "GitHub Actions 20" }],
+  ])("refuses no-start fallback for %s", async (_label, target, upload, qualify) => {
+    const h = await admissionHarness(); finishPlaceholders(h, target, upload, qualify);
+    await h.controller.tick(after(now, 26)); await expectRepair(h);
+  });
+  it("refuses a cancelled placeholder from a foreign executor", async () => {
+    const h = await admissionHarness(); finishPlaceholders(h, {}, {}, {}, cancelledWhileQueued({ id: 6, name: "other", labels: ["windows-latest"] }));
+    await h.controller.tick(after(now, 26)); await expectRepair(h);
+  });
+  it("keeps the queued admission census strict for a creation-time start", async () => {
+    const h = await admissionHarness(); h.jobs[0] = nativeJob({ created_at: placed, started_at: placed, runner_id: 0, runner_name: "", runner_group_id: 0, runner_group_name: "" });
+    await h.controller.tick(after(now, 16)); expect(h.cancel).not.toHaveBeenCalled();
+    await h.controller.tick(after(now, 180)); expect(h.cancel).not.toHaveBeenCalled();
+    await h.controller.tick(after(now, 180 + 1 / 60_000)); expect(h.cancel).toHaveBeenCalledExactlyOnceWith("100");
+  });
+  it("lets a terminal skipped placeholder accompany strictly queued native work", async () => {
+    const h = await admissionHarness(); h.jobs.push(skippedPlaceholder({ created_at: placed, started_at: placed, completed_at: after(placed, -1 / 60) }));
+    await h.controller.tick(after(now, 15)); expect(h.cancel).not.toHaveBeenCalled();
+    await h.controller.tick(after(now, 15 + 1 / 60_000)); expect(h.cancel).toHaveBeenCalledExactlyOnceWith("100");
+  });
+  it.each([["an exact placeholder", skippedAt, true], ["a start one second after creation", after(skippedAt, 1 / 60), false]])("records hosted-lane termination beside a skipped unlabelled companion only for %s", async (_label, started, ended) => {
+    const h = await admissionHarness("hosted"); h.run.status = "completed"; h.run.conclusion = "failure";
+    h.jobs.splice(0, h.jobs.length, preflightJob(), nativeJob({ status: "completed", conclusion: "failure", started_at: after(now, 2), completed_at: after(now, 16), runner_id: 3, runner_name: "GitHub Actions 3", runner_group_id: 0, runner_group_name: "GitHub Actions", labels: ["macos-26-xlarge"], steps: [{ name: "Set up job", number: 1, status: "completed", conclusion: "success", started_at: after(now, 2), completed_at: after(now, 2) }] }), skippedPlaceholder({ id: 5, name: "tests", labels: [], started_at: started, completed_at: skippedAt }));
+    await h.controller.tick(after(now, 26)); const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(intent.attempts[0]!.status).toBe(ended ? "failed" : "active");
+    expect(intent.attempts[0]!.quiescence).toEqual(ended ? { kind: "hosted-terminated", ref: "GitHub hosted ephemeral VM job completion: 2,1,5", observedAt: after(now, 26) } : undefined);
+    expect(intent.nextAction).toBe("run-repair-agent"); expect(Object.values(state.agents)).toHaveLength(1); expect(h.dispatch).not.toHaveBeenCalled();
+    expect(Object.values(state.agents)[0]!.evidence.includes("Native admission absence is not proved; host-side owned process/VM termination evidence is required before replacement")).toBe(!ended);
+  });
+  it.each([["run", { run_id: 999 }], ["attempt", { run_attempt: 2 }], ["head", { head_sha: "d".repeat(40) }]])("cannot authorize fallback from a placeholder on the wrong %s", async (_label, upload) => {
+    const h = await admissionHarness(); finishPlaceholders(h, {}, upload);
+    const result = await h.controller.tick(after(now, 26)), intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(result.errors.map(error => error.message)).toEqual(["Job census does not match the exact workflow run attempt"]); expect(intent.state).toBe("waiting"); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(h.dispatch).not.toHaveBeenCalled();
   });
 });
 describe("controller failure sequences", () => {
