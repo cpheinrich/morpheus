@@ -116,7 +116,16 @@ fallback requires a terminal run, at least one recognized cancelled native job,
 every native job explicitly unassigned and never started, and successful hosted
 Linux companion work (or skipped/unassigned downstream work). Missing fields,
 steps with start/completion evidence, partial/failed pagination, empty or preflight-only results cannot
-establish no-start quiescence. A preflight failure instead retains ownership and
+establish no-start quiescence. GitHub reports a terminal job that never reached a runner with
+`started_at` copied from `created_at`, not null. A completed skipped or cancelled row is therefore
+also never-started when it meets all of these:
+- the copy is string-exact;
+- it has a completion time;
+- its runner and runner-group fields are null or 0/empty;
+- it lists no steps.
+
+Queued rows keep the strict null-start rule. A different start time, any step, or a missing
+creation or runner-group field refuses. A preflight failure instead retains ownership and
 creates durable repair work; verified owned process/VM termination and the
 existing operational-repair transition can release it for a normal retry.
 The hosted successor keeps the same intent, source, slot and oldest debt, while

@@ -579,3 +579,23 @@ pull or rebase in a main checkout exports neither variable, which is why worktre
 Any git subprocess that must operate on the repository at its `cwd` takes
 `env: gitSubprocessEnv()` from `src/git-env.ts`. `git clone` was not misdirected, so nothing was
 written into a project's repository — the damage was a refused update, not a corrupted one.
+
+## GitHub copies `created_at` into `started_at` for a job that never ran
+
+2026-10-21 (MO-26-10-21-20.30.42). GitHub's REST schema declares a job's `started_at` a
+required, non-null string and describes its runner fields as null until assignment. Retained
+rows show what a job that never reached a runner actually reports:
+
+- **Skipped:** 20 skipped rows had `started_at` identical to `created_at`, no steps, and null
+  runner fields. A skipped row can even complete one second before it was created.
+- **Cancelled while queued:** one job, cancelled after 24 minutes in the queue, had the same
+  `started_at` copy and no steps, with runner fields reported as `0`/`""`.
+
+The CD controller's no-start rule required a null `started_at`. Every fixture that tested the rule
+used null as well. The controller therefore could not recognize a single real never-ran row, and
+it sent cancelled-before-assignment runs to repair instead of the hosted fallback.
+
+**A fixture written from a schema's description of absence tests the description, not the
+provider.** Compare it with retained real rows before encoding a sentinel. One caveat remains
+unverified: no queued row has been observed. If queued rows carry the same copied `started_at`,
+the strict queued admission bound never fires.
