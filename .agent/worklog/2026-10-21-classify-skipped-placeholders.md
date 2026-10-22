@@ -90,3 +90,65 @@ following remain unknown and fail closed unless they match the exact shape:
 - live queued rows;
 - whether a cancelled run's dependents report `skipped` or `cancelled`;
 - an assigned runner that never reported.
+
+## Delivery and independent review
+
+The branch was pushed once at `09179134`, which is `e4ae2785` plus a records-only commit moving
+the item to `review`. Draft PR #448 was opened without the `agent-reviewed` label and with
+auto-merge off. Its only CI run, 39721274956 (attempt 1, exact head), succeeded:
+
+- qa-browser, `node / check`, codex-claude and `pm / pm` passed;
+- `pr` and both `agent-review` jobs were skipped by design.
+
+One fresh high-risk reviewer then reviewed `09179134`. It ran as a general-purpose subagent with
+no inherited history, from a 26 KB dispatch file containing the full `review prepare` packet, the
+CI result and seven author disclosures. Timing: the runner's `duration_ms` was 340148. The author's
+clock read 04:17:49.639Z to 04:23:39.186Z around the invocation; the reviewer's own readings
+were 04:18:04Z and 04:23:05Z.
+
+Its one minor finding, MIN-01, was correct. Skipped companions share `neverRan` on the hosted lane
+too. As a result, an all-completed census with no local job and a real unlabelled skipped
+placeholder now records `hosted-terminated`. The acceptance file had listed hosted-lane
+termination as unchanged, and no test covered it.
+
+The behaviour is kept. `ae713540` adds a hosted-lane boundary test and corrects the requirement
+and docs, under the reviewer's condition. That test passes on the head (91/91) and fails on the
+base source (`expected 'active' to be 'failed'`), and typecheck passes. No source or generated
+file changed. The fix is local and unpushed; a second push and CI await separate release.
+
+A fresh high-risk independent reviewer (claude-code-subagent/add7f3079364dc160) reviewed 09179134 against CI run 39721274956 and the retained rows, and cleared it with one minor finding. MIN-01: skipped companions share the new predicate on the hosted lane, so a completed census with no local job beside a real unlabelled skipped placeholder now records hosted termination, which the acceptance file had listed as unchanged and no test covered. The reviewer judged that behaviour correct and set a condition limited to the test, acceptance, docs and worklog paths. The author added a hosted-lane boundary test that passes on the head and fails on the base source, and corrected the requirement and docs in ae713540 with no source change. The reviewer judged the malformed equal date-pair case acceptable without a test, the changed existing expectation sound, and the waiting-gate change acceptable. It noted as incidental that a runner pickup within the creation second could produce an equal start; the blank runner, group and step guards still refuse that row, and it falls within the disclosed unknown about an assigned runner that never reported. Live queued-row shape, the drill target's cancellation shape and runtime adoption remain unverified.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "41d9815dd719e9b7106c3cd17ed2e81e15201a88",
+  "reviewed": "09179134b8236e7e831dad9ceaf8b33b94eb1270",
+  "covered": "ae71354066920cde9a845ebdbd880d072a9c1a65",
+  "authorSession": "1d30e53f-94d3-441a-aeea-b031a044a7be",
+  "reviewerSession": "claude-code-subagent/add7f3079364dc160",
+  "risk": "high",
+  "elapsedMinutes": 5.669133333333333,
+  "timing": {
+    "source": "runner",
+    "durationMs": 340148,
+    "evidence": "Claude Code Agent tool result for subagent add7f3079364dc160, initial turn: duration_ms=340148. Author clock around the invocation 2026-10-22T04:17:49.639Z to 2026-10-22T04:23:39.186Z; reviewer date -u readings 04:18:04Z and 04:23:05Z."
+  },
+  "outcome": "complete",
+  "summary": "A fresh high-risk independent reviewer (claude-code-subagent/add7f3079364dc160) reviewed 09179134 against CI run 39721274956 and the retained rows, and cleared it with one minor finding. MIN-01: skipped companions share the new predicate on the hosted lane, so a completed census with no local job beside a real unlabelled skipped placeholder now records hosted termination, which the acceptance file had listed as unchanged and no test covered. The reviewer judged that behaviour correct and set a condition limited to the test, acceptance, docs and worklog paths. The author added a hosted-lane boundary test that passes on the head and fails on the base source, and corrected the requirement and docs in ae713540 with no source change. The reviewer judged the malformed equal date-pair case acceptable without a test, the changed existing expectation sound, and the waiting-gate change acceptable. It noted as incidental that a runner pickup within the creation second could produce an equal start; the blank runner, group and step guards still refuse that row, and it falls within the disclosed unknown about an assigned runner that never reported. Live queued-row shape, the drill target's cancellation shape and runtime adoption remain unverified.",
+  "findings": [
+    {
+      "id": "MIN-01",
+      "severity": "minor",
+      "description": "Skipped companions share neverRan on the hosted lane: a terminal skipped placeholder labelled neither ubuntu- nor macos- (the real unlabelled tests row) now makes the census recognized, so an all-completed census with no local job sets hostedEnded and records hosted-terminated quiescence (src/cd/controller.ts skipped, recognized, hostedEnded). The acceptance file listed hosted-lane termination as unchanged and no test covered it.",
+      "paths": ["tests/cd/controller.test.ts", "qa/acceptance/MO-26-10-21-20.30.42.md", "docs/cd-pipeline-v2.md"],
+      "disposition": "fixed",
+      "response": "Agreed; kept the behaviour, which the reviewer judged correct because every job completed, none is local and a skipped row never ran. Added an admissionHarness hosted-lane case pinning both sides of the start-time boundary: the exact placeholder gives hosted-terminated quiescence, a failed attempt, run-repair-agent, no dispatch and no not-proved evidence; a start one second after creation leaves the attempt active with not-proved evidence. Corrected the acceptance requirements and the docs paragraph in ae713540, with no src/ or dist/ change.",
+      "condition": {
+        "paths": ["tests/cd/controller.test.ts", "qa/acceptance/MO-26-10-21-20.30.42.md", "docs/cd-pipeline-v2.md", ".agent/worklog/2026-10-21-classify-skipped-placeholders.md"],
+        "evidence": "pnpm exec vitest run tests/cd/controller.test.ts with the new case passing on head and the same case failing on the base source; pnpm typecheck"
+      },
+      "conditionMet": "On ae713540: pnpm exec vitest run tests/cd/controller.test.ts passed 91/91. With src/cd/controller.ts temporarily replaced by the 41d9815 version and then restored from Git, the exact-placeholder hosted case failed (expected 'active' to be 'failed') and its one-second counterpart passed. pnpm typecheck exited 0."
+    }
+  ]
+}
+```
