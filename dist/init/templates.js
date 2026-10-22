@@ -1715,8 +1715,8 @@ description: ${ctoSkillDescription()}
 # Agentic CTO
 
 Run \`morpheus cto guide\` and follow it, reading the references it names with
-\`morpheus cto guide <topic>\` — start with \`mandate\`. Morpheus keeps the one reviewed copy and
-the installed CLI prints it, so every project follows the same version.
+\`morpheus cto guide <topic>\`, starting with \`morpheus cto guide mandate\`. Morpheus keeps the one
+reviewed copy and the installed CLI prints it, so every project follows the same version.
 
 Until you have read it, these boundaries already hold:
 
