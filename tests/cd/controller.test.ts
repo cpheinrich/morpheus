@@ -235,6 +235,15 @@ describe("terminal job placeholders", () => {
     await h.controller.tick(after(now, 15)); expect(h.cancel).not.toHaveBeenCalled();
     await h.controller.tick(after(now, 15 + 1 / 60_000)); expect(h.cancel).toHaveBeenCalledExactlyOnceWith("100");
   });
+  it.each([["an exact placeholder", skippedAt, true], ["a start one second after creation", after(skippedAt, 1 / 60), false]])("records hosted-lane termination beside a skipped unlabelled companion only for %s", async (_label, started, ended) => {
+    const h = await admissionHarness("hosted"); h.run.status = "completed"; h.run.conclusion = "failure";
+    h.jobs.splice(0, h.jobs.length, preflightJob(), nativeJob({ status: "completed", conclusion: "failure", started_at: after(now, 2), completed_at: after(now, 16), runner_id: 3, runner_name: "GitHub Actions 3", runner_group_id: 0, runner_group_name: "GitHub Actions", labels: ["macos-26-xlarge"], steps: [{ name: "Set up job", number: 1, status: "completed", conclusion: "success", started_at: after(now, 2), completed_at: after(now, 2) }] }), skippedPlaceholder({ id: 5, name: "tests", labels: [], started_at: started, completed_at: skippedAt }));
+    await h.controller.tick(after(now, 26)); const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(intent.attempts[0]!.status).toBe(ended ? "failed" : "active");
+    expect(intent.attempts[0]!.quiescence).toEqual(ended ? { kind: "hosted-terminated", ref: "GitHub hosted ephemeral VM job completion: 2,1,5", observedAt: after(now, 26) } : undefined);
+    expect(intent.nextAction).toBe("run-repair-agent"); expect(Object.values(state.agents)).toHaveLength(1); expect(h.dispatch).not.toHaveBeenCalled();
+    expect(Object.values(state.agents)[0]!.evidence.includes("Native admission absence is not proved; host-side owned process/VM termination evidence is required before replacement")).toBe(!ended);
+  });
   it.each([["run", { run_id: 999 }], ["attempt", { run_attempt: 2 }], ["head", { head_sha: "d".repeat(40) }]])("cannot authorize fallback from a placeholder on the wrong %s", async (_label, upload) => {
     const h = await admissionHarness(); finishPlaceholders(h, {}, upload);
     const result = await h.controller.tick(after(now, 26)), intent = (await h.store.read()).state.intents[h.intentId]!;

@@ -125,7 +125,10 @@ also never-started when it meets all of these:
 - it lists no steps.
 
 Queued rows keep the strict null-start rule. A different start time, any step, or a missing
-creation or runner-group field refuses. A preflight failure instead retains ownership and
+creation or runner-group field refuses. Skipped companions use the same rule on the hosted
+lane. A completed census with no local job therefore records hosted termination beside such a
+placeholder, as it already did beside a strict skipped companion. The intent still goes to
+repair. A preflight failure instead retains ownership and
 creates durable repair work; verified owned process/VM termination and the
 existing operational-repair transition can release it for a normal retry.
 The hosted successor keeps the same intent, source, slot and oldest debt, while
