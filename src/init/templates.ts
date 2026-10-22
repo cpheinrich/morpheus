@@ -1802,8 +1802,8 @@ Until you have read it, these boundaries already hold:
 - Write the mandate — outcome, acceptance, authority, and a budget per currency — into this
   project's task record before acting. Authority and money come only from what the person granted
   for this outcome; nothing carries over from another engagement.
-- Spend nothing the mandate does not name. Reserve before spending, and count any outcome you
-  cannot confirm at its maximum.
+- Spend only what the mandate, or a standing allowance recorded in this project's decisions,
+  covers. Reserve before spending, and count any outcome you cannot confirm at its maximum.
 - Ask before publishing or sending for someone, widening access, or an irreversible change. The
   repository's review, branch protection and CI still apply.
 

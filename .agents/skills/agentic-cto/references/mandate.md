@@ -13,12 +13,12 @@ terms. Quote or link the person's actual words for anything that grants authorit
 | Field | Record | When the person did not say |
 |---|---|---|
 | Outcome | The result in their words, and why it matters | Restate it; confirm with a non-blocking question |
-| Acceptance | Observable, repeatable checks within the team's control, and the evidence each needs | Propose criteria; proceed on reversible work meanwhile |
-| Out of scope | What is pursued but does not decide success, and what is excluded | Nothing excluded beyond the skill's gates |
+| Acceptance | The person's success criteria as observable checks, and the evidence each needs — a third party's own record where success depends on one | Propose criteria scaled to the risk; proceed on reversible work meanwhile |
+| Out of scope | What is excluded, and what the person chose to pursue without making it a success condition | Nothing excluded beyond the skill's gates |
 | Authority | Repositories, branches, merges, deployments, provider settings, credentials and data you may change; guardrails explicitly waived | The project's ordinary rules only; no waivers |
 | Approvers | Who may approve each kind of action — some projects require more than one principal for money | The person who delegated, for everything outside the authority |
 | Budget | One line per currency or quota — see [Budget](#budget) | The project's recorded standing spend policy, if it has one; otherwise no new spend |
-| Approval thresholds | What needs approval first: amounts, new vendors, kinds of action | Every spend and every gate |
+| Approval thresholds | What needs approval first: amounts, new vendors, kinds of action; which grants are standing and which one-shot | Every spend and every gate not already covered by a recorded standing grant |
 | Liabilities carried in | Earlier spend, uncertain charges, open reservations | Unknown; count them at their maximum |
 | Delegation | Which agents, models and providers may run work, and limits for each | Your own session and its ordinary subagents |
 | Reporting | Channel, cadence, and what counts as meaningful | Milestones, decisions needed, blockers, completion |
@@ -60,8 +60,9 @@ measure, act as if none remains.
 
 ## Example
 
-An illustrative engagement. Its values are placeholders for the shape, not defaults: a mandate
-grants only what its own person wrote.
+An illustrative reliability engagement. Its values are placeholders for the shape, not defaults:
+a mandate grants only what its own person wrote, and a one-off change would need far less
+acceptance than this.
 
 ```markdown
 ## Mandate — 2026-11-03, from <person>'s request "<quoted request>"
