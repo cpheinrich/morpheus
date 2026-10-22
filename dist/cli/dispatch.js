@@ -31,6 +31,7 @@ import { autoUpdate as selfAutoUpdate, check as selfCheck, ensure as selfEnsure,
 import { dispatchQaComments, dispatchQaGuide, dispatchQaPreview } from "./qa.js";
 import { profileExtract, profileReport } from "./profile.js";
 import { waitCiCommand } from "./wait-ci.js";
+import { ctoGuide } from "../cto/guide.js";
 import { HELP } from "./help.js";
 async function dispatchSelf({ flags, command, rest }) {
     if (command === "check" || command === undefined)
@@ -407,6 +408,20 @@ async function dispatchQa({ flags, command, rest }) {
     console.error(`Unknown qa command "${command ?? ""}".\n\n${HELP}`);
     return 1;
 }
+async function dispatchCto({ command, rest }) {
+    if (command === "guide") {
+        const guide = ctoGuide(rest[0]);
+        if (!guide.ok) {
+            console.error(guide.message);
+            return 1;
+        }
+        // console.log ends the line itself, so stdout carries the file exactly.
+        console.log(guide.text.replace(/\n$/, ""));
+        return 0;
+    }
+    console.error(`Unknown cto command "${command ?? ""}".\n\n${HELP}`);
+    return 1;
+}
 async function dispatchCheck({ flags, command, dir }) {
     if (command === "pr")
         return pr(dir, flags.base);
@@ -523,6 +538,7 @@ const groups = {
     "context": dispatchContext,
     "check": dispatchCheck,
     "qa": dispatchQa,
+    "cto": dispatchCto,
     "profile": dispatchProfile,
     "wait-ci": dispatchWaitCi,
     pm: dispatchPm,

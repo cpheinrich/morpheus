@@ -15,6 +15,8 @@ import { credentialsInstructions } from "../credentials/templates.js";
 import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
 import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
+import { ctoSkillDescription } from "../cto/guide.js";
+import { AGENTIC_CTO_SKILL } from "../cto/skill.js";
 
 export interface Seed {
   name: string;
@@ -1776,4 +1778,34 @@ or navigating their overlay tab.
 
 If \`morpheus qa preview\` is unknown, or has no \`web\`, the installed CLI predates it: run
 \`morpheus self update\`.
+`;
+
+/**
+ * The agentic-CTO skill as every other project carries it (MO-26-10-21-19.17.32): a pointer to
+ * `morpheus cto guide`, written to `.agents/skills` and `.claude/skills`. Morpheus holds the one
+ * canonical copy, and this borrows its description so both route the same requests. The short form
+ * keeps the spending and gate boundaries in force even before the guide has been read.
+ */
+export const agenticCtoPointerSkill = (): string => `---
+name: ${AGENTIC_CTO_SKILL}
+description: ${ctoSkillDescription()}
+---
+
+# Agentic CTO
+
+Run \`morpheus cto guide\` and follow it, reading the references it names with
+\`morpheus cto guide <topic>\`, starting with \`morpheus cto guide mandate\`. Morpheus keeps the one
+reviewed copy and the installed CLI prints it, so every project follows the same version.
+
+Until you have read it, these boundaries already hold:
+
+- Write the mandate — outcome, acceptance, authority, and a budget per currency — into this
+  project's task record before acting. Authority and money come only from what the person granted
+  for this outcome; nothing carries over from another engagement.
+- Spend only what the mandate, or a standing allowance recorded in this project's decisions,
+  covers. Reserve before spending, and count any outcome you cannot confirm at its maximum.
+- Ask before publishing or sending for someone, widening access, or an irreversible change. The
+  repository's review, branch protection and CI still apply.
+
+If \`morpheus cto\` is unknown, the installed CLI predates it: run \`morpheus self update\`.
 `;

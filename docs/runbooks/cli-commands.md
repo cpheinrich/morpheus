@@ -32,6 +32,7 @@ pnpm morpheus brand explore        # refresh the five-direction brand review han
 pnpm morpheus brand finalize --selection "Name" # promote a reviewed direction into canonical records
 pnpm morpheus init                 # scaffold a project — safe to re-run, never overwrites
 pnpm morpheus init status          # how far through project setup this repo is
+pnpm morpheus cto guide [mandate|provenance]  # the agentic-CTO skill other projects' pointers name
 pnpm morpheus web init             # provision and scaffold the website: waitlist + /hq sign-in
 pnpm morpheus web add-consumer-auth # consumer accounts: staging project, auth plumbing, three suites
 pnpm morpheus web status           # what the web surface has, and what it is missing

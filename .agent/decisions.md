@@ -928,6 +928,18 @@ stop before production implementation. Morpheus owns the canonical Codex skill u
 Evo carries the same file directly. Plugin packaging is deliberately deferred until distribution
 beyond Morpheus repositories is worth another lifecycle and manifest.
 
+**The agentic-CTO skill lives in Morpheus; other projects point to it** — 2026-10-21
+(MO-26-10-21-19.17.32). Chris asked for a skill that lives in Morpheus and that other Morpheus
+projects reference, and on 2026-10-21 for it merged so he can use it elsewhere. The canonical
+files are `.agents/skills/agentic-cto` with a byte-identical Claude mirror; `morpheus cto guide`
+prints them from the installed CLI; `morpheus init` writes a one-file pointer for both providers in
+every project kind. Unlike the motion-design copy above, this guidance is meant to keep absorbing
+new direction, and N copies would drift silently where `self update` reaches every project at once.
+The pointer keeps the spend and gate boundaries in force even before the guide is read. A one-off
+engagement's caps, waivers and quota thresholds are fields of each written mandate, never values in
+the skill. `scripts/sync-agentic-cto-skill.mjs` propagates an edit; a test refuses drift. Built on
+the existing template, CLI and gray-matter seams; no dependency, and plugin packaging stays deferred.
+
 **Front-end visual evidence is a declared path contract, default-on per repository** — 2026-09-01.
 `review.visualEvidence` in `morpheus.json` owns the include/exclude globs. A matching change blocks
 without a recording or screenshot at either GitHub's attachment service or an exact public HTTPS
