@@ -73,3 +73,12 @@ observer or operational adoption is part of Phase A. The unrelated frozen fixtur
 and held consumer PRs are untouched. ROOT owns publication/funding and later exact
 M/E coherence/operational releases; existing successful review/CI of older runtime
 bytes cannot qualify this new runtime.
+
+## Phase B — source publication and independent review
+
+ROOT released the normal source review/CI loop after authenticating the local
+qualification packet and exact implementation tree. The initial publication is an
+unlabelled draft. The shared-controller change requires a fresh HIGH independent
+source review after actual CI; operational raw-census/ledger-copy qualification
+and coherent consumer adoption remain separate ROOT-owned gates. No runtime or
+controller installation is authorized by this source publication.
