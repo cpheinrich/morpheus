@@ -510,6 +510,12 @@ needed.
   two skill directories and `morpheus cto guide` prints them; `morpheus init` gives every project
   kind a one-file pointer to that command, added to an existing project by re-running `init`.
   Morpheus's `references/provenance.md` traces each rule to the direction it came from.
+- **`research-engineer`** is the first individual-contributor skill under the CTO: hands-on ML and
+  algorithm research that frames the problem, benchmarks before building, iterates in rounds,
+  decides on paired evidence against measured noise and leaves a reproducible record. It is held
+  and distributed the same way — canonical files beside `agentic-cto`, printed by
+  `morpheus cto guide research-engineer` (a reference as `research-engineer/<reference>`), and a
+  one-file pointer from `morpheus init` — and the CTO's mandate, budget and gates apply to it.
 
 ### 7.2 Conventions and how they are enforced
 
@@ -2437,7 +2443,7 @@ billing account.
 ### 12.11 `init` scaffolds the repository and nothing else
 
 `morpheus init` writes the manifest, `README.md`, `AGENTS.md` with `CLAUDE.md` symlinked to it,
-the `.agent/` records, the repository-level motion-design and agentic-CTO skills, the `hq/` tree for the project's
+the `.agent/` records, the repository-level motion-design, agentic-CTO and research-engineer skills, the `hq/` tree for the project's
 kind, an inbox, a CI workflow delegating to the reusable ones, and `.gitignore` entries. When the
 repository has an Xcode project under `apps/ios`, it also writes the nightly TestFlight caller
 (§18.2's `ios-nightly-build` upload job as a checkout of the verified SHA plus one `ios-testflight-upload` step, the

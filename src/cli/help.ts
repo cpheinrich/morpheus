@@ -152,6 +152,7 @@ Usage
   morpheus qa guide       The comment-QA instructions every agent follows
   morpheus cto guide [<topic>]  How an agent runs a delegated outcome under a written
                          mandate and budget; topics print its references (mandate, provenance)
+                         and the skills under it (research-engineer, research-engineer/<reference>)
 
 Options
   --dir <path>   Product directory (default: hq/product)
