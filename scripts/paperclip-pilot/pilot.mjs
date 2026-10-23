@@ -125,6 +125,17 @@ export function drift(agent, body) {
   return fields;
 }
 
+// Pick a queue, never move a live session. Paperclip still owns assignment and execution.
+export function selectPoolHost(inventory, agents, runs) {
+  const candidates = Object.entries(inventory.hosts).filter(([name, host]) => {
+    const agent = agents.find(a => a.id === host.agentId);
+    return agent && ["idle", "running"].includes(agent.status) && drift(agent, agentBody(inventory, name)).length === 0;
+  });
+  const load = host => runs.filter(r => r.agentId === host.agentId && ["queued", "running"].includes(r.status)).length;
+  candidates.sort(([a, ah], [b, bh]) => load(ah) - load(bh) || a.localeCompare(b));
+  return candidates[0]?.[0];
+}
+
 function runOnHost(host, args, input) {
   const remote = [host.python ?? "/usr/bin/python3", host.supervisorPath, "--config", host.hostConfigPath, ...args];
   const [file, params] = host.transport === "local" ? [remote[0], remote.slice(1)] : ["ssh", [...SSH, host.sshTarget, remote.map(quote).join(" ")]];
@@ -141,6 +152,15 @@ function readOnHost(host, path) {
 }
 
 const commands = {
+  // One entry point after the operator supplies the private host inventory and native login.
+  async setup() {
+    hostOf(loadInventory(), rest[0]);
+    await commands.launcher();
+    await commands.enroll();
+    // A preview cannot stage a newly created agent's id; show that pending step instead.
+    if (!apply && !hostOf(loadInventory(), rest[0]).agentId) return print({ would: `stage ${rest[0]} after enrollment` });
+    await commands.stage();
+  },
   async "agent-config"() { print(agentBody(loadInventory(), rest[0])); },
   async "host-config"() { print(hostConfig(loadInventory(), rest[0])); },
   async launcher() {
@@ -215,7 +235,7 @@ const commands = {
       }
       // Tightening permissions is not repointing; apply it to adopted agents too.
       const granted = existing?.permissions ?? {};
-      if (!existing || granted.canCreateAgents !== false || granted.canCreateSkills !== false) {
+      if (!existing || granted.canCreateAgents !== false || granted.canCreateSkills !== false || granted.canAssignTasks !== false) {
         plan.push({ host: name, action: "restrict-permissions", permissions: LOCKED });
         if (apply) await api(inventory, "PATCH", `/agents/${host.agentId}/permissions`, LOCKED);
       }
@@ -260,6 +280,7 @@ const commands = {
     print({ hosts, reservations: accounts });
   },
   async reconcile() {
+    if (!apply) return print({ would: "reconcile held reservations; this may terminate orphaned host processes", applied: false });
     const result = spawnSync(loadInventory().python ?? "/usr/bin/python3", [join(HERE, "worker.py"), "--inventory", inventoryPath, "reconcile"], { stdio: "inherit", timeout: 300_000 });
     process.exit(result.status ?? 1);
   },
@@ -287,12 +308,20 @@ const commands = {
     print({ applied: apply, issueId: issue?.id ?? null, nonce, artifact: join(host.hostConfig.workspace, relative), verify: `node pilot.mjs verify-artifact ${name} ${relative} ${nonce}` });
   },
   async "create-task"() {
-    const inventory = loadInventory(), [name, title, file] = rest, host = hostOf(inventory, name);
+    const inventory = loadInventory(), [requestedHost, title, file] = rest;
+    let name = requestedHost;
     if (!title || !file) fail("usage: create-task HOST TITLE DESCRIPTION_FILE [--apply]");
+    if (name === "auto") {
+      const agents = list(await api(inventory, "GET", `/companies/${inventory.company.id}/agents`));
+      const runs = list(await api(inventory, "GET", `/companies/${inventory.company.id}/heartbeat-runs`));
+      name = selectPoolHost(inventory, agents, runs);
+      if (!name) fail("no eligible enrolled queue; inspect paused, missing or drifted workers", 75);
+    }
+    const host = hostOf(inventory, name);
     const description = readFileSync(file, "utf8");
     const body = { title, description, status: "todo", workMode: "standard", priority: "medium", assigneeAgentId: host.agentId };
     const issue = apply ? await api(inventory, "POST", `/companies/${inventory.company.id}/issues`, body) : undefined;
-    print({ applied: apply, issueId: issue?.id ?? null, descriptionSha256: createHash("sha256").update(description).digest("hex") });
+    print({ applied: apply, host: name, agentId: host.agentId, issueId: issue?.id ?? null, descriptionSha256: createHash("sha256").update(description).digest("hex") });
   },
   async "verify-artifact"() {
     const inventory = loadInventory(), [name, relative, nonce] = rest, host = hostOf(inventory, name);

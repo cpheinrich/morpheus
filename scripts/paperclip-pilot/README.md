@@ -26,6 +26,7 @@ Every `pilot.mjs` command is read-only unless `--apply` is given.
 
 ```sh
 P="node scripts/paperclip-pilot/pilot.mjs"     # --inventory PATH to override
+$P setup HOST --apply            # one entry point: launcher + enrollment + staging
 $P launcher --apply              # write the launcher named by inventory.launcher (Paperclip's adapter command)
 $P enroll [--apply]              # find/create the company; create or adopt one agent per host;
                                  # refuse binding drift; restrict hire/skill/assign permissions
@@ -42,16 +43,25 @@ $P list                          # company agents with their bound host
 $P nonce-task HOST [--apply]     # one artifact task with a fresh nonce
 $P verify-artifact HOST REL NONCE  # read the artifact back on the host; exit 0 only on an exact match
 $P create-task HOST TITLE FILE [--apply]   # a bounded task (e.g. a rendered evaluation prompt)
+$P create-task auto TITLE FILE [--apply]   # choose the enrolled queue with fewest queued/running runs
 $P stop HOST [--apply]           # pause the agent: no new runs
 $P resume HOST [--apply]
 $P cancel-run RUN_ID [--apply]   # Paperclip run cancellation; the host stops on stdin EOF
-$P reconcile                     # re-check held account reservations against host receipts
+$P reconcile [--apply]           # preview; apply re-checks reservations and may stop orphan processes
 $P remove HOST [--apply]         # terminate the agent (history kept), retire its id, unbind it
 ```
 
-Setup order: write the inventory → `launcher --apply` → `enroll --apply` → `stage HOST --apply`
-for each host → `health --hosts` → `nonce-task HOST --apply` → `verify-artifact`. Enrollment
-must precede staging because the host config carries the agent id. Re-running any step is safe.
+Setup: supply the private inventory and host prerequisites, then run `setup HOST --apply`
+for each host. This writes the launcher, enrolls agents and stages that host. It reuses matching
+registrations and refuses changed bindings. Run `health --hosts`, then accept a real nonce task
+with `verify-artifact`. Native provider sign-in and verified SSH access remain prerequisites;
+the script never copies another person's login. A fresh Mac still needs the base provisioning
+from `agent-host-setup` and the inventory's quota-reader runtime.
+
+`create-task auto` excludes paused, absent and drifted agents, then selects the least loaded
+queue in this small pool. It does not move sessions or retry a failed assignment. Host quota
+and slots are checked again at launch; an unreachable or exhausted selected host refuses and
+retains the task's failure evidence. This is initial placement, not automatic cross-host recovery.
 
 `worker.py` is invoked by Paperclip as `LAUNCHER exec --json … -` with the prompt on stdin.
 `supervisor.py --config HOST.json (run | status | reconcile RUN_UUID)`.
@@ -110,9 +120,12 @@ line is `MORPHEUS_PAPERCLIP_RECEIPT {…}`; full receipts are in the host's `sta
 - **No blind retry of manual wakeups.** Paperclip's wakeup idempotency key did not prevent
   duplicate synthetic runs in the pilot. After an uncertain wakeup, read the agent's runs and
   issues first; never resend.
-- **Controller restart.** Upstream's process adapter did not adopt an in-flight run after a hot
-  restart and left it shown as running. After any controller restart, run `status` and
-  `reconcile`, and cancel stale runs explicitly; the host side has already stopped on stdin EOF.
+- **Controller restart.** The synthetic process adapter was not adopted. The real custom CLI
+  was initially reported adopted, then interrupted after producing its artifact; the upstream
+  backstop detected process loss. Pause and drain before maintenance. After an unexpected
+  restart, inspect `status`, apply `reconcile --apply`, and examine the original task, run and
+  partial artifacts before authorizing continuation. A dead controller process alone proves
+  neither host termination nor task completion.
 - **`test-environment`** checks only that the launcher is executable and the cwd exists, because
   the command's basename is not `codex`. A real nonce task is the readiness probe. Paperclip's
   test-drive asks for an API key even for Codex; do not use it for enrollment.
@@ -121,20 +134,26 @@ line is `MORPHEUS_PAPERCLIP_RECEIPT {…}`; full receipts are in the host's `sta
 
 Pause: `stop HOST --apply`. Cancel a live run: `cancel-run RUN_ID --apply` (the host stops on
 EOF). Retire an agent: `remove HOST --apply`, then a fresh `enroll --apply` creates a new id.
-Teardown: stop the Paperclip controller process, then delete `~/.local/share/morpheus-paperclip/`
-on the controller and the staged `host/`, `host-state/` and workspace directories on each host.
-No other state exists; Codex logins and sessions on each host are untouched.
+For maintenance, pause both agents, wait for terminal runs, verify empty reservations and host
+slots with `status`, and only then restart the managed controller. A live hot restart interrupted
+the actual Codex CLI despite an initial upstream adoption report; its backstop later marked the
+run interrupted. Inspect partial artifacts and exact host receipts before any continuation.
+
+Teardown: pause and drain, retire the pilot agents, stop and uninstall Paperclip's managed
+service using its installed CLI, and archive the private database/evidence before removing
+task-owned runtime directories. The service LaunchAgent is outside the private data root;
+deleting that root alone does not uninstall it. Preserve each host's original provider logins.
 
 ## Capability matrix
 
 | Capability | Status |
 |---|---|
-| Bounded artifact task on each host through Paperclip | Second host qualified by a nonce artifact read back; controller host blocked on model/subscription selection (pending) |
+| Bounded artifact task on each host through Paperclip | Both qualified by exact nonce file readback and successful central task/run records |
 | Credentials and sessions stay host-local | By construction; fixture-tested |
 | Quota admission and running meter on native telemetry | Fixture-tested; live reads only on enrolled hosts |
-| Deadline, cancel, stdin-loss and crash cleanup with proof | Fixture-tested with sleeping processes |
+| Deadline, stdin-loss, contention and crash cleanup with proof | Focused fixtures plus four live SSH drills with a detached synthetic process tree on Zoe; real provider-side cancellation remains unqualified |
 | Cross-host slot and account contention | Per-account flock; no distributed scheduler |
-| Controller restart adoption | **Not qualified** — upstream leaves a stale running run |
+| Controller restart adoption | **Not qualified** — real CLI interrupted; upstream eventually detected process loss. Pause and drain before maintenance |
 | Wakeup idempotency | **Not qualified** — duplicates observed |
 | Served model/effort attribution | **Unknown** — requested only |
 | Cross-account failover or mid-task migration | **Not qualified**; never implied |

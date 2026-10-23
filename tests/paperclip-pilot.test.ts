@@ -350,7 +350,7 @@ describe("paperclip pilot enrollment", () => {
           if (typeof parsed.canCreateAgents !== "boolean" || typeof parsed.canAssignTasks !== "boolean") { res.statusCode = 400; return res.end("{}"); }
           state.patches.push({ url: req.url!, body: parsed });
           const agent = state.agents.find(a => a.id === p[1])!;
-          agent.permissions = { canCreateAgents: parsed.canCreateAgents, canCreateSkills: parsed.canCreateSkills };
+          agent.permissions = { canCreateAgents: parsed.canCreateAgents, canCreateSkills: parsed.canCreateSkills, canAssignTasks: parsed.canAssignTasks };
           return send(agent);
         }
         res.statusCode = 404; res.end("{}");
@@ -388,6 +388,19 @@ describe("paperclip pilot enrollment", () => {
       permissions: { canCreateAgents: false, canCreateSkills: false }, budgetMonthlyCents: 0 });
   });
 
+  it("routes new work to the least loaded eligible queue, excluding paused and drifted agents", () => {
+    const root = mkdtempSync(join(tmpdir(), "paperclip-pool-"));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    const inv = writeInventory(root, "http://127.0.0.1:9");
+    const script = `import {readFileSync} from 'node:fs'; import {agentBody,selectPoolHost} from ${JSON.stringify(PILOT)};
+      const i=JSON.parse(readFileSync(${JSON.stringify(inv)}));i.hosts.a.agentId='a1';i.hosts.b.agentId='a2';
+      const agents=['a','b'].map((n,j)=>({...agentBody(i,n),id:'a'+(j+1),status:'idle'}));
+      const runs=[{agentId:'a1',status:'running'},{agentId:'a1',status:'queued'},{agentId:'a2',status:'succeeded'}];
+      const result=[selectPoolHost(i,agents,runs)];agents[1].status='paused';result.push(selectPoolHost(i,agents,runs));
+      agents[0].adapterConfig.cwd='/wrong';result.push(selectPoolHost(i,agents,runs)??null);console.log(JSON.stringify(result));`;
+    expect(JSON.parse(execFileSync("node", ["--input-type=module", "-e", script], { encoding: "utf8" }))).toEqual(["b", "a", null]);
+  });
+
   it("enrolls idempotently and refuses to repoint a drifted agent", async () => {
     const root = mkdtempSync(join(tmpdir(), "paperclip-enroll-"));
     cleanups.push(() => rmSync(root, { recursive: true, force: true }));
@@ -405,10 +418,37 @@ describe("paperclip pilot enrollment", () => {
     expect(state.posts).toHaveLength(3);
     expect(state.patches).toHaveLength(2);
     expect(JSON.parse(again.out).plan.map((p: { action: string }) => p.action)).toEqual(["adopt", "adopt"]);
+    state.agents[0]!.permissions.canAssignTasks = true;
+    expect((await pilot(inv, "enroll", "--apply")).code).toBe(0);
+    expect(state.agents[0]!.permissions.canAssignTasks).toBe(false);
+    expect(state.patches).toHaveLength(3);
     state.agents[1]!.adapterConfig.cwd = "/w/elsewhere";
     const drifted = await pilot(inv, "enroll", "--apply");
     expect(drifted.code).toBe(2);
     expect(drifted.err).toContain("drifted in cwd");
+  });
+
+  it("sets up a configured local host in one command and keeps reconciliation a preview without apply", async () => {
+    const root = mkdtempSync(join(tmpdir(), "paperclip-setup-"));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    const { state, url } = await controller(), inv = writeInventory(root, url);
+    const value = JSON.parse(readFileSync(inv, "utf8"));
+    delete value.hosts.b;
+    Object.assign(value, { launcher: join(root, "bin/worker"), stateDir: join(root, "state"), python: "/must-not-run" });
+    Object.assign(value.hosts.a, { controllerCwd: join(root, "workspace"), supervisorPath: join(root, "host/supervisor.py"), hostConfigPath: join(root, "host/config.json") });
+    value.hosts.a.hostConfig.workspace = value.hosts.a.controllerCwd;
+    writeFileSync(inv, JSON.stringify(value));
+    expect((await pilot(inv, "setup", "a")).code).toBe(0);
+    expect(state.posts).toEqual([]);
+    expect(existsSync(value.launcher)).toBe(false);
+    expect((await pilot(inv, "setup", "a", "--apply")).code).toBe(0);
+    expect(state.posts).toEqual(["/api/companies", "/api/companies/c1/agents"]);
+    expect(readFileSync(join(value.hosts.a.controllerCwd, "AGENTS.md"), "utf8")).toBe(readFileSync(join(DIR, "worker-instructions.md"), "utf8"));
+    expect(JSON.parse(readFileSync(value.hosts.a.hostConfigPath, "utf8")).agentId).toBe("a1");
+    const preview = await pilot(inv, "reconcile");
+    expect(preview.code).toBe(0);
+    expect(JSON.parse(preview.out)).toEqual({ would: "reconcile held reservations; this may terminate orphaned host processes", applied: false });
+    expect(existsSync(value.stateDir)).toBe(false);
   });
 
   it("stages workspaces and tracked instructions, never silently replacing different ones", async () => {
