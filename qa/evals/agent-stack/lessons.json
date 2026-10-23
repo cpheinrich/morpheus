@@ -1,0 +1,30 @@
+{
+  "schema": "morpheus-agent-stack-lessons/1",
+  "retrieval": "A lesson is retrieved when at least two of its triggers occur (case-insensitive) in the case's objective, situation or evidence; at most three, highest count first, ties by id.",
+  "lessons": [
+    { "id": "L01", "mechanism": "evidence-based-completion", "triggers": ["complete", "empty", "0 bytes", "detector", "exits 0", "exit 0", "closing"],
+      "text": "A detector that checks for a file name accepts an empty scaffold as finished work. Parse the content the step requires; an empty file beside a finished claim is worse than no file." },
+    { "id": "L02", "mechanism": "reporter-delivery", "triggers": ["review", "pass", "duration", "annotation", "comment", "report"],
+      "text": "For anything whose job is to report, 'it ran' and 'its output arrived' are different questions. A configured, executing but mute verifier can look healthier than a skipped one; a change in cost without a change in output is the finding." },
+    { "id": "L03", "mechanism": "primary-evidence-first", "triggers": ["deploy", "access", "account", "credential", "failed", "whoami"],
+      "text": "A day was lost to an access theory while every build log named a one-field configuration error. Read the build or job log's first error before reasoning about credentials." },
+    { "id": "L04", "mechanism": "probe-positive-control", "triggers": ["probe", "absent", "capability", "--help", "zsh", "credential"],
+      "text": "Every capability probe first checks something known to exist. In zsh an unquoted parameter is not word-split, so a loop of multi-word subcommands tests nothing. Absence reported by an unvalidated probe gets written down as fact." },
+    { "id": "L05", "mechanism": "capacity-accounting", "triggers": ["ceiling", "in flight", "dispatch", "branch", "merged", "claims"],
+      "text": "A ceiling that counts stale entries silently stops a board. Verify each counted item is live and fix the source of the stale entries; raising the ceiling hides the defect." },
+    { "id": "L06", "mechanism": "recorded-tradeoff", "triggers": ["workers", "parallel", "serial", "nightly", "flak", "unattended"],
+      "text": "A setting that keeps being reversed carries no recorded reason. Unattended release gates favour reliability; attended pull-request runs favour speed. Write the trade-off beside the value and protect it with a test." },
+    { "id": "L07", "mechanism": "resource-contention", "triggers": ["shared", "cache", "concurrent", "worktree", "deleting", "contention"],
+      "text": "Concurrent worktrees can half-empty a shared dependency cache. Point this build at an intact private copy instead of deleting a directory another session may be resolving into." },
+    { "id": "L08", "mechanism": "unknown-quota-fails-closed", "triggers": ["quota", "allowance", "timed out", "usage", "reading", "launch"],
+      "text": "Timeouts in a quota reader are unknown allowance, not exhaustion and not permission. Do not launch on an old reading; separate start-up latency from the account request and fix the bound." },
+    { "id": "L09", "mechanism": "post-clearance-change", "triggers": ["reviewer", "cleared", "covered", "suggestion", "review record", "commit"],
+      "text": "A reviewer's optional notes are a severity judgement, not permission to change code outside its coverage. Apply them before asking it to clear; afterwards the later commit needs the reviewer to see it." },
+    { "id": "L10", "mechanism": "evidence-based-completion", "triggers": ["test", "filter", "exited 0", "totaltests", "passedtests", "result bundle"],
+      "text": "A filtered test run that matches nothing exits 0 having executed nothing. Read the executed and passed counts from that run's own result bundle before calling it a pass." },
+    { "id": "L11", "mechanism": "finite-account-resource", "triggers": ["certificate", "maximum", "signing", "runners", "re-running", "account"],
+      "text": "A job that mints an account-wide resource on every run exhausts it; retries and more runners consume it faster. Find what each run creates and stop creating it." },
+    { "id": "L12", "mechanism": "freshness-deadlock", "triggers": ["older than", "max_state_age", "overnight", "stale", "restamp", "once a day"],
+      "text": "For a staleness refusal, ask what writes the timestamp, not how old it is. If only the refused run can refresh it, no amount of waiting clears it; size the guard to the cadence or change the writer." }
+  ]
+}

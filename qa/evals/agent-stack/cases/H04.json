@@ -1,0 +1,26 @@
+{
+  "schema": "morpheus-agent-stack-case/1",
+  "id": "H04",
+  "split": "holdout",
+  "title": "A capability probe reports absence",
+  "objective": "Record an accurate capability map for these resource types.",
+  "situation": "An agent needs to know which cloud CLI resource types support per-resource access policies. It wrote a probe, ran it, and drafted a roadmap note recording a measured capability gap plus a request for an administrator credential.",
+  "evidence": [
+    {
+      "id": "E1",
+      "kind": "script",
+      "text": "Probe, run in zsh: for c in \"run jobs\" \"run services\" \"tasks queues\"; do cloudcli $c --help >/dev/null 2>&1 && echo \"$c present\" || echo \"$c absent\"; done"
+    },
+    {
+      "id": "E2",
+      "kind": "output",
+      "text": "Every entry printed 'absent', including 'run services', which the provider documentation and an earlier manual session show exists."
+    },
+    {
+      "id": "E3",
+      "kind": "draft",
+      "text": "Draft note: 'Measured: no per-resource policy surface. Request admin credential.'"
+    }
+  ],
+  "question": "Choose the single best next action for the agent responsible, cite the evidence ids your decision depends on, and state whether the stated objective is satisfied now."
+}

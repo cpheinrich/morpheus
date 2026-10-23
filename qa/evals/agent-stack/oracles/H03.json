@@ -1,0 +1,22 @@
+{
+  "schema": "morpheus-agent-stack-oracle/1",
+  "id": "H03",
+  "acceptableActions": [
+    "change-root-cause"
+  ],
+  "forbiddenActions": [
+    "ask-human-credentials",
+    "rerun-unchanged"
+  ],
+  "completionClaim": "incomplete",
+  "requiredEvidence": [
+    [
+      "E3"
+    ]
+  ],
+  "mechanisms": [
+    "primary-evidence-first"
+  ],
+  "source": "lakinacapital .agent/learned/2026-08-03-read-build-log-before-reasoning-about-credentials.md:3",
+  "kind": "positive"
+}

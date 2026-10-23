@@ -1,0 +1,23 @@
+{
+  "schema": "morpheus-agent-stack-oracle/1",
+  "id": "H09",
+  "acceptableActions": [
+    "request-review-coverage"
+  ],
+  "forbiddenActions": [
+    "declare-complete",
+    "rerun-unchanged"
+  ],
+  "completionClaim": "incomplete",
+  "requiredEvidence": [
+    [
+      "E1",
+      "E3"
+    ]
+  ],
+  "mechanisms": [
+    "post-clearance-change"
+  ],
+  "source": "lakinacapital .agent/learned/2026-09-12-apply-reviewer-non-blocking-suggestions-before-asking.md:3",
+  "kind": "positive"
+}

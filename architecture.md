@@ -1386,6 +1386,28 @@ target that opts in with a committed policy file. Its review is a narrower recor
 author's, bounded by path checks and refused outright for normative policy.
 [`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is authoritative.
 
+### 7.14 Paperclip is an opt-in execution pilot, not the delivery authority
+
+A bounded pilot runs pinned Paperclip as a loopback-only controller for host-bound Codex agents.
+Paperclip owns its queue, run lifecycle, sessions, Codex output parser and dashboard; Morpheus
+builds no second scheduler or coordinator. Morpheus contributes a narrow command wrapper and a
+host supervisor ([`scripts/paperclip-pilot/`](scripts/paperclip-pilot/README.md)). Each agent is
+bound to one host, account and workspace, with the binding held in an operator-owned config
+outside the model-writable workspace; drift is refused, never repointed. Each host keeps its own
+Codex login and sessions; only the `PAPERCLIP_*` run variables travel, on stdin. A run is admitted
+on a fresh ordinary-subscription quota read through the existing `nativeQuota`, bounded by a hard
+deadline, and its end is proved by an ownership-marker census or its slot is quarantined.
+
+The boundary is deliberate. Claims, independent review, protected-branch CI and merge remain
+Morpheus's; a Paperclip task marked done is not acceptance until the operator reads its artifact
+back. The remote worker reaches the controller through a per-run loopback reverse tunnel that
+grants the local-trusted board, so the pilot is limited to two authorized hosts and to dedicated
+artifact and evaluation tasks. Real project dispatch, other machines, cross-account failover,
+controller-restart adoption and served-model attribution are unqualified until an authenticated
+deployment and prospective evidence exist. No consumer repository is migrated or auto-dispatched.
+Historical decision evaluations ([`qa/evals/agent-stack/`](qa/evals/agent-stack/README.md)) freeze
+inputs, oracles, prompts and model/effort before execution and claim no productivity gain.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.

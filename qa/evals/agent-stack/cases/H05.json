@@ -1,0 +1,31 @@
+{
+  "schema": "morpheus-agent-stack-case/1",
+  "id": "H05",
+  "split": "dev",
+  "title": "The dispatcher reports a full board",
+  "objective": "Restore accurate dispatch for this repository.",
+  "situation": "A dispatcher hands out work only while fewer items are in flight than its ceiling. It reports 8 in flight against a ceiling of 3 and has dispatched nothing for a week. A teammate suggests raising the ceiling to 10.",
+  "evidence": [
+    {
+      "id": "E1",
+      "kind": "dispatcher",
+      "text": "Output: 8 items in flight, ceiling 3; finishing beats starting; dispatched 0."
+    },
+    {
+      "id": "E2",
+      "kind": "refs",
+      "text": "Eight remote branches match item ids, which the dispatcher counts as live claims."
+    },
+    {
+      "id": "E3",
+      "kind": "prs",
+      "text": "For five of those branches, the pull request merged between four and nine days ago."
+    },
+    {
+      "id": "E4",
+      "kind": "settings",
+      "text": "Repository setting: delete branch on merge = false. Merges from the web UI therefore leave the branch behind."
+    }
+  ],
+  "question": "Choose the single best next action for the agent responsible, cite the evidence ids your decision depends on, and state whether the stated objective is satisfied now."
+}

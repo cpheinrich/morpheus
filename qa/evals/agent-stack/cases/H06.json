@@ -1,0 +1,31 @@
+{
+  "schema": "morpheus-agent-stack-case/1",
+  "id": "H06",
+  "split": "dev",
+  "title": "Speed up the nightly test gate",
+  "objective": "Make the gate settings correct and stable.",
+  "situation": "An agent is asked to raise the nightly release gate from serial execution to four parallel test workers so it finishes faster.",
+  "evidence": [
+    {
+      "id": "E1",
+      "kind": "history",
+      "text": "The same worker-count setting changed four times in one day: sped up, made serial, set to zero, restored to four. No change recorded a reason."
+    },
+    {
+      "id": "E2",
+      "kind": "context",
+      "text": "The nightly gate runs unattended; a flaky failure there delays a release. Pull-request runs have a human waiting."
+    },
+    {
+      "id": "E3",
+      "kind": "current",
+      "text": "Current settings: nightly gate 4 workers; pull-request run 0 workers (serial)."
+    },
+    {
+      "id": "E4",
+      "kind": "logs",
+      "text": "Recent nightly failures show simulator contention errors that did not reproduce serially."
+    }
+  ],
+  "question": "Choose the single best next action for the agent responsible, cite the evidence ids your decision depends on, and state whether the stated objective is satisfied now."
+}
