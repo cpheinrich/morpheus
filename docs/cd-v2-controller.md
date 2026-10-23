@@ -201,8 +201,17 @@ Apple's optional `hasAccessToAllBuilds` can be null or absent for external group
 that does not assert automatic access. Internal groups retain the stronger explicit
 `false` requirement before upload and promotion. The core never patches a group
 to manufacture a value for this optional attribute.
-Availability requires `externalBuildState: IN_BETA_TESTING` and exact membership
-in every group; approval or another build's pending review is insufficient.
+An existing external group with a valid empty tester list is an expected wait:
+`pending` / `wait-external-testers` records the exact observation and uses the
+ordinary poll deadline without adding a tick error. No notification, membership
+or review mutation occurs until every configured external group contains testers.
+The core never invites testers or changes that list. Malformed tester identities,
+unsafe group ownership/type/access and blocked or unknown build states retain
+their refusal behavior. Later populated readback resumes the existing once-only
+distribution/review flow; it never rebuilds or reuploads.
+Availability requires `externalBuildState: IN_BETA_TESTING`, nonempty tester
+lists and exact membership in every group; approval or another build's pending
+review is insufficient.
 Membership is added without removing existing builds. Auto-notify is enabled on
 that exact build detail, and both settings are claimed before their safe updates
 and read back before retrying. Committed availability evidence is immutable.

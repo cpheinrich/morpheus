@@ -1454,3 +1454,15 @@ census, owner/upload/tests races and current-main control selection unchanged.
 This is a small provider-specific conditional in the existing controller, so no
 generic dependency or new framework is needed. Source review and coherent runtime
 installation/actual recovery remain separate.
+
+
+## Empty external tester lists are pending, not controller errors — 2026-10-22
+
+An existing configured external group may intentionally have no testers. After
+exact identity/safety checks and blocked/unknown build-state classification,
+record pending/wait-external-testers at the normal poll deadline without a tick
+error or notify/membership/review call. Never fabricate availability or add/invite
+testers. Malformed tester IDs still refuse; populated fresh evidence resumes the
+existing once-only flow. Internal receipts and all native/upload history remain
+immutable. This is a domain-specific branch in the existing reconciler; no new
+dependency, schema/config migration or generic retry mechanism is needed.

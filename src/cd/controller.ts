@@ -128,7 +128,7 @@ export class Controller {
     if (snapshot.state.pauses.some(pause => ["all", intent.channel, intent.id].includes(pause.scope))) return;
     const observation = await this.apple.external(receipt, groups, now), key = externalReviewKey(observation.appId, observation.buildId);
     invariant(observation.appId === receipt.observation.appId && observation.version === receipt.observation.version && observation.buildNumber === receipt.observation.buildNumber && observation.buildId === receipt.observation.buildId, "External provider observation substituted another receipt identity");
-    invariant(observation.groups.length === groups.length && new Set(observation.groups.map(group => group.id)).size === groups.length && observation.groups.every(group => groups.includes(group.id) && group.appId === observation.appId && !group.internal && !group.automaticDistribution && group.testerIds.length > 0), "Configured external group must belong to the exact app, contain testers, and disable automatic all-build distribution");
+    invariant(observation.groups.length === groups.length && new Set(observation.groups.map(group => group.id)).size === groups.length && observation.groups.every(group => groups.includes(group.id) && group.appId === observation.appId && !group.internal && !group.automaticDistribution && Array.isArray(group.testerIds) && group.testerIds.every(id => typeof id === "string" && id.trim().length > 0)), "Configured external group must belong to the exact app, provide valid tester identities, and disable automatic all-build distribution");
     const record = async (status: NonNullable<DeliveryIntent["external"]>["status"], nextAction: string, blocker?: string, terminal = false) => {
       await this.store.transact(`external-observe-${randomUUID()}`, "exact-external-build-observation", now, state => {
         const current = state.intents[intentId]!;
@@ -144,6 +144,11 @@ export class Controller {
     }
     if (!["READY_FOR_BETA_SUBMISSION", "READY_FOR_BETA_TESTING", "IN_BETA_TESTING", "BETA_APPROVED", "WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW"].includes(observation.betaState)) {
       await record("blocked", "observe-exact-external-build", `External state ${observation.betaState} does not authorize distribution or review`); return;
+    }
+    // An intentionally empty existing group is not delivery failure or authority
+    // to invite testers. Wait before availability or any distribution mutation.
+    if (observation.groups.some(group => group.testerIds.length === 0)) {
+      await record("pending", "wait-external-testers", "A configured external group has no testers; preserve its membership and wait for fresh provider evidence"); return;
     }
     const missing = observation.groups.find(group => !group.buildIds.includes(observation.buildId));
     if (!missing && observation.betaState === "IN_BETA_TESTING") { await record("available", "complete"); return; }

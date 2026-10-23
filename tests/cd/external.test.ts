@@ -14,14 +14,14 @@ import { config, externalObservation, now, observation, prepared, source } from 
 vi.mock("../../src/cd/source.js", async original => ({ ...await original<typeof import("../../src/cd/source.js")>(), loadSources: vi.fn(), verifyValidator: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(loadSources).mockResolvedValue([source()]); });
 
-async function harness(optIn = true, internallyDelivered = true, isolated = false, groups = ["external"], previousConfiguration = false) {
-  const cfg = config(); if (optIn) cfg.channels.staging.externalGroupIds = groups;
+async function harness(optIn = true, internallyDelivered = true, isolated = false, groups = ["external"], previousConfiguration = false, channel: "staging" | "production" = "staging") {
+  const cfg = config(); if (optIn) cfg.channels[channel].externalGroupIds = groups;
   const qualifiedConfig = previousConfiguration ? config() : cfg;
-  const fixture = prepared("staging", qualifiedConfig), intent = fixture.state.intents[fixture.intentId]!, attempt = intent.attempts[0]!;
+  const fixture = prepared(channel, qualifiedConfig), intent = fixture.state.intents[fixture.intentId]!, attempt = intent.attempts[0]!;
   claimUpload(fixture.state, qualifiedConfig, fixture.upload, now); recordUpload(fixture.state, { ...fixture.upload, outcome: "accepted" }, now);
   attempt.artifactsVerifiedAt = now; fixture.state.evaluatedSlots = { staging: now, production: now };
   if (isolated) { intent.validation = true; intent.isolatedValidation = true; intent.groupId = "historical"; }
-  if (internallyDelivered) deliver(fixture.state, fixture.intentId, fixture.attemptId, observation("123", isolated ? "historical" : "staging"), now);
+  if (internallyDelivered) deliver(fixture.state, fixture.intentId, fixture.attemptId, observation(cfg.channels[channel].appId, isolated ? "historical" : channel), now);
   fixture.state.configurationDigest = configurationDigest(cfg);
   const api = new FakeGitHub(), store = new GitHubStore(api, cfg);
   await store.initialize(now, "epoch"); await store.transact("seed", "fixture", now, state => { Object.assign(state, { ...fixture.state, transitions: state.transitions }); return null; });
@@ -120,11 +120,65 @@ describe("optional external distribution after immutable internal delivery", () 
     { ...externalObservation(), appId: "wrong" },
     { ...externalObservation(), groups: [{ ...externalObservation().groups[0]!, id: "wrong" }] },
     { ...externalObservation(), groups: [{ ...externalObservation().groups[0]!, internal: true }] },
-    { ...externalObservation(), groups: [{ ...externalObservation().groups[0]!, testerIds: [] }] },
+    { ...externalObservation(), groups: [{ ...externalObservation().groups[0]!, testerIds: [""] }] },
+    { ...externalObservation(), groups: [{ ...externalObservation().groups[0]!, testerIds: ["   "] }] },
+    { ...externalObservation(), groups: [{ ...externalObservation().groups[0]!, testerIds: [null as unknown as string] }] },
+    { ...externalObservation(), groups: [{ ...externalObservation().groups[0]!, testerIds: undefined as unknown as string[] }] },
     { ...externalObservation(), groups: [{ ...externalObservation().groups[0]!, automaticDistribution: true }] },
   ])("refuses substituted or unsafe provider evidence %#", async observed => {
     const h = await harness(), before = (await h.store.read()).state; h.external.mockResolvedValue(observed);
     expect((await h.controller.tick(after(now, 5))).errors).toHaveLength(1); expect(h.submit).not.toHaveBeenCalled(); expect(h.assign).not.toHaveBeenCalled(); expect(h.notify).not.toHaveBeenCalled(); expect(internal((await h.store.read()).state)).toEqual(internal(before));
+  });
+  it.each((["staging", "production"] as const).flatMap(channel => ["READY_FOR_BETA_SUBMISSION", "IN_BETA_TESTING"].map(betaState => ({ channel, betaState }))))("waits without errors or mutations for zero $channel testers in $betaState", async ({ channel, betaState }) => {
+    const h = await harness(true, true, false, ["external"], false, channel), before = (await h.store.read()).state, observed = externalObservation(), appId = h.cfg.channels[channel].appId;
+    h.external.mockResolvedValue({ ...observed, appId, betaState, autoNotifyEnabled: false, groups: [{ ...observed.groups[0]!, appId, testerIds: [], buildIds: betaState === "IN_BETA_TESTING" ? ["apple-build"] : [] }] });
+    expect((await h.controller.tick(after(now, 5))).errors).toEqual([]);
+    const state = (await h.store.read()).state;
+    expect(state.intents[h.intentId]!.external).toMatchObject({ status: "pending", nextAction: "wait-external-testers", nextCheckAt: after(now, 5 + h.cfg.deadlines.pollMinutes), observation: { groups: [{ testerIds: [] }] } });
+    expect(internal(state)).toEqual(internal(before)); expect(state.externalReviews).toEqual(before.externalReviews);
+    expect(h.notify).not.toHaveBeenCalled(); expect(h.assign).not.toHaveBeenCalled(); expect(h.submit).not.toHaveBeenCalled(); expect(h.dispatch).not.toHaveBeenCalled();
+    await h.controller.tick(after(now, 5 + h.cfg.deadlines.pollMinutes - 0.001)); expect(h.external).toHaveBeenCalledTimes(1);
+    expect((await h.controller.tick(after(now, 5 + h.cfg.deadlines.pollMinutes))).errors).toEqual([]); expect(h.external).toHaveBeenCalledTimes(2);
+  });
+  it("retains an uncertain exact-build review claim while testers are empty", async () => {
+    const h = await harness(), observed = externalObservation();
+    await h.store.transact("review-before-empty", "fixture", now, state => claimExternalReview(state, h.intentId, now));
+    const before = (await h.store.read()).state;
+    h.external.mockResolvedValue({ ...observed, groups: [{ ...observed.groups[0]!, testerIds: [] }] });
+    await h.controller.tick(after(now, 5)); const state = (await h.store.read()).state;
+    expect(state.externalReviews).toEqual(before.externalReviews); expect(internal(state)).toEqual(internal(before)); expect(h.submit).not.toHaveBeenCalled();
+  });
+  it("waits for every configured group's testers, then resumes existing once-only review", async () => {
+    const h = await harness(true, true, false, ["external", "external-two"]), observed = externalObservation(), second = { ...observed.groups[0]!, id: "external-two" };
+    const before = (await h.store.read()).state;
+    h.external.mockResolvedValue({ ...observed, groups: [...observed.groups, { ...second, testerIds: [], buildIds: [] }] });
+    await h.controller.tick(after(now, 5)); expect(h.assign).not.toHaveBeenCalled(); expect(h.submit).not.toHaveBeenCalled();
+    h.external.mockResolvedValue({ ...observed, groups: [...observed.groups, { ...second, testerIds: ["member"], buildIds: [] }] });
+    await h.controller.tick(after(now, 10)); expect(h.assign).toHaveBeenCalledExactlyOnceWith("apple-build", "external-two");
+    h.external.mockResolvedValue({ ...observed, groups: [...observed.groups, second] });
+    await h.controller.tick(after(now, 15)); await h.controller.tick(after(now, 20)); expect(h.submit).toHaveBeenCalledExactlyOnceWith("apple-build");
+    h.external.mockResolvedValue({ ...observed, betaState: "IN_BETA_TESTING", groups: [...observed.groups, second] });
+    await h.controller.tick(after(now, 25));
+    expect((await h.store.read()).state.intents[h.intentId]!.external!.status).toBe("available"); expect(internal((await h.store.read()).state)).toEqual(internal(before));
+  });
+  it.each([
+    { processingState: "PROCESSING", betaState: "READY_FOR_BETA_SUBMISSION" },
+    { processingState: "VALID", betaState: "EXPIRED" },
+    { processingState: "VALID", betaState: "NEW_UNKNOWN_STATE" },
+    { processingState: "VALID", betaState: "BETA_REJECTED", review: { id: "rejected", state: "REJECTED" } },
+  ])("does not hide unsafe build state behind an empty tester list %#", async buildState => {
+    const h = await harness(), observed = externalObservation(); h.external.mockResolvedValue({ ...observed, ...buildState, groups: [{ ...observed.groups[0]!, testerIds: [] }] });
+    expect((await h.controller.tick(after(now, 5))).errors).toEqual([]);
+    expect((await h.store.read()).state.intents[h.intentId]!.external!.status).toBe("blocked");
+    expect(h.notify).not.toHaveBeenCalled(); expect(h.assign).not.toHaveBeenCalled(); expect(h.submit).not.toHaveBeenCalled();
+  });
+  it.each([
+    { appId: "wrong" }, { internal: true }, { automaticDistribution: true },
+  ])("does not let empty testers bypass unsafe group evidence %#", async unsafe => {
+    const h = await harness(), observed = externalObservation(); h.external.mockResolvedValue({ ...observed, groups: [{ ...observed.groups[0]!, ...unsafe, testerIds: [] }] });
+    expect((await h.controller.tick(after(now, 5))).errors).toHaveLength(1);
+    expect((await h.store.read()).state.intents[h.intentId]!.external!.status).toBe("blocked");
+    expect(h.notify).not.toHaveBeenCalled(); expect(h.assign).not.toHaveBeenCalled(); expect(h.submit).not.toHaveBeenCalled();
   });
   it("keeps rejection external and never reopens internal repair or build work", async () => {
     const h = await harness(), before = (await h.store.read()).state; h.external.mockResolvedValue({ ...externalObservation(), betaState: "BETA_REJECTED", review: { id: "submission", state: "REJECTED" } });
