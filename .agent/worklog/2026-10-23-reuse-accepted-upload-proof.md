@@ -57,3 +57,17 @@ no-host-effect scope. Tier 2 structural evidence uses the indexed primary
 All relied current task sources were read directly; the reported controller-test
 line-13 parser gap was read explicitly. This limitation is distinct from the
 passing source checks and PM index, and must accompany the review packet.
+
+## Source publication release
+
+ROOT authenticated the complete local packet and separate comparison-label
+clarification, then released the normal M-only publication/review/CI loop under
+the already reserved five-dollar source-cycle allocation. The comparison key
+`unchangedComparedToInstalledMdc` was mislabeled: its six paths are changed paths
+within the bounded fixed-Git CD/package/lock comparison. It proves no full-repo,
+177-file consumer closure, dependency/tool/auth or live-install equality. The
+original sealed packet is preserved with its correction alongside it.
+
+The item is now review metadata for an unlabelled draft. No independent review
+or CI has yet been claimed. Actual source merge remains distinct from consumer
+coherence/runtime adoption, and the installed runtime is untouched.
