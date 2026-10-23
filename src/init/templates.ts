@@ -16,7 +16,7 @@ import { EMPTY_ANALYTICS_EVENT_MAP } from "../analytics/contract.js";
 import { DEFAULT_VISUAL_EVIDENCE } from "../check/visual-evidence.js";
 import { STATIC_ROADMAP_README } from "../pm/index-gen.js";
 import { ctoSkillDescription } from "../cto/guide.js";
-import { AGENTIC_CTO_SKILL } from "../cto/skill.js";
+import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL } from "../cto/skill.js";
 
 export interface Seed {
   name: string;
@@ -1808,4 +1808,36 @@ Until you have read it, these boundaries already hold:
   repository's review, branch protection and CI still apply.
 
 If \`morpheus cto\` is unknown, the installed CLI predates it: run \`morpheus self update\`.
+`;
+
+/**
+ * The research-engineer skill as every other project carries it (MO-26-10-23-00.08.15): the first
+ * individual-contributor skill under the agentic CTO, and a pointer to
+ * `morpheus cto guide research-engineer` for the same reason as the CTO's pointer above. It borrows
+ * the canonical description, and keeps the evidence and data boundaries in force before the guide
+ * has been read.
+ */
+export const researchEngineerPointerSkill = (): string => `---
+name: ${RESEARCH_ENGINEER_SKILL}
+description: ${ctoSkillDescription(RESEARCH_ENGINEER_SKILL)}
+---
+
+# Research Engineer
+
+Run \`morpheus cto guide research-engineer\` and follow it. Read the references it names with
+\`morpheus cto guide research-engineer/<topic>\`, starting with
+\`morpheus cto guide research-engineer/record\` before the first experiment. It works under the
+agentic CTO skill (\`morpheus cto guide\`), whose mandate, budget and gates apply unchanged.
+Morpheus keeps the one reviewed copy and the installed CLI prints it, so every project follows the
+same version.
+
+Until you have read it, these boundaries already hold:
+
+- No benchmark, no claim: score the system that ships against real or exact ground truth, and
+  measure the repeat noise before reading a difference.
+- Send a model provider only data it is approved to see, and spend only what the mandate or a
+  standing allowance recorded in this project's decisions covers.
+
+If \`morpheus cto guide research-engineer\` is unknown, the installed CLI predates it: run
+\`morpheus self update\`.
 `;

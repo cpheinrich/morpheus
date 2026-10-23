@@ -9,7 +9,7 @@ import { renderFirestoreRules, updateRoleHelpers } from "../hq/rules.js";
 import { installContext } from "../session/install.js";
 import * as t from "./templates.js";
 import type { Seed } from "./templates.js";
-import { AGENTIC_CTO_SKILL } from "../cto/skill.js";
+import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL } from "../cto/skill.js";
 import { INBOX_DIR, MEETING_NOTES_DIR } from "../paths.js";
 import {
   ANALYTICS_SCHEMA_DIRECTORY,
@@ -240,6 +240,10 @@ export async function scaffold(root: string, seed: Seed): Promise<InitResult> {
   // the CLI rather than drifting in N copies. Re-running init adds it to an older project.
   await put(`.agents/skills/${AGENTIC_CTO_SKILL}/SKILL.md`, t.agenticCtoPointerSkill());
   await put(`.claude/skills/${AGENTIC_CTO_SKILL}/SKILL.md`, t.agenticCtoPointerSkill());
+  // The research-engineer skill, the first individual-contributor skill under the CTO, is the same
+  // kind of pointer, to `morpheus cto guide research-engineer`.
+  await put(`.agents/skills/${RESEARCH_ENGINEER_SKILL}/SKILL.md`, t.researchEngineerPointerSkill());
+  await put(`.claude/skills/${RESEARCH_ENGINEER_SKILL}/SKILL.md`, t.researchEngineerPointerSkill());
 
   // The generated exploration prompt is the session-specific handoff. This
   // small skill is the durable discovery point for any agent that returns once

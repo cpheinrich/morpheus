@@ -1,7 +1,10 @@
-/** Each reference file, by the name `morpheus cto guide <topic>` takes. */
+/**
+ * Every topic `morpheus cto guide <topic>` takes: each CTO reference, then each
+ * individual-contributor skill followed by its references.
+ */
 export declare function ctoGuideTopics(): string[];
-/** The skill's `description`, which a pointer copies so both route the same requests. */
-export declare function ctoSkillDescription(): string;
+/** A skill's `description`, which a pointer copies so both route the same requests. */
+export declare function ctoSkillDescription(skill?: string): string;
 export type CtoGuide = {
     ok: true;
     text: string;
@@ -9,5 +12,8 @@ export type CtoGuide = {
     ok: false;
     message: string;
 };
-/** The entrypoint with no topic, or one reference file verbatim. */
+/**
+ * With no topic, the CTO entrypoint; with a CTO reference's name, that reference verbatim; with an
+ * individual-contributor skill's name, its entrypoint; with `<skill>/<reference>`, that reference.
+ */
 export declare function ctoGuide(topic?: string): CtoGuide;
