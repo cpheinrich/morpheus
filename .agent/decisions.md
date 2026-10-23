@@ -1482,3 +1482,17 @@ one family. The slash keeps a skill's reference names from ever shadowing the CT
 `morpheus cto guide`, `mandate` and `provenance` are unchanged. A later individual-contributor
 skill is an entry in the generator, one in `IC_SKILLS` in `src/cto/guide.ts`, a pointer template
 and its two `init` writes; a registry was not built ahead of that second skill. No dependency.
+
+## Accepted CD uploads reuse their exact durable full-test proof — 2026-10-23
+
+An artifact-service outage after test verification and upload acceptance must not
+block ordinary Apple readback and receipt creation. Reuse only the latest active
+accepted attempt's immutable compact proof after its exact workflow is terminal,
+with a fresh complete run sweep and pinned validator check. Validate source/run/
+input/configuration, proof hashes/count/skips, artifact refs, upload identity and
+claim/fence/burned reservation; missing eligibility keeps the download path and
+conflicting reusable data refuses before Apple. Do not re-record compact proof as
+raw test results or refresh its artifact-verification time. Failed terminal cleanup
+and uploader lease expiry do not discard accepted bytes. Existing provider,
+pause/cursor and receipt guards remain unchanged. This small domain-specific guard
+needs no new dependency, cache, schema, API or generic recovery framework.

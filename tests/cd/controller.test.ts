@@ -4,9 +4,9 @@ import { ActionsAdapter, uploadEvidence, type WorkflowRun } from "../../src/cd/a
 import { AppleAdapter } from "../../src/cd/apple.js";
 import { GitHubStore } from "../../src/cd/store.js";
 import { loadSources, verifyValidator } from "../../src/cd/source.js";
-import { after, claimUpload, completeOperationalRepair, createIntent, planAttempt, recordTests, recordUpload } from "../../src/cd/state.js";
+import { after, claimUpload, completeOperationalRepair, createIntent, deliver, planAttempt, recordTests, recordUpload, repairWork } from "../../src/cd/state.js";
 import { CdWait } from "../../src/cd/errors.js";
-import { configurationDigest, hash } from "../../src/cd/schema.js";
+import { configurationDigest, hash, type Attempt, type CdState } from "../../src/cd/schema.js";
 import { FakeGitHub } from "./fake-github.js";
 import { config, now, observation, prepared, source } from "./fixtures.js";
 
@@ -677,5 +677,180 @@ describe("controller failure sequences", () => {
     await h.controller.tick(after(now, 10)); expect((await h.store.read()).state.intents[h.intentId]!.attempts[0]!.status).toBe("failed");
     await h.store.transact("operational-repair", "agent-checkpoint", after(now, 11), state => { completeOperationalRepair(state, h.intentId, ["Owned VM restored; exact failed workflow terminal"], after(now, 11)); for (const work of Object.values(state.agents)) work.state = "complete"; return null; });
     await h.controller.tick(after(now, 15)); const intent = (await h.store.read()).state.intents[h.intentId]!; expect(intent.attempts).toHaveLength(2); expect(intent.attempts[0]!.buildNumber).toBe("8"); expect(intent.attempts[1]!.buildNumber).toBe("9"); expect(intent.originalSource).toBe("a".repeat(40)); expect(h.dispatch).toHaveBeenCalledTimes(1);
+  });
+});
+
+async function acceptedHarness(change?: (attempt: Attempt, state: CdState) => void, allowedSkips: string[] = []) {
+  const cfg = config(); cfg.tests.allowedSkips = allowedSkips;
+  const fixture = prepared("staging", cfg), intent = fixture.state.intents[fixture.intentId]!, attempt = intent.attempts[0]!;
+  if (allowedSkips.includes(fixture.tests.results[0]!.id)) { fixture.tests.results[0]!.status = "skipped"; delete attempt.tests; recordTests(fixture.state, cfg, fixture.tests); }
+  claimUpload(fixture.state, cfg, fixture.upload, now); recordUpload(fixture.state, { ...fixture.upload, outcome: "accepted", providerUploadId: "resource" }, now);
+  attempt.artifactsVerifiedAt = now; fixture.state.evaluatedSlots = { staging: now, production: now };
+  repairWork(fixture.state, intent.id, ["Historical artifact download outage"], now);
+  change?.(attempt, fixture.state);
+  const api = new FakeGitHub(), store = new GitHubStore(api, cfg);
+  await store.initialize(now, "epoch");
+  await store.transact("seed-accepted", "fixture", now, state => { Object.assign(state, { ...fixture.state, transitions: state.transitions }); return null; });
+  const run: WorkflowRun = { id: 100, run_attempt: 1, status: "completed", conclusion: "success", head_sha: attempt.controlSha, event: "workflow_dispatch", path: ".github/workflows/cd-v2-delivery.yml", display_title: `CD ${attempt.dispatchEffectId}`, created_at: now, updated_at: after(now, 1) };
+  const actions = new ActionsAdapter(api, cfg), runs = vi.spyOn(actions, "runs").mockResolvedValue([run]);
+  const evidence = vi.spyOn(actions, "evidence").mockRejectedValue(new Error("Artifact egress unavailable")), dispatch = vi.spyOn(actions, "dispatch").mockResolvedValue(), cancel = vi.spyOn(actions, "cancel").mockResolvedValue();
+  const apple = new AppleAdapter({ request: vi.fn() }), observe = vi.spyOn(apple, "observe").mockResolvedValue({ observation: observation() }), assign = vi.spyOn(apple, "assign").mockResolvedValue();
+  return { ...fixture, cfg, api, store, actions, apple, run, runs, evidence, dispatch, cancel, observe, assign, controller: new Controller(cfg, store, actions, apple, "/unused-source") };
+}
+
+describe("durable accepted-upload test proof", () => {
+  it("delivers through ordinary Apple readback without redownloading or rewriting the proof", async () => {
+    const h = await acceptedHarness(), before = (await h.store.read()).state, proof = before.intents[h.intentId]!.attempts[0]!.tests!;
+    const result = await h.controller.tick(after(now, 2)), state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(result.errors).toEqual([]); expect(h.runs).toHaveBeenCalledExactlyOnceWith(before.intents[h.intentId]!.attempts[0]!.dispatchEffectId);
+    expect(h.evidence).not.toHaveBeenCalled(); expect(verifyValidator).toHaveBeenCalledExactlyOnceWith("/unused-source", proof);
+    expect(h.observe).toHaveBeenCalledTimes(1); expect(h.assign).not.toHaveBeenCalled(); expect(h.dispatch).not.toHaveBeenCalled(); expect(h.cancel).not.toHaveBeenCalled();
+    expect(intent.receipt).toEqual({ schemaVersion: 1, intentId: h.intentId, attemptId: h.attemptId, dispatchEffectId: proof.dispatchEffectId, sourceSha: proof.sourceSha, controlSha: proof.controlSha, runId: "100", runAttempt: "1", appInputDigest: proof.appInputDigest, configurationDigest: proof.configurationDigest, ipaSha256: h.upload.ipaSha256, uploadOperationId: `upload:${h.attemptId}`, providerUploadId: "resource", testEvidenceHash: proof.evidenceHash, observation: observation(), deliveredAt: after(now, 2) });
+    expect(intent.attempts[0]!.tests).toEqual(proof); expect(intent.attempts[0]!.artifactsVerifiedAt).toBe(now);
+    expect(intent.attempts[0]!.upload).toEqual(before.intents[h.intentId]!.attempts[0]!.upload); expect(Object.values(state.agents).map(work => work.state)).toEqual(["complete"]);
+    for (const key of ["builds", "budget", "fences", "pauses", "sources", "slots"] as const) expect(state[key]).toEqual(before[key]);
+    const workflow = Object.values(state.transitions).filter(item => (item.result as { artifacts?: number } | null)?.artifacts === 0);
+    expect(workflow.map(item => item.result)).toEqual([{ runId: "100", artifacts: 0 }]);
+    expect(state.cursors.staging).toEqual({ sourceSha: proof.sourceSha, order: 0, receiptId: h.intentId });
+    expect(state.groupCursors.staging).toEqual({ sourceSha: proof.sourceSha, order: 0, receiptId: h.intentId });
+  });
+  it.each(["failure", "cancelled"])("keeps accepted bytes recoverable after terminal %s cleanup", async conclusion => {
+    const h = await acceptedHarness(attempt => { attempt.lease!.expiresAt = after(now, -1); }); h.run.conclusion = conclusion;
+    const result = await h.controller.tick(after(now, 2)); expect(result.errors).toEqual([]); expect(h.evidence).not.toHaveBeenCalled();
+    expect((await h.store.read()).state.intents[h.intentId]!.receipt!.providerUploadId).toBe("resource");
+  });
+  it("allows a resource-less accepted operation", async () => {
+    const h = await acceptedHarness(attempt => { delete attempt.upload!.providerUploadId; });
+    const result = await h.controller.tick(after(now, 2)); expect(result.errors).toEqual([]); expect(h.evidence).not.toHaveBeenCalled();
+    expect((await h.store.read()).state.intents[h.intentId]!.receipt!.providerUploadId).toBeUndefined();
+  });
+  it.each(["equal", "duplicate", "over-count"])("checks allowed skip %s boundaries independently", async kind => {
+    const h = await acceptedHarness(attempt => {
+      if (kind === "duplicate") attempt.tests!.skippedIds.push("AppTests/testFull");
+      if (kind === "over-count") attempt.tests!.skippedIds.push("Other/allowed");
+    }, ["AppTests/testFull", "Other/allowed"]);
+    const result = await h.controller.tick(after(now, 2)); expect(h.evidence).not.toHaveBeenCalled();
+    if (kind === "equal") { expect(result.errors).toEqual([]); expect((await h.store.read()).state.intents[h.intentId]!.receipt!.testEvidenceHash).toBe(h.state.intents[h.intentId]!.attempts[0]!.tests!.evidenceHash); }
+    else { expect(result.errors).toEqual([{ intentId: h.intentId, message: "Reusable full-test skips differ from policy" }]); expect(h.observe).not.toHaveBeenCalled(); }
+  });
+  it.each([
+    ["no proof", (a: Attempt) => { delete a.tests; }],
+    ["no verification marker", (a: Attempt) => { delete a.artifactsVerifiedAt; }],
+    ["no accepted time", (a: Attempt) => { delete a.upload!.acceptedAt; }],
+    ["claim only", (a: Attempt) => { a.upload!.outcome = "claimed"; }],
+    ["uncertain", (a: Attempt) => { a.upload!.outcome = "uncertain"; }],
+    ["rejected", (a: Attempt) => { a.upload!.outcome = "rejected"; }],
+  ] as const)("retains the original artifact path for %s", async (_label, change) => {
+    const h = await acceptedHarness(change), result = await h.controller.tick(after(now, 2));
+    expect(h.evidence).toHaveBeenCalledExactlyOnceWith(h.run, expect.objectContaining({ id: h.attemptId }));
+    expect(result.errors).toEqual([{ intentId: h.intentId, message: "Artifact egress unavailable" }]); expect(h.observe).not.toHaveBeenCalled();
+    expect((await h.store.read()).state.intents[h.intentId]!.receipt).toBeUndefined();
+  });
+  it("does not reuse proof before the exact workflow becomes terminal", async () => {
+    const h = await acceptedHarness(); h.run.status = "in_progress"; h.run.conclusion = null;
+    await h.controller.tick(after(now, 2)); expect(h.evidence).toHaveBeenCalledTimes(1); expect(h.observe).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["schema", (a: Attempt) => { a.tests!.schemaVersion = 2 as 1; }],
+    ...(["intentId", "attemptId", "dispatchEffectId", "sourceSha", "controlSha", "runId", "runAttempt"] as const).flatMap(key => [
+      [`proof ${key}`, (a: Attempt) => { a.tests![key] = "substitution"; }],
+      [`upload ${key}`, (a: Attempt) => { a.upload!.identity[key] = "substitution"; }],
+    ] as const),
+    ["upload schema", (a: Attempt) => { a.upload!.identity.schemaVersion = 2 as 1; }],
+    ["input", (a: Attempt) => { a.tests!.appInputDigest = hash("other"); }],
+    ["configuration", (a: Attempt) => { a.tests!.configurationDigest = hash("other"); }],
+    ["attempt configuration", (a: Attempt) => { a.configurationDigest = hash("other"); }],
+    ["scope", (a: Attempt) => { a.tests!.scope = "focused" as "full"; }],
+    ["evidence hash", (a: Attempt) => { a.tests!.evidenceHash = "a".repeat(63); }],
+    ["inventory hash", (a: Attempt) => { a.tests!.inventoryHash = "not-a-hash"; }],
+    ["zero executions", (a: Attempt) => { a.tests!.executedCount = 0; }],
+    ["fractional executions", (a: Attempt) => { a.tests!.executedCount = 1.5; }],
+    ["unsafe executions", (a: Attempt) => { a.tests!.executedCount = Number.MAX_SAFE_INTEGER + 1; }],
+    ["unexpected skip", (a: Attempt) => { a.tests!.skippedIds = ["unexpected"]; }],
+    ["duplicate skip", (a: Attempt) => { a.tests!.skippedIds = ["unexpected", "unexpected"]; }],
+    ["missing artifacts", (a: Attempt) => { a.tests!.artifacts = []; }],
+    ["artifact hash", (a: Attempt) => { a.tests!.artifacts[0]!.sha256 = "wrong"; }],
+    ["artifact name", (a: Attempt) => { a.tests!.artifacts[0]!.name = ""; }],
+    ["validator hash", (a: Attempt) => { a.tests!.validator.sha256 = "wrong"; }],
+    ["validator revision", (a: Attempt) => { a.tests!.validator.revision = "main" as "source"; }],
+    ["artifact time", (a: Attempt) => { a.artifactsVerifiedAt = "invalid"; }],
+    ["accepted time", (a: Attempt) => { a.upload!.acceptedAt = "invalid"; }],
+    ["claim time", (a: Attempt) => { a.upload!.claimedAt = "invalid"; }],
+    ["operation", (a: Attempt) => { a.upload!.id = "other-operation"; }],
+    ["identity operation", (a: Attempt) => { a.upload!.identity.uploadOperationId = "other-operation"; }],
+    ["fence zero", (a: Attempt) => { a.upload!.fence = 0; }],
+    ["fence mismatch", (a: Attempt) => { a.upload!.fence++; }],
+    ["current ledger fence", (a: Attempt, s: CdState) => { s.fences[a.id] = s.fences[a.id]! + 1; }],
+    ["lease fence", (a: Attempt) => { a.lease!.fence++; }],
+    ["lease owner", (a: Attempt) => { a.lease!.owner = "100/2"; }],
+    ["lease time", (a: Attempt) => { a.lease!.expiresAt = "invalid"; }],
+    ["app", (a: Attempt) => { a.upload!.identity.appId = "456"; }],
+    ["version", (a: Attempt) => { a.upload!.identity.version = "2.0"; }],
+    ["build", (a: Attempt) => { a.upload!.identity.buildNumber = "9"; }],
+    ["IPA", (a: Attempt) => { a.upload!.identity.ipaSha256 = "wrong"; }],
+    ["provider id", (a: Attempt) => { a.upload!.providerUploadId = ""; }],
+    ["source catalogue", (_a: Attempt, s: CdState) => { s.sources[0]!.inputDigest = hash("different source inputs"); }],
+    ["reservation missing", (a: Attempt, s: CdState) => { delete s.builds[`${a.appId}/${a.version}`]!.reservations[a.id]; }],
+    ["reservation unburned", (a: Attempt, s: CdState) => { s.builds[`${a.appId}/${a.version}`]!.reservations[a.id]!.burned = false; }],
+    ["reservation malformed", (a: Attempt, s: CdState) => { s.builds[`${a.appId}/${a.version}`]!.reservations[a.id]!.burned = "true" as unknown as boolean; }],
+    ["reservation build", (a: Attempt, s: CdState) => { s.builds[`${a.appId}/${a.version}`]!.reservations[a.id]!.buildNumber = "9"; }],
+    ["stale latest attempt", (a: Attempt, s: CdState) => { s.intents[a.tests!.intentId]!.attempts.push({ ...structuredClone(a), id: "newer", status: "failed" }); }],
+  ] as const)("refuses conflicting reusable %s before Apple or artifact access", async (_label, change) => {
+    const h = await acceptedHarness(change), result = await h.controller.tick(after(now, 2));
+    expect(result.errors).toHaveLength(1); expect(result.errors[0]!.message).toContain("Reusable");
+    expect(h.evidence).not.toHaveBeenCalled(); expect(h.observe).not.toHaveBeenCalled(); expect(h.assign).not.toHaveBeenCalled(); expect(h.dispatch).not.toHaveBeenCalled();
+    expect((await h.store.read()).state.intents[h.intentId]!.receipt).toBeUndefined();
+  });
+  it.each(["head", "event", "path", "effect"])("still verifies fresh workflow %s before using durable proof", async kind => {
+    const h = await acceptedHarness();
+    if (kind === "head") h.run.head_sha = "f".repeat(40); else if (kind === "event") h.run.event = "push"; else if (kind === "path") h.run.path = ".github/workflows/other.yml"; else h.run.display_title = "CD other-effect";
+    const result = await h.controller.tick(after(now, 2)); expect(result.errors).toHaveLength(1); expect(h.evidence).not.toHaveBeenCalled(); expect(h.observe).not.toHaveBeenCalled();
+  });
+  it("refuses an absent bound run in the complete sweep, while cancelling real duplicates before recovery", async () => {
+    const h = await acceptedHarness(), duplicate = { ...h.run, id: 101, status: "in_progress", conclusion: null };
+    h.runs.mockResolvedValue([duplicate]); await h.controller.tick(after(now, 2)); expect(h.cancel).not.toHaveBeenCalled(); expect(h.observe).not.toHaveBeenCalled();
+    h.runs.mockResolvedValue([duplicate, h.run]); const result = await h.controller.tick(after(now, 8));
+    expect(result.errors).toEqual([]); expect(h.cancel).toHaveBeenCalledExactlyOnceWith("101"); expect(h.observe).toHaveBeenCalledTimes(1); expect(h.evidence).not.toHaveBeenCalled();
+    expect((await h.store.read()).state.intents[h.intentId]!.attempts[0]!.dispatch.runIds).toEqual(["100", "101"]);
+  });
+  it("resolves a newer visible rerun back to the accepted bound original attempt", async () => {
+    const h = await acceptedHarness(); h.runs.mockResolvedValue([{ ...h.run, run_attempt: 2 }]);
+    const exact = vi.spyOn(h.actions, "runAttempt").mockResolvedValue(h.run);
+    const result = await h.controller.tick(after(now, 2)); expect(result.errors).toEqual([]); expect(exact).toHaveBeenCalledExactlyOnceWith("100", "1");
+    expect(h.evidence).not.toHaveBeenCalled(); expect((await h.store.read()).state.intents[h.intentId]!.receipt!.runAttempt).toBe("1");
+  });
+  it("rechecks the pinned validator and refuses before Apple if it changed", async () => {
+    const h = await acceptedHarness(); vi.mocked(verifyValidator).mockImplementation(() => { throw new Error("Test validator hash differs from trusted revision"); });
+    const result = await h.controller.tick(after(now, 2)); expect(result.errors).toEqual([{ intentId: h.intentId, message: "Test validator hash differs from trusted revision" }]);
+    expect(h.evidence).not.toHaveBeenCalled(); expect(h.observe).not.toHaveBeenCalled(); expect((await h.store.read()).state.intents[h.intentId]!.receipt).toBeUndefined();
+  });
+  it.each(["PROCESSING", "beta", "wrong-group", "missing-testers"])("does not convert proof reuse into false Apple availability for %s", async kind => {
+    const h = await acceptedHarness(), seen = observation();
+    if (kind === "PROCESSING") seen.processingState = kind; else if (kind === "beta") seen.betaState = "PROCESSING"; else if (kind === "wrong-group") seen.group.id = "wrong"; else seen.group.testerIds = [];
+    h.observe.mockResolvedValue({ observation: seen }); await h.controller.tick(after(now, 2));
+    expect(h.evidence).not.toHaveBeenCalled(); expect((await h.store.read()).state.intents[h.intentId]!.receipt).toBeUndefined(); expect(h.assign).not.toHaveBeenCalled();
+  });
+  it("retains normal missing-membership claim and read-first recovery", async () => {
+    const h = await acceptedHarness(), seen = observation(); seen.group.buildIds = []; h.observe.mockResolvedValueOnce({ observation: seen });
+    await h.controller.tick(after(now, 2)); expect(h.assign).toHaveBeenCalledExactlyOnceWith("apple-build", "staging"); expect((await h.store.read()).state.intents[h.intentId]!.receipt).toBeUndefined();
+    await h.controller.tick(after(now, 8)); expect(h.assign).toHaveBeenCalledTimes(1); expect(h.evidence).not.toHaveBeenCalled(); expect((await h.store.read()).state.intents[h.intentId]!.receipt!.observation.buildId).toBe("apple-build");
+  });
+  it("respects a pause committed after proof validation without promoting or delivering", async () => {
+    const h = await acceptedHarness(), transact = h.store.transact.bind(h.store); let injected = false;
+    vi.spyOn(h.store, "transact").mockImplementation(async (id, kind, at, transition) => {
+      if (kind === "observe-workflow" && !injected) { injected = true; await transact("racing-pause", "fixture-pause", at, state => { state.pauses.push({ scope: h.intentId, actor: "operator", human: true, reason: "hold", resumeCondition: "explicit", createdAt: at }); return null; }); }
+      return transact(id, kind, at, transition);
+    });
+    await h.controller.tick(after(now, 2)); const state = (await h.store.read()).state;
+    expect(injected).toBe(true); expect(state.intents[h.intentId]!.receipt).toBeUndefined(); expect(h.assign).not.toHaveBeenCalled(); expect(h.dispatch).not.toHaveBeenCalled(); expect(state.pauses.map(p => p.reason)).toEqual(["hold"]);
+  });
+  it("keeps a receipt committed by another reconciler after proof validation immutable", async () => {
+    const h = await acceptedHarness(), transact = h.store.transact.bind(h.store); let injected = false;
+    vi.spyOn(h.store, "transact").mockImplementation(async (id, kind, at, transition) => {
+      if (kind === "observe-workflow" && !injected) { injected = true; await transact("racing-receipt", "fixture-delivery", at, state => deliver(state, h.intentId, h.attemptId, observation(), after(now, 1))); }
+      return transact(id, kind, at, transition);
+    });
+    const result = await h.controller.tick(after(now, 2)), intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(result.errors).toEqual([]); expect(injected).toBe(true); expect(intent.receipt!.deliveredAt).toBe(after(now, 1)); expect(h.assign).not.toHaveBeenCalled(); expect(h.evidence).not.toHaveBeenCalled();
   });
 });

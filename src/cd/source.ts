@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { gitSubprocessEnv } from "../git-env.js";
-import { configurationDigest, hash, type CdConfig, type SourceRevision, type TestEvidence } from "./schema.js";
+import { configurationDigest, hash, type CdConfig, type SourceRevision, type TestEvidence, type TestProof } from "./schema.js";
 import { invariant } from "./state.js";
 import { pages, type GitHubApi } from "./store.js";
 
@@ -17,7 +17,7 @@ export function verifySource(root: string, config: CdConfig, sourceSha: string, 
   invariant(inputDigest(root, sourceSha, config.inputs) === expectedDigest, "App inputs differ from selected source digest");
   invariant(git(root, ["status", "--porcelain", "--untracked-files=all", "--", ...config.inputs]) === "", "App inputs were modified or injected after source selection");
 }
-export function verifyValidator(root: string, evidence: TestEvidence): void {
+export function verifyValidator(root: string, evidence: TestEvidence | TestProof): void {
   invariant(!evidence.validator.path.startsWith("/") && !evidence.validator.path.split("/").includes(".."), "Validator path must be repository relative");
   const revision = evidence.validator.revision === "source" ? evidence.sourceSha : evidence.controlSha;
   const bytes = execFileSync("git", ["show", `${revision}:${evidence.validator.path}`], { cwd: root, env: gitSubprocessEnv(), maxBuffer: 16 * 1024 * 1024 });
