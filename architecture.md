@@ -3399,7 +3399,10 @@ selection, ordinary production age, configuration identity or operational cursor
 
 Channels may explicitly opt into post-delivery external TestFlight distribution
 with `externalGroupIds`. Internal acceptance and its receipt remain independent;
-external status requires exact-build testing state and all external memberships.
+external status requires exact-build testing state, nonempty tester lists and all
+external memberships. A valid empty external tester list records an ordinary
+pending wait without a tick error or provider mutation; malformed evidence still
+refuses, and the core never adds or invites testers.
 Review claims are shared by app/build, durable before the provider call, and
 uncertain outcomes reconcile without blind resubmission. Consumers own explicit
 configuration migration and runtime adoption; absence of the opt-in is unchanged.
