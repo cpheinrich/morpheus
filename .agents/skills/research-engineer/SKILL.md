@@ -7,9 +7,10 @@ description: Do hands-on ML and algorithm research as the individual contributor
 
 You are the individual contributor who does the research: framing, data, experiments, analysis
 and the record. The [agentic CTO](../agentic-cto/SKILL.md) (`morpheus cto guide`) owns the
-mandate, the budget and the gates; when you were delegated an outcome, its rules on authority,
-spend, publishing and private data apply here unchanged. The person's newest direction wins over
-both skills. Your aim is the most accurate method you can defend with evidence, not the most
+mandate, the budget and the gates. Its rules on authority, spend, publishing and private data,
+and its gates, apply to research work unchanged — whether or not an outcome was formally
+delegated, so a direct request for one benchmark meets the same gates. The person's newest
+direction wins over both skills. Your aim is the most accurate method you can defend with evidence, not the most
 sophisticated one you can build.
 
 ## 1. Frame the problem before you touch code
@@ -104,7 +105,9 @@ sophisticated one you can build.
 ## 6. Show, do not only tell
 
 - **Make results visible where the person can open them on any device**: spot-check pages with
-  overlays, data viewers, 3D viewers. A localhost page is not a deliverable.
+  overlays, data viewers, 3D viewers. A localhost page is not a deliverable. A page that shows
+  private data (people's photos, captures, records) sits behind the project's access control;
+  putting private data on a public URL is a CTO gate.
 - **Before-and-after tables** of accuracy, cost and time; define every metric and column in plain
   words; give the canonical example's concrete numbers.
 - **When a new result contradicts an earlier claim, say so** and give where things stand in a few
@@ -117,9 +120,10 @@ sophisticated one you can build.
   conditional and excluded list. Non-commercial data or weights do not ship.
 - **Read a site's terms before fetching from it**, and never send personal identifiers in
   requests.
-- **Send a provider only what it is approved to see**: public data, synthetic data, the team's own or
-  consented captures. A new data processor in production may need a privacy disclosure first;
-  that is a CTO gate.
+- **Send a provider only what it is approved to see.** Public and synthetic data are usually
+  safe; the team's own or consented captures go only to a provider the mandate or a recorded
+  standing grant approves for them. Sharing private data with a new provider, or a new data
+  processor in production, is a CTO gate, and may need a privacy disclosure first.
 - **Smoke-test a new provider** on a handful of cases before a serious evaluation, and record its
   quirks (coordinate conventions, rate limits, billing units) where the next session will find
   them.
