@@ -82,3 +82,40 @@ unlabelled draft. The shared-controller change requires a fresh HIGH independent
 source review after actual CI; operational raw-census/ledger-copy qualification
 and coherent consumer adoption remain separate ROOT-owned gates. No runtime or
 controller installation is authorized by this source publication.
+
+## Independent HIGH source review
+
+Fresh independent HIGH source review cleared the cancelled-companion correction with no findings. The reviewer passed 37 selected hermetic cases, inspected the original-source failure and all eight killed mutants, and verified generated JavaScript/source-map equality. Required CI must finish successfully before merge; runtime adoption and actual-ledger operational qualification remain separate.
+
+The fresh reviewer received no author conversation. Its canonical task path is
+paired above with the globally scoped parent runner UUID; the author child session
+is `01a15730-01ee-7f52-a39c-6c4bd5e9812d`. Actual clock observations
+01:17:38–01:21:00Z measure 202000ms, including tools/waits at one-second
+resolution; no runner duration was available. No review extension/follow-up was
+needed. The initial source CI has successful Node/PM/bridge checks but its browser
+job was still installing Playwright dependencies at the pre-review observation.
+That pending job is not reported as green. ROOT
+independently reproduced the original 5258 wrong-repair result using the unmodified
+provider census and a copy of the real ledger under effect denial; that corroborates
+the baseline only, not corrected-runtime or live qualification.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "5258734031848b2a1ecbcf8b9633745e3958de0c",
+  "reviewed": "469b70512c2931a909426e214f9ba0fc49a1eb47",
+  "covered": "469b70512c2931a909426e214f9ba0fc49a1eb47",
+  "authorSession": "01a1572f-2ae1-77f2-be54-4265b3baca43",
+  "reviewerSession": "/root/morpheus_host/cancelled_companion_source_review453",
+  "risk": "high",
+  "elapsedMinutes": 3.3666666666666667,
+  "timing": {
+    "source": "clock",
+    "durationMs": 202000,
+    "evidence": "clock.curr_time immediately before fresh collaboration spawn at2026-10-23T01:17:38Z and after delivered final report at2026-10-23T01:21:00Z; one-second resolution, tool/wait interval included; private review-initial-timing.json, runner duration unavailable."
+  },
+  "outcome": "complete",
+  "summary": "Fresh independent HIGH source review cleared the cancelled-companion correction with no findings. The reviewer passed 37 selected hermetic cases, inspected the original-source failure and all eight killed mutants, and verified generated JavaScript/source-map equality. Required CI must finish successfully before merge; runtime adoption and actual-ledger operational qualification remain separate.",
+  "findings": []
+}
+```
