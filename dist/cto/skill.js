@@ -533,9 +533,9 @@ current instructions, or before revising the skill.
 The rules distil what Chris Heinrich told agents doing ML and algorithm work, and what those agents
 learned, across Evo's calorie-estimation, segmentation, volume, model-evaluation and
 restaurant-matching work and a few Lakina and Morpheus sessions, as of 2026-10-23. On 2026-10-22
-Chris asked for this skill so the research prompts he kept repeating (a time-boxed literature
-review, rounds of experiments, benchmark first) would be built in, as the first individual-
-contributor skill under the agentic CTO. Weigh sources in this order: the person's current
+Chris described a research-engineer skill that would build in the research prompts he kept repeating
+(a time-boxed literature review, rounds of experiments, benchmark first), and on 2026-10-23 he asked
+for it to be assembled as the first individual-contributor skill under the agentic CTO. Weigh sources in this order: the person's current
 instruction, a project's accepted decisions, then this skill.
 
 Evo and Lakina are private, so their sources are cited by date or path and paraphrased. Session
