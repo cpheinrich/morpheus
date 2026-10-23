@@ -110,8 +110,13 @@ Apple availability/delivery are separate; no live effect is inferred.
     "durationMs": 284764,
     "evidence": "Actual author clock around fresh canonical reviewer invocation: 2026-10-23T04:06:33.153488Z through first observed terminal result2026-10-23T04:11:17.918328Z, including tools/waits. Raw284764.83999999997ms retained in fresh-review-timing.json; schema integer duration floors to284764ms. No runner duration exposed. Structured report SHA2565debe3acf730915b0eb0d968e9303267107c9044160205eab21fbd63760bb4f3."
   },
-  "outcome": "cleared",
+  "outcome": "complete",
   "summary": "The independent HIGH source review cleared the empty-group pending behavior with no findings or conditions. Exact identity and safety checks, malformed and unsafe-state refusals, immutable internal delivery and once-only review protections remain intact.",
   "findings": []
 }
 ```
+
+Local record validation first refused the top-level outcome value cleared; the
+record schema requires complete. Corrected only that worklog field, preserving
+the actual reviewer clearance and measured timing. This was a local metadata
+error before source push, not a CI failure or a new review turn.
