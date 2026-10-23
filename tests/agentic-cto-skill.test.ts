@@ -1,19 +1,58 @@
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import matter from "gray-matter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/cli/run.js";
-import { ctoGuideTopics } from "../src/cto/guide.js";
-import { AGENTIC_CTO_SKILL, agenticCtoSkillFiles } from "../src/cto/skill.js";
+import { ctoGuideTopics, ctoSkillDescription } from "../src/cto/guide.js";
+import {
+  AGENTIC_CTO_SKILL,
+  RESEARCH_ENGINEER_SKILL,
+  agenticCtoSkillFiles,
+  researchEngineerSkillFiles,
+} from "../src/cto/skill.js";
 import { scaffold } from "../src/init/index.js";
-import { agenticCtoPointerSkill } from "../src/init/templates.js";
+import { agenticCtoPointerSkill, researchEngineerPointerSkill } from "../src/init/templates.js";
 import type { Seed } from "../src/init/templates.js";
 
 const REPO = join(import.meta.dirname, "..");
 const PROVIDER_DIRS = [".agents/skills", ".claude/skills"] as const;
 const SEED: Seed = { name: "Acme Health", prefix: "ACH", kind: "company", owner: "cpheinrich" };
-const files = agenticCtoSkillFiles();
+
+/**
+ * The agentic CTO and the individual-contributor skills under it. `topic` is what
+ * `morpheus cto guide` takes to print the entrypoint (nothing, for the CTO), and `prefix` is what
+ * precedes a reference's name in its topic.
+ */
+const SKILLS = [
+  {
+    name: AGENTIC_CTO_SKILL,
+    files: agenticCtoSkillFiles(),
+    pointer: agenticCtoPointerSkill,
+    topic: [] as string[],
+    prefix: "",
+  },
+  {
+    name: RESEARCH_ENGINEER_SKILL,
+    files: researchEngineerSkillFiles(),
+    pointer: researchEngineerPointerSkill,
+    topic: [RESEARCH_ENGINEER_SKILL],
+    prefix: `${RESEARCH_ENGINEER_SKILL}/`,
+  },
+];
+
+/** Every skill file by its path under a skill directory, which is what a cross-skill link names. */
+const ALL: Record<string, string> = Object.fromEntries(
+  SKILLS.flatMap(({ name, files }) => Object.entries(files).map(([file, text]) => [`${name}/${file}`, text])),
+);
+
+/** A skill's reference names, from its file paths. */
+const referencesOf = (files: Record<string, string>) =>
+  Object.keys(files)
+    .filter((f) => f.startsWith("references/"))
+    .map((f) => f.slice("references/".length, -".md".length))
+    .sort();
 
 /** Every file under `dir`, as forward-slash paths relative to it. */
 async function filesUnder(dir: string): Promise<string[]> {
@@ -31,6 +70,13 @@ const anchorOf = (heading: string) =>
 /** The frontmatter as a skill loader's YAML parser sees it; a stray colon throws here. */
 const frontmatter = (skill: string) => matter(skill).data as { name?: unknown; description?: unknown };
 
+/** Each relative Markdown link in `text`: its target and anchor. */
+const linksIn = (text: string) =>
+  [...text.matchAll(/\]\(((?:\.\.\/)?(?:[\w-]+\/)*[\w-]+\.md)(?:#([\w-]+))?\)/g)].map(([, target = "", anchor]) => ({
+    target,
+    anchor,
+  }));
+
 /** What `morpheus <argv>` prints and returns. */
 async function cli(...argv: string[]) {
   const out = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -45,22 +91,22 @@ async function cli(...argv: string[]) {
   }
 }
 
-describe("the canonical agentic-cto skill", () => {
+describe.each(SKILLS)("the canonical $name skill", ({ name, files }) => {
   it("is what Morpheus's own skill directories hold, byte for byte, for both providers", async () => {
     // The CLI prints the module; agents in this repository read the files. A reference added to one
     // and not the other, or a stale Claude mirror, would give readers different rules.
     for (const providerDir of PROVIDER_DIRS) {
-      const root = join(REPO, providerDir, AGENTIC_CTO_SKILL);
+      const root = join(REPO, providerDir, name);
       expect(await filesUnder(root)).toEqual(Object.keys(files).sort());
       for (const [file, content] of Object.entries(files)) {
-        expect(await readFile(join(root, file), "utf8"), `${providerDir}/${file}`).toBe(content);
+        expect(await readFile(join(root, file), "utf8"), `${providerDir}/${name}/${file}`).toBe(content);
       }
     }
   });
 
   it("names itself after its directory, with a description the skill loaders accept", () => {
-    const { name, description } = frontmatter(files["SKILL.md"] ?? "");
-    expect(name).toBe(AGENTIC_CTO_SKILL);
+    const { name: named, description } = frontmatter(files["SKILL.md"] ?? "");
+    expect(named).toBe(name);
     expect(typeof description).toBe("string");
     expect((description as string).length).toBeLessThanOrEqual(1024);
     expect(description).not.toMatch(/[<>]/);
@@ -70,51 +116,80 @@ describe("the canonical agentic-cto skill", () => {
     const linked = new Set<string>();
     for (const [file, content] of Object.entries(files)) {
       const base = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : "";
-      for (const [, target = "", anchor] of content.matchAll(/\]\(((?:\.\.\/)?(?:references\/)?[\w-]+\.md)(?:#([\w-]+))?\)/g)) {
-        const path = new URL(target, `file:///${base}`).pathname.slice(1);
-        expect(files, `${file} links ${target}`).toHaveProperty([path]);
-        if (file === "SKILL.md") linked.add(path);
+      for (const { target, anchor } of linksIn(content)) {
+        // Resolved from the skill's own directory, so `../agentic-cto/SKILL.md` names a sibling skill.
+        const path = new URL(target, `file:///${name}/${base}`).pathname.slice(1);
+        expect(ALL, `${name}/${file} links ${target}`).toHaveProperty([path]);
+        for (const providerDir of PROVIDER_DIRS) {
+          expect(existsSync(join(REPO, providerDir, path)), `${providerDir}/${path}`).toBe(true);
+        }
+        if (file === "SKILL.md" && path.startsWith(`${name}/references/`)) linked.add(path);
         if (anchor) {
-          const headings = [...(files[path] ?? "").matchAll(/^#{1,6} (.+)$/gm)].map(([, h = ""]) => anchorOf(h));
-          expect(headings, `${file} links ${target}#${anchor}`).toContain(anchor);
+          const headings = [...(ALL[path] ?? "").matchAll(/^#{1,6} (.+)$/gm)].map(([, h = ""]) => anchorOf(h));
+          expect(headings, `${name}/${file} links ${target}#${anchor}`).toContain(anchor);
         }
       }
     }
     // An unlinked reference is never read: progressive disclosure reaches only what the
     // entrypoint routes to.
-    const references = Object.keys(files).filter((f) => f.startsWith("references/"));
+    const references = referencesOf(files).map((r) => `${name}/references/${r}.md`);
     expect(references.length).toBeGreaterThan(0);
-    expect([...linked].sort()).toEqual(references.sort());
+    expect([...linked].sort()).toEqual(references);
+  });
+});
+
+describe("the research-engineer skill under the CTO", () => {
+  it("links the CTO it works under, and the CTO names it, so each reaches the other", () => {
+    const research = researchEngineerSkillFiles()["SKILL.md"] ?? "";
+    const toCto = linksIn(research).filter(({ target }) => target === `../${AGENTIC_CTO_SKILL}/SKILL.md`);
+    expect(toCto).toHaveLength(1);
+    expect(agenticCtoSkillFiles()["SKILL.md"]).toContain(`\`morpheus cto guide ${RESEARCH_ENGINEER_SKILL}\``);
   });
 });
 
 describe("morpheus cto guide", () => {
-  it("prints the entrypoint, then how to print each reference it links", async () => {
-    const { code, out } = await cli("cto", "guide");
+  it.each(SKILLS)("prints the $name entrypoint, then how to print each reference it links", async (skill) => {
+    const { code, out } = await cli("cto", "guide", ...skill.topic);
     expect(code).toBe(0);
-    expect(out.startsWith(files["SKILL.md"] ?? "\0")).toBe(true);
-    const references = Object.keys(files).filter((f) => f.startsWith("references/"));
-    for (const reference of references) {
-      const topic = reference.slice("references/".length, -".md".length);
-      expect(out).toContain(`${reference}  →  morpheus cto guide ${topic}`);
-    }
+    const routes = referencesOf(skill.files).map(
+      (t) => `  references/${t}.md  →  morpheus cto guide ${skill.prefix}${t}`,
+    );
+    expect(out).toBe(
+      `${skill.files["SKILL.md"]}\n---\n` +
+        `Printed by the installed Morpheus CLI. Read a reference this guide links with:\n${routes.join("\n")}`,
+    );
   });
 
   it("prints each reference verbatim by its topic", async () => {
-    expect(ctoGuideTopics().length).toBe(Object.keys(files).length - 1);
-    for (const topic of ctoGuideTopics()) {
-      const { code, out } = await cli("cto", "guide", topic);
-      expect(code).toBe(0);
-      expect(`${out}\n`).toBe(files[`references/${topic}.md`]);
+    expect(ctoGuideTopics()).toEqual(
+      SKILLS.flatMap((s) => [...s.topic, ...referencesOf(s.files).map((t) => `${s.prefix}${t}`)]),
+    );
+    for (const { files, prefix } of SKILLS) {
+      for (const reference of referencesOf(files)) {
+        const { code, out } = await cli("cto", "guide", `${prefix}${reference}`);
+        expect(code).toBe(0);
+        expect(`${out}\n`).toBe(files[`references/${reference}.md`]);
+      }
     }
   });
 
-  it("refuses an unknown topic or command rather than printing something else", async () => {
-    const topic = await cli("cto", "guide", "budget");
-    expect(topic.code).toBe(1);
-    expect(topic.out).toBe("");
-    expect(topic.err).toBe(`Unknown cto guide topic "budget". Topics: ${ctoGuideTopics().join(", ")}.`);
+  it.each([
+    "budget",
+    "record",
+    "research-engineer/budget",
+    "research-engineer/",
+    "research-engineer/record/extra",
+    `${AGENTIC_CTO_SKILL}/mandate`,
+    "constructor",
+    "research-engineer/constructor",
+  ])("refuses the unknown topic %j rather than printing something else", async (topic) => {
+    const { code, out, err } = await cli("cto", "guide", topic);
+    expect(code).toBe(1);
+    expect(out).toBe("");
+    expect(err).toBe(`Unknown cto guide topic "${topic}". Topics: ${ctoGuideTopics().join(", ")}.`);
+  });
 
+  it("refuses an unknown command", async () => {
     const command = await cli("cto", "show");
     expect(command.code).toBe(1);
     expect(command.err).toMatch(/^Unknown cto command "show"\./);
@@ -122,15 +197,23 @@ describe("morpheus cto guide", () => {
 
   it("names only topics that exist, wherever it is pointed to", () => {
     // A pointer naming a topic the CLI does not have strands the agent at the first step.
-    const named = [agenticCtoPointerSkill(), ...Object.values(files)].flatMap((text) =>
-      [...text.matchAll(/morpheus cto guide <?([\w-]+)>?/g)].map(([, t = ""]) => t),
+    const texts = SKILLS.flatMap((s) => [s.pointer(), ...Object.values(s.files)]);
+    const named = texts.flatMap((text) =>
+      [...text.matchAll(/morpheus cto guide ([\w<>/-]+)/g)].map(([, t = ""]) => t.replace(/\/<topic>$/, "")),
     );
-    expect(named.length).toBeGreaterThan(0);
-    for (const topic of named.filter((t) => t !== "topic")) expect(ctoGuideTopics()).toContain(topic);
+    expect(named).toContain(RESEARCH_ENGINEER_SKILL);
+    expect(named).toContain(`${RESEARCH_ENGINEER_SKILL}/record`);
+    for (const topic of named.filter((t) => t !== "<topic>")) expect(ctoGuideTopics()).toContain(topic);
+  });
+
+  it("has no description for a skill it does not carry, rather than borrowing another's", () => {
+    expect(() => ctoSkillDescription("budget")).toThrow('The budget SKILL.md has no description line.');
+    expect(ctoSkillDescription()).toBe(ctoSkillDescription(AGENTIC_CTO_SKILL));
+    expect(ctoSkillDescription(RESEARCH_ENGINEER_SKILL)).not.toBe(ctoSkillDescription(AGENTIC_CTO_SKILL));
   });
 });
 
-describe("the agentic-cto pointer other projects carry", () => {
+describe.each(SKILLS)("the $name pointer other projects carry", ({ name, files, pointer }) => {
   let dir: string;
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "init-cto-"));
@@ -140,10 +223,10 @@ describe("the agentic-cto pointer other projects carry", () => {
   });
 
   it("routes the same requests as the canonical skill", () => {
-    const pointer = frontmatter(agenticCtoPointerSkill());
+    const pointed = frontmatter(pointer());
     const canonical = frontmatter(files["SKILL.md"] ?? "");
-    expect(pointer.name).toBe(AGENTIC_CTO_SKILL);
-    expect(pointer.description).toBe(canonical.description);
+    expect(pointed.name).toBe(name);
+    expect(pointed.description).toBe(canonical.description);
   });
 
   it.each(["company", "personal", "internal"] as const)(
@@ -151,18 +234,18 @@ describe("the agentic-cto pointer other projects carry", () => {
     async (kind) => {
       await scaffold(dir, { ...SEED, kind });
       for (const providerDir of PROVIDER_DIRS) {
-        const root = join(dir, providerDir, AGENTIC_CTO_SKILL);
+        const root = join(dir, providerDir, name);
         // One file: the references reach a project through the CLI, so there is nothing to drift.
         expect(await filesUnder(root)).toEqual(["SKILL.md"]);
-        expect(await readFile(join(root, "SKILL.md"), "utf8")).toBe(agenticCtoPointerSkill());
+        expect(await readFile(join(root, "SKILL.md"), "utf8")).toBe(pointer());
       }
     },
   );
 
   it("reaches an existing project when init is re-run, keeping its local edits", async () => {
     await scaffold(dir, SEED);
-    const edited = `.agents/skills/${AGENTIC_CTO_SKILL}/SKILL.md`;
-    const removed = `.claude/skills/${AGENTIC_CTO_SKILL}/SKILL.md`;
+    const edited = `.agents/skills/${name}/SKILL.md`;
+    const removed = `.claude/skills/${name}/SKILL.md`;
     await writeFile(join(dir, edited), "local wording\n");
     await unlink(join(dir, removed));
 
@@ -171,6 +254,6 @@ describe("the agentic-cto pointer other projects carry", () => {
     expect(await readFile(join(dir, edited), "utf8")).toBe("local wording\n");
     expect(skipped).toContain(edited);
     expect(written).toEqual([removed]);
-    expect(await readFile(join(dir, removed), "utf8")).toBe(agenticCtoPointerSkill());
+    expect(await readFile(join(dir, removed), "utf8")).toBe(pointer());
   });
 });

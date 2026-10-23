@@ -1466,3 +1466,19 @@ testers. Malformed tester IDs still refuse; populated fresh evidence resumes the
 existing once-only flow. Internal receipts and all native/upload history remain
 immutable. This is a domain-specific branch in the existing reconciler; no new
 dependency, schema/config migration or generic retry mechanism is needed.
+
+
+## The research-engineer skill is an individual contributor under the CTO, held the same way — 2026-10-23
+
+MO-26-10-23-00.08.15. Chris asked for a research-engineer persona and skill as the first
+individual-contributor skill under the agentic CTO. It is held and distributed exactly as
+`agentic-cto` is (2026-10-21 entry above): canonical files in `.agents/skills/research-engineer`
+with a byte-identical Claude mirror, one generator and one generated module for both, and a
+one-file `morpheus init` pointer for both providers in every project kind. The CLI reaches it as a
+topic of `morpheus cto guide` — `research-engineer` for the entrypoint and
+`research-engineer/<reference>` for a reference — because it works under the CTO's mandate,
+budget and gates; a new top-level command was considered and rejected as a second surface for
+one family. The slash keeps a skill's reference names from ever shadowing the CTO's own, so
+`morpheus cto guide`, `mandate` and `provenance` are unchanged. A later individual-contributor
+skill is an entry in the generator, one in `IC_SKILLS` in `src/cto/guide.ts`, a pointer template
+and its two `init` writes; a registry was not built ahead of that second skill. No dependency.

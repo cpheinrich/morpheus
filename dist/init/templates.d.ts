@@ -206,3 +206,11 @@ export declare const commentQaSkill: () => string;
  * keeps the spending and gate boundaries in force even before the guide has been read.
  */
 export declare const agenticCtoPointerSkill: () => string;
+/**
+ * The research-engineer skill as every other project carries it (MO-26-10-23-00.08.15): the first
+ * individual-contributor skill under the agentic CTO, and a pointer to
+ * `morpheus cto guide research-engineer` for the same reason as the CTO's pointer above. It borrows
+ * the canonical description, and keeps the evidence and data boundaries in force before the guide
+ * has been read.
+ */
+export declare const researchEngineerPointerSkill: () => string;
