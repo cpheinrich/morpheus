@@ -1,0 +1,57 @@
+{
+  "schema": "morpheus-paperclip-inventory/1",
+  "controller": { "url": "http://127.0.0.1:3100", "port": 3100 },
+  "company": { "name": "Morpheus Paperclip Pilot", "description": "Bounded two-host pilot: artifact and evaluation tasks only" },
+  "launcher": "/Users/OPERATOR/.local/share/morpheus-paperclip/bin/morpheus-paperclip-worker",
+  "python": "/usr/bin/python3",
+  "stateDir": "/Users/OPERATOR/.local/share/morpheus-paperclip/state",
+  "adapter": { "timeoutSec": 180, "graceSec": 15, "outputInactivityTimeoutMs": 60000, "maxDailyRuns": 12 },
+  "accounts": { "codex-subscription-a": { "maxInFlight": 2 } },
+  "hosts": {
+    "controller-mac": {
+      "transport": "local",
+      "agentName": "controller-mac-codex",
+      "accountId": "codex-subscription-a",
+      "controllerCwd": "/Users/OPERATOR/.local/share/morpheus-paperclip/workspaces/controller-mac",
+      "supervisorPath": "/Users/OPERATOR/.local/share/morpheus-paperclip/host/supervisor.py",
+      "hostConfigPath": "/Users/OPERATOR/.local/share/morpheus-paperclip/host/controller-mac.json",
+      "hostConfig": {
+        "workspace": "/Users/OPERATOR/.local/share/morpheus-paperclip/workspaces/controller-mac",
+        "codexCommand": "/Users/OPERATOR/.local/bin/codex",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "stateDir": "/Users/OPERATOR/.local/share/morpheus-paperclip/host-state",
+        "slots": 1,
+        "maxRunSec": 170,
+        "meterIntervalSec": 60,
+        "reservePp": 2.5,
+        "limits": { "primary": { "stopAt": 90, "hardAt": 97 }, "secondary": { "stopAt": 62.5, "hardAt": 67.5 } },
+        "quotaCommand": ["/usr/local/bin/node", "/Users/OPERATOR/.local/share/morpheus-paperclip/host/quota.mjs", "--reader", "/Users/OPERATOR/code/morpheus/dist/cd/quota-reader.js", "--codex", "/Users/OPERATOR/.local/bin/codex"]
+      }
+    },
+    "second-mac": {
+      "transport": "ssh",
+      "sshTarget": "REMOTEUSER@second-mac.TAILNET.ts.net",
+      "tunnelPort": 43100,
+      "agentName": "second-mac-codex",
+      "accountId": "codex-subscription-a",
+      "controllerCwd": "/Users/OPERATOR/.local/share/morpheus-paperclip/workspaces/second-mac",
+      "supervisorPath": "/Users/REMOTEUSER/.local/share/morpheus-paperclip/host/supervisor.py",
+      "hostConfigPath": "/Users/REMOTEUSER/.local/share/morpheus-paperclip/host/second-mac.json",
+      "promptPathMap": [["/Users/OPERATOR/.local/share/morpheus-paperclip/workspaces/second-mac", "/Users/REMOTEUSER/.local/share/morpheus-paperclip/workspaces/second-mac"]],
+      "hostConfig": {
+        "workspace": "/Users/REMOTEUSER/.local/share/morpheus-paperclip/workspaces/second-mac",
+        "codexCommand": "/Users/REMOTEUSER/.local/bin/codex",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "stateDir": "/Users/REMOTEUSER/.local/share/morpheus-paperclip/host-state",
+        "slots": 1,
+        "maxRunSec": 170,
+        "meterIntervalSec": 60,
+        "reservePp": 2.5,
+        "limits": { "primary": { "stopAt": 90, "hardAt": 97 }, "secondary": { "stopAt": 62.5, "hardAt": 67.5 } },
+        "quotaCommand": ["/opt/homebrew/bin/node", "/Users/REMOTEUSER/.local/share/morpheus-paperclip/host/quota.mjs", "--reader", "/Users/REMOTEUSER/code/morpheus/dist/cd/quota-reader.js", "--codex", "/Users/REMOTEUSER/.local/bin/codex"]
+      }
+    }
+  }
+}
