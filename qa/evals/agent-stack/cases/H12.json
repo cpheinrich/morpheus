@@ -1,0 +1,31 @@
+{
+  "schema": "morpheus-agent-stack-case/1",
+  "id": "H12",
+  "split": "holdout",
+  "title": "A scheduled job refuses stale state",
+  "objective": "Get the scheduled job running on its cadence.",
+  "situation": "A daily scheduled job refuses to run: 'state older than max_state_age (30 minutes)'. A teammate says it will clear overnight. The agent proposes waiting for the next scheduled run.",
+  "evidence": [
+    {
+      "id": "E1",
+      "kind": "error",
+      "text": "Refusal: state older than max_state_age (30 minutes)."
+    },
+    {
+      "id": "E2",
+      "kind": "code",
+      "text": "The state timestamp is written only by the job's own initialize and advance steps; the restamp tool refuses non-empty state by design."
+    },
+    {
+      "id": "E3",
+      "kind": "schedule",
+      "text": "The job runs once a day; the age ceiling is 30 minutes."
+    },
+    {
+      "id": "E4",
+      "kind": "history",
+      "text": "Refusals began right after the first successful run that left non-empty state; earlier failed runs left empty state that could be restamped."
+    }
+  ],
+  "question": "Choose the single best next action for the agent responsible, cite the evidence ids your decision depends on, and state whether the stated objective is satisfied now."
+}

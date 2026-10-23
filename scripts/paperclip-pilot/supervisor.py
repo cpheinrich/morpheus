@@ -114,6 +114,8 @@ def load_config(path):
         raise Refusal("config.stateDir must be outside the workspace")
     if inside(path, config["workspace"]):
         raise Refusal("config must be outside the workspace")
+    if config.get("instructionsSha256") is not None and not re.match(r"^[0-9a-f]{64}$", str(config["instructionsSha256"])):
+        raise Refusal("config.instructionsSha256 must be a sha256 hex digest")
     quota = config.get("quotaCommand")
     if not isinstance(quota, list) or not quota or not all(isinstance(a, str) and a for a in quota):
         raise Refusal("config.quotaCommand must be a non-empty argv list")
@@ -430,6 +432,11 @@ class Run:
             "paperclipRunId": (envelope.get("env") or {}).get("PAPERCLIP_RUN_ID"),
             "agentId": config["agentId"], "hostId": config["hostId"], "accountId": config["accountId"],
             "model": config["model"], "effort": config["effort"], "workspace": config["workspace"],
+            # Requested is what this host passed to Codex. The JSONL stream does not
+            # name the model that actually served the turn, so observed stays unknown
+            # rather than being inferred from the request.
+            "requested": {"model": config["model"], "effort": config["effort"]},
+            "observed": {"model": "unknown", "effort": "unknown", "basis": "codex exec --json does not report the serving model or effort"},
             "argsDigest": digest(envelope.get("args")), "promptDigest": digest((envelope.get("prompt") or "").encode()),
             "supervisor": {"pid": os.getpid(), "birth": birth_of(os.getpid())},
             # "pending" until a refusal or a census settles it: a crash at any later
@@ -444,7 +451,7 @@ class Run:
     def finish(self, state, termination, code, **extra):
         self.receipt.update({"state": state, "termination": termination, "exitCode": code, "endedAt": now_iso()}, **extra)
         self.save()
-        public = {k: self.receipt.get(k) for k in ("runUuid", "paperclipRunId", "hostId", "agentId", "accountId", "model", "effort", "state", "termination", "exitCode", "stopReason", "slot", "quotaDecision")}
+        public = {k: self.receipt.get(k) for k in ("runUuid", "paperclipRunId", "hostId", "agentId", "accountId", "model", "effort", "requested", "observed", "state", "termination", "exitCode", "stopReason", "slot", "quotaDecision", "resume")}
         sys.stderr.write(RECEIPT_PREFIX + json.dumps(public, sort_keys=True) + "\n")
         sys.stderr.flush()
         return code
@@ -469,13 +476,23 @@ def run(config_path):
         return CONFIG
     record = Run(config, envelope)
     try:
-        validate_args(envelope.get("args"), config)
+        record.receipt["resume"] = validate_args(envelope.get("args"), config)["resume"]
         env = child_env(config, envelope)
         if trailing.strip():
             raise Refusal("unexpected data after the envelope")
     except Refusal as error:
         return record.finish("refused", "not-started", REFUSED, stopReason=str(error))
 
+    # The workspace is model-writable, so a run could rewrite its own AGENTS.md.
+    # The staged digest lives in the operator config; drift refuses the next run.
+    if config.get("instructionsSha256"):
+        try:
+            with open(os.path.join(config["workspace"], "AGENTS.md"), "rb") as handle:
+                actual = digest(handle.read())
+        except OSError:
+            actual = None
+        if actual != config["instructionsSha256"]:
+            return record.finish("refused", "not-started", REFUSED, stopReason="workspace AGENTS.md differs from the staged instructions")
     slot, slot_fd, slot_meta = acquire_slot(config, record.uuid)
     if slot is None:
         return record.finish("refused", "not-started", REFUSED, stopReason="no free host slot")

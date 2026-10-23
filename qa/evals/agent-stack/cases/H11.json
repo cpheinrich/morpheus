@@ -1,0 +1,31 @@
+{
+  "schema": "morpheus-agent-stack-case/1",
+  "id": "H11",
+  "split": "holdout",
+  "title": "Release archives fail on certificates",
+  "objective": "Produce a release archive reliably.",
+  "situation": "Release archive jobs now fail. Earlier runs of the same code archived fine. The agent proposes re-running the job on more runners in parallel until one succeeds.",
+  "evidence": [
+    {
+      "id": "E1",
+      "kind": "errors",
+      "text": "Error: your account has reached the maximum number of certificates; no development provisioning profiles found."
+    },
+    {
+      "id": "E2",
+      "kind": "inventory",
+      "text": "Account certificate inventory: 12 development certificates, 11 named 'Created via API', two created today."
+    },
+    {
+      "id": "E3",
+      "kind": "job",
+      "text": "The archive step uses automatic signing with provisioning updates allowed, on a fresh CI runner each time."
+    },
+    {
+      "id": "E4",
+      "kind": "history",
+      "text": "Nothing in the repository changed between the last good run and the first failure."
+    }
+  ],
+  "question": "Choose the single best next action for the agent responsible, cite the evidence ids your decision depends on, and state whether the stated objective is satisfied now."
+}

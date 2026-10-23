@@ -1,0 +1,146 @@
+{
+  "schema": "morpheus-agent-stack-manifest/1",
+  "frozenAt": "2026-10-23T06:58:06.087Z",
+  "model": "gpt-6.1-sol",
+  "effort": "medium",
+  "conditions": [
+    "baseline",
+    "candidate"
+  ],
+  "attemptsPerCondition": 1,
+  "splits": {
+    "H01": "dev",
+    "H02": "holdout",
+    "H03": "dev",
+    "H04": "holdout",
+    "H05": "dev",
+    "H06": "dev",
+    "H07": "dev",
+    "H08": "dev",
+    "H09": "holdout",
+    "H10": "dev",
+    "H11": "holdout",
+    "H12": "holdout"
+  },
+  "retrieval": {
+    "H01": [
+      "L01"
+    ],
+    "H02": [
+      "L02"
+    ],
+    "H03": [
+      "L03"
+    ],
+    "H04": [
+      "L04",
+      "L03"
+    ],
+    "H05": [
+      "L05"
+    ],
+    "H06": [
+      "L06"
+    ],
+    "H07": [
+      "L07"
+    ],
+    "H08": [
+      "L08"
+    ],
+    "H09": [
+      "L09"
+    ],
+    "H10": [
+      "L10"
+    ],
+    "H11": [
+      "L11"
+    ],
+    "H12": [
+      "L12"
+    ]
+  },
+  "renders": {
+    "H01": {
+      "baseline": "1d83c2106ae03e465117aa7b706f6933ab830e1f27396bf26d414d6cce1c5c1a",
+      "candidate": "bc6a919e78707f389fca825eb574e2b66b80994a598ae867a7fa00d3ffc6d473"
+    },
+    "H02": {
+      "baseline": "8fa66126997359a68ec424620e96f96d43b5b16393dad539159d028b4a5a7a3d",
+      "candidate": "1e141fffdd0da9cd4416648b6ded89339492fc1d112f0f8b9a37e6b66efbe60b"
+    },
+    "H03": {
+      "baseline": "075af44a9c39c6f446d0a5ecd1055f4a26bcfc199c7bfd44c585c061a6d86512",
+      "candidate": "73b5f5ad1ccda586f6fe6fd62840dd970a88e7a705b1843be728c836536d673f"
+    },
+    "H04": {
+      "baseline": "343e96e656685a85dcac1e53348ea82103587d3d8d40e3f03de4a2bf0b55ff56",
+      "candidate": "743f1d3565f947da8b6746a53a5a64e95c7128afd925cbba77865429daeb365f"
+    },
+    "H05": {
+      "baseline": "25a3e2983f173b651fbf0cd7b96b9bc0e0a8e7014159af5131e35603ced32168",
+      "candidate": "2abbd96f6d0354cd60ace74b738a652d6a6b14033bf8d509941b5c73db76188e"
+    },
+    "H06": {
+      "baseline": "b46bb7e9c9b691ce9723fe150c34b5d79e7a55a1e2c8cedd7af58d32ac7fb94d",
+      "candidate": "9b7ee8f9e16330aedd597a1def3ed9ef2d48c5888437f74590a703132276a284"
+    },
+    "H07": {
+      "baseline": "5206c7158f4d331c02d3b2ba39d97b63dc835496ae402d5bb7ac59c1a5dd741f",
+      "candidate": "c136dd4e23e70590acb25b8921e51e1182ec8ee3ea422ce5c21b00706c997b49"
+    },
+    "H08": {
+      "baseline": "de6ea76141c8e33dae84f2a54bf7423d0b53dd40ccdfedbdb3e7456b13d6f4da",
+      "candidate": "1ed5f8ff815a05bec74a4552bfeb7065004d164f94aae0b48a5e987976e0415a"
+    },
+    "H09": {
+      "baseline": "3ba5ef451acf8a2c85752b470ce6e1d1fbf1e9c38ede92189fedc546dc71ce06",
+      "candidate": "b53b074c888731d38051ba651facd3d2124ff3e5166374158da882469f166480"
+    },
+    "H10": {
+      "baseline": "395b8b31f418080faca54f679776e41b9ce55eb75755d4bbbd035641b2e1e9ea",
+      "candidate": "a4e83e8d597adfdbb56b8896af57f73b90b298f63b0fd4969569d206a0a4780d"
+    },
+    "H11": {
+      "baseline": "8493d1c6c61e8c07ec19b20f68aa7a7b4485d46919ef610349e3caf3f454966c",
+      "candidate": "5d6d8d14dd835fa15e6f7b3748d0c37f625a6540fc08ec0a7e1d63c385c41206"
+    },
+    "H12": {
+      "baseline": "9ad0c42ab405782aeb041c71ce34c4f48ed153642147f8b6ce84f5a8fa6662f1",
+      "candidate": "c240fc8962a76901b0c4eeff7143c70322f849d9bff90b3b71392410b85ca3e7"
+    }
+  },
+  "files": {
+    "cases/H01.json": "f5cc04112f34167236e6fd0a37f374a1f914a5a0db27b3ee7c7d9504ebbfcf5c",
+    "oracles/H01.json": "b75a3a1f0ef5b10101fa8e84a88b7fe7fc9ffc982d0d4d5ae8c009cb18cbd9ad",
+    "cases/H02.json": "7d7e9abe55ef35b8aa4cb0b8f48e7c3bf55d67a102fc18c0224b96ec87fb5b8b",
+    "oracles/H02.json": "3f9635d91050c6f85798d3355722a6355bbfa6c4a94abec9149bf604b5c6e2ad",
+    "cases/H03.json": "1f75029865ab3b195062833c15cc099a740f59a0cf33376f9bf911adf4065eb5",
+    "oracles/H03.json": "71db1998ebd8bafbd62062161fa3716a74a7eaf0eec87fcfc7b67f7ea48a273b",
+    "cases/H04.json": "61ce5da90c49b22c5275e53ad8e1d7e6557c67088381c95355eb2b7ad6e62db5",
+    "oracles/H04.json": "6175e54867764298f5d7ecd063c678a0c6d900b9a6ad5692e4f58d5bd08c8554",
+    "cases/H05.json": "68bca0399ade3cdd441c360c00edee14d97e9b7c342bd74527957206057b7450",
+    "oracles/H05.json": "492f02e6feceba3a3ccf2394cc375b4ef372dcb2a459f67818f6906fe4047e7b",
+    "cases/H06.json": "8b9f7aa9d53cde8623987169b63011296d67add29f4aa022a49eeba1a465730e",
+    "oracles/H06.json": "692a764515c67ada35f6a062c9896f27b3a8fc5fd7d79ec11533c44bbb24ca57",
+    "cases/H07.json": "3c017929cd94b7d22bfd3788db3b7bd9a810fdb25c24778a834b1f3f15d5994d",
+    "oracles/H07.json": "7e0a61dbb9d53a9e7248ac22f247196ac0920039f1050d3675f5280e341ce8f5",
+    "cases/H08.json": "3826cb4f98abd733e12c8fb249c8bedf0ebe4817d5ab394662f7cc1b992eeab7",
+    "oracles/H08.json": "a5016ae734534ceb807eeadfb2b0543e11617d1d3665dc610c69327f88d81119",
+    "cases/H09.json": "11f9c0dc9157c57ff8088876124f864c9ccc259b3f40be109abe27faa8015b69",
+    "oracles/H09.json": "728d4c9bbd25b91f5bc2a76bc65badfe35fbb2fc8afd6a89b6cd4c4574d3e23a",
+    "cases/H10.json": "79a4d5dbce0e5b2c3b639639b9e37b66899b34a90b113d79096bdba7e9d2e30b",
+    "oracles/H10.json": "330a133900fb3a671f1664227e1d65c8cf80b9f9e3cf976962af4c7f8f184344",
+    "cases/H11.json": "df37723f69dbb6566455b5f299f942e7e85b709548a7ed373ec763d320157361",
+    "oracles/H11.json": "96e3e1ed057988704b7ae2efa2a6e94125a7b761e122e1d47abc60f78ccdca45",
+    "cases/H12.json": "46e1048f6575658d1901e8f126faf6c1f9aa2f4809bd1e8bd12e67ced6f023ca",
+    "oracles/H12.json": "bdc11ccc858b5997afcc2edc080718383669302b67f0185beb27522507525da6",
+    "prompts/baseline.md": "25a2ba634cf8d6d38b8dfab17ae686e7dcb62d6a3c37c8a7c916bca22f745161",
+    "prompts/candidate.md": "6f38673cebcb971453b0f0f54197285bc35b3a2eee8419f3f9370ceb5747c38e",
+    "lessons.json": "6508cd64769c01a74883488d3335d81006c293ca2306bf388fc480eb02bc00be",
+    "rubric.json": "a9b9fd579a18e1182a7ed539e7804bbbfded07940d3213e105fc659fbf2161d0",
+    "harness.mjs": "d28b3c598385081443624e791dd9d7fc1d618abc8487ab6aaee5a071a9f74bd4",
+    "../../../scripts/paperclip-pilot/worker-instructions.md": "e9f25bd8ef7e14038819455b5f2731a855ecf804b79d7c6b3d921d981872b221"
+  }
+}

@@ -9,12 +9,19 @@
 // it is never committed. See scripts/paperclip-pilot/README.md.
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// Tracked worker instructions, installed as the workspace AGENTS.md on every host. They
+// carry no project lessons: evaluation conditions must not inherit them from the workspace.
+const INSTRUCTIONS = join(HERE, "worker-instructions.md");
+// Pilot workers may not hire agents, author skills or assign tasks. The installed
+// server's PATCH schema requires canCreateAgents and canAssignTasks together.
+const LOCKED = { canCreateAgents: false, canCreateSkills: false, canAssignTasks: false };
+const sha = text => createHash("sha256").update(text).digest("hex");
 const SCHEMA = "morpheus-paperclip-inventory/1";
 const SSH = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=15"];
 // Fields that bind an agent to a host. Drift is refused, never repaired in place:
@@ -81,6 +88,7 @@ export function agentBody(inventory, name) {
       ...(host.instructionsFilePath ? { instructionsFilePath: host.instructionsFilePath } : {}),
     },
     runtimeConfig: { heartbeat: { enabled: false, intervalSec: 0, wakeOnDemand: true, maxConcurrentRuns: 1, skipTimerWhenNoActionableWork: true, maxDailyRuns: adapter.maxDailyRuns ?? 12 } },
+    permissions: { canCreateAgents: false, canCreateSkills: false },
     // Zero dollars of API budget; subscription quota is metered by the supervisor.
     budgetMonthlyCents: 0,
   };
@@ -89,7 +97,8 @@ export function agentBody(inventory, name) {
 export function hostConfig(inventory, name) {
   const host = hostOf(inventory, name);
   if (!host.agentId) fail(`host ${name} is not enrolled yet (no agentId)`);
-  return { schema: "morpheus-paperclip-host/1", ...host.hostConfig, hostId: name, agentId: host.agentId, accountId: host.accountId };
+  return { schema: "morpheus-paperclip-host/1", ...host.hostConfig, hostId: name, agentId: host.agentId, accountId: host.accountId,
+    instructionsSha256: sha(readFileSync(INSTRUCTIONS, "utf8")) };
 }
 
 function launcherText(inventory) {
@@ -122,10 +131,13 @@ function runOnHost(host, args, input) {
   return spawnSync(file, params, { input, encoding: "utf8", timeout: 60_000 });
 }
 
+// undefined means absent; a transport failure is an error, never mistaken for absence.
 function readOnHost(host, path) {
   if (host.transport === "local") return existsSync(path) ? readFileSync(path, "utf8") : undefined;
-  const result = spawnSync("ssh", [...SSH, host.sshTarget, `cat ${quote(path)}`], { encoding: "utf8", timeout: 30_000 });
-  return result.status === 0 ? result.stdout : undefined;
+  const result = spawnSync("ssh", [...SSH, host.sshTarget, `if [ -e ${quote(path)} ]; then cat ${quote(path)}; else exit 3; fi`], { encoding: "utf8", timeout: 30_000 });
+  if (result.status === 3) return undefined;
+  if (result.status !== 0) fail(`could not read ${path} on ${host.sshTarget.split("@")[1]} (ssh exit ${result.status})`, 3);
+  return result.stdout;
 }
 
 const commands = {
@@ -141,24 +153,39 @@ const commands = {
     writeFileSync(inventory.launcher, text, { mode: 0o700 }); chmodSync(inventory.launcher, 0o700);
     print({ launcher: inventory.launcher, changed: true, applied: true });
   },
-  // Copy supervisor.py, quota.mjs and the host config to the host. Idempotent.
+  // Create both workspaces, install the tracked AGENTS.md, copy supervisor.py, quota.mjs and the
+  // host config. Idempotent. A different existing AGENTS.md is kept and reported (exit 1)
+  // unless --replace-instructions: never overwritten silently.
   async stage() {
     const inventory = loadInventory(), name = rest[0], host = hostOf(inventory, name);
+    const replace = rest.includes("--replace-instructions");
     const config = JSON.stringify(hostConfig(inventory, name), null, 2) + "\n";
+    const instructions = readFileSync(INSTRUCTIONS, "utf8"), agents = join(host.hostConfig.workspace, "AGENTS.md");
     const files = [[join(HERE, "supervisor.py"), host.supervisorPath], [join(HERE, "quota.mjs"), join(dirname(host.supervisorPath), "quota.mjs")]];
-    const plan = { host: name, transport: host.transport, files: files.map(([, to]) => to).concat(host.hostConfigPath), applied: apply };
-    if (!apply) return print(plan);
-    if (host.transport === "local") {
-      for (const [from, to] of files) { mkdirSync(dirname(to), { recursive: true, mode: 0o700 }); writeFileSync(to, readFileSync(from), { mode: 0o700 }); }
-      mkdirSync(dirname(host.hostConfigPath), { recursive: true, mode: 0o700 });
-      writeFileSync(host.hostConfigPath, config, { mode: 0o600 }); chmodSync(host.hostConfigPath, 0o600);
-    } else {
-      const dirs = [...new Set([dirname(host.supervisorPath), dirname(host.hostConfigPath)])];
-      execFileSync("ssh", [...SSH, host.sshTarget, `umask 077 && mkdir -p ${dirs.map(quote).join(" ")}`], { stdio: "inherit", timeout: 30_000 });
-      for (const [from, to] of files) execFileSync("scp", [...SSH, "-q", from, `${host.sshTarget}:${to}`], { stdio: "inherit", timeout: 60_000 });
-      execFileSync("ssh", [...SSH, host.sshTarget, `umask 077 && cat > ${quote(host.hostConfigPath)} && chmod 600 ${quote(host.hostConfigPath)}`], { input: config, stdio: ["pipe", "inherit", "inherit"], timeout: 30_000 });
+    const current = readOnHost(host, agents);
+    const state = current === undefined ? "absent" : current === instructions ? "current" : "differs";
+    const install = state === "absent" || (state === "differs" && replace);
+    const plan = { host: name, transport: host.transport, applied: apply, controllerCwd: host.controllerCwd, workspace: host.hostConfig.workspace,
+      instructions: { path: agents, state, sha256: sha(instructions), action: install ? "install" : state === "current" ? "none" : "keep (pass --replace-instructions)" },
+      files: files.map(([, to]) => to).concat(host.hostConfigPath) };
+    if (apply) {
+      mkdirSync(host.controllerCwd, { recursive: true, mode: 0o700 }); // Paperclip requires the adapter cwd locally.
+      if (host.transport === "local") {
+        mkdirSync(host.hostConfig.workspace, { recursive: true, mode: 0o700 });
+        if (install) writeFileSync(agents, instructions, { mode: 0o644 });
+        for (const [from, to] of files) { mkdirSync(dirname(to), { recursive: true, mode: 0o700 }); writeFileSync(to, readFileSync(from), { mode: 0o700 }); }
+        mkdirSync(dirname(host.hostConfigPath), { recursive: true, mode: 0o700 });
+        writeFileSync(host.hostConfigPath, config, { mode: 0o600 }); chmodSync(host.hostConfigPath, 0o600);
+      } else {
+        const dirs = [...new Set([dirname(host.supervisorPath), dirname(host.hostConfigPath), host.hostConfig.workspace])];
+        execFileSync("ssh", [...SSH, host.sshTarget, `umask 077 && mkdir -p ${dirs.map(quote).join(" ")}`], { stdio: "inherit", timeout: 30_000 });
+        for (const [from, to] of files) execFileSync("scp", [...SSH, "-q", from, `${host.sshTarget}:${to}`], { stdio: "inherit", timeout: 60_000 });
+        execFileSync("ssh", [...SSH, host.sshTarget, `umask 077 && cat > ${quote(host.hostConfigPath)} && chmod 600 ${quote(host.hostConfigPath)}`], { input: config, stdio: ["pipe", "inherit", "inherit"], timeout: 30_000 });
+        if (install) execFileSync("ssh", [...SSH, host.sshTarget, `cat > ${quote(agents)} && chmod 644 ${quote(agents)}`], { input: instructions, stdio: ["pipe", "inherit", "inherit"], timeout: 30_000 });
+      }
     }
     print(plan);
+    if (state === "differs" && !replace) process.exit(1);
   },
   // Idempotent: adopt matching agents, create missing ones, refuse drift.
   async enroll() {
@@ -185,6 +212,12 @@ const commands = {
       } else {
         plan.push({ host: name, action: "create", name: body.name });
         if (apply) host.agentId = (await api(inventory, "POST", `/companies/${company.id}/agents`, body)).id;
+      }
+      // Tightening permissions is not repointing; apply it to adopted agents too.
+      const granted = existing?.permissions ?? {};
+      if (!existing || granted.canCreateAgents !== false || granted.canCreateSkills !== false) {
+        plan.push({ host: name, action: "restrict-permissions", permissions: LOCKED });
+        if (apply) await api(inventory, "PATCH", `/agents/${host.agentId}/permissions`, LOCKED);
       }
     }
     if (apply) saveInventory(inventory);
@@ -271,7 +304,8 @@ const commands = {
   },
 };
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// realpath both sides, or a symlinked path (/var -> /private/var) silently runs nothing.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   const handler = commands[command];
   if (!handler) fail(`commands: ${Object.keys(commands).join(", ")}`, 64);
   await handler();

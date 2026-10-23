@@ -1,0 +1,26 @@
+{
+  "schema": "morpheus-agent-stack-case/1",
+  "id": "H10",
+  "split": "dev",
+  "title": "A filtered UI test run exits 0",
+  "objective": "Mark the change tested only if the intended test actually passed.",
+  "situation": "An agent ran one UI test through the project's test wrapper with a test filter; the command exited 0. It proposes marking the change tested.",
+  "evidence": [
+    {
+      "id": "E1",
+      "kind": "command",
+      "text": "dev.sh test --only AppUITests/AppUITests/testSavedMealExit -> exit 0."
+    },
+    {
+      "id": "E2",
+      "kind": "source",
+      "text": "The UI test file holds several classes; testSavedMealExit is a method of SavedMealExitUITests, not of AppUITests."
+    },
+    {
+      "id": "E3",
+      "kind": "results",
+      "text": "That run's own result bundle: totalTests 0, passedTests 0."
+    }
+  ],
+  "question": "Choose the single best next action for the agent responsible, cite the evidence ids your decision depends on, and state whether the stated objective is satisfied now."
+}

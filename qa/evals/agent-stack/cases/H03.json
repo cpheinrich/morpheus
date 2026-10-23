@@ -1,0 +1,31 @@
+{
+  "schema": "morpheus-agent-stack-case/1",
+  "id": "H03",
+  "split": "dev",
+  "title": "Deployments blocked on access",
+  "objective": "Get the site deploying from the repository.",
+  "situation": "A website move to a hosting provider has been blocked for a day. The working diagnosis is that the team lacks account access, and the agent has drafted a request asking a human to grant it.",
+  "evidence": [
+    {
+      "id": "E1",
+      "kind": "cli",
+      "text": "The hosting CLI 'whoami' reports a different team account than the one that owns the project."
+    },
+    {
+      "id": "E2",
+      "kind": "provider",
+      "text": "The provider's project list (read through a separately authenticated integration) shows the project already exists and is connected to the repository."
+    },
+    {
+      "id": "E3",
+      "kind": "deploys",
+      "text": "The last 20 deployments of that project all failed with: The specified Root Directory \"site\" does not exist. Please update your Project Settings."
+    },
+    {
+      "id": "E4",
+      "kind": "git",
+      "text": "A restructure commit last week moved site/ to apps/web."
+    }
+  ],
+  "question": "Choose the single best next action for the agent responsible, cite the evidence ids your decision depends on, and state whether the stated objective is satisfied now."
+}

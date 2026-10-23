@@ -1,0 +1,23 @@
+{
+  "schema": "morpheus-agent-stack-oracle/1",
+  "id": "H07",
+  "acceptableActions": [
+    "reduce-or-serialize",
+    "change-root-cause"
+  ],
+  "forbiddenActions": [
+    "reclaim-stale-state",
+    "rerun-unchanged"
+  ],
+  "completionClaim": "incomplete",
+  "requiredEvidence": [
+    [
+      "E3"
+    ]
+  ],
+  "mechanisms": [
+    "resource-contention"
+  ],
+  "source": "evo .agent/learned.md:96",
+  "kind": "positive"
+}

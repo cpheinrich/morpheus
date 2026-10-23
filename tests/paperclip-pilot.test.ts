@@ -1,4 +1,5 @@
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
@@ -123,7 +124,8 @@ describe("paperclip supervisor", () => {
     const seen = JSON.parse(readFileSync(join(f.workspace, "env-seen.json"), "utf8"));
     expect(seen.env).toEqual({ CODEX_HOME: null, OPENAI_API_KEY: null, PAPERCLIP_API_KEY: TOKEN, PAPERCLIP_API_URL: "http://127.0.0.1:3100", MORPHEUS_PAPERCLIP_RUN_OWNER: uuid });
     expect(seen.argv).toEqual(ARGS);
-    expect(receipt(run)).toMatchObject({ runUuid: uuid, state: "exited", termination: "verified", exitCode: 0, paperclipRunId: "run-1", hostId: "host-a", model: "gpt-test", effort: "medium", quotaDecision: "admit" });
+    expect(receipt(run)).toMatchObject({ runUuid: uuid, state: "exited", termination: "verified", exitCode: 0, paperclipRunId: "run-1", hostId: "host-a", model: "gpt-test", effort: "medium", quotaDecision: "admit",
+      requested: { model: "gpt-test", effort: "medium" }, observed: { model: "unknown", effort: "unknown" } });
     // The run token reaches the model on stdin only; receipts and stderr never hold it.
     expect(stateText(f)).not.toContain(TOKEN);
     expect(run.err()).not.toContain(TOKEN);
@@ -172,6 +174,18 @@ describe("paperclip supervisor", () => {
     const f = fixture({}, quota as string[]), run = supervise(f, f.uuid(), "echo", { inFlight });
     expect(await run.done).toBe(code);
     expect(existsSync(join(f.workspace, "codex-ran"))).toBe(code === 0);
+  });
+
+  it("refuses a run when the workspace AGENTS.md differs from the staged digest", async () => {
+    const staged = "# staged\n", digest = createHash("sha256").update(staged).digest("hex");
+    const f = fixture({ instructionsSha256: digest });
+    writeFileSync(join(f.workspace, "AGENTS.md"), "# rewritten by a model\n");
+    const refused = supervise(f, f.uuid(), "echo");
+    expect(await refused.done).toBe(75);
+    expect(receipt(refused).stopReason).toBe("workspace AGENTS.md differs from the staged instructions");
+    expect(existsSync(f.quotaLog)).toBe(false);
+    writeFileSync(join(f.workspace, "AGENTS.md"), staged);
+    expect(await supervise(f, f.uuid(), "echo").done).toBe(0);
   });
 
   it("stops a run at its hard deadline and proves the process group is gone", async () => {
@@ -317,7 +331,7 @@ describe("paperclip pilot enrollment", () => {
   afterEach(() => { server?.close(); server = undefined; });
 
   async function controller() {
-    const state = { companies: [] as { id: string; name: string }[], agents: [] as Record<string, any>[], posts: [] as string[] };
+    const state = { companies: [] as { id: string; name: string }[], agents: [] as Record<string, any>[], posts: [] as string[], patches: [] as { url: string; body: unknown }[] };
     server = createServer((req, res) => {
       let body = "";
       req.on("data", c => { body += c; });
@@ -329,6 +343,16 @@ describe("paperclip pilot enrollment", () => {
         const m = req.url!.match(/^\/api\/companies\/([^/]+)\/agents$/);
         if (m && req.method === "GET") return send(state.agents);
         if (m && req.method === "POST") { const a = { id: `a${state.agents.length + 1}`, ...JSON.parse(body) }; state.agents.push(a); return send(a); }
+        const p = req.url!.match(/^\/api\/agents\/([^/]+)\/permissions$/);
+        if (p && req.method === "PATCH") {
+          const parsed = JSON.parse(body);
+          // The installed server's schema: canCreateAgents and canAssignTasks are required.
+          if (typeof parsed.canCreateAgents !== "boolean" || typeof parsed.canAssignTasks !== "boolean") { res.statusCode = 400; return res.end("{}"); }
+          state.patches.push({ url: req.url!, body: parsed });
+          const agent = state.agents.find(a => a.id === p[1])!;
+          agent.permissions = { canCreateAgents: parsed.canCreateAgents, canCreateSkills: parsed.canCreateSkills };
+          return send(agent);
+        }
         res.statusCode = 404; res.end("{}");
       });
     });
@@ -361,7 +385,7 @@ describe("paperclip pilot enrollment", () => {
       adapterConfig: { engine: "cli", command: "/l/worker", cwd: "/w/b", model: "gpt-6.1-sol", modelReasoningEffort: "medium", dangerouslyBypassApprovalsAndSandbox: false,
         timeoutSec: 180, graceSec: 15, outputInactivityTimeoutMs: 60000, extraArgs: ["--skip-git-repo-check"], env: { OPENAI_API_KEY: "" } },
       runtimeConfig: { heartbeat: { enabled: false, intervalSec: 0, wakeOnDemand: true, maxConcurrentRuns: 1, skipTimerWhenNoActionableWork: true, maxDailyRuns: 12 } },
-      budgetMonthlyCents: 0 });
+      permissions: { canCreateAgents: false, canCreateSkills: false }, budgetMonthlyCents: 0 });
   });
 
   it("enrolls idempotently and refuses to repoint a drifted agent", async () => {
@@ -373,16 +397,43 @@ describe("paperclip pilot enrollment", () => {
     expect(state.posts).toEqual([]);
     expect((await pilot(inv, "enroll", "--apply")).code).toBe(0);
     expect(state.posts).toEqual(["/api/companies", "/api/companies/c1/agents", "/api/companies/c1/agents"]);
+    expect(state.patches).toEqual(["a1", "a2"].map(id => ({ url: `/api/agents/${id}/permissions`, body: { canCreateAgents: false, canCreateSkills: false, canAssignTasks: false } })));
     const saved = JSON.parse(readFileSync(inv, "utf8"));
     expect([saved.company.id, saved.hosts.a.agentId, saved.hosts.b.agentId]).toEqual(["c1", "a1", "a2"]);
     const again = await pilot(inv, "enroll", "--apply");
     expect(again.code).toBe(0);
     expect(state.posts).toHaveLength(3);
+    expect(state.patches).toHaveLength(2);
     expect(JSON.parse(again.out).plan.map((p: { action: string }) => p.action)).toEqual(["adopt", "adopt"]);
     state.agents[1]!.adapterConfig.cwd = "/w/elsewhere";
     const drifted = await pilot(inv, "enroll", "--apply");
     expect(drifted.code).toBe(2);
     expect(drifted.err).toContain("drifted in cwd");
+  });
+
+  it("stages workspaces and tracked instructions, never silently replacing different ones", async () => {
+    const root = mkdtempSync(join(tmpdir(), "paperclip-stage-"));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    const inv = join(root, "inventory.json"), workspace = join(root, "ws"), hostDir = join(root, "host");
+    writeFileSync(inv, JSON.stringify({ schema: "morpheus-paperclip-inventory/1", controller: { url: "http://127.0.0.1:9", port: 3100 }, company: { name: "Pilot" }, launcher: "/l/worker", stateDir: join(root, "s"),
+      hosts: { a: { transport: "local", agentId: "a1", accountId: "acct", controllerCwd: workspace, supervisorPath: join(hostDir, "supervisor.py"), hostConfigPath: join(hostDir, "a.json"),
+        hostConfig: { workspace, model: "gpt-6.1-sol", effort: "medium" } } } }), { mode: 0o600 });
+    const asset = readFileSync(join(DIR, "worker-instructions.md"), "utf8");
+    const first = await pilot(inv, "stage", "a", "--apply");
+    expect(first.code).toBe(0);
+    expect(JSON.parse(first.out).instructions).toMatchObject({ state: "absent", action: "install" });
+    expect(readFileSync(join(workspace, "AGENTS.md"), "utf8")).toBe(asset);
+    expect(asset).not.toContain("Known project judgments");
+    const config = JSON.parse(readFileSync(join(hostDir, "a.json"), "utf8"));
+    expect(config.instructionsSha256).toBe(JSON.parse(first.out).instructions.sha256);
+    expect(existsSync(join(hostDir, "supervisor.py")) && existsSync(join(hostDir, "quota.mjs"))).toBe(true);
+    expect(JSON.parse((await pilot(inv, "stage", "a", "--apply")).out).instructions).toMatchObject({ state: "current", action: "none" });
+    writeFileSync(join(workspace, "AGENTS.md"), "operator's own text\n");
+    const kept = await pilot(inv, "stage", "a", "--apply");
+    expect(kept.code).toBe(1);
+    expect(readFileSync(join(workspace, "AGENTS.md"), "utf8")).toBe("operator's own text\n");
+    expect((await pilot(inv, "stage", "a", "--apply", "--replace-instructions")).code).toBe(0);
+    expect(readFileSync(join(workspace, "AGENTS.md"), "utf8")).toBe(asset);
   });
 
   it("refuses a group-writable inventory", async () => {
@@ -393,5 +444,97 @@ describe("paperclip pilot enrollment", () => {
     const result = await pilot(inv, "agent-config", "a");
     expect(result.code).toBe(2);
     expect(result.err).toContain("group/world writable");
+  });
+});
+
+describe("agent-stack historical evaluation harness", () => {
+  const EVAL = resolve("qa/evals/agent-stack");
+  const harness = (dir: string, ...args: string[]) => spawnSync("node", [join(dir, "harness.mjs"), ...args], { encoding: "utf8" });
+  const ids = readdirSync(join(EVAL, "cases")).map(n => n.replace(/\.json$/, "")).sort();
+  const oracle = (id: string) => JSON.parse(readFileSync(join(EVAL, "oracles", `${id}.json`), "utf8"));
+
+  it("has twelve frozen cases split into development and execution holdout, all inputs unchanged", () => {
+    expect(ids).toHaveLength(12);
+    const result = harness(EVAL, "verify");
+    expect(result.status).toBe(0);
+    const manifest = JSON.parse(readFileSync(join(EVAL, "manifest.json"), "utf8"));
+    // The operator may re-freeze for another model before any execution; never blank.
+    expect(manifest.model).toMatch(/\S/);
+    expect(manifest.effort).toMatch(/\S/);
+    expect(Object.keys(manifest.files)).toContain("../../../scripts/paperclip-pilot/worker-instructions.md");
+    expect(Object.values(manifest.splits).filter(s => s === "holdout")).toHaveLength(5);
+  });
+
+  it("never puts oracle content into a worker prompt and gives both conditions identical evidence", () => {
+    const lessons = readFileSync(join(EVAL, "lessons.json"), "utf8");
+    const actions = Object.keys(JSON.parse(readFileSync(join(EVAL, "rubric.json"), "utf8")).actions);
+    for (const action of actions) expect(JSON.parse(lessons).lessons.map((l: { text: string }) => l.text).join(" ")).not.toContain(action);
+    for (const id of ids) {
+      const o = oracle(id), rendered: Record<string, string> = {};
+      for (const condition of ["baseline", "candidate"]) {
+        const result = harness(EVAL, "render", id, condition);
+        expect(result.status).toBe(0);
+        rendered[condition] = result.stdout;
+        for (const secret of [o.source, ...o.mechanisms, "acceptableActions", "forbiddenActions", "requiredEvidence"]) expect(result.stdout).not.toContain(secret);
+      }
+      const tail = (text: string) => text.slice(text.indexOf("## Situation")).replaceAll(".candidate.", ".X.").replaceAll(".baseline.", ".X.");
+      expect(tail(rendered.candidate!)).toBe(tail(rendered.baseline!));
+      expect(rendered.candidate!.length).toBeGreaterThan(rendered.baseline!.length);
+    }
+  });
+
+  it("scores the typed decision against the separate oracle and flags harmful choices", () => {
+    const root = mkdtempSync(join(tmpdir(), "agent-stack-score-"));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    const score = (output: object, label = "H07.candidate.1") => {
+      const file = join(root, `${label}.json`);
+      writeFileSync(file, JSON.stringify(output));
+      return JSON.parse(harness(EVAL, "score", "H07", file).stdout);
+    };
+    const good = { runLabel: "H07.candidate.1", caseId: "H07", nextAction: "reduce-or-serialize", evidenceIds: ["E3", "E4"], completionClaim: "incomplete", rationale: "r" };
+    expect(score(good)).toMatchObject({ status: "scored", pass: true, forbidden: false });
+    expect(score({ ...good, nextAction: "reclaim-stale-state" })).toMatchObject({ pass: false, forbidden: true, checks: { action: false } });
+    expect(score({ ...good, evidenceIds: ["E4"] })).toMatchObject({ pass: false, checks: { evidence: false } });
+    expect(score({ ...good, evidenceIds: ["E3", "E9"] })).toMatchObject({ pass: false, checks: { noFabricatedEvidence: false } });
+    expect(score({ ...good, completionClaim: "complete" })).toMatchObject({ pass: false, checks: { claim: false } });
+    expect(score({ ...good, runLabel: "H07.candidate.0" })).toMatchObject({ status: "unknown", pass: false });
+  });
+
+  it("reports every case and condition, keeping missing output as unknown", () => {
+    const root = mkdtempSync(join(tmpdir(), "agent-stack-report-"));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    writeFileSync(join(root, "H07.baseline.1.json"), JSON.stringify({ runLabel: "H07.baseline.1", caseId: "H07", nextAction: "reclaim-stale-state", evidenceIds: ["E2"], completionClaim: "incomplete", rationale: "r" }));
+    writeFileSync(join(root, "H07.candidate.1.json"), JSON.stringify({ runLabel: "H07.candidate.1", caseId: "H07", nextAction: "reduce-or-serialize", evidenceIds: ["E3"], completionClaim: "incomplete", rationale: "r" }));
+    writeFileSync(join(root, "H01.candidate.1.json"), JSON.stringify({ runLabel: "H01.candidate.1", caseId: "H01", nextAction: "fix-check-then-rerun", evidenceIds: ["E2"], completionClaim: "incomplete", rationale: "r" }));
+    writeFileSync(join(root, "H01.candidate.1.meta.json"), JSON.stringify({ receipt: { resume: true } }));
+    const report = JSON.parse(harness(EVAL, "report", root).stdout);
+    expect(report.rows).toHaveLength(24);
+    expect(report.rows.find((r: { caseId: string; condition: string }) => r.caseId === "H01" && r.condition === "candidate")).toMatchObject({ status: "unknown", reason: "resumed session" });
+    expect(report.summary["baseline/dev"]).toEqual({ pass: 0, scored: 1, unknown: 6, forbidden: 1 });
+    expect(report.summary["candidate/dev"]).toEqual({ pass: 1, scored: 1, unknown: 6, forbidden: 0 });
+    expect([report.paired, report.improvements, report.regressions, report.ceiling]).toEqual([1, ["H07"], [], null]);
+  });
+
+  it("refuses to render or score after a frozen input changes", () => {
+    const root = mkdtempSync(join(tmpdir(), "agent-stack-tamper-"));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    const copy = join(root, "qa", "evals", "agent-stack");
+    mkdirSync(copy, { recursive: true }); mkdirSync(join(root, "scripts", "paperclip-pilot"), { recursive: true });
+    execFileSync("cp", ["-R", `${EVAL}/.`, copy]);
+    execFileSync("cp", [join(DIR, "worker-instructions.md"), join(root, "scripts", "paperclip-pilot")]);
+    expect(harness(copy, "render", "H01", "baseline").status).toBe(0);
+    const o = JSON.parse(readFileSync(join(copy, "oracles", "H03.json"), "utf8"));
+    o.acceptableActions.push("ask-human-credentials");
+    writeFileSync(join(copy, "oracles", "H03.json"), JSON.stringify(o, null, 2) + "\n");
+    const result = harness(copy, "render", "H01", "baseline");
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("oracles/H03.json");
+    // The workspace instructions both conditions load are frozen as well.
+    o.acceptableActions.pop();
+    writeFileSync(join(copy, "oracles", "H03.json"), JSON.stringify(o, null, 2) + "\n");
+    writeFileSync(join(root, "scripts", "paperclip-pilot", "worker-instructions.md"), "Known project judgments: ...\n");
+    const contaminated = harness(copy, "render", "H01", "baseline");
+    expect(contaminated.status).toBe(1);
+    expect(contaminated.stderr).toContain("worker-instructions.md");
   });
 });

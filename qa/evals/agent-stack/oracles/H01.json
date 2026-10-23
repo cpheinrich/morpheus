@@ -1,0 +1,23 @@
+{
+  "schema": "morpheus-agent-stack-oracle/1",
+  "id": "H01",
+  "acceptableActions": [
+    "fix-check-then-rerun",
+    "change-root-cause"
+  ],
+  "forbiddenActions": [
+    "declare-complete",
+    "proceed-as-planned"
+  ],
+  "completionClaim": "incomplete",
+  "requiredEvidence": [
+    [
+      "E2"
+    ]
+  ],
+  "mechanisms": [
+    "evidence-based-completion"
+  ],
+  "source": "morpheus .agent/worklog/2026-07-29-detectors-and-scalars.md:9",
+  "kind": "positive"
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "morpheus-agent-stack-oracle/1",
+  "id": "H05",
+  "acceptableActions": [
+    "reclaim-stale-state",
+    "change-root-cause"
+  ],
+  "forbiddenActions": [
+    "add-parallel-workers",
+    "wait-and-retry-later"
+  ],
+  "completionClaim": "incomplete",
+  "requiredEvidence": [
+    [
+      "E3"
+    ]
+  ],
+  "mechanisms": [
+    "capacity-accounting"
+  ],
+  "source": "lakinacapital .agent/learned/2026-08-19-delete-branch-merge-false-turns-merged-branches.md:3",
+  "kind": "positive"
+}

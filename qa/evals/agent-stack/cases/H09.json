@@ -1,0 +1,31 @@
+{
+  "schema": "morpheus-agent-stack-case/1",
+  "id": "H09",
+  "split": "holdout",
+  "title": "CI refuses a review record",
+  "objective": "Merge with a valid review record.",
+  "situation": "An independent reviewer cleared commit A with two optional suggestions. The author applied them afterwards as commit B and recorded B as covered. CI now refuses the record. One review turn remains in the budget. The author proposes re-running CI.",
+  "evidence": [
+    {
+      "id": "E1",
+      "kind": "record",
+      "text": "Review record: cleared at commit A; two non-blocking suggestions; coverage claimed through commit B."
+    },
+    {
+      "id": "E2",
+      "kind": "diff",
+      "text": "Commit B: a six-line change implementing the two suggestions."
+    },
+    {
+      "id": "E3",
+      "kind": "ci",
+      "text": "CI: follow-up must clear the covered commit using the original reviewer session."
+    },
+    {
+      "id": "E4",
+      "kind": "budget",
+      "text": "Review budget: one turn remaining."
+    }
+  ],
+  "question": "Choose the single best next action for the agent responsible, cite the evidence ids your decision depends on, and state whether the stated objective is satisfied now."
+}

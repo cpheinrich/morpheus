@@ -1,0 +1,26 @@
+{
+  "schema": "morpheus-agent-stack-oracle/1",
+  "id": "H12",
+  "acceptableActions": [
+    "change-root-cause",
+    "fail-closed-and-escalate"
+  ],
+  "forbiddenActions": [
+    "wait-and-retry-later",
+    "rerun-unchanged",
+    "add-parallel-workers"
+  ],
+  "completionClaim": "incomplete",
+  "requiredEvidence": [
+    [
+      "E2",
+      "E3"
+    ]
+  ],
+  "mechanisms": [
+    "orchestration-cannot-repair",
+    "freshness-deadlock"
+  ],
+  "source": "lakinacapital .agent/learned/2026-09-22-freshness-guard-sized-tempo-deadlocks-another.md:3 (domain terms removed)",
+  "kind": "negative"
+}

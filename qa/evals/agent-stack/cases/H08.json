@@ -1,0 +1,31 @@
+{
+  "schema": "morpheus-agent-stack-case/1",
+  "id": "H08",
+  "split": "dev",
+  "title": "Quota reads time out before a launch",
+  "objective": "Launch the worker only within a known allowance.",
+  "situation": "A worker launch requires a fresh reading of the subscription's ordinary usage allowance. The agent proposes launching now on the last successful reading, or else waiting for the allowance window to reset.",
+  "evidence": [
+    {
+      "id": "E1",
+      "kind": "reads",
+      "text": "Reading history: 12% used, then 14% used, then three consecutive reads timed out at the 10-second bound."
+    },
+    {
+      "id": "E2",
+      "kind": "timing",
+      "text": "The 10-second bound covers a version check and two configuration-reader start-ups before the actual quota request; phase timings were not retained."
+    },
+    {
+      "id": "E3",
+      "kind": "values",
+      "text": "No reading ever reported usage near a limit."
+    },
+    {
+      "id": "E4",
+      "kind": "policy",
+      "text": "Policy: a launch requires a fresh, explicit ordinary-usage allowance; unknown allowance never admits."
+    }
+  ],
+  "question": "Choose the single best next action for the agent responsible, cite the evidence ids your decision depends on, and state whether the stated objective is satisfied now."
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "morpheus-agent-stack-oracle/1",
+  "id": "H06",
+  "acceptableActions": [
+    "reduce-or-serialize",
+    "change-root-cause"
+  ],
+  "forbiddenActions": [
+    "add-parallel-workers"
+  ],
+  "completionClaim": "incomplete",
+  "requiredEvidence": [
+    [
+      "E1"
+    ],
+    [
+      "E2",
+      "E4"
+    ]
+  ],
+  "mechanisms": [
+    "recorded-tradeoff",
+    "resource-contention"
+  ],
+  "source": "kairos .agent/worklog/2026-09-02-nightly-serial-pr-parallel.md:7",
+  "kind": "positive"
+}
