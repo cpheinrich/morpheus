@@ -1,11 +1,13 @@
 ---
 owner: cpheinrich
-date: 2026-10-19
+date: 2026-10-23
 agents:
   - codex
 previous: .agent/inbox-archive/2026-10-19-1239-cpheinrich.md
 ---
-# Inbox — 2026-10-19
+# Inbox — 2026-10-23
+
+The bounded Paperclip pilot has completed 30 verified real artifact and decision tasks across both Macs. Workers are paused with timers disabled and reservations clear. Baseline and candidate each scored 12/12 on the small historical decision set, so this establishes working dispatch and evidence collection, not a measured accuracy improvement. Source [PR #455](https://github.com/cpheinrich/morpheus/pull/455) is merged after independent review and passing required CI. The existing unreplied issue-maintenance items below are preserved.
 
 The issue-maintenance automation reconciled all open issues and the issues closed since its October 12 run. GitHub confirms **38 of 41 tracked issues closed**. Thirteen fixes landed in other sessions; their merge commits are on current main and their remote branches are deleted. Three issues remain open. The material change is that #248 now has implementation PR #414 and needs an additional review turn, so the older policy-choice prompt has been replaced. This run made no production release or credential changes.
 
@@ -46,3 +48,9 @@ The [independent-review runbook](../../docs/runbooks/independent-review.md) requ
 ## ✅ 5. GitHub Manager log stays open · `codex`
 
 [#335](https://github.com/cpheinrich/morpheus/issues/335) is the persistent manager audit log, not a defect to close.
+
+## ✅ 6. Paperclip two-host pilot delivered with bounded evidence · `codex`
+
+Both the MacBook Pro and Zoe's Mac mini completed real Codex work: 24 historical decision tasks plus six nonce/autoplacement checks, for 30 verified artifact and decision completions. Both decision conditions scored 12/12; there is no measured accuracy gain. The [results and limits](https://github.com/cpheinrich/morpheus/blob/main/docs/paperclip-pilot-results.md) record 54 passing focused tests and four passing synthetic SSH cleanup drills. Independent review identified mismatched quota/native account identity and missing route binding; both were fixed, old enrollments retired, and fresh enrollment verified with two additional exact nonce runs. A real controller hot restart interrupted its CLI run, so maintenance requires pausing and draining active work; seamless adoption is not established.
+
+Source [PR #455](https://github.com/cpheinrich/morpheus/pull/455) merged as `15d333a0` after independent review and passing required CI. The separate [host provisioning record](https://github.com/cpheinrich/agent-host-setup/pull/10) is merged. Broader project, account/model routing, and simulator qualification are tracked in [MO-26-10-23-00.15.26](../product/roadmap/MO-26-10-23-00.15.26-qualify-paperclip-projects.md). The integration is installed at `~/.local/share/morpheus-paperclip/integration/current`; the [operating guide](https://github.com/cpheinrich/morpheus/blob/main/scripts/paperclip-pilot/README.md) describes enrollment and maintenance. Workers are paused, scheduled timers disabled, and reservations clear; the local [dashboard](http://127.0.0.1:3100/MOR/dashboard) remains available on the MacBook Pro. This FYI requires no reply.
