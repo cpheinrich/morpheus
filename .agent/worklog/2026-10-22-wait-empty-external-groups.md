@@ -66,3 +66,15 @@ receipt is fabricated from the tests.
 Publication/fresh-review/CI/merge/install/adoption remain held. The normal claim
 push contains claim records only. No live host, service, worker, VM, ledger,
 credential, arm/request/cancel, observer or provider effect occurred.
+
+
+## Source publication release
+
+The campaign owner released the normal source loop after its separately verified
+hosted dispatch; that is not delivery credit. Existing source-CI allocation is
+already reserved and is not repeated here. Move this item to review and open one
+unlabelled draft, then give one fresh independent HIGH reviewer the exact complete
+source/evidence and actual known CI result. The reviewer has a15-minute initial
+ceiling and measured actual timing; no inherited author history or subreviewers.
+Source code/tests stay frozen after the PhaseA commit. Runtime installation,
+consumer pin adoption and every live host/provider/ledger effect remain excluded.
