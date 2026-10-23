@@ -81,6 +81,11 @@ line is `MORPHEUS_PAPERCLIP_RECEIPT {…}`; full receipts are in the host's `sta
   enforced; bypass, profile, provider, `-C`, `--search` and any other override are refused, not
   dropped. Enrollment never edits a drifted agent: remove it and enroll a new one. Never repoint
   or resume an agent across hosts.
+  Registration stores a SHA-256 fingerprint of the host name, transport, SSH target, account,
+  controller cwd, remote workspace, supervisor path and host-config path. The registered run
+  environment must match the current inventory before any reservation; the host independently
+  checks the envelope fingerprint against its staged binding and its actual account/workspace
+  fields. Missing legacy fingerprints fail closed: retire and enroll a new identity explicitly.
 - **Credentials.** The model environment is built from nothing plus `PAPERCLIP_*`. `CODEX_HOME`,
   provider keys and session files never move; each host uses its own existing Codex login. The
   run token travels only inside the stdin envelope — never argv, logs, receipts or the prompt.
@@ -92,6 +97,9 @@ line is `MORPHEUS_PAPERCLIP_RECEIPT {…}`; full receipts are in the host's `sta
   cannot make it zero — keep `hardAt` below the real ceiling. **Window ids carry no duration**: the
   native accounts here report only `primary`, and it is the weekly window. Configure every id with
   the conservative weekly limits.
+  Quota helpers and the model use the same UID-derived native HOME and clean base environment.
+  Admission and meter reads inherit neither CODEX_HOME, provider keys nor PAPERCLIP run tokens;
+  a controller account override therefore cannot select a different allowance for the read.
 - **Accounts.** Reservations are atomic per inventory `accountId` (a controller-side flock).
   Give hosts that share a real account the same `accountId`; distinct ids (the example's `controller-native`
   and `second-native`) are counted independently. A reservation whose run cannot be shown finished stays

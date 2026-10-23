@@ -32,6 +32,20 @@ and `drills/`. Host provisioning is recorded in
 
 ## Historical result
 
+Independent review found two substantive gaps: quota reads inherited account overrides that the
+model stripped, and the enrolled identity omitted remote route/account/workspace fields. Both
+were corrected and regression-tested (54 focused tests). Quota admission and meter helpers now
+use the same native environment as execution; registered fingerprints are checked before account
+reservation and against the staged host configuration before quota launch.
+
+Legacy agents were explicitly retired, preserving their history. New agents
+`06e34c9a-684a-44d7-b1c8-fec1ce2b0bc1` and `91556fcd-b4ea-4a7e-8930-a9f4c7c94c52`
+then completed fresh exact nonce tasks in runs `4189b965-ec4a-4bfc-9e88-ec37387a8987` and
+`ba29727f-b9c7-480f-8b93-73cf1b47c3c8`. Both central task/run records and host termination
+receipts passed; both were paused again with empty reservations and free, non-quarantined slots.
+There are now30 verified real artifact/decision completions. The original historical result rows
+below remain unchanged; repeating those decisions would add cost without testing either fix.
+
 The [frozen result ledger](../qa/evals/agent-stack/pilot-results-2026-10-23.json) retains each
 decision, evidence ids, run/task identity, prompt/output digests, requested model/effort,
 termination and fresh-session evidence.

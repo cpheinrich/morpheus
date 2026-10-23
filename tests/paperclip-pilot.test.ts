@@ -2,7 +2,7 @@ import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_pr
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -13,6 +13,9 @@ const SUPERVISOR = join(DIR, "supervisor.py");
 const WORKER = join(DIR, "worker.py");
 const PILOT = join(DIR, "pilot.mjs");
 const TOKEN = "pcp-run-token-SENTINEL-7f3a";
+const hashBinding = (binding: unknown[]) => createHash("sha256").update(JSON.stringify(binding)).digest("hex");
+const bindings = new Map<string, string>();
+const bindingOf = (name: string, h: any) => [name, h.transport, h.sshTarget ?? null, h.accountId, h.controllerCwd, h.hostConfig.workspace, h.supervisorPath, h.hostConfigPath];
 const ARGS = ["exec", "--json", "-c", 'sandbox_mode="workspace-write"', "-c", "sandbox_workspace_write.network_access=true",
   "--skip-git-repo-check", "--model", "gpt-test", "-c", 'model_reasoning_effort="medium"', "-"];
 const JSONL = '{"type":"thread.started","thread_id":"t-1"}\n{"type":"item.completed","item":{"type":"agent_message","text":"ok \\u00e9"}}\n{"type":"turn.completed","usage":{"input_tokens":1}}\n';
@@ -45,6 +48,12 @@ now = datetime.now(timezone.utc)
 used = float(sys.argv[3]) if len(sys.argv) > 3 else 10.0
 if mode == "rise" and calls > 0:
     used = 70.0
+if mode in ("native-over", "native-rise"):
+    import os, pwd
+    selected = {k: os.environ.get(k) for k in ("HOME", "CODEX_HOME", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "PAPERCLIP_API_KEY")}
+    open(log + ".env", "a").write(json.dumps(selected) + "\\n")
+    polluted = selected["HOME"] != pwd.getpwuid(os.getuid()).pw_dir or any(selected[k] for k in selected if k != "HOME") or any(k.startswith("PAPERCLIP_") for k in os.environ)
+    used = 10.0 if polluted else (90.0 if mode == "native-over" or calls > 0 else 10.0)
 iso = lambda t: t.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 window = sys.argv[4] if len(sys.argv) > 4 else "secondary"
 print(json.dumps({"observedAt": iso(now - timedelta(minutes=10) if mode == "stale" else now), "source": "fake",
@@ -65,8 +74,13 @@ function fixture(patch: Record<string, unknown> = {}, quota: string[] = ["ok", "
     model: "gpt-test", effort: "medium", stateDir: state, slots: 1, maxRunSec: 30, meterIntervalSec: 0, reservePp: 2.5,
     limits: { primary: { stopAt: 90, hardAt: 97 }, secondary: { stopAt: 62.5, hardAt: 67.5 } },
     path: "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin", quotaCommand: [join(root, "quota"), quota[0]!, quotaLog, ...quota.slice(2)] };
+  const binding = ["host-a", "local", null, "acct", workspace, workspace, SUPERVISOR, config];
+  Object.assign(base, { binding, bindingSha256: hashBinding(binding) });
   let counter = 0;
-  const f: Fixture = { root, workspace, state, config, quotaLog, uuid: () => `${Date.now().toString(16).padStart(16, "0")}${(++counter).toString(16).padStart(16, "0")}`.slice(-32),
+  const f: Fixture = { root, workspace, state, config, quotaLog, uuid: () => {
+    const id = `${Date.now().toString(16).padStart(16, "0")}${(++counter).toString(16).padStart(16, "0")}`.slice(-32);
+    bindings.set(id, JSON.parse(readFileSync(config, "utf8")).bindingSha256); return id;
+  },
     write: (extra = {}) => { writeFileSync(config, JSON.stringify({ ...base, ...patch, ...extra }), { mode: 0o600 }); chmodSync(config, 0o600); } };
   f.write();
   cleanups.push(() => { killMarked(root); rmSync(root, { recursive: true, force: true }); });
@@ -75,7 +89,7 @@ function fixture(patch: Record<string, unknown> = {}, quota: string[] = ["ok", "
 
 function envelope(uuid: string, prompt: string, extra: Record<string, unknown> = {}) {
   return JSON.stringify({ schema: "morpheus-paperclip-envelope/1", runUuid: uuid, hostId: "host-a", agentId: "agent-a", args: ARGS,
-    env: { PAPERCLIP_API_KEY: TOKEN, PAPERCLIP_API_URL: "http://127.0.0.1:3100", PAPERCLIP_RUN_ID: "run-1" }, prompt, inFlight: 1, ...extra }) + "\n";
+    bindingSha256: bindings.get(uuid), env: { PAPERCLIP_API_KEY: TOKEN, PAPERCLIP_API_URL: "http://127.0.0.1:3100", PAPERCLIP_RUN_ID: "run-1" }, prompt, inFlight: 1, ...extra }) + "\n";
 }
 
 interface Started { child: ChildProcess; out: () => string; err: () => string; done: Promise<number | null> }
@@ -115,6 +129,29 @@ function killMarked(root: string) {
 const stateText = (f: Fixture) => readdirSync(join(f.state, "receipts")).map(n => readFileSync(join(f.state, "receipts", n), "utf8")).join("\n");
 
 describe("paperclip supervisor", () => {
+  it.each(["native-over", "native-rise"])("uses the model's native account environment for %s quota reads", async mode => {
+    const f = fixture({ meterIntervalSec: 0.2, maxRunSec: 15 }, [mode, "", "10"]), uuid = f.uuid();
+    const run = start(SUPERVISOR, ["--config", f.config, "run"], { ...process.env, HOME: "/synthetic/other-home", CODEX_HOME: "/synthetic/other-account", OPENAI_API_KEY: "synthetic-api", ANTHROPIC_API_KEY: "synthetic-claude", PAPERCLIP_API_KEY: TOKEN });
+    run.child.stdin!.write(envelope(uuid, mode === "native-over" ? "echo" : "sleep 30"));
+    expect(await run.done).toBe(mode === "native-over" ? 75 : 124);
+    expect(receipt(run).quotaDecision).toBe(mode === "native-over" ? "refuse" : "admit");
+    if (mode === "native-over") expect(existsSync(join(f.workspace, "codex-ran"))).toBe(false);
+    else expect(receipt(run)).toMatchObject({ termination: "verified", stopReason: "meter refuse: window secondary at 90.0% (+0.0pp in flight) reaches hardAt 67.5%" });
+    const reads = readFileSync(f.quotaLog + ".env", "utf8").trim().split("\n").map(s => JSON.parse(s));
+    expect(reads.length).toBe(mode === "native-over" ? 1 : 2);
+    for (const observed of reads) expect(observed).toEqual({ HOME: userInfo().homedir, CODEX_HOME: null, OPENAI_API_KEY: null, ANTHROPIC_API_KEY: null, PAPERCLIP_API_KEY: null });
+  });
+
+  it.each(["legacy-config", "legacy-envelope", "workspace", "account"])("refuses invalid staged binding before quota: %s", async mode => {
+    const f = fixture(), uuid = f.uuid();
+    if (mode === "legacy-config") f.write({ bindingSha256: undefined });
+    if (mode === "workspace") f.write({ workspace: "/another-workspace" });
+    if (mode === "account") f.write({ accountId: "another-account" });
+    const run = supervise(f, uuid, "echo", mode === "legacy-envelope" ? { bindingSha256: undefined } : {});
+    expect(await run.done).toBe(78);
+    expect(existsSync(f.quotaLog)).toBe(false);
+    expect(existsSync(join(f.workspace, "codex-ran"))).toBe(false);
+  });
   it("passes Codex JSONL through byte for byte and builds the model environment from nothing", async () => {
     const f = fixture(), uuid = f.uuid();
     const run = start(SUPERVISOR, ["--config", f.config, "run"], { ...process.env, CODEX_HOME: "/tmp/controller-codex-home", OPENAI_API_KEY: "sk-controller" });
@@ -267,13 +304,17 @@ describe("paperclip worker wrapper", () => {
     const path = join(f.root, "inventory.json");
     writeFileSync(path, JSON.stringify({ schema: "morpheus-paperclip-inventory/1", controller: { url: "http://127.0.0.1:3100", port: 3100 }, stateDir: join(f.root, "controller-state"),
       accounts: { acct: { maxInFlight: 1 } }, ...extra,
-      hosts: { "host-a": { transport: "local", agentId: "agent-a", accountId: "acct", python: "python3", supervisorPath: SUPERVISOR, hostConfigPath: f.config, controllerCwd: f.workspace, ...host } } }), { mode: 0o600 });
+      hosts: { "host-a": { transport: "local", agentId: "agent-a", accountId: "acct", python: "python3", supervisorPath: SUPERVISOR, hostConfigPath: f.config, controllerCwd: f.workspace, hostConfig: { workspace: f.workspace }, ...host } } }), { mode: 0o600 });
+    const binding = bindingOf("host-a", JSON.parse(readFileSync(path, "utf8")).hosts["host-a"]);
+    f.write({ binding, bindingSha256: hashBinding(binding) });
     return path;
   }
   const paperclipEnv = (extra: NodeJS.ProcessEnv = {}) => ({ ...process.env, CODEX_HOME: "/tmp/controller-codex-home", OPENAI_API_KEY: "sk-controller",
     PAPERCLIP_AGENT_ID: "agent-a", PAPERCLIP_API_KEY: TOKEN, PAPERCLIP_API_URL: "http://127.0.0.1:3100", PAPERCLIP_RUN_ID: "run-9", ...extra });
   function relay(inv: string, prompt: string, env = paperclipEnv()) {
-    const run = start(WORKER, ["--inventory", inv, ...ARGS], env);
+    const h = JSON.parse(readFileSync(inv, "utf8")).hosts["host-a"];
+    const bound = Object.hasOwn(env, "PAPERCLIP_HOST_BINDING_SHA256") ? env : { ...env, PAPERCLIP_HOST_BINDING_SHA256: hashBinding(bindingOf("host-a", h)) };
+    const run = start(WORKER, ["--inventory", inv, ...ARGS], bound);
     run.child.stdin!.end(prompt);
     return run;
   }
@@ -292,6 +333,35 @@ describe("paperclip worker wrapper", () => {
     const f = fixture(), run = relay(inventory(f), "echo", paperclipEnv({ PAPERCLIP_AGENT_ID: "agent-x" }));
     expect(await run.done).toBe(78);
     expect(existsSync(join(f.workspace, "codex-ran"))).toBe(false);
+  });
+
+  it.each(["host-name", "transport", "sshTarget", "accountId", "controllerCwd", "workspace", "supervisorPath", "hostConfigPath", "missing"])("refuses registered binding drift: %s before reservation", async field => {
+    const f = fixture(), inv = inventory(f), original = JSON.parse(readFileSync(inv, "utf8"));
+    const registered = hashBinding(bindingOf("host-a", original.hosts["host-a"]));
+    const h = original.hosts["host-a"];
+    if (field === "host-name") { original.hosts["renamed"] = h; delete original.hosts["host-a"]; }
+    else if (field === "workspace") h.hostConfig.workspace = "/another-workspace";
+    else if (field === "transport") h.transport = "ssh";
+    else if (field !== "missing") h[field] = field === "sshTarget" ? "another@host" : "/another-identity";
+    writeFileSync(inv, JSON.stringify(original));
+    const run = start(WORKER, ["--inventory", inv, ...ARGS], paperclipEnv({ PAPERCLIP_HOST_BINDING_SHA256: field === "missing" ? undefined : registered }));
+    run.child.stdin!.end("echo");
+    expect(await run.done).toBe(78);
+    expect(existsSync(join(f.root, "controller-state"))).toBe(false);
+    expect(existsSync(join(f.workspace, "codex-ran"))).toBe(false);
+  });
+
+  it("refuses a stage-only change after the inventory is rolled back", async () => {
+    const f = fixture(), inv = inventory(f), value = JSON.parse(readFileSync(inv, "utf8"));
+    const originalHash = hashBinding(bindingOf("host-a", value.hosts["host-a"]));
+    const staged = { ...value.hosts["host-a"], hostConfig: { workspace: join(f.root, "staged-elsewhere") } };
+    mkdirSync(staged.hostConfig.workspace);
+    const binding = bindingOf("host-a", staged);
+    f.write({ workspace: staged.hostConfig.workspace, binding, bindingSha256: hashBinding(binding) });
+    const run = relay(inv, "echo", paperclipEnv({ PAPERCLIP_HOST_BINDING_SHA256: originalHash }));
+    expect(await run.done).toBe(78);
+    expect(existsSync(f.quotaLog)).toBe(false);
+    expect(existsSync(join(staged.hostConfig.workspace, "codex-ran"))).toBe(false);
   });
 
   it("admits one run per shared account and reconciles a reservation left by a killed wrapper", async () => {
@@ -341,8 +411,10 @@ describe("paperclip pilot enrollment", () => {
         if (req.method === "GET" && req.url === "/api/companies") return send(state.companies);
         if (req.method === "POST" && req.url === "/api/companies") { const c = { id: `c${state.companies.length + 1}`, ...JSON.parse(body) }; state.companies.push(c); return send(c); }
         const m = req.url!.match(/^\/api\/companies\/([^/]+)\/agents$/);
-        if (m && req.method === "GET") return send(state.agents);
+        if (m && req.method === "GET") return send(state.agents.filter(a => a.status !== "terminated"));
         if (m && req.method === "POST") { const a = { id: `a${state.agents.length + 1}`, ...JSON.parse(body) }; state.agents.push(a); return send(a); }
+        const retired = req.url!.match(/^\/api\/agents\/([^/]+)\/terminate$/);
+        if (retired && req.method === "POST") { const agent = state.agents.find(a => a.id === retired[1])!; agent.status = "terminated"; return send(agent); }
         const p = req.url!.match(/^\/api\/agents\/([^/]+)\/permissions$/);
         if (p && req.method === "PATCH") {
           const parsed = JSON.parse(body);
@@ -381,9 +453,10 @@ describe("paperclip pilot enrollment", () => {
     const root = mkdtempSync(join(tmpdir(), "paperclip-enroll-"));
     cleanups.push(() => rmSync(root, { recursive: true, force: true }));
     const out = spawnSync("node", [PILOT, "--inventory", writeInventory(root, "http://127.0.0.1:9"), "agent-config", "b"], { encoding: "utf8" });
+    const bindingSha256 = hashBinding(["b", "ssh", "u@h", "acct", "/w/b", "/w/b", "/h/supervisor.py", "/h/b.json"]);
     expect(JSON.parse(out.stdout)).toEqual({ name: "b-codex", role: "engineer", adapterType: "codex_local",
       adapterConfig: { engine: "cli", command: "/l/worker", cwd: "/w/b", model: "gpt-6.1-sol", modelReasoningEffort: "medium", dangerouslyBypassApprovalsAndSandbox: false,
-        timeoutSec: 180, graceSec: 15, outputInactivityTimeoutMs: 60000, extraArgs: ["--skip-git-repo-check"], env: { OPENAI_API_KEY: "" } },
+        morpheusHostBindingSha256: bindingSha256, timeoutSec: 180, graceSec: 15, outputInactivityTimeoutMs: 60000, extraArgs: ["--skip-git-repo-check"], env: { OPENAI_API_KEY: "", PAPERCLIP_HOST_BINDING_SHA256: bindingSha256 } },
       runtimeConfig: { heartbeat: { enabled: false, intervalSec: 0, wakeOnDemand: true, maxConcurrentRuns: 1, skipTimerWhenNoActionableWork: true, maxDailyRuns: 12 } },
       permissions: { canCreateAgents: false, canCreateSkills: false }, budgetMonthlyCents: 0 });
   });
@@ -426,6 +499,23 @@ describe("paperclip pilot enrollment", () => {
     const drifted = await pilot(inv, "enroll", "--apply");
     expect(drifted.code).toBe(2);
     expect(drifted.err).toContain("drifted in cwd");
+  });
+
+  it("requires retirement for changed route bindings and creates a new identity afterward", async () => {
+    const root = mkdtempSync(join(tmpdir(), "paperclip-retire-"));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    const { state, url } = await controller(), inv = writeInventory(root, url);
+    expect((await pilot(inv, "enroll", "--apply")).code).toBe(0);
+    const value = JSON.parse(readFileSync(inv, "utf8")); value.hosts.b.hostConfig.workspace = "/different-remote";
+    writeFileSync(inv, JSON.stringify(value));
+    expect((await pilot(inv, "enroll", "--apply")).err).toContain("morpheusHostBindingSha256");
+    expect((await pilot(inv, "remove", "b", "--apply")).code).toBe(0);
+    expect((await pilot(inv, "enroll", "--apply")).code).toBe(0);
+    const enrolled = JSON.parse(readFileSync(inv, "utf8"));
+    expect(enrolled.hosts.b.agentId).toBe("a3");
+    expect(enrolled.retiredAgentIds).toEqual(["a2"]);
+    expect(state.agents.find(a => a.id === "a2")!.status).toBe("terminated");
+    expect(state.agents.find(a => a.id === "a3")!.adapterConfig.morpheusHostBindingSha256).toBe(hashBinding(bindingOf("b", enrolled.hosts.b)));
   });
 
   it("sets up a configured local host in one command and keeps reconciliation a preview without apply", async () => {

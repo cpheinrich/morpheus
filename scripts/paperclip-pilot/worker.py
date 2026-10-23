@@ -22,6 +22,7 @@ and session files stay where they are. The host uses its own existing Codex logi
 `worker.py --inventory INVENTORY reconcile` re-checks held reservations.
 """
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -70,6 +71,12 @@ def host_for_agent(inventory, agent_id):
     if len(matches) != 1:
         raise ValueError("agent is not bound to exactly one enrolled host")
     return matches[0]
+
+
+def binding_digest(name, host):
+    binding = [name, host.get("transport"), host.get("sshTarget"), host.get("accountId"), host.get("controllerCwd"),
+               host.get("hostConfig", {}).get("workspace"), host.get("supervisorPath"), host.get("hostConfigPath")]
+    return hashlib.sha256(json.dumps(binding, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
 def birth_of(pid):
@@ -174,6 +181,7 @@ def build_envelope(inventory, host_name, host, args, prompt, run_uuid, in_flight
         # Only exact, operator-declared prefixes (instructions and workspace roots).
         prompt = prompt.replace(source, target)
     return {"schema": ENVELOPE_SCHEMA, "runUuid": run_uuid, "hostId": host_name, "agentId": host["agentId"],
+            "bindingSha256": environ["PAPERCLIP_HOST_BINDING_SHA256"],
             "args": args, "env": env, "prompt": prompt, "inFlight": in_flight}
 
 
@@ -266,6 +274,8 @@ def main(argv):
         return reconcile_all(inventory)
     try:
         host_name, host = host_for_agent(inventory, os.environ.get("PAPERCLIP_AGENT_ID"))
+        if os.environ.get("PAPERCLIP_HOST_BINDING_SHA256") != binding_digest(host_name, host):
+            raise ValueError("registered host binding differs from inventory or is missing; retire and re-enroll")
     except ValueError as error:
         log(str(error))
         return CONFIG

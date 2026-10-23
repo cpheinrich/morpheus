@@ -26,7 +26,7 @@ const SCHEMA = "morpheus-paperclip-inventory/1";
 const SSH = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=15"];
 // Fields that bind an agent to a host. Drift is refused, never repaired in place:
 // a different host, workspace or route needs a new agent (remove, then enroll).
-const BOUND = ["engine", "command", "cwd", "model", "modelReasoningEffort", "dangerouslyBypassApprovalsAndSandbox"];
+const BOUND = ["engine", "command", "cwd", "model", "modelReasoningEffort", "dangerouslyBypassApprovalsAndSandbox", "morpheusHostBindingSha256"];
 
 const argv = process.argv.slice(2);
 const apply = argv.includes("--apply");
@@ -66,8 +66,15 @@ function hostOf(inventory, name) {
   return host;
 }
 
+export function hostBinding(inventory, name) {
+  const host = hostOf(inventory, name);
+  return [name, host.transport, host.sshTarget ?? null, host.accountId, host.controllerCwd,
+    host.hostConfig.workspace, host.supervisorPath, host.hostConfigPath];
+}
+
 export function agentBody(inventory, name) {
   const host = hostOf(inventory, name), adapter = inventory.adapter ?? {};
+  const bindingSha256 = sha(JSON.stringify(hostBinding(inventory, name)));
   return {
     name: host.agentName ?? `${name}-codex`,
     role: "engineer",
@@ -78,13 +85,14 @@ export function agentBody(inventory, name) {
       cwd: host.controllerCwd,
       model: host.hostConfig.model,
       modelReasoningEffort: host.hostConfig.effort,
+      morpheusHostBindingSha256: bindingSha256,
       // Explicit: the upstream default can be true.
       dangerouslyBypassApprovalsAndSandbox: false,
       timeoutSec: adapter.timeoutSec ?? 180,
       graceSec: adapter.graceSec ?? 15,
       outputInactivityTimeoutMs: adapter.outputInactivityTimeoutMs ?? 60_000,
       extraArgs: ["--skip-git-repo-check"],
-      env: { OPENAI_API_KEY: "" },
+      env: { OPENAI_API_KEY: "", PAPERCLIP_HOST_BINDING_SHA256: bindingSha256 },
       ...(host.instructionsFilePath ? { instructionsFilePath: host.instructionsFilePath } : {}),
     },
     runtimeConfig: { heartbeat: { enabled: false, intervalSec: 0, wakeOnDemand: true, maxConcurrentRuns: 1, skipTimerWhenNoActionableWork: true, maxDailyRuns: adapter.maxDailyRuns ?? 12 } },
@@ -97,7 +105,9 @@ export function agentBody(inventory, name) {
 export function hostConfig(inventory, name) {
   const host = hostOf(inventory, name);
   if (!host.agentId) fail(`host ${name} is not enrolled yet (no agentId)`);
+  const binding = hostBinding(inventory, name);
   return { schema: "morpheus-paperclip-host/1", ...host.hostConfig, hostId: name, agentId: host.agentId, accountId: host.accountId,
+    binding, bindingSha256: sha(JSON.stringify(binding)),
     instructionsSha256: sha(readFileSync(INSTRUCTIONS, "utf8")) };
 }
 

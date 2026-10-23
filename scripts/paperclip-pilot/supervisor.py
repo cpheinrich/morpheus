@@ -108,6 +108,15 @@ def load_config(path):
     for key in ("workspace", "codexCommand", "stateDir"):
         if not isinstance(config.get(key), str) or not os.path.isabs(config[key]):
             raise Refusal("config.%s must be an absolute path" % key)
+    binding = config.get("binding")
+    if (not isinstance(binding, list) or len(binding) != 8
+            or not all(isinstance(binding[i], str) and binding[i] for i in (0, 1, 3, 4, 5, 6, 7))
+            or binding[2] is not None and not isinstance(binding[2], str)
+            or binding_digest(binding) != config.get("bindingSha256")):
+        raise Refusal("registered host binding is missing or invalid")
+    if (binding[0] != config["hostId"] or binding[3] != config["accountId"] or binding[5] != config["workspace"]
+            or os.path.realpath(binding[6]) != os.path.realpath(__file__) or os.path.realpath(binding[7]) != os.path.realpath(path)):
+        raise Refusal("host config differs from its registered binding")
     if not os.path.isdir(config["workspace"]):
         raise Refusal("workspace does not exist")
     if inside(config["stateDir"], config["workspace"]):
@@ -184,11 +193,22 @@ def validate_args(args, config):
 
 
 # --- Quota admission ---------------------------------------------------------
+def native_env(config):
+    account = pwd.getpwuid(os.getuid())
+    return {"HOME": account.pw_dir, "USER": account.pw_name, "LOGNAME": account.pw_name,
+            "PATH": config["path"], "LANG": os.environ.get("LANG", "en_US.UTF-8"),
+            "TMPDIR": os.environ.get("TMPDIR", "/tmp")}
+
+
+def binding_digest(binding):
+    return hashlib.sha256(json.dumps(binding, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+
+
 def read_quota(config, timeout=None, holder=None):
     """Run the configured nativeQuota helper; any failure is unknown, never zero."""
     try:
         proc = subprocess.Popen(config["quotaCommand"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                stdin=subprocess.DEVNULL, start_new_session=True, cwd=config["workspace"])
+                                stdin=subprocess.DEVNULL, start_new_session=True, cwd=config["workspace"], env=native_env(config))
     except OSError:
         return None, "quota reader could not start"
     if holder is not None:
@@ -411,12 +431,9 @@ def child_env(config, envelope):
     env = envelope.get("env")
     if not isinstance(env, dict) or not all(ENV_NAME.match(k) and isinstance(v, str) for k, v in env.items()):
         raise Refusal("only PAPERCLIP_* string variables may be forwarded")
-    account = pwd.getpwuid(os.getuid())
     # Built from nothing: CODEX_HOME, provider keys and the controller's own
     # environment never reach the model. Codex uses this host's existing login.
-    result = {"HOME": account.pw_dir, "USER": account.pw_name, "LOGNAME": account.pw_name,
-              "PATH": config["path"], "LANG": os.environ.get("LANG", "en_US.UTF-8"),
-              "TMPDIR": os.environ.get("TMPDIR", "/tmp")}
+    result = native_env(config)
     result.update(env)
     result[MARKER] = envelope["runUuid"]
     return result
@@ -468,7 +485,8 @@ def run(config_path):
     except (Refusal, ValueError, OSError) as error:
         log("envelope refused: %s" % error)
         return CONFIG
-    if envelope.get("hostId") != config["hostId"] or envelope.get("agentId") != config["agentId"]:
+    if (envelope.get("hostId") != config["hostId"] or envelope.get("agentId") != config["agentId"]
+            or envelope.get("bindingSha256") != config["bindingSha256"]):
         log("envelope binding does not match this host's agent; refusing")
         return CONFIG
     if not (isinstance(envelope.get("inFlight"), int) and 1 <= envelope["inFlight"] <= 16):
