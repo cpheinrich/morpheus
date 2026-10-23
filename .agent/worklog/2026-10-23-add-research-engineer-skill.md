@@ -98,3 +98,59 @@ description has no `: ` and parses with gray-matter, and the Codex skill validat
 - Existing consumers (Evo, Lakina and others) do not carry the pointer yet. Each adopts it by
   re-running `morpheus init` after this merges and the CLI updates, in its own reviewed PR.
 - Independent review, the review record and merge are the author session's.
+
+## Independent review
+
+Independent review of the research-engineer skill and its wiring found two minor issues in the skill text and no code defects: the skill applied the CTO's gates only to delegated outcomes, and it asked for results visible on any device without requiring access control for private data; both were fixed in the author response.
+
+Reviewer add395986505e7f40 (a fresh Claude subagent with no author history) reviewed 8c433c09 at normal risk in 4.2 minutes of runner time. It ran the typecheck, lint and the three focused test files (208 pass), re-ran the generator and compile into scratch output and found them byte-identical, compared the existing `cto guide`, `mandate` and `provenance` output against the base, checked the init pointer for every project kind, swept the added text for private data, and spot-checked three provenance claims against the Evo repository. Both minor findings were fixed in one author response (9231956b).
+
+```morpheus-review
+{
+ "version": 2,
+ "base": "dc67af6d35a4ab2f3838efc6a9dd0f0ec45ba970",
+ "reviewed": "8c433c097dc2f36f4c0cffa83b04338b9e69ff88",
+ "covered": "9231956b8fe683eecbf14efa2ffa4f07b6704896",
+ "authorSession": "3bd6431e-a867-52fb-b7af-5e4cae915ee2",
+ "reviewerSession": "add395986505e7f40",
+ "risk": "normal",
+ "elapsedMinutes": 4.215533333333333,
+ "timing": {
+  "source": "runner",
+  "durationMs": 252932,
+  "evidence": "Agent tool result usage.duration_ms for reviewer add395986505e7f40 (initial turn); the reviewer's own clock read 2026-10-23T07:26:54Z to 07:30:40Z."
+ },
+ "outcome": "complete",
+ "summary": "Independent review of the research-engineer skill and its wiring found two minor issues in the skill text and no code defects: the skill applied the CTO's gates only to delegated outcomes, and it asked for results visible on any device without requiring access control for private data; both were fixed in the author response.",
+ "findings": [
+  {
+   "id": "RE-GATE-01",
+   "severity": "minor",
+   "disposition": "fixed",
+   "paths": [
+    ".agents/skills/research-engineer/SKILL.md",
+    ".claude/skills/research-engineer/SKILL.md",
+    "src/cto/skill.ts",
+    "dist/cto/skill.js",
+    "dist/cto/skill.js.map"
+   ],
+   "description": "The skill applied the CTO's rules on authority, spend, publishing and private data only 'when you were delegated an outcome', while the pointer and architecture.md say the gates apply unconditionally, and its list of data a provider may see read as already approved; a direct benchmark request could send consented captures to a new paid provider without asking.",
+   "response": "The skill now says the CTO's rules and gates apply to research work whether or not an outcome was delegated, and the provider rule says consented captures go only to a provider the mandate or a recorded standing grant approves, with a new provider or processor a CTO gate; generator and compile re-run."
+  },
+  {
+   "id": "RE-VIS-02",
+   "severity": "minor",
+   "disposition": "fixed",
+   "paths": [
+    ".agents/skills/research-engineer/SKILL.md",
+    ".claude/skills/research-engineer/SKILL.md",
+    "src/cto/skill.ts",
+    "dist/cto/skill.js",
+    "dist/cto/skill.js.map"
+   ],
+   "description": "'Make results visible where the person can open them on any device' said nothing about access control, so private captures could end up on a public URL.",
+   "response": "A page that shows private data sits behind the project's access control; putting private data on a public URL is named as a CTO gate."
+  }
+ ]
+}
+```
