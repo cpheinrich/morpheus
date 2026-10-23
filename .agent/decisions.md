@@ -1440,3 +1440,17 @@ VALID processing may precede TestFlight beta readiness. Preserve the accepted
 upload while waiting and use the existing bounded diagnosis. Reuse the current
 controller state machine and Apple state vocabulary; this domain-specific guard
 needs no generic retry package or dependency.
+
+
+## Cancelled Ubuntu dependents require exact no-start and successful preflight — 2026-10-22
+
+A terminal cancellation may materialize downstream Ubuntu jobs as cancelled
+instead of skipped, with created/start copied and completion one second earlier.
+Permit that additional companion only with the existing never-ran proof, explicit
+null/zero runner-group identity, no listed steps and a successfully executed
+Ubuntu preflight in the same complete exact-attempt census. Executed failures and
+unverified preflight still require repair. Keep queued deadlines, native positive
+census, owner/upload/tests races and current-main control selection unchanged.
+This is a small provider-specific conditional in the existing controller, so no
+generic dependency or new framework is needed. Source review and coherent runtime
+installation/actual recovery remain separate.
