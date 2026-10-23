@@ -4,9 +4,9 @@ import { ActionsAdapter, uploadEvidence, type WorkflowRun } from "../../src/cd/a
 import { AppleAdapter } from "../../src/cd/apple.js";
 import { GitHubStore } from "../../src/cd/store.js";
 import { loadSources, verifyValidator } from "../../src/cd/source.js";
-import { after, claimUpload, completeOperationalRepair, createIntent, recordTests, recordUpload } from "../../src/cd/state.js";
+import { after, claimUpload, completeOperationalRepair, createIntent, planAttempt, recordTests, recordUpload } from "../../src/cd/state.js";
 import { CdWait } from "../../src/cd/errors.js";
-import { configurationDigest } from "../../src/cd/schema.js";
+import { configurationDigest, hash } from "../../src/cd/schema.js";
 import { FakeGitHub } from "./fake-github.js";
 import { config, now, observation, prepared, source } from "./fixtures.js";
 
@@ -166,19 +166,323 @@ describe("exact-attempt native admission", () => {
     expect(read.mock.calls.map(call => call[0])).toEqual([1, 2]); const intent = (await h.store.read()).state.intents[h.intentId]!;
     expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.nextAction).toBe("run-repair-agent");
   });
-  it.each([["null-start", finishUnassigned], ["terminal placeholder", (h: Awaited<ReturnType<typeof admissionHarness>>) => finishPlaceholders(h)]])("keeps an upload claim committed after the %s no-start census reserved", async (_label, finish) => {
+  it.each([["null-start", finishUnassigned], ["terminal placeholder", (h: Awaited<ReturnType<typeof admissionHarness>>) => finishPlaceholders(h)], ["cancelled Ubuntu companion", (h: Awaited<ReturnType<typeof admissionHarness>>) => { h.run.status = "completed"; h.run.conclusion = "cancelled"; h.jobs.splice(0, h.jobs.length, ...cancelledCompanionCensus.map(job => nativeJob(job))); }]])("keeps an upload claim committed after the %s no-start census reserved", async (_label, finish) => {
     const h = await admissionHarness(); finish(h); const transact = h.store.transact.bind(h.store); let injected = false;
     vi.spyOn(h.store, "transact").mockImplementation(async (id, kind, at, transition) => { if (kind === "native-failure" && !injected) { injected = true; await transact("racing-upload-hook", "record-upload-result", at, state => { recordTests(state, h.cfg, h.tests); claimUpload(state, h.cfg, h.upload, at); recordUpload(state, { ...h.upload, outcome: "accepted", providerUploadId: "resource" }, at); return null; }); } return transact(id, kind, at, transition); });
     await h.controller.tick(after(now, 20)); const intent = (await h.store.read()).state.intents[h.intentId]!;
     expect(injected).toBe(true); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.upload!.acceptedAt).toBe(after(now, 20)); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.state).toBe("processing"); expect(h.dispatch).not.toHaveBeenCalled();
   });
 });
+// Complete five-job terminal provider projection; timestamps and execution fields are untouched.
+// Identity/positive runner names/nonce label are anonymized; raw digest is in the task acceptance record.
+const cancelledCompanionCensus: Record<string, unknown>[] = [
+  {
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-23T00:34:31Z",
+    "started_at": "2026-10-23T00:34:35Z",
+    "completed_at": "2026-10-23T00:35:18Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "runner_id": 20,
+    "runner_name": "assigned-preflight-0",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions",
+    "id": 10,
+    "steps": [
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:34:36Z",
+        "completed_at": "2026-10-23T00:34:37Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:34:37Z",
+        "completed_at": "2026-10-23T00:34:43Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:34:43Z",
+        "completed_at": "2026-10-23T00:34:45Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:34:45Z",
+        "completed_at": "2026-10-23T00:34:46Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:34:46Z",
+        "completed_at": "2026-10-23T00:34:47Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:34:47Z",
+        "completed_at": "2026-10-23T00:34:48Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:34:48Z",
+        "completed_at": "2026-10-23T00:34:57Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:34:57Z",
+        "completed_at": "2026-10-23T00:35:04Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:04Z",
+        "completed_at": "2026-10-23T00:35:04Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:04Z",
+        "completed_at": "2026-10-23T00:35:08Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:08Z",
+        "completed_at": "2026-10-23T00:35:15Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:15Z",
+        "completed_at": "2026-10-23T00:35:15Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:15Z",
+        "completed_at": "2026-10-23T00:35:15Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:15Z",
+        "completed_at": "2026-10-23T00:35:15Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:15Z",
+        "completed_at": "2026-10-23T00:35:16Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:16Z",
+        "completed_at": "2026-10-23T00:35:16Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:16Z",
+        "completed_at": "2026-10-23T00:35:16Z"
+      }
+    ]
+  },
+  {
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-23T00:35:18Z",
+    "started_at": "2026-10-23T00:35:21Z",
+    "completed_at": "2026-10-23T00:35:25Z",
+    "labels": [
+      "ubuntu-latest"
+    ],
+    "runner_id": 21,
+    "runner_name": "assigned-preflight-1",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions",
+    "id": 11,
+    "steps": [
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:22Z",
+        "completed_at": "2026-10-23T00:35:22Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:22Z",
+        "completed_at": "2026-10-23T00:35:23Z"
+      },
+      {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T00:35:23Z",
+        "completed_at": "2026-10-23T00:35:23Z"
+      }
+    ]
+  },
+  {
+    "status": "completed",
+    "conclusion": "cancelled",
+    "created_at": "2026-10-23T00:35:25Z",
+    "started_at": "2026-10-23T00:35:25Z",
+    "completed_at": "2026-10-23T00:38:06Z",
+    "labels": [
+      "macos-vm",
+      "no-admission-fixture"
+    ],
+    "runner_id": 0,
+    "runner_name": "",
+    "runner_group_id": 0,
+    "runner_group_name": "",
+    "id": 12,
+    "steps": []
+  },
+  {
+    "status": "completed",
+    "conclusion": "cancelled",
+    "created_at": "2026-10-23T00:38:07Z",
+    "started_at": "2026-10-23T00:38:07Z",
+    "completed_at": "2026-10-23T00:38:06Z",
+    "labels": [
+      "ubuntu-24.04"
+    ],
+    "runner_id": null,
+    "runner_name": null,
+    "runner_group_id": null,
+    "runner_group_name": null,
+    "id": 13,
+    "steps": []
+  },
+  {
+    "status": "completed",
+    "conclusion": "cancelled",
+    "created_at": "2026-10-23T00:38:07Z",
+    "started_at": "2026-10-23T00:38:07Z",
+    "completed_at": "2026-10-23T00:38:06Z",
+    "labels": [
+      "macos-vm"
+    ],
+    "runner_id": null,
+    "runner_name": null,
+    "runner_group_id": null,
+    "runner_group_name": null,
+    "id": 14,
+    "steps": []
+  }
+];
 describe("terminal job placeholders", () => {
   async function expectRepair(h: Awaited<ReturnType<typeof admissionHarness>>) {
     const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
     expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.state).toBe("repairing"); expect(intent.nextAction).toBe("run-repair-agent");
     expect(Object.values(state.agents)).toHaveLength(1); expect(Object.values(state.agents)[0]!.evidence).toContain("Native admission absence is not proved; host-side owned process/VM termination evidence is required before replacement"); expect(h.dispatch).not.toHaveBeenCalled();
   }
+  it("recovers the actual five-job cancelled companion census through one normal hosted successor", async () => {
+    const h = await admissionHarness(), before = (await h.store.read()).state.intents[h.intentId]!;
+    h.run.status = "completed"; h.run.conclusion = "cancelled";
+    h.jobs.splice(0, h.jobs.length, ...cancelledCompanionCensus.map(job => nativeJob(job)));
+    // A later main changes controller plumbing/controlRef, with identical app inputs.
+    vi.mocked(loadSources).mockResolvedValue([source(), { ...source(), sha: "d".repeat(40), order: 1, mainEnteredAt: after(now, 26) }]);
+    const request = h.api.request.bind(h.api);
+    vi.spyOn(h.api, "request").mockImplementation(async (method, path, body) => path.endsWith("/commits/main") ? { sha: "d".repeat(40) } : request(method, path, body));
+    await h.controller.tick(after(now, 26));
+    let state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(intent.state).toBe("pending"); expect(intent.nextAction).toBe("dispatch-hosted");
+    expect(intent.attempts[0]!.status).toBe("failed");
+    expect(intent.attempts[0]!.quiescence).toEqual({ kind: "host-terminated", ref: "GitHub complete exact-attempt job census: no native job assigned/started, run 100/1", observedAt: after(now, 26) });
+    expect(state.agents).toEqual({}); expect(h.cancel).not.toHaveBeenCalled(); expect(h.dispatch).not.toHaveBeenCalled();
+    await h.controller.tick(after(now, 27)); await h.controller.tick(after(now, 32));
+    state = (await h.store.read()).state; intent = state.intents[h.intentId]!;
+    expect(intent.attempts.map(attempt => [attempt.buildNumber, attempt.lane, attempt.status, attempt.sourceSha, attempt.controlSha])).toEqual([["8", "local", "failed", before.source, "c".repeat(40)], ["9", "hosted", "active", before.source, "d".repeat(40)]]);
+    expect(h.dispatch).toHaveBeenCalledTimes(1); expect(h.dispatch.mock.calls[0]![0].id).toBe(`${h.intentId}-a2`);
+    expect(h.dispatch.mock.calls[0]![0].dispatchEffectId).not.toBe(before.attempts[0]!.dispatchEffectId);
+    expect(JSON.stringify(h.dispatch.mock.calls[0])).not.toContain("no-admission-fixture");
+    expect(h.cancel).not.toHaveBeenCalled(); expect(state.agents).toEqual({}); expect(intent.receipt).toBeUndefined();
+    expect(state.builds["123/1.0"]!.reservations).toEqual({ [h.attemptId]: { buildNumber: "8", at: now, burned: true }, [`${h.intentId}-a2`]: { buildNumber: "9", at: after(now, 27), burned: true } });
+    for (const key of ["source", "originalSource", "slot", "oldestDebtAt", "deadlineAt"] as const) expect(intent[key]).toEqual(before[key]);
+  });
+  it.each([
+    ["runner id", { runner_id: 7 }], ["runner name", { runner_name: "assigned" }],
+    ["runner group id", { runner_group_id: 1 }], ["runner group name", { runner_group_name: "Default" }],
+    ["group absent on null start", { started_at: null, runner_group_id: undefined }],
+    ["group name on null start", { started_at: null, runner_group_name: "assigned-group" }],
+    ["completion absent on null start", { started_at: null, completed_at: null }],
+    ["real start", { started_at: "2026-10-23T00:38:08Z" }], ["creation absent", { created_at: undefined }],
+    ["completion absent", { completed_at: null }], ["nonterminal", { status: "in_progress" }],
+    ["failed", { conclusion: "failure" }], ["foreign executor", { labels: ["windows-latest"] }],
+    ["malformed labels", { labels: undefined }],
+    ["executed step", { steps: [{ status: "completed", conclusion: "success", started_at: now, completed_at: now }] }],
+    ["listed queued step on null start", { started_at: null, steps: [{ status: "queued", conclusion: null, started_at: null, completed_at: null }] }],
+  ])("keeps a cancelled Ubuntu companion in repair for %s", async (_label, override) => {
+    const h = await admissionHarness(); h.run.status = "completed"; h.run.conclusion = "cancelled";
+    h.jobs.splice(0, h.jobs.length, ...cancelledCompanionCensus.map((job, index) => nativeJob({ ...job, ...(index === 3 ? override : {}) })));
+    await h.controller.tick(after(now, 26)); await expectRepair(h); expect(h.cancel).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["failed preflight", { conclusion: "failure" }], ["unverified preflight", { status: "in_progress", conclusion: null }],
+    ["missing assigned runner", { runner_id: 0 }], ["empty runner name", { runner_name: "" }],
+    ["empty steps", { steps: [] }], ["queued step", { steps: [{ status: "queued", conclusion: null }] }],
+    ["step timestamp missing", { steps: [{ status: "completed", conclusion: "success" }] }],
+  ])("does not use %s as authority for the cancelled companion exception", async (_label, override) => {
+    const h = await admissionHarness(); h.run.status = "completed"; h.run.conclusion = "cancelled";
+    // Keep only one preflight, so no second verified row masks this boundary.
+    h.jobs.splice(0, h.jobs.length, ...cancelledCompanionCensus.filter((_, index) => index !== 1).map((job, index) => nativeJob({ ...job, ...(index === 0 ? override : {}) })));
+    await h.controller.tick(after(now, 26)); await expectRepair(h);
+  });
+  it("requires a successful executed preflight, not only cancelled dependents", async () => {
+    const h = await admissionHarness(); h.run.status = "completed"; h.run.conclusion = "cancelled";
+    h.jobs.splice(0, h.jobs.length, ...cancelledCompanionCensus.slice(2).map(job => nativeJob(job)));
+    await h.controller.tick(after(now, 26)); await expectRepair(h);
+  });
+  it("retains a failed executed preflight even beside another successful preflight", async () => {
+    const h = await admissionHarness(); h.run.status = "completed"; h.run.conclusion = "cancelled";
+    h.jobs.splice(0, h.jobs.length, ...cancelledCompanionCensus.map((job, index) => nativeJob({ ...job, ...(index === 0 ? { conclusion: "failure" } : {}) })));
+    await h.controller.tick(after(now, 26)); await expectRepair(h);
+  });
+  it.each([["run", { run_id: 999 }], ["attempt", { run_attempt: 2 }], ["head", { head_sha: "d".repeat(40) }]])("rejects the actual cancelled companion census on a foreign %s", async (_label, override) => {
+    const h = await admissionHarness(); h.run.status = "completed"; h.run.conclusion = "cancelled";
+    h.jobs.splice(0, h.jobs.length, ...cancelledCompanionCensus.map((job, index) => nativeJob({ ...job, ...(index === 3 ? override : {}) })));
+    const result = await h.controller.tick(after(now, 26)), intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(result.errors.map(error => error.message)).toEqual(["Job census does not match the exact workflow run attempt"]);
+    expect(intent.state).toBe("waiting"); expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(h.dispatch).not.toHaveBeenCalled();
+  });
+  it.each(["empty", "partial", "duplicate"])("refuses the actual cancelled companion %s census", async kind => {
+    const h = await admissionHarness(); h.run.status = "completed"; h.run.conclusion = "cancelled";
+    h.jobs.splice(0, h.jobs.length, ...cancelledCompanionCensus.map(job => nativeJob(job)));
+    if (kind === "empty") h.jobs.splice(0);
+    if (kind === "duplicate") h.jobs[3] = h.jobs[2];
+    if (kind === "partial") h.jobPages.read = () => ({ total_count: 6, jobs: h.jobs });
+    const result = await h.controller.tick(after(now, 26)), intent = (await h.store.read()).state.intents[h.intentId]!;
+    expect(intent.attempts[0]!.status).toBe("active"); expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(intent.state).toBe(kind === "empty" ? "repairing" : "waiting"); expect(intent.nextAction).toBe(kind === "empty" ? "run-repair-agent" : "wait-native-job-evidence"); expect(h.dispatch).not.toHaveBeenCalled();
+    expect(result.errors).toHaveLength(kind === "empty" ? 0 : 1);
+  });
+  it.each(["tests", "newer owner"])("keeps %s committed after the cancelled-companion census", async kind => {
+    const h = await admissionHarness(); h.run.status = "completed"; h.run.conclusion = "cancelled";
+    h.jobs.splice(0, h.jobs.length, ...cancelledCompanionCensus.map(job => nativeJob(job)));
+    const transact = h.store.transact.bind(h.store); let raced = false;
+    vi.spyOn(h.store, "transact").mockImplementation(async (id, event, at, transition) => {
+      if (event === "native-failure" && !raced) { raced = true; await transact("racing-current-owner", "fixture", at, state => {
+        if (kind === "tests") recordTests(state, h.cfg, h.tests);
+        else { state.intents[h.intentId]!.attempts[0]!.status = "failed"; planAttempt(state, h.cfg, h.intentId, "d".repeat(40), "8", at, "hosted"); }
+        return null;
+      }); }
+      return transact(id, event, at, transition);
+    });
+    await h.controller.tick(after(now, 26)); const state = (await h.store.read()).state, intent = state.intents[h.intentId]!;
+    expect(raced).toBe(true); expect(intent.nextAction).toBe(kind === "tests" ? "run-repair-agent" : "reconcile-dispatch");
+    expect(intent.attempts[0]!.quiescence).toBeUndefined(); expect(h.dispatch).not.toHaveBeenCalled(); expect(h.cancel).not.toHaveBeenCalled();
+    if (kind === "tests") { expect(intent.attempts[0]!.tests!.evidenceHash).toBe(hash(h.tests)); expect(intent.attempts[0]!.status).toBe("active"); }
+    else expect(intent.attempts.map(attempt => [attempt.id, attempt.status])).toEqual([[h.attemptId, "failed"], [`${h.intentId}-a2`, "active"]]);
+  });
   it("classifies a real-shape cancelled-while-queued census as no-start and makes one hosted successor", async () => {
     const h = await admissionHarness(), before = (await h.store.read()).state.intents[h.intentId]!;
     await h.controller.tick(after(now, 15 + 1 / 60_000)); expect(h.cancel).toHaveBeenCalledExactlyOnceWith("100");
@@ -215,7 +519,7 @@ describe("terminal job placeholders", () => {
     ["target queued step", { steps: [{ name: "Set up job", number: 1, status: "queued", conclusion: null, started_at: null, completed_at: null }] }, {}, {}],
     ["target still in progress", { status: "in_progress" }, {}, {}], ["target completion absent", { completed_at: null }, {}, {}],
     ["native companion failed", {}, { conclusion: "failure" }, {}], ["native companion started after creation", {}, { started_at: after(skippedAt, 1 / 60) }, {}],
-    ["Ubuntu companion cancelled", {}, {}, { conclusion: "cancelled" }], ["Ubuntu companion assigned", {}, {}, { runner_id: 20, runner_name: "GitHub Actions 20" }],
+    ["Ubuntu companion cancelled after a listed step", {}, {}, { conclusion: "cancelled", steps: [{ status: "completed", conclusion: "success", started_at: skippedAt, completed_at: skippedAt }] }], ["Ubuntu companion assigned", {}, {}, { runner_id: 20, runner_name: "GitHub Actions 20" }],
   ])("refuses no-start fallback for %s", async (_label, target, upload, qualify) => {
     const h = await admissionHarness(); finishPlaceholders(h, target, upload, qualify);
     await h.controller.tick(after(now, 26)); await expectRepair(h);

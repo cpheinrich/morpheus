@@ -38,16 +38,24 @@ function jobAdmission(jobs, config, lane) {
     const local = (job) => job.labels.includes(config.execution?.localRunner ?? "self-hosted") || job.labels.includes("self-hosted");
     const hosted = (job) => !local(job) && job.labels.some(label => /^macos-/.test(label));
     const native = jobs.filter(lane === "local" ? local : hosted);
-    // Only known hosted Linux preflight work or explicitly skipped/unassigned
-    // downstream jobs may accompany the native census. Unknown executors need repair.
+    // Cancellation can materialize never-assigned Ubuntu dependents as cancelled,
+    // too. That is not an executed preflight failure or proof that preflight ran.
     const other = jobs.filter(job => !native.includes(job));
     const skipped = (job) => neverRan(job, ["skipped"]);
     const preflight = (job) => !local(job) && job.labels.some(label => /^ubuntu-/.test(label));
+    const successfulPreflight = (job) => preflight(job) && job.status === "completed" && job.conclusion === "success";
+    const verifiedPreflight = other.some(job => successfulPreflight(job) && job.started_at !== null && job.completed_at !== null
+        && job.runner_id !== null && job.runner_id > 0 && Boolean(job.runner_name?.trim())
+        && job.steps.some(step => step.status === "completed" && step.conclusion === "success"
+            && typeof step.started_at === "string" && Number.isFinite(Date.parse(step.started_at))
+            && typeof step.completed_at === "string" && Number.isFinite(Date.parse(step.completed_at))));
+    const cancelledCompanion = (job) => preflight(job) && neverRan(job, ["cancelled"]) && job.completed_at !== null
+        && (job.runner_group_id === null || job.runner_group_id === 0) && (job.runner_group_name === null || job.runner_group_name === "") && job.steps.length === 0;
     const recognized = native.length > 0 && other.every(job => preflight(job) || skipped(job));
     return {
         waiting: recognized && native.some(job => job.status === "queued") && native.every(job => skipped(job) || job.status === "queued" && job.conclusion === null && job.completed_at === null && unassigned(job)),
         neverStarted: recognized && native.some(job => job.conclusion === "cancelled") && native.every(job => neverRan(job, ["cancelled", "skipped"]))
-            && other.every(job => skipped(job) || preflight(job) && job.status === "completed" && job.conclusion === "success"),
+            && other.every(job => skipped(job) || successfulPreflight(job) || verifiedPreflight && cancelledCompanion(job)),
         hostedEnded: lane === "hosted" && recognized && jobs.every(job => job.status === "completed" && !local(job)),
     };
 }
