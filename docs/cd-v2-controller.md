@@ -130,7 +130,19 @@ The inventory hash is SHA-256 of `JSON.stringify([...ids].sort())`. Every result
 passes, except explicitly configured known skips. Payload names/hashes refer to
 actual sibling files packaged beside the evidence JSON. The validator defaults
 to its exact `controlSha` bytes; `validator.revision: "source"` is explicit.
-The controller repeats downloaded-payload and pinned-validator verification.
+The controller verifies downloaded payloads and their pinned validator before
+recording `artifactsVerifiedAt`. Once the latest active attempt has an accepted
+durable upload and its exact bound workflow is terminal, it can reuse that
+immutable compact proof without listing or downloading the same artifacts again.
+The fresh complete effect/run sweep, duplicate controls and pinned Git validator
+check still run. Proof/upload identities, input/configuration, hashes/count/skips,
+verification times, burned reservation and claim/fence must agree. Missing proof
+uses the original artifact path; inconsistent reusable proof refuses before Apple.
+Reconciliation records zero newly downloaded artifacts without rewriting tests or
+their verification time. An expired uploader lease or failed terminal cleanup does
+not invalidate already accepted bytes. Fresh Apple readback and all ordinary group,
+pause, cursor and receipt checks still determine delivery; this is not authority to
+reupload, manufacture raw results or count a workflow conclusion as availability.
 An artifact name, count or workflow conclusion never proves full tests.
 
 ## Upload and internal completion

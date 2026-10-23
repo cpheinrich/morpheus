@@ -59,6 +59,44 @@ function jobAdmission(jobs, config, lane) {
         hostedEnded: lane === "hosted" && recognized && jobs.every(job => job.status === "completed" && !local(job)),
     };
 }
+/** Acceptance must not depend on downloading the same verified artifacts again. */
+function acceptedTestProof(state, config, intent, attempt, run) {
+    const proof = attempt.tests, upload = attempt.upload;
+    if (run.status !== "completed" || upload?.outcome !== "accepted" || upload.acceptedAt === undefined || proof === undefined || attempt.artifactsVerifiedAt === undefined)
+        return undefined;
+    const digest = (value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+    const time = (value) => typeof value === "string" && Number.isFinite(Date.parse(value));
+    const app = config.channels[intent.channel], identity = upload.identity;
+    invariant(attempt.status === "active" && intent.attempts.at(-1)?.id === attempt.id && intent.state !== "delivered" && intent.source === attempt.sourceSha, "Reusable test proof requires the current active attempt");
+    invariant(/^[a-f0-9]{40}$/.test(attempt.sourceSha) && /^[a-f0-9]{40}$/.test(attempt.controlSha)
+        && state.sources.some(source => source.sha === attempt.sourceSha && source.inputDigest === attempt.appInputDigest), "Reusable test proof source/input binding differs");
+    invariant(digest(attempt.appInputDigest) && attempt.configurationDigest === configurationDigest(config)
+        && state.configurationDigest === attempt.configurationDigest && proof.appInputDigest === attempt.appInputDigest
+        && proof.configurationDigest === attempt.configurationDigest, "Reusable test proof input/configuration differs");
+    invariant(attempt.runId === String(run.id) && attempt.runAttempt === String(run.run_attempt)
+        && /^[1-9][0-9]*$/.test(attempt.runId) && /^[1-9][0-9]*$/.test(attempt.runAttempt), "Reusable test proof bound workflow differs");
+    invariant(proof.schemaVersion === 1 && identity?.schemaVersion === 1, "Reusable test proof/upload schema differs");
+    const expected = { intentId: intent.id, attemptId: attempt.id, dispatchEffectId: attempt.dispatchEffectId, sourceSha: attempt.sourceSha, controlSha: attempt.controlSha, runId: attempt.runId, runAttempt: attempt.runAttempt };
+    for (const key of Object.keys(expected))
+        invariant(proof[key] === expected[key] && identity[key] === expected[key], `Reusable test proof/upload ${key} differs`);
+    invariant(proof.scope === "full" && digest(proof.evidenceHash) && digest(proof.inventoryHash)
+        && Number.isSafeInteger(proof.executedCount) && proof.executedCount > 0, "Reusable full-test proof is malformed");
+    invariant(Array.isArray(proof.skippedIds) && new Set(proof.skippedIds).size === proof.skippedIds.length && proof.skippedIds.length <= proof.executedCount
+        && proof.skippedIds.every(id => typeof id === "string" && config.tests.allowedSkips.includes(id)), "Reusable full-test skips differ from policy");
+    invariant(Array.isArray(proof.artifacts) && proof.artifacts.length > 0 && proof.artifacts.every(artifact => artifact && typeof artifact.name === "string" && artifact.name.trim().length > 0 && digest(artifact.sha256))
+        && proof.validator && typeof proof.validator.path === "string" && digest(proof.validator.sha256)
+        && [undefined, "control", "source"].includes(proof.validator.revision), "Reusable test artifact/validator references are malformed");
+    invariant(time(attempt.artifactsVerifiedAt) && time(upload.claimedAt) && time(upload.acceptedAt), "Reusable test proof lacks verified artifact/upload times");
+    invariant(upload.id === `upload:${attempt.id}` && (identity.uploadOperationId === undefined || identity.uploadOperationId === upload.id)
+        && Number.isSafeInteger(upload.fence) && upload.fence > 0 && state.fences[attempt.id] === upload.fence
+        && attempt.lease?.fence === upload.fence && attempt.lease.owner === `${attempt.runId}/${attempt.runAttempt}` && time(attempt.lease.expiresAt), "Reusable upload claim/fence differs");
+    invariant(attempt.appId === app.appId && attempt.version === app.version && /^[0-9]+$/.test(attempt.buildNumber)
+        && identity.appId === attempt.appId && identity.version === attempt.version && identity.buildNumber === attempt.buildNumber && digest(identity.ipaSha256)
+        && (upload.providerUploadId === undefined || typeof upload.providerUploadId === "string" && upload.providerUploadId.trim().length > 0), "Reusable upload app/version/build/IPA differs");
+    const reservation = state.builds[`${attempt.appId}/${attempt.version}`]?.reservations[attempt.id];
+    invariant(reservation?.burned === true && reservation.buildNumber === attempt.buildNumber, "Reusable upload build reservation differs");
+    return proof;
+}
 export function status(state, now) {
     return Object.values(state.intents).map(intent => ({ id: intent.id, channel: intent.channel, validation: intent.validation, sourceAgeWaiver: intent.sourceAgeWaiver, state: intent.state, originalSource: intent.originalSource, source: intent.source, slot: intent.slot, oldestDebtAt: intent.oldestDebtAt, deadlineAt: intent.deadlineAt, overdue: intent.state !== "delivered" && Date.parse(now) > Date.parse(intent.deadlineAt), nextAction: intent.nextAction, nextCheckAt: intent.nextCheckAt, blocker: intent.blocker, attempts: intent.attempts.map(attempt => ({ id: attempt.id, buildNumber: attempt.buildNumber, lane: attempt.lane, runId: attempt.runId, status: attempt.status, upload: attempt.upload?.outcome })), receipt: intent.receipt, ...(intent.external ? { external: intent.external } : {}) }));
 }
@@ -287,7 +325,12 @@ export class Controller {
         invariant(run, "Bound workflow is absent from complete effect sweep");
         for (const duplicate of runs.filter(item => item.id !== run.id && item.status !== "completed"))
             await this.actions.cancel(String(duplicate.id));
-        const evidence = await this.actions.evidence(run, attempt);
+        const proof = acceptedTestProof(latest.state, this.config, current, attempt, run);
+        if (proof)
+            verifyValidator(this.sourceDir, proof);
+        // The compact ledger proof has no raw inventory/results. Preserve it rather
+        // than passing it to recordTests or claiming another artifact verification.
+        const evidence = proof ? { tests: [], uploads: [], failures: [] } : await this.actions.evidence(run, attempt);
         for (const tests of evidence.tests)
             verifyValidator(this.sourceDir, tests);
         await this.store.transact(`observe-run-${attempt.id}-${hash({ run, evidence }).slice(0, 24)}`, "observe-workflow", now, state => {

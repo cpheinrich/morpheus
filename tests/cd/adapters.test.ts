@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { generateKeyPair, exportPKCS8, jwtVerify } from "jose";
 import { AppleAdapter, AppleHttp, AppleRequestError, applePages, type AppleApi } from "../../src/cd/apple.js";
 import { ActionsAdapter, matchesEffect, uploadEvidence } from "../../src/cd/actions.js";
-import { git, inputDigest, loadSources, verifySource } from "../../src/cd/source.js";
+import { git, inputDigest, loadSources, verifySource, verifyValidator } from "../../src/cd/source.js";
 import { validatePayloadFiles } from "../../src/cd/evidence.js";
 import { hash } from "../../src/cd/schema.js";
 import { type GitHubApi } from "../../src/cd/store.js";
@@ -146,6 +146,21 @@ describe("Actions and actual evidence bytes", () => {
 });
 
 describe("real Git source evidence", () => {
+  it("checks a compact durable proof against its exact control or source validator", async () => {
+    const root = await temp(), path = "verify.mjs", sourceBytes = "export const validator = 'source';\n", controlBytes = "export const validator = 'control';\n";
+    git(root, ["init", "-b", "main"]); git(root, ["config", "user.name", "CD Test"]); git(root, ["config", "user.email", "test@example.invalid"]);
+    await writeFile(join(root, path), sourceBytes); git(root, ["add", path]); git(root, ["commit", "-m", "source validator"]); const sourceSha = git(root, ["rev-parse", "HEAD"]);
+    await writeFile(join(root, path), controlBytes); git(root, ["add", path]); git(root, ["commit", "-m", "control validator"]); const controlSha = git(root, ["rev-parse", "HEAD"]);
+    const fixture = prepared(), proof = fixture.state.intents[fixture.intentId]!.attempts[0]!.tests!;
+    Object.assign(proof, { sourceSha, controlSha, validator: { path, sha256: hash(controlBytes) } });
+    expect(proof).not.toHaveProperty("inventory"); expect(proof).not.toHaveProperty("results");
+    verifyValidator(root, proof);
+    await writeFile(join(root, path), "uncommitted validator substitution"); verifyValidator(root, proof);
+    proof.validator.sha256 = hash(sourceBytes); expect(() => verifyValidator(root, proof)).toThrow("trusted revision");
+    proof.validator.revision = "source"; verifyValidator(root, proof);
+    proof.validator.path = "../verify.mjs"; expect(() => verifyValidator(root, proof)).toThrow("repository relative");
+    proof.validator.path = "/verify.mjs"; expect(() => verifyValidator(root, proof)).toThrow("repository relative");
+  });
   it("uses exact merged-PR entry instead of a deliberately backdated commit", async () => {
     const directory = await temp(), bare = join(directory, "remote.git"), root = join(directory, "app"); await mkdir(root);
     git(directory, ["init", "--bare", bare]); git(root, ["init", "-b", "main"]); git(root, ["config", "user.name", "CD Test"]); git(root, ["config", "user.email", "test@example.invalid"]);

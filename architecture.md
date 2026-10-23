@@ -3376,7 +3376,13 @@ The implementation is `src/cd/`, exported as `morpheus-kit/cd` and `morpheus cd`
 its [operator contract](docs/cd-v2-controller.md) documents config, evidence and
 workflow inputs. GitHub Git commits store the authoritative state and events with
 single-parent nonforce updates and per-invocation ownership. Compact verified
-test proofs reference hashed native artifacts. Upload and group operations have
+test proofs reference hashed native artifacts. A terminal, exactly bound workflow
+with a current accepted upload can reuse its immutable downloaded full-test proof
+after strict identity/input/configuration/claim validation and a fresh pinned Git
+validator check. Artifact service availability after acceptance is not an ongoing
+receipt dependency. Missing proof retains the download path; malformed reusable
+proof refuses. The proof is never treated as raw results or re-recorded, and fresh
+Apple readback still owns availability and receipt creation. Upload and group operations have
 durable claims; actual provider receipts complete the original obligation.
 Bounded subscription workers retain immutable tasks, session checkpoints and
 actual quota telemetry. Hosted Claude admission joins shared and explicitly
