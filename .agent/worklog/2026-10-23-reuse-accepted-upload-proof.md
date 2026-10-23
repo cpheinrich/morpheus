@@ -48,3 +48,12 @@ before source publication. Consumer role binding, full immutable runtime/profile
 qualification and exact operational review remain separate future work. Existing
 accepted bytes can recover through the old runtime if the provider outage resolves;
 this commit does not authorize or perform that recovery.
+
+The codebase-memory device check reports MCP 0.10.8 and enabled watching, but this
+exact new worktree has no index and the installed general CLI is behind current
+main. No global CLI/index install or update was performed under the source-only
+no-host-effect scope. Tier 2 structural evidence uses the indexed primary
+(generation 2026-10-23T09:45:52Z); it is best-effort and does not cover this branch.
+All relied current task sources were read directly; the reported controller-test
+line-13 parser gap was read explicitly. This limitation is distinct from the
+passing source checks and PM index, and must accompany the review packet.
