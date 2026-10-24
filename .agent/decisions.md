@@ -1514,3 +1514,24 @@ raw test results or refresh its artifact-verification time. Failed terminal clea
 and uploader lease expiry do not discard accepted bytes. Existing provider,
 pause/cursor and receipt guards remain unchanged. This small domain-specific guard
 needs no new dependency, cache, schema, API or generic recovery framework.
+
+## Artifact admission snapshots the source before uploading — 2026-10-23
+
+Keep the pinned maintained GitHub artifact uploader and normal archive layout; do not
+write another ZIP implementation or switch to raw/nested archives. A small domain
+boundary in dependency-free Python owns six exact source channels, checked byte/name
+accounting, stable copying and a final whole snapshot verification. This is specific to
+our native evidence/receipt/audit layouts, so no generic snapshot or retry dependency is
+introduced. Every selected native stage must succeed before any native uploader, and
+always/failure uploads still require their own successful admission. CI-only browser
+traces use a separate 64 MiB/one-day role. Explicit 1200/30 processing values preserve
+normal defaults without treating a wall-clock loop as a hard 41-call cap. See
+[the contract](../docs/artifact-snapshots.md); source/ABI review, consumer adoption,
+provider retention and financial/operational qualification stay separate.
+
+**Receipt staging follows the producer's invocation identity.** The run/attempt/channel
+key alone collides when the existing action uploads two apps in one job. Bind only that
+channel's leaf to the full SHA-256 of its validated canonical receipt directory; changed
+output availability must not buy a retry. Other leaves and all byte/retention limits stay
+unchanged. Distinguish missing optional audit roots from dangling links. This corrects
+the source boundary without adding a caller namespace, retry or provider behavior.

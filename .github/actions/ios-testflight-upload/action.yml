@@ -308,6 +308,8 @@ runs:
       id: upload
       shell: bash
       env:
+        PROCESSING_TIMEOUT_SECONDS: '1200'
+        PROCESSING_POLL_SECONDS: '30'
         UPLOAD_RECEIPT_DIRECTORY: ${{ steps.receipt-context.outputs.directory }}
         RESERVED_BUILD_NUMBER: ${{ inputs.reserved-build-number }}
         BEFORE_UPLOAD_SCRIPT: ${{ inputs.before-upload-script }}
@@ -335,18 +337,28 @@ runs:
         SENTRY_AUTH_TOKEN: ${{ inputs.sentry-auth-token }}
       run: 'python3 "$GITHUB_ACTION_PATH/signing-lock.py" "$GITHUB_ACTION_PATH/upload-testflight.sh"'
 
+    - name: Stage bounded upload acceptance
+      id: artifact_receipt
+      if: ${{ always() && (steps.upload.outputs.receipt-path != '' || steps.upload.outputs.resource-path != '') }}
+      shell: bash
+      env:
+        ARTIFACT_RECEIPT_DIRECTORY: ${{ steps.receipt-context.outputs.directory }}
+        ARTIFACT_RECEIPT_PATH: ${{ steps.upload.outputs.receipt-path }}
+        ARTIFACT_RESOURCE_PATH: ${{ steps.upload.outputs.resource-path }}
+      run: python3 -I -S -B "$GITHUB_ACTION_PATH/artifact-stage/stage.py" --github upload-acceptance-resource
+
     - name: Persist upload acceptance before distribution
       id: acceptance
-      if: ${{ always() && (steps.upload.outputs.receipt-path != '' || steps.upload.outputs.resource-path != '') }}
+      if: ${{ always() && (steps.upload.outputs.receipt-path != '' || steps.upload.outputs.resource-path != '') && steps.artifact_receipt.outcome == 'success' && steps.artifact_receipt.outputs.admitted == 'true' && steps.artifact_receipt.outputs.has-files == 'true' }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: ${{ steps.receipt-context.outputs.artifact-name }}
-        path: |
-          ${{ steps.upload.outputs.receipt-path }}
-          ${{ steps.upload.outputs.resource-path }}
+        path: ${{ steps.artifact_receipt.outputs.payload-root }}
         if-no-files-found: error
         retention-days: 90
         overwrite: false
+        archive: true
+        compression-level: 0
 
     - name: Wait for processing and distribute to TestFlight groups
       if: ${{ success() && inputs.distribution-enabled == 'true' && steps.upload.outputs.upload-id != '' }}
