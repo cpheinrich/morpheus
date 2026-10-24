@@ -48,12 +48,76 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium webkit
-      - run: pnpm test:qa-browser
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: failure()
+      - name: Run browser QA tests
+        id: qa_tests
+        run: pnpm test:qa-browser
+      - name: Stage bounded browser failure traces
+        id: artifact_ci_trace
+        if: ${{ failure() && steps.qa_tests.outcome == 'failure' }}
+        run: python3 -I -S -B .github/actions/ios-testflight-upload/artifact-stage/ci_trace_stage.py --github
+      - name: Upload admitted browser failure traces
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ failure() && steps.qa_tests.outcome == 'failure' && steps.artifact_ci_trace.outcome == 'success' && steps.artifact_ci_trace.outputs.admitted == 'true' && steps.artifact_ci_trace.outputs.has-files == 'true' }}
         with:
           name: qa-browser-traces
-          path: test-results/
+          path: ${{ steps.artifact_ci_trace.outputs.payload-root }}
+          if-no-files-found: error
+          retention-days: 1
+          archive: true
+          compression-level: 0
+          overwrite: false
+
+  # This is synthetic transport qualification, never native test evidence.
+  artifact-abi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.9', '3.14']
+    env:
+      UV_PYTHON: ${{ matrix.python }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a
+        with:
+          enable-cache: false
+      - name: Qualify actual interpreter and focused artifact tests
+        run: |
+          set -euo pipefail
+          node -e 'if (process.versions.node.split(".")[0] !== "24") process.exit(1); console.log(JSON.stringify({node:process.versions.node,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,sha:process.env.GITHUB_SHA,job:process.env.GITHUB_JOB,runner:process.env.RUNNER_NAME}));'
+          uv python install "$UV_PYTHON"
+          uv run --no-project python -I -S -B tests/artifacts/test_stage.py
+          uv run --no-project python -I -S -B tests/artifacts/test_ci_trace.py
+          uv run --no-project python -I -S -B tests/artifacts/test_processing_environment.py
+          uv run --no-project python -I -S -B tests/artifacts/test_abi_fixture.py
+      - name: Stage fixed 2 MiB ABI fixture
+        id: artifact_abi
+        run: uv run --no-project python -I -S -B tests/artifacts/abi_fixture.py prepare
+      - name: Upload admitted ABI fixture with actual Node 24 action
+        if: ${{ success() && steps.artifact_abi.outcome == 'success' && steps.artifact_abi.outputs.admitted == 'true' && steps.artifact_abi.outputs.has-files == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: artifact-abi-fixture-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.python }}
+          path: ${{ steps.artifact_abi.outputs.payload-root }}
+          if-no-files-found: error
+          retention-days: 1
+          archive: true
+          compression-level: 0
+          overwrite: false
+      - name: Download through normal archive-compatible downloader
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: artifact-abi-fixture-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.python }}
+          path: ${{ runner.temp }}/artifact-abi-readback
+      - name: Verify complete independent fixture bytes
+        run: uv run --no-project python -I -S -B tests/artifacts/abi_fixture.py verify
 
   # Morpheus has the CLI in-tree, so it validates directly rather than via the
   # reusable workflow (which checks the CLI out of this very repo).

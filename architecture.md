@@ -3242,6 +3242,18 @@ pending run in a concurrency group even when `cancel-in-progress` is false; a ca
 run can leave an otherwise green pull request blocked. Job-level grouping governs a called job;
 a called workflow's top-level `concurrency` does not govern the caller's run.
 
+Artifact uploads use source-owned private snapshots with a checked ZIP byte envelope,
+not the size of a directory that another process can still grow. The reusable iOS
+workflow stages every selected native channel after its writers and requires one
+all-selected barrier plus each uploader's own successful admission. The upload action
+similarly stages accepted/resource receipts; persistence failure preserves uncertain
+Apple acceptance. Names, archive layout and existing native/tool/controller policy stay
+independent of byte admission. A separate exact `artifact-stage-ref` is required for CD;
+ordinary callers retain `main`. Morpheus's browser failure diagnostics have a 64 MiB,
+one-day role, and a bounded synthetic Node 24/Python ABI job qualifies the artifact
+transport. The [artifact snapshot contract](docs/artifact-snapshots.md) states byte math,
+writer/ABI/provider limits and the separate consumer adoption requirements.
+
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
 Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination.
