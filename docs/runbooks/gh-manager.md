@@ -179,7 +179,8 @@ pull requests have their own maintainers and are only reported.
 Morpheus's import-only Security exception is a **separate review-only workflow**, not a route
 through the Manager's ordinary sweep or protected-path self-review. The private Manager caller
 may call `security-import-review.yml` for `cpheinrich/morpheus` only. Its model session receives
-contents read, reviews the exact Security App-attested head and writes a decision artifact. A
+contents read, has only read-only file tools, and reviews the exact Security App-attested head
+using a precomputed diff and check packet. It has no target GitHub token and returns a JSON decision. A
 separate deterministic job verifies the live head and App candidate, then posts a Manager App
 comment carrying that head and its clear/findings/hold verdict. It cannot push or merge the PR.
 Security checks the distinct App comment again before any merge. The review label only triggers

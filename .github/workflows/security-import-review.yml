@@ -116,30 +116,39 @@ jobs:
       - name: Prepare an exact-head, read-only review brief
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
-          SECURITY_REVIEW_DECISION: ${{ runner.temp }}/decision-${{ matrix.pr }}.json
           SECURITY_REVIEW_CHECKOUT: ${{ github.workspace }}/target
+          SECURITY_REVIEW_DIFF: ${{ runner.temp }}/diff-${{ matrix.pr }}.txt
+          SECURITY_REVIEW_CHECKS: ${{ runner.temp }}/checks-${{ matrix.pr }}.json
           PR: ${{ matrix.pr }}
-        run: node tooling/scripts/security-import-review.mjs prompt "$PR" "$RUNNER_TEMP/prompt-$PR.md"
-      - name: Review without write access to Morpheus
+        run: |
+          set -euo pipefail
+          node tooling/scripts/security-import-review.mjs prompt "$PR" "$RUNNER_TEMP/prompt-$PR.md"
+          git -C target diff origin/main...HEAD -- > "$SECURITY_REVIEW_DIFF"
+          head=$(git -C target rev-parse HEAD)
+          gh api "repos/cpheinrich/morpheus/commits/$head/check-runs?per_page=100" \
+            --jq '[.check_runs[] | {name, head_sha, status, conclusion, app: .app.slug}]' > "$SECURITY_REVIEW_CHECKS"
+      - name: Review with read-only file tools and no target token
         id: session
         working-directory: target
         timeout-minutes: 30
         continue-on-error: true
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.claude_code_oauth_token }}
-          GH_TOKEN: ${{ steps.token.outputs.token }}
           PR: ${{ matrix.pr }}
           DISABLE_AUTOUPDATER: '1'
         run: |
-          claude --print --model claude-opus-5-5 --output-format json --dangerously-skip-permissions \
+          claude --print --model claude-opus-5-5 --output-format json \
+            --restricted --safe-mode --strict-mcp-config --tools Read,Glob,Grep \
+            --add-dir "$RUNNER_TEMP" \
             < "$RUNNER_TEMP/prompt-$PR.md" > "$RUNNER_TEMP/result-$PR.json"
       - name: Hand the review result to a separate verifier
         if: always()
         env:
           PR: ${{ matrix.pr }}
         run: |
-          test -f "$RUNNER_TEMP/decision-$PR.json" || printf '{}' > "$RUNNER_TEMP/decision-$PR.json"
           test -f "$RUNNER_TEMP/result-$PR.json" || printf '{"is_error":true}' > "$RUNNER_TEMP/result-$PR.json"
+          node tooling/scripts/security-import-review.mjs extract \
+            "$RUNNER_TEMP/result-$PR.json" "$RUNNER_TEMP/decision-$PR.json"
       - name: Upload the review result
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

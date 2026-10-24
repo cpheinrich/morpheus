@@ -413,6 +413,8 @@ describe("Morpheus-only Security import review", () => {
     expect(workflow).not.toMatch(/gh pr merge|permission-workflows: write/);
     expect(workflow).toContain("needs: [discover, review]");
     expect(workflow).toContain("security-import-review.mjs apply");
+    expect(workflow).toContain("--restricted --safe-mode --strict-mcp-config --tools Read,Glob,Grep");
+    expect(workflow).not.toContain("--dangerously-skip-permissions");
   });
 
   it("uses the existing metadata check for a labeled Security PR without changing global CI events", async () => {

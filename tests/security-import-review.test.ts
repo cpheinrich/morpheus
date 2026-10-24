@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error operational workflow script is intentionally JavaScript
-import { candidateReceipt, parseReviewDecision, requireReviewedCheckout, reviewMarker } from "../scripts/security-import-review.mjs";
+import { candidateReceipt, parseReviewDecision, requireReviewedCheckout, reviewDecisionFromSession, reviewMarker } from "../scripts/security-import-review.mjs";
 
 const head = "a".repeat(40);
 const pr = {
@@ -35,7 +35,8 @@ describe("review-only Security candidate admission", () => {
       .toBeNull();
     expect(candidateReceipt(pr, [check], files.map((file) => file.filename === "src/review/local.ts"
       ? { ...file, status: "added" } : file))).toBeNull();
-    for (const path of ["src/trading/foo.ts", "src/auth.ts", "src/credential.ts", "tests/trade.test.ts"]) {
+    for (const path of ["src/trading/foo.ts", "src/auth.ts", "src/authorization.ts", "src/credentials.ts",
+      "src/trades.ts", "src/orders.ts", "src/portfolio.ts", "src/market-data.ts", "tests/trade.test.ts"]) {
       const unsafe = { ...receipt, importFiles: [path] };
       expect(candidateReceipt(pr, [{ ...check, output: { summary: JSON.stringify(unsafe) } }],
         files.map((file) => file.filename === "src/review/local.ts" ? { ...file, filename: path } : file))).toBeNull();
@@ -48,6 +49,9 @@ describe("review-only Security candidate admission", () => {
     const decision = { version: 1, repository: "cpheinrich/morpheus", pr: 42, headSha: head,
       verdict: "clear", summary: "Inspected the replacement package, source imports, generated output, advisory and passing exact-head checks.", findings: [] };
     expect(parseReviewDecision(decision, "cpheinrich/morpheus", 42, head)).toEqual(decision);
+    expect(reviewDecisionFromSession({ is_error: false, result: JSON.stringify(decision) })).toEqual(decision);
+    expect(reviewDecisionFromSession({ is_error: true, result: JSON.stringify(decision) })).toBeNull();
+    expect(reviewDecisionFromSession({ is_error: false, result: "not JSON" })).toBeNull();
     expect(parseReviewDecision({ ...decision, headSha: "b".repeat(40) }, "cpheinrich/morpheus", 42, head)).toBeNull();
     expect(parseReviewDecision({ ...decision, findings: ["Suspicious behavior"] }, "cpheinrich/morpheus", 42, head)).toBeNull();
     const marker = `<!-- morpheus-security-review ${JSON.stringify({ version: 1, repository: "cpheinrich/morpheus", pr: 42, headSha: head, verdict: "clear" })} -->`;

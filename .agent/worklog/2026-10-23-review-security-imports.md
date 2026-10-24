@@ -28,3 +28,12 @@ forbidden first path components could pass; the model checkout could differ from
 head; the extra conventions workflow duplicated the required status; and a transient hold never
 retried. The current repair checks each path segment, rejects a stale reviewer checkout, uses the
 existing metadata workflow, and allows one bounded same-head hold retry. Re-review is pending.
+
+The second review found that an unrestricted model shell could run candidate code with the
+long-lived Claude token in its environment. The review step now uses pinned Claude CLI restricted
+and safe modes with only Read, Glob and Grep tools; it has no GitHub token, no Bash, no MCP, and
+does not write the decision itself. A deterministic step captures the exact-head diff and check
+packet before the model receives its token and extracts strict JSON afterward. The model never
+executes target tests; CI owns that proof. Focused tests (295), syntax check, and diff check passed
+after this fix. The reviewer also identified plural/related credential and trading path names;
+both Security and Manager validators now exclude those path forms and test them.
