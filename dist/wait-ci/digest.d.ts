@@ -15,7 +15,7 @@ export interface DigestInput {
     elapsedMs: number;
     /** Deadline reached before every check finished. */
     timedOut: boolean;
-    /** The visible checks passed, but a current-head Actions run has not finished. */
+    /** The visible checks passed, but current-head workflow runs remain unverified. */
     pendingWorkflows?: boolean;
     /** Keyed by {@link checkKey}. */
     details: Map<string, FailureDetail>;

@@ -110,7 +110,7 @@ describe("waitCi", () => {
     const result = await waitCi(fakeGh([green()], {}, PR, [running]).deps, { ...opts, timeoutMs: 30_000 });
     expect(result.exitCode).toBe(2);
     expect(result.output).toContain("CI still running at the deadline");
-    expect(result.output).toContain("current-head Actions workflow still running");
+    expect(result.output).toContain("current-head Actions workflow runs pending or not yet verified");
   });
 
   it("rechecks the rollup after the run census discovers newly registered jobs", async () => {
@@ -136,6 +136,26 @@ describe("waitCi", () => {
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("head moved during the wait: 59cb7d5 → dcd95b7");
     expect(calls.filter((c) => c[0] === "run" && c[1] === "list").every((c) => c[c.indexOf("--commit") + 1] === SHA_B)).toBe(true);
+  });
+
+  it("does not call a replacement head green when confirmation reaches the deadline", async () => {
+    const scripted = fakeGh([green(SHA_A), green(SHA_B)]);
+    let time = 0;
+    let polls = 0;
+    const deps: WaitDeps = {
+      ...scripted.deps,
+      now: () => time,
+      gh: async (args) => {
+        const result = await scripted.deps.gh(args);
+        if (args[0] === "api" && ++polls === 2) time = 1_000;
+        return result;
+      },
+    };
+    const result = await waitCi(deps, { ...opts, timeoutMs: 1_000 });
+    expect(result.exitCode).toBe(2);
+    expect(result.output).toContain("CI still running at the deadline");
+    expect(result.output).toContain(`@ ${SHA_B.slice(0, 7)}`);
+    expect(scripted.calls.filter((c) => c[0] === "run" && c[1] === "list").map((c) => c[c.indexOf("--commit") + 1])).toEqual([SHA_A]);
   });
 
   it("passes --repo through to the PR lookup", async () => {

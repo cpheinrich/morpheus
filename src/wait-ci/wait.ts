@@ -198,6 +198,10 @@ export async function waitCi(deps: WaitDeps, opts: WaitOptions): Promise<WaitRes
         }
         headSha = confirmed.headSha;
         snapshot = confirmed;
+        // The run census belonged to candidateSha. A replacement head (or an
+        // incomplete confirmation rollup) has not been verified, including
+        // when this poll consumed the last moment before the deadline.
+        runsPending = confirmed.headSha !== candidateSha || confirmed.truncated;
         if (!snapshot.truncated && confirmed.headSha === candidateSha && settled(relevant(snapshot.checks, false)) && verdict(snapshot.checks) === "green") break;
       }
     }

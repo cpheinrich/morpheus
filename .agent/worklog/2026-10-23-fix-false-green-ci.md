@@ -39,6 +39,12 @@ the registration window. It should not be treated as a merge authorization.
   cover stable-head four-green/three-running, late rollup registration, a
   replacement head with a queued run, timeout with only a running workflow,
   API failure and an incomplete census.
+- Independent review of the initial commit found that a confirmation poll could
+  return a replacement head at the deadline, after the census of the old head,
+  and the command could call its visible checks green without a census for the
+  replacement. The fix marks that head unverified until a later poll checks its
+  runs, or reports pending at the deadline. A clock-controlled regression
+  reproduces the boundary; focused `tests/wait-ci` now has 99 passing tests.
 - `tsc -p tsconfig.build.json --noEmit`: passed.
 - ESLint on `src/wait-ci/wait.ts`: passed.
 - Build TypeScript compile generated only `dist/wait-ci/wait.js(.map)`
