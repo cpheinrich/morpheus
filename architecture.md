@@ -1422,6 +1422,18 @@ status or bypasses the normal delivery loop. Its private authentication rollout 
 the existing controller/database and stages reversible configuration; real deployment, worker
 authority isolation and consumer delivery remain explicit qualification gates.
 
+Interactive remote delegation ([design](docs/paperclip-interactive-bridge.md)) lets the Codex
+desktop conversation coordinate remote Claude and Codex workers through the optional
+`codex-claude` bridge (§18.0). One Paperclip issue is one pool conversation and each provider
+turn is one Paperclip process-adapter run; the Paperclip-spawned runner on the controller host
+claims the journaled turn, reserves the account, and holds the SSH session whose stdin is the
+remote guardian's lease. The desktop bridge only journals, reads the Paperclip run log through a
+persisted cursor and writes answer/stop controls, so its loss ends nothing. The native Runner was
+rejected for this path because it stages credentials or API tokens instead of using each host's
+own sign-in; follow-ups are turn-boundary only and live questions exist only for Claude. No
+Paperclip credential reaches a worker host. Live acceptance, including remote Claude (pending
+native sign-in), is separate from the deterministic transport tests.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.
