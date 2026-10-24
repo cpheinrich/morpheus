@@ -30,3 +30,46 @@ review record verifies at the live head, whose Manager session pushed nothing an
 body, and whose required GitHub checks and protections pass. It does not authorize Manager
 self-review of protected paths, Security App source edits, or any trading/deployment action.
 Chris must confirm this persistent authority before the draft may be merged.
+
+## Independent review
+
+Independent high-risk review found that an old `manager-reviewed` label would make `check pr`
+select the wrong record after author-review fallback. The reviewer conditionally cleared removal
+of that label, focused tests with both author-label states, typecheck, and regenerated output.
+The fix is `fc3a872b`; all specified checks passed. The reviewer could not confirm its own
+test run because its tool yielded, so the author relied on the separately observed focused run.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "0a4722e7c2f6aa259174e56af7b638dd953e7be5",
+  "reviewed": "4c900c39b2ac1142ec5a362a001bfe59e0f5ff6e",
+  "covered": "fc3a872b064af1b901f071129b34063f0e966352",
+  "authorSession": "01a16b36-9afe-71b4-978b-43ac2a11400a",
+  "reviewerSession": "/root/security_manager_review",
+  "risk": "high",
+  "elapsedMinutes": 1.3333333333333333,
+  "timing": {
+    "source": "clock",
+    "durationMs": 80000,
+    "evidence": "UTC clock readings immediately after reviewer dispatch at 2026-10-24T00:16:11Z and after final response at 2026-10-24T00:17:31Z."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review found that an old `manager-reviewed` label would make `check pr` select the wrong record after author-review fallback. The reviewer conditionally cleared removal of that label, focused tests with both author-label states, typecheck, and regenerated output. The fix is `fc3a872b`; all specified checks passed. The reviewer could not confirm its own test run because its tool yielded, so the author relied on the separately observed focused run.",
+  "findings": [
+    {
+      "id": "R01",
+      "severity": "substantive",
+      "description": "A stale manager-reviewed label would make check pr select the Manager record after the author-review fallback and block a valid protected-path PR.",
+      "paths": ["src/gh-manager/decision.ts", "tests/gh-manager.test.ts", "dist/gh-manager/decision.js", "dist/gh-manager/decision.js.map"],
+      "disposition": "fixed",
+      "response": "Removed the old Manager label on fallback; tested both absent and present author labels (89 Manager tests passed), passed typecheck, and regenerated dist output.",
+      "condition": {
+        "paths": ["src/gh-manager/decision.ts", "tests/gh-manager.test.ts", "dist/gh-manager/decision.js", "dist/gh-manager/decision.js.map"],
+        "evidence": "Test fallback with an existing Manager label, both with and without an existing author label; run focused Manager tests, typecheck, and compile."
+      },
+      "conditionMet": "The fix commit touched only the four conditioned paths. Focused Manager suite passed 89 tests; typecheck and compile passed."
+    }
+  ]
+}
+```
