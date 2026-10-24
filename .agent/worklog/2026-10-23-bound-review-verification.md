@@ -35,5 +35,66 @@ no changes. `pnpm typecheck` is blocked by an existing import of removed `gray-m
 and independent review remain pending. The first independent high-risk reviewer turn blocked
 two scope bypasses: a `tests/` helper counted as a test file, and architecture/review-policy
 prose was eligible as a finding path. The correction reuses the existing filename-only test rule,
-excludes those authority files, and adds regressions for both cases. The original reviewer must
-verify this fix. No gate policy has been merged or activated.
+excludes those authority files, and adds regressions for both cases. The same reviewer cleared
+both findings at `01bf4e7`, with no scoped regression. The correction's ten focused cases passed.
+No gate policy has been merged or activated.
+
+## Independent review
+
+The initial high-risk review blocked two substantive scope bypasses. The same reviewer cleared
+both after the author narrowed test-file recognition and excluded review-policy prose. The
+reviewer inspected generated output and the new regressions; they did not rerun the tests. The
+draft remains unlabelled because the unrelated baseline typecheck failure prevents final
+validation and the numeric standing-policy limits await approval.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "0a4722e7c2f6aa259174e56af7b638dd953e7be5",
+  "reviewed": "b9dadd4221ba4c1f2f9829d07995b795ffd6c8d3",
+  "covered": "01bf4e77d3f9516d8d8ca36e44e636cc0e5eb433",
+  "authorSession": "01a16b3b-ef76-7539-a024-cf9f5fe9f00f",
+  "reviewerSession": "/root/bounded_review_gate_reviewer",
+  "risk": "high",
+  "elapsedMinutes": 0.95,
+  "timing": {
+    "source": "clock",
+    "durationMs": 57000,
+    "evidence": "Author clock readings around the initial reviewer invocation: 2026-10-24 00:31:14 UTC to 00:32:11 UTC."
+  },
+  "outcome": "complete",
+  "summary": "Initial review blocked two substantive scope bypasses; the same reviewer cleared both after filename-only test recognition and review-policy exclusions were added, with focused regressions.",
+  "findings": [
+    {
+      "id": "SCOPE-TEST",
+      "severity": "substantive",
+      "description": "Classifying every file under tests/ as a test let an executable helper enter the automatic late-test pass and its larger line allowance.",
+      "paths": ["src/review/local.ts", "tests/local-review.test.ts"],
+      "disposition": "fixed",
+      "response": "Reused the existing filename-only test rule and added a rejecting tests/helper.ts regression. The same reviewer cleared the correction."
+    },
+    {
+      "id": "SCOPE-POLICY",
+      "severity": "substantive",
+      "description": "The fourth-turn finding-fix path check allowed architecture.md and the independent-review runbook, both policy authority files.",
+      "paths": ["src/review/local.ts", "docs/runbooks/independent-review.md", "tests/local-review.test.ts"],
+      "disposition": "fixed",
+      "response": "Excluded architecture.md, the independent-review runbook and .agent/decisions.md, with one rejecting regression per path. The same reviewer cleared the correction."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/bounded_review_gate_reviewer",
+      "commit": "01bf4e77d3f9516d8d8ca36e44e636cc0e5eb433",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.3333333333333333,
+      "timing": {
+        "source": "clock",
+        "durationMs": 20000,
+        "evidence": "Author clock readings around the focused same-reviewer invocation: 2026-10-24 00:33:38 UTC to 00:33:58 UTC."
+      },
+      "summary": "Both scope findings cleared at 01bf4e7; filename-only tests and policy exclusions are enforced and covered by regressions."
+    }
+  ]
+}
+```
