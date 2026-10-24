@@ -77,7 +77,9 @@ live Claude question with `pool_answer` under the same rules as step 7. A Codex 
 result, or the next instruction, goes through `pool_followup` after the turn ended (with
 `replySource`/`replyReason` when it answers a question). Follow-ups are turn-boundary only; never
 claim mid-turn steering. `pool_stop` stops a turn exactly. After a restart or a lost tool result,
-`pool_reattach` (by conversation id, or by task id to list) — never start a duplicate. An unknown
+`pool_reattach` (by conversation id, or by task id to list) — never start a duplicate. Always
+pass the current task id to start, follow-up, answer and retry: admission uses this task's own
+live settings, and a read-only task cannot drive a writing profile. An unknown
 submission is retried only with `retry: true`. A `refused` turn names its category (for example
 `native_auth_unavailable`, `quota_exhausted`, `account_reserved`, `binding_drift`); report it, do
 not work around it. Verify artifacts independently; a worker's `completed` is not acceptance.

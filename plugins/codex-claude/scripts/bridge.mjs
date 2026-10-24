@@ -123,7 +123,11 @@ try {
       for await (const b of process.stdin) input += b;
     }
     const args = input ? JSON.parse(input) : {};
-    if (process.env[delegatedMarker] && ["start", "pool.start", "pool.followup", "codex.start"].includes(command))
+    if (
+      process.env[delegatedMarker] &&
+      (["start", "codex.start", "pool.start", "pool.followup", "pool.answer"].includes(command) ||
+        (command === "pool.reattach" && args.retry === true))
+    )
       throw new Error("Delegated workers cannot delegate again.");
     if (command.startsWith("codex.")) {
       if (!args.sessionId && process.env.CLAUDE_CODE_SESSION_ID)

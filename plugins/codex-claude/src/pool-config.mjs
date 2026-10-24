@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { readFile, realpath, stat } from "node:fs/promises";
+import { dirname, isAbsolute, join } from "node:path";
 import { home, modelIdPattern, MOVING_MODEL_ALIASES } from "./config.mjs";
 
 // Pool profiles bind one Paperclip agent to one provider, host, account and workspace.
@@ -176,12 +176,35 @@ export async function readToken(path) {
 export function inside(child, parent) {
   return child === parent || child.startsWith(parent.replace(/\/$/, "") + "/");
 }
+// Every path that decides ownership is compared as text, so each must already be its
+// canonical real path on this host. An alias (/var vs /private/var) or a symlinked
+// workspace would otherwise get its own writer lock for one physical checkout.
+export async function canonical(path, what) {
+  let real;
+  try {
+    real = await realpath(path);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  if (real !== path) throw new Error(`${what} must be its canonical real path`);
+  return real;
+}
 export async function loadHost(path) {
   if (!isAbsolute(path)) throw new Error("host config path must be absolute");
+  if (!(await canonical(path, "Pool host file"))) throw new Error("Pool host file is not configured");
   const parsed = hostSchema.safeParse(JSON.parse(await ownerFile(path, "Pool host file")));
   if (!parsed.success) throw new Error(`Pool host file is invalid: ${parsed.error.issues[0].message}`);
-  for (const entry of Object.values(parsed.data.profiles))
-    if (inside(path, entry.workspace)) throw new Error("Pool host file must be outside every workspace");
+  const state = dirname(path);
+  const workspaces = Object.values(parsed.data.profiles).map((entry) => entry.workspace);
+  for (const workspace of workspaces) {
+    // A missing workspace stays loadable so reconcile still works; a run refuses it.
+    await canonical(workspace, "Pool workspace");
+    if (inside(state, workspace) || inside(workspace, state))
+      throw new Error("Pool host file and bridge state must be outside every workspace");
+    if (workspaces.some((other) => other !== workspace && inside(other, workspace)))
+      throw new Error("Pool workspaces may not contain one another");
+  }
   return parsed.data;
 }
 // The remote shell joins ssh's trailing words; quote each argument exactly once.

@@ -2,13 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Pool } from "../src/pool.mjs";
 import { requestId } from "../src/pool-store.mjs";
 import { poolFixture, until } from "./pool-fixtures.mjs";
 
 test("remote Claude over SSH streams through Paperclip, answers a live question and resumes on follow-up", async (t) => {
   const fx = await poolFixture(t, { provider: "claude", transport: "ssh" });
-  const pool = new Pool({ fetchImpl: fx.paperclip.fetch, waitStepMs: 50 });
+  const pool = fx.coordinator();
   const started = await pool.start({ threadId: "thread-1", profile: fx.name, prompt: "ASK for a color" });
   assert.equal(started.submission, "submitted");
   assert.equal(started.state, "queued");
@@ -28,9 +27,9 @@ test("remote Claude over SSH streams through Paperclip, answers a live question 
   assert.deepEqual(asked.question, { id: "q1", toolName: "AskUserQuestion", input: { questions: [{ question: "Color?" }] } });
   assert.equal(asked.paperclipRunId, runId);
   assert.equal(asked.host, "mini");
-  await assert.rejects(pool.answer({ conversationId: started.conversationId, questionId: "q0", source: "codex", reason: "routine" }), /Stale question id/);
-  await pool.answer({ conversationId: started.conversationId, questionId: "q1", source: "codex", reason: "Reversible fixture choice", answers: { "Color?": "Blue" } });
-  await assert.rejects(pool.answer({ conversationId: started.conversationId, questionId: "q1", source: "codex", reason: "again" }), /already answered/);
+  await assert.rejects(pool.answer({ conversationId: started.conversationId, threadId: started.threadId, questionId: "q0", source: "codex", reason: "routine" }), /Stale question id/);
+  await pool.answer({ conversationId: started.conversationId, threadId: started.threadId, questionId: "q1", source: "codex", reason: "Reversible fixture choice", answers: { "Color?": "Blue" } });
+  await assert.rejects(pool.answer({ conversationId: started.conversationId, threadId: started.threadId, questionId: "q1", source: "codex", reason: "again" }), /already answered/);
   assert.equal(await running, 0);
   const done = await pool.wait({ conversationId: started.conversationId, seconds: 5 });
   assert.equal(done.state, "completed");
@@ -40,6 +39,9 @@ test("remote Claude over SSH streams through Paperclip, answers a live question 
   assert.equal(done.nativeSession, "sess-1");
   assert.match(done.progress, /working: answered Blue/);
   assert.equal(done.supervisionReplies, 1);
+  assert.deepEqual(done.requested, { model: "opus", effort: "medium" });
+  assert.deepEqual(done.observed, { model: "claude-opus-5-5", effort: "unknown", basis: "Claude init event" });
+  assert.deepEqual(done.usage, { source: "provider-reported", tokens: { input_tokens: 10, output_tokens: 5 } });
 
   const ssh = await fx.lines("ssh-calls.jsonl");
   assert.deepEqual(ssh[0].args.slice(0, 10), ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3"]);
@@ -55,7 +57,7 @@ test("remote Claude over SSH streams through Paperclip, answers a live question 
     assert.equal(calls[0].args[calls[0].args.indexOf(flag[0]) + 1], flag[1]);
   assert.equal(calls[0].args.includes("--resume"), false);
 
-  const next = await pool.followup({ conversationId: started.conversationId, prompt: "WRITE note.txt nonce-2" });
+  const next = await pool.followup({ conversationId: started.conversationId, threadId: started.threadId, prompt: "WRITE note.txt nonce-2" });
   assert.equal(next.turn, 2);
   assert.equal(next.state, "queued");
   const comment = fx.paperclip.comments.get(started.issueId).at(-1);
@@ -74,7 +76,7 @@ test("remote Claude over SSH streams through Paperclip, answers a live question 
 
 test("remote Codex reports needs_input at the turn boundary and the follow-up resumes the same thread", async (t) => {
   const fx = await poolFixture(t, { provider: "codex", transport: "local", maxSupervisionReplies: 1 });
-  const pool = new Pool({ fetchImpl: fx.paperclip.fetch, waitStepMs: 50 });
+  const pool = fx.coordinator();
   const profiles = await pool.profiles();
   assert.deepEqual(profiles.map((p) => [p.name, p.provider, p.host, p.capabilities.liveQuestions, p.capabilities.followups]), [["mini-codex", "codex", "local", false, "turn-boundary"]]);
   const s = await pool.start({ threadId: "thread-c", profile: fx.name, prompt: "QUESTION about colors" });
@@ -85,19 +87,22 @@ test("remote Codex reports needs_input at the turn boundary and the follow-up re
   assert.equal(asked.question, null);
   assert.deepEqual(asked.result, { outcome: "needs_input", summary: "need a color", evidence: [], question: "Which color?" });
   assert.equal(asked.nativeSession, "thread-1");
-  await assert.rejects(pool.answer({ conversationId: s.conversationId, questionId: "x", source: "codex", reason: "r" }), /No live question/);
-  await assert.rejects(pool.followup({ conversationId: s.conversationId, prompt: "Blue" }), /replySource and replyReason/);
-  await pool.followup({ conversationId: s.conversationId, prompt: "QUESTION again: Blue", replySource: "codex", replyReason: "Routine fixture choice" });
+  await assert.rejects(pool.answer({ conversationId: s.conversationId, threadId: s.threadId, questionId: "x", source: "codex", reason: "r" }), /No live question/);
+  await assert.rejects(pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "Blue" }), /replySource and replyReason/);
+  await pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "QUESTION again: Blue", replySource: "codex", replyReason: "Routine fixture choice" });
   assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 0);
   const again = await pool.wait({ conversationId: s.conversationId, seconds: 5 });
   assert.equal(again.supervisionReplies, 1);
-  await assert.rejects(pool.followup({ conversationId: s.conversationId, prompt: "Blue", replySource: "codex", replyReason: "again" }), /Supervision limit reached/);
-  const byUser = await pool.followup({ conversationId: s.conversationId, prompt: "WRITE color.txt blue", replySource: "user", replyReason: "User chose blue" });
+  await assert.rejects(pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "Blue", replySource: "codex", replyReason: "again" }), /Supervision limit reached/);
+  const byUser = await pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "WRITE color.txt blue", replySource: "user", replyReason: "User chose blue" });
   assert.equal(byUser.supervisionReplies, 0);
   assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 0);
   const done = await pool.wait({ conversationId: s.conversationId, seconds: 5 });
   assert.equal(done.state, "completed");
   assert.equal(done.result.summary, "wrote color.txt");
+  assert.deepEqual(done.requested, { model: "gpt-5.6-sol", effort: "medium" });
+  assert.deepEqual([done.observed.model, done.observed.effort], ["unknown", "unknown"]);
+  assert.deepEqual(done.usage.tokens, { input_tokens: 7, cached_input_tokens: 2, output_tokens: 3 });
   const calls = await fx.lines("codex-calls.jsonl");
   assert.equal(calls.length, 3);
   assert.deepEqual(calls[0].args.slice(0, 2), ["exec", "--json"]);
@@ -112,7 +117,7 @@ test("remote Codex reports needs_input at the turn boundary and the follow-up re
 
 test("an uncertain issue creation is observed by marker and duplicate runs never launch a second provider", async (t) => {
   const fx = await poolFixture(t, { provider: "claude", transport: "local" });
-  const pool = new Pool({ fetchImpl: fx.paperclip.fetch, waitStepMs: 50 });
+  const pool = fx.coordinator();
   fx.paperclip.fail = (method, path) => (method === "POST" && /\/issues$/.test(path) ? "throw-after" : null);
   const s = await pool.start({ threadId: "thread-u", profile: fx.name, prompt: "WRITE once.txt one" });
   fx.paperclip.fail = null;
@@ -127,7 +132,7 @@ test("an uncertain issue creation is observed by marker and duplicate runs never
   assert.equal((await fx.lines("claude-calls.jsonl")).length, 1);
   const noops = runs.filter((runId) => fx.paperclip.logs.get(runId).includes('\\"kind\\":\\"noop\\"'));
   assert.equal(noops.length, 2);
-  const after = await pool.reattach({ conversationId: s.conversationId, retry: true });
+  const after = await pool.reattach({ conversationId: s.conversationId, threadId: s.threadId, retry: true });
   assert.equal(after.issueId, issueId);
   assert.equal(after.state, "completed");
   assert.equal(fx.paperclip.count("POST", /^\/companies\/[^/]+\/issues$/), 1);
@@ -143,7 +148,7 @@ test("an uncertain issue creation is observed by marker and duplicate runs never
 
 test("an unknown submission is never reposted without an explicit retry, which reuses the same key", async (t) => {
   const fx = await poolFixture(t, { provider: "codex", transport: "local" });
-  const pool = new Pool({ fetchImpl: fx.paperclip.fetch, waitStepMs: 50 });
+  const pool = fx.coordinator();
   fx.paperclip.fail = (method, path) => (method === "POST" && /\/issues$/.test(path) ? "throw" : null);
   const s = await pool.start({ threadId: "thread-r", profile: fx.name, prompt: "WRITE r.txt r" });
   assert.equal(s.submission, "unknown");
@@ -152,7 +157,7 @@ test("an unknown submission is never reposted without an explicit retry, which r
   assert.equal(observed.observed, null);
   assert.equal(observed.submission, "unknown");
   assert.equal(fx.paperclip.count("POST", /\/issues$/), 1);
-  const retried = await pool.reattach({ conversationId: s.conversationId, retry: true });
+  const retried = await pool.reattach({ conversationId: s.conversationId, threadId: s.threadId, retry: true });
   assert.equal(retried.submission, "submitted");
   const keys = fx.paperclip.calls.filter((c) => c.method === "POST" && /\/issues$/.test(c.path)).map((c) => c.body.idempotencyKey);
   assert.deepEqual(keys, [`codex-claude-pool-${s.conversationId}-1`, `codex-claude-pool-${s.conversationId}-1`]);
@@ -163,7 +168,7 @@ test("an unknown submission is never reposted without an explicit retry, which r
 
 test("refusals happen before any provider process: auth, quota, host binding and tool permission", async (t) => {
   const fx = await poolFixture(t, { provider: "claude", transport: "local" });
-  const pool = new Pool({ fetchImpl: fx.paperclip.fetch, waitStepMs: 50 });
+  const pool = fx.coordinator();
   const turn = async (prompt) => {
     const s = await pool.start({ threadId: "thread-f", profile: fx.name, prompt });
     const code = await fx.run(fx.paperclip.startRun(s.issueId));
@@ -199,8 +204,8 @@ test("refusals happen before any provider process: auth, quota, host binding and
   const running = fx.run(fx.paperclip.startRun(s.issueId));
   const asked = await until(async () => (await pool.status({ conversationId: s.conversationId })).question);
   assert.equal(asked.toolName, "Bash");
-  await assert.rejects(pool.answer({ conversationId: s.conversationId, questionId: "t1", source: "codex", reason: "looks safe" }), /require user approval/);
-  await pool.answer({ conversationId: s.conversationId, questionId: "t1", source: "user", reason: "User declined", allow: false });
+  await assert.rejects(pool.answer({ conversationId: s.conversationId, threadId: s.threadId, questionId: "t1", source: "codex", reason: "looks safe" }), /require user approval/);
+  await pool.answer({ conversationId: s.conversationId, threadId: s.threadId, questionId: "t1", source: "user", reason: "User declined", allow: false });
   assert.equal(await running, 0);
   const denied = await pool.wait({ conversationId: s.conversationId, seconds: 3 });
   assert.equal(denied.result.summary, "tool deny");
@@ -211,29 +216,29 @@ test("refusals happen before any provider process: auth, quota, host binding and
 
 test("binding and native session drift refuse instead of silently moving a conversation", async (t) => {
   const fx = await poolFixture(t, { provider: "codex", transport: "local" });
-  const pool = new Pool({ fetchImpl: fx.paperclip.fetch, waitStepMs: 50 });
+  const pool = fx.coordinator();
   const s = await pool.start({ threadId: "thread-d", profile: fx.name, prompt: "WRITE d.txt d" });
   assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 0);
-  await pool.followup({ conversationId: s.conversationId, prompt: "DRIFT now" });
+  await pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "DRIFT now" });
   assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 124);
   const drifted = await pool.wait({ conversationId: s.conversationId, seconds: 3 });
   assert.equal(drifted.sessionDrift, true);
   assert.equal(drifted.stopReason, "native session drift");
   assert.equal(drifted.termination, "verified");
-  await assert.rejects(pool.followup({ conversationId: s.conversationId, prompt: "more" }), /session drift/);
+  await assert.rejects(pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "more" }), /session drift/);
 
   const s2 = await pool.start({ threadId: "thread-d", profile: fx.name, prompt: "WRITE e.txt e" });
   await fx.writePool({ ...fx.pool, profiles: { [fx.name]: { ...fx.profile, effort: "high" } } });
   assert.equal(await fx.run(fx.paperclip.startRun(s2.issueId)), 78);
   const refused = await pool.status({ conversationId: s2.conversationId });
   assert.deepEqual([refused.state, refused.category], ["refused", "binding_drift"]);
-  await assert.rejects(pool.followup({ conversationId: s2.conversationId, prompt: "x" }), /profile changed/);
+  await assert.rejects(pool.followup({ conversationId: s2.conversationId, threadId: s2.threadId, prompt: "x" }), /profile changed/);
   assert.equal((await fx.lines("codex-calls.jsonl")).length, 2);
 });
 
 test("stop is exact before and during a turn, and Paperclip cancellation stops the remote", async (t) => {
   const fx = await poolFixture(t, { provider: "claude", transport: "ssh" });
-  const pool = new Pool({ fetchImpl: fx.paperclip.fetch, waitStepMs: 50 });
+  const pool = fx.coordinator();
   const early = await pool.start({ threadId: "thread-s", profile: fx.name, prompt: "WRITE never.txt x" });
   const cancelled = await pool.stop({ conversationId: early.conversationId });
   assert.deepEqual([cancelled.state, cancelled.terminal, cancelled.termination, cancelled.stopping], ["cancelled", true, "not-started", false]);
@@ -252,7 +257,7 @@ test("stop is exact before and during a turn, and Paperclip cancellation stops t
   assert.deepEqual([stopped.state, stopped.termination, stopped.stopReason], ["interrupted", "verified", "stop requested"]);
   assert.equal(fx.paperclip.count("POST", new RegExp(`/heartbeat-runs/${runId}/cancel`)), 1);
 
-  await pool.followup({ conversationId: s.conversationId, prompt: "SLEEP again" });
+  await pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "SLEEP again" });
   const running2 = fx.run(fx.paperclip.startRun(s.issueId));
   await until(async () => (await pool.status({ conversationId: s.conversationId })).state === "running");
   fx.signals.emit("SIGTERM");
@@ -263,7 +268,7 @@ test("stop is exact before and during a turn, and Paperclip cancellation stops t
 
 test("transport loss stops the remote turn and the account stays reserved until the host proves it ended", async (t) => {
   const fx = await poolFixture(t, { provider: "claude", transport: "ssh", second: { name: "mini-claude-b", account: "acct-claude" } });
-  const pool = new Pool({ fetchImpl: fx.paperclip.fetch, waitStepMs: 50 });
+  const pool = fx.coordinator();
   const s = await pool.start({ threadId: "thread-l", profile: fx.name, prompt: "SLEEP until cut" });
   const running = fx.run(fx.paperclip.startRun(s.issueId));
   await until(async () => (await pool.status({ conversationId: s.conversationId })).state === "running");
@@ -293,7 +298,7 @@ test("transport loss stops the remote turn and the account stays reserved until 
 
 test("a coordinator restart reattaches by conversation id and cursor; the worker never depended on it", async (t) => {
   const fx = await poolFixture(t, { provider: "claude", transport: "local" });
-  const first = new Pool({ fetchImpl: fx.paperclip.fetch, waitStepMs: 50 });
+  const first = fx.coordinator();
   const s = await first.start({ threadId: "thread-x", profile: fx.name, prompt: "ASK then wait" });
   const running = fx.run(fx.paperclip.startRun(s.issueId));
   const asked = await until(async () => {
@@ -302,7 +307,7 @@ test("a coordinator restart reattaches by conversation id and cursor; the worker
   });
   // Longer than the host's one-second lease grace with no coordinator call at all.
   await new Promise((r) => setTimeout(r, 1800));
-  const second = new Pool({ fetchImpl: fx.paperclip.fetch, waitStepMs: 50 });
+  const second = fx.coordinator();
   const listed = await second.reattach({ threadId: "thread-x" });
   assert.deepEqual(listed.conversations.map((c) => c.conversationId), [s.conversationId]);
   const back = await second.reattach({ conversationId: s.conversationId });
@@ -315,9 +320,88 @@ test("a coordinator restart reattaches by conversation id and cursor; the worker
   const replayed = await second.reattach({ conversationId: s.conversationId });
   assert.equal(replayed.log.offset, cursor.offset);
   assert.equal(replayed.progress, back.progress);
-  await second.answer({ conversationId: s.conversationId, questionId: "q1", source: "user", reason: "User said green", answers: { "Color?": "Green" } });
+  await second.answer({ conversationId: s.conversationId, threadId: s.threadId, questionId: "q1", source: "user", reason: "User said green", answers: { "Color?": "Green" } });
   assert.equal(await running, 0);
   const done = await second.wait({ conversationId: s.conversationId, seconds: 3 });
   assert.equal(done.result.summary, "answered Green");
-  await assert.rejects(second.reattach({ conversationId: s.conversationId, threadId: "other-thread" }), /another Codex task/);
+  const elsewhere = await second.reattach({ conversationId: s.conversationId, threadId: "other-thread" });
+  assert.equal(elsewhere.conversationId, s.conversationId);
+});
+
+test("pool admission keeps the bridge's coordinator invariants and denials make no external write", async (t) => {
+  const fx = await poolFixture(t, { provider: "codex", transport: "local" });
+  const { configRead, configWrite } = await import("../src/store.mjs");
+  const posts = () => fx.paperclip.count("POST", /./);
+  const deny = async (pool, args, pattern) => {
+    const before = posts();
+    await assert.rejects(pool.start({ threadId: "thread-g", profile: fx.name, prompt: "WRITE g.txt g", ...args }), pattern);
+    assert.equal(posts(), before);
+  };
+  await deny(fx.coordinator({ sandbox: { type: "readOnly" } }), {}, /exceeds this Codex task's readOnly sandbox; permissions were not widened/);
+  await deny(fx.coordinator({ sandbox: { type: "externalSandbox" } }), {}, /could not be verified/);
+  await deny(fx.coordinator({ approvalPolicy: { granular: true } }), {}, /could not be verified/);
+  await deny(fx.coordinator(() => { throw new Error("No active, verified turn settings; open the task and send a message."); }), {}, /No active, verified turn settings/);
+  await deny(fx.coordinator(), { threadId: "../x" }, /Invalid Codex task id/);
+  const pool = fx.coordinator();
+  await pool.manager.dispatch("override", { threadId: "thread-g", executor: "off" });
+  await deny(pool, {}, /disabled for this task or project/);
+  await pool.manager.dispatch("override", { threadId: "thread-g", executor: "auto" });
+  const config = await configRead();
+  await configWrite({ ...config, projects: { [fx.coordinatorCwd]: "off" } });
+  await deny(pool, {}, /disabled for this task or project/);
+  await configWrite({ ...config, mode: "off" });
+  await deny(pool, {}, /Delegation disabled/);
+  await configWrite(config);
+  pool.manager.draining = true;
+  await deny(pool, {}, /upgrade is in progress/);
+  pool.manager.draining = false;
+  assert.deepEqual(await (await import("node:fs/promises")).readdir(join(fx.coord, "pool", "conversations")).catch(() => []), []);
+
+  // A workspace-write coordinator may use a workspace-write profile.
+  const writer = fx.coordinator({ sandbox: { type: "workspaceWrite" }, approvalPolicy: "on-request" });
+  const s = await writer.start({ threadId: "thread-g", profile: fx.name, prompt: "WRITE g.txt g" });
+  assert.equal(s.submission, "submitted");
+  assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 0);
+  await writer.wait({ conversationId: s.conversationId, seconds: 3 });
+
+  // Another authorized session may continue; a restricted one may not, nor any session
+  // once the owning task is off. Observation needs no live session at all.
+  const sessions = fx.coordinator((threadId) => (threadId === "thread-ro" ? { sandbox: { type: "readOnly" } } : {}));
+  const comments = () => (fx.paperclip.comments.get(s.issueId) ?? []).length;
+  await assert.rejects(sessions.followup({ conversationId: s.conversationId, threadId: "thread-ro", prompt: "WRITE h.txt h" }), /exceeds/);
+  await assert.rejects(sessions.followup({ conversationId: s.conversationId, prompt: "WRITE h.txt h" }), /current Codex task id/);
+  await sessions.manager.dispatch("override", { threadId: "thread-g", executor: "off" });
+  await assert.rejects(sessions.followup({ conversationId: s.conversationId, threadId: "thread-other", prompt: "WRITE h.txt h" }), /conversation's task or project/);
+  await assert.rejects(sessions.answer({ conversationId: s.conversationId, threadId: "thread-other", questionId: "q", source: "user", reason: "r" }), /conversation's task or project/);
+  await assert.rejects(sessions.reattach({ conversationId: s.conversationId, threadId: "thread-other", retry: true }), /conversation's task or project/);
+  assert.equal(comments(), 0);
+  const offline = fx.coordinator(() => { throw new Error("Codex unavailable"); });
+  const seen = await offline.reattach({ conversationId: s.conversationId });
+  assert.deepEqual([seen.state, seen.terminal], ["completed", true]);
+  assert.equal((await offline.status({ conversationId: s.conversationId })).state, "completed");
+  await sessions.manager.dispatch("override", { threadId: "thread-g", executor: "auto" });
+  const next = await sessions.followup({ conversationId: s.conversationId, threadId: "thread-other", prompt: "WRITE h.txt h" });
+  assert.equal(next.submission, "submitted");
+  assert.equal(comments(), 1);
+  assert.equal(JSON.parse(await readFile(join(fx.coord, "pool", "conversations", s.conversationId, "turns", "2.json"), "utf8")).coordinatorThreadId, "thread-other");
+  assert.equal((await fx.lines("codex-calls.jsonl")).length, 1);
+});
+
+test("the host refuses a workspace that is an alias, a symlink or nested, before any provider call", async (t) => {
+  const fx = await poolFixture(t, { provider: "codex", transport: "local" });
+  const { rename, symlink, mkdir } = await import("node:fs/promises");
+  const pool = fx.coordinator();
+  const real = fx.profile.workspace;
+  await rename(real, `${real}-moved`);
+  await symlink(`${real}-moved`, real);
+  const s = await pool.start({ threadId: "thread-w", profile: fx.name, prompt: "WRITE w.txt w" });
+  assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 78);
+  const refused = await pool.status({ conversationId: s.conversationId });
+  assert.equal(refused.state, "refused");
+  assert.match(refused.stopReason, /canonical real path/);
+  assert.equal((await fx.lines("codex-calls.jsonl")).length, 0);
+  await mkdir(join(fx.root, "outer"));
+  await fx.writeHost({ ...fx.host, profiles: { [fx.name]: { ...fx.host.profiles[fx.name], workspace: join(fx.root, "outer") }, other: { ...fx.host.profiles[fx.name], bindingSha256: "c".repeat(64), workspace: join(fx.root, "outer", "inner") } } });
+  const { loadHost } = await import("../src/pool-config.mjs");
+  await assert.rejects(loadHost(fx.hostConfig), /may not contain one another/);
 });

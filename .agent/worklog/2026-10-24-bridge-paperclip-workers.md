@@ -45,6 +45,34 @@ Codex owns runtime deployment, acceptance readback and a separate fresh independ
  4 Codex points for integration/operations, leaving independent review and live-test headroom.
 - Pending: final review and live calls, individually reserved after current episode settles.
 
+## Coordinator checkpoint — 2026-10-24T08:39Z
+
+Claude episode4e038e60-d895-42fc-a201-bbcc7dbde6d2 is terminal/completed; source commitf278853.
+65 deterministic plugin tests passed; no remote/provider acceptance is implied. Fresh native
+Claude weekly usage42% (baseline39%, delta3 points, includes shared-account activity) and
+five-hour31%; extra usage disabled. Settle the first8-point reservation at3, release5.
+Codex currently60% weekly used (baseline56%, delta4, shared account); settle root's4-point
+reservation. Reserve another6 Codex points for integration, live testing and final review
+(including up to3 points for the fresh reviewer), still below admission72/hard75.
+Reserve up to4 Claude points for a targeted hardening episode, stop this episode at46% used;
+the engagement still admits below57 and never beyond60.
+
+Latest human authorization: “I just got on to the mac mini and logged in to Claude ...
+upgraded ... $20 per month pro plan ... mint a token if you want ... permit ... browser ...
+google SSO with Zoe's google acct”. Native host CLI still reports loggedIn=false/authMethod
+none on both installed paths. The trusted upstream native quota helper reports no available
+native OAuth token. Controllable MBP browser had Chris's Claude/Google sessions; switching to
+the specified Zoe account reaches a passkey challenge requiring a person. Asked asynchronously
+for the mini's own CLI login; continue other work. No provider credential copied or minted,
+no API key/billing fallback. Pending test login subprocess was stopped; browser handoff retained.
+
+Registered two new Paperclip process agents, paused with canAssignTasks/canCreateAgents/
+canCreateSkills allfalse: miniCodex2bab3420-d100-4619-829a-a4887c3cbc5e and
+miniClaude d6e7256d-bcec-4cf6-8319-325812d32c08. These have no assigned jobs or model calls.
+Private enrollment journals and readback are at ~/.local/share/morpheus-paperclip/
+interactive-20261024; no existing worker binding was repointed. Earlier workers stay paused.
+Mini Codex native quota at08:09Z was0% used, future reset2026-10-31T04:50:06Z.
+
 ## Claude implementation episode (delegated, 2026-10-24)
 
 Read AGENTS.md, decisions, learned, inbox, the proposed design and acceptance. Graph tools were
@@ -107,3 +135,34 @@ assumptions listed in the design (agent-key access to `/heartbeat-runs/:id/issue
 `/issues/:id`, assignment and `issue_commented` wakes, `reopen`, `clientRequestId`, issue-list
 filter, board-only cancel); real SSH drills; real Codex nonce turns; remote Claude live acceptance
 pending native sign-in.
+
+## Claude hardening episode (2026-10-24, after f278853)
+
+Root's review found that `pool.*` bypassed the bridge's coordinator invariants. Pool admission
+now goes through `Manager.poolAdmission` (draining, global/task/project off for caller and
+conversation owner, live Codex snapshot, `assertPoolAuthority` sandbox rank) and answers through
+`Manager.poolControl`; `Pool` refuses every mutation when no verifier is supplied. Host paths
+are canonical (`canonical()` in pool-config; launch-time `lstat` + `realpath`), workspaces may
+not nest and state may not overlap a workspace. The delegated-worker guard now also covers
+`pool.answer` and `pool.reattach` with `retry` (CLI and MCP). Receipts/status carry
+`requested`, `observed` and provider-reported `usage`.
+
+Finding while testing: an earlier unit fixture placed the workspace inside the host state
+directory; the new overlap rule refuses it, so the fixture moved, not the rule. Every pool test
+now goes through the real Manager gate with a stubbed live snapshot.
+
+Commands and results:
+- `node --test tests/pool-units.test.mjs tests/pool.test.mjs` — 22 pass (11 unit + 11
+  integration), including zero-POST/zero-provider denials for read-only, unknown sandbox,
+  unknown approval, unreadable snapshot, invalid id, task off, project off, mode off, draining;
+  continuation from another authorized session and refusal from a read-only one or after the
+  owner is off; observation with no live session; symlinked workspace refused at the host with no
+  provider call; nested workspaces, symlinked config and `/var` alias refused.
+- `node --test tests/mcp.test.mjs` — 2 pass (delegated MCP mutations refuse, no bridge started).
+- `pnpm check`; `pnpm test` — plugin suite 71/71 pass.
+
+Acceptance coverage re-checked against qa/acceptance: repeated/uncertain submission, stale
+question ids, autonomous limits, permission escalation (tool permission and now coordinator
+sandbox rank), native auth/quota, cursor replay, session/binding drift, concurrent writers
+(profile idle, account ledger, canonical host lock), cancellation and reconnect are each covered
+by a deterministic test. Live acceptance remains pending with root.

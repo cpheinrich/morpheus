@@ -13,6 +13,7 @@ import { initStore, configWrite } from "../src/store.mjs";
 import { defaults } from "../src/config.mjs";
 import { hostEntry } from "../src/pool-config.mjs";
 import { runTurn } from "../src/pool-runner.mjs";
+import { Manager } from "../src/service.mjs";
 
 export const pluginRoot = fileURLToPath(new URL("..", import.meta.url));
 const header = "#!/usr/bin/env node\n";
@@ -55,7 +56,7 @@ const ask = (id, tool, input) => new Promise((resolve) => {
 });
 async function turn(prompt) {
   if (prompt.includes("DRIFT") && resume) session = "sess-drift";
-  emit({ type: "system", subtype: "init" });
+  emit({ type: "system", subtype: "init", model: "claude-opus-5-5" });
   let summary = "done";
   if (prompt.includes("ASK")) { const r = await ask("q1", "AskUserQuestion", { questions: [{ question: "Color?" }] }); summary = "answered " + r.updatedInput?.answers?.["Color?"]; }
   if (prompt.includes("TOOL")) { const r = await ask("t1", "Bash", { command: "echo hi" }); summary = "tool " + r.behavior; }
@@ -63,7 +64,7 @@ async function turn(prompt) {
   if (write) { writeFileSync(join(process.cwd(), write[1]), write[2] + "\\n"); summary += " wrote " + write[1]; }
   emit({ type: "stream_event", event: { delta: { type: "text_delta", text: "working: " + summary } } });
   if (prompt.includes("SLEEP")) { setInterval(() => {}, 1000); return; }
-  emit({ type: "result", is_error: false, result: summary, structured_output: { outcome: "completed", summary, evidence: [] } });
+  emit({ type: "result", is_error: false, result: summary, structured_output: { outcome: "completed", summary, evidence: [] }, usage: { input_tokens: 10, output_tokens: 5, service_tier: "standard" } });
 }
 `;
 export const fakeCodex = header + common + `
@@ -89,7 +90,7 @@ process.stdin.on("end", () => {
     : { outcome: "completed", summary: write ? "wrote " + write[1] : "done", evidence: [], question: "" };
   emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify(result) } });
   if (prompt.includes("SLEEP")) { setInterval(() => {}, 1000); return; }
-  emit({ type: "turn.completed" });
+  emit({ type: "turn.completed", usage: { input_tokens: 7, cached_input_tokens: 2, output_tokens: 3 } });
 });
 `;
 export const fakeQuota = common + `
@@ -236,8 +237,23 @@ export async function poolFixture(t, { provider = "claude", transport = "ssh", s
   const paperclip = new FakePaperclip(companyId);
   const name = `mini-${provider}`;
   const state = join(userHome, "state");
+  const coordinatorCwd = join(root, "coordinator");
+  await mkdir(coordinatorCwd);
   const fx = {
-    root, coord, hostHome, userHome, bin, state, pool, host, writePool, writeHost, paperclip, name,
+    root, coord, hostHome, userHome, bin, state, pool, host, writePool, writeHost, paperclip, name, coordinatorCwd,
+    // The bridge service with a stubbed live Codex snapshot, so every pool operation
+    // passes through the real admission gate. `snapshot` may be a function per thread.
+    coordinator(snapshot = {}) {
+      const manager = new Manager();
+      manager.snapshot = async (threadId) => {
+        const value = typeof snapshot === "function" ? await snapshot(threadId) : snapshot;
+        return { cwd: coordinatorCwd, model: "gpt-5.6-sol", reasoningEffort: "medium", sandbox: { type: "dangerFullAccess" }, approvalPolicy: "never", ...value };
+      };
+      manager.pool.fetchImpl = paperclip.fetch;
+      manager.pool.waitStepMs = 50;
+      manager.pool.manager = manager;
+      return manager.pool;
+    },
     profile: profiles[name], profiles, hostConfig,
     signals: new EventEmitter(),
     // Runs one Paperclip process-adapter invocation in this process, as Paperclip would.

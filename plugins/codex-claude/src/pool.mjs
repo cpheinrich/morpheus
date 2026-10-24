@@ -22,8 +22,16 @@ const LOG_PAGE = 256 * 1024;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const firstLine = (text) => text.trim().split("\n")[0].slice(0, 80);
 export class Pool {
-  constructor({ fetchImpl = globalThis.fetch, waitStepMs = 500 } = {}) {
+  // `admit` verifies the calling Codex task before anything can launch; `control` before
+  // an answer. The bridge service supplies both from live task metadata. Without them
+  // every mutation refuses rather than trusting an unverified caller.
+  constructor({ fetchImpl = globalThis.fetch, waitStepMs = 500, admit, control } = {}) {
     this.fetchImpl = fetchImpl;
+    const unverified = async () => {
+      throw new Error("Pool coordinator verification is unavailable; refused.");
+    };
+    this.admit = admit ?? unverified;
+    this.control = control ?? unverified;
     this.waitStepMs = waitStepMs;
   }
   async context() {
@@ -44,9 +52,6 @@ export class Pool {
       capabilities: capabilities(p.provider),
     }));
   }
-  async assertEnabled() {
-    if ((await configRead()).mode === "off") throw new Error("Delegation disabled");
-  }
   async assertProfileIdle(name, except) {
     for (const id of await readdir(join(poolHome(), "conversations")).catch(() => [])) {
       if (id === except || !UUID.test(id)) continue;
@@ -58,13 +63,13 @@ export class Pool {
     }
   }
   async start(args) {
-    await this.assertEnabled();
     if (!TASK_ID.test(args.threadId ?? "")) throw new Error("Invalid Codex task id");
     if (typeof args.prompt !== "string" || !args.prompt.trim() || args.prompt.length > 200000)
       throw new Error("A bounded prompt is required");
     const { pool, api } = await this.context();
     const profile = pool.profiles[args.profile];
     if (!profile) throw new Error("Unknown pool profile");
+    const { project } = await this.admit(args.threadId, profile.permission, null);
     await initPool();
     await this.assertProfileIdle(args.profile);
     const id = randomUUID();
@@ -75,7 +80,7 @@ export class Pool {
     const conversation = {
       version: 1, id, threadId: args.threadId, profile: args.profile, provider: profile.provider,
       agentId: profile.agentId, bindingSha256: bindingDigest(args.profile, profile), createdAt: Date.now(),
-      issueId: null, turns: 1, supervisionReplies: 0,
+      project, issueId: null, turns: 1, supervisionReplies: 0,
     };
     await atomic(join(dir, "conversation.json"), conversation);
     const threads = await readJSON(threadIndex(args.threadId), { conversations: [] });
@@ -145,7 +150,9 @@ export class Pool {
       conversationId: c.id, threadId: c.threadId, profile: c.profile, provider: c.provider, issueId: c.issueId,
       turn: n, submission: turn?.state ?? null, submissionError: turn?.error ?? null, state, terminal,
       paperclipRunId: run?.paperclipRunId ?? null, remoteRun: run?.runUuid ?? null,
-      host: run?.remote?.hostId ?? null, model: run?.remote?.model ?? null, effort: run?.remote?.effort ?? null,
+      host: run?.remote?.hostId ?? null,
+      requested: run?.requested ?? (run?.remote ? { model: run.remote.model, effort: run.remote.effort } : null),
+      observed: run?.observed ?? null, usage: run?.usage ?? null,
       termination: runnerLost ? "unknown" : run?.termination ?? null, stopReason: run?.stopReason ?? null,
       category: run?.category ?? null,
       question: run && !run.finished && run.question ? { id: run.question.id, toolName: run.question.toolName, input: run.question.input } : null,
@@ -232,7 +239,9 @@ export class Pool {
   }
   async answer(args) {
     if (!["codex", "user"].includes(args.source)) throw new Error("Invalid answer source");
+    if (!TASK_ID.test(args.threadId ?? "")) throw new Error("Pass the current Codex task id");
     const c = await this.conversation(args.conversationId);
+    await this.control(args.threadId, c);
     const n = c.turns;
     const run = await readJSON(runPath(c.id, n), null);
     if (!run || run.finished || !run.question)
@@ -247,7 +256,7 @@ export class Pool {
     try {
       await writeFile(
         join(answersDir(c.id), `q-${sha256(`${n}:${args.questionId}`).slice(0, 32)}.json`),
-        JSON.stringify({ turn: n, questionId: args.questionId, source: args.source, reason: args.reason, answers: args.answers, allow: args.allow !== false, at: Date.now() }),
+        JSON.stringify({ turn: n, questionId: args.questionId, threadId: args.threadId, source: args.source, reason: args.reason, answers: args.answers, allow: args.allow !== false, at: Date.now() }),
         { flag: "wx", mode: 0o600 },
       );
     } catch (error) {
@@ -272,7 +281,7 @@ export class Pool {
     return this.status({ conversationId: c.id });
   }
   async followup(args) {
-    await this.assertEnabled();
+    if (!TASK_ID.test(args.threadId ?? "")) throw new Error("Pass the current Codex task id");
     if (typeof args.prompt !== "string" || !args.prompt.trim() || args.prompt.length > 200000)
       throw new Error("A bounded prompt is required");
     const c = await this.conversation(args.conversationId);
@@ -285,6 +294,9 @@ export class Pool {
     const profile = pool.profiles[c.profile];
     if (!profile || bindingDigest(c.profile, profile) !== c.bindingSha256)
       throw new Error("The pool profile changed since this conversation started; start a new conversation.");
+    // The caller's own live authority admits the turn; the original task and project
+    // still apply, so another session cannot revive a conversation whose owner is off.
+    await this.admit(args.threadId, profile.permission, c);
     const continuation = previous.state === "needs_input" || previous.result?.outcome === "needs_input";
     if (continuation && (!["codex", "user"].includes(args.replySource) || !args.replyReason))
       throw new Error("Resuming a question requires replySource and replyReason.");
@@ -294,7 +306,8 @@ export class Pool {
     const n = c.turns + 1;
     const turn = {
       n, kind: "followup", prompt: args.prompt, promptSha256: sha256(args.prompt), state: "posting",
-      replySource: args.replySource ?? null, replyReason: args.replyReason ?? null, createdAt: Date.now(),
+      replySource: args.replySource ?? null, replyReason: args.replyReason ?? null,
+      coordinatorThreadId: args.threadId, createdAt: Date.now(),
     };
     await atomic(turnPath(c.id, n), turn);
     const stored = await readJSON(join(conversationDir(c.id), "conversation.json"));
@@ -337,12 +350,19 @@ export class Pool {
       return { threadId: args.threadId, conversations: await Promise.all(conversations.slice(-10).reverse().map((id) => this.status({ conversationId: id }))) };
     }
     const c = await this.conversation(args.conversationId);
-    if (args.threadId && args.threadId !== c.threadId) throw new Error("Conversation belongs to another Codex task");
     const { pool, api } = await this.context();
     const n = c.turns;
     const turn = await readJSON(turnPath(c.id, n), null);
     const claimed = await readJSON(runPath(c.id, n), null);
     let observed = null;
+    if (args.retry === true) {
+      // A resend is an admission: verify the caller now, before any external write.
+      if (!TASK_ID.test(args.threadId ?? "")) throw new Error("A retry needs the current Codex task id");
+      const profile = pool.profiles[c.profile];
+      if (!profile || bindingDigest(c.profile, profile) !== c.bindingSha256)
+        throw new Error("The pool profile changed since this conversation started; start a new conversation.");
+      await this.admit(args.threadId, profile.permission, c);
+    }
     if (turn && ["posting", "unknown"].includes(turn.state) && !claimed) {
       observed = await this.observe(pool, api, c, turn);
       if (!observed && args.retry === true) {

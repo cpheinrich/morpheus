@@ -22,6 +22,7 @@ import {
   claudeRemaining,
   codexSelection,
   codexPermission,
+  assertPoolAuthority,
 } from "./config.mjs";
 import {
   atomic,
@@ -61,7 +62,12 @@ export class Manager {
   draining = false;
   processOwnership = ownedProcessState;
   viewer = new Viewer(this);
-  pool = new Pool();
+  pool = new Pool({
+    admit: (threadId, permission, conversation) =>
+      this.poolAdmission(threadId, permission, conversation),
+    control: (threadId, conversation) =>
+      this.poolControl(threadId, conversation),
+  });
   async client() {
     if (!this.codex) {
       this.codex = await new Codex().connect();
@@ -204,6 +210,36 @@ export class Manager {
       return this.begin(id);
     } finally {
       this.busy = false;
+    }
+  }
+  // Pool admission keeps the bridge's local invariants: no launch while draining or
+  // disabled (globally, for the task, or for its project), verified live settings of
+  // the calling task, and no permission wider than that task's own sandbox.
+  async poolAdmission(threadId, permission, conversation = null) {
+    if (this.draining)
+      throw new Error("Bridge upgrade is in progress; retry afterward.");
+    await this.poolControl(threadId, conversation);
+    const config = await configRead();
+    const task = await taskRead(threadId);
+    const snapshot = await this.snapshot(threadId);
+    Object.assign(task, await projectIdentity(snapshot.cwd));
+    await taskWrite(task);
+    if (task.disabled || config.projects[task.project] === "off")
+      throw new Error("Delegation disabled for this task or project");
+    assertPoolAuthority(snapshot, permission);
+    return { project: task.project };
+  }
+  // Answers act on an admitted turn; they need no live snapshot, but off still wins.
+  async poolControl(threadId, conversation = null) {
+    const config = await configRead();
+    if (config.mode === "off") throw new Error("Delegation disabled");
+    const caller = await taskRead(threadId);
+    if (caller.disabled || (caller.project && config.projects[caller.project] === "off"))
+      throw new Error("Delegation disabled for this task or project");
+    if (conversation) {
+      const owner = await taskRead(conversation.threadId);
+      if (owner.disabled || (conversation.project && config.projects[conversation.project] === "off"))
+        throw new Error("Delegation is disabled for this conversation's task or project");
     }
   }
   async recoverOrphans(task) {

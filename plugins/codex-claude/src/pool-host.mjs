@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { hostname } from "node:os";
 import { StringDecoder } from "node:string_decoder";
@@ -10,7 +10,7 @@ import { atomic, initStore, readJSON, runDir } from "./store.mjs";
 import { checkClaude, claudeArgs } from "./claude.mjs";
 import { checkCodex, codexArgs } from "./codex-exec.mjs";
 import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
-import { ENVELOPE, inside, judgeQuota, loadHost, PROFILE_NAME, sanitizeQuota, sha256 } from "./pool-config.mjs";
+import { canonical, ENVELOPE, inside, judgeQuota, loadHost, PROFILE_NAME, sanitizeQuota, sha256 } from "./pool-config.mjs";
 export { ENVELOPE };
 import { Manager } from "./service.mjs";
 
@@ -43,6 +43,13 @@ export async function poolHandoff(provider, prompt, resumed) {
       ? "If you need clarification, call AskUserQuestion. The coordinator may answer routine, reversible questions with a recorded reason; tool permission requests go to the user."
       : "You cannot ask mid-turn. If you genuinely need clarification, stop and report outcome needs_input with the question.";
   return `${text.replace("{questions}", questions)}\n\nTask:\n${prompt}`;
+}
+export function tokenUsage(usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const tokens = Object.fromEntries(
+    Object.entries(usage).filter(([key, value]) => /^[a-z_]{1,48}$/.test(key) && Number.isFinite(value) && value >= 0),
+  );
+  return Object.keys(tokens).length ? tokens : null;
 }
 export function nativeEnv(config, env = process.env) {
   // Built from nothing: no PAPERCLIP_*, provider keys or controller variables.
@@ -235,8 +242,14 @@ export async function runHost({ configPath, input = process.stdin, output = proc
     emit({ pool: "refused", category, detail: fixed(detail) });
     return finish({ state: "refused", termination: "not-started", stopReason: `${category}: ${fixed(detail)}` }, code);
   };
-  const info = await stat(workspace).catch(() => null);
-  if (!info?.isDirectory()) return refuse("workspace", "workspace does not exist", EXIT.config);
+  // Re-checked at launch: the directory could have been replaced since the file loaded.
+  const info = await lstat(workspace).catch(() => null);
+  if (!info?.isDirectory()) return refuse("workspace", "workspace is not a real directory", EXIT.config);
+  try {
+    await canonical(workspace, "Pool workspace");
+  } catch (error) {
+    return refuse("workspace", error.message, EXIT.config);
+  }
   if (inside(home(), workspace)) return refuse("workspace", "bridge state must be outside the workspace", EXIT.config);
   const busy = await acquireWorkspace(workspace, { runUuid: envelope.runUuid, pid: process.pid, identity: poolIdentity, at: Date.now() });
   if (busy) return refuse("workspace_busy", busy);
@@ -275,8 +288,17 @@ export async function runHost({ configPath, input = process.stdin, output = proc
       : codexArgs(envelope.session, selection, codexPermission(permission === "read-only" ? "plan" : "acceptEdits"));
   let stopReason = null;
   let sessionSeen = null;
+  // Requested is what this host passed to the CLI. Observed is only what the provider
+  // stream itself names; Codex exec reports no serving model and neither reports effort.
+  receipt.requested = { model, effort };
+  receipt.observed = { model: "unknown", effort: "unknown", basis: provider === "claude" ? "Claude init event" : "codex exec --json does not report the serving model" };
   const manager = new HostManager((run, event) => {
     emit({ pool: "event", event });
+    if (provider === "claude" && event.type === "system" && event.subtype === "init" && typeof event.model === "string")
+      receipt.observed.model = event.model.slice(0, 120);
+    const tokens = (event.type === "result" || event.type === "turn.completed") && tokenUsage(event.usage);
+    // Provider-reported tokens are evidence of work done, not subscription quota.
+    if (tokens) receipt.usage = { source: "provider-reported", tokens };
     const reported = provider === "claude" ? event.session_id : event.type === "thread.started" ? event.thread_id : null;
     if (reported && !sessionSeen) {
       sessionSeen = reported;

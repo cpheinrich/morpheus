@@ -39,3 +39,26 @@ test("MCP advertises tools without activating bridge or creating settings", asyn
   );
   assert.deepEqual(await readdir(root), []);
 });
+test("a delegated worker's MCP pool mutations refuse without contacting the bridge", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "mcp-delegated-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [fileURLToPath(new URL("../scripts/mcp.mjs", import.meta.url))],
+    env: { PATH: process.env.PATH, CODEX_CLAUDE_HOME: root, CODEX_CLAUDE_DELEGATED: "1" },
+  });
+  const client = new Client({ name: "test", version: "1" });
+  t.after(() => client.close());
+  await client.connect(transport);
+  const conversationId = "00000000-0000-4000-8000-000000000001";
+  for (const [name, args] of [
+    ["pool_start", { threadId: "t", profile: "p", prompt: "x" }],
+    ["pool_followup", { threadId: "t", conversationId, prompt: "x" }],
+    ["pool_answer", { threadId: "t", conversationId, questionId: "q", source: "codex", reason: "r" }],
+    ["pool_reattach", { threadId: "t", conversationId, retry: true }],
+  ]) {
+    const result = await client.callTool({ name, arguments: args });
+    assert.deepEqual([result.isError, result.content[0].text], [true, "Delegated workers cannot delegate again."]);
+  }
+  assert.deepEqual(await readdir(root), []);
+});

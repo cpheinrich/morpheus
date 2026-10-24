@@ -94,6 +94,28 @@ and lease. The pilot `supervisor.py` itself is Codex-exec-specific (it validates
 `exec --json … -` argv), so the pool reimplements only its quota judgment rule (~30 lines)
 rather than routing Claude through a Codex validator.
 
+## Hardening before live deployment (2026-10-24)
+
+Pool mutations now pass the bridge's existing coordinator invariants instead of only the
+global switch. `start`, `followup` and `reattach --retry` require the calling Codex task id
+and refuse while draining, when delegation is off globally or for that task or project, when
+the task's live settings cannot be read, or when the profile's permission exceeds the task's
+sandbox (`readOnly` → `plan`/`read-only` only; `workspaceWrite`/`dangerFullAccess` → any pool
+profile; unknown sandbox or approval policy → refused). Another session may continue under its
+own authority, but never revives a conversation whose original task or project is off.
+`answer` applies the off checks without a live snapshot; observation operations stay ungated so
+a restart does not depend on the original session. The delegated-worker guard covers start,
+follow-up, answer and retry in both CLI and MCP. A denial happens before any local record or
+Paperclip write.
+
+On the host, the config file and every workspace must already be canonical real paths
+(`realpath(p) === p`), workspaces may not nest, and the bridge state directory may not overlap a
+workspace; the run re-checks the workspace with `lstat`/`realpath` immediately before taking its
+writer lock, so an alias or symlink cannot create a second lock for one checkout. Receipts and
+status separate requested from observed model/effort and keep provider-reported token counts as
+evidence, not quota. Native host permissions and processes that deliberately detach or scrub
+their environment keep the limitations already recorded for the guardian and pilot census.
+
 ## Data and identity
 
 Coordinator store (`$CODEX_CLAUDE_HOME/pool/`, 0700/0600):

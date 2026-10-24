@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
-  bindingDigest, judgeQuota, loadHost, poolSchema, profileSchema, sha256, shellQuote, transportArgv, transportEnv,
+  bindingDigest, judgeQuota, loadHost, canonical, poolSchema, profileSchema, sha256, shellQuote, transportArgv, transportEnv,
 } from "../src/pool-config.mjs";
 import { apiOrigin } from "../src/pool-paperclip.mjs";
 import { parseMarker, marker, requestId } from "../src/pool-store.mjs";
 import { foldLine } from "../src/pool.mjs";
+import { assertPoolAuthority } from "../src/config.mjs";
+import { tokenUsage } from "../src/pool-host.mjs";
 
 const profile = {
   provider: "claude", agentId: randomUUID(), account: "acct",
@@ -85,7 +87,8 @@ test("a host file refuses shared workspaces, loose permissions and a location in
   const root = await realpath(await mkdtemp(join(tmpdir(), "pool-host-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const entry = { bindingSha256: "a".repeat(64), provider: "codex", workspace: join(root, "w"), model: "gpt-5.6-sol", effort: "high", permission: "read-only" };
-  const path = join(root, "pool-host.json");
+  await (await import("node:fs/promises")).mkdir(join(root, "state"));
+  const path = join(root, "state", "pool-host.json");
   await writeFile(path, JSON.stringify({ version: 1, hostId: "h", profiles: { a: entry, b: { ...entry, bindingSha256: "b".repeat(64) } } }), { mode: 0o600 });
   await assert.rejects(loadHost(path), /each workspace belongs to exactly one profile/);
   await rm(path);
@@ -103,12 +106,70 @@ test("a delegated worker cannot start or follow up a pool conversation from the 
   const { execFile } = await import("node:child_process");
   const root = await realpath(await mkdtemp(join(tmpdir(), "pool-loop-")));
   t.after(() => rm(root, { recursive: true, force: true }));
-  for (const command of ["pool.start", "pool.followup", "start"]) {
+  for (const [command, args] of [["pool.start", "{}"], ["pool.followup", "{}"], ["pool.answer", "{}"], ["pool.reattach", '{"retry":true}'], ["start", "{}"]]) {
     const result = await new Promise((resolve) =>
-      execFile(process.execPath, [new URL("../scripts/bridge.mjs", import.meta.url).pathname, command, "{}"], {
+      execFile(process.execPath, [new URL("../scripts/bridge.mjs", import.meta.url).pathname, command, args], {
         env: { PATH: process.env.PATH, CODEX_CLAUDE_HOME: root, CODEX_CLAUDE_DELEGATED: "1" },
       }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stderr })),
     );
     assert.deepEqual([result.code, result.stderr.trim()], [1, "Delegated workers cannot delegate again."]);
   }
+});
+
+test("pool authority never exceeds the coordinator's sandbox and refuses unknowns", () => {
+  const snap = (type, approvalPolicy = "never") => ({ sandbox: { type }, approvalPolicy });
+  const allowed = [];
+  for (const type of ["readOnly", "workspaceWrite", "dangerFullAccess"])
+    for (const permission of ["plan", "read-only", "default", "acceptEdits", "workspace-write"]) {
+      try {
+        assertPoolAuthority(snap(type), permission);
+        allowed.push(`${type}:${permission}`);
+      } catch {}
+    }
+  assert.deepEqual(allowed, [
+    "readOnly:plan", "readOnly:read-only",
+    "workspaceWrite:plan", "workspaceWrite:read-only", "workspaceWrite:default", "workspaceWrite:acceptEdits", "workspaceWrite:workspace-write",
+    "dangerFullAccess:plan", "dangerFullAccess:read-only", "dangerFullAccess:default", "dangerFullAccess:acceptEdits", "dangerFullAccess:workspace-write",
+  ]);
+  assert.throws(() => assertPoolAuthority(snap("dangerFullAccess"), "bypassPermissions"), /Unknown pool permission/);
+  assert.throws(() => assertPoolAuthority(snap("externalSandbox"), "plan"), /could not be verified/);
+  assert.throws(() => assertPoolAuthority(snap("dangerFullAccess", "auto"), "plan"), /could not be verified/);
+  assert.throws(() => assertPoolAuthority({}, "plan"), /could not be verified/);
+});
+test("host paths must be canonical: symlinked or aliased workspaces and config, and state inside a workspace, refuse", async (t) => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pool-canon-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { mkdir, symlink } = await import("node:fs/promises");
+  const state = join(root, "state");
+  await mkdir(join(root, "ws"));
+  await mkdir(state);
+  await symlink(join(root, "ws"), join(root, "ws-link"));
+  await symlink(state, join(root, "state-link"));
+  const entry = { bindingSha256: "a".repeat(64), provider: "codex", workspace: join(root, "ws"), model: "gpt-5.6-sol", effort: "high", permission: "read-only" };
+  const write = async (path, profiles) => {
+    await writeFile(path, JSON.stringify({ version: 1, hostId: "h", profiles }), { mode: 0o600 });
+    await chmod(path, 0o600);
+  };
+  const path = join(state, "pool-host.json");
+  await write(path, { a: entry });
+  assert.equal((await loadHost(path)).profiles.a.workspace, join(root, "ws"));
+  await write(path, { a: { ...entry, workspace: join(root, "ws-link") } });
+  await assert.rejects(loadHost(path), /Pool workspace must be its canonical real path/);
+  await write(path, { a: entry });
+  await assert.rejects(loadHost(join(root, "state-link", "pool-host.json")), /Pool host file must be its canonical real path/);
+  await write(path, { a: { ...entry, workspace: root } });
+  await assert.rejects(loadHost(path), /outside every workspace/);
+  await write(path, { a: { ...entry, workspace: join(state, "inner") } });
+  await assert.rejects(loadHost(path), /outside every workspace/);
+  if (process.platform === "darwin" && root.startsWith("/private/var/")) {
+    // The same checkout under its /var alias would otherwise get a second writer lock.
+    await write(path, { a: { ...entry, workspace: root.slice("/private".length) + "/ws" } });
+    await assert.rejects(loadHost(path), /canonical real path/);
+  }
+  assert.equal(await canonical(join(root, "missing"), "x"), null);
+});
+test("only numeric provider token counts are retained", () => {
+  assert.deepEqual(tokenUsage({ input_tokens: 3, output_tokens: 0, service_tier: "standard", nested: { a: 1 }, "Bad-Key": 2, negative: -1 }), { input_tokens: 3, output_tokens: 0 });
+  assert.equal(tokenUsage(null), null);
+  assert.equal(tokenUsage({ tier: "x" }), null);
 });

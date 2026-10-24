@@ -252,6 +252,7 @@ export async function runTurn({
     Object.assign(record, {
       state: receipt.state, termination: receipt.termination, exitCode: receipt.exitCode ?? null,
       stopReason: receipt.stopReason ?? null, result: receipt.result ?? null, error: receipt.error ?? null,
+      requested: receipt.requested ?? null, observed: receipt.observed ?? null, usage: receipt.usage ?? null,
       category: seen.refused?.category ?? null,
     });
     code = Number.isInteger(receipt.code) ? receipt.code : RUNNER_EXIT.unknown;

@@ -171,6 +171,16 @@ an older tool list): `profiles`, `start`, `status`, `wait`, `logs`, `answer`, `f
   needs `source: user`, autonomous replies capped by `maxSupervisionReplies`). Codex reports
   `needs_input` at the end of a turn. Follow-ups resume the same native session at a turn
   boundary only; there is no mid-turn steering, and a follow-up during an active turn is refused.
+- **Admission.** `start`, `followup` and `reattach` with `retry` pass the bridge's usual gate
+  for the *calling* Codex task (its id is required; the CLI supplies `CODEX_THREAD_ID`): not
+  while the bridge is draining or delegation is off globally, for that task or for its project;
+  only with readable live task settings; and never wider than that task's sandbox — a read-only
+  task may use only `plan`/`read-only` profiles, a workspace-write or full-access task any
+  profile. Unknown sandboxes or approval policies refuse. Another session may continue a
+  conversation under its own authority, but not once the conversation's original task or
+  project is off. `answer` needs the caller's task id and the same off checks, without a live
+  snapshot; `status`, `wait`, `logs` and plain `reattach` are observation and need neither.
+  Delegated workers cannot start, follow up, answer or retry (CLI and MCP).
 - **Duplicates.** Intent is journaled before any Paperclip write. An unknown creation outcome is
   never reposted automatically; `pool_reattach` observes it by an issue/comment marker, and
   `retry: true` resends with the same idempotency key / request id. Every turn has one atomic
@@ -193,10 +203,17 @@ Operator setup (controller and coordinator must be the same host and user in thi
 2. On the worker, install this package and stage `<bridge home>/pool-host.json` (0600, outside
    every workspace): `hostId`, `path`, `graceSeconds`, `maxRunSeconds`, `quota.<provider>` and
    `profiles.<name>` exactly as printed by `bridge.mjs pool-host-entry <name>`. Each workspace
-   belongs to one profile.
+   belongs to one profile, and workspaces may not contain one another. The host file and every
+   workspace must be written as their canonical real paths on the host (for example
+   `/private/var/…`, not `/var/…`; no symlinked workspace), and the bridge state directory must
+   not overlap any workspace; anything else refuses rather than getting a second writer lock.
 3. Register the Paperclip agent from `bridge.mjs pool-agent-config <name>` and put its id in the
    profile. Changing any bound field changes the binding digest: existing conversations refuse
    rather than move.
+
+Status reports `requested` (model/effort passed to the CLI), `observed` (only what the provider
+stream names: Claude's init event model; Codex exec reports none, and neither reports effort, so
+those stay `unknown`) and provider-reported token `usage`, which is not subscription quota.
 
 Runner exit codes (the Paperclip run result): 0 turn ended with verified termination, 75 refused
 before any provider process, 78 binding/configuration refused, 124 stopped with verified
