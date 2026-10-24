@@ -1,0 +1,47 @@
+name: Security import PR check
+
+# The Manager App applies this label only after its exact-head, independent
+# review comment. This separate trigger leaves Morpheus's ordinary CI cadence
+# and every other repository's caller unchanged.
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    if: github.repository == 'cpheinrich/morpheus' && github.event.label.name == 'security-import-reviewed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      checks: read
+    outputs:
+      verified: ${{ steps.verify.outputs.verified }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify distinct App receipts and the exact PR head
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/security-import-review.mjs verify-pr "$PR_NUMBER" "$EXPECTED_HEAD"
+
+  pr:
+    needs: proof
+    if: needs.proof.result == 'success'
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/pr-check.yml
+    with:
+      product-dir: hq/product
+      morpheus-ref: ${{ github.sha }}
+      security-import-verified: ${{ needs.proof.outputs.verified == 'true' }}

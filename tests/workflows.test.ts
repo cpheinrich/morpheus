@@ -405,6 +405,25 @@ describe("central security remediation opt-in", () => {
   });
 });
 
+describe("Morpheus-only Security import review", () => {
+  it("keeps reviewer and publisher in separate jobs without a contents-write token", async () => {
+    const workflow = await readFile(join(DIR, "security-import-review.yml"), "utf8");
+    expect(workflow).toContain("permission-contents: read");
+    expect(workflow).not.toContain("permission-contents: write");
+    expect(workflow).not.toMatch(/gh pr merge|permission-workflows: write/);
+    expect(workflow).toContain("needs: [discover, review]");
+    expect(workflow).toContain("security-import-review.mjs apply");
+  });
+
+  it("rechecks only a labeled Security PR without changing global CI events", async () => {
+    const workflow = await readFile(join(DIR, "security-import-pr-check.yml"), "utf8");
+    expect(workflow).toContain("github.event.label.name == 'security-import-reviewed'");
+    expect(workflow).toContain("security-import-verified:");
+    const ci = await read("ci.yml") as { on?: { pull_request?: { types?: string[] } } };
+    expect(ci.on?.pull_request?.types).not.toContain("labeled");
+  });
+});
+
 describe("vercel-deploy.yml", () => {
   it("is an atomic reusable deploy workflow with explicit credentials", async () => {
     const wf = (await read("vercel-deploy.yml")) as {
