@@ -155,12 +155,12 @@ preserves those acceptance requirements. The fresh source review will use the pa
 isolated native v2 launcher with plugins/MCP auto-install and computer/browser access disabled;
 it will receive final source/evidence, no author history, and measured invocation timing.
 
-Independent native review found one minor exact-parent symlink escape and no substantive issues. The author reproduced the escape, fixed the containment guard and added a regression that fails before the fix; 28 focused tests, typecheck and diff checks pass. The reviewer pre-cleared this exact change, so its condition is satisfied without another model turn. Broader consumer and worker capabilities remain unqualified.
+Independent native review found one minor exact-parent symlink escape and no substantive issues. The author reproduced the escape, fixed the containment guard and added a regression that fails before the fix; 28 focused tests, typecheck and diff checks pass. The reviewer pre-cleared this exact change, so its condition is satisfied without an implementation follow-up. Broader consumer and worker capabilities remain unqualified.
 
 The fresh native reviewer independently checked both source-reference hashes, receipt equality,
 evidence digests and identities. It ran no tests or live API probes. Its actual runner-issued
 session was 01a16bde-0a28-7b13-8987-a2c092230ae0; measured elapsed time was 91326 ms,
-above the high-risk floor and below the imposed 10-minute deadline. No follow-up inference or
+above the high-risk floor and below the imposed 10-minute deadline. No ordinary implementation follow-up or
 API fallback was used. The original short finding ID R1 is recorded as R1-parent-escape for
 the review schema; its minor severity and exact pre-clearance condition are preserved.
 
@@ -169,7 +169,7 @@ the review schema; its minor severity and exact pre-clearance condition are pres
   "version": 2,
   "base": "6934c4ddc0dd401f3b6f861020466bf92d1657b0",
   "reviewed": "1dcb4abe8175a6e9eaecf614bfb069de62dc1540",
-  "covered": "39735b686034f35714c5c6d7a3942d3ac59c70f2",
+  "covered": "c9887352da9be27d53f4a456df477f70da5cf831",
   "authorSession": "01a16bb8-76d9-72c0-af65-c16359c44935",
   "reviewerSession": "01a16bde-0a28-7b13-8987-a2c092230ae0",
   "risk": "high",
@@ -180,7 +180,7 @@ the review schema; its minor severity and exact pre-clearance condition are pres
     "evidence": "Native reviewer session 01a16bde-0a28-7b13-8987-a2c092230ae0; controller monotonic measurement durationMs=91326; observed UTC start 2026-10-24T03:04:36.008811+00:00, finish 2026-10-24T03:06:07.334696+00:00. Private invocation.json and JSONL retained in /var/folders/y2/4jh9hjp56hqbrrmzpz7zzkx00000gn/T/morpheus-paperclip-independent-review-5tomvmcr."
   },
   "outcome": "complete",
-  "summary": "Independent native review found one minor exact-parent symlink escape and no substantive issues. The author reproduced the escape, fixed the containment guard and added a regression that fails before the fix; 28 focused tests, typecheck and diff checks pass. The reviewer pre-cleared this exact change, so its condition is satisfied without another model turn. Broader consumer and worker capabilities remain unqualified.",
+  "summary": "Independent native review found one minor exact-parent symlink escape and no substantive issues. The author reproduced the escape, fixed the containment guard and added a regression that fails before the fix; 28 focused tests, typecheck and diff checks pass. The reviewer pre-cleared this exact change, so its condition is satisfied without an implementation follow-up. Broader consumer and worker capabilities remain unqualified.",
   "findings": [
     {
       "id": "R1-parent-escape",
@@ -202,6 +202,36 @@ the review schema; its minor severity and exact pre-clearance condition are pres
       },
       "conditionMet": "The targeted symlink regression failed before the fix (promise resolved instead of rejecting). After the guard fix, pnpm exec vitest run tests/paperclip-bridge.test.ts passed28/28 at2026-10-24T03:07:00Z in6.80s; pnpm typecheck and git diff --check passed. Only the exact reviewer-allowed bridge/test paths changed in covered commit 39735b686034f35714c5c6d7a3942d3ac59c70f2."
     }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "01a16bde-0a28-7b13-8987-a2c092230ae0",
+      "commit": "c9887352da9be27d53f4a456df477f70da5cf831",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.27553333333333335,
+      "timing": {
+        "source": "clock",
+        "durationMs": 16532,
+        "evidence": "Same native reviewer session 01a16bde-0a28-7b13-8987-a2c092230ae0; controller monotonic measurement durationMs=16532; observed UTC start 2026-10-24T03:09:23.408894+00:00, finish 2026-10-24T03:09:39.941511+00:00. Private finalization-invocation.json and JSONL retained in /var/folders/y2/4jh9hjp56hqbrrmzpz7zzkx00000gn/T/morpheus-paperclip-independent-review-5tomvmcr."
+      },
+      "summary": "Finalization cleared explanatory existing Air tunnel, native sign-in and private credential handoff prose with no new findings.",
+      "scopeReason": "Finalize explanatory operating prose following conditional clearance; no new implementation or policy review.",
+      "finalization": {
+        "paths": [
+          "docs/paperclip-integration.md"
+        ],
+        "evidence": "Inspected the exact nine-line addition, surrounding reviewed tunnel/origin and credential-handling documentation, and the existing helper's private credential persistence and native sign-in flow. Compared the operational explanation with the controller's supplied handoff and vault-sealing facts.",
+        "attestation": "The addition restates already-reviewed native operator authentication through Air's existing 33100 tunnel and existing private credential handling. It adds no implementation, endpoint, account, permission or policy, and does not qualify broader worker or consumer capabilities."
+      }
+    }
   ]
 }
 ```
+
+The parent requested the operating docs explicitly explain the existing Air browser sign-in
+and SSH credential handoff. The same reviewer used the one automatic finalization-only turn
+to inspect those nine explanatory lines and attest they add no implementation, permission,
+account or policy. It cleared commit c9887352da9be27d53f4a456df477f70da5cf831 with no new findings in
+16532 ms. No credential or vault was accessed. This completes the automatic
+review word under the repository contract. CI was green at b14cfc8a; the final documentation
+and review-record head still requires its own passing CI before protected merge.
