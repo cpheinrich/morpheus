@@ -135,6 +135,15 @@ async function observeNoop(api, conversation, issue) {
   if (!conversation || !issue) return null;
   return observeDisposition(api, conversation.id, issue.id);
 }
+async function stopRequested(conversationId, n) {
+  const dir = controlDir(conversationId);
+  for (const name of await readdir(dir).catch(() => [])) {
+    if (!name.endsWith(".json")) continue;
+    const control = await readJSON(join(dir, name), null).catch(() => null);
+    if (control?.type === "stop" && control.turn === n) return true;
+  }
+  return false;
+}
 export async function runTurn({
   env = process.env, out = process.stdout, err = process.stderr, fetchImpl = globalThis.fetch,
   spawnImpl = spawn, signals = process, heartbeatMs, pollMs = 200, stopGraceMs = 12000,
@@ -222,16 +231,33 @@ export async function runTurn({
       await atomic(reconcilePath(entry.conversationId, entry.turn), { state: "terminated", runUuid: entry.runUuid, provenAt: Date.now(), via: "admission" }).catch(() => {});
     return result?.state ?? "unknown";
   };
-  const reserved = await reserveAccount(profile.account, {
+  let reserved;
+  try {
+    reserved = await reserveAccount(profile.account, {
     runUuid, profile: profileName, conversationId: conversation.id, turn: n, paperclipRunId: runId,
     runnerPid: process.pid, runnerIdentity, at: Date.now(),
   }, reconcile);
+  } catch (error) {
+    // Nothing launched; record it so the turn is never left claimed and unrecorded.
+    return refuse("runner_error", String(error.message).split("\n")[0]);
+  }
   if (!reserved) return refuse("account_reserved", "another turn on this account is active or not yet proven stopped");
+  const stopped = await stopRequested(conversation.id, n).catch(() => false);
+  if (stopped) {
+    await releaseAccount(profile.account, runUuid);
+    return refuse("stopped", "stop requested before launch");
+  }
   record.state = "starting";
   await save();
 
   const argv = transportArgv(profile, "run");
-  const child = spawnImpl(argv[0], argv.slice(1), { env: transportEnv(env), stdio: ["pipe", "pipe", "pipe"] });
+  let child;
+  try {
+    child = spawnImpl(argv[0], argv.slice(1), { env: transportEnv(env), stdio: ["pipe", "pipe", "pipe"] });
+  } catch (error) {
+    await releaseAccount(profile.account, runUuid);
+    return refuse("transport", String(error.message).split("\n")[0]);
+  }
   const write = (message) => {
     if (!child.stdin.destroyed && child.stdin.writable) child.stdin.write(JSON.stringify(message) + "\n");
   };
@@ -291,13 +317,22 @@ export async function runTurn({
       const dir = controlDir(conversation.id);
       for (const name of (await readdir(dir).catch(() => [])).sort()) {
         if (!name.endsWith(".json") || sent.has(name)) continue;
+        // A control that cannot be read yet is retried on the next poll, never dropped,
+        // and never allowed to take the relay (or the runner) down.
+        let control;
+        try {
+          control = await readJSON(join(dir, name), null);
+        } catch {
+          continue;
+        }
         sent.add(name);
-        const control = await readJSON(join(dir, name), null);
         if (control?.turn !== n) continue;
         if (control.type === "answer") write({ type: "answer", message: control.message });
         else if (control.type === "stop") write({ type: "stop", reason: "stop" });
         await rename(join(dir, name), join(dir, `${name}.sent`)).catch(() => {});
       }
+    } catch {
+      // Never let one poll reject; the next poll retries.
     } finally {
       relaying = false;
     }

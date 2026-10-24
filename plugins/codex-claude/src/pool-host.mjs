@@ -91,8 +91,21 @@ export async function readQuota(quota, cwd, env, timeoutSeconds = quota.timeoutS
 }
 // A previous turn is over only when its receipt or a process census proves it.
 export async function reconcileRun(runUuid) {
-  const receipt = await readJSON(receiptPath(runUuid), null);
-  if (!receipt) return "unknown";
+  let receipt = await readJSON(receiptPath(runUuid), null);
+  if (!receipt) {
+    // Never admitted here. Admission creates this same path exclusively before it can
+    // lock or launch, so claiming it first as a tombstone proves no launch can follow:
+    // a late envelope with this id is refused as a duplicate. Losing that race means a
+    // real admission exists, which is judged below like any other receipt.
+    try {
+      await writeFile(receiptPath(runUuid), JSON.stringify({ runUuid, state: "tombstoned", termination: "not-started", tombstonedAt: Date.now() }) + "\n", { flag: "wx", mode: 0o600 });
+      return "terminated";
+    } catch (error) {
+      if (error.code !== "EEXIST") return "unknown";
+      receipt = await readJSON(receiptPath(runUuid), null).catch(() => null);
+      if (!receipt) return "unknown";
+    }
+  }
   if (["verified", "not-started"].includes(receipt.termination)) return "terminated";
   if (receipt.poolPid && receipt.poolIdentity && (await identity(receipt.poolPid)) === receipt.poolIdentity)
     return "active";
@@ -187,9 +200,18 @@ export async function runHost({ configPath, input = process.stdin, output = proc
   let handler = null;
   let ended = false;
   let onEnd = () => {};
+  let gotFirst = false;
+  // Lines that arrive during admission are kept, so a stop cannot be lost before launch.
+  const early = [];
   lineReader(
     input,
-    (line) => (handler ? handler(line) : resolveFirst(line)),
+    (line) => {
+      if (!gotFirst) {
+        gotFirst = true;
+        resolveFirst(line);
+      } else if (handler) handler(line);
+      else early.push(line);
+    },
     () => {
       if (ended) return;
       ended = true;
@@ -274,6 +296,8 @@ export async function runHost({ configPath, input = process.stdin, output = proc
   if (admission.decision !== "admit")
     return refuse(admission.decision === "refuse" ? "quota_exhausted" : "quota_unknown", admission.detail);
   if (ended) return refuse("transport", "controller connection closed before launch");
+  if (early.some((raw) => { try { return JSON.parse(raw)?.type === "stop"; } catch { return raw == null; } }))
+    return refuse("stopped", "stop requested before launch");
 
   const id = randomUUID();
   receipt.bridgeRunId = id;
@@ -358,6 +382,7 @@ export async function runHost({ configPath, input = process.stdin, output = proc
       run.state = "running";
     }
   };
+  for (const raw of early.splice(0)) handler(raw);
   onEnd = () => stop("controller connection lost");
   if (ended) stop("controller connection lost");
   let meter = null;
@@ -405,6 +430,7 @@ export async function reconcileHost({ configPath, runUuid }) {
   process.env.CODEX_CLAUDE_HOME = dirname(configPath);
   const config = await loadHost(configPath);
   if (!/^[0-9a-f]{32}$/.test(runUuid ?? "")) throw new Error("Invalid run uuid");
+  await mkdir(join(home(), "pool-runs"), { recursive: true, mode: 0o700 });
   const state = await reconcileRun(runUuid);
   if (state === "terminated") {
     const receipt = await readJSON(receiptPath(runUuid), null);

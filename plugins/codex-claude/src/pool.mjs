@@ -6,7 +6,7 @@ import { applyClaudeEvent } from "./claude.mjs";
 import { applyCodexEvent } from "./codex-exec.mjs";
 import { bindingDigest, loadPool, readToken, sha256 } from "./pool-config.mjs";
 import { paperclipClient } from "./pool-paperclip.mjs";
-import { identity } from "./processes.mjs";
+import { identityStatus } from "./processes.mjs";
 import {
   UUID, answersDir, claimPath, controlDir, conversationDir, cursorPath, dispositionPath, initPool, issueIndex, reconcilePath,
   linkIssue, marker, observeDisposition, parseMarker, poolHome, readConversation, requestId, runPath, sessionPath,
@@ -20,6 +20,7 @@ import {
 const TASK_ID = /^[a-zA-Z0-9_-]{1,100}$/;
 const LOG_PAGE = 256 * 1024;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const controlFile = (id) => join(controlDir(id), `${String(Date.now()).padStart(15, "0")}-${randomUUID().slice(0, 8)}.json`);
 const firstLine = (text) => text.trim().split("\n")[0].slice(0, 80);
 export class Pool {
   followups = new Set();
@@ -142,7 +143,11 @@ export class Pool {
     // A runner that died without finishing cannot renew the remote lease; the remote
     // stops itself, and the next admission on this account reconciles it over SSH.
     let runnerLost = false;
-    if (run && !run.finished && run.runnerPid && (await identity(run.runnerPid)) !== run.runnerIdentity) runnerLost = true;
+    // Only a runner proven gone counts as lost; an unreadable process table is not proof.
+    if (run && !run.finished && run.runnerPid) {
+      const seen = await identityStatus(run.runnerPid);
+      runnerLost = seen.state === "absent" || (seen.state === "alive" && seen.identity !== run.runnerIdentity);
+    }
     let state;
     if (!turn) state = "unknown";
     else if (run?.finished) state = run.state;
@@ -277,11 +282,8 @@ export class Pool {
         ? { message: args.reason || "Denied" }
         : { updatedInput: { ...run.question.input, ...(args.answers ? { answers: args.answers } : {}) } }),
     };
-    await writeFile(
-      join(controlDir(c.id), `${String(Date.now()).padStart(15, "0")}-${randomUUID().slice(0, 8)}.json`),
-      JSON.stringify({ type: "answer", turn: n, message: { type: "control_response", response: { subtype: "success", request_id: args.questionId, response } } }),
-      { flag: "wx", mode: 0o600 },
-    );
+    // Atomic: the relay only ever sees a complete control (its .tmp name is ignored).
+    await atomic(controlFile(c.id), { type: "answer", turn: n, message: { type: "control_response", response: { subtype: "success", request_id: args.questionId, response } } });
     await atomic(join(conversationDir(c.id), "conversation.json"), {
       ...(await readJSON(join(conversationDir(c.id), "conversation.json"))),
       supervisionReplies: args.source === "user" ? 0 : c.supervisionReplies + 1,
@@ -369,16 +371,14 @@ export class Pool {
       if (error.code !== "EEXIST") throw error;
     }
     const run = await readJSON(runPath(c.id, n), null);
-    if (!run || run.finished) return { ...(await this.status({ conversationId })), stopping: false };
-    await writeFile(
-      join(controlDir(c.id), `${String(Date.now()).padStart(15, "0")}-${randomUUID().slice(0, 8)}.json`),
-      JSON.stringify({ type: "stop", turn: n }),
-      { flag: "wx", mode: 0o600 },
-    );
-    let cancel = "requested";
+    if (run?.finished) return { ...(await this.status({ conversationId })), stopping: false };
+    // Claimed but not yet recorded: the stop still lands in the spool, which the runner
+    // checks before launch and relays to the host from its start.
+    await atomic(controlFile(c.id), { type: "stop", turn: n });
+    let cancel = run?.paperclipRunId ? "requested" : "no Paperclip run recorded yet";
     try {
       const { api } = await this.context();
-      if (run.paperclipRunId) await api.post(`/heartbeat-runs/${run.paperclipRunId}/cancel`, {});
+      if (run?.paperclipRunId) await api.post(`/heartbeat-runs/${run.paperclipRunId}/cancel`, {});
     } catch (error) {
       // The spool stop is exact on its own; the Paperclip record is best effort.
       cancel = `paperclip cancel failed: ${error.message}`;

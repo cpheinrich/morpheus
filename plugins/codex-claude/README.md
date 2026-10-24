@@ -165,7 +165,9 @@ an older tool list): `profiles`, `start`, `status`, `wait`, `logs`, `answer`, `f
   so closing Codex or restarting this bridge ends nothing; `pool_reattach` resumes from the
   persisted conversation id and Paperclip log cursor. Losing the runner or SSH stops the remote
   turn; a turn whose end is not proven keeps its account reserved and workspace quarantined
-  until the host proves it ended (checked automatically before the next admission).
+  until the host proves it ended (checked automatically before the next admission). If SSH failed before the host ever admitted the turn, the
+  host's reconcile writes an exclusive tombstone for that run id once it is reachable again,
+  so the reservation clears and a late copy of the envelope is refused instead of launched.
 - **Questions and follow-ups.** Remote Claude asks live through its permission-control stream;
   `pool_answer` follows the same rules as `claude_answer` (stale ids refused, tool permission
   needs `source: user`, autonomous replies capped by `maxSupervisionReplies`). Codex reports

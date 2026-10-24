@@ -140,7 +140,7 @@ export async function observeDisposition(api, conversationId, issueId) {
   const seen = items(await api.get(`/issues/${issueId}/comments`)).some((comment) => {
     const mark = parseDisposition(comment?.body);
     return mark?.conversationId === conversationId && mark.turn === n && mark.runId === journal.runId &&
-      (comment.createdByRunId == null || comment.createdByRunId === journal.runId);
+      comment.createdByRunId === journal.runId;
   });
   if (!seen) return journal.state;
   await atomic(path, { ...journal, state: "applied", observedAt: Date.now() });

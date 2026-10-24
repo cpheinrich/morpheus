@@ -101,12 +101,14 @@ const observed = q.stale ? Date.now() - 3600000 : Date.now();
 console.log(JSON.stringify({ observedAt: new Date(observed).toISOString(), windows: [{ id: "weekly", usedPercent: q.usedPercent ?? 10, resetsAt: new Date(Date.now() + 86400000).toISOString() }] }));
 `;
 export const fakeSsh = header + `import { spawn } from "node:child_process";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 const args = process.argv.slice(2);
 const state = join(process.env.HOME, "state");
 mkdirSync(state, { recursive: true });
 appendFileSync(join(state, "ssh-calls.jsonl"), JSON.stringify({ args, env: Object.keys(process.env).sort() }) + "\\n");
+// An unreachable host: ssh itself fails before any remote command runs.
+if (existsSync(join(state, "ssh-down"))) process.exit(255);
 let i = 0;
 while (args[i] === "-o") i += 2;
 if (args.length !== i + 2 || !args[i].includes("@")) process.exit(255);
@@ -302,6 +304,13 @@ export async function poolFixture(t, { provider = "claude", transport = "ssh", s
     await chmod(join(bin, name), 0o755);
   }
   process.env.CODEX_CLAUDE_HOME = coord;
+  // In-process coordinator calls (pool.reconcile) spawn the fake ssh with this HOME;
+  // keep it in the fixture so nothing is written under the real home.
+  const realHome = process.env.HOME;
+  process.env.HOME = userHome;
+  t.after(() => {
+    process.env.HOME = realHome;
+  });
   delete process.env.CODEX_CLAUDE_POOL;
   await initStore();
   await configWrite({ ...defaults(), mode: "manual", maxSupervisionReplies });
