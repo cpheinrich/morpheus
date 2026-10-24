@@ -44,6 +44,10 @@ on:
           pnpm specified".
         type: string
         default: ""
+      security-import-verified:
+        description: Exact-head Security and Manager App proof from Morpheus's separate read-only CI job.
+        type: boolean
+        default: false
 
 jobs:
   conventions:
@@ -107,6 +111,7 @@ jobs:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
           PRODUCT_DIR: ${{ inputs.product-dir }}
           BASE_REF: ${{ github.base_ref }}
+          MORPHEUS_SECURITY_IMPORT_VERIFIED: ${{ inputs.security-import-verified }}
         run: |
           set -euo pipefail
           # Reruns must read current labels/body, not the original event snapshot.

@@ -259,6 +259,28 @@ describe("checkPr", () => {
     }
   });
 
+  it("accepts import-only Security changes only after the separate exact-head proof", async () => {
+    const candidate = goodPr({
+      author: "morpheus-security[bot]",
+      body: "<!-- morpheus-security-update -->",
+      branch: "morpheus-security/npm-gray-matter-ghsa-example",
+      changedFiles: ["package.json", "pnpm-lock.yaml", "src/review/local.ts"],
+      securityImportVerified: true,
+    });
+    expect(await checkPr(candidate)).toEqual([
+      expect.objectContaining({ rule: "morpheus-security-import-contract", level: "waived" }),
+    ]);
+    expect(await checkPr({ ...candidate, securityImportVerified: false })).toContainEqual(
+      expect.objectContaining({ rule: "morpheus-security-scope", level: "error" }),
+    );
+    expect(await checkPr({ ...candidate, body: "" })).toContainEqual(
+      expect.objectContaining({ rule: "morpheus-security-scope", level: "error" }),
+    );
+    expect(await checkPr({ ...candidate, author: "cpheinrich" })).not.toContainEqual(
+      expect.objectContaining({ rule: "morpheus-security-import-contract" }),
+    );
+  });
+
   it("blocks when the roadmap item was not moved to review", async () => {
     await seedRoadmap("EV-014", "in-progress");
     const findings = await checkPr(goodPr());

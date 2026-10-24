@@ -1384,6 +1384,10 @@ It follows the Morpheus Security shape (§18): a public reviewed engine in this 
 private operations repository holding the App key, the subscription token and the schedule, and a
 target that opts in with a committed policy file. Its review is a narrower record than the
 author's, bounded by path checks and refused outright for normative policy.
+The separate Morpheus-only Security import review workflow reuses the Manager's private caller
+and model credential, but gives its reviewer a read-only repository token. It accepts only a
+Security App-attested import candidate, records a separate App-owned result for the exact head,
+and never pushes or merges that candidate. The Security App alone reconciles it after all checks.
 [`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is authoritative.
 
 ### 7.14 Paperclip is an opt-in execution pilot, not the delivery authority
@@ -3562,8 +3566,10 @@ target opts in only when its installation, the reviewed central repository allow
 committed policy agree. The workflow owns full-tree
 OSV plus GitHub-alert ingestion, one-dependency PR creation, deterministic artifact and scope
 gates, reconciliation, and guarded merge. The schedule matters: a dependency can become vulnerable
-without any repository change. Missing evidence never counts as clean. No local host or model
-runtime participates. See [the execution contract](docs/runbooks/osv-maintenance.md).
+without any repository change. Missing evidence never counts as clean. Its normal dependency-only
+lane uses no model. A separate, explicitly opted-in import-only replacement lane requires a
+distinct Manager model review of the exact App-attested head before Security can merge; the model
+does not hold Security's write token. See [the execution contract](docs/runbooks/osv-maintenance.md).
 
 `release-preflight` is the secret-free gate before any job that publishes outside GitHub. It accepts
 no caller-selected source: the workflow requires `refs/heads/main`, checks out `github.sha`, refuses
