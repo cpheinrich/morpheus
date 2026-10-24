@@ -33,11 +33,7 @@ Chris must confirm this persistent authority before the draft may be merged.
 
 ## Independent review
 
-Independent high-risk review found that an old `manager-reviewed` label would make `check pr`
-select the wrong record after author-review fallback. The reviewer conditionally cleared removal
-of that label, focused tests with both author-label states, typecheck, and regenerated output.
-The fix is `fc3a872b`; all specified checks passed. The reviewer could not confirm its own
-test run because its tool yielded, so the author relied on the separately observed focused run.
+Independent high-risk review found that an old `manager-reviewed` label would make `check pr` select the wrong record after author-review fallback. The reviewer conditionally cleared removal of that label, focused tests with both author-label states, typecheck, and regenerated output. The fix is `fc3a872b`; all specified checks passed. The reviewer could not confirm its own test run because its tool yielded, so the author relied on the separately observed focused run.
 
 ```morpheus-review
 {
