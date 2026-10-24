@@ -100,12 +100,14 @@ authority. A settled reservation cannot be reopened or relabelled. Missing or co
 readback is failure, with any accepted liability still held; do not blindly retry or invent
 a settlement.
 
-The native configuration schema, native admission, controller, epoch and stored
-configuration digest remain unchanged. A source reservation may take aggregate liability
-above the native ceiling. New native paid requests then continue to wait under their
-configured ceiling, at most $250. Exact old native reservations still replay under their
-existing immutable identities. This administrative source path authorizes no native work,
-model fallback, host change or deployment by itself.
+The native configuration schema, ordinary paid reservation admission, controller,
+epoch and stored configuration digest remain unchanged. A source reservation may take
+aggregate liability above the configured ordinary paid ceiling, at most $250. The
+unchanged `reservePaid` and ordinary `cd budget reserve` guard refuses new paid
+reservations that would exceed it; exact old reserved paid identities still replay.
+This dollar guard does not gate local delivery intent creation, attempt planning or
+dispatch; their other existing controls still apply. This administrative source grant
+itself authorizes no native operation, model fallback, host change or deployment.
 
 ## Trust and local verification
 

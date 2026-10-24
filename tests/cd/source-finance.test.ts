@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyReviewedSourceReservation, prepareReviewedSourceReservation, reserveReviewedSource } from "../../src/cd/source-finance.js";
 import { configurationDigest, hash } from "../../src/cd/schema.js";
-import { reservePaid, settlePaid } from "../../src/cd/state.js";
+import { createIntent, planAttempt, reservePaid, settlePaid } from "../../src/cd/state.js";
 import { GitHubStore } from "../../src/cd/store.js";
-import { now } from "./fixtures.js";
+import { now, source } from "./fixtures.js";
 import { financeFixture, repin } from "./source-finance-fixtures.js";
 
 beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(now); });
@@ -179,9 +179,18 @@ describe("reviewed source-only financial admission", () => {
     expect(f.api.calls.every(call => call.path.startsWith("repos/example/app/"))).toBe(true);
     expect(Object.isFrozen(result.result.envelope.authority.grant)).toBe(true);
   });
-  it("keeps native admission capped while exact old native funds still replay", async () => {
+  it("caps new paid reservations while local planning and exact old paid replays remain available", async () => {
     const request = { native: "old exact request" }, f = await financeFixture(17_000_000, 280_000_000, state => { state.budget.reservations.old = { digest: hash(request), maximumMicros: 10_000_000, status: "reserved" }; });
-    await reserve(f);
+    const funded = await reserve(f), state = structuredClone(funded.state), before = structuredClone(state.budget);
+    expect(Object.values(before.reservations).reduce((sum, paid) => sum + (paid.status === "reserved" ? paid.maximumMicros : 0), before.spentMicros)).toBe(267_000_000);
+    expect(f.cfg.budget.togetherLimitUsd).toBe(250);
+    expect(() => reservePaid(state, f.cfg, "new-paid", { paid: "new" }, 1)).toThrow("Together budget exhausted");
+    state.sources = [source()]; f.api.calls.length = 0;
+    const intent = createIntent(state, f.cfg, "staging", state.sources[0]!, now, now, false, undefined, "otherwise-eligible-local");
+    expect(intent.state).toBe("pending");
+    const attempt = planAttempt(state, f.cfg, intent.id, "c".repeat(40), "7", now, "local");
+    expect(attempt).toMatchObject({ lane: "local", status: "active", dispatch: { state: "intended", runIds: [] } });
+    expect(state.budget).toEqual(before); expect(f.api.calls).toEqual([]);
     await expect(f.store.transact("new-native", "native", now, state => reservePaid(state, f.cfg, "new-native", { native: "new" }, 1))).rejects.toThrow("Together budget exhausted");
     await f.store.transact("replay-native", "native", now, state => reservePaid(state, f.cfg, "old", request, 10_000_000));
     expect((await f.store.read()).state.budget.reservations.old).toEqual({ digest: hash(request), maximumMicros: 10_000_000, status: "reserved" });

@@ -1541,8 +1541,13 @@ the source boundary without adding a caller namespace, retry or provider behavio
 An independently reviewed source grant may fund one exact source publication request
 through `cd budget reserve`, with its own positive safe-integer amount and aggregate
 ceiling. Engagement values and human evidence stay in the reviewed input, never in
-shared constants. Keep native configuration, native admission, controller policy,
-stored epoch/digest and old paid identities unchanged. The grant pins a strict finite
+shared constants. Keep native configuration, ordinary paid reservation admission,
+controller policy, stored epoch/digest and old paid identities unchanged. The
+configured at-most-$250 guard in `reservePaid` and ordinary `cd budget reserve`
+refuses new paid reservations that would exceed it; exact old reserved paid
+identities still replay. Local delivery intent creation, attempt planning and
+dispatch are not gated by this dollar guard and retain their existing controls.
+The grant pins a strict finite
 source request in the `source-ci-` namespace; it grants no native or provider action.
 Snapshot inputs, check before replay and at every fresh CAS callback, and require
 the complete owner-bound envelope receipt and exact reserved paid object at readback.
