@@ -143,6 +143,15 @@ An existing owner requires that owner's normal sign-in instead. Never paste invi
 passwords, cookies or tokens into chat, Git, logs or model prompts. The private directory
 contains credentials and backups and must remain mode 700 with mode 600 files.
 
+Air's browser does not inherit the controller's operator session cookie. Open the existing
+`http://127.0.0.1:33100` tunnel and use the native email/password sign-in with the local
+operator identity saved in `owner-credentials.private.json` in the controller's private auth
+directory. The authorized operator retrieves those fields over the existing SSH connection
+to the controller, directly into their private terminal; credential output never belongs in
+chat, Git or a model workspace. The device handoff supplies the exact SSH retrieval command.
+The experiment controller temporarily seals that vault mode 000 while models run, so retrieval
+waits for the operator to reopen it after those runs terminate.
+
 For a signup interruption before a session exists, `resume-claim-migrated` reuses the saved
 identity/password and signs in, without creating another identity. Only after the operator
 proves a prior signup was rejected **before** user creation (for example, observed 403
