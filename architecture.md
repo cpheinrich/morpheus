@@ -3165,7 +3165,10 @@ each failed Actions job's failing step — the lines between that step's echoed 
 2 timeout or no checks, 3 usage or `gh` error. The head SHA and checks come from the same response;
 a head that moves mid-wait is followed and named in the digest. A `conventions` failure whose only
 blocking line is the missing `agent-reviewed` label is labelled as that race, not as a code
-failure. Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
+failure. Before the default all-checks wait reports green, it also confirms that current-head
+Actions runs have finished and rereads the check rollup. A run can be queued before its job check
+appears; visible passing checks alone do not prove completion. `--required-only` retains its
+required-check scope. Pure logic lives in `src/wait-ci/` behind an injectable `gh` runner.
 
 ### 18.2 Reusable GitHub workflows
 

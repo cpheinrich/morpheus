@@ -51,6 +51,8 @@ export function renderDigest(input) {
     }
     if (input.truncated)
         out.push("! more than 100 checks: only the first page was read");
+    if (input.pendingWorkflows)
+        out.push("  … current-head Actions workflow runs pending or not yet verified; job checks may not have registered");
     for (const check of failures) {
         const detail = input.details.get(checkKey(check));
         const mark = check.outcome === "cancelled" ? "⊘" : "✗";
