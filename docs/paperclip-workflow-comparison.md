@@ -41,7 +41,7 @@ byte-identical input control. Six synthetic cases do not establish general produ
 Plan SHA256: `0431b27286594f1b84ecaf0b60ef87a128b73d31cd7903fe530c0775fa7ffcd9`.
 Clarified corpus SHA256: `f37d1e2510eb613c7d6c7f9141234a3cc69f29e0652ac186c7c8a35fb45dd7f9`.
 Locked collection used implementation `33dbe5c8`; later source hardening did not change paid
-outputs, public inputs, hidden checks, scoring source or frozen selection rules.
+outputs, public inputs, hidden checks, archived scoring source or frozen selection rules.
 
 ## Results retained without retries
 
@@ -130,6 +130,14 @@ intended assignee. Exact readback and absence of a native-launch marker identifi
 no heartbeat ran on the intended binding. After reconciliation, a unique-title submission ran
 once. The collector now includes the full agent ID in titles and checks returned company,
 assignee and title before observation. A successful POST is not proof of correct assignment.
+
+The fresh implementation review independently verified the current8 hidden-test digests
+and rebuilt the cached summary, then found three tooling defects outside this complete cohort:
+missing artifacts could abort batch scoring, missing traces could falsely make usage complete,
+and hidden-test digests were not enforced. The new tools retain explicit missing-artifact rows,
+mark missing expected traces unknown unless proven not-started, and verify hidden bytes before
+grading. Focused regressions cover these paths. Original paid outputs, scorer archives, scores
+and summary hashes remain unchanged; historical reproduction uses its archived source bundle.
 
 ## Resource accounting and reproduction
 

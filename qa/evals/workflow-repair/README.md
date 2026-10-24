@@ -68,10 +68,24 @@ Run controls with:
 pnpm exec vitest run tests/workflow-repair.test.ts
 ```
 
-There are33 portable/native controls; Linux explicitly skips macOS-only Seatbelt checks.
+There are39 portable/native controls; Linux explicitly skips macOS-only Seatbelt checks.
 After scoring, `summarize.py PRIVATE_CAMPAIGN` rebuilds totals without a model call. Usage
 includes managers and continuations. Unknown usage stays unknown; subscription-included
 calls are unpriced. Repeats are not independent case counts. The frozen handoff metric is
 literal report-material presence combined with accepted behavior, and has known false
 negatives for equivalent caveat wording. It does not verify truth or saved human time.
 T01's missing public schema and failed tool isolation prevent a confirmatory workflow ranking.
+
+
+The post-study review hardened new plans: missing episodes/workspaces/source/result records
+produce explicit failed rows without aborting later scoring; expected absent worker/manager
+traces mark usage unknown unless a supervisor receipt proves non-start; hidden-test bytes
+must match their recorded manifest digest before any grading. These changes do not rewrite
+the frozen study. Its archived scorer hashes intentionally differ from current source.
+For exact historical rescoring, assemble the private archived `collector-source.py` as
+`campaign.py` and each `frozen-*.py` under its original basename in a temporary directory,
+verify them against `plan.json`, then run that archived `score_campaign.py` with the original
+private campaign/corpus and termination attestation. Review independently checked all8 hidden
+file digests and every cached total. Current tools require a newly frozen plan; do not edit
+old hashes to make new code appear to have produced the original evidence. Cached aggregates
+remain reproducible with the original `frozen-summarize.py`, with no model calls.

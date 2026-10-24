@@ -51,6 +51,11 @@ def score(root, curation, split):
         raise ValueError("corpus differs from frozen collection input")
     corpus = json.loads(raw)
     cases = {case["id"]: case for case in corpus["cases"]}
+    for case_id in {r["case"] for r in plan["schedule"] if r["split"] == split}:
+        hidden = cases[case_id]["hiddenTests"]
+        path = curation / hidden["path"]
+        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != hidden.get("sha256"):
+            raise ValueError("hidden tests differ from frozen manifest: " + case_id)
     rows = []
     for row in plan["schedule"]:
         if row["split"] != split:
@@ -60,10 +65,27 @@ def score(root, curation, split):
             identity = row["id"] + suffix
             episode = root / "episodes" / identity
             workspace = root / "workspaces" / identity
-            if not episode.exists():
+            if suffix and not episode.exists():
                 continue
-            workspace.chmod(0o700)
+            workspace_exists = workspace.is_dir()
+            if workspace_exists:
+                workspace.chmod(0o700)
             try:
+                artifacts = [("workspace", workspace.is_dir()),
+                             ("solution.py", (workspace / "solution.py").is_file() and not (workspace / "solution.py").is_symlink()),
+                             ("result.json", (episode / "result.json").is_file())]
+                missing = [name for name, valid in artifacts if not valid]
+                if missing:
+                    attempt = {"behavioralPassed": False, "integrityPassed": False,
+                               "repairPassed": False, "handoffMaterialPresent": False,
+                               "reportPresent": False, "artifactMissing": True,
+                               "violations": ["missing artifact: " + name for name in missing],
+                               "collectorError": {"type": "MissingArtifact", "paths": missing},
+                               "metadata": read_private(episode / "result.json"),
+                               "hiddenTestsRun": 0, "sourceSha256": None}
+                    write_json(root / "scores" / (identity + ".json"), attempt)
+                    record["initial" if not suffix else "continuation"] = attempt
+                    continue
                 result = read_private(episode / "result.json")
                 error = read_private(episode / "error.json")
                 integrity = inspect_integrity(cases[row["case"]], workspace, plan["instructions"])
@@ -83,7 +105,8 @@ def score(root, curation, split):
                 write_json(root / "scores" / (identity + ".json"), {**attempt, "privateHiddenReport": grade["report"]})
                 record["initial" if not suffix else "continuation"] = attempt
             finally:
-                workspace.chmod(0)
+                if workspace_exists:
+                    workspace.chmod(0)
         record["final"] = record.get("continuation", record.get("initial"))
         rows.append(record)
     write_json(root / ("scores-" + split + ".json"), rows)

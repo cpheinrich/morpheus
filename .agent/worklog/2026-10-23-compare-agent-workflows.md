@@ -242,3 +242,32 @@ files not_tracked; exact source reads rather than graph completeness support the
 33focused controls pass, including an integration regression that unexpected typed tools
 keep the vault000 and seal the workspace. Final typecheck/compile/index and independent
 review/CI are recorded below when they actually finish.
+
+## Independent review and response
+
+Fresh native reviewer01a16c28-a9ff-7d01-b2e0-fc10c8ff24a1 reviewed9f9b1e7220ea1281ad6b7327bbffad09618cb20c
+at high risk. Initial turn was complete/blocked with three substantive findings: WR-001,
+missing artifacts abort batch scoring; WR-002, absent traces can falsely make usage complete;
+WR-003, recorded hidden-test hashes are not enforced. It independently rebuilt the cached
+summary and checked the plan, scorer, score, summary, corpus and all8 hidden-file hashes.
+The initial turn took159172ms measured by the controller,04:26:06.590343Z to04:28:45.764614Z;
+no child or timeout. No conditional clearance; the same session must assess the fixes.
+
+WR-001 now emits explicit failed/missing-artifact rows, continues to later valid submissions
+and restores sealed workspace permissions. WR-002 inspects every expected worker/manager
+trace, treating absence as unknown unless a supervisor receipt proves non-start. WR-003
+verifies each relevant hidden file against corpus.json's frozen sha256 before any grading.
+New regressions reproduce all3 defects against the reviewed source in a temporary copy:
+missing workspace raised FileNotFoundError; changed oracle reached the forbidden execution
+stub; missing worker trace falsely reported unknownUsage0. All fail before and pass after.
+The positive scorer control accepts a later sealed valid workspace after an absent first row.
+Fixture development initially used the full schedule with a one-case corpus, then was scoped
+to its one-case schedule; a positive mock also needed the real grader report field. These
+were test-fixture errors, fixed before follow-up, not further paid study runs.
+
+39focused Python controls pass through the Vitest wrapper; typecheck, compile, pm index and
+diff checks pass. Current summary rebuild exactly matches the original cached summary; scores
+and summary SHA256 remain5355081a46bef72253089d086f2bc38ebad92665b315e522916c6d67ee3da115
+anddd193423a2774c3a3d6dcb8f5800772347bffd31ec6e899634f608731acba94d. No frozen source,
+input, paid output, hidden grade, score or selection rule was edited. Historical reproduction
+uses the verified archived source bundle; new tools intentionally require a newly frozen plan.

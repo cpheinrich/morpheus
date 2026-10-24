@@ -35,5 +35,47 @@ class SummaryTests(unittest.TestCase):
             self.assertFalse(result["costComparisonComplete"])
 
 
+class MissingEvidenceTests(unittest.TestCase):
+    def fixture(self, directory):
+        root = Path(directory)
+        attempt = dict(repairPassed=True, handoffMaterialPresent=False, metadata=dict(elapsedSeconds=1))
+        (root / "scores-locked.json").write_text(json.dumps([dict(id="T01-F", case="T01", arm="F", repeat=0, initial=attempt, final=attempt)]))
+        episode = root / "episodes/T01-F"
+        (episode / "manager").mkdir(parents=True)
+        return root, episode
+
+    def test_each_expected_trace_missing_is_unknown(self):
+        for missing in ["worker", "manager", "both"]:
+            with tempfile.TemporaryDirectory() as directory:
+                root, episode = self.fixture(directory)
+                usage = dict(usage=[dict(input_tokens=10, output_tokens=2)])
+                if missing not in ("worker", "both"):
+                    (episode / "trace.json").write_text(json.dumps(usage))
+                if missing not in ("manager", "both"):
+                    (episode / "manager/trace.json").write_text(json.dumps(usage))
+                result = summarize(root)
+                self.assertEqual(result["arms"]["F"]["unknownUsage"], 2 if missing == "both" else 1)
+                self.assertFalse(result["costComparisonComplete"])
+
+    def test_proven_nonstart_is_distinct_from_missing_trace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, episode = self.fixture(directory)
+            for folder in [episode, episode / "manager"]:
+                (folder / "receipt.json").write_text(json.dumps(dict(termination="not-started")))
+            result = summarize(root)
+            self.assertEqual(result["arms"]["F"]["unknownUsage"], 0)
+            self.assertEqual(result["arms"]["F"]["calls"], 0)
+            self.assertTrue(result["costComparisonComplete"])
+
+    def test_missing_initial_attempt_is_unknown_not_zero(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "scores-locked.json").write_text(json.dumps([dict(id="T01-A", case="T01", arm="A", repeat=0, final=None)]))
+            result = summarize(root)
+            self.assertEqual(result["arms"]["A"]["unknownUsage"], 1)
+            self.assertEqual(result["arms"]["A"]["missingResults"], 1)
+            self.assertFalse(result["costComparisonComplete"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -31,22 +31,29 @@ def summarize(root):
                          seconds=0, unknownElapsed=0, inputTokens=0, outputTokens=0, calls=0, unknownUsage=0))
         values["scheduled"] += 1
         final = row.get("final")
-        values["missingResults"] += int(final is None)
+        values["missingResults"] += int(final is None or bool(final.get("artifactMissing")))
         values["accepted"] += int(bool(final and final["repairPassed"]))
         values["handoffs"] += int(bool(final and final["handoffMaterialPresent"]))
         if not row["repeat"]:
             cases.setdefault(row["case"], {})[row["arm"]] = bool(final and final["repairPassed"])
         for suffix, score_key in [("", "initial"), ("-continuation", "continuation")]:
             attempt = row.get(score_key)
-            if attempt is None:
+            episode = root / "episodes" / (row["id"] + suffix)
+            if attempt is None and suffix and not episode.exists():
                 continue
-            elapsed = (attempt.get("metadata") or {}).get("elapsedSeconds")
+            elapsed = ((attempt or {}).get("metadata") or {}).get("elapsedSeconds")
             values["unknownElapsed"] += int(elapsed is None)
             values["seconds"] += elapsed or 0
-            episode = root / "episodes" / (row["id"] + suffix)
-            for trace_path in [episode / "trace.json", episode / "manager" / "trace.json"]:
+            traces = [episode / "trace.json"]
+            manager = episode / "manager" / "trace.json"
+            if (not suffix and row["arm"] in ("P", "F")) or manager.is_file():
+                traces.append(manager)
+            for trace_path in traces:
                 trace = read_private(trace_path)
                 if trace is None:
+                    receipt = read_private(trace_path.parent / "receipt.json")
+                    if not receipt or receipt.get("termination") != "not-started":
+                        values["unknownUsage"] += 1
                     continue
                 values["calls"] += 1
                 usage = trace.get("usage", [])
