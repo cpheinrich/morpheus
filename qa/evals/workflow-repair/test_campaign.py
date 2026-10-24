@@ -8,7 +8,7 @@ import sys
 from unittest.mock import patch
 
 import subprocess
-from campaign import collect, freeze, load_plan, parse_trace, protect_operator, public_check, schedule, setup_call, unwrap_log
+from campaign import audit_tools, collect, freeze, load_plan, parse_trace, protect_operator, public_check, queued_call, require_tools, schedule, setup_call, unwrap_log
 
 
 class CampaignTests(unittest.TestCase):
@@ -54,6 +54,42 @@ class CampaignTests(unittest.TestCase):
         self.assertEqual(result["sessionId"], "native-session")
         self.assertEqual(result["commands"][0]["exit_code"], 1)
         self.assertEqual(result["usage"], [{"input_tokens": 100, "output_tokens": 10}])
+
+    def test_actual_mcp_success_and_denied_attempt_both_quarantine_profile(self):
+        for status in ["completed", "failed"]:
+            raw = json.dumps({"type": "item.completed", "item": {"type": "mcp_tool_call", "server": "codebase-memory-mcp", "tool": "index_repository", "status": status}})
+            self.assertEqual(audit_tools(raw), {"recordedToolsAccepted": False, "capabilitiesVerified": False, "unexpectedTools": [{"type": "mcp_tool_call", "server": "codebase-memory-mcp", "tool": "index_repository", "status": status}]})
+        ordinary = '\n'.join(json.dumps({"type": "item.completed", "item": {"type": kind}}) for kind in ["agent_message", "command_execution", "file_change", "todo_list", "error"])
+        self.assertEqual(audit_tools(ordinary), {"recordedToolsAccepted": True, "capabilitiesVerified": False, "unexpectedTools": []})
+
+    def test_refused_before_native_start_is_not_a_qualified_empty_trace(self):
+        with tempfile.TemporaryDirectory() as d:
+            output = Path(d)
+            (output / "stdout.jsonl").write_text("")
+            with self.assertRaisesRegex(RuntimeError, "native session did not start"):
+                require_tools(output)
+            self.assertEqual(json.loads((output / "tool-audit.json").read_text()),
+                             {"recordedToolsAccepted": False, "capabilitiesVerified": False, "unexpectedTools": [], "nativeStarted": False})
+
+    def test_duplicate_title_returning_foreign_issue_stops_before_run_lookup(self):
+        with tempfile.TemporaryDirectory() as d:
+            calls = []
+            def api(_self, method, path, value=None):
+                calls.append((method, path, value))
+                return {"id": "old-issue", "companyId": "company", "assigneeAgentId": "foreign", "title": "run"}
+            with patch("campaign.Operator.api", api):
+                with self.assertRaisesRegex(RuntimeError, "issue readback did not match"):
+                    queued_call({"agentId": "owned"}, {"companyId": "company"}, {}, "prompt", Path(d))
+            self.assertEqual([(m, p) for m, p, _ in calls], [("POST", "/companies/company/issues"), ("POST", "/agents/owned/pause")])
+            self.assertIn("owned", calls[0][2]["title"])
+
+    def test_wrong_company_with_same_assignee_is_also_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            output = Path(d)
+            def api(_self, method, path, value=None):
+                return {"id": "old", "companyId": "foreign", "assigneeAgentId": "owned", "title": "Workflow repair " + output.name + " / owned"}
+            with patch("campaign.Operator.api", api), self.assertRaisesRegex(RuntimeError, "readback"):
+                queued_call({"agentId": "owned"}, {"companyId": "company"}, {}, "prompt", output)
 
     def test_upstream_chunks_preserve_split_json_and_receipts(self):
         raw = '\n'.join(json.dumps(e) for e in [
@@ -105,7 +141,7 @@ class CampaignTests(unittest.TestCase):
                     return {"agentId": "fixture", "body": {}}
                 def execute(*args):
                     folder = args[-1]
-                    (folder / "stdout.jsonl").write_text(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "bounded brief"}}) + "\n")
+                    (folder / "stdout.jsonl").write_text(json.dumps({"type": "thread.started", "thread_id": "fixture-native-session"}) + "\n" + json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "bounded brief"}}) + "\n")
                     return {"exitCode": 0}
                 with patch("campaign.setup_call", setup), patch("campaign.direct_call", execute), patch("campaign.queued_call", execute), redirect_stdout(io.StringIO()):
                     collect(output, {}, "D01-" + arm)
@@ -119,6 +155,33 @@ class CampaignTests(unittest.TestCase):
                 self.assertEqual(result.stat().st_mode & 0o777, 0)
                 result.chmod(0o600)
                 self.assertEqual(set(json.loads(result.read_text())["artifactSha256"]), {"solution.py", "AGENTS.md"})
+
+    def test_unexpected_recorded_tool_keeps_vault_sealed_inside_collection(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            corpus = root / "corpus"
+            corpus.mkdir()
+            (corpus / "corpus.json").write_text(json.dumps({"cases": [{"id": "D01", "split": "dev", "objective": "public", "commonContext": {}, "startFiles": {"solution.py": "pass\n"}}]}))
+            output = root / "campaign"
+            freeze(corpus, output)
+            vault = root / "vault"
+            vault.mkdir()
+            token = vault / "token"
+            token.write_text("synthetic")
+            def execute(*args):
+                self.assertEqual(vault.stat().st_mode & 0o777, 0)
+                (args[-1] / "stdout.jsonl").write_text('\n'.join(json.dumps(e) for e in [
+                    {"type": "thread.started", "thread_id": "fixture"},
+                    {"type": "item.completed", "item": {"type": "mcp_tool_call", "status": "completed"}}]))
+                return {"exitCode": 0}
+            try:
+                with patch("campaign.setup_call", return_value={}), patch("campaign.direct_call", execute), redirect_stdout(io.StringIO()):
+                    with self.assertRaisesRegex(RuntimeError, "unexpected tool"):
+                        collect(output, {"boardTokenFile": str(token)}, "D01-A")
+                self.assertEqual(vault.stat().st_mode & 0o777, 0)
+                self.assertEqual((output / "workspaces/D01-A").stat().st_mode & 0o777, 0)
+            finally:
+                vault.chmod(0o700)
 
     def test_public_smoke_cannot_replace_the_frozen_check(self):
         with tempfile.TemporaryDirectory() as d:

@@ -34,9 +34,9 @@ The authenticated project-delivery qualification remains MO-26-10-23-00.15.26.
 Budget: no increase to Chris's original ceilings of32.5 Codex weekly percentage points and
 30 Claude points for this initiative. Last observed first-phase shared-account deltas were
 approximately9 Codex points across hosts and3 Claude points. Carry12.5 Codex points as a
-conservative first-phase reserve; bound this new phase at15 additional points total, leaving5 points unallocated. Fresh controller telemetry at phase intake is28% weekly
-used, reset1793382147. Allocate at most15 additional controller points (hard43%, admission
-stop40%) including this coordinator, subagents, reviews and all experimental model calls.
+conservative first-phase reserve; the final pre-lock allocation bounds this new phase at20 additional points total, leaving0 points unallocated (the initial15-point allocation is retained below as history). Fresh controller telemetry at phase intake is28% weekly
+used, reset1793382147. Allocate at most20 additional controller points (hard48%, admission
+stop45%) including this coordinator, subagents, reviews and all experimental model calls.
 No further remote inference: a native account/read probe confirmed different account owners
 (controller Pro, remote ProLite); Chris will resolve subscription sharing separately. Remote
 tools and no-model grading remain in scope. Reserve before batches; unknown allowance refuses. Window
@@ -163,3 +163,15 @@ f37d1e2510eb613c7d6c7f9141234a3cc69f29e0652ac186c7c8a35fb45dd7f9. Eighteen initi
 worker episodes and eight manager calls are scheduled, plus only public-failure-driven
 continuations. Max50 experimental native calls includes all12 development calls.
 The draft PR is for CI visibility; results and independent review remain pending.
+
+The separate bridge PR470 merged2026-10-24T03:32:31Z as
+1a603991173a75fef11e3fc580517d7ea0afb870 after its final CI/browser job completed.
+Its independent review record covers28focused tests, the exact parent-directory symlink
+regression/fix, and a same-session explanatory-prose finalization. This comparison
+continues independently with its frozen code/prompts and sealed hidden checks.
+
+Pre-results measurement limitation: the candidate RPC copies JSON values, so a passing
+value check cannot establish in-process object identity/aliasing or argument nonmutation.
+The report now states that limit explicitly. No collector/scorer, public input, model
+output, selection rule, or held-out feedback was changed. Native project delivery and
+full API semantics remain outside this small proxy's evidence.

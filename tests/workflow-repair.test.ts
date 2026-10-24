@@ -10,7 +10,7 @@ describe("workflow repair experiment controls", () => {
       encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"],
     });
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toMatch(/Ran 26 tests/);
+    expect(result.stderr).toMatch(/Ran 33 tests/);
     expect(result.stderr).toMatch(/OK/);
   });
 });

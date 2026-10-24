@@ -66,9 +66,12 @@ corpus is its sibling `curation-clarified`. Raw traces and credentials stay priv
 
 After terminal proof, run `score_campaign.py PRIVATE_CAMPAIGN PRIVATE_CORPUS --split
 locked --models-terminal`, then `summarize.py PRIVATE_CAMPAIGN` with /usr/bin/python3.
-Reports distinguish exact behavioral acceptance, immutable-file integrity, basic handoff
+Reports distinguish acceptance of JSON values, immutable-file integrity, basic handoff
 material presence, actual command traces, known/unknown token use and elapsed time.
 Handoff presence alone does not attest report truth or protected project delivery.
+The RPC boundary copies values and cannot preserve Python object identity; these checks
+do not establish in-process aliasing or argument-mutation guarantees. Those need native
+project tests or a separate operation-specific probe.
 
 Results are pending; the frozen collection is in progress. This document will be completed
 before independent review and merge.
