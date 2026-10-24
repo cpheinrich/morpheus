@@ -57,3 +57,14 @@ fresh HIGH independent source review must see the complete implementation, actua
 Actions ABI/CI results, source manifests and provider/financial premises before normal
 protected merge. This task does not adopt a consumer, reserve extra funds, modify the
 native250 budget, change a Vercel setting, grant credentials, or authorize a delivery.
+
+## Normal source phase B release
+
+At 2026-10-24T03:14:25.052406Z the accountable lead authenticated all25 changed Git
+payloads and18 retained evidence files, then released one initial source push and an
+unlabelled draft PR/one normal blocking CI wait. If required CI including both actual
+ABI legs passes, the author owns a fresh HIGH independent review and the normal record,
+CI and protected-merge loop. The source family remains bounded to six full CI groups
+and four metadata groups, with no unchanged rerun or consumer/runtime effect. The
+funded M10 reservation is not repeated. Independent review and actual CI remain
+pending at this transition; the initial local Phase A stop above is historical.
