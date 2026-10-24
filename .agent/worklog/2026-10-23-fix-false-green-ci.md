@@ -79,7 +79,7 @@ The follow-up also had observed clock boundaries 2026-10-24 00:18:22–00:20:21
 UTC. PR #459 remains draft with auto-merge disabled; the unrelated full
 typecheck failure is being handled separately.
 
-A fresh normal-risk independent reviewer (/root/review_449) found F1, a substantive false-green path when a confirmation poll reached a replacement head at the deadline. The author made that head unverified until its runs were checked, and added a clock-controlled regression. During the same-reviewer follow-up, MIN-02 found that the new guard hid an already failed replacement-head check; the author kept failed checks decisive and added a second regression. The reviewer cleared 4b77daa4 with no remaining findings. The reviewer independently reproduced timeout for an unverified green replacement and failure for a failed replacement; its own Vitest invocation produced no output and was interrupted, while the author's focused suite passed 100/100. The supported Codex thread reader supplied measured durations for both turns.
+A fresh normal-risk independent reviewer (/root/review_449) found F1-449, a substantive false-green path when a confirmation poll reached a replacement head at the deadline. The author made that head unverified until its runs were checked, and added a clock-controlled regression. During the same-reviewer follow-up, MIN-02 found that the new guard hid an already failed replacement-head check; the author kept failed checks decisive and added a second regression. The reviewer cleared 4b77daa4 with no remaining findings. The reviewer independently reproduced timeout for an unverified green replacement and failure for a failed replacement; its own Vitest invocation produced no output and was interrupted, while the author's focused suite passed 100/100. The supported Codex thread reader supplied measured durations for both turns.
 
 ```morpheus-review
 {
@@ -97,10 +97,10 @@ A fresh normal-risk independent reviewer (/root/review_449) found F1, a substant
     "evidence": "Codex read_thread for reviewer thread 01a16b43-5080-7699-99dc-ffb410ed302b, initial turn 01a16b43-52fa-77ef-a78d-b0323cd65789: durationMs=75963, startedAt=1792800937, completedAt=1792801013."
   },
   "outcome": "complete",
-  "summary": "A fresh normal-risk independent reviewer (/root/review_449) found F1, a substantive false-green path when a confirmation poll reached a replacement head at the deadline. The author made that head unverified until its runs were checked, and added a clock-controlled regression. During the same-reviewer follow-up, MIN-02 found that the new guard hid an already failed replacement-head check; the author kept failed checks decisive and added a second regression. The reviewer cleared 4b77daa4 with no remaining findings. The reviewer independently reproduced timeout for an unverified green replacement and failure for a failed replacement; its own Vitest invocation produced no output and was interrupted, while the author's focused suite passed 100/100. The supported Codex thread reader supplied measured durations for both turns.",
+  "summary": "A fresh normal-risk independent reviewer (/root/review_449) found F1-449, a substantive false-green path when a confirmation poll reached a replacement head at the deadline. The author made that head unverified until its runs were checked, and added a clock-controlled regression. During the same-reviewer follow-up, MIN-02 found that the new guard hid an already failed replacement-head check; the author kept failed checks decisive and added a second regression. The reviewer cleared 4b77daa4 with no remaining findings. The reviewer independently reproduced timeout for an unverified green replacement and failure for a failed replacement; its own Vitest invocation produced no output and was interrupted, while the author's focused suite passed 100/100. The supported Codex thread reader supplied measured durations for both turns.",
   "findings": [
     {
-      "id": "F1",
+      "id": "F1-449",
       "severity": "substantive",
       "description": "If confirmation found a replacement head at the deadline, wait-ci could report its visible checks green without listing that replacement head's Actions runs.",
       "paths": ["src/wait-ci/wait.ts", "tests/wait-ci/wait.test.ts", "src/wait-ci/digest.ts"],
