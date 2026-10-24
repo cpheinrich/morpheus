@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import matter from "gray-matter";
+import matter from "@11ty/gray-matter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/cli/run.js";
 import { ctoGuideTopics, ctoSkillDescription } from "../src/cto/guide.js";
