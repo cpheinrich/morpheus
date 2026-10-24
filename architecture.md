@@ -1412,6 +1412,16 @@ deployment and prospective evidence exist. No consumer repository is migrated or
 Historical decision evaluations ([`qa/evals/agent-stack/`](qa/evals/agent-stack/README.md)) freeze
 inputs, oracles, prompts and model/effort before execution and claim no productivity gain.
 
+The opt-in [explicit linkage bridge](docs/paperclip-integration.md) binds one roadmap item to
+many immutable Paperclip job records under `.agent/paperclip/`. Each record names repository,
+claimed branch, source SHA and acceptance references; only selected job instructions are copied.
+Git owns intent, exact issue linkage and operator-verified evidence. Paperclip retains live status.
+An operation journal in the common Git directory precedes issue creation; uncertain outcomes
+observe and link exact IDs instead of reposting. Result reconciliation never advances roadmap
+status or bypasses the normal delivery loop. Its private authentication rollout helper preserves
+the existing controller/database and stages reversible configuration; real deployment, worker
+authority isolation and consumer delivery remain explicit qualification gates.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.
