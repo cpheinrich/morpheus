@@ -1,183 +1,57 @@
-# Morpheus
+# Private ROOT execution template — no authority
 
-An operating system for building and running companies, designed to be operated by agents.
+This NEW packet supersedes the operational call-site gap in the immutable 71878df3 packet. Its author is a source author and cannot independently review this source. Every actual target/run/build/attempt/nonce/main-helper/profile/review/release/census binding is NULL. No native observer is running. No SSH, production PID/file probe, kqueue, token, provider, service, ledger, arm, request or cancel was executed by this author. ROOT owns future starts and effects, after fresh exact source and operational review/release of this complete closure.
 
-Morpheus does two things:
+## Literal two-stage call site
 
-1. **Initializes** a new company repository with the full structure, tooling, and third-party wiring already in place.
-2. **Maintains** the reusable packages that repository depends on, so an improvement made once propagates everywhere.
+`root_callsite.py` contains the actual Python calls. In one retained trusted interpreter using ROOT's existing normal credential-exec wrapper, ROOT imports that exact reviewed module and binds the released ArtifactRef objects as module attributes; it does not edit the reviewed source or accept CLI/env profile overrides.
 
-Named for the Greek god who gives shape to formless things — from *morphē*, "form."
-
-## Status
-
-Early. The project management layer is built and in use; the initializer is not written yet —
-deliberately, since the first hand-retrofit of a real project is meant to be its specification.
-
-Current work is tracked in [`hq/product/roadmap/`](./hq/product/roadmap/), which Morpheus
-generates with its own tooling.
-
-## Install
-
-```sh
-git clone https://github.com/cpheinrich/morpheus.git ~/code/morpheus
-cd ~/code/morpheus
-pnpm install --frozen-lockfile && pnpm compile
-node dist/cli/index.js self install
+```python
+import root_callsite
+# Bind only the externally authenticated reviewed pre-arm profile ArtifactRef.
+root_callsite.ACTUAL_PREARM_PROFILE = actual_prearm_profile_ref
+prearm = root_callsite.root_start_before_arm()
+# Keep this interpreter alive. ROOT now owns both live sessions.
+# ROOT separately follows the ordinary reviewed arm/request path, observes the real
+# ledger/provider identities, obtains the exact final subject review/release, then:
+root_callsite.ACTUAL_RELEASED_EXECUTION_PROFILE = actual_exact_execution_profile_ref
+result = root_callsite.root_bind_observed_run_and_cancel_once()
 ```
 
-`self install` packs the reviewed checkout and copies it into the global npm package directory, so
-`morpheus` works from any project without depending on that checkout. There is no published package
-— see the licence below. Later updates need no source checkout:
+The second call blocks on the fixed private capture mailbox while the SSH stdout drainer and both native subscriptions remain live. ROOT's acquisition tools run in ROOT's separate control session, writing the descriptors below only after actual captures. These variable names denote actual later observations, not placeholders to execute today.
 
-```sh
-morpheus self check
-morpheus self update
-morpheus self auto-update enable
-```
+Stage A `start_prearm_custody` verifies the externally pinned source closure, conditional operational review, ROOT pre-arm release, actor/startup/deployment bindings, fixed-label mechanism and operator custody; subscribes local macOS PID EXIT and public-file events; launches ONE existing SSH route; and waits for an authenticated Mini post-subscription snapshot. Both finite collector profiles pin the same actual nonce before arm, but contain no invented runId. Stage B refuses a different pre-arm ArtifactRef, nonce, host profile digest or expiry. It reuses these exact session objects, native watches and frame stream. The actual subject/policy/operation review/release is bound only after normal request ledger/provider observations. There is no observer restart or profile rewrite to add the run.
 
-`self update` builds current `main` in a disposable clone, installs the copied package with its
-commit receipt, and removes the clone. It never pulls, rewrites, or becomes linked to active work.
-`self auto-update enable` remembers device-level consent and installs managed `post-merge` and
-`post-rewrite` blocks across the local Morpheus project registry. They preserve existing hooks and
-run the same disposable update after later pulls or rebases only when the installed commit is
-stale. `morpheus self auto-update disable` removes only Morpheus's managed blocks.
+## ROOT preparation and canonical registry
 
-Projects also carry a version-independent first-use bridge. Their session hook runs
-`.morpheus/session-start.sh`, which only inspects the installed CLI. If the CLI predates `self`, the
-agent asks for consent and, after yes, runs `sh .morpheus/bootstrap.sh enable`. That script installs
-the reviewed lockfile in a disposable current-main clone, invokes its committed CLI rather than the
-stale binary, installs the standalone package, registers the project, and enables the same managed
-Git hooks. No records the choice without installing anything.
+ROOT must first provision existing canonical private local and Mini collector journals, the local frame directory and mailbox, with correct owners and mode0700. It must obtain actual finite named PIDs/births, installed public source/config/plist/wrapper hashes and loaded-source startup provenance; historical PIDs are not defaults. The Mini collector profile additionally requires an actual `expectedHostname` and collector UID. All three `miniModuleRefs` must pin this packet's exact matching source. Public ps/ssh/Node/Python binaries and reviewed helper/main identity must be actual pinned refs.
 
-Finish the trusted-device bootstrap from either Morpheus or a Morpheus project:
+Before binding the operation profile, ROOT runs the reviewed `setup_registry_anchor_once(actual_registry_root, actual_uid)` exactly once. This function creates the fixed campaign anchor EXCL/fsynced, or reads/compares an existing anchor. It never moves, replaces, truncates or deletes it. The anchor path is `/Users/chrisheinrich/Library/Application Support/MorpheusCD/campaigns/01a1572f/cancel-registry-anchor.json`; changing output/fault/release cannot change the run-wide registry. The operation's existing `Journal.key` is repository+actual run+cancel, independent of nonce/output/fault. The claim is create-exclusive and durable before final acquisition or any POST. No retry/rearm/cleanup follows uncertain outcome. c143's held unbound writer/caller remains untouched.
 
-```sh
-morpheus codebase-memory install
-```
+The existing authenticated Mini route is concretely encoded as absolute pinned SSH binary, `-T -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes zoe@zoe-mac-mini.tail7476d9.ts.net 'PATH=/opt/homebrew/bin:/usr/bin:/bin /usr/bin/python3 -'`. Source and credential-free profile are sent once on stdin; no source is installed. The program verifies actual UID/user/hostname before starting its observer. The route and historical zoe/Mac.lan verification come from `/Users/chrisheinrich/code/AGENTS.md`; actual activation must bind fresh examined identity, not assume that historical record suffices. SSH never receives the GitHub token: the exact token env is only read by the separately owned local transport child.
 
-That command is idempotent. It installs Morpheus's reviewed pin of the official
-`codebase-memory-mcp` package when the binary is absent or at another version, configures supported local agent clients,
-enables automatic indexing and watching, fully indexes the exact checkout, and then verifies the
-index against its current Git HEAD. `morpheus codebase-memory install --check` and
-`morpheus doctor` report drift without repairing it.
+## Concrete acquisition callbacks
 
-The global Morpheus CLI is a self-contained copy with a receipt naming the exact reviewed commit.
-`morpheus context brief` and `morpheus doctor` compare that receipt to current `main`; neither
-updates it. On a device where the user has enabled auto-update, Git hooks call `self ensure` after
-pulls and rebases. Morpheus never executes a registry `latest`: the update installs reviewed
-Morpheus `main`, and codebase-memory advances only through an ordinary reviewed Morpheus change.
+Mailbox paths below are fixed by the released profile, private, immutable and EXCL. `RootCaptureMailbox` reads duplicate-key/nonfinite-safe hashed private descriptors. ROOT uses its existing trusted acquisitions to create the raw envelopes and attestations described by `s7_private.py`; this packet does not manufacture UI/provider facts, API completeness, ledger state or authentication. Complete workflow/run/job/demand pagination and effective unfiltered UI scope remain actual ROOT acquisition obligations. Org403 remains UNKNOWN.
 
-Register each project once so ids and prefixes stay unique:
+1. After the durable run-wide claim, the call site writes `final-capture-request.json`. ROOT captures the actual complete five purposes, creates their `ROOT_AUTHENTICATED_ACQUISITION` manifests, raw envelopes, and a fresh `ROOT_ACTUAL_ACQUISITION_ATTESTATION` pinned to the exact operation profile/subject/account cpheinrich and refs. ROOT writes `final-capture-ready.json` as `{"refs":{"uiBoundary":<ArtifactRef>,"demand":<ArtifactRef>,"jobs":<ArtifactRef>,"ownership":<ArtifactRef>,"deadlineExclusion":<ArtifactRef>},"attestation":<ArtifactRef>}`. The final callback returns that actual grant. It never accepts future terminal evidence at this stage.
+2. After helper prefix+continuation, immediate custody/deadline rechecks and ONE fixed GitHub HTTPS POST, the call site writes `cancel-return.json` and `owned-transport-reconciliation.json`. An unresolved owned child prevents terminal closure. ACK, lost ACK and timeout all leave the claim spent and custody OPEN. No second POST is available. The drainer retains immutable Mini raw output bytes; local kqueue events remain subscribed while ROOT acquires and the one transport runs. Polling/refusal detects gaps; fixed-label registration plus accepted operator custody is the actual exclusion mechanism.
+3. The call site writes `terminal-capture-request.json`. ROOT captures complete actual terminal workflow/jobs, actual status/conclusion/runner/steps/completed_at and races, with actual acquisition manifest, then writes `terminal-census-ready.json` as `{"terminal":<ArtifactRef>}`. This is a later fact, never a pre-cancel prerequisite.
+4. Without restarting either collector, the callback waits for a Mini snapshot after this actual terminal handoff plus the reviewed clock uncertainty, takes an independent local terminal snapshot, and writes `final-scope-request.json` with exact `actorSnapshots` and immutable `snapshotRefs`. ROOT then reacquires actual complete final effective UI scope, unique-effect/controller/drain facts, and the FRESH ledger protected state. The `actualFinalScope.data` must include `boundary`, exactly those `actorSnapshots`, `controller`, fresh `protectedState`, and `protectedStateObservedAt` at/after actual terminal. Its authenticated payload digest covers all fields. The protected state must freshly show same latest attempt, active/local, tests/upload/receipt null and no unresolved owner; prefix nulls are never reused.
+5. ROOT writes `terminal-close-ready.json` with refs exactly `{actualTerminalCensus,actualFinalScope}` plus actual fresh attestation. The callback refuses changed terminal refs or changed actor snapshots. `RootCaller.terminal` authenticates both, rechecks live custody and calls the exact helper terminal stage. Success is only `CLOSED_EVIDENCE_ONLY/authority:NONE`, saved in `terminal-proof-return.json` and `m-recovery-evidence.json` with actual refs.
 
-```sh
-cd ~/your-project && morpheus registry add
-```
+ROOT then lets the unchanged M5258 ordinary recovery path read the actual completed-cancelled placeholder from its existing provider path. M's already-supported never-ran predicate recognizes the actual terminal job; the caller does not inject synthetic jobs, alter M core/ledger/lane, dispatch a hosted attempt, or grant acceptance. ROOT still owns the ordinary actual hosted fallback/full TestFlight delivery. Closing an observer is not a custody release; no automatic observer/service teardown exists. Retain live handles on refusal and reconcile under the reviewed ROOT procedure.
 
-## What works today
+## Continuity, watermark and timing
 
-```sh
+Each Mini heartbeat now executes `terminal_snapshot()` under the same existing kqueue subscription and emits `identitySnapshot:true`, at one-second cadence. One drainer preserves bounded complete stdout line bytes in EXCL/fsynced private files before publishing ArtifactRefs. EOF, duplicate keys, nonfinite data, unknown state, events, reversed time, oversize output and missing snapshot marker refuse; there is no restart. Local subscriptions capture events while ROOT blocks, then drain them before effect/closure. A drainer failure poisons subsequent reads even if the last good frame is recent.
 
-morpheus pm validate                      # validate hq/product frontmatter against the schemas
-morpheus pm index                         # retire legacy roadmap tables; refresh goal/request indexes
-morpheus pm new roadmap "Ship analytics" --priority P1
-morpheus web status                       # what the web surface has, and what it is missing
-morpheus web init                         # provision the cloud resources, then scaffold the site
-morpheus research-library init --project <id> --bucket <bucket>
-morpheus research-library push [slug]     # immutable bundle + verified HTML reader
-morpheus firebase auth setup --project <firebase-project> --domain <public-origin>
-morpheus firebase auth check --project <firebase-project> --domain <public-origin>
-morpheus codebase-memory install             # trusted-device bootstrap, safe to re-run
-morpheus codebase-memory install --check     # verify operational mode without changing it
-```
+The old adapter used ROOT's time as remote observedThrough. This new closure uses `min(actual host checkedAt) - reviewed clock uncertainty`; no future observation is asserted. Stage B's remote frame callback waits for a bounded frame after its current ROOT time plus uncertainty. The frame freshness bound separately admits at most two seconds for one-second cadence+channel delay; if this cannot actually be met, it refuses before effect. The joined checkedAt is the call boundary; conservative observedThroughAt is separately normalized. Actual timing/clock/channel bounds, ps duration and queue capacity remain examination/release conditions, not passed simulations. Source enforces an additional four*(clock uncertainty+2s) margin inside post+terminal allowance and requires the helper margin to cover it. If actual bounds/deadlines cannot accommodate this, the caller cannot be used. No timestamp is rewritten to pass.
 
-Web projects can import the build-time, browser, optional PDF, and React pieces of private HQ
-search from `morpheus-kit/hq-search` subpaths. The source catalogue and auth gate stay project-owned.
-Private-library catalog parsing and verified browser downloads are available from
-`morpheus-kit/research-library`; Babel remains the independent converter.
+ROOT's wake plan is planning only: ordinary RunAtLoad tick finishes before S7 request; the request occurs just before one disabled configured cron boundary (minutes7,22,37,52); the next natural Mini interval tick after that cron discovers and dispatches the SAME intent. This packet does not wait through a live acceptance cycle, arm, request, enable cron, start a daemon or change services. ROOT must derive actual run/build/attempt from that normal path before stage B.
 
-`morpheus web init` is the website initializer. It provisions the GCP project, Firebase,
-Firestore, the registered web app and the Workload Identity that a Vercel deployment
-authenticates as, then scaffolds the code that depends on them: a Next.js app if there is none,
-**email waitlist capture on the home page**, and **`/hq` behind Google sign-in**, gated on the
-same `role` custom claim that Firestore rules read.
+## Source/test limits
 
-It never overwrites. Every existing file is skipped and reported, so the same command creates a
-site from nothing and adds the missing half to one that has been live for months — it will not
-touch a working home page. The Firebase-dependent half is written **only once a Firebase project
-is real**: a sign-in page holding a placeholder config looks finished and cannot work.
+`source-closure.json` covers all13 operational source files. Old71878df3 is immutable. Changes here: two new literal plumbing/callsite modules; Mini heartbeat actual independent snapshots and identity check; retain partial local session before start; conservative joined watermark/bounded barrier normalization; fresh terminal protected-state normalization; expanded exact source closure. Existing transport/caller code is copied unchanged. Test fixture source was copied read-only from exact local Git commit3765286, not a network source fetch, because its author's working helper changed during this packet. Its module SHA is e1f9e19d; this is historical qualification only. The pending S7S-1 helper fix must be integrated/retested at its exact new freeze before source/operation release. Actual reviewed main remains NULL. No helper source review or operational clearance is inferred from a test.
 
-This is deliberately not part of `morpheus init`, which scaffolds the repository and provisions
-nothing so it can never be blocked on a token.
-
-After a successful setup, Morpheus records the normalized origin and user-visible OAuth support
-identity in `morpheus.json` as `publicDomain` and `supportEmail`. Later runs reuse both values and
-report authorized domains that are no longer expected so an operator can decide whether to revoke
-them. Add legitimate preview or secondary Auth hosts to `authorizedDomains` (hostnames only) so
-they remain part of the expected set. The check refuses to report Google sign-in ready when the
-public origin is unknown.
-
-Not yet implemented:
-
-```sh
-morpheus init acme     # interactive wizard → new repo, fully scaffolded
-morpheus add android   # bolt a new surface onto an existing project
-morpheus upgrade       # pull newer templates and kit into an existing project
-morpheus doctor        # verify a project matches current conventions
-```
-
-## What to expect
-
-Initializing a project with Morpheus costs more up front than starting from a blank repo. You
-answer a wizard, credentials get provisioned, and structure exists before there is anything to
-put in it.
-
-The return is compounding, and it arrives in three waves:
-
-1. **Immediately** — agents are not blocked. Credentials are in place, the repo layout is
-   predictable, and CI works on the first push. Most of the friction in a young project is an
-   agent waiting on an auth step a human has to perform.
-2. **Within weeks** — the structure itself does work. Having to state the audience, the
-   boundaries, and the goals before writing code produces a cleaner result for the same reason
-   an outline does, or a test written first. Schematizing the business is not overhead; it is
-   the thinking, done where it can be reused.
-3. **Over months** — memory accumulates. Decisions, worklogs, and customer data mean an agent
-   starting today knows what was tried in March and why it was abandoned.
-
-Worth it for a single project on point 2 alone. Across several, the reuse makes the first two
-waves nearly free.
-
-## Editing
-
-Everything Morpheus manages is plain markdown with YAML frontmatter, so **any editor works** —
-the tooling is deliberately editor-agnostic and nothing here depends on a particular one.
-Validation happens in CI, not in the editor, which is what keeps the choice open.
-
-## Documentation
-
-**[`architecture.md`](./architecture.md)** — the complete specification: principles, project
-structure, canonical tool choices, the agent operating model, credential bootstrap, and
-secrets convention. Read that first; this file is only an index.
-
-[`AGENTS.md`](./AGENTS.md) is the entry point for agents working in this repo.
-
-## Scope and expectations
-
-Built for my own projects and shared with a few family and friends. The source is public
-because that is simpler than keeping it private, not because it is a product.
-
-There is no support, no roadmap commitment, and no stability guarantee. Conventions are
-deliberately opinionated and mostly non-negotiable — the whole point is trading configurability
-for consistency, which makes it a poor fit for anyone whose stack differs from mine.
-
-## License
-
-**[PolyForm Noncommercial 1.0.0](./LICENSE.md)** — source-available, not open source.
-
-Free for any noncommercial purpose: personal projects, hobby work, research, and study.
-
-**Commercial use requires a separate license.** That includes using Morpheus to build or
-operate anything intended for commercial advantage or monetary compensation. If you want to
-use it commercially, open an issue.
-
-Contributions are not being accepted at this time, so that relicensing stays possible.
+`focused-results.txt` is the earlier66-test baseline, `focused-new-results.txt` the subsequent16-test check after fresh protected-state normalization. Final test outputs are separately sealed. All host channels/transport are fakes; actual local helper is pure source import. The finite native backend itself is unchanged from the prior exact packet: ROOT separately reported benign owned-fixture qualification at `s7-kqueue-owned-fixture-2302/result.json` SHA d68c6435, not production/Mini/OP qualification; this author did not rerun it. The existing hardware/Mini provenance, clock/channel operation, actual protected ledger acquisitions, fresh main binding/review/release and exact API identity remain unresolved operational inputs.
