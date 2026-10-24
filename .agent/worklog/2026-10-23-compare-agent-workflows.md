@@ -271,3 +271,74 @@ and summary SHA256 remain5355081a46bef72253089d086f2bc38ebad92665b315e522916c6d6
 anddd193423a2774c3a3d6dcb8f5800772347bffd31ec6e899634f608731acba94d. No frozen source,
 input, paid output, hidden grade, score or selection rule was edited. Historical reproduction
 uses the verified archived source bundle; new tools intentionally require a newly frozen plan.
+
+
+Independent native review found three substantive evaluation-tool defects. The author retained missing-artifact rows, marked missing trace usage unknown and enforced hidden-test digests, with regressions that fail against the reviewed source. The same reviewer cleared all fixes with no remaining findings;39 focused controls and required local checks pass. Frozen study evidence is unchanged and the workflow ranking remains exploratory.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "1ccec6fd402dabc2d7c4769043d6c9a31819ce27",
+  "reviewed": "9f9b1e7220ea1281ad6b7327bbffad09618cb20c",
+  "covered": "1107a179ccca4f4f2af56ba837ac1129cd788d96",
+  "authorSession": "01a165f2-ad9a-7270-863f-355359913b8c",
+  "reviewerSession": "01a16c28-a9ff-7d01-b2e0-fc10c8ff24a1",
+  "risk": "high",
+  "elapsedMinutes": 2.6528666666666667,
+  "timing": {
+    "source": "clock",
+    "durationMs": 159172,
+    "evidence": "Native session01a16c28-a9ff-7d01-b2e0-fc10c8ff24a1 initial; controller monotonic invocation durationMs=159172; UTC 2026-10-24T04:26:06.590343+00:00 to 2026-10-24T04:28:45.764614+00:00. Private ~/.local/share/morpheus-paperclip/workflow-review-472/timing.json"
+  },
+  "outcome": "complete",
+  "summary": "Independent native review found three substantive evaluation-tool defects. The author retained missing-artifact rows, marked missing trace usage unknown and enforced hidden-test digests, with regressions that fail against the reviewed source. The same reviewer cleared all fixes with no remaining findings;39 focused controls and required local checks pass. Frozen study evidence is unchanged and the workflow ranking remains exploratory.",
+  "findings": [
+    {
+      "id": "WR-001",
+      "severity": "substantive",
+      "description": "A missing workspace or solution aborts batch scoring before all scheduled outcomes are written.",
+      "paths": [
+        "qa/evals/workflow-repair/score_campaign.py"
+      ],
+      "disposition": "fixed",
+      "response": "Retain explicit missing-artifact failures, continue to later valid artifacts and reseal workspaces. Negative and positive scorer controls pass; same reviewer verified and cleared."
+    },
+    {
+      "id": "WR-002",
+      "severity": "substantive",
+      "description": "Missing trace files are skipped, allowing incomplete provider usage to appear complete.",
+      "paths": [
+        "qa/evals/workflow-repair/summarize.py"
+      ],
+      "disposition": "fixed",
+      "response": "Check every expected worker/manager trace; absence is unknown unless a supervisor receipt proves non-start. Missing worker, manager, both and whole attempt regressions plus positive non-start control pass; same reviewer cleared."
+    },
+    {
+      "id": "WR-003",
+      "severity": "substantive",
+      "description": "Scoring executes hidden files without checking their manifest sha256, so corpus.json alone does not bind acceptance.",
+      "paths": [
+        "qa/evals/workflow-repair/score_campaign.py"
+      ],
+      "disposition": "fixed",
+      "response": "Verify every relevant hidden file against its frozen manifest digest before candidate grading. A changed-oracle regression reaches the forbidden execution stub before the fix and refuses before execution after it; same reviewer cleared."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "01a16c28-a9ff-7d01-b2e0-fc10c8ff24a1",
+      "commit": "1107a179ccca4f4f2af56ba837ac1129cd788d96",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.07145,
+      "timing": {
+        "source": "clock",
+        "durationMs": 64287,
+        "evidence": "Native session01a16c28-a9ff-7d01-b2e0-fc10c8ff24a1 followup1; controller monotonic invocation durationMs=64287; UTC 2026-10-24T04:32:38.191038+00:00 to 2026-10-24T04:33:42.478807+00:00. Private ~/.local/share/morpheus-paperclip/workflow-review-472-followup1/timing.json"
+      },
+      "summary": "The same reviewer independently verified all three fixes with read-only in-memory probes, inspected regressions and reproduction docs, rebuilt the unchanged cached summary and cleared with no remaining findings."
+    }
+  ]
+}
+```
+
+The follow-up ran04:32:38.191038Z to04:33:42.478807Z,64287ms, in the original native session. No review child, timeout, full-suite rerun or new experiment occurred. Native observer43%weeklyused after clearance (phase shared delta15points; hard48/admission45 unchanged). Controller slot0 is free, state released, account reservations empty; anonymous company API401 while dashboard HTTP200. Required final-head CI and normal protected merge remain the delivery gates.
