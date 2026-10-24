@@ -477,3 +477,151 @@ Final F8 validation: the full plugin suite under Node22 passed91/91, zero skippe
 14.247seconds. The preceding focused30/30 used Node26 and check passed. No additional live
 model call was made. CI for3c11000 was green before this narrow correction; final-head CI will
 run after its source commit and review record.
+
+## Independent source review record
+
+Independent source review found two substantive and six minor defects across its turns; all fixes and regressions were cleared by the same reviewer. Remote Claude acceptance remains blocked on native login, so PR #475 stays WIP/draft with auto-merge disabled. Source clearance does not complete or ship the task.
+
+Record IDs F01–F08 correspond to the reviewer’s F1–F8. The initial risk is high; timings use actual native runner durations, including tools and waits. All three turns stayed within their ceilings. No self-review, replacement reviewer or finalization exception was used.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "660211fc5b179ae5bcc47c9d0c6c49b0863b02b7",
+  "reviewed": "720f6b140c1298320a7f11ca801b42f99e446dd5",
+  "covered": "c908eb91e58e03f7a8c308b4e70b686662aed4b3",
+  "authorSession": "01a165f2-ad9a-7270-863f-355359913b8c",
+  "reviewerSession": "5dede39f-16f4-4aee-a072-22d0ae040f97",
+  "risk": "high",
+  "elapsedMinutes": 11.745416666666667,
+  "timing": {
+    "source": "runner",
+    "durationMs": 704725,
+    "evidence": "Claude native session 5dede39f-16f4-4aee-a072-22d0ae040f97, bridge invocation 94fb5e2e-c641-4ca4-b8a8-7343bedba5bf, final result duration_ms=704725."
+  },
+  "outcome": "complete",
+  "summary": "Independent source review found two substantive and six minor defects across its turns; all fixes and regressions were cleared by the same reviewer. Remote Claude acceptance remains blocked on native login, so PR #475 stays WIP/draft with auto-merge disabled. Source clearance does not complete or ship the task.",
+  "findings": [
+    {
+      "id": "F01",
+      "severity": "substantive",
+      "description": "Reviewer F1: in-place control writes and unhandled partial JSON could crash the relay and lose an answer.",
+      "paths": [
+        "plugins/codex-claude/src/pool.mjs",
+        "plugins/codex-claude/src/pool-runner.mjs",
+        "plugins/codex-claude/tests/pool-review.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Controls publish by atomic rename; parsing errors are retried per file, and sent state follows successful parse. Empty/partial-control regression and same-reviewer follow-up cleared the fix; the offered conditional shortcut was not used."
+    },
+    {
+      "id": "F02",
+      "severity": "substantive",
+      "description": "Reviewer F2: SSH failure before host admission left an unknown reservation with no supported recovery.",
+      "paths": [
+        "plugins/codex-claude/src/pool-host.mjs",
+        "plugins/codex-claude/src/pool-runner.mjs",
+        "plugins/codex-claude/src/pool-store.mjs",
+        "plugins/codex-claude/tests/pool-review.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Host reconciliation and admission share exclusive receipt creation. A never-admitted tombstone fences late envelopes; unreachable/unknown ownership retains the reservation. Regression covers both race orderings; real mini fencing refused the exact late envelope with exit75 and no provider event. Same reviewer cleared."
+    },
+    {
+      "id": "F03",
+      "severity": "minor",
+      "description": "Reviewer F3: reservation or spawn errors after claim could leave an unfinished turn without no-launch proof.",
+      "paths": [
+        "plugins/codex-claude/src/pool-runner.mjs",
+        "plugins/codex-claude/tests/pool-review.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Pre-spawn failures now record refused/not-started and native disposition; spawn failure releases the reservation. Error-injection regression passes and reviewer cleared."
+    },
+    {
+      "id": "F04",
+      "severity": "minor",
+      "description": "Reviewer F4: stop in the claim-before-run-record window could be dropped.",
+      "paths": [
+        "plugins/codex-claude/src/pool.mjs",
+        "plugins/codex-claude/src/pool-runner.mjs",
+        "plugins/codex-claude/tests/pool-review.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Stop is persisted even without the run record; runner checks it before spawn and refuses without provider work. Regression and same-reviewer clearance."
+    },
+    {
+      "id": "F05",
+      "severity": "minor",
+      "description": "Reviewer F5: controls arriving during native auth/quota admission were consumed before a handler existed.",
+      "paths": [
+        "plugins/codex-claude/src/pool-host.mjs",
+        "plugins/codex-claude/tests/pool-review.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Early controls are buffered; an early stop refuses before launch, and remaining controls are replayed. Regression and same-reviewer clearance."
+    },
+    {
+      "id": "F06",
+      "severity": "minor",
+      "description": "Reviewer F6: unreadable process identity could falsely mark a live runner lost.",
+      "paths": [
+        "plugins/codex-claude/src/pool.mjs",
+        "plugins/codex-claude/src/pool-host.mjs",
+        "plugins/codex-claude/tests/pool-review.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Coordinator and host use identityStatus; unknown identity retains ownership, and host live/null identity is unknown. Targeted regressions and same-reviewer clearance."
+    },
+    {
+      "id": "F07",
+      "severity": "minor",
+      "description": "Reviewer F7: a board-authored marker without native run attribution could settle an uncertain disposition.",
+      "paths": [
+        "plugins/codex-claude/src/pool-store.mjs",
+        "plugins/codex-claude/tests/pool-review.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "Settlement now requires createdByRunId exactly equal to the writing run. Copied board marker does not settle; real delayed own-run write does. Regression and same-reviewer clearance."
+    },
+    {
+      "id": "F08",
+      "severity": "minor",
+      "description": "Reviewer F8, found in the first follow-up: a null recorded coordinator identity still made a later live identity look lost.",
+      "paths": [
+        "plugins/codex-claude/src/pool.mjs",
+        "plugins/codex-claude/tests/pool-review.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "A live identity differs meaningfully only when an identity was captured. Regression keeps the turn active and verifies stopAll sends exactly one stop with zero provider calls. Final same-reviewer turn cleared c908eb9."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "5dede39f-16f4-4aee-a072-22d0ae040f97",
+      "commit": "3c110004ead1381897fff730cd0553c2cd9131bd",
+      "outcome": "cleared",
+      "elapsedMinutes": 2.3367833333333334,
+      "timing": {
+        "source": "runner",
+        "durationMs": 140207,
+        "evidence": "Claude native session 5dede39f-16f4-4aee-a072-22d0ae040f97, bridge invocation b7c13a63-9710-45dd-92d3-b0a62df0e4ff, final result duration_ms=140207."
+      },
+      "summary": "Cleared F1–F7 source fixes and acceptance tracking; identified nonblocking minor F8. Parent remains WIP/draft pending real remote Claude acceptance."
+    },
+    {
+      "reviewerSession": "5dede39f-16f4-4aee-a072-22d0ae040f97",
+      "commit": "c908eb91e58e03f7a8c308b4e70b686662aed4b3",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.4483333333333333,
+      "timing": {
+        "source": "runner",
+        "durationMs": 26900,
+        "evidence": "Claude native session 5dede39f-16f4-4aee-a072-22d0ae040f97, bridge invocation 9a86792b-0b6c-4fef-9e6b-d34a7becf060, final result duration_ms=26900."
+      },
+      "scopeReason": "Late review correction: verify the newly reported F8 null captured coordinator identity guard and its regression after the prior clearance.",
+      "summary": "Cleared F8 guard and regression, no new findings; source only, with pending remote Claude acceptance and CI explicitly retained."
+    }
+  ]
+}
+```
