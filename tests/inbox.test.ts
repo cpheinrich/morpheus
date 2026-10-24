@@ -88,6 +88,24 @@ describe("parseInbox", () => {
     const r = parseInbox("s.md", "---\nowner: a: b\n---\n");
     expect(r.issues[0]!.message).toContain("invalid YAML frontmatter");
   });
+
+  // #466: the old parser turned this unquoted timestamp into a Date, which
+  // `isoDate` sliced to its day. The current parser returns the string, and
+  // Darwin's inboxes failed `inbox validate` with "Invalid ISO date".
+  it("accepts an unquoted timestamp date and keeps its day", () => {
+    const fm = "---\nowner: cpheinrich\ndate: 2026-08-18T13:15:00.000Z\nagents: [claude]\n---\n";
+    const r = parseInbox("s.md", fm + SUMMARY + doneItem(1));
+    expect(r.issues).toEqual([]);
+    expect(r.meta.date).toBe("2026-08-18");
+  });
+
+  it("still rejects a date that is not an ISO date or timestamp", () => {
+    for (const date of ["2026-08-18Tnonsense", "2026-02-30T00:00:00Z", "18 August 2026"]) {
+      const fm = `---\nowner: cpheinrich\ndate: ${date}\nagents: [claude]\n---\n`;
+      const r = parseInbox("s.md", fm + SUMMARY + doneItem(1));
+      expect(r.issues.map((i) => i.message), date).toEqual(["frontmatter date: Invalid ISO date"]);
+    }
+  });
 });
 
 describe("owner handle", () => {
