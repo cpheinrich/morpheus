@@ -162,26 +162,6 @@ export class FakePaperclip {
       return this.json(201, { id });
     }
     if (method === "GET" && /^\/companies\/[^/]+\/issues$/.test(path)) return this.json(200, [...this.issues.values()]);
-    if (method === "GET" && (m = /^\/issues\/([^/]+)\/recovery-actions$/.exec(path))) {
-      const action = this.issues.get(m[1])?.recoveryAction;
-      return this.json(200, { active: action?.status === "active" ? action : null });
-    }
-    if (method === "POST" && (m = /^\/issues\/([^/]+)\/recovery-actions\/resolve$/.exec(path))) {
-      // Shaped on resolveIssueRecoveryActionSchema + validateExecutionReconciliation: board
-      // only, exact source run, provider stopped, evidence of at least 20 characters.
-      const issue = this.issues.get(m[1]);
-      const action = issue?.recoveryAction;
-      const r = body.executionReconciliation;
-      if (runId) return this.json(403, { error: "Board access required" });
-      if (action && action.status !== "active" && action.id === body.actionId) return this.json(200, { replayed: true });
-      if (!action || action.id !== body.actionId) return this.json(404, { error: "Active recovery action not found" });
-      if (body.outcome !== "restored" || body.sourceIssueStatus !== "todo" || r?.runId !== action.evidence.runId ||
-          r?.providerStopped !== true || !["completed", "not_performed", "mixed"].includes(r?.actionOutcome) || (r?.outcomeEvidence ?? "").trim().length < 20)
-        return this.json(409, { error: "Reconcile the recorded execution and its action outcomes before continuing this task." });
-      Object.assign(action, { status: "resolved", resolution: body });
-      issue.status = "todo";
-      return this.json(200, { issue, recoveryAction: action });
-    }
     if (method === "GET" && (m = /^\/issues\/([^/]+)$/.exec(path))) return this.issues.has(m[1]) ? this.json(200, this.issues.get(m[1])) : this.json(404, {});
     if (method === "PATCH" && (m = /^\/issues\/([^/]+)$/.exec(path))) {
       // One transaction: status and the run-attributed comment land together.

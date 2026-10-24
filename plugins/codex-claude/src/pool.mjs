@@ -453,59 +453,6 @@ export class Pool {
       if (s && !s.terminal) await this.stop({ conversationId: id }).catch(() => {});
     }
   }
-  // Paperclip parks follow-up wakes behind an execution-reconciliation recovery action
-  // after a cancelled or failed generic process run. Its supported resolution is the
-  // board-only POST /issues/:id/recovery-actions/resolve with executionReconciliation for
-  // the exact source run. Send it only when that run is one of this conversation's turns
-  // and its end is proven by a receipt or host reconcile; otherwise report the exact
-  // operator-required state. Resolving a settled action replays, so a resend is safe.
-  async recover(args) {
-    if (!TASK_ID.test(args.threadId ?? "")) throw new Error("Pass the current Codex task id");
-    const c = await this.conversation(args.conversationId);
-    if (!c.issueId) throw new Error("The conversation's Paperclip issue is not linked; reattach first.");
-    const { pool, api } = await this.context();
-    const profile = pool.profiles[c.profile];
-    if (!profile || bindingDigest(c.profile, profile) !== c.bindingSha256)
-      throw new Error("The pool profile changed since this conversation started; start a new conversation.");
-    await this.admit(args.threadId, profile.permission, c);
-    const response = await api.get(`/issues/${c.issueId}/recovery-actions`);
-    const action = response?.active ?? null;
-    if (!action) return { recovered: false, state: "no_active_recovery_action" };
-    const sourceRunId = action.evidence?.runId ?? action.evidence?.sourceRunId ?? null;
-    const operator = (reason) => ({
-      recovered: false, state: "operator_required", reason,
-      actionId: action.id ?? null, cause: action.cause ?? null, sourceRunId, issueId: c.issueId,
-    });
-    if (!RECONCILIATION_CAUSES.has(action.cause)) return operator("this recovery action is not an execution reconciliation");
-    let turn = null;
-    for (let n = c.turns; n >= 1 && !turn; n--) {
-      const run = await readJSON(runPath(c.id, n), null);
-      if (run?.paperclipRunId && run.paperclipRunId === sourceRunId) turn = { n, run };
-    }
-    if (!turn) return operator("the recovery source run is not a turn of this conversation");
-    const proof = await readJSON(reconcilePath(c.id, turn.n), null);
-    const stopped = ["verified", "not-started"].includes(turn.run.termination) || proof?.state === "terminated";
-    if (!stopped) return operator("the source turn's termination is not proven; run pool.reconcile first");
-    // Nothing launched means nothing was performed; a stopped turn may have done part of
-    // its work, which stays in the workspace and the resumed native session.
-    const actionOutcome = turn.run.termination === "not-started" ? "not_performed" : "mixed";
-    const evidence = [
-      `Pool conversation ${c.id} turn ${turn.n}, Paperclip run ${sourceRunId}.`,
-      `Controller record: state ${turn.run.state ?? "unknown"}, termination ${turn.run.termination ?? "unknown"}.`,
-      proof ? `Host reconcile proved run ${proof.runUuid} terminated at ${new Date(proof.provenAt).toISOString()}.` : "Host receipt verified termination.",
-      actionOutcome === "mixed" ? "The provider was stopped mid-turn; partial workspace effects are possible and the resumed session continues from them." : "No provider process was launched.",
-    ].join(" ");
-    try {
-      const result = await api.post(`/issues/${c.issueId}/recovery-actions/resolve`, {
-        actionId: action.id, outcome: "restored", sourceIssueStatus: "todo",
-        resolutionNote: "Pool host termination proven; continue the committed follow-up.",
-        executionReconciliation: { runId: sourceRunId, providerStopped: true, actionOutcome, outcomeEvidence: evidence },
-      });
-      return { recovered: true, state: result?.replayed ? "already_resolved" : "resolved", actionId: action.id, sourceRunId, actionOutcome };
-    } catch (error) {
-      return { recovered: false, state: error.unknown ? "unknown" : "rejected", error: error.message, actionId: action.id, sourceRunId };
-    }
-  }
   // Operator repair: prune account reservations whose turns are proven ended.
   async reconcile() {
     const { remoteCommand } = await import("./pool-runner.mjs");
@@ -534,19 +481,9 @@ export class Pool {
     if (method === "stop") return this.stop(args);
     if (method === "reattach") return this.reattach(args);
     if (method === "reconcile") return this.reconcile();
-    if (method === "recover") return this.recover(args);
     throw new Error("Unknown pool operation");
   }
 }
-// Mirrors the pinned server's EXECUTION_RECONCILIATION_CAUSES (shared/types/execution-projection).
-const RECONCILIATION_CAUSES = new Set([
-  "uncertain_provider_action", "uncertain_external_action", "uncertain_control_plane_action",
-  "completed_action_context_missing", "continuation_evidence_incomplete", "execution_finalization_deadline_exceeded",
-  "execution_recovery_budget_exhausted", "provider_effect_inventory_unavailable", "provider_failure_meaning_unverified",
-  "provider_ownership_unverified", "native_provider_terminal_failed", "native_event_replay_conflict",
-  "native_session_cleanup_quarantined", "native_session_retry_exhausted", "native_restart_recovery_blocked",
-  "native_continuation_requires_reconciliation", "legacy_execution_requires_reconciliation",
-]);
 // 4xx means Paperclip refused the request, so nothing was created; 409 can mean an
 // idempotent replay of something that was, so it stays unknown.
 const rejected = (error) => error.status >= 400 && error.status < 500 && error.status !== 409;

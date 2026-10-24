@@ -230,6 +230,12 @@ export function judgeQuota(snapshot, quota, now = Date.now(), gate = "stopAt") {
   const observed = Date.parse(snapshot.observedAt);
   if (!Number.isFinite(observed) || observed > now + 5000 || now - observed > quota.freshSeconds * 1000)
     return { decision: "unknown", detail: "quota observation is stale or undated" };
+  // Every configured window must be reported exactly once; a reading that omits the
+  // weekly window must not admit on the session window alone.
+  const ids = snapshot.windows.map((window) => window?.id);
+  if (new Set(ids).size !== ids.length) return { decision: "unknown", detail: "quota windows are duplicated" };
+  const missing = Object.keys(quota.limits).filter((id) => !ids.includes(id));
+  if (missing.length) return { decision: "unknown", detail: `quota window ${missing[0]} was not reported` };
   let worst = 0;
   for (const window of snapshot.windows) {
     const id = window?.id;

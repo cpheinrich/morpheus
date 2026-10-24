@@ -173,3 +173,16 @@ test("only numeric provider token counts are retained", () => {
   assert.equal(tokenUsage(null), null);
   assert.equal(tokenUsage({ tier: "x" }), null);
 });
+
+test("quota admission refuses a missing or duplicated configured window instead of judging the rest", () => {
+  const quota = { limits: { weekly: { stopAt: 70, hardAt: 80 }, session: { stopAt: 90, hardAt: 95 } }, freshSeconds: 120 };
+  const now = Date.parse("2026-10-24T08:00:00Z");
+  const w = (id, usedPercent = 10) => ({ id, usedPercent, resetsAt: "2026-10-28T00:00:00Z" });
+  const snap = (...windows) => ({ observedAt: "2026-10-24T07:59:30Z", windows });
+  assert.equal(judgeQuota(snap(w("weekly"), w("session")), quota, now).decision, "admit");
+  assert.deepEqual(judgeQuota(snap(w("session")), quota, now), { decision: "unknown", detail: "quota window weekly was not reported" });
+  assert.deepEqual(judgeQuota(snap(w("weekly"), w("weekly", 1), w("session")), quota, now), { decision: "unknown", detail: "quota windows are duplicated" });
+  assert.equal(judgeQuota(snap(w("weekly"), w("session"), w("other")), quota, now).decision, "unknown");
+  assert.equal(judgeQuota(snap(w("weekly", 75), w("session")), quota, now, "hardAt").decision, "admit");
+  assert.equal(judgeQuota(snap(w("weekly", 80), w("session")), quota, now, "hardAt").decision, "refuse");
+});
