@@ -23,6 +23,8 @@ import {
 export interface PrContext {
   /** Result of committed independent-review evidence verification. */
   agentReview?: Finding[];
+  /** Exact-head Security App candidate plus separate Manager App review, verified from GitHub. */
+  securityImportVerified?: boolean;
   /** PR body markdown. */
   body: string;
   /** PR title, which may become the squash commit subject. */
@@ -238,6 +240,13 @@ export async function checkPr(ctx: PrContext): Promise<Finding[]> {
         level: "waived",
         rule: "morpheus-security-contract",
         message: "human authoring and independent review waived for a marked Morpheus Security dependency-only change; branch protection remains mandatory",
+      }];
+    }
+    if (hasSecurityMarker(body) && ctx.securityImportVerified === true) {
+      return [{
+        level: "waived",
+        rule: "morpheus-security-import-contract",
+        message: "exact-head Security candidate and independent Manager App review verified; only human authoring conventions waived",
       }];
     }
     findings.push({

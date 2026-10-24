@@ -159,6 +159,13 @@ export async function checkPr(ctx) {
                     message: "human authoring and independent review waived for a marked Morpheus Security dependency-only change; branch protection remains mandatory",
                 }];
         }
+        if (hasSecurityMarker(body) && ctx.securityImportVerified === true) {
+            return [{
+                    level: "waived",
+                    rule: "morpheus-security-import-contract",
+                    message: "exact-head Security candidate and independent Manager App review verified; only human authoring conventions waived",
+                }];
+        }
         findings.push({
             level: "error",
             rule: "morpheus-security-scope",
