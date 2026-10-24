@@ -8,8 +8,9 @@ import { identity } from "./processes.mjs";
 import { bindingDigest, ENVELOPE, loadPool, sha256, transportArgv, transportEnv } from "./pool-config.mjs";
 import { paperclipClient } from "./pool-paperclip.mjs";
 import {
-  UUID, claimPath, controlDir, initPool, issueIndex, linkIssue, parseMarker,
-  readConversation, releaseAccount, reserveAccount, runPath, sessionPath, turnPath,
+  UUID, claimPath, controlDir, dispositionMarker, dispositionPath, initPool, issueIndex, linkIssue,
+  parseDisposition, parseMarker, readConversation, reconcilePath, releaseAccount, reserveAccount, runPath, sessionPath,
+  turnPath,
 } from "./pool-store.mjs";
 
 // Paperclip's process adapter runs this on the controller host for every pool agent
@@ -41,31 +42,106 @@ export function remoteCommand(profile, args, { spawnImpl = spawn, env = process.
     });
   });
 }
+const list = (value) => (Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : []);
 async function locate(api, runId, profileName, profile) {
   const issues = await api.get(`/heartbeat-runs/${runId}/issues`);
   if (!Array.isArray(issues)) throw new Error("Paperclip returned no issue list for this run");
-  for (const issue of issues.slice(0, 20)) {
-    const issueId = issue?.issueId ?? issue?.id;
+  let first = null;
+  for (const entry of issues.slice(0, 20)) {
+    const issueId = entry?.issueId ?? entry?.id;
     if (!UUID.test(issueId ?? "")) continue;
+    const issue = await api.get(`/issues/${issueId}`);
+    if (issue?.id !== issueId) continue;
+    first ??= issue;
     const indexed = await readJSON(issueIndex(issueId), null);
     if (indexed) {
       const conversation = await readConversation(indexed.conversationId);
-      if (conversation?.profile === profileName) return conversation;
+      if (conversation?.profile === profileName) return { conversation, issue };
       continue;
     }
     // The coordinator may not know this issue's id (an unknown POST outcome). Accept it
     // only through the marker of a journaled turn assigned to this exact agent.
-    const full = await api.get(`/issues/${issueId}`);
-    const mark = parseMarker(full?.description);
-    if (!mark || full?.assigneeAgentId !== profile.agentId) continue;
+    const mark = parseMarker(issue.description);
+    if (!mark || issue.assigneeAgentId !== profile.agentId) continue;
     const conversation = await readConversation(mark.conversationId);
     if (!conversation || conversation.profile !== profileName || (conversation.issueId && conversation.issueId !== issueId)) continue;
     const turn = await readJSON(turnPath(conversation.id, mark.turn), null);
     if (turn?.promptSha256 !== mark.promptSha256) continue;
     await linkIssue(conversation.id, issueId, "runner");
-    return { ...conversation, issueId };
+    return { conversation: { ...conversation, issueId }, issue };
   }
-  return null;
+  return { conversation: null, issue: first };
+}
+// Only a submission Paperclip actually accepted may run. A local journal entry whose
+// POST was refused, or is still in flight, has no marker upstream, so a late repair or
+// recovery wake cannot execute intent that was never committed.
+async function committed(api, conversation, issue, turn, profile) {
+  if (issue.assigneeAgentId !== profile.agentId) return false;
+  const matches = (mark) => mark?.conversationId === conversation.id && mark.turn === turn.n && mark.promptSha256 === turn.promptSha256;
+  if (turn.n === 1) return matches(parseMarker(issue.description));
+  return list(await api.get(`/issues/${issue.id}/comments`)).some((comment) => matches(parseMarker(comment?.body)));
+}
+// Paperclip expects a successful run to leave a run-attributed comment and, for its own
+// issue, a disposition other than todo/in_progress. Done is operational status only.
+export function dispositionStatus(record) {
+  return record.state === "completed" && record.termination === "verified" ? "done" : "blocked";
+}
+function dispositionText(record) {
+  const lines = [`Pool turn ${record.turn}: ${record.state}${record.termination ? ` (termination ${record.termination})` : ""}.`];
+  if (record.result?.summary) lines.push(`Summary: ${String(record.result.summary).slice(0, 1500)}`);
+  if (record.result?.question) lines.push(`Question: ${String(record.result.question).slice(0, 1000)}`);
+  if (record.stopReason) lines.push(`Stop reason: ${String(record.stopReason).slice(0, 300)}`);
+  lines.push("Paperclip status is operational only; Git review, CI and acceptance stay separate.");
+  return lines.join("\n");
+}
+// Journal, then one atomic comment+status update. Paperclip ignores comment request ids
+// from agents, so an unknown outcome is settled later by observing the marker.
+async function dispose(api, conversation, issueId, record, runId) {
+  const path = dispositionPath(conversation.id, record.turn);
+  const journal = { turn: record.turn, runId, status: dispositionStatus(record), state: "posting", at: Date.now() };
+  await atomic(path, journal);
+  // Never settle an older turn over a newer journaled one.
+  const latest = await readConversation(conversation.id);
+  const body = `${dispositionText(record)}\n\n${dispositionMarker(conversation.id, record.turn, runId)}`;
+  try {
+    if (latest?.turns !== record.turn) {
+      await api.post(`/issues/${issueId}/comments`, { body });
+      Object.assign(journal, { state: "superseded", status: null });
+    } else {
+      await api.patch(`/issues/${issueId}`, { status: journal.status, comment: body });
+      journal.state = "applied";
+    }
+  } catch (error) {
+    Object.assign(journal, { state: error.status >= 400 && error.status < 500 ? "rejected" : "unknown", error: error.message });
+  }
+  journal.at = Date.now();
+  await atomic(path, journal);
+  return journal;
+}
+// A wake that launches nothing still answers for itself. If the latest finished turn's
+// disposition is unsettled, settle it from this run (observing first); otherwise leave
+// the issue's status alone so an active or newer turn is never closed by an old wake.
+async function settleNoop(api, conversation, issue, runId, reason) {
+  if (!issue) return null;
+  if (conversation) {
+    const n = conversation.turns;
+    const run = await readJSON(runPath(conversation.id, n), null);
+    const journal = await readJSON(dispositionPath(conversation.id, n), null);
+    if (run?.finished && journal?.state !== "applied" && journal?.state !== "superseded") {
+      const seen = list(await api.get(`/issues/${issue.id}/comments`).catch(() => [])).some((comment) => {
+        const mark = parseDisposition(comment?.body);
+        return mark?.conversationId === conversation.id && mark.turn === n;
+      });
+      if (seen && journal) {
+        await atomic(dispositionPath(conversation.id, n), { ...journal, state: "applied", observedBy: runId, at: Date.now() });
+        await api.post(`/issues/${issue.id}/comments`, { body: `No pool turn launched for this wake (${reason}); the turn ${n} disposition was already recorded. No provider was contacted.` }).catch(() => {});
+        return "observed";
+      }
+      if (!seen) return (await dispose(api, conversation, issue.id, run, runId)).state;
+    }
+  }
+  await api.post(`/issues/${issue.id}/comments`, { body: `No pool turn launched for this wake (${reason}). No provider was contacted.` }).catch(() => {});
+  return "comment";
 }
 export async function runTurn({
   env = process.env, out = process.stdout, err = process.stderr, fetchImpl = globalThis.fetch,
@@ -92,32 +168,32 @@ export async function runTurn({
   }
   const [profileName, profile] = named[0];
   await initPool();
-  let conversation;
+  const api = paperclipClient({ baseUrl: env.PAPERCLIP_API_URL, token: env.PAPERCLIP_API_KEY, runId, fetchImpl });
+  let conversation, issue, turn, evidence;
   try {
-    const api = paperclipClient({ baseUrl: env.PAPERCLIP_API_URL, token: env.PAPERCLIP_API_KEY, fetchImpl });
-    conversation = await locate(api, runId, profileName, profile);
+    ({ conversation, issue } = await locate(api, runId, profileName, profile));
+    turn = conversation && (await readJSON(turnPath(conversation.id, conversation.turns), null));
+    evidence = turn && PENDING.has(turn.state) && (await committed(api, conversation, issue, turn, profile));
   } catch (error) {
     say("refused", { category: "paperclip_lookup", detail: error.message });
     return RUNNER_EXIT.refused;
   }
-  if (!conversation) {
-    say("noop", { reason: "no pool turn is linked to this run's issue" });
+  const noop = async (reason) => {
+    const disposition = await settleNoop(api, conversation, issue, runId, reason).catch(() => "unknown");
+    say("noop", { reason, conversationId: conversation?.id ?? null, turn: conversation?.turns ?? null, disposition });
     return RUNNER_EXIT.ok;
-  }
+  };
+  if (!conversation) return noop("no pool turn is linked to this run's issue");
   const n = conversation.turns;
-  const turn = await readJSON(turnPath(conversation.id, n), null);
-  if (!turn || !PENDING.has(turn.state)) {
-    say("noop", { reason: "no pending pool turn", conversationId: conversation.id, turn: n });
-    return RUNNER_EXIT.ok;
-  }
+  if (!turn || !PENDING.has(turn.state)) return noop("no pending pool turn");
+  if (!evidence) return noop("the pending turn is not committed upstream yet");
   // The single launch attempt for this turn. A duplicate wake, a recovery wake or an
   // explicitly resent request finds the claim and never reaches a provider.
   try {
     await mkdir(claimPath(conversation.id, n), { mode: 0o700 });
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
-    say("noop", { reason: "turn already claimed", conversationId: conversation.id, turn: n });
-    return RUNNER_EXIT.ok;
+    return noop("turn already claimed");
   }
   const runnerIdentity = await identity(process.pid);
   const record = {
@@ -128,9 +204,12 @@ export async function runTurn({
   await save();
   say("claimed", { conversationId: conversation.id, turn: n, profile: profileName });
   const refuse = async (category, detail, code = RUNNER_EXIT.refused) => {
-    Object.assign(record, { state: "refused", finished: true, termination: "not-started", category, stopReason: `${category}: ${detail}`, endedAt: Date.now() });
+    Object.assign(record, { state: "refused", termination: "not-started", category, stopReason: `${category}: ${detail}`, endedAt: Date.now() });
     await save();
-    say("refused", { category, detail });
+    record.disposition = (await dispose(api, conversation, issue.id, record, runId)).state;
+    record.finished = true;
+    await save();
+    say("refused", { category, detail, disposition: record.disposition });
     return code;
   };
   const binding = bindingDigest(profileName, profile);
@@ -146,6 +225,9 @@ export async function runTurn({
     const entryProfile = pool.profiles[entry.profile];
     if (!entryProfile) return "unknown";
     const result = await remoteCommand(entryProfile, ["reconcile", entry.runUuid], { spawnImpl, env });
+    // Attach the later host proof beside, never over, that turn's original evidence.
+    if (result?.state === "terminated" && UUID.test(entry.conversationId ?? "") && Number.isInteger(entry.turn))
+      await atomic(reconcilePath(entry.conversationId, entry.turn), { state: "terminated", runUuid: entry.runUuid, provenAt: Date.now(), via: "admission" }).catch(() => {});
     return result?.state ?? "unknown";
   };
   const reserved = await reserveAccount(profile.account, {
@@ -272,11 +354,14 @@ export async function runTurn({
     code = record.termination === "verified" ? RUNNER_EXIT.stopped : RUNNER_EXIT.unknown;
   }
   record.question = null;
-  record.finished = true;
   record.endedAt = Date.now();
   record.code = code;
   await save();
+  // Disposed before `finished`, so no follow-up can be journaled in between.
+  record.disposition = (await dispose(api, conversation, issue.id, record, runId)).state;
+  record.finished = true;
+  await save();
   if (["verified", "not-started"].includes(record.termination)) await releaseAccount(profile.account, runUuid);
-  say("finished", { state: record.state, termination: record.termination, code });
+  say("finished", { state: record.state, termination: record.termination, code, disposition: record.disposition });
   return code;
 }

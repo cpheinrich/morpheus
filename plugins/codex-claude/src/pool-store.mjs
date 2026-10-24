@@ -23,6 +23,9 @@ export const turnPath = (id, n) => join(conversationDir(id), "turns", `${turnNum
 export const claimPath = (id, n) => join(conversationDir(id), "turns", `${turnNumber(n)}.claim`);
 export const runPath = (id, n) => join(conversationDir(id), "turns", `${turnNumber(n)}.run.json`);
 export const sessionPath = (id) => join(conversationDir(id), "session.json");
+// Runner-owned Paperclip disposition journal and coordinator-owned host proof per turn.
+export const dispositionPath = (id, n) => join(conversationDir(id), "turns", `${turnNumber(n)}.disposition.json`);
+export const reconcilePath = (id, n) => join(conversationDir(id), "turns", `${turnNumber(n)}.reconcile.json`);
 export const controlDir = (id) => join(conversationDir(id), "control");
 export const answersDir = (id) => join(conversationDir(id), "answers");
 export const cursorPath = (id) => join(conversationDir(id), "cursor.json");
@@ -63,6 +66,17 @@ export async function linkIssue(conversationId, issueId, by) {
 export function marker(conversationId, turn, prompt) {
   return `<!-- codex-claude-pool ${JSON.stringify({ conversationId, turn, promptSha256: sha256(prompt) })} -->`;
 }
+export function dispositionMarker(conversationId, turn, runId) {
+  return `<!-- codex-claude-pool-disposition ${JSON.stringify({ conversationId, turn, runId })} -->`;
+}
+export function parseDisposition(text) {
+  const found = /<!-- codex-claude-pool-disposition (\{[^\n]*?\}) -->/.exec(typeof text === "string" ? text : "");
+  try {
+    const value = found && JSON.parse(found[1]);
+    if (UUID.test(value?.conversationId) && Number.isInteger(value.turn)) return value;
+  } catch {}
+  return null;
+}
 export function parseMarker(text) {
   const found = /<!-- codex-claude-pool (\{[^\n]*?\}) -->/.exec(typeof text === "string" ? text : "");
   if (!found) return null;
@@ -73,9 +87,10 @@ export function parseMarker(text) {
   } catch {}
   return null;
 }
-// Deterministic RFC 4122-shaped id so a resent comment carries the same request id.
-export function requestId(conversationId, turn) {
-  const h = sha256(`${conversationId}:${turn}`);
+// Deterministic RFC 4122-shaped id so a resent comment carries the same request id. The
+// kind keeps coordinator follow-ups and runner dispositions in separate id spaces.
+export function requestId(conversationId, turn, kind = "followup") {
+  const h = sha256(`${kind}:${conversationId}:${turn}`);
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

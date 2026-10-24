@@ -181,6 +181,13 @@ an older tool list): `profiles`, `start`, `status`, `wait`, `logs`, `answer`, `f
   project is off. `answer` needs the caller's task id and the same off checks, without a live
   snapshot; `status`, `wait`, `logs` and plain `reattach` are observation and need neither.
   Delegated workers cannot start, follow up, answer or retry (CLI and MCP).
+- **Paperclip disposition.** Each finished turn leaves one comment attributed to its run and an
+  issue status (`done` for a completed turn, `blocked` for needs_input, refusal, failure, stop or
+  loss), so Paperclip queues no missing-comment or disposition-repair runs. `done` is operational
+  status only. A wake that launches nothing comments for itself and changes no status.
+  Follow-ups are sent with `resume: true`. A turn runs only once Paperclip holds its exact
+  submission marker. After a cancel that killed the runner, status keeps the original unknown
+  termination and adds `hostTermination` once `pool.reconcile` proves the host turn ended.
 - **Duplicates.** Intent is journaled before any Paperclip write. An unknown creation outcome is
   never reposted automatically; `pool_reattach` observes it by an issue/comment marker, and
   `retry: true` resends with the same idempotency key / request id. Every turn has one atomic

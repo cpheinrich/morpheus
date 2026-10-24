@@ -12,7 +12,9 @@ export function apiOrigin(value) {
     throw new Error("Paperclip API must use HTTPS or loopback HTTP, without credentials or a path");
   return url.origin;
 }
-export function paperclipClient({ baseUrl, token, fetchImpl = globalThis.fetch }) {
+// A run credential writes as that run (`X-Paperclip-Run-Id`), which is how Paperclip
+// attributes the run's own comment and disposition; a board token omits it.
+export function paperclipClient({ baseUrl, token, runId = null, fetchImpl = globalThis.fetch }) {
   const origin = apiOrigin(baseUrl);
   if (!token || /\s/.test(token)) throw new Error("Paperclip token is missing or malformed");
   async function call(method, path, body) {
@@ -25,6 +27,7 @@ export function paperclipClient({ baseUrl, token, fetchImpl = globalThis.fetch }
         headers: {
           accept: "application/json",
           authorization: `Bearer ${token}`,
+          ...(runId ? { "x-paperclip-run-id": runId } : {}),
           ...(body === undefined ? {} : { "content-type": "application/json" }),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -52,5 +55,6 @@ export function paperclipClient({ baseUrl, token, fetchImpl = globalThis.fetch }
   return {
     get: (path) => call("GET", path),
     post: (path, body) => call("POST", path, body ?? {}),
+    patch: (path, body) => call("PATCH", path, body ?? {}),
   };
 }

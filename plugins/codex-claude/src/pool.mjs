@@ -8,7 +8,7 @@ import { bindingDigest, loadPool, readToken, sha256 } from "./pool-config.mjs";
 import { paperclipClient } from "./pool-paperclip.mjs";
 import { identity } from "./processes.mjs";
 import {
-  UUID, answersDir, claimPath, controlDir, conversationDir, cursorPath, initPool, issueIndex,
+  UUID, answersDir, claimPath, controlDir, conversationDir, cursorPath, dispositionPath, initPool, issueIndex, reconcilePath,
   linkIssue, marker, parseMarker, poolHome, readConversation, requestId, runPath, sessionPath,
   threadIndex, turnPath, pruneAccount,
 } from "./pool-store.mjs";
@@ -118,7 +118,9 @@ export class Pool {
       await api.post(`/issues/${conversation.issueId}/comments`, {
         body: `${turn.prompt}\n\n${marker(conversation.id, turn.n, turn.prompt)}`,
         clientRequestId: requestId(conversation.id, turn.n),
-        reopen: true,
+        // Paperclip's explicit follow-up intent: it reopens a closed or blocked issue and
+        // is honored after an operator cancel, where a plain comment wake is held.
+        resume: true,
       });
       Object.assign(turn, { state: "submitted", submittedAt: Date.now(), error: null });
     } catch (error) {
@@ -133,6 +135,8 @@ export class Pool {
     let run = await readJSON(runPath(c.id, n), null);
     const session = await readJSON(sessionPath(c.id), null);
     const cursor = await readJSON(cursorPath(c.id), null);
+    const disposition = await readJSON(dispositionPath(c.id, n), null);
+    const hostProof = await readJSON(reconcilePath(c.id, n), null);
     const fold = cursor?.turn === n ? cursor.fold : null;
     // A runner that died without finishing cannot renew the remote lease; the remote
     // stops itself, and the next admission on this account reconciles it over SSH.
@@ -153,7 +157,10 @@ export class Pool {
       host: run?.remote?.hostId ?? null,
       requested: run?.requested ?? (run?.remote ? { model: run.remote.model, effort: run.remote.effort } : null),
       observed: run?.observed ?? null, usage: run?.usage ?? null,
+      // The controller's own evidence stays as recorded; later host proof sits beside it.
       termination: runnerLost ? "unknown" : run?.termination ?? null, stopReason: run?.stopReason ?? null,
+      hostTermination: hostProof ? { state: hostProof.state, runUuid: hostProof.runUuid, provenAt: hostProof.provenAt } : null,
+      disposition: disposition ? { status: disposition.status, state: disposition.state, runId: disposition.runId } : null,
       category: run?.category ?? null,
       question: run && !run.finished && run.question ? { id: run.question.id, toolName: run.question.toolName, input: run.question.input } : null,
       result: run?.result ?? fold?.result ?? null,
@@ -420,6 +427,8 @@ export class Pool {
         const profile = pool.profiles[entry.profile];
         const state = profile ? (await remoteCommand(profile, ["reconcile", entry.runUuid]))?.state ?? "unknown" : "unknown";
         report.push({ account, runUuid: entry.runUuid, conversationId: entry.conversationId, turn: entry.turn, state });
+        if (state === "terminated" && UUID.test(entry.conversationId ?? "") && Number.isInteger(entry.turn))
+          await atomic(reconcilePath(entry.conversationId, entry.turn), { state: "terminated", runUuid: entry.runUuid, provenAt: Date.now(), via: "pool.reconcile" }).catch(() => {});
         return state;
       }).catch((error) => report.push({ account, error: error.message }));
     }

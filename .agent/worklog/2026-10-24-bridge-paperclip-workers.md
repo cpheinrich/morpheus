@@ -73,6 +73,47 @@ Private enrollment journals and readback are at ~/.local/share/morpheus-papercli
 interactive-20261024; no existing worker binding was repointed. Earlier workers stay paused.
 Mini Codex native quota at08:09Z was0% used, future reset2026-10-31T04:50:06Z.
 
+## Live iteration — first real protocol results
+
+Source hardening fe00aa9 is committed with71 deterministic tests passing. Claude episode
+c0d19bf4-d7bf-472d-a32b-7be5a2dc65a4 is terminal; reported weekly usage remained42% at its end
+(not a claim of zero token use; keep1 point for reporting granularity/shared activity).
+Reserve a third targeted Claude implementation episode up to4 points, stop at47% weekly used;
+no other implementation author until it returns. The whole engagement hard limit remains60.
+
+Staged immutable archives f278853 thenfe00aa9 in a private test runtime on both hosts, with a
+separate coordinator store, canonical dedicated workspaces and native quota readers. Existing
+personal bridge source/configuration and prior pilot identities were not replaced. A third,
+local Claude acceptance profile uses agent ed9712ff-75f5-4154-804e-eaf80aebd3a4; its purpose is
+real provider control validation while mini native login remains unavailable, not a substitute
+for remote Claude acceptance. The remote Claude run refused native_auth_unavailable before
+launch and proved termination not-started; no API or paid fallback was used.
+
+Mini Codex conversation06f8cde0-ebc6-4ca7-b32a-5cc5841be108, issue78196d5c-4cc2-4d36-a8c0-
+5569aa5497ba: run2b21223f-eac5-4d68-af9d-84c1201351dc streamed progress and returned needs_input;
+run33fea3d3-ad6e-435f-b496-f99d9bbd9278 resumed native session01a16d14-9e8a-7983-abd2-
+9d46dca37f32 and completed the answer. Independent SSH JSON parsing verified both nonce
+artifacts and labelblue. Run a61e4e0a-b544-4541-8dd2-c2656eb5f3e4 remained running with the
+same native session across coordinator shutdown/restart; the capture is codex-active-reconnect.json.
+Paperclip cancel killed the relay before its receipt returned: controller correctly retained
+transport_lost/unknown, host later recorded interrupted/verified, and pool.reconcile proved
+termination and released the account. Do not rewrite that unknown controller result as success.
+
+Actual Paperclip behavior exposed integration gaps: completed generic process runs without
+task comments/disposition triggered missing_issue_comment and issue_disposition_repair runs.
+The immutable claims prevented those from launching a second model. A later fourth turn
+after cancellation stayed queued and was stopped before launch; retain the failed drill,
+diagnose explicit resume/manual-cancel hold rather than blindly wake the agent. The runner
+must honor Paperclip's existing completion protocol and exact submitted-turn identity.
+
+Local Claude conversation0f9b0ac9-67d5-46bb-9dc8-41b62cdcfa1d, issuefababac8-9ec2-43c4-
+b1b7-4e349ced2d22, runa1b02043-fa90-4963-821e-36f6224ed092: real AskUserQuestion appeared,
+coordinator answeredblue with a reversible-fixture reason, same in-flight native session
+90535e28-e933-4a0f-8ba3-ec873f45430e completed. Independently parsed both artifacts. Requested
+sonnet/medium, observed claude-sonnet-5-5 from init, observed effortunknown. Provider-reported
+tokens are retained separately from subscription quota. These are live local Claude results.
+Private immutable captures, journals and quota wrappers are under interactive-20261024.
+
 ## Claude implementation episode (delegated, 2026-10-24)
 
 Read AGENTS.md, decisions, learned, inbox, the proposed design and acceptance. Graph tools were
@@ -166,3 +207,34 @@ question ids, autonomous limits, permission escalation (tool permission and now 
 sandbox rank), native auth/quota, cursor replay, session/binding drift, concurrent writers
 (profile idle, account ledger, canonical host lock), cancellation and reconnect are each covered
 by a deterministic test. Live acceptance remains pending with root.
+
+## Claude protocol episode (2026-10-24, after fe00aa9)
+
+Diagnosis from the pinned 2026.1012.0 source (bounded reads): `heartbeat.js`
+`finalizeIssueCommentPolicy`/`findRunIssueComment` queue `missing_issue_comment` for a succeeded
+run with no comment whose `createdByRunId` is that run; `recovery/legacy-continuation.js`
+`decideLegacyContinuation` queues `issue_disposition_repair` (max 2) when a succeeded legacy run
+leaves its issue `todo`/`in_progress`. `middleware/auth.js` derives the run from
+`X-Paperclip-Run-Id`. `routes/issues.js` honors `clientRequestId`/`commentClientRequestId` only
+for user actors (12760, 9664), so agent writes need journal-and-observe idempotency. Comment and
+PATCH `resume: true` is the explicit follow-up intent (moves to todo, carries
+`resumeIntent/followUpRequested`); `issue-comment-wakeup.js` suppresses self comments, so runner
+dispositions do not wake the agent. I did not pin the exact line that held the fourth follow-up
+after the operator cancel; `resume` is the documented explicit path, and the fake models the
+observed hold rather than claiming the mechanism. Root's live probe should confirm.
+
+Implemented: run-attributed dispositions with a journal (`done`/`blocked`), no-op wake comments
+that never change status and settle an unsettled latest disposition (observe first),
+upstream-marker evidence before any claim, `resume: true` follow-ups, separate id spaces, and
+`hostTermination` from reconcile (manual or at the next admission) beside the original unknown
+evidence. Two test setups were wrong, not the code: the fake set every issue `in_progress` at
+run start (the server only checks out `todo`), and two tests acted before the fake provider had
+started or reported its session; both now wait for real progress.
+
+Commands: `node --test tests/pool-protocol.test.mjs` 5 pass (disposition per state with the
+server's post-run policy; refused/unapplied vs accepted-unknown follow-ups against late and repair
+wakes; duplicate wake during an active turn; unknown disposition observed vs re-sent; a real
+runner subprocess killed by process group with later host proof and an explicit resume
+continuing native session sess-1). `pnpm check`; `pnpm test` 76/76. Residual race: a no-op wake
+settling turn n can race a follow-up journaled after it re-reads the conversation; the window
+is one request, and the follow-up's own run still admits on its marker.

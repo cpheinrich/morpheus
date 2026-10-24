@@ -116,6 +116,38 @@ status separate requested from observed model/effort and keep provider-reported 
 evidence, not quota. Native host permissions and processes that deliberately detach or scrub
 their environment keep the limitations already recorded for the guardian and pilot census.
 
+## Paperclip completion protocol (live finding, 2026-10-24)
+
+Live runs showed the first version ignored Paperclip's own completion contract. The pinned
+server queues a `missing_issue_comment` retry after a succeeded run that left no comment
+attributed to itself (`createdByRunId`), and an `issue_disposition_repair` wake when a succeeded
+run leaves its idle issue `todo`/`in_progress` (any other status is a recorded disposition).
+Claims kept those wakes from reaching a provider, but they wasted runs and left tasks open.
+
+- **Disposition.** The runner writes with its own run credential and `X-Paperclip-Run-Id`, so
+  Paperclip attributes the write to the run. Before marking a turn finished it journals
+  `turns/<n>.disposition.json`, then sends one `PATCH /issues/:id {status, comment}`: `done`
+  for a completed, verified turn and `blocked` for needs_input, refused, failed, interrupted or
+  lost. Paperclip `done` is operational status, never Git acceptance, and the comment says so.
+  Paperclip ignores comment request ids from agent actors, so an unknown outcome is settled by
+  a later wake that observes the disposition marker (or re-sends once if it is absent).
+- **No-op wakes.** A duplicate, recovery, repair or stray wake that launches nothing posts its
+  own short comment and never changes status, so an old wake cannot close an active or newer
+  turn. If the latest finished turn's disposition is unsettled, that wake settles it.
+- **Submission evidence.** A runner admits the pending turn only when Paperclip holds its exact
+  marker (turn number, prompt digest, assignee): the issue description for turn 1, a comment for
+  follow-ups. A journaled follow-up whose POST was refused or never applied cannot be executed
+  by a late or repair wake; an accepted-but-unknown one may be, once.
+- **Resume.** Coordinator follow-ups post the comment with `resume: true`, Paperclip's explicit
+  follow-up intent. It reopens a closed or blocked issue and, unlike a plain comment, is not
+  held after an operator cancel. Follow-up comments and run dispositions use separate
+  deterministic id spaces.
+- **Cancellation.** A Paperclip cancel can kill the runner's whole process group before the
+  host receipt returns. The controller keeps `transport_lost` or `runner_lost` with termination
+  `unknown`; `pool.reconcile` (or the next admission on the account) proves the host turn ended,
+  releases the account and writes `turns/<n>.reconcile.json`, which status reports as
+  `hostTermination` beside, never over, the original evidence.
+
 ## Data and identity
 
 Coordinator store (`$CODEX_CLAUDE_HOME/pool/`, 0700/0600):

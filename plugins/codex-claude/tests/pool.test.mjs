@@ -62,7 +62,8 @@ test("remote Claude over SSH streams through Paperclip, answers a live question 
   assert.equal(next.state, "queued");
   const comment = fx.paperclip.comments.get(started.issueId).at(-1);
   assert.equal(comment.clientRequestId, requestId(started.conversationId, 2));
-  assert.equal(comment.reopen, true);
+  assert.notEqual(comment.clientRequestId, requestId(started.conversationId, 2, "disposition"));
+  assert.deepEqual([comment.resume, comment.reopen, comment.authorType], [true, undefined, "user"]);
   assert.match(comment.body, /"turn":2/);
   assert.equal(await fx.run(fx.paperclip.startRun(started.issueId)), 0);
   const second = await pool.wait({ conversationId: started.conversationId, seconds: 5 });
@@ -367,7 +368,7 @@ test("pool admission keeps the bridge's coordinator invariants and denials make 
   // Another authorized session may continue; a restricted one may not, nor any session
   // once the owning task is off. Observation needs no live session at all.
   const sessions = fx.coordinator((threadId) => (threadId === "thread-ro" ? { sandbox: { type: "readOnly" } } : {}));
-  const comments = () => (fx.paperclip.comments.get(s.issueId) ?? []).length;
+  const comments = () => (fx.paperclip.comments.get(s.issueId) ?? []).filter((c) => c.authorType === "user").length;
   await assert.rejects(sessions.followup({ conversationId: s.conversationId, threadId: "thread-ro", prompt: "WRITE h.txt h" }), /exceeds/);
   await assert.rejects(sessions.followup({ conversationId: s.conversationId, prompt: "WRITE h.txt h" }), /current Codex task id/);
   await sessions.manager.dispatch("override", { threadId: "thread-g", executor: "off" });

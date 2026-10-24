@@ -127,6 +127,8 @@ export class FakePaperclip {
     this.logs = new Map();
     this.calls = [];
     this.keys = new Map();
+    this.wakes = [];
+    this.active = new Set();
     this.fail = null;
     this.fetch = (url, init = {}) => this.handle(url, init);
   }
@@ -138,7 +140,9 @@ export class FakePaperclip {
     const path = u.pathname.replace(/^\/api/, "");
     const method = init.method ?? "GET";
     const body = init.body ? JSON.parse(init.body) : undefined;
-    this.calls.push({ method, path, body, authorization: init.headers?.authorization });
+    // A run credential writes as that run; a board token is a user actor.
+    const runId = init.headers?.["x-paperclip-run-id"] ?? null;
+    this.calls.push({ method, path, body, authorization: init.headers?.authorization, runId });
     const injected = this.fail?.(method, path, body, this);
     if (injected === "throw") throw new TypeError("fetch failed");
     if (typeof injected === "number") return this.json(injected, { error: "injected" });
@@ -153,13 +157,32 @@ export class FakePaperclip {
     }
     if (method === "GET" && /^\/companies\/[^/]+\/issues$/.test(path)) return this.json(200, [...this.issues.values()]);
     if (method === "GET" && (m = /^\/issues\/([^/]+)$/.exec(path))) return this.issues.has(m[1]) ? this.json(200, this.issues.get(m[1])) : this.json(404, {});
+    if (method === "PATCH" && (m = /^\/issues\/([^/]+)$/.exec(path))) {
+      // One transaction: status and the run-attributed comment land together.
+      const issue = this.issues.get(m[1]);
+      if (!issue) return this.json(404, {});
+      if (body.status) issue.status = body.status;
+      if (body.comment) this.addComment(m[1], { body: body.comment }, runId);
+      if (injected === "throw-after") throw new TypeError("fetch failed");
+      return this.json(200, issue);
+    }
     if ((m = /^\/issues\/([^/]+)\/comments$/.exec(path))) {
       const list = this.comments.get(m[1]) ?? [];
       if (method === "GET") return this.json(200, list);
-      if (!list.some((c) => c.clientRequestId && c.clientRequestId === body.clientRequestId)) list.push({ id: randomUUID(), ...body });
-      this.comments.set(m[1], list);
+      const issue = this.issues.get(m[1]);
+      // Paperclip honors clientRequestId only for user actors, never for agent runs.
+      const replay = !runId && body.clientRequestId && list.find((c) => c.clientRequestId === body.clientRequestId);
+      if (!replay) {
+        this.addComment(m[1], body, runId);
+        if (issue && (body.resume || body.reopen) && issue.status !== "todo") issue.status = "todo";
+        // An operator cancel holds a plain comment wake; explicit resume is a new turn.
+        if (issue && !runId && (body.resume || !issue.holdAfterCancel) && !["done", "cancelled"].includes(issue.status)) {
+          this.wakes.push({ issueId: m[1], resume: body.resume === true });
+          if (body.resume) issue.holdAfterCancel = false;
+        }
+      }
       if (injected === "throw-after") throw new TypeError("fetch failed");
-      return this.json(201, list.at(-1));
+      return this.json(201, (this.comments.get(m[1]) ?? []).at(-1));
     }
     if (method === "GET" && (m = /^\/heartbeat-runs\/([^/]+)\/issues$/.exec(path)))
       return this.json(200, this.runIssues.has(m[1]) ? [{ issueId: this.runIssues.get(m[1]) }] : []);
@@ -170,14 +193,51 @@ export class FakePaperclip {
       const slice = all.subarray(offset, offset + limit);
       return this.json(200, { content: slice.toString("utf8"), nextOffset: offset + limit < all.length ? offset + limit : undefined });
     }
-    if (method === "POST" && /^\/heartbeat-runs\/[^/]+\/cancel$/.test(path)) return this.json(200, { ok: true });
+    if (method === "POST" && (m = /^\/heartbeat-runs\/([^/]+)\/cancel$/.exec(path))) {
+      const issue = this.issues.get(this.runIssues.get(m[1]));
+      if (issue) issue.holdAfterCancel = true;
+      return this.json(200, { ok: true });
+    }
     return this.json(404, {});
+  }
+  addComment(issueId, body, runId) {
+    const list = this.comments.get(issueId) ?? [];
+    list.push({ id: randomUUID(), ...body, createdByRunId: runId, authorType: runId ? "agent" : "user" });
+    this.comments.set(issueId, list);
   }
   startRun(issueId) {
     const runId = randomUUID();
     this.runIssues.set(runId, issueId);
     this.logs.set(runId, "");
+    const issue = this.issues.get(issueId);
+    // Execution start checks a todo issue out; other statuses are left as they are.
+    if (issue) Object.assign(issue, { executionRunId: runId, ...(issue.status === "todo" ? { status: "in_progress" } : {}) });
     return runId;
+  }
+  // The pinned server's post-run policy for a legacy process run: a succeeded run with no
+  // comment of its own gets a missing_issue_comment retry, and one that leaves its idle
+  // issue todo/in_progress gets an issue_disposition_repair wake.
+  policy(runId, code) {
+    const issueId = this.runIssues.get(runId);
+    const issue = this.issues.get(issueId);
+    const otherActive = [...this.active].some((id) => id !== runId && this.runIssues.get(id) === issueId);
+    return {
+      missingComment: code === 0 && !(this.comments.get(issueId) ?? []).some((c) => c.createdByRunId === runId),
+      dispositionRepair: code === 0 && !otherActive && ["todo", "in_progress"].includes(issue?.status),
+    };
+  }
+  async listen() {
+    const http = await import("node:http");
+    this.server = http.createServer(async (req, res) => {
+      let text = "";
+      for await (const chunk of req) text += chunk;
+      const response = await this.handle(`http://127.0.0.1${req.url}`, { method: req.method, headers: req.headers, body: text || undefined }).catch(() => null);
+      if (!response) return res.destroy();
+      res.writeHead(response.status, { "content-type": "application/json" });
+      res.end(await response.text());
+    });
+    await new Promise((r) => this.server.listen(0, "127.0.0.1", r));
+    return `http://127.0.0.1:${this.server.address().port}`;
   }
   // Paperclip's process adapter stores stdout chunks as NDJSON records.
   logStream(runId) {
@@ -258,6 +318,7 @@ export async function poolFixture(t, { provider = "claude", transport = "ssh", s
     signals: new EventEmitter(),
     // Runs one Paperclip process-adapter invocation in this process, as Paperclip would.
     run(runId, profileName = name, extra = {}) {
+      paperclip.active.add(runId);
       return runTurn({
         env: {
           PAPERCLIP_RUN_ID: runId, PAPERCLIP_AGENT_ID: profiles[profileName].agentId,
@@ -266,7 +327,7 @@ export async function poolFixture(t, { provider = "claude", transport = "ssh", s
         },
         out: paperclip.logStream(runId), err: new Writable({ write: (_c, _e, done) => done() }),
         fetchImpl: paperclip.fetch, heartbeatMs: 100, pollMs: 50, stopGraceMs: 8000, signals: fx.signals, ...extra,
-      });
+      }).finally(() => paperclip.active.delete(runId));
     },
     async lines(file) {
       try {
