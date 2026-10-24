@@ -62,8 +62,8 @@ packet must not mark those capabilities complete or the item shipped.
 
 Validation completed:
 
-- `pnpm exec vitest run tests/paperclip-bridge.test.ts`: 27 passed, latest run 2026-10-24
-  03:02:29 UTC, 6.52 s. This covers only the new operator boundary; no pilot/native executor
+- `pnpm exec vitest run tests/paperclip-bridge.test.ts`: 28 passed, latest run 2026-10-24
+  03:07:00 UTC, 6.80 s. This covers only the new operator boundary; no pilot/native executor
   source changed. Fixtures use temporary Git repositories and synthetic HTTP/service calls.
 - `pnpm typecheck`: passed. Tests import the bridge so its TypeScript is included.
 - `pnpm exec tsc --noEmit --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --skipLibCheck --esModuleInterop scripts/paperclip-bridge/cli.ts`: passed,
@@ -154,3 +154,54 @@ restart adoption and cross-host recovery are not qualified by these runs. The fo
 preserves those acceptance requirements. The fresh source review will use the parent's
 isolated native v2 launcher with plugins/MCP auto-install and computer/browser access disabled;
 it will receive final source/evidence, no author history, and measured invocation timing.
+
+Independent native review found one minor exact-parent symlink escape and no substantive issues. The author reproduced the escape, fixed the containment guard and added a regression that fails before the fix; 28 focused tests, typecheck and diff checks pass. The reviewer pre-cleared this exact change, so its condition is satisfied without another model turn. Broader consumer and worker capabilities remain unqualified.
+
+The fresh native reviewer independently checked both source-reference hashes, receipt equality,
+evidence digests and identities. It ran no tests or live API probes. Its actual runner-issued
+session was 01a16bde-0a28-7b13-8987-a2c092230ae0; measured elapsed time was 91326 ms,
+above the high-risk floor and below the imposed 10-minute deadline. No follow-up inference or
+API fallback was used. The original short finding ID R1 is recorded as R1-parent-escape for
+the review schema; its minor severity and exact pre-clearance condition are preserved.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "6934c4ddc0dd401f3b6f861020466bf92d1657b0",
+  "reviewed": "1dcb4abe8175a6e9eaecf614bfb069de62dc1540",
+  "covered": "39735b686034f35714c5c6d7a3942d3ac59c70f2",
+  "authorSession": "01a16bb8-76d9-72c0-af65-c16359c44935",
+  "reviewerSession": "01a16bde-0a28-7b13-8987-a2c092230ae0",
+  "risk": "high",
+  "elapsedMinutes": 1.5221,
+  "timing": {
+    "source": "clock",
+    "durationMs": 91326,
+    "evidence": "Native reviewer session 01a16bde-0a28-7b13-8987-a2c092230ae0; controller monotonic measurement durationMs=91326; observed UTC start 2026-10-24T03:04:36.008811+00:00, finish 2026-10-24T03:06:07.334696+00:00. Private invocation.json and JSONL retained in /var/folders/y2/4jh9hjp56hqbrrmzpz7zzkx00000gn/T/morpheus-paperclip-independent-review-5tomvmcr."
+  },
+  "outcome": "complete",
+  "summary": "Independent native review found one minor exact-parent symlink escape and no substantive issues. The author reproduced the escape, fixed the containment guard and added a regression that fails before the fix; 28 focused tests, typecheck and diff checks pass. The reviewer pre-cleared this exact change, so its condition is satisfied without another model turn. Broader consumer and worker capabilities remain unqualified.",
+  "findings": [
+    {
+      "id": "R1-parent-escape",
+      "severity": "minor",
+      "description": "Original reviewer finding R1: savePrepared accepted directory relative path exactly .., allowing a per-roadmap directory symlink to write a new job record in the immediate repository parent. Exclusive creation prevented overwriting an existing file.",
+      "paths": [
+        "scripts/paperclip-bridge/bridge.ts",
+        "tests/paperclip-bridge.test.ts"
+      ],
+      "disposition": "fixed",
+      "response": "Reject exact .., nested parent paths and absolute results before record writing. A synthetic private parent directory confines the regression and asserts the outside record is absent. The regression failed against the reviewed guard, then passed after the fix.",
+      "condition": {
+        "paths": [
+          "scripts/paperclip-bridge/bridge.ts",
+          "tests/paperclip-bridge.test.ts",
+          ".agent/worklog/2026-10-23-link-paperclip-jobs.md"
+        ],
+        "evidence": "Reviewer pre-clearance: reject the exact-parent escape and add a regression asserting rejection and absence of the outside record. Run pnpm exec vitest run tests/paperclip-bridge.test.ts, pnpm typecheck, and git diff --check, all passing. No documentation or generated-file changes are needed."
+      },
+      "conditionMet": "The targeted symlink regression failed before the fix (promise resolved instead of rejecting). After the guard fix, pnpm exec vitest run tests/paperclip-bridge.test.ts passed28/28 at2026-10-24T03:07:00Z in6.80s; pnpm typecheck and git diff --check passed. Only the exact reviewer-allowed bridge/test paths changed in covered commit 39735b686034f35714c5c6d7a3942d3ac59c70f2."
+    }
+  ]
+}
+```
