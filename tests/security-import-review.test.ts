@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error operational workflow script is intentionally JavaScript
-import { candidateReceipt, parseReviewDecision, reviewMarker } from "../scripts/security-import-review.mjs";
+import { candidateReceipt, parseReviewDecision, requireReviewedCheckout, reviewMarker } from "../scripts/security-import-review.mjs";
 
 const head = "a".repeat(40);
 const pr = {
@@ -11,6 +11,7 @@ const pr = {
 };
 const receipt = { version: 2, mode: "import-only-compatibility", repository: "cpheinrich/morpheus",
   headSha: head, advisory: "GHSA-example", dependency: "gray-matter", replacement: "@11ty/gray-matter",
+  replacementVersion: "3.0.0",
   sourcePath: "pnpm-lock.yaml", importFiles: ["src/review/local.ts"], importCount: 1,
   generatedFiles: ["dist/review/local.js"] };
 const check = { name: "Morpheus Security / candidate", head_sha: head, app: { slug: "morpheus-security" },
@@ -30,11 +31,20 @@ describe("review-only Security candidate admission", () => {
       .toBeNull();
     expect(candidateReceipt(pr, [{ ...check, output: { summary: JSON.stringify({ ...receipt, importCount: 21 }) } }], files))
       .toBeNull();
+    expect(candidateReceipt(pr, [{ ...check, output: { summary: JSON.stringify({ ...receipt, replacementVersion: "latest" }) } }], files))
+      .toBeNull();
     expect(candidateReceipt(pr, [check], files.map((file) => file.filename === "src/review/local.ts"
       ? { ...file, status: "added" } : file))).toBeNull();
+    for (const path of ["src/trading/foo.ts", "src/auth.ts", "src/credential.ts", "tests/trade.test.ts"]) {
+      const unsafe = { ...receipt, importFiles: [path] };
+      expect(candidateReceipt(pr, [{ ...check, output: { summary: JSON.stringify(unsafe) } }],
+        files.map((file) => file.filename === "src/review/local.ts" ? { ...file, filename: path } : file))).toBeNull();
+    }
   });
 
   it("accepts only a complete, exact-head review decision and marker", () => {
+    expect(() => requireReviewedCheckout(head, head)).not.toThrow();
+    expect(() => requireReviewedCheckout(head, "b".repeat(40))).toThrow("not the attested live PR head");
     const decision = { version: 1, repository: "cpheinrich/morpheus", pr: 42, headSha: head,
       verdict: "clear", summary: "Inspected the replacement package, source imports, generated output, advisory and passing exact-head checks.", findings: [] };
     expect(parseReviewDecision(decision, "cpheinrich/morpheus", 42, head)).toEqual(decision);
@@ -43,5 +53,8 @@ describe("review-only Security candidate admission", () => {
     const marker = `<!-- morpheus-security-review ${JSON.stringify({ version: 1, repository: "cpheinrich/morpheus", pr: 42, headSha: head, verdict: "clear" })} -->`;
     expect(reviewMarker(marker)).toEqual(expect.objectContaining({ headSha: head, verdict: "clear" }));
     expect(reviewMarker(marker.replace('"clear"', '"approve-anything"'))).toBeNull();
+    const hold = `<!-- morpheus-security-review ${JSON.stringify({ version: 1, repository: "cpheinrich/morpheus", pr: 42, headSha: head, verdict: "hold", attempt: 2 })} -->`;
+    expect(reviewMarker(hold)).toEqual(expect.objectContaining({ verdict: "hold", attempt: 2 }));
+    expect(reviewMarker(hold.replace('"attempt":2', '"attempt":3'))).toBeNull();
   });
 });

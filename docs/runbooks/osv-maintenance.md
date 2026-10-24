@@ -116,8 +116,8 @@ the changed sources; it does not authorize an arbitrary build script or generate
 
 The Security App attests the exact validated candidate head and stops. A distinct Manager App
 session reviews it with a read-only target token; its apply job publishes a head-bound comment,
-without editing or merging the candidate. The dedicated labeled PR check verifies both App
-receipts and runs the ordinary conventions checker. Security's later reconciliation requires the
+without editing or merging the candidate. The existing review-metadata workflow reruns the
+ordinary conventions checker on the review label after verifying both App receipts. Security's later reconciliation requires the
 clear review, the current mapping and opt-in, holds, all named successful checks, branch
 protection and a head-SHA-guarded merge. Lakina and Evo retain the existing dependency-only
 policy unless their maintainers separately opt in. No new App permission or credential transfer

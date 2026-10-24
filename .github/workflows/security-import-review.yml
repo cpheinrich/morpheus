@@ -117,6 +117,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           SECURITY_REVIEW_DECISION: ${{ runner.temp }}/decision-${{ matrix.pr }}.json
+          SECURITY_REVIEW_CHECKOUT: ${{ github.workspace }}/target
           PR: ${{ matrix.pr }}
         run: node tooling/scripts/security-import-review.mjs prompt "$PR" "$RUNNER_TEMP/prompt-$PR.md"
       - name: Review without write access to Morpheus

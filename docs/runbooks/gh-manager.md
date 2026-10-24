@@ -183,7 +183,8 @@ contents read, reviews the exact Security App-attested head and writes a decisio
 separate deterministic job verifies the live head and App candidate, then posts a Manager App
 comment carrying that head and its clear/findings/hold verdict. It cannot push or merge the PR.
 Security checks the distinct App comment again before any merge. The review label only triggers
-the narrow `security-import-pr-check.yml`; neither a label nor PR prose is proof. Findings or a
+the existing review-metadata workflow to rerun `pr / conventions` with an App-backed proof;
+neither a label nor PR prose is proof. A transient hold gets one same-head retry. Findings or a
 head change require a new candidate and review. The ordinary bot-lane skip remains in force.
 
 The App key and the Claude subscription token live only in the private operations repository.

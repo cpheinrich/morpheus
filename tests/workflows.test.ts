@@ -415,10 +415,12 @@ describe("Morpheus-only Security import review", () => {
     expect(workflow).toContain("security-import-review.mjs apply");
   });
 
-  it("rechecks only a labeled Security PR without changing global CI events", async () => {
-    const workflow = await readFile(join(DIR, "security-import-pr-check.yml"), "utf8");
+  it("uses the existing metadata check for a labeled Security PR without changing global CI events", async () => {
+    const workflow = await readFile(join(DIR, "review-metadata.yml"), "utf8");
     expect(workflow).toContain("github.event.label.name == 'security-import-reviewed'");
-    expect(workflow).toContain("security-import-verified:");
+    expect(workflow).toContain("security-import-proof:");
+    expect(workflow).toContain("security-import-verified: ${{ needs.security-import-proof.outputs.verified == 'true' }}");
+    expect(workflow).toContain("always() &&");
     const ci = await read("ci.yml") as { on?: { pull_request?: { types?: string[] } } };
     expect(ci.on?.pull_request?.types).not.toContain("labeled");
   });
@@ -2705,7 +2707,7 @@ describe("local review metadata", () => {
   it("reruns only conventions without replacing build/test statuses", async () => {
     const wf = await read("review-metadata.yml") as { on: { pull_request: { types: string[] } }; jobs: Record<string, { uses: string }> };
     expect(wf.on.pull_request.types).toEqual(["edited", "labeled", "unlabeled"]);
-    expect(Object.keys(wf.jobs)).toEqual(["pr"]);
+    expect(Object.keys(wf.jobs)).toEqual(["security-import-proof", "pr"]);
     expect(wf.jobs.pr?.uses).toContain("pr-check.yml");
   });
   it("puts the draft skip on every pr-check caller job, never inside the reusable workflow", async () => {
@@ -2719,7 +2721,8 @@ describe("local review metadata", () => {
     ];
     for (const [name, wf] of callers) {
       expect(wf.jobs.pr?.uses, name).toContain("pr-check.yml");
-      expect(wf.jobs.pr?.if, name).toBe(want);
+      expect(wf.jobs.pr?.if, name).toBe(name === "review-metadata.yml"
+        ? `\${{ always() && (${PR_CHECK_CALLER_IF}) }}` : want);
     }
     // Inside, a skip would report `pr / conventions` as skipped, which satisfies protection.
     const inner = await read("pr-check.yml") as { jobs: { conventions: { if?: string } } };
