@@ -3418,6 +3418,10 @@ receipt dependency. Missing proof retains the download path; malformed reusable
 proof refuses. The proof is never treated as raw results or re-recorded, and fresh
 Apple readback still owns availability and receipt creation. Upload and group operations have
 durable claims; actual provider receipts complete the original obligation.
+A **repair-only control** ([runbook](docs/runbooks/cd-repair-control.md)) can hold new repair-agent admission
+for one exact supplemental validation intent: a namespaced `repair:<intent>` pause that existing delivery
+gates ignore, enforced only by a worker-only entry around an injected unchanged `runWorker` and released
+only after the exact delivered receipt with all target work complete.
 Bounded subscription workers retain immutable tasks, session checkpoints and
 actual quota telemetry. Hosted Claude admission joins shared and explicitly
 configured model-family windows; missing capacity remains a budget wait rather
