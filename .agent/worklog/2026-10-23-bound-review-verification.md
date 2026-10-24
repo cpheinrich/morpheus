@@ -41,6 +41,8 @@ No gate policy has been merged or activated.
 
 ## Independent review
 
+Initial review blocked two substantive scope bypasses; the same reviewer cleared both after filename-only test recognition and review-policy exclusions were added, with focused regressions.
+
 The initial high-risk review blocked two substantive scope bypasses. The same reviewer cleared
 both after the author narrowed test-file recognition and excluded review-policy prose. The
 reviewer inspected generated output and the new regressions; they did not rerun the tests. The
