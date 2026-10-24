@@ -51,6 +51,7 @@ export declare const GhManagerPolicy: z.ZodObject<{
     sessionBeforeMerge: z.ZodDefault<z.ZodBoolean>;
     closeGraceDays: z.ZodDefault<z.ZodNumber>;
     protectedPaths: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    authorReviewedProtectedMerge: z.ZodDefault<z.ZodBoolean>;
     model: z.ZodDefault<z.ZodString>;
     actions: z.ZodDefault<z.ZodObject<{
         merge: z.ZodDefault<z.ZodBoolean>;

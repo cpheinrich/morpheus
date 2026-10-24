@@ -30,7 +30,7 @@ describe("policy", () => {
   it("defaults to a 24 hour cooldown, 48 for rescued draft escalation, and every action on", () => {
     expect(parsePolicy('{"version":1}')).toEqual({
       version: 1, enabled: true, quietHours: 24, draftQuietHours: 48, maxSessionsPerRun: 4, maxAttemptsPerPullRequest: 2,
-      sessionBeforeMerge: false, closeGraceDays: 7, protectedPaths: [], model: "claude-opus-5-5",
+      sessionBeforeMerge: false, closeGraceDays: 7, protectedPaths: [], authorReviewedProtectedMerge: false, model: "claude-opus-5-5",
       actions: { merge: true, repair: true, review: true, undraft: true, triage: true, close: true },
     });
   });
@@ -354,6 +354,32 @@ describe("applying a session's decision", () => {
     expect(planDecision(d, live({ changedFiles: ["src/a.ts", ".github/workflows/ci.yml"] }), ctx())).toMatchObject({ verdict: "escalate" });
     expect(planDecision(d, live({ changedFiles: ["billing/x.ts"] }), ctx({ protectedPaths: ["billing"] }))).toMatchObject({ verdict: "escalate" });
     expect(planDecision(d, live({ changedFiles: ["billing/x.ts"] }), ctx())).toMatchObject({ verdict: "merge" });
+  });
+  it("uses only a verified author review for a protected change when the repository opts in", () => {
+    const d = decision({ usedManagerReview: true });
+    const p = ctx({ protectedPaths: ["billing"], authorReviewedProtectedMerge: true });
+    const reviewed = live({ changedFiles: ["billing/x.ts"], authorRecordValid: true });
+    const plan = planDecision(d, reviewed, p);
+    expect(kinds(plan)).toEqual(["comment", "add-label:agent-reviewed", "auto-merge"]);
+    expect(parseMarker((plan.operations[0] as { body: string }).body)).not.toHaveProperty("cleared");
+    expect(kinds(planDecision(d, { ...reviewed, labels: ["manager-reviewed"] }, p))).toEqual([
+      "comment", "remove-label:manager-reviewed", "add-label:agent-reviewed", "auto-merge",
+    ]);
+    expect(kinds(planDecision(d, { ...reviewed, labels: ["manager-reviewed", "agent-reviewed"] }, p))).toEqual([
+      "comment", "remove-label:manager-reviewed", "auto-merge",
+    ]);
+    for (const unsafe of [
+      { authorRecordValid: false },
+      { sessionPushed: "other" as const },
+      { sessionPushed: "trunk-merges" as const },
+      { isDraft: true },
+    ]) {
+      const result = planDecision(d, { ...reviewed, ...unsafe }, p);
+      expect(result.verdict, JSON.stringify(unsafe)).toBe("isDraft" in unsafe ? "wait" : "escalate");
+      expect(kinds(result)).not.toContain("auto-merge");
+    }
+    expect(planDecision(decision({ usedManagerReview: true, body: RECORD_BODY }), reviewed, p).verdict).toBe("escalate");
+    expect(planDecision(d, reviewed, ctx({ protectedPaths: ["billing"] })).verdict).toBe("escalate");
   });
   it("refuses a claimed manager review whose record line is missing or hidden", () => {
     expect(planDecision(decision({ usedManagerReview: true }), live(), ctx())).toMatchObject({ verdict: "escalate" });

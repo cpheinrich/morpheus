@@ -174,12 +174,20 @@ export function planDecision(decision, live, ctx) {
     if (live.isDraft && !(decision.markReady && ctx.policy.actions.undraft)) {
         return refuse("this is still a draft and the session did not judge it complete enough to mark ready");
     }
-    if (decision.usedManagerReview) {
+    const protectedPaths = humanGatedPaths(live.changedFiles, ctx.policy);
+    // A manager session may have requested its own review even though the author's independent
+    // review is already valid. Its own clearance cannot cover protected paths; use the author's
+    // verified record only when the session and PR body are unchanged.
+    const authorFallback = decision.usedManagerReview && ctx.policy.authorReviewedProtectedMerge &&
+        protectedPaths.length > 0 && live.authorRecordValid === true &&
+        live.sessionPushed === "nothing" && !live.isDraft &&
+        (decision.body === undefined || decision.body === live.body);
+    const useManagerReview = decision.usedManagerReview && !authorFallback;
+    if (useManagerReview) {
         if (!ctx.policy.actions.review)
             return refuse("the merge rests on a manager review, and manager review is disabled by policy");
-        const gated = humanGatedPaths(live.changedFiles, ctx.policy);
-        if (gated.length)
-            return refuse(`this changes ${gated.slice(0, 3).join(", ")}${gated.length > 3 ? ` and ${gated.length - 3} more` : ""}, which the manager may not clear on its own review`);
+        if (protectedPaths.length)
+            return refuse(`this changes ${protectedPaths.slice(0, 3).join(", ")}${protectedPaths.length > 3 ? ` and ${protectedPaths.length - 3} more` : ""}, which the manager may not clear on its own review`);
         if (!hasVisibleLine(body, "manager-review-record"))
             return refuse("the session claimed a manager review but the pull request body carries no manager-review-record: line");
         // Checked here with the same code `check pr` runs, so a record the gate would refuse is an
@@ -207,14 +215,15 @@ export function planDecision(decision, live, ctx) {
         operations: [
             // First, and before the label: the label event re-runs `check pr`, which reads the cleared
             // head from this comment.
-            comment("merge", [`Auto-merge is being enabled; GitHub merges this once the required checks pass.${live.behind ? " The branch is behind its base, so the base is being merged in." : ""}`, ...sections], { ...marker, ...(decision.usedManagerReview ? { cleared: live.headSha } : {}), ...(live.behind ? { updated: live.headSha } : {}) }),
+            comment("merge", [`Auto-merge is being enabled; GitHub merges this once the required checks pass.${live.behind ? " The branch is behind its base, so the base is being merged in." : ""}`, ...sections], { ...marker, ...(useManagerReview ? { cleared: live.headSha } : {}), ...(live.behind ? { updated: live.headSha } : {}) }),
             ...(decision.body !== undefined && decision.body !== live.body ? [{ kind: "set-body", body: decision.body }] : []),
             ...(live.isDraft ? [{ kind: "ready" }] : []),
             ...removeLabels(live, NEEDS_HUMAN_LABEL, STALE_LABEL, INCOMPLETE_LABEL, DORMANT_LABEL),
             // Removed and re-applied on every clearance, never left in place: whoever applied it
             // before, the newest `labeled` event must be the App's and must follow the comment above.
-            ...(decision.usedManagerReview ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label", label: MANAGER_REVIEWED_LABEL }] : []),
-            ...(!decision.usedManagerReview && !live.labels.includes("agent-reviewed") ? [{ kind: "add-label", label: "agent-reviewed" }] : []),
+            ...(useManagerReview ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label", label: MANAGER_REVIEWED_LABEL }] : []),
+            ...(authorFallback ? removeLabels(live, MANAGER_REVIEWED_LABEL) : []),
+            ...(!useManagerReview && !live.labels.includes("agent-reviewed") ? [{ kind: "add-label", label: "agent-reviewed" }] : []),
             ...(live.cancelledRunIds.length ? [{ kind: "rerun", runIds: live.cancelledRunIds }] : []),
             ...(live.autoMerge ? [] : [{ kind: "auto-merge" }]),
             ...updateIfBehind(live),
