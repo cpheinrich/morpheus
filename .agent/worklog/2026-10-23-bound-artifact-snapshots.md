@@ -68,3 +68,25 @@ CI and protected-merge loop. The source family remains bounded to six full CI gr
 and four metadata groups, with no unchanged rerun or consumer/runtime effect. The
 funded M10 reservation is not repeated. Independent review and actual CI remain
 pending at this transition; the initial local Phase A stop above is historical.
+
+## Initial CI and direct-dependent correction
+
+Initial run40057543540 on b2a2b8c completed with5 passing,3 skipped and1 failed
+check. Node CI passed2806 of2808 tests; the two failures were legacy direct-dependent
+expectations in `tests/ios-evidence-workflow.test.ts` (original `*.json` upload path)
+and `tests/upload-receipt.test.ts` (persistence immediately adjacent to upload).
+Both now assert the new staging-before-persistence boundary, exact staged root and
+successful own-stage guards; production sources and the canonical core are unchanged.
+`pnpm exec vitest run tests/upload-receipt.test.ts tests/ios-evidence-workflow.test.ts`
+passed all12 tests, and `pnpm typecheck` passed. This genuine correction requires the
+second CI group; the failed suite is not rerun unchanged. No reviewer started yet.
+
+Both actual initial ABI legs passed on standard Ubuntu with Node24.21.0 and uv-managed
+Python3.9.25/3.14.9. Each uploaded and downloaded the complete fixed two-file329-byte
+archive, then verified both independently fixed payload hashes. Artifact IDs12545663660
+(3.9) and12545494479(3.14), explicit1day retention, distinct names, and normal downloader
+archive digest joins are in retained full job logs. Their billed candidate bounds remain
+2MiB each even though actual archives are smaller. The downloader manifest declares
+Node20, but this actual runner explicitly reported forcing that action to Node24; docs
+now distinguish declared from observed ABI. Synthetic transport proof is not native
+delivery evidence. The initial full CI failure is retained; whole PR acceptance is pending.

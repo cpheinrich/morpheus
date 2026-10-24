@@ -90,12 +90,17 @@ The `artifact-abi` job has a ten-minute ceiling per Python 3.9/3.14 leg, disable
 new uv cache, selects actual Node 24, runs focused filesystem/environment tests, and
 uploads a distinct fixed synthetic fixture through the exact Node 24 upload action.
 Each initiated fixture's envelope is at most 2 MiB and retention is one day. A pinned
-archive-compatible normal downloader (`d3f86a106a0bac45b974a628896c90dbdf5c8093`, Node 20)
+archive-compatible normal downloader (`d3f86a106a0bac45b974a628896c90dbdf5c8093`,
+whose action metadata declares Node 20)
 then extracts it; Python compares the complete file set and exact independently known
 bytes. The fixture is never called a native test result. The downloaded action does not
 retain the raw ZIP central directory: CI byte readback is end-to-end compatibility
 proof; the independent offline pinned-emitter check supplies ZIP-format/CRC evidence.
-Actual Actions Node 24/runtime compatibility remains pending until that job passes.
+Actual Actions Node 24/runtime compatibility is established only by passing job evidence.
+The initial source CI run40057543540 passed both Python3.9.25/3.14.9 transport legs
+with Node24.21.0; its runner also reported that Node20-declared actions were forced
+to Node24. This is the observed runner behavior, not a claim those action manifests
+changed. The complete PR CI and independent review still gate source acceptance.
 
 No source-byte cap alone establishes a complete bill. Account for **every initiated
 candidate**, including failed/unknown finalization, against applicable logical storage
