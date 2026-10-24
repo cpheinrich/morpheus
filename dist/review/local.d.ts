@@ -10,6 +10,14 @@ declare const FollowUp: z.ZodObject<{
         approvedAt: z.ZodISODateTime;
         reason: z.ZodString;
     }, z.core.$strict>>;
+    verification: z.ZodOptional<z.ZodObject<{
+        kind: z.ZodEnum<{
+            "finding-fix": "finding-fix";
+            "late-test": "late-test";
+        }>;
+        paths: z.ZodArray<z.ZodString>;
+        evidence: z.ZodString;
+    }, z.core.$strict>>;
     finalization: z.ZodOptional<z.ZodObject<{
         paths: z.ZodArray<z.ZodString>;
         evidence: z.ZodString;
@@ -39,6 +47,9 @@ export type ReviewFollowUp = z.infer<typeof FollowUp>;
  * its scope decision, and nothing after the last one is automatic.
  */
 export declare const MAX_FOLLOW_UPS = 2;
+export declare const FINAL_VERIFICATION_CEILING_MINUTES = 5;
+export declare const FINAL_VERIFICATION_NON_TEST_LINES = 40;
+export declare const FINAL_VERIFICATION_TEST_LINES = 80;
 /**
  * A finalization turn is short by construction: it re-reads a documentation paragraph or the
  * record, not a change. Anything that needs longer than this is a review, and spends a turn.
@@ -125,6 +136,14 @@ export declare const ReviewRecord: z.ZodObject<{
             approvedAt: z.ZodISODateTime;
             reason: z.ZodString;
         }, z.core.$strict>>;
+        verification: z.ZodOptional<z.ZodObject<{
+            kind: z.ZodEnum<{
+                "finding-fix": "finding-fix";
+                "late-test": "late-test";
+            }>;
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
+        }, z.core.$strict>>;
         finalization: z.ZodOptional<z.ZodObject<{
             paths: z.ZodArray<z.ZodString>;
             evidence: z.ZodString;
@@ -155,6 +174,14 @@ export declare const ReviewRecord: z.ZodObject<{
             approvedBy: z.ZodString;
             approvedAt: z.ZodISODateTime;
             reason: z.ZodString;
+        }, z.core.$strict>>;
+        verification: z.ZodOptional<z.ZodObject<{
+            kind: z.ZodEnum<{
+                "finding-fix": "finding-fix";
+                "late-test": "late-test";
+            }>;
+            paths: z.ZodArray<z.ZodString>;
+            evidence: z.ZodString;
         }, z.core.$strict>>;
         finalization: z.ZodOptional<z.ZodObject<{
             paths: z.ZodArray<z.ZodString>;

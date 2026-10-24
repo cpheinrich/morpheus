@@ -51,7 +51,7 @@ may touch and the evidence the author must run, and the author may fix it under 
 without another turn. Only you set conditions; the author cannot add or widen one. A finding the
 author leaves deferred or open must name the roadmap item that tracks it. Return cleared, blocked
 or incomplete. A reasoned retraction may clear a disputed finding; author disagreement alone cannot.
-The review is capped at three turns: this initial review and at most two follow-ups. A follow-up
+The review normally has three turns: this initial review and at most two follow-ups. A follow-up
 either resolves what the previous turn left blocked, after the author has addressed the concrete
 unresolved concerns, or is a late correction after a clearance: when full CI shows a fix is
 needed after you cleared the code, the author may spend a remaining turn in THIS SAME session,
@@ -61,8 +61,15 @@ left a turn incomplete within its budget, explicit humanAuthorization on the nex
 turn may resume it. Preserve the incomplete verdict; authorization never waives any turn's budget.
 If substantive concerns remain after the last turn, or a correction is needed once the turns are
 spent, leave the PR open, disable auto-merge, and flag the concrete unresolved issue for the
-human. No automatic fourth turn or replacement reviewer to obtain approval.
-Only an explicit human exception permits another same-reviewer turn. Record humanAuthorization
+human. One automatic fourth turn is available only for a small correction to a previously
+recorded finding or a late test-only adjustment. Use the same reviewer, at most five minutes,
+with cumulative ordinary review time no greater than twice the initial risk-class ceiling.
+Attest the exact changed paths and focused evidence in verification {kind, paths, evidence};
+the checker limits it to four paths, 80 changed test lines and 40 changed non-test lines and
+refuses normative policy files. It cannot resume an incomplete turn or follow finalization.
+Any new substantive concern remains blocked. There is no automatic fifth implementation turn
+or replacement reviewer to obtain approval.
+Apart from that bounded verification, only an explicit human exception permits another same-reviewer turn. Record humanAuthorization
 (approvedBy, approvedAt ISO timestamp, reason) on each extra follow-up; keep the full history
 and all other review/CI requirements. Authorization for one turn never grants another.
 Beyond that you may spend ONE automatic finalization-only turn per PR, capped at five minutes,

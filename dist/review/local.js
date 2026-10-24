@@ -32,6 +32,12 @@ const FollowUp = z.object({
         approvedAt: z.iso.datetime({ offset: true }),
         reason: Text,
     }).strict().optional(),
+    /** One narrowly scoped fourth turn, attested by the original reviewer. */
+    verification: z.object({
+        kind: z.enum(["finding-fix", "late-test"]),
+        paths: z.array(Path).min(1).max(4),
+        evidence: Text,
+    }).strict().optional(),
     /**
      * The one automatic finalization-only turn a pull request gets beyond the cap, attested by the
      * reviewer: the exact paths it covered, the evidence it checked, and its scope statement. It
@@ -55,6 +61,9 @@ const FollowUp = z.object({
  * its scope decision, and nothing after the last one is automatic.
  */
 export const MAX_FOLLOW_UPS = 2;
+export const FINAL_VERIFICATION_CEILING_MINUTES = 5;
+export const FINAL_VERIFICATION_NON_TEST_LINES = 40;
+export const FINAL_VERIFICATION_TEST_LINES = 80;
 /**
  * A finalization turn is short by construction: it re-reads a documentation paragraph or the
  * record, not a change. Anything that needs longer than this is a review, and spends a turn.
@@ -126,8 +135,8 @@ export const ReviewRecord = z.object({
 }).strict().refine(record => !TaskSession.test(record.reviewerSession) || GlobalSession.test(record.authorSession), {
     message: "task-path reviewerSession requires the runner-issued parent session id in authorSession",
 }).refine(record => !(record.followUp && record.followUps), { message: "record follow-up turns as either followUp or followUps, not both" })
-    .refine(record => (record.followUps ?? []).slice(MAX_FOLLOW_UPS).every(turn => turn.humanAuthorization || turn.finalization), {
-    message: "each follow-up beyond the default three-turn cap requires explicit humanAuthorization, unless it is the one automatic finalization turn",
+    .refine(record => (record.followUps ?? []).every((turn, index) => index < MAX_FOLLOW_UPS || turn.humanAuthorization || turn.finalization || (index === MAX_FOLLOW_UPS && Boolean(turn.verification))), {
+    message: "each follow-up beyond the default three-turn cap requires explicit humanAuthorization, unless it is the one bounded verification or automatic finalization turn",
 });
 /** Follow-up turns in order, whichever field the record used. */
 export function followUpTurns(record) {
@@ -348,6 +357,33 @@ export function validateReviewRecord(record, opts = {}) {
         if (unconditional && previous?.outcome !== "cleared")
             throw new Error("an automatic finalization turn cannot resolve substantive findings; an ordinary turn must clear them first");
     }
+    const verifications = turns.filter(turn => turn.verification);
+    if (verifications.length > 1)
+        throw new Error("only one automatic final verification turn is allowed");
+    const verification = verifications[0];
+    if (verification) {
+        const index = turns.indexOf(verification);
+        if (index !== MAX_FOLLOW_UPS || verification.humanAuthorization || verification.finalization) {
+            throw new Error("automatic final verification is only the fourth ordinary turn");
+        }
+        if (finalization && turns.indexOf(finalization) < index) {
+            throw new Error("nothing follows finalization automatically");
+        }
+        if (index < 1 || turns[index - 1].outcome === "incomplete") {
+            throw new Error("final verification cannot resume an incomplete review");
+        }
+        if (!verification.scopeReason || verification.outcome !== "cleared") {
+            throw new Error("final verification needs a scope reason and a cleared outcome; unresolved concerns escalate");
+        }
+        if (verification.elapsedMinutes > FINAL_VERIFICATION_CEILING_MINUTES) {
+            throw new Error(`final verification exceeded its ${FINAL_VERIFICATION_CEILING_MINUTES}-minute ceiling`);
+        }
+        const ordinaryMinutes = record.elapsedMinutes + turns.slice(0, index + 1)
+            .filter(turn => !turn.finalization).reduce((sum, turn) => sum + turn.elapsedMinutes, 0);
+        if (ordinaryMinutes > budget * 2) {
+            throw new Error("final verification exceeded the cumulative two-initial-budget limit");
+        }
+    }
     turns.forEach((turn, index) => {
         if (turn.reviewerSession !== record.reviewerSession)
             throw new Error("every follow-up must use the original reviewer session");
@@ -452,6 +488,51 @@ export function verifyUncoveredCommits(root, record, from, to, trunk, allowed, r
             throw new Error(refusal);
     }
     return accepted;
+}
+const TEST_PATH = /(?:^|\/)(?:tests?\/|test_[^/]+\.py$|[^/]+(?:\.test\.|\.spec\.|_test\.(?:py|go)$|Tests?\.(?:swift|kt|java)$))/i;
+/** Bound only author commits; a main merge keeps its existing exact/named integration rule. */
+function verifyFinalVerification(root, record, turn, from, trunk, worklog) {
+    const scope = turn.verification;
+    const attested = new Set(scope.paths);
+    const allowedFindings = new Set(record.findings.filter(f => f.disposition === "fixed").flatMap(f => f.paths));
+    for (const path of attested) {
+        if (NORMATIVE.test(path))
+            throw new Error(`final verification cannot cover normative policy: ${path}`);
+        if (scope.kind === "late-test" && !TEST_PATH.test(path))
+            throw new Error(`late-test verification can cover test files only: ${path}`);
+        if (scope.kind === "finding-fix" && !TEST_PATH.test(path) && !allowedFindings.has(path)) {
+            throw new Error(`finding-fix verification needs a previously recorded finding path: ${path}`);
+        }
+    }
+    verifyUncoveredCommits(root, record, from, turn.commit, trunk, new Set([worklog, ...attested]), "final verification changed a path outside its attested scope");
+    const changed = new Set();
+    let testLines = 0;
+    let nonTestLines = 0;
+    for (const commit of git(root, ["rev-list", "--first-parent", "--reverse", `${from}..${turn.commit}`]).split("\n").filter(Boolean)) {
+        const parents = git(root, ["show", "-s", "--format=%P", commit]).split(" ");
+        if (parents.length !== 1)
+            continue;
+        for (const line of git(root, ["diff", "--numstat", "--no-renames", parents[0], commit, "--"]).split("\n").filter(Boolean)) {
+            const match = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);
+            if (!match || match[1] === "-" || match[2] === "-")
+                throw new Error("final verification cannot cover binary or unmeasurable changes");
+            const path = match[3];
+            if (path === worklog)
+                continue;
+            changed.add(path);
+            const lines = Number(match[1]) + Number(match[2]);
+            if (TEST_PATH.test(path))
+                testLines += lines;
+            else
+                nonTestLines += lines;
+        }
+    }
+    if (changed.size === 0 || changed.size > 4 || changed.size !== attested.size || [...changed].some(path => !attested.has(path))) {
+        throw new Error("final verification must attest exactly one to four changed paths");
+    }
+    if (testLines > FINAL_VERIFICATION_TEST_LINES || nonTestLines > FINAL_VERIFICATION_NON_TEST_LINES) {
+        throw new Error(`final verification exceeds the ${FINAL_VERIFICATION_TEST_LINES} test-line or ${FINAL_VERIFICATION_NON_TEST_LINES} non-test-line limit`);
+    }
 }
 /** First-parent two-parent merges in a range whose second parent is trunk history. */
 function trunkMerges(root, from, to, trunk) {
@@ -577,6 +658,11 @@ export function verifyReviewRecord(opts) {
         const allowed = new Set([path, ...conditional, ...turn.finalization.paths]);
         for (const commit of verifyUncoveredCommits(opts.root, record, from, turn.commit, opts.base, allowed, "a finalization turn may cover only the review record, previously conditioned paths and the explanatory documentation it attested"))
             merges.add(commit);
+    }
+    for (const [index, turn] of turns.entries()) {
+        if (!turn.verification)
+            continue;
+        verifyFinalVerification(opts.root, record, turn, turns[index - 1]?.commit ?? record.reviewed, opts.base, path);
     }
     for (const commit of verifyUncoveredCommits(opts.root, record, record.covered, opts.head, opts.base, new Set([path]), "changes after covered commit invalidate review (only its worklog and trunk merges may follow)"))
         merges.add(commit);

@@ -847,8 +847,8 @@ If the runner cannot start an independent session, report that concrete limitati
 the PR open with auto-merge disabled; never substitute self-review or assume a monitor will act.
 
 **Independent review is required before merge.** Before spawning the reviewer, read the
-[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): the three-turn
-cap, budgets and floors, conditional clearance, the finalization turn, \`humanAuthorization\`,
+[review contract](${MORPHEUS_REPO}/blob/main/docs/runbooks/independent-review.md): three
+ordinary turns plus one narrow verification, budgets, finalization, \`humanAuthorization\`,
 deferrals naming a roadmap item, and the record fields. Record the review in the task worklog, commit
 it, and run \`morpheus review validate\`. Then label the PR and mark it ready, or create it labelled
 with a visible \`review-record:\` line. For CI or PR evidence, open an unlabelled draft before

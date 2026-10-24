@@ -1579,10 +1579,15 @@ Four of them, each catching what it can so the rung above only sees what genuine
 runs `morpheus review prepare` to print a packet, then explicitly spawns a fresh reviewer
 subagent/session without author chat, responds once, and resumes the same reviewer
 if substantive findings were raised. Minor-only findings need no second pass. A review is capped
-at three turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
+at three ordinary turns; a follow-up resolves a blocked turn, or spends a remaining turn on a late
 correction after clearance, named by its scope reason. Unresolved substantive disagreements,
 incomplete review, exhausted budgets and a correction needed after the last turn leave the PR
-open and flagged, with auto-merge disabled. No automatic fourth substantive turn; one automatic
+open and flagged, with auto-merge disabled. One additional same-reviewer verification turn may
+cover a small fix to a recorded finding or a late test-only correction: at most four exact changed
+paths, 80 changed test lines, 40 changed non-test lines, five minutes, and cumulative ordinary
+review time at most twice the initial risk ceiling. It cannot follow an incomplete turn or
+finalization, change normative policy, reset the reviewer, or authorize a fifth implementation
+turn. New substantive concerns still block. One automatic
 finalization-only turn per PR is allowed, at five minutes, recorded as `finalization` with the
 reviewer's attested paths, evidence and scope. It must be the last automatic turn and cleared; every later same-reviewer turn requires explicit
 `humanAuthorization`. Its original scope and predecessor stay checked. It cannot resolve a
