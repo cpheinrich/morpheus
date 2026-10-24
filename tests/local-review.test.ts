@@ -691,6 +691,85 @@ describe("human-authorized extra review turns", () => {
   });
 });
 
+describe("one bounded automatic final verification", () => {
+  function fourTurns(kind: "late-test" | "finding-fix", changedPath: string, contents: string): LocalReviewRecord {
+    mkdirSync(join(root, changedPath.split("/").slice(0, -1).join("/")), { recursive: true });
+    writeFileSync(join(root, changedPath), contents);
+    const corrected = commit();
+    const r = record();
+    r.covered = corrected;
+    r.followUps = [
+      { reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Inspect the first narrow correction.", summary: "Cleared the first correction." },
+      { reviewerSession: r.reviewerSession, commit: reviewed, outcome: "cleared", elapsedMinutes: 2, scopeReason: "Inspect the second narrow correction.", summary: "Cleared the second correction." },
+      { reviewerSession: r.reviewerSession, commit: corrected, outcome: "cleared", elapsedMinutes: 5, scopeReason: "Verify the final narrow correction after CI.", summary: "Cleared the narrow final correction.", verification: { kind, paths: [changedPath], evidence: "Ran the focused regression and inspected the exact changed lines." } },
+    ];
+    return r;
+  }
+  it("accepts one five-minute test-only correction and refuses the next millisecond", () => {
+    const r = fourTurns("late-test", "tests/guard.test.ts", "expect(guard()).toBe(false);\n");
+    expect(check(save(r))).toEqual([]);
+    r.followUps![2]!.elapsedMinutes = 5 + 1 / 60000;
+    expect(check(save(r))[0]?.message).toContain("5-minute ceiling");
+  });
+  it("accepts a small fix to an existing finding path, but no new source path", () => {
+    const r = fourTurns("finding-fix", "code.ts", "export const answer = 3;\n");
+    r.findings = [{ id: "F01", severity: "substantive", description: "The original guard returns the wrong answer.", paths: ["code.ts"], disposition: "fixed", response: "Corrected the guard and reran its regression." }];
+    expect(check(save(r))).toEqual([]);
+    r.findings[0]!.paths = ["other.ts"];
+    expect(check(save(r))[0]?.message).toContain("previously recorded finding path");
+  });
+  it("refuses implementation under late-test, excessive lines, and an attested path mismatch", () => {
+    const r = fourTurns("late-test", "tests/guard.test.ts", "expect(guard()).toBe(false);\n");
+    r.followUps![2]!.verification!.paths = ["code.ts"];
+    expect(check(save(r))[0]?.message).toContain("test files only");
+    r.followUps![2]!.verification!.paths = ["tests/guard.test.ts"];
+    writeFileSync(join(root, "tests/guard.test.ts"), Array.from({ length: 81 }, (_, i) => `expect(value).toBe(${i});`).join("\n"));
+    const large = commit();
+    r.covered = large; r.followUps![2]!.commit = large;
+    expect(check(save(r))[0]?.message).toContain("test-line");
+    r.followUps![2]!.verification!.paths = ["tests/other.test.ts"];
+    expect(check(save(r))[0]?.message).toContain("outside its attested scope");
+  });
+  it("does not classify a helper inside tests/ as a test-only correction", () => {
+    const r = fourTurns("late-test", "tests/helper.ts", "export const bypass = true;\n");
+    expect(check(save(r))[0]?.message).toContain("test files only");
+  });
+  it.each(["architecture.md", "docs/runbooks/independent-review.md", ".agent/decisions.md"])("excludes review authority prose from automatic verification: %s", changedPath => {
+    const r = fourTurns("finding-fix", changedPath, "New review policy.\n");
+    r.findings = [{ id: "F01", severity: "substantive", description: "The policy statement was inaccurate.", paths: [changedPath], disposition: "fixed", response: "Corrected the statement." }];
+    expect(check(save(r))[0]?.message).toContain("normative policy");
+  });
+  it("refuses a fifth automatic implementation pass, reviewer reset, and an incomplete predecessor", () => {
+    const r = fourTurns("late-test", "tests/guard.test.ts", "expect(guard()).toBe(false);\n");
+    r.followUps!.push({ reviewerSession: r.reviewerSession, commit: r.covered, outcome: "cleared", elapsedMinutes: 1, scopeReason: "Another correction.", summary: "Another review." });
+    expect(check(save(r))[0]?.message).toContain("humanAuthorization");
+    r.followUps!.pop();
+    r.followUps![2]!.reviewerSession = "b2c3d4e5f6a7b8c9d";
+    expect(check(save(r))[0]?.message).toContain("original reviewer");
+    r.followUps![2]!.reviewerSession = r.reviewerSession;
+    r.followUps![1]!.outcome = "incomplete";
+    expect(check(save(r))[0]?.message).toContain("cannot resume an incomplete");
+  });
+  it("does not turn finalization bookkeeping into an extra implementation review", () => {
+    const r = fourTurns("late-test", "tests/guard.test.ts", "expect(guard()).toBe(false);\n");
+    r.followUps![1]!.finalization = { paths: [path], evidence: "Re-read the review record.", attestation: "Only the already-cleared record was finalized." };
+    expect(check(save(r))[0]?.message).toContain("every turn after finalization requires explicit humanAuthorization");
+  });
+  it("enforces the cumulative budget at its boundary and keeps historical authorized turns valid", () => {
+    const r = fourTurns("late-test", "tests/guard.test.ts", "expect(guard()).toBe(false);\n");
+    r.elapsedMinutes = 13;
+    r.followUps![0]!.elapsedMinutes = 6;
+    r.followUps![1]!.elapsedMinutes = 6;
+    expect(check(save(r))).toEqual([]);
+    r.followUps![1]!.elapsedMinutes += 0.0001;
+    expect(check(save(r))[0]?.message).toContain("cumulative");
+    r.elapsedMinutes = 3;
+    delete r.followUps![2]!.verification;
+    r.followUps![2]!.humanAuthorization = { approvedBy: "Chris Heinrich", approvedAt: "2026-10-23T17:00:00Z", reason: "Authorized one additional same-reviewer turn." };
+    expect(check(save(r))).toEqual([]);
+  });
+});
+
 describe("one automatic finalization-only turn", () => {
   const session = "a1b2c3d4e5f6a7b8c";
   const attestation = { evidence: "Re-read the paragraph against the cleared diff; it restates the reviewed behaviour and adds no requirement.", attestation: "Finalization only: explanatory prose for the change I already cleared. No new implementation was reviewed." };

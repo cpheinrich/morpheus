@@ -143,7 +143,7 @@ documentation that explains the fix in the same way, for the same reason. A cond
 an unconditional substantive finding still needs its turn. This is Alex's proposal from #241: a
 two-line fix should not need a human or a fresh session re-deriving the whole context.
 
-**A review is capped at three turns**: the initial review and at most two same-reviewer
+**A review normally has at most three turns**: the initial review and at most two same-reviewer
 follow-ups, each at the follow-up ceiling. A follow-up is spent one of two ways. It resolves what
 the previous turn left `blocked` (or the substantive findings of the initial review), after the
 author has addressed those concrete concerns. Or it is a **late correction after a clearance**:
@@ -163,7 +163,27 @@ authorization never waives an overrun. Nothing follows an incomplete turn automa
 what stops an author and a reviewer trading fixes and findings indefinitely, at a session's cost
 per turn. Unresolved substantive concerns after the last turn, or a correction needed once the
 turns are spent, mean blocked: remove `agent-reviewed`, disable auto-merge, and flag the remaining
-work for the human. No automatic fourth turn or replacement reviewer to obtain approval.
+work for the human, unless the narrow verification exception below applies. Never replace the
+reviewer to obtain approval.
+
+**One bounded fourth verification turn.** After all three ordinary turns, the original reviewer
+may verify one small final correction without a human exception. Record
+`verification: { kind, paths, evidence }` on the third `followUps` entry and name the reason in
+`scopeReason`. `kind` is `late-test` for a test-only correction after clearance, or
+`finding-fix` for a correction confined to a previously recorded, fixed finding's paths and
+associated tests. The attested paths must exactly match the changed author-commit paths, excluding
+the review worklog; at most four paths, 80 changed test lines and 40 changed non-test lines are
+allowed. Test files are recognized by filename, not by membership in a `tests/` directory:
+helpers and scripts there count as implementation. Normative policy files, including
+`architecture.md`, `.agent/decisions.md`, and this runbook, are excluded. Main merges keep their existing exact-or-named
+integration rule and do not consume a turn. The turn is capped at five minutes; initial plus all
+ordinary follow-up time through it must stay within twice the risk-class initial ceiling
+(20/30/60 minutes for small/normal/high). Earlier turns retain their own ceilings. The prior
+turn must be cleared or blocked, never incomplete; an incomplete or blocked verification does not
+clear the PR. A new substantive concern, larger diff, or another implementation correction
+needs explicit human authorization. The same reviewer and full history remain mandatory. A
+finalization-only turn does not grant another implementation pass, and an automatic verification
+cannot follow finalization. There is no automatic fifth implementation turn.
 
 **One automatic finalization-only turn per pull request.** Finishing an approved change should
 not cost a human decision. Beyond the cap — and after an authorized extra turn, if there was one —
@@ -264,7 +284,8 @@ but the same path within the same parent session cannot review another task. Fol
 retain the exact path and inherit the record's parent provenance. A task name supplied
 to a spawn request is not evidence; use the canonical path the runner actually returns.
 These fields attest provenance; their syntax cannot prove a session was launched.
-For follow-up turns, add `followUps`, an array of at most two entries in order, each with the
+For follow-up turns, add `followUps`, normally at most two entries, or three with the bounded
+verification above. Human-authorized and finalization turns remain separately bounded. Each has the
 same `reviewerSession`, `commit`, `outcome` (`cleared`, `incomplete`, `blocked`), `elapsedMinutes`,
 and `summary`. Every entry but the last must be `blocked`, or `cleared` when the entry after it
 carries a `scopeReason` for the late correction it covers; the last must be `cleared`. A
