@@ -7,26 +7,21 @@ previous: .agent/inbox-archive/2026-10-19-1239-cpheinrich.md
 ---
 # Inbox — 2026-10-23
 
-The bounded Paperclip pilot has completed 30 verified real artifact and decision tasks across both Macs. Workers are paused with timers disabled and reservations clear. Baseline and candidate each scored 12/12 on the small historical decision set, so this establishes working dispatch and evidence collection, not a measured accuracy improvement. Source [PR #455](https://github.com/cpheinrich/morpheus/pull/455) is merged after independent review and passing required CI. The existing unreplied issue-maintenance items below are preserved.
+The bounded Paperclip pilot has completed 30 verified real artifact and decision tasks across both Macs. Workers are paused with timers disabled and reservations clear. Baseline and candidate each scored 12/12 on the small historical decision set, so this establishes working dispatch and evidence collection, not a measured accuracy improvement. Source [PR #455](https://github.com/cpheinrich/morpheus/pull/455) is merged after independent review and passing required CI. The other unreplied issue-maintenance items below are preserved.
 
-The issue-maintenance automation reconciled all open issues and the issues closed since its October 12 run. GitHub confirms **38 of 41 tracked issues closed**. Thirteen fixes landed in other sessions; their merge commits are on current main and their remote branches are deleted. Three issues remain open. The material change is that #248 now has implementation PR #414 and needs an additional review turn, so the older policy-choice prompt has been replaced. This run made no production release or credential changes.
+The issue-maintenance automation reconciled all open issues and the issues closed since its October 12 run. GitHub confirms **38 of 41 tracked issues closed**. Thirteen fixes landed in other sessions; their merge commits are on current main and their remote branches are deleted. Three issues remain open. The material change is that #248 now has implementation PR #414; its extra reviewer turn was subsequently authorized and cleared. Current-main conflicts and final-head validation remain with the author. This run made no production release or credential changes.
+
+**October 24 status update:** item 2 now records the completed review authorization; the remaining PR work belongs to its author.
 
 ## ✅ 1. Thirteen intervening issue fixes verified · `codex`
 
 Verified merged PRs [#390](https://github.com/cpheinrich/morpheus/pull/390), [#392](https://github.com/cpheinrich/morpheus/pull/392), [#395](https://github.com/cpheinrich/morpheus/pull/395), [#396](https://github.com/cpheinrich/morpheus/pull/396), [#402](https://github.com/cpheinrich/morpheus/pull/402), [#404](https://github.com/cpheinrich/morpheus/pull/404), [#405](https://github.com/cpheinrich/morpheus/pull/405), [#406](https://github.com/cpheinrich/morpheus/pull/406), [#407](https://github.com/cpheinrich/morpheus/pull/407), [#408](https://github.com/cpheinrich/morpheus/pull/408), [#409](https://github.com/cpheinrich/morpheus/pull/409), [#410](https://github.com/cpheinrich/morpheus/pull/410), and [#413](https://github.com/cpheinrich/morpheus/pull/413). They cover worktree cleanup, iOS workflow isolation and evidence, QA capture and recovery, review deferral bookkeeping, incident closure, and first HQ sign-in. The automation ledger preserves each issue's PR, review coverage SHA, final check snapshot and closure evidence.
 
-## ❗ 2. One further review turn for PR #414 · `codex`
+## ✅ 2. PR #414 review authorization completed · `codex`
 
-[#248](https://github.com/cpheinrich/morpheus/issues/248) now has draft [PR #414](https://github.com/cpheinrich/morpheus/pull/414). Its worklog records approval of the human-override policy and three independent review turns clearing the implementation through `249285c`. The final test-only correction `74290f6` updates the scaffold expectation for the already-reviewed comment-revocation workflow. Its build/test jobs pass, but that correction is outside review coverage. Current-main `verifyReviewRecord` reproduces the coverage refusal. GitHub also reports a conflict with current main; the existing author must integrate trunk before final validation. The PR remains draft with auto-merge off.
+Chris authorized **one** additional same-reviewer turn for the late test-only correction in [PR #414](https://github.com/cpheinrich/morpheus/pull/414), recorded in [his decision comment](https://github.com/cpheinrich/morpheus/pull/414#issuecomment-6377285624). The original reviewer cleared that correction at `74290f6`, and the four-turn review record validates. This settles the previous review-authorization question; it does not authorize a merge.
 
-The [independent-review runbook](../../docs/runbooks/independent-review.md) requires explicit authorization for each extra same-reviewer turn and says: “Never infer approval from a merge request or manufacture it.” This is the existing PR request, consolidated here; it is not a request to decide the policy again.
-
-- **A — authorize one additional same-reviewer turn (recommended).** Resume the original author and reviewer for the test correction, then merge only after review validation and required final-head checks pass.
-- **B — keep the PR draft.** Preserve the implementation and defer the additional review.
-- **C — decline the override feature.** Record that maintainer decision before closing the draft and issue.
-- **Other —** a different disposition.
-
-~
+The PR remains draft. Its author must resolve current-main conflicts in `.agent/decisions.md` and generated source maps. Any authored conflict-resolution edits need their own review coverage, followed by review validation and required final-head CI. No further answer from Chris is requested by this item.
 
 ## ❗ 3. Kairos certificate-chain evidence · `codex`
 
