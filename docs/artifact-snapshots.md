@@ -59,8 +59,14 @@ It refuses symlinks, hardlinks, foreign owners, devices, FIFOs, ambiguous case/U
 names and unsupported ZIP paths. It opens each file without following links, checks
 fd/path identity before and after copying, reselects the complete source, then independently
 verifies the snapshot's whole census, sizes and SHA-256 values. Private files become
-0400 and directories 0500. Every run/attempt/channel uses an exclusive leaf; a partial
-or refused leaf remains spent. This is a detached snapshot of trusted source-owned
+0400 and directories 0500. Every run/attempt/channel uses an exclusive leaf. Receipt staging additionally appends
+SHA-256 of the validated canonical receipt directory: the existing action producer
+already owns a distinct directory per invocation, including two apps in one job.
+Changing receipt/resource output availability never changes that invocation identity.
+A successful or refused invocation remains spent; a distinct normal invocation has its
+own snapshot. There is no arbitrary caller namespace or retry override. Other channels
+and the CI trace role retain their original leaf semantics. A genuinely absent optional
+audit directory is EMPTY, while a dangling audit-root link is refused and stays spent. This is a detached snapshot of trusted source-owned
 writers, not isolation from malicious code with the same UID. A blocked filesystem
 syscall cannot be forcibly interrupted by these deadline checks.
 

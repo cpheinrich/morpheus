@@ -90,3 +90,48 @@ archive digest joins are in retained full job logs. Their billed candidate bound
 Node20, but this actual runner explicitly reported forcing that action to Node24; docs
 now distinguish declared from observed ABI. Synthetic transport proof is not native
 delivery evidence. The initial full CI failure is retained; whole PR acceptance is pending.
+
+## Fresh HIGH review and exact conditional correction
+
+Fresh no-history reviewer `/root/e_install_operator_source/m_artifact_guard_fresh_review`
+reviewed6dad377ca17da1d84fc25cbffff6fff425b5cd81. Actual author invocation clocks
+2026-10-24T03:22:10Z to03:28:16Z measured366000ms (6.1minutes), including tools/waits,
+within the30minute HIGH ceiling. Raw report SHA-256
+`7b3e5f0aad4f549f40bb761522f59fe7eb34af9ef3da7cfd535a799fafccaf89`
+conditionally clears AS-001(substantive) andAS-002(minor) only within ten named source,
+test and explanatory-documentation paths plus this worklog. No extra reviewer turn is
+needed only if every exact condition is met. No broader changes are covered.
+
+AS-001 independently reproduced a real regression: two apps have distinct receipt
+directories in one run/attempt, but the second newly staged receipt collided after Apple
+acceptance. Only the receipt leaf now appends the full SHA-256 of its validated canonical
+source-owned receipt directory. Output availability cannot change this identity. Tests
+assert both exact independent accepted/resource payloads, preservation of the first,
+successful/refused same-invocation duplicates remaining spent, a distinct invocation
+after another's refusal, and invalid roots/paths. AS-002 now distinguishes genuine optional
+audit absence from a dangling root symlink; the latter refuses, produces no GitHub outputs,
+and stays spent. A local actual CLI fixture confirms complete EOF/reaping and no outputs.
+
+The direct regressions were RED against the unchanged reviewed core, including the
+actual second-invocation FileExistsError. In-memory legacy-leaf and dangling-link mutants
+are killed by those regressions. All six artifact Python scripts passed under actual local
+3.9.6 and3.14.7: core20tests/49cases, trace7tests/16cases, ABI4tests, processing5cases,
+core11mutants andtrace7mutants. Every command, clock, status, full raw stdout/stderr and
+EOF/reap result is retained in `local/artifact-stage-phase-a/CONDITION-*` evidence.
+The exact core SHA is now
+`55817c49421cad82df7f25a0541d382fc1676f88c5b092886912568a0f9b7adb`;
+the trace wrapper changes only its exact core hash binding. Frozen prototype packets
+remain untouched. The five required focused Vitest files pass194tests, and typecheck,
+compile, PM index and diff checks pass; src/dist/package/lock and generated indexes remain
+unchanged. Source CIgroup3 on the bounded correction is still required before conditionMet.
+
+Retained log reconciliation: initial run40057543540 artifact IDs are3.9=12545663660 and
+3.14=12545494479; reviewed green CI2 run40057801659 IDs are3.9=12546196496 and
+3.14=12545443462. Each is the same actual ID in upload-finalized, public artifact URL,
+and download-metadata rows; none is a runner/container ID. The earlier handoff placed
+initial IDs alongside a CI2 status update, making attribution ambiguous. Raw messages
+and reviewer report are preserved; use the explicit run/leg mapping, never interchange
+these IDs. CI3's different actual IDs will be retained separately. The reviewer also
+honestly disclosed initial default-login shell startup messages (Already up to date;
+pnpm46ms); no explicit install/bootstrap was requested, later calls used login:false,
+and source status was clean before its ignored report. No bootstrap loop is introduced.

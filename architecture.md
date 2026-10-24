@@ -3247,7 +3247,9 @@ not the size of a directory that another process can still grow. The reusable iO
 workflow stages every selected native channel after its writers and requires one
 all-selected barrier plus each uploader's own successful admission. The upload action
 similarly stages accepted/resource receipts; persistence failure preserves uncertain
-Apple acceptance. Names, archive layout and existing native/tool/controller policy stay
+Apple acceptance. Receipt namespaces bind the existing canonical per-invocation receipt
+directory, so two apps remain independent while the same successful/refused invocation
+stays spent even when outputs change. Optional audit absence does not admit dangling links. Names, archive layout and existing native/tool/controller policy stay
 independent of byte admission. A separate exact `artifact-stage-ref` is required for CD;
 ordinary callers retain `main`. Morpheus's browser failure diagnostics have a 64 MiB,
 one-day role, and a bounded synthetic Node 24/Python ABI job qualifies the artifact

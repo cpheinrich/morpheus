@@ -8,3 +8,8 @@ canonical source to run them. Temporary read-only snapshots are restored for cle
 `abi_fixture.py` has only fixed synthetic prepare/readback modes for the normal CI
 `artifact-abi` job. Its bounded fixture is not delivery evidence. Upload/download
 Actions execution occurs only in CI; local tests never contact an artifact service.
+
+Receipt regressions cover two apps in one run, immutable first payloads, successful and
+refused same-directory duplicates, output drift and invalid roots. A legacy-leaf mutant
+must fail that real two-invocation regression. Audit-link regressions include actual
+local CLI refusal with no output commands, spent refusal and genuine optional absence.

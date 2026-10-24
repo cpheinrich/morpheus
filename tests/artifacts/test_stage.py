@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -245,6 +246,96 @@ class Tests(unittest.TestCase):
         with patch.object(s.os,'read',side_effect=read):
             with self.assertRaises(s.Refused):s.copy_regular(source,destination,before,lambda:None)
         self.record('fd-post-identity-direct/independent-of-rescan-defense')
+
+    def receipt_context(self, suffix, bodies):
+        context = copy.deepcopy(self.contexts['upload-acceptance-resource'])
+        directory = Path(context['temporary']) / ('ios-upload-acceptance-' + suffix)
+        directory.mkdir()
+        for name, body in bodies.items():
+            (directory / name).write_bytes(body)
+        context['roots'] = {'receiptDirectory': str(directory),
+                            'receiptPath': str(directory / 'accepted.json'),
+                            'resourcePath': str(directory / 'resource.json')}
+        return context
+
+    def receipt_leaf(self, context):
+        # Independently specified namespace, derived from BEFORE-known invocation identity.
+        digest = hashlib.sha256(context['roots']['receiptDirectory'].encode('utf8')).hexdigest()
+        return Path(context['temporary']) / 'artifact-byte-stage' / ('123-1-upload-acceptance-resource-' + digest)
+
+    def test_two_receipt_invocations_same_run_admit_exact_bytes_and_stay_spent(self):
+        one = {'accepted.json': b'accepted app one', 'resource.json': b'resource app one'}
+        two = {'accepted.json': b'accepted app two', 'resource.json': b'resource app two'}
+        c1 = self.receipt_context('first', one)
+        c2 = self.receipt_context('second', two)
+        m1 = s.stage(c1)
+        first_admission = (Path(m1['payloadRoot']).parent / 'admission.json').read_bytes()
+        m2 = s.stage(c2)
+        self.assertNotEqual(m1['payloadRoot'], m2['payloadRoot'])
+        for context, manifest, expected in [(c1, m1, one), (c2, m2, two)]:
+            self.assertEqual(manifest['status'], 'ADMITTED')
+            self.assertEqual(Path(manifest['payloadRoot']).parent, self.receipt_leaf(context))
+            self.assertEqual({row['name']: row['sha256'] for row in manifest['entries']},
+                             {name: hashlib.sha256(body).hexdigest() for name, body in expected.items()})
+            self.assertEqual({name: (Path(manifest['payloadRoot']) / name).read_bytes() for name in expected}, expected)
+            self.assertTrue(s.verify_snapshot(manifest))
+            old_admission = (self.receipt_leaf(context) / 'admission.json').read_bytes()
+            changed_outputs = copy.deepcopy(context); changed_outputs['roots']['receiptPath'] = ''
+            for value in [context, changed_outputs]:
+                with self.assertRaises(FileExistsError): s.stage(value)
+            self.assertEqual((self.receipt_leaf(context) / 'admission.json').read_bytes(), old_admission)
+        self.assertEqual((self.receipt_leaf(c1) / 'admission.json').read_bytes(), first_admission)
+        self.record('two-apps-one-run/exact-both-payloads/first-unchanged/same-directory-output-drift-still-spent')
+
+    def test_failed_receipt_stays_spent_but_distinct_invocation_admits_and_invalid_paths_refuse(self):
+        c1 = self.receipt_context('refused', {'accepted.json': b'first accepted'})
+        with self.assertRaises(FileNotFoundError): s.stage(c1)
+        refusal = self.receipt_leaf(c1) / 'refusal.json'
+        before = refusal.read_bytes()
+        self.assertEqual(json.loads(before)['uploadAttempted'], False)
+        Path(c1['roots']['resourcePath']).write_bytes(b'resource now appears')
+        c1['roots']['receiptPath'] = ''
+        with self.assertRaises(FileExistsError): s.stage(c1)
+        self.assertEqual(refusal.read_bytes(), before)
+        self.assertFalse((self.receipt_leaf(c1) / 'admission.json').exists())
+        expected = {'accepted.json': b'independent accepted', 'resource.json': b'independent resource'}
+        c2 = self.receipt_context('after-refusal', expected); m = s.stage(c2)
+        self.assertEqual({name: (Path(m['payloadRoot']) / name).read_bytes() for name in expected}, expected)
+        bad = self.receipt_context('wrong-path', expected)
+        bad['roots']['receiptPath'] = c2['roots']['receiptPath']
+        with self.assertRaises(s.Refused): s.stage(bad)
+        self.assertFalse((self.receipt_leaf(bad) / 'admission.json').exists())
+        invalid = copy.deepcopy(c2); invalid['roots']['receiptDirectory'] = c2['workspace']
+        with self.assertRaises(s.Refused): s.stage(invalid)
+        linked = Path(c2['temporary']) / 'ios-upload-acceptance-linked'
+        linked.symlink_to(Path(c2['roots']['receiptDirectory']), target_is_directory=True)
+        invalid['roots']['receiptDirectory'] = str(linked)
+        with self.assertRaises(s.Refused): s.stage(invalid)
+        self.record('failed-same-invocation-spent/distinct-after-failure/foreign-output-root-and-linked-root-refused')
+
+    def test_dangling_audit_root_refuses_without_outputs_and_genuine_absence_is_empty(self):
+        context = self.contexts['fault-audit']; root = Path(context['roots']['audit'])
+        for file in root.iterdir(): file.unlink()
+        root.rmdir(); root.symlink_to(Path(context['workspace']) / 'absent', target_is_directory=True)
+        with self.assertRaises((s.Refused, FileNotFoundError)): s.stage(context)
+        leaf = Path(context['temporary']) / 'artifact-byte-stage/123-1-fault-audit'
+        self.assertFalse((leaf / 'admission.json').exists())
+        before = (leaf / 'refusal.json').read_bytes()
+        with self.assertRaises(FileExistsError): s.stage(context)
+        self.assertEqual((leaf / 'refusal.json').read_bytes(), before)
+        output = Path(context['temporary']) / 'github-output'; output.touch(mode=0o600)
+        env = {'PATH': '/usr/bin:/bin', 'GITHUB_WORKSPACE': context['workspace'],
+               'RUNNER_TEMP': context['temporary'], 'GITHUB_RUN_ID': '123',
+               'GITHUB_RUN_ATTEMPT': '2', 'GITHUB_OUTPUT': str(output)}
+        child = subprocess.run([sys.executable, '-I', '-S', '-B', str(SOURCE / 'stage.py'), '--github', 'fault-audit'],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=4)
+        self.assertEqual(child.returncode, 1); self.assertEqual(child.stdout, b'')
+        self.assertEqual(output.read_bytes(), b'')
+        self.assertFalse((leaf.with_name('123-2-fault-audit') / 'admission.json').exists())
+        root.unlink(); context['runAttempt'] = '3'
+        result = s.stage(context)
+        self.assertEqual(result['status'], 'EMPTY'); self.assertEqual(result['entries'], [])
+        self.record('dangling-audit-refused/spent/full-CLI-EOF-reap/no-output/genuine-missing-EMPTY')
 
 
 if __name__=='__main__':

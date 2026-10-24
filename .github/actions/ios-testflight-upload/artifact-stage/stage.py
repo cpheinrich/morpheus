@@ -167,7 +167,7 @@ def selection(context, deadline=None):
     require(channel == 'fault-audit' and set(roots) == {'audit'}, 'audit roots')
     root = Path(roots['audit'])
     require(root == workspace / 'evo-fault-audits', 'audit root')
-    if not root.exists():
+    if not root.exists() and not root.is_symlink():
         return []
     return [row for row in tree(root, direct=True, budget=budget) if
             re.fullmatch(r'(child-result-|provider-audit-)[A-Za-z0-9._-]+\.json', row[1])]
@@ -267,6 +267,16 @@ def stage(context):
     workspace = canonical_dir(context['workspace'])
     require(workspace != temporary and not inside(workspace, temporary) and
             not inside(temporary, workspace), 'workspace and temp overlap')
+    invocation = ''
+    if context['channel'] == 'upload-acceptance-resource':
+        roots = context['roots']
+        require(type(roots) is dict and set(roots) == {'receiptDirectory', 'receiptPath', 'resourcePath'}, 'receipt roots')
+        receipt = canonical_dir(roots['receiptDirectory'])
+        require(receipt.parent == temporary and receipt.name.startswith('ios-upload-acceptance-'), 'receipt context root')
+        require(receipt.lstat().st_uid == os.getuid(), 'foreign receipt owner')
+        # The producer owns one stable directory per action invocation, including two apps.
+        # Output availability may change; it must never select a fresh retry namespace.
+        invocation = '-' + hashlib.sha256(str(receipt).encode('utf8')).hexdigest()
     owner = temporary / 'artifact-byte-stage'
     try:
         owner.mkdir(mode=0o700)
@@ -275,7 +285,7 @@ def stage(context):
     canonical_dir(owner)
     s = owner.lstat()
     require(s.st_uid == os.getuid() and stat.S_IMODE(s.st_mode) == 0o700, 'stage parent ownership')
-    leaf = owner / (context['runId'] + '-' + context['runAttempt'] + '-' + context['channel'])
+    leaf = owner / (context['runId'] + '-' + context['runAttempt'] + '-' + context['channel'] + invocation)
     leaf.mkdir(mode=0o700)  # A duplicate attempt refuses, including after any failure.
     started = time.monotonic()
     def expired():

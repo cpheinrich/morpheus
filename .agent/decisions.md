@@ -1518,3 +1518,10 @@ traces use a separate 64 MiB/one-day role. Explicit 1200/30 processing values pr
 normal defaults without treating a wall-clock loop as a hard 41-call cap. See
 [the contract](../docs/artifact-snapshots.md); source/ABI review, consumer adoption,
 provider retention and financial/operational qualification stay separate.
+
+**Receipt staging follows the producer's invocation identity.** The run/attempt/channel
+key alone collides when the existing action uploads two apps in one job. Bind only that
+channel's leaf to the full SHA-256 of its validated canonical receipt directory; changed
+output availability must not buy a retry. Other leaves and all byte/retention limits stay
+unchanged. Distinguish missing optional audit roots from dangling links. This corrects
+the source boundary without adding a caller namespace, retry or provider behavior.

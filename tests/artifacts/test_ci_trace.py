@@ -73,6 +73,7 @@ class Tests(unittest.TestCase):
         self.assertFalse((self.t / 'artifact-byte-stage/101-2-ci-browser-traces/admission.json').exists())
         self.record('actual64MiB-envelope/next-raw-byte-before-copy')
     def test_owner_path_context_and_loader_refusals(self):
+        self.assertEqual(c.CORE_SHA256, hashlib.sha256((SOURCE / 'stage.py').read_bytes()).hexdigest())
         for key, value in [('repository', 'other/repo'), ('job', 'test'), ('runId', '0'), ('runAttempt', True)]:
             v = copy.deepcopy(self.ctx); v[key] = value
             self.refuse(v, 'context/' + key)
