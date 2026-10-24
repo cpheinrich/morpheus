@@ -49,6 +49,33 @@ async function poll(deps, repo, pr) {
         return { error: "gh api graphql returned output that is not JSON" };
     }
 }
+/** Actions runs can exist before their jobs appear in the commit check rollup. */
+async function currentHeadRuns(deps, repo, headSha, hasActionsCheck) {
+    const res = await deps.gh(["run", "list", "--repo", repo, "--commit", headSha, "--limit", "100", "--json", "headSha,status,conclusion,databaseId"]);
+    if (res.code !== 0)
+        return { error: firstLine(res.stderr) || `gh exited ${res.code}` };
+    try {
+        const runs = JSON.parse(res.stdout);
+        if (!Array.isArray(runs) || runs.length >= 100 || (hasActionsCheck && runs.length === 0)) {
+            return { error: "workflow run census is incomplete" };
+        }
+        for (const run of runs) {
+            const row = run;
+            if (row.headSha !== headSha || typeof row.status !== "string" || typeof row.databaseId !== "number") {
+                return { error: "workflow run census returned an invalid or foreign row" };
+            }
+            if (row.status !== "completed")
+                return "pending";
+            if (!["success", "neutral", "skipped"].includes(String(row.conclusion))) {
+                return { error: `workflow run ${row.databaseId} ended ${String(row.conclusion)} without a matching failed check receipt` };
+            }
+        }
+        return "complete";
+    }
+    catch {
+        return { error: "workflow run census returned output that is not JSON" };
+    }
+}
 async function failureDetails(deps, repo, checks) {
     const details = new Map();
     const withLogs = checks.filter((c) => c.outcome === "fail" && c.jobId).slice(0, MAX_LOGS);
@@ -89,6 +116,7 @@ export async function waitCi(deps, opts) {
     let errors = 0;
     let delay = null;
     let timedOut = false;
+    let runsPending = false;
     for (;;) {
         const result = await poll(deps, repo, pr);
         if ("error" in result) {
@@ -106,10 +134,42 @@ export async function waitCi(deps, opts) {
             }
             headSha = result.headSha;
             snapshot = result;
+            runsPending = false;
         }
         const visible = snapshot ? relevant(snapshot.checks, opts.requiredOnly) : [];
-        if (snapshot && settled(visible))
-            break;
+        if (snapshot && settled(visible)) {
+            // A registered failure is decisive. A green rollup is not: Actions runs
+            // may be queued or executing before their job checks register here.
+            if (verdict(visible) !== "green")
+                break;
+            if (snapshot.truncated) {
+                return { exitCode: EXIT.error, output: `wait-ci: could not verify all current-head checks on ${repo}#${pr}; rollup exceeds 100 rows` };
+            }
+            if (opts.requiredOnly)
+                break;
+            const runs = await currentHeadRuns(deps, repo, snapshot.headSha, snapshot.checks.some((check) => Boolean(check.workflow)));
+            if (typeof runs !== "string") {
+                return { exitCode: EXIT.error, output: `wait-ci: could not verify current-head workflow runs on ${repo}#${pr}: ${runs.error}` };
+            }
+            runsPending = runs === "pending";
+            if (runs === "complete") {
+                // Re-read after the census: registration may have changed while it ran.
+                const candidateSha = snapshot.headSha;
+                const confirmed = await poll(deps, repo, pr);
+                if ("error" in confirmed) {
+                    return { exitCode: EXIT.error, output: `wait-ci: could not confirm current-head checks on ${repo}#${pr}: ${confirmed.error}` };
+                }
+                if (confirmed.headSha !== snapshot.headSha) {
+                    movedFrom.push(snapshot.headSha);
+                    headSeenAt = deps.now();
+                    delay = null;
+                }
+                headSha = confirmed.headSha;
+                snapshot = confirmed;
+                if (!snapshot.truncated && confirmed.headSha === candidateSha && settled(relevant(snapshot.checks, false)) && verdict(snapshot.checks) === "green")
+                    break;
+            }
+        }
         const now = deps.now();
         if (snapshot && visible.length === 0 && now - headSeenAt >= NO_CHECKS_GRACE_MS)
             break;
@@ -123,7 +183,7 @@ export async function waitCi(deps, opts) {
     if (!snapshot)
         return { exitCode: EXIT.error, output: `wait-ci: no successful poll of ${repo}#${pr} before the deadline` };
     const checks = relevant(snapshot.checks, opts.requiredOnly);
-    const v = verdict(checks);
+    const v = timedOut && runsPending ? "pending" : verdict(checks);
     const details = v === "failed" ? await failureDetails(deps, repo, checks.filter(failed)) : new Map();
     const output = renderDigest({
         repo,
@@ -132,7 +192,8 @@ export async function waitCi(deps, opts) {
         verdict: v,
         checks,
         elapsedMs: deps.now() - start,
-        timedOut: timedOut && !settled(checks),
+        timedOut: timedOut && (!settled(checks) || runsPending),
+        pendingWorkflows: timedOut && runsPending,
         details,
         movedFrom,
         requiredOnly: opts.requiredOnly,

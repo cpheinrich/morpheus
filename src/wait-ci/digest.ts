@@ -17,6 +17,8 @@ export interface DigestInput {
   elapsedMs: number;
   /** Deadline reached before every check finished. */
   timedOut: boolean;
+  /** The visible checks passed, but a current-head Actions run has not finished. */
+  pendingWorkflows?: boolean;
   /** Keyed by {@link checkKey}. */
   details: Map<string, FailureDetail>;
   /** Earlier heads seen during the wait, oldest first. */
@@ -87,6 +89,7 @@ export function renderDigest(input: DigestInput): string {
     out.push(`! head moved during the wait: ${[...input.movedFrom, input.headSha].map(short).join(" → ")}; results are for ${short(input.headSha)} only`);
   }
   if (input.truncated) out.push("! more than 100 checks: only the first page was read");
+  if (input.pendingWorkflows) out.push("  … current-head Actions workflow still running; job checks may not have registered");
 
   for (const check of failures) {
     const detail = input.details.get(checkKey(check));
