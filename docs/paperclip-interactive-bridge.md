@@ -165,6 +165,18 @@ Claims kept those wakes from reaching a provider, but they wasted runs and left 
   holds. A completed partial turn is described as mixed effects; only not-started proves no
   provider work. Foreign runs and other hold types remain operator-required. `reattach`
   observes the parked state without mutating it; `reconcile` is available through CLI and MCP.
+- **Never-admitted runs.** Once a host is reachable again, reconciliation can exclusively
+  create a never-started tombstone at the same receipt path admission claims. A delayed
+  envelope with that UUID then refuses before locking or launching. An existing admission
+  wins the same exclusive-create race and is inspected normally. SSH failure, missing
+  output and elapsed time alone never release capacity; unreadable process ownership stays
+  unknown. A real mini probe fenced UUID `c5e7769ff597c69d11f6ae6af243c529` and refused its
+  exact late valid envelope as duplicate (exit75), with no accepted/provider event.
+
+Control messages are published by atomic rename. Incomplete controls are retried rather than
+crashing the relay, and controls arriving during host admission are buffered so a stop can
+prevent launch. Stops in the brief claim-before-run-record window are retained too. A marker
+can settle an unknown task disposition only when its native createdByRunId matches the writer.
 
 ## Data and identity
 

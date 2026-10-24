@@ -391,3 +391,67 @@ Fresh main Claude weekly46% used (baseline39, shared-account rounded delta7); se
 34% remaining (baseline56); reserve up to3 further points for review coordination/CI. Reserve
 6 Claude weekly points for one fresh independent reviewer plus allowed fixes, episode stop52,
 still below admission57/hard60. Remote Claude native sign-in remains an explicit pending test.
+
+## Independent review — initial turn
+
+Fresh reviewer native5dede39f-16f4-4aee-a072-22d0ae040f97 (bridge run94fb5e2e-c641-4ca4-
+b8a8-7343bedba5bf) reviewed720f6b140c1298320a7f11ca801b42f99e446dd5, base660211f.
+Runner duration704725ms =11.745416666666667 minutes, within the high-risk30-minute ceiling.
+Verdict blocked, source review complete: F1/F2 substantive, F3–F7 minor. The reviewer reproduced
+both substantive failures in scratch probes and removed its temporary processes/files afterwards.
+No source edits were made by the reviewer; it had no inherited author conversation.
+
+F1: non-atomic answer/stop controls and parse-before-completion can crash the relay. F2: an SSH
+failure before a host receipt leaves a reservation that unknown reconciliation never clears.
+Minor findings cover pre-spawn exceptions, stop during claim publication, controls during host
+admission, unknown ps identity, and accepting a disposition marker without exact native run
+attribution. Author episodee84ef0e6-e90c-459a-852a-11119a25e83f owns fixes/regressions, with
+3 Claude weekly points reserved from46% used, episode stop49, overall hard60. The follow-up
+will use the same independent reviewer at the high-risk15-minute follow-up ceiling.
+
+Remote Claude acceptance is tracked explicitly in blocked MO-26-10-24-02.58.42. Original parent
+acceptance is unchanged, original PR remains WIP/draft with auto-merge off, and source-review
+clearance cannot ship it. A final mini-native sign-in/browser-control attempt did not complete;
+its exact owned CLI/browser-probe processes were stopped and native auth still reports false.
+No credential was minted/copied and no remote Claude inference occurred. Pool accounts are empty.
+
+Private staged archive720f6b1 matches canonical source hashes; qualified workers remain paused.
+The final fixes will be staged only after author completion, with no active worker turn.
+
+## First review fixes and CI diagnosis
+
+Author rune84ef0e6-e90c-459a-852a-11119a25e83f completed ee26f56 with F1–F7 fixes and seven
+regressions; plugin full87/87 and check passed. Root read captured actual outputs, including
+an initial failing F2 test before its fixture isolation correction and the final87/87 result.
+The source uses atomic controls, retryable parse, an exclusive host receipt/tombstone boundary,
+pre-spawn refusal records, early stop retention, buffered admission controls, conservative
+coordinator identity status and exact createdByRunId matching. The same reviewer will assess
+all fixes together; its F1 conditional shortcut was not used.
+
+Native ee26f56 was staged only while test workers were paused and drained. Over real SSH,
+mini reconciliation fenced a fresh never-admitted UUIDc5e7769ff597c69d11f6ae6af243c529 and
+returned terminated. A subsequent exact valid envelope for that UUID refused duplicate/exit75,
+with no accepted or provider event. This used no inference and no provider credentials.
+
+CI at720f6b1 passed five checks/skipped five but the plugin job hung15minutes. Read-only scout
+/root/bridge_ci_diagnosis isolated that exact committed archive:80/80 passed under Node22.23.4
+in13.94seconds, while the captured CI22.23.3 log showed the duplicate-answer assertion raced a
+question being cleared. A failure skipped awaiting the running fixture; teardown deleted its
+state without stopping the fake worker, leaking relay/heartbeat handles and child processes.
+A deterministic scratch reproduction failed in989ms yet stayed live beyond8seconds; the scout
+killed only its owned descendants and verified their exit. The obsolete hung CI run40083167519
+was cancelled, not silently rerun. No repository or live provider edits came from the scout.
+
+Author run8b3498db-d1ff-41be-a9f3-f7fb1ad8789b owns the CI race/teardown fix plus the related
+host-side identity-unknown admission gap root found. Reserve2 Claude weekly points from47%
+used, episode stop49/hard60; the earlier author reservation settled at1 point plus reporting
+margin. Codex scout reservation is at most1 point within the same25%-remaining floor.
+
+CI correction f148aa4 is committed; author run8b3498db-d1ff-41be-a9f3-f7fb1ad8789b is terminal.
+The duplicate-answer journal is checked before transient live-question state. Fixture teardown
+tracks and drains all outstanding runs before removing files, including after failed assertions;
+its regression verifies the owned provider PID is gone. Host reconciliation now treats unknown
+process state or a missing identity on a live admitting PID as unknown, retaining ownership.
+Focused review regressions10/10; plugin full90/90 under Node26.8.2 and22.23.4, check passed.
+Root inspected the actual captured full-suite outputs for both runtimes. No additional live
+provider turn was needed for this deterministic timing fix.
