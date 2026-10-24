@@ -22,10 +22,13 @@ export declare function prefixOf(id: string): string | null;
 /**
  * An ISO date (YYYY-MM-DD) compatible with legacy YAML date handling.
  *
- * Older YAML parsers converted an unquoted `2026-07-01` into a Date object;
- * the current parser returns a string. Accepting both preserves compatibility
- * with already-materialised metadata. Legacy Date values are UTC, so slicing
- * the ISO string cannot shift the day.
+ * Older YAML parsers converted an unquoted `2026-07-01` — or a full timestamp
+ * such as `2026-08-18T13:15:00.000Z` — into a Date object, which this sliced to
+ * its day. The current parser returns every one of those as a string, so a
+ * timestamp string keeps its date part too: without that, files the old parser
+ * accepted fail with "Invalid ISO date" (#466). The date is the one written,
+ * not the UTC day, the same choice `isoDateTime` makes for offsets. Legacy Date
+ * values are UTC, so slicing their ISO string cannot shift the day.
  */
 export declare const isoDate: z.ZodPreprocess<z.ZodISODate>;
 /**
