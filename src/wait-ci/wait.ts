@@ -217,7 +217,10 @@ export async function waitCi(deps: WaitDeps, opts: WaitOptions): Promise<WaitRes
 
   if (!snapshot) return { exitCode: EXIT.error, output: `wait-ci: no successful poll of ${repo}#${pr} before the deadline` };
   const checks = relevant(snapshot.checks, opts.requiredOnly);
-  const v = timedOut && runsPending ? "pending" : verdict(checks);
+  const observedVerdict = verdict(checks);
+  // An unverified run census cannot establish green, but a failed check is
+  // already decisive even if the replacement head reached us at the deadline.
+  const v = timedOut && runsPending && observedVerdict === "green" ? "pending" : observedVerdict;
   const details = v === "failed" ? await failureDetails(deps, repo, checks.filter(failed)) : new Map<string, FailureDetail>();
   const output = renderDigest({
     repo,
@@ -226,8 +229,8 @@ export async function waitCi(deps: WaitDeps, opts: WaitOptions): Promise<WaitRes
     verdict: v,
     checks,
     elapsedMs: deps.now() - start,
-    timedOut: timedOut && (!settled(checks) || runsPending),
-    pendingWorkflows: timedOut && runsPending,
+    timedOut: timedOut && (!settled(checks) || (runsPending && v === "pending")),
+    pendingWorkflows: timedOut && runsPending && v === "pending",
     details,
     movedFrom,
     requiredOnly: opts.requiredOnly,

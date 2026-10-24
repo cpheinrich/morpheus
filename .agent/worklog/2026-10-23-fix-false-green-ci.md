@@ -44,7 +44,10 @@ the registration window. It should not be treated as a merge authorization.
   and the command could call its visible checks green without a census for the
   replacement. The fix marks that head unverified until a later poll checks its
   runs, or reports pending at the deadline. A clock-controlled regression
-  reproduces the boundary; focused `tests/wait-ci` now has 99 passing tests.
+  reproduces the boundary. The same reviewer then found a related failed-check
+  case: a failed replacement-head check at the deadline was incorrectly called
+  pending. Failed checks now remain decisive, and a second clock-controlled
+  regression covers that case. Focused `tests/wait-ci` now has 100 passing tests.
 - `tsc -p tsconfig.build.json --noEmit`: passed.
 - ESLint on `src/wait-ci/wait.ts`: passed.
 - Build TypeScript compile generated only `dist/wait-ci/wait.js(.map)`

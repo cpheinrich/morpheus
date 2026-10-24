@@ -158,6 +158,26 @@ describe("waitCi", () => {
     expect(scripted.calls.filter((c) => c[0] === "run" && c[1] === "list").map((c) => c[c.indexOf("--commit") + 1])).toEqual([SHA_A]);
   });
 
+  it("reports a failed replacement-head check even when confirmation reaches the deadline", async () => {
+    const failedHead = ok(rollup(SHA_B, [run("node / check", "COMPLETED", "FAILURE")]));
+    const scripted = fakeGh([green(SHA_A), failedHead]);
+    let time = 0;
+    let polls = 0;
+    const deps: WaitDeps = {
+      ...scripted.deps,
+      now: () => time,
+      gh: async (args) => {
+        const result = await scripted.deps.gh(args);
+        if (args[0] === "api" && ++polls === 2) time = 1_000;
+        return result;
+      },
+    };
+    const result = await waitCi(deps, { ...opts, timeoutMs: 1_000 });
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain(`CI failed — cpheinrich/morpheus#354 @ ${SHA_B.slice(0, 7)}`);
+    expect(result.output).not.toContain("Actions workflow runs pending or not yet verified");
+  });
+
   it("passes --repo through to the PR lookup", async () => {
     const { deps, calls } = fakeGh([green()]);
     await waitCi(deps, { ...opts, target: "feature-branch", repo: "cpheinrich/morpheus" });
