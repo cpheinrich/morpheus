@@ -127,14 +127,19 @@ export async function pr(productDir, base) {
     const clearance = reviewEvent.pull_request?.manager_clearance ?? process.env["MORPHEUS_MANAGER_CLEARANCE"] ?? "";
     const clearedHead = parseMarker(clearance)?.cleared;
     const review = { root: process.cwd(), body: prBody(), labels, head, base };
+    const files = changedFiles(base);
     const findings = await checkPr({
         agentReview: usesManagerReview(labels) ? checkManagerReview({ ...review, labelActor, clearedHead }) : checkLocalReview(review),
+        // The separate CI proof job reads live GitHub App receipts with read-only checks access.
+        // This flag is accepted only in Morpheus's own workflow; other repositories cannot opt in.
+        securityImportVerified: process.env["GITHUB_REPOSITORY"] === "cpheinrich/morpheus" &&
+            process.env["MORPHEUS_SECURITY_IMPORT_VERIFIED"] === "true",
         body: prBody(),
         title: prTitle(),
         commitMessages: prCommitMessages(base, head),
         author: prAuthor(),
         branch: currentBranch(),
-        changedFiles: changedFiles(base),
+        changedFiles: files,
         trunkChanges: trunkChanges(base),
         visualEvidence: projectVisualEvidencePolicy(),
         productDir,

@@ -1384,6 +1384,10 @@ It follows the Morpheus Security shape (§18): a public reviewed engine in this 
 private operations repository holding the App key, the subscription token and the schedule, and a
 target that opts in with a committed policy file. Its review is a narrower record than the
 author's, bounded by path checks and refused outright for normative policy.
+The separate Morpheus-only Security import review workflow reuses the Manager's private caller
+and model credential, but gives its reviewer a read-only repository token. It accepts only a
+Security App-attested import candidate, records a separate App-owned result for the exact head,
+and never pushes or merges that candidate. The Security App alone reconciles it after all checks.
 [`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is authoritative.
 
 ### 7.14 Paperclip is an opt-in execution pilot, not the delivery authority
@@ -1407,6 +1411,16 @@ controller-restart adoption and served-model attribution are unqualified until a
 deployment and prospective evidence exist. No consumer repository is migrated or auto-dispatched.
 Historical decision evaluations ([`qa/evals/agent-stack/`](qa/evals/agent-stack/README.md)) freeze
 inputs, oracles, prompts and model/effort before execution and claim no productivity gain.
+
+The opt-in [explicit linkage bridge](docs/paperclip-integration.md) binds one roadmap item to
+many immutable Paperclip job records under `.agent/paperclip/`. Each record names repository,
+claimed branch, source SHA and acceptance references; only selected job instructions are copied.
+Git owns intent, exact issue linkage and operator-verified evidence. Paperclip retains live status.
+An operation journal in the common Git directory precedes issue creation; uncertain outcomes
+observe and link exact IDs instead of reposting. Result reconciliation never advances roadmap
+status or bypasses the normal delivery loop. Its private authentication rollout helper preserves
+the existing controller/database and stages reversible configuration; real deployment, worker
+authority isolation and consumer delivery remain explicit qualification gates.
 
 ## 8. Project management as files
 
@@ -3243,6 +3257,20 @@ pending run in a concurrency group even when `cancel-in-progress` is false; a ca
 run can leave an otherwise green pull request blocked. Job-level grouping governs a called job;
 a called workflow's top-level `concurrency` does not govern the caller's run.
 
+Artifact uploads use source-owned private snapshots with a checked ZIP byte envelope,
+not the size of a directory that another process can still grow. The reusable iOS
+workflow stages every selected native channel after its writers and requires one
+all-selected barrier plus each uploader's own successful admission. The upload action
+similarly stages accepted/resource receipts; persistence failure preserves uncertain
+Apple acceptance. Receipt namespaces bind the existing canonical per-invocation receipt
+directory, so two apps remain independent while the same successful/refused invocation
+stays spent even when outputs change. Optional audit absence does not admit dangling links. Names, archive layout and existing native/tool/controller policy stay
+independent of byte admission. A separate exact `artifact-stage-ref` is required for CD;
+ordinary callers retain `main`. Morpheus's browser failure diagnostics have a 64 MiB,
+one-day role, and a bounded synthetic Node 24/Python ABI job qualifies the artifact
+transport. The [artifact snapshot contract](docs/artifact-snapshots.md) states byte math,
+writer/ABI/provider limits and the separate consumer adoption requirements.
+
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
 Xcode 26.6, the iOS 26.5 simulator runtime, and an iPhone 17 Pro Max destination.
@@ -3567,8 +3595,10 @@ target opts in only when its installation, the reviewed central repository allow
 committed policy agree. The workflow owns full-tree
 OSV plus GitHub-alert ingestion, one-dependency PR creation, deterministic artifact and scope
 gates, reconciliation, and guarded merge. The schedule matters: a dependency can become vulnerable
-without any repository change. Missing evidence never counts as clean. No local host or model
-runtime participates. See [the execution contract](docs/runbooks/osv-maintenance.md).
+without any repository change. Missing evidence never counts as clean. Its normal dependency-only
+lane uses no model. A separate, explicitly opted-in import-only replacement lane requires a
+distinct Manager model review of the exact App-attested head before Security can merge; the model
+does not hold Security's write token. See [the execution contract](docs/runbooks/osv-maintenance.md).
 
 `release-preflight` is the secret-free gate before any job that publishes outside GitHub. It accepts
 no caller-selected source: the workflow requires `refs/heads/main`, checks out `github.sha`, refuses

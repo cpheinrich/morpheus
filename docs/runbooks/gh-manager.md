@@ -176,6 +176,21 @@ check exists because an App's token cannot see private organization membership: 
 Evo run an organization owner read as `CONTRIBUTOR`. `morpheus-security[bot]` and Dependabot
 pull requests have their own maintainers and are only reported.
 
+Morpheus's import-only Security exception is a **separate review-only workflow**, not a route
+through the Manager's ordinary sweep or protected-path self-review. The private Manager caller
+may call `security-import-review.yml` for `cpheinrich/morpheus` only. Its model session receives
+contents read, has only read-only file tools, and reviews the exact Security App-attested head
+using a precomputed diff, test-merge check and OSV/npm provenance packet. It has no target GitHub
+token and returns a JSON decision. A review is queued only after the required CI checks other than
+the conventions check are green on a test merge whose parents are the live base and attested head;
+the conventions check depends on the review label. A
+separate deterministic job verifies the live head and App candidate, then posts a Manager App
+comment carrying that head and its clear/findings/hold verdict. It cannot push or merge the PR.
+Security checks the distinct App comment again before any merge. The review label only triggers
+the existing review-metadata workflow to rerun `pr / conventions` with an App-backed proof;
+neither a label nor PR prose is proof. A transient hold gets one same-head retry. Findings or a
+head change require a new candidate and review. The ordinary bot-lane skip remains in force.
+
 The App key and the Claude subscription token live only in the private operations repository.
 Target repositories hold a policy file and nothing else.
 

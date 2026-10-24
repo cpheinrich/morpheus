@@ -17,14 +17,23 @@ it("persists only allowlisted resource and acceptance receipts before distributi
   };
   const steps = action.runs.steps;
   const upload = steps.findIndex(step => step.id === "upload");
+  const stage = steps.findIndex(step => step.id === "artifact_receipt");
   const persist = steps.findIndex(step => step.id === "acceptance");
   const distribute = steps.findIndex(step => step.run?.includes("distribute-testflight.sh"));
   expect(upload).toBeGreaterThan(0);
-  expect(persist).toBe(upload + 1);
+  expect(stage).toBe(upload + 1);
+  expect(persist).toBe(stage + 1);
+  expect(steps[stage]?.if).toBe("${{ always() && (steps.upload.outputs.receipt-path != '' || steps.upload.outputs.resource-path != '') }}");
+  expect(steps[stage]?.env).toEqual({
+    ARTIFACT_RECEIPT_DIRECTORY: "${{ steps.receipt-context.outputs.directory }}",
+    ARTIFACT_RECEIPT_PATH: "${{ steps.upload.outputs.receipt-path }}",
+    ARTIFACT_RESOURCE_PATH: "${{ steps.upload.outputs.resource-path }}",
+  });
+  expect(steps[stage]?.run).toBe('python3 -I -S -B "$GITHUB_ACTION_PATH/artifact-stage/stage.py" --github upload-acceptance-resource');
   expect(distribute).toBe(persist + 1);
-  expect(steps[persist]?.if).toBe("${{ always() && (steps.upload.outputs.receipt-path != '' || steps.upload.outputs.resource-path != '') }}");
+  expect(steps[persist]?.if).toBe("${{ always() && (steps.upload.outputs.receipt-path != '' || steps.upload.outputs.resource-path != '') && steps.artifact_receipt.outcome == 'success' && steps.artifact_receipt.outputs.admitted == 'true' && steps.artifact_receipt.outputs.has-files == 'true' }}");
   expect(steps[persist]?.uses).toBe("actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a");
-  expect(steps[persist]?.with).toEqual({ name: "${{ steps.receipt-context.outputs.artifact-name }}", path: "${{ steps.upload.outputs.receipt-path }}\n${{ steps.upload.outputs.resource-path }}\n", "if-no-files-found": "error", "retention-days": 90, overwrite: false });
+  expect(steps[persist]?.with).toEqual({ name: "${{ steps.receipt-context.outputs.artifact-name }}", path: "${{ steps.artifact_receipt.outputs.payload-root }}", "if-no-files-found": "error", "retention-days": 90, overwrite: false, archive: true, "compression-level": 0 });
   expect(steps[distribute]?.if).toBe("${{ success() && inputs.distribution-enabled == 'true' && steps.upload.outputs.upload-id != '' }}");
   expect(steps[distribute]?.env?.UPLOAD_ID).toBe("${{ steps.upload.outputs.upload-id }}");
   expect(steps[distribute]?.env?.IOS_DISTRIBUTION_P12_BASE64).toBeUndefined();

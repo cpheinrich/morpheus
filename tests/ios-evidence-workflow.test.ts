@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 const exec = promisify(execFile);
-type Step = { name?: string; uses?: string; run?: string; if?: string; with?: Record<string, unknown> };
+type Step = { id?: string; name?: string; uses?: string; run?: string; if?: string; with?: Record<string, unknown> };
 const workflow = async () => load(await readFile(new URL('../.github/workflows/ios-ci.yml', import.meta.url), 'utf8')) as { jobs: { test: { steps: Step[] } } };
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), 'ios-evidence-'));
@@ -105,7 +105,12 @@ describe('native selection and result evidence', () => {
       expect(await readFile(join(f.env.RESULTS,'tested-sha.txt'),'utf8')).toBe('a'.repeat(40)+'\n');
       const upload = f.steps.find(s=>s.name==='Upload complete test evidence')!;
       expect(upload.if).toContain('always()');
-      expect(upload.with?.path).toContain('*.json');
+      const stage = f.steps.findIndex(s => s.id === 'artifact_complete');
+      expect(stage).toBeGreaterThan(f.steps.findIndex(s => s.name === 'Export complete test evidence'));
+      expect(stage).toBeLessThan(f.steps.indexOf(upload));
+      expect(f.steps[stage]?.with?.channel).toBe('native-complete-evidence');
+      expect(upload.with?.path).toBe('${{ steps.artifact_complete.outputs.payload-root }}');
+      for (const guard of ["steps.artifact_complete.outcome == 'success'", "steps.artifact_complete.outputs.admitted == 'true'", "steps.artifact_complete.outputs.has-files == 'true'", "steps.artifact_barrier.outcome == 'success'"]) expect(upload.if).toContain(guard);
       await expect(readFile(join(f.dir,'injected'))).rejects.toThrow();
     } finally { await rm(f.dir,{recursive:true,force:true}); }
   });

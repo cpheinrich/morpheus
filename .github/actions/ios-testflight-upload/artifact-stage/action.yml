@@ -1,0 +1,25 @@
+name: Stage bounded artifact
+description: Snapshot one source-owned artifact channel, never upload or grant qualification.
+inputs:
+  channel:
+    required: true
+    description: One of six closed channel names
+outputs:
+  payload-root:
+    value: ${{ steps.stage.outputs.payload-root }}
+  manifest:
+    value: ${{ steps.stage.outputs.manifest }}
+  manifest-sha256:
+    value: ${{ steps.stage.outputs.manifest-sha256 }}
+  admitted:
+    value: ${{ steps.stage.outputs.admitted }}
+  has-files:
+    value: ${{ steps.stage.outputs.has-files }}
+runs:
+  using: composite
+  steps:
+    - id: stage
+      shell: bash
+      env:
+        ARTIFACT_CHANNEL: ${{ inputs.channel }}
+      run: python3 -I -S -B "$GITHUB_ACTION_PATH/stage.py" --github "$ARTIFACT_CHANNEL"

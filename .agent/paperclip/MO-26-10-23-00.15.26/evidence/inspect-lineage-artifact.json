@@ -1,0 +1,20 @@
+{
+  "sourceSha": "6ca59e8fedd3ee2552adfd3a365946049b3a4aef",
+  "job": "inspect-lineage",
+  "nonce": "5b90a1fecff6409b9d7c291980f8c809",
+  "summary": "prepare pins the claimed branch, HEAD source SHA and committed roadmap/task/acceptance references; cli.ts requires --apply for submit/link/reconcile. operate requires the prepared record to match HEAD before the first POST, writes a durable shared-Git attempt journal, sends the deterministic idempotency key, then reads the exact issue ID before saving linkage. Reconciliation checks committed receipts and evidence against that original job. This is static source inspection, not live validation or acceptance; graph verification was unavailable because its read calls required approval.",
+  "observations": [
+    {
+      "claim": "An ambiguous issue POST blocks automatic resubmission; a returned issue ID is journaled before exact readback can reject its linkage.",
+      "path": "source/scripts/paperclip-bridge/bridge.ts",
+      "symbol": "operate",
+      "evidence": "Lines 192-221 use a lock and journal under the common Git directory, reject a different planHash, require the complete prepared record to equal HEAD, and persist state posting before issue creation. replace (153-160) flushes a temporary file, renames it and syncs its directory. A POST/JSON/UUID failure attempts to persist state unknown and throws; a later submit with a journal but no issue ID throws rather than reposting. A parsed created.id is persisted before readIssue (142-150, called at 230), which rejects mismatched ID/company/project/assignee/title/description, a non-null parent or an unrecognized status. Failed readback leaves the Git linkage unsaved; a retained journal ID prevents another POST. link accepts an observed UUID but cannot replace an existing ID and must pass the same readback. These are source-level guards; filesystem failure recovery and upstream behavior were not exercised."
+    },
+    {
+      "claim": "An upstream done status cannot reconcile uncommitted, mismatched or replacement evidence, and matching hashes alone do not prove semantic correctness.",
+      "path": "source/scripts/paperclip-bridge/bridge.ts",
+      "symbol": "operate",
+      "evidence": "The reconcile branch (233-245) requires an explicit Verification receipt, validates that receipt through source at current HEAD, compares its issueId and original plan.sourceSha, and requires done for result or blocked for blocked. Verification (23-26) requires at least one evidence entry and nonempty needs for blocked. source (62-69) requires regular committed files and equality with current bytes; each evidence SHA-256 must match or operate throws evidence digest mismatch. A nonidentical existing verification throws verification is immutable; create a new job for new evidence. Thus even a done issue fails reconciliation for stale identities, uncommitted evidence or incorrect digests. The code checks identity, status and bytes, not whether evidence satisfies acceptance; docs/paperclip-integration.md explicitly leaves content inspection to the operator and roadmap completion to the normal PR/review/CI/merge process. No evidence contents or runtime outcomes were independently accepted in this inspection."
+    }
+  ]
+}

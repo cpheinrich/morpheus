@@ -1,0 +1,58 @@
+{
+  "plan": {
+    "version": 1,
+    "operationId": "morpheus-c993d815c1b765b05e4d3ed4e99fc638346d9c25fb0f2153597f541d6757c5da",
+    "repository": "https://github.com/cpheinrich/morpheus",
+    "roadmapId": "MO-26-10-23-00.15.26",
+    "job": "inspect-lineage",
+    "branch": "mo-26-10-23-00.15.26-qualify-authenticated-paperclip",
+    "sourceSha": "6ca59e8fedd3ee2552adfd3a365946049b3a4aef",
+    "roadmap": {
+      "path": "hq/product/roadmap/MO-26-10-23-00.15.26-qualify-paperclip-projects.md",
+      "sha256": "cec3d0a195f6c6ea39b29b92dfe23be57bcfd873e2bfaf15c5a089047df3aaa0",
+      "url": "https://github.com/cpheinrich/morpheus/blob/6ca59e8fedd3ee2552adfd3a365946049b3a4aef/hq/product/roadmap/MO-26-10-23-00.15.26-qualify-paperclip-projects.md"
+    },
+    "acceptance": {
+      "path": "scripts/paperclip-bridge/snapshot-acceptance.md",
+      "sha256": "55e793382dbea5ee3e4aa758626a5ad5b9f65cab38becebec840a5145fcf2295",
+      "url": "https://github.com/cpheinrich/morpheus/blob/6ca59e8fedd3ee2552adfd3a365946049b3a4aef/scripts/paperclip-bridge/snapshot-acceptance.md"
+    },
+    "task": {
+      "path": "scripts/paperclip-bridge/snapshot-lineage.md",
+      "sha256": "e7185bb4446fd2aad5d2f66447ec392777784ccf5a8125253b2d006ed922ee89",
+      "url": "https://github.com/cpheinrich/morpheus/blob/6ca59e8fedd3ee2552adfd3a365946049b3a4aef/scripts/paperclip-bridge/snapshot-lineage.md",
+      "instructions": "Inspect the immutable Morpheus source snapshot in `source/`. This is a read-only research\njob under the existing roadmap claim, not a source authoring or delivery task.\n\nRead `snapshot-manifest.json` for the exact `sourceSha`, `job`, `nonce` and\n`artifactRelativePath`. Read `source/scripts/paperclip-bridge/bridge.ts` and\n`source/scripts/paperclip-bridge/cli.ts`, with the integration contract as context.\nTrace prepare → committed intent → durable attempt journal → issue POST → exact readback\n→ evidence reconciliation. Identify two concrete boundary cases from the actual source.\n\nWrite only the manifest's artifact path, a JSON object with exactly these top-level keys:\n`sourceSha`, `job`, `nonce`, `summary`, `observations`. Copy the first three values exactly\nfrom the manifest. `summary` is one short paragraph. `observations` is an array of two\nobjects, each with `claim`, `path`, `symbol`, and `evidence`; name an actual source symbol\nand explain the specific guard or failure behavior. Report uncertainty plainly.\n\nDo not modify the source snapshot, execute its commands, call Paperclip/GitHub/provider\nAPIs, enroll agents, create accounts, read credentials, start another model, or change\nroadmap/job status. The controller independently inspects your artifact and owns acceptance."
+    },
+    "title": "Inspect immutable source lineage",
+    "target": {
+      "baseUrl": "http://127.0.0.1:3100",
+      "companyId": "4925919d-5666-4a4e-b4c5-b59cc0176eee",
+      "projectId": "1edd25f5-bf3d-4edb-bf22-b90f1ec9b995",
+      "agentId": "39be09f8-2b79-4a08-ae9e-84be48d012da"
+    }
+  },
+  "issueId": "9ec1fa46-eb0f-4704-8382-615ad6a11b46",
+  "verification": {
+    "receipt": {
+      "issueId": "9ec1fa46-eb0f-4704-8382-615ad6a11b46",
+      "sourceSha": "6ca59e8fedd3ee2552adfd3a365946049b3a4aef",
+      "outcome": "result",
+      "summary": "Controller independently inspected the read-only artifact identity, cited source observations and unchanged source/symlink inventories; native exit and termination verified. This establishes snapshot inspection only.",
+      "evidence": [
+        {
+          "path": ".agent/paperclip/MO-26-10-23-00.15.26/evidence/inspect-lineage-artifact.json",
+          "sha256": "e7367c12e1c387e1416be5927e86b070280938ef8ef97aba51d2fe440f859cae"
+        },
+        {
+          "path": ".agent/paperclip/MO-26-10-23-00.15.26/evidence/inspect-lineage-controller.json",
+          "sha256": "a17f1206235dacae2a24d88301eb0d62cfe772bdc1b59dd3657cca28ea79a9ba"
+        },
+        {
+          "path": ".agent/paperclip/MO-26-10-23-00.15.26/evidence/scope-probes.json",
+          "sha256": "401ff8659f06317a85a1a28ab8ab70ee0cd0c5930bf2a24cc45201fd96e74745"
+        }
+      ]
+    },
+    "observedStatus": "done"
+  }
+}

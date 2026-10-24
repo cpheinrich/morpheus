@@ -1,0 +1,20 @@
+{
+  "sourceSha": "6ca59e8fedd3ee2552adfd3a365946049b3a4aef",
+  "job": "inspect-tests",
+  "nonce": "32795d6c0ec1454b912ca59cc3afcbac",
+  "summary": "Static inspection of the bridge tests, bridge implementation, authentication rollout helper, and integration contract identified an existing no-repost boundary assertion and a missing parent-scope rejection case in the inspected test file. The four inspected files match their manifest digests. No tests were run; these observations do not establish live isolation or delivery.",
+  "observations": [
+    {
+      "claim": "Existing boundary: an uncertain issue-creation POST must not be automatically repeated.",
+      "path": "source/tests/paperclip-bridge.test.ts",
+      "symbol": "never reposts an uncertain request, and links only an exact observed candidate",
+      "evidence": "At lines 131-141, api(record).state.failPost is set to true. The first operate(..., { command: \"submit\", token: TOKEN }, ...) must reject with \"POST outcome unknown\"; the second must reject with \"never repost\". After rejecting a candidate with a changed description and linking the exact candidate, expect(a.posts()).toHaveLength(1) requires only one POST attempt across the sequence. These assertions would catch a retry that sends another issue-creation request after losing the first response, risking duplicate execution even if the first request reached the server. source/scripts/paperclip-bridge/bridge.ts operate, lines 207-221, enforces this through the pre-POST journal and unknown-outcome refusal. source/docs/paperclip-integration.md, lines 28-38, specifies observation and exact linking instead of automatic resend. This describes the assertions and source, not a test execution result."
+    },
+    {
+      "claim": "Plausible remaining regression gap: parent-scoped bridge keys are rejected in source but lack a rejection case in the inspected bridge test file.",
+      "path": "source/scripts/paperclip-bridge/bridge.ts",
+      "symbol": "assertIsolation",
+      "evidence": "assertIsolation at lines 128-140 rejects a truthy scope.parentIssueId or nonempty scope.parentIssueIds, and operate calls it before issue creation at line 199. The \"refuses %s authority before POST\" matrix in source/tests/paperclip-bridge.test.ts, lines 166-175, covers anonymous access, standard scope, wrong company/project, extra projects, and extra assignees; neither it nor the remaining tests in that file supplies a parent scope. A concrete additional case would retain the valid api(record) fixture but set a.state.me.keyScope.parentIssueId to \"10000000-0000-4000-8000-000000000005\", then call submit on the committed record. It should reject with \"requires a task_bridge key for exactly this project and assignee\" and leave a.posts() equal to []. Removing the parentIssueId check could otherwise allow this input to reach an issue-creation POST without the existing matrix detecting that regression. A companion case can set parentIssueIds to an array containing the same UUID. The exact project/assignee requirement is described in source/docs/paperclip-integration.md, lines 72-74. The current implementation already rejects these inputs; this is a bounded test-coverage observation, not an observed authorization defect or a claim about all repository tests."
+    }
+  ]
+}
