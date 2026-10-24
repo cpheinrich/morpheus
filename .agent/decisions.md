@@ -3,6 +3,16 @@
 Choices Chris made and why. Distilled from status replies — the archive in `status/` is the
 raw record; this is the part worth reading.
 
+**Morpheus/Paperclip linkage is explicit and one-to-many** — 2026-10-23. Chris approved deeper
+integration with one roadmap parent linked to multiple execution jobs. Git retains repository,
+branch, source SHA, acceptance references, exact upstream IDs and independently verified evidence;
+Paperclip retains live jobs/status. Completion cannot close Git work or waive claim/review/CI/merge.
+The opt-in operator bridge uses existing PM parsing, Zod, Node Git/crypto/fetch and a small
+Python plist/auth rollout boundary; it adds no scheduler, login sharing or runtime dependency.
+Considered Commander 15.0.0 (registry modified 2026-09-02, no runtime dependencies); Node's
+existing `parseArgs` fits five fixed operator commands without a CLI framework. Authenticated
+private deployment and actual credential/isolation probes precede consumer qualification.
+
 **Consult this before proposing something that contradicts a settled choice.** If a decision
 here looks wrong, say so and ask — do not quietly work around it.
 
