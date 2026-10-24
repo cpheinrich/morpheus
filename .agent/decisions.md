@@ -1193,7 +1193,7 @@ does) instead of an SSH library such as ssh2, and the existing guardian, Zod and
 dependency. Live acceptance, including remote Claude pending native sign-in, is separate.
 *Refined the same day after live runs:* the runner follows Paperclip's existing completion
 contract with its run credential (run-attributed comment plus `done`/`blocked` disposition, no-op
-wakes comment without changing status) instead of disabling upstream repair, follow-ups use the
+wakes only observe) instead of disabling upstream repair, follow-ups use the
 explicit `resume` intent, and a turn is admitted only on its exact upstream submission marker.
 
 **The Codex/Claude bridge passes any explicit Claude model id to the CLI** — 2026-10-08

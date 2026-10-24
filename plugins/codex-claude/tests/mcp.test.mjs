@@ -33,7 +33,7 @@ test("MCP advertises tools without activating bridge or creating settings", asyn
     ]
       .map((n) => "claude_" + n)
       .concat(
-        ["answer", "followup", "logs", "profiles", "reattach", "recover", "start", "status", "stop", "wait"].map((n) => "pool_" + n),
+        ["answer", "followup", "logs", "profiles", "reattach", "reconcile", "recover", "start", "status", "stop", "wait"].map((n) => "pool_" + n),
       )
       .sort(),
   );

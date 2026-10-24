@@ -153,10 +153,10 @@ as Paperclip pool agents. Design and rationale: Morpheus
 [`docs/paperclip-interactive-bridge.md`](../../docs/paperclip-interactive-bridge.md). Tools are
 `pool_*` (or `bridge.mjs pool.<operation> -` with JSON on stdin when the current Codex task loaded
 an older tool list): `profiles`, `start`, `status`, `wait`, `logs`, `answer`, `followup`, `stop`,
-`reattach`, and `bridge.mjs pool.reconcile` for operators.
+`reattach`, `reconcile`, and `recover`.
 
 - **Shape.** One Paperclip issue is one pool conversation; each provider turn is one Paperclip
-  run. Turn 1 is the issue; each follow-up is an issue comment (`reopen: true`). Paperclip's
+  run. Turn 1 is the issue; each follow-up is an issue comment (`resume: true`). Paperclip's
   `process` adapter runs `scripts/pool-runner.mjs` on the controller host, which claims the
   journaled turn, reserves the profile's account, and runs `scripts/pool-remote.mjs` on the
   worker over SSH (`BatchMode`, `StrictHostKeyChecking`). The host side uses this package's
@@ -180,7 +180,7 @@ an older tool list): `profiles`, `start`, `status`, `wait`, `logs`, `answer`, `f
   conversation under its own authority, but not once the conversation's original task or
   project is off. `answer` needs the caller's task id and the same off checks, without a live
   snapshot; `status`, `wait`, `logs` and plain `reattach` are observation and need neither.
-  Delegated workers cannot start, follow up, answer or retry (CLI and MCP).
+  Delegated workers cannot start, follow up, answer, recover or retry (CLI and MCP).
 - **Paperclip disposition.** Each finished turn leaves one comment attributed to its run and an
   issue status (`done` for a completed turn, `blocked` for needs_input, refusal, failure, stop or
   loss), so Paperclip queues no missing-comment or disposition-repair runs. `done` is operational
@@ -190,6 +190,13 @@ an older tool list): `profiles`, `start`, `status`, `wait`, `logs`, `answer`, `f
   Follow-ups are sent with `resume: true`. A turn runs only once Paperclip holds its exact
   submission marker. After a cancel that killed the runner, status keeps the original unknown
   termination and adds `hostTermination` once `pool.reconcile` proves the host turn ended.
+- **After a stop.** A committed follow-up may be parked behind Paperclip's effective no-replay
+  hold, even when its active recovery-action projection is empty. `reattach` reports that hold;
+  `reconcile` proves host termination, and `recover` (with the current task id) releases only
+  `legacy_execution_requires_reconciliation` for this conversation's exact worker and proven
+  turn. It uses Paperclip's supported evidence API, describes possible effects as mixed, and
+  continues the saved request. Foreign no-op runs, other holds and unknown termination return
+  an operator-required diagnostic. No old prompt is reposted and no task success is inferred.
 - **Duplicates.** Intent is journaled before any Paperclip write. An unknown creation outcome is
   never reposted automatically; `pool_reattach` observes it by an issue/comment marker, and
   `retry: true` resends with the same idempotency key / request id. Every turn has one atomic
@@ -201,7 +208,8 @@ an older tool list): `profiles`, `start`, `status`, `wait`, `logs`, `answer`, `f
 - **Quota.** The host admits a turn only on a fresh read from its operator-configured native quota
   command (`{observedAt, windows: [{id, usedPercent, resetsAt}]}`, e.g. the Paperclip pilot's
   `quota.mjs` for Codex) below `stopAt` for every window, and stops it at `hardAt` or on unknown
-  telemetry. No command configured means refused. This bridge never reads a Claude OAuth token.
+  telemetry. Missing configured windows and duplicate window IDs refuse. No command configured
+  means refused. This bridge never reads a Claude OAuth token.
 
 Operator setup (controller and coordinator must be the same host and user in this version):
 

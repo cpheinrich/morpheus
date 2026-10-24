@@ -5,7 +5,7 @@ Native blocked transitions require an unblock route. The runner supplies a worke
 This follows the pinned API's actual HTTP 422 guard; a question in a comment alone is insufficient.
 
 Status: staged on both hosts. Remote Codex and local Claude have completed real nonce turns;
-final protocol and recovery qualification is in progress. Task MO-26-10-24-00.59.32; acceptance is in
+protocol and recovery qualification is recorded below. Task MO-26-10-24-00.59.32; acceptance is in
 qa/acceptance/MO-26-10-24-00.59.32.md. Remote Claude live acceptance is pending native
 sign-in on the Mac mini and is not replaced by synthetic evidence.
 
@@ -159,6 +159,12 @@ Claims kept those wakes from reaching a provider, but they wasted runs and left 
   `unknown`; `pool.reconcile` (or the next admission on the account) proves the host turn ended,
   releases the account and writes `turns/<n>.reconcile.json`, which status reports as
   `hostTermination` beside, never over, the original evidence.
+- **Recovery.** After host proof, `pool.recover` resolves only the exact conversation turn's
+  `legacy_execution_requires_reconciliation` hold through the supported board evidence API.
+  It reads the issue's effective executionBlocker, including resolved automatic no-replay
+  holds. A completed partial turn is described as mixed effects; only not-started proves no
+  provider work. Foreign runs and other hold types remain operator-required. `reattach`
+  observes the parked state without mutating it; `reconcile` is available through CLI and MCP.
 
 ## Data and identity
 
@@ -188,6 +194,43 @@ uncertain issue creation (no second provider call); stale question ids; autonomo
 limits; tool-permission refusal without `source: user`; unavailable native auth and
 unknown/exhausted quota; Paperclip log cursor replay across a coordinator restart;
 session and binding drift; concurrent writers; cancellation; and runner loss with lease
-expiry and reconciliation. Live acceptance (real SSH, Paperclip enrollment, real Codex and
-Claude nonce turns, coordinator restart, independent artifact reads) is owned by root and
-pending. Remote Claude live testing is pending native sign-in.
+expiry and reconciliation. Live evidence distinguishes the following:
+
+| Path | Actual evidence | Remaining qualification |
+|---|---|---|
+| Remote Codex over SSH | Progress logs, needs-input, successive native-session follow-ups, exact nonce artifact reads, active coordinator restart, stop and host proof, post-stop continuation through bridge recovery | Independent review |
+| Local Claude through Paperclip | In-flight AskUserQuestion answered through the spool, native-session follow-up, exact artifacts, native done disposition | This is local provider evidence, not remote Claude |
+| Remote mini Claude | Native authentication refused before any provider process; zero inference, reservation released with not-started proof | Mini CLI login and real remote Claude acceptance |
+
+The final Codex protocol conversation is `114bca4e-e800-4fce-9fea-d5c32cde963e`, issue
+`ab19c434-8921-468d-b384-ae88d1de4674`, native session
+`01a16d30-9fdf-7d03-a32c-f8058c05256b`. At source13a936d, turn3 applied blocked with an
+own-run comment. Turn4 `f5cd437c-ff67-473b-8a37-7e2e2ec8e58f` remained running across a
+coordinator restart with identical IDs and log cursor. Independent SSH observed the fixture's
+PID35020 alive at09:29:17Z and absent at09:29:22Z after stop, ~21.6 seconds into its planned
+60-second sleep. Host proof is separate from the controller's retained transport_lost/unknown.
+This establishes the specific foreground fixture's cleanup, not arbitrary detached processes.
+
+Paperclip then held the saved follow-up behind a **resolved** recovery action whose
+`automaticRecovery.replay` remained blocked. `GET /recovery-actions` returned active:null and
+actions:[], while `GET /issues/:id.executionBlocker` exposed the effective hold. The first
+recovery implementation consulted only the active projection and was removed before deployment.
+An operator call to the supported resolve endpoint, with the exact source run and independently
+verified termination evidence, released the existing request. It did not repost the prompt.
+Turn5 `9834feab-ef6e-4c94-aada-c4112df83001` resumed the same native session and applied done;
+an independent SSH read verified nonce `protocol-mvm6mvjd`, label blue, audit verified, phase4.
+At source de3c2db, the bridge's own `recover` released both a never-started quota refusal
+(not_performed) and a fresh stopped turn (mixed), using that effective-hold projection.
+Turn8 `8242ade4-db27-4082-ab11-1697dd42b8b9` reused the native session, applied done and wrote
+`recovery-qualified.json`; independent SSH parsing verified the original nonce, blue label,
+verified audit marker and phase5. The preceding refused attempt is retained: the host had
+required a secondary quota window absent from this native account. The configured primary
+weekly limit remains stop72/hard75; any newly reported unconfigured window still refuses.
+
+The local Claude conversation `0f9b0ac9-67d5-46bb-9dc8-41b62cdcfa1d` retained native session
+`90535e28-e933-4a0f-8ba3-ec873f45430e`; final run
+`9469e580-4e42-4559-bdf6-b6010f607991` applied done with an own-run comment after operator
+recovery of an earlier cancelled no-op. Native evidence proved that no-op never started
+(startedAt/processPid/processGroupId all null); the generic bridge must not infer that for
+foreign runs. Requested sonnet/medium, observed claude-sonnet-5-5, observed effort unknown.
+Neither successful local Claude work nor deterministic SSH tests replace remote Claude acceptance.

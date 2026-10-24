@@ -88,6 +88,7 @@ const poolSpecs = {
     "After a cancelled turn's end is proven (pool.reconcile), release Paperclip's no-replay hold on its committed follow-up through the supported execution reconciliation. Other holds are reported for an operator.",
     { ...conversation, ...task },
   ],
+  reconcile: ["Ask registered hosts to prove reserved turns ended; retain unknown ownership and release only proven reservations.", {}],
   reattach: [
     "Reattach after a restart: list a task's conversations, or observe one. retry=true resends an unknown submission with the same idempotency key and requires the current Codex task id.",
     { conversationId: z.string().uuid().optional(), threadId: z.string().optional().describe("Current Codex task id; required with retry."), retry: z.boolean().default(false) },

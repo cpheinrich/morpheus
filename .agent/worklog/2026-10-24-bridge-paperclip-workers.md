@@ -310,3 +310,84 @@ session and independently verified blue/phase2, but disposition was HTTP 403. Th
 preceding native route guard permits agent actors to name only themselves, not the board.
 Corrected to the conversation's exact worker agent and added explicit 403 fixture evidence.
 This preserves worker authority and directs resolution through the controlling conversation.
+
+## Final-source live recovery drill — 2026-10-24T09:29Z
+
+At source13a936d, Codex turn3 f021eb2a-b05f-4934-8354-f083b5571a5c applied blocked and
+one native comment attributed to that exact run. The board readback confirmed the self-owned
+unblock route. Same native session01a16d30-9fdf-7d03-a32c-f8058c05256b retained the nonce,
+blue label and verified audit marker; the exact JSON artifacts were independently read over SSH.
+
+Turn4 f5cd437c-ff67-473b-8a37-7e2e2ec8e58f was running across coordinator shutdown/restart,
+with identical Paperclip, remote and native IDs and persisted log cursor. Independently observed
+foreground PID35020/PGID35020 at09:29:17Z, started09:29:01Z with one60-second sleep. Stopped
+09:29:18Z; host reconciliation proved terminated and an independent ps found that exact PID
+absent09:29:22Z, ~21.6 seconds after start, before natural expiry. Controller retains
+transport_lost/unknown beside hostTermination terminated, never rewritten as success. This
+proves the specific foreground fixture's cleanup, not arbitrary detached-process containment.
+
+Post-stop turn5 was accepted as a comment but deferred_issue_execution with no run. A local
+Claude follow-up hit the same hold after an earlier pause had cancelled a no-op. Native
+explicit-native-continuation refuses generic process adapters; resume:true alone is therefore
+insufficient after cancellation. Frozen captures retain both pending attempts; do not repost.
+Claude correction episode c0a284b8-f483-403f-86a5-0c17022669e1 owns diagnosis of the supported
+process recovery interface. Reserved3 Claude weekly points from fresh44% used, stop47 for this
+episode; overall admission57/hard60. Root Codex now65% used/35 remaining, below admission72
+and hard75. This replaces any claim that native post-cancel continuation already passed.
+
+## Effective no-replay hold and native operator recovery
+
+Claude episode c0a284b8-f483-403f-86a5-0c17022669e1 added an active-action-only recovery
+operation48c7c80. Root's GET recovery-actions showed active:null/actions:[] and initially
+misinterpreted that as no effective recovery hold. Episode2a924428-0d9c-4cea-aaa6-7fcd5fa8a3d5
+removed the speculative operation5265172 and added missing/duplicate quota-window guards;
+79/79 plugin tests pass. Both episodes are terminal; native weekly remained45% (shared and
+rounded, not zero token use). Keep1 point for reporting granularity; release unused reservation.
+
+The subsequent exact issue projection resolved the ambiguity: executionBlocker names resolved
+automatic no-replay actions, which GET recovery-actions intentionally omits. Source routes/issues.js
+6260-6330 supports reopening precisely those actions when new executionReconciliation evidence
+is supplied. Root journaled and sent one exact board resolve for each issue; both HTTP200.
+For Codex, source action47deb951-e9cf-41d9-a1ec-6e89ff9241e4/runf5cd437c... used mixed effects
+and independent host/PID proof. Saved turn5 ran9834feab-ef6e-4c94-aada-c4112df83001, same native
+session, verified termination and done disposition. SSH parsed phase2, audit and final JSON and
+asserted exact nonce/blue/verified/phase values. For local Claude, source action6643164f.../
+runc2eef54e... was a repair wake cancelled before dispatch; native startedAt/PID/PGID were null,
+so its operator reconciliation used not_performed. Saved turn3 ran9469e580-4e42-4559-bdf6-
+b6010f607991, same native session, exact prior values and applied done. No prompt was reposted.
+
+Reserve3 Claude weekly points from45% used (episode stop48, overall hard60) for the final
+effective-blocker recovery integration, public tool and loop guards. Root retains review and
+live qualification. An active:null projection alone must never establish absence of a hold.
+
+## Bridge recovery qualified — source de3c2db
+
+Claude author run473a8acc-f96d-4974-839b-ddcee6f55569 is terminal/completed; focused protocol,
+MCP and quota tests22/22, plugin check and full80/80. Root inspected the actual captured test
+output, not only the model's summary. Root exposed the existing reconcile operation through
+MCP too and ran its focused2 tests plus check, both passing. No root shared-core change.
+
+Fresh strict-quota admission first refused turn6 run587d0245-60fa-4f7a-ba48-0a8faaa6dbb4:
+quota window secondary was not reported, termination not-started, blocked disposition applied.
+The native account/rateLimits/read returned only primary weekly,1% used. The old host config
+had incorrectly required secondary too. Changed that private config to require primary only,
+retaining stop72/hard75; an unexpected reported window remains unconfigured and refuses.
+The rejected attempt is frozen separately, not overwritten by the favorable run.
+
+Bridge recover first resolved that not-started hold with not_performed. Turn7 run92b49258-
+c1d7-4e91-94e8-00a9151694b6 then ran the foreground fixture, was stopped, and pool.reconcile
+proved remote41dbe520d4586958940b4438dadbbbb8 terminated. The saved turn8 was parked;
+reattach reported its effective resolved hold, and bridge recover resolved actione996afc7-
+9615-45d9-b479-b3a13b7f2780 with mixed effects. Turn8 run8242ade4-db27-4082-ab11-
+1697dd42b8b9 reused native01a16d30-9fdf-7d03-a32c-f8058c05256b, completed with verified
+termination and applied done. Independent SSH parsing asserted recovery-qualified.json exactly
+{nonce: protocol-mvm6mvjd, label: blue, audit: verified, phase:5}. No prompt was reposted.
+
+Drained native runs before pausing both qualified test agents; mini Claude remains paused.
+All earlier pilot/study agents remain untouched/paused. Dedicated test archives/configuration
+are private and separate from the installed personal bridge. No consumer/simulator migration.
+Fresh main Claude weekly46% used (baseline39, shared-account rounded delta7); settle the final
+3-point author reservation at1 point plus1 retained for telemetry granularity. Codex66% used/
+34% remaining (baseline56); reserve up to3 further points for review coordination/CI. Reserve
+6 Claude weekly points for one fresh independent reviewer plus allowed fixes, episode stop52,
+still below admission57/hard60. Remote Claude native sign-in remains an explicit pending test.
