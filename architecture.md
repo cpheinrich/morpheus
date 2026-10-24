@@ -3455,6 +3455,19 @@ or credentials. Owner and fence guard session, completion and error checkpoints.
 Existing configured hosted normalization is unchanged; removing that route is an
 explicit consumer configuration migration, not a silent ledger reset. Source-level
 tests do not establish actual two-Mac readiness or failover acceptance.
+
+Administrative source publication funding has one explicit, optional budget-reserve
+path in `src/cd/source-finance.ts`. A strict independently reviewed grant pins the
+exact source request, repository, existing epoch, supplied and stored native
+configuration digests, amount, finite source scope, aggregate ceiling and short
+admission window. Values belong to the engagement, never shared campaign constants.
+The existing owner-bound GitHub CAS and complete envelope receipt readback remain
+required; checks precede replay and repeat with fresh time/liability in every CAS
+callback. Native schema, native paid admission and controller behavior remain
+unchanged. A source reservation above native headroom does not admit new native
+work. The [source finance contract](docs/cd-source-finance.md) defines the CLI,
+reserved `source-ci-` namespace and operator-attestation trust boundary.
+
 App-only
 repairs reset production age; unchanged input
 digests retain their first lineage age through controller repairs. These are

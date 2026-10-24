@@ -376,6 +376,14 @@ Together admission cannot exceed the configured ceiling, at most $250. The
 controller has no implicit paid-provider fallback. Operational acceptance must
 include any task spend incurred before ledger initialization.
 
+An optional explicit [reviewed source publication grant](cd-source-finance.md) applies
+only to budget reserve in the `source-ci-` namespace. It binds the actual request,
+supplied and stored configuration identities, epoch, finite source scope, amount,
+aggregate ceiling and short admission window, with normal CAS and complete receipt
+readback. Grant values come from that engagement's independently reviewed evidence.
+Native admission and its at-most-$250 configured ceiling remain unchanged; the grant
+alone dispatches no work or provider effect.
+
 Focused tests cover protocol counterexamples and actual local Git, ES256 signing,
 receipt producer and artifact bytes. They do not count
 as TestFlight deliveries. The eight real deliveries and normal scheduled-path
