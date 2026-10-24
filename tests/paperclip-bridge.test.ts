@@ -104,6 +104,13 @@ describe("immutable one-to-many linkage", () => {
     git(repo, "add", "."); git(repo, "commit", "-m", "no acceptance");
     await expect(prepare(repo, input)).rejects.toThrow("acceptance reference");
   });
+  it("resolves the roadmap's bare acceptance filename with the existing PM convention and preserves explicit repo paths", async () => {
+    const { repo, input } = await fixture();
+    await put(repo, itemPath, ITEM.replace("acceptance: qa/acceptance/bridge.md", "acceptance: bridge.md"));
+    git(repo, "add", "."); git(repo, "commit", "-m", "bare acceptance filename");
+    expect((await prepare(repo, input)).plan.acceptance.path).toBe("qa/acceptance/bridge.md");
+    expect((await prepare(repo, { ...input, acceptance: "qa/job.md" })).plan.acceptance.path).toBe("qa/job.md");
+  });
   it("rejects dangerous job identities and API destinations", async () => {
     const { repo, input } = await fixture();
     for (const baseUrl of ["http://10.0.0.2:3100", "https://user:secret@example.com", "https://example.com/api", "https://example.com/?secret=x"]) {
@@ -172,7 +179,7 @@ describe("submission and uncertainty", () => {
     await expect(operate(repo, path, { command: "submit", token: TOKEN }, a.transport)).rejects.toThrow("locked");
     expect(a.posts()).toHaveLength(1);
   });
-  it.each(["anonymous", "standard", "company", "project", "extra-project", "assignee"])("refuses %s authority before POST", async kind => {
+  it.each(["anonymous", "standard", "company", "project", "extra-project", "assignee", "parent", "parents"])("refuses %s authority before POST", async kind => {
     const { repo, record } = await fixture(); const path = await committedJob(repo, record); const a = api(record);
     if (kind === "anonymous") a.state.anonymousStatus = 200;
     if (kind === "standard") a.state.me.keyScope = { kind: "standard" };
@@ -180,7 +187,11 @@ describe("submission and uncertainty", () => {
     if (kind === "project") a.state.me.keyScope.projectId = OTHER;
     if (kind === "extra-project") a.state.me.keyScope.projectIds = [OTHER];
     if (kind === "assignee") a.state.me.keyScope.allowedAssigneeAgentIds = [AGENT, OTHER];
-    await expect(operate(repo, path, { command: "submit", token: TOKEN }, a.transport)).rejects.toThrow();
+    if (kind === "parent") a.state.me.keyScope.parentIssueId = OTHER;
+    if (kind === "parents") a.state.me.keyScope.parentIssueIds = [OTHER];
+    await expect(operate(repo, path, { command: "submit", token: TOKEN }, a.transport)).rejects.toThrow(
+      kind === "anonymous" ? "anonymous API access is not denied" : "requires a task_bridge key for exactly this project and assignee",
+    );
     expect(a.posts()).toEqual([]);
   });
 });

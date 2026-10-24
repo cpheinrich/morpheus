@@ -6,6 +6,7 @@ import { z } from "zod";
 import { gitSubprocessEnv } from "../../src/git-env.js";
 import { parseArtifact } from "../../src/pm/parse.js";
 import { roadmapIdFromBranch } from "../../src/pm/id.js";
+import { acceptancePath } from "../../src/review/prompt.js";
 
 const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 const text = z.string().trim().min(1);
@@ -85,7 +86,7 @@ export async function prepare(repo: string, input: {
   const item = candidates[0]!;
   if (!["in-progress", "review"].includes(item.data.status)) throw new Error("roadmap is not active claimed work");
   const sourceSha = git(repo, ["rev-parse", "HEAD"]);
-  const acceptance = input.acceptance ?? item.data.acceptance;
+  const acceptance = input.acceptance ?? (item.data.acceptance ? acceptancePath(item.data.acceptance) : undefined);
   if (!acceptance) throw new Error("an explicit acceptance reference is required");
   const plan = Plan.parse({
     version: 1, operationId: `morpheus-${hash(`${repository}\n${input.roadmapId}\n${input.job}`)}`,

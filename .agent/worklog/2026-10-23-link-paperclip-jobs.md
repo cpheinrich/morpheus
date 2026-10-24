@@ -62,8 +62,8 @@ packet must not mark those capabilities complete or the item shipped.
 
 Validation completed:
 
-- `pnpm exec vitest run tests/paperclip-bridge.test.ts`: 24 passed, latest run 2026-10-24
-  02:53:20 UTC, 5.35 s. This covers only the new operator boundary; no pilot/native executor
+- `pnpm exec vitest run tests/paperclip-bridge.test.ts`: 27 passed, latest run 2026-10-24
+  03:02:29 UTC, 6.52 s. This covers only the new operator boundary; no pilot/native executor
   source changed. Fixtures use temporary Git repositories and synthetic HTTP/service calls.
 - `pnpm typecheck`: passed. Tests import the bridge so its TypeScript is included.
 - `pnpm exec tsc --noEmit --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --skipLibCheck --esModuleInterop scripts/paperclip-bridge/cli.ts`: passed,
@@ -125,3 +125,32 @@ After context compaction, graph service access recovered. The exact worktree gen
 with no recorded issues. These new paths continue to rely on direct source reads and execution;
 no graph completeness claim is made. The executor bridge reports no Claude run for this author
 session and automatic routing remains Codex with 66% allowance remaining.
+
+Both real native snapshot runs succeeded with verified termination. The parent inspected
+all four actual observations against source 6ca59e8fedd3ee2552adfd3a365946049b3a4aef and
+proved unchanged whole source-file/symlink inventories. The author copied only the planned
+artifact from each temporarily opened workspace and immediately restored mode 000. Sanitized
+controller proof preserves exact run IDs, native thread IDs, requested versus unknown serving
+model/effort, CLI 0.163.0 and raw/cache/output provider token telemetry. Artifact and receipt
+bytes were committed in 69f7c483 before each one-time reconciliation exact-read upstream done.
+Both private scoped keys returned to mode 000 before those calls; the owner vault was untouched.
+The parent received clearance before starting any further benchmark models.
+
+The tests inspection identified two concrete missing regression cases, parentIssueId and
+parentIssueIds in assertIsolation. Both now assert the exact scope error and zero POSTs;
+the implementation already rejected those inputs, so this was test learning, not a runtime
+authorization defect. Author packet validation also exposed an acceptance-path mismatch:
+Morpheus review resolves a bare roadmap value beneath qa/acceptance/, whereas the initial
+bridge treated it as repo-root. The bridge now imports existing acceptancePath, with a
+bare-filename/explicit-path regression; the active item names a canonical qa acceptance file.
+The original snapshot source/acceptance references and artifact bytes remain immutable.
+Tier 2 graph discovery of acceptancePath, inbound trace, exact snippet and coverage found
+metadata_match/no_recorded_issue in src/review/prompt.ts and delivery.ts at generation
+2026-10-24T02:25:41Z. This reuse changes no shared-core source.
+
+The scope is authenticated operator linkage and real read-only snapshot execution. Standard
+worker JWT breadth, source authoring, protected consumer delivery per host, simulator/CI,
+restart adoption and cross-host recovery are not qualified by these runs. The follow-up item
+preserves those acceptance requirements. The fresh source review will use the parent's
+isolated native v2 launcher with plugins/MCP auto-install and computer/browser access disabled;
+it will receive final source/evidence, no author history, and measured invocation timing.

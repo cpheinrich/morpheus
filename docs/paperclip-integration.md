@@ -19,6 +19,10 @@ roadmap ID/path, job key, branch, source SHA, acceptance path/digest, selected i
 controller URL and exact company/project/assignee UUIDs. A different job key creates a
 second child execution record under the same roadmap parent.
 
+The roadmap's default `acceptance` uses Morpheus's existing `qa/acceptance/` convention
+(a bare filename or a path beginning `qa/`). An explicit CLI `--acceptance` remains a
+repository-relative path. Both must resolve to regular committed source files.
+
 The deterministic operation ID hashes repository + roadmap ID + job key. Reusing that
 identity with different immutable inputs is refused after an attempt. Do not recycle job
 keys. Git files live at `.agent/paperclip/<roadmap-ID>/<job>.json`; commit them through
@@ -193,6 +197,39 @@ read/chmod canaries, network calls to old board 3100 and database 54329, and any
 reachable endpoints. A similarly named sandbox profile is insufficient. Standard run
 tokens, native model execution, controller restart adoption, cross-host failover and
 simulator/CI ownership remain separate capabilities until empirically qualified.
+
+## Qualified snapshot increment
+
+The existing company `4925919d-5666-4a4e-b4c5-b59cc0176eee` was preserved through native
+authenticated/private ownership migration. The controller proved anonymous rejection and
+seven scoped API denials, then submitted each committed intent exactly once. Both jobs pin
+`6ca59e8fedd3ee2552adfd3a365946049b3a4aef` and the original snapshot acceptance reference.
+Their independently inspected artifacts, controller proof and hashed receipts are committed
+under [the roadmap evidence directory](../.agent/paperclip/MO-26-10-23-00.15.26/evidence/).
+
+| Job | Exact issue | Successful native run |
+|---|---|---|
+| `inspect-lineage` | `9ec1fa46-eb0f-4704-8382-615ad6a11b46` | `121f768d-a45b-480f-a5d1-e9a2057452ef` |
+| `inspect-tests` | `ef2c23bf-0d44-4591-9405-afd4e4398ff0` | `0c34fd38-e907-4cc7-80c5-f933a4808020` |
+
+The controller checked distinct nonces, artifact schemas/digests, all four source observations,
+unchanged inventories of 1,835 source files and symlinks, and verified native termination.
+Only the controller marked the issues done; bridge reconciliation then exact-read both issues
+and recorded the previously committed receipts. Neither job changed roadmap status.
+
+Both calls used the controller's native subscription, CLI 0.163.0, with requested
+`gpt-6.1-sol` / `xhigh`; serving model and effort remain unknown because native JSON did
+not report them. Raw input/cache/output tokens were 373456/318208/4030 for lineage and
+339877/281216/3689 for tests. These counts are provider telemetry, not a price or estimate.
+The tests observation led to two additional denial-before-POST regressions for `parentIssueId`
+and `parentIssueIds`; the implementation already rejected those scopes. Author validation
+also corrected default acceptance-path resolution to reuse the existing PM convention.
+The original artifacts and source SHA remain unchanged after these improvements.
+
+This establishes real read-only snapshot dispatch and evidence reconciliation. Standard worker
+tokens are not thereby scoped, and consumer source authoring, protected per-host delivery,
+simulator/CI ownership, restart adoption and failover remain unqualified in
+[MO-26-10-23-19.45.05](../hq/product/roadmap/MO-26-10-23-19.45.05-qualify-paperclip-consumers.md).
 
 ## Running one low-risk repository task after qualification
 
