@@ -101,6 +101,8 @@ export const GhManagerPolicy = z.object({
   // Plain repository-relative prefixes. A leading slash, `./` or a glob would pass a looser
   // schema and then match nothing, protecting nothing in silence.
   protectedPaths: z.array(z.string().regex(/^(?!\.{0,2}\/)(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9._/-]+$/, "must be a repository-relative path prefix without globs")).max(50).default([]),
+  /** Use a verified author review for protected paths when the session made no source changes. */
+  authorReviewedProtectedMerge: z.boolean().default(false),
   model: z.string().trim().regex(/^claude-[a-z0-9.-]+$/).default("claude-opus-5-5"),
   actions: Actions.default(() => Actions.parse({})),
 }).strict();

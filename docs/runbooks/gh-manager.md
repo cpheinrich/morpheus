@@ -204,6 +204,7 @@ that repository; invalid is an error, not "off".
   "sessionBeforeMerge": false,
   "closeGraceDays": 7,
   "protectedPaths": [],
+  "authorReviewedProtectedMerge": false,
   "model": "claude-opus-5-5",
   "actions": { "merge": true, "repair": true, "review": true, "undraft": true, "triage": true, "close": true }
 }
@@ -218,6 +219,15 @@ auto-merge enabled from the sweep. `protectedPaths` are plain repository-relativ
 are refused. A project may also keep
 `.github/gh-manager-prompt.md`: additions to the session's brief, such as what a reviewer in that
 codebase should lead on. They refine the procedure and cannot relax its rules.
+
+`authorReviewedProtectedMerge` is off by default. When enabled, a ready pull request changing a
+protected path may use the author's independently verified review even if the Manager session
+asked to use its own review. The apply step checks the committed review against the live head and
+requires that the session pushed nothing and left the PR body unchanged. It records no Manager
+clearance and does not let the Manager fix or independently approve protected code. Drafts and
+explicit human decisions still escalate. This belongs to the Manager policy because it controls
+Manager finalization. Morpheus Security's separate `.github/morpheus-security.json` already has
+repository holds and exact required checks.
 
 ## Operations
 
@@ -332,7 +342,9 @@ ready, incomplete (a handoff) or dormant without changing their branches, closes
 and escalates what needs a human with `manager:needs-human`.
 
 **Morpheus is opted in too**, with its policy in `.github/morpheus-gh-manager.json` and its
-additions to the session brief in `.github/gh-manager-prompt.md`. Because this repository is the
+additions to the session brief in `.github/gh-manager-prompt.md`. It is the only repository
+currently opting into `authorReviewedProtectedMerge`; Lakina and other adopters retain the default.
+Because this repository is the
 manager's own engine, the policy's `protectedPaths` keep the manager from clearing a change to
 itself (`src/gh-manager/`, its CLI, `check pr` and the path classes and review waivers it applies in
 `src/check/`, `src/paths.ts`, `src/dependabot/policy.ts` and `src/security/policy.ts`, `src/review/`) or to what other projects inherit

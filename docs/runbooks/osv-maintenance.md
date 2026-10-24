@@ -104,6 +104,15 @@ The default has no holds. A hold is visible policy, not model judgment. Unsuppor
 remediation or an advisory with no safe fixed version fails the run and preserves the evidence; it
 does not dismiss or ignore the advisory.
 
+This existing file is the repository's Morpheus Security override surface; `morpheus.json` does
+not configure the App. The effective policy is the intersection of the reviewed central allowlist,
+the exact repository installation, this committed opt-in file, the App's dependency-only candidate
+checks, `requiredChecks`, and GitHub branch protection. Missing or invalid opt-in is inert; an
+empty `requiredChecks` list permits scanning and PR creation but prevents automatic merge. The
+Manager's `.github/morpheus-gh-manager.json` controls a different bot and cannot grant the
+Security App permission to change source or workflows. A change that needs imports or other
+source edits remains ordinary roadmap work with independent review, as in PR #376.
+
 List in `requiredChecks` only checks that report success for exact bot PRs. Morpheus's
 `agent-review / delivery` check is intentionally skipped for that lane: GitHub branch protection
 still requires the reported check, while the security bot's success-only gate must omit it.

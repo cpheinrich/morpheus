@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "authorReviewedProtectedMerge": true,
   "protectedPaths": [
     "src/gh-manager",
     "src/cli/gh-manager.ts",

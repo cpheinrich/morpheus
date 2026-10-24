@@ -1384,6 +1384,13 @@ It follows the Morpheus Security shape (§18): a public reviewed engine in this 
 private operations repository holding the App key, the subscription token and the schedule, and a
 target that opts in with a committed policy file. Its review is a narrower record than the
 author's, bounded by path checks and refused outright for normative policy.
+Repositories may opt into `authorReviewedProtectedMerge` in the Manager's committed policy. When a
+ready PR changes protected paths and the Manager session has not pushed or rewritten the body, the
+apply step may use the author's committed independent review after validating it against the live
+head, even if the session requested its own review. It does not attest a Manager review of those
+paths. The default is off; Morpheus alone opts in initially. The Security App remains a separate,
+deterministic dependency-only lane with its own hold and required-check policy; this option grants
+it no source-code scope and changes no branch-protection rule.
 [`docs/runbooks/gh-manager.md`](docs/runbooks/gh-manager.md) is authoritative.
 
 ### 7.14 Paperclip is an opt-in execution pilot, not the delivery authority

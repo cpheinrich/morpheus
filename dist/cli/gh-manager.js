@@ -4,7 +4,7 @@ import { Decision, planDecision, planNoDecision, planRoute, planTriage, planTria
 import { renderDigest } from "../gh-manager/digest.js";
 import { applyEvidence, evidenceUrl } from "../gh-manager/evidence.js";
 import { assertRepository, execute, publishEvidence, fetchLiveState, fetchPreviewSources, fetchOpenPullRequests, fetchPolicy, postDigest } from "../gh-manager/github.js";
-import { GH_MANAGER_POLICY_PATH, GhManagerPolicy } from "../gh-manager/policy.js";
+import { GH_MANAGER_POLICY_PATH, GhManagerPolicy, humanGatedPaths } from "../gh-manager/policy.js";
 import { resolvePreview } from "../gh-manager/preview.js";
 import { OVERLAY_PATH, sessionPrompt } from "../gh-manager/prompt.js";
 import { isWorkInProgress, SAFE_REF, sweep, TRIAGE_REASON } from "../gh-manager/sweep.js";
@@ -215,7 +215,8 @@ export function ghManagerApply(repoArg, prArg, sweepPath, decisionPath, out, dry
                     live.sessionPushed = sessionPushed(checkout, routed.headSha, live.headSha, trunk);
                     if (decision.usedManagerReview)
                         live.recordProblem = managerRecordProblem(checkout, decision.body ?? live.body, live.headSha, trunk);
-                    else if (!live.labels.includes("agent-reviewed")) {
+                    if ((!decision.usedManagerReview && !live.labels.includes("agent-reviewed")) ||
+                        (decision.usedManagerReview && file.policy.authorReviewedProtectedMerge && humanGatedPaths(live.changedFiles, file.policy).length > 0)) {
                         live.authorRecordProblem = authorRecordProblem(checkout, decision.body ?? live.body, live.headSha, trunk);
                         live.authorRecordValid = live.authorRecordProblem === undefined;
                     }
