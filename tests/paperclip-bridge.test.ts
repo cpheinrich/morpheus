@@ -25,8 +25,8 @@ async function put(repo: string, path: string, value: string) {
 }
 const itemPath = `hq/product/roadmap/${ID}-qualify-paperclip.md`;
 const ITEM = `---\nid: ${ID}\ntitle: Qualify Paperclip\nstatus: in-progress\npriority: P2\nowner: agent\nprs: []\nacceptance: qa/acceptance/bridge.md\ncreated: 2026-10-23\nupdated: 2026-10-23\n---\nPrivate parent prose is not copied into job instructions.\n`;
-async function fixture() {
-  const repo = await mkdtemp(join(tmpdir(), "paperclip-bridge-test-"));
+async function fixture(parent = tmpdir()) {
+  const repo = await mkdtemp(join(parent, "paperclip-bridge-test-"));
   roots.push(repo);
   git(repo, "init", "--initial-branch", BRANCH);
   git(repo, "remote", "add", "origin", "https://github.com/example/project.git");
@@ -118,6 +118,14 @@ describe("immutable one-to-many linkage", () => {
     }
     await expect(prepare(repo, { ...input, job: "../other" })).rejects.toThrow();
     await expect(prepare(repo, { ...input, task: "../outside" })).rejects.toThrow("source path");
+  });
+  it("rejects a record directory symlink to the immediate repository parent without writing outside", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "paperclip-escape-parent-")); roots.push(parent);
+    const { repo, record } = await fixture(parent);
+    await mkdir(join(repo, ".agent/paperclip"), { recursive: true });
+    await symlink(await realpath(parent), join(repo, ".agent/paperclip", ID));
+    await expect(savePrepared(repo, record)).rejects.toThrow("record directory escapes repository");
+    await expect(readFile(join(parent, `${record.plan.job}.json`), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 

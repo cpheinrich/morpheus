@@ -175,7 +175,8 @@ export async function savePrepared(repo: string, record: JobRecord) {
   RecordSchema.parse(record);
   const path = join(repo, recordPath(record.plan));
   await mkdir(dirname(path), { recursive: true });
-  if (relative(await realpath(repo), await realpath(dirname(path))).startsWith("../")) throw new Error("record directory escapes repository");
+  const directory = relative(await realpath(repo), await realpath(dirname(path)));
+  if (directory === ".." || directory.startsWith("../") || isAbsolute(directory)) throw new Error("record directory escapes repository");
   try {
     await writeFile(join(repo, ".agent/paperclip/README.md"), "# Paperclip execution links\n\nOne directory per roadmap parent, one immutable job intent per JSON file. Commit links and independently verified evidence through the normal task PR; live status stays in Paperclip. Never store credentials here.\n\n[Integration contract](https://github.com/cpheinrich/morpheus/blob/main/docs/paperclip-integration.md).\n", { flag: "wx" });
   } catch (err) { if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err; }
