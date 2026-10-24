@@ -1553,3 +1553,24 @@ channel's leaf to the full SHA-256 of its validated canonical receipt directory;
 output availability must not buy a retry. Other leaves and all byte/retention limits stay
 unchanged. Distinguish missing optional audit roots from dangling links. This corrects
 the source boundary without adding a caller namespace, retry or provider behavior.
+
+## Reviewed source funding is an explicit administrative reserve boundary — 2026-10-24
+
+An independently reviewed source grant may fund one exact source publication request
+through `cd budget reserve`, with its own positive safe-integer amount and aggregate
+ceiling. Engagement values and human evidence stay in the reviewed input, never in
+shared constants. Keep native configuration, ordinary paid reservation admission,
+controller policy, stored epoch/digest and old paid identities unchanged. The
+configured at-most-$250 guard in `reservePaid` and ordinary `cd budget reserve`
+refuses new paid reservations that would exceed it; exact old reserved paid
+identities still replay. Local delivery intent creation, attempt planning and
+dispatch are not gated by this dollar guard and retain their existing controls.
+The grant pins a strict finite
+source request in the `source-ci-` namespace; it grants no native or provider action.
+Snapshot inputs, check before replay and at every fresh CAS callback, and require
+the complete owner-bound envelope receipt and exact reserved paid object at readback.
+The hash is operator attestation/input integrity, not human authentication or a
+same-user sandbox. This is a small domain-specific boundary using existing Zod,
+canonical hashing and normal GitHubStore CAS; no generic module or new dependency
+is needed. Actual source publication, financial review and consumer use remain
+separate gates.
