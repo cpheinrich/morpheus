@@ -8,8 +8,10 @@
   appears, including timeout, refusal, missing artifact and budget censoring. No large
   historical implementation is replayed, and no hidden feedback reaches a repair.
 - Use the same native quota, process ownership, deadline and sandbox controls in every
-  arm. Prove workers cannot read/change oracle files, use loopback services or invoke
-  external MCP/computer tools. Execute submitted code outside the trusted grader.
+  arm. Probe oracle reads/writes, loopback access and external/hosted tool invocation;
+  preserve failed qualification as an explicit result rather than claiming containment.
+  Do not promote an unqualified executor or treat its comparison as confirmatory. Execute
+  submitted code outside the trusted grader. Consumer execution stays separately gated.
 - Check source/artifact integrity and exact behavior independently, and distinguish repair
   correctness, report material, observed test evidence and protected project delivery.
 - Report paired results, ordinary repeats, actual token records when available, unknown

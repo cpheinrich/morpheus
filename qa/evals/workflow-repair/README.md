@@ -1,67 +1,77 @@
 # Executable workflow comparison
 
 This bounded experiment compares direct Morpheus work (A), Paperclip transport alone (Q),
-an actual separate technical manager (P), and manager plus Paperclip (F). The existing
+a separate technical manager (P), and manager plus Paperclip (F). The earlier
 [historical decision evaluation](../agent-stack/README.md) stays frozen.
 
-`campaign.py freeze ROOT --curation PRIVATE_CORPUS` freezes public inputs, prompts, source,
-model/effort, order, deadlines and stopping rules. Include `--config PRIVATE_CONFIG` at
-freeze to pin the execution profile and archive its native wrapper too. `collect ROOT --config PRIVATE_CONFIG
---row T01-A` reserves one call identity before executing through the existing pilot wrapper
-and native quota/process supervisor. It refuses an existing/uncertain identity instead of
-replaying a mutation. The operator must reconcile any thrown transport error before admission.
-The private config points to the reviewed pilot bundle, controller company, native quota
-command, shared account/host state and optional board token file. All inference uses Chris's
-existing native account; additional subscription enrollment is deferred.
+**Use the cached results for analysis. The native worker profile is not qualified for new
+unattended collection.** Actual locked turns bypassed a zero-MCP preflight; later hosted
+delegation succeeded despite disabled multi-agent flags and was omitted from exec JSON.
+The [report](../../../docs/paperclip-workflow-comparison.md) retains the outcomes and limits.
+[results.json](results.json) contains sanitized descriptive aggregates, not a production claim.
 
-The 26 worker episodes and 12 manager calls comprise two development cases in four arms,
-six locked A/F pairs, Q/P ablations on T01/T02, and direct repeats on T01/T02. After an
-independent `public-check`, one fresh `continue` is permitted for each locked primary A/F
-episode whose public smoke test fails; there are at most 50 calls. No hidden result or author
-hint enters that continuation. Manager and worker share the initial170-second budget;
-manager has at most45 seconds. Continuations get130 seconds. Deliberate interruption and
-changed-requirement stress runs are outside this comparison; phase2 qualification owns recovery.
+`campaign.py freeze ROOT --curation PRIVATE_CORPUS --config PRIVATE_CONFIG` freezes public
+inputs, prompts, source, model/effort, order, deadlines, stopping rules and execution profile.
+It archives the native wrapper and scorer too. `collect ROOT --config PRIVATE_CONFIG
+--row T01-A` reserves one identity before using the existing pilot quota/process wrapper.
+It refuses existing/uncertain identities instead of replaying mutations. This interface is
+experimental operator tooling; configuration hashes are integrity checks, not capability proof.
+The private config points to the reviewed pilot bundle, company, native quota command,
+shared account/host state and optional board token file. No credentials belong in Git.
 
-The curator's private hidden checks, references and builders must stay outside model access:
-mode000 outside each writable workspace, with native read/chmod canaries, and tool network
-disabled in both arms. Disable apps, plugins, remote plugins, computer/browser control,
-multi-agent tools and automatic skill MCP installation as well as each configured MCP
-server. Config flags alone were insufficient: skill dependencies re-enabled a server during
-development. Check effective thread MCP status and inspect actual development traces.
-The wrapper and native user config are hashed; changes require qualification before more
-collection. Completed source trees and traces are similarly protected from later
-episodes. Never publish the private corpus before all relevant model calls terminate.
-The coordinator owns Paperclip updates; these artifact-only workers do not call its API.
-Each call has a once-only native launcher and a fresh agent with daily cap1 and max-turn
-continuations disabled. Pinned upstream transient retry rows may still be scheduled;
-pause/cancel them after the original execution and prove no additional provider launch.
-All arms receive the same public files and ordinary evidence/test instructions. A queued arm
-also receives the pinned upstream adapter's normal envelope; Q is a transport ablation of the
-real adapter, not a byte-identical model-input control.
+The schedule has26 worker episodes and12 managers: two development cases in four arms,
+six locked A/F pairs, Q/P on T01/T02 and direct repeats on T01/T02. Manager and worker share
+170 seconds initially; manager has at most45. Public-only failure feedback permits at most
+one fresh130-second continuation on each locked primary pair, with50 reserved calls maximum.
+No hidden feedback or task-specific author hints enter a repair. All paid outcomes remain;
+intent reservations, native launches and unexpected child invocations are separate counts.
+Recovery stress and protected consumer delivery belong to the preserved qualification item.
 
-After model termination and artifact freezing, `grading.py` runs trusted hidden tests with a
-JSON-only callback. `remote_runner.py` executes submitted Python in a separate Seatbelt
-process, which cannot inspect the trusted interpreter, hidden files, home, network or source
-writes. A timeout, malformed output, changed digest or unavailable sandbox fails closed.
-Use `/usr/bin/python3`: arbitrary Homebrew interpreter installations are not qualified.
-`LocalSandboxRPC` is used on the enrolled Mac; SSH grading needs an outer remote watchdog
-and is not claimed by this implementation.
+The curator's hidden files must be outside actual model access. Mode000 with native read/chmod
+and loopback canaries constrained shell workers in this study; it did not establish the
+boundary of out-of-process MCP or hosted tools. Completed sources/traces were sealed between
+calls. Do not expose credentials or hidden checks to a worker, or unseal an uncertain run's
+operator vault until exact termination and effects are reconciled. The controller owns queue
+updates. Fresh queued agents have maxDailyRuns1 and max-turn continuation disabled; pause/cancel
+upstream transient retry rows and prove whether another native process actually started.
+The once-only launcher blocks a second provider invocation for the same identity.
 
-Run portable and native synthetic controls with:
+`isolate.py NATIVE_ABSOLUTE_PATH OUTPUT --server NAME` generates best-effort CLI restrictions
+without copying login material. On probed0.163.0, options must follow `exec`/`app-server`;
+exec also uses `--ignore-user-config`. Disabling apps, plugins, external tools, skill MCP
+installation and each configured server made forced-enabled MCP inventories empty, but
+**did not block hosted collaboration**. Audit real turns and all native transcript surfaces;
+a successful tool-inventory probe or empty `exec --json` item list is insufficient.
+`audit_tools` checks only recorded item types, always emits `capabilitiesVerified:false`,
+and quarantines unexpected typed events while the vault is still sealed. It cannot certify
+absence of calls the upstream protocol omits. Real isolation/child accounting is follow-up work.
+
+Queued submissions include the agent UUID in the title and verify exact returned company,
+assignee and title. An old same-title issue returned by POST is not a correct assignment.
+Never add a manual wakeup or blindly repeat an unknown submission. All arms receive the same
+public files; queued arms additionally receive the pinned adapter's ordinary envelope.
+
+After every relevant model and child terminates, `score_campaign.py PRIVATE_CAMPAIGN
+PRIVATE_CORPUS --split locked --models-terminal` grades frozen artifacts offline. The flag
+is an operator attestation requiring actual termination evidence. `grading.py` keeps hidden
+expectations in the trusted process and passes only JSON into submitted Python through
+`remote_runner.py`. A separate deny-default Seatbelt process cannot inspect the grader,
+hidden files, home, network or source writes; malformed output, changed source, timeout or
+missing sandbox fails closed. Use Apple's `/usr/bin/python3`, not an arbitrary interpreter.
+`LocalSandboxRPC` qualifies local execution only; SSH grading needs a separate outer watchdog.
+The JSON copy boundary cannot establish in-process object identity or argument nonmutation.
+
+Run controls with:
 
 ```
 /usr/bin/python3 -m unittest discover -s qa/evals/workflow-repair -p 'test_*.py'
 pnpm exec vitest run tests/workflow-repair.test.ts
 ```
 
-This measures small incident-inspired repairs, token/time overhead and local repeat variation.
-Report material presence is a separate metric; it does not attest the truth of its contents.
-It cannot establish production delivery, actual human time saved, or role labels as the cause
-of any gain: manager arms contain additional reasoning. Report every scheduled refusal,
-timeout, failed repair and missing artifact. Six locked cases are screening evidence only.
-
-After all collection and independent acceptance, rebuild descriptive totals with
-`/usr/bin/python3 qa/evals/workflow-repair/summarize.py PRIVATE_CAMPAIGN`. The totals include
-manager calls and continuations; repeats stay separate from independent case counts.
-Missing usage and elapsed records remain unknown, so partial token sums cannot support
-a cost-per-success claim. Subscription-included calls are unpriced, not free.
+There are33 portable/native controls; Linux explicitly skips macOS-only Seatbelt checks.
+After scoring, `summarize.py PRIVATE_CAMPAIGN` rebuilds totals without a model call. Usage
+includes managers and continuations. Unknown usage stays unknown; subscription-included
+calls are unpriced. Repeats are not independent case counts. The frozen handoff metric is
+literal report-material presence combined with accepted behavior, and has known false
+negatives for equivalent caveat wording. It does not verify truth or saved human time.
+T01's missing public schema and failed tool isolation prevent a confirmatory workflow ranking.

@@ -175,3 +175,70 @@ value check cannot establish in-process object identity/aliasing or argument non
 The report now states that limit explicitly. No collector/scorer, public input, model
 output, selection rule, or held-out feedback was changed. Native project delivery and
 full API semantics remain outside this small proxy's evidence.
+
+
+## Collected outcomes and validity failures — 2026-10-24T04:30Z
+
+All18 held-out workers and8 managers terminated with verified receipts. All12 primary
+public smokes passed; zero continuations ran. Frozen hidden scores: A6/6, F5/6, Q2/2,
+P2/2 and A-repeat1/2. All18 immutable-file checks passed. The original screen was not
+met: zero F-only, one A-only; tokens per frozen-score success were25.2% higher and elapsed
+43.8% higher for F. These are descriptive retained scores, not proof of inferiority.
+
+Post-score source/contract inspection found T01's hidden valid case requires a mixed
+windows/kind collection that its public contract never specifies. F and A-repeat both
+implemented separate collections and explicitly reported missing field examples; their only
+hidden failure is that undisclosed valid shape. The baseline repeat also made one unanswered
+clarification request. No operator hint, answer or extra repair was given. The pre-lock blind
+audit missed this ambiguity. Keep all rows and call the ranking inconclusive; do not remove
+T01, modify the scorer or rerun workers to improve the result. The other five pairs tie.
+Every episode produced a report; the frozen literal handoff rubric misses accepted T01-P
+and T02-A-repeat despite substantive caveats. Neither metric establishes human productivity.
+
+The v2 locked profile failed effective tool isolation: T02-Q completed one in-memory index
+of its exact scratch workspace (35nodes/57edges), then two denied MCP calls; T03-A made two
+denied MCP calls. No native hosted collaboration call appears in the26 benchmark transcripts.
+Recorded shell calls remain subject to the tested OS sandbox, but out-of-process capability
+isolation was not established. This corrects the earlier preflight/development confidence.
+
+V3 ignored-user-config/feature flags before the subcommand still exposed app/MCP surfaces.
+One preflight refused before native start because its custom instructions differed from the
+staged hash; it consumed an intent, no provider call. V4 puts options after the subcommand.
+A model-free forced-enabled probe returned3servers/0tools, and a real inventory turn showed
+no app/MCP/web/browser surface. A separately authorized one-child delegation-denial probe,
+however, successfully created /root/capability_denial_canary. It immediately interrupted it;
+parent native session01a16c20-5347-7481-9098-80d75e46bf77 lists the child interrupted and
+child01a16c20-62fc-7572-8f89-cc99020785aa ends in turn_aborted:interrupted. No second child.
+Exec JSON omitted these hosted calls. The audit now says recordedToolsAccepted and always
+capabilitiesVerified:false; it remains a limited trace guard, not isolation certification.
+The wrapper generator is documented as best effort and no further repair collection is
+qualified. Effective hosted-tool/child accounting is added to the existing consumer item
+MO-26-10-23-19.45.05. Research acceptance records the failed qualification; production
+containment is neither waived nor claimed. Do not spend tokens repeating these small repairs.
+
+An initial v4 issue POST returned an older foreign-assignee issue sharing its title. Exact
+readback, zero intended-agent heartbeat rows and absent native-launch marker proved no intended
+provider launch. Reconciled that identity before a unique-title submission; no paid answer
+was replaced. Submission now includes the full agent UUID and checks company/assignee/title
+before run lookup. Tests cover foreign assignment/company and quarantine before vault unseal.
+
+Private final-evidence.private.json ties all26 benchmark sessions to verified receipts and
+full native transcripts; all18 registered study/snapshot agents are paused,26 direct-only
+bindings return404 because they were never registered. Native account reservations are empty.
+Cached scores5355081a46bef72253089d086f2bc38ebad92665b315e522916c6d67ee3da115 and summary
+dd193423a2774c3a3d6dcb8f5800772347bffd31ec6e899634f608731acba94d are retained privately.
+The sanitized results/report are committed; hidden sources and raw traces are not.
+
+Experimental ledger:42 reservations =38 benchmark parent calls +3 actual capability parents
++1pre-native refusal. One explicitly authorized diagnostic child is outside that ledger:
+42actual experiment invocations including it,43conservative liabilities. Source/design/review
+agents and2snapshot jobs are additional initiative work, all under the same shared allowance.
+Native observer42%used versus28%intake before final review/closure; shared delta14points is
+not attributable precisely. No new Claude/provider-owner use, paid API fallback or reset.
+
+Integrated main1ccec6fd402dabc2d7c4769043d6c9a31819ce27 before final review, read its records
+delta and refreshed context. Tier2 graph generation2026-10-24T02:12:54Z marks all new QA
+files not_tracked; exact source reads rather than graph completeness support the review.
+33focused controls pass, including an integration regression that unexpected typed tools
+keep the vault000 and seal the workspace. Final typecheck/compile/index and independent
+review/CI are recorded below when they actually finish.

@@ -1,0 +1,223 @@
+{
+  "arms": {
+    "A": {
+      "accepted": 6,
+      "calls": 6,
+      "handoffs": 6,
+      "inputTokens": 1078628,
+      "missingResults": 0,
+      "outputTokens": 31740,
+      "scheduled": 6,
+      "seconds": 485.23356491699985,
+      "unknownElapsed": 0,
+      "unknownUsage": 0
+    },
+    "A-repeat": {
+      "accepted": 1,
+      "calls": 2,
+      "handoffs": 0,
+      "inputTokens": 476162,
+      "missingResults": 0,
+      "outputTokens": 12005,
+      "scheduled": 2,
+      "seconds": 174.41743791700003,
+      "unknownElapsed": 0,
+      "unknownUsage": 0
+    },
+    "F": {
+      "accepted": 5,
+      "calls": 12,
+      "handoffs": 5,
+      "inputTokens": 1114962,
+      "missingResults": 0,
+      "outputTokens": 43819,
+      "scheduled": 6,
+      "seconds": 697.7830591670001,
+      "unknownElapsed": 0,
+      "unknownUsage": 0
+    },
+    "P": {
+      "accepted": 2,
+      "calls": 4,
+      "handoffs": 1,
+      "inputTokens": 352077,
+      "missingResults": 0,
+      "outputTokens": 12329,
+      "scheduled": 2,
+      "seconds": 199.57553666699994,
+      "unknownElapsed": 0,
+      "unknownUsage": 0
+    },
+    "Q": {
+      "accepted": 2,
+      "calls": 2,
+      "handoffs": 2,
+      "inputTokens": 473655,
+      "missingResults": 0,
+      "outputTokens": 14470,
+      "scheduled": 2,
+      "seconds": 212.149042792,
+      "unknownElapsed": 0,
+      "unknownUsage": 0
+    }
+  },
+  "costComparisonComplete": true,
+  "limits": "Descriptive screening on six incident-inspired cases; unknown usage is excluded from token sums, not priced at zero.",
+  "paired": {
+    "AOnly": 1,
+    "FOnly": 0,
+    "bothFail": 0,
+    "bothPass": 5
+  },
+  "planSha256": "0431b27286594f1b84ecaf0b60ef87a128b73d31cd7903fe530c0775fa7ffcd9",
+  "rows": [
+    {
+      "arm": "A",
+      "handoffMaterialPresent": true,
+      "id": "T01-A",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "F",
+      "handoffMaterialPresent": false,
+      "id": "T01-F",
+      "integrityPassed": true,
+      "repairPassed": false,
+      "repeat": 0
+    },
+    {
+      "arm": "Q",
+      "handoffMaterialPresent": true,
+      "id": "T01-Q",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "P",
+      "handoffMaterialPresent": false,
+      "id": "T01-P",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "A",
+      "handoffMaterialPresent": false,
+      "id": "T01-A-repeat",
+      "integrityPassed": true,
+      "repairPassed": false,
+      "repeat": 1
+    },
+    {
+      "arm": "F",
+      "handoffMaterialPresent": true,
+      "id": "T02-F",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "A",
+      "handoffMaterialPresent": true,
+      "id": "T02-A",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "Q",
+      "handoffMaterialPresent": true,
+      "id": "T02-Q",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "P",
+      "handoffMaterialPresent": true,
+      "id": "T02-P",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "A",
+      "handoffMaterialPresent": false,
+      "id": "T02-A-repeat",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 1
+    },
+    {
+      "arm": "A",
+      "handoffMaterialPresent": true,
+      "id": "T03-A",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "F",
+      "handoffMaterialPresent": true,
+      "id": "T03-F",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "F",
+      "handoffMaterialPresent": true,
+      "id": "T04-F",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "A",
+      "handoffMaterialPresent": true,
+      "id": "T04-A",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "A",
+      "handoffMaterialPresent": true,
+      "id": "T05-A",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "F",
+      "handoffMaterialPresent": true,
+      "id": "T05-F",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "F",
+      "handoffMaterialPresent": true,
+      "id": "T06-F",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    },
+    {
+      "arm": "A",
+      "handoffMaterialPresent": true,
+      "id": "T06-A",
+      "integrityPassed": true,
+      "repairPassed": true,
+      "repeat": 0
+    }
+  ],
+  "schema": 1,
+  "scoresSha256": "5355081a46bef72253089d086f2bc38ebad92665b315e522916c6d67ee3da115",
+  "screen": "not-met-on-frozen-scores; confirmatory interpretation invalid",
+  "status": "exploratory-unqualified-isolation-and-T01-schema"
+}
