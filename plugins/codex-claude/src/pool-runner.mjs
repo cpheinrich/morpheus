@@ -112,9 +112,10 @@ async function dispose(api, conversation, issueId, record, runId) {
         status: journal.status,
         comment: body,
         // The pinned API refuses blocked without a first-class unblock route.
-        // A coordinator decision is board-owned; no other agent is notified.
+        // Agent actors can name only themselves; the action directs the operator
+        // back to the controlling conversation without granting another owner access.
         unblockDescriptor: journal.status === "blocked" ? {
-          owner: "board",
+          owner: { agentId: conversation.agentId },
           action: "Review this turn in the controlling Codex conversation. Resolve its question or preflight refusal, then send an authorized follow-up.",
         } : null,
       });

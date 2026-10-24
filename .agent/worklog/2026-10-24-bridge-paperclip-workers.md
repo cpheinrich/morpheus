@@ -304,3 +304,9 @@ The graph server recovered after earlier transport failures: generation 2026-10-
 indexes the primary checkout. Coverage reports the new pool modules/tests missing there;
 task-worktree source reads remain the evidence. No graph completeness claim is made.
 Mini Claude CLI still reports loggedIn false on the latest native check despite web sign-in.
+
+The next native turn (c0120ac4-e4cc-4c3a-88aa-16b09b9685a8) retained the same Codex
+session and independently verified blue/phase2, but disposition was HTTP 403. The immediately
+preceding native route guard permits agent actors to name only themselves, not the board.
+Corrected to the conversation's exact worker agent and added explicit 403 fixture evidence.
+This preserves worker authority and directs resolution through the controlling conversation.

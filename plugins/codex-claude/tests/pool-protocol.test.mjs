@@ -33,7 +33,7 @@ test("two concurrent follow-ups cannot overwrite the same turn intent", async (t
   assert.equal((await pool.status({ conversationId: s.conversationId })).turn, 2);
 });
 
-test("blocked disposition supplies the board unblock route required by the real API", async (t) => {
+test("blocked disposition supplies the self-owned unblock route required by the real API", async (t) => {
   const fx = await poolFixture(t, { provider: "codex", transport: "local" });
   const pool = fx.coordinator();
   const s = await pool.start({ threadId: "thread-block-route", profile: fx.name, prompt: "QUESTION about colors" });
@@ -45,11 +45,19 @@ test("blocked disposition supplies the board unblock route required by the real 
   assert.equal(fx.paperclip.issues.get(s.issueId).status, "todo");
   assert.equal((fx.paperclip.comments.get(s.issueId) ?? []).length, 0);
 
+  const forbidden = await fx.paperclip.fetch(`http://paperclip.test/api/issues/${s.issueId}`, {
+    method: "PATCH", headers: { "x-paperclip-run-id": "fixture-run" },
+    body: JSON.stringify({ status: "blocked", unblockDescriptor: { owner: "board", action: "Choose the fixture label" } }),
+  });
+  assert.equal(forbidden.status, 403);
+  assert.equal((await forbidden.json()).error, "Agents may only name themselves as an unblock owner");
+  assert.equal(fx.paperclip.issues.get(s.issueId).status, "todo");
+
   assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 0);
   const issue = fx.paperclip.issues.get(s.issueId);
   assert.equal(issue.status, "blocked");
   assert.deepEqual(issue.unblockDescriptor, {
-    owner: "board",
+    owner: { agentId: fx.paperclip.issues.get(s.issueId).assigneeAgentId },
     action: "Review this turn in the controlling Codex conversation. Resolve its question or preflight refusal, then send an authorized follow-up.",
   });
   assert.equal((await pool.status({ conversationId: s.conversationId })).disposition.state, "applied");

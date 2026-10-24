@@ -167,6 +167,8 @@ export class FakePaperclip {
       // One transaction: status and the run-attributed comment land together.
       const issue = this.issues.get(m[1]);
       if (!issue) return this.json(404, {});
+      if (runId && body.unblockDescriptor && body.unblockDescriptor.owner?.agentId !== issue.assigneeAgentId)
+        return this.json(403, { error: "Agents may only name themselves as an unblock owner" });
       if (body.status === "blocked" && issue.status !== "blocked" && !body.unblockDescriptor)
         return this.json(422, { error: "Entering blocked requires unresolved blockers, a pending interaction/approval, or unblockDescriptor" });
       if (body.status) issue.status = body.status;
