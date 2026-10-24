@@ -12,8 +12,8 @@ to a recorded finding or a late test-only correction. It does not resume incompl
 replace reviewers, reset history, permit a fifth implementation pass, or change the main-merge
 exemption. The existing finalization-only turn retains its separate scope.
 
-Proposed limits awaiting activation approval: five minutes for the fourth turn; ordinary review
-time through it no greater than twice the risk-class initial ceiling (20/30/60 minutes);
+The proposed limits were approved for merge by Chris on 2026-10-24: five minutes for the fourth
+turn; ordinary review time through it no greater than twice the risk-class initial ceiling (20/30/60 minutes);
 one to four exact changed paths; at most 80 changed test lines and 40 changed non-test lines.
 Normative policy files are excluded. The checker measures author commits and leaves trunk merges
 under the established exact-or-named integration rule. A reviewer records the changed paths and
@@ -30,14 +30,20 @@ single failed case expected different wording from the existing finalization gua
 correcting that assertion, the six bounded-verification cases passed. The separate
 `tests/agent-instructions.test.ts` suite passed 14/14 after the scaffold pointer was shortened.
 `pnpm compile` passed and regenerated committed dist output. `pnpm morpheus pm index` made
-no changes. `pnpm typecheck` is blocked by an existing import of removed `gray-matter` in
-`tests/agentic-cto-skill.test.ts`; this branch does not edit that unrelated test. Full CI
-and independent review remain pending. The first independent high-risk reviewer turn blocked
+no changes. At that point `pnpm typecheck` was blocked by an existing import of removed
+`gray-matter` in `tests/agentic-cto-skill.test.ts`; PR #461 later fixed it on main. The first
+independent high-risk reviewer turn blocked
 two scope bypasses: a `tests/` helper counted as a test file, and architecture/review-policy
 prose was eligible as a finding path. The correction reuses the existing filename-only test rule,
 excludes those authority files, and adds regressions for both cases. The same reviewer cleared
 both findings at `01bf4e7`, with no scoped regression. The correction's ten focused cases passed.
-No gate policy has been merged or activated.
+After merging main through `52c99358`, the merge had no conflicts and did not edit this PR's
+reviewed implementation. The focused suites passed 158/158, typecheck and compile passed,
+the roadmap index was unchanged, and `morpheus review validate` passed at `a0852ffe`.
+The full local suite ran once earlier on this PR and passed 2,806/2,806; it was not repeated.
+The earlier exact-head CI at `dd41d5bb` passed, and final-head CI is pending. Chris has
+authorized merging #462 once its required checks pass. The PR remained draft until those
+checks could run with validated review metadata.
 
 ## Independent review
 
@@ -45,9 +51,8 @@ Initial review blocked two substantive scope bypasses; the same reviewer cleared
 
 The initial high-risk review blocked two substantive scope bypasses. The same reviewer cleared
 both after the author narrowed test-file recognition and excluded review-policy prose. The
-reviewer inspected generated output and the new regressions; they did not rerun the tests. The
-draft remains unlabelled because the unrelated baseline typecheck failure prevents final
-validation and the numeric standing-policy limits await approval.
+reviewer inspected generated output and the new regressions; they did not rerun the tests.
+The original timing evidence and blocked-then-cleared findings below remain unchanged.
 
 ```morpheus-review
 {
