@@ -614,3 +614,15 @@ from the input shapes that produced a Date. **When replacing a parser, list the 
 converted and run each through the new one.** Tallying the real field values across every
 registered project (digits normalised) found the only affected shape in a minute; fixtures written
 in the canonical form only test the canonical form.
+
+
+## A zero-tool inventory is not proof that a model turn has no external tools
+
+2026-10-23, executable Paperclip comparison (MO-26-10-23-19.09.51). Codex0.163.0 preflight
+reported zero MCP tools, yet a later repair turn indexed its scratch repo through MCP. Moving
+CLI options after the subcommand fixed the probed MCP/apps surface, but hosted collaboration
+still spawned a child with multi-agent flags disabled. Exec JSON omitted those collaboration
+calls; the full native transcript recorded spawn, interrupt and verified interrupted state.
+Configuration, inventory, recorded events and effective capability are different evidence.
+Qualify the real invocation path and child accounting before claiming containment. Keep a
+failed qualification visible in the result rather than repeating work for a favorable score.
