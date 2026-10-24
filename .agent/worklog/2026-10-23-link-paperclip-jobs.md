@@ -85,3 +85,11 @@ Two committed read-only snapshot job specifications and one explicit acceptance 
 included for parent-run one-to-many validation. Runtime artifacts stay outside this checkout;
 only independently inspected, sanitized artifacts/receipts may return on this branch. The
 author has not submitted either job or read the parent's temporarily protected owner token.
+
+The accountable parent approved a routine increment split before PR creation: this item's
+acceptance is the authenticated bridge and two real read-only snapshot jobs. Newly filed
+MO-26-10-23-19.45.05 retains all original consumer per-host protected delivery, repeatable host
+setup, actual worker authority, interruption, simulator/CI, model-attribution and prospective
+measurement requirements. No additional subscription/account enrollment or remote provider
+inference was authorized. The source PR stays draft pending runtime/evidence and independent
+review; the split does not waive or report those broader capabilities as delivered.

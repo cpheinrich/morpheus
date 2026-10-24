@@ -29,5 +29,6 @@ Acceptance requires controller-side readback of the exact planned issue and arti
    SHA-256 values. No credentials or private service logs enter Git.
 
 Record an actionable blocked result if any identity, confinement or evidence check fails.
-Keep the parent roadmap open until its explicitly remaining qualification work is addressed
-or separately tracked. Job completion cannot close it automatically.
+The broader qualification remains in
+[MO-26-10-23-19.45.05](../../hq/product/roadmap/MO-26-10-23-19.45.05-qualify-paperclip-consumers.md).
+Job completion cannot close the parent or that follow-up automatically.
