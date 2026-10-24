@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import matter from "gray-matter";
+import matter from "@11ty/gray-matter";
 import { z } from "zod";
 import { visibleProse, visibleText } from "../check/pr.js";
 import { ROADMAP_ID } from "../pm/id.js";

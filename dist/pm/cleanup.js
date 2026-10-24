@@ -2,7 +2,7 @@ import { lstat, readdir, realpath } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
-import matter from "gray-matter";
+import matter from "@11ty/gray-matter";
 import { checkoutIdentity, fetchTrunk, sessionGit as git } from "../session/start.js";
 import { listWorktrees, missingDirectory } from "../session/worktrees.js";
 import { assertNoOtherTaskBindings, clearTaskBindings, temporaryTasks } from "../session/tasks.js";

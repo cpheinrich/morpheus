@@ -53,7 +53,7 @@
     "morpheus": "tsx src/cli/index.ts"
   },
   "dependencies": {
-    "gray-matter": "^4.0.3",
+    "@11ty/gray-matter": "3.0.0",
     "jose": "^6.2.5",
     "minimatch": "10.2.6",
     "minisearch": "^7.2.0",
