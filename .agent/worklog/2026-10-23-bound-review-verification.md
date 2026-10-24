@@ -32,4 +32,8 @@ correcting that assertion, the six bounded-verification cases passed. The separa
 `pnpm compile` passed and regenerated committed dist output. `pnpm morpheus pm index` made
 no changes. `pnpm typecheck` is blocked by an existing import of removed `gray-matter` in
 `tests/agentic-cto-skill.test.ts`; this branch does not edit that unrelated test. Full CI
-and independent review remain pending. No gate policy has been merged or activated.
+and independent review remain pending. The first independent high-risk reviewer turn blocked
+two scope bypasses: a `tests/` helper counted as a test file, and architecture/review-policy
+prose was eligible as a finding path. The correction reuses the existing filename-only test rule,
+excludes those authority files, and adds regressions for both cases. The original reviewer must
+verify this fix. No gate policy has been merged or activated.

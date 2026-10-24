@@ -173,7 +173,9 @@ may verify one small final correction without a human exception. Record
 `finding-fix` for a correction confined to a previously recorded, fixed finding's paths and
 associated tests. The attested paths must exactly match the changed author-commit paths, excluding
 the review worklog; at most four paths, 80 changed test lines and 40 changed non-test lines are
-allowed. Normative policy files are excluded. Main merges keep their existing exact-or-named
+allowed. Test files are recognized by filename, not by membership in a `tests/` directory:
+helpers and scripts there count as implementation. Normative policy files, including
+`architecture.md`, `.agent/decisions.md`, and this runbook, are excluded. Main merges keep their existing exact-or-named
 integration rule and do not consume a turn. The turn is capped at five minutes; initial plus all
 ordinary follow-up time through it must stay within twice the risk-class initial ceiling
 (20/30/60 minutes for small/normal/high). Earlier turns retain their own ceilings. The prior

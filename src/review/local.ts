@@ -463,7 +463,8 @@ export function verifyUncoveredCommits(root: string, record: { trunkIntegrations
   return accepted;
 }
 
-const TEST_PATH = /(?:^|\/)(?:tests?\/|test_[^/]+\.py$|[^/]+(?:\.test\.|\.spec\.|_test\.(?:py|go)$|Tests?\.(?:swift|kt|java)$))/i;
+/** Additional review-policy sources that are prose, but change the gate's authority. */
+const FINAL_VERIFICATION_POLICY = /^(?:architecture\.md|docs\/runbooks\/independent-review\.md|\.agent\/decisions\.md)$/i;
 
 /** Bound only author commits; a main merge keeps its existing exact/named integration rule. */
 function verifyFinalVerification(root: string, record: LocalReviewRecord, turn: ReviewFollowUp, from: string, trunk: string, worklog: string): void {
@@ -471,9 +472,9 @@ function verifyFinalVerification(root: string, record: LocalReviewRecord, turn: 
   const attested = new Set(scope.paths);
   const allowedFindings = new Set(record.findings.filter(f => f.disposition === "fixed").flatMap(f => f.paths));
   for (const path of attested) {
-    if (NORMATIVE.test(path)) throw new Error(`final verification cannot cover normative policy: ${path}`);
-    if (scope.kind === "late-test" && !TEST_PATH.test(path)) throw new Error(`late-test verification can cover test files only: ${path}`);
-    if (scope.kind === "finding-fix" && !TEST_PATH.test(path) && !allowedFindings.has(path)) {
+    if (NORMATIVE.test(path) || FINAL_VERIFICATION_POLICY.test(path)) throw new Error(`final verification cannot cover normative policy: ${path}`);
+    if (scope.kind === "late-test" && !TRIVIAL_DIFF_TESTS.test(path)) throw new Error(`late-test verification can cover test files only: ${path}`);
+    if (scope.kind === "finding-fix" && !TRIVIAL_DIFF_TESTS.test(path) && !allowedFindings.has(path)) {
       throw new Error(`finding-fix verification needs a previously recorded finding path: ${path}`);
     }
   }
@@ -491,7 +492,7 @@ function verifyFinalVerification(root: string, record: LocalReviewRecord, turn: 
       if (path === worklog) continue;
       changed.add(path);
       const lines = Number(match[1]) + Number(match[2]);
-      if (TEST_PATH.test(path)) testLines += lines;
+      if (TRIVIAL_DIFF_TESTS.test(path)) testLines += lines;
       else nonTestLines += lines;
     }
   }

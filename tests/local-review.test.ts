@@ -693,7 +693,7 @@ describe("human-authorized extra review turns", () => {
 
 describe("one bounded automatic final verification", () => {
   function fourTurns(kind: "late-test" | "finding-fix", changedPath: string, contents: string): LocalReviewRecord {
-    mkdirSync(join(root, "tests"), { recursive: true });
+    mkdirSync(join(root, changedPath.split("/").slice(0, -1).join("/")), { recursive: true });
     writeFileSync(join(root, changedPath), contents);
     const corrected = commit();
     const r = record();
@@ -729,6 +729,15 @@ describe("one bounded automatic final verification", () => {
     expect(check(save(r))[0]?.message).toContain("test-line");
     r.followUps![2]!.verification!.paths = ["tests/other.test.ts"];
     expect(check(save(r))[0]?.message).toContain("outside its attested scope");
+  });
+  it("does not classify a helper inside tests/ as a test-only correction", () => {
+    const r = fourTurns("late-test", "tests/helper.ts", "export const bypass = true;\n");
+    expect(check(save(r))[0]?.message).toContain("test files only");
+  });
+  it.each(["architecture.md", "docs/runbooks/independent-review.md", ".agent/decisions.md"])("excludes review authority prose from automatic verification: %s", changedPath => {
+    const r = fourTurns("finding-fix", changedPath, "New review policy.\n");
+    r.findings = [{ id: "F01", severity: "substantive", description: "The policy statement was inaccurate.", paths: [changedPath], disposition: "fixed", response: "Corrected the statement." }];
+    expect(check(save(r))[0]?.message).toContain("normative policy");
   });
   it("refuses a fifth automatic implementation pass, reviewer reset, and an incomplete predecessor", () => {
     const r = fourTurns("late-test", "tests/guard.test.ts", "expect(guard()).toBe(false);\n");
