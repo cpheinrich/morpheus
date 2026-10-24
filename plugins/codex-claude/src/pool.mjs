@@ -9,7 +9,7 @@ import { paperclipClient } from "./pool-paperclip.mjs";
 import { identity } from "./processes.mjs";
 import {
   UUID, answersDir, claimPath, controlDir, conversationDir, cursorPath, dispositionPath, initPool, issueIndex, reconcilePath,
-  linkIssue, marker, parseMarker, poolHome, readConversation, requestId, runPath, sessionPath,
+  linkIssue, marker, observeDisposition, parseMarker, poolHome, readConversation, requestId, runPath, sessionPath,
   threadIndex, turnPath, pruneAccount,
 } from "./pool-store.mjs";
 
@@ -304,6 +304,8 @@ export class Pool {
     // The caller's own live authority admits the turn; the original task and project
     // still apply, so another session cannot revive a conversation whose owner is off.
     await this.admit(args.threadId, profile.permission, c);
+    const unsettled = await this.unsettled(c, api);
+    if (unsettled) throw new Error(unsettled);
     const continuation = previous.state === "needs_input" || previous.result?.outcome === "needs_input";
     if (continuation && (!["codex", "user"].includes(args.replySource) || !args.replyReason))
       throw new Error("Resuming a question requires replySource and replyReason.");
@@ -321,6 +323,25 @@ export class Pool {
     await atomic(join(conversationDir(c.id), "conversation.json"), { ...stored, turns: n, supervisionReplies: replies });
     await this.submitComment(api, { ...c, turns: n }, turn);
     return this.status({ conversationId: c.id });
+  }
+  // A new turn may not race an older status write: the previous turn's disposition must be
+  // positively applied or definitively rejected, or, if none was ever attempted (a runner
+  // lost or stopped before publishing), its termination must be proven.
+  async unsettled(c, api) {
+    const n = c.turns;
+    const run = await readJSON(runPath(c.id, n), null);
+    if (!run) return null; // never launched: a rejected submission
+    const journal = await readJSON(dispositionPath(c.id, n), null);
+    if (journal) {
+      const state = ["posting", "unknown"].includes(journal.state)
+        ? await observeDisposition(api, c.id, c.issueId).catch(() => journal.state)
+        : journal.state;
+      if (["applied", "rejected", "superseded"].includes(state)) return null;
+      return "The previous turn's Paperclip status update is unconfirmed and could still apply; nothing was posted. Reattach later to observe it, or start a new conversation.";
+    }
+    const proof = await readJSON(reconcilePath(c.id, n), null);
+    if (["verified", "not-started"].includes(run.termination) || proof?.state === "terminated") return null;
+    return "The previous turn's termination is not proven; run pool.reconcile before continuing. Nothing was posted.";
   }
   async stop({ conversationId }) {
     const c = await this.conversation(conversationId);
@@ -379,6 +400,7 @@ export class Pool {
         else if (c.issueId) await this.submitComment(api, c, turn);
       }
     }
+    if (c.issueId) await observeDisposition(api, c.id, c.issueId).catch(() => null);
     await this.pull(await this.conversation(c.id), api);
     return { ...(await this.status({ conversationId: c.id })), observed };
   }

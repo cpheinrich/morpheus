@@ -184,7 +184,9 @@ an older tool list): `profiles`, `start`, `status`, `wait`, `logs`, `answer`, `f
 - **Paperclip disposition.** Each finished turn leaves one comment attributed to its run and an
   issue status (`done` for a completed turn, `blocked` for needs_input, refusal, failure, stop or
   loss), so Paperclip queues no missing-comment or disposition-repair runs. `done` is operational
-  status only. A wake that launches nothing comments for itself and changes no status.
+  status only, sent once. A wake that launches nothing writes nothing to Paperclip. A follow-up
+  waits until the previous status update is confirmed (or the turn's end is proven when none was
+  attempted); an unconfirmed one is never re-sent, and the conversation waits or is replaced.
   Follow-ups are sent with `resume: true`. A turn runs only once Paperclip holds its exact
   submission marker. After a cancel that killed the runner, status keeps the original unknown
   termination and adds `hostTermination` once `pool.reconcile` proves the host turn ended.

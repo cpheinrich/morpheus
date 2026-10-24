@@ -74,7 +74,7 @@ test("a late or repair wake cannot execute a follow-up Paperclip never accepted"
   assert.equal(await fx.run(repair), 0);
   assert.match(fx.paperclip.logs.get(repair), /not committed upstream yet/);
   assert.equal(await exists(join(turnDir, "3.claim")), false);
-  assert.deepEqual(fx.paperclip.policy(repair, 0).missingComment, false);
+  assert.equal(byRun(fx, s.issueId, repair).length, 0);
   assert.equal(await calls(), 1);
 
   const retried = await pool.reattach({ conversationId: s.conversationId, threadId: s.threadId, retry: true });
@@ -93,7 +93,7 @@ test("a late or repair wake cannot execute a follow-up Paperclip never accepted"
   assert.equal((await pool.status({ conversationId: s.conversationId })).state, "completed");
 });
 
-test("a duplicate wake during an active turn answers for itself and leaves that turn open", async (t) => {
+test("a duplicate wake during an active turn writes nothing to Paperclip and leaves that turn open", async (t) => {
   const fx = await poolFixture(t, { provider: "claude", transport: "local" });
   const pool = fx.coordinator();
   const s = await pool.start({ threadId: "thread-a", profile: fx.name, prompt: "SLEEP while duplicates arrive" });
@@ -104,8 +104,9 @@ test("a duplicate wake during an active turn answers for itself and leaves that 
   issue.executionRunId = (await pool.status({ conversationId: s.conversationId })).paperclipRunId;
   assert.equal(await fx.run(duplicate), 0);
   assert.equal(issue.status, "in_progress");
-  assert.match(byRun(fx, s.issueId, duplicate)[0].body, /No pool turn launched for this wake \(turn already claimed\)/);
-  assert.deepEqual(fx.paperclip.policy(duplicate, 0), { missingComment: false, dispositionRepair: false });
+  assert.match(fx.paperclip.logs.get(duplicate), /turn already claimed/);
+  // Log-only: no comment and no status write; Paperclip's own retry for that is bounded.
+  assert.equal(byRun(fx, s.issueId, duplicate).length, 0);
   assert.equal(fx.paperclip.count("PATCH", /./), 0);
   await pool.stop({ conversationId: s.conversationId });
   assert.equal(await running, 124);
@@ -113,37 +114,44 @@ test("a duplicate wake during an active turn answers for itself and leaves that 
   assert.equal((await fx.lines("claude-calls.jsonl")).length, 1);
 });
 
-test("an unknown disposition write is observed or retried by the next wake, never blindly reposted", async (t) => {
+test("an unknown disposition is never re-sent, blocks new turns until positively observed, and old wakes write nothing", async (t) => {
   const fx = await poolFixture(t, { provider: "codex", transport: "local" });
   const pool = fx.coordinator();
   const s = await pool.start({ threadId: "thread-u", profile: fx.name, prompt: "WRITE a.txt a" });
   const issue = fx.paperclip.issues.get(s.issueId);
+  const patches = () => fx.paperclip.count("PATCH", /./);
+  const userComments = () => (fx.paperclip.comments.get(s.issueId) ?? []).filter((c) => c.authorType === "user").length;
+  // Applied upstream, unknown locally: a later wake settles it by exact observation only.
   fx.paperclip.fail = (method) => (method === "PATCH" ? "throw-after" : null);
   assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 0);
   fx.paperclip.fail = null;
-  assert.deepEqual((await pool.status({ conversationId: s.conversationId })).disposition.state, "unknown");
-  assert.equal(issue.status, "done");
+  assert.equal((await pool.status({ conversationId: s.conversationId })).disposition.state, "unknown");
   const observer = fx.paperclip.startRun(s.issueId);
   assert.equal(await fx.run(observer), 0);
-  assert.equal(fx.paperclip.count("PATCH", /./), 1);
+  assert.deepEqual([patches(), byRun(fx, s.issueId, observer).length], [1, 0]);
   assert.equal((await pool.status({ conversationId: s.conversationId })).disposition.state, "applied");
-  assert.deepEqual(fx.paperclip.policy(observer, 0), { missingComment: false, dispositionRepair: false });
 
+  // Timed out and still in flight: never re-sent, and no new turn may race it.
   await pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "WRITE b.txt b" });
-  fx.paperclip.fail = (method) => (method === "PATCH" ? "throw" : null);
-  const lost = fx.paperclip.startRun(s.issueId);
-  assert.equal(await fx.run(lost), 0);
+  fx.paperclip.fail = (method) => (method === "PATCH" ? "delay" : null);
+  const first = fx.paperclip.startRun(s.issueId);
+  assert.equal(await fx.run(first), 0);
   fx.paperclip.fail = null;
   assert.equal(issue.status, "in_progress");
-  // Exactly what the pinned server would queue for this run.
-  assert.equal(fx.paperclip.policy(lost, 0).dispositionRepair, true);
-  const repair = fx.paperclip.startRun(s.issueId);
-  assert.equal(await fx.run(repair), 0);
+  const before = userComments();
+  await assert.rejects(pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "WRITE c.txt c" }), /status update is unconfirmed/);
+  for (let i = 0; i < 2; i++) assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 0);
+  const stale = await pool.reattach({ conversationId: s.conversationId, threadId: s.threadId });
+  assert.deepEqual([patches(), userComments(), issue.status, stale.disposition.state], [2, before, "in_progress", "unknown"]);
+  // The delayed write lands; positive observation settles it and the conversation continues.
+  fx.paperclip.applyDelayed();
   assert.equal(issue.status, "done");
-  assert.deepEqual((await pool.status({ conversationId: s.conversationId })).disposition, { status: "done", state: "applied", runId: repair });
-  assert.deepEqual(fx.paperclip.policy(repair, 0), { missingComment: false, dispositionRepair: false });
-  assert.equal(fx.paperclip.count("PATCH", /./), 3);
-  assert.equal((await fx.lines("codex-calls.jsonl")).length, 2);
+  const next = await pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "WRITE c.txt c" });
+  assert.deepEqual([next.turn, next.submission, issue.status], [3, "submitted", "todo"]);
+  assert.equal((await readFile(join(fx.coord, "pool", "conversations", s.conversationId, "turns", "2.disposition.json"), "utf8")).includes('"applied"'), true);
+  assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 0);
+  assert.equal(issue.status, "done");
+  assert.equal((await fx.lines("codex-calls.jsonl")).length, 3);
 });
 
 test("a Paperclip cancel that kills the runner's process group keeps unknown evidence, adds host proof, and resume continues the session", async (t) => {
@@ -170,6 +178,8 @@ test("a Paperclip cancel that kills the runner's process group keeps unknown evi
   assert.deepEqual([lost.state, lost.terminal, lost.termination, lost.hostTermination], ["runner_lost", true, "unknown", null]);
   const ledger = () => readFile(join(fx.coord, "pool", "accounts", "acct-claude.json"), "utf8").then(JSON.parse);
   assert.equal((await ledger()).length, 1);
+  await assert.rejects(pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "too early" }), /termination is not proven/);
+  assert.equal((fx.paperclip.comments.get(s.issueId) ?? []).length, 0);
   await until(async () => (await pool.reconcile()).every((r) => r.state === "terminated"), 20000, 250);
   const proven = await pool.status({ conversationId: s.conversationId });
   assert.deepEqual([proven.state, proven.termination, proven.hostTermination.state], ["runner_lost", "unknown", "terminated"]);

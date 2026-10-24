@@ -129,11 +129,19 @@ Claims kept those wakes from reaching a provider, but they wasted runs and left 
   `turns/<n>.disposition.json`, then sends one `PATCH /issues/:id {status, comment}`: `done`
   for a completed, verified turn and `blocked` for needs_input, refused, failed, interrupted or
   lost. Paperclip `done` is operational status, never Git acceptance, and the comment says so.
-  Paperclip ignores comment request ids from agent actors, so an unknown outcome is settled by
-  a later wake that observes the disposition marker (or re-sends once if it is absent).
-- **No-op wakes.** A duplicate, recovery, repair or stray wake that launches nothing posts its
-  own short comment and never changes status, so an old wake cannot close an active or newer
-  turn. If the latest finished turn's disposition is unsettled, that wake settles it.
+  Paperclip ignores comment request ids from agent actors and a timed-out PATCH can still land,
+  so a disposition is sent once. An unknown outcome stays unknown until a later wake, a
+  reattach or a follow-up attempt observes that exact run's marker; absence settles nothing
+  and nothing re-sends it. A 4xx is a definitive rejection.
+- **No-op wakes.** A duplicate, recovery, repair or stray wake that launches nothing writes
+  nothing to Paperclip — no comment, no status — so an old wake can never change an active or
+  newer turn. It may only observe. Paperclip's own retry for its missing comment is bounded
+  (one missing-comment retry, at most two repair wakes), and those wakes are no-ops too.
+- **Settled before the next turn.** A follow-up is journaled only when the previous turn's
+  disposition is positively applied or definitively rejected, or, if none was attempted (a
+  runner lost or stopped before publishing), when its termination is proven by its receipt or
+  `pool.reconcile`. An unconfirmed write blocks the conversation instead of racing it; starting
+  a new conversation is the escape if it never lands.
 - **Submission evidence.** A runner admits the pending turn only when Paperclip holds its exact
   marker (turn number, prompt digest, assignee): the issue description for turn 1, a comment for
   follow-ups. A journaled follow-up whose POST was refused or never applied cannot be executed

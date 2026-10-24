@@ -128,6 +128,7 @@ export class FakePaperclip {
     this.calls = [];
     this.keys = new Map();
     this.wakes = [];
+    this.delayed = [];
     this.active = new Set();
     this.fail = null;
     this.fetch = (url, init = {}) => this.handle(url, init);
@@ -145,6 +146,11 @@ export class FakePaperclip {
     this.calls.push({ method, path, body, authorization: init.headers?.authorization, runId });
     const injected = this.fail?.(method, path, body, this);
     if (injected === "throw") throw new TypeError("fetch failed");
+    // The client timed out, but the server may still apply the write later.
+    if (injected === "delay") {
+      this.delayed.push({ path, body, runId });
+      throw new TypeError("fetch failed");
+    }
     if (typeof injected === "number") return this.json(injected, { error: "injected" });
     let m;
     if (method === "POST" && (m = /^\/companies\/([^/]+)\/issues$/.exec(path))) {
@@ -199,6 +205,13 @@ export class FakePaperclip {
       return this.json(200, { ok: true });
     }
     return this.json(404, {});
+  }
+  applyDelayed() {
+    for (const { path, body, runId } of this.delayed.splice(0)) {
+      const issueId = /^\/issues\/([^/]+)$/.exec(path)[1];
+      if (body.status) this.issues.get(issueId).status = body.status;
+      if (body.comment) this.addComment(issueId, { body: body.comment }, runId);
+    }
   }
   addComment(issueId, body, runId) {
     const list = this.comments.get(issueId) ?? [];

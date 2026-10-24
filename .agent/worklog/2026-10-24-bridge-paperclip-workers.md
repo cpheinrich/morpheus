@@ -114,6 +114,29 @@ sonnet/medium, observed claude-sonnet-5-5 from init, observed effortunknown. Pro
 tokens are retained separately from subscription quota. These are live local Claude results.
 Private immutable captures, journals and quota wrappers are under interactive-20261024.
 
+## Protocol checkpoint — 2026-10-24T09:08Z
+
+Source16829e8 has76 passing plugin tests and run-attributed task disposition, exact committed
+marker admission, resume:true and separate later host-termination proof. Episode4b616c57-
+de9b-4707-9a00-88187223177f is terminal/completed. Reported Claude weekly usage remained43%;
+its4-point reservation is released except1 point held for reporting granularity/shared work.
+Reserve up to2 more Claude points (account admission cap46% used for this short episode) for
+removing the documented disposition/follow-up race and automatic retries of uncertain agent
+writes. The engagement's hard limit remains60% used. Do not treat an absent comment marker
+as proof an earlier mutating request cannot still apply.
+
+Local Claude follow-up run0be59c6d-4074-4138-ad84-7704af7341fb reused native90535e28-e933-
+4a0f-8ba3-ec873f45430e; independent read of claude-followup.json matched the remembered nonce,
+labelblue and phase3. Mini Codex native weekly quota after the first3 model turns moved0→1%
+used; the later fourth request did not launch. All3 new profiles are paused while restaging.
+Native log paging was checked directly with limitBytes1024: the API does supply nextOffset
+when partial, and pool.logs returned that cursor. The original first probe had used the wrong
+limit parameter; do not claim the API lacks paging.
+
+origin/main advanced to660211f (#474); merge it after the source author returns, before the
+final review. That is a main integration, not a scope change. Source author owns no live
+mutations; root keeps staged archives and actual failed probes immutable.
+
 ## Claude implementation episode (delegated, 2026-10-24)
 
 Read AGENTS.md, decisions, learned, inbox, the proposed design and acceptance. Graph tools were
@@ -238,3 +261,26 @@ runner subprocess killed by process group with later host proof and an explicit 
 continuing native session sess-1). `pnpm check`; `pnpm test` 76/76. Residual race: a no-op wake
 settling turn n can race a follow-up journaled after it re-reads the conversation; the window
 is one request, and the follow-up's own run still admits on its marker.
+
+## Claude correction episode (2026-10-24, after 16829e8)
+
+Root identified two blocking defects in 16829e8: a no-op/repair wake re-sent an unknown agent
+PATCH when its marker was absent (absence cannot prove a timed-out write will not land, and
+agent request ids are ignored upstream), and a no-op could PATCH an older turn's status while a
+newer follow-up was being journaled. Fixed without a new framework: no-op wakes are now
+observation/log-only (no comment, no status); a disposition is sent once by the turn's own
+runner and an unknown result is settled only by exact positive observation of that run's
+marker (`observeDisposition`, used by no-op wakes, `pool.reattach` and the follow-up gate, and
+only once the writing runner is finished or gone); `Pool.unsettled` refuses a follow-up unless
+the previous disposition is applied or definitively rejected, or none was attempted and
+termination is proven (receipt or reconcile). Cancellation before disposition still resumes
+the same native session after `pool.reconcile`. The documented residual race is removed: no
+remaining path changes issue status except the turn's own runner before it finishes.
+Trade-off accepted: no-op runs leave Paperclip's bounded missing-comment/repair wakes (one and
+at most two), which are themselves no-ops.
+
+Commands: `node --test tests/pool-protocol.test.mjs` 5/5 (applied-but-unknown observed with no
+re-send; delayed PATCH never re-sent, follow-up refused while unconfirmed, two old wakes and a
+reattach write nothing, then the late write lands, observation settles it and the follow-up
+runs; duplicate wake during an active turn writes nothing; cancellation follow-up refused until
+reconcile, then resumes sess-1). `pnpm check`; `pnpm test` 76/76.

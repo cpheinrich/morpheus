@@ -123,6 +123,29 @@ export async function withAccount(account, fn) {
     await rm(lock, { recursive: true, force: true });
   }
 }
+const items = (value) => (Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : []);
+// Settles an unknown disposition write only by exact positive evidence: the marker of the
+// very run that wrote it. Absence proves nothing, because a timed-out PATCH can still land
+// and Paperclip ignores agent request ids, so nothing is ever re-sent from here. Only acts
+// once the writing runner is finished or gone, so it never races that runner's journal.
+export async function observeDisposition(api, conversationId, issueId) {
+  const conversation = await readConversation(conversationId);
+  const n = conversation?.turns;
+  if (!n || !issueId) return null;
+  const path = dispositionPath(conversationId, n);
+  const journal = await readJSON(path, null);
+  if (!journal || !["posting", "unknown"].includes(journal.state)) return journal?.state ?? null;
+  const run = await readJSON(runPath(conversationId, n), null);
+  if (run && !run.finished && (await runnerAlive(run))) return journal.state;
+  const seen = items(await api.get(`/issues/${issueId}/comments`)).some((comment) => {
+    const mark = parseDisposition(comment?.body);
+    return mark?.conversationId === conversationId && mark.turn === n && mark.runId === journal.runId &&
+      (comment.createdByRunId == null || comment.createdByRunId === journal.runId);
+  });
+  if (!seen) return journal.state;
+  await atomic(path, { ...journal, state: "applied", observedAt: Date.now() });
+  return "applied";
+}
 export async function runnerAlive(entry) {
   return !!entry.runnerPid && !!entry.runnerIdentity && (await identity(entry.runnerPid)) === entry.runnerIdentity;
 }

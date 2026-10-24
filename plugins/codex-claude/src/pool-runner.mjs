@@ -9,7 +9,7 @@ import { bindingDigest, ENVELOPE, loadPool, sha256, transportArgv, transportEnv 
 import { paperclipClient } from "./pool-paperclip.mjs";
 import {
   UUID, claimPath, controlDir, dispositionMarker, dispositionPath, initPool, issueIndex, linkIssue,
-  parseDisposition, parseMarker, readConversation, reconcilePath, releaseAccount, reserveAccount, runPath, sessionPath,
+  observeDisposition, parseMarker, readConversation, reconcilePath, releaseAccount, reserveAccount, runPath, sessionPath,
   turnPath,
 } from "./pool-store.mjs";
 
@@ -118,30 +118,12 @@ async function dispose(api, conversation, issueId, record, runId) {
   await atomic(path, journal);
   return journal;
 }
-// A wake that launches nothing still answers for itself. If the latest finished turn's
-// disposition is unsettled, settle it from this run (observing first); otherwise leave
-// the issue's status alone so an active or newer turn is never closed by an old wake.
-async function settleNoop(api, conversation, issue, runId, reason) {
-  if (!issue) return null;
-  if (conversation) {
-    const n = conversation.turns;
-    const run = await readJSON(runPath(conversation.id, n), null);
-    const journal = await readJSON(dispositionPath(conversation.id, n), null);
-    if (run?.finished && journal?.state !== "applied" && journal?.state !== "superseded") {
-      const seen = list(await api.get(`/issues/${issue.id}/comments`).catch(() => [])).some((comment) => {
-        const mark = parseDisposition(comment?.body);
-        return mark?.conversationId === conversation.id && mark.turn === n;
-      });
-      if (seen && journal) {
-        await atomic(dispositionPath(conversation.id, n), { ...journal, state: "applied", observedBy: runId, at: Date.now() });
-        await api.post(`/issues/${issue.id}/comments`, { body: `No pool turn launched for this wake (${reason}); the turn ${n} disposition was already recorded. No provider was contacted.` }).catch(() => {});
-        return "observed";
-      }
-      if (!seen) return (await dispose(api, conversation, issue.id, run, runId)).state;
-    }
-  }
-  await api.post(`/issues/${issue.id}/comments`, { body: `No pool turn launched for this wake (${reason}). No provider was contacted.` }).catch(() => {});
-  return "comment";
+// A wake that launches nothing writes nothing to Paperclip: an old duplicate or recovery
+// wake must never change a newer turn's status or re-send an uncertain disposition. It
+// only observes, which can settle an unknown disposition on exact positive evidence.
+async function observeNoop(api, conversation, issue) {
+  if (!conversation || !issue) return null;
+  return observeDisposition(api, conversation.id, issue.id);
 }
 export async function runTurn({
   env = process.env, out = process.stdout, err = process.stderr, fetchImpl = globalThis.fetch,
@@ -179,7 +161,7 @@ export async function runTurn({
     return RUNNER_EXIT.refused;
   }
   const noop = async (reason) => {
-    const disposition = await settleNoop(api, conversation, issue, runId, reason).catch(() => "unknown");
+    const disposition = await observeNoop(api, conversation, issue).catch(() => "unobserved");
     say("noop", { reason, conversationId: conversation?.id ?? null, turn: conversation?.turns ?? null, disposition });
     return RUNNER_EXIT.ok;
   };
