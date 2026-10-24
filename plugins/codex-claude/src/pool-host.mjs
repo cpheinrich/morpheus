@@ -9,7 +9,7 @@ import { codexEnv, codexPermission, home, subscriptionEnv } from "./config.mjs";
 import { atomic, initStore, readJSON, runDir } from "./store.mjs";
 import { checkClaude, claudeArgs } from "./claude.mjs";
 import { checkCodex, codexArgs } from "./codex-exec.mjs";
-import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
+import { identity, identityStatus, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { canonical, ENVELOPE, inside, judgeQuota, loadHost, PROFILE_NAME, sanitizeQuota, sha256 } from "./pool-config.mjs";
 export { ENVELOPE };
 import { Manager } from "./service.mjs";
@@ -107,8 +107,15 @@ export async function reconcileRun(runUuid) {
     }
   }
   if (["verified", "not-started"].includes(receipt.termination)) return "terminated";
-  if (receipt.poolPid && receipt.poolIdentity && (await identity(receipt.poolPid)) === receipt.poolIdentity)
-    return "active";
+  if (receipt.poolPid) {
+    // An unreadable process table, or a live pid whose identity was never captured, is
+    // not proof the admitting process is gone: it may still launch. Only an absent pid or
+    // a different process may go on to the no-launch proof below.
+    const seen = await identityStatus(receipt.poolPid);
+    if (seen.state === "unknown") return "unknown";
+    if (seen.state === "alive" && !receipt.poolIdentity) return "unknown";
+    if (seen.state === "alive" && seen.identity === receipt.poolIdentity) return "active";
+  }
   // bridgeRunId is persisted before the guardian starts, so its absence proves no launch.
   if (!receipt.bridgeRunId) {
     await atomic(receiptPath(runUuid), { ...receipt, termination: "not-started", state: "reconciled" });

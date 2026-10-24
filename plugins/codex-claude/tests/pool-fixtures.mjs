@@ -292,7 +292,29 @@ export class FakePaperclip {
 }
 export async function poolFixture(t, { provider = "claude", transport = "ssh", second = null, quota = true, maxSupervisionReplies = 2 } = {}) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pool-")));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  // Runs still in flight (for example after a failed assertion) are stopped and awaited
+  // before their state is deleted, so no runner, host, guardian or provider outlives a test.
+  const outstanding = new Map();
+  const drain = async () => {
+    const results = [];
+    for (const [promise, signals] of outstanding) {
+      let settled = false;
+      promise.then(() => (settled = true), () => (settled = true));
+      // Bounded: re-send until the runner has installed its handler and finished.
+      const deadline = Date.now() + 20000;
+      while (!settled && Date.now() < deadline) {
+        signals.emit("SIGTERM");
+        await Promise.race([promise.catch(() => null), new Promise((r) => setTimeout(r, 100))]);
+      }
+      results.push(settled ? await promise.catch((error) => error) : "unsettled");
+    }
+    outstanding.clear();
+    return results;
+  };
+  t.after(async () => {
+    await drain();
+    await rm(root, { recursive: true, force: true });
+  });
   const coord = join(root, "coord");
   const hostHome = join(root, "host");
   const userHome = join(root, "home");
@@ -362,9 +384,11 @@ export async function poolFixture(t, { provider = "claude", transport = "ssh", s
     profile: profiles[name], profiles, hostConfig,
     signals: new EventEmitter(),
     // Runs one Paperclip process-adapter invocation in this process, as Paperclip would.
+    drain,
     run(runId, profileName = name, extra = {}) {
       paperclip.active.add(runId);
-      return runTurn({
+      const signals = extra.signals ?? fx.signals;
+      const promise = runTurn({
         env: {
           PAPERCLIP_RUN_ID: runId, PAPERCLIP_AGENT_ID: profiles[profileName].agentId,
           PAPERCLIP_API_URL: "http://127.0.0.1:3100", PAPERCLIP_API_KEY: "paperclip-run-secret",
@@ -372,7 +396,12 @@ export async function poolFixture(t, { provider = "claude", transport = "ssh", s
         },
         out: paperclip.logStream(runId), err: new Writable({ write: (_c, _e, done) => done() }),
         fetchImpl: paperclip.fetch, heartbeatMs: 100, pollMs: 50, stopGraceMs: 8000, signals: fx.signals, ...extra,
-      }).finally(() => paperclip.active.delete(runId));
+      }).finally(() => {
+        paperclip.active.delete(runId);
+        outstanding.delete(promise);
+      });
+      outstanding.set(promise, signals);
+      return promise;
     },
     async lines(file) {
       try {

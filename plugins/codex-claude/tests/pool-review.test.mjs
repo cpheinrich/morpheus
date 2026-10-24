@@ -144,3 +144,57 @@ test("F7: only the writing run's own marker settles an uncertain disposition; a 
   fx.paperclip.applyDelayed();
   assert.equal((await pool.reattach({ conversationId: s.conversationId })).disposition.state, "applied");
 });
+
+test("a duplicate answer is refused as a duplicate even after the question cleared, with no second effect", async (t) => {
+  const fx = await poolFixture(t, { provider: "claude", transport: "local" });
+  const pool = fx.coordinator();
+  const s = await pool.start({ threadId: "thread-d", profile: fx.name, prompt: "ASK for a color" });
+  const running = fx.run(fx.paperclip.startRun(s.issueId));
+  await until(async () => (await pool.wait({ conversationId: s.conversationId, seconds: 0 })).question);
+  await pool.answer({ conversationId: s.conversationId, threadId: s.threadId, questionId: "q1", source: "codex", reason: "Reversible fixture choice", answers: { "Color?": "Blue" } });
+  // Deterministically past the question before the duplicate arrives.
+  await until(async () => !(await pool.status({ conversationId: s.conversationId })).question);
+  await assert.rejects(pool.answer({ conversationId: s.conversationId, threadId: s.threadId, questionId: "q1", source: "codex", reason: "again" }), /already answered/);
+  assert.equal(await running, 0);
+  const controls = (await readdir(join(convDir(fx, s.conversationId), "control"))).filter((n) => !n.endsWith(".tmp"));
+  assert.equal(controls.length, 1);
+  assert.equal((await fx.lines("claude-calls.jsonl")).length, 1);
+});
+
+test("fixture teardown stops and awaits a live run before deleting its state", async (t) => {
+  const fx = await poolFixture(t, { provider: "claude", transport: "local" });
+  const pool = fx.coordinator();
+  const s = await pool.start({ threadId: "thread-t", profile: fx.name, prompt: "ASK and never get an answer" });
+  const running = fx.run(fx.paperclip.startRun(s.issueId));
+  await until(async () => (await pool.wait({ conversationId: s.conversationId, seconds: 0 })).question);
+  // What t.after does when a test throws here: the run is drained before rm(root).
+  assert.deepEqual(await fx.drain(), [124]);
+  assert.equal(await running, 124);
+  const done = await pool.status({ conversationId: s.conversationId });
+  assert.deepEqual([done.state, done.termination], ["interrupted", "verified"]);
+  const runs = await readdir(join(fx.hostHome, "runs"));
+  const owned = JSON.parse(await readFile(join(fx.hostHome, "runs", runs[0], "process.json"), "utf8"));
+  assert.deepEqual([owned.state, owned.interrupted], ["exited", true]);
+  assert.throws(() => process.kill(owned.claudePid, 0), { code: "ESRCH" });
+  assert.deepEqual(await fx.drain(), []);
+});
+
+test("host reconcile never treats an unreadable or unidentified admitting process as gone", async (t) => {
+  const fx = await poolFixture(t, { provider: "codex", transport: "local" });
+  const receipt = (runUuid, fields) => writeFile(join(fx.hostHome, "pool-runs", `${runUuid}.json`), JSON.stringify({ runUuid, state: "admitting", termination: "pending", ...fields }));
+  await mkdir(join(fx.hostHome, "pool-runs"), { recursive: true });
+  const unidentified = randomBytes(16).toString("hex");
+  await receipt(unidentified, { poolPid: process.pid, poolIdentity: null });
+  assert.deepEqual((await host(fx, ["reconcile", unidentified])).lines.at(-1), { runUuid: unidentified, state: "unknown" });
+  if (process.getuid() !== 0) {
+    const rows = execFileSync("ps", ["-axo", "pid=,uid="], { encoding: "utf8" }).trim().split("\n").map((l) => l.trim().split(/\s+/).map(Number));
+    const rootPid = rows.find(([pid, uid]) => uid === 0 && pid > 1)?.[0];
+    if (rootPid) {
+      const unreadable = randomBytes(16).toString("hex");
+      await receipt(unreadable, { poolPid: rootPid, poolIdentity: "recorded identity" });
+      assert.deepEqual((await host(fx, ["reconcile", unreadable])).lines.at(-1), { runUuid: unreadable, state: "unknown" });
+      assert.equal(JSON.parse(await readFile(join(fx.hostHome, "pool-runs", `${unreadable}.json`), "utf8")).termination, "pending");
+    }
+  }
+  assert.equal(JSON.parse(await readFile(join(fx.hostHome, "pool-runs", `${unidentified}.json`), "utf8")).termination, "pending");
+});

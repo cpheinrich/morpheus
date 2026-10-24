@@ -256,6 +256,10 @@ export class Pool {
     const c = await this.conversation(args.conversationId);
     await this.control(args.threadId, c);
     const n = c.turns;
+    // The answer journal is checked first, so a duplicate is reported as such whether or
+    // not the provider has already moved past the question.
+    if (await readJSON(join(answersDir(c.id), `q-${sha256(`${n}:${args.questionId}`).slice(0, 32)}.json`), null))
+      throw new Error("This question was already answered");
     const run = await readJSON(runPath(c.id, n), null);
     if (!run || run.finished || !run.question)
       throw new Error("No live question; for a needs_input result, send a follow-up with replySource and replyReason.");
