@@ -455,3 +455,25 @@ process state or a missing identity on a live admitting PID as unknown, retainin
 Focused review regressions10/10; plugin full90/90 under Node26.8.2 and22.23.4, check passed.
 Root inspected the actual captured full-suite outputs for both runtimes. No additional live
 provider turn was needed for this deterministic timing fix.
+
+## Same-reviewer follow-up and final identity guard
+
+Reviewerb7c13a63-9710-45dd-92d3-b0a62df0e4ff resumed native5dede39f-16f4-4aee-a072-
+22d0ae040f97 and cleared all original F1–F7 fixes at3c110004ead1381897fff730cd0553c2cd9131bd.
+Runner duration140207ms =2.3367833333333334 minutes, within the high-risk15-minute ceiling.
+It ran41 focused tests successfully and confirmed pending native Claude acceptance is explicitly
+tracked without weakening the parent or permitting merge. Code CI at that exact source passed:
+11 checks,6 passed/5 skipped, completed1m25s. No prior hung job was rerun unchanged.
+
+The reviewer identified one additional nonblocking minor findingF8: a live coordinator runner
+with a null captured identity was still counted lost when ps later worked. Root added the
+missing-identity guard and a regression proving the live turn stays active and stopAll sends
+its stop, with zero provider calls. Focused pool/review/protocol30/30 and check pass. Although
+the reviewer permitted a minor author response, a final ordinary same-session turn will verify
+the narrow correction and its test so commit coverage is explicit. This uses the remaining
+normal turn as a late review correction, not a new reviewer or a self-review.
+
+Final F8 validation: the full plugin suite under Node22 passed91/91, zero skipped or failed,
+14.247seconds. The preceding focused30/30 used Node26 and check passed. No additional live
+model call was made. CI for3c11000 was green before this narrow correction; final-head CI will
+run after its source commit and review record.

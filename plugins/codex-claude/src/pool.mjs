@@ -146,7 +146,7 @@ export class Pool {
     // Only a runner proven gone counts as lost; an unreadable process table is not proof.
     if (run && !run.finished && run.runnerPid) {
       const seen = await identityStatus(run.runnerPid);
-      runnerLost = seen.state === "absent" || (seen.state === "alive" && seen.identity !== run.runnerIdentity);
+      runnerLost = seen.state === "absent" || (seen.state === "alive" && !!run.runnerIdentity && seen.identity !== run.runnerIdentity);
     }
     let state;
     if (!turn) state = "unknown";

@@ -145,6 +145,22 @@ test("F7: only the writing run's own marker settles an uncertain disposition; a 
   assert.equal((await pool.reattach({ conversationId: s.conversationId })).disposition.state, "applied");
 });
 
+test("F8: a live runner with no captured identity stays active and the master off path sends its stop", async (t) => {
+  const fx = await poolFixture(t, { provider: "codex", transport: "local" });
+  const pool = fx.coordinator();
+  const s = await pool.start({ threadId: "thread-8", profile: fx.name, prompt: "WRITE a.txt a" });
+  const dir = convDir(fx, s.conversationId);
+  await mkdir(join(dir, "turns", "1.claim"));
+  await atomic(join(dir, "turns", "1.run.json"), { conversationId: s.conversationId, turn: 1, state: "running", finished: false, runnerPid: process.pid, runnerIdentity: null });
+  const status = await pool.status({ conversationId: s.conversationId });
+  assert.deepEqual([status.state, status.terminal], ["running", false]);
+  await pool.stopAll();
+  const files = (await readdir(join(dir, "control"))).filter((name) => name.endsWith(".json"));
+  assert.equal(files.length, 1);
+  assert.deepEqual(JSON.parse(await readFile(join(dir, "control", files[0]), "utf8")), { type: "stop", turn: 1 });
+  assert.equal((await fx.lines("codex-calls.jsonl")).length, 0);
+});
+
 test("a duplicate answer is refused as a duplicate even after the question cleared, with no second effect", async (t) => {
   const fx = await poolFixture(t, { provider: "claude", transport: "local" });
   const pool = fx.coordinator();
