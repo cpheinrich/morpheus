@@ -33,7 +33,7 @@ test("MCP advertises tools without activating bridge or creating settings", asyn
     ]
       .map((n) => "claude_" + n)
       .concat(
-        ["answer", "followup", "logs", "profiles", "reattach", "start", "status", "stop", "wait"].map((n) => "pool_" + n),
+        ["answer", "followup", "logs", "profiles", "reattach", "recover", "start", "status", "stop", "wait"].map((n) => "pool_" + n),
       )
       .sort(),
   );
@@ -56,6 +56,7 @@ test("a delegated worker's MCP pool mutations refuse without contacting the brid
     ["pool_followup", { threadId: "t", conversationId, prompt: "x" }],
     ["pool_answer", { threadId: "t", conversationId, questionId: "q", source: "codex", reason: "r" }],
     ["pool_reattach", { threadId: "t", conversationId, retry: true }],
+    ["pool_recover", { threadId: "t", conversationId }],
   ]) {
     const result = await client.callTool({ name, arguments: args });
     assert.deepEqual([result.isError, result.content[0].text], [true, "Delegated workers cannot delegate again."]);

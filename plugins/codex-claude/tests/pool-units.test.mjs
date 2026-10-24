@@ -106,7 +106,7 @@ test("a delegated worker cannot start or follow up a pool conversation from the 
   const { execFile } = await import("node:child_process");
   const root = await realpath(await mkdtemp(join(tmpdir(), "pool-loop-")));
   t.after(() => rm(root, { recursive: true, force: true }));
-  for (const [command, args] of [["pool.start", "{}"], ["pool.followup", "{}"], ["pool.answer", "{}"], ["pool.reattach", '{"retry":true}'], ["start", "{}"]]) {
+  for (const [command, args] of [["pool.start", "{}"], ["pool.followup", "{}"], ["pool.answer", "{}"], ["pool.reattach", '{"retry":true}'], ["pool.recover", "{}"], ["start", "{}"]]) {
     const result = await new Promise((resolve) =>
       execFile(process.execPath, [new URL("../scripts/bridge.mjs", import.meta.url).pathname, command, args], {
         env: { PATH: process.env.PATH, CODEX_CLAUDE_HOME: root, CODEX_CLAUDE_DELEGATED: "1" },

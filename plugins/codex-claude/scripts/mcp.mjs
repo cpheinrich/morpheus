@@ -84,6 +84,10 @@ const poolSpecs = {
     { ...conversation, ...task, prompt: z.string().min(1).max(200000), replySource: z.enum(["codex", "user"]).optional(), replyReason: z.string().optional() },
   ],
   stop: ["Stop the current turn exactly (before launch, or through its runner) and request Paperclip cancellation.", conversation],
+  recover: [
+    "After a cancelled turn's end is proven (pool.reconcile), release Paperclip's no-replay hold on its committed follow-up through the supported execution reconciliation. Other holds are reported for an operator.",
+    { ...conversation, ...task },
+  ],
   reattach: [
     "Reattach after a restart: list a task's conversations, or observe one. retry=true resends an unknown submission with the same idempotency key and requires the current Codex task id.",
     { conversationId: z.string().uuid().optional(), threadId: z.string().optional().describe("Current Codex task id; required with retry."), retry: z.boolean().default(false) },
@@ -92,7 +96,7 @@ const poolSpecs = {
 for (const [method, [description, inputSchema]] of Object.entries(poolSpecs))
   server.registerTool(`pool_${method}`, { description, inputSchema }, async (args) => {
     try {
-      if (process.env[delegatedMarker] && (["start", "followup", "answer"].includes(method) || (method === "reattach" && args.retry === true)))
+      if (process.env[delegatedMarker] && (["start", "followup", "answer", "recover"].includes(method) || (method === "reattach" && args.retry === true)))
         throw new Error("Delegated workers cannot delegate again.");
       return { content: [{ type: "text", text: JSON.stringify(await call(`pool.${method}`, args)) }] };
     } catch (e) {

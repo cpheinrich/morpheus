@@ -162,6 +162,24 @@ export class FakePaperclip {
       return this.json(201, { id });
     }
     if (method === "GET" && /^\/companies\/[^/]+\/issues$/.test(path)) return this.json(200, [...this.issues.values()]);
+    // Shaped on the live readback: the active projection is empty while GET /issues/:id
+    // still reports a resolved automatic no-replay hold as executionBlocker.
+    if (method === "GET" && /^\/issues\/[^/]+\/recovery-actions$/.test(path)) return this.json(200, { active: null, actions: [] });
+    if (method === "POST" && (m = /^\/issues\/([^/]+)\/recovery-actions\/resolve$/.exec(path))) {
+      const issue = this.issues.get(m[1]);
+      const hold = issue?.executionBlocker;
+      const r = body.executionReconciliation;
+      if (runId) return this.json(403, { error: "Board access required" });
+      if (!hold && issue?.releasedHolds?.includes(body.actionId)) return this.json(200, { replayed: true });
+      if (!hold || hold.recoveryActionId !== body.actionId) return this.json(404, { error: "Active recovery action not found" });
+      if (body.outcome !== "restored" || body.sourceIssueStatus !== "todo" || r?.runId !== hold.runId || r?.providerStopped !== true ||
+          !["completed", "not_performed", "mixed"].includes(r?.actionOutcome) || (r?.outcomeEvidence ?? "").trim().length < 20)
+        return this.json(409, { error: "Reconcile the recorded execution and its action outcomes before continuing this task." });
+      issue.executionBlocker = null;
+      (issue.releasedHolds ??= []).push(body.actionId);
+      issue.status = "todo";
+      return this.json(200, { issue });
+    }
     if (method === "GET" && (m = /^\/issues\/([^/]+)$/.exec(path))) return this.issues.has(m[1]) ? this.json(200, this.issues.get(m[1])) : this.json(404, {});
     if (method === "PATCH" && (m = /^\/issues\/([^/]+)$/.exec(path))) {
       // One transaction: status and the run-attributed comment land together.

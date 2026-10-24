@@ -16,7 +16,7 @@ const [command = "help", ...rest] = process.argv.slice(2);
 try {
   if (command === "help") {
     console.log(
-      "codex-claude: doctor | config | enable manual|automatic | disable | statusline install|uninstall | inspect | start | wait | status | answer | stop | override | memories | codex.inspect | codex.start | codex.override | codex.memories | pool.profiles | pool.start | pool.status | pool.wait | pool.logs | pool.answer | pool.followup | pool.stop | pool.reattach | pool.reconcile | pool-host-entry PROFILE | pool-agent-config PROFILE\nRPC commands take a JSON object as their argument, or read JSON from stdin with -. Delegation is off until enabled.",
+      "codex-claude: doctor | config | enable manual|automatic | disable | statusline install|uninstall | inspect | start | wait | status | answer | stop | override | memories | codex.inspect | codex.start | codex.override | codex.memories | pool.profiles | pool.start | pool.status | pool.wait | pool.logs | pool.answer | pool.followup | pool.stop | pool.reattach | pool.recover | pool.reconcile | pool-host-entry PROFILE | pool-agent-config PROFILE\nRPC commands take a JSON object as their argument, or read JSON from stdin with -. Delegation is off until enabled.",
     );
   } else if (command === "enable" || command === "disable") {
     await initStore();
@@ -125,7 +125,7 @@ try {
     const args = input ? JSON.parse(input) : {};
     if (
       process.env[delegatedMarker] &&
-      (["start", "codex.start", "pool.start", "pool.followup", "pool.answer"].includes(command) ||
+      (["start", "codex.start", "pool.start", "pool.followup", "pool.answer", "pool.recover"].includes(command) ||
         (command === "pool.reattach" && args.retry === true))
     )
       throw new Error("Delegated workers cannot delegate again.");

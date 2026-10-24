@@ -416,7 +416,14 @@ export class Pool {
     }
     if (c.issueId) await observeDisposition(api, c.id, c.issueId).catch(() => null);
     await this.pull(await this.conversation(c.id), api);
-    return { ...(await this.status({ conversationId: c.id })), observed };
+    // Observation only: a parked follow-up shows the exact upstream hold to recover.
+    const blocker = c.issueId ? (await api.get(`/issues/${c.issueId}`).catch(() => null))?.executionBlocker : null;
+    const parked = blocker ? {
+      recoveryActionId: blocker.recoveryActionId ?? null, runId: blocker.runId ?? null, cause: blocker.cause ?? null,
+      nextAction: typeof blocker.nextAction === "string" ? blocker.nextAction.slice(0, 500) : null,
+      savedMessageCount: blocker.savedMessageCount ?? null,
+    } : null;
+    return { ...(await this.status({ conversationId: c.id })), observed, parked };
   }
   async observe(pool, api, c, turn) {
     try {
@@ -453,6 +460,69 @@ export class Pool {
       if (s && !s.terminal) await this.stop({ conversationId: id }).catch(() => {});
     }
   }
+  // After a cancelled generic process run Paperclip keeps an automatic no-replay hold:
+  // GET /issues/:id reports it as executionBlocker even when the recovery-actions
+  // projection shows no active action. Its supported resolution is the board-only
+  // POST /issues/:id/recovery-actions/resolve with executionReconciliation for the exact
+  // source run (a settled no-replay action is reopened by that evidence). Only the
+  // generic-process cause is automated, and only for a turn of this conversation whose
+  // end is proven; anything else is reported for an operator. Termination proof never
+  // implies no effects: the outcome is mixed unless nothing launched.
+  async recover(args) {
+    if (!TASK_ID.test(args.threadId ?? "")) throw new Error("Pass the current Codex task id");
+    const c = await this.conversation(args.conversationId);
+    if (!c.issueId) throw new Error("The conversation's Paperclip issue is not linked; reattach first.");
+    const { pool, api } = await this.context();
+    const profile = pool.profiles[c.profile];
+    if (!profile || bindingDigest(c.profile, profile) !== c.bindingSha256)
+      throw new Error("The pool profile changed since this conversation started; start a new conversation.");
+    await this.admit(args.threadId, profile.permission, c);
+    const issue = await api.get(`/issues/${c.issueId}`);
+    let blocker = issue?.executionBlocker ?? null;
+    if (!blocker) {
+      const active = (await api.get(`/issues/${c.issueId}/recovery-actions`))?.active;
+      if (active) blocker = { recoveryActionId: active.id, runId: active.evidence?.runId ?? active.evidence?.sourceRunId, cause: active.cause, agentId: issue?.assigneeAgentId };
+    }
+    if (!blocker) return { recovered: false, state: "no_execution_blocker" };
+    const sourceRunId = blocker.runId ?? null;
+    const operator = (reason) => ({
+      recovered: false, state: "operator_required", reason, recoveryActionId: blocker.recoveryActionId ?? null,
+      cause: blocker.cause ?? null, sourceRunId, issueId: c.issueId,
+      nextAction: typeof blocker.nextAction === "string" ? blocker.nextAction.slice(0, 500) : null,
+    });
+    if (blocker.cause !== "legacy_execution_requires_reconciliation")
+      return operator("only a generic process run's legacy reconciliation is recovered automatically");
+    if (!blocker.recoveryActionId || !sourceRunId) return operator("the blocker names no recovery action or source run");
+    if (issue.assigneeAgentId !== c.agentId || (blocker.agentId && blocker.agentId !== c.agentId))
+      return operator("the issue or the blocked run belongs to another agent");
+    let turn = null;
+    for (let n = c.turns; n >= 1 && !turn; n--) {
+      const run = await readJSON(runPath(c.id, n), null);
+      if (run?.paperclipRunId === sourceRunId) turn = { n, run };
+    }
+    if (!turn) return operator("the blocked run is not a turn of this conversation");
+    const proof = await readJSON(reconcilePath(c.id, turn.n), null);
+    if (!["verified", "not-started"].includes(turn.run.termination) && proof?.state !== "terminated")
+      return operator("the blocked turn's termination is not proven; run pool.reconcile first");
+    const actionOutcome = turn.run.termination === "not-started" ? "not_performed" : "mixed";
+    const outcomeEvidence = [
+      `Pool conversation ${c.id} turn ${turn.n}, Paperclip run ${sourceRunId}.`,
+      `Controller record: state ${turn.run.state ?? "unknown"}, termination ${turn.run.termination ?? "unknown"}.`,
+      proof ? `Host reconcile proved run ${proof.runUuid} terminated at ${new Date(proof.provenAt).toISOString()}.` : "The host receipt verified termination.",
+      actionOutcome === "mixed" ? "The provider was stopped mid-turn; partial workspace effects are possible." : "No provider process was launched.",
+    ].join(" ");
+    try {
+      const result = await api.post(`/issues/${c.issueId}/recovery-actions/resolve`, {
+        actionId: blocker.recoveryActionId, outcome: "restored", sourceIssueStatus: "todo",
+        resolutionNote: "Pool host termination proven; continue the committed follow-up.",
+        executionReconciliation: { runId: sourceRunId, providerStopped: true, actionOutcome, outcomeEvidence },
+      });
+      return { recovered: true, state: result?.replayed ? "already_resolved" : "resolved", recoveryActionId: blocker.recoveryActionId, sourceRunId, actionOutcome };
+    } catch (error) {
+      // An uncertain resolve is safe to repeat: Paperclip replays a settled action.
+      return { recovered: false, state: error.unknown ? "unknown" : "rejected", error: error.message, recoveryActionId: blocker.recoveryActionId, sourceRunId };
+    }
+  }
   // Operator repair: prune account reservations whose turns are proven ended.
   async reconcile() {
     const { remoteCommand } = await import("./pool-runner.mjs");
@@ -481,6 +551,7 @@ export class Pool {
     if (method === "stop") return this.stop(args);
     if (method === "reattach") return this.reattach(args);
     if (method === "reconcile") return this.reconcile();
+    if (method === "recover") return this.recover(args);
     throw new Error("Unknown pool operation");
   }
 }
