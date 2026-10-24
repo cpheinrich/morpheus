@@ -60,3 +60,20 @@ the registration window. It should not be treated as a merge authorization.
   `status` and `conclusion` fields.
 
 No production wait, CI rerun, merge, deployment or settings change was done.
+
+## Independent review status
+
+The fresh reviewer `/root/review_449` found a substantive deadline/head-change
+false-green path in the initial commit `f42c49d8266bf56661fd6dddacb11da2b39f99f3`.
+The author fixed it in `3c3b33c6bdb0b9afd5a2d1811631a0239dc6c070`. In the
+same-reviewer follow-up, the reviewer found a related failed-check deadline
+regression; the author fixed it in
+`4b77daa4c4de56f01f23c9185f3be083ebbf3c61`. The reviewer cleared that
+head with no remaining findings and independently reproduced timeout for an
+unverified green replacement and failure for a failed replacement.
+
+The follow-up had observed clock boundaries 2026-10-24 00:18:22–00:20:21 UTC.
+The initial review's exact start/end or runner duration was not retained. The
+version 2 review record requires that measured duration for every turn, so no
+`morpheus-review` record or `agent-reviewed` label is claimed. PR #459 remains
+draft with auto-merge disabled pending resolution of that evidence gap.
