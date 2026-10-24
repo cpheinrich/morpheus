@@ -222,6 +222,7 @@ export function planDecision(decision, live, ctx) {
             // Removed and re-applied on every clearance, never left in place: whoever applied it
             // before, the newest `labeled` event must be the App's and must follow the comment above.
             ...(useManagerReview ? [...removeLabels(live, MANAGER_REVIEWED_LABEL), { kind: "add-label", label: MANAGER_REVIEWED_LABEL }] : []),
+            ...(authorFallback ? removeLabels(live, MANAGER_REVIEWED_LABEL) : []),
             ...(!useManagerReview && !live.labels.includes("agent-reviewed") ? [{ kind: "add-label", label: "agent-reviewed" }] : []),
             ...(live.cancelledRunIds.length ? [{ kind: "rerun", runIds: live.cancelledRunIds }] : []),
             ...(live.autoMerge ? [] : [{ kind: "auto-merge" }]),

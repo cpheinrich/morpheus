@@ -362,6 +362,12 @@ describe("applying a session's decision", () => {
     const plan = planDecision(d, reviewed, p);
     expect(kinds(plan)).toEqual(["comment", "add-label:agent-reviewed", "auto-merge"]);
     expect(parseMarker((plan.operations[0] as { body: string }).body)).not.toHaveProperty("cleared");
+    expect(kinds(planDecision(d, { ...reviewed, labels: ["manager-reviewed"] }, p))).toEqual([
+      "comment", "remove-label:manager-reviewed", "add-label:agent-reviewed", "auto-merge",
+    ]);
+    expect(kinds(planDecision(d, { ...reviewed, labels: ["manager-reviewed", "agent-reviewed"] }, p))).toEqual([
+      "comment", "remove-label:manager-reviewed", "auto-merge",
+    ]);
     for (const unsafe of [
       { authorRecordValid: false },
       { sessionPushed: "other" as const },
