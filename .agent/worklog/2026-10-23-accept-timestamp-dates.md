@@ -69,3 +69,31 @@ spellings that `z.iso.datetime` rejects (space separator, lowercase `t`, `+07` o
   "Invalid ISO date" issues (exit 1). The fix's build passes all four `pm`-job steps:
   `pm validate`, `pm index --check`, `inbox validate --dir hq/team` and `team validate`
   (exit 0). The same validators pass in the other seven projects.
+
+## Independent review
+
+Independent review of the isoDate repair found no defects. The reviewer probed the new preprocessor with the real parser across valid, offset, leap-day and malformed timestamps, confirmed every frontmatter date field goes through isoDate and that no other consumer expects a Date, rebuilt dist and found it identical, showed both new tests fail without the fix, and confirmed the only failing CI step is the pre-existing gray-matter import that #461 repairs.
+
+Reviewer a2cdce85584bc4c6f (fresh Claude subagent, no author history) reviewed 35318b15 at normal risk in 3.7 minutes of runner time, with no findings. Trunk (including #461) is merged in afterwards as an exact merge.
+
+```morpheus-review
+{
+ "version": 2,
+ "base": "0a4722e7c2f6aa259174e56af7b638dd953e7be5",
+ "reviewed": "35318b1557f67c87590ed2d48eeb791d3641f50e",
+ "covered": "35318b1557f67c87590ed2d48eeb791d3641f50e",
+ "authorSession": "3bd6431e-a867-52fb-b7af-5e4cae915ee2",
+ "reviewerSession": "a2cdce85584bc4c6f",
+ "risk": "normal",
+ "elapsedMinutes": 3.6803666666666666,
+ "timing": {
+  "source": "runner",
+  "durationMs": 220822,
+  "evidence": "Agent tool result usage.duration_ms for reviewer a2cdce85584bc4c6f (initial turn); the reviewer's own clock read 2026-10-24T01:44:56Z to 01:48:00Z."
+ },
+ "outcome": "complete",
+ "summary": "Independent review of the isoDate repair found no defects. The reviewer probed the new preprocessor with the real parser across valid, offset, leap-day and malformed timestamps, confirmed every frontmatter date field goes through isoDate and that no other consumer expects a Date, rebuilt dist and found it identical, showed both new tests fail without the fix, and confirmed the only failing CI step is the pre-existing gray-matter import that #461 repairs.",
+ "findings": []
+}
+```
+
