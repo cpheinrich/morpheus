@@ -135,3 +135,90 @@ these IDs. CI3's different actual IDs will be retained separately. The reviewer 
 honestly disclosed initial default-login shell startup messages (Already up to date;
 pnpm46ms); no explicit install/bootstrap was requested, later calls used login:false,
 and source status was clean before its ignored report. No bootstrap loop is introduced.
+
+## Independent review record
+
+Fresh HIGH independent review conditionally cleared the receipt-invocation collision (AS-001, substantive) and dangling-audit-link handling (AS-002, minor). The author changed only the named correction paths, preserved same-invocation refusal, and satisfied the required Python, mutation, integration and source CI evidence. No consumer adoption or live delivery is cleared.
+
+CI3 run40058656750 is green on the bounded fix. Both current synthetic ABI artifact IDs
+and their exact run/leg/digest joins are retained separately from CI1/CI2 in the immutable
+local ARTIFACT-ID-RECONCILIATION-THROUGH-CI3.json. The original HIGH report and its
+initial shell-startup disclosure remain unchanged; no bootstrap loop or hidden-environment
+side-effect audit is claimed. This closes only the reviewer conditions and source loop,
+not financial settlement, consumer adoption or an operation release.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "6934c4ddc0dd401f3b6f861020466bf92d1657b0",
+  "reviewed": "6dad377ca17da1d84fc25cbffff6fff425b5cd81",
+  "covered": "8264f1d4846bd3d02306dfc5f5c0dafa68adceba",
+  "authorSession": "01a168e4-49eb-7761-9cb8-c288730699f2",
+  "reviewerSession": "/root/e_install_operator_source/m_artifact_guard_fresh_review",
+  "risk": "high",
+  "elapsedMinutes": 6.1,
+  "timing": {
+    "source": "clock",
+    "durationMs": 366000,
+    "evidence": "Actual author tool-clock boundaries around fresh reviewer invocation: 2026-10-24T03:22:10Z before spawn to2026-10-24T03:28:16Z after observed final return, including tools/waits. Raw reviewer observation03:27:48.788966Z retained without substituting an estimated duration. Canonical task path returned by collaboration.spawn_agent; report SHA2567b3e5f0aad4f549f40bb761522f59fe7eb34af9ef3da7cfd535a799fafccaf89."
+  },
+  "outcome": "complete",
+  "summary": "Fresh HIGH independent review conditionally cleared the receipt-invocation collision (AS-001, substantive) and dangling-audit-link handling (AS-002, minor). The author changed only the named correction paths, preserved same-invocation refusal, and satisfied the required Python, mutation, integration and source CI evidence. No consumer adoption or live delivery is cleared.",
+  "findings": [
+    {
+      "id": "AS-001",
+      "severity": "substantive",
+      "description": "The staging leaf is only runId-runAttempt-channel, whereas the existing receipt producer deliberately creates a separate receipt directory/artifact name for each invocation, including two apps in one job. After app one admits its receipt, app two can upload successfully to Apple but its new stage raises FileExistsError at the old leaf; the guarded receipt artifact is skipped and normal success-gated distribution cannot continue. This is introduced by the new staging step.",
+      "paths": [
+        ".github/actions/ios-testflight-upload/artifact-stage/stage.py",
+        ".github/actions/ios-testflight-upload/action.yml",
+        ".github/actions/ios-testflight-upload/upload-receipt.py"
+      ],
+      "disposition": "fixed",
+      "response": "Only the receipt channel appends SHA256 of its validated canonical own-UID receipt directory, preserving same-directory SPENT after success/refusal and output availability changes; distinct normal invocations retain independent exact payloads.",
+      "condition": {
+        "paths": [
+          ".github/actions/ios-testflight-upload/artifact-stage/stage.py",
+          ".github/actions/ios-testflight-upload/artifact-stage/ci_trace_stage.py",
+          ".github/actions/ios-testflight-upload/artifact-stage/README.md",
+          "tests/artifacts/test_stage.py",
+          "tests/artifacts/test_stage_mutants.py",
+          "tests/artifacts/test_ci_trace.py",
+          "tests/artifacts/README.md",
+          "docs/artifact-snapshots.md",
+          "architecture.md",
+          ".agent/decisions.md"
+        ],
+        "evidence": "Run all six artifact Python scripts (test_stage.py, test_ci_trace.py, test_processing_environment.py, test_abi_fixture.py, test_stage_mutants.py, test_trace_mutants.py) with -I -S -B under actual Python 3.9 and 3.14. Require new independently asserted regressions: two distinct canonical receipt directories with the same run/attempt both admit their own exact accepted/resource bytes and preserve the first snapshot; duplicate same-directory staging after either success or refusal still fails and preserves the existing admission/refusal; a distinct second invocation still succeeds after a first invocation's refusal; invalid receipt roots/paths still refuse; a dangling audit-root symlink refuses without admission or GitHub upload outputs and stays spent; a genuinely missing audit root remains EMPTY. Add a focused in-memory mutant restoring the legacy fixed receipt leaf and require the new multi-invocation regression to kill it. Assert ci_trace_stage.py CORE_SHA256 equals the exact resulting stage.py SHA-256, with its normal loader and trace tests passing. Run the focused Vitest integration/direct-dependent tests (tests/artifact-workflows.test.ts, tests/workflows.test.ts, tests/upload-configuration.test.ts, tests/ios-evidence-workflow.test.ts, tests/upload-receipt.test.ts), typecheck, compile, PM index, and diff checks. Commit the bounded fix, then require normal source CI once on that fix, including successful Node24 upload/download and exact complete-byte readback on both artifact-abi legs; retain evidence and satisfy the normal required checks within the already authorized source-cycle limits. No new live provider/native/consumer operation is requested or cleared."
+      },
+      "conditionMet": "Fix 8264f1d4846bd3d02306dfc5f5c0dafa68adceba: all six artifact scripts with -I -S -B passed under actual Python3.9.6 and3.14.7 (12 invocations), core20tests/49cases, trace7tests/16cases, ABI4tests, processing5cases,11core+7trace mutants killed including legacy receipt key and dangling audit; 194focused Vitest tests, typecheck/compile/PMindex/diff passed. Only exact reviewer paths changed, with inverse byte proofs for core and wrapperhash; src/dist/package/lock/PMindexes unchanged. Normal CI40058656750 passed6checks/3expected draft-or-disabled skips, including Node24 actual upload/download and full independent two-file bytes on both Pythonlegs. Full raw command/clocks/EOF/reap evidence retained under local/artifact-stage-phase-a/CONDITION-*; CONDITION-MET-PROOF.json SHA256 cf4209d452fb2bb49e7ea572df3d6ec7dbe7c7b43ceeabd1a4382fafea870b4b. Every required remaining publication/protection check still gates merge."
+    },
+    {
+      "id": "AS-002",
+      "severity": "minor",
+      "description": "fault-audit returns an empty selection whenever root.exists() is false. That follows links, so a dangling evo-fault-audits symlink is admitted as EMPTY before canonical_dir can reject it. The CI trace role already distinguishes true absence from a dangling link. This violates the helper contract that linked/uncertain evidence is refused; it does not bypass the byte cap or upload guard, and this consumer role is not integrated in this PR.",
+      "paths": [
+        ".github/actions/ios-testflight-upload/artifact-stage/stage.py"
+      ],
+      "disposition": "fixed",
+      "response": "The audit selector now distinguishes genuine absence from a dangling link; the link refuses without admission/output commands and stays spent while true absence remains EMPTY.",
+      "condition": {
+        "paths": [
+          ".github/actions/ios-testflight-upload/artifact-stage/stage.py",
+          ".github/actions/ios-testflight-upload/artifact-stage/ci_trace_stage.py",
+          ".github/actions/ios-testflight-upload/artifact-stage/README.md",
+          "tests/artifacts/test_stage.py",
+          "tests/artifacts/test_stage_mutants.py",
+          "tests/artifacts/test_ci_trace.py",
+          "tests/artifacts/README.md",
+          "docs/artifact-snapshots.md",
+          "architecture.md",
+          ".agent/decisions.md"
+        ],
+        "evidence": "Run all six artifact Python scripts (test_stage.py, test_ci_trace.py, test_processing_environment.py, test_abi_fixture.py, test_stage_mutants.py, test_trace_mutants.py) with -I -S -B under actual Python 3.9 and 3.14. Require new independently asserted regressions: two distinct canonical receipt directories with the same run/attempt both admit their own exact accepted/resource bytes and preserve the first snapshot; duplicate same-directory staging after either success or refusal still fails and preserves the existing admission/refusal; a distinct second invocation still succeeds after a first invocation's refusal; invalid receipt roots/paths still refuse; a dangling audit-root symlink refuses without admission or GitHub upload outputs and stays spent; a genuinely missing audit root remains EMPTY. Add a focused in-memory mutant restoring the legacy fixed receipt leaf and require the new multi-invocation regression to kill it. Assert ci_trace_stage.py CORE_SHA256 equals the exact resulting stage.py SHA-256, with its normal loader and trace tests passing. Run the focused Vitest integration/direct-dependent tests (tests/artifact-workflows.test.ts, tests/workflows.test.ts, tests/upload-configuration.test.ts, tests/ios-evidence-workflow.test.ts, tests/upload-receipt.test.ts), typecheck, compile, PM index, and diff checks. Commit the bounded fix, then require normal source CI once on that fix, including successful Node24 upload/download and exact complete-byte readback on both artifact-abi legs; retain evidence and satisfy the normal required checks within the already authorized source-cycle limits. No new live provider/native/consumer operation is requested or cleared."
+      },
+      "conditionMet": "Fix 8264f1d4846bd3d02306dfc5f5c0dafa68adceba: all six artifact scripts with -I -S -B passed under actual Python3.9.6 and3.14.7 (12 invocations), core20tests/49cases, trace7tests/16cases, ABI4tests, processing5cases,11core+7trace mutants killed including legacy receipt key and dangling audit; 194focused Vitest tests, typecheck/compile/PMindex/diff passed. Only exact reviewer paths changed, with inverse byte proofs for core and wrapperhash; src/dist/package/lock/PMindexes unchanged. Normal CI40058656750 passed6checks/3expected draft-or-disabled skips, including Node24 actual upload/download and full independent two-file bytes on both Pythonlegs. Full raw command/clocks/EOF/reap evidence retained under local/artifact-stage-phase-a/CONDITION-*; CONDITION-MET-PROOF.json SHA256 cf4209d452fb2bb49e7ea572df3d6ec7dbe7c7b43ceeabd1a4382fafea870b4b. Every required remaining publication/protection check still gates merge."
+    }
+  ]
+}
+```
