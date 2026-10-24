@@ -1,0 +1,20 @@
+{
+  "issueId": "9ec1fa46-eb0f-4704-8382-615ad6a11b46",
+  "sourceSha": "6ca59e8fedd3ee2552adfd3a365946049b3a4aef",
+  "outcome": "result",
+  "summary": "Controller independently inspected the read-only artifact identity, cited source observations and unchanged source/symlink inventories; native exit and termination verified. This establishes snapshot inspection only.",
+  "evidence": [
+    {
+      "path": ".agent/paperclip/MO-26-10-23-00.15.26/evidence/inspect-lineage-artifact.json",
+      "sha256": "e7367c12e1c387e1416be5927e86b070280938ef8ef97aba51d2fe440f859cae"
+    },
+    {
+      "path": ".agent/paperclip/MO-26-10-23-00.15.26/evidence/inspect-lineage-controller.json",
+      "sha256": "a17f1206235dacae2a24d88301eb0d62cfe772bdc1b59dd3657cca28ea79a9ba"
+    },
+    {
+      "path": ".agent/paperclip/MO-26-10-23-00.15.26/evidence/scope-probes.json",
+      "sha256": "401ff8659f06317a85a1a28ab8ab70ee0cd0c5930bf2a24cc45201fd96e74745"
+    }
+  ]
+}
