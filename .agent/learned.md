@@ -599,3 +599,18 @@ it sent cancelled-before-assignment runs to repair instead of the hosted fallbac
 provider.** Compare it with retained real rows before encoding a sentinel. One caveat remains
 unverified: no queued row has been observed. If queued rows carry the same copied `started_at`,
 the strict queued admission bound never fires.
+
+## A parser swap changes what a value is, so test the inputs that used to convert
+
+2026-10-23 (MO-26-10-23-18.34.31, #466). #376 replaced `gray-matter` (js-yaml 3) with
+`@11ty/gray-matter` (js-yaml 5), and js-yaml 5 resolves no YAML timestamps: `2026-07-01`,
+`2026-08-18T13:15:00.000Z` and `2026-08-02 00:00:00` all arrive as strings. `isoDate` kept
+accepting a `Date`, and a date-only string already passed `z.iso.date()`, so every fixture stayed
+green. A full timestamp, though, had been a `Date` that `isoDate` sliced to its day; as a string
+it failed with "Invalid ISO date", and Darwin's `pm` job went red on its two inboxes.
+
+The shim was written from the output type ("it used to return a Date, now a string") instead of
+from the input shapes that produced a Date. **When replacing a parser, list the inputs the old one
+converted and run each through the new one.** Tallying the real field values across every
+registered project (digits normalised) found the only affected shape in a minute; fixtures written
+in the canonical form only test the canonical form.

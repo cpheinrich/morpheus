@@ -264,8 +264,8 @@ Match the surrounding code. This codebase favours:
 
 ## Things that have bitten us
 
-- **Older YAML parsers converted unquoted `2026-07-01` into a Date object.** The current parser
-  returns a string, while `isoDate` retains backward compatibility with both forms.
+- **Older YAML parsers converted unquoted dates and timestamps into Date objects.** The current
+  parser returns strings; `isoDate` accepts a date, a Date, or a full ISO timestamp, keeping its day.
 - **A colon in a title breaks YAML.** `pm new` quotes scalars defensively; hand-written
   frontmatter with a colon must be quoted.
 - Generated files (`hq/product/*/README.md` between the `morpheus:` markers) are never edited by

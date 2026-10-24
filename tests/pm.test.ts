@@ -18,7 +18,7 @@ import {
 import { create, index, linkIssue as linkIssueCli } from "../src/cli/pm.js";
 import { createItem, nextId } from "../src/pm/new-item.js";
 import { linkIssue, parseIssueNumber } from "../src/pm/issues.js";
-import { Goal, RoadmapItem } from "../src/pm/schema.js";
+import { Goal, isoDate, RoadmapItem } from "../src/pm/schema.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -114,6 +114,36 @@ describe("schema", () => {
       updated: "2026-07-01",
     });
     expect(r.success).toBe(false);
+  });
+
+  // #466: the current parser returns every unquoted YAML timestamp as a
+  // string. The old one returned a Date, which `isoDate` sliced to its day, so
+  // a timestamp string has to keep its day as well or those files stop parsing.
+  it("keeps the date part of an ISO timestamp", () => {
+    expect(isoDate.parse("2026-08-18T13:15:00.000Z")).toBe("2026-08-18");
+    expect(isoDate.parse("2026-08-02T00:00:00Z")).toBe("2026-08-02");
+    expect(isoDate.parse("2026-08-02T09:30:00")).toBe("2026-08-02");
+    // The day as written, not the UTC day (2026-08-04 here) — the same
+    // wall-clock choice `isoDateTime` makes for offsets.
+    expect(isoDate.parse("2026-08-03T20:00:00-07:00")).toBe("2026-08-03");
+  });
+
+  it("still normalises a plain date and a legacy Date", () => {
+    expect(isoDate.parse("2026-07-01")).toBe("2026-07-01");
+    expect(isoDate.parse(new Date("2026-07-01T00:00:00Z"))).toBe("2026-07-01");
+  });
+
+  it("rejects a value that only starts like a timestamp", () => {
+    for (const v of [
+      "2026-08-18Tnonsense",
+      "2026-08-18T",
+      "2026-08-18T13:15:00.000Zjunk",
+      "2026-08-18T25:00:00Z",
+      "2026-02-30T00:00:00Z",
+      "2026-13-01",
+    ]) {
+      expect(isoDate.safeParse(v).success, v).toBe(false);
+    }
   });
 
   it("validates a goal id shape", () => {
