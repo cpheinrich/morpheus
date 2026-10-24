@@ -49,7 +49,7 @@ function api(record: JobRecord) {
     anonymousStatus: 401,
     me: { companyId: COMPANY, keyScope: { kind: "task_bridge", projectId: PROJECT, allowedAssigneeAgentIds: [AGENT] } } as any,
     issue: { ...issueBody(record.plan), id: ISSUE, companyId: COMPANY, parentId: null } as any,
-    failPost: false, beforePost: async () => {},
+    failPost: false, postStatus: 201, beforePost: async () => {},
   };
   const transport: typeof fetch = async (url, init) => {
     const headers = new Headers(init?.headers);
@@ -66,6 +66,7 @@ function api(record: JobRecord) {
       expect(path).toBe(`/api/companies/${COMPANY}/issues`);
       expect(body).toEqual(issueBody(record.plan));
       if (state.failPost) throw new Error(TOKEN);
+      if (state.postStatus !== 201) return Response.json({ error: "Assignee is not invokable" }, { status: state.postStatus });
       return Response.json({ id: ISSUE }, { status: 201 });
     }
     return Response.json(state.issue);
@@ -148,6 +149,14 @@ describe("submission and uncertainty", () => {
     await operate(repo, path, { command: "submit", token: TOKEN }, a.transport);
     expect(a.posts()).toHaveLength(1);
     await expect(operate(repo, path, { command: "link", issueId: OTHER, token: TOKEN }, a.transport)).rejects.toThrow("cannot replace");
+  });
+  it("does not treat an assignee-state HTTP rejection as scope proof or blindly repost it", async () => {
+    const { repo, record } = await fixture(); const path = await committedJob(repo, record); const a = api(record);
+    a.state.postStatus = 409;
+    await expect(operate(repo, path, { command: "submit", token: TOKEN }, a.transport)).rejects.toThrow("POST outcome unknown");
+    await expect(operate(repo, path, { command: "submit", token: TOKEN }, a.transport)).rejects.toThrow("never repost");
+    expect(a.posts()).toHaveLength(1);
+    expect(JSON.parse(await readFile(join(repo, path), "utf8")).issueId).toBeUndefined();
   });
   it("requires committed intent and refuses changed payload reuse or concurrent operators", async () => {
     const { repo, record } = await fixture(); await savePrepared(repo, record); const path = recordPath(record.plan); const a = api(record);

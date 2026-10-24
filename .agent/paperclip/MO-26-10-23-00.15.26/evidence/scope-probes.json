@@ -1,0 +1,44 @@
+[
+  {
+    "probe": "anonymous-agents",
+    "status": 401,
+    "expectedDenied": true
+  },
+  {
+    "probe": "peer-agent-read",
+    "status": 403,
+    "expectedDenied": true
+  },
+  {
+    "probe": "runtime-mutation",
+    "status": 403,
+    "expectedDenied": true
+  },
+  {
+    "probe": "process-agent-create",
+    "status": 403,
+    "expectedDenied": true
+  },
+  {
+    "probe": "secrets-read",
+    "status": 403,
+    "expectedDenied": true
+  },
+  {
+    "probe": "run-telemetry",
+    "status": 403,
+    "expectedDenied": true
+  },
+  {
+    "probe": "wrong-project-create",
+    "status": 403,
+    "error": "Task bridge key is outside its approved parent or project boundary.",
+    "expectedDenied": true
+  },
+  {
+    "probe": "wrong-assignee-create",
+    "status": 403,
+    "error": "Task bridge key cannot assign work to that agent.",
+    "expectedDenied": true
+  }
+]

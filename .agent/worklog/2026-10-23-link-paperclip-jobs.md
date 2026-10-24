@@ -9,8 +9,8 @@ summary: "Implement explicit Paperclip job linkage and prepare private authentic
 Chris approved phase 2 with explicit one-to-many Morpheus/Paperclip linkage. This isolated
 task checkout was claimed with runner-issued agent path `/root/phase2_bridge`, avoiding the
 parent experiment's task association. The initial claim also reconciled three previously merged
-roadmap items. No implementation push, provider/model call, new account enrollment, native
-executor or controller mutation was performed by this author.
+roadmap items. Before the parent's packet approval, the author made no implementation push,
+extra native model invocation, new account enrollment or controller mutation.
 
 The source adds a narrow operator bridge. It reuses PM parsing/branch IDs and commits exact
 intent before submission. Stable operation IDs, a common-Git-directory attempt journal,
@@ -62,8 +62,8 @@ packet must not mark those capabilities complete or the item shipped.
 
 Validation completed:
 
-- `pnpm exec vitest run tests/paperclip-bridge.test.ts`: 23 passed, final run 2026-10-24
-  02:41:52 UTC, 5.30 s. This covers only the new operator boundary; no pilot/native executor
+- `pnpm exec vitest run tests/paperclip-bridge.test.ts`: 24 passed, latest run 2026-10-24
+  02:53:20 UTC, 5.35 s. This covers only the new operator boundary; no pilot/native executor
   source changed. Fixtures use temporary Git repositories and synthetic HTTP/service calls.
 - `pnpm typecheck`: passed. Tests import the bridge so its TypeScript is included.
 - `pnpm exec tsc --noEmit --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --skipLibCheck --esModuleInterop scripts/paperclip-bridge/cli.ts`: passed,
@@ -84,7 +84,8 @@ Installed upstream source was read directly; it is outside this project's graph.
 Two committed read-only snapshot job specifications and one explicit acceptance file are
 included for parent-run one-to-many validation. Runtime artifacts stay outside this checkout;
 only independently inspected, sanitized artifacts/receipts may return on this branch. The
-author has not submitted either job or read the parent's temporarily protected owner token.
+author had not submitted either job or read the parent's temporarily protected owner token
+when preparing the initial source packet.
 
 The accountable parent approved a routine increment split before PR creation: this item's
 acceptance is the authenticated bridge and two real read-only snapshot jobs. Newly filed
@@ -93,3 +94,19 @@ setup, actual worker authority, interruption, simulator/CI, model-attribution an
 measurement requirements. No additional subscription/account enrollment or remote provider
 inference was authorized. The source PR stays draft pending runtime/evidence and independent
 review; the split does not waive or report those broader capabilities as delivered.
+
+Both explicit intents were prepared from source 6ca59e8fedd3ee2552adfd3a365946049b3a4aef
+before either was committed, then committed together in 15d874c5. The parent's live scope
+probes are copied, after checking for credential-bearing content, into the sibling evidence
+directory: anonymous agents 401; scoped peer read, runtime mutation, process-agent creation,
+secrets and run telemetry 403; wrong-project/wrong-assignee creates 403 with explicit scope
+errors. A paused assignee initially returned 409 before authorization, so only the corrected
+known-real-target/invokable positive controls count as scope evidence. Documentation and a
+focused HTTP-409 no-repost test preserve that distinction.
+
+After explicit parent authorization, the author loaded only the lineage scoped key in a trusted
+subprocess, protected both private key files mode 000 before POST, and submitted inspect-lineage
+once. Exact GET readback linked issue 9ec1fa46-eb0f-4704-8382-615ad6a11b46 to operation
+morpheus-c993d815c1b765b05e4d3ed4e99fc638346d9c25fb0f2153597f541d6757c5da. No owner key
+was read or changed. No manual wakeup was sent. The tests job remains unsubmitted pending its
+separate authorization and bounded monitor; runtime artifacts are not accepted from job status.

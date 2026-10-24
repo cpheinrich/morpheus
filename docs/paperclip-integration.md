@@ -180,6 +180,14 @@ an authenticated API proof.
 | Bridge POST `/api/companies/<company>/agents` with valid `{name,role:"engineer",adapterType:"process",adapterConfig:{command:"/usr/bin/true"},runtimeConfig:{heartbeat:{enabled:false}}}` | 403; board census unchanged. Unexpected creation is a failed isolation probe: keep paused and retire that exact probe agent with owner authority. |
 | Actual worker run token on own issue, unrelated issue, peer-agent/config/secrets routes and valid process-agent POST | Own required access succeeds; other authority denied. If it fails, do not widen consumer dispatch. |
 
+Assignment probes need a real positive control: the exact target assignee must be
+invokable with no pending work before probing known real wrong-project or wrong-assignee
+targets. A paused assignee returns 409 before the scope check and proves neither denial.
+Restore the intended pause state after probes. For a real submission, resume only the exact
+bounded assignee when its operator monitor is ready; issue assignment is the dispatch trigger.
+Never add a manual wakeup after submission. The bridge conservatively retains any failed
+POST as uncertain instead of silently buying another attempt.
+
 Also prove the *actual executor's* sandbox boundary for hidden evidence: outside-workspace
 read/chmod canaries, network calls to old board 3100 and database 54329, and any alternate
 reachable endpoints. A similarly named sandbox profile is insufficient. Standard run
