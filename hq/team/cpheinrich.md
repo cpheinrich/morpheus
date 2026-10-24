@@ -7,7 +7,7 @@ previous: .agent/inbox-archive/2026-10-19-1239-cpheinrich.md
 ---
 # Inbox — 2026-10-23
 
-The bounded Paperclip pilot has completed 30 verified real artifact and decision tasks across both Macs. Workers are paused with timers disabled and reservations clear. Baseline and candidate each scored 12/12 on the small historical decision set, so this establishes working dispatch and evidence collection, not a measured accuracy improvement. Source [PR #455](https://github.com/cpheinrich/morpheus/pull/455) is merged after independent review and passing required CI. The existing unreplied issue-maintenance items below are preserved.
+The explicit one-roadmap-to-many-Paperclip-job bridge is merged in [PR #470](https://github.com/cpheinrich/morpheus/pull/470), with private authentication and two independently reconciled snapshot jobs. The deeper executable comparison is recorded in [PR #472](https://github.com/cpheinrich/morpheus/pull/472). Its frozen scores were direct6/6 and manager-plus-Paperclip5/6, but the differing case omitted an input schema and execution exposed an isolation defect; it cannot rank workflow quality. Keep the bridge, keep small repairs direct, and qualify broader workers before unattended rollout. Study workers are paused and reservations clear. The earlier30-task two-host pilot and12/12 historical tie remain unchanged. The unreplied issue-maintenance items below are preserved.
 
 The issue-maintenance automation reconciled all open issues and the issues closed since its October 12 run. GitHub confirms **38 of 41 tracked issues closed**. Thirteen fixes landed in other sessions; their merge commits are on current main and their remote branches are deleted. Three issues remain open. The material change is that #248 now has implementation PR #414 and needs an additional review turn, so the older policy-choice prompt has been replaced. This run made no production release or credential changes.
 
@@ -54,3 +54,26 @@ The [independent-review runbook](../../docs/runbooks/independent-review.md) requ
 Both the MacBook Pro and Zoe's Mac mini completed real Codex work: 24 historical decision tasks plus six nonce/autoplacement checks, for 30 verified artifact and decision completions. Both decision conditions scored 12/12; there is no measured accuracy gain. The [results and limits](https://github.com/cpheinrich/morpheus/blob/main/docs/paperclip-pilot-results.md) record 54 passing focused tests and four passing synthetic SSH cleanup drills. Independent review identified mismatched quota/native account identity and missing route binding; both were fixed, old enrollments retired, and fresh enrollment verified with two additional exact nonce runs. A real controller hot restart interrupted its CLI run, so maintenance requires pausing and draining active work; seamless adoption is not established.
 
 Source [PR #455](https://github.com/cpheinrich/morpheus/pull/455) merged as `15d333a0` after independent review and passing required CI. The separate [host provisioning record](https://github.com/cpheinrich/agent-host-setup/pull/10) is merged. Broader project, account/model routing, and simulator qualification are tracked in [MO-26-10-23-00.15.26](../product/roadmap/MO-26-10-23-00.15.26-qualify-paperclip-projects.md). The integration is installed at `~/.local/share/morpheus-paperclip/integration/current`; the [operating guide](https://github.com/cpheinrich/morpheus/blob/main/scripts/paperclip-pilot/README.md) describes enrollment and maintenance. Workers are paused, scheduled timers disabled, and reservations clear; the local [dashboard](http://127.0.0.1:3100/MOR/dashboard) remains available on the MacBook Pro. This FYI requires no reply.
+
+
+## ✅ 7. Phase2 task linkage and bounded comparison · `codex`
+
+[Bridge PR #470](https://github.com/cpheinrich/morpheus/pull/470) links immutable Git intent,
+exact Paperclip job/run IDs and independently accepted source/artifact evidence. One parent
+can own many jobs; Paperclip done never ships a Git roadmap item. The dashboard now requires
+normal operator sign-in through the existing Air tunnel. Private operator credentials remain
+on the MacBook Pro at `~/.local/share/morpheus-paperclip/authenticated-phase2-20261023/owner-credentials.private.json`;
+no provider login was copied. Chris is sorting out subscription sharing separately.
+
+[Comparison PR #472](https://github.com/cpheinrich/morpheus/pull/472) retains all18 held-out
+worker episodes and8 manager calls. No continuation or large historical replay was needed.
+The report explains why the6/6 versus5/6 result is inconclusive, the extra time/token overhead,
+the literal report metric's false negatives and the actual CLI capability failures. Hosted
+delegation remained callable despite disabled flags and its calls were absent from exec JSON;
+the diagnostic child was interrupted and verified terminal. CLI restrictions are best effort,
+not a qualified worker boundary. No quality or human-time benefit is claimed.
+
+The existing [consumer qualification item](../product/roadmap/MO-26-10-23-19.45.05-qualify-paperclip-consumers.md)
+preserves protected delivery on each authorized host, effective worker/child authority,
+restart/recovery, simulator resource integration and prospective human-intervention metrics.
+No additional account, subscription, paid fallback or production release is authorized here.
