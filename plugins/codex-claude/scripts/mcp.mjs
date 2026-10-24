@@ -60,6 +60,45 @@ const specs = {
     { ...task, owner: z.enum(["claude", "codex"]) },
   ],
 };
+// Remote pool workers: Paperclip owns each turn's run; these tools journal, observe and
+// control it. Conversations persist across bridge restarts; reattach by conversation id.
+const conversation = { conversationId: z.string().uuid() };
+const poolSpecs = {
+  profiles: ["List configured remote pool profiles (provider, host, model, effort, permission) and their capabilities.", {}],
+  start: [
+    "Start a pool conversation: one bounded task for a registered remote Claude or Codex worker. Only pass user-authorized handoff content.",
+    { ...task, profile: z.string(), prompt: z.string().min(1).max(200000) },
+  ],
+  status: ["Read a pool conversation's current turn, run identities, question, result and progress.", conversation],
+  wait: [
+    "Wait up to 25 seconds for streamed progress, a question or the end of the turn. Reads the Paperclip run log; never renews the worker lease.",
+    { ...conversation, seconds: z.number().min(0).max(30).default(25) },
+  ],
+  logs: ["Read one page of the turn's Paperclip run log.", { ...conversation, turn: z.number().int().min(1).optional(), offset: z.number().int().min(0).default(0) }],
+  answer: [
+    "Answer a remote Claude worker's live question. Codex may resolve routine clarification only; tool permission requires the user's actual approval.",
+    { ...conversation, questionId: z.string(), source: z.enum(["codex", "user"]), reason: z.string().min(1), answers: z.record(z.string(), z.string()).optional(), allow: z.boolean().default(true) },
+  ],
+  followup: [
+    "Send the next turn into the same native session after the current turn ended. A needs_input result needs replySource and replyReason.",
+    { ...conversation, prompt: z.string().min(1).max(200000), replySource: z.enum(["codex", "user"]).optional(), replyReason: z.string().optional() },
+  ],
+  stop: ["Stop the current turn exactly (before launch, or through its runner) and request Paperclip cancellation.", conversation],
+  reattach: [
+    "Reattach after a restart: list this task's conversations, or observe one; retry=true resends an unknown submission with the same idempotency key.",
+    { conversationId: z.string().uuid().optional(), threadId: z.string().optional(), retry: z.boolean().default(false) },
+  ],
+};
+for (const [method, [description, inputSchema]] of Object.entries(poolSpecs))
+  server.registerTool(`pool_${method}`, { description, inputSchema }, async (args) => {
+    try {
+      if (process.env[delegatedMarker] && ["start", "followup"].includes(method))
+        throw new Error("Delegated workers cannot delegate again.");
+      return { content: [{ type: "text", text: JSON.stringify(await call(`pool.${method}`, args)) }] };
+    } catch (e) {
+      return { isError: true, content: [{ type: "text", text: e.message }] };
+    }
+  });
 for (const [method, [description, inputSchema]] of Object.entries(specs))
   server.registerTool(
     `claude_${method}`,

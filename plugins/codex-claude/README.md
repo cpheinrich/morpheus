@@ -146,6 +146,62 @@ both. Start a new Claude session after installing, and review its hooks.
 - **No loops.** Both workers run with `CODEX_CLAUDE_DELEGATED=1`; the hooks of either plugin
   then do nothing and both MCP servers refuse to start a further delegation.
 
+## Remote pool workers through Paperclip
+
+The Codex conversation can also coordinate **remote** Claude Code and Codex workers registered
+as Paperclip pool agents. Design and rationale: Morpheus
+[`docs/paperclip-interactive-bridge.md`](../../docs/paperclip-interactive-bridge.md). Tools are
+`pool_*` (or `bridge.mjs pool.<operation> -` with JSON on stdin when the current Codex task loaded
+an older tool list): `profiles`, `start`, `status`, `wait`, `logs`, `answer`, `followup`, `stop`,
+`reattach`, and `bridge.mjs pool.reconcile` for operators.
+
+- **Shape.** One Paperclip issue is one pool conversation; each provider turn is one Paperclip
+  run. Turn 1 is the issue; each follow-up is an issue comment (`reopen: true`). Paperclip's
+  `process` adapter runs `scripts/pool-runner.mjs` on the controller host, which claims the
+  journaled turn, reserves the profile's account, and runs `scripts/pool-remote.mjs` on the
+  worker over SSH (`BatchMode`, `StrictHostKeyChecking`). The host side uses this package's
+  guardian, provider arguments, auth checks and event folding.
+- **Ownership.** The runner's SSH stdin is the remote lease. The desktop bridge never renews it,
+  so closing Codex or restarting this bridge ends nothing; `pool_reattach` resumes from the
+  persisted conversation id and Paperclip log cursor. Losing the runner or SSH stops the remote
+  turn; a turn whose end is not proven keeps its account reserved and workspace quarantined
+  until the host proves it ended (checked automatically before the next admission).
+- **Questions and follow-ups.** Remote Claude asks live through its permission-control stream;
+  `pool_answer` follows the same rules as `claude_answer` (stale ids refused, tool permission
+  needs `source: user`, autonomous replies capped by `maxSupervisionReplies`). Codex reports
+  `needs_input` at the end of a turn. Follow-ups resume the same native session at a turn
+  boundary only; there is no mid-turn steering, and a follow-up during an active turn is refused.
+- **Duplicates.** Intent is journaled before any Paperclip write. An unknown creation outcome is
+  never reposted automatically; `pool_reattach` observes it by an issue/comment marker, and
+  `retry: true` resends with the same idempotency key / request id. Every turn has one atomic
+  claim, so duplicate or recovery wakes exit without contacting a provider.
+- **Credentials.** No Paperclip key, provider key, provider home or memory travels to the worker.
+  The host checks its own sign-in (`claude auth status` / `codex login status`) and refuses
+  otherwise. No full-access permission is offered: Claude `default`/`acceptEdits`/`plan`, Codex
+  `read-only`/`workspace-write`.
+- **Quota.** The host admits a turn only on a fresh read from its operator-configured native quota
+  command (`{observedAt, windows: [{id, usedPercent, resetsAt}]}`, e.g. the Paperclip pilot's
+  `quota.mjs` for Codex) below `stopAt` for every window, and stops it at `hardAt` or on unknown
+  telemetry. No command configured means refused. This bridge never reads a Claude OAuth token.
+
+Operator setup (controller and coordinator must be the same host and user in this version):
+
+1. `~/.local/share/codex-claude/pool.json` (0600): `controller` (`baseUrl`, `companyId`,
+   optional `projectId`, `tokenFile` — a 0600 board token file outside every workspace) and
+   `profiles.<name>` (`provider`, `agentId`, `account`, `host` {`transport` ssh|local, `target`,
+   `node`, `bridge`, `hostConfig`}, `workspace`, `model`, `effort`, `permission`).
+2. On the worker, install this package and stage `<bridge home>/pool-host.json` (0600, outside
+   every workspace): `hostId`, `path`, `graceSeconds`, `maxRunSeconds`, `quota.<provider>` and
+   `profiles.<name>` exactly as printed by `bridge.mjs pool-host-entry <name>`. Each workspace
+   belongs to one profile.
+3. Register the Paperclip agent from `bridge.mjs pool-agent-config <name>` and put its id in the
+   profile. Changing any bound field changes the binding digest: existing conversations refuse
+   rather than move.
+
+Runner exit codes (the Paperclip run result): 0 turn ended with verified termination, 75 refused
+before any provider process, 78 binding/configuration refused, 124 stopped with verified
+termination, 125 termination unknown.
+
 ## Sessions, output and supervision
 
 Each Codex task remains a normal saved Codex conversation. The plugin associates its
@@ -229,8 +285,9 @@ Claude chats. There is no cross-machine history synchronization.
 Install and enable on the machine actually executing the Codex task. Its Claude login,
 filesystem and memory stores are used. Authentication on your laptop does not authenticate
 the Mac mini. The remote chat displays tool progress normally; the optional loopback viewer
-requires a forwarded port to open locally. No inbound network port or SSH connection is
-opened by the plugin; its control socket is local and private.
+requires a forwarded port to open locally. No inbound network port is opened; its control
+socket is local and private. Only an explicitly configured pool profile makes outbound SSH
+connections, from the Paperclip-owned runner (see Remote pool workers).
 
 Loaded tasks use the public app-server settings response. Detached desktop tasks use only
 the active turn fields required by the bridge and validate that contract before delegating;

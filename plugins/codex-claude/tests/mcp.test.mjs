@@ -32,6 +32,9 @@ test("MCP advertises tools without activating bridge or creating settings", asyn
       "wait",
     ]
       .map((n) => "claude_" + n)
+      .concat(
+        ["answer", "followup", "logs", "profiles", "reattach", "start", "status", "stop", "wait"].map((n) => "pool_" + n),
+      )
       .sort(),
   );
   assert.deepEqual(await readdir(root), []);

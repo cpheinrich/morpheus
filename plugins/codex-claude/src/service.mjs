@@ -35,7 +35,12 @@ import {
   readJSON,
 } from "./store.mjs";
 import { Codex } from "./codex.mjs";
-import { checkClaude, handoff, claudeArgs } from "./claude.mjs";
+import {
+  checkClaude,
+  handoff,
+  claudeArgs,
+  applyClaudeEvent,
+} from "./claude.mjs";
 import {
   checkCodex,
   codexHandoff,
@@ -47,6 +52,7 @@ import { identity, ownedProcessState, stopOrphan } from "./processes.mjs";
 import { Viewer } from "./viewer.mjs";
 import { memoryContext, codexMemoryEnabled } from "./memory.mjs";
 import { installationId } from "./installation.mjs";
+import { Pool } from "./pool.mjs";
 
 export class Manager {
   runs = new Map();
@@ -55,6 +61,7 @@ export class Manager {
   draining = false;
   processOwnership = ownedProcessState;
   viewer = new Viewer(this);
+  pool = new Pool();
   async client() {
     if (!this.codex) {
       this.codex = await new Codex().connect();
@@ -359,53 +366,15 @@ export class Manager {
   }
   async event(run, event) {
     if (run.executor === "codex") return this.codexEvent(run, event);
-    if (
-      event.type === "stream_event" &&
-      event.event?.delta?.type === "text_delta"
-    ) {
-      run.progress = ((run.progress || "") + event.event.delta.text).slice(
-        -8000,
-      );
-      run.sequence++;
-    }
-    if (event.type === "assistant" && !run.progress) {
-      run.progress = (event.message?.content || [])
-        .filter((b) => b.type === "text")
-        .map((b) => b.text)
-        .join("\n")
-        .slice(-8000);
-      run.sequence++;
-    }
-    if (
-      event.type === "rate_limit_event" &&
-      event.rate_limit_info?.isUsingOverage
-    ) {
-      run.error = "Claude reported paid overage; stopping";
-      await this.cancel(run.id);
-    }
-    if (event.session_id && !run.claudeSession) {
-      run.claudeSession = event.session_id;
+    const effects = applyClaudeEvent(run, event);
+    if (effects.overage) await this.cancel(run.id);
+    if (effects.session) {
       const task = await taskRead(run.threadId);
-      task.claudeSession = event.session_id;
-      task.sessions = { ...task.sessions, [run.cwd]: event.session_id };
+      task.claudeSession = effects.session;
+      task.sessions = { ...task.sessions, [run.cwd]: effects.session };
       await taskWrite(task);
     }
-    if (event.type === "control_request") {
-      run.question = { id: event.request_id, request: event.request };
-      run.state = "needs_input";
-    }
-    if (event.type === "result") {
-      run.result = event.structured_output || {
-        outcome: event.is_error ? "failed" : "needs_input",
-        summary:
-          event.result ||
-          "Claude ended without a structured completion report.",
-        evidence: [],
-      };
-      if (event.is_error) run.result.outcome = "failed";
-      run.state = run.result.outcome;
-      this.send(run, { type: "close" });
-    }
+    if (effects.ended) this.send(run, { type: "close" });
     if (run.state === "starting") run.state = "running";
     await atomic(join(runDir(run.id), "run.json"), this.public(run));
   }
@@ -759,9 +728,11 @@ export class Manager {
     if (method === "config") {
       if (!args.value) return configRead();
       const value = await configWrite(args.value);
-      if (value.mode === "off")
+      if (value.mode === "off") {
         for (const run of this.runs.values())
           if (!run.terminal) await this.cancel(run.id);
+        await this.pool.stopAll().catch(() => {});
+      }
       return value;
     }
     if (method === "view") return this.viewer.open(args.runId);
@@ -798,6 +769,8 @@ export class Manager {
         throw error;
       }
     }
+    // Remote pool turns are owned by Paperclip's runner, not this service.
+    if (method.startsWith("pool.")) return this.pool.dispatch(method.slice(5), args);
     if (method === "inspect")
       return this.inspect(args.threadId, args.operation);
     if (method === "start") return this.start(args);
