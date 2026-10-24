@@ -53,16 +53,16 @@ only the original `pr` job, while the comment-revocation fix intentionally added
 `override-comment`. The other 2,208 tests passed. I corrected the expectation to assert both
 jobs, the comment events and the new job's permissions; focused `tests/init.test.ts` passed 74/74.
 The source implementation did not change. This correction occurred after the third review turn,
-so it needs an explicitly authorized same-reviewer turn before the PR can be merged.
+Chris authorized one additional same-reviewer turn in his authenticated PR comment; the original reviewer cleared the test-only correction. Current-main conflict resolution remains outside that clearance.
 
-The independent high-risk reviewer initially blocked five substantive gaps: disputed findings, missing timing, branch-local review opt-out, comment revocation, and vague human reasons. The author corrected them across two commits. The same reviewer cleared F01–F04 in the second turn, then verified the exact measured budget marker and boundary in the third turn, clearing F05 and the final diff. No substantive finding remains open. Final-head CI remains the release check.
+The independent high-risk reviewer initially blocked five substantive gaps. The author fixed all five and the same reviewer cleared the third-turn correction. CI then found one stale scaffold test; Chris explicitly authorized a fourth same-reviewer turn for its test-only correction, which the original reviewer cleared at 74290f6 with 74 focused tests passing and no new findings. This clearance does not cover any later current-main conflict resolution; final-head CI remains required.
 
 ```morpheus-review
 {
   "version": 2,
   "base": "8dd56cde2eb952ee485b6347072775156a60eaf8",
   "reviewed": "4b717299f2e82038a9a2b5d68da50faa0200d7ed",
-  "covered": "249285c8c0e4396650679d619df7734aaef10818",
+  "covered": "74290f6a267f1e0fe903a8a1b476a746cdc3c463",
   "authorSession": "01a13e64-2d9b-7730-abce-2287983ca7aa",
   "reviewerSession": "/root/human_override_review",
   "risk": "high",
@@ -73,13 +73,15 @@ The independent high-risk reviewer initially blocked five substantive gaps: disp
     "evidence": "Reviewer runner task_started 2026-10-16T00:18:00.689Z and task_complete 2026-10-16T00:19:56.654Z in its session log."
   },
   "outcome": "complete",
-  "summary": "The independent high-risk reviewer initially blocked five substantive gaps: disputed findings, missing timing, branch-local review opt-out, comment revocation, and vague human reasons. The author corrected them across two commits. The same reviewer cleared F01–F04 in the second turn, then verified the exact measured budget marker and boundary in the third turn, clearing F05 and the final diff. No substantive finding remains open. Final-head CI remains the release check.",
+  "summary": "The independent high-risk reviewer initially blocked five substantive gaps. The author fixed all five and the same reviewer cleared the third-turn correction. CI then found one stale scaffold test; Chris explicitly authorized a fourth same-reviewer turn for its test-only correction, which the original reviewer cleared at 74290f6 with 74 focused tests passing and no new findings. This clearance does not cover any later current-main conflict resolution; final-head CI remains required.",
   "findings": [
     {
       "id": "F01",
       "severity": "substantive",
       "description": "A disputed substantive finding could pass through an incomplete final-turn override.",
-      "paths": ["src/review/local.ts"],
+      "paths": [
+        "src/review/local.ts"
+      ],
       "disposition": "fixed",
       "response": "The override now refuses disputed substantive findings as well as unresolved ones. The reviewer cleared this in the second turn."
     },
@@ -87,7 +89,9 @@ The independent high-risk reviewer initially blocked five substantive gaps: disp
       "id": "F02",
       "severity": "substantive",
       "description": "Zero or missing timing evidence could pass a human override.",
-      "paths": ["src/review/local.ts"],
+      "paths": [
+        "src/review/local.ts"
+      ],
       "disposition": "fixed",
       "response": "Every overridden turn now requires positive measured timing, including historical version 1 records. The reviewer cleared this in the second turn."
     },
@@ -95,7 +99,10 @@ The independent high-risk reviewer initially blocked five substantive gaps: disp
       "id": "F03",
       "severity": "substantive",
       "description": "The Manager review path could accept a PR's own review.required=false opt-out.",
-      "paths": ["src/review/manager.ts", "src/review/local.ts"],
+      "paths": [
+        "src/review/manager.ts",
+        "src/review/local.ts"
+      ],
       "disposition": "fixed",
       "response": "Both review paths now require the protected base to have opted out before disabling review. The reviewer cleared this in the second turn."
     },
@@ -103,7 +110,10 @@ The independent high-risk reviewer initially blocked five substantive gaps: disp
       "id": "F04",
       "severity": "substantive",
       "description": "Editing or deleting a human approval comment after a green check did not recheck the PR head.",
-      "paths": [".github/workflows/review-metadata.yml", "src/init/templates.ts"],
+      "paths": [
+        ".github/workflows/review-metadata.yml",
+        "src/init/templates.ts"
+      ],
       "disposition": "fixed",
       "response": "Comment edits and deletions rerun the existing PR-head conventions job. The run lookup was checked against this repository's GitHub metadata and the reviewer cleared it in the second turn."
     },
@@ -111,7 +121,10 @@ The independent high-risk reviewer initially blocked five substantive gaps: disp
       "id": "F05",
       "severity": "substantive",
       "description": "Generic human comment prose could pass as an explanation of the review limit and accepted risk.",
-      "paths": ["src/review/local.ts", "docs/runbooks/independent-review.md"],
+      "paths": [
+        "src/review/local.ts",
+        "docs/runbooks/independent-review.md"
+      ],
       "disposition": "fixed",
       "response": "The review-limit line now has to equal the measured budget overrun derived from the committed record, and only a real overrun qualifies. The reviewer reproduced rejection of the generic comment and cleared the final diff in the third turn."
     }
@@ -140,6 +153,24 @@ The independent high-risk reviewer initially blocked five substantive gaps: disp
         "evidence": "Reviewer runner task_started 2026-10-16T00:32:31.846Z and task_complete 2026-10-16T00:33:00.628Z in its session log."
       },
       "summary": "F05 cleared: the old generic comment is rejected, the checker derives the exact budget marker from recorded timing, and the boundary at the ceiling has no override limit. No substantive issue in the final diff."
+    },
+    {
+      "reviewerSession": "/root/human_override_review",
+      "commit": "74290f6a267f1e0fe903a8a1b476a746cdc3c463",
+      "scopeReason": "Inspect the late test-only correction to the scaffold metadata workflow expectation and its worklog explanation after the previous clearance.",
+      "humanAuthorization": {
+        "approvedBy": "cpheinrich",
+        "approvedAt": "2026-10-24T00:08:13Z",
+        "reason": "Chris explicitly authorized one additional same-reviewer turn for commit 74290f6 in https://github.com/cpheinrich/morpheus/pull/414#issuecomment-6377285624."
+      },
+      "outcome": "cleared",
+      "elapsedMinutes": 1.0144333333333333,
+      "timing": {
+        "source": "clock",
+        "durationMs": 60866,
+        "evidence": "Original reviewer session runner task_started 2026-10-24T00:09:50.198Z and task_complete 2026-10-24T00:10:51.064Z in its session log."
+      },
+      "summary": "The original reviewer cleared the test-only correction at 74290f6, ran tests/init.test.ts with 74 passing tests, and found no new issue. This turn did not review current-main conflict resolution."
     }
   ]
 }
