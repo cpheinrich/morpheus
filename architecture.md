@@ -1412,6 +1412,16 @@ deployment and prospective evidence exist. No consumer repository is migrated or
 Historical decision evaluations ([`qa/evals/agent-stack/`](qa/evals/agent-stack/README.md)) freeze
 inputs, oracles, prompts and model/effort before execution and claim no productivity gain.
 
+The opt-in [explicit linkage bridge](docs/paperclip-integration.md) binds one roadmap item to
+many immutable Paperclip job records under `.agent/paperclip/`. Each record names repository,
+claimed branch, source SHA and acceptance references; only selected job instructions are copied.
+Git owns intent, exact issue linkage and operator-verified evidence. Paperclip retains live status.
+An operation journal in the common Git directory precedes issue creation; uncertain outcomes
+observe and link exact IDs instead of reposting. Result reconciliation never advances roadmap
+status or bypasses the normal delivery loop. Its private authentication rollout helper preserves
+the existing controller/database and stages reversible configuration; real deployment, worker
+authority isolation and consumer delivery remain explicit qualification gates.
+
 ## 8. Project management as files
 
 No Jira, no Linear. Markdown in git, with a validated schema.
@@ -3241,6 +3251,20 @@ beside its replacement. The required `pr / conventions` job in `pr-check.yml` an
 pending run in a concurrency group even when `cancel-in-progress` is false; a cancelled required
 run can leave an otherwise green pull request blocked. Job-level grouping governs a called job;
 a called workflow's top-level `concurrency` does not govern the caller's run.
+
+Artifact uploads use source-owned private snapshots with a checked ZIP byte envelope,
+not the size of a directory that another process can still grow. The reusable iOS
+workflow stages every selected native channel after its writers and requires one
+all-selected barrier plus each uploader's own successful admission. The upload action
+similarly stages accepted/resource receipts; persistence failure preserves uncertain
+Apple acceptance. Receipt namespaces bind the existing canonical per-invocation receipt
+directory, so two apps remain independent while the same successful/refused invocation
+stays spent even when outputs change. Optional audit absence does not admit dangling links. Names, archive layout and existing native/tool/controller policy stay
+independent of byte admission. A separate exact `artifact-stage-ref` is required for CD;
+ordinary callers retain `main`. Morpheus's browser failure diagnostics have a 64 MiB,
+one-day role, and a bounded synthetic Node 24/Python ABI job qualifies the artifact
+transport. The [artifact snapshot contract](docs/artifact-snapshots.md) states byte math,
+writer/ABI/provider limits and the separate consumer adoption requirements.
 
 `ios-ci` is the secret-free native Apple workflow. Its defaults follow the current
 [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md):
