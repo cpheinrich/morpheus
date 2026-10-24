@@ -26,6 +26,13 @@ export declare function prefixOf(id: string): string | null;
  * the current parser returns a string. Accepting both preserves compatibility
  * with already-materialised metadata. Legacy Date values are UTC, so slicing
  * the ISO string cannot shift the day.
+ *
+ * A file written with a timestamp (`date: 2026-08-18T13:15:00.000Z`, as Darwin's
+ * inboxes were) used to pass the same way: the old parser made it a Date and the
+ * slice kept the day. The current parser hands the timestamp over as a string,
+ * so a UTC timestamp string is sliced to its day too (MO-26-10-23-18.52.03,
+ * #468). A timestamp with an offset is left alone and refused, as before: its day
+ * depends on the zone, and the file should say which day it means.
  */
 export declare const isoDate: z.ZodPreprocess<z.ZodISODate>;
 /**

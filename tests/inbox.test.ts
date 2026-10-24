@@ -109,3 +109,18 @@ describe("archiveName", () => {
     expect(archiveName("cpheinrich", t)).not.toBe(archiveName("alex", t));
   });
 });
+
+describe("frontmatter date spellings", () => {
+  const withDate = (date: string) => doc(doneItem(1)).replace("date: 2026-07-29", `date: ${date}`);
+  it("accepts a UTC timestamp the way the legacy Date path did, and keeps its day", () => {
+    const r = parseInbox("s.md", withDate("2026-08-18T13:15:00.000Z"));
+    expect(r.issues).toHaveLength(0);
+    expect(r.meta.date).toBe("2026-08-18");
+  });
+  it("still accepts a plain date and still refuses a timestamp with an offset or a non-date", () => {
+    expect(parseInbox("s.md", withDate("2026-08-18")).meta.date).toBe("2026-08-18");
+    for (const bad of ["2026-08-18T13:15:00-07:00", "yesterday", "2026-13-01"]) {
+      expect(parseInbox("s.md", withDate(bad)).issues.some((issue) => /frontmatter date/.test(issue.message))).toBe(true);
+    }
+  });
+});
