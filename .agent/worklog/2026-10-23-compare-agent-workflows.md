@@ -156,3 +156,10 @@ terminal. No locked model call, hidden grade, or reference read has occurred.
 Validation before lock: pnpm typecheck; focused pnpm exec vitest run
 tests/workflow-repair.test.ts (1 wrapper,26 Python controls); pnpm compile; pm index.
 No shared core changed, so no full local suite was run; full CI remains required.
+
+Locked collection began from implementation33dbe5c8 with frozen plan
+0431b27286594f1b84ecaf0b60ef87a128b73d31cd7903fe530c0775fa7ffcd9 and clarified corpus
+f37d1e2510eb613c7d6c7f9141234a3cc69f29e0652ac186c7c8a35fb45dd7f9. Eighteen initial
+worker episodes and eight manager calls are scheduled, plus only public-failure-driven
+continuations. Max50 experimental native calls includes all12 development calls.
+The draft PR is for CI visibility; results and independent review remain pending.
