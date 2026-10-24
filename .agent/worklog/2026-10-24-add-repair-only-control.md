@@ -40,7 +40,7 @@ No `src/`, `dist/` or test bytes changed after review, and there were no follow-
     "durationMs": 523704,
     "evidence": "Native runner result uuid 5edf67c4-f7e3-4d49-84f8-d58f2c1aba99 for reviewer session cf511d7b-2de9-4fa6-9b27-088235e9faf0, run 9c00fa0f-ee4e-4b5d-aa05-2753fe23b88f: duration_ms=523704. The separate coordinator dispatch clock (527536.597 ms) is not this runner duration."
   },
-  "outcome": "cleared",
+  "outcome": "complete",
   "summary": "Fresh HIGH review of b6458429..8706393c cleared conditionally on F1 (substantive: hosted scheduling via cd tick/scheduleHosted bypasses a repair: hold). The docs-only condition is met at 61e67a16 with the four required disclosures; F2 (minor, CLI throws on a malformed control or store error) and F3 (incidental, HeldAwareResult is unknown) are documented as the reviewer allowed. No source, dist or test change after review; no follow-up turns. Real meter, pinned hosted scheduling, native agent/provider, live CLI/ledger/host, Evo binding and adoption remain unproved.",
   "findings": [
     {
