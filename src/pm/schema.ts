@@ -40,17 +40,25 @@ export function prefixOf(id: string): string | null {
  * A file written with a timestamp (`date: 2026-08-18T13:15:00.000Z`, as Darwin's
  * inboxes were) used to pass the same way: the old parser made it a Date and the
  * slice kept the day. The current parser hands the timestamp over as a string,
- * so a UTC timestamp string is sliced to its day too (MO-26-10-23-18.52.03,
- * #468). A timestamp with an offset is left alone and refused, as before: its day
- * depends on the zone, and the file should say which day it means.
+ * so a UTC timestamp string (`HH:MM:SS`, optional fraction, `Z`) is sliced to its
+ * day too (MO-26-10-23-18.52.03, #468). This deliberately restores only that
+ * spelling: the old parser also coerced zone-less, space-separated and offset
+ * timestamps and sliced them in UTC, which could shift the day silently
+ * (`2026-08-18T23:15:00-07:00` passed as `2026-08-19`). Those are refused now,
+ * since the file should say which day it means.
  */
+const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+/** The day a UTC timestamp string names, only when the Date path would name the same one (so `T24:00:00Z` and `T99:99:99Z` stay refused). */
+function utcTimestampDay(value: string): string | null {
+  if (!UTC_TIMESTAMP.test(value)) return null;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return null;
+  const day = new Date(parsed).toISOString().slice(0, 10);
+  return day === value.slice(0, 10) ? day : null;
+}
 export const isoDate = z.preprocess(
   (v) =>
-    v instanceof Date
-      ? v.toISOString().slice(0, 10)
-      : typeof v === "string" && /^\d{4}-\d{2}-\d{2}T[0-9:.]+Z$/.test(v)
-        ? v.slice(0, 10)
-        : v,
+    v instanceof Date ? v.toISOString().slice(0, 10) : typeof v === "string" ? (utcTimestampDay(v) ?? v) : v,
   z.iso.date(),
 );
 

@@ -599,3 +599,12 @@ it sent cancelled-before-assignment runs to repair instead of the hosted fallbac
 provider.** Compare it with retained real rows before encoding a sentinel. One caveat remains
 unverified: no queued row has been observed. If queued rows carry the same copied `started_at`,
 the strict queued admission bound never fires.
+
+- **The frontmatter parser swap (#376) removed the timestamp→Date coercion, and no fixture
+  carried the spelling real files use.** js-yaml 3 turned an unquoted `date: 2026-08-18T13:15:00.000Z`
+  into a Date that `isoDate` sliced to its day; `@11ty/gray-matter` hands it over as a string, and
+  Darwin's two inboxes, written that way, failed `inbox validate` on trunk within the hour of the
+  swap landing, after 143 focused tests and an independent review had called the change
+  behaviour-free. `isoDate` now slices a UTC timestamp string itself (MO-26-10-23-18.52.03).
+  Verify a parser or serializer swap against the consumer corpora (Darwin's and Evo's `hq/`
+  trees), not only this repository's fixtures.

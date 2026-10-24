@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseInbox } from "../src/inbox/parse.js";
 import { archiveName } from "../src/inbox/schema.js";
+import { isoDate } from "../src/pm/schema.js";
 
 const FM = `---
 owner: cpheinrich
@@ -117,9 +118,14 @@ describe("frontmatter date spellings", () => {
     expect(r.issues).toHaveLength(0);
     expect(r.meta.date).toBe("2026-08-18");
   });
-  it("still accepts a plain date and still refuses a timestamp with an offset or a non-date", () => {
+  it("agrees with the legacy Date path on every UTC spelling it admits", () => {
+    for (const s of ["2026-08-18T13:15:00.000Z", "2026-08-18T00:00:00Z", "2026-08-18T23:59:59.9Z"]) {
+      expect(isoDate.parse(s)).toBe(isoDate.parse(new Date(s)));
+    }
+  });
+  it("still accepts a plain date and still refuses offsets, zone-less, malformed and non-dates", () => {
     expect(parseInbox("s.md", withDate("2026-08-18")).meta.date).toBe("2026-08-18");
-    for (const bad of ["2026-08-18T13:15:00-07:00", "yesterday", "2026-13-01"]) {
+    for (const bad of ["2026-08-18T13:15:00-07:00", "2026-08-18T13:15:00", "2026-08-18 13:15:00", "2026-08-18T13:15Z", "2026-08-18T99:99:99Z", "2026-08-18T24:00:00Z", "2026-08-18T.Z", "2026-08-18T13:15:00z", "yesterday", "2026-13-01"]) {
       expect(parseInbox("s.md", withDate(bad)).issues.some((issue) => /frontmatter date/.test(issue.message))).toBe(true);
     }
   });
