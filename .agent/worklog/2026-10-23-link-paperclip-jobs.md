@@ -110,3 +110,18 @@ once. Exact GET readback linked issue 9ec1fa46-eb0f-4704-8382-615ad6a11b46 to op
 morpheus-c993d815c1b765b05e4d3ed4e99fc638346d9c25fb0f2153597f541d6757c5da. No owner key
 was read or changed. No manual wakeup was sent. The tests job remains unsubmitted pending its
 separate authorization and bounded monitor; runtime artifacts are not accepted from job status.
+
+The parent's first lineage run 121f768d-a45b-480f-a5d1-e9a2057452ef terminated successfully.
+The parent checked the actual artifact identity/schema, cited source symbols, and unchanged
+whole source-file/symlink inventories, then protected that workspace. Under a separate exact
+authorization, the author temporarily opened only the tests scoped key for loading, returned
+it to mode 000 before POST, and submitted inspect-tests once. Exact GET readback linked issue
+ef2c23bf-0d44-4591-9405-afd4e4398ff0 to its committed operation. The owner vault and lineage
+key were untouched, and no manual wakeup was sent. Final artifact verification and reconciliation
+are still pending.
+
+After context compaction, graph service access recovered. The exact worktree generation is
+2026-10-24T02:25:41Z; coverage reports the four new bridge/helper/test files as not_tracked,
+with no recorded issues. These new paths continue to rely on direct source reads and execution;
+no graph completeness claim is made. The executor bridge reports no Claude run for this author
+session and automatic routing remains Codex with 66% allowance remaining.
