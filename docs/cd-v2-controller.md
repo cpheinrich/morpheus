@@ -376,6 +376,17 @@ Together admission cannot exceed the configured ceiling, at most $250. The
 controller has no implicit paid-provider fallback. Operational acceptance must
 include any task spend incurred before ledger initialization.
 
+An optional explicit [reviewed source publication grant](cd-source-finance.md) applies
+only to budget reserve in the `source-ci-` namespace. It binds the actual request,
+supplied and stored configuration identities, epoch, finite source scope, amount,
+aggregate ceiling and short admission window, with normal CAS and complete receipt
+readback. Grant values come from that engagement's independently reviewed evidence.
+The ordinary `reservePaid`/`cd budget reserve` guard still refuses new paid reservations
+that would exceed its configured ceiling, at most $250; exact old reserved paid identities
+still replay. This dollar guard does not gate local delivery intent creation, attempt
+planning or dispatch, whose other existing controls remain unchanged. The source grant
+itself authorizes no native operation and dispatches no work or provider effect.
+
 Focused tests cover protocol counterexamples and actual local Git, ES256 signing,
 receipt producer and artifact bytes. They do not count
 as TestFlight deliveries. The eight real deliveries and normal scheduled-path

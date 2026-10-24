@@ -4,3 +4,6 @@ Read [the contract](../../docs/cd-pipeline-v2.md) and [CLI guide](../../docs/cd-
 before changing operation claims: an expired lease never permits replaying upload. The
 reviewed macOS host wakeup templates live in [host](./host/README.md); consumer-specific
 rendering and activation are documented in [the host runbook](../../docs/cd-v2-host-macos.md).
+Explicit source-only budget grants live in `source-finance.ts`; read
+[their contract](../../docs/cd-source-finance.md) before changing that boundary.
+They do not change native configuration or admission policy.

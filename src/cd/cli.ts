@@ -12,6 +12,7 @@ import { verifyConfiguration, verifySource, verifyValidator } from "./source.js"
 import { runWorker, scheduleHosted, QuotaReader } from "./worker.js";
 import { githubToken, probeGitHubToken } from "./github-token.js";
 import { validatePayloadFiles } from "./evidence.js";
+import { reserveReviewedSource } from "./source-finance.js";
 
 const HELP = `morpheus cd config|init|tick|request|status|verify-execution|claim-upload|record-upload|upload-hook|record|worker|budget
   --config PATH                 Consumer configuration (default .morpheus/cd.json)
@@ -22,6 +23,7 @@ const HELP = `morpheus cd config|init|tick|request|status|verify-execution|claim
   upload-hook --phase before|resource|after
   worker --executor local|hosted [--host-id ID] [--work-id ID --invocation-id ID --task-digest SHA256]
   budget --operation reserve|settle --id ID [--request FILE --maximum-micros N|--actual-micros N]
+    reserve [--authority FILE --authority-digest SHA256]  Explicit reviewed source CI grant
 All results are JSON. Upload claim exit 3 means skip safely; never retry bytes.
 `;
 async function jsonInput(path: string): Promise<unknown> {
@@ -57,8 +59,16 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
     "source-age-waiver": { type: "string" },
     executor: { type: "string" }, "host-id": { type: "string" }, "work-id": { type: "string" }, "invocation-id": { type: "string" }, "task-digest": { type: "string" },
     operation: { type: "string" }, id: { type: "string" }, request: { type: "string" }, "maximum-micros": { type: "string" }, "actual-micros": { type: "string" },
+    authority: { type: "string" }, "authority-digest": { type: "string" },
     help: { type: "boolean", short: "h" }, json: { type: "boolean" }, revoke: { type: "boolean" }, probe: { type: "boolean" },
   } });
+  const sourceAuthority = values.authority !== undefined || values["authority-digest"] !== undefined;
+  if (sourceAuthority) {
+    invariant(values.authority && values["authority-digest"], "Reviewed source authority requires both --authority and --authority-digest");
+    invariant(positionals.length === 1 && positionals[0] === "budget" && values.operation === "reserve" && !values.help, "Reviewed source authority is only valid for explicit budget reserve, without help");
+    const allowed = new Set(["config", "operation", "id", "request", "maximum-micros", "authority", "authority-digest", "json"]);
+    for (const key of Object.keys(values)) invariant(allowed.has(key), `Reviewed source budget reserve does not accept --${key}`);
+  }
   if (values.help || !positionals.length) { console.log(HELP); return 0; }
   if (positionals[0] === "github-token") { console.log(JSON.stringify(await (values.probe ? probeGitHubToken(environment) : githubToken(environment, values.revoke)))); return 0; }
   const configPath = resolve(values.config ?? ".morpheus/cd.json"), config = configSchema.parse(JSON.parse(await readFile(configPath, "utf8")));
@@ -148,9 +158,16 @@ export async function cd(argv: string[], environment: NodeJS.ProcessEnv = proces
     case "budget": {
       const id = required(values.id, "--id");
       if (values.operation === "reserve") {
-        const request = await jsonInput(required(values.request, "--request")), maximum = Number(required(values["maximum-micros"], "--maximum-micros"));
-        result = await store.transact(`budget-reserve-${id}`, "reserve-paid-request", now, state => { reservePaid(state, config, id, request, maximum); return { id, maximumMicros: maximum }; });
-        const reserved = (await store.read()).state.budget.reservations[id]; invariant(reserved?.digest === hash(request) && reserved.maximumMicros === maximum && reserved.status === "reserved", "Paid request reservation was replayed with changed or settled identity");
+        if (sourceAuthority) {
+          const requestPath = required(values.request, "--request"), maximum = Number(required(values["maximum-micros"], "--maximum-micros"));
+          invariant(requestPath !== "-" && values.authority !== "-", "Reviewed source grant and request require JSON files");
+          const request = await jsonInput(requestPath);
+          result = await reserveReviewedSource(api, config, { grant: await jsonInput(values.authority!), approvedGrantDigest: values["authority-digest"]!, request, reservationId: id, maximumMicros: maximum });
+        } else {
+          const request = await jsonInput(required(values.request, "--request")), maximum = Number(required(values["maximum-micros"], "--maximum-micros"));
+          result = await store.transact(`budget-reserve-${id}`, "reserve-paid-request", now, state => { reservePaid(state, config, id, request, maximum); return { id, maximumMicros: maximum }; });
+          const reserved = (await store.read()).state.budget.reservations[id]; invariant(reserved?.digest === hash(request) && reserved.maximumMicros === maximum && reserved.status === "reserved", "Paid request reservation was replayed with changed or settled identity");
+        }
       } else if (values.operation === "settle") {
         const actual = Number(required(values["actual-micros"], "--actual-micros"));
         result = await store.transact(`budget-settle-${id}`, "settle-paid-request", now, state => { settlePaid(state, id, actual); return { id, actualMicros: actual }; });

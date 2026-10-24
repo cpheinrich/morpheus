@@ -5,6 +5,9 @@ import { dispatch } from "./dispatch.js";
 import { cd } from "../cd/cli.js";
 /** Importable invocation seam; only the executable owns process exit. */
 export async function run(argv) {
+    if (argv[0] !== "cd" && argv.some(argument => ["--authority", "--authority-digest"].some(flag => argument === flag || argument.startsWith(`${flag}=`)))) {
+        throw new Error("Reviewed source authority is only valid for cd budget reserve");
+    }
     // Preserve all child arguments, including --help and flags owned by the child.
     if (argv[0] === "credentials")
         return credentials(argv.slice(1));
