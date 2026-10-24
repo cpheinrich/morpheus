@@ -108,7 +108,16 @@ async function dispose(api, conversation, issueId, record, runId) {
       await api.post(`/issues/${issueId}/comments`, { body });
       Object.assign(journal, { state: "superseded", status: null });
     } else {
-      await api.patch(`/issues/${issueId}`, { status: journal.status, comment: body });
+      await api.patch(`/issues/${issueId}`, {
+        status: journal.status,
+        comment: body,
+        // The pinned API refuses blocked without a first-class unblock route.
+        // A coordinator decision is board-owned; no other agent is notified.
+        unblockDescriptor: journal.status === "blocked" ? {
+          owner: "board",
+          action: "Review this turn in the controlling Codex conversation. Resolve its question or preflight refusal, then send an authorized follow-up.",
+        } : null,
+      });
       journal.state = "applied";
     }
   } catch (error) {

@@ -1,7 +1,11 @@
 # Interactive remote delegation through the existing bridge
 
-Status: implemented in source with deterministic tests; live acceptance pending (root
-deployment, enrollment and real nonce turns). Task MO-26-10-24-00.59.32; acceptance is in
+Native blocked transitions require an unblock route. The runner supplies a board-owned
+`unblockDescriptor` pointing to the controlling Codex conversation, and clears it on done.
+This follows the pinned API's actual HTTP 422 guard; a question in a comment alone is insufficient.
+
+Status: staged on both hosts. Remote Codex and local Claude have completed real nonce turns;
+final protocol and recovery qualification is in progress. Task MO-26-10-24-00.59.32; acceptance is in
 qa/acceptance/MO-26-10-24-00.59.32.md. Remote Claude live acceptance is pending native
 sign-in on the Mac mini and is not replaced by synthetic evidence.
 

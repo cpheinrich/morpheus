@@ -167,7 +167,10 @@ export class FakePaperclip {
       // One transaction: status and the run-attributed comment land together.
       const issue = this.issues.get(m[1]);
       if (!issue) return this.json(404, {});
+      if (body.status === "blocked" && issue.status !== "blocked" && !body.unblockDescriptor)
+        return this.json(422, { error: "Entering blocked requires unresolved blockers, a pending interaction/approval, or unblockDescriptor" });
       if (body.status) issue.status = body.status;
+      if (Object.hasOwn(body, "unblockDescriptor")) issue.unblockDescriptor = body.unblockDescriptor;
       if (body.comment) this.addComment(m[1], { body: body.comment }, runId);
       if (injected === "throw-after") throw new TypeError("fetch failed");
       return this.json(200, issue);

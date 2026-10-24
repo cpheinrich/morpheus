@@ -284,3 +284,23 @@ re-send; delayed PATCH never re-sent, follow-up refused while unconfirmed, two o
 reattach write nothing, then the late write lands, observation settles it and the follow-up
 runs; duplicate wake during an active turn writes nothing; cancellation follow-up refused until
 reconcile, then resumes sess-1). `pnpm check`; `pnpm test` 76/76.
+
+## Native blocked contract and concurrent follow-up correction
+
+The real server rejected protocol conversation 114bca4e-e800-4fce-9fea-d5c32cde963e's first
+needs-input disposition with HTTP 422. Installed route/schema source requires a first-class
+unblock route; a question comment is insufficient. The runner now supplies board-owned
+`unblockDescriptor` for blocked and clears it on done. The fixture models that native refusal.
+The failed live result remains in the private evidence; a later turn will qualify the fix.
+
+A new simultaneous-followup test failed before correction (two successful submissions allocated
+the same turn). The shared coordinator service now refuses the second request before allocating
+or writing intent. The regression verifies one comment, one winning prompt and one next turn.
+Validation: protocol tests 7/7, plugin `pnpm check` and `pnpm test` 78/78. Root typecheck,
+compile and PM index ran; generated tracked files remained unchanged. No root full suite
+was needed for plugin-only source changes; CI owns it.
+
+The graph server recovered after earlier transport failures: generation 2026-10-24T07:59:43Z
+indexes the primary checkout. Coverage reports the new pool modules/tests missing there;
+task-worktree source reads remain the evidence. No graph completeness claim is made.
+Mini Claude CLI still reports loggedIn false on the latest native check despite web sign-in.

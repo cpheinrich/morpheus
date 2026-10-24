@@ -22,6 +22,7 @@ const LOG_PAGE = 256 * 1024;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const firstLine = (text) => text.trim().split("\n")[0].slice(0, 80);
 export class Pool {
+  followups = new Set();
   // `admit` verifies the calling Codex task before anything can launch; `control` before
   // an answer. The bridge service supplies both from live task metadata. Without them
   // every mutation refuses rather than trusting an unverified caller.
@@ -288,6 +289,19 @@ export class Pool {
     return this.status({ conversationId: c.id });
   }
   async followup(args) {
+    // All supported clients share the controller's bridge service. Refuse a second
+    // submission before either caller can allocate the same next turn number.
+    const id = args.conversationId;
+    if (this.followups.has(id))
+      throw new Error("Another follow-up is being submitted for this conversation; read status before retrying.");
+    this.followups.add(id);
+    try {
+      return await this.continueTurn(args);
+    } finally {
+      this.followups.delete(id);
+    }
+  }
+  async continueTurn(args) {
     if (!TASK_ID.test(args.threadId ?? "")) throw new Error("Pass the current Codex task id");
     if (typeof args.prompt !== "string" || !args.prompt.trim() || args.prompt.length > 200000)
       throw new Error("A bounded prompt is required");

@@ -14,6 +14,52 @@ import { poolFixture, until } from "./pool-fixtures.mjs";
 const byRun = (fx, issueId, runId) => (fx.paperclip.comments.get(issueId) ?? []).filter((c) => c.createdByRunId === runId);
 const exists = (path) => stat(path).then(() => true, () => false);
 
+test("two concurrent follow-ups cannot overwrite the same turn intent", async (t) => {
+  const fx = await poolFixture(t, { provider: "codex", transport: "local" });
+  const pool = fx.coordinator();
+  const s = await pool.start({ threadId: "thread-concurrent", profile: fx.name, prompt: "WRITE first.txt first" });
+  assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 0);
+  const prompts = ["WRITE next-a.txt A", "WRITE next-b.txt B"];
+  const results = await Promise.allSettled(prompts.map(prompt => pool.followup({
+    conversationId: s.conversationId, threadId: s.threadId, prompt,
+  })));
+  assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
+  const rejected = results.find(r => r.status === "rejected");
+  assert.match(rejected.reason.message, /Another follow-up/);
+  assert.equal(fx.paperclip.count("POST", /\/comments$/), 1);
+  const n = results.findIndex(r => r.status === "fulfilled");
+  const intent = JSON.parse(await readFile(join(fx.coord, "pool", "conversations", s.conversationId, "turns", "2.json"), "utf8"));
+  assert.equal(intent.prompt, prompts[n]);
+  assert.equal((await pool.status({ conversationId: s.conversationId })).turn, 2);
+});
+
+test("blocked disposition supplies the board unblock route required by the real API", async (t) => {
+  const fx = await poolFixture(t, { provider: "codex", transport: "local" });
+  const pool = fx.coordinator();
+  const s = await pool.start({ threadId: "thread-block-route", profile: fx.name, prompt: "QUESTION about colors" });
+  const rejected = await fx.paperclip.fetch(`http://paperclip.test/api/issues/${s.issueId}`, {
+    method: "PATCH", body: JSON.stringify({ status: "blocked", comment: "A question alone supplies no unblock route" }),
+  });
+  assert.equal(rejected.status, 422);
+  assert.equal((await rejected.json()).error, "Entering blocked requires unresolved blockers, a pending interaction/approval, or unblockDescriptor");
+  assert.equal(fx.paperclip.issues.get(s.issueId).status, "todo");
+  assert.equal((fx.paperclip.comments.get(s.issueId) ?? []).length, 0);
+
+  assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 0);
+  const issue = fx.paperclip.issues.get(s.issueId);
+  assert.equal(issue.status, "blocked");
+  assert.deepEqual(issue.unblockDescriptor, {
+    owner: "board",
+    action: "Review this turn in the controlling Codex conversation. Resolve its question or preflight refusal, then send an authorized follow-up.",
+  });
+  assert.equal((await pool.status({ conversationId: s.conversationId })).disposition.state, "applied");
+
+  await pool.followup({ conversationId: s.conversationId, threadId: s.threadId, prompt: "WRITE unblocked.txt blue", replySource: "codex", replyReason: "Reversible transport fixture choice" });
+  assert.equal(await fx.run(fx.paperclip.startRun(s.issueId)), 0);
+  assert.equal(issue.status, "done");
+  assert.equal(issue.unblockDescriptor, null);
+});
+
 test("each finished turn records one run-attributed disposition, so Paperclip queues no repair", async (t) => {
   const fx = await poolFixture(t, { provider: "codex", transport: "local" });
   const pool = fx.coordinator();
