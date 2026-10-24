@@ -32,8 +32,17 @@ existing metadata workflow, and allows one bounded same-head hold retry. Re-revi
 The second review found that an unrestricted model shell could run candidate code with the
 long-lived Claude token in its environment. The review step now uses pinned Claude CLI restricted
 and safe modes with only Read, Glob and Grep tools; it has no GitHub token, no Bash, no MCP, and
-does not write the decision itself. A deterministic step captures the exact-head diff and check
-packet before the model receives its token and extracts strict JSON afterward. The model never
+does not write the decision itself. A deterministic step captures the exact-head diff, verified
+test-merge check results, and official OSV/npm provenance in a dedicated credential-free packet
+directory before the model receives its token; it extracts strict JSON afterward. A missing,
+pending, failing or stale prerequisite check prevents the model review from starting. The model never
 executes target tests; CI owns that proof. Focused tests (295), syntax check, and diff check passed
 after this fix. The reviewer also identified plural/related credential and trading path names;
 both Security and Manager validators now exclude those path forms and test them.
+
+The final reviewer response conditionally cleared head `3b78af48` if the packet directory,
+verified test-merge parent and check gate, and OSV/npm evidence were implemented within the
+named workflow/script/test/runbook files. The focused security review/workflow tests passed 168
+cases after these changes; `node --check scripts/security-import-review.mjs` and `git diff --check`
+passed. A direct npm registry request for the scoped `@11ty/gray-matter@3.0.0` endpoint returned
+the exact package/version and a distribution integrity value. No live private caller was run.

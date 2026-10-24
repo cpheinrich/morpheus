@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error operational workflow script is intentionally JavaScript
-import { candidateReceipt, parseReviewDecision, requireReviewedCheckout, reviewDecisionFromSession, reviewMarker } from "../scripts/security-import-review.mjs";
+import { candidateReceipt, parseReviewDecision, requireReviewedCheckout, reviewDecisionFromSession, reviewMarker, reviewPrerequisitesReady, validTestMerge } from "../scripts/security-import-review.mjs";
 
 const head = "a".repeat(40);
+const base = "b".repeat(40);
+const mergeSha = "c".repeat(40);
 const pr = {
   user: { login: "morpheus-security[bot]" },
-  base: { repo: { full_name: "cpheinrich/morpheus" } },
+  base: { repo: { full_name: "cpheinrich/morpheus" }, sha: base },
   head: { repo: { full_name: "cpheinrich/morpheus" }, ref: "morpheus-security/npm-gray-matter", sha: head },
+  merge_commit_sha: mergeSha,
   draft: false,
 };
 const receipt = { version: 2, mode: "import-only-compatibility", repository: "cpheinrich/morpheus",
@@ -20,6 +23,24 @@ const files = ["package.json", "pnpm-lock.yaml", "src/review/local.ts", "dist/re
   .map((filename) => ({ filename, status: "modified" }));
 
 describe("review-only Security candidate admission", () => {
+  it("waits for the current required CI before spending a model review", () => {
+    const required = ["node / check", "pm / pm", "pr / conventions"];
+    const passed = required.slice(0, 2).map((name, id) => ({ id: id + 1, name,
+      head_sha: mergeSha, app: { slug: "github-actions" }, status: "completed", conclusion: "success" }));
+    const merge = { sha: mergeSha, parents: [{ sha: base }, { sha: head }] };
+    expect(validTestMerge(pr, merge)).toBe(true);
+    expect(validTestMerge(pr, { ...merge, parents: [{ sha: base }, { sha: "d".repeat(40) }] })).toBe(false);
+    expect(validTestMerge(pr, { ...merge, parents: [{ sha: "d".repeat(40) }, { sha: head }] })).toBe(false);
+    expect(validTestMerge(pr, { ...merge, sha: "d".repeat(40) })).toBe(false);
+    expect(validTestMerge(pr, null)).toBe(false);
+    expect(reviewPrerequisitesReady(passed, required, mergeSha)).toBe(true);
+    expect(reviewPrerequisitesReady([{ ...passed[0], status: "queued" }, passed[1]], required, mergeSha)).toBe(false);
+    expect(reviewPrerequisitesReady([...passed, { ...passed[0], id: 3, conclusion: "failure" }], required, mergeSha)).toBe(false);
+    expect(reviewPrerequisitesReady([{ ...passed[0], app: { slug: "other" } }, passed[1]], required, mergeSha)).toBe(false);
+    expect(reviewPrerequisitesReady([{ ...passed[0], head_sha: head }, passed[1]], required, mergeSha)).toBe(false);
+    expect(reviewPrerequisitesReady(passed, ["pr / conventions"], mergeSha)).toBe(false);
+    expect(reviewPrerequisitesReady(passed, required, null)).toBe(false);
+  });
   it("admits a signed, exact-head, bounded import candidate", () => {
     expect(candidateReceipt(pr, [check], files)).toEqual(receipt);
   });

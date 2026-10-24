@@ -180,7 +180,10 @@ Morpheus's import-only Security exception is a **separate review-only workflow**
 through the Manager's ordinary sweep or protected-path self-review. The private Manager caller
 may call `security-import-review.yml` for `cpheinrich/morpheus` only. Its model session receives
 contents read, has only read-only file tools, and reviews the exact Security App-attested head
-using a precomputed diff and check packet. It has no target GitHub token and returns a JSON decision. A
+using a precomputed diff, test-merge check and OSV/npm provenance packet. It has no target GitHub
+token and returns a JSON decision. A review is queued only after the required CI checks other than
+the conventions check are green on a test merge whose parents are the live base and attested head;
+the conventions check depends on the review label. A
 separate deterministic job verifies the live head and App candidate, then posts a Manager App
 comment carrying that head and its clear/findings/hold verdict. It cannot push or merge the PR.
 Security checks the distinct App comment again before any merge. The review label only triggers
