@@ -31,6 +31,8 @@ jobs:
           node-version: "22"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Typecheck the standalone closeout CLI
+        run: pnpm exec tsc --noEmit --target ES2023 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck scripts/paperclip-closeout/cli.ts
       - name: Preserve committed snapshots and validate additions
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
