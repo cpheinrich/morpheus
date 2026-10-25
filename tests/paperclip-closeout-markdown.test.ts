@@ -50,9 +50,12 @@ describe("Markdown closeouts", () => {
     const rendered = await renderCloseout(repo, exported.path);
     const md = await readFile(join(repo, rendered.path));
     expect(md).toEqual(renderMarkdown(bytes, exported.path));
-    expect(sha256(md)).toBe("ec8e5decdcb0f7dd7753bbe0e31cb9f07ac35ee990eccdb49754a359bbcab1a5");
+    expect(sha256(md)).toBe("ceb62b05fc176da486ae4b88a92ae537b6fd04e76cbeb4927daa1fa85d4515b0");
     expect(rendered).toEqual({ path: exported.path.replace(/\.json$/, ".md"), canonicalPath: exported.path, snapshotId: exported.snapshotId, created: true });
     const text = md.toString();
+    expect(text.indexOf("## Conversation")).toBeLessThan(text.indexOf("## Decisions"));
+    expect(text.indexOf("## Attachments")).toBeLessThan(text.indexOf("## Provenance and audit details"));
+    expect(text.indexOf("Decision:")).toBeLessThan(text.indexOf('"source":'));
     expect(text).toContain(`[${exported.snapshotId}.json](./${exported.snapshotId}.json)`);
     for (const value of ["Keep all versions", "sourceMessageIds", "acceptedBy", '"selected":', '"not-run"', '"failed"', '"passed"', "atomic", "inputSha256", "Unverified reference"]) expect(text).toContain(value);
     const verified = exported.record.attachments[0]!;

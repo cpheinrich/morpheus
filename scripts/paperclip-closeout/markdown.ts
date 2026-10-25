@@ -58,30 +58,44 @@ const jsonText = (value: unknown) => displayText(JSON.stringify(value, null, 2))
 export function renderMarkdown(bytes: Buffer, path: string): Buffer {
   const { record: r, snapshotId } = verifyRecord(bytes, path);
   const lines = [
-    "# Paperclip conversation closeout", "",
-    `Canonical snapshot: [${snapshotId}.json](./${snapshotId}.json)`,
-    `SHA-256 of exact canonical JSON bytes: ${snapshotId}`, "",
-    "This view records operator-frozen observations. Atomic upstream capture: false. Source completeness, acceptance authority and PM completion are not independently established.", "",
-    "## Source identity and freeze", "", jsonText({ source: r.source, freeze: r.freeze }),
-    "## Issue", "", jsonText(r.issue), "## Messages", "",
+    "# Paperclip conversation closeout", "", displayText(`${r.issue.title}\nStatus: ${r.issue.status}`),
+    `Canonical snapshot: [${snapshotId}.json](./${snapshotId}.json)`, "",
+    "Operator-frozen observations; upstream atomicity/completeness, acceptance authority and PM completion are not independently established.", "",
   ];
-  for (const message of r.messages) {
-    const { body, ...metadata } = message;
-    lines.push("### Message", "", jsonText(metadata), displayText(body));
+  if (r.issue.description !== null) lines.push("## Context", "", displayText(r.issue.description));
+  lines.push("## Conversation", "");
+  for (const [index, message] of r.messages.entries()) {
+    lines.push(`### Message ${index + 1}`, "",
+      displayText(`${message.author.kind}: ${message.author.id}\nCreated: ${message.createdAt} | Updated: ${message.updatedAt}`),
+      displayText(message.body));
   }
   lines.push("## Decisions", "");
-  for (const decision of r.decisions) lines.push(jsonText(decision));
+  for (const decision of r.decisions) lines.push(displayText(decision.summary));
   lines.push("## Accepted structured answers", "", "Acceptance below is the operator's recorded claim.", "");
-  for (const answer of r.acceptedAnswers) lines.push(jsonText(answer));
-  lines.push("## Validation evidence", "", "Outcomes below are recorded evidence claims; the renderer does not execute or evaluate them.", "");
-  for (const evidence of r.validationEvidence) lines.push(jsonText(evidence));
+  for (const [index, answer] of r.acceptedAnswers.entries()) {
+    lines.push(`### Accepted answer ${index + 1}`, "",
+      displayText(`${answer.kind}\nAccepted: ${answer.acceptedAt} | By ${answer.acceptedBy.kind}: ${answer.acceptedBy.id}`),
+      "#### Questions", "", jsonText(answer.questions), "#### Answers", "", jsonText(answer.answers));
+  }
+  lines.push("## Validation evidence", "", "Outcomes are recorded claims; the renderer does not execute or evaluate them.", "");
+  for (const evidence of r.validationEvidence) {
+    lines.push(displayText(`${evidence.outcome}: ${evidence.description}\nReference: ${evidence.reference}`));
+  }
   lines.push("## Attachments", "");
   for (const item of r.attachments) {
-    lines.push(jsonText(item));
+    lines.push(item.verification === "verified-bytes" ? "### Verified stored attachment" : "### Unverified attachment reference", "", displayText(item.reference));
     if (item.verification === "verified-bytes") {
-      lines.push(`Verified stored bytes: [${item.sha256}.bin](${posix.relative(posix.dirname(path), item.path)})`, "");
+      lines.push(`Verified stored bytes: [${item.sha256}.bin](${posix.relative(posix.dirname(path), item.path)}) (${item.byteSize} bytes)`, "");
     } else lines.push("Unverified reference; remote bytes and availability were not verified.", "");
   }
+  lines.push("## Provenance and audit details", "",
+    `SHA-256 of exact canonical JSON bytes: ${snapshotId}`, "",
+    "These details retain the complete source bounds, freeze limitation, identities and cross-references behind the readable sections above.", "",
+    jsonText({ version: r.version, source: r.source, freeze: r.freeze, issue: r.issue,
+      messages: r.messages.map(({ body: _body, ...metadata }) => metadata),
+      decisions: r.decisions.map(({ summary: _summary, ...metadata }) => metadata),
+      acceptedAnswers: r.acceptedAnswers.map(({ questions: _questions, answers: _answers, ...metadata }) => metadata),
+      validationEvidence: r.validationEvidence, attachments: r.attachments }));
   const result = Buffer.from(`${lines.join("\n")}\n`);
   if (result.length > MAX_MARKDOWN_BYTES) throw new Error("Markdown exceeded byte limit");
   return result;

@@ -137,6 +137,9 @@ same `snapshotId`, and leaves the exporter command above backward compatible.
 The renderer verifies the canonical JSON schema, bytes, digest and company/issue
 path, plus every locally verified attachment's digest and size, before publishing.
 It does not rerun acquisition or authenticate the operator's declarations.
+The view leads with the issue title/status, conversation, decisions, accepted
+answers, evidence and attachments. Compact message attribution precedes each body;
+full source/freeze and identity/cross-reference audit JSON follows at the end.
 The view preserves source identity/freeze, issue, every message and author/time,
 decisions and message references, accepted question/answer JSON and attribution,
 all validation outcomes/references, and every attachment reference and verification

@@ -42,11 +42,17 @@ golden digest; the emitted fixture was inspected and its exact digest pinned.
 Typecheck found an unsafe tuple assertion; replaced it with explicit checked
 match indices before final validation.
 
+Parent inspection moved the full source/freeze JSON to the end.
+The issue title/status and conversation now lead, with compact attribution and
+readable decisions/answers/evidence/attachment sections. Full provenance retains
+every identity/reference behind those sections. Added reading-order assertions
+and refreshed the golden digest and all preview captures before independent review.
+
 Supplemental artifact check: generated a synthetic closeout through the real
 exporter/renderer, parsed its Markdown with one-off pinned marked 18.1.1, and
 inspected top/middle/bottom Chromium captures. The DOM had zero script/iframe/img
 nodes, exactly two renderer-owned digest links, and retained the literal script
-string as text. The middle capture shows the long backtick run and injected-looking
+string as text. The top capture shows the long backtick run and injected-looking
 heading confined to the message block; answer/evidence/attachment content is
 legible. This added no project dependency or live acquisition. Local review
 captures: `/tmp/paperclip-closeout-preview-{top,middle,bottom}.png`.
