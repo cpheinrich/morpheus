@@ -111,11 +111,7 @@ JSON exporter and Markdown/history tests. The final integrated typecheck, compil
 and PM index were rerun before the PR. This new source integration justifies that
 focused expansion; no unchanged full suite was rerun locally.
 
-Independent high-risk review cleared the qualification with no findings. The reviewer
-independently passed the3 guard tests and76 focused transport/exporter/Markdown/history
-tests, checked the canonical snapshot and both63-byte blob hashes, and corroborated
-the retained native/session/cleanup receipts. No provider or live client was invoked
-during review. Final-head CI and protected delivery remained the author's responsibility.
+Independent high-risk review cleared the qualification with no findings. The reviewer independently passed the3 guard tests and76 focused transport/exporter/Markdown/history tests, checked the canonical snapshot and both63-byte blob hashes, and corroborated the retained native/session/cleanup receipts. No provider or live client was invoked during review. Final-head CI and protected delivery remained the author's responsibility.
 
 ```morpheus-review
 {
