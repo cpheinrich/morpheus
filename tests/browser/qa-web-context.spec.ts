@@ -173,8 +173,11 @@ test("web context: inherited design tokens stay bounded without losing resolved 
     .inherit{position:fixed;left:460px;top:20px;color:var(--brand-accent)}.reset{color:initial;font:40px/40px monospace}
     input{position:fixed;left:520px;top:20px;width:180px;padding:8px;border:2px solid var(--brand-accent);font:16px Arial}
     img{position:fixed;left:740px;top:20px;width:100px;height:40px;object-fit:contain;background:white}
+    .color-box{position:fixed;left:850px;top:20px;width:60px;height:40px;color:red;background:white;border:8px solid black;outline:8px solid black;font:20px Arial;text-decoration:underline black}
+    .color-pseudo{position:fixed;left:850px;top:100px;width:60px;height:40px;color:red}
+    .color-pseudo::before{content:"Red";position:absolute;inset:0;color:red;background:white;border:8px solid black;outline:8px solid black;font:20px Arial;text-decoration:underline black}
     </style></head><body><main><div id=base>Token-rich guide</div><div class=cards>${cards}</div></main>
-    <svg viewBox="0 0 40 40"><rect width="40" height="40"/></svg><span class=badge></span><span class=inherit><span class=reset>█</span></span><input value="Placement query"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='40'%3E%3Crect width='20' height='40' fill='rgb(200,20,40)'/%3E%3C/svg%3E"></body></html>`);
+    <svg viewBox="0 0 40 40"><rect width="40" height="40"/></svg><span class=badge></span><span class=inherit><span class=reset>█</span></span><input value="Placement query"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='40'%3E%3Crect width='20' height='40' fill='rgb(200,20,40)'/%3E%3C/svg%3E"><div class=color-box>Red</div><span class=color-pseudo></span></body></html>`);
   let release!: () => void;
   const encoding = new Promise<void>(resolve => { release = resolve; });
   await page.route("**/__qa/modern-screenshot.js", async route => { await encoding; await route.continue(); });
@@ -204,8 +207,8 @@ test("web context: inherited design tokens stay bounded without losing resolved 
     await expect.poll(async () => (await s.pins())[0].context.image.status, { timeout: 17000 }).toBe("captured");
     const pin = (await s.pins())[0];
     if (process.env.QA_EVIDENCE_DIR) { await mkdir(process.env.QA_EVIDENCE_DIR, { recursive: true }); await writeFile(join(process.env.QA_EVIDENCE_DIR, `web-tokens-${info.project.name}.jpg`), Buffer.from(pin.frame.dataUrl.split(",")[1], "base64")); }
-    const pixels = await page.evaluate(async url => { const image = new Image(); image.src = url; await image.decode(); const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height; const c = canvas.getContext("2d")!; c.drawImage(image, 0, 0); return [[10,80],[360,40],[420,40],[470,40],[750,40],[790,40]].map(([x,y]) => Array.from(c.getImageData(x!,y!,1,1).data).slice(0,3)); }, pin.frame.dataUrl);
-    [[17,34,51],[200,20,40],[20,180,40],[0,0,0],[255,255,255],[200,20,40]].forEach((expected, i) => expected.forEach((value, j) => expect(Math.abs(pixels[i]![j]! - value), `pixel ${i}: ${pixels[i]}`).toBeLessThanOrEqual(8)));
+    const pixels = await page.evaluate(async url => { const image = new Image(); image.src = url; await image.decode(); const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height; const c = canvas.getContext("2d")!; c.drawImage(image, 0, 0); return [[10,80],[360,40],[420,40],[470,40],[750,40],[790,40],[854,40],[846,40],[854,120],[846,120]].map(([x,y]) => Array.from(c.getImageData(x!,y!,1,1).data).slice(0,3)); }, pin.frame.dataUrl);
+    [[17,34,51],[200,20,40],[20,180,40],[0,0,0],[255,255,255],[200,20,40],[0,0,0],[0,0,0],[0,0,0],[0,0,0]].forEach((expected, i) => expected.forEach((value, j) => expect(Math.abs(pixels[i]![j]! - value), `pixel ${i}: ${pixels[i]}`).toBeLessThanOrEqual(8)));
     expect(snapshot.html).toContain("Placement query");
     expect(snapshot.html).not.toContain("Changed later");
   } finally { release(); await s.cleanup(); }

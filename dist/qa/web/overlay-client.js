@@ -170,8 +170,9 @@ export const WEB_OVERLAY_JS = String.raw `(function () {
         var key = cs[i];
         if (key.indexOf("--") === 0) continue;
         var value = cs.getPropertyValue(key);
+        // Keep resolved colors: initial border/outline/decoration colors depend on currentColor.
         // display belongs to the hidden probe; all does not reset direction or unicode-bidi.
-        if (key === "display" || key === "direction" || key === "unicode-bidi" || value !== defaults[key]) style.setProperty(key, value, "important");
+        if (key === "color" || /-color$/.test(key) || key === "display" || key === "direction" || key === "unicode-bidi" || value !== defaults[key]) style.setProperty(key, value, "important");
       }
       style.setProperty("animation", "none", "important"); style.setProperty("transition", "none", "important");
     }
