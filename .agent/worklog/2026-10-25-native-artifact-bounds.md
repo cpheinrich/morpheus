@@ -33,7 +33,7 @@ Independent exact-head review cleared with no findings; bounded optional selecti
   "version": 2,
   "base": "b0906f2ed944105689333eac1525a583065316a1",
   "reviewed": "ab6e320afd7b11ac76362915ca7ff15ebb85b881",
-  "covered": "ab6e320afd7b11ac76362915ca7ff15ebb85b881",
+  "covered": "0c5d28b6db37538b5cc04700ed8d2e366c6aeb84",
   "authorSession": "01a1723d-7050-7000-82bb-ecf55bc63117",
   "reviewerSession": "/root/upstream_reviewer",
   "risk": "high",
@@ -45,6 +45,23 @@ Independent exact-head review cleared with no findings; bounded optional selecti
   },
   "outcome": "complete",
   "summary": "Independent exact-head review cleared with no findings; bounded optional selection, report accounting, atomic bundles, source mutation and mandatory controls verified.",
-  "findings": []
+  "findings": [],
+  "followUps": [
+    {
+      "reviewerSession": "/root/upstream_reviewer",
+      "commit": "0c5d28b6db37538b5cc04700ed8d2e366c6aeb84",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.5833333333333334,
+      "timing": {
+        "source": "clock",
+        "durationMs": 35000,
+        "evidence": "Author clock before same-session followup10:26:28Z and after returned review10:27:03Z on2026-10-25."
+      },
+      "scopeReason": "Late CI correction: preserve native scope guard on capture and update stale exact failure-upload expectation.",
+      "summary": "Cleared with no findings; all admission guards retained and185 focused tests passed."
+    }
+  ]
 }
 ```
+
+Full CI identified the missing native-scope guard and an obsolete exact upload condition assertion. Same-reviewer followup cleared the three-line correction with no findings;185 focused workflow tests pass. Initial review retained.
