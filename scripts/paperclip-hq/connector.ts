@@ -86,7 +86,7 @@ export function createConnector({ directory, companyId, controllerId, connectorI
     await ack(journal);
   }
   return {
-    async tick() {
+    async tick(signal?: AbortSignal) {
       if (busy) throw new Error('Connector pass already active');
       busy = true;
       try {
@@ -98,6 +98,7 @@ export function createConnector({ directory, companyId, controllerId, connectorI
         try {
           await lock.writeFile(JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
           for (const name of await readdir(dir)) {
+            if (signal?.aborted) break;
             if (!/^[0-9a-f]{64}\.json$/.test(name)) continue;
             if ((await lstat(join(dir, name))).isSymbolicLink()) throw new Error('Connector journal symlink refused');
             const saved = JSON.parse(await readFile(join(dir, name), 'utf8')) as Journal;
@@ -105,9 +106,10 @@ export function createConnector({ directory, companyId, controllerId, connectorI
             const journal = await read(saved.operationId);
             if (journal && ['prepared', 'receipt', 'applying', 'unknown'].includes(journal.state)) await apply(journal.operationId);
           }
+          if (signal?.aborted) return { observed: 0 };
           const pending = await backend('pending');
           if (!Array.isArray(pending) || pending.length > 25 || pending.some(operationId => !id.safeParse(operationId).success)) throw new Error('Invalid pending command list');
-          for (const operationId of pending) await apply(operationId);
+          for (const operationId of pending) { if (signal?.aborted) break; await apply(operationId); }
           return { observed: pending.length };
         } finally { await lock.close(); await unlink(lockPath); }
       } finally { busy = false; }

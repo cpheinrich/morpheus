@@ -1441,12 +1441,17 @@ native sign-in), is separate from the deterministic transport tests.
 
 The opt-in [Firebase HQ transport](docs/paperclip-hq-transport.md) adds a single-company
 connection prototype for the accepted HQ design: Cloud Functions verify the current Firebase
-role, private Firestore commands deliver fenced requests, and the Mac initiates outbound claims
-and publishes receipts through the existing Pool owner. Paperclip remains the scheduler and live
+role or exact pre-existing verified-human mapping, private Firestore commands deliver fenced
+requests, and the Mac initiates outbound claims and publishes receipts through the existing Pool
+owner. A continuous connector renews its own Firebase identity with private refresh credentials
+and publishes one bounded, sanitized board/agent/comment observation through connector-only
+`hqPublish`; current HQ humans read it through `hqSnapshot` with server publication age and
+explicit caps. Paperclip remains the scheduler and live
 conversation authority. Applying commands are not blindly replayed after uncertainty; delivery
 receipts, native termination and Git acceptance are separate. Transport state stays outside the
-broad HQ rules namespace. The existing Mac controller remains v1; consumer deployment, continuous
-authentication, UI/streaming, multi-company routing and inbox migration require qualification.
+broad HQ rules namespace. The existing Mac controller remains v1; consumer deployment, actual
+continuous-authentication recovery, UI/streaming, multi-company routing and inbox migration
+require qualification. Crash-preserved local ownership locks still require operator inspection.
 The local [HQ admission facade](docs/paperclip-hq-actor.md) preserves profile/controller/repository
 pins, while [versioned closeout snapshots](docs/paperclip-closeout.md) preserve frozen input and
 verified attachment bytes without changing PM status. These prototypes are not extracted into

@@ -1,5 +1,16 @@
 # Decisions
 
+**Continuous HQ reads extend the callable transport** — 2026-10-25.
+Keep one private per-company bounded board/agent/comment snapshot, published only by the
+configured connector and read only after current human authorization. Existing legacy HQ
+allowlists may pin exact verified UID/email pairs without migrating claims or widening access.
+The daemon uses first-party Firebase token refresh, distinct lifetime/pass ownership locks and
+the existing uncertain-operation journals; no second scheduler, Pool or chat authority.
+Considered p-retry8.0.1 (modified2026-09-01; one direct dependency) and Firebase13.1.0
+(modified2026-10-21;31 direct SDK packages). Fixed domain polling and the documented first-party
+refresh endpoint fit existing Node fetch/timers and Zod, without another runtime dependency.
+Source verification, consumer rollout and native-work acceptance remain separate.
+
 **Failed repair diagnostics are a separate evidence-only record** — 2026-10-25.
 Use `cd record --kind repair-diagnostic` with exact existing work/task and latest
 failed execution identity, bounded untrusted canonical JSON and the normal

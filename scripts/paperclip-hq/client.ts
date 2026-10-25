@@ -1,5 +1,5 @@
 // Uses Firebase's documented callable wire protocol; caller owns ID-token refresh.
-const names = { enqueue: 'Enqueue', read: 'Read', pending: 'Pending', inspect: 'Inspect', claim: 'Claim', beginApply: 'BeginApply', complete: 'Complete' } as const;
+const names = { enqueue: 'Enqueue', read: 'Read', pending: 'Pending', inspect: 'Inspect', claim: 'Claim', beginApply: 'BeginApply', complete: 'Complete', publish: 'Publish', snapshot: 'Snapshot' } as const;
 export function callableClient(baseUrl: string, token: () => Promise<string>, fetchImpl = fetch) {
   const base = new URL(baseUrl);
   if (base.username || base.password || base.search || base.hash || !(base.protocol === 'https:' || (base.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(base.hostname)))) throw new Error('Callable endpoint requires HTTPS or loopback without credentials');

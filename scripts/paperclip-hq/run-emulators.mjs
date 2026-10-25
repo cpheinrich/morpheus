@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const directory = fileURLToPath(new URL('.', import.meta.url));
 const repo = resolve(directory, '../..');
 const envPath = join(directory, '.env.local');
-const settings = { companyId: '11111111-1111-4111-8111-111111111111', controllerId: 'mbp-v1', connectorUid: 'connector', profiles: ['codex-mini'] };
+const settings = { companyId: '11111111-1111-4111-8111-111111111111', controllerId: 'mbp-v1', connectorUid: 'connector', profiles: ['codex-mini'], humans: [{ uid: 'legacy', email: 'legacy@example.test' }] };
 const envText = `MORPHEUS_HQ_SETTINGS_JSON='${JSON.stringify(settings)}'\n`;
 let ownsEnv = false;
 try {
