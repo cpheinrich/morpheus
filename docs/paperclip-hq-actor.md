@@ -94,7 +94,9 @@ Before an external Paperclip effect, a durable operation journal under the exist
 `pool/hq-operations/` directory binds operation UUID, canonical request hash, actor,
 company, mapping digest, conversation and allocated turn. A follow-up may have a null
 turn until allocation; the exact turn is persisted before its comment can be posted.
-These are command receipts, not another native ownership or reservation ledger.
+Journal filenames hash the exact operation UUID, preserving distinct upper/lowercase
+IDs even on case-insensitive controller filesystems. The receipt retains the original
+ID. These are command receipts, not another native ownership or reservation ledger.
 
 Repeating the same operation UUID and payload observes the existing intent. A changed
 payload refuses. Unknown outcomes and observation misses never repost. Plain reattach

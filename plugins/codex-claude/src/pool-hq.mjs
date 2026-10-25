@@ -45,7 +45,7 @@ export const hqProfileDigest = (profile) => sha256(canonical(profile));
 export const hqPath = () => join(home(), "hq.json");
 export const operationPath = (id) => {
   if (!uuid.safeParse(id).success) throw new Error("Invalid HQ operation id");
-  return join(poolHome(), "hq-operations", `${id}.json`);
+  return join(poolHome(), "hq-operations", `${sha256(id)}.json`);
 };
 const controllerOf = (pool) => ({ baseUrl: pool.controller.baseUrl, companyId: pool.controller.companyId, projectId: pool.controller.projectId ?? null });
 const mappingDigest = (mapping, profile) => sha256(canonical({ connectorId: mapping.connectorId, companyId: mapping.companyId, controller: mapping.controller, profile, entry: mapping.profiles[profile] }));

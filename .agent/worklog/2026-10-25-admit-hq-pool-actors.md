@@ -168,3 +168,15 @@ The initial turn was complete but blocked with two substantive findings and no c
   ]
 }
 ```
+
+
+## Late integration UUID correction
+
+Before merge, the parent transport's independent review identified that case-sensitive cloud
+command IDs can be uppercase UUIDs while the Mac filesystem aliases raw uppercase/lowercase
+UUID filenames. HQ accepted both spellings through Zod but used raw filenames. Changed operation
+filenames to SHA-256 of the exact accepted ID while preserving body identity. A focused test
+creates both case variants as distinct intents, reads/retries each identity, and checks distinct
+filenames. No HQ source was deployed or live command journal created before this correction.
+This spends the remaining same-reviewer ordinary late-correction turn after its earlier clearance;
+there is no replacement reviewer and no scope expansion beyond operation identity.

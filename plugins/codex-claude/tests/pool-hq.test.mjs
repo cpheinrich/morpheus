@@ -276,3 +276,22 @@ test("an unchanged HQ mapping reaches exactly the pinned host transport without 
   const run = JSON.parse(await readFile(runPath(started.work.conversationId, 1), "utf8"));
   assert.deepEqual([run.category, run.termination], ["transport", "not-started"]);
 });
+
+test("UUID case variants retain distinct operation journals and replay their own receipts on macOS", async (t) => {
+  const fx = await setup(t);
+  const lower = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const upper = lower.toUpperCase();
+  const args = { profile: fx.name, prompt: "case-sensitive operation identity" };
+  const first = await fx.call("start", { ...args, operationId: upper });
+  await finish(first.work.conversationId);
+  const second = await fx.call("start", { ...args, operationId: lower });
+  assert.notEqual(second.work.conversationId, first.work.conversationId);
+  assert.notEqual(operationPath(upper), operationPath(lower));
+  assert.equal(JSON.parse(await readFile(operationPath(upper), "utf8")).operationId, upper);
+  assert.equal(JSON.parse(await readFile(operationPath(lower), "utf8")).operationId, lower);
+  assert.equal((await fx.call("operation", { operationId: upper })).work.conversationId, first.work.conversationId);
+  assert.equal((await fx.call("operation", { operationId: lower })).work.conversationId, second.work.conversationId);
+  assert.equal((await fx.call("start", { ...args, operationId: upper })).work.conversationId, first.work.conversationId);
+  assert.equal((await fx.call("start", { ...args, operationId: lower })).work.conversationId, second.work.conversationId);
+  assert.equal(fx.paperclip.count("POST", /\/issues$/), 2);
+});
