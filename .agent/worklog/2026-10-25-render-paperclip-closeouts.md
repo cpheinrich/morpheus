@@ -56,3 +56,30 @@ string as text. The top capture shows the long backtick run and injected-looking
 heading confined to the message block; answer/evidence/attachment content is
 legible. This added no project dependency or live acquisition. Local review
 captures: `/tmp/paperclip-closeout-preview-{top,middle,bottom}.png`.
+
+Independent normal-risk review cleared the final implementation with no findings.
+The reviewer independently passed all 60 focused tests and the actual exact-commit
+history CLI, inspected all three refreshed captures, and confirmed every captured
+field remains represented with inert text and digest-bound links. Ordinary CI
+remains required; no live provider or upstream authority was validated.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "e4ea3aa6fe14b3a9740efa1bde8ccd94c56b7d27",
+  "reviewed": "8f05ac38c8c56c09d0677014a064dac680b99930",
+  "covered": "8f05ac38c8c56c09d0677014a064dac680b99930",
+  "authorSession": "01a172e5-4834-7ce2-842c-f9a06d7a798b",
+  "reviewerSession": "/root/markdown_closeouts/closeout_reviewer",
+  "risk": "normal",
+  "elapsedMinutes": 3.25,
+  "timing": {
+    "source": "clock",
+    "durationMs": 195000,
+    "evidence": "Author clock tools bracketed /root/markdown_closeouts/closeout_reviewer initial invocation: start 2026-10-25T12:06:00Z, completed-response receipt 2026-10-25T12:09:15Z; 195000ms includes tool execution and waits. Reviewer separately reported final observed clock 12:09:01Z."
+  },
+  "outcome": "complete",
+  "summary": "Independent normal-risk review cleared the final implementation with no findings. The reviewer independently passed all 60 focused tests and the actual exact-commit history CLI, inspected all three refreshed captures, and confirmed every captured field remains represented with inert text and digest-bound links. Ordinary CI remains required; no live provider or upstream authority was validated.",
+  "findings": []
+}
+```
