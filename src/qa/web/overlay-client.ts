@@ -19,9 +19,9 @@
  *
  * Pins. Right-click (or Comment mode + click) pins a comment on the element under the pointer; the
  * anchor records a CSS path that resolved to exactly that element, the point within it, the page
- * point as a fraction of the whole page, and the scroll and viewport. Send captures the whole page
- * with modern-screenshot (loaded into the site's own window), and posts the batch; a failed capture
- * still sends, without a frame.
+ * point and viewport. Each click synchronously freezes compact allowlisted semantic HTML and UI
+ * state. Send reuses that evidence. Markers only appear in their original route/view and on an
+ * element whose identity still matches; the sidebar keeps comments accessible elsewhere.
  */
 export const WEB_OVERLAY_JS = String.raw`(function () {
   "use strict";
@@ -78,6 +78,212 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     };
   }
   function clamp(v) { return Math.min(1, Math.max(0, v)); }
+  var ATTRS = ["id", "data-testid", "data-qa-view", "data-entity-id", "data-artist-id", "role", "aria-label", "aria-labelledby", "name", "type", "alt"];
+  function short(value, max) { return String(value || "").replace(/\s+/g, " ").trim().slice(0, max || 240); }
+  function privateField(el) { return !!el.closest("[data-qa-private],[autocomplete*=password],input[type=password],input[type=file]"); }
+  function visible(el) {
+    if (!el || !el.isConnected || privateField(el) || el.closest("[hidden],[inert],[aria-hidden=true]")) return false;
+    var win = el.ownerDocument.defaultView, r = el.getBoundingClientRect(), style = win.getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+  }
+  function semanticText(el) {
+    if (privateField(el)) return "";
+    // innerText includes only rendered text; exclude controls and explicitly private subtrees.
+    // A bounded TreeWalker avoids reading an entire page into the evidence.
+    var walker = el.ownerDocument.createTreeWalker(el, 4), text = "", n, count = 0;
+    while ((n = walker.nextNode()) && count++ < 100 && text.length < 240) {
+      var parent = n.parentElement, readable = !!parent && !parent.closest("script,style,input,textarea,select,[hidden],[aria-hidden=true],[data-qa-private]");
+      while (readable && parent) { var style = parent.ownerDocument.defaultView.getComputedStyle(parent); if (style.display === "none" || style.visibility === "hidden") readable = false; parent = parent.parentElement; }
+      if (readable) text += " " + n.textContent;
+    }
+    return short(text);
+  }
+  function describe(el) {
+    var attrs = {}, r = el.getBoundingClientRect(), styles = {}, cs = el.ownerDocument.defaultView.getComputedStyle(el);
+    ATTRS.forEach(function (key) { if (el.hasAttribute(key) && !privateField(el)) attrs[key] = short(el.getAttribute(key)); });
+    ["display", "position", "color", "background-color", "font-size", "text-decoration-line", "padding", "overflow", "z-index"].forEach(function (key) { styles[key] = short(cs.getPropertyValue(key), 120); });
+    return { tag: el.tagName.toLowerCase(), attributes: attrs, text: semanticText(el), styles: styles, bounds: { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) } };
+  }
+  function fingerprint(el) {
+    var n = describe(el), parents = [], p = el.parentElement;
+    while (p && parents.length < 3 && !p.matches("body,html,main,[role=main],dialog,[role=dialog],[aria-modal=true],[data-qa-view]")) { var d = describe(p); parents.push([d.tag, d.attributes, d.text.slice(0, 120)]); p = p.parentElement; }
+    return JSON.stringify([n.tag, n.attributes, n.text, parents]);
+  }
+  function routeFor(win) {
+    var query = new URLSearchParams(win.location.search), safe = new URLSearchParams();
+    query.forEach(function (value, key) { safe.append(short(key, 64), /token|key|secret|password|auth|code|session|email/i.test(key) ? "[redacted]" : short(value, 120)); });
+    return { pathname: short(win.location.pathname), query: short(safe.toString(), 1000), hash: /token|secret|password|auth|key|code=/i.test(win.location.hash) ? "[redacted]" : short(win.location.hash) };
+  }
+  function safeUrl(win) { var r = routeFor(win); return win.location.origin + r.pathname + (r.query ? "?" + r.query : "") + r.hash; }
+  function currentView(doc) {
+    var dialogs = Array.prototype.filter.call(doc.querySelectorAll("dialog[open],[role=dialog],[aria-modal=true],[data-qa-view]"), function (el) { return el.getAttribute("aria-modal") !== "false" && visible(el); });
+    var root = dialogs.length ? dialogs[dialogs.length - 1] : doc.querySelector("main,[role=main]") || doc.body;
+    var kind = dialogs.length ? (root.matches("dialog,[role=dialog],[aria-modal=true]") ? "dialog" : "view") : "page";
+    var heading = root.querySelector("h1,h2,[role=heading]");
+    var entity = root.querySelector("[data-entity-id],[data-artist-id]");
+    // View identity excludes transient filters, search, loading and video state.
+    var identity = JSON.stringify([kind, describe(root).attributes, heading ? semanticText(heading) : "", entity ? describe(entity).attributes : {}]);
+    return { root: root, kind: kind, identity: identity.slice(0, 2000) };
+  }
+  function captureContext(el, createdAt) {
+    var win = el.ownerDocument.defaultView, doc = el.ownerDocument, view = currentView(doc), ancestors = [], scroll = [], state = [], node = el.parentElement;
+    while (node && ancestors.length < 6) { ancestors.push(describe(node)); if (node === view.root) break; node = node.parentElement; }
+    node = el;
+    while (node && scroll.length < 8) {
+      if (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth) scroll.push({ selector: short(cssPath(node)), x: node.scrollLeft, y: node.scrollTop });
+      node = node.parentElement;
+    }
+    var candidates = view.root.querySelectorAll('[aria-selected=true],[aria-pressed=true],[aria-expanded],[aria-checked],input:checked,select,input[type=search],[role=tab][aria-selected=true],[aria-busy=true],[role=alert],video');
+    for (var i = 0; i < candidates.length && state.length < 15; i++) {
+      var c = candidates[i]; if (!visible(c)) continue;
+      var kind = c.tagName.toLowerCase(), label = c.getAttribute("aria-label") || c.getAttribute("name") || semanticText(c), value = "";
+      if (c.matches("input[type=search]")) { kind = "search"; value = c.value; }
+      else if (c.matches("select")) value = c.selectedOptions && c.selectedOptions[0] ? c.selectedOptions[0].textContent : "";
+      else if (c.matches("video")) value = (c.paused ? "paused" : "playing") + " at " + Math.floor(c.currentTime) + "s";
+      else if (c.matches("input")) value = "checked";
+      else value = ["aria-selected", "aria-pressed", "aria-expanded", "aria-checked", "aria-busy"].filter(function (a) { return c.hasAttribute(a); }).map(function (a) { return a + "=" + c.getAttribute(a); }).join(" ") || semanticText(c);
+      state.push({ kind: kind, label: short(label), value: short(value) });
+    }
+    state.push({ kind: "theme", label: "color-scheme", value: short(win.getComputedStyle(doc.documentElement).colorScheme) });
+    return { version: 1, scope: el === doc.body || el === doc.documentElement ? "page" : "element", capturedAt: createdAt, route: routeFor(win), target: describe(el), ancestors: ancestors, view: { kind: view.kind, identity: view.identity, root: describe(view.root) }, state: state, scroll: scroll, viewport: { width: win.innerWidth, height: win.innerHeight, scrollX: win.scrollX, scrollY: win.scrollY }, limitations: ["Bounded semantic HTML; no application stores or hidden/control values.", "Embedded frames, shadow DOM and media pixels are not captured."] };
+  }
+  /** Freeze visible DOM, styles and loaded media synchronously; never mount executable clones. */
+  function freezeViewport(win) {
+    var doc = win.document, w = win.innerWidth, h = win.innerHeight, count = 0, rules = [], scrolls = [], omitted = [], deadline = performance.now() + 120;
+    var snapshotDoc = document.implementation.createHTMLDocument("");
+    function copy(node) {
+      if (node.nodeType === 3) return snapshotDoc.createTextNode(node.textContent);
+      if (!isElement(node) || node === ui || node.matches("script,style,link,meta,base,noscript,animate,animateTransform,animateMotion,set")) return null;
+      if (performance.now() > deadline) throw new Error("Viewport freeze exceeded 120 ms work limit");
+      var r = node.getBoundingClientRect(), cs = win.getComputedStyle(node);
+      if (cs.display === "none" || cs.visibility === "hidden") return null;
+      // An offscreen subtree cannot paint here unless overflow permits a visible descendant.
+      var off = r.bottom < 0 || r.top > h || r.right < 0 || r.left > w;
+      if (off && r.top > h && node !== doc.documentElement && node !== doc.body) return null;
+      if (++count > 4000) throw new Error("Visible DOM exceeds capture limit");
+      if (off && cs.overflow !== "visible" && node !== doc.documentElement && node !== doc.body) return null;
+      var omission = node.matches("iframe,object,embed") && !off ? "Embedded media omitted" : node.shadowRoot && !off ? "Shadow DOM omitted" : null;
+      var clone;
+      if (node.matches("img,canvas,video") && !off) {
+        try {
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.min(1600, Math.ceil(r.width))); canvas.height = Math.max(1, Math.min(1600, Math.ceil(r.height)));
+        if (node.matches("video") && node.readyState < 2) throw new Error("Video has no decoded placement frame");
+        if (node.matches("img") && (!node.complete || !node.naturalWidth)) throw new Error("Image has not loaded at placement");
+        canvas.getContext("2d").drawImage(node, 0, 0, canvas.width, canvas.height);
+        clone = snapshotDoc.createElement("img"); clone.src = canvas.toDataURL("image/png");
+        } catch (e) { omission = "Unloaded or cross-origin " + node.tagName.toLowerCase() + " pixels omitted"; clone = snapshotDoc.createElement("div"); }
+      } else {
+        clone = node.namespaceURI === "http://www.w3.org/2000/svg" ? snapshotDoc.createElementNS(node.namespaceURI, node.tagName) : snapshotDoc.createElement(node.matches("html,body") || node.tagName.indexOf("-") >= 0 ? "div" : node.tagName.toLowerCase());
+        // SVG geometry is data; executable/event/navigation attributes are never copied.
+        if (node.namespaceURI === "http://www.w3.org/2000/svg") Array.prototype.forEach.call(node.attributes, function (a) { if (!/^on|href|src/i.test(a.name) && !/href/i.test(a.name)) clone.setAttribute(a.name, a.value); else if (/href/i.test(a.name) && /^#[A-Za-z0-9_-]+$/.test(a.value)) clone.setAttribute(a.name, a.value); });
+      }
+      for (var i = 0; i < cs.length; i++) clone.style.setProperty(cs[i], cs.getPropertyValue(cs[i]), "important");
+      clone.style.setProperty("animation", "none", "important"); clone.style.setProperty("transition", "none", "important");
+      if (omission) {
+        clone = snapshotDoc.createElement("div");
+        for (var v = 0; v < cs.length; v++) clone.style.setProperty(cs[v], cs.getPropertyValue(cs[v]), "important");
+        clone.style.setProperty("background", "#ddd", "important"); clone.style.setProperty("color", "#333", "important"); clone.style.setProperty("font-size", "14px", "important");
+        clone.textContent = omission;
+        if (omitted.indexOf(omission) < 0 && omitted.length < 4) omitted.push(omission);
+      } else if (node.matches("input,textarea,select") || privateField(node)) {
+        clone = snapshotDoc.createElement("div");
+        for (var j = 0; j < cs.length; j++) clone.style.setProperty(cs[j], cs.getPropertyValue(cs[j]), "important");
+        clone.textContent = privateField(node) ? "" : node.matches("select") ? (node.selectedOptions[0] ? node.selectedOptions[0].textContent : "") : node.value;
+      } else if (!off || node === doc.documentElement || node === doc.body) {
+        for (var child = node.firstChild; child; child = child.nextSibling) { var c = copy(child); if (c) clone.appendChild(c); }
+      }
+      if (cs.position === "fixed") clone.style.setProperty("transform", "translate(" + win.scrollX + "px," + win.scrollY + "px) " + (cs.transform === "none" ? "" : cs.transform), "important");
+      if (node.scrollTop || node.scrollLeft) scrolls.push([clone, node.scrollLeft, node.scrollTop]);
+      ["::before", "::after"].forEach(function (pseudo) {
+        var ps = win.getComputedStyle(node, pseudo);
+        if (!ps.content || ps.content === "none" || ps.content === "normal") return;
+        var id = "qa-freeze-" + count + "-" + rules.length; clone.classList.add(id);
+        var text = "." + id + pseudo + "{";
+        for (var k = 0; k < ps.length; k++) text += ps[k] + ":" + ps.getPropertyValue(ps[k]) + " !important;";
+        rules.push(text + "}");
+      });
+      return clone;
+    }
+    Array.prototype.forEach.call(doc.styleSheets, function (sheet) { try { Array.prototype.forEach.call(sheet.cssRules, function (rule) { if (rule.type === 5) rules.push(rule.cssText.replace(/url\((['"]?)([^'")]+)\1\)/g, function (m, q, url) { return "url(" + q + new URL(url, sheet.href || doc.baseURI).href + q + ")"; })); }); } catch (e) { /* unreadable font sheets remain a renderer limitation */ } });
+    var frozen = copy(doc.documentElement), wrapper = snapshotDoc.createElement("div");
+    wrapper.style.cssText = "position:relative;width:" + w + "px;height:" + h + "px;overflow:hidden;background:" + win.getComputedStyle(doc.body).backgroundColor;
+    frozen.style.setProperty("transform", "translate(" + -win.scrollX + "px," + -win.scrollY + "px)", "important");
+    // A cloned html element is represented by a div; restore its root formatting context so a
+    // first heading's collapsing margin cannot shift fixed dialogs/media down in the JPEG.
+    frozen.style.setProperty("display", "flow-root", "important");
+    frozen.style.setProperty("width", w + "px", "important");
+    wrapper.appendChild(frozen);
+    // Preserve inner scroll visually without asking an asynchronous renderer to read live elements.
+    scrolls.forEach(function (s) { Array.prototype.forEach.call(s[0].children, function (c) { c.style.setProperty("transform", "translate(" + -s[1] + "px," + -s[2] + "px) " + (c.style.transform === "none" ? "" : c.style.transform), "important"); }); });
+    var style = snapshotDoc.createElement("style"); style.textContent = rules.join("\n"); wrapper.insertBefore(style, wrapper.firstChild);
+    var xml = new XMLSerializer().serializeToString(wrapper);
+    if (new Blob([xml]).size > 2 * 1024 * 1024) throw new Error("Frozen viewport exceeds 2 MiB");
+    return { html: xml, width: w, height: h, omitted: omitted, background: win.getComputedStyle(doc.body).backgroundColor };
+  }
+  var captureLibrary;
+  function loadCaptureLibrary() {
+    if (window.modernScreenshot) return Promise.resolve(window.modernScreenshot);
+    if (!captureLibrary) captureLibrary = new Promise(function (resolve, reject) {
+      var script = document.createElement("script"); script.src = "/__qa/modern-screenshot.js";
+      script.onload = function () { resolve(window.modernScreenshot); }; script.onerror = function () { captureLibrary = null; reject(new Error("Capture library unavailable")); };
+      document.head.appendChild(script);
+    });
+    return captureLibrary;
+  }
+  function encodeViewport(snapshot) {
+    var frame = document.createElement("iframe"), scale = Math.min(1, 1600 / Math.max(snapshot.width, snapshot.height));
+    frame.setAttribute("sandbox", "allow-same-origin"); frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:fixed;left:-100000px;top:0;border:0;pointer-events:none;width:" + snapshot.width + "px;height:" + snapshot.height + "px";
+    return new Promise(function (resolve, reject) {
+      var timer = setTimeout(function () { frame.remove(); reject(new Error("Viewport image encoding timed out")); }, 15000);
+      frame.onload = function () {
+        loadCaptureLibrary().then(function (lib) {
+          if (!lib) throw new Error("Capture library unavailable");
+          return lib.domToJpeg(frame.contentDocument.body.firstElementChild, { width: snapshot.width, height: snapshot.height, scale: scale, quality: 0.5, backgroundColor: snapshot.background || "#ffffff", timeout: 10000 });
+        }).then(function (dataUrl) {
+          if (!/^data:image\/jpeg;base64,/.test(dataUrl) || dataUrl.length > 512 * 1024) throw new Error("Viewport JPEG invalid or exceeds 512 KiB");
+          var encoded = new Image(); encoded.onload = function () { resolve({ dataUrl: dataUrl, width: encoded.naturalWidth, height: encoded.naturalHeight }); }; encoded.onerror = function () { reject(new Error("Encoded JPEG could not be read")); }; encoded.src = dataUrl;
+        }).catch(reject).then(function () { clearTimeout(timer); frame.remove(); });
+      };
+      frame.srcdoc = '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0">' + snapshot.html + '</body></html>';
+      document.documentElement.appendChild(frame);
+    });
+  }
+  var imageDb;
+  function images() {
+    if (!imageDb) imageDb = new Promise(function (resolve, reject) {
+      var request = indexedDB.open("morpheus-web-pin-evidence", 1);
+      request.onupgradeneeded = function () { request.result.createObjectStore("pins"); };
+      request.onsuccess = function () { resolve(request.result); }; request.onerror = function () { reject(new Error("Image storage unavailable")); };
+    });
+    return imageDb;
+  }
+  function imageRecord(id, value) {
+    return images().then(function (db) { return new Promise(function (resolve, reject) {
+      var tx = db.transaction("pins", value === undefined ? "readonly" : "readwrite"), table = tx.objectStore("pins");
+      if (value && value.savedAt) {
+        var rows = [], cursor = table.openCursor();
+        cursor.onsuccess = function () { var c = cursor.result; if (c) { rows.push({ key: c.key, savedAt: c.value.savedAt }); c.continue(); } else { rows.sort(function (a, b) { return b.savedAt - a.savedAt; }); rows.forEach(function (row, i) { if (i >= 59 || row.savedAt < Date.now() - 86400000) table.delete(row.key); }); } };
+      }
+      var request = value === undefined ? table.get(id) : value === null ? table.delete(id) : table.put(value, id);
+      var result;
+      request.onsuccess = function () { result = request.result; }; tx.oncomplete = function () { resolve(result); }; tx.onerror = function () { reject(new Error("Image storage failed")); };
+    }); });
+  }
+  function capturePinImage(p, snapshot) {
+    var key = storeKey + ":" + p.id;
+    p.imageWork = imageRecord(key, { snapshot: snapshot, savedAt: Date.now() }).then(function () { return encodeViewport(snapshot); }).then(function (frame) {
+      frame.capturedAt = p.createdAt;
+      p.webContext.image.scaleX = frame.width / p.webContext.viewport.width;
+      p.webContext.image.scaleY = frame.height / p.webContext.viewport.height;
+      return imageRecord(key, { frame: frame, savedAt: Date.now() }).then(function () { p.frame = frame; p.webContext.image.status = "captured"; });
+    }).catch(function (error) { p.webContext.image.status = "failed"; p.webContext.image.error = short(error.message, 160); }).then(function () {
+      persist(); renderList(); showPlacement();
+      if (p.id === focusedId) setStatus(p.webContext.image.status === "captured" ? "Placement HTML and JPEG saved." : "HTML saved; placement image failed: " + p.webContext.image.error, p.webContext.image.status === "captured" ? "ok" : "err");
+    });
+    return p.imageWork;
+  }
   function contains(rect, x, y) { return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom; }
   /**
    * The element the person pointed at. elementFromPoint alone returns the top of the stack, which on
@@ -103,11 +309,11 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     var rect = el.getBoundingClientRect();
     var size = pageSize(win);
     var x = cx + win.scrollX, y = cy + win.scrollY;
-    var text = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 120);
+    var text = semanticText(el).slice(0, 120);
     var anchor = {
       normX: clamp(x / size.width), normY: clamp(y / size.height), x: Math.round(x), y: Math.round(y),
       page: {
-        url: win.location.href, title: win.document.title || undefined, scrollX: Math.round(win.scrollX), scrollY: Math.round(win.scrollY),
+        url: safeUrl(win), title: short(win.document.title) || undefined, scrollX: Math.round(win.scrollX), scrollY: Math.round(win.scrollY),
         viewportWidth: win.innerWidth, viewportHeight: win.innerHeight, pageWidth: size.width, pageHeight: size.height
       }
     };
@@ -196,7 +402,9 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     "<div class=away hidden>The page left this site (a sign-in redirect?) and cannot be shown beside the column. <button class=go type=button>Continue full page</button></div></header>" +
     "<h2>Comments</h2><ol></ol>" +
     "<div class=composer><div class=status></div>" +
-    "<textarea placeholder='Comment for this pin…' disabled></textarea>" +
+    "<label>Applies to <select class=scope disabled><option value=element>Element</option><option value=view>Current view</option><option value=page>Whole page</option></select></label>" +
+    "<textarea placeholder='Comment for this pin…' disabled maxlength=8000></textarea>" +
+    "<img class=placement alt='Frozen placement viewport' hidden style='max-width:100%;max-height:130px;object-fit:contain'>" +
     "<div class=keys>Enter saves · Shift+Enter newline · Esc Esc deletes · ⌘Enter sends</div>" +
     "<button class=primary type=button disabled>Send batch</button></div>" +
     "</aside>";
@@ -204,6 +412,8 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   var col = root.querySelector(".col"), listEl = root.querySelector("ol"), pinsLayer = root.querySelector(".pins"), clip = root.querySelector(".clip");
   var hl = root.querySelector(".hl"), modeBtn = root.querySelector(".mode"), sendBtn = root.querySelector(".primary");
   var textEl = root.querySelector("textarea"), statusEl = root.querySelector(".status");
+  var scopeEl = root.querySelector(".scope");
+  var placementEl = root.querySelector(".placement");
   var layoutBtn = root.querySelector(".layout"), awayEl = root.querySelector(".away");
   var LAYOUT_COOKIE = "morpheus_qa_layout";
   var lastSiteUrl = location.href;
@@ -222,7 +432,9 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
 
   var pins = [], nextN = 1, focusedId = null, commenting = false, sending = false, escArmedAt = 0;
   var site = null; // { win, doc, offsetX, offsetY }
-  var storeKey = null;
+  var storeKey = "morpheus-qa:v2:" + PROJECT;
+  var restored = false;
+  var draftStorageError = false;
 
   function frameEl() { return shell ? document.getElementById("morpheus-qa-site") : null; }
   function siteWindow() {
@@ -232,33 +444,58 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   }
   function pagePath(win) { return win.location.pathname + win.location.search; }
 
-  function setStatus(text, kind) { statusEl.textContent = text || ""; statusEl.className = "status" + (kind ? " " + kind : ""); }
+  function setStatus(text, kind) { statusEl.textContent = (text || "") + (draftStorageError ? " Draft not saved: keep this tab open and Send before reloading." : ""); statusEl.className = "status" + (kind ? " " + kind : ""); }
   function persist() {
     if (!storeKey) return;
-    try { sessionStorage.setItem(storeKey, JSON.stringify({ pins: pins.map(function (p) { return { id: p.id, n: p.n, anchor: p.anchor, text: p.text, byPage: !!p.byPage }; }), nextN: nextN })); } catch (e) { /* storage may be unavailable */ }
+    try {
+      var data = JSON.stringify({ pins: pins.map(function (p) { return { id: p.id, n: p.n, anchor: p.anchor, text: p.text, byPage: !!p.byPage, createdAt: p.createdAt, webContext: p.webContext, identity: p.identity }; }), nextN: nextN });
+      if (new Blob([data]).size > 262144) throw new Error("Draft limit reached");
+      sessionStorage.setItem(storeKey, data);
+      draftStorageError = false;
+    } catch (e) { draftStorageError = true; setStatus("Draft could not be saved.", "err"); }
   }
   function restore() {
+    if (restored) return;
+    restored = true;
     pins = []; nextN = 1; focusedId = null;
     try {
-      var saved = JSON.parse(sessionStorage.getItem(storeKey) || "null");
+      var saved = JSON.parse(sessionStorage.getItem(storeKey) || sessionStorage.getItem("morpheus-qa:" + pagePath(site.win)) || "null");
       if (saved && saved.pins && saved.pins.length) {
-        pins = saved.pins.filter(function (p) { return p && p.anchor && typeof p.n === "number"; }).map(function (p) { return { id: p.id, n: p.n, anchor: p.anchor, text: p.text || "", el: null, byPage: !!p.byPage }; });
+        pins = saved.pins.slice(0, 30).filter(function (p) { return p && p.anchor && typeof p.n === "number"; }).map(function (p) { if (p.anchor.page && p.anchor.page.url) { try { p.anchor.page.url = safeUrl({ location: new URL(p.anchor.page.url) }); } catch (e) { p.anchor.page.url = "unknown legacy URL"; } } return { id: p.id, n: p.n, anchor: p.anchor, text: String(p.text || "").slice(0, 8000), el: null, byPage: !!p.byPage, createdAt: p.createdAt, webContext: p.webContext, identity: p.identity }; });
         nextN = Math.max(saved.nextN || 1, pins.reduce(function (m, p) { return Math.max(m, p.n + 1); }, 1));
+        pins.forEach(function (p) {
+          if (!p.webContext || !p.webContext.image) return;
+          p.imageWork = imageRecord(storeKey + ":" + p.id).then(function (savedImage) {
+            if (savedImage && savedImage.frame) { p.frame = savedImage.frame; p.webContext.image.status = "captured"; }
+            else if (savedImage && savedImage.snapshot) return capturePinImage(p, savedImage.snapshot);
+            else { p.webContext.image.status = "failed"; p.webContext.image.error = "Placement image is no longer in browser storage"; }
+          }).catch(function () { p.webContext.image.status = "failed"; p.webContext.image.error = "Image storage unavailable"; }).then(function () { persist(); renderList(); showPlacement(); });
+        });
       }
     } catch (e) { pins = []; }
     textEl.value = ""; textEl.disabled = true;
   }
   function focused() { for (var i = 0; i < pins.length; i++) if (pins[i].id === focusedId) return pins[i]; return null; }
+  function showPlacement() { var p = focused(); placementEl.hidden = !p || !p.frame; if (p && p.frame) placementEl.src = p.frame.dataUrl; else placementEl.removeAttribute("src"); }
 
   function position(p) {
-    if (!site) return;
+    p.marker.hidden = true;
+    if (!site || !p.webContext || p.anchor.page.url !== safeUrl(site.win)) return;
+    var view = currentView(site.doc);
+    if (view.identity !== p.webContext.view.identity) return;
     var x, y, doc = site.doc;
-    var el = p.byPage ? null : p.el && p.el.isConnected ? p.el : (p.anchor.element ? doc.querySelector(p.anchor.element.selector) : null);
+    var el = p.webContext.scope !== "element" ? (p.webContext.scope === "view" ? view.root : doc.body) : p.el && p.el.ownerDocument === doc && p.el.isConnected ? p.el : (p.anchor.element ? doc.querySelector(p.anchor.element.selector) : null);
+    // A recycled selector or detached modal must never fall back to page coordinates.
+    if (!el || !visible(el) || (p.webContext.scope === "element" && fingerprint(el) !== p.identity)) return;
     if (el) {
-      p.el = el;
       var r = el.getBoundingClientRect();
-      x = r.left + r.width * p.anchor.element.offsetX; y = r.top + r.height * p.anchor.element.offsetY;
+      x = r.left + r.width * (p.webContext.scope !== "element" ? 0.5 : p.anchor.element.offsetX); y = r.top + r.height * (p.webContext.scope !== "element" ? 0.5 : p.anchor.element.offsetY);
     } else { x = p.anchor.x - site.win.scrollX; y = p.anchor.y - site.win.scrollY; }
+    if (p.webContext.scope === "page" || p.byPage) { x = p.anchor.x - site.win.scrollX; y = p.anchor.y - site.win.scrollY; }
+    if (x < 0 || y < 0 || x > site.win.innerWidth || y > site.win.innerHeight) return;
+    var hit = doc.elementFromPoint ? doc.elementFromPoint(x, y) : null;
+    if (p.webContext.scope === "element" && hit && !el.contains(hit) && !hit.contains(el)) return;
+    p.marker.hidden = false;
     p.marker.style.left = (x + site.offsetX) + "px"; p.marker.style.top = (y + site.offsetY) + "px";
   }
   function renderPins() {
@@ -291,13 +528,14 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     sendBtn.disabled = sending || ready === 0;
     sendBtn.textContent = ready ? "Send batch (" + ready + ")" : "Send batch";
   }
-  function render() { renderList(); renderPins(); }
+  function render() { renderList(); renderPins(); showPlacement(); }
 
   function focusPin(id) {
     var p = null; pins.forEach(function (x) { if (x.id === id) p = x; });
     if (!p) return;
     focusedId = id; textEl.disabled = false; textEl.value = p.text || ""; textEl.focus();
-    setStatus("Editing pin " + p.n + ". Enter saves, Esc Esc deletes.");
+    scopeEl.disabled = !p.webContext; scopeEl.value = p.webContext ? p.webContext.scope : "element";
+    setStatus("Editing pin " + p.n + (p.webContext ? ". Placement HTML context saved." : ". Legacy pin: no placement HTML context available."));
     render(); persist();
   }
   function saveFocused(quiet) {
@@ -308,24 +546,35 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   function deleteFocused() {
     var p = focused(); if (!p) return;
     pins = pins.filter(function (x) { return x !== p; });
+    imageRecord(storeKey + ":" + p.id, null).catch(function () {});
     focusedId = null; textEl.value = ""; textEl.disabled = true;
     setStatus("Deleted pin " + p.n); render(); persist();
   }
   function addPin(el, cx, cy) {
-    var p = { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), n: nextN++, el: el, anchor: anchorFor(el, cx, cy), text: "" };
+    if (pins.length >= 30) { setStatus("30 draft pins maximum. Send or delete comments first.", "err"); return; }
+    var now = new Date().toISOString(), context;
+    try { context = captureContext(el, now); } catch (e) { setStatus("Could not capture placement HTML context. Try this pin again.", "err"); return; }
+    var snapshot;
+    context.image = { status: "pending", coordinateSpace: "viewport", scale: Math.min(1, 1600 / Math.max(site.win.innerWidth, site.win.innerHeight)), quality: 0.5, point: { x: cx, y: cy } };
+    try { snapshot = freezeViewport(site.win); if (snapshot.omitted.length) context.image.omitted = snapshot.omitted; } catch (e) { context.image.status = "failed"; context.image.error = short(e.message, 160); }
+    var p = { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), n: nextN++, el: el, anchor: anchorFor(el, cx, cy), text: "", createdAt: now, webContext: context, identity: fingerprint(el) };
     // A point outside the element's own box (nothing better under it) is drawn where it was clicked.
     // It follows window scroll only; a site that scrolls an inner container moves it off its spot.
     if (!contains(el.getBoundingClientRect(), cx, cy)) p.byPage = true;
     pins.push(p); focusedId = p.id; textEl.disabled = false; textEl.value = ""; render(); persist(); textEl.focus();
-    setStatus("Pin " + p.n + " placed. Type a comment, Enter saves.");
+    scopeEl.disabled = false; scopeEl.value = context.scope;
+    setStatus("Pin " + p.n + " placed. HTML context saved; type a comment.");
+    if (snapshot) capturePinImage(p, snapshot);
+    else setStatus("HTML saved; placement image failed: " + context.image.error, "err");
   }
+  scopeEl.addEventListener("change", function () { var p = focused(); if (p && p.webContext) { p.webContext.scope = scopeEl.value; renderPins(); persist(); } });
   function setMode(on) {
     commenting = on; modeBtn.classList.toggle("on", on);
     if (site) site.doc.documentElement.style.cursor = on ? "crosshair" : "";
     if (!on) hl.style.display = "none";
   }
 
-  textEl.addEventListener("input", function () { var p = focused(); if (p) { p.text = textEl.value; persist(); } });
+  textEl.addEventListener("input", function () { var p = focused(); if (p) { p.text = textEl.value; renderList(); persist(); } });
   textEl.addEventListener("keydown", function (e) {
     e.stopPropagation();
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveFocused(true); send(); return; }
@@ -389,7 +638,6 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
   function attach(win) {
     var doc = win.document;
     site = { win: win, doc: doc, offsetX: 0, offsetY: 0 };
-    storeKey = "morpheus-qa:" + pagePath(win);
     doc.addEventListener("contextmenu", function (e) {
       if (ours(e.target) || e.shiftKey) return; // Shift+right-click keeps the browser's own menu.
       e.preventDefault(); e.stopPropagation();
@@ -432,87 +680,36 @@ export const WEB_OVERLAY_JS = String.raw`(function () {
     // The frame's initial about:blank is not the site; its "pathname" would rewrite the address bar.
     if (win.location.protocol !== location.protocol) return;
     if (!site || site.doc !== doc) { if (doc.readyState !== "loading" && doc.documentElement) attach(win); return; }
-    if (storeKey !== "morpheus-qa:" + pagePath(win)) { storeKey = "morpheus-qa:" + pagePath(win); restore(); render(); setStatus(""); }
+    follow();
     if (shell) syncAddress(win);
     lastSiteUrl = win.location.href;
     applyTheme();
   }
 
   // ---- capture and send --------------------------------------------------------------------------
-  function loadLibrary(win) {
-    if (win.modernScreenshot) return Promise.resolve(win.modernScreenshot);
-    return new Promise(function (resolve, reject) {
-      var s = win.document.createElement("script"); s.src = "/__qa/modern-screenshot.js";
-      s.onload = function () { win.modernScreenshot ? resolve(win.modernScreenshot) : reject(new Error("capture library missing")); };
-      s.onerror = function () { reject(new Error("capture library failed to load")); };
-      win.document.head.appendChild(s);
-    });
-  }
-  function absolutize(css, base) {
-    return css.replace(/url\((['"]?)([^'")]+)\1\)/g, function (m, q, u) {
-      if (/^(data:|https?:|blob:)/.test(u)) return m;
-      try { return "url(" + q + new URL(u, base).href + q + ")"; } catch (e) { return m; }
-    });
-  }
-  /**
-   * The @font-face rules of every stylesheet the page cannot read through the CSSOM (Google Fonts,
-   * a CDN). The capture library inlines fonts only from readable sheets, so without these the image
-   * falls back to another font and text reflows. Font hosts serve their CSS with CORS.
-   */
-  function crossOriginFaces(doc) {
-    var tasks = Array.prototype.map.call(doc.styleSheets, function (sheet) {
-      try { void sheet.cssRules; return Promise.resolve(""); } catch (e) { /* unreadable: fetch it */ }
-      if (!sheet.href) return Promise.resolve("");
-      return fetch(sheet.href, { mode: "cors", credentials: "omit" })
-        .then(function (r) { return r.ok ? r.text() : ""; })
-        .then(function (text) { return absolutize((text.match(/@font-face\s*\{[^}]*\}/g) || []).join("\n"), sheet.href); })
-        .catch(function () { return ""; });
-    });
-    return Promise.all(tasks).then(function (parts) { return parts.join("\n").trim(); });
-  }
-  /** The whole site page as a PNG, overlay excluded. Never blocks Send: a failed capture sends without a frame. */
-  function capture() {
-    var win = site.win, doc = site.doc, size = pageSize(win), faces = null;
-    var work = Promise.all([loadLibrary(win), crossOriginFaces(doc), doc.fonts ? doc.fonts.ready : null]).then(function (loaded) {
-      if (loaded[1]) {
-        faces = doc.createElement("style"); faces.setAttribute("data-morpheus-qa", "fonts"); faces.textContent = loaded[1];
-        doc.head.appendChild(faces);
-      }
-      return loaded[0].domToPng(doc.documentElement, {
-        width: size.width, height: size.height, scale: 1,
-        filter: function (node) { return node !== ui && node !== faces; }
-      });
-    }).then(function (dataUrl) { if (faces) faces.remove(); return dataUrl; }, function (error) { if (faces) faces.remove(); throw error; })
-      .then(function (dataUrl) {
-        return new Promise(function (resolve) {
-          var img = new Image();
-          img.onload = function () { resolve({ dataUrl: dataUrl, width: img.naturalWidth, height: img.naturalHeight }); };
-          img.onerror = function () { resolve(null); };
-          img.src = dataUrl;
-        });
-      });
-    var timeout = new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 20000); });
-    return Promise.race([work, timeout]).catch(function () { return null; });
-  }
   function send() {
     var ready = pins.filter(function (p) { return (p.text || "").trim(); });
     if (!ready.length || sending || !site) return;
-    sending = true; renderList(); setStatus("Capturing the page…");
-    capture().then(function (frame) {
-      setStatus("Sending…");
-      var now = new Date().toISOString();
-      var body = {
-        preview: { url: site.win.location.href, kind: "web", label: site.doc.title || site.win.location.pathname },
-        comments: ready.map(function (p) { return { id: "c" + p.n, text: p.text.trim(), createdAt: now, anchor: p.anchor }; })
-      };
-      if (frame) body.frame = { width: frame.width, height: frame.height, capturedAt: now, dataUrl: frame.dataUrl };
-      return fetch("/__qa/api/batches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return [j, frame]; }); });
-    }).then(function (result) {
+    sending = true; renderList(); setStatus("Sending placement context…");
+    Promise.all(ready.map(function (p) { return p.imageWork || Promise.resolve(); })).then(function () {
+    var body = {
+      preview: { url: safeUrl(site.win), kind: "web", label: short(site.doc.title || site.win.location.pathname) },
+      comments: ready.map(function (p) {
+        var comment = { id: "c" + p.n, text: p.text.trim(), createdAt: p.createdAt || "unknown (legacy pin)", anchor: p.anchor };
+        if (p.webContext) comment.webContext = p.webContext;
+        if (p.frame) comment.frame = p.frame;
+        return comment;
+      })
+    };
+    return fetch("/__qa/api/batches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); })
+      .then(function (result) {
       pins = pins.filter(function (p) { return ready.indexOf(p) < 0; });
+      ready.forEach(function (p) { imageRecord(storeKey + ":" + p.id, null).catch(function () {}); });
       if (!pins.length) nextN = 1;
       focusedId = null; textEl.value = ""; textEl.disabled = true; persist(); render();
-      setStatus("Queued " + result[0].id + " · " + result[0].pendingCount + " open batch(es). " + (result[0].responderActive ? "Background responder running." : result[0].wakeConfigured ? "Agent wake configured." : "No agent wake configured; message your agent to resume.") + (result[1] ? "" : " (no page image: capture failed)"), "ok");
+      setStatus("Queued " + result.id + " · " + result.pendingCount + " open batch(es). " + (result.responderActive ? "Background responder running." : result.wakeConfigured ? "Agent wake configured." : "No agent wake configured; message your agent to resume."), "ok");
     }).catch(function (e) { setStatus("Send failed: " + e.message + ". Pins kept.", "err"); })
       .then(function () { sending = false; renderList(); });
   }
