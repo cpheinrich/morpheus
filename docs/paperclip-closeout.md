@@ -29,7 +29,9 @@ the same path and digest with `created: false`.
 be regular files below that root, without symlink components. Source URLs require
 HTTPS or loopback HTTP; credentials, query strings and fragments are refused.
 Evidence/attachment references support those same URL forms or safe repository-relative
-paths. Do not include tokens, private absolute paths or signed URLs in content. The
+paths. A root `.git` component is reserved case-insensitively for input files,
+attachment paths and repository-relative references, including `.GIT` and `.GiT` aliases.
+Do not include tokens, private absolute paths or signed URLs in content. The
 script rejects those shapes in paths/references; prose and structured JSON still
 require human review before committing, especially in a public repository.
 

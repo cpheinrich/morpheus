@@ -64,7 +64,7 @@ function origin(value: string): string {
 function parts(path: string): string[] {
   const result = path.split("/");
   if (path.includes("\\") || /[\u0000-\u001f\u007f]/.test(path) || /^[a-z][a-z0-9+.-]*:/i.test(path) ||
-      result[0] === "~" || result.some(p => !p || p === "." || p === "..") || result[0] === ".git") {
+      result[0] === "~" || result.some(p => !p || p === "." || p === "..") || result[0]?.toLowerCase() === ".git") {
     throw new Error("expected a safe repository-relative path");
   }
   return result;

@@ -127,6 +127,18 @@ describe("bounded Paperclip closeout exporter", () => {
     await expect(exportCloseout(repo, target, async () => snapshot())).rejects.toThrow("symlink");
     expect((await readdir(join(repo, "qa"))).sort()).toEqual(["file.txt", "link.json", "roadmap.md", "source.json"]);
   });
+  it.each([".git/config", ".GIT/config", ".GiT/config"])("rejects reserved Git metadata %s across every input/reference boundary", async path => {
+    const repo = await fixture();
+    await expect(readFrozenFile(repo, path)).rejects.toThrow("safe repository-relative");
+    const attachmentInput = snapshot(); attachmentInput.attachments[0]!.localPath = path;
+    await expect(exportCloseout(repo, target, async () => attachmentInput)).rejects.toThrow("safe repository-relative");
+    expect((await readdir(repo)).sort()).toEqual([".git", "qa"]);
+    const attachmentReference = snapshot(); attachmentReference.attachments[0]!.reference = path;
+    await expect(exportCloseout(repo, target, async () => attachmentReference)).rejects.toThrow("safe repository-relative");
+    const evidenceReference = snapshot(); evidenceReference.validationEvidence[0]!.reference = path;
+    await expect(exportCloseout(repo, target, async () => evidenceReference)).rejects.toThrow("safe repository-relative");
+    expect((await readdir(repo)).sort()).toEqual([".git", "qa"]);
+  });
   it("refuses mutation of an existing immutable name and a symlink at its final path", async () => {
     const repo = await fixture();
     const result = await exportCloseout(repo, target, async () => snapshot());
