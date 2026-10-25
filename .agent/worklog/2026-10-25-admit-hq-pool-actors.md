@@ -100,3 +100,71 @@ intercept test then confirmed an unchanged HQ pin reaches exactly its pinned hos
 without launching a provider; the dedicated HQ suite passed18/18 including seven drift
 subtests. Plugin syntax, typecheck, compile, PM index and whitespace checks passed again.
 No generated output changed. These results precede the same-reviewer follow-up.
+
+
+## Independent review clearance
+
+Independent high-risk review found HQ-PIN-001 and HQ-REPO-002; the author added full mapping checks at queued-run admission and an explicit controller-local repository mapping. The same reviewer cleared both corrections at 3d2980f. Validation uses fake Paperclip and intercepted host transport; deployed Firebase and real provider operation remain separate.
+
+The initial turn was complete but blocked with two substantive findings and no conditions. The same reviewer follow-up was complete and cleared, independently running18/18 HQ tests. Initial elapsed time was279829ms; follow-up elapsed time was65713ms. Final-head CI and protected merge remain required.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "2b102e3e3ee86276ad69a342eece2e52e01d8bb1",
+  "reviewed": "97e8377ee18ea3acc36593526d9fae2ca2cdc3aa",
+  "covered": "3d2980f57a1197d54ed7d92f697209b38008511c",
+  "authorSession": "01a172b1-1515-7ee2-8891-5dc8f3499665",
+  "reviewerSession": "/root/hq_pool_actor/hq_actor_reviewer",
+  "risk": "high",
+  "elapsedMinutes": 4.6638166666666665,
+  "timing": {
+    "source": "clock",
+    "durationMs": 279829,
+    "evidence": "Observed clock around initial invocation /root/hq_pool_actor/hq_actor_reviewer: start 1792926361366ms (2026-10-25T11:06:01.366Z), final response observed 1792926641195ms (2026-10-25T11:10:41.195Z)."
+  },
+  "outcome": "complete",
+  "summary": "Independent high-risk review found HQ-PIN-001 and HQ-REPO-002; the author added full mapping checks at queued-run admission and an explicit controller-local repository mapping. The same reviewer cleared both corrections at 3d2980f. Validation uses fake Paperclip and intercepted host transport; deployed Firebase and real provider operation remain separate.",
+  "findings": [
+    {
+      "id": "HQ-PIN-001",
+      "severity": "substantive",
+      "description": "Queued HQ turns reached the native runner with only the reduced desktop digest, allowing changed executable or controller pins to reach host launch.",
+      "paths": [
+        "plugins/codex-claude/src/pool-hq.mjs",
+        "plugins/codex-claude/src/pool.mjs",
+        "plugins/codex-claude/src/pool-runner.mjs",
+        "plugins/codex-claude/tests/pool-hq.test.mjs"
+      ],
+      "disposition": "fixed",
+      "response": "A shared full-mapping verifier now checks current and captured execution bindings at command effects and queued native admission before account/reconciliation/host effects. Seven intercepted drift/race probes prove zero host calls and reservations; the same reviewer cleared the correction."
+    },
+    {
+      "id": "HQ-REPO-002",
+      "severity": "substantive",
+      "description": "HQ authorization resolved the worker workspace on the controller, rejecting SSH profiles whose workspace exists only on the worker.",
+      "paths": [
+        "plugins/codex-claude/src/pool-hq.mjs",
+        "plugins/codex-claude/tests/pool-hq.test.mjs",
+        "docs/paperclip-hq-actor.md"
+      ],
+      "disposition": "fixed",
+      "response": "Owner mappings now require a canonical controller-local repository path and its project identity separately from the fully pinned worker profile. An SSH profile with an absent controller-side worker path enqueues and reads successfully; the same reviewer cleared source and documentation."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/hq_pool_actor/hq_actor_reviewer",
+      "commit": "3d2980f57a1197d54ed7d92f697209b38008511c",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.0952166666666667,
+      "timing": {
+        "source": "clock",
+        "durationMs": 65713,
+        "evidence": "Observed clock around same-reviewer follow-up: start 1792926883588ms (2026-10-25T11:14:43.588Z), final response observed 1792926949301ms (2026-10-25T11:15:49.301Z)."
+      },
+      "summary": "Both substantive findings fixed; the reviewer independently passed18/18 dedicated HQ tests and cleared the corrections and related documentation, with no new findings."
+    }
+  ]
+}
+```
