@@ -67,4 +67,38 @@ existing bounded fidelity and explicit omission/error behavior.
 
 ## Independent review
 
-Pending fresh reviewer and CI.
+The independent reviewer cleared the normal-risk change with no substantive findings and one minor warning-contrast finding. The author switched that warning to the inherited theme foreground, recompiled, passed the two affected Chromium/WebKit cases and inspected the final failure-state screenshots. The reviewer independently passed 12 focused browser cases and inspected the supplied before/after pixels. No follow-up turn was required for the minor correction; live preview adoption remains outside this background fix.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "454cf6498f0d39aa78b05aa1a3af714ea2d154d2",
+  "reviewed": "9f7abd94274f13e041501ca0a0486c3bd92cfda3",
+  "covered": "971619d1179d4f8482041ccf457268e06a3e673b",
+  "authorSession": "01a1723e-f222-7d53-a285-9d330383990f",
+  "reviewerSession": "/root/qa_composer_review",
+  "risk": "normal",
+  "elapsedMinutes": 3.0431,
+  "timing": {
+    "source": "clock",
+    "durationMs": 182586,
+    "evidence": "Actual author clock around /root/qa_composer_review initial invocation: start 2026-10-25T09:09:12.643Z, final response received and completion observed 2026-10-25T09:12:15.229Z. Includes reviewer tool execution and waits."
+  },
+  "outcome": "complete",
+  "summary": "The independent reviewer cleared the normal-risk change with no substantive findings and one minor warning-contrast finding. The author switched that warning to the inherited theme foreground, recompiled, passed the two affected Chromium/WebKit cases and inspected the final failure-state screenshots. The reviewer independently passed 12 focused browser cases and inspected the supplied before/after pixels. No follow-up turn was required for the minor correction; live preview adoption remains outside this background fix.",
+  "findings": [
+    {
+      "id": "QA-01",
+      "severity": "minor",
+      "description": "The new saved-row image warning hard-coded red at 11px, making it difficult to read against the inherited blue/dark panel.",
+      "paths": [
+        "src/qa/web/overlay-client.ts",
+        "dist/qa/web/overlay-client.js",
+        "dist/qa/web/overlay-client.js.map"
+      ],
+      "disposition": "fixed",
+      "response": "Changed only the warning color to var(--qa-fg), keeping the explicit warning text. Regenerated dist; the sourcemap was unchanged. Both focused image-failure browser cases passed after the correction. Recaptured and opened final Chromium/WebKit save and reselect screenshots using the reviewer's isolated harness. The reviewer explicitly accepted this minor correction without another turn."
+    }
+  ]
+}
+```
