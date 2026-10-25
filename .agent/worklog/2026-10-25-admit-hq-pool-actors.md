@@ -104,7 +104,7 @@ No generated output changed. These results precede the same-reviewer follow-up.
 
 ## Independent review clearance
 
-Independent high-risk review found HQ-PIN-001 and HQ-REPO-002; the author added full mapping checks at queued-run admission and an explicit controller-local repository mapping. The same reviewer cleared both corrections at 3d2980f. Validation uses fake Paperclip and intercepted host transport; deployed Firebase and real provider operation remain separate.
+Independent high-risk review found HQ-PIN-001 and HQ-REPO-002; the author added full queued-run pin checks and a separate controller-local repository mapping, cleared by the same reviewer at3d2980f. A late integration UUID case issue was corrected with exact-ID-hashed journal filenames and cleared by that reviewer at1f267e6. Fake/intercepted validation passed; deployed Firebase and real provider qualification remain separate.
 
 The initial turn was complete but blocked with two substantive findings and no conditions. The same reviewer follow-up was complete and cleared, independently running18/18 HQ tests. Initial elapsed time was279829ms; follow-up elapsed time was65713ms. Final-head CI and protected merge remain required.
 
@@ -113,7 +113,7 @@ The initial turn was complete but blocked with two substantive findings and no c
   "version": 2,
   "base": "2b102e3e3ee86276ad69a342eece2e52e01d8bb1",
   "reviewed": "97e8377ee18ea3acc36593526d9fae2ca2cdc3aa",
-  "covered": "3d2980f57a1197d54ed7d92f697209b38008511c",
+  "covered": "1f267e62970df98db0dd357a437feea84398b8fd",
   "authorSession": "01a172b1-1515-7ee2-8891-5dc8f3499665",
   "reviewerSession": "/root/hq_pool_actor/hq_actor_reviewer",
   "risk": "high",
@@ -124,7 +124,7 @@ The initial turn was complete but blocked with two substantive findings and no c
     "evidence": "Observed clock around initial invocation /root/hq_pool_actor/hq_actor_reviewer: start 1792926361366ms (2026-10-25T11:06:01.366Z), final response observed 1792926641195ms (2026-10-25T11:10:41.195Z)."
   },
   "outcome": "complete",
-  "summary": "Independent high-risk review found HQ-PIN-001 and HQ-REPO-002; the author added full mapping checks at queued-run admission and an explicit controller-local repository mapping. The same reviewer cleared both corrections at 3d2980f. Validation uses fake Paperclip and intercepted host transport; deployed Firebase and real provider operation remain separate.",
+  "summary": "Independent high-risk review found HQ-PIN-001 and HQ-REPO-002; the author added full queued-run pin checks and a separate controller-local repository mapping, cleared by the same reviewer at3d2980f. A late integration UUID case issue was corrected with exact-ID-hashed journal filenames and cleared by that reviewer at1f267e6. Fake/intercepted validation passed; deployed Firebase and real provider qualification remain separate.",
   "findings": [
     {
       "id": "HQ-PIN-001",
@@ -164,6 +164,19 @@ The initial turn was complete but blocked with two substantive findings and no c
         "evidence": "Observed clock around same-reviewer follow-up: start 1792926883588ms (2026-10-25T11:14:43.588Z), final response observed 1792926949301ms (2026-10-25T11:15:49.301Z)."
       },
       "summary": "Both substantive findings fixed; the reviewer independently passed18/18 dedicated HQ tests and cleared the corrections and related documentation, with no new findings."
+    },
+    {
+      "reviewerSession": "/root/hq_pool_actor/hq_actor_reviewer",
+      "commit": "1f267e62970df98db0dd357a437feea84398b8fd",
+      "outcome": "cleared",
+      "elapsedMinutes": 0.83535,
+      "timing": {
+        "source": "clock",
+        "durationMs": 50121,
+        "evidence": "Observed clock around the third ordinary same-reviewer invocation: start 1792927623406ms (2026-10-25T11:27:03.406Z), final response observed 1792927673527ms (2026-10-25T11:27:53.527Z). The earlier capacity-refused launch started no review turn and is excluded."
+      },
+      "scopeReason": "Late integration review found case-sensitive cloud operation IDs aliasing raw UUID journal filenames on the case-insensitive Mac; this turn covers only the bounded journal identity correction and associated tests, documentation and worklog.",
+      "summary": "Cleared exact-ID-hashed operation journal filenames while preserving original receipt IDs and recovery behavior. The reviewer independently passed the focused UUID regression1/1, including case-folded path inequality and independent replay. Earlier substantive findings remain fixed; no new findings."
     }
   ]
 }
@@ -180,3 +193,6 @@ creates both case variants as distinct intents, reads/retries each identity, and
 filenames. No HQ source was deployed or live command journal created before this correction.
 This spends the remaining same-reviewer ordinary late-correction turn after its earlier clearance;
 there is no replacement reviewer and no scope expansion beyond operation identity.
+
+
+The third ordinary same-reviewer turn cleared the late UUID correction after50,121ms. The first attempted launch was refused by shared agent capacity before it started; the existing reviewer resumed when the slot was released. Final dedicated HQ validation passed19/19; the added filesystem-case-folding assertion then passed its focused UUID test1/1. No review turn or timing was fabricated for the refused launch. Parent explicitly reallocated an additional3 Codex points at30% shared used for this last turn and normal CI/merge delivery.
