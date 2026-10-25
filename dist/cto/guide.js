@@ -6,7 +6,7 @@
  * other project carries a pointer here rather than a copy: copies in each repository drift apart
  * silently, while `self update` delivers one reviewed revision everywhere at once.
  */
-import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL, agenticCtoSkillFiles, researchEngineerSkillFiles, } from "./skill.js";
+import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL, DEVOPS_ENGINEER_SKILL, agenticCtoSkillFiles, researchEngineerSkillFiles, devopsEngineerSkillFiles, } from "./skill.js";
 /**
  * The individual-contributor skills under the CTO, by the topic that prints each one. A reference
  * of one prints as `<skill>/<reference>`, so its names never shadow the CTO's own references. A
@@ -14,6 +14,7 @@ import { AGENTIC_CTO_SKILL, RESEARCH_ENGINEER_SKILL, agenticCtoSkillFiles, resea
  */
 const IC_SKILLS = new Map([
     [RESEARCH_ENGINEER_SKILL, researchEngineerSkillFiles],
+    [DEVOPS_ENGINEER_SKILL, devopsEngineerSkillFiles],
 ]);
 const REFERENCE = /^references\/([\w-]+)\.md$/;
 const TOPIC = /^(?:([\w-]+)\/)?([\w-]+)$/;

@@ -23,6 +23,12 @@ const SKILLS = [
       "The research-engineer skill (MO-26-10-23-00.08.15): hands-on ML and algorithm research, as the\n" +
       " * first individual-contributor skill under the agentic CTO.",
   },
+  {
+    name: "devops-engineer",
+    constant: "DEVOPS_ENGINEER_SKILL",
+    accessor: "devopsEngineerSkillFiles",
+    summary: "The DevOps engineer skill (MO-26-10-25-03.01.09): CI/CD delivery responsibility and incident recovery.",
+  },
 ];
 
 async function filesUnder(dir) {
