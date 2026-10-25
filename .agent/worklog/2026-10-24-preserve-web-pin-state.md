@@ -25,3 +25,65 @@ Final browser validation: `QA_EVIDENCE_DIR=/tmp/morpheus-pin-evidence pnpm exec 
 Initial independent reviewer `/root/morpheus_web_pin_fix/web_pin_review` blocked commit `168fadc80bf4258cd513bafda70dfa3057373a4c` on two substantive findings: PIN-001, a v2 draft suppressed other route-local legacy drafts; PIN-002, the first descendant entity made page identity change when an unrelated card was filtered. The reviewer opened all four capture images and reproduced both defects independently in Chromium. Real clock measurement: 2026-10-25 03:51:42 UTC through 03:54:41 UTC, 179030 ms from the clock calls around launch and completion. The author corrected migration to merge on route entry, durably record each admitted index before source cleanup, retain overflow/source data on count/byte/write failure, and avoid replay after deletion/Send. View identity now uses the root's entity attributes and heading, never an arbitrary list-card descendant. Regression coverage includes empty/nonempty v2, second-route navigation, cleanup failure, 30-pin and 256-KiB overflow, failed metadata persistence, and unrelated filtered/reordered cards. Both findings await the same reviewer's focused follow-up; no conditional clearance was claimed.
 
 Correction validation: `pnpm compile`, `pnpm typecheck`, `pnpm lint`, the same 80 focused Vitest tests and `pnpm morpheus pm index` pass. The expanded complete Chromium/WebKit overlay suite passes all 22 tests (`--output=/tmp/morpheus-pin-review-fixed-final-results`). The legacy overflow scenarios also pass with final screenshots at `/tmp/morpheus-pin-evidence/web-legacy-overflow-{chromium,webkit}.png`; author opened them and re-opened the four context/media captures before handing the correction to the reviewer.
+
+The independent reviewer found two substantive defects in legacy draft migration and page identity. Both were fixed and verified in the same reviewer's follow-up, which cleared commit 6bc1f5fe748032079ecfdfb56a6f081727efb38f. Final validation passed 80 focused tests and 22 Chromium/WebKit overlay cases; all six final captures were inspected. Documented DOM-rendering and media-omission limitations remain.
+
+```morpheus-review
+{
+  "version": 2,
+  "base": "8fb23695d5b50ea4429bb133c85ab710b608fc79",
+  "reviewed": "168fadc80bf4258cd513bafda70dfa3057373a4c",
+  "covered": "6bc1f5fe748032079ecfdfb56a6f081727efb38f",
+  "authorSession": "01a17121-d469-73a1-b304-3d770aabf560",
+  "reviewerSession": "/root/morpheus_web_pin_fix/web_pin_review",
+  "risk": "normal",
+  "elapsedMinutes": 2.983833333333333,
+  "timing": {
+    "source": "clock",
+    "durationMs": 179030,
+    "evidence": "Clock/Date.now around initial reviewer invocation: 2026-10-25T03:51:42.896Z to 2026-10-25T03:54:41.926Z (1792900302896 to 1792900481926), runner-issued /root/morpheus_web_pin_fix/web_pin_review."
+  },
+  "outcome": "complete",
+  "summary": "The independent reviewer found two substantive defects in legacy draft migration and page identity. Both were fixed and verified in the same reviewer's follow-up, which cleared commit 6bc1f5fe748032079ecfdfb56a6f081727efb38f. Final validation passed 80 focused tests and 22 Chromium/WebKit overlay cases; all six final captures were inspected. Documented DOM-rendering and media-omission limitations remain.",
+  "findings": [
+    {
+      "id": "PIN-001",
+      "severity": "substantive",
+      "description": "Any v2 payload suppressed per-route legacy drafts, including empty v2 state after Send, and later route visits never imported them.",
+      "paths": [
+        "src/qa/web/overlay-client.ts",
+        "tests/browser/qa-web-context.spec.ts",
+        "docs/runbooks/qa-comments.md"
+      ],
+      "disposition": "fixed",
+      "response": "Commit 6bc1f5f merges route drafts on attach/navigation, persists each admitted pin and consumed-index guard before cleanup, retains source overflow and failed writes, and prevents replay after Send/deletion. Count, byte, cleanup and metadata-write regressions pass in Chromium/WebKit; same reviewer independently reran the four new Chromium regressions and cleared."
+    },
+    {
+      "id": "PIN-002",
+      "severity": "substantive",
+      "description": "Page identity depended on the first descendant entity, so filtering an unrelated card hid a still-valid marker on another card.",
+      "paths": [
+        "src/qa/web/overlay-client.ts",
+        "tests/browser/qa-web-context.spec.ts",
+        "docs/runbooks/qa-comments.md"
+      ],
+      "disposition": "fixed",
+      "response": "Commit 6bc1f5f restricts view identity to root attributes and heading, excluding arbitrary card descendants. Bob's marker survives Alice removal/reordering, while existing different-artist dialog tests still hide mismatched markers. Same-reviewer follow-up verified and cleared."
+    }
+  ],
+  "followUps": [
+    {
+      "reviewerSession": "/root/morpheus_web_pin_fix/web_pin_review",
+      "commit": "6bc1f5fe748032079ecfdfb56a6f081727efb38f",
+      "outcome": "cleared",
+      "elapsedMinutes": 1.0371166666666667,
+      "timing": {
+        "source": "clock",
+        "durationMs": 62227,
+        "evidence": "Clock/Date.now around same-reviewer follow-up: 2026-10-25T03:58:45.969Z to 2026-10-25T03:59:48.196Z (1792900725969 to 1792900788196), same runner-issued reviewer task."
+      },
+      "summary": "PIN-001 and PIN-002 resolved; four added Chromium regressions independently passed. Reviewer inspected all six final captures, verified generated output and clean diff, and reported no new findings in the focused follow-up."
+    }
+  ]
+}
+```
