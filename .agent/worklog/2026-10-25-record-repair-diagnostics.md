@@ -45,7 +45,7 @@ configuration/files, normal store and fake Git database CAS semantics.
 
 ## Validation
 
-The final focused command passed all 164 tests in six files:
+The initial local qualification passed all 164 tests in six files:
 
 ```sh
 pnpm exec vitest run tests/cd/repair-diagnostic.test.ts tests/cd/repair-diagnostic-cli.test.ts tests/cd/state.test.ts tests/cd/store.test.ts tests/cd/source-finance-cli.test.ts tests/cd/request.test.ts
@@ -93,3 +93,35 @@ Local implementation is complete and committed for root packet qualification.
 No implementation publication, PR, reviewer, CI, reservation, settlement or
 host/provider/ledger/model/native-owner action has occurred. Source publication
 remains held for the root's exact cost/qualification release.
+
+## Independent hash-contract oracle — 2026-10-25
+
+Root packet inspection initially assumed `hash(encoded)` JSON-encoded a string
+again. Exact `src/cd/schema.ts` source showed that `hash` hashes string arguments
+as raw bytes, while it canonicalizes object arguments. Root acknowledged that
+inspection assumption was incorrect. The existing diagnostic ID already equals
+SHA-256 of canonical parsed input UTF-8 bytes; there was no implementation defect
+or changed ID, and the runtime calculation remains unchanged.
+
+Add an independent Node `createHash("sha256").update(canonical(parsedInput),
+"utf8")` oracle for both the normal store event/receipt and actual CLI file path.
+The fixture includes non-ASCII text, quotes, a backslash and a newline and
+distinguishes the canonical-input digest from JSON-string double encoding.
+The oracle passed against the unchanged runtime. Preserve the complete initial
+packet and its nine-mutant results; a separate revision packet records the new
+golden test and an additional actual double-encoding mutant.
+
+The stable CLI/API/file schema was sent directly to the consumer source owner.
+Its runtime manifest must explicitly admit the additional `dist/cd/index.js`
+entry and transitive imports, including `dist/cd/repair-diagnostic.js`; existing
+CLI reachability is not evidence of that package entry. No consumer files were
+changed by this author.
+
+Revision validation passed 165 focused tests in the same six-file scope,
+typecheck, lint, compile, PM index/validation and diff checks. All ten targeted
+mutants were killed; inspected the added mutant's actual failed Node-golden
+receipt/event assertions. Production `src/` and `dist/` bytes are unchanged from
+`15c05a7255fd5de4f77d7d1bba03704aab8e81aa`. The prior packet manifest remains
+`2836e03ee67dd78a24949305920954cd183daecf6bdfe3292970853cb6c32515`.
+The revision adds contract tests, entry-manifest documentation and this record
+only; source publication, reviewer, CI and operational effects remain held.

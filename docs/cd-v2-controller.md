@@ -203,6 +203,10 @@ funding or proof of actual consumer/runtime adoption.
 The exported `recordRepairDiagnostic(store, input)` API returns the same bounded
 result. `appendRepairDiagnostic(state, input)` is its pure evidence-only reducer;
 the public CLI uses the normal store API and never emits the full state.
+A consumer that freezes runtime files must explicitly admit `dist/cd/index.js`
+as its package API entry and retain its transitive compiled imports, including
+`dist/cd/repair-diagnostic.js`. A working CLI entry does not prove that this
+additional package entry is included in the consumer's actual runtime manifest.
 
 ## Upload and internal completion
 

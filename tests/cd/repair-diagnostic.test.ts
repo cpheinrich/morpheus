@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { canonical, hash } from "../../src/cd/schema.js";
-import { appendRepairDiagnostic, recordRepairDiagnostic, REPAIR_DIAGNOSTIC_MAX_BYTES, type RepairDiagnostic } from "../../src/cd/repair-diagnostic.js";
+import { appendRepairDiagnostic, recordRepairDiagnostic, repairDiagnosticSchema, REPAIR_DIAGNOSTIC_MAX_BYTES, type RepairDiagnostic } from "../../src/cd/repair-diagnostic.js";
 import { claimUpload, recordTests, recordUpload } from "../../src/cd/state.js";
 import { GitHubStore } from "../../src/cd/store.js";
 import { FakeGitHub } from "./fake-github.js";
@@ -15,8 +16,9 @@ async function storeFixture() {
   api.calls = [];
   return { ...fixture, api, store };
 }
-const transitionId = (input: RepairDiagnostic) => `repair-diagnostic-${hash(canonical(input))}`;
-function savedReceipt(input: RepairDiagnostic) { return { workId: input.workId, taskDigest: input.taskDigest, intentId: input.intentId, attemptId: input.attemptId, diagnosticId: hash(canonical(input)) }; }
+const diagnosticDigest = (input: RepairDiagnostic) => createHash("sha256").update(canonical(repairDiagnosticSchema.parse(input)), "utf8").digest("hex");
+const transitionId = (input: RepairDiagnostic) => `repair-diagnostic-${diagnosticDigest(input)}`;
+function savedReceipt(input: RepairDiagnostic) { return { workId: input.workId, taskDigest: input.taskDigest, intentId: input.intentId, attemptId: input.attemptId, diagnosticId: diagnosticDigest(input) }; }
 
 describe("evidence-only failed repair reducer", () => {
   it("appends exact canonical data to the existing owner and preserves every other whole object", () => {
@@ -91,6 +93,18 @@ describe("evidence-only failed repair reducer", () => {
 });
 
 describe("normal GitHubStore diagnostic transaction", () => {
+  it("binds the receipt and event to Node's SHA-256 of canonical parsed UTF-8 input", async () => {
+    const f = await storeFixture(); f.input.diagnostic = { summary: 'Synthetic é "quoted" \\ newline\nproof', evidence: ["synthetic:☃"] };
+    const parsed = repairDiagnosticSchema.parse(JSON.parse(JSON.stringify(f.input))), encoded = canonical(parsed);
+    const golden = createHash("sha256").update(encoded, "utf8").digest("hex");
+    const doubleEncoded = createHash("sha256").update(JSON.stringify(encoded), "utf8").digest("hex");
+    expect(golden).not.toBe(doubleEncoded);
+    const result = await recordRepairDiagnostic(f.store, f.input), final = await f.store.read();
+    expect(result.result.diagnosticId).toBe(golden); expect(result.eventId).toBe(`repair-diagnostic-${golden}`);
+    const eventBlob = f.api.trees.get(final.tree)![`events/repair-diagnostic-${golden}.json`]!;
+    expect(JSON.parse(f.api.blobs.get(eventBlob)!).data.diagnosticId).toBe(golden);
+    expect(final.state.agents[f.workId]!.evidence.at(-1)).toBe(encoded);
+  });
   it("saves one content-addressed event with exact receipt, own parent and evidence-only state delta", async () => {
     const f = await storeFixture(), before = await f.store.read(), result = await recordRepairDiagnostic(f.store, f.input), final = await f.store.read();
     const expected = structuredClone(before.state); expected.agents[f.workId]!.evidence.push(canonical(f.input)); expected.transitions[transitionId(f.input)] = final.state.transitions[transitionId(f.input)]!;

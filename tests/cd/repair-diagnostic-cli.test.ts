@@ -1,9 +1,11 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cd } from "../../src/cd/cli.js";
-import { canonical, hash } from "../../src/cd/schema.js";
+import { canonical } from "../../src/cd/schema.js";
+import { repairDiagnosticSchema } from "../../src/cd/repair-diagnostic.js";
 import { GhApi, GitHubStore } from "../../src/cd/store.js";
 import { FakeGitHub } from "./fake-github.js";
 import { config, now } from "./fixtures.js";
@@ -27,10 +29,12 @@ describe("public repair-diagnostic command", () => {
     const f = await setup(); await f.store.transact("large-prior-note", "synthetic-prior-note", now, () => "x".repeat(100_000));
     const before = await f.store.read(); expect(await cd(f.argv, {})).toBe(0);
     const output = JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0] as string), final = await f.store.read();
-    expect(output.result).toEqual({ workId: f.workId, taskDigest: f.input.taskDigest, intentId: f.intentId, attemptId: f.attemptId, diagnosticId: hash(canonical(f.input)) });
+    const parsed = repairDiagnosticSchema.parse(JSON.parse(await readFile(f.evidencePath, "utf8")));
+    const golden = createHash("sha256").update(canonical(parsed), "utf8").digest("hex");
+    expect(output.result).toEqual({ workId: f.workId, taskDigest: f.input.taskDigest, intentId: f.intentId, attemptId: f.attemptId, diagnosticId: golden });
     expect(output.replayed).toBe(false); expect(output.targetCurrent).toBe(true); expect(output.verifiedReadbackHead).toBe(final.head);
     expect(Object.keys(output).sort()).toEqual(["eventId", "eventOwner", "head", "replayed", "result", "targetCurrent", "verifiedReadbackHead"]);
-    expect(output.eventId).toBe(`repair-diagnostic-${output.result.diagnosticId}`); expect(output.eventOwner).toBe(final.state.transitions[output.eventId]!.owner); expect(Buffer.byteLength(JSON.stringify(output))).toBeLessThan(2048);
+    expect(output.eventId).toBe(`repair-diagnostic-${golden}`); expect(output.eventOwner).toBe(final.state.transitions[output.eventId]!.owner); expect(Buffer.byteLength(JSON.stringify(output))).toBeLessThan(2048);
     const expected = structuredClone(before.state); expected.agents[f.workId]!.evidence.push(canonical(f.input)); expected.transitions = final.state.transitions;
     expect(final.state).toEqual(expected); expect(fetch).not.toHaveBeenCalled(); expect(f.api.calls.every(call => /\/git\//.test(call.path))).toBe(true);
   });
