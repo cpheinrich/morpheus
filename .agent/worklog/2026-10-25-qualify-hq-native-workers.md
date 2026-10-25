@@ -265,3 +265,13 @@ with no findings. Initial source CI finished green at5a0e108:11 checks,8 passed
 and3 expected skips. Final review-record validation and final-head CI precede merge.
 The private test mapping pins this task worktree; retain it and the ignored proofs
 while observing saved HQ receipts. Cleanup must preserve that needed runtime evidence.
+
+After the first final-head CI passed (13checks:9 passed/4 expected skips), protected
+merge waited because trunk advanced to b72f28a0 (#512). Its Manager/service/config/store
+changes were integrated by the automatic merge c0534dc86275944279448dbe6618339fcaf39abb,
+without a hand resolution. The review record validated against that integration.
+The real-emulator/actual-Manager joined fixture passed again, then
+`node --test plugins/codex-claude/tests/pool-hq.test.mjs plugins/codex-claude/tests/pool.test.mjs plugins/codex-claude/tests/reverse.test.mjs`
+passed47/47. These provider-free regressions cover the changed Manager/reverse
+concurrency and existing HQ/desktop Pool boundary. No successful native turn was
+replayed; the exact staged/native-tested private source remains a230385b.
