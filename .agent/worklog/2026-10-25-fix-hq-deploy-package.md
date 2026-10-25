@@ -34,8 +34,8 @@ References checked: pnpm's official build settings and Google Buildpacks' empty 
 Graph Tier2 generation2026-10-25T23:46:55Z: existing packaging configs metadata_match/no recorded
 issue; new policy/check missing from primary index, read directly in the isolated worktree.
 
-The fresh independent reviewer cleared the packaging repair with no findings and independently
-passed the clean standalone operational check. Cloud Build and consumer activation remain
+Independent packaging review cleared the repair with no findings.
+The reviewer independently passed the clean standalone operational check. Cloud Build and consumer activation remain
 parent-owned acceptance evidence.
 
 ```morpheus-review
@@ -54,7 +54,7 @@ parent-owned acceptance evidence.
     "evidence": "Initial packaging review /root/hq_connector_projection/review_hq_packaging: author clock 2026-10-25T23:48:50Z before spawn_agent, receipt clock 2026-10-25T23:50:18Z immediately after final response."
   },
   "outcome": "complete",
-  "summary": "The fresh independent reviewer cleared the packaging repair with no findings and independently passed the clean standalone operational check.",
+  "summary": "Independent packaging review cleared the repair with no findings.",
   "findings": []
 }
 ```
