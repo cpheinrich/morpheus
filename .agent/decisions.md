@@ -1661,3 +1661,13 @@ Tags confer no owner or authority. Legacy records remain valid, no blanket histo
 performed, and a queue can later project this contract without becoming its source of truth.
 Existing Zod/frontmatter/Node APIs fit these small domain fields and deterministic reads; no
 additional generic tag framework or dependency is introduced.
+
+## Codex-Claude installer probes exact shared tool-name contracts — 2026-10-25
+
+MO-26-10-25-05.52.02. The installer validates each installed MCP server by the exact set of
+names in one shared contract that also drives the server's registration loop. Counts are not a
+contract: adding the remote pool tools correctly grew the Codex-facing server from nine to twenty
+tools and made a valid installation fail its stale count assertion. A failure names the missing,
+unexpected and observed tools, and the installer prints that message before restoring the prior
+copy. Keep this as a small dependency-free module beside the server entry points; a second schema
+or generic contract package would add a drift surface rather than remove one.
