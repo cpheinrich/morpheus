@@ -89,6 +89,34 @@ export class Manager {
   async snapshot(id) {
     return (await this.client()).snapshot(id);
   }
+  async taskRuns(task) {
+    const ids = new Set([...(task.runIds ?? []), task.runId].filter(Boolean));
+    for (const run of this.runs.values())
+      if (run.threadId === task.id) ids.add(run.id);
+    const runs = (
+      await Promise.all(
+        [...ids].map((id) => this.status(id).catch(() => null)),
+      )
+    )
+      .filter(Boolean)
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    return {
+      active: runs.filter((run) => !run.terminal),
+      recent: runs.filter((run) => run.terminal).slice(0, 5),
+    };
+  }
+  async codexRunId(args) {
+    if (args.runId) return args.runId;
+    const task = await taskRead(claudeTaskId(args.sessionId));
+    const runs = await this.taskRuns(task);
+    if (runs.active.length > 1)
+      throw new Error(
+        `runId is required because this session has multiple active runs: ${runs.active.map((run) => run.id).join(", ")}`,
+      );
+    const run = runs.active[0] ?? runs.recent[0];
+    if (!run) throw new Error("This session has no delegated runs.");
+    return run.id;
+  }
   async inspect(id, operation) {
     const config = await configRead();
     const task = await taskRead(id);
@@ -155,10 +183,13 @@ export class Manager {
       if (replies > config.maxSupervisionReplies)
         throw new Error("Supervision limit reached. Escalate to the user.");
       const active = [...this.runs.values()].filter((r) => !r.terminal);
+      const owner = active.find((run) => run.cwd === task.cwd);
+      if (owner)
+        throw new Error(
+          `Run ${owner.id} already owns this working directory. Wait for or stop that run before starting another writer here.`,
+        );
       if (active.length >= config.maxConcurrent)
         throw new Error("Delegation concurrency limit reached.");
-      if (active.some((r) => r.cwd === task.cwd))
-        throw new Error("Another Claude run owns this working directory.");
       await this.recoverOrphans(task);
       const selection = modelSelection(config, snapshot, {
         model: args.model,
@@ -613,9 +644,11 @@ export class Manager {
     await taskWrite(task);
     const usage = await readClaudeUsage();
     const allowance = claudeRemaining(usage);
+    const runs = await this.taskRuns(task);
     return {
       task,
       session: task.session ?? null,
+      runs,
       allowance,
       usageRecordedAt: usage?.recordedAt ?? null,
       route: route(config, task, allowance, operation, "claude"),
@@ -639,18 +672,28 @@ export class Manager {
         throw new Error(
           "No verified Claude session settings yet. The plugin's hooks record them; trust the hooks and send a message first.",
         );
-      const identity = await projectIdentity(args.cwd || session.cwd);
+      let previous = null;
+      if (args.runId) {
+        previous = await this.status(args.runId);
+        if (previous.threadId !== task.id)
+          throw new Error("The requested run belongs to another Claude session.");
+        if (args.cwd && (await projectIdentity(args.cwd)).cwd !== previous.cwd)
+          throw new Error("The requested run belongs to a different working directory.");
+      }
+      const identity = await projectIdentity(
+        args.cwd || previous?.cwd || session.cwd,
+      );
       if (identity.project !== task.project)
         throw new Error(
           "Delegation directory must belong to the Claude session repository.",
         );
       task.cwd = identity.cwd;
-      const codexSession = task.codexSessions?.[task.cwd] || null;
-      const previous = task.runId ? await this.status(task.runId) : null;
-      if (previous && !previous.terminal)
-        throw new Error(
-          "This session already has an active run. Resume monitoring it instead.",
-        );
+      const runs = await this.taskRuns(task);
+      previous ??= [...runs.active, ...runs.recent].find(
+        (run) => run.cwd === task.cwd,
+      );
+      const codexSession =
+        previous?.codexSession ?? task.codexSessions?.[task.cwd] ?? null;
       // Codex exec cannot ask mid-run, so every question arrives as needs_input.
       const continuation = previous?.state === "needs_input";
       if (
@@ -660,17 +703,24 @@ export class Manager {
         throw new Error(
           "Resuming a question requires replySource and replyReason.",
         );
+      const priorReplies =
+        task.supervisionRepliesByCwd?.[task.cwd] ??
+        task.supervisionReplies ??
+        0;
       const replies =
         continuation && args.replySource === "claude"
-          ? task.supervisionReplies + 1
+          ? priorReplies + 1
           : 0;
       if (replies > config.maxSupervisionReplies)
         throw new Error("Supervision limit reached. Escalate to the user.");
       const active = [...this.runs.values()].filter((r) => !r.terminal);
+      const owner = active.find((run) => run.cwd === task.cwd);
+      if (owner)
+        throw new Error(
+          `Run ${owner.id} already owns this working directory. Wait for or stop that run before starting another writer here.`,
+        );
       if (active.length >= config.maxConcurrent)
         throw new Error("Delegation concurrency limit reached.");
-      if (active.some((r) => r.cwd === task.cwd))
-        throw new Error("Another delegated run owns this working directory.");
       await this.recoverOrphans(task);
       const selection = codexSelection(config, session, {
         model: args.model,
@@ -733,7 +783,12 @@ export class Manager {
         config,
       );
       task.runId = id;
+      task.runIds = [...new Set([...(task.runIds ?? []), id])];
       task.supervisionReplies = replies;
+      task.supervisionRepliesByCwd = {
+        ...task.supervisionRepliesByCwd,
+        [task.cwd]: replies,
+      };
       await taskWrite(task);
       return this.begin(id);
     } finally {
@@ -745,10 +800,8 @@ export class Manager {
     if (config.mode === "off") return {};
     const task = await taskRead(claudeTaskId(args.sessionId));
     if (args.event === "SessionEnd") {
-      if (task.runId) {
-        const r = await this.status(task.runId);
-        if (!r.terminal && !r.background) await this.cancel(task.runId);
-      }
+      for (const run of (await this.taskRuns(task)).active)
+        if (!run.background) await this.cancel(run.id);
       return {};
     }
     // Hook input is Claude's own report of the session, so it is the settings source.
@@ -764,7 +817,7 @@ export class Manager {
     try {
       const s = await this.claudeInspect(args.sessionId);
       return {
-        additionalContext: `Codex delegation routing (sessionId ${args.sessionId}): ${JSON.stringify(s.route)}. Use the codex-claude delegate-to-codex skill and codex_* tools. Read current run status before starting another run. Explicit user instructions override automatic routing.`,
+        additionalContext: `Codex delegation routing (sessionId ${args.sessionId}): ${JSON.stringify(s.route)}. Use the codex-claude delegate-to-codex skill and codex_* tools. Inspect active runs before starting another run. Explicit user instructions override automatic routing.`,
       };
     } catch (e) {
       return {
@@ -783,6 +836,14 @@ export class Manager {
       }
       return value;
     }
+    if (method === "codex.view")
+      return this.viewer.open(await this.codexRunId(args));
+    if (method === "codex.status")
+      return this.status(await this.codexRunId(args));
+    if (method === "codex.wait")
+      return this.wait(await this.codexRunId(args), args.seconds);
+    if (method === "codex.stop")
+      return this.cancel(await this.codexRunId(args));
     if (method === "view") return this.viewer.open(args.runId);
     if (method === "ping") return { ready: true, installationId };
     if (method === "shutdown") {

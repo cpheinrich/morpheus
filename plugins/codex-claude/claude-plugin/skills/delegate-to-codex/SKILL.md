@@ -10,7 +10,7 @@ tasks use its `delegate` skill. Configuration is OFF by default. It runs on the 
 MCP server and CLI; never submit a local task to a different machine by guessing its path.
 
 1. Use `codex_inspect` with this session's id (the routing hook states it; the tools also
-   default to `CLAUDE_CODE_SESSION_ID`). Read the current run before starting another. If the
+   default to `CLAUDE_CODE_SESSION_ID`). Read the active runs before starting another. If the
    tools have not loaded, use `node ~/plugins/codex-claude/scripts/bridge.mjs codex.<operation> -`
    with JSON stdin.
 2. Follow explicit user executor choices. A session-wide choice uses `codex_override`;
@@ -19,7 +19,7 @@ MCP server and CLI; never submit a local task to a different machine by guessing
    performed by Claude without changing the persistent override. Stop a running Codex writer
    and wait until terminal before taking over its files.
 3. Automatic mode checks the least remaining Claude subscription window (five-hour and
-   weekly) recorded by the plugin's status line. At **less than 50% remaining** by default,
+   weekly) recorded by the plugin's status line. At **less than 20% remaining** by default,
    delegate substantive work at the next safe checkpoint and reserve Claude for coordination;
    at or above it, keep executing in Claude. Recheck with `codex_inspect` after completed
    stages. Unknown or stale allowance is not zero and never triggers a handoff. Do not switch
@@ -38,8 +38,12 @@ MCP server and CLI; never submit a local task to a different machine by guessing
    and `plan` → read-only;
    anything else refuses. Overrides require a user request. Full access is never permission to
    bypass a business approval, repository review, spending, or sending rule.
-6. Call `codex_wait` (up to 25 seconds) until completion. This renews the owner lease. Publish
-   meaningful concise progress to the user. `codex_view` returns a read-only live page.
+6. A Claude session may own multiple concurrent Codex runs in different worktrees. The
+   bridge refuses a second writer in the same working directory and names its run id; the
+   global `maxConcurrent` limit still applies. Call `codex_wait` (up to 25 seconds) with the
+   returned `runId` until completion. This renews only that run's owner lease. Use run ids
+   for status, view and stop too; when more than one run is active, omitting one is refused
+   with the available ids. `codex_view` returns a read-only live page.
 7. Codex runs non-interactively and cannot ask mid-run. A `needs_input` result carries its
    question: resume with `codex_start` on the same session, with `replySource` and
    `replyReason`. `replySource: claude` is allowed only for a routine, reversible

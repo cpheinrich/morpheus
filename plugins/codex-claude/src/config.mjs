@@ -31,7 +31,7 @@ export const configSchema = z
     mode: modeSchema.default("off"),
     // Applies to whichever agent is coordinating: below this share of its own allowance
     // remaining, it hands substantive work to the other agent.
-    threshold: z.number().min(1).max(90).default(50),
+    threshold: z.number().min(1).max(90).default(20),
     maxConcurrent: z.number().int().min(1).max(8).default(2),
     disconnectGraceSeconds: z.number().int().min(5).max(300).default(60),
     maxRunSeconds: z.number().int().min(10).max(28800).default(7200),
