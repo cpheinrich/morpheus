@@ -117,11 +117,7 @@ actionlint 1.7.12 acquisition and validation passed in the required Node job;
 112 test files and 3,198 tests passed. Browser QA and the actual artifact ABI job
 passed. No local full-suite rerun was added.
 
-Independent high-risk review cleared the workflow correction with no findings
-after checking supported status semantics, unchanged native controls, real
-actionlint regressions and actual Linux CI evidence. No fixes or follow-up review
-were required; native delivery and consumer adoption remain unverified by this
-source task.
+Independent high-risk review cleared the workflow correction with no findings after checking supported status semantics, unchanged native controls, real actionlint regressions and actual Linux CI evidence. No fixes or follow-up review were required; native delivery and consumer adoption remain unverified by this source task.
 
 The one fresh reviewer independently ran 14 targeted tests and rejected both
 the original defect and the twelve unsupported-context mutants with real
