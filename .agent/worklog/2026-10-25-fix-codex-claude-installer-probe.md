@@ -79,6 +79,12 @@ Reviewer: a fresh Codex session (gpt-5.6-sol, high effort) with the review packe
       },
       "conditionMet": "276af1f3 sets prs: [515]; morpheus pm index regenerated; morpheus check pr run before push."
     }
+  ],
+  "trunkIntegrations": [
+    {
+      "commit": "61e22290e02e75fce310ee3046d6e3bb35d25517",
+      "reason": "Merged origin/main after review; .agent/decisions.md conflicted on adjacent new entries and was resolved by keeping both, this item's entry first. No other file conflicted."
+    }
   ]
 }
 ```
