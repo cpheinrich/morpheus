@@ -6,6 +6,8 @@ here is canonical; anything rendered elsewhere is a view.
 
 ## Designs
 
+- [Morpheus and Paperclip overview](paperclip-overview.md) — work-in-progress architecture,
+  task ownership, remote workers and interactive delegation, with diagrams.
 - [CD pipeline V2](cd-pipeline-v2.md) — delivery ownership, automatic recovery and
   internal TestFlight acceptance; [RCA](cd-pipeline-v2-rca.md),
   [research](cd-pipeline-v2-research.md), [design probes](cd-pipeline-v2-validation.md).
