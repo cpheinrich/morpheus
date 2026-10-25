@@ -98,10 +98,7 @@ historical and is superseded by this authorization.
 
 ## Independent review and conditional correction
 
-Independent normal-risk review found PC-1, a mixed-case Git metadata path bypass. The
-author fixed it within the reviewer's exact condition, added regression tests across
-input, attachment and reference boundaries, and passed all required focused checks.
-The review is complete; operator-frozen and non-atomic limitations remain explicit.
+Independent normal-risk review found PC-1, a mixed-case Git metadata path bypass. The author fixed it within the reviewer's exact condition, added regression tests across input, attachment and reference boundaries, and passed all required focused checks. The review is complete; operator-frozen and non-atomic limitations remain explicit.
 
 The runner issued `/root/closeout_export/closeout_reviewer` with history inheritance
 disabled. Author-observed clock boundaries were2026-10-25T11:03:05Z before invocation
